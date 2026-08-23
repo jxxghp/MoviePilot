@@ -15,7 +15,8 @@ from app.agent.orchestrator import (
     AgentManagerUnavailableError,
 )
 from app.agent.memory import MemoryManager
-from app.startup import agent_initializer, modules_initializer
+from app.startup.initializers import agent as agent_initializer
+from app.startup.initializers import modules as modules_initializer
 
 
 @pytest.mark.anyio
@@ -115,8 +116,8 @@ async def test_agent_manager_background_tasks_share_owner_loop(monkeypatch) -> N
     assert manager._idle_cleanup_task is idle_cleanup_task
     assert memory_manager.cleanup_task is memory_cleanup_task
 
-    await manager.close()
-    await manager.close()
+    assert await manager.close() is True
+    assert await manager.close() is True
     assert manager._idle_cleanup_task is None
     assert memory_manager.cleanup_task is None
     assert idle_cleanup_task.done()
@@ -489,7 +490,8 @@ async def test_close_defers_shared_agent_teardown_after_worker_timeout(
     )
     await asyncio.wait_for(started.wait(), timeout=1)
 
-    await manager.close()
+    assert await manager.close() is False
+    assert await manager.close() is False
     assert not cleanup_called.is_set()
     assert "close-timeout" in manager.active_agents
     assert manager._close_finalizer_task is not None
@@ -503,6 +505,47 @@ async def test_close_defers_shared_agent_teardown_after_worker_timeout(
             break
         await asyncio.sleep(0)
     assert manager.active_agents == {}
+    assert await manager.close() is True
+
+
+@pytest.mark.anyio
+async def test_close_retains_agent_until_detached_subagent_converges(
+        monkeypatch,
+) -> None:
+    """Agent cleanup 返回 False 时 manager 必须保留 agent 和共享记忆 owner。"""
+    manager = AgentManager()
+    memory_manager = MemoryManager()
+    monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
+
+    class PendingSubagentOwner:
+        """首次清理未收敛、第二次清理成功的最小 Agent 替身。"""
+
+        def __init__(self) -> None:
+            """初始化封口计数与可重试清理结果。"""
+            self.seal_count = 0
+            self.cleanup_results = iter((False, True))
+
+        def begin_shutdown(self) -> None:
+            """记录 manager 在首个 await 前封住了子代理提交。"""
+            self.seal_count += 1
+
+        async def cleanup(self) -> bool:
+            """按测试序列返回 detached owner 的收敛状态。"""
+            return next(self.cleanup_results)
+
+    owner = PendingSubagentOwner()
+    await manager.initialize()
+    manager.active_agents["detached-owner"] = owner
+
+    assert await manager.close() is False
+    assert manager.active_agents == {"detached-owner": owner}
+    assert owner.seal_count == 1
+    assert memory_manager.cleanup_task is not None
+
+    assert await manager.close() is True
+    assert manager.active_agents == {}
+    assert owner.seal_count == 2
+    assert memory_manager.cleanup_task is None
 
 
 @pytest.mark.anyio

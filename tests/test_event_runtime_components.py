@@ -12,7 +12,7 @@ from app.runtime.event.binding import (
 from app.runtime.event.errors import EventErrorPolicy
 from app.runtime.events import Event
 from app.schemas.types import EventType
-from app.startup.modules_initializer import get_host_event_handler_factories
+from app.startup.initializers.modules import get_host_event_handler_factories
 
 
 class _UnmanagedHandler:

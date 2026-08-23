@@ -436,6 +436,7 @@ class MoviePilotAgent:
         self._agent_started_at: Optional[datetime] = None
         self._compiled_agent_bundle: Optional[_CompiledAgentBundle] = None
         self._subagent_middlewares: tuple[Any, ...] = ()
+        self._shutdown_started = False
         self._last_agent_cache_hit = False
 
         # 流式token管理
@@ -1751,10 +1752,25 @@ class MoviePilotAgent:
         return None
 
     @staticmethod
-    async def _close_subagent_middleware_instances(
+    def _seal_subagent_middleware_instances(
         middlewares: tuple[Any, ...],
     ) -> None:
-        """释放不再由 Agent 图持有的子代理控制器。"""
+        """同步封住子代理控制器的新任务入口，不等待既有任务退出。"""
+        for middleware in middlewares:
+            seal = getattr(middleware, "seal", None)
+            if not callable(seal):
+                continue
+            try:
+                seal()
+            except Exception as error:
+                logger.debug(f"封住子代理中间件失败: {error}")
+
+    @staticmethod
+    async def _close_subagent_middleware_instances(
+        middlewares: tuple[Any, ...],
+    ) -> tuple[Any, ...]:
+        """关闭子代理控制器，并返回仍持有未收敛任务的实例。"""
+        pending_middlewares = []
         for middleware in middlewares:
             close = getattr(middleware, "close", None)
             if not callable(close):
@@ -1762,9 +1778,30 @@ class MoviePilotAgent:
             try:
                 result = close()
                 if inspect.isawaitable(result):
-                    await result
+                    result = await result
+                if result is False:
+                    pending_middlewares.append(middleware)
             except Exception as error:
                 logger.debug(f"关闭子代理中间件失败: {error}")
+                pending_middlewares.append(middleware)
+        return tuple(pending_middlewares)
+
+    @staticmethod
+    def _merge_subagent_middleware_owners(
+        *groups: tuple[Any, ...],
+    ) -> tuple[Any, ...]:
+        """按对象身份合并当前图与延迟收敛控制器的 owner 集合。"""
+        merged = []
+        for group in groups:
+            for middleware in group:
+                if not any(middleware is existing for existing in merged):
+                    merged.append(middleware)
+        return tuple(merged)
+
+    def begin_shutdown(self) -> None:
+        """在任何异步等待前封住当前 Agent 的 detached 子代理提交。"""
+        self._shutdown_started = True
+        self._seal_subagent_middleware_instances(self._subagent_middlewares)
 
     async def _cache_agent(
         self,
@@ -1786,7 +1823,11 @@ class MoviePilotAgent:
                 for replacement in subagent_middlewares
             )
         )
-        await self._close_subagent_middleware_instances(previous_middlewares)
+        if self._shutdown_started:
+            self._seal_subagent_middleware_instances(subagent_middlewares)
+        pending_middlewares = await self._close_subagent_middleware_instances(
+            previous_middlewares
+        )
         self._compiled_agent_bundle = _CompiledAgentBundle(
             signature=signature,
             agent=agent,
@@ -1798,15 +1839,21 @@ class MoviePilotAgent:
             mcp_config_signature=mcp_config_signature,
             catalog_checked_at=datetime.now(),
         )
-        self._subagent_middlewares = subagent_middlewares
+        self._subagent_middlewares = self._merge_subagent_middleware_owners(
+            pending_middlewares,
+            subagent_middlewares,
+        )
         return agent
 
-    async def _invalidate_cached_agent(self) -> None:
-        """使当前图失效，并释放只属于该图的子代理控制器。"""
+    async def _invalidate_cached_agent(self) -> bool:
+        """使当前图失效，未收敛的子代理控制器继续由 Agent 持有。"""
         subagent_middlewares = self._subagent_middlewares
-        self._subagent_middlewares = ()
         self._compiled_agent_bundle = None
-        await self._close_subagent_middleware_instances(subagent_middlewares)
+        pending_middlewares = await self._close_subagent_middleware_instances(
+            subagent_middlewares
+        )
+        self._subagent_middlewares = pending_middlewares
+        return not pending_middlewares
 
     @staticmethod
     def _latest_turn_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
@@ -2003,8 +2050,12 @@ class MoviePilotAgent:
             if cached_agent:
                 # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
                 cached_bundle.catalog_checked_at = datetime.now()
-                await self._close_subagent_middleware_instances(
+                pending_middlewares = await self._close_subagent_middleware_instances(
                     temporary_subagent_middlewares
+                )
+                self._subagent_middlewares = self._merge_subagent_middleware_owners(
+                    self._subagent_middlewares,
+                    pending_middlewares,
                 )
                 temporary_subagent_middlewares = ()
                 logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
@@ -2123,13 +2174,21 @@ class MoviePilotAgent:
             temporary_subagent_middlewares = ()
             return cached_agent
         except asyncio.CancelledError:
-            await self._close_subagent_middleware_instances(
+            pending_middlewares = await self._close_subagent_middleware_instances(
                 temporary_subagent_middlewares
+            )
+            self._subagent_middlewares = self._merge_subagent_middleware_owners(
+                self._subagent_middlewares,
+                pending_middlewares,
             )
             raise
         except Exception as e:
-            await self._close_subagent_middleware_instances(
+            pending_middlewares = await self._close_subagent_middleware_instances(
                 temporary_subagent_middlewares
+            )
+            self._subagent_middlewares = self._merge_subagent_middleware_owners(
+                self._subagent_middlewares,
+                pending_middlewares,
             )
             logger.error(f"创建 Agent 失败: {e}")
             raise
@@ -2539,14 +2598,20 @@ class MoviePilotAgent:
             )
         )
 
-    async def cleanup(self):
+    async def cleanup(self) -> bool:
         """
-        清理智能体资源
+        清理智能体资源；detached 子代理未收敛时保留 owner 并返回 False。
         """
-        await self._invalidate_cached_agent()
+        self.begin_shutdown()
+        if not await self._invalidate_cached_agent():
+            logger.error(
+                f"MoviePilot智能体仍有子代理 owner 未收敛: session_id={self.session_id}"
+            )
+            return False
         self._pending_secret_confirmation = None
         self.protected_output_callback = None
         logger.info(f"MoviePilot智能体已清理: session_id={self.session_id}")
+        return True
 
 
 @dataclass
@@ -2626,6 +2691,7 @@ class AgentManager:
         self._session_deferred_cleanup_tasks: Dict[str, asyncio.Task] = {}
         self._session_cancel_requested: set[str] = set()
         self._close_finalizer_task: Optional[asyncio.Task] = None
+        self._closed = False
         self._shutdown_timeout = AGENT_MANAGER_SHUTDOWN_TIMEOUT
         # 接收门禁与队列写入共用一把锁，确保关闭开始后不会再创建 worker。
         self._lifecycle_lock = asyncio.Lock()
@@ -2693,22 +2759,33 @@ class AgentManager:
         async with self._lifecycle_lock:
             if self._accepting_tasks:
                 return
+            if self._close_finalizer_task and not self._close_finalizer_task.done():
+                raise AgentManagerUnavailableError("AgentManager 仍在完成上一代关闭")
             memory_manager.initialize()
             if not self._idle_cleanup_task or self._idle_cleanup_task.done():
                 self._idle_cleanup_task = asyncio.create_task(
                     self._cleanup_idle_sessions()
                 )
             self._accepting_tasks = True
+            self._closed = False
 
-    async def close(self):
+    async def close(self) -> bool:
         """
-        关闭管理器
+        关闭管理器，并诚实返回全部会话 owner 是否已经收敛。
         """
         async with self._lifecycle_lock:
+            if self._closed:
+                return True
             if self._close_finalizer_task and not self._close_finalizer_task.done():
-                return
+                return False
             # 门禁必须先关闭；锁内完成清理可阻止等待中的请求在收口期间重新入队。
             self._accepting_tasks = False
+            # 子代理提交门禁同样必须在第一次 await 前关闭，否则 detached task
+            # 可趁 idle-cleanup 收尾窗口继续创建不属于新生命周期的任务。
+            for agent in self.active_agents.values():
+                begin_shutdown = getattr(agent, "begin_shutdown", None)
+                if callable(begin_shutdown):
+                    begin_shutdown()
             if self._idle_cleanup_task:
                 self._idle_cleanup_task.cancel()
                 try:
@@ -2751,8 +2828,8 @@ class AgentManager:
                         self._session_workers.pop(session_id, None)
                 for session_id, agent in list(self.active_agents.items()):
                     if session_id not in timed_out_session_ids:
-                        await agent.cleanup()
-                        self.active_agents.pop(session_id, None)
+                        if await agent.cleanup() is not False:
+                            self.active_agents.pop(session_id, None)
                 logger.error(
                     "AgentManager 关闭时仍有 worker 未收敛，"
                     f"保留 {len(timed_out_workers)} 个会话资源直到 worker 结束"
@@ -2760,13 +2837,21 @@ class AgentManager:
                 self._close_finalizer_task = asyncio.create_task(
                     self._finish_deferred_close(timed_out_workers)
                 )
-                return
+                return False
 
             self._session_workers.clear()
-            for agent in list(self.active_agents.values()):
-                await agent.cleanup()
-            self.active_agents.clear()
+            for session_id, agent in list(self.active_agents.items()):
+                if await agent.cleanup() is not False:
+                    self.active_agents.pop(session_id, None)
+            if self.active_agents:
+                logger.error(
+                    "AgentManager 仍有 %d 个 detached 子代理 owner 未收敛",
+                    len(self.active_agents),
+                )
+                return False
             await memory_manager.close()
+            self._closed = True
+            return True
 
     def _record_session_activity(self, session_id: str, user_id: str) -> None:
         """
@@ -3072,7 +3157,10 @@ class AgentManager:
                 and isinstance(task.agent_factory, type)
                 and not isinstance(existing_agent, task.agent_factory)
         ):
-            await existing_agent.cleanup()
+            if await existing_agent.cleanup() is False:
+                raise AgentManagerUnavailableError(
+                    f"Agent 会话 {session_id} 仍有子代理任务在停止"
+                )
             self.active_agents.pop(session_id, None)
 
         if session_id not in self.active_agents:
@@ -3249,7 +3337,11 @@ class AgentManager:
         # 清理agent
         if session_id in self.active_agents:
             agent = self.active_agents[session_id]
-            await agent.cleanup()
+            if await agent.cleanup() is False:
+                logger.error(
+                    f"会话 {session_id} 仍有子代理 owner 未收敛，保留会话与记忆"
+                )
+                return
             del self.active_agents[session_id]
             memory_manager.clear_memory(session_id, user_id)
             logger.info(f"会话 {session_id} 的记忆已清空")
@@ -3290,9 +3382,14 @@ class AgentManager:
             self._session_deferred_cleanup_tasks.pop(session_id, None)
             self._session_queue_rejections.pop(session_id, None)
             self._session_last_queue_wait_ms.pop(session_id, None)
-            agent = self.active_agents.pop(session_id, None)
+            agent = self.active_agents.get(session_id)
             if agent:
-                await agent.cleanup()
+                if await agent.cleanup() is False:
+                    logger.error(
+                        f"会话 {session_id} 的延迟清理仍有子代理 owner 未收敛"
+                    )
+                    return
+                self.active_agents.pop(session_id, None)
                 memory_manager.clear_memory(session_id, user_id)
                 logger.info(f"会话 {session_id} 的记忆已清空")
 
@@ -3310,15 +3407,19 @@ class AgentManager:
                 for session_id, worker in workers:
                     if self._session_workers.get(session_id) is worker:
                         self._session_workers.pop(session_id, None)
-                    agent = self.active_agents.pop(session_id, None)
-                    if agent:
-                        await agent.cleanup()
                 for session_id, agent in list(self.active_agents.items()):
-                    await agent.cleanup()
-                    self.active_agents.pop(session_id, None)
+                    if await agent.cleanup() is not False:
+                        self.active_agents.pop(session_id, None)
                 self._session_shutdown_pending.clear()
                 self._session_cancel_requested.clear()
+                if self.active_agents:
+                    logger.error(
+                        "AgentManager 延迟关闭后仍有 %d 个子代理 owner 未收敛",
+                        len(self.active_agents),
+                    )
+                    return
                 await memory_manager.close()
+                self._closed = True
         finally:
             self._close_finalizer_task = None
 

@@ -25,7 +25,7 @@
 3. `PluginManager` 的加载、生命周期、注册表、投影、存储、目录、路径、同步、依赖、克隆和文件监控分别由 `app/runtime/extensions/plugin/` 下的单职责组件承担；旧管理器只保留 V3 ABI 门面和兼容调用顺序。
 4. 动态插件 API 使用专用 raw 路由；主程序统一响应信封不进入插件 `get_api()`。前端 `pluginApi` 对非 `Response` envelope 的 payload 原样交付调用方。
 5. 旧插件导入仅由 `app/runtime/compat/manifest.py` 精确映射；canonical 模块不复制旧 Manager/Helper/Oper 导出。`app/plugins/` 仍是运行时副本，继续排除在宿主架构扫描之外。
-6. 当前机器基线为 746 个宿主 Python 模块、6,024 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
+6. 2026-08-23 当前机器基线为 800 个宿主 Python 模块、6,479 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
 7. 订阅写入统一归入 `app/application/subscription/write.py`；插件动态路由和文件夹操作统一归入 `app/application/plugin/routes.py`、`folders.py`。重构期间新增且未形成插件 ABI 的 `app/application/subscribe.py`、`app/application/plugins.py` 已直接删除，不进入 compat manifest。
 
 ## 2. 范围与明确排除项
@@ -45,7 +45,7 @@
 ### 2.2 排除项
 
 - **不审计、不迁移 `app/plugins/` 中的代码。**该目录是已安装插件副本，不是后端架构源代码，也不能作为插件兼容性的唯一事实来源。
-- 插件兼容基线应读取同工作区独立仓库 `../MoviePilot-Plugins` 的 `plugins.v2/`、`plugins.v3/`，再配合宿主的 SDK、兼容清单和插件管理器契约判断。
+- 插件兼容基线应读取同工作区独立仓库 `../MoviePilot-Plugins` 的 `plugins.v3/`、`plugins.v2/` 和 V3 实际会从默认索引回退加载的 `plugins/` 实现，再配合宿主的 SDK、兼容清单和插件管理器契约判断。
 - 不把 `app/modules/themoviedb/` 内部第三方或移植代码的局部循环，直接等同于 MoviePilot 自有架构失败。它需要被隔离，但不应优先重写上游库。
 - 本轮不主张数据库表结构变更。纯架构批次不得夹带 Alembic 迁移、字段重命名或数据回填。
 - 本轮不主张删除 V3 兼容映射。任何删除都应作为显式破坏性变更另行决策。
@@ -99,7 +99,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 ### 4.3 模块规模
 
-排除 `app/plugins/` 后，当前静态扫描得到 746 个 Python 模块、6,024 条内部导入边。主要一级目录规模如下（代码行数包含注释和空行，用于趋势比较而非质量评分）：
+排除 `app/plugins/` 后，2026-08-23 当前静态扫描得到 800 个 Python 模块、6,479 条内部导入边。下表保留 2026-08-18 收口时的一级目录规模快照（代码行数包含注释和空行，用于趋势比较而非质量评分）：
 
 | 一级目录 | 约代码行数 | Python 文件数 | 判断 |
 | --- | ---: | ---: | --- |
@@ -119,7 +119,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 | 模块 | 静态出度 | 主要原因 |
 | --- | ---: | --- |
 | `app.agent.tools.factory` | 99 | 一次性导入全部内置工具并维护集中注册表 |
-| `app.startup.modules_initializer` | 55 | 组合根职责，这是合理高出度，但仍需声明式管理 |
+| `app.startup.initializers.modules` | 55 | 组合根职责，这是合理高出度，但仍需声明式管理 |
 | `app.api.endpoints.system` | 54 | 系统设置、规则测试、日志、网络测试、运行控制混合 |
 | `app.api.deps` | 49 | 认证、插件配置和跨端点依赖装配集中 |
 | `app.agent.orchestrator` | 48 | Agent 构建、执行、工具、记忆、审计、用量混合 |
@@ -147,8 +147,8 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 | 指标 | 初始审计 | 当前基线 | 说明 |
 | --- | ---: | ---: | --- |
-| Python 模块数 | 约 654 | 746 | 增量来自单一职责的 Application、Runtime、Adapter、插件组件和维护用例模块 |
-| 内部导入边 | 约 5,623 | 6,024 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
+| Python 模块数 | 约 654 | 800 | 增量来自单一职责的 Application、Runtime、Adapter、插件组件和维护用例模块 |
+| 内部导入边 | 约 5,623 | 6,479 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
 | SCC 数 | 14 | 1 | 自有代码 SCC 已归零，仅保留 TMDB 移植包内部隔离例外 |
 | `adapters -> db` | 存在 | 0 | `PluginHelper`、`MoviePilotServerHelper` 的本地数据读取已移到组合根/Application |
 | `runtime -> db` | 存在 | 0 | 插件存储、服务配置均改为启动注入 |
@@ -159,7 +159,7 @@ Doctor/Monitor 改为惰性公开门面；QQBot、Telegram、TriMedia、UGreen �
 
 - `tests/fixtures/architecture/dependency-baseline.json`：模块、边、SCC 和目标边。
 - `tests/fixtures/architecture/runtime-contract-baseline.json`：SDK、兼容清单、事件和 `run_module` 合同。
-- `tests/fixtures/architecture/official-plugin-baseline.json`：独立官方插件仓 V2/V3 导入及钩子快照。
+- `tests/fixtures/architecture/official-plugin-baseline.json`：独立官方插件仓中 V3 实际可加载的 V3/V2/default 实现导入及钩子快照。
 - `app/schemas/exports.py`：Schema 根入口的生成式兼容导出清单。
 
 ## 5. 目标架构与依赖方向
@@ -425,7 +425,7 @@ app/chain/transfer.py  # 保持 TransferChain 兼容门面
 
 #### 已有进展
 
-`app/startup/modules_initializer.py:211-245` 已经承担托管资源、壁纸 Provider、认证载荷、DoH、站点、事件错误通知、模块、Agent 和前端的组合工作。`app/startup/lifecycle.py` 也显式规定数据库预热、路由、模块、插件、调度器、监控器、命令和工作流的顺序。这是正确方向。
+`app/startup/initializers/modules.py` 承担托管资源、壁纸 Provider、认证载荷、DoH、站点、事件错误通知、模块、Agent 和前端的组合工作。`app/startup/lifecycle/` 显式规定数据库预热、路由、模块、插件、调度器、监控器、命令和工作流的顺序。这是正确方向。
 
 #### 历史泄漏与当前收口
 
@@ -701,7 +701,7 @@ app/application/server/share.py                # 订阅/工作流等分享用例
 
 #### 典型证据
 
-- `app/application/messaging/skill.py` 通过 `SkillCatalogPort` 消费技能目录，`app.startup.agent_initializer` 才导入并注入 `SkillHelper`。
+- `app/application/messaging/skill.py` 通过 `SkillCatalogPort` 消费技能目录，`app.startup.initializers.agent` 才导入并注入 `SkillHelper`。
 - `app/application/plugin/routes.py` 持有 `DynamicRouteRegistry` Protocol 和注册/移除用例；FastAPI app、`app.routes`、`openapi_schema` 和 `setup()` 均封装在 `app/adapters/web/plugin/routes.py`。
 - 多个 `modules` 直接导入 `app.application.messaging.agent`、`mediaserver`、`storage` 等；其中一部分是合理 SPI 消费，一部分表明应用能力接口和具体实现未区分。
 - `SystemConfigOper()` 在大量文件中被直接构造，形成持久化配置服务定位器。
@@ -788,9 +788,9 @@ app/agent/execution/              # 执行、流事件、用量、恢复
 
 `app/runtime/compat/manifest.py` 当前约包含：
 
-- 112 个模块别名。
+- 113 个模块别名。
 - 1 个包别名。
-- 8 个模块、约 41 个符号别名。
+- 10 个模块、55 个符号别名。
 - 3 个虚拟包。
 
 独立插件仓中仍高频使用：
@@ -828,8 +828,8 @@ app/agent/execution/              # 执行、流事件、用量、恢复
 
 - SDK 公开面有机器可读清单和变更审查。
 - 每次迁移明确列出旧路径、新路径、身份要求和保留期限。
-- 独立插件仓 v2/v3 静态导入扫描通过。
-- V3 治理批次不删除现有 112/41 兼容项。
+- 独立插件仓中 V3 实际可加载实现的静态导入扫描通过。
+- V3 治理批次不删除现有 113 个模块别名、1 个包别名和 55 个符号别名。
 
 ### 6.15 配置、缓存和错误策略分散
 
@@ -1071,7 +1071,7 @@ startup 注入具体依赖
 
 | 阶段 | 已落地入口 | 已锁定的关键语义 |
 | --- | --- | --- |
-| 0 | `scripts/architecture/baseline.py`、`scripts/schema/exports.py`、三份 architecture fixture | 模块/边/SCC、SDK/compat、事件、`run_module`、官方插件 V2/V3 导入和钩子快照 |
+| 0 | `scripts/architecture/baseline.py`、`scripts/schema/exports.py`、architecture fixtures | 模块/边/SCC、显式 `__all__` SDK/compat、事件、`run_module`、官方插件 V3/V2/default 有效实现的导入和钩子快照 |
 | 0 | `app/adapters/web/plugin/routes.py`、`app/application/plugin/routes.py` | 主程序继续统一 envelope；动态插件 API 默认 raw，自定义状态码、原生 Response、文件/流响应不被改写 |
 | 0 | `MoviePilot-Frontend/src/api/client.ts` | 联邦插件公共客户端遇到非 `Response` payload 时原样返回；合法 envelope 仍保留统一错误反馈 |
 | 1 | `app/schemas/exports.py`、`app/schemas/__init__.py` | Schema 根入口惰性兼容导出，宿主内部使用精确子模块，公开符号由生成清单锁定 |
@@ -1320,6 +1320,7 @@ done_when: []
 ./.venv/bin/python -m pytest tests/test_legacy_import_compat.py -q
 ./.venv/bin/python -m pytest tests/test_legacy_plugin_resource_imports.py -q
 ./.venv/bin/python -m pytest tests/test_plugin_sdk.py -q
+./.venv/bin/python scripts/architecture/task_ownership.py
 ```
 
 再运行本批次聚焦测试。涉及发布级公共行为时，使用仓库完整门禁：

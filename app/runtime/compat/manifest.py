@@ -81,8 +81,8 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="db",
     ),
     "app.db.init": ModuleAlias(
-        target="app.startup.database_initializer",
-        replacement="app.startup.database_initializer",
+        target="app.startup.initializers.database",
+        replacement="app.startup.initializers.database",
         introduced="v3.0.0",
         owner="startup",
     ),

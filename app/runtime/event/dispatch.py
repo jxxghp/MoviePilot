@@ -30,6 +30,9 @@ class EventDispatcher:
         event_factory: Callable[..., Any],
         error_handler: Callable[..., None],
         async_handle_sink: Callable[[Any], bool] | None = None,
+        sync_handle_sink: (
+            Callable[[Callable[..., Any], tuple[Any, ...]], bool] | None
+        ) = None,
     ) -> None:
         """注入注册表、绑定器、执行器和错误策略回调。"""
         self._registry = registry
@@ -39,6 +42,7 @@ class EventDispatcher:
         self._event_factory = event_factory
         self._error_handler = error_handler
         self._async_handle_sink = async_handle_sink
+        self._sync_handle_sink = sync_handle_sink
 
     def dispatch_chain(self, event: Any) -> bool:
         """同步按优先级顺序执行链式事件快照。"""
@@ -134,6 +138,12 @@ class EventDispatcher:
                         event.event_type,
                     )
             else:
+                if self._sync_handle_sink:
+                    self._sync_handle_sink(
+                        self.safe_invoke_sync,
+                        (handler, isolated),
+                    )
+                    continue
                 self._executor().submit(
                     self.safe_invoke_sync,
                     handler,

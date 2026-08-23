@@ -180,7 +180,7 @@ def prepare_backend() -> None:
     """
     isolate_config_dir()
     ensure_sites_stub()
-    from app.startup.database_initializer import init_db
+    from app.startup.initializers.database import init_db
     init_db()
     from app.db.oper.systemconfig import SystemConfigOper
     from app.db.oper.userconfig import UserConfigOper
@@ -188,10 +188,10 @@ def prepare_backend() -> None:
     SystemConfigOper().load_snapshot()
     UserConfigOper().load_snapshot()
     # 缓存装饰器在测试模块导入时即创建后端，先装配隔离配置对应的适配器。
-    from app.startup.cache_initializer import configure_cache_dependencies
+    from app.startup.initializers.cache import configure_cache_dependencies
     configure_cache_dependencies()
     # 测试与生产使用同一组合入口，确保领域解析器获得隔离库和测试 settings。
-    from app.startup.domain_initializer import configure_domain_dependencies
+    from app.startup.initializers.domain import configure_domain_dependencies
     configure_domain_dependencies()
 
 

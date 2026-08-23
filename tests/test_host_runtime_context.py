@@ -15,7 +15,7 @@ from app.api.context import (
 )
 from app.api.dependencies.agent import get_agent_chat_persistence
 from app.startup import lifecycle
-from app.startup.context import (
+from app.startup.composition.context import (
     AgentChatRuntime,
     AuthenticationRuntime,
     HistoryRuntime,

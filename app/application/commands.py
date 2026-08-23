@@ -11,7 +11,7 @@ Command 实现由 startup 组合根在导入期注册，避免 application 层
 
 from typing import Any, Dict, Optional
 
-# Command 类：由 startup/command_initializer 在导入期注册。
+# Command 类：由 startup/initializers/command.py 在导入期注册。
 _command_class: Any = None
 
 

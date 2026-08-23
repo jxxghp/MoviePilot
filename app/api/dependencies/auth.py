@@ -21,7 +21,7 @@ from app.application.security.user import (
     UserService,
 )
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.startup.context import HostRuntime
+from app.startup.composition.context import HostRuntime
 
 
 def get_user_service(

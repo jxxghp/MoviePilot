@@ -1,7 +1,15 @@
+from contextlib import nullcontext
+
 from app.application.plugin.config import PluginConfigCommand
+from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 
 
-def _command(calls: list[tuple], *, save_result: bool = True) -> PluginConfigCommand:
+def _command(
+    calls: list[tuple],
+    *,
+    save_result: bool = True,
+    mutation=None,
+) -> PluginConfigCommand:
     """构造记录端口调用顺序的插件配置用例。"""
     return PluginConfigCommand(
         save_config=lambda plugin_id, config, force: (
@@ -22,6 +30,7 @@ def _command(calls: list[tuple], *, save_result: bool = True) -> PluginConfigCom
         refresh_registrations=lambda plugin_id: calls.append(
             ("registrations", plugin_id)
         ),
+        mutation=mutation or (lambda _operation: nullcontext()),
     )
 
 
@@ -65,3 +74,22 @@ def test_reset_preserves_compensation_cleanup_and_reload_order() -> None:
         ("reload", "DemoPlugin"),
         ("registrations", "DemoPlugin"),
     ]
+
+
+def test_sealed_config_command_rejects_before_first_side_effect() -> None:
+    """配置事务在 admission 封口后返回失败，且不得先发布 reset 事件。"""
+    calls: list[tuple] = []
+    admission = PluginMutationAdmission()
+    admission.seal()
+
+    update_result = _command(calls, mutation=admission.hold).update(
+        "DemoPlugin",
+        {"enabled": True},
+    )
+    reset_result = _command(calls, mutation=admission.hold).reset("DemoPlugin")
+
+    assert update_result.success is False
+    assert reset_result.success is False
+    assert "停机阶段" in update_result.message
+    assert "停机阶段" in reset_result.message
+    assert calls == []

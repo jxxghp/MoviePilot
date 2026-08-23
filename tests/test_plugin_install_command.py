@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from app.schemas.exception import (
     PersistenceUnavailableError,
 )
 from app.application.plugin.install import PluginInstallCommand
+from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 
 
 def _command(
@@ -24,6 +26,8 @@ def _command(
     checkpointer=None,
     committer=None,
     rollback=None,
+    mutation=None,
+    package_write_guard=None,
 ):
     """构造可观测每一步副作用的插件安装命令。"""
     return PluginInstallCommand(
@@ -38,6 +42,9 @@ def _command(
         install_reporter=reporter or AsyncMock(),
         plugin_reloader=reloader or AsyncMock(),
         registration_refresher=refresher or AsyncMock(),
+        mutation=mutation or (lambda _operation: nullcontext()),
+        package_write_guard=package_write_guard
+        or (lambda _plugin_id: nullcontext()),
     )
 
 
@@ -72,6 +79,30 @@ async def test_install_failure_stops_before_report_persistence_and_reload():
     reporter.assert_not_awaited()
     writer.assert_not_awaited()
     reloader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sealed_install_rejects_before_package_guard_and_checkpoint() -> None:
+    """安装事务在封口后不进入监控抑制，也不创建文件快照。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    package_guard = Mock(return_value=nullcontext())
+    checkpointer = AsyncMock()
+
+    result = await _command(
+        mutation=admission.hold,
+        package_write_guard=package_guard,
+        checkpointer=checkpointer,
+    ).execute(
+        plugin_id="DemoPlugin",
+        repo_url="https://github.com/demo/plugins",
+    )
+
+    assert result.success is False
+    assert result.failure_stage == "admission"
+    assert "停机阶段" in result.message
+    package_guard.assert_not_called()
+    checkpointer.assert_not_awaited()
 
 
 @pytest.mark.asyncio

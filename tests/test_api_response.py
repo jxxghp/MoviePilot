@@ -512,7 +512,7 @@ def test_v1_model_free_routes_match_audited_native_allowlist():
 def test_native_protocol_openapi_has_explicit_response_schemas():
     """OpenAI、Anthropic 与 MCP 原生协议响应必须在 OpenAPI 中明确建模。"""
     from app.factory import create_app
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = create_app()
     init_routers(app)
@@ -558,7 +558,7 @@ def test_native_protocol_openapi_has_explicit_response_schemas():
 async def test_native_protocol_validation_errors_keep_native_shapes():
     """OpenAI 与 Anthropic 的请求校验错误应保持各自协议的错误结构。"""
     from app.factory import create_app
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = create_app()
     init_routers(app)
@@ -603,7 +603,7 @@ async def test_native_protocol_validation_errors_keep_native_shapes():
 async def test_mcp_root_auth_error_keeps_jsonrpc_shape():
     """MCP 根端点的依赖异常应保持 JSON-RPC，REST 子端点仍由统一协议处理。"""
     from app.factory import create_app
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = create_app()
     init_routers(app)
@@ -678,7 +678,7 @@ async def test_native_ai_http_and_unhandled_errors_keep_protocol_shapes():
 def test_servarr_and_cookiecloud_openapi_has_explicit_models():
     """兼容协议成功响应必须显式建模，错误响应必须声明统一结构。"""
     from app.factory import create_app
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = create_app()
     init_routers(app)
@@ -712,7 +712,7 @@ def test_servarr_and_cookiecloud_openapi_has_explicit_models():
 def test_all_openapi_error_responses_use_json_schemas():
     """所有普通与原生协议错误响应都应在文档中声明 JSON 媒体类型和结构。"""
     from app.factory import create_app
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = create_app()
     init_routers(app)
@@ -739,7 +739,7 @@ def test_all_openapi_error_responses_use_json_schemas():
 def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
     """2xx 响应可达模型不得包含裸 Any、裸数组或未声明值类型的开放映射。"""
     from app.factory import create_app
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = create_app()
     init_routers(app)

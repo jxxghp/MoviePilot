@@ -46,7 +46,8 @@ def test_official_plugin_baseline_records_external_source():
 
     assert baseline["schema_version"] == 3
     assert baseline["scope"]["repository"] == "MoviePilot-Plugins"
-    assert baseline["scope"]["roots"] == ["plugins.v2", "plugins.v3"]
+    assert baseline["scope"]["roots"] == ["plugins.v2", "plugins.v3", "plugins"]
+    assert baseline["scope"]["default_plugins"]
     assert len(baseline["provenance"]["head"]) == 40
     assert all(
         not path.startswith("app/plugins/")
@@ -99,6 +100,7 @@ def test_startup_performance_baseline_records_all_cold_import_targets():
     baseline_path = BASELINE_ROOT / "startup-performance-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
+    assert baseline["schema_version"] == 2
     assert baseline["repeat"] >= 3
     assert set(baseline["targets"]) == {
         "app.startup.lifecycle",
@@ -108,7 +110,7 @@ def test_startup_performance_baseline_records_all_cold_import_targets():
     for contract in baseline["targets"].values():
         assert len(contract["samples_ms"]) == baseline["repeat"]
         assert contract["min_ms"] <= contract["median_ms"] <= contract["max_ms"]
-        assert contract["loaded_module_count"] > 0
+        assert contract["loaded_app_module_count"] > 0
 
 
 def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
@@ -202,6 +204,8 @@ def test_startup_performance_baseline_records_normal_and_safe_lifecycle_resource
     safe = lifecycle["modes"]["safe"]
     assert normal["enabled_component_count"] > safe["enabled_component_count"]
     for mode in (normal, safe):
+        assert "后台任务登记器" in mode["enabled_components"]
+        assert mode["enabled_component_count"] == len(mode["enabled_components"])
         assert len(mode["samples"]) == baseline["repeat"]
         for sample in mode["samples"]:
             assert sample["threads_after"] == sample["threads_before"]

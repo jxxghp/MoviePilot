@@ -18,8 +18,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.monitor import LocalDirectoryWatcher, Monitor
+from app.monitor.monitor import Monitor
 from app.monitor.recovery import RecoveryExecutor, RecoveryState, probe_path
+from app.monitor.watcher import LocalDirectoryWatcher
 
 
 def _build_monitor(monkeypatch, put_recorder=None):
@@ -33,7 +34,17 @@ def _build_monitor(monkeypatch, put_recorder=None):
     monkeypatch.setattr("app.monitor.monitor.MessageHelper", MagicMock(return_value=put_recorder))
     monitor = object.__new__(Monitor)
     monitor._dispatcher = MagicMock()
+    monitor._lifecycle_lock = threading.RLock()
+    monitor._owner_lock = threading.Lock()
+    monitor._work_stop_event = threading.Event()
+    monitor._shutdown_event = threading.Event()
+    monitor._closed = False
+    monitor._compensation_threads = {}
+    monitor._scheduler_shutdown_thread = None
+    monitor._scheduler_shutdown_succeeded = False
+    monitor._scheduler = None
     monitor._watchers = []
+    monitor._retired_watchers = []
     monitor._watcher_lock = Lock()
     monitor._pending_locals = []
     monitor._alerted_paths = {}
@@ -114,7 +125,7 @@ def _stop_monitor_threads(monitor, timeout=10.0):
     :param monitor: Monitor 骨架
     :param timeout: 每个线程的最长等待秒数
     """
-    for watcher in monitor._watchers:
+    for watcher in (*monitor._watchers, *monitor._retired_watchers):
         if isinstance(watcher, LocalDirectoryWatcher):
             watcher.stop()
             watcher.join(timeout=timeout)
@@ -262,6 +273,10 @@ def test_watchdog_survives_blocking_exists_in_real_rebuild(tmp_path, monkeypatch
         assert str(tmp_path) in monitor._isolated, "重建无响应后目录没有转入隔离"
     finally:
         _release_and_join(release, monitor._recovery._running.values())
+        assert watcher in monitor._retired_watchers
+        # 重建后的旧 watcher 仍由 retired owner 表持有；测试替身不会自行切换
+        # is_alive，释放模拟阻塞后显式推进到真实线程应有的退出终态。
+        watcher._thread.is_alive.return_value = False
         _stop_monitor_threads(monitor)
 
 
@@ -454,7 +469,7 @@ def test_stuck_transfer_does_not_block_other_files(monkeypatch):
 
 def test_recovery_executor_reports_timeout_without_blocking():
     """
-    永不返回的动作只应消耗一次 timeout，执行器必须放弃它并如实报告。
+    永不返回的动作只应消耗一次 timeout，执行器必须结束本轮等待并如实报告。
     """
     executor = RecoveryExecutor()
     release = threading.Event()
@@ -465,7 +480,7 @@ def test_recovery_executor_reports_timeout_without_blocking():
 
     try:
         assert results == {"stuck": RecoveryState.TIMEOUT}
-        assert elapsed < 3.0, "执行器没有在超时后放弃冻死的动作"
+        assert elapsed < 3.0, "执行器没有在超时后结束本轮等待"
     finally:
         _release_and_join(release, executor._running.values())
 

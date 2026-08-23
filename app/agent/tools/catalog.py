@@ -8,7 +8,7 @@ from typing import Any, Mapping, Optional
 
 from pydantic import BaseModel
 
-from app.agent.policy import ToolRevision
+from app.agent.policy.contracts import ToolRevision
 
 
 class ToolCatalogError(RuntimeError):

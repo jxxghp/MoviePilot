@@ -13,7 +13,7 @@ from typing import Any, Callable, Optional
 
 Provider = Callable[[], Any]
 
-# provider 注册表由 startup/agent_initializer 在组合根装配。
+# provider 注册表由 startup/initializers/agent.py 在组合根装配。
 _agent_manager_provider: Optional[Provider] = None
 _running_agent_manager_provider: Optional[Provider] = None
 _prompt_manager_provider: Optional[Provider] = None
@@ -66,7 +66,7 @@ def _resolve(provider: Optional[Provider], service_name: str) -> Any:
     if provider is None:
         raise RuntimeError(
             f"Agent 服务 {service_name} 未注册："
-            "请先导入 app.startup.agent_initializer 完成组合根装配"
+            "请先导入 app.startup.initializers.agent 完成组合根装配"
         )
     return provider()
 

@@ -2679,6 +2679,45 @@
         "response_class": null,
         "response_model": "schemas.Response[List[schemas.MediaInfo]]"
       }
+    ],
+    "plugins/cloudflarespeedtest/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "cloudflare_speedtest",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/cloudflare_speedtest",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins/linkmonitor/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "sync",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "GET"
+        ],
+        "path": "/realtime_link",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
+    "plugins/wxpushermsg/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "run_once",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/run",
+        "response_class": null,
+        "response_model": null
+      }
     ]
   },
   "hooks": {
@@ -2695,7 +2734,7 @@
       ]
     },
     "get_api": {
-      "file_count": 84,
+      "file_count": 115,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2780,7 +2819,38 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/trendingshow/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "get_auth_provider": {
@@ -2788,7 +2858,7 @@
       "files": []
     },
     "get_command": {
-      "file_count": 82,
+      "file_count": 113,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2871,11 +2941,42 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/trendingshow/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "get_dashboard": {
-      "file_count": 10,
+      "file_count": 13,
       "files": [
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/brushflow/__init__.py",
@@ -2886,11 +2987,14 @@
         "plugins.v2/sitestatistic/__init__.py",
         "plugins.v2/tobypasstrackers/__init__.py",
         "plugins.v3/brushflow/__init__.py",
-        "plugins.v3/imdbsource/__init__.py"
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/trendingshow/__init__.py"
       ]
     },
     "get_form": {
-      "file_count": 84,
+      "file_count": 115,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2975,7 +3079,38 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/trendingshow/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "get_module": {
@@ -2989,7 +3124,7 @@
       ]
     },
     "get_page": {
-      "file_count": 84,
+      "file_count": 115,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3074,7 +3209,38 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/trendingshow/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "get_render_mode": {
@@ -3095,7 +3261,7 @@
       ]
     },
     "get_service": {
-      "file_count": 48,
+      "file_count": 55,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/autoauction/__init__.py",
@@ -3144,7 +3310,14 @@
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "get_sidebar": {
@@ -3152,7 +3325,7 @@
       "files": []
     },
     "get_state": {
-      "file_count": 86,
+      "file_count": 117,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3239,11 +3412,42 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/trendingshow/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "init_plugin": {
-      "file_count": 84,
+      "file_count": 115,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3328,11 +3532,42 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/trendingshow/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "stop_service": {
-      "file_count": 84,
+      "file_count": 115,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3417,7 +3652,38 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/trendingshow/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     }
   },
@@ -3481,7 +3747,7 @@
       ]
     },
     "app.chain.download": {
-      "file_count": 11,
+      "file_count": 12,
       "files": [
         "plugins.v2/doubanrank/__init__.py",
         "plugins.v2/doubansync/__init__.py",
@@ -3493,11 +3759,12 @@
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins/downloadingmsg/__init__.py"
       ]
     },
     "app.chain.media": {
-      "file_count": 10,
+      "file_count": 11,
       "files": [
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
@@ -3508,7 +3775,8 @@
         "plugins.v2/libraryscraper/__init__.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v3/doubanrank/__init__.py",
-        "plugins.v3/doubansync/__init__.py"
+        "plugins.v3/doubansync/__init__.py",
+        "plugins/downloadingmsg/__init__.py"
       ]
     },
     "app.chain.mediaserver": {
@@ -3547,9 +3815,10 @@
       ]
     },
     "app.chain.site": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v2/sitestatistic/__init__.py"
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins/siterefresh/__init__.py"
       ]
     },
     "app.chain.storage": {
@@ -3581,12 +3850,13 @@
       ]
     },
     "app.chain.tmdb": {
-      "file_count": 4,
+      "file_count": 5,
       "files": [
         "plugins.v2/maoyanrank/__init__.py",
         "plugins.v2/personmeta/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
-        "plugins.v3/personmeta/__init__.py"
+        "plugins.v3/personmeta/__init__.py",
+        "plugins/trendingshow/__init__.py"
       ]
     },
     "app.chain.torrents": {
@@ -3631,7 +3901,7 @@
       ]
     },
     "app.core.config": {
-      "file_count": 73,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
@@ -3705,11 +3975,22 @@
         "plugins.v2/tvfirstwatch/__init__.py",
         "plugins.v2/updatewechatip/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
-        "plugins.v3/chatgpt/__init__.py"
+        "plugins.v3/chatgpt/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/zvideohelper/DoubanHelper.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "app.core.context": {
-      "file_count": 17,
+      "file_count": 18,
       "files": [
         "plugins.v2/blurayremux/__init__.py",
         "plugins.v2/brushflow/__init__.py",
@@ -3727,11 +4008,12 @@
         "plugins.v2/playletcategory/__init__.py",
         "plugins.v2/promotiontag/__init__.py",
         "plugins.v2/rsssubscribe/__init__.py",
-        "plugins.v2/tvfirstwatch/__init__.py"
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins/autosubv2/__init__.py"
       ]
     },
     "app.core.event": {
-      "file_count": 41,
+      "file_count": 61,
       "files": [
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
@@ -3773,15 +4055,36 @@
         "plugins.v2/updatewechatip/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v2/wxpusher/__init__.py",
-        "plugins.v3/chatgpt/__init__.py"
+        "plugins.v3/chatgpt/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "app.core.meta": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v2/blurayremux/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
-        "plugins.v2/personmeta/__init__.py"
+        "plugins.v2/personmeta/__init__.py",
+        "plugins/zvideohelper/DoubanHelper.py"
       ]
     },
     "app.core.meta.words": {
@@ -3791,7 +4094,7 @@
       ]
     },
     "app.core.metainfo": {
-      "file_count": 11,
+      "file_count": 12,
       "files": [
         "plugins.v2/airecognizerenhancer/__init__.py",
         "plugins.v2/blurayremux/__init__.py",
@@ -3803,17 +4106,25 @@
         "plugins.v2/maoyanrank/__init__.py",
         "plugins.v2/rsssubscribe/__init__.py",
         "plugins.v2/traktcleaner/__init__.py",
-        "plugins.v2/tvfirstwatch/__init__.py"
+        "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins/downloadingmsg/__init__.py"
+      ]
+    },
+    "app.core.module": {
+      "file_count": 1,
+      "files": [
+        "plugins/ipdetect/__init__.py"
       ]
     },
     "app.core.plugin": {
-      "file_count": 5,
+      "file_count": 6,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/agenttool.py",
         "plugins.v2/agentresourceofficer/services/p115_transfer.py",
         "plugins.v2/hrblocker/__init__.py",
-        "plugins.v2/lexiannot/agenttool.py"
+        "plugins.v2/lexiannot/agenttool.py",
+        "plugins/cleaninvalidplugin/__init__.py"
       ]
     },
     "app.db": {
@@ -3828,13 +4139,14 @@
       ]
     },
     "app.db.downloadhistory_oper": {
-      "file_count": 5,
+      "file_count": 6,
       "files": [
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/downloadsitetag/__init__.py",
         "plugins.v2/episodetag/__init__.py",
         "plugins.v2/qbuploadlimiter/__init__.py",
-        "plugins.v2/subscribeclear/__init__.py"
+        "plugins.v2/subscribeclear/__init__.py",
+        "plugins/downloadingmsg/__init__.py"
       ]
     },
     "app.db.message_oper": {
@@ -3929,7 +4241,7 @@
       ]
     },
     "app.db.site_oper": {
-      "file_count": 10,
+      "file_count": 11,
       "files": [
         "plugins.v2/autosignin/__init__.py",
         "plugins.v2/brushflow/__init__.py",
@@ -3940,7 +4252,8 @@
         "plugins.v2/qbcommand/__init__.py",
         "plugins.v2/sitestatistic/__init__.py",
         "plugins.v2/synccookiecloud/__init__.py",
-        "plugins.v2/tobypasstrackers/__init__.py"
+        "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins/siterefresh/__init__.py"
       ]
     },
     "app.db.subscribe_oper": {
@@ -3952,18 +4265,20 @@
       ]
     },
     "app.db.systemconfig_oper": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v2/airecognizerenhancer/__init__.py"
+        "plugins.v2/airecognizerenhancer/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py"
       ]
     },
     "app.db.transferhistory_oper": {
-      "file_count": 4,
+      "file_count": 5,
       "files": [
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
-        "plugins.v2/scrapefileclean/__init__.py"
+        "plugins.v2/scrapefileclean/__init__.py",
+        "plugins/removelink/__init__.py"
       ]
     },
     "app.db.user_oper": {
@@ -3992,9 +4307,11 @@
       ]
     },
     "app.helper.cookiecloud": {
-      "file_count": 1,
+      "file_count": 3,
       "files": [
-        "plugins.v2/dynamicwechat/__init__.py"
+        "plugins.v2/dynamicwechat/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/zvideohelper/DoubanHelper.py"
       ]
     },
     "app.helper.directory": {
@@ -4080,7 +4397,7 @@
       ]
     },
     "app.helper.sites": {
-      "file_count": 11,
+      "file_count": 12,
       "files": [
         "plugins.v2/autoauction/__init__.py",
         "plugins.v2/autosignin/__init__.py",
@@ -4092,7 +4409,8 @@
         "plugins.v2/promotiontag/__init__.py",
         "plugins.v2/qbcommand/__init__.py",
         "plugins.v2/qbuploadlimiter/__init__.py",
-        "plugins.v2/sitestatistic/__init__.py"
+        "plugins.v2/sitestatistic/__init__.py",
+        "plugins/customindexer/__init__.py"
       ]
     },
     "app.helper.system": {
@@ -4124,7 +4442,7 @@
       ]
     },
     "app.log": {
-      "file_count": 99,
+      "file_count": 128,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -4224,7 +4542,36 @@
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v2/wechatclawbot/ilink/client.py",
         "plugins.v2/wxpusher/__init__.py",
-        "plugins.v3/chatgpt/__init__.py"
+        "plugins.v3/chatgpt/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/DoubanHelper.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "app.modules.bangumi": {
@@ -4258,19 +4605,21 @@
       ]
     },
     "app.modules.qbittorrent": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v2/brushflow/__init__.py",
         "plugins.v2/torrenttransfer/__init__.py",
-        "plugins.v3/brushflow/__init__.py"
+        "plugins.v3/brushflow/__init__.py",
+        "plugins/trackereditor/__init__.py"
       ]
     },
     "app.modules.themoviedb": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v2/mediaservermsg/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
-        "plugins.v3/mediaservermsg/__init__.py"
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins/categoryeditor/__init__.py"
       ]
     },
     "app.modules.themoviedb.tmdbapi": {
@@ -4286,11 +4635,12 @@
       ]
     },
     "app.modules.transmission": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v2/brushflow/__init__.py",
         "plugins.v2/torrenttransfer/__init__.py",
-        "plugins.v3/brushflow/__init__.py"
+        "plugins.v3/brushflow/__init__.py",
+        "plugins/trackereditor/__init__.py"
       ]
     },
     "app.modules.wechat": {
@@ -4300,7 +4650,7 @@
       ]
     },
     "app.plugins": {
-      "file_count": 84,
+      "file_count": 115,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4385,7 +4735,38 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/categoryeditor/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customindexer/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/iyuuauth/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/trackereditor/__init__.py",
+        "plugins/trendingshow/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "app.plugins.autosignin.sites": {
@@ -4445,6 +4826,12 @@
         "plugins.v2/imdbsource/__init__.py"
       ]
     },
+    "app.plugins.iyuuauth.iyuu_helper": {
+      "file_count": 1,
+      "files": [
+        "plugins/iyuuauth/__init__.py"
+      ]
+    },
     "app.plugins.iyuuautoseed.iyuu_helper": {
       "file_count": 1,
       "files": [
@@ -4458,6 +4845,12 @@
         "plugins.v3/agentresourceofficer/services/p115_transfer.py"
       ]
     },
+    "app.plugins.zvideohelper.DoubanHelper": {
+      "file_count": 1,
+      "files": [
+        "plugins/zvideohelper/__init__.py"
+      ]
+    },
     "app.runtime.thread": {
       "file_count": 2,
       "files": [
@@ -4466,17 +4859,18 @@
       ]
     },
     "app.scheduler": {
-      "file_count": 5,
+      "file_count": 6,
       "files": [
         "plugins.v2/brushflow/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/tobypasstrackers/__init__.py",
         "plugins.v3/brushflow/__init__.py",
-        "plugins.v3/imdbsource/__init__.py"
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins/ipdetect/__init__.py"
       ]
     },
     "app.schemas": {
-      "file_count": 50,
+      "file_count": 56,
       "files": [
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/blurayremux/__init__.py",
@@ -4527,7 +4921,13 @@
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/ipdetect/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/trackereditor/__init__.py"
       ]
     },
     "app.schemas.context": {
@@ -4549,7 +4949,7 @@
       ]
     },
     "app.schemas.types": {
-      "file_count": 67,
+      "file_count": 89,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4617,7 +5017,29 @@
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/cleaninvalidplugin/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/customsites/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/linkmonitor/__init__.py",
+        "plugins/ntfymsg/__init__.py",
+        "plugins/pushdeermsg/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/removelink/__init__.py",
+        "plugins/siterefresh/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/__init__.py"
       ]
     },
     "app.sdk.browser": {
@@ -4784,11 +5206,12 @@
       ]
     },
     "app.utils.common": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v2/imdbsource/imdbapi.py",
         "plugins.v2/imdbsource/officialapi.py",
-        "plugins.v2/personmeta/__init__.py"
+        "plugins.v2/personmeta/__init__.py",
+        "plugins/remoteidentifiers/__init__.py"
       ]
     },
     "app.utils.crypto": {
@@ -4805,7 +5228,7 @@
       ]
     },
     "app.utils.http": {
-      "file_count": 45,
+      "file_count": 61,
       "files": [
         "plugins.v2/animeupscale/__init__.py",
         "plugins.v2/autoauction/__init__.py",
@@ -4851,13 +5274,31 @@
         "plugins.v2/tvdbdiscover/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v2/wechatclawbot/ilink/client.py",
-        "plugins.v2/wxpusher/__init__.py"
+        "plugins.v2/wxpusher/__init__.py",
+        "plugins/apprisemsg/__init__.py",
+        "plugins/barkmsg/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/dailyword/__init__.py",
+        "plugins/dingdingmsg/__init__.py",
+        "plugins/feishumsg/__init__.py",
+        "plugins/gotifymsg/__init__.py",
+        "plugins/iyuuauth/iyuu_helper.py",
+        "plugins/iyuumsg/__init__.py",
+        "plugins/mpserverstatus/__init__.py",
+        "plugins/pushplusmsg/__init__.py",
+        "plugins/remoteidentifiers/__init__.py",
+        "plugins/webhook/__init__.py",
+        "plugins/workwechatmsg/__init__.py",
+        "plugins/wxpushermsg/__init__.py",
+        "plugins/zvideohelper/DoubanHelper.py"
       ]
     },
     "app.utils.ip": {
-      "file_count": 1,
+      "file_count": 3,
       "files": [
-        "plugins.v2/speedlimiter/__init__.py"
+        "plugins.v2/speedlimiter/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py"
       ]
     },
     "app.utils.singleton": {
@@ -4874,7 +5315,7 @@
       ]
     },
     "app.utils.string": {
-      "file_count": 43,
+      "file_count": 45,
       "files": [
         "plugins.v2/autosignin/__init__.py",
         "plugins.v2/autosignin/sites/52pt.py",
@@ -4918,17 +5359,23 @@
         "plugins.v2/sitestatistic/__init__.py",
         "plugins.v2/torrentremover/__init__.py",
         "plugins.v2/torrenttransfer/__init__.py",
-        "plugins.v2/wechatclawbot/__init__.py"
+        "plugins.v2/wechatclawbot/__init__.py",
+        "plugins/downloadingmsg/__init__.py",
+        "plugins/siterefresh/__init__.py"
       ]
     },
     "app.utils.system": {
-      "file_count": 5,
+      "file_count": 9,
       "files": [
         "plugins.v2/chinesesubfinder/__init__.py",
         "plugins.v2/ffmpegthumb/__init__.py",
         "plugins.v2/ffmpegthumb/ffmpeg_helper.py",
         "plugins.v2/libraryscraper/__init__.py",
-        "plugins.v2/playletcategory/__init__.py"
+        "plugins.v2/playletcategory/__init__.py",
+        "plugins/autosubv2/__init__.py",
+        "plugins/cloudflarespeedtest/__init__.py",
+        "plugins/customhosts/__init__.py",
+        "plugins/linkmonitor/__init__.py"
       ]
     },
     "app.utils.timer": {
@@ -4948,15 +5395,49 @@
   },
   "provenance": {
     "head": "7d2d676d6f5139227050e9e71bd579943f45c0e8",
-    "python_file_count": 238,
-    "source_sha256": "f07ff2e8c95080cbbf6d229376464e61dc74061c1a8d371b5ea2cf00148413de"
+    "python_file_count": 274,
+    "source_sha256": "b1e3a6d7bfdd78eec1377a7b42f7482b9720324a3403b21ad6767788b054b727"
   },
   "schema_version": 3,
   "scope": {
+    "default_plugins": [
+      "AppriseMsg",
+      "AutoSubv2",
+      "BarkMsg",
+      "CategoryEditor",
+      "CleanInvalidPlugin",
+      "CloudflareSpeedTest",
+      "CustomHosts",
+      "CustomIndexer",
+      "CustomSites",
+      "DailyWord",
+      "DingdingMsg",
+      "DownloadingMsg",
+      "FeiShuMsg",
+      "GotifyMsg",
+      "IpDetect",
+      "IyuuAuth",
+      "IyuuMsg",
+      "LinkMonitor",
+      "MPServerStatus",
+      "NtfyMsg",
+      "PushDeerMsg",
+      "PushPlusMsg",
+      "RemoteIdentifiers",
+      "RemoveLink",
+      "SiteRefresh",
+      "TrackerEditor",
+      "TrendingShow",
+      "WebHook",
+      "WorkWechatMsg",
+      "WxPusherMsg",
+      "ZvideoHelper"
+    ],
     "repository": "MoviePilot-Plugins",
     "roots": [
       "plugins.v2",
-      "plugins.v3"
+      "plugins.v3",
+      "plugins"
     ]
   }
 }

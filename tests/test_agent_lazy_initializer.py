@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.runtime.capabilities.errors import CapabilityRuntimeClosedError
-from app.startup import agent_initializer
+from app.startup.initializers import agent as agent_initializer
 
 
 @pytest.mark.anyio
@@ -115,7 +115,7 @@ async def test_production_stop_seals_runtime_without_manually_closing_manager(
     initializer._manager = manager
     initializer._initialized = True
     initializer._compat_injected = False
-    shutdown = AsyncMock()
+    shutdown = AsyncMock(return_value=True)
     monkeypatch.setattr(agent_initializer, "begin_agent_shutdown", shutdown)
     monkeypatch.setattr(agent_initializer, "agent_initializer", initializer)
     monkeypatch.setattr(
@@ -124,11 +124,61 @@ async def test_production_stop_seals_runtime_without_manually_closing_manager(
         lambda: False,
     )
 
-    await agent_initializer.stop_agent()
+    assert await agent_initializer.stop_agent() is True
 
     shutdown.assert_awaited_once_with()
     manager.close.assert_not_awaited()
     assert initializer._manager is None
+
+
+@pytest.mark.anyio
+async def test_production_stop_retains_manager_when_runtime_does_not_converge(
+    monkeypatch,
+) -> None:
+    """Agent service 未收敛时不得释放 initializer 引用或下游工具资源。"""
+    manager = AsyncMock()
+    initializer = agent_initializer.AgentInitializer()
+    initializer._manager = manager
+    initializer._initialized = True
+    initializer._compat_injected = False
+    shutdown = AsyncMock(return_value=False)
+    executor_seal = MagicMock()
+    executor_close = AsyncMock(return_value=True)
+    monkeypatch.setattr(agent_initializer, "begin_agent_shutdown", shutdown)
+    monkeypatch.setattr(agent_initializer, "agent_initializer", initializer)
+    monkeypatch.setattr(
+        agent_initializer,
+        "is_tool_factory_materialized",
+        lambda: True,
+    )
+    fake_base = types.ModuleType("app.agent.tools.base")
+    fake_base.begin_blocking_executor_shutdown = executor_seal
+    fake_base.close_blocking_executors = executor_close
+    monkeypatch.setitem(sys.modules, "app.agent.tools.base", fake_base)
+
+    assert await agent_initializer.stop_agent() is False
+
+    shutdown.assert_awaited_once_with()
+    assert initializer._manager is manager
+    assert initializer._shutdown_started is True
+    assert initializer._shutdown_complete is False
+    executor_seal.assert_called_once_with(cancel_futures=True)
+    executor_close.assert_awaited_once_with(
+        timeout_seconds=(
+            agent_initializer.AGENT_BLOCKING_EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS
+        ),
+        cancel_futures=True,
+    )
+
+    event = agent_initializer.Event(
+        agent_initializer.EventType.ConfigChanged,
+        {"key": "AI_AGENT_ENABLE"},
+    )
+    reconcile = AsyncMock()
+    monkeypatch.setattr(agent_initializer, "reconcile_agent_service", reconcile)
+    await initializer.handle_config_changed(event)
+    reconcile.assert_not_awaited()
+    assert initializer._manager is manager
 
 
 @pytest.mark.anyio
@@ -227,8 +277,10 @@ async def test_stop_closes_tool_executor_after_factory_materialization(
 ) -> None:
     """工具能力已解析时，应取消仍排队的阻塞工具任务。"""
     fake_base = types.ModuleType("app.agent.tools.base")
-    cleanup = MagicMock()
-    fake_base.shutdown_blocking_executors = cleanup
+    seal = MagicMock()
+    cleanup = AsyncMock(return_value=True)
+    fake_base.begin_blocking_executor_shutdown = seal
+    fake_base.close_blocking_executors = cleanup
     monkeypatch.setitem(sys.modules, "app.agent.tools.base", fake_base)
     monkeypatch.setattr(agent_initializer, "begin_agent_shutdown", AsyncMock())
     monkeypatch.setattr(
@@ -242,15 +294,27 @@ async def test_stop_closes_tool_executor_after_factory_materialization(
         agent_initializer.AgentInitializer(),
     )
 
-    await agent_initializer.stop_agent()
+    assert await agent_initializer.stop_agent() is True
 
-    cleanup.assert_called_once_with(wait=False, cancel_futures=True)
+    seal.assert_called_once_with(cancel_futures=True)
+    cleanup.assert_awaited_once_with(
+        timeout_seconds=(
+            agent_initializer.AGENT_BLOCKING_EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS
+        ),
+        cancel_futures=True,
+    )
 
 
 @pytest.mark.anyio
-async def test_stop_does_not_wait_for_running_blocking_tool(monkeypatch) -> None:
-    """应用关闭不得等待已经进入线程池且尚未返回的工具调用。"""
-    from app.agent.tools.base import MoviePilotTool
+async def test_stop_retains_running_blocking_tool_until_retry(monkeypatch) -> None:
+    """阻塞工具超过预算时 stop 返回 False，真实结束后重试才释放 owner。"""
+    from app.agent.tools.base import (
+        MoviePilotTool,
+        _blocking_futures,
+        _blocking_retiring_executors,
+        close_blocking_executors,
+        reopen_blocking_executors,
+    )
 
     started = threading.Event()
     release = threading.Event()
@@ -264,7 +328,21 @@ async def test_stop_does_not_wait_for_running_blocking_tool(monkeypatch) -> None
         MoviePilotTool.run_blocking("web", _blocking_call)
     )
     assert await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
-    monkeypatch.setattr(agent_initializer, "begin_agent_shutdown", AsyncMock())
+    monkeypatch.setattr(
+        agent_initializer,
+        "begin_agent_shutdown",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        agent_initializer,
+        "close_materialized_terminal_sessions",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        agent_initializer,
+        "AGENT_BLOCKING_EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS",
+        0.01,
+    )
     monkeypatch.setattr(
         agent_initializer,
         "is_tool_factory_materialized",
@@ -277,8 +355,22 @@ async def test_stop_does_not_wait_for_running_blocking_tool(monkeypatch) -> None
     )
 
     try:
-        await asyncio.wait_for(agent_initializer.stop_agent(), timeout=0.2)
+        assert await asyncio.wait_for(agent_initializer.stop_agent(), timeout=0.2) is False
         assert worker.done() is False
-    finally:
+        assert _blocking_futures
+        assert _blocking_retiring_executors
+
+        with pytest.raises(RuntimeError, match="正在关闭"):
+            await MoviePilotTool.run_blocking("web", lambda: "late")
+
         release.set()
         assert await asyncio.wait_for(worker, timeout=1) == "done"
+        assert await asyncio.wait_for(agent_initializer.stop_agent(), timeout=0.2) is True
+        assert not _blocking_futures
+        assert not _blocking_retiring_executors
+    finally:
+        release.set()
+        if not worker.done():
+            await asyncio.wait_for(worker, timeout=1)
+        await close_blocking_executors(timeout_seconds=1, cancel_futures=True)
+        assert reopen_blocking_executors() is True

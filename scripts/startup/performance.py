@@ -46,7 +46,10 @@ importlib.import_module({target!r})
 elapsed_ms = (time.perf_counter() - started_at) * 1000
 print({RESULT_PREFIX!r} + json.dumps({{
     'elapsed_ms': elapsed_ms,
-    'loaded_module_count': len(set(sys.modules) - before),
+    'loaded_app_module_count': len([
+        name for name in set(sys.modules) - before
+        if name == 'app' or name.startswith('app.')
+    ]),
 }}))
 """
     environment = os.environ.copy()
@@ -98,17 +101,22 @@ from app.startup import lifecycle
 
 
 def _noop():
+    '''替代无需执行的真实同步组件回调。'''
     return None
 
 
 async def _async_noop():
+    '''替代无需执行的真实异步组件回调。'''
     return None
 
 
 def _isolated_start(component, probe_app):
+    '''保留探针所需基础状态，其余组件启动替换为空操作。'''
     # 保留 readiness 所需状态转换，其余真实启动回调替换为空操作。
     if component.start is None:
         return None
+    if component.name == '后台任务登记器':
+        return component.start
     if component.name == '数据库准备':
         return lambda: lifecycle.get_application_health(
             probe_app
@@ -116,7 +124,16 @@ def _isolated_start(component, probe_app):
     return _noop
 
 
+def _isolated_stop(component):
+    '''真实释放探针基础设施，其余组件关闭替换为空操作。'''
+    # TaskRegistry 是后续生命周期代码的基础设施，探针必须验证其真实释放路径。
+    if component.name == '后台任务登记器':
+        return component.stop
+    return _noop if component.stop is not None else None
+
+
 async def _probe():
+    '''执行一次隔离生命周期并输出资源与耗时样本。'''
     lifecycle.settings.MOVIEPILOT_SAFE_MODE = {safe_mode!r}
     lifecycle.init_extra = _async_noop
     lifecycle.global_vars.set_loop = lambda loop: None
@@ -128,7 +145,7 @@ async def _probe():
         dataclasses.replace(
             component,
             start=_isolated_start(component, probe_app),
-            stop=_noop if component.stop is not None else None,
+            stop=_isolated_stop(component),
         )
         for component in original_components
     )
@@ -137,6 +154,7 @@ async def _probe():
     original_step = lifecycle.run_startup_step
 
     async def timed_step(name, callback, timeout_seconds=None):
+        '''执行隔离启动步骤并记录耗时。'''
         started = time.perf_counter()
         result = await original_step(name, callback, timeout_seconds)
         stage_ms[name] = round((time.perf_counter() - started) * 1000, 3)
@@ -151,12 +169,14 @@ async def _probe():
         started_threads = threading.active_count()
         started_tasks = len(asyncio.all_tasks())
     finished_ms = (time.perf_counter() - started) * 1000
+    enabled_components = [
+        component.name for component in isolated_components
+        if component.enabled({safe_mode!r})
+    ]
     print({LIFECYCLE_RESULT_PREFIX!r} + json.dumps({{
         'mode': 'safe' if {safe_mode!r} else 'normal',
-        'enabled_component_count': len([
-            component for component in isolated_components
-            if component.enabled({safe_mode!r})
-        ]),
+        'enabled_components': enabled_components,
+        'enabled_component_count': len(enabled_components),
         'startup_ms': round(startup_ms, 3),
         'full_lifespan_ms': round(finished_ms, 3),
         'stage_ms': stage_ms,
@@ -206,9 +226,9 @@ def collect_baseline(repeat: int) -> dict[str, Any]:
         samples = [measure_import(target) for _ in range(repeat)]
         elapsed = [sample["elapsed_ms"] for sample in samples]
         targets[target] = {
-            "loaded_module_count": int(
+            "loaded_app_module_count": int(
                 statistics.median(
-                    sample["loaded_module_count"] for sample in samples
+                    sample["loaded_app_module_count"] for sample in samples
                 )
             ),
             "max_ms": round(max(elapsed), 3),
@@ -219,8 +239,21 @@ def collect_baseline(repeat: int) -> dict[str, Any]:
     lifecycle_modes: dict[str, Any] = {}
     for safe_mode, mode_name in ((False, "normal"), (True, "safe")):
         samples = [measure_lifecycle(safe_mode) for _ in range(repeat)]
+        enabled_components = samples[0]["enabled_components"]
+        if any(
+            sample["enabled_components"] != enabled_components
+            for sample in samples[1:]
+        ):
+            raise RuntimeError(f"{mode_name} 模式生命周期组件在重复采样间发生变化")
         lifecycle_modes[mode_name] = {
-            "samples": samples,
+            "samples": [
+                {
+                    key: value
+                    for key, value in sample.items()
+                    if key != "enabled_components"
+                }
+                for sample in samples
+            ],
             "median_startup_ms": round(
                 statistics.median(sample["startup_ms"] for sample in samples),
                 3,
@@ -230,9 +263,10 @@ def collect_baseline(repeat: int) -> dict[str, Any]:
                 3,
             ),
             "enabled_component_count": samples[0]["enabled_component_count"],
+            "enabled_components": enabled_components,
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "platform": platform.platform(),
         "python": platform.python_version(),
@@ -251,6 +285,11 @@ def check_baseline(
 ) -> list[str]:
     """比较稳定资源契约与宽松耗时预算，返回所有不符合项。"""
     errors: list[str] = []
+    if expected.get("schema_version") != actual.get("schema_version"):
+        errors.append(
+            "启动性能基线 schema 版本变化："
+            f"{expected.get('schema_version')} -> {actual.get('schema_version')}"
+        )
     expected_targets = expected.get("targets", {})
     actual_targets = actual.get("targets", {})
     if set(expected_targets) != set(actual_targets):
@@ -258,14 +297,13 @@ def check_baseline(
     for target in sorted(set(expected_targets) & set(actual_targets)):
         expected_target = expected_targets[target]
         actual_target = actual_targets[target]
-        if (
-            actual_target["loaded_module_count"]
-            != expected_target["loaded_module_count"]
+        if actual_target.get("loaded_app_module_count") != expected_target.get(
+            "loaded_app_module_count"
         ):
             errors.append(
-                f"{target} 加载模块数变化："
-                f"{expected_target['loaded_module_count']} -> "
-                f"{actual_target['loaded_module_count']}"
+                f"{target} 加载宿主模块数变化："
+                f"{expected_target.get('loaded_app_module_count')} -> "
+                f"{actual_target.get('loaded_app_module_count')}"
             )
         budget_ms = max(
             expected_target["max_ms"] * PERFORMANCE_FACTOR,
@@ -283,6 +321,10 @@ def check_baseline(
     for mode_name in sorted(set(expected_modes) & set(actual_modes)):
         expected_mode = expected_modes[mode_name]
         actual_mode = actual_modes[mode_name]
+        if actual_mode.get("enabled_components") != expected_mode.get(
+            "enabled_components"
+        ):
+            errors.append(f"{mode_name} 模式生命周期组件集合或顺序已变化")
         if (
             actual_mode["enabled_component_count"]
             != expected_mode["enabled_component_count"]

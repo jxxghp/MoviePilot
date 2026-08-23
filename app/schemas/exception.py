@@ -4,6 +4,7 @@ __all__ = (
     "APIRateLimitException",
     "RateLimitExceededException",
     "OperationInterrupted",
+    "PluginMutationRejectedError",
     "StorageQueryError",
     "TMDbException",
 )
@@ -47,6 +48,15 @@ class OperationInterrupted(KeyboardInterrupt):
     用于表示操作被中断
     """
     pass
+
+
+class PluginMutationRejectedError(RuntimeError):
+    """表示插件运行时已封口，新的可变事务未获准执行。"""
+
+    def __init__(self, operation: str) -> None:
+        """保存被拒绝的操作名称并生成稳定诊断消息。"""
+        self.operation = operation
+        super().__init__(f"插件运行时已进入停机阶段，拒绝{operation}")
 
 
 class StorageQueryError(Exception):

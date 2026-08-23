@@ -22,7 +22,7 @@ from app.domain.metainfo import MetaInfo
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource, MediaType
-from app.startup.chain_events import TransactionalChainDurableEventWriter
+from app.db.adapters.chain import TransactionalChainDurableEventWriter
 
 
 def _session_factory():

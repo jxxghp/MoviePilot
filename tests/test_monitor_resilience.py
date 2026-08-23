@@ -1,8 +1,10 @@
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from app.monitor import LocalDirectoryWatcher, Monitor
+from app.monitor.monitor import Monitor
 from app.monitor.recovery import RecoveryExecutor
+from app.monitor.watcher import LocalDirectoryWatcher
 
 
 def _build_watcher(tmp_path, force_polling):
@@ -133,7 +135,17 @@ def _build_monitor(monkeypatch, put_recorder):
     monitor = object.__new__(Monitor)
     # 自动重启后健康检查会发起补偿扫描，骨架需要一个分发器替身
     monitor._dispatcher = MagicMock()
+    monitor._lifecycle_lock = threading.RLock()
+    monitor._owner_lock = threading.Lock()
+    monitor._work_stop_event = threading.Event()
+    monitor._shutdown_event = threading.Event()
+    monitor._closed = False
+    monitor._compensation_threads = {}
+    monitor._scheduler_shutdown_thread = None
+    monitor._scheduler_shutdown_succeeded = False
+    monitor._scheduler = None
     monitor._watchers = []
+    monitor._retired_watchers = []
     monitor._watcher_lock = Lock()
     monitor._pending_locals = []
     monitor._alerted_paths = {}

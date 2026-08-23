@@ -28,10 +28,10 @@ def test_mypy_gate_has_explicit_strict_scope_without_global_ignore() -> None:
     assert "app/runtime/event/errors.py" in governed_files
     assert "app/application/scheduling.py" in governed_files
     assert "scripts/architecture/async_blocking.py" in governed_files
-    assert "app/startup/context.py" in governed_files
-    assert "app/startup/configuration.py" in governed_files
-    assert "app/startup/download_failure.py" in governed_files
-    assert "app/startup/workflow.py" in governed_files
+    assert "app/startup/composition/context.py" in governed_files
+    assert "app/startup/composition/configuration.py" in governed_files
+    assert "app/db/adapters/download.py" in governed_files
+    assert "app/db/adapters/workflow.py" in governed_files
     assert "app/application/workflow.py" in governed_files
     assert "app/api/context.py" in governed_files
     assert "app/db/base.py" in governed_files

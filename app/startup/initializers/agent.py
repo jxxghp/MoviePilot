@@ -20,6 +20,9 @@ from app.runtime.log import logger
 from app.schemas.types import EventType
 
 
+AGENT_BLOCKING_EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS = 10.0
+
+
 def _get_skill_catalog() -> Any:
     """按需返回 Agent 技能目录实现，供消息应用层消费端口。"""
     from app.agent.skills.registry import SkillHelper
@@ -106,6 +109,7 @@ class AgentInitializer:
         self._initialized = False
         self._manager: Any = None
         self._compat_injected = False
+        self._shutdown_started = False
         self._shutdown_complete = False
         eventmanager.add_event_listener(
             EventType.ConfigChanged,
@@ -117,6 +121,7 @@ class AgentInitializer:
         初始化AI智能体管理器
         """
         try:
+            self._shutdown_started = False
             self._shutdown_complete = False
             if agent_manager is not None:
                 if not settings.AI_AGENT_ENABLE:
@@ -142,7 +147,12 @@ class AgentInitializer:
     async def handle_config_changed(self, event: Event) -> None:
         """仅在 manifest watch 命中时协调 service，关闭态保持 fail closed。"""
         changed_keys = _event_changed_keys(event)
-        if not changed_keys or self._compat_injected or self._shutdown_complete:
+        if (
+            not changed_keys
+            or self._compat_injected
+            or self._shutdown_started
+            or self._shutdown_complete
+        ):
             return
         try:
             self._manager = await reconcile_agent_service(
@@ -156,24 +166,25 @@ class AgentInitializer:
             self._initialized = False
             logger.debug(f"配置变更协调AI智能体失败: {error}")
 
-    async def cleanup(self) -> None:
-        """清理 initializer 引用；显式注入对象同时在此关闭。"""
+    async def cleanup(self) -> bool:
+        """清理 initializer 引用；未收敛的显式注入对象继续由本实例持有。"""
         try:
             manager = self._manager
             compat_injected = self._compat_injected
             if manager is None:
-                return
-            try:
-                if compat_injected:
-                    await manager.close()
-                logger.info("AI智能体管理器已关闭")
-            finally:
-                self._initialized = False
-                self._manager = None
-                self._compat_injected = False
+                return True
+            if compat_injected and await manager.close() is False:
+                logger.error("AI智能体管理器仍有会话 owner 未收敛")
+                return False
+            logger.info("AI智能体管理器已关闭")
+            self._initialized = False
+            self._manager = None
+            self._compat_injected = False
+            return True
 
         except Exception as e:
             logger.debug(f"关闭AI智能体管理器时发生错误: {e}")
+            return False
 
 
 # 全局AI智能体初始化器实例
@@ -204,23 +215,56 @@ async def init_agent() -> bool:
         return False
 
 
-async def stop_agent():
+async def stop_agent() -> bool:
     """
-    停止AI智能体（异步版本，用于在应用关闭时调用）
+    停止AI智能体，并在全部会话和工具资源释放后返回 True。
     """
+    converged = True
+    close_blocking_executors = None
+    agent_initializer._shutdown_started = True
+    try:
+        if is_tool_factory_materialized():
+            from app.agent.tools.base import (
+                begin_blocking_executor_shutdown,
+                close_blocking_executors as close_executors,
+            )
+
+            # 必须在任何 manager await 之前封口，避免旧会话趁收尾窗口提交新同步调用。
+            begin_blocking_executor_shutdown(cancel_futures=True)
+            close_blocking_executors = close_executors
+    except Exception as e:
+        logger.error(f"封住AI智能体阻塞工具提交时发生错误: {e}")
+        converged = False
+
     try:
         if not agent_initializer._shutdown_complete:
             if agent_initializer._compat_injected:
-                await agent_initializer.cleanup()
+                service_converged = await agent_initializer.cleanup()
             else:
-                await begin_agent_shutdown()
-                await agent_initializer.cleanup()
-            agent_initializer._shutdown_complete = True
-        if is_tool_factory_materialized():
-            from app.agent.tools.base import shutdown_blocking_executors
-
-            shutdown_blocking_executors(wait=False, cancel_futures=True)
+                service_converged = await begin_agent_shutdown()
+                if service_converged is not False:
+                    service_converged = await agent_initializer.cleanup()
+            converged = converged and service_converged is not False
     except Exception as e:
         logger.error(f"停止AI智能体时发生错误: {e}")
-    finally:
-        await close_materialized_terminal_sessions()
+        converged = False
+
+    if close_blocking_executors is not None:
+        try:
+            blocking_converged = await close_blocking_executors(
+                timeout_seconds=AGENT_BLOCKING_EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS,
+                cancel_futures=True,
+            )
+            converged = converged and blocking_converged
+        except Exception as e:
+            logger.error(f"关闭AI智能体阻塞工具线程池时发生错误: {e}")
+            converged = False
+
+    if converged:
+        try:
+            await close_materialized_terminal_sessions()
+        except Exception as e:
+            logger.error(f"关闭AI智能体终端会话时发生错误: {e}")
+            converged = False
+    agent_initializer._shutdown_complete = converged
+    return converged

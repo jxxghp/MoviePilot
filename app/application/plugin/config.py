@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ContextManager
+
+from app.schemas.exception import PluginMutationRejectedError
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +31,7 @@ class PluginConfigCommand:
         reload_runtime: Callable[[str], Any],
         publish_reset: Callable[[str], Any],
         refresh_registrations: Callable[[str], Any],
+        mutation: Callable[[str], ContextManager[None]],
     ) -> None:
         """保存插件管理 Facade 和运行时注册刷新端口。"""
         self._save_config = save_config
@@ -39,21 +42,30 @@ class PluginConfigCommand:
         self._reload_runtime = reload_runtime
         self._publish_reset = publish_reset
         self._refresh_registrations = refresh_registrations
+        self._mutation = mutation
 
     def update(self, plugin_id: str, config: dict) -> PluginConfigResult:
         """保存配置并按既有顺序重新初始化实例及运行时注册。"""
-        if not self._save_config(plugin_id, config, False):
-            return PluginConfigResult(False, "插件配置保存失败")
-        self._initialize(plugin_id, config)
-        self._refresh_registrations(plugin_id)
-        return PluginConfigResult(True)
+        try:
+            with self._mutation(f"更新插件 {plugin_id} 配置"):
+                if not self._save_config(plugin_id, config, False):
+                    return PluginConfigResult(False, "插件配置保存失败")
+                self._initialize(plugin_id, config)
+                self._refresh_registrations(plugin_id)
+                return PluginConfigResult(True)
+        except PluginMutationRejectedError as error:
+            return PluginConfigResult(False, str(error))
 
     def reset(self, plugin_id: str) -> PluginConfigResult:
         """通知插件补偿后停止实例、删除配置数据并重建运行态。"""
-        self._publish_reset(plugin_id)
-        self._stop(plugin_id)
-        self._delete_config(plugin_id, True)
-        self._delete_data(plugin_id, True)
-        self._reload_runtime(plugin_id)
-        self._refresh_registrations(plugin_id)
-        return PluginConfigResult(True)
+        try:
+            with self._mutation(f"重置插件 {plugin_id} 配置和数据"):
+                self._publish_reset(plugin_id)
+                self._stop(plugin_id)
+                self._delete_config(plugin_id, True)
+                self._delete_data(plugin_id, True)
+                self._reload_runtime(plugin_id)
+                self._refresh_registrations(plugin_id)
+                return PluginConfigResult(True)
+        except PluginMutationRejectedError as error:
+            return PluginConfigResult(False, str(error))

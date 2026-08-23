@@ -57,7 +57,10 @@ from app.api.dependencies.plugin import (
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
-from app.schemas.exception import PersistenceUnavailableError
+from app.schemas.exception import (
+    PersistenceUnavailableError,
+    PluginMutationRejectedError,
+)
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 from app.api.context import get_background_task_registry, resolve_background_task_registry
@@ -520,10 +523,15 @@ def reload_plugin(
     """
     重新加载插件
     """
-    # 重新加载插件
-    runtime_status = PluginManager().reload_plugin(plugin_id)
-    # 注册插件服务
-    register_plugin(plugin_id)
+    plugin_manager = PluginManager()
+    try:
+        with plugin_manager.mutation(f"重载插件 {plugin_id}"):
+            # 重新加载插件
+            runtime_status = plugin_manager.reload_plugin(plugin_id)
+            # 注册插件服务
+            register_plugin(plugin_id)
+    except PluginMutationRejectedError as error:
+        return _SchemaResponse(success=False, message=str(error))
     if runtime_status is _SchemaPluginRuntimeStatus.ACTIVE:
         return _SchemaResponse(success=True)
     return _SchemaResponse(
@@ -600,14 +608,15 @@ async def install(
         ),
         plugin_reloader=reload_runtime,
         registration_refresher=refresh_registrations,
+        mutation=plugin_manager.mutation,
+        package_write_guard=plugin_manager.suppress_plugin_monitor,
     )
-    with plugin_manager.suppress_plugin_monitor(plugin_id):
-        result = await command.execute(
-            plugin_id=plugin_id,
-            repo_url=repo_url,
-            release_version=release_version,
-            force=bool(force),
-        )
+    result = await command.execute(
+        plugin_id=plugin_id,
+        repo_url=repo_url,
+        release_version=release_version,
+        force=bool(force),
+    )
     if not result.success:
         return _SchemaResponse(success=False, message=result.message)
     return _SchemaResponse(success=True)
@@ -888,11 +897,12 @@ async def save_plugin_folders(
     保存插件文件夹分组配置
     """
     try:
-        await get_configured_system_config().async_set(
-            SystemConfigKey.PluginFolders,
-            folders,
-        )
-        return _SchemaResponse(success=True)
+        with PluginManager().mutation("保存插件文件夹配置"):
+            await get_configured_system_config().async_set(
+                SystemConfigKey.PluginFolders,
+                folders,
+            )
+            return _SchemaResponse(success=True)
     except PersistenceUnavailableError:
         raise
     except Exception as e:
@@ -909,18 +919,26 @@ async def create_plugin_folder(
     """
     创建新的插件文件夹
     """
-    folders = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
-    if folder_name not in folders:
-        folders[folder_name] = []
-        await get_configured_system_config().async_set(
-            SystemConfigKey.PluginFolders,
-            folders,
-        )
-        return _SchemaResponse(
-            success=True, message=f"文件夹 '{folder_name}' 创建成功"
-        )
-    else:
-        return _SchemaResponse(success=False, message=f"文件夹 '{folder_name}' 已存在")
+    try:
+        with PluginManager().mutation(f"创建插件文件夹 {folder_name}"):
+            folders = (
+                get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
+            )
+            if folder_name not in folders:
+                folders[folder_name] = []
+                await get_configured_system_config().async_set(
+                    SystemConfigKey.PluginFolders,
+                    folders,
+                )
+                return _SchemaResponse(
+                    success=True, message=f"文件夹 '{folder_name}' 创建成功"
+                )
+            return _SchemaResponse(
+                success=False,
+                message=f"文件夹 '{folder_name}' 已存在",
+            )
+    except PluginMutationRejectedError as error:
+        return _SchemaResponse(success=False, message=str(error))
 
 
 @router.delete(
@@ -932,15 +950,26 @@ async def delete_plugin_folder(
     """
     删除插件文件夹
     """
-    folders = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
-    if folder_name in folders:
-        del folders[folder_name]
-        await get_configured_system_config().async_set(SystemConfigKey.PluginFolders, folders)
-        return _SchemaResponse(
-            success=True, message=f"文件夹 '{folder_name}' 删除成功"
-        )
-    else:
-        return _SchemaResponse(success=False, message=f"文件夹 '{folder_name}' 不存在")
+    try:
+        with PluginManager().mutation(f"删除插件文件夹 {folder_name}"):
+            folders = (
+                get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
+            )
+            if folder_name in folders:
+                del folders[folder_name]
+                await get_configured_system_config().async_set(
+                    SystemConfigKey.PluginFolders,
+                    folders,
+                )
+                return _SchemaResponse(
+                    success=True, message=f"文件夹 '{folder_name}' 删除成功"
+                )
+            return _SchemaResponse(
+                success=False,
+                message=f"文件夹 '{folder_name}' 不存在",
+            )
+    except PluginMutationRejectedError as error:
+        return _SchemaResponse(success=False, message=str(error))
 
 
 @router.put(
@@ -956,12 +985,22 @@ async def update_folder_plugins(
     """
     更新指定文件夹中的插件列表
     """
-    folders = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
-    folders[folder_name] = plugin_ids
-    await get_configured_system_config().async_set(SystemConfigKey.PluginFolders, folders)
-    return _SchemaResponse(
-        success=True, message=f"文件夹 '{folder_name}' 中的插件已更新"
-    )
+    try:
+        with PluginManager().mutation(f"更新插件文件夹 {folder_name}"):
+            folders = (
+                get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
+            )
+            folders[folder_name] = plugin_ids
+            await get_configured_system_config().async_set(
+                SystemConfigKey.PluginFolders,
+                folders,
+            )
+            return _SchemaResponse(
+                success=True,
+                message=f"文件夹 '{folder_name}' 中的插件已更新",
+            )
+    except PluginMutationRejectedError as error:
+        return _SchemaResponse(success=False, message=str(error))
 
 
 @router.post(
@@ -975,23 +1014,24 @@ def clone_plugin(
     """
     创建插件分身
     """
+    plugin_manager = PluginManager()
     try:
-        success, message = PluginManager().clone_plugin(
-            plugin_id=plugin_id,
-            suffix=clone_data.suffix,
-            name=clone_data.name,
-            description=clone_data.description,
-            version=clone_data.version,
-            icon=clone_data.icon,
-        )
+        with plugin_manager.mutation(f"创建插件 {plugin_id} 分身"):
+            success, message = plugin_manager.clone_plugin(
+                plugin_id=plugin_id,
+                suffix=clone_data.suffix,
+                name=clone_data.name,
+                description=clone_data.description,
+                version=clone_data.version,
+                icon=clone_data.icon,
+            )
 
-        if success:
-            # 分身服务已完成运行态加载，此处只补齐宿主注册。
-            register_plugin(message)
-            # 将分身插件添加到原插件所在的文件夹中
-            _add_clone_to_plugin_folder(plugin_id, message)
-            return _SchemaResponse(success=True, message="插件分身创建成功")
-        else:
+            if success:
+                # 分身服务已完成运行态加载，此处只补齐宿主注册。
+                register_plugin(message)
+                # 将分身插件添加到原插件所在的文件夹中
+                _add_clone_to_plugin_folder(plugin_id, message)
+                return _SchemaResponse(success=True, message="插件分身创建成功")
             return _SchemaResponse(success=False, message=message)
     except Exception as e:
         logger.error(f"创建插件分身失败：{str(e)}")
@@ -1034,54 +1074,60 @@ def uninstall_plugin(
     卸载插件
     """
     plugin_manager = PluginManager()
-    virtual_instance = plugin_manager.get_plugin_instance(plugin_id)
-    source_instances = plugin_manager.get_plugin_source_instances(plugin_id)
-    if not virtual_instance and source_instances:
-        instance_ids = "、".join(item.instance_id for item in source_instances)
-        return _SchemaResponse(
-            success=False,
-            message=f"请先卸载该插件的分身：{instance_ids}",
-        )
-    config_oper = get_configured_system_config()
-    # 删除已安装信息
-    install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
-    for plugin in install_plugins:
-        if plugin == plugin_id:
-            install_plugins.remove(plugin)
-            break
-    config_oper.set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-    # 移除插件API
-    remove_plugin_api(plugin_id)
-    # 移除插件服务
-    remove_plugin_job(plugin_id)
-    # 判断是否为分身
-    plugin_class = plugin_manager.plugins.get(plugin_id)
-    if virtual_instance:
-        plugin_manager.delete_plugin_config(plugin_id, force=True)
-        plugin_manager.delete_plugin_data(plugin_id, force=True)
-        plugin_manager.delete_plugin_instance(plugin_id)
-    elif getattr(plugin_class, "is_clone", False):
-        # 如果是分身插件，则删除分身数据和配置
-        plugin_manager.delete_plugin_config(plugin_id)
-        plugin_manager.delete_plugin_data(plugin_id)
-        # 删除分身文件
-        plugin_base_dir = (
-            get_api_runtime_config_snapshot().root_path
-            / "app"
-            / "plugins"
-            / plugin_id.lower()
-        )
-        if plugin_base_dir.exists():
-            try:
-                shutil.rmtree(plugin_base_dir)
-                plugin_manager.plugins.pop(plugin_id, None)
-            except Exception as e:
-                logger.error(f"删除插件分身目录 {plugin_base_dir} 失败: {str(e)}")
-    # 从插件文件夹中移除该插件
-    remove_plugin_from_folders(plugin_id)
-    # 移除插件
-    plugin_manager.remove_plugin(plugin_id)
-    return _SchemaResponse(success=True)
+    try:
+        with plugin_manager.mutation(f"卸载插件 {plugin_id}"):
+            virtual_instance = plugin_manager.get_plugin_instance(plugin_id)
+            source_instances = plugin_manager.get_plugin_source_instances(plugin_id)
+            if not virtual_instance and source_instances:
+                instance_ids = "、".join(item.instance_id for item in source_instances)
+                return _SchemaResponse(
+                    success=False,
+                    message=f"请先卸载该插件的分身：{instance_ids}",
+                )
+            config_oper = get_configured_system_config()
+            # 删除已安装信息
+            install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
+            for plugin in install_plugins:
+                if plugin == plugin_id:
+                    install_plugins.remove(plugin)
+                    break
+            config_oper.set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+            # 移除插件API
+            remove_plugin_api(plugin_id)
+            # 移除插件服务
+            remove_plugin_job(plugin_id)
+            # 判断是否为分身
+            plugin_class = plugin_manager.plugins.get(plugin_id)
+            if virtual_instance:
+                plugin_manager.delete_plugin_config(plugin_id, force=True)
+                plugin_manager.delete_plugin_data(plugin_id, force=True)
+                plugin_manager.delete_plugin_instance(plugin_id)
+            elif getattr(plugin_class, "is_clone", False):
+                # 如果是分身插件，则删除分身数据和配置
+                plugin_manager.delete_plugin_config(plugin_id)
+                plugin_manager.delete_plugin_data(plugin_id)
+                # 删除分身文件
+                plugin_base_dir = (
+                    get_api_runtime_config_snapshot().root_path
+                    / "app"
+                    / "plugins"
+                    / plugin_id.lower()
+                )
+                if plugin_base_dir.exists():
+                    try:
+                        shutil.rmtree(plugin_base_dir)
+                        plugin_manager.plugins.pop(plugin_id, None)
+                    except Exception as e:
+                        logger.error(
+                            f"删除插件分身目录 {plugin_base_dir} 失败: {str(e)}"
+                        )
+            # 从插件文件夹中移除该插件
+            remove_plugin_from_folders(plugin_id)
+            # 移除插件
+            plugin_manager.remove_plugin(plugin_id)
+            return _SchemaResponse(success=True)
+    except PluginMutationRejectedError as error:
+        return _SchemaResponse(success=False, message=str(error))
 
 
 def _add_clone_to_plugin_folder(original_plugin_id: str, clone_plugin_id: str):

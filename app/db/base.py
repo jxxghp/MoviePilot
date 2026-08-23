@@ -1,7 +1,7 @@
 """
 ORM 基类与数据访问基类。
 
-Base 提供声明式基类与通用的行为（字典转换、增删改查便利方法）；
+Base 提供声明式基类与兼容行为（字典转换、旧增删改查便利方法）；
 DbOper 是各业务 Oper 的基类，持有一个可注入的会话。
 """
 from collections.abc import Awaitable, Callable
@@ -12,9 +12,14 @@ from sqlalchemy import (CursorResult, Executable, Identity, Integer, Sequence,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, declared_attr, mapped_column
 
-from app.runtime.config import settings
-from app.db.decorators import async_db_query, async_db_update, db_query, db_update
+from app.db.decorators import (
+    legacy_async_db_query,
+    legacy_async_db_update,
+    legacy_db_query,
+    legacy_db_update,
+)
 from app.db.uow import run_async_transaction, run_sync_transaction
+from app.runtime.config import settings
 
 
 T = TypeVar("T")
@@ -64,88 +69,104 @@ class Base(DeclarativeBase):  # type: ignore[misc]  # SQLAlchemy 无 py.typed �
 
     继承本类的模型一律使用 mapped_column() + Mapped[] 注解；确需非映射的类级属性时
     用 ClassVar 显式声明，而不是把这个标志加回来。
+
+    create/get/update/delete/list/truncate 及其异步版本仅保留旧插件 ABI。宿主新代码应由
+    Application Command 定义事务边界，经显式 Session 调用 Oper，不得新增对这些方法的依赖。
     """
 
     # 由 get_id_column() 在各模型中提供实际的列定义，这里只声明类型供 IDE 使用
     id: Mapped[int]
 
-    @db_update
+    @legacy_db_update
     def create(self, db: Session) -> None:
+        """兼容旧插件调用：新增当前模型并提交。"""
         db.add(self)
 
-    @async_db_update
+    @legacy_async_db_update
     async def async_create(self, db: AsyncSession) -> Self:
+        """兼容旧插件调用：异步新增当前模型、刷新主键并提交。"""
         db.add(self)
         await db.flush()
         return self
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get(cls, db: Session, rid: int) -> Optional[Self]:
+        """兼容旧插件调用：按主键查询当前模型。"""
         return cast(
             Optional[Self],
             db.execute(select(cls).where(and_(cls.id == rid))).scalars().first(),
         )
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get(cls, db: AsyncSession, rid: int) -> Optional[Self]:
+        """兼容旧插件调用：异步按主键查询当前模型。"""
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         return cast(Optional[Self], result.scalars().first())
 
-    @db_update
+    @legacy_db_update
     def update(self, db: Session, payload: dict[str, Any]) -> None:
+        """兼容旧插件调用：更新当前模型字段并提交。"""
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
             db.add(self)
 
-    @async_db_update
+    @legacy_async_db_update
     async def async_update(
         self,
         db: AsyncSession,
         payload: dict[str, Any],
     ) -> None:
+        """兼容旧插件调用：异步更新当前模型字段并提交。"""
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
             db.add(self)
 
     @classmethod
-    @db_update
+    @legacy_db_update
     def delete(cls, db: Session, rid: Any) -> None:
+        """兼容旧插件调用：按主键删除当前模型并提交。"""
         db.execute(delete(cls).where(and_(cls.id == rid)))
 
     @classmethod
-    @async_db_update
+    @legacy_async_db_update
     async def async_delete(cls, db: AsyncSession, rid: Any) -> None:
+        """兼容旧插件调用：异步按主键删除当前模型并提交。"""
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         user = result.scalars().first()
         if user:
             await db.delete(user)
 
     @classmethod
-    @db_update
+    @legacy_db_update
     def truncate(cls, db: Session) -> None:
+        """兼容旧插件调用：清空当前模型表并提交。"""
         db.execute(delete(cls))
 
     @classmethod
-    @async_db_update
+    @legacy_async_db_update
     async def async_truncate(cls, db: AsyncSession) -> None:
+        """兼容旧插件调用：异步清空当前模型表并提交。"""
         await db.execute(delete(cls))
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list(cls, db: Session) -> List[Self]:
+        """兼容旧插件调用：查询当前模型的全部记录。"""
         return list(db.execute(select(cls)).scalars().all())
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_list(cls, db: AsyncSession) -> List[Self]:
+        """兼容旧插件调用：异步查询当前模型的全部记录。"""
         result = await db.execute(select(cls))
         return list(result.scalars().all())
 
     def to_dict(self) -> dict[str, Any]:
+        """把当前模型的映射列转换为字典。"""
         return {c.name: getattr(self, c.name, None) for c in self.__table__.columns}  # noqa
 
     @declared_attr.directive  # type: ignore[misc]  # SQLAlchemy decorator 缺少类型信息

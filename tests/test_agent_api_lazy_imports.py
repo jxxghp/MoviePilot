@@ -56,7 +56,7 @@ sites.__file__ = "<test-stub>"
 sys.modules["app.application.site.sites"] = sites
 
 from fastapi import FastAPI
-from app.startup.routers_initializer import init_routers
+from app.startup.initializers.routers import init_routers
 
 app = FastAPI()
 init_routers(app)

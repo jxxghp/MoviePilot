@@ -6,12 +6,65 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权。
 
 ## 当前复核结论（2026-08-23）
 
 本节是本轮全面复核后的当前事实源。本文后续的阶段实施记录保留历史审计证据，
 其中的数量和判断以当时审计提交为准，不能直接当作当前未完成项。
+
+### 长期整改阶段 0：治理门禁恢复（2026-08-23）
+
+- 宿主依赖基线已审查本阶段归位后的语义差异：当前为 `805` 个模块、`6514` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
+- 启动性能探针会在隔离生命周期中真实创建并释放 TaskRegistry；normal/safe 组件数分别为 `23`/`11`，CI 只读检查使用稳定的宿主模块集合和生命周期组件顺序，不再把 Python/平台模块数量当作硬合同。
+- 官方插件快照覆盖 `plugins.v3`、`plugins.v2` 以及 V3 实际会从 `package.json` 回退加载的 31 个默认实现；`app/plugins/**` 仍只是宿主运行副本，不进入扫描。
+- SDK 快照以各模块显式 `__all__` 为公开合同，能够记录赋值别名；`typing`、`__future__` 等实现期导入不再被误冻结，既有数据库备份门面已补精确导出清单。
+- async 阻塞实际债务已由 fixture 中的 10 项下降到 1 项并固化低水位；剩余项是 Scheduler Agent task 查询，后续阶段迁入异步查询边界后归零。
+
+本阶段只修复治理信号和事实源，不把基线刷新当作业务重构完成。后台任务所有权、Module Contract V2、typed runtime、durable 副作用和质量规模化仍按下列 P1/P2 顺序推进。
+
+### 长期整改阶段 1a：TaskRegistry owner 与关停契约（2026-08-23）
+
+- 手工订阅搜索曾因 `create_sync()` 缺少必填 `owner` 在真实命令路径抛出 `TypeError`；现以
+  `api.subscription.search_schedule` 登记，并由命令级测试冻结既有 scheduler 参数和立即返回语义。
+- 新增符号感知的 `scripts/architecture/task_ownership.py`：宿主中所有可证明为 TaskRegistry 的
+  `create`、`create_sync`、`register` 调用必须显式传入非空字符串字面量 owner，当前债务为零；CI
+  只读执行该门禁。插件、SDK、`runtime/compat` 和测试运行时目录明确排除，不扩大插件 ABI 约束。
+- TaskRegistry 关停超过预算时不再取消不可中断的同步线程包装任务或清空其记录；尚未真正结束的任务
+  保留 owner 并通过事件循环异常处理器报告。可取消协程在整个关停周期只收到一次取消请求，重复或并发
+  关停不会再次打断其异步清理，超时诊断也按任务去重。
+- 本子阶段仍只覆盖 TaskRegistry。Transfer worker/replay、Agent blocking executor、Event handler
+  drain、通道线程和 E2/E3 durable 完成点继续作为阶段 1 后续切片，不能因 owner 门禁通过而宣称完成。
+
+### 长期整改阶段 1b1：整理后台生命周期所有权（2026-08-23）
+
+- `TransferChain` 为每一代整理 worker 使用独立停止信号；配置热更新只让旧代完成已经进入同步 I/O 的
+  工作，不再让旧线程重新领取新任务。超时旧线程继续由 `_retiring_threads` 持有，重复关闭可以继续等待，
+  不把无法强制取消的文件操作伪装成已结束。生命周期锁等待与 worker/replay join 共用同一个 deadline，
+  停止哨兵也不再被误算成真实队列任务而阻止最后一批进度结算。
+- pending 回放改为单一受管线程，启动重复调用不会并发扫描；关停信号会在查询、`stat` 和逐条回放边界
+  重新检查，尚未处理的 `TransferPending` 登记保持不变。关闭与 `queue.get()` 竞争时，尚未开始的任务会
+  原样放回队列并保持 `task_done()` 计数平衡。
+- 失败通知聚合器和 AI 重试 scheduler 现在拥有 timer、buffer 与 flush task 的显式 `close()`；分组使用
+  generation 阻止旧 timer 在新静默窗口尚未 armed 时提前消费新批次。跨线程提交 AI 重试产生的 Future
+  也会观察最终异常，不再只用提交调用外层的 `try/except` 假设异步执行成功。
+- 生命周期新增常驻“整理后台服务” owner：正常模式和安全模式都只关闭已存在的单例，不会在 shutdown
+  反向创建 worker。插件文件监控、Scheduler、Agent 和整理 owner 先停止宿主生产任务；随后封口插件变更、
+  停用插件事件入口并结算全部在途 handler，最后才调用插件私有 timer、scheduler、watcher 的旧停机 hook。
+  任一阶段返回 `False` 或超时，`FAIL_FAST` 屏障都会停止释放仍可能被活线程使用的后续依赖。
+- EventManager 同时持有线程池同步 handler Future 和事件循环异步 handler completion；“事件投递屏障”会
+  等待队列、handler 及 handler 派生事件自然收敛，再原子封住新的广播提交。为兼容无法声明资源依赖的
+  旧插件，宿主先停用其新 handler 投递，再用非封口屏障等待已经开始的 handler 退出，之后按原顺序调用
+  `close`/`stop_service`；hook 产生的尾事件仍可由其他宿主 handler 消费，最终屏障后才卸载插件实例。
+  事件消费、共享线程池和模块资源仍在插件之后关闭。
+- lifespan 启动中途失败会记录已完成及当前部分启动的组件，递归纳入已激活依赖对应的 stop-only owner，
+  并复用正常停机的顺序、超时和 `FAIL_FAST` 策略。后段初始化失败不再只停止 TaskRegistry 后遗留 Scheduler、
+  Transfer、Event、插件或 HTTP 资源。
+- 兼容边界没有变化：`do_transfer`、队列与手工整理公开签名、模块方法 kwargs、插件整理事件类型及 payload、
+  同步插件 ABI 和动态 API 原生返回结构均未改名或包裹；本阶段也没有 schema/Alembic 变更。
+- 本阶段只证明进程内 owner、取消、等待和依赖释放顺序。失败通知仍可能在业务提交后、消息接受前随进程
+  崩溃而丢失；五分钟 AI 重试缓冲仍未持久化；`TransferPending` 仍只有 `storage + src_path`，不能表达文件
+  副作用 checkpoint、lease 和未知完成状态。它们分别留给阶段 1b2、1b3、1b4，不能据此宣称 E2/E3 完成。
 
 ### 总体判断
 
@@ -19,7 +72,7 @@
 
 - 继续采用单进程控制面是正确选择，不建议现在拆成微服务；插件、调度器、工作流、事件和数据库共享进程内状态，拆分会放大部署、事务和兼容成本。
 - `foundation/domain/runtime/adapters/application/chain/api/startup` 的职责方向基本成立；宿主架构基线、复杂度 ratchet、异步阻塞 ratchet 当前均通过。
-- 依赖图当前约 `796` 个 Python 模块、`6432` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
+- 依赖图当前为 `805` 个 Python 模块、`6514` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
 - 当前主要风险已经从“目录和依赖失控”转移到运行时协议、后台副作用的可靠性和遗留兼容面。换言之，下一阶段重点应是**语义收口和可验证性**，而不是继续搬文件或机械拆大文件。
 
 综合评价：架构方向可持续，生产可用性较高；可演进性仍处于中等水平。现阶段没有静态审计发现必须立即推倒重来的 P0 架构问题，但存在需要按 P1/P2 计划治理的真实债务。
@@ -29,11 +82,11 @@
 1. **后台任务的统一所有权已覆盖 API 入口，但仍有更深层任务机制待分级。** `app/runtime/tasks.py` 已建立 lifespan 级 TaskRegistry，启动收尾、插件 Release 刷新、Webhook E0 广播、CookieCloud E1 手工调度、消息入口、Seerr 订阅、整理历史 AI 重做、OpenAI/Anthropic 协议流和 WebAgent 断线后执行/快照保存均不再维护端点模块级任务集合或 Starlette 回调，shutdown 会停止接收、取消并有限等待，且生命周期清单明确登记其顺序。主仓 `app/` 已无裸 FastAPI `BackgroundTasks`；当前仍有约 `50` 个更底层 `create_task`/等价任务创建点，与线程池和 APScheduler 并存，后续需逐项确认 owner、取消、等待、重试、幂等和是否 durable，关键业务副作用优先接入已有 Outbox/恢复表。
 2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `194` 个仍使用 `legacy` aggregation，只有 `14` 个 `first_non_empty`、`4` 个 `ordered_list_merge`。`app/runtime/extensions/module/contracts.py:422-455` 已能登记 family、输入/结果标签和基础签名诊断，但 `193` 个方法没有 required parameters，调度器 `app/runtime/extensions/module/dispatcher.py:109-260` 仍主要依赖运行时反射、返回值形状和短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
 3. **查询侧数据库兼容 ABI 已完成正式装饰器清零。** 写事务装饰器和正式 `db_query/async_db_query` 均为 `0`。站点、消息、用户、订阅、下载/整理历史、工作流、MediaServer、SiteUserData、AgentChat、AgentTaskRun、TransferPending、SystemConfig、PassKey 和 SubscribeHistory 的宿主查询已迁到显式 Session 路径；对应旧插件 Model 调用由独立 `legacy_*` 外壳保留，可同时接受显式 Session 与无 Session 的位置/关键字参数。后续重点转为减少 ORM 对象跨层流转，并保持正式装饰器零回退。
-4. **组合根和全局状态仍形成复杂的隐式运行时图。** Singleton 实例、模块级 provider、`configure_*` 注册函数和兼容 Facade 同时存在；它们解决了旧 ABI 和启动顺序问题，但增加测试污染、重复装配、实例身份和初始化顺序风险。`app/startup/lifecycle/__init__.py:161-376` 已有声明式生命周期，`app/startup/modules_initializer.py:505-530` 也有分阶段关闭，但尚未做到所有进程级资源都只通过 typed HostRuntime 访问。后续应以“新代码禁止新增 Service Locator/Singleton 依赖、旧入口有命中观测”为 ratchet。
+4. **组合根和全局状态仍形成复杂的隐式运行时图。** Singleton 实例、模块级 provider、`configure_*` 注册函数和兼容 Facade 同时存在；它们解决了旧 ABI 和启动顺序问题，但增加测试污染、重复装配、实例身份和初始化顺序风险。`app/startup/lifecycle/__init__.py` 已有声明式生命周期，`app/startup/initializers/modules.py` 也有分阶段关闭，但尚未做到所有进程级资源都只通过 typed HostRuntime 访问。后续应以“新代码禁止新增 Service Locator/Singleton 依赖、旧入口有命中观测”为 ratchet。
 
 ### P2：中长期可演进性债务
 
-- **大型职责域仍偏重。** 代表性热点包括 `app/chain/subscribe.py`（约 `4141` 行）、`app/chain/transfer.py`（约 `2944` 行）、`app/agent/orchestrator.py`（约 `3535` 行）、`app/agent/llm/provider.py`（约 `3529` 行）、`app/adapters/external/market.py`（约 `2805` 行）和 `app/api/endpoints/agent.py`（约 `2326` 行）。复杂度 ratchet 只保证不超过当前基线，不代表这些文件已经易维护。只有在行为快照、调用命中和事务边界明确后，才值得按用例拆分。
+- **大型职责域仍偏重。** 代表性热点包括 `app/chain/subscribe.py`（约 `4141` 行）、`app/chain/transfer.py`（约 `2944` 行）、`app/agent/orchestrator.py`（约 `3540` 行）、`app/agent/llm/provider.py`（约 `3529` 行）、`app/adapters/external/market.py`（约 `3139` 行）和 `app/api/endpoints/agent.py`（约 `2489` 行）。复杂度 ratchet 只保证不超过当前基线，不代表这些文件已经易维护。只有在行为快照、调用命中和事务边界明确后，才值得按用例拆分。
 - **类型门禁覆盖面不足。** `mypy.ini` strict 文件清单目前约 `37` 个文件，Agent、Chain、Module、Adapter 大量代码仍依赖动态类型。应从模块契约、生命周期、Repository/Port 和关键 Chain 返回值开始扩展，而不是直接开启全仓 strict。
 - **Pylint 仍是增量硬门禁。** `.github/workflows/pylint.yml` 对改动 Python 文件执行硬检查，但全仓报告使用 `|| true` 仅作 advisory。该策略适合存量迁移，却没有形成全仓质量趋势约束；应增加按目录和新增问题数的 ratchet。
 - **测试风格存在历史混用。** 当前约 `499` 个测试文件，仍有约 `70` 个 `unittest.TestCase` 文件。它不是生产架构缺陷，但会增加 fixture、状态隔离和异步测试迁移成本，应在触碰相关模块时渐进迁移。
@@ -45,7 +98,7 @@
 - 全功能多 worker 的误导性配置已由 `app/runtime/topology.py` 和 `app/main.py` 拒绝；V3 默认单 worker 的部署事实已经明确。
 - 写事务已由组合根/UoW/Outbox 方向收口，`db_update/async_db_update` 为零；不要重新引入 Model 自动提交。
 - 已具备 correlation ID、`/health/live`、`/health/ready`、模块/事件/调度观测端口和兼容 Facade 命中指标；历史文档中“完全缺少观测能力”的描述已过时。
-- 旧导入路径、SDK 导出、插件 manifest 和 V1/V2/V3 索引均有白名单或版本约束；兼容层应继续保持“薄、可观测、只增不删”，不应为了清理目录直接删除。
+- 旧导入路径、显式 `__all__` SDK 合同、插件 manifest 和 V3 实际可加载的三层索引实现均有白名单或版本约束；兼容层应继续保持“薄、可观测、只增不删”，不应为了清理目录直接删除。
 - TMDB 移植包内部 SCC 属于第三方隔离代码，按现状豁免是合理的技术决策。
 
 ### 刻意保留的兼容成本
@@ -476,7 +529,7 @@ flowchart TB
 
 **实施记录（2026-08-21）**：
 
-- `app/startup/subscription.py` 为每次规范新增创建独占同步/异步 Session；
+- `app/application/subscription/write.py` 定义用例 Port，`app/db/adapters/subscription.py` 为每次规范新增创建独占同步/异步 Session，`app/startup/composition/subscription.py` 只负责注入；
   `CreateSubscriptionCommand` / `AsyncCreateSubscriptionCommand` 持有 UoW，Oper 只执行
   查重、`add` 与 `flush`。
 - `SubscribeOper.stage_add()` 的查重 SQL 已收口到 Oper，不再调用 Model 自动会话装饰器；
@@ -531,7 +584,7 @@ flowchart TB
 **建议结构**：
 
 ```text
-app/startup/context.py          # HostRuntime 及构建结果
+app/startup/composition/context.py  # HostRuntime 及构建结果
 app/api/context.py              # API 可见的最小 AppState / 读取依赖
 app/api/dependencies/           # 按领域拆分依赖工厂
   auth.py
@@ -559,7 +612,7 @@ app/api/dependencies/           # 按领域拆分依赖工厂
 
 **实施记录（2026-08-21）**：
 
-- `app/startup/context.py` 定义 frozen slots `HostRuntime` 与首个窄能力
+- `app/startup/composition/context.py` 定义 frozen slots `HostRuntime` 与首个窄能力
   `AgentChatRuntime`，仓储、Session、UoW 字段均为具体 Protocol 工厂，不是字符串字典。
 - `init_modules()` 保留零参数兼容签名并返回本次 lifespan 唯一 Runtime；生命周期组件把结果挂到
   `app.state.host_runtime`。`app/api/context.py` 只向 Depends 暴露 Agent chat 的最小能力。
@@ -654,7 +707,7 @@ app/api/dependencies/           # 按领域拆分依赖工厂
   Startup 路径始终使用 HostRuntime 注入。插件 SDK 的 `app.sdk.config.settings`、动态 API 返回和事件字段未改。
 - 收尾批次把 API 与 Chain 余下直接配置读取全部迁入类型化 snapshot；Scheduler 继续保持为零。
   `HostRuntime` 新增可变部署设置服务，只供系统设置管理 API 使用，业务 API/Chain 只接收 frozen 字段。
-  snapshot 构造集中到 `app/startup/configuration.py`，生产启动与测试组合根复用同一映射，避免测试默认值
+  snapshot 构造集中到 `app/startup/composition/configuration.py`，生产启动与测试组合根复用同一映射，避免测试默认值
   漂移。canonical `settings` 直接导入低水位从 154 降到 137，`SystemConfigOper()` 保持 14 个。
 - `ApiRuntimeConfig` 已覆盖搜索来源、媒体/字幕/音频后缀、重命名格式、WebPush、CookieCloud、根目录和
   版本标识；`ChainRuntimeConfig` 覆盖搜索、下载、整理、刮削、AI、代理、缓存、链接、路径和 TMDB 图片域。
@@ -1027,7 +1080,7 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
    - 新增 Application command/port
    - `app/runtime/event/`
    - `app/runtime/extensions/module/contracts.py`
-   - `app/startup/context.py` / `app/api/context.py`
+   - `app/startup/composition/context.py` / `app/api/context.py`
 3. 对第三方移植包、旧插件 Facade 和动态 SDK 设置精确豁免，不允许 `app.* = ignore_errors`。
 4. CI 先检查严格目录；每次迁移扩大 include 范围。
 5. 类型错误不能用无界 `Any`、`cast(Any, ...)` 或全文件 ignore 消音。
@@ -1046,7 +1099,7 @@ OTel 初始化只能位于 Startup/Adapter；Domain/Application 只依赖 no-op-
 **扩展实施记录（2026-08-22）**：mypy 目标运行时更新到 Python 3.14，严格清单扩大到 20 个源文件；
 新增纳管配置快照和下载失败事务适配器，仍保持零错误、无全局 ignore。
 
-Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/startup/workflow.py` 纳入 strict 清单，
+Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/db/adapters/workflow.py` 纳入 strict 清单，
 治理范围扩大到 22 个源文件；事务命令、仓储 Protocol 和短会话适配器保持零错误。
 
 异步安全与契约收口继续纳管 scheduling facade、Event error policy、Module dispatcher 和 async blocking

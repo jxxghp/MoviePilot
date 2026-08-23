@@ -4,6 +4,8 @@ import asyncio
 from types import SimpleNamespace
 
 from app.api.endpoints import anthropic, history, message, openai, site, subscribe, webhook
+from app.api.dependencies import subscription as subscription_dependencies
+from app.application.subscription.search import SubscribeSearchActor
 from app.runtime.tasks import TaskRegistry
 
 
@@ -184,6 +186,36 @@ def test_seerr_subscribe_uses_task_registry(monkeypatch) -> None:
         "username": "tester",
     }
     assert owner == "api.subscribe.seerr"
+
+
+def test_manual_subscription_search_uses_task_registry() -> None:
+    """手工订阅搜索命令应以稳定 owner 提交历史兼容的调度参数。"""
+    registry = _TaskRegistry()
+    repository = object()
+    runtime = SimpleNamespace(
+        subscription=SimpleNamespace(repository=lambda _db: repository)
+    )
+    command = subscription_dependencies.get_search_subscriptions_command(
+        task_registry=registry,
+        db=object(),
+        runtime=runtime,
+    )
+
+    found = asyncio.run(
+        command.execute(SubscribeSearchActor(username="admin", is_superuser=True))
+    )
+
+    function, args, kwargs, owner = registry.calls[0]
+    assert found is True
+    assert function is subscription_dependencies.start_scheduler_job
+    assert args == ()
+    assert kwargs == {
+        "job_id": "subscribe_search",
+        "sid": None,
+        "state": "R",
+        "manual": True,
+    }
+    assert owner == "api.subscription.search_schedule"
 
 
 def test_history_ai_redo_uses_task_registry() -> None:
