@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6541,
-  "edge_sha256": "c7e2a8537efa709d30c82930fa4ee21d91fe8f24578a44b4357563fa7bfc1a0c",
+  "edge_count": 6543,
+  "edge_sha256": "b9b6ba268382e7027f5557643defb09848c054cb68079345f2394d9b7faeb42c",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -89,9 +89,11 @@
     "app.adapters.external.server -> app.domain.meta.metabase",
     "app.adapters.external.server -> app.runtime",
     "app.adapters.external.server -> app.runtime.cache",
+    "app.adapters.external.server -> app.runtime.config",
     "app.adapters.external.server -> app.runtime.log",
     "app.adapters.external.server -> app.runtime.observability",
     "app.adapters.external.server -> app.runtime.settings",
+    "app.adapters.external.server -> app.runtime.tasks",
     "app.adapters.external.server -> app.schemas",
     "app.adapters.external.server -> app.schemas.media",
     "app.adapters.external.server -> app.schemas.types",

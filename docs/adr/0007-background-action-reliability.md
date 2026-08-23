@@ -74,6 +74,9 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   timer、刷新剩余摘要并等待已启动回调，不再把 `create_task` 留给事件循环隐式回收。
 - 主仓不再新增或保留裸 FastAPI `BackgroundTasks`；若任务源于已提交的用户数据且不可从数据库重建，
   必须提升为 E2，进入 Outbox 或持久任务表。
+- 旧插件可调用的 `MoviePilotServerHelper.sub_reg_async()` / `sub_done_async()` 保留同步 ABI，但内部不再创建
+  裸上报线程；任务分别登记为 `compat.server.subscribe_added_report` / `subscribe_done_report`，已开始的
+  同步网络工作在 shutdown 时不取消并等待完成。canonical 订阅主链继续使用 durable outbox，不回退旧入口。
 
 ### Scheduler jobs
 

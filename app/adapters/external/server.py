@@ -1,12 +1,15 @@
+import asyncio
 import json
 import platform
+from collections.abc import Coroutine
 from pathlib import Path
-from threading import Thread
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 from app.runtime.cache import cached
+from app.runtime.config import global_vars
 from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.tasks import get_task_registry
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
@@ -955,21 +958,49 @@ class MoviePilotServerHelper:
             return True
         return await cls.async_sub_done(sub)
 
+    @staticmethod
+    def _submit_statistic_report(
+            coroutine: Coroutine[Any, Any, Any],
+            *,
+            submit: Callable[[Coroutine[Any, Any, Any]], object],
+            action: str,
+    ) -> bool:
+        """提交兼容统计上报，并在宿主不再接收任务时关闭未执行协程。"""
+        try:
+            submit(coroutine)
+            return True
+        except Exception as err:
+            coroutine.close()
+            logger.warning(f"调度{action}失败：{err}")
+            return False
+
     @classmethod
     def sub_reg_async(cls, sub: dict) -> bool:
-        """
-        开线程新增订阅统计。
-        """
-        Thread(target=cls.sub_reg, args=(sub,)).start()
-        return True
+        """兼容旧同步入口，在宿主任务登记器中提交新增订阅统计。"""
+        return cls._submit_statistic_report(
+            asyncio.to_thread(cls.sub_reg, sub),
+            submit=lambda coroutine: get_task_registry().submit_threadsafe(
+                coroutine,
+                loop=global_vars.loop,
+                owner="compat.server.subscribe_added_report",
+                cancel_on_shutdown=False,
+            ),
+            action="新增订阅统计上报",
+        )
 
     @classmethod
     def sub_done_async(cls, sub: dict) -> bool:
-        """
-        开线程完成订阅统计。
-        """
-        Thread(target=cls.sub_done, args=(sub,)).start()
-        return True
+        """兼容旧同步入口，在宿主任务登记器中提交订阅完成统计。"""
+        return cls._submit_statistic_report(
+            asyncio.to_thread(cls.sub_done, sub),
+            submit=lambda coroutine: get_task_registry().submit_threadsafe(
+                coroutine,
+                loop=global_vars.loop,
+                owner="compat.server.subscribe_done_report",
+                cancel_on_shutdown=False,
+            ),
+            action="订阅完成统计上报",
+        )
 
     @classmethod
     def sub_report(cls) -> bool:
