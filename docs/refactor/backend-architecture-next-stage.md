@@ -109,6 +109,9 @@
    宿主 Module 的部署配置读取也已统一到 `RuntimeSettingsCompat`：PostgreSQL、Redis、qBittorrent、
    rTorrent 和 Transmission 不再直接导入全局 Settings，模块目录由架构测试保持零直连；兼容代理仍保留
    启动早期与旧插件/测试的动态 Settings 注入语义。
+   配置治理基线进一步区分债务与批准边界：canonical 未批准 Settings 直连和非组合根
+   `SystemConfigOper()` 构造均为 `0`；`app/db/base.py`、`engine.py`、`session.py` 的启动前数据库基础设施
+   读取及 startup 唯一 Oper 构造点以带理由的固定边界登记。四个集合都只能减少，不能新增或换位置。
 
 ### P2：中长期可演进性债务
 
@@ -1255,6 +1258,10 @@ FS proxy、Local/WebPush 存储适配以及 Module host adapter 切换到动态�
 启动 Agent、数据库、领域、生命周期和插件初始化模块切换到动态运行时端口；组合根 provider 明确绑定原始
 Settings，避免代理自递归，配置债务由 15 个文件降至 8 个。数据库引擎/Session 与下载器模块保留底层
 Settings 读取作为基础设施边界，架构基线已明确记录该例外，启动与架构专项测试通过。
+
+2026-08-24 将 configuration baseline 升级为 schema v2：待整改的直接 Settings 与 Oper 构造均清零；
+数据库模型/引擎/Session 的 3 个启动前读取和 startup 的唯一 Oper 构造点进入带理由的批准边界。ratchet
+同时冻结债务与批准边界，批准项不能扩张，因此不会通过新增“例外”掩盖配置回流。
 
 同日修正适配器配置下沉边界：OCR、CookieCloud、DoH、Rust 和资源签名等低层实现不再直接依赖
 `app.application`，由 `app.runtime.settings` 端口承接组合根注入；未启动装配时仍回退旧 Settings ABI，

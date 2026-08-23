@@ -173,11 +173,11 @@ def test_host_oper_does_not_call_base_implicit_write_wrappers() -> None:
 
 
 def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
-    """配置债务基线必须排除插件兼容面，并冻结两个可下降的直接访问集合。"""
+    """配置基线必须把零债务与固定基础设施边界分开冻结。"""
     baseline_path = BASELINE_ROOT / "configuration-debt-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["schema_version"] == 1
+    assert baseline["schema_version"] == 2
     assert baseline["scope"]["excluded"] == [
         "app/plugins",
         "app/sdk",
@@ -189,6 +189,20 @@ def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
     )
     assert baseline["system_config_oper_constructions"]["count"] == len(
         baseline["system_config_oper_constructions"]["calls"]
+    )
+    assert baseline["settings_imports"] == {"count": 0, "files": []}
+    assert baseline["system_config_oper_constructions"] == {
+        "count": 0,
+        "calls": [],
+    }
+    assert {
+        entry["file"]
+        for entry in baseline["foundational_settings_boundaries"]["entries"]
+    } == {"app/db/base.py", "app/db/engine.py", "app/db/session.py"}
+    assert baseline["foundational_settings_boundaries"]["count"] == 3
+    assert baseline["composition_root_oper_boundaries"]["count"] == 1
+    assert baseline["composition_root_oper_boundaries"]["entries"][0]["file"] == (
+        "app/startup/initializers/modules.py"
     )
 
 

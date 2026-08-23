@@ -53,7 +53,7 @@ def _performance_sample(
 def _transaction_sample(methods: list[dict[str, str]]) -> dict:
     """构造最小事务债务 fixture，供单向 ratchet 行为测试。"""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "scope": "app/db/models and app/db/oper transaction ownership debt",
         "model_decorators": {
             "count": len(methods),
@@ -75,8 +75,12 @@ def _transaction_sample(methods: list[dict[str, str]]) -> dict:
 def _configuration_sample(
     settings_files: list[str],
     oper_calls: list[dict[str, str]],
+    foundational_entries: list[dict[str, str]] | None = None,
+    composition_entries: list[dict[str, str]] | None = None,
 ) -> dict:
     """构造最小配置债务 fixture，供单向 ratchet 行为测试。"""
+    foundational_entries = foundational_entries or []
+    composition_entries = composition_entries or []
     return {
         "schema_version": 1,
         "scope": {
@@ -90,6 +94,14 @@ def _configuration_sample(
         "system_config_oper_constructions": {
             "count": len(oper_calls),
             "calls": oper_calls,
+        },
+        "foundational_settings_boundaries": {
+            "count": len(foundational_entries),
+            "entries": foundational_entries,
+        },
+        "composition_root_oper_boundaries": {
+            "count": len(composition_entries),
+            "entries": composition_entries,
         },
     }
 
@@ -411,6 +423,22 @@ def test_configuration_ratchet_allows_removal_but_rejects_new_access() -> None:
     assert not architecture_baseline.configuration_ratchet_matches(
         expected,
         _configuration_sample(["app/application/old.py"], [new_call]),
+    )
+
+
+def test_configuration_ratchet_rejects_new_approved_boundaries() -> None:
+    """批准边界同样只能减少，不能借新增理由把新债务改名为豁免。"""
+    existing = {"file": "app/db/base.py", "reason": "model declaration"}
+    added = {"file": "app/db/new.py", "reason": "new exemption"}
+    expected = _configuration_sample([], [], [existing])
+
+    assert architecture_baseline.configuration_ratchet_matches(
+        expected,
+        _configuration_sample([], [], []),
+    )
+    assert not architecture_baseline.configuration_ratchet_matches(
+        expected,
+        _configuration_sample([], [], [existing, added]),
     )
 
 

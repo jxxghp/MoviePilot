@@ -65,6 +65,15 @@ CONFIGURATION_EXCLUDED_ROOTS = (
     APP_ROOT / "runtime" / "compat",
     APP_ROOT / "testing",
 )
+FOUNDATIONAL_SETTINGS_BOUNDARIES = {
+    "app/db/base.py": "模型声明阶段必须在运行时配置服务装配前确定数据库主键类型",
+    "app/db/engine.py": "数据库引擎是运行时配置服务的底层依赖，不能通过兼容代理自递归",
+    "app/db/session.py": "数据库会话与连接配额必须在应用组合根装配前可用",
+}
+COMPOSITION_ROOT_OPER_BOUNDARIES = {
+    ("app/startup/initializers/modules.py", "SystemConfigOper"):
+        "启动组合根负责构造唯一的系统配置数据库适配器",
+}
 
 
 def discover_modules() -> dict[str, Path]:
@@ -118,9 +127,11 @@ def iter_runtime_import_nodes(tree: ast.AST):
 
 
 def collect_configuration_debt_baseline() -> dict[str, Any]:
-    """收集宿主 canonical 代码直接读取 settings 和构造数据库配置适配器的债务。"""
+    """分离配置债务与数据库基础设施、组合根的固定批准边界。"""
     settings_files: list[str] = []
+    foundational_settings: list[dict[str, str]] = []
     oper_calls: list[dict[str, Any]] = []
+    composition_root_calls: list[dict[str, str]] = []
     for path in sorted(APP_ROOT.rglob("*.py")):
         if any(path.is_relative_to(root) for root in CONFIGURATION_EXCLUDED_ROOTS):
             continue
@@ -143,14 +154,22 @@ def collect_configuration_debt_baseline() -> dict[str, Any]:
                     if alias.name == "SystemConfigOper"
                 )
         if imports_settings:
-            settings_files.append(relative)
+            if reason := FOUNDATIONAL_SETTINGS_BOUNDARIES.get(relative):
+                foundational_settings.append({"file": relative, "reason": reason})
+            else:
+                settings_files.append(relative)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
                 continue
             if node.func.id in direct_oper_names:
-                oper_calls.append({"file": relative, "name": node.func.id})
+                call = {"file": relative, "name": node.func.id}
+                boundary_key = (relative, node.func.id)
+                if reason := COMPOSITION_ROOT_OPER_BOUNDARIES.get(boundary_key):
+                    composition_root_calls.append({**call, "reason": reason})
+                else:
+                    oper_calls.append(call)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "scope": {
             "root": "app",
             "excluded": [
@@ -164,9 +183,17 @@ def collect_configuration_debt_baseline() -> dict[str, Any]:
             "count": len(settings_files),
             "files": settings_files,
         },
+        "foundational_settings_boundaries": {
+            "count": len(foundational_settings),
+            "entries": foundational_settings,
+        },
         "system_config_oper_constructions": {
             "count": len(oper_calls),
             "calls": oper_calls,
+        },
+        "composition_root_oper_boundaries": {
+            "count": len(composition_root_calls),
+            "entries": composition_root_calls,
         },
     }
 
@@ -1326,6 +1353,8 @@ def configuration_ratchet_matches(
     sections = (
         ("settings_imports", "files"),
         ("system_config_oper_constructions", "calls"),
+        ("foundational_settings_boundaries", "entries"),
+        ("composition_root_oper_boundaries", "entries"),
     )
     for section, entries_key in sections:
         expected_section = expected.get(section, {})
