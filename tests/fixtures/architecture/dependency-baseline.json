@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6500,
-  "edge_sha256": "6fa263f6f10aa51b4395aa41cf32a0c24254c2131d7882341936412400a10e4a",
+  "edge_count": 6501,
+  "edge_sha256": "3c01f9aeb7703065ff447672284ddcc88d6120ac3236b9659200df9b6f921bdd",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -4115,6 +4115,7 @@
     "app.modules.fanart -> app.runtime.cache",
     "app.modules.fanart -> app.runtime.log",
     "app.modules.fanart -> app.runtime.settings",
+    "app.modules.fanart -> app.runtime.tasks",
     "app.modules.fanart -> app.schemas",
     "app.modules.fanart -> app.schemas.types",
     "app.modules.feishu -> app.application",

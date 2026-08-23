@@ -85,6 +85,8 @@
    Agent 活动摘要已完成一个深层 owner 切片：中间件仍保留自己的完成回调与非阻塞语义，但任务创建统一
    经 lifespan `TaskRegistry` 登记为 `agent.activity_log.record`，宿主关停会取消并有限等待，不再形成
    绕过全局关停预算的第二套后台任务集合。该摘要属于可丢弃 E1 观测数据，不宣称 durable。
+   模块同步清缓存的异步桥接也统一复用同一模式：Fanart 不再保留裸 `loop.create_task`，与 IMDb 一样登记
+   稳定 owner，并继续保留无事件循环时 `asyncio.run` 和原同步 ABI。
 2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `194` 个仍使用 `legacy` aggregation，只有 `14` 个 `first_non_empty`、`4` 个 `ordered_list_merge`。`app/runtime/extensions/module/contracts.py:422-455` 已能登记 family、输入/结果标签和基础签名诊断，但 `193` 个方法没有 required parameters，调度器 `app/runtime/extensions/module/dispatcher.py:109-260` 仍主要依赖运行时反射、返回值形状和短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
 3. **Model/Base 的数据库装饰器和隐式会话 ABI 已全部清零。** 查询、写事务和 `legacy_*` 装饰器均为 `0`；所有 Model `db` 参数要求显式 Session，Base CRUD 仅在调用方事务内查询或 stage。可无会话构造的入口统一留在 Oper，经组合根事务执行器运行；插件 SDK 不再导出宿主 Model。后续重点转为减少 ORM 对象跨层流转，并保持 Model 隐式事务零回退。
 
