@@ -1361,6 +1361,11 @@ class GlobalVar(object):
     # 生命周期登记的主事件循环
     CURRENT_EVENT_LOOP: Optional[AbstractEventLoop] = None
 
+    def __init__(self) -> None:
+        self.CURRENT_EVENT_LOOP = None
+        self._event_loop_owners: dict[object, AbstractEventLoop] = {}
+        self._event_loop_owner_lock = threading.Lock()
+
     def stop_system(self):
         """
         停止系统
@@ -1456,14 +1461,24 @@ class GlobalVar(object):
             raise RuntimeError("主事件循环尚未启动或已经停止")
         return loop
 
-    def set_loop(self, loop: AbstractEventLoop) -> None:
-        """登记承载主程序异步任务的事件循环。"""
-        self.CURRENT_EVENT_LOOP = loop
+    def set_loop(self, loop: AbstractEventLoop) -> object:
+        """登记主事件循环，并返回仅供当前生命周期释放的 owner。"""
+        owner = object()
+        with self._event_loop_owner_lock:
+            self._event_loop_owners[owner] = loop
+            self.CURRENT_EVENT_LOOP = loop
+        return owner
 
-    def clear_loop(self, loop: AbstractEventLoop) -> None:
-        """仅在登记值仍为目标循环时清除主事件循环。"""
-        if self.CURRENT_EVENT_LOOP is loop:
-            self.CURRENT_EVENT_LOOP = None
+    def clear_loop(self, owner: object) -> None:
+        """释放指定 owner，保留仍然有效的其他生命周期登记。"""
+        with self._event_loop_owner_lock:
+            if owner not in self._event_loop_owners:
+                return
+            self._event_loop_owners.pop(owner)
+            self.CURRENT_EVENT_LOOP = next(
+                reversed(self._event_loop_owners.values()),
+                None,
+            )
 
 
 # 全局标识

@@ -152,8 +152,9 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
 
     asyncio.run(run_lifespan())
 
-    configured_loop = lifecycle.global_vars.set_loop.call_args.args[0]
-    lifecycle.global_vars.clear_loop.assert_called_once_with(configured_loop)
+    lifecycle.global_vars.clear_loop.assert_called_once_with(
+        lifecycle.global_vars.set_loop.return_value
+    )
     lifecycle.init_modules.assert_awaited_once_with()
     lifecycle.prepare_database_component.assert_called_once()
     lifecycle.configure_plugin_services.assert_called_once_with()
@@ -168,6 +169,26 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
         getattr(lifecycle, name).assert_called_once_with()
     for step in shutdown_steps.values():
         _assert_completed_once(step)
+
+
+def test_lifespan_validation_failure_does_not_clear_outer_loop_owner(monkeypatch):
+    """当前生命周期尚未取得 owner 时，启动失败不得清理外层登记。"""
+    _patch_lifespan(monkeypatch)
+    monkeypatch.setattr(
+        lifecycle,
+        "validate_process_topology",
+        MagicMock(side_effect=RuntimeError("invalid topology")),
+    )
+
+    async def run_lifespan():
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    with pytest.raises(RuntimeError, match="invalid topology"):
+        asyncio.run(run_lifespan())
+
+    lifecycle.global_vars.set_loop.assert_not_called()
+    lifecycle.global_vars.clear_loop.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -741,8 +762,9 @@ def test_lifespan_fails_fast_when_async_engine_cannot_be_built(monkeypatch):
     with pytest.raises(RuntimeError, match="no async driver"):
         asyncio.run(run_lifespan())
 
-    configured_loop = lifecycle.global_vars.set_loop.call_args.args[0]
-    lifecycle.global_vars.clear_loop.assert_called_once_with(configured_loop)
+    lifecycle.global_vars.clear_loop.assert_called_once_with(
+        lifecycle.global_vars.set_loop.return_value
+    )
     # 失败要发生在任何东西被初始化之前，否则模块起来了却没人关：关停块在 yield 处才开始
     lifecycle.init_routers.assert_not_called()
     lifecycle.init_modules.assert_not_called()
