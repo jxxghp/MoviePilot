@@ -148,6 +148,8 @@ def configure_plugin_system_services():
     from app.db.oper.message import MessageOper
     from app.db.oper.passkey import PassKeyOper
     from app.startup.subscription import TransactionalSubscribeWriter
+    from app.startup.download_failure import TransactionalDownloadFailureRepository
+    from app.startup.site import TransactionalSiteRepository
     from app.startup.workflow import TransactionalWorkflowExecutionService
     from app.startup.transaction import TransactionalWriteRunner
 
@@ -202,15 +204,24 @@ def configure_plugin_system_services():
         )
     )
 
+    def site_repository() -> TransactionalSiteRepository:
+        """按生产组合根方式创建显式事务站点仓储。"""
+        return TransactionalSiteRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+
     configure_chain_data_ports(
-        site=lambda: SiteOper(),
+        site=site_repository,
         subscribe=lambda: SubscribeOper(),
         workflow=lambda: WorkflowOper(),
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransferPendingOper(),
         media_server=lambda: MediaServerOper(),
-        download_failure=lambda: DownloadFailureOper(),
+        download_failure=lambda: TransactionalDownloadFailureRepository(
+            SessionFactory
+        ),
         user=lambda: UserOper(),
     )
     configure_chain_runtime_context_provider(lambda: ChainRuntimeContext(
@@ -227,8 +238,8 @@ def configure_plugin_system_services():
         module_dispatcher_factory=ModuleInvocationDispatcher,
         configuration=build_chain_runtime_config(settings),
     ))
-    configure_site_query_service(SiteQueryService(repository=SiteOper()))
-    configure_site_health_service(SiteHealthService(repository=SiteOper()))
+    configure_site_query_service(SiteQueryService(repository=site_repository()))
+    configure_site_health_service(SiteHealthService(repository=site_repository()))
     configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
     from app.db.oper.agenttask import AgentTaskOper
     from app.db.oper.plugindata import PluginDataOper
@@ -236,7 +247,7 @@ def configure_plugin_system_services():
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
         user=lambda: UserOper(),
-        site=lambda: SiteOper(),
+        site=site_repository,
         subscribe=lambda: SubscribeOper(),
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),

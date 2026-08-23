@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, List, Mapping, Tuple, Optional
 
 from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.site import Site
@@ -285,79 +286,90 @@ class SiteOper(DbOper):
         更新站点图标
         """
         icon_base64 = f"data:image/ico;base64,{icon_base64}" if icon_base64 else ""
-        siteicon = self.get_icon_by_domain(domain)
-        if not siteicon:
-            self._stage_create(
-                SiteIcon(name=name, domain=domain, url=icon_url, base64=icon_base64)
-            )
-        elif icon_base64:
-            self._stage_update(siteicon, {
-                "url": icon_url,
-                "base64": icon_base64
-            })
+
+        def write(db: Session) -> None:
+            """在同一同步事务中查询并更新站点图标。"""
+            siteicon = SiteIcon.get_by_domain(db, domain)
+            if not siteicon:
+                db.add(SiteIcon(
+                    name=name,
+                    domain=domain,
+                    url=icon_url,
+                    base64=icon_base64,
+                ))
+            elif icon_base64:
+                siteicon.url = icon_url
+                siteicon.base64 = icon_base64
+
+        self._execute_sync_write(write)
         return True
 
     def success(self, domain: str, seconds: Optional[int] = None):
         """
         站点访问成功
         """
-        lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        sta = SiteStatistic.get_by_domain(self._db, domain)
-        if sta:
-            # 使用深复制确保 note 是全新的字典对象
-            note = dict(sta.note) if sta.note else {}
-            avg_seconds = None
+        def write(db: Session) -> None:
+            """在同一同步事务中读取并更新站点统计。"""
+            lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            sta = SiteStatistic.get_by_domain(db, domain)
+            if sta:
+                # 使用深复制确保 note 是全新的字典对象
+                note = dict(sta.note) if sta.note else {}
+                avg_seconds = None
 
-            if seconds is not None:
-                note[lst_date] = seconds or 1
-                avg_times = len(note.keys())
-                if avg_times > 10:
-                    note = dict(sorted(note.items(), key=lambda x: x[0], reverse=True)[:10])
-                avg_seconds = sum([v for v in note.values()]) // avg_times
+                if seconds is not None:
+                    note[lst_date] = seconds or 1
+                    avg_times = len(note.keys())
+                    if avg_times > 10:
+                        note = dict(sorted(note.items(), key=lambda x: x[0], reverse=True)[:10])
+                    avg_seconds = sum([v for v in note.values()]) // avg_times
 
-            self._stage_update(sta, {
-                "success": sta.success + 1,
-                "seconds": avg_seconds or sta.seconds,
-                "lst_state": 0,
-                "lst_mod_date": lst_date,
-                "note": note
-            })
-        else:
-            note = {}
-            if seconds is not None:
-                note = {
-                    lst_date: seconds or 1
-                }
-            self._stage_create(SiteStatistic(
-                domain=domain,
-                success=1,
-                fail=0,
-                seconds=seconds or 1,
-                lst_state=0,
-                lst_mod_date=lst_date,
-                note=note
-            ))
+                for key, value in {
+                    "success": sta.success + 1,
+                    "seconds": avg_seconds or sta.seconds,
+                    "lst_state": 0,
+                    "lst_mod_date": lst_date,
+                    "note": note,
+                }.items():
+                    setattr(sta, key, value)
+            else:
+                note = {}
+                if seconds is not None:
+                    note = {lst_date: seconds or 1}
+                db.add(SiteStatistic(
+                    domain=domain,
+                    success=1,
+                    fail=0,
+                    seconds=seconds or 1,
+                    lst_state=0,
+                    lst_mod_date=lst_date,
+                    note=note,
+                ))
+
+        self._execute_sync_write(write)
 
     def fail(self, domain: str):
         """
         站点访问失败
         """
-        lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        sta = SiteStatistic.get_by_domain(self._db, domain)
-        if sta:
-            self._stage_update(sta, {
-                "fail": sta.fail + 1,
-                "lst_state": 1,
-                "lst_mod_date": lst_date
-            })
-        else:
-            self._stage_create(SiteStatistic(
-                domain=domain,
-                success=0,
-                fail=1,
-                lst_state=1,
-                lst_mod_date=lst_date
-            ))
+        def write(db: Session) -> None:
+            """在同一同步事务中读取并更新站点失败统计。"""
+            lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            sta = SiteStatistic.get_by_domain(db, domain)
+            if sta:
+                sta.fail += 1
+                sta.lst_state = 1
+                sta.lst_mod_date = lst_date
+            else:
+                db.add(SiteStatistic(
+                    domain=domain,
+                    success=0,
+                    fail=1,
+                    lst_state=1,
+                    lst_mod_date=lst_date,
+                ))
+
+        self._execute_sync_write(write)
 
     async def async_success(self, domain: str, seconds: Optional[int] = None):
         """

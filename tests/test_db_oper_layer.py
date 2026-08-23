@@ -204,6 +204,22 @@ def test_site_oper_update_icon_creates_then_only_overwrites_with_content(db):
     assert first.startswith("data:image/ico;base64,")
 
 
+def test_site_oper_icon_without_explicit_session_uses_transaction_runner(db):
+    """无显式会话的图标写入应由兼容事务执行器完成提交。"""
+    oper = SiteOper()
+
+    oper.update_icon(
+        "兼容站点",
+        "op-icon-no-session.test",
+        "https://op-icon-no-session.test/favicon.ico",
+        "AAA",
+    )
+
+    icon = SiteIcon.get_by_domain(db.session, "op-icon-no-session.test")
+    assert icon.name == "兼容站点"
+    assert icon.base64 == "data:image/ico;base64,AAA"
+
+
 def test_site_oper_success_accumulates_and_records_state(db):
     """
     访问成功累加计数并把最后状态标记为成功。
@@ -217,6 +233,17 @@ def test_site_oper_success_accumulates_and_records_state(db):
     assert stat.success == 4
     assert stat.lst_state == 0
     assert stat.seconds
+
+
+def test_site_oper_statistics_without_explicit_session_use_transaction_runner(db):
+    """无显式会话的站点统计必须由兼容事务执行器完成提交。"""
+    oper = SiteOper()
+
+    oper.success("op-stat-no-session.test", seconds=3)
+    oper.fail("op-stat-no-session.test")
+
+    stat = SiteStatistic.get_by_domain(db.session, "op-stat-no-session.test")
+    assert (stat.success, stat.fail, stat.lst_state) == (1, 1, 1)
 
 
 def test_site_oper_success_caps_the_timing_note_at_ten_entries(db):
