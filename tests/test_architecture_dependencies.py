@@ -861,6 +861,22 @@ def test_agent_tools_do_not_import_entrypoint_internals():
     assert violations == {}
 
 
+def test_runtime_consumers_use_scheduler_application_facade():
+    """非组合根消费者必须经 application Facade 访问进程级 Scheduler。"""
+    allowed = {
+        "app.scheduler",
+        "app.startup.initializers.modules",
+        "app.startup.initializers.scheduler",
+    }
+    violations = {
+        module_name: dependencies & {"app.scheduler"}
+        for module_name, dependencies in _build_module_graph().items()
+        if module_name not in allowed and "app.scheduler" in dependencies
+    }
+
+    assert violations == {}
+
+
 def test_api_does_not_import_factory():
     """装配器（factory）只允许 app.main 使用，HTTP 端点不得回引。"""
     violations: dict[str, set[str]] = {}

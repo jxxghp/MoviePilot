@@ -15,9 +15,9 @@ from app.runtime.events import Event as ManagerEvent, eventmanager, Event
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.application.messaging.message import MessageHelper
 from app.application.messaging.skill import SkillInteractionHandler
+from app.application.scheduling import Scheduler
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
-from app.scheduler import Scheduler
 from app.schemas.message import Message
 from app.schemas.event import CommandRegisterEventData
 from app.schemas.types import EventType, NotificationChannel, ChainEventType

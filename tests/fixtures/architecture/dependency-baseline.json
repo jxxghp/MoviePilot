@@ -14,7 +14,7 @@
     "workflow_to_db": []
   },
   "edge_count": 6500,
-  "edge_sha256": "f16cc04898ae0fc7602f2d154321035040c6e64155c59b0b0d72a7d707f59ec9",
+  "edge_sha256": "7afa6e61ca564c1ec0c5981304cdb219afa99eb3318bb1703e8acf363cab9aae",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3485,6 +3485,7 @@
     "app.command -> app.application.messaging.skill",
     "app.command -> app.application.plugin",
     "app.command -> app.application.plugin.runtime",
+    "app.command -> app.application.scheduling",
     "app.command -> app.chain",
     "app.command -> app.chain.download",
     "app.command -> app.chain.message",
@@ -3500,7 +3501,6 @@
     "app.command -> app.runtime.events",
     "app.command -> app.runtime.log",
     "app.command -> app.runtime.thread",
-    "app.command -> app.scheduler",
     "app.command -> app.schemas",
     "app.command -> app.schemas.event",
     "app.command -> app.schemas.message",
