@@ -2,8 +2,8 @@ from pathlib import Path
 from typing import Any, List, Optional, Annotated
 
 from fastapi import Depends
-from fastapi.concurrency import run_in_threadpool
 
+from app.runtime.execution import run_in_threadpool
 from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo

@@ -6,8 +6,8 @@ from typing import Optional, List, Dict, Any, Tuple, Union
 
 import discord
 from discord import app_commands
-from fastapi.concurrency import run_in_threadpool
 
+from app.runtime.execution import run_in_threadpool
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()

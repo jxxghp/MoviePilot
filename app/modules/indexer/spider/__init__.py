@@ -5,10 +5,10 @@ from typing import Any, Optional
 from typing import List
 from urllib.parse import quote, urlparse, parse_qs
 
-from fastapi.concurrency import run_in_threadpool
 from jinja2 import Template
 from pyquery import PyQuery
 
+from app.runtime.execution import run_in_threadpool
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()

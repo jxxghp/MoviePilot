@@ -14,9 +14,9 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Optional, Union
 
 import aiofiles
 from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app.runtime.execution import run_in_threadpool
 from app.schemas.agent import AgentChatDisplaySaveRequest as _SchemaAgentChatDisplaySaveRequest
 from app.schemas.agent import AgentChatSessionDetail as _SchemaAgentChatSessionDetail
 from app.schemas.agent import AgentChatSessionSummary as _SchemaAgentChatSessionSummary

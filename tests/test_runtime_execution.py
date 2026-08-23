@@ -1,7 +1,9 @@
 """运行时同步 worker 的取消与容量合同回归。"""
 
 import asyncio
+import ast
 import threading
+from pathlib import Path
 
 import pytest
 from anyio.to_thread import current_default_thread_limiter
@@ -12,6 +14,31 @@ from app.runtime.execution import (
     await_task_to_terminal,
     run_in_threadpool_to_completion,
 )
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_host_uses_canonical_threadpool_boundary() -> None:
+    """canonical 宿主不得重新直连框架线程池 helper。"""
+    violations: list[str] = []
+    for path in sorted((PROJECT_ROOT / "app").rglob("*.py")):
+        relative_path = path.relative_to(PROJECT_ROOT).as_posix()
+        if relative_path.startswith(
+            ("app/plugins/", "app/runtime/compat/", "app/sdk/", "app/testing/")
+        ):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.module not in {
+                "fastapi.concurrency",
+                "starlette.concurrency",
+            }:
+                continue
+            if any(alias.name == "run_in_threadpool" for alias in node.names):
+                violations.append(f"{relative_path}:{node.lineno}")
+
+    assert violations == []
 
 
 def test_plugin_file_adapters_share_runtime_completion_contract() -> None:

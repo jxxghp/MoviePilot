@@ -6,10 +6,10 @@ from typing import Annotated, Any, Dict, List, Optional
 import aiofiles
 from anyio import Path as AsyncPath
 from fastapi import Depends, Header, HTTPException, Security
-from fastapi.concurrency import run_in_threadpool
 from starlette import status
 from starlette.responses import StreamingResponse
 
+from app.runtime.execution import run_in_threadpool
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard

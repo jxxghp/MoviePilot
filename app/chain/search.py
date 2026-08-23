@@ -10,8 +10,7 @@ from typing import AsyncIterator, Any, Dict, Iterable, Tuple
 from typing import List, Optional
 from unicodedata import normalize
 
-from fastapi.concurrency import run_in_threadpool
-
+from app.runtime.execution import run_in_threadpool
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.runtime.config import global_vars

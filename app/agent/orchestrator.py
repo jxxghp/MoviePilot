@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
 from langchain_core.messages import (  # noqa: F401
     HumanMessage,
@@ -21,6 +20,7 @@ from langchain_core.messages import (  # noqa: F401
 
 from langgraph.checkpoint.memory import InMemorySaver
 
+from app.runtime.execution import run_in_threadpool
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.helper import LLMHelper

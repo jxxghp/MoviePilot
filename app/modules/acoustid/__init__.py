@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 from uuid import UUID
 
-from fastapi.concurrency import run_in_threadpool
-
+from app.runtime.execution import run_in_threadpool
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()

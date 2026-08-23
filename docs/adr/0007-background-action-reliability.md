@@ -104,6 +104,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   的同步/异步调用合同。
 - 插件安装快照、取消补偿和临时约束文件清理统一复用 `runtime.execution.await_task_to_terminal`，连续取消
   不再由 Application 与 Adapter 各自维护近似循环；数据库 worker 的可中断队列等待仍保留独立职责。
+- canonical 宿主的同步函数异步桥接统一从 `runtime.execution.run_in_threadpool` 进入 AnyIO 线程池并传播
+  context；FastAPI/Starlette 同名 helper 不再作为第二个导入入口，插件和精确兼容目录不受此门禁约束。
 
 ### Transfer pending / 文件整理
 
