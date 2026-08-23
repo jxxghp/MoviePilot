@@ -1201,6 +1201,26 @@ def test_host_consumers_resolve_llm_provider_runtime_through_gateway():
     assert violations == {}
 
 
+def test_host_consumers_use_agent_audio_capability_application_port():
+    """宿主消费者不得绕过 Application 门面直连 Agent 音频实现。"""
+    violations: dict[str, set[str]] = {}
+    for module_name, path in _discover_modules().items():
+        if module_name.startswith(("app.agent", "app.startup")):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module in {"app.agent.llm", "app.agent.llm.capability"}
+            for alias in node.names
+            if alias.name == "AgentCapabilityManager"
+        }
+        if imported:
+            violations[module_name] = imported
+    assert violations == {}
+
+
 def test_agent_tools_do_not_import_entrypoint_internals():
     """Agent 工具不得穿透导入 HTTP 端点、调度器与命令注册表内部实现。
 

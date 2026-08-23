@@ -942,10 +942,10 @@ def test_transcribe_web_agent_audio_files_reads_registered_upload(tmp_path):
 
     try:
         with patch(
-            "app.api.endpoints.agent.AgentCapabilityManager.is_audio_input_available",
+            "app.api.endpoints.agent.is_audio_input_available",
             return_value=True,
         ), patch(
-            "app.api.endpoints.agent.AgentCapabilityManager.transcribe_audio",
+            "app.api.endpoints.agent.transcribe_audio",
             return_value="帮我推荐一部电影",
         ) as transcribe_audio:
             audio_files = _resolve_web_agent_audio_refs(

@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6549,
-  "edge_sha256": "fb3c6b77623cc0ad1707fe8cdfc7e8a1c6be429a34da05b4fca5ed8ef512e734",
+  "edge_count": 6547,
+  "edge_sha256": "66726be779aae9069c32e8ccba1e7371eb99cfcc459666bc9805ddc25061ac63",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -1650,8 +1650,6 @@
     "app.api.endpoints.agent -> app.agent",
     "app.api.endpoints.agent -> app.agent.callback",
     "app.api.endpoints.agent -> app.agent.contracts",
-    "app.api.endpoints.agent -> app.agent.llm",
-    "app.api.endpoints.agent -> app.agent.llm.capability",
     "app.api.endpoints.agent -> app.agent.mcp",
     "app.api.endpoints.agent -> app.agent.runtime_loader",
     "app.api.endpoints.agent -> app.api",

@@ -35,10 +35,13 @@ from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.api.presentation.sse import build_sse_error_response, build_sse_response
 from app.agent.contracts import ReplyMode, build_display_message
-from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.mcp import agent_mcp_manager
 from app.agent.runtime_loader import get_moviepilot_agent_type
-from app.application.agent import get_running_agent_manager
+from app.application.agent import (
+    get_running_agent_manager,
+    is_audio_input_available,
+    transcribe_audio,
+)
 from app.chain.message import MessageChain
 from app.application.commands import get_command, get_commands
 from app.runtime.config import global_vars
@@ -1157,7 +1160,7 @@ def _transcribe_web_agent_audio_files(
     """
     if not audio_files:
         return None
-    if not AgentCapabilityManager.is_audio_input_available():
+    if not is_audio_input_available():
         logger.warning("WebAgent 音频输入能力未配置或未启用，跳过语音识别")
         return None
 
@@ -1169,7 +1172,7 @@ def _transcribe_web_agent_audio_files(
             logger.warning("WebAgent 语音文件读取失败: ref=%s, error=%s", audio_ref, err)
             continue
 
-        transcript = AgentCapabilityManager.transcribe_audio(
+        transcript = transcribe_audio(
             content=content,
             filename=file_name,
         )
