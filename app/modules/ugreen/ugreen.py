@@ -12,7 +12,7 @@ from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibr
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
 from app.runtime.log import logger
 from app.modules.ugreen.api import Api
@@ -116,12 +116,12 @@ class Ugreen:
 
     @staticmethod
     def __load_all_session_cache() -> dict:
-        sessions = SystemConfigOper().get(SystemConfigKey.UgreenSessionCache)
+        sessions = get_configured_system_config().get(SystemConfigKey.UgreenSessionCache)
         return sessions if isinstance(sessions, dict) else {}
 
     @staticmethod
     def __save_all_session_cache(sessions: dict):
-        SystemConfigOper().set(SystemConfigKey.UgreenSessionCache, sessions)
+        get_configured_system_config().set(SystemConfigKey.UgreenSessionCache, sessions)
 
     def __remove_persisted_session(self):
         cache_key = self.__session_cache_key()

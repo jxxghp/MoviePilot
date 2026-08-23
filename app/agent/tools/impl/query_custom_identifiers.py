@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
@@ -39,7 +39,7 @@ class QueryCustomIdentifiersTool(MoviePilotTool):
     @staticmethod
     def _load_custom_identifiers():
         """从内存配置缓存中读取自定义识别词。"""
-        return SystemConfigOper().get(SystemConfigKey.CustomIdentifiers)
+        return get_configured_system_config().get(SystemConfigKey.CustomIdentifiers)
 
     async def run(self, **kwargs) -> str:
         logger.info(f"执行工具: {self.name}")

@@ -1056,7 +1056,7 @@ class SubscribeChainTest(TestCase):
 
         with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
             SUBSCRIBE_CHAIN_MODULE,
-            "SystemConfigOper",
+            "get_configured_system_config",
             _SystemConfigOper,
         ), patch.object(
             SUBSCRIBE_CHAIN_MODULE,

@@ -11,7 +11,7 @@ from app.runtime.settings import RuntimeSettingsCompat
 settings = RuntimeSettingsCompat()
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.plugin.install import PluginInstallCommand
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
@@ -327,7 +327,7 @@ async def install_plugin_runtime(
 
     async def save_installed_plugins(plugin_ids: list[str]) -> object:
         """保存智能体安装用例确认后的插件列表。"""
-        return await SystemConfigOper().async_set(
+        return await get_configured_system_config().async_set(
             SystemConfigKey.UserInstalledPlugins,
             plugin_ids,
         )
@@ -377,7 +377,7 @@ async def install_plugin_runtime(
         return result
 
     result = await PluginInstallCommand(
-        installed_plugins_reader=lambda: SystemConfigOper().get(
+        installed_plugins_reader=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
         installed_plugins_writer=save_installed_plugins,
@@ -422,7 +422,7 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
             instance_ids = "、".join(item.instance_id for item in source_instances)
             raise ValueError(f"请先卸载该插件的分身：{instance_ids}")
 
-        config_oper = SystemConfigOper()
+        config_oper = get_configured_system_config()
         install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
         if plugin_id in install_plugins:
             install_plugins = [

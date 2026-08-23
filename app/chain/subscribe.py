@@ -92,12 +92,6 @@ else:
             """返回快照字段，兼容整理链的响应转换。"""
             return dict(self.__dict__)
 
-# 旧测试与第三方扩展可能替换该名字；它现在只是应用配置端口的本地别名，
-# 不再指向数据库 Oper。
-SystemConfigOper = get_configured_system_config
-_DEFAULT_SYSTEM_CONFIG_PROVIDER = get_configured_system_config
-
-
 @dataclass(frozen=True, slots=True)
 class _SubscribePostCommitContext:
     """订阅提交后副作用所需的不可变业务快照。"""
@@ -142,9 +136,7 @@ class _SubscribeCreateContext:
 
 
 def _system_config():
-    """返回配置端口，并兼容旧测试对本地别名的替换。"""
-    if SystemConfigOper is not _DEFAULT_SYSTEM_CONFIG_PROVIDER:
-        return SystemConfigOper()
+    """返回启动组合根登记的配置端口。"""
     return get_configured_system_config()
 
 

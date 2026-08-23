@@ -368,6 +368,18 @@ def test_host_code_uses_explicit_runtime_facade_getters():
             continue
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+                target_names = {
+                    target.id for target in node.targets if isinstance(target, ast.Name)
+                }
+                if (
+                    "SystemConfigOper" in target_names
+                    and node.value.id == "get_configured_system_config"
+                ):
+                    violations.append(
+                        f"{relative.as_posix()}:{node.lineno}:SystemConfigOper"
+                    )
+                continue
             if not isinstance(node, ast.ImportFrom) or not node.module:
                 continue
             forbidden_names = forbidden_imports.get(node.module, set())
@@ -377,7 +389,16 @@ def test_host_code_uses_explicit_runtime_facade_getters():
                     and alias.name == "get_plugin_manager"
                     and alias.asname is not None
                 )
-                if alias.name in forbidden_names or class_shaped_plugin_getter:
+                class_shaped_config_getter = (
+                    node.module == "app.application.configuration"
+                    and alias.name == "get_configured_system_config"
+                    and alias.asname is not None
+                )
+                if (
+                    alias.name in forbidden_names
+                    or class_shaped_plugin_getter
+                    or class_shaped_config_getter
+                ):
                     imported_name = alias.asname or alias.name
                     violations.append(
                         f"{relative.as_posix()}:{node.lineno}:{imported_name}"

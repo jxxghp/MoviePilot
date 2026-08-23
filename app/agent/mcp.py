@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 from urllib.parse import urljoin
 
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.agent import (
     AgentMcpServerConfig,
@@ -456,7 +456,7 @@ class AgentMcpManager:
 
     def get_servers(self) -> list[AgentMcpServerConfig]:
         """读取已保存的外部 MCP 服务器配置。"""
-        raw_servers = SystemConfigOper().get(SystemConfigKey.AIAgentMcpServers) or []
+        raw_servers = get_configured_system_config().get(SystemConfigKey.AIAgentMcpServers) or []
         if not isinstance(raw_servers, list):
             return []
         servers: list[AgentMcpServerConfig] = []
@@ -470,7 +470,7 @@ class AgentMcpManager:
     async def save_servers(self, servers: list[AgentMcpServerConfig]) -> bool:
         """保存外部 MCP 服务器配置。"""
         normalized_servers = [self.normalize_server(server).model_dump() for server in servers]
-        return await SystemConfigOper().async_set(
+        return await get_configured_system_config().async_set(
             SystemConfigKey.AIAgentMcpServers,
             normalized_servers or None,
         )

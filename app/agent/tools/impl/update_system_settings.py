@@ -19,7 +19,7 @@ from app.agent.tools.impl._system_setting_utils import (
 from app.runtime.events import eventmanager
 from app.application.configuration import (
     SystemConfigService,
-    get_configured_system_config as SystemConfigOper,
+    get_configured_system_config,
     get_runtime_settings,
 )
 from app.application.plugin.runtime import plugin_system_config_mutation
@@ -109,7 +109,7 @@ class UpdateSystemSettingsTool(MoviePilotTool):
 
     def _get_system_config(self) -> SystemConfigService:
         """返回显式注入服务，旧构造形态则延迟读取组合根服务。"""
-        return self._system_config or SystemConfigOper()
+        return self._system_config or get_configured_system_config()
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据更新参数生成友好的提示消息。"""
