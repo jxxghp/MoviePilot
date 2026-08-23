@@ -23,8 +23,16 @@ class SubscribeInteractionActions(Protocol):
     声明订阅交互需要调用的业务动作。
     """
 
-    def refresh(self):
+    def refresh(self) -> Any:
         """执行订阅刷新。"""
+        ...
+
+    def check(self) -> Any:
+        """执行订阅元数据检查。"""
+        ...
+
+    def search(self, **kwargs: Any) -> Any:
+        """按消息入口参数执行订阅搜索。"""
         ...
 
 
@@ -37,14 +45,11 @@ class SubscribeInteractionRepository(Protocol):
     def get(self, subscribe_id: int) -> Optional[Any]:
         """按 ID 返回订阅。"""
 
-    def delete(self, subscribe_id: int) -> Any:
-        """删除订阅。"""
-
-    def check(self):
+    def check(self) -> Any:
         """执行订阅元数据检查。"""
         ...
 
-    def search(self, **kwargs):
+    def search(self, **kwargs: Any) -> Any:
         """执行订阅搜索。"""
         ...
 
@@ -62,15 +67,15 @@ class SubscribeInteractionHandler:
             messenger: MessageGateway,
             actions: SubscribeInteractionActions,
             repository: SubscribeInteractionRepository,
-            report_deleted: Callable[[dict], Any],
-    ):
+            delete_subscription: Callable[[int], bool],
+    ) -> None:
         """
         注入消息投递接口和订阅业务动作。
         """
         self._messenger = messenger
         self._actions = actions
         self._repository = repository
-        self._report_deleted = report_deleted
+        self._delete_subscription = delete_subscription
 
     def remote_list(
             self,
@@ -727,15 +732,10 @@ class SubscribeInteractionHandler:
             if not subscribe:
                 missing.append(str(subscribe_id))
                 continue
+            if not self._delete_subscription(subscribe_id):
+                missing.append(str(subscribe_id))
+                continue
             deleted.append(subscribe.name)
-            self._repository.delete(subscribe_id)
-            self._report_deleted(
-                {
-                    "media_source": subscribe.media_source,
-                    "media_id": subscribe.media_id,
-                    "season": subscribe.season,
-                }
-            )
 
         if not deleted and missing:
             return False, f"未找到订阅：{', '.join(missing)}"

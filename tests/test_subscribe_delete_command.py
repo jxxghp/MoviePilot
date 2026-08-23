@@ -1,11 +1,13 @@
 """订阅删除应用用例的事务、权限与副作用时序测试。"""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.orm import Session
 
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
+    SyncDeleteSubscribeCommand,
     SubscribeDeletionActor,
     SubscribeDeletionCandidate,
 )
@@ -16,10 +18,11 @@ from app.db.oper.subscribe import SubscribeOper
 class _Repository:
     """记录订阅删除用例数据访问顺序的仓储替身。"""
 
-    def __init__(self, candidate, calls):
-        """保存候选订阅和共享调用序列。"""
+    def __init__(self, candidate, calls, delete_error=None):
+        """保存候选订阅、共享调用序列和可选删除异常。"""
         self.candidate = candidate
         self.calls = calls
+        self.delete_error = delete_error
 
     async def get_candidate(self, subscribe_id):
         """返回预设候选订阅。"""
@@ -29,6 +32,8 @@ class _Repository:
     async def stage_delete(self, subscribe_id):
         """记录待删除的订阅编号。"""
         self.calls.append(("delete", subscribe_id))
+        if self.delete_error:
+            raise self.delete_error
 
 
 class _UnitOfWork:
@@ -69,6 +74,62 @@ class _Outbox:
         self.calls.append(("outbox_complete", event_key))
 
 
+class _SyncRepository:
+    """记录同步订阅删除的数据访问顺序。"""
+
+    def __init__(self, candidate, calls, delete_error=None):
+        """保存候选订阅、共享调用序列和可选删除异常。"""
+        self.candidate = candidate
+        self.calls = calls
+        self.delete_error = delete_error
+
+    def get_candidate_sync(self, subscribe_id):
+        """返回预设候选订阅。"""
+        self.calls.append(("get", subscribe_id))
+        return self.candidate
+
+    def stage_delete_sync(self, subscribe_id):
+        """记录同步待删除编号并按需失败。"""
+        self.calls.append(("delete", subscribe_id))
+        if self.delete_error:
+            raise self.delete_error
+
+
+class _SyncUnitOfWork:
+    """记录同步删除命令的提交与回滚。"""
+
+    def __init__(self, calls, commit_error=None):
+        """保存共享调用序列与可选提交异常。"""
+        self.calls = calls
+        self.commit_error = commit_error
+
+    def commit(self):
+        """记录提交并按需抛出异常。"""
+        self.calls.append(("commit",))
+        if self.commit_error:
+            raise self.commit_error
+
+    def rollback(self):
+        """记录回滚。"""
+        self.calls.append(("rollback",))
+
+
+class _SyncOutbox:
+    """记录同步删除 intent 的暂存与完成顺序。"""
+
+    def __init__(self, calls):
+        """保存共享调用序列。"""
+        self.calls = calls
+
+    def stage(self, intent, _now):
+        """记录同步暂存的 intent。"""
+        self.calls.append(("outbox_stage", intent))
+
+    def complete_by_event_key(self, event_key, _completed_at):
+        """记录同步完成的 intent。"""
+        self.calls.append(("outbox_complete", event_key))
+
+
 def _candidate(username="alice"):
     """构造带完整事件身份字段的订阅删除候选。"""
     return SubscribeDeletionCandidate(
@@ -92,6 +153,7 @@ def _command(
     event_error=None,
     report_error=None,
     outbox=None,
+    delete_error=None,
 ):
     """构造可观察事件与上报失败的订阅删除用例。"""
     async def publish(payload):
@@ -108,7 +170,7 @@ def _command(
         return True
 
     return DeleteSubscribeCommand(
-        repository=_Repository(candidate, calls),
+        repository=_Repository(candidate, calls, delete_error),
         unit_of_work=_UnitOfWork(calls, commit_error),
         publish_deleted=publish,
         report_deleted=report,
@@ -132,6 +194,26 @@ def _async_report_command(candidate, calls, result=True, error=None, outbox=None
     return DeleteSubscribeCommand(
         repository=_Repository(candidate, calls),
         unit_of_work=_UnitOfWork(calls),
+        publish_deleted=publish,
+        report_deleted=report,
+        outbox=outbox,
+    )
+
+
+def _sync_command(candidate, calls, commit_error=None, delete_error=None, outbox=None):
+    """构造可观察事务和副作用顺序的同步订阅删除命令。"""
+    def publish(payload):
+        """记录同步删除事件。"""
+        calls.append(("event", payload["subscribe_id"], payload))
+
+    def report(payload):
+        """记录同步删除统计。"""
+        calls.append(("report", payload))
+        return True
+
+    return SyncDeleteSubscribeCommand(
+        repository=_SyncRepository(candidate, calls, delete_error),
+        unit_of_work=_SyncUnitOfWork(calls, commit_error),
         publish_deleted=publish,
         report_deleted=report,
         outbox=outbox,
@@ -200,6 +282,26 @@ async def test_commit_failure_rolls_back_without_event_or_report():
         )
 
     assert [call[0] for call in calls] == ["get", "delete", "commit", "rollback"]
+
+
+@pytest.mark.asyncio
+async def test_delete_stage_failure_rolls_back_without_effects():
+    """异步暂存失败必须显式回滚，且不得写 intent 或发送成功副作用。"""
+    calls = []
+    command = _command(
+        _candidate(),
+        calls,
+        delete_error=RuntimeError("delete failed"),
+        outbox=_Outbox(calls),
+    )
+
+    with pytest.raises(RuntimeError, match="delete failed"):
+        await command.execute(
+            7,
+            SubscribeDeletionActor(username="alice", is_superuser=False),
+        )
+
+    assert [call[0] for call in calls] == ["get", "delete", "rollback"]
 
 
 @pytest.mark.asyncio
@@ -385,3 +487,65 @@ async def test_repository_stage_delete_does_not_commit():
 
     session.execute.assert_awaited_once()
     session.commit.assert_not_awaited()
+
+
+def test_sync_delete_uses_same_durable_effect_order():
+    """同步消息入口必须复用异步删除命令的事务、事件和统计顺序。"""
+    calls = []
+    command = _sync_command(_candidate(), calls, outbox=_SyncOutbox(calls))
+
+    assert command.execute(
+        7,
+        SubscribeDeletionActor(username="", is_superuser=True),
+    ) is True
+
+    assert [call[0] for call in calls] == [
+        "get", "delete", "outbox_stage", "outbox_stage", "commit",
+        "event", "outbox_complete", "report", "outbox_complete",
+    ]
+    assert calls[2][1].topic == "subscribe.deleted"
+    assert calls[3][1].topic == "subscribe.deleted.report"
+    assert calls[7][1] == _candidate().event_payload
+
+
+@pytest.mark.parametrize("failure", ["delete", "commit"])
+def test_sync_delete_rolls_back_transaction_failures(failure):
+    """同步暂存或提交失败时必须回滚，且不得发送删除成功副作用。"""
+    calls = []
+    error = RuntimeError(f"{failure} failed")
+    command = _sync_command(
+        _candidate(),
+        calls,
+        delete_error=error if failure == "delete" else None,
+        commit_error=error if failure == "commit" else None,
+    )
+
+    with pytest.raises(RuntimeError, match=f"{failure} failed"):
+        command.execute(
+            7,
+            SubscribeDeletionActor(username="", is_superuser=True),
+        )
+
+    assert calls[-1] == ("rollback",)
+    assert all(call[0] not in {"event", "report"} for call in calls)
+
+
+def test_sync_repository_candidate_and_delete_share_caller_session(monkeypatch):
+    """同步仓储投影和删除都使用组合根传入的同一个 Session 且不提交。"""
+    subscribe = Subscribe(
+        id=7,
+        username="alice",
+        name="测试订阅",
+        media_source="tmdb",
+        media_id="123",
+        season=2,
+    )
+    session = MagicMock(spec=Session)
+    oper = SubscribeOper(session)
+    monkeypatch.setattr(oper, "get", lambda subscribe_id: subscribe)
+
+    candidate = oper.get_candidate_sync(7)
+    oper.stage_delete_sync(7)
+
+    assert candidate is not None
+    assert candidate.event_payload["media_id"] == "123"

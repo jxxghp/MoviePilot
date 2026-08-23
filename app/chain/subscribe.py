@@ -48,6 +48,10 @@ from app.application.messaging.message import MessageTemplateHelper
 from app.application.mediaserver import MediaServerHelper
 from app.application.subscription.write import add_subscribe, async_add_subscribe
 from app.application.subscription.complete import get_subscription_completion_scope
+from app.application.subscription.delete import (
+    SubscribeDeletionActor,
+    get_sync_delete_subscribe_scope,
+)
 from app.application.subscription.contract import (
     build_subscribe_meta as _build_subscribe_meta,
     subscribe_media_key,
@@ -3171,8 +3175,17 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             messenger=self,
             actions=self,
             repository=SubscribeOper(),
-            report_deleted=MoviePilotServerHelper.sub_done_async,
+            delete_subscription=self._delete_subscription,
         )
+
+    @staticmethod
+    def _delete_subscription(subscribe_id: int) -> bool:
+        """通过统一同步命令删除订阅，保留消息入口原有的全局管理权限。"""
+        with get_sync_delete_subscribe_scope() as command:
+            return command.execute(
+                subscribe_id,
+                SubscribeDeletionActor(username="", is_superuser=True),
+            )
 
     def remote_delete(self, arg_str: str, channel: NotificationChannel,
                       userid: Union[str, int] = None, source: Optional[str] = None):
@@ -3189,28 +3202,18 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 save_history=False))
             return
         arg_strs = str(arg_str).split()
-        subscribeoper = SubscribeOper()
         for arg_str in arg_strs:
             arg_str = arg_str.strip()
             if not arg_str.isdigit():
                 continue
             subscribe_id = int(arg_str)
-            subscribe = subscribeoper.get(subscribe_id)
-            if not subscribe:
+            if not self._delete_subscription(subscribe_id):
                 self.post_message(_SchemaMessage(
                     channel=channel, source=source,
                     title=f"订阅编号 {subscribe_id} 不存在！",
                     userid=userid,
                     save_history=False))
                 return
-            # 删除订阅
-            subscribeoper.delete(subscribe_id)
-            # 统计订阅
-            MoviePilotServerHelper.sub_done_async({
-                "media_source": subscribe.media_source,
-                "media_id": subscribe.media_id,
-                "season": subscribe.season,
-            })
         # 重新发送消息
         self.remote_list(channel=channel, userid=userid, source=source)
 

@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6502,
-  "edge_sha256": "fe24e90415afe0789875f5e6d936e9b7d3536b3bfd0383d585ea35cc4be76386",
+  "edge_count": 6503,
+  "edge_sha256": "57c326a81dbba07909871a97df1c73416850205c3d385a15afe3a07e3e44c00c",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3324,6 +3324,7 @@
     "app.chain.subscribe -> app.application.subscription",
     "app.chain.subscribe -> app.application.subscription.complete",
     "app.chain.subscribe -> app.application.subscription.contract",
+    "app.chain.subscribe -> app.application.subscription.delete",
     "app.chain.subscribe -> app.application.subscription.query",
     "app.chain.subscribe -> app.application.subscription.write",
     "app.chain.subscribe -> app.application.torrent",

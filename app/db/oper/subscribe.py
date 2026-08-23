@@ -319,22 +319,36 @@ class SubscribeOper(DbOper):
         )
 
     async def get_candidate(
-            self,
-            subscribe_id: int,
+        self,
+        subscribe_id: int,
     ) -> Optional[SubscribeDeletionCandidate]:
         """读取订阅删除用例需要的权限字段与完整事件快照。"""
         subscribe = await self.async_get(subscribe_id)
+        return self._deletion_candidate(subscribe_id, subscribe)
+
+    def get_candidate_sync(
+        self,
+        subscribe_id: int,
+    ) -> Optional[SubscribeDeletionCandidate]:
+        """同步读取订阅删除用例需要的权限字段与完整事件快照。"""
+        return self._deletion_candidate(subscribe_id, self.get(subscribe_id))
+
+    @staticmethod
+    def _deletion_candidate(
+        subscribe_id: int,
+        subscribe: Optional[Subscribe],
+    ) -> Optional[SubscribeDeletionCandidate]:
+        """把 ORM 行投影为同步和异步删除命令共用的稳定快照。"""
         if not subscribe:
             return None
         values = subscribe.__dict__
-        event_payload = {
-            column.name: values.get(column.name)
-            for column in subscribe.__table__.columns
-        }
         return SubscribeDeletionCandidate(
             subscribe_id=subscribe_id,
             username=subscribe.username,
-            event_payload=event_payload,
+            event_payload={
+                column.name: values.get(column.name)
+                for column in subscribe.__table__.columns
+            },
         )
 
     async def list_candidates_by_identity(
@@ -483,6 +497,12 @@ class SubscribeOper(DbOper):
         await self._db.execute(
             sqlalchemy_delete(Subscribe).where(Subscribe.id == sid)
         )
+
+    def stage_delete_sync(self, sid: int) -> None:
+        """同步登记订阅删除但不提交，由 Application UnitOfWork 控制事务边界。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("同步订阅删除需要调用方提供 Session")
+        self._db.execute(sqlalchemy_delete(Subscribe).where(Subscribe.id == sid))
 
     async def async_update(self, sid: int, payload: dict) -> Optional[Subscribe]:
         """

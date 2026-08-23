@@ -1,13 +1,18 @@
 """订阅删除应用用例及其依赖端口。"""
 
-from contextlib import AbstractAsyncContextManager
+from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import inspect
 from typing import Any, Awaitable, Callable, Mapping, Protocol, cast
 from uuid import uuid4
 
-from app.application.outbox import AsyncOutboxTransaction, OutboxIntent
+from app.application.outbox import (
+    AsyncOutboxTransaction,
+    OutboxIntent,
+    SyncOutboxTransaction,
+    SyncUnitOfWork,
+)
 from app.schemas.event import SubscribeDeletedEventData
 
 
@@ -43,6 +48,20 @@ class SubscribeDeletionRepository(Protocol):
         ...
 
 
+class SyncSubscribeDeletionRepository(Protocol):
+    """同步消息入口执行订阅删除所需的最小数据访问端口。"""
+
+    def get_candidate_sync(
+        self,
+        subscribe_id: int,
+    ) -> SubscribeDeletionCandidate | None:
+        """读取订阅及删除事件所需的稳定快照。"""
+        ...
+
+    def stage_delete_sync(self, subscribe_id: int) -> None:
+        """把已读取的订阅登记为待删除，但不自行提交事务。"""
+        ...
+
 class AsyncUnitOfWork(Protocol):
     """订阅写用例使用的异步事务端口。"""
 
@@ -57,6 +76,18 @@ class AsyncUnitOfWork(Protocol):
 
 SubscribeDeletedPublisher = Callable[[dict[str, Any]], Awaitable[None]]
 SubscribeDeletedReporter = Callable[[Mapping[str, object]], object | Awaitable[object]]
+SyncSubscribeDeletedPublisher = Callable[[dict[str, Any]], None]
+SyncSubscribeDeletedReporter = Callable[[Mapping[str, object]], object]
+
+
+@dataclass(frozen=True)
+class _SubscribeDeletionEffects:
+    """同步和异步入口共用的删除事件、统计与 outbox 意图。"""
+
+    event_payload: dict[str, Any]
+    report_payload: dict[str, object]
+    event_intent: OutboxIntent
+    report_intent: OutboxIntent
 
 
 class DeleteSubscribeCommand:
@@ -89,36 +120,23 @@ class DeleteSubscribeCommand:
         提交后的事件与上报保持原有顺序，任一副作用失败都会继续向调用方抛出。
         """
         candidate = await self._repository.get_candidate(subscribe_id)
-        if not self._can_delete(candidate, actor):
+        if not can_delete_subscribe(candidate, actor):
             return False
         assert candidate is not None
 
-        await self._repository.stage_delete(subscribe_id)
-        event_payload = build_subscribe_deleted_payload(
+        effects = _build_deletion_effects(
             subscribe_id,
             candidate.event_payload,
         )
-        event_key = event_payload["idempotency_key"]
-        report_key = f"{event_key}:report"
         try:
+            await self._repository.stage_delete(subscribe_id)
             if self._outbox:
                 await self._outbox.stage(
-                    OutboxIntent(
-                        event_key=event_key,
-                        topic="subscribe.deleted",
-                        payload=event_payload,
-                    ),
+                    effects.event_intent,
                     datetime.now(timezone.utc),
                 )
                 await self._outbox.stage(
-                    OutboxIntent(
-                        event_key=report_key,
-                        topic="subscribe.deleted.report",
-                        payload={
-                            "idempotency_key": report_key,
-                            "subscribe_info": dict(candidate.event_payload),
-                        },
-                    ),
+                    effects.report_intent,
                     datetime.now(timezone.utc),
                 )
             await self._unit_of_work.commit()
@@ -126,37 +144,125 @@ class DeleteSubscribeCommand:
             await self._unit_of_work.rollback()
             raise
 
-        await self._publish_deleted(event_payload)
+        await self._publish_deleted(effects.event_payload)
         if self._outbox:
             await self._outbox.complete_by_event_key(
-                event_key,
+                effects.event_intent.event_key,
                 datetime.now(timezone.utc),
             )
         # 上报适配器会自行白名单过滤公开字段；传完整删除前快照可保留音乐实体维度，
         # 避免 Agent 与 API 入口收敛后丢失 music_type / total_tracks。
-        report_result = self._report_deleted(dict(candidate.event_payload))
+        report_result = self._report_deleted(effects.report_payload)
         if inspect.isawaitable(report_result):
             report_result = await report_result
         if report_result is False:
             raise RuntimeError("订阅删除统计上报未确认")
         if self._outbox:
             await self._outbox.complete_by_event_key(
-                report_key,
+                effects.report_intent.event_key,
                 datetime.now(timezone.utc),
             )
         return True
 
-    @staticmethod
-    def _can_delete(
-        candidate: SubscribeDeletionCandidate | None,
+
+class SyncDeleteSubscribeCommand:
+    """为同步消息入口执行同一订阅删除事务与 durable 副作用协议。"""
+
+    def __init__(
+        self,
+        repository: SyncSubscribeDeletionRepository,
+        unit_of_work: SyncUnitOfWork,
+        publish_deleted: SyncSubscribeDeletedPublisher,
+        report_deleted: SyncSubscribeDeletedReporter,
+        outbox: SyncOutboxTransaction | None = None,
+    ) -> None:
+        """注入同步数据访问、事务与提交后副作用端口。"""
+        self._repository = repository
+        self._unit_of_work = unit_of_work
+        self._publish_deleted = publish_deleted
+        self._report_deleted = report_deleted
+        self._outbox = outbox
+
+    def execute(
+        self,
+        subscribe_id: int,
         actor: SubscribeDeletionActor,
     ) -> bool:
-        """判断用户是否拥有目标订阅的删除权限。"""
-        if candidate is None:
+        """同步删除当前用户可访问的订阅，并保持事件和统计的可靠投递顺序。"""
+        candidate = self._repository.get_candidate_sync(subscribe_id)
+        if not can_delete_subscribe(candidate, actor):
             return False
-        if actor.is_superuser:
-            return True
-        return bool(candidate.username) and candidate.username == actor.username
+        assert candidate is not None
+
+        effects = _build_deletion_effects(
+            subscribe_id,
+            candidate.event_payload,
+        )
+        try:
+            self._repository.stage_delete_sync(subscribe_id)
+            if self._outbox:
+                now = datetime.now(timezone.utc)
+                self._outbox.stage(effects.event_intent, now)
+                self._outbox.stage(effects.report_intent, now)
+            self._unit_of_work.commit()
+        except Exception:
+            self._unit_of_work.rollback()
+            raise
+
+        self._publish_deleted(effects.event_payload)
+        if self._outbox:
+            self._outbox.complete_by_event_key(
+                effects.event_intent.event_key,
+                datetime.now(timezone.utc),
+            )
+        if self._report_deleted(effects.report_payload) is False:
+            raise RuntimeError("订阅删除统计上报未确认")
+        if self._outbox:
+            self._outbox.complete_by_event_key(
+                effects.report_intent.event_key,
+                datetime.now(timezone.utc),
+            )
+        return True
+
+
+def can_delete_subscribe(
+    candidate: SubscribeDeletionCandidate | None,
+    actor: SubscribeDeletionActor,
+) -> bool:
+    """判断用户是否拥有目标订阅的删除权限。"""
+    if candidate is None:
+        return False
+    if actor.is_superuser:
+        return True
+    return bool(candidate.username) and candidate.username == actor.username
+
+
+def _build_deletion_effects(
+    subscribe_id: int,
+    subscribe_info: Mapping[str, object],
+) -> _SubscribeDeletionEffects:
+    """一次性构造两种执行风格共用的事件、上报和 durable intent。"""
+    event_payload = build_subscribe_deleted_payload(subscribe_id, subscribe_info)
+    event_key = event_payload["idempotency_key"]
+    report_key = f"{event_key}:report"
+    report_payload = dict(subscribe_info)
+    return _SubscribeDeletionEffects(
+        event_payload=event_payload,
+        report_payload=report_payload,
+        event_intent=OutboxIntent(
+            event_key=event_key,
+            topic="subscribe.deleted",
+            payload=event_payload,
+        ),
+        report_intent=OutboxIntent(
+            event_key=report_key,
+            topic="subscribe.deleted.report",
+            payload={
+                "idempotency_key": report_key,
+                "subscribe_info": report_payload,
+            },
+        ),
+    )
 
 
 def build_subscribe_deleted_payload(
@@ -176,7 +282,9 @@ def build_subscribe_deleted_payload(
 
 
 DeleteSubscribeScope = Callable[[], AbstractAsyncContextManager[DeleteSubscribeCommand]]
+SyncDeleteSubscribeScope = Callable[[], AbstractContextManager[SyncDeleteSubscribeCommand]]
 _configured_delete_scope: DeleteSubscribeScope | None = None
+_configured_sync_delete_scope: SyncDeleteSubscribeScope | None = None
 
 
 def configure_delete_subscribe_scope(provider: DeleteSubscribeScope) -> None:
@@ -190,3 +298,16 @@ def get_delete_subscribe_scope() -> AbstractAsyncContextManager[DeleteSubscribeC
     if _configured_delete_scope is None:
         raise RuntimeError("订阅删除事务作用域尚未配置")
     return _configured_delete_scope()
+
+
+def configure_sync_delete_subscribe_scope(provider: SyncDeleteSubscribeScope) -> None:
+    """由启动组合根登记同步消息入口使用的订阅删除事务作用域。"""
+    global _configured_sync_delete_scope
+    _configured_sync_delete_scope = provider
+
+
+def get_sync_delete_subscribe_scope() -> AbstractContextManager[SyncDeleteSubscribeCommand]:
+    """返回一次独占同步会话的订阅删除命令作用域。"""
+    if _configured_sync_delete_scope is None:
+        raise RuntimeError("同步订阅删除事务作用域尚未配置")
+    return _configured_sync_delete_scope()

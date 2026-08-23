@@ -1,5 +1,6 @@
 """订阅事务作用域及提交后回调的组合装配。"""
 
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
@@ -10,7 +11,9 @@ from app.application.subscription.complete import (
 )
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
+    SyncDeleteSubscribeCommand,
     configure_delete_subscribe_scope,
+    configure_sync_delete_subscribe_scope,
 )
 from app.application.subscription.mutation import (
     SubscriptionMutationService,
@@ -38,13 +41,18 @@ async def _publish_deleted(payload: dict[str, Any]) -> None:
     await EventManager().async_send_event(EventType.SubscribeDeleted, payload)
 
 
+def _publish_deleted_sync(payload: dict[str, Any]) -> None:
+    """为同步消息入口发布事务已提交的订阅删除事件。"""
+    EventManager().send_event(EventType.SubscribeDeleted, payload)
+
+
 def _publish_completed(payload: dict[str, Any]) -> None:
     """发布已提交的订阅完成事件。"""
     EventManager().send_event(EventType.SubscribeComplete, payload)
 
 
 @contextmanager
-def subscription_completion_scope():
+def subscription_completion_scope() -> Iterator[CompleteSubscriptionCommand]:
     """为同步完成链创建独占 Session、UoW 与 durable outbox。"""
     session = SessionFactory()
     try:
@@ -59,7 +67,7 @@ def subscription_completion_scope():
 
 
 @asynccontextmanager
-async def subscription_mutation_scope():
+async def subscription_mutation_scope() -> AsyncIterator[SubscriptionMutationService]:
     """为非 HTTP 入口创建独占订阅修改会话、UoW 与 outbox。"""
     async with async_session_scope() as session:
         yield SubscriptionMutationService(
@@ -72,7 +80,7 @@ async def subscription_mutation_scope():
 
 
 @asynccontextmanager
-async def delete_subscribe_scope():
+async def delete_subscribe_scope() -> AsyncIterator[DeleteSubscribeCommand]:
     """为非 HTTP 入口创建独占订阅删除会话、UoW 与 outbox。"""
     async with async_session_scope() as session:
         yield DeleteSubscribeCommand(
@@ -84,8 +92,25 @@ async def delete_subscribe_scope():
         )
 
 
+@contextmanager
+def sync_delete_subscribe_scope() -> Iterator[SyncDeleteSubscribeCommand]:
+    """为同步消息入口创建独占 Session、UoW 与 durable outbox。"""
+    session = SessionFactory()
+    try:
+        yield SyncDeleteSubscribeCommand(
+            repository=SubscribeOper(session),
+            unit_of_work=SqlAlchemyUnitOfWork(session),
+            publish_deleted=_publish_deleted_sync,
+            report_deleted=MoviePilotServerHelper.sub_done_durable,
+            outbox=SqlAlchemyOutboxRepository(session),
+        )
+    finally:
+        session.close()
+
+
 def configure_transactional_subscription_scopes() -> None:
     """登记 Agent 等非 HTTP 入口复用的订阅事务作用域。"""
     configure_subscription_mutation_scope(subscription_mutation_scope)
     configure_delete_subscribe_scope(delete_subscribe_scope)
+    configure_sync_delete_subscribe_scope(sync_delete_subscribe_scope)
     configure_subscription_completion_scope(subscription_completion_scope)

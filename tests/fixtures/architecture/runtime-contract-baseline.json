@@ -2221,7 +2221,7 @@
           },
           {
             "caller": "app.startup.composition.subscription",
-            "count": 1
+            "count": 2
           },
           {
             "caller": "app.startup.initializers.modules",
@@ -2344,7 +2344,7 @@
         ]
       }
     },
-    "producer_count": 77
+    "producer_count": 78
   },
   "module_method_specs": {
     "anilist_credits": {
