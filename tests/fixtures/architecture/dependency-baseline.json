@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6501,
-  "edge_sha256": "3c01f9aeb7703065ff447672284ddcc88d6120ac3236b9659200df9b6f921bdd",
+  "edge_count": 6502,
+  "edge_sha256": "fe24e90415afe0789875f5e6d936e9b7d3536b3bfd0383d585ea35cc4be76386",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -65,6 +65,7 @@
     "app.adapters.external.market -> app.runtime.log",
     "app.adapters.external.market -> app.runtime.observability",
     "app.adapters.external.market -> app.runtime.settings",
+    "app.adapters.external.market -> app.runtime.tasks",
     "app.adapters.external.ocr -> app.adapters",
     "app.adapters.external.ocr -> app.adapters.network",
     "app.adapters.external.ocr -> app.adapters.network.http",

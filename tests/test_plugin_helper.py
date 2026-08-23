@@ -535,6 +535,60 @@ class TestPluginHelper:
         assert [item["version"] for item in cached_result] == ["1.2.3"]
         assert request_count == 2
 
+    def test_async_release_read_follows_host_task_shutdown(self, monkeypatch):
+        """被 shield 的仓库级请求仍须登记 owner，并随宿主关停取消。"""
+        try:
+            from app.adapters.external import market as market_module
+            from app.adapters.external.market import PluginHelper
+            from app.runtime.tasks import TaskRegistry
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        async def run_test():
+            """阻塞仓库读取后关闭登记器，返回 owner 与取消收敛状态。"""
+            helper = PluginHelper()
+            registry = TaskRegistry()
+            started = asyncio.Event()
+            cancelled = asyncio.Event()
+
+            async def fake_request(*_args, **_kwargs):
+                """保持网络读取运行，直到登记器发出取消。"""
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    raise
+
+            await helper.async_get_plugin_release_versions.cache_clear()
+            monkeypatch.setattr(
+                helper,
+                "_PluginHelper__async_request_with_fallback",
+                fake_request,
+            )
+            monkeypatch.setattr(
+                market_module,
+                "get_task_registry",
+                lambda: registry,
+            )
+            caller = asyncio.create_task(
+                helper.async_get_plugin_release_versions("DemoPlugin", REPO_URL)
+            )
+            await started.wait()
+            owners = tuple(record.owner for record in registry.records)
+            converged = await registry.shutdown(timeout_seconds=1.0)
+            results = await asyncio.gather(caller, return_exceptions=True)
+            await asyncio.sleep(0)
+            return owners, converged, cancelled.is_set(), results, helper._release_tasks
+
+        owners, converged, cancelled, results, release_tasks = asyncio.run(run_test())
+
+        assert owners == ("plugin.market.release_read",)
+        assert converged is True
+        assert cancelled is True
+        assert isinstance(results[0], asyncio.CancelledError)
+        assert release_tasks == {}
+
     def test_async_normal_release_read_does_not_wait_for_pending_force_refresh(self, monkeypatch):
         """普通读取遇到后台强刷时仍优先返回已有缓存，避免页面响应被强刷阻塞。"""
         try:
