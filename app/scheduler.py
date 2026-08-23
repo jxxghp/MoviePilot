@@ -28,10 +28,10 @@ from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
 from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
-from app.runtime.extensions.plugin_manager import PluginManager
 from app.db.oper.agenttask import AgentTaskOper
 from app.application.database import get_database_governance
 from app.application.outbox import dispatch_pending_outbox
+from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.application.configuration import (
     SchedulerRuntimeConfig,
     get_configured_system_config,

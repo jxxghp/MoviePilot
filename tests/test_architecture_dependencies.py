@@ -877,6 +877,23 @@ def test_runtime_consumers_use_scheduler_application_facade():
     assert violations == {}
 
 
+def test_runtime_consumers_use_plugin_application_facade():
+    """插件 concrete 管理器只允许组合根和兼容 SDK 直接依赖。"""
+    allowed = {
+        "app.sdk.plugins",
+        "app.startup.initializers.modules",
+        "app.startup.initializers.plugins",
+    }
+    violations = {
+        module_name: dependencies & {"app.runtime.extensions.plugin_manager"}
+        for module_name, dependencies in _build_module_graph().items()
+        if module_name not in allowed
+        and "app.runtime.extensions.plugin_manager" in dependencies
+    }
+
+    assert violations == {}
+
+
 def test_api_does_not_import_factory():
     """装配器（factory）只允许 app.main 使用，HTTP 端点不得回引。"""
     violations: dict[str, set[str]] = {}

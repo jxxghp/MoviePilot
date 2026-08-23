@@ -88,6 +88,9 @@
    Scheduler 已先完成一个可验证切片：API、Agent 与 Command 统一经
    `app.application.scheduling` Facade 获取实例，只有 `app.scheduler` 实现本身及 startup 组合根允许
    依赖 concrete Scheduler；架构测试拒绝普通宿主消费者重新引入第二条实例化路径。
+   插件运行时也采用相同边界：factory 的动态路由投影和 Scheduler 插件任务统一延迟调用
+   `app.application.plugin.runtime`，只有 startup 组合根与 `app.sdk.plugins` 兼容面允许直接引用
+   concrete `PluginManager`，不改变 V1/V2/V3 插件加载与自由响应 API。
 
 ### P2：中长期可演进性债务
 
