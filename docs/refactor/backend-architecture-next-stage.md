@@ -159,16 +159,17 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 - 插件 raw API、SDK/Compat、生命周期清单、模块调度快照和零真实网络测试均已有门禁；
 - 当前唯一 SCC 位于隔离的 TMDB 移植包内部，不应为了指标归零重写第三方风格代码。
 
-因此，下一阶段不应继续以“搬文件、拆目录、减少行数”为主目标。真正需要处理的是八类运行时和演进问题：
+因此，下一阶段不应继续以“搬文件、拆目录、减少行数”为主目标。八类运行时和演进问题的当前状态如下；
+其中已完成的门禁不能再作为待办重复实施，部分完成项则继续按低水位推进：
 
-1. **架构基线工具把语义、源码位置和跨仓版本混在一起。**普通行号变化或独立插件仓更新都会触发全量基线漂移，AI 容易用 `--write` 掩盖真正变化。
-2. **部署拓扑与实际进程职责不一致。**`API_WORKERS` 可配置多进程，但每个 Uvicorn worker 都会独立运行插件、调度器、监控器和工作流；当前 `app.main` 又把 app 实例传给 Uvicorn，与 reload/workers 的官方约束不一致。
+1. **架构基线工具的事实源分离已完成。**宿主、官方插件和启动性能使用独立 check/write；稳定语义与源码位置诊断分开，配置/事务低水位采用单向 ratchet，不能再用一次全量 `--write` 掩盖跨域变化。
+2. **V3 部署拓扑边界已完成。**全功能模式在 startup、launcher 和 Doctor 共同拒绝 `API_WORKERS > 1`，生产入口固定单 worker；开发 reload/监督模式使用 `app.factory:create_app` import-string factory，不再把 app 实例交给多进程 supervisor。旧配置键继续可解析，未来只有拆出 control role 后才重新评估全功能多 worker。
 3. **事务所有权已完成装饰器层收口，但 ORM 对象跨层流转仍需治理。**正式 Model 查询/写装饰器均已清零，宿主 Oper 查询统一接收显式 Session；调用方仍需继续明确 ORM 对象生命周期、懒加载和业务提交后副作用边界。
-4. **组合根之后仍存在大量全局服务定位。**宿主有 180 个文件直接读取 `settings`，21 个文件出现 45 次 `SystemConfigOper()` 构造；API 数据端口仍是全局字符串注册表。
-5. **模块与事件契约主要是“快照化的动态协议”。**211 个模块方法名中有 96 个落在 legacy 默认契约；53 个事件只有 20 个专用 `EventData` model，payload、可见范围和可靠性等级没有统一登记。
+4. **组合根之后仍存在全局服务定位，但配置直连债务已清零。**canonical 未批准 Settings 导入与非组合根 `SystemConfigOper()` 构造均为 `0`；数据库基础设施 3 处和 startup 唯一构造点作为不可扩张边界登记。Singleton、模块级 provider 和 API 数据端口注册表仍需按消费者切片收口。
+5. **模块契约仍在推进，Event Registry 已完成全量登记。**当前 212 个模块 spec 中 168 个仍使用 legacy aggregation，44 个已使用可执行聚合/接力语义；53 个事件全部绑定 typed payload，可见性、投递等级、错误行为和敏感字段均有基线，legacy event payload 为 `0`。后续重点是模块能力逐族收口和 6 个 durable-required 事件的真实持久投递，不是重复创建事件 DTO。
 6. **后台副作用缺少统一可靠性定义。**事件队列、APScheduler、FastAPI BackgroundTasks 和线程池任务的丢失、重试、幂等、关停语义各不相同；数据库提交与事件/上报之间仍有进程崩溃窗口。
-7. **运维可观测性不足以解释长调用链。**缺少统一 request/correlation ID、公开的 liveness/readiness 边界、队列深度和任务耗时指标；日志能看到错误，但难以串起 API → Chain → Module → 外部请求。
-8. **质量门禁偏重“能运行”，弱于“可演进”。**Pylint 只手工触发且仅启用严重错误；没有渐进式类型门禁和复杂度趋势门禁，千行级用例方法仍可能继续增长。
+7. **核心关联与健康边界已落地，指标导出仍未收口。**HTTP/SSE correlation ID 已传播到线程池、事件、工作流、子进程、外部请求和日志；`/health/live`、`/health/ready` 已由部署入口消费，事件/数据库队列深度及模块/事件耗时使用低基数指标登记。当前缺口是稳定 exporter、运维查询面和跨进程聚合，而不是重新实现 request ID 或健康路由。
+8. **质量门禁已具备增量硬约束，但覆盖面仍需扩大。**push/PR 对变更 Python 文件执行 Pylint，CI 同时运行 host architecture、37 个 strict mypy 文件、复杂度、async 阻塞和 task owner ratchet；全仓 Pylint 仍是 advisory，strict 类型和复杂度拆分仍应随业务切片渐进扩展。
 
 建议保持**模块化单体**，按以下顺序治理：
 
