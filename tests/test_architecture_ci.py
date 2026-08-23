@@ -33,6 +33,7 @@ def test_unit_test_workflow_has_independent_host_architecture_gate():
     assert "tests/test_architecture_dependencies.py" in commands
     assert "tests/test_architecture_contract_baseline.py" in commands
     assert "scripts/architecture/baseline.py --check-host" in commands
+    assert "scripts/startup/performance.py --check --repeat 3" in commands
 
 
 def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():

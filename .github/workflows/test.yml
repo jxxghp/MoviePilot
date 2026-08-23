@@ -59,6 +59,11 @@ jobs:
       - name: Check async blocking ratchet
         run: uv run --locked --no-sync python scripts/architecture/async_blocking.py
 
+      - name: Check startup performance contract
+        run: >-
+          uv run --locked --no-sync python
+          scripts/startup/performance.py --check --repeat 3
+
   pytest:
     runs-on: ubuntu-latest
     name: Unit Tests (${{ matrix.shard }})

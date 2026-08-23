@@ -1,12 +1,3 @@
 {
-  "app/agent/tools/impl/_plugin_tool_utils.py:uninstall_plugin_runtime:shutil.rmtree": 1,
-  "app/agent/tools/impl/scrape_metadata.py:ScrapeMetadataTool.run:Path.exists": 1,
-  "app/agent/tools/impl/scrape_metadata.py:ScrapeMetadataTool.run:Path.is_dir": 1,
-  "app/chain/media.py:MediaChain._async_music_album_dir_fallback:Path.exists": 1,
-  "app/chain/media.py:MediaChain._async_music_album_dir_fallback:Path.is_file": 1,
-  "app/chain/media.py:MediaChain.async_recognize_music_album_directory:Path.is_dir": 1,
-  "app/modules/acoustid/__init__.py:AcoustIdModule.async_identify_music_by_fingerprint:Path.is_file": 1,
-  "app/modules/discord/discord.py:Discord._send_file:Path.exists": 1,
-  "app/modules/discord/discord.py:Discord._send_file:Path.is_file": 1,
   "app/scheduler.py:Scheduler.execute_agent_task:AgentTaskOper.get": 1
 }

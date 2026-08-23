@@ -1,41 +1,41 @@
 {
-  "schema_version": 1,
-  "generated_at": "2026-08-21T12:02:30.246931+00:00",
-  "platform": "macOS-26.5.2-arm64-arm-64bit",
-  "python": "3.12.6",
+  "schema_version": 2,
+  "generated_at": "2026-08-23T08:11:40.406030+00:00",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "python": "3.14.3",
   "repeat": 3,
   "targets": {
     "app.startup.lifecycle": {
-      "loaded_module_count": 1810,
-      "max_ms": 987.312,
-      "median_ms": 984.741,
-      "min_ms": 983.917,
+      "loaded_app_module_count": 362,
+      "max_ms": 944.347,
+      "median_ms": 935.035,
+      "min_ms": 933.625,
       "samples_ms": [
-        987.312,
-        984.741,
-        983.917
+        944.347,
+        935.035,
+        933.625
       ]
     },
     "app.factory": {
-      "loaded_module_count": 1820,
-      "max_ms": 1015.426,
-      "median_ms": 999.369,
-      "min_ms": 996.521,
+      "loaded_app_module_count": 374,
+      "max_ms": 950.655,
+      "median_ms": 950.429,
+      "min_ms": 947.964,
       "samples_ms": [
-        996.521,
-        999.369,
-        1015.426
+        950.655,
+        947.964,
+        950.429
       ]
     },
     "app.main": {
-      "loaded_module_count": 1844,
-      "max_ms": 1057.647,
-      "median_ms": 1037.08,
-      "min_ms": 1034.011,
+      "loaded_app_module_count": 376,
+      "max_ms": 1150.269,
+      "median_ms": 1103.976,
+      "min_ms": 1097.978,
       "samples_ms": [
-        1057.647,
-        1034.011,
-        1037.08
+        1103.976,
+        1097.978,
+        1150.269
       ]
     }
   },
@@ -46,55 +46,26 @@
         "samples": [
           {
             "mode": "normal",
-            "enabled_component_count": 15,
-            "startup_ms": 0.569,
-            "full_lifespan_ms": 0.669,
+            "enabled_component_count": 16,
+            "startup_ms": 0.721,
+            "full_lifespan_ms": 0.907,
             "stage_ms": {
-              "数据库准备": 0.08,
-              "HTTP 基础能力": 0.035,
-              "领域依赖装配": 0.028,
-              "数据库引擎预热": 0.029,
-              "数据库连接预算": 0.025,
-              "路由": 0.024,
+              "后台任务登记器": 0.084,
+              "数据库准备": 0.038,
+              "HTTP 基础能力": 0.028,
+              "领域依赖装配": 0.027,
+              "数据库引擎预热": 0.024,
+              "数据库连接预算": 0.024,
+              "路由": 0.023,
               "模块服务": 0.024,
               "插件备份恢复": 0.023,
-              "插件": 0.021,
-              "定时器": 0.019,
-              "监控器": 0.022,
-              "待处理整理回放": 0.021,
-              "命令服务": 0.019,
-              "工作流": 0.021,
-              "插件同步与启动收尾": 0.032
-            },
-            "threads_before": 2,
-            "threads_started": 2,
-            "threads_after": 2,
-            "tasks_before": 1,
-            "tasks_started": 2,
-            "tasks_after": 1,
-            "database_connections_started": 0
-          },
-          {
-            "mode": "normal",
-            "enabled_component_count": 15,
-            "startup_ms": 0.548,
-            "full_lifespan_ms": 0.641,
-            "stage_ms": {
-              "数据库准备": 0.071,
-              "HTTP 基础能力": 0.033,
-              "领域依赖装配": 0.032,
-              "数据库引擎预热": 0.028,
-              "数据库连接预算": 0.025,
-              "路由": 0.022,
-              "模块服务": 0.023,
-              "插件备份恢复": 0.019,
-              "插件": 0.02,
-              "定时器": 0.022,
+              "插件": 0.029,
+              "定时器": 0.023,
               "监控器": 0.024,
-              "待处理整理回放": 0.019,
-              "命令服务": 0.022,
-              "工作流": 0.022,
-              "插件同步与启动收尾": 0.028
+              "待处理整理回放": 0.021,
+              "命令服务": 0.025,
+              "工作流": 0.02,
+              "插件同步与启动收尾": 0.031
             },
             "threads_before": 2,
             "threads_started": 2,
@@ -106,25 +77,57 @@
           },
           {
             "mode": "normal",
-            "enabled_component_count": 15,
-            "startup_ms": 0.687,
-            "full_lifespan_ms": 0.795,
+            "enabled_component_count": 16,
+            "startup_ms": 0.614,
+            "full_lifespan_ms": 0.788,
             "stage_ms": {
-              "数据库准备": 0.083,
-              "HTTP 基础能力": 0.035,
-              "领域依赖装配": 0.028,
-              "数据库引擎预热": 0.033,
-              "数据库连接预算": 0.027,
-              "路由": 0.021,
-              "模块服务": 0.019,
-              "插件备份恢复": 0.064,
-              "插件": 0.032,
+              "后台任务登记器": 0.075,
+              "数据库准备": 0.037,
+              "HTTP 基础能力": 0.029,
+              "领域依赖装配": 0.027,
+              "数据库引擎预热": 0.023,
+              "数据库连接预算": 0.024,
+              "路由": 0.023,
+              "模块服务": 0.023,
+              "插件备份恢复": 0.023,
+              "插件": 0.024,
               "定时器": 0.025,
-              "监控器": 0.028,
-              "待处理整理回放": 0.025,
+              "监控器": 0.023,
+              "待处理整理回放": 0.022,
+              "命令服务": 0.021,
+              "工作流": 0.022,
+              "插件同步与启动收尾": 0.03
+            },
+            "threads_before": 2,
+            "threads_started": 2,
+            "threads_after": 2,
+            "tasks_before": 1,
+            "tasks_started": 2,
+            "tasks_after": 1,
+            "database_connections_started": 0
+          },
+          {
+            "mode": "normal",
+            "enabled_component_count": 16,
+            "startup_ms": 0.611,
+            "full_lifespan_ms": 0.785,
+            "stage_ms": {
+              "后台任务登记器": 0.072,
+              "数据库准备": 0.033,
+              "HTTP 基础能力": 0.026,
+              "领域依赖装配": 0.028,
+              "数据库引擎预热": 0.023,
+              "数据库连接预算": 0.022,
+              "路由": 0.024,
+              "模块服务": 0.02,
+              "插件备份恢复": 0.023,
+              "插件": 0.024,
+              "定时器": 0.026,
+              "监控器": 0.024,
+              "待处理整理回放": 0.023,
               "命令服务": 0.024,
-              "工作流": 0.024,
-              "插件同步与启动收尾": 0.037
+              "工作流": 0.022,
+              "插件同步与启动收尾": 0.031
             },
             "threads_before": 2,
             "threads_started": 2,
@@ -135,20 +138,63 @@
             "database_connections_started": 0
           }
         ],
-        "median_startup_ms": 0.569,
-        "median_full_lifespan_ms": 0.669,
-        "enabled_component_count": 15
+        "median_startup_ms": 0.614,
+        "median_full_lifespan_ms": 0.788,
+        "enabled_component_count": 16,
+        "enabled_components": [
+          "后台任务登记器",
+          "数据库准备",
+          "HTTP 基础能力",
+          "领域依赖装配",
+          "数据库引擎预热",
+          "数据库连接预算",
+          "路由",
+          "模块服务",
+          "插件备份恢复",
+          "插件",
+          "定时器",
+          "监控器",
+          "待处理整理回放",
+          "命令服务",
+          "工作流",
+          "插件备份"
+        ]
       },
       "safe": {
         "samples": [
           {
             "mode": "safe",
-            "enabled_component_count": 7,
-            "startup_ms": 0.408,
-            "full_lifespan_ms": 0.531,
+            "enabled_component_count": 8,
+            "startup_ms": 0.463,
+            "full_lifespan_ms": 0.667,
             "stage_ms": {
-              "数据库准备": 0.077,
-              "HTTP 基础能力": 0.035,
+              "后台任务登记器": 0.075,
+              "数据库准备": 0.035,
+              "HTTP 基础能力": 0.03,
+              "领域依赖装配": 0.032,
+              "数据库引擎预热": 0.024,
+              "数据库连接预算": 0.022,
+              "路由": 0.025,
+              "模块服务": 0.022,
+              "插件同步与启动收尾": 0.058
+            },
+            "threads_before": 2,
+            "threads_started": 2,
+            "threads_after": 2,
+            "tasks_before": 1,
+            "tasks_started": 2,
+            "tasks_after": 1,
+            "database_connections_started": 0
+          },
+          {
+            "mode": "safe",
+            "enabled_component_count": 8,
+            "startup_ms": 0.474,
+            "full_lifespan_ms": 0.68,
+            "stage_ms": {
+              "后台任务登记器": 0.076,
+              "数据库准备": 0.043,
+              "HTTP 基础能力": 0.029,
               "领域依赖装配": 0.028,
               "数据库引擎预热": 0.026,
               "数据库连接预算": 0.024,
@@ -166,41 +212,19 @@
           },
           {
             "mode": "safe",
-            "enabled_component_count": 7,
-            "startup_ms": 0.416,
-            "full_lifespan_ms": 0.534,
+            "enabled_component_count": 8,
+            "startup_ms": 0.454,
+            "full_lifespan_ms": 0.657,
             "stage_ms": {
-              "数据库准备": 0.079,
-              "HTTP 基础能力": 0.036,
-              "领域依赖装配": 0.029,
-              "数据库引擎预热": 0.027,
-              "数据库连接预算": 0.026,
-              "路由": 0.026,
-              "模块服务": 0.021,
-              "插件同步与启动收尾": 0.054
-            },
-            "threads_before": 2,
-            "threads_started": 2,
-            "threads_after": 2,
-            "tasks_before": 1,
-            "tasks_started": 2,
-            "tasks_after": 1,
-            "database_connections_started": 0
-          },
-          {
-            "mode": "safe",
-            "enabled_component_count": 7,
-            "startup_ms": 0.397,
-            "full_lifespan_ms": 0.52,
-            "stage_ms": {
-              "数据库准备": 0.07,
-              "HTTP 基础能力": 0.033,
-              "领域依赖装配": 0.026,
-              "数据库引擎预热": 0.027,
-              "数据库连接预算": 0.029,
+              "后台任务登记器": 0.075,
+              "数据库准备": 0.036,
+              "HTTP 基础能力": 0.028,
+              "领域依赖装配": 0.028,
+              "数据库引擎预热": 0.025,
+              "数据库连接预算": 0.024,
               "路由": 0.024,
-              "模块服务": 0.022,
-              "插件同步与启动收尾": 0.051
+              "模块服务": 0.024,
+              "插件同步与启动收尾": 0.06
             },
             "threads_before": 2,
             "threads_started": 2,
@@ -211,9 +235,19 @@
             "database_connections_started": 0
           }
         ],
-        "median_startup_ms": 0.408,
-        "median_full_lifespan_ms": 0.531,
-        "enabled_component_count": 7
+        "median_startup_ms": 0.463,
+        "median_full_lifespan_ms": 0.667,
+        "enabled_component_count": 8,
+        "enabled_components": [
+          "后台任务登记器",
+          "数据库准备",
+          "HTTP 基础能力",
+          "领域依赖装配",
+          "数据库引擎预热",
+          "数据库连接预算",
+          "路由",
+          "模块服务"
+        ]
       }
     }
   }

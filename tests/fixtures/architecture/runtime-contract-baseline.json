@@ -7444,16 +7444,6 @@
     "app.sdk": [],
     "app.sdk.browser": [
       {
-        "kind": "import",
-        "name": "Any",
-        "target": "typing.Any"
-      },
-      {
-        "kind": "import",
-        "name": "annotations",
-        "target": "__future__.annotations"
-      },
-      {
         "kind": "FunctionDef",
         "name": "launch_browser_context",
         "target": ""
@@ -8041,274 +8031,9 @@
     ],
     "app.sdk.string": [
       {
-        "kind": "import",
-        "name": "Callable",
-        "target": "typing.Callable"
-      },
-      {
-        "kind": "import",
-        "name": "DomUtils",
-        "target": "app.foundation.dom.DomUtils"
-      },
-      {
-        "kind": "import",
-        "name": "HashUtils",
-        "target": "app.foundation.crypto.HashUtils"
-      },
-      {
         "kind": "ClassDef",
         "name": "StringUtils",
         "target": ""
-      },
-      {
-        "kind": "import",
-        "name": "base_url",
-        "target": "app.foundation.url.base_url"
-      },
-      {
-        "kind": "import",
-        "name": "common_prefix",
-        "target": "app.foundation.text.common_prefix"
-      },
-      {
-        "kind": "import",
-        "name": "compact_numbers",
-        "target": "app.domain.episode.compact_numbers"
-      },
-      {
-        "kind": "import",
-        "name": "compare_version",
-        "target": "app.foundation.version.compare_version"
-      },
-      {
-        "kind": "import",
-        "name": "contains_chinese",
-        "target": "app.foundation.text.contains_chinese"
-      },
-      {
-        "kind": "import",
-        "name": "contains_japanese",
-        "target": "app.foundation.text.contains_japanese"
-      },
-      {
-        "kind": "import",
-        "name": "contains_korean",
-        "target": "app.foundation.text.contains_korean"
-      },
-      {
-        "kind": "import",
-        "name": "cookiejar_to_string",
-        "target": "app.foundation.text.cookiejar_to_string"
-      },
-      {
-        "kind": "import",
-        "name": "count_words",
-        "target": "app.foundation.text.count_words"
-      },
-      {
-        "kind": "import",
-        "name": "escape_markdown",
-        "target": "app.foundation.text.escape_markdown"
-      },
-      {
-        "kind": "import",
-        "name": "extract_domain",
-        "target": "app.domain.site.extract_domain"
-      },
-      {
-        "kind": "import",
-        "name": "extract_named_ids",
-        "target": "app.foundation.text.extract_named_ids"
-      },
-      {
-        "kind": "import",
-        "name": "format_amount",
-        "target": "app.foundation.text.format_amount"
-      },
-      {
-        "kind": "import",
-        "name": "format_approx_duration",
-        "target": "app.foundation.temporal.format_approx_duration"
-      },
-      {
-        "kind": "import",
-        "name": "format_compact_size",
-        "target": "app.foundation.size.format_compact_size"
-      },
-      {
-        "kind": "import",
-        "name": "format_duration",
-        "target": "app.foundation.temporal.format_duration"
-      },
-      {
-        "kind": "import",
-        "name": "format_minutes",
-        "target": "app.foundation.temporal.format_minutes"
-      },
-      {
-        "kind": "import",
-        "name": "format_ranges",
-        "target": "app.domain.episode.format_ranges"
-      },
-      {
-        "kind": "import",
-        "name": "format_remaining",
-        "target": "app.foundation.temporal.format_remaining"
-      },
-      {
-        "kind": "import",
-        "name": "format_size",
-        "target": "app.foundation.size.format_size"
-      },
-      {
-        "kind": "import",
-        "name": "format_timestamp",
-        "target": "app.foundation.temporal.format_timestamp"
-      },
-      {
-        "kind": "import",
-        "name": "host_label",
-        "target": "app.foundation.url.host_label"
-      },
-      {
-        "kind": "import",
-        "name": "is_all_chinese",
-        "target": "app.foundation.text.is_all_chinese"
-      },
-      {
-        "kind": "import",
-        "name": "is_english_word",
-        "target": "app.foundation.text.is_english_word"
-      },
-      {
-        "kind": "import",
-        "name": "is_link",
-        "target": "app.foundation.url.is_link"
-      },
-      {
-        "kind": "import",
-        "name": "is_magnet_link",
-        "target": "app.domain.torrent.is_magnet_link"
-      },
-      {
-        "kind": "import",
-        "name": "is_media_title_like",
-        "target": "app.domain.title.is_media_title_like"
-      },
-      {
-        "kind": "import",
-        "name": "is_number",
-        "target": "app.foundation.text.is_number"
-      },
-      {
-        "kind": "import",
-        "name": "natural_sort_key",
-        "target": "app.foundation.text.natural_sort_key"
-      },
-      {
-        "kind": "import",
-        "name": "normalize_datetime",
-        "target": "app.foundation.temporal.normalize_datetime"
-      },
-      {
-        "kind": "import",
-        "name": "normalize_upper",
-        "target": "app.foundation.text.normalize_upper"
-      },
-      {
-        "kind": "import",
-        "name": "parse_address",
-        "target": "app.foundation.url.parse_address"
-      },
-      {
-        "kind": "import",
-        "name": "parse_bool",
-        "target": "app.foundation.text.parse_bool"
-      },
-      {
-        "kind": "import",
-        "name": "parse_datetime",
-        "target": "app.foundation.temporal.parse_datetime"
-      },
-      {
-        "kind": "import",
-        "name": "parse_float",
-        "target": "app.foundation.text.parse_float"
-      },
-      {
-        "kind": "import",
-        "name": "parse_int",
-        "target": "app.foundation.text.parse_int"
-      },
-      {
-        "kind": "import",
-        "name": "parse_search_keyword",
-        "target": "app.domain.title.parse_search_keyword"
-      },
-      {
-        "kind": "import",
-        "name": "parse_size",
-        "target": "app.foundation.size.parse_size"
-      },
-      {
-        "kind": "import",
-        "name": "parse_timestamp",
-        "target": "app.foundation.temporal.parse_timestamp"
-      },
-      {
-        "kind": "import",
-        "name": "random_string",
-        "target": "app.foundation.text.random_string"
-      },
-      {
-        "kind": "import",
-        "name": "remove_punctuation",
-        "target": "app.foundation.text.remove_punctuation"
-      },
-      {
-        "kind": "import",
-        "name": "sanitize_filename",
-        "target": "app.foundation.text.sanitize_filename"
-      },
-      {
-        "kind": "import",
-        "name": "second_level_label",
-        "target": "app.foundation.url.second_level_label"
-      },
-      {
-        "kind": "import",
-        "name": "signature",
-        "target": "inspect.signature"
-      },
-      {
-        "kind": "import",
-        "name": "split_by_bytes",
-        "target": "app.foundation.text.split_by_bytes"
-      },
-      {
-        "kind": "import",
-        "name": "split_netloc",
-        "target": "app.foundation.url.split_netloc"
-      },
-      {
-        "kind": "import",
-        "name": "strip_optional",
-        "target": "app.foundation.text.strip_optional"
-      },
-      {
-        "kind": "import",
-        "name": "title_case",
-        "target": "app.foundation.text.title_case"
-      },
-      {
-        "kind": "import",
-        "name": "urls_match",
-        "target": "app.domain.site.urls_match"
-      },
-      {
-        "kind": "import",
-        "name": "wraps",
-        "target": "functools.wraps"
       }
     ],
     "app.sdk.utilities": [
@@ -8361,6 +8086,16 @@
         "kind": "import",
         "name": "cut",
         "target": "app.foundation.text.cut"
+      },
+      {
+        "kind": "alias",
+        "name": "decrypt",
+        "target": "app.foundation.crypto.CryptoJsUtils.decrypt"
+      },
+      {
+        "kind": "alias",
+        "name": "encrypt",
+        "target": "app.foundation.crypto.CryptoJsUtils.encrypt"
       },
       {
         "kind": "import",

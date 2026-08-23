@@ -9,16 +9,20 @@ from scripts.architecture import baseline as architecture_baseline
 from scripts.startup import performance as startup_performance
 
 
-def _performance_sample(*, loaded_module_count: int = 10) -> dict:
+def _performance_sample(
+    *,
+    loaded_app_module_count: int = 5,
+) -> dict:
+    """构造区分环境诊断值与稳定宿主导入契约的性能样本。"""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": "2026-08-21T00:00:00+00:00",
         "platform": "test",
         "python": "3.12",
         "repeat": 1,
         "targets": {
             "app.factory": {
-                "loaded_module_count": loaded_module_count,
+                "loaded_app_module_count": loaded_app_module_count,
                 "max_ms": 100.0,
                 "median_ms": 90.0,
                 "min_ms": 80.0,
@@ -30,6 +34,7 @@ def _performance_sample(*, loaded_module_count: int = 10) -> dict:
             "modes": {
                 "normal": {
                     "enabled_component_count": 2,
+                    "enabled_components": ["后台任务登记器", "路由"],
                     "samples": [
                         {
                             "threads_before": 1,
@@ -213,6 +218,111 @@ def test_plugin_provenance_does_not_participate_in_semantic_gate(tmp_path: Path)
         baseline_path,
         first,
     ) == architecture_baseline.semantic_baseline(baseline_path, second)
+
+
+def test_collect_sdk_exports_uses_explicit_all_and_resolves_aliases(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """SDK 快照只记录 __all__，并把顶层赋值恢复为真实导出目标。"""
+    sdk_root = tmp_path / "app" / "sdk"
+    sdk_root.mkdir(parents=True)
+    (sdk_root / "demo.py").write_text(
+        "from __future__ import annotations\n"
+        "from typing import Any\n"
+        "from app.foundation.crypto import CryptoJsUtils\n\n"
+        "encrypt = CryptoJsUtils.encrypt\n\n"
+        "def launch():\n"
+        "    return None\n\n"
+        "def accidental():\n"
+        "    return None\n\n"
+        "__all__ = ['CryptoJsUtils', 'encrypt', 'launch']\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(architecture_baseline, "APP_ROOT", tmp_path / "app")
+
+    exports = architecture_baseline.collect_sdk_exports()["app.sdk.demo"]
+
+    assert exports == [
+        {
+            "name": "CryptoJsUtils",
+            "kind": "import",
+            "target": "app.foundation.crypto.CryptoJsUtils",
+        },
+        {
+            "name": "encrypt",
+            "kind": "alias",
+            "target": "app.foundation.crypto.CryptoJsUtils.encrypt",
+        },
+        {"name": "launch", "kind": "FunctionDef", "target": ""},
+    ]
+
+
+def test_collect_sdk_exports_treats_missing_all_as_no_public_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """未显式声明 __all__ 的 SDK 模块不得泄漏实现期导入。"""
+    sdk_root = tmp_path / "app" / "sdk"
+    sdk_root.mkdir(parents=True)
+    (sdk_root / "internal.py").write_text(
+        "from typing import Any\n\n"
+        "def helper():\n"
+        "    return Any\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(architecture_baseline, "APP_ROOT", tmp_path / "app")
+
+    assert architecture_baseline.collect_sdk_exports() == {"app.sdk.internal": []}
+
+
+def test_official_plugin_baseline_includes_effective_v3_default_fallback(
+    tmp_path: Path,
+) -> None:
+    """V3 插件快照应补入专用索引未接管的 package.json 兼容实现。"""
+    plugin_repo = tmp_path / "MoviePilot-Plugins"
+    sources = {
+        "plugins.v3/current/__init__.py": "from app.sdk.events import Event\n",
+        "plugins.v2/legacy/__init__.py": "from app.core.event import Event\n",
+        "plugins/shared/__init__.py": "from app.log import logger\n",
+        "plugins/current/__init__.py": "from app.unused.current import Value\n",
+        "plugins/legacy/__init__.py": "from app.unused.legacy import Value\n",
+        "plugins/rejected/__init__.py": "from app.unused.rejected import Value\n",
+    }
+    for relative, source in sources.items():
+        path = plugin_repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+    (plugin_repo / "package.v3.json").write_text(
+        json.dumps({"Current": {"version": "3.0.0"}}), encoding="utf-8"
+    )
+    (plugin_repo / "package.v2.json").write_text(
+        json.dumps({"Legacy": {"version": "2.0.0"}}), encoding="utf-8"
+    )
+    (plugin_repo / "package.json").write_text(
+        json.dumps(
+            {
+                "Current": {"v2": True},
+                "Legacy": {"v2": True},
+                "Shared": {"v2": True},
+                "Rejected": {"v2": True, "v3": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    baseline = architecture_baseline.collect_official_plugin_baseline(plugin_repo)
+
+    assert baseline["scope"] == {
+        "repository": "MoviePilot-Plugins",
+        "roots": ["plugins.v2", "plugins.v3", "plugins"],
+        "default_plugins": ["Shared"],
+    }
+    assert baseline["provenance"]["python_file_count"] == 3
+    assert baseline["imports"]["app.log"]["files"] == [
+        "plugins/shared/__init__.py"
+    ]
+    assert not any(module.startswith("app.unused") for module in baseline["imports"])
 
 
 def test_plugin_v2_fixture_migrates_before_semantic_comparison(tmp_path: Path):
@@ -506,11 +616,47 @@ def test_performance_write_requires_explicit_action(tmp_path: Path, monkeypatch)
     assert json.loads(output.read_text(encoding="utf-8")) == sample
 
 
-def test_performance_check_reports_loaded_module_drift():
-    """稳定的冷导入模块数量变化必须产生可诊断失败。"""
-    expected = _performance_sample(loaded_module_count=10)
-    actual = _performance_sample(loaded_module_count=11)
+def test_performance_check_reports_loaded_app_module_drift():
+    """稳定的宿主冷导入模块数量变化必须产生可诊断失败。"""
+    expected = _performance_sample(loaded_app_module_count=5)
+    actual = _performance_sample(loaded_app_module_count=6)
 
     errors = startup_performance.check_baseline(expected, actual)
 
-    assert errors == ["app.factory 加载模块数变化：10 -> 11"]
+    assert errors == ["app.factory 加载宿主模块数变化：5 -> 6"]
+
+
+def test_performance_check_ignores_environment_provenance_drift():
+    """Python 与平台 provenance 差异不应改变宿主冷导入语义契约。"""
+    expected = _performance_sample()
+    actual = _performance_sample()
+    actual["python"] = "3.14"
+    actual["platform"] = "another-platform"
+
+    assert startup_performance.check_baseline(expected, actual) == []
+
+
+def test_performance_check_reports_lifecycle_component_replacement():
+    """组件数量未变时，生命周期成员或顺序变化仍必须失败。"""
+    expected = _performance_sample()
+    actual = _performance_sample()
+    actual["lifecycle"]["modes"]["normal"]["enabled_components"] = [
+        "后台任务登记器",
+        "数据库准备",
+    ]
+
+    errors = startup_performance.check_baseline(expected, actual)
+
+    assert errors == ["normal 模式生命周期组件集合或顺序已变化"]
+
+
+@pytest.mark.parametrize("safe_mode", (False, True))
+def test_performance_lifecycle_probe_preserves_task_registry(safe_mode: bool):
+    """隔离探针必须真实装配并释放 lifespan 依赖的 TaskRegistry。"""
+    sample = startup_performance.measure_lifecycle(safe_mode)
+
+    assert "后台任务登记器" in sample["enabled_components"]
+    assert sample["enabled_component_count"] == len(sample["enabled_components"])
+    assert sample["threads_after"] == sample["threads_before"]
+    assert sample["tasks_after"] == sample["tasks_before"]
+    assert sample["database_connections_started"] == 0
