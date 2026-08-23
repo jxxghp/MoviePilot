@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -127,10 +128,12 @@ class EmbyDashboardLinksTest(unittest.TestCase):
         item = schemas.MediaServerItem(server="emby", item_id="emby-item-id", server_id="server-id")
 
         with (
-            patch("app.api.endpoints.mediaserver.MediaServerHelper") as helper_cls,
+            patch(
+                "app.api.endpoints.mediaserver.get_mediaserver_configs",
+                return_value=[SimpleNamespace(name="Emby")],
+            ),
             patch("app.api.endpoints.mediaserver.MediaServerChain") as chain_cls,
         ):
-            helper_cls.return_value.get_configs.return_value = {"Emby": object()}
             chain = chain_cls.return_value
             chain.iteminfo.return_value = item
             chain.get_play_url.return_value = "http://emby.local/web/index.html#!/item?id=emby-item-id"

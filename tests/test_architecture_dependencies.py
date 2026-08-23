@@ -615,7 +615,7 @@ def test_monitor_dispatcher_uses_explicit_history_port_getter():
 
 
 def test_canonical_service_config_consumers_use_application_directory():
-    """Chain、API、Scheduler 与 Agent 不得绕过应用目录读取运行时配置 Helper。"""
+    """Chain、API、Scheduler 与 Agent 不得绕过命名应用目录读取服务配置。"""
     paths = [
         APP_ROOT / "chain" / "_messaging.py",
         APP_ROOT / "chain" / "mediaserver.py",
@@ -624,6 +624,7 @@ def test_canonical_service_config_consumers_use_application_directory():
         APP_ROOT / "agent" / "llm" / "capability.py",
         APP_ROOT / "agent" / "tools" / "base.py",
         APP_ROOT / "agent" / "tools" / "impl" / "query_library_latest.py",
+        APP_ROOT / "api" / "endpoints" / "mediaserver.py",
     ]
     violations: list[str] = []
     for path in paths:
@@ -635,6 +636,15 @@ def test_canonical_service_config_consumers_use_application_directory():
             ):
                 violations.append(
                     f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                )
+            if (
+                path.name == "mediaserver.py"
+                and isinstance(node, ast.ImportFrom)
+                and node.module == "app.application.mediaserver"
+                and any(alias.name == "MediaServerHelper" for alias in node.names)
+            ):
+                violations.append(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:MediaServerHelper"
                 )
 
     assert violations == []
