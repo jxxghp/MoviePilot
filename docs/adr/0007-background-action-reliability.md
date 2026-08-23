@@ -85,6 +85,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 ### Agent tasks
 
 - 流式 token、工具进度和临时展示：E0。
+- 整理历史 AI 重做的 runner 与同步输出回调共用 lifespan TaskRegistry；单条/批量进度分别登记
+  `api.history.ai_redo.progress` / `api.history.ai_redo_batch.progress`，不再把缓存进度更新裸投递主循环。
 - 已登记的周期 Agent task：E1，重启时通过任务定义重建；单次执行要有 execution 记录。
 - Agent 创建/修改订阅、删除数据等工具：业务事务按 E2/E3；聊天输出不能替代业务完成证据。
 - 会话 stop/cancel：E0 控制信号；被取消工具的底层阻塞 I/O 可能继续，资源所有者必须最终回收。

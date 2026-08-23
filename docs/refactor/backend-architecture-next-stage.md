@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner。
 
 ## 当前复核结论（2026-08-24）
 
@@ -277,6 +277,16 @@
   Agent 消息和停止命令仍保留各自的 Future 结果观察，不被机械改成 fire-and-forget。
 - 依赖基线仅新增 `app.chain.message -> app.runtime.tasks`，模块数保持 `806`，内部边为 `6541`；12 组禁止
   边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 27：历史 AI 进度任务所有权统一（2026-08-24）
+
+- 整理历史 AI 重做的外层 runner 已进入 TaskRegistry，但单条与批量输出回调仍各复制一套裸
+  `run_coroutine_threadsafe`，进度缓存写入绕过了同一 shutdown owner 边界。
+- 两条路径现在复用唯一进度回调工厂和外层同一个 registry，分别登记
+  `api.history.ai_redo.progress` 与 `api.history.ai_redo_batch.progress`；停止接收、取消和有限等待语义统一。
+- API 路由、权限、进度 key/payload、Agent prompt 与完成/失败文案均未修改；该进度仍按 E0 允许进程崩溃
+  丢失，不把 UI 进度误报为 durable 完成。既有 `app.api.endpoints.history -> app.runtime.tasks` 依赖边不变，
+  V2/V3 插件 SDK/Compat 无改动。
 
 ### 总体判断
 
