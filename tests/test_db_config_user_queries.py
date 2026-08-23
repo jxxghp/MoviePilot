@@ -9,12 +9,14 @@ import asyncio
 
 import pytest
 
+from app.db import decorators
 from app.db.models.passkey import PassKey
 from app.db.models.systemconfig import SystemConfig
 from app.db.models.user import User
 from app.db.models.userconfig import UserConfig
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.user import UserOper
+from app.db.session import SessionFactory, async_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +48,46 @@ def test_systemconfig_get_by_key_returns_none_when_absent(db):
     键不存在时返回 None——调用方据此决定是否落默认值。
     """
     assert SystemConfig.get_by_key(db.session, "mp-test-missing") is None
+
+
+def test_systemconfig_queries_reuse_explicit_sessions(db, monkeypatch):
+    """SystemConfig 显式同步与异步会话不得触发兼容会话。"""
+    db.add(SystemConfig(key="mp-explicit-config", value=True))
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+    )
+    assert SystemConfig.get_by_key(db.session, "mp-explicit-config") is not None
+
+    async def check() -> None:
+        """验证异步配置查询复用显式 AsyncSession。"""
+        async with async_session_scope() as session:
+            monkeypatch.setattr(
+                decorators,
+                "async_session_scope",
+                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+            )
+            assert await SystemConfig.async_get_by_key(
+                session,
+                "mp-explicit-config",
+            ) is not None
+
+    asyncio.run(check())
+
+
+def test_systemconfig_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
+    """旧插件以关键字直调 SystemConfig 时仍自动补入短会话。"""
+    db.add(SystemConfig(key="mp-legacy-config", value=True))
+    opened = []
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (opened.append(True) or SessionFactory()),
+    )
+
+    assert SystemConfig.get_by_key(key="mp-legacy-config") is not None
+    assert opened == [True]
 
 
 def test_systemconfig_delete_by_key_removes_only_that_key(db):
