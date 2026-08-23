@@ -1,10 +1,15 @@
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 
+from app.api.dependencies import subscription as subscription_dependencies
 from app.application.subscription.delete import SubscribeDeletionCandidate
 from app.application.subscription.search import (
     SearchSubscriptionsCommand,
     SubscribeSearchActor,
 )
+from app.runtime.tasks import TaskRegistry
 
 
 class _Repository:
@@ -52,7 +57,7 @@ async def test_superuser_search_all_uses_single_global_scheduler_request():
 
 @pytest.mark.asyncio
 async def test_regular_user_search_all_schedules_only_owned_subscriptions():
-    """普通用户搜索全部时逐条提交仓储已按归属过滤的订阅。"""
+    """普通用户搜索全部时把归属订阅合并为一次后台批次。"""
     scheduled = []
     command = SearchSubscriptionsCommand(
         repository=_Repository(subscribe_ids=[2, 5]),
@@ -62,7 +67,22 @@ async def test_regular_user_search_all_schedules_only_owned_subscriptions():
     assert await command.execute(
         SubscribeSearchActor(username="alice", is_superuser=False)
     ) is True
-    assert scheduled == [(2, None), (5, None)]
+    assert scheduled == [((2, 5), None)]
+
+
+@pytest.mark.asyncio
+async def test_regular_user_search_all_with_no_targets_does_not_schedule():
+    """普通用户没有可搜索订阅时不创建空后台任务。"""
+    scheduled = []
+    command = SearchSubscriptionsCommand(
+        repository=_Repository(),
+        schedule_search=lambda ids, state: scheduled.append((ids, state)),
+    )
+
+    assert await command.execute(
+        SubscribeSearchActor(username="alice", is_superuser=False)
+    ) is True
+    assert scheduled == []
 
 
 @pytest.mark.asyncio
@@ -94,4 +114,49 @@ async def test_targeted_search_schedules_accessible_subscription():
         SubscribeSearchActor(username="alice", is_superuser=False),
         subscribe_id=7,
     ) is True
-    assert scheduled == [(7, None)]
+    assert scheduled == [((7,), None)]
+
+
+def test_subscription_search_batch_uses_one_scheduler_generation(monkeypatch):
+    """一个后台批次只占用一次调度任务运行权。"""
+    calls = []
+    monkeypatch.setattr(
+        subscription_dependencies,
+        "start_scheduler_job",
+        lambda job_id, **kwargs: calls.append((job_id, kwargs)),
+    )
+
+    subscription_dependencies._start_subscription_search_batch((2, 5), None)
+
+    assert calls == [
+        (
+            "subscribe_search",
+            {"sids": (2, 5), "state": None, "manual": True},
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_dependency_registers_one_owned_background_batch():
+    """请求适配器只登记一个具名后台批次。"""
+    registry = TaskRegistry()
+    registry.create_sync = Mock()
+    repository = _Repository(subscribe_ids=[2, 5])
+    runtime = SimpleNamespace(
+        subscription=SimpleNamespace(repository=lambda _db: repository),
+    )
+    command = subscription_dependencies.get_search_subscriptions_command(
+        task_registry=registry,
+        db=object(),
+        runtime=runtime,
+    )
+
+    assert await command.execute(
+        SubscribeSearchActor(username="alice", is_superuser=False)
+    ) is True
+    registry.create_sync.assert_called_once_with(
+        subscription_dependencies._start_subscription_search_batch,
+        (2, 5),
+        None,
+        owner="api.subscribe.search",
+    )
