@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from typing import Any, Protocol, cast
 
 from app.foundation.reflection import ObjectUtils
-from app.runtime.execution import run_in_threadpool
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.log import logger
 from app.runtime.observability import observe_duration, record_metric
 from app.runtime.extensions.module.contracts import (
@@ -50,7 +50,7 @@ class ModuleInvocationDispatcher:
         plugin_error_handler: ModuleErrorHandler,
         system_error_handler: ModuleErrorHandler,
         rate_limit_handler: ModuleErrorHandler,
-        async_function_runner: AsyncFunctionRunner = run_in_threadpool,
+        async_function_runner: AsyncFunctionRunner = run_in_threadpool_to_completion,
     ) -> None:
         """保存模块目录和策略回调，不主动发现或创建任何运行时资源。"""
         self._module_catalog = module_catalog
