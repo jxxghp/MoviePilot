@@ -12,7 +12,7 @@ sys.modules.setdefault("psutil", ModuleType("psutil"))
 
 from app.chain.message import MessageChain
 from app.application.messaging.message import MessageQueueManager
-from app.schemas import Message
+from app.schemas.message import Message
 from app.runtime.correlation import correlation_scope, get_correlation_id
 from app.foundation.identity import (
     SYSTEM_INTERNAL_USER_ID,
