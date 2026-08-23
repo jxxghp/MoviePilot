@@ -1486,6 +1486,42 @@ class PluginHelper(metaclass=WeakSingleton):
                     temp_file.write(f"{cls.__format_package_name(package_name)}>={version}\n")
         return Path(temp_file.name)
 
+    @classmethod
+    async def __async_create_runtime_constraints_file(
+            cls,
+            protected_packages: Dict[str, Version],
+    ) -> Path:
+        """创建临时约束文件，取消时等待创建收口并删除已产生的文件。"""
+        create_task = asyncio.create_task(
+            asyncio.to_thread(
+                cls.__create_runtime_constraints_file,
+                protected_packages,
+            )
+        )
+        try:
+            return await asyncio.shield(create_task)
+        except asyncio.CancelledError:
+            async def cleanup_created_file() -> None:
+                try:
+                    created_file = await create_task
+                except BaseException:
+                    return
+                await asyncio.to_thread(created_file.unlink, missing_ok=True)
+
+            cleanup_task = asyncio.create_task(cleanup_created_file())
+            while not cleanup_task.done():
+                try:
+                    await asyncio.shield(cleanup_task)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            try:
+                await cleanup_task
+            except Exception as err:
+                logger.warning(f"[UV] 取消后清理运行环境约束文件失败：{err}")
+            raise
+
     @staticmethod
     def __refresh_import_system():
         """
@@ -2608,8 +2644,7 @@ class PluginHelper(metaclass=WeakSingleton):
         constraints_file = None
         if protected_packages:
             try:
-                constraints_file = await _await_thread_operation(
-                    cls.__create_runtime_constraints_file,
+                constraints_file = await cls.__async_create_runtime_constraints_file(
                     protected_packages,
                 )
             except Exception as err:

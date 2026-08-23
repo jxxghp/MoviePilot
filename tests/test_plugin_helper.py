@@ -1774,6 +1774,93 @@ demo = { index = "private" }
         ):
             asyncio.run(run_install())
 
+    def test_constraints_created_during_cancellation_are_removed(self, tmp_path):
+        """约束文件创建线程收口后仍须响应取消并删除临时文件。"""
+        from app.adapters.external.market import PluginHelper
+
+        helper = PluginHelper()
+        requirements_file = tmp_path / "requirements.txt"
+        requirements_file.write_text("demo-package\n", encoding="utf-8")
+        constraints_file = tmp_path / "runtime-constraints.txt"
+        created = threading.Event()
+        release = threading.Event()
+
+        def create_constraints(_protected_packages):
+            constraints_file.write_text("fastapi==0\n", encoding="utf-8")
+            created.set()
+            release.wait(timeout=2)
+            return constraints_file
+
+        async def run_install():
+            task = asyncio.create_task(
+                helper.async_install_packages_with_fallback(requirements_file)
+            )
+            assert await asyncio.to_thread(created.wait, 2)
+            task.cancel()
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        with patch.object(
+                PluginHelper,
+                "_PluginHelper__get_installed_packages",
+                return_value={},
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__get_protected_runtime_packages",
+                return_value={"fastapi": "0"},
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__validate_runtime_dependency_conflicts",
+                return_value=(True, ""),
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__create_runtime_constraints_file",
+                side_effect=create_constraints,
+        ):
+            asyncio.run(run_install())
+
+        assert not constraints_file.exists()
+
+    def test_constraints_cleanup_failure_preserves_cancellation(self, tmp_path):
+        """临时文件删除失败只记录日志，不得替换调用方的取消异常。"""
+        from app.adapters.external.market import PluginHelper
+
+        constraints_file = tmp_path / "runtime-constraints.txt"
+        created = threading.Event()
+        release = threading.Event()
+
+        def create_constraints(_protected_packages):
+            constraints_file.write_text("fastapi==0\n", encoding="utf-8")
+            created.set()
+            release.wait(timeout=2)
+            return constraints_file
+
+        async def run_create():
+            task = asyncio.create_task(
+                PluginHelper._PluginHelper__async_create_runtime_constraints_file(
+                    {"fastapi": Version("0")}
+                )
+            )
+            assert await asyncio.to_thread(created.wait, 2)
+            task.cancel()
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        with patch.object(
+                PluginHelper,
+                "_PluginHelper__create_runtime_constraints_file",
+                side_effect=create_constraints,
+        ), patch.object(
+                Path,
+                "unlink",
+                side_effect=PermissionError("locked"),
+        ), patch("app.adapters.external.market.logger.warning") as warning:
+            asyncio.run(run_create())
+
+        warning.assert_called_once()
+
     def test_install_uses_release_package_when_asset_is_available(self, monkeypatch):
         """
         release 包可用时优先使用 zip 安装，不再额外访问文件列表。

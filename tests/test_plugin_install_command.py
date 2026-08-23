@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -154,6 +154,42 @@ async def test_existing_plugin_checks_compatibility_without_reinstalling_package
     assert result.installed_list_persisted is False
     installer.assert_not_awaited()
     checkpointer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_existing_plugin_refresh_restores_runtime_and_registrations():
+    """已存在插件刷新被取消时，必须重新收敛运行态和注册。"""
+    registration_started = asyncio.Event()
+    calls: list[str] = []
+
+    async def reload_plugin(_plugin_id: str) -> None:
+        calls.append("reload")
+
+    async def refresh_registrations(_plugin_id: str) -> None:
+        calls.append("registrations")
+        if calls.count("registrations") == 1:
+            registration_started.set()
+            await asyncio.Event().wait()
+
+    with patch("app.application.plugin.install.logger.warning") as warning:
+        task = asyncio.create_task(
+            _command(
+                installed=["DemoPlugin"],
+                plugin_ids=["DemoPlugin"],
+                reloader=reload_plugin,
+                refresher=refresh_registrations,
+            ).execute(
+                plugin_id="DemoPlugin",
+                repo_url="https://github.com/demo/plugins",
+            )
+        )
+        await registration_started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert calls == ["reload", "registrations", "reload", "registrations"]
+    warning.assert_not_called()
 
 
 @pytest.mark.asyncio

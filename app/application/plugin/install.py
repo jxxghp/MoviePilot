@@ -72,6 +72,7 @@ class _InstallState:
     installed_list_persisted: bool = False
     runtime_touched: bool = False
     registrations_touched: bool = False
+    refresh_compensated: bool = False
     committed: bool = False
     original_plugins: list[str] = field(default_factory=list)
 
@@ -151,6 +152,7 @@ class PluginInstallCommand:
             return await self._refresh_existing(
                 plugin_id=plugin_id,
                 repo_url=repo_url,
+                state=state,
             )
         if not repo_url:
             return PluginInstallResult(
@@ -319,6 +321,8 @@ class PluginInstallCommand:
                 f"插件 {plugin_id} 在安装提交后被取消，Python 依赖环境可能已经改变"
             )
             return
+        if state.refresh_compensated:
+            return
         if state.checkpoint is None:
             logger.warning(
                 f"插件 {plugin_id} 在创建安装快照前被取消，无法执行文件补偿"
@@ -362,6 +366,7 @@ class PluginInstallCommand:
         *,
         plugin_id: str,
         repo_url: Optional[str],
+        state: _InstallState,
     ) -> PluginInstallResult:
         """刷新已存在插件，不触碰包文件和已安装列表。"""
         if repo_url:
@@ -381,33 +386,31 @@ class PluginInstallCommand:
             await self._plugin_reloader(plugin_id)
             failure_stage = "registration_refresh"
             await self._registration_refresher(plugin_id)
-        except Exception as err:
-            rollback_errors = []
-            runtime_restored = False
-            registrations_restored = False
-            try:
-                await self._plugin_reloader(plugin_id)
-                runtime_restored = True
-            except Exception as rollback_err:
-                rollback_errors.append(f"运行态恢复失败：{rollback_err}")
-            if runtime_restored:
+        except asyncio.CancelledError:
+            cleanup_task = asyncio.create_task(
+                self._restore_refreshed_runtime(plugin_id)
+            )
+            while not cleanup_task.done():
                 try:
-                    await self._registration_refresher(plugin_id)
-                    registrations_restored = True
-                except Exception as rollback_err:
-                    rollback_errors.append(f"路由和服务注册恢复失败：{rollback_err}")
+                    await asyncio.shield(cleanup_task)
+                except asyncio.CancelledError:
+                    continue
+            rollback = await cleanup_task
+            state.refresh_compensated = True
+            if rollback.errors:
+                logger.error(
+                    f"插件 {plugin_id} 取消刷新后的运行态补偿存在错误："
+                    f"{'；'.join(rollback.errors)}"
+                )
+            raise
+        except Exception as err:
+            rollback = await self._restore_refreshed_runtime(plugin_id)
             result = PluginInstallResult(
                 success=False,
                 message=f"刷新插件运行态失败：{err}",
                 refreshed_only=True,
                 failure_stage=failure_stage,
-                rollback=PluginInstallRollback(
-                    runtime_attempted=True,
-                    runtime_restored=runtime_restored,
-                    registrations_attempted=True,
-                    registrations_restored=registrations_restored,
-                    errors=tuple(rollback_errors),
-                ),
+                rollback=rollback,
             )
             if isinstance(err, DatabaseWorkerOverloadedError):
                 raise
@@ -434,6 +437,33 @@ class PluginInstallCommand:
             registrations_refreshed=True,
             reported=reported,
             report_error=report_error,
+        )
+
+    async def _restore_refreshed_runtime(
+        self,
+        plugin_id: str,
+    ) -> PluginInstallRollback:
+        """重新加载插件并刷新注册，使中断的运行态切换恢复到完整状态。"""
+        errors = []
+        runtime_restored = False
+        registrations_restored = False
+        try:
+            await self._plugin_reloader(plugin_id)
+            runtime_restored = True
+        except Exception as err:
+            errors.append(f"运行态恢复失败：{err}")
+        if runtime_restored:
+            try:
+                await self._registration_refresher(plugin_id)
+                registrations_restored = True
+            except Exception as err:
+                errors.append(f"路由和服务注册恢复失败：{err}")
+        return PluginInstallRollback(
+            runtime_attempted=True,
+            runtime_restored=runtime_restored,
+            registrations_attempted=True,
+            registrations_restored=registrations_restored,
+            errors=tuple(errors),
         )
 
     async def _failure(
