@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.application.database import DatabaseWorkerOverloadedError
 from app.application.plugin.install import PluginInstallCommand
 
 
