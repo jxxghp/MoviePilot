@@ -134,7 +134,7 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=target), \
             patch("app.chain._music.SearchChain", return_value=search_chain), \
             patch("app.chain._music.DownloadChain", return_value=download_chain), \
-            patch("app.chain._music.SubscribeOper") as subscribe_oper:
+            patch("app.chain._music.get_chain_subscribe_port") as subscribe_oper:
         subscribe_oper.return_value.get.return_value = subscribe
         chain._search_music_subscribe(subscribe)
 
@@ -240,7 +240,7 @@ def test_music_best_version_persists_downloaded_rule_priority():
     chain.finish_subscribe_or_not = Mock()
 
     with patch("app.chain._music.DownloadChain", return_value=download_chain), \
-            patch("app.chain._music.SubscribeOper", return_value=subscribe_oper):
+            patch("app.chain._music.get_chain_subscribe_port", return_value=subscribe_oper):
         chain._download_music_subscribe(subscribe, _music_info(), [downloaded])
 
     subscribe_oper.update.assert_called_once_with(
@@ -441,7 +441,7 @@ def test_music_rss_match_reuses_cached_context_without_second_site_search():
     torrent_helper.filter_torrent.return_value = True
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=target), \
             patch("app.chain.subscribe.SubscribeOper", return_value=subscribe_oper), \
-            patch("app.chain._music.SubscribeOper", return_value=subscribe_oper), \
+            patch("app.chain._music.get_chain_subscribe_port", return_value=subscribe_oper), \
             patch("app.chain._music.TorrentHelper", return_value=torrent_helper), \
             patch("app.chain._music.DownloadChain", return_value=download_chain), \
             patch("app.chain.subscribe.SearchChain") as search_chain, \
@@ -638,7 +638,7 @@ def test_recording_target_sync_clears_stale_album_track_count():
     subscribe = _subscribe(total_tracks=11)
     subscribe_oper = Mock()
 
-    with patch("app.chain._music.SubscribeOper", return_value=subscribe_oper):
+    with patch("app.chain._music.get_chain_subscribe_port", return_value=subscribe_oper):
         SubscribeChain._sync_music_subscribe_target(subscribe, _music_info())
 
     subscribe_oper.update.assert_called_once_with(subscribe.id, {"total_tracks": None})

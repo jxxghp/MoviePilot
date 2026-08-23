@@ -131,11 +131,11 @@ Session. `app/db/adapters/` is the concrete persistence-adapter layer: it may
 depend on Application-owned Protocols, UoW/Session and Oper implementations.
 This deliberate dependency inversion is the only `DB implementation ->
 Application contract` direction; Application must remain free of DB imports.
-Migrated workflow, user, interaction and messaging Chain consumers use the named
-`get_chain_*_port()` functions from `app/application/chain/data.py`; they must not
-alias migration-time `*PortProxy` classes back to database Oper names. Those
-proxy classes remain compatibility boundaries while the other established Chain
-domains migrate independently.
+Migrated workflow, user, interaction, messaging and music Chain consumers use
+the named `get_chain_*_port()` functions from `app/application/chain/data.py`;
+they must not alias migration-time `*PortProxy` classes back to database Oper
+names. Those proxy classes remain compatibility boundaries while the other
+established Chain domains migrate independently.
 
 ### Adapter boundaries
 

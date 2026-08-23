@@ -452,6 +452,21 @@ def test_user_and_messaging_chains_use_explicit_data_port_getters():
     assert violations == []
 
 
+def test_music_chain_uses_explicit_subscribe_data_port_getter():
+    """音乐订阅链不得把 SubscribePortProxy 伪装成 SubscribeOper。"""
+    path = APP_ROOT / "chain" / "_music.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.chain.data"
+        and any(alias.name == "SubscribePortProxy" for alias in node.names)
+    ]
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []
