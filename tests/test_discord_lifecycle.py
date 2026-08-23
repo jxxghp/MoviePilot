@@ -27,6 +27,19 @@ class _DiscordClientStub:
             self._release.set()
 
 
+class _YieldingCloseDiscordClientStub(_DiscordClientStub):
+    """关闭协程至少让出一次执行权，用于覆盖启动窗口内的停止竞态。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed = threading.Event()
+
+    async def close(self) -> None:
+        self.close_calls += 1
+        await asyncio.sleep(0)
+        self.closed.set()
+
+
 def _discord(client: _DiscordClientStub) -> Discord:
     """构造只包含线程与事件循环生命周期状态的 Discord 实例。"""
     instance = Discord.__new__(Discord)
@@ -80,4 +93,39 @@ def test_start_failure_closes_discord_thread_loop() -> None:
         assert not instance._thread.is_alive()
         assert instance._loop.is_closed()
     finally:
+        _cleanup(instance)
+
+
+def test_stop_during_thread_bootstrap_preserves_runner_cleanup(monkeypatch) -> None:
+    """线程已登记但循环尚未运行时，停止请求不得打断 runner 的关闭流程。"""
+    client = _YieldingCloseDiscordClientStub()
+    instance = _discord(client)
+    runner_entered = threading.Event()
+    release_runner = threading.Event()
+    original_set_event_loop = asyncio.set_event_loop
+
+    def block_runner(loop: asyncio.AbstractEventLoop | None) -> None:
+        if loop is instance._loop:
+            runner_entered.set()
+            assert release_runner.wait(timeout=1)
+        original_set_event_loop(loop)
+
+    monkeypatch.setattr(
+        "app.modules.discord.discord.asyncio.set_event_loop",
+        block_runner,
+    )
+    instance._start()
+    assert runner_entered.wait(timeout=1)
+    stop_thread = threading.Thread(target=instance.stop)
+    stop_thread.start()
+    assert instance._stop_requested.wait(timeout=1)
+    release_runner.set()
+
+    try:
+        stop_thread.join(timeout=2)
+        assert not stop_thread.is_alive()
+        assert client.closed.is_set()
+        assert instance._loop.is_closed()
+    finally:
+        release_runner.set()
         _cleanup(instance)

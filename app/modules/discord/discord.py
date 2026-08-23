@@ -264,11 +264,6 @@ class Discord:
                 ).result(timeout=10)
             except Exception as err:
                 logger.error(f"关闭 Discord Bot 失败：{err}")
-        elif not loop.is_closed():
-            try:
-                loop.call_soon_threadsafe(loop.stop)
-            except RuntimeError:
-                pass
         self._ready_event.clear()
         thread.join(timeout=5)
         if thread.is_alive():
