@@ -1,5 +1,5 @@
 from dataclasses import replace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -7,7 +7,7 @@ from app.agent import MoviePilotAgent
 from app.agent.llm import AgentCapabilityManager, LLMHelper
 from app.agent.llm.provider import LLMProviderManager
 from app.chain.message import MessageChain
-from app.runtime.config import settings
+from app.runtime.config import global_vars, settings
 from app.schemas.types import NotificationChannel
 
 
@@ -89,6 +89,8 @@ def test_handle_ai_message_routes_text_only_model_images_to_files(
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
     monkeypatch.setattr(settings, "LLM_PROVIDER", "minimax")
     monkeypatch.setattr(settings, "LLM_MODEL", "MiniMax-M2.7")
+    loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
+    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", loop)
     # 测试绕过完整启动组合根，按需装配 llm_helper provider 以走真实能力判断
     import app.application.agent as agent_facade
 
