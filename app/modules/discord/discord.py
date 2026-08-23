@@ -3,16 +3,15 @@ import re
 import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Union
-from urllib.parse import quote
 
 import discord
 from discord import app_commands
-import httpx
 from fastapi.concurrency import run_in_threadpool
 
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
+from app.application.messaging.ingress import async_forward_message_to_host
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
@@ -60,17 +59,10 @@ class Discord:
         self._token = DISCORD_BOT_TOKEN
         self._guild_id = self._to_int(DISCORD_GUILD_ID)
         self._channel_id = self._to_int(DISCORD_CHANNEL_ID)
+        self._config_name = kwargs.get("name")
         logger.debug(
             f"[Discord] 解析后的 ID: _guild_id={self._guild_id}, _channel_id={self._channel_id}"
         )
-        base_ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message/"
-        self._ds_url = f"{base_ds_url}?token={settings.API_TOKEN}"
-        if kwargs.get("name"):
-            # URL encode the source name to handle special characters in config names
-            encoded_name = quote(kwargs.get("name"), safe="")
-            self._ds_url = f"{self._ds_url}&source={encoded_name}"
-        logger.debug(f"[Discord] 消息回调 URL: {self._ds_url}")
-
         intents = discord.Intents.default()
         intents.message_content = True
         intents.messages = True
@@ -1313,13 +1305,10 @@ class Discord:
         return content
 
     async def _post_to_ds(self, payload: Dict[str, Any]) -> None:
-        try:
-            proxy = None
-            if settings.PROXY:
-                proxy = settings.PROXY.get("https") or settings.PROXY.get("http")
-            async with httpx.AsyncClient(
-                timeout=10, verify=False, proxy=proxy
-            ) as client:
-                await client.post(self._ds_url, json=payload)
-        except Exception as err:
-            logger.error(f"转发 Discord 消息失败：{err}")
+        """把 Discord 事件异步转交统一消息入口。"""
+        if not await async_forward_message_to_host(
+            payload,
+            self._config_name,
+            timeout=10,
+        ):
+            logger.error("转发 Discord 消息失败")

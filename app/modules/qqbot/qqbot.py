@@ -15,9 +15,11 @@ from app.runtime.cache import FileCache
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
+from app.application.messaging.ingress import submit_message_to_host
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
+from app.runtime.thread import ThreadHelper
 from app.modules.qqbot.api import (
     get_access_token,
     get_gateway_url,
@@ -103,20 +105,13 @@ class QQBot:
         except Exception as e:
             logger.debug(f"QQ Bot 保存 known_targets 失败: {e}")
 
-    def _forward_to_message_chain(self, payload: dict) -> None:
-        """直接调用消息链处理，避免 HTTP 开销"""
-
-        def _run():
-            try:
-                # 回调
-                RequestUtils(timeout=15).post_res(
-                    f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}&source={self._config_name}",
-                    json=payload
-                )
-            except Exception as e:
-                logger.error(f"QQ Bot 转发消息失败: {e}")
-
-        threading.Thread(target=_run, daemon=True).start()
+    def _forward_to_message_chain(self, payload: dict) -> bool:
+        """通过受管线程池把 QQ Bot 入站 payload 转交统一消息入口。"""
+        return submit_message_to_host(
+            payload,
+            self._config_name,
+            submit=ThreadHelper().submit,
+        )
 
     def _on_gateway_message(self, payload: dict) -> None:
         """Gateway 收到消息时转发至 MP 消息链，并记录发送者用于广播"""

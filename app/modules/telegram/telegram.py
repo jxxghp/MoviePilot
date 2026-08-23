@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
-from urllib.parse import urljoin, quote
+from urllib.parse import urljoin
 
 from app.modules.telegram.compat import ensure_urllib3_header_param_compat
 
@@ -42,6 +42,7 @@ settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, Context  # noqa: E402
 from app.domain.metainfo import MetaInfo  # noqa: E402
 from app.application.image import ImageHelper  # noqa: E402
+from app.application.messaging.ingress import forward_message_to_host  # noqa: E402
 from app.runtime.thread import ThreadHelper  # noqa: E402
 from app.runtime.log import logger  # noqa: E402
 from app.runtime.execution import retry  # noqa: E402
@@ -74,9 +75,6 @@ class Telegram:
     Telegram 消息客户端，负责发送、编辑、接收和转发 Telegram 消息。
     """
 
-    _ds_url = (
-        f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
-    )
     _bot: TeleBot = None
     _callback_handlers: Dict[str, Callable] = {}  # 存储回调处理器
     _user_chat_mapping: Dict[
@@ -137,11 +135,7 @@ class Telegram:
                 logger.error(f"获取bot信息失败: {e}")
                 self._bot_username = None
 
-            # 标记渠道来源
-            if kwargs.get("name"):
-                # URL encode the source name to handle special characters
-                encoded_name = quote(kwargs.get("name"), safe="")
-                self._ds_url = f"{self._ds_url}&source={encoded_name}"
+            self._config_name = kwargs.get("name")
 
             @_bot.message_handler(commands=["start", "help"])
             def send_welcome(message):
@@ -164,10 +158,7 @@ class Telegram:
                     if not payload:
                         logger.warn("Telegram消息序列化失败，跳过转发")
                         return
-                    response = RequestUtils(timeout=15).post_res(
-                        self._ds_url, json=payload
-                    )
-                    if not response or response.status_code >= 400:
+                    if not self._forward_to_message_chain(payload):
                         logger.warn("Telegram消息转发失败")
 
             @_bot.callback_query_handler(func=lambda call: True)
@@ -208,10 +199,7 @@ class Telegram:
                     _bot.answer_callback_query(call.id)
 
                     # 发送给主程序处理
-                    response = RequestUtils(timeout=15).post_res(
-                        self._ds_url, json=callback_json
-                    )
-                    if not response or response.status_code >= 400:
+                    if not self._forward_to_message_chain(callback_json):
                         logger.warn("Telegram按钮回调转发失败")
 
                 except Exception as err:
@@ -231,6 +219,10 @@ class Telegram:
             self._polling_thread = threading.Thread(target=run_polling, daemon=True)
             self._polling_thread.start()
             logger.info("Telegram消息接收服务启动")
+
+    def _forward_to_message_chain(self, payload: dict) -> bool:
+        """把 Telegram SDK 回调同步转交统一消息入口。"""
+        return forward_message_to_host(payload, self._config_name)
 
     @property
     def bot(self):
