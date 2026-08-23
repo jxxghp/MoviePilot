@@ -58,12 +58,20 @@ class StorageQueryError(Exception):
     pass
 
 
-class DatabaseWorkerClosedError(RuntimeError):
+class PersistenceUnavailableError(RuntimeError):
+    """持久化执行能力暂时拒绝新操作，调用方可在稍后重试。"""
+
+
+class DatabaseWorkerClosedError(PersistenceUnavailableError):
     """数据库执行器尚未启动或已经停止。"""
 
 
-class DatabaseWorkerOverloadedError(RuntimeError):
+class DatabaseWorkerOverloadedError(PersistenceUnavailableError):
     """数据库执行器的运行与排队容量已经用尽。"""
+
+
+class AgentChatPersistenceUnavailableError(PersistenceUnavailableError):
+    """AgentChat 持久化服务因关闭或自身容量限制拒绝新写入。"""
 
 
 class TMDbException(Exception):
