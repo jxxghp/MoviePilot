@@ -159,6 +159,36 @@ def test_downloader_query_contracts_merge_provider_lists() -> None:
         assert contract.result_shape is ModuleResultShape.LIST
 
 
+def test_media_server_contracts_distinguish_streams_lists_and_scalar_routes() -> None:
+    """媒体服务器能力应按真实返回形状选择合并或目标路由语义。"""
+    list_methods = {
+        "media_statistic",
+        "mediaserver_latest",
+        "mediaserver_latest_images",
+        "mediaserver_librarys",
+        "mediaserver_playing",
+    }
+    scalar_methods = {
+        "media_exists",
+        "mediaserver_image_cookies",
+        "mediaserver_items_count",
+        "mediaserver_season_episode_ids",
+    }
+
+    for method in list_methods:
+        contract = get_module_method_contract(method)
+        assert contract.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+        assert contract.result_shape is ModuleResultShape.LIST
+    for method in scalar_methods:
+        contract = get_module_method_contract(method)
+        assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+
+    items = get_module_method_contract("mediaserver_items")
+    assert items.result_contract == "Iterable[MediaServerItem] | None"
+    assert items.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+    assert items.result_shape is ModuleResultShape.ANY
+
+
 def test_heterogeneous_torrent_files_result_remains_legacy_compatible() -> None:
     """下载器文件集合尚未归一前不得声明虚假的列表聚合语义。"""
     contract = get_module_method_contract("torrent_files")
