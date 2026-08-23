@@ -189,6 +189,20 @@ def test_media_server_contracts_distinguish_streams_lists_and_scalar_routes() ->
     assert items.result_shape is ModuleResultShape.ANY
 
 
+def test_storage_value_contracts_use_explicit_provider_semantics() -> None:
+    """存储值查询和动作应停止 legacy 接力，仅文件清单合并 provider 结果。"""
+    for method in ("any_files", "create_folder", "delete_file", "transfer"):
+        contract = get_module_method_contract(method)
+        assert contract.family == "storage"
+        assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+        assert contract.required_parameters
+
+    media_files = get_module_method_contract("media_files")
+    assert media_files.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+    assert media_files.result_shape is ModuleResultShape.LIST
+    assert media_files.required_parameters == ("mediainfo",)
+
+
 def test_heterogeneous_torrent_files_result_remains_legacy_compatible() -> None:
     """下载器文件集合尚未归一前不得声明虚假的列表聚合语义。"""
     contract = get_module_method_contract("torrent_files")
