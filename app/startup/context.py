@@ -6,6 +6,7 @@ from typing import Protocol
 
 from app.application.messaging.chat import (
     AsyncAgentChatRepository,
+    AgentChatPersistenceService,
     AsyncUnitOfWork,
 )
 from app.application.outbox import AsyncOutboxTransaction
@@ -113,6 +114,7 @@ class AgentChatRuntime:
     async_session: AsyncSessionProvider
     repository: AgentChatRepositoryFactory
     transaction: AsyncUnitOfWorkFactory
+    persistence: AgentChatPersistenceService
 
 
 @dataclass(frozen=True, slots=True)

@@ -570,6 +570,122 @@ def test_stop_modules_continues_after_internal_owner_failures(monkeypatch):
         _assert_completed_once(dependency)
 
 
+def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
+    """关闭时先收口 Web Agent，再关闭持久化准入和数据库任务。"""
+    order = []
+    monkeypatch.setattr(modules_initializer, "stop_agent", AsyncMock())
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        modules_initializer,
+        "shutdown_web_agent_background_tasks",
+        AsyncMock(side_effect=lambda: order.append("web-agent")),
+    )
+    persistence = MagicMock()
+    persistence.begin_shutdown = MagicMock(
+        side_effect=lambda: order.append("persistence-admission")
+    )
+    persistence.shutdown = AsyncMock(side_effect=lambda: order.append("persistence"))
+    monkeypatch.setattr(
+        modules_initializer,
+        "get_configured_agent_chat_persistence",
+        MagicMock(return_value=persistence),
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_database_worker",
+        AsyncMock(side_effect=lambda: order.append("database")),
+    )
+    monkeypatch.setattr(modules_initializer, "_database_worker", object())
+
+    asyncio.run(modules_initializer.stop_modules())
+
+    assert order == ["web-agent", "persistence-admission", "persistence", "database"]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_timeout_does_not_skip_database_worker_cleanup(monkeypatch):
+    """模块关闭超时取消当前步骤后仍应继续收口数据库 worker。"""
+    started = asyncio.Event()
+
+    async def blocked_web_agent_shutdown():
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(modules_initializer, "stop_agent", AsyncMock())
+    _patch_module_shutdown_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        modules_initializer,
+        "shutdown_web_agent_background_tasks",
+        blocked_web_agent_shutdown,
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "wait_web_agent_background_tasks",
+        AsyncMock(),
+    )
+    persistence = MagicMock()
+    persistence.begin_shutdown = MagicMock()
+    persistence.shutdown = AsyncMock()
+    monkeypatch.setattr(
+        modules_initializer,
+        "get_configured_agent_chat_persistence",
+        MagicMock(return_value=persistence),
+    )
+    stop_database_worker = AsyncMock()
+    monkeypatch.setattr(modules_initializer, "stop_database_worker", stop_database_worker)
+    monkeypatch.setattr(modules_initializer, "_database_worker", object())
+
+    shutdown = asyncio.create_task(
+        lifecycle.run_shutdown_step(
+            "模块服务",
+            modules_initializer.stop_modules,
+            timeout_seconds=0.01,
+        )
+    )
+    await started.wait()
+    await shutdown
+
+    stop_database_worker.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_timeout_has_hard_bound_for_nonconverging_cleanup() -> None:
+    """关闭收尾不响应取消时，生命周期调用仍必须在预算内返回。"""
+    started = asyncio.Event()
+    cancel_requested = asyncio.Event()
+    release = asyncio.Event()
+    settled = asyncio.Event()
+
+    async def nonconverging_shutdown() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancel_requested.set()
+            await release.wait()
+            settled.set()
+            raise
+
+    started_at = asyncio.get_running_loop().time()
+    shutdown = asyncio.create_task(
+        lifecycle.run_shutdown_step(
+            "不可收敛阶段",
+            nonconverging_shutdown,
+            timeout_seconds=0.01,
+        )
+    )
+    await started.wait()
+    await shutdown
+
+    elapsed = asyncio.get_running_loop().time() - started_at
+    assert elapsed < 0.2
+    await asyncio.wait_for(cancel_requested.wait(), timeout=0.2)
+    assert not settled.is_set()
+
+    release.set()
+    await asyncio.wait_for(settled.wait(), timeout=0.2)
+
+
 def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     """替换 stop_modules 的资源所有者，避免测试启动真实后台服务"""
     dependencies = {}

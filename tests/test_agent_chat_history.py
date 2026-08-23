@@ -1,6 +1,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -278,3 +279,48 @@ def test_memory_manager_restores_agent_messages_from_database():
     assert len(messages) == 1
     assert isinstance(messages[0], HumanMessage)
     assert messages[0].content == "继续之前的话题"
+
+
+def test_async_memory_manager_restores_through_native_async_service(monkeypatch):
+    """异步记忆恢复只能通过会话应用服务的异步查询端口。"""
+    session_id = "session-memory-async"
+    user_id = "3"
+    memory_manager.clear_memory(session_id, user_id)
+    service = SimpleNamespace(
+        get=AsyncMock(
+            return_value=SimpleNamespace(
+                agent_messages=[
+                    {
+                        "type": "human",
+                        "data": {
+                            "content": "异步恢复",
+                            "additional_kwargs": {},
+                            "response_metadata": {},
+                            "type": "human",
+                            "name": None,
+                            "id": None,
+                            "example": False,
+                        },
+                    }
+                ]
+            )
+        )
+    )
+    monkeypatch.setattr(
+        "app.agent.memory.get_configured_agent_chat_service",
+        lambda: service,
+    )
+
+    messages = asyncio.run(
+        memory_manager.async_get_agent_messages(
+            session_id=session_id,
+            user_id=user_id,
+        )
+    )
+
+    assert len(messages) == 1
+    assert messages[0].content == "异步恢复"
+    service.get.assert_awaited_once_with(
+        session_id=session_id,
+        user_id=user_id,
+    )

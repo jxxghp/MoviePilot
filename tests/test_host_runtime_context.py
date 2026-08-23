@@ -13,6 +13,7 @@ from app.api.context import (
     get_agent_chat_repository,
     get_agent_chat_transaction,
 )
+from app.api.dependencies.agent import get_agent_chat_persistence
 from app.startup import lifecycle
 from app.startup.context import (
     AgentChatRuntime,
@@ -57,6 +58,10 @@ class _UnitOfWork:
 
     async def rollback(self) -> None:
         """模拟回滚。"""
+
+
+class _AgentChatPersistence:
+    """提供 AgentChat 运行时所需的最小写端口。"""
 
 
 class _SyncUnitOfWork:
@@ -119,6 +124,7 @@ def _runtime() -> HostRuntime:
             async_session=async_session,
             repository=_Repository,
             transaction=_UnitOfWork,
+            persistence=_AgentChatPersistence(),
         ),
         persistence=PersistenceRuntime(
             sync_session=sync_session,
@@ -186,15 +192,19 @@ def test_fastapi_dependencies_use_fake_runtime_without_real_services() -> None:
     async def probe(
         repository=Depends(get_agent_chat_repository),
         unit_of_work=Depends(get_agent_chat_transaction),
+        persistence=Depends(get_agent_chat_persistence),
     ) -> dict[str, bool]:
         """返回两个类型化能力是否绑定同一请求会话。"""
-        return {"same_session": repository.session is unit_of_work.session}
+        return {
+            "same_session": repository.session is unit_of_work.session,
+            "has_persistence": persistence is app.state.host_runtime.agent_chat.persistence,
+        }
 
     with TestClient(app) as client:
         response = client.get("/probe")
 
     assert response.status_code == 200
-    assert response.json() == {"same_session": True}
+    assert response.json() == {"same_session": True, "has_persistence": True}
 
 
 def test_official_api_dependencies_do_not_use_string_data_locator() -> None:

@@ -23,7 +23,10 @@ from app.factory import (
     localized_unhandled_exception_handler,
     localized_validation_exception_handler,
 )
-from app.application.database import DatabaseWorkerOverloadedError
+from app.application.database import (
+    DatabaseWorkerClosedError,
+    DatabaseWorkerOverloadedError,
+)
 from app.runtime.localization import LocaleHelper
 from app.runtime.config import settings
 from app.schemas.common import JsonData
@@ -65,6 +68,10 @@ def api_app() -> FastAPI:
     app.add_exception_handler(HTTPException, localized_http_exception_handler)
     app.add_exception_handler(
         DatabaseWorkerOverloadedError,
+        database_worker_overloaded_handler,
+    )
+    app.add_exception_handler(
+        DatabaseWorkerClosedError,
         database_worker_overloaded_handler,
     )
     from fastapi.exceptions import RequestValidationError
@@ -124,6 +131,11 @@ def api_app() -> FastAPI:
     async def get_database_busy() -> None:
         """模拟数据库短事务容量耗尽。"""
         raise DatabaseWorkerOverloadedError("worker full")
+
+    @app.get("/database-closed")
+    async def get_database_closed() -> None:
+        """模拟数据库 worker 在关闭态拒绝新任务。"""
+        raise DatabaseWorkerClosedError("worker closed")
 
     @app.get("/native", response_model=None)
     async def get_native_response() -> dict[str, bool]:
@@ -217,6 +229,33 @@ async def test_database_worker_overload_is_retryable_service_unavailable(
         "message": "服务当前繁忙，请稍后重试",
         "data": None,
     }
+
+
+async def test_database_worker_closed_is_retryable_service_unavailable(
+        api_app: FastAPI,
+):
+    """数据库 worker 关闭态应返回 503，而不是落入通用 500。"""
+    async with make_client(api_app) as client:
+        response = await client.get("/database-closed")
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "1"
+    assert response.json() == {
+        "success": False,
+        "message": "服务当前繁忙，请稍后重试",
+        "data": None,
+    }
+
+
+def test_create_app_registers_closed_database_worker_handler() -> None:
+    """生产组合根必须为 worker 关闭态登记 503 处理器。"""
+    from app.factory import create_app
+
+    app = create_app()
+
+    assert app.exception_handlers[DatabaseWorkerClosedError] is (
+        database_worker_overloaded_handler
+    )
 
 
 @pytest.mark.parametrize(

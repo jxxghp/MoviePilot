@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, Optional, Protocol
+from weakref import WeakValueDictionary
 
+from app.application.database import (
+    AsyncDatabaseExecutor,
+    DatabaseWorkerClosedError,
+    DatabaseWorkerOverloadedError,
+)
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
+from app.runtime.observability import record_metric
+
+
+DEFAULT_AGENT_CHAT_WRITE_CAPACITY = 32
+DEFAULT_AGENT_CHAT_SESSION_CAPACITY = 4
+
+
+def has_custom_agent_chat_title(value: Optional[str]) -> bool:
+    """判断会话标题是否已经脱离默认占位标题。"""
+    return bool(value and value.strip() and value.strip() != "未命名会话")
 
 
 class AgentChatPrincipal(Protocol):
@@ -72,6 +90,65 @@ class AsyncAgentChatRepository(Protocol):
         ...
 
 
+class SyncAgentChatRepository(Protocol):
+    """仅包含 Agent 编排所需同步持久化方法的适配器端口。"""
+
+    def append_display_messages(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+        messages: Optional[list[dict]] = None,
+        username: Optional[str] = None,
+        channel: Optional[Any] = None,
+        source: Optional[str] = None,
+        original_chat_id: Optional[str] = None,
+        client_session_id: Optional[str] = None,
+    ) -> Optional[Any]:
+        """追加用户可见消息。"""
+        ...
+
+    def save_display_messages(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+        messages: Optional[list[dict]] = None,
+        username: Optional[str] = None,
+        channel: Optional[Any] = None,
+        source: Optional[str] = None,
+        original_chat_id: Optional[str] = None,
+        client_session_id: Optional[str] = None,
+    ) -> Optional[Any]:
+        """保存用户可见消息快照。"""
+        ...
+
+    def save_agent_messages(
+        self,
+        session_id: str,
+        user_id: Optional[str],
+        messages: list[dict],
+    ) -> None:
+        """保存可恢复的原始 Agent 消息。"""
+        ...
+
+    def update_title_if_empty(
+        self,
+        session_id: str,
+        user_id: Optional[str],
+        title: Optional[str],
+        username: Optional[str] = None,
+        channel: Optional[Any] = None,
+        source: Optional[str] = None,
+        original_chat_id: Optional[str] = None,
+        client_session_id: Optional[str] = None,
+    ) -> None:
+        """在会话尚无标题时写入标题。"""
+        ...
+
+
+SyncAgentChatRepositoryFactory = Callable[[object], SyncAgentChatRepository]
+SyncAgentChatTransaction = Callable[[Callable[[object], object]], object]
+
+
 @dataclass(frozen=True, slots=True)
 class AgentChatRecord:
     """脱离 ORM 会话的 Agent 会话持久化投影。"""
@@ -89,6 +166,7 @@ class AgentChatRecord:
     created_at: Any
     updated_at: Any
     messages: list[dict]
+    agent_messages: list[dict]
 
 
 class AsyncUnitOfWork(Protocol):
@@ -146,9 +224,16 @@ class AgentChatService:
             return None
         return projected
 
-    async def get(self, session_id: str) -> Optional[AgentChatRecord]:
+    async def get(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[AgentChatRecord]:
         """读取不附带授权判断的会话投影。"""
-        record = await self._repository.async_get(session_id=session_id)
+        record = await self._repository.async_get(
+            session_id=session_id,
+            user_id=user_id,
+        )
         if record is None:
             return None
         return self._project(record)
@@ -262,10 +347,210 @@ class AgentChatService:
             created_at=record.created_at,
             updated_at=record.updated_at,
             messages=list(record.display_messages or []),
+            agent_messages=list(record.agent_messages or []),
+        )
+
+
+class AgentChatPersistenceService:
+    """把 Agent 编排所需的同步持久化操作委托给有界数据库 worker。"""
+
+    def __init__(
+        self,
+        repository: SyncAgentChatRepositoryFactory,
+        async_executor: AsyncDatabaseExecutor,
+        sync_transaction: SyncAgentChatTransaction,
+        capacity: int = DEFAULT_AGENT_CHAT_WRITE_CAPACITY,
+        session_capacity: int = DEFAULT_AGENT_CHAT_SESSION_CAPACITY,
+    ) -> None:
+        """保存同步仓储工厂、事务端口和两级写入容量。"""
+        if capacity < 1:
+            raise ValueError("AgentChat 写入容量必须大于 0")
+        if session_capacity < 1:
+            raise ValueError("AgentChat 单会话写入容量必须大于 0")
+        self._repository = repository
+        self._async_executor = async_executor
+        self._sync_transaction = sync_transaction
+        self._capacity = capacity
+        self._session_capacity = session_capacity
+        self._pending_writes = 0
+        self._pending_by_session: dict[str, int] = {}
+        self._active_tasks: set[asyncio.Task[object]] = set()
+        self._closing = False
+        # append_display_messages 属于读取旧快照后整列写回的复合操作；按会话串行化，
+        # 才能在 worker 并发下保持首次建行和既有会话追加的完整性。弱引用避免长期运行
+        # 中为一次性会话永久保留锁对象，不限制不同会话之间的 worker 并行度。
+        self._session_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+
+    def _session_lock(self, session_id: str) -> asyncio.Lock:
+        """返回当前进程内指定会话的写锁。"""
+        lock = self._session_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_locks[session_id] = lock
+        return lock
+
+    def begin_shutdown(self) -> None:
+        """停止接受新的 AgentChat 持久化任务。"""
+        self._closing = True
+
+    async def _run_write(
+        self,
+        session_id: str,
+        operation: Callable[[SyncAgentChatRepository], object],
+    ) -> None:
+        """在线程 worker 内完成同步写入并丢弃仓储对象返回值。"""
+        # 同时限制全局和单会话等待量，避免一个热点会话占满总 admission 后饿死其他会话。
+        if self._closing:
+            raise DatabaseWorkerClosedError("AgentChat 持久化服务当前不可接收任务")
+        session_pending = self._pending_by_session.get(session_id, 0)
+        if (
+            self._pending_writes >= self._capacity
+            or session_pending >= self._session_capacity
+        ):
+            record_metric("agent.chat.persistence.rejected")
+            raise DatabaseWorkerOverloadedError(
+                f"AgentChat 写入容量已用尽（全局上限 {self._capacity}，"
+                f"单会话上限 {self._session_capacity}）"
+            )
+        self._pending_writes += 1
+        self._pending_by_session[session_id] = session_pending + 1
+        current = asyncio.current_task()
+        if current is not None:
+            self._active_tasks.add(current)
+        record_metric("agent.chat.persistence.pending", 1)
+        try:
+            async with self._session_lock(session_id):
+                def execute() -> None:
+                    """在单一同步事务中执行写入，不让 ORM 对象越过 worker 边界。"""
+                    self._sync_transaction(
+                        lambda session: operation(self._repository(session))
+                    )
+
+                await self._async_executor.run(execute)
+        finally:
+            self._pending_writes -= 1
+            remaining = self._pending_by_session.get(session_id, 1) - 1
+            if remaining:
+                self._pending_by_session[session_id] = remaining
+            else:
+                self._pending_by_session.pop(session_id, None)
+            if current is not None:
+                self._active_tasks.discard(current)
+            record_metric("agent.chat.persistence.pending", -1)
+
+    async def shutdown(self) -> None:
+        """拒绝新写入并等待当前会话锁和 worker 操作取得终态。"""
+        self.begin_shutdown()
+        current = asyncio.current_task()
+        tasks = tuple(task for task in self._active_tasks if task is not current)
+        if tasks:
+            # wait 不会在生命周期超时时取消实际写入；外层可及时返回并保留
+            # 数据库 worker owner，已开始的事务继续由 worker 收口。
+            await asyncio.wait(tasks)
+
+    async def async_append_display_messages(
+        self,
+        *,
+        session_id: str,
+        user_id: Optional[str] = None,
+        messages: Optional[list[dict]] = None,
+        username: Optional[str] = None,
+        channel: Optional[Any] = None,
+        source: Optional[str] = None,
+        original_chat_id: Optional[str] = None,
+        client_session_id: Optional[str] = None,
+    ) -> None:
+        """异步追加展示消息，等待同步事务取得确定终态。"""
+        await self._run_write(
+            session_id,
+            lambda repository: repository.append_display_messages(
+                session_id=session_id,
+                user_id=user_id,
+                messages=messages,
+                username=username,
+                channel=channel,
+                source=source,
+                original_chat_id=original_chat_id,
+                client_session_id=client_session_id,
+            )
+        )
+        return None
+
+    async def async_save_display_messages(
+        self,
+        *,
+        session_id: str,
+        user_id: Optional[str] = None,
+        messages: Optional[list[dict]] = None,
+        username: Optional[str] = None,
+        channel: Optional[Any] = None,
+        source: Optional[str] = None,
+        original_chat_id: Optional[str] = None,
+        client_session_id: Optional[str] = None,
+    ) -> None:
+        """异步保存展示消息快照，实际写入由有界 worker 承接。"""
+        await self._run_write(
+            session_id,
+            lambda repository: repository.save_display_messages(
+                session_id=session_id,
+                user_id=user_id,
+                messages=messages,
+                username=username,
+                channel=channel,
+                source=source,
+                original_chat_id=original_chat_id,
+                client_session_id=client_session_id,
+            )
+        )
+        return None
+
+    async def async_save_agent_messages(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        messages: list[dict],
+    ) -> None:
+        """异步保存可恢复的原始消息。"""
+        await self._run_write(
+            session_id,
+            lambda repository: repository.save_agent_messages(
+                session_id=session_id,
+                user_id=user_id,
+                messages=messages,
+            )
+        )
+
+    async def async_update_title_if_empty(
+        self,
+        *,
+        session_id: str,
+        user_id: Optional[str],
+        title: Optional[str],
+        username: Optional[str] = None,
+        channel: Optional[Any] = None,
+        source: Optional[str] = None,
+        original_chat_id: Optional[str] = None,
+        client_session_id: Optional[str] = None,
+    ) -> None:
+        """异步写入首次生成的会话标题。"""
+        await self._run_write(
+            session_id,
+            lambda repository: repository.update_title_if_empty(
+                session_id=session_id,
+                user_id=user_id,
+                title=title,
+                username=username,
+                channel=channel,
+                source=source,
+                original_chat_id=original_chat_id,
+                client_session_id=client_session_id,
+            )
         )
 
 
 _configured_agent_chat_service: AgentChatService | None = None
+_configured_agent_chat_persistence: AgentChatPersistenceService | None = None
 
 
 def configure_agent_chat_service(service: AgentChatService) -> None:
@@ -279,3 +564,18 @@ def get_configured_agent_chat_service() -> AgentChatService:
     if _configured_agent_chat_service is None:
         raise RuntimeError("Agent 会话服务尚未配置")
     return _configured_agent_chat_service
+
+
+def configure_agent_chat_persistence(
+    service: AgentChatPersistenceService,
+) -> None:
+    """由启动组合根登记 Agent 编排所需的同步持久化端口。"""
+    global _configured_agent_chat_persistence
+    _configured_agent_chat_persistence = service
+
+
+def get_configured_agent_chat_persistence() -> AgentChatPersistenceService:
+    """返回由启动组合根登记的 AgentChat worker 端口。"""
+    if _configured_agent_chat_persistence is None:
+        raise RuntimeError("Agent 会话持久化服务尚未配置")
+    return _configured_agent_chat_persistence

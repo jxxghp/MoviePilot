@@ -79,9 +79,13 @@ from app.application.plugin.runtime import get_plugin_manager
 def _get_plugin_tools_revision() -> int:
     """读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。"""
     return get_plugin_manager().get_plugin_agent_tools_revision()
-from app.application.agentdata import AgentChatPort as AgentChatOper
 from app.application.agentdata import AgentTaskPort as AgentTaskOper
 from app.application.agentdata import UserPort as UserOper
+from app.application.messaging.chat import (
+    get_configured_agent_chat_service,
+    get_configured_agent_chat_persistence,
+    has_custom_agent_chat_title,
+)
 from app.runtime.log import logger
 from app.schemas.event import AgentLLMProviderEventData
 from app.schemas.event import AgentTokensUsageEventData
@@ -471,14 +475,14 @@ class MoviePilotAgent:
         """
         return bool(self.channel and self.source)
 
-    def _save_display_history_messages(self, messages: List[dict]) -> None:
+    async def _save_display_history_messages(self, messages: List[dict]) -> None:
         """
         将一组可见消息追加到 Agent 会话历史表。
         """
         if not messages or not self._should_save_display_history():
             return
         try:
-            AgentChatOper().append_display_messages(
+            await get_configured_agent_chat_persistence().async_append_display_messages(
                 session_id=self.session_id,
                 user_id=self.user_id,
                 username=self.username,
@@ -490,13 +494,13 @@ class MoviePilotAgent:
         except Exception as e:
             logger.debug(f"写入Agent展示历史失败: {e}")
 
-    def _save_assistant_display_message_once(self, message: str) -> None:
+    async def _save_assistant_display_message_once(self, message: str) -> None:
         """
         保存一条助手回复展示记录，并标记本轮已写入。
         """
         if not message or self._tool_context.get("assistant_display_saved"):
             return
-        self._save_display_history_messages(
+        await self._save_display_history_messages(
             [self.build_display_message(role="assistant", content=message)]
         )
         self._tool_context["assistant_display_saved"] = True
@@ -576,18 +580,16 @@ class MoviePilotAgent:
             return
         self._tool_context["chat_title_prepared"] = True
         try:
-            chat = await run_in_threadpool(
-                AgentChatOper().get,
+            chat = await get_configured_agent_chat_service().get(
                 session_id=self.session_id,
                 user_id=self.user_id,
             )
-            if chat and AgentChatOper.has_custom_title(chat.title):
+            if chat and has_custom_agent_chat_title(chat.title):
                 return
             title = await self._generate_chat_title(message)
             if not title:
                 return
-            await run_in_threadpool(
-                AgentChatOper().update_title_if_empty,
+            await get_configured_agent_chat_persistence().async_update_title_if_empty(
                 session_id=self.session_id,
                 user_id=self.user_id,
                 title=title,
@@ -2167,9 +2169,12 @@ class MoviePilotAgent:
                 return confirmation_result
 
             # 获取历史消息
-            messages = list(memory_manager.get_agent_messages(
-                session_id=self.session_id, user_id=self.user_id
-            ))
+            messages = list(
+                await memory_manager.async_get_agent_messages(
+                    session_id=self.session_id,
+                    user_id=self.user_id,
+                )
+            )
 
             # 构建结构化用户消息内容
             request_payload = {
@@ -2194,7 +2199,7 @@ class MoviePilotAgent:
                 content.append({"type": "image_url", "image_url": {"url": img}})
             messages.append(HumanMessage(content=content))
             await self.prepare_chat_title(message)
-            self._save_display_history_messages(
+            await self._save_display_history_messages(
                 [
                     self.build_display_message(
                         role="user",
@@ -2219,7 +2224,7 @@ class MoviePilotAgent:
             error_message = f"处理消息时发生错误: {str(e)}"
             logger.error(error_message)
             if not user_display_saved:
-                self._save_display_history_messages(
+                await self._save_display_history_messages(
                     [self.build_display_message(role="user", content=message)]
                 )
             if not self.should_dispatch_reply:
@@ -2460,10 +2465,10 @@ class MoviePilotAgent:
                     if hasattr(msg, "type") and msg.type == "ai" and msg.content:
                         display_text = LLMHelper.extract_text_content(msg.content).strip()
                         break
-            self._save_assistant_display_message_once(display_text)
+            await self._save_assistant_display_message_once(display_text)
 
             if self._should_persist_agent_chat():
-                memory_manager.save_agent_messages(
+                await memory_manager.async_save_agent_messages(
                     session_id=self.session_id,
                     user_id=self.user_id,
                     messages=agent.get_state(agent_config).values.get("messages", []),
@@ -2517,7 +2522,7 @@ class MoviePilotAgent:
             and self.channel == NotificationChannel.Telegram.value
             else None
         )
-        self._save_assistant_display_message_once(message)
+        await self._save_assistant_display_message_once(message)
         await AgentChain().async_post_message(
             Message(
                 channel=None if broadcast else self.channel,
