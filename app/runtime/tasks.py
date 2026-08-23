@@ -24,6 +24,8 @@ class TaskRegistry:
     def __init__(self) -> None:
         """初始化空任务登记表。"""
         self._records: dict[asyncio.Task[Any], TaskRecord] = {}
+        self._shutdown_cancel_requested: set[asyncio.Task[Any]] = set()
+        self._shutdown_timeout_reported: set[asyncio.Task[Any]] = set()
         self._accepting = True
 
     @property
@@ -89,6 +91,8 @@ class TaskRegistry:
     def _discard(self, task: asyncio.Task[Any]) -> None:
         """移除已结束任务，并把未处理异常交给事件循环统一报告。"""
         record = self._records.pop(task, None)
+        self._shutdown_cancel_requested.discard(task)
+        self._shutdown_timeout_reported.discard(task)
         if task.cancelled():
             return
         exception = task.exception()
@@ -103,18 +107,38 @@ class TaskRegistry:
             )
 
     async def shutdown(self, *, timeout_seconds: float = 10.0) -> None:
-        """取消并等待全部登记任务，超时后放弃等待但不影响其他关闭步骤。"""
+        """停止接收并有限等待存量任务，超时任务保留登记并报告责任域。"""
         self._accepting = False
         records = self.records
         tasks = [record.task for record in records]
         for record in records:
-            if record.cancel_on_shutdown:
+            if (
+                record.cancel_on_shutdown
+                and record.task not in self._shutdown_cancel_requested
+            ):
+                self._shutdown_cancel_requested.add(record.task)
                 record.task.cancel()
         if tasks:
-            _, pending = await asyncio.wait(tasks, timeout=timeout_seconds)
-            for task in pending:
-                task.cancel()
-        self._records.clear()
+            await asyncio.wait(tasks, timeout=timeout_seconds)
+
+        unfinished = tuple(
+            record
+            for record in records
+            if not record.task.done()
+            and record.task not in self._shutdown_timeout_reported
+        )
+        if unfinished:
+            self._shutdown_timeout_reported.update(
+                record.task for record in unfinished
+            )
+            asyncio.get_running_loop().call_exception_handler(
+                {
+                    "message": "MoviePilot 后台任务未在关停预算内结束",
+                    "owners": tuple(record.owner for record in unfinished),
+                    "tasks": tuple(record.task for record in unfinished),
+                    "timeout_seconds": timeout_seconds,
+                }
+            )
 
 
 _default_registry = TaskRegistry()

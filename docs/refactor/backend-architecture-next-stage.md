@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义。
 
 ## 当前复核结论（2026-08-23）
 
@@ -22,6 +22,19 @@
 - async 阻塞实际债务已由 fixture 中的 10 项下降到 1 项并固化低水位；剩余项是 Scheduler Agent task 查询，后续阶段迁入异步查询边界后归零。
 
 本阶段只修复治理信号和事实源，不把基线刷新当作业务重构完成。后台任务所有权、Module Contract V2、typed runtime、durable 副作用和质量规模化仍按下列 P1/P2 顺序推进。
+
+### 长期整改阶段 1a：TaskRegistry owner 与关停契约（2026-08-23）
+
+- 手工订阅搜索曾因 `create_sync()` 缺少必填 `owner` 在真实命令路径抛出 `TypeError`；现以
+  `api.subscription.search_schedule` 登记，并由命令级测试冻结既有 scheduler 参数和立即返回语义。
+- 新增符号感知的 `scripts/architecture/task_ownership.py`：宿主中所有可证明为 TaskRegistry 的
+  `create`、`create_sync`、`register` 调用必须显式传入非空字符串字面量 owner，当前债务为零；CI
+  只读执行该门禁。插件、SDK、`runtime/compat` 和测试运行时目录明确排除，不扩大插件 ABI 约束。
+- TaskRegistry 关停超过预算时不再取消不可中断的同步线程包装任务或清空其记录；尚未真正结束的任务
+  保留 owner 并通过事件循环异常处理器报告。可取消协程在整个关停周期只收到一次取消请求，重复或并发
+  关停不会再次打断其异步清理，超时诊断也按任务去重。
+- 本子阶段仍只覆盖 TaskRegistry。Transfer worker/replay、Agent blocking executor、Event handler
+  drain、通道线程和 E2/E3 durable 完成点继续作为阶段 1 后续切片，不能因 owner 门禁通过而宣称完成。
 
 ### 总体判断
 

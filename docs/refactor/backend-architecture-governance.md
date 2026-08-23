@@ -1320,6 +1320,7 @@ done_when: []
 ./.venv/bin/python -m pytest tests/test_legacy_import_compat.py -q
 ./.venv/bin/python -m pytest tests/test_legacy_plugin_resource_imports.py -q
 ./.venv/bin/python -m pytest tests/test_plugin_sdk.py -q
+./.venv/bin/python scripts/architecture/task_ownership.py
 ```
 
 再运行本批次聚焦测试。涉及发布级公共行为时，使用仓库完整门禁：
