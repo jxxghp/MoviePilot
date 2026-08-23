@@ -368,14 +368,14 @@ async def lifespan(app: FastAPI):
     """
     health = get_application_health(app)
     health.begin_startup()
+    main_loop = asyncio.get_running_loop()
     try:
         validate_process_topology(
             workers=settings.API_WORKERS,
             safe_mode=settings.MOVIEPILOT_SAFE_MODE,
         )
         print("Starting up...")
-        # 存储当前循环
-        global_vars.set_loop(asyncio.get_event_loop())
+        global_vars.set_loop(main_loop)
         components = build_lifecycle_components(app)
         enabled_components = tuple(
             component
@@ -411,6 +411,8 @@ async def lifespan(app: FastAPI):
             await stop_task_registry(app)
         except Exception as cleanup_error:
             logger.error(f"启动失败后的后台任务清理失败：{cleanup_error}")
+        finally:
+            global_vars.clear_loop(main_loop)
         raise
     try:
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环
@@ -435,5 +437,8 @@ async def lifespan(app: FastAPI):
                     component.stop_timeout_seconds,
                 )
         finally:
-            # 日志最后关闭，确保其他组件的收尾信息已写入文件
-            LoggerManager.shutdown()
+            try:
+                # 日志最后关闭，确保其他组件的收尾信息已写入文件
+                LoggerManager.shutdown()
+            finally:
+                global_vars.clear_loop(main_loop)

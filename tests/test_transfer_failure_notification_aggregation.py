@@ -1,4 +1,4 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
 from app.chain import transfer as transfer_module
@@ -47,6 +47,16 @@ class _Loop:
         timer = _Timer(callback, args)
         self.timers.append(timer)
         return timer
+
+    @staticmethod
+    def is_running() -> bool:
+        """该替身代表由生命周期持有的运行中循环。"""
+        return True
+
+    @staticmethod
+    def is_closed() -> bool:
+        """该替身在用例期间保持可用。"""
+        return False
 
 
 def _task(*, episode: int, download_hash: str = "hash-1") -> TransferTask:
@@ -153,12 +163,13 @@ def test_enabled_queue_uses_shared_group_key():
         message="整理失败",
         transfer_type="copy",
     )
-    loop = transfer_module.global_vars.loop
-    chain.queue_failed_transfer_notification(
-        task=task,
-        transferinfo=transferinfo,
-        history_id=22,
-    )
+    loop = _Loop()
+    with patch.object(transfer_module.global_vars, "CURRENT_EVENT_LOOP", loop):
+        chain.queue_failed_transfer_notification(
+            task=task,
+            transferinfo=transferinfo,
+            history_id=22,
+        )
 
     chain.failure_notification_aggregator.schedule.assert_called_once()
     kwargs = chain.failure_notification_aggregator.schedule.call_args.kwargs

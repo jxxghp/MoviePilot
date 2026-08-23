@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.foundation.singleton import Singleton
+from app.runtime.config import global_vars
 from app.runtime.extensions.plugin.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
@@ -135,6 +136,11 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
         return task_func()
 
     register = MagicMock()
+    monkeypatch.setattr(
+        global_vars,
+        "CURRENT_EVENT_LOOP",
+        asyncio.get_running_loop(),
+    )
     monkeypatch.setattr(plugins_initializer, "configure_plugin_services", lambda: None)
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(plugins_initializer, "execute_task", execute)

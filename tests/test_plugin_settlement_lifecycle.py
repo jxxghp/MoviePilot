@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.runtime.config import global_vars
 from app.startup import lifecycle
 
 
@@ -23,6 +24,11 @@ async def test_runtime_ready_waits_for_scheduler_and_command_refresh(monkeypatch
         return []
 
     monkeypatch.setattr(lifecycle.settings, "MOVIEPILOT_SAFE_MODE", False)
+    monkeypatch.setattr(
+        global_vars,
+        "CURRENT_EVENT_LOOP",
+        asyncio.get_running_loop(),
+    )
     monkeypatch.setattr(lifecycle, "get_plugin_manager", lambda: manager)
     monkeypatch.setattr(lifecycle, "sync_plugins", sync_plugins)
     monkeypatch.setattr(lifecycle, "execute_task", execute_task)

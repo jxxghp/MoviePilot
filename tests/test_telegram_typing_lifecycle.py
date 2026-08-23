@@ -12,6 +12,7 @@ from app.chain.message import MessageChain
 from app.command import Command, _finish_command_processing_status
 from app.modules.telegram import TelegramModule
 from app.modules.telegram.telegram import Telegram
+from app.runtime.config import global_vars
 from app.schemas.types import NotificationChannel
 
 
@@ -263,7 +264,10 @@ class TestTelegramTypingLifecycle(unittest.TestCase):
             ai_agent_enable=True,
         )
 
-        with patch.object(chain, "_record_user_message"), patch.object(
+        loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
+        with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+                chain, "_record_user_message"
+        ), patch.object(
                 chain, "_mark_message_processing_started"
         ) as start_status, patch(
                 "app.chain.message.get_running_agent_manager",

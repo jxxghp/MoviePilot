@@ -21,6 +21,7 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     """隔离 lifespan 的外部依赖，并按名称注入一个关闭失败"""
     monkeypatch.setattr(lifecycle.settings, "MOVIEPILOT_SAFE_MODE", False)
     monkeypatch.setattr(lifecycle.global_vars, "set_loop", MagicMock())
+    monkeypatch.setattr(lifecycle.global_vars, "clear_loop", MagicMock())
     monkeypatch.setattr(lifecycle.global_vars, "stop_system", MagicMock())
 
     for name in (
@@ -134,6 +135,8 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
 
     asyncio.run(run_lifespan())
 
+    configured_loop = lifecycle.global_vars.set_loop.call_args.args[0]
+    lifecycle.global_vars.clear_loop.assert_called_once_with(configured_loop)
     lifecycle.init_modules.assert_awaited_once_with()
     lifecycle.prepare_database_component.assert_called_once()
     lifecycle.configure_plugin_services.assert_called_once_with()
@@ -411,6 +414,8 @@ def test_lifespan_fails_fast_when_async_engine_cannot_be_built(monkeypatch):
     with pytest.raises(RuntimeError, match="no async driver"):
         asyncio.run(run_lifespan())
 
+    configured_loop = lifecycle.global_vars.set_loop.call_args.args[0]
+    lifecycle.global_vars.clear_loop.assert_called_once_with(configured_loop)
     # 失败要发生在任何东西被初始化之前，否则模块起来了却没人关：关停块在 yield 处才开始
     lifecycle.init_routers.assert_not_called()
     lifecycle.init_modules.assert_not_called()
