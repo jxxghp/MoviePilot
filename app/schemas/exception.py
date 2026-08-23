@@ -1,3 +1,14 @@
+__all__ = (
+    "ImmediateException",
+    "LimitException",
+    "APIRateLimitException",
+    "RateLimitExceededException",
+    "OperationInterrupted",
+    "StorageQueryError",
+    "TMDbException",
+)
+
+
 class ImmediateException(Exception):
     """
     用于立即抛出异常而不重试的特殊异常类。

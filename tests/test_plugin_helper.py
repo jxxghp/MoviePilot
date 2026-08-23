@@ -1680,6 +1680,100 @@ demo = { index = "private" }
             PluginHelper.PLUGIN_DEPENDENCY_INSTALL_TIMEOUT
         )
 
+    def test_async_package_install_cancellation_closes_full_lifecycle(self, tmp_path):
+        """取消真实安装进程后必须回收进程树、临时约束和安装锁。"""
+        import psutil
+
+        from app.adapters.external.market import PluginHelper
+
+        helper = PluginHelper()
+        requirements_file = tmp_path / "requirements.txt"
+        requirements_file.write_text("demo-package\n", encoding="utf-8")
+        constraints_file = tmp_path / "runtime-constraints.txt"
+        marker = tmp_path / "install-pids"
+        child_code = "import time; time.sleep(60)"
+        install_code = (
+            "from pathlib import Path; import os, subprocess, time; "
+            f"child = subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}]); "
+            f"Path({str(marker)!r}).write_text(str(os.getpid()) + ':' + str(child.pid)); "
+            "time.sleep(60)"
+        )
+        strategy = Mock(
+            strategy_name="uv:test",
+            command=[sys.executable, "-c", install_code],
+            env=os.environ.copy(),
+            safe_log_command=[sys.executable, "-c", "<install>"],
+        )
+        health = {
+            "uv check": (True, "ok"),
+            "核心依赖导入检查": (True, "ok"),
+        }
+
+        def create_constraints(_protected_packages):
+            constraints_file.write_text("fastapi==0\n", encoding="utf-8")
+            return constraints_file
+
+        async def run_install():
+            task = asyncio.create_task(
+                helper.async_install_packages_with_fallback(requirements_file)
+            )
+            deadline = time.monotonic() + 2
+            while not marker.exists() and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+            assert marker.exists()
+
+            pids = [int(value) for value in marker.read_text().split(":")]
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            assert not constraints_file.exists()
+            assert PluginHelper._package_install_lock.acquire(blocking=False)
+            PluginHelper._package_install_lock.release()
+            for _ in range(100):
+                alive = []
+                for pid in pids:
+                    try:
+                        process = psutil.Process(pid)
+                        if (
+                            process.is_running()
+                            and process.status() != psutil.STATUS_ZOMBIE
+                        ):
+                            alive.append(pid)
+                    except (psutil.Error, OSError):
+                        continue
+                if not alive:
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                pytest.fail(f"安装进程树仍在运行：{alive}")
+
+        with patch.object(
+                PluginHelper,
+                "_PluginHelper__get_installed_packages",
+                return_value={},
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__get_protected_runtime_packages",
+                return_value={"fastapi": "0"},
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__validate_runtime_dependency_conflicts",
+                return_value=(True, ""),
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__create_runtime_constraints_file",
+                side_effect=create_constraints,
+        ), patch(
+                "app.adapters.external.market.build_package_install_strategies",
+                return_value=[strategy],
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__async_run_runtime_healthcheck",
+                new=AsyncMock(return_value=health),
+        ):
+            asyncio.run(run_install())
+
     def test_install_uses_release_package_when_asset_is_available(self, monkeypatch):
         """
         release 包可用时优先使用 zip 安装，不再额外访问文件列表。
