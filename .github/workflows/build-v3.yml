@@ -161,6 +161,7 @@ jobs:
         with:
           image-ref: moviepilot-v3-candidate:linux-amd64
           version: v0.70.0
+          cache-dir: ${{ runner.temp }}/trivy
           scanners: vuln
           vuln-type: os,library
           severity: HIGH,CRITICAL
@@ -191,6 +192,7 @@ jobs:
         with:
           image-ref: moviepilot-v3-candidate:linux-arm64
           version: v0.70.0
+          cache-dir: ${{ runner.temp }}/trivy
           scanners: vuln
           vuln-type: os,library
           severity: HIGH,CRITICAL

@@ -25,6 +25,7 @@ def test_build_context_excludes_runtime_state_and_keeps_release_inputs() -> None
         ".agent-work/",
         ".runtime/",
         ".tmp/",
+        ".cache/",
         "node_modules/",
         "public/",
         ".moviepilot.env",
