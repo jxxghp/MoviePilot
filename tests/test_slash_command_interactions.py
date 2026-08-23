@@ -209,7 +209,10 @@ class TestSlashCommandInteractions(unittest.TestCase):
             )
         ]
 
-        with patch("app.chain.site.SiteOper.list", return_value=fake_sites), patch.object(
+        with patch(
+            "app.chain.site.get_chain_site_port",
+            return_value=SimpleNamespace(list=lambda: fake_sites),
+        ), patch.object(
             chain, "post_message"
         ) as post_message:
             chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
