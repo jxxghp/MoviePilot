@@ -8,6 +8,65 @@
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
 > 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。
 
+## 当前复核结论（2026-08-23）
+
+本节是本轮全面复核后的当前事实源。本文后续的阶段实施记录保留历史审计证据，
+其中的数量和判断以当时审计提交为准，不能直接当作当前未完成项。
+
+### 总体判断
+
+当前架构总体合理，已经从跨层混合的遗留单体收敛为**边界清晰的模块化单体**：
+
+- 继续采用单进程控制面是正确选择，不建议现在拆成微服务；插件、调度器、工作流、事件和数据库共享进程内状态，拆分会放大部署、事务和兼容成本。
+- `foundation/domain/runtime/adapters/application/chain/api/startup` 的职责方向基本成立；宿主架构基线、复杂度 ratchet、异步阻塞 ratchet 当前均通过。
+- 依赖图当前约 `796` 个 Python 模块、`6432` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
+- 当前主要风险已经从“目录和依赖失控”转移到运行时协议、后台副作用的可靠性和遗留兼容面。换言之，下一阶段重点应是**语义收口和可验证性**，而不是继续搬文件或机械拆大文件。
+
+综合评价：架构方向可持续，生产可用性较高；可演进性仍处于中等水平。现阶段没有静态审计发现必须立即推倒重来的 P0 架构问题，但存在需要按 P1/P2 计划治理的真实债务。
+
+### P1：需要优先治理的真实债务
+
+1. **后台任务没有统一的所有权和恢复模型。** 当前约有 `50` 个 `create_task`/等价任务创建点，另有 FastAPI `BackgroundTasks`、线程池和 APScheduler 并存。生命周期清单能关闭模块、插件、调度器和 Agent，但 API 层的若干任务集合（如 `app/api/endpoints/agent.py`、`app/api/endpoints/plugin.py`）没有统一注册到 HostRuntime，也没有在 shutdown 阶段统一等待或取消。`app/api/endpoints/webhook.py:32`、`app/api/endpoints/site.py:178` 这类接口会先返回成功，再执行关键副作用；进程崩溃、重启或客户端断开时可能丢失。需要为每类任务明确 owner、取消、等待、重试、幂等和是否 durable，关键业务副作用优先接入已有 Outbox/恢复表。
+2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `194` 个仍使用 `legacy` aggregation，只有 `14` 个 `first_non_empty`、`4` 个 `ordered_list_merge`。`app/runtime/extensions/module/contracts.py:422-455` 已能登记 family、输入/结果标签和基础签名诊断，但 `193` 个方法没有 required parameters，调度器 `app/runtime/extensions/module/dispatcher.py:109-260` 仍主要依赖运行时反射、返回值形状和短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
+3. **查询侧数据库兼容 ABI 仍未完全收口。** 写事务装饰器已降为 `0`，事务所有权已经明显改善；但 `app/db/models` 仍有 `106` 个 `db_query/async_db_query`（`62` 个同步、`44` 个异步）。这些装饰器会在调用方未传 Session 时隐式创建并关闭会话（见 `app/db/decorators.py:224-298`），查询返回的 ORM 对象仍可能跨层流转，导致事务组合、对象生命周期和懒加载行为需要依赖隐含约定。应按高频业务路径逐步迁移到显式 Query/Repository + 请求/任务级 Session，不宜一次性全仓改写。
+4. **组合根和全局状态仍形成复杂的隐式运行时图。** Singleton 实例、模块级 provider、`configure_*` 注册函数和兼容 Facade 同时存在；它们解决了旧 ABI 和启动顺序问题，但增加测试污染、重复装配、实例身份和初始化顺序风险。`app/startup/lifecycle/__init__.py:161-376` 已有声明式生命周期，`app/startup/modules_initializer.py:505-530` 也有分阶段关闭，但尚未做到所有进程级资源都只通过 typed HostRuntime 访问。后续应以“新代码禁止新增 Service Locator/Singleton 依赖、旧入口有命中观测”为 ratchet。
+
+### P2：中长期可演进性债务
+
+- **大型职责域仍偏重。** 代表性热点包括 `app/chain/subscribe.py`（约 `4141` 行）、`app/chain/transfer.py`（约 `2944` 行）、`app/agent/orchestrator.py`（约 `3535` 行）、`app/agent/llm/provider.py`（约 `3529` 行）、`app/adapters/external/market.py`（约 `2805` 行）和 `app/api/endpoints/agent.py`（约 `2326` 行）。复杂度 ratchet 只保证不超过当前基线，不代表这些文件已经易维护。只有在行为快照、调用命中和事务边界明确后，才值得按用例拆分。
+- **类型门禁覆盖面不足。** `mypy.ini` strict 文件清单目前约 `37` 个文件，Agent、Chain、Module、Adapter 大量代码仍依赖动态类型。应从模块契约、生命周期、Repository/Port 和关键 Chain 返回值开始扩展，而不是直接开启全仓 strict。
+- **Pylint 仍是增量硬门禁。** `.github/workflows/pylint.yml` 对改动 Python 文件执行硬检查，但全仓报告使用 `|| true` 仅作 advisory。该策略适合存量迁移，却没有形成全仓质量趋势约束；应增加按目录和新增问题数的 ratchet。
+- **测试风格存在历史混用。** 当前约 `499` 个测试文件，仍有约 `70` 个 `unittest.TestCase` 文件。它不是生产架构缺陷，但会增加 fixture、状态隔离和异步测试迁移成本，应在触碰相关模块时渐进迁移。
+- **跨仓治理链路尚未完全闭环。** 前端已有 lint、typecheck、分片 Vitest 和构建门禁；插件仓有 V1/V2/V3 索引及版本/依赖检查；资源和 Rust 仓有独立构建发布链路。但插件 CI 本地复核因插件仓环境缺少主仓依赖 `httpx2` 无法完成收集，说明“插件仓测试环境与主仓锁定依赖”的可复现性仍需加强。资源构建通过 PR 同步到 `MoviePilot-Resources`，Rust 发布后自动向主仓发依赖 bump PR，链路合理但仍是多仓异步发布，需保留版本 provenance 和回滚点。
+
+### 已解决、不应重复治理的问题
+
+- 分层依赖和重点禁止边已建立门禁；不要再以“减少目录数量”作为目标。
+- 全功能多 worker 的误导性配置已由 `app/runtime/topology.py` 和 `app/main.py` 拒绝；V3 默认单 worker 的部署事实已经明确。
+- 写事务已由组合根/UoW/Outbox 方向收口，`db_update/async_db_update` 为零；不要重新引入 Model 自动提交。
+- 已具备 correlation ID、`/health/live`、`/health/ready`、模块/事件/调度观测端口和兼容 Facade 命中指标；历史文档中“完全缺少观测能力”的描述已过时。
+- 旧导入路径、SDK 导出、插件 manifest 和 V1/V2/V3 索引均有白名单或版本约束；兼容层应继续保持“薄、可观测、只增不删”，不应为了清理目录直接删除。
+- TMDB 移植包内部 SCC 属于第三方隔离代码，按现状豁免是合理的技术决策。
+
+### 刻意保留的兼容成本
+
+以下内容不是遗漏，而是当前产品 ABI 的有意成本：
+
+1. 未知第三方插件自定义模块方法继续走 `legacy` fallback，不能因宿主契约收口而拒绝加载旧插件。
+2. `PluginManager`、`PluginHelper`、`MoviePilotServerHelper` 等 Facade 继续保留旧公开/私有调用面，并通过 `compat.facade.hit` 统计迁移命中。
+3. `app/runtime/compat` 的精确旧导入映射、`app.sdk._legacy` 薄门面和插件 V1/V2/V3 三代索引继续存在，直到命中数据和发行策略支持删除。
+4. 查询装饰器保留为只读兼容入口，迁移以高频路径和可观测收益为依据，不以“全仓零装饰器”作为短期目标。
+
+### 建议的后续治理顺序
+
+1. **先做后台任务审计与统一登记**：建立 TaskOwner/生命周期协议，区分请求后非关键通知、可重试 Outbox 副作用和必须在请求内完成的业务写入；为断线、崩溃、重复执行和 shutdown 补测试。
+2. **再做模块契约 V2 增量收口**：优先识别调用量最高、影响下载/整理/识别的能力族，补真实参数对象、结果验证、超时预算和 provider 行为快照；legacy fallback 只保留给第三方未知方法。
+3. **随后迁移查询 ABI**：从订阅、历史、消息、用户和站点等高频查询开始，逐步让 Query/Repository 接收显式 Session，并验证 detached 对象、懒加载和事务组合。
+4. **最后扩展类型和复杂度预算**：每次触碰大型职责域时拆一个可回滚垂直切片，同时扩大 mypy strict 清单和 Pylint 新增问题 ratchet；不要为追求行数指标进行无行为收益的拆分。
+5. **跨仓发布以契约为中心**：保持插件索引、前端远程组件、资源版本、Rust wheel 和主仓依赖的 provenance；将插件测试环境固定为主仓 `uv.lock` 可复现安装，避免本地和 CI 依赖漂移。
+
+本轮复核结论：**当前架构不需要推倒重来，真正未完成的是运行时可靠性和协议收口。** 下一轮治理完成上述 P1 后，再评估是否值得继续拆分大型文件或扩大严格类型范围。
+
 ## 1. 结论先行
 
 MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第一阶段治理已经取得实质成果：

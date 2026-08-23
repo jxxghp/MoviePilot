@@ -574,7 +574,9 @@ async def init_modules() -> HostRuntime:
         scheduler=lambda: build_scheduler_runtime_config(settings),
         chain=lambda: build_chain_runtime_config(settings),
     )
-    runtime_settings = RuntimeSettingsService(settings)
+    # RuntimeSettingsService 必须持有真实 Settings；RuntimeSettingsCompat 是旧 ABI 代理，
+    # 将代理自身注入服务会让 model_dump() 在代理和服务之间无限递归。
+    runtime_settings = RuntimeSettingsService(legacy_settings)
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
