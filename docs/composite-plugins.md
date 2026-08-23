@@ -76,13 +76,14 @@
   例外，按调用方传入的 `source` 参数路由，非本来源必须返回 `None` 让出——见
   `app/sdk/extension.py` 的 `provides_modules` 与 `provides_media_sources` 文档字符串）。
 
-## 三个参考实现怎么用它
+## 三族声明各自怎么写
 
-`tests/test_plugin_import_boundary.py` 的 `REFERENCE_PLUGINS` 只登记了三个插件；它们是唯一
-被门禁保护、保证"只用 `app.sdk` 也写得出来"的范例。三个插件目前都只在各自的
-`provides_*()` 调用里返回**一项**，这里如实注明，不假装它们做了更多。
+`app/plugins/` 是运行期的安装挂载点，本仓不随仓入库任何扩展，因此下面的代码块是照着 SDK
+出口写出来的示例，不是对某个在库文件的摘录。示例里的每一条 `import` 都由
+`tests/test_composite_plugins_doc.py` 核对能在当前代码库解析成功、且不越出插件公开面，
+所以它们是能照抄的写法而不是伪代码。
 
-### `app/plugins/githubsso/__init__.py`——登录入口（`capability="auth"`）
+### 登录入口（`capability="auth"`）
 
 ```python
 from app.sdk.declarations import ServiceInstanceDeclaration
@@ -108,7 +109,7 @@ def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration
 `provides_service_instances()` 本身只声明一项类型不矛盾——这正是 §7.4 讲的"实例数由声明
 表达，与声明它的调用返回几项、扩展建了几个分身，都是不同的轴"。
 
-### `app/plugins/p123disk/__init__.py`——存储后端（`capability="storage"`）
+### 存储后端（`capability="storage"`）
 
 ```python
 from app.sdk.declarations import ServiceInstanceDeclaration
@@ -131,10 +132,10 @@ def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration
 
 存储族的 `impl` 回答的是"按令牌取用时后端类是谁"而不是"怎么构造"：宿主不按
 `impl(name=..., **config)` 展开构造，缺省用默认工厂
-`app.runtime.extensions.registry.storage.storage_instance_factory` 按实例归属交付后端，插件
-不必自己写工厂——`app/plugins/p123disk/__init__.py` 的声明也确实没有给 `factory`。
+`app.runtime.extensions.registry.storage.storage_instance_factory` 按实例归属交付后端。因此
+上面的声明不给 `factory`——只有需要自己接管构造过程的存储后端才补这个字段。
 
-### `app/plugins/servicehealth/__init__.py`——智能体工具
+### 智能体工具
 
 ```python
 from app.sdk.declarations import AgentToolDeclaration
@@ -150,20 +151,18 @@ def provides_agent_tools(self) -> Optional[List[AgentToolDeclaration]]:
     ]
 ```
 
-工具实现类 `ServiceInstanceHealthTool`（`app/plugins/servicehealth/probe.py`）本身消费另一族
-声明的产物：它调用 `app.sdk.service_instances.service_capabilities()` 与
-`service_instance_required_methods()` 查询当前登记的服务族与必填只读方法，再经
-`app.sdk.services` 的 `DownloaderHelper`/`MediaServerHelper`/`NotificationHelper` 取实例状态——
-可见能力表不是各族互不相干，`provides_agent_tools` 声明的工具可以读取
-`provides_service_instances` 登记的结果。
+工具实现类可以反过来消费另一族声明的产物：调用 `app.sdk.service_instances` 的
+`service_capabilities()` 与 `service_instance_required_methods()` 查询当前登记的服务族与
+必填只读方法，再经 `app.sdk.services` 的
+`DownloaderHelper`/`MediaServerHelper`/`NotificationHelper` 取实例状态——可见能力表不是各族
+互不相干，`provides_agent_tools` 声明的工具可以读取 `provides_service_instances` 登记的结果。
 
 ## 想让一次调用登记多项时怎么写
 
-`githubsso` 现在的 `provides_service_instances()` 只 `return` 了一个
-`ServiceInstanceDeclaration`；若该插件要再接入第二个登录方式，只需要在同一个返回列表里
-追加第二个 `ServiceInstanceDeclaration`，把 `type`（连同它自己的 `impl`、`config_form`、
-`config_schema`）换成新类型自己的一份——写法上就是给同一个 Python 列表字面量多加一个元素，
-不涉及额外的注册调用或生命周期钩子。
+上面的登录入口示例只 `return` 了一个 `ServiceInstanceDeclaration`；要再接入第二个登录方式，
+只需要在同一个返回列表里追加第二个 `ServiceInstanceDeclaration`，把 `type`（连同它自己的
+`impl`、`config_form`、`config_schema`）换成新类型自己的一份——写法上就是给同一个 Python
+列表字面量多加一个元素，不涉及额外的注册调用或生命周期钩子。
 
 两项的 `(capability, type)` 不同，`provides_service_instances` 是扩展级族，登记表按
 `(capability, type)` 建键，二者各自独立登记、各自独立被 `unregister_owner` 回收，互不影响。
@@ -173,9 +172,10 @@ def provides_agent_tools(self) -> Optional[List[AgentToolDeclaration]]:
 `provides_meta_parsers`、`provides_channel_capabilities`）连"标识互不相同"这个前提都不必满足
 到跨实例的程度——它们的唯一性只在声明它的那个分身范围内要求。
 
-本仓库当前没有一个 `provides_*()` 调用实际返回过一项以上——三个参考插件都只声明一项，
+本仓库不随仓入库任何扩展，"一次调用返回多项"在本仓的唯一实证是
 `tests/test_plugin_filter_rules.py::test_projection_skips_only_the_offending_declaration`
-用测试桩而非参考插件构造了两项。这里如实说明，不用虚构类去凑一个看着更完整的例子。
+——它用测试桩构造一个插件、一次 `provides_filter_rules()` 返回两条声明。这里如实说明，
+不用虚构的在库插件去凑一个看着更完整的例子。
 
 ## 与本文档保持同步的检查
 

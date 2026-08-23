@@ -8,7 +8,8 @@
 公开面按「宿主自己不许用的那一面」定义，两条各有独立判据：
 
 - ``app.sdk``：唯一的插件门面。它对外承诺什么由 ``app/sdk/_exports.py`` 的快照登记，
-  宿主实现层反过来被禁止依赖它（见 test_architecture_dependencies）。
+  宿主实现层反过来被禁止依赖它（见 test_architecture_dependencies）。下划线开头的子模块
+  是 SDK 自己的生成物与内部实现，不在承诺之内。
 - ``app.schemas``：惰性兼容聚合入口。宿主被禁止使用这个聚合入口、必须走精确子模块
   （见 test_host_code_uses_precise_schema_modules），而插件反过来只许用聚合入口——
   子模块的划分是宿主的内部组织，聚合入口才是生成并版本化的公开面。
@@ -16,29 +17,29 @@
 插件自己的包内导入照常，跨插件导入不在公开面内：另一个插件装没装、是什么版本，都不是
 本插件能假定的。
 
-门禁的对象是随仓入库的参考实现。``app/plugins/`` 同时是运行期的插件安装目录，装在那里的
-第三方插件不是本仓的代码，且多数是靠兼容层工作的 v2 插件——拿 v3 SDK 去判它们越界，既管
-不着又判错了对象，还会让这条规则随开发机上装了什么插件而红。扫描范围因此按
-``REFERENCE_PLUGINS`` 显式登记：参考实现是给社区照抄的范例，「只用 SDK 也写得出来」由它们
-担保。清单与 git 索引的一致性另立一条断言，入库却漏登记的插件不会静默失去保护。
+判据的被测对象是本文件内的合成插件源码，不是磁盘上的文件。``app/plugins/`` 是运行期的
+安装挂载点，不随仓入库任何扩展：拿它当扫描范围，在全新克隆上会扫到空集而恒真，在开发机
+上又会去判第三方插件——两头都判错了对象。合成样本反过来把判据钉死：一份只用公开面的
+源码必须零违规，每一类越界各有一份源码必须被抓到且给出对应改法，样本集本身非空由单独
+一条断言守住。挂载点确实没有随仓入库的扩展，由 git 索引另立一条断言核对。
 """
 
 import ast
 import subprocess
-from pathlib import Path, PurePosixPath
+from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
 from app.sdk._exports import SDK_DECLARED_EXPORTS, SDK_REQUIRED_EXPORTS
 
 PROJECT_ROOT = Path(__file__).parents[1]
-PLUGIN_ROOT = PROJECT_ROOT / "app" / "plugins"
+# 扩展的安装挂载点，纯数据目录，不随仓入库任何扩展
+PLUGIN_MOUNT_POINT = "app/plugins"
+# 本门禁自身在 git 索引里的路径，用于确认读到的确实是本仓的索引
+GATE_ENTRY = "tests/test_plugin_import_boundary.py"
 # 插件所在的包，插件包内导入按它加插件包名判定
 PLUGIN_PACKAGE = "app.plugins"
-# 随仓入库的参考实现，门禁的扫描范围；新增参考实现须同时登记在此
-REFERENCE_PLUGINS = frozenset({"githubsso", "p123disk", "servicehealth"})
-# 宿主提供的扩展基类所在处，不是插件，不参与判定
-HOST_BASE_ENTRY = "app/plugins/__init__.py"
 # 插件门面根包；下划线开头的子模块是 SDK 自己的生成物与内部实现，不对插件承诺
 SDK_ROOT = "app.sdk"
 # schema 惰性兼容聚合入口，插件只用它，不下探子模块
@@ -82,61 +83,173 @@ def sdk_module_index() -> dict[str, set[str]]:
 SYMBOL_INDEX = sdk_symbol_index()
 MODULE_INDEX = sdk_module_index()
 
+# 只用公开面写成的插件包名，样本里的自引用绝对导入按它判定
+COMPLIANT_PACKAGE = "compliantplugin"
+# 只用公开面写成的插件源码：SDK 门面、schema 聚合入口、本插件包内导入各写到一次，
+# 静态与动态两种导入形态也各写到一次
+COMPLIANT_SOURCES: dict[str, str] = {
+    "__init__.py": '''
+from importlib import import_module
+from typing import List, Optional
 
-def reference_plugin_files(package: str) -> list[Path]:
-    """列出一个参考实现的源码文件。
+from app.schemas import FileItem
+from app.sdk.declarations import ServiceInstanceDeclaration
+from app.sdk.extension import _PluginBase
+from app.sdk.logging import logger
 
-    单文件插件与包形态插件都收，前者的包名即去掉后缀的文件名。
+from .storage import SampleStorage
 
-    :param package: 参考实现的插件包名
-    :return: 源码路径列表，插件不在磁盘上时为空
-    """
-    directory = PLUGIN_ROOT / package
-    if directory.is_dir():
-        return list(directory.rglob("*.py"))
-    module = PLUGIN_ROOT / f"{package}.py"
-    return [module] if module.is_file() else []
-
-
-def reference_plugin_sources() -> list[tuple[str, Path]]:
-    """列出随仓入库的参考实现的源码文件。
-
-    :return: ``(插件名, 源码路径)`` 列表
-    """
-    return sorted(
-        (package, path)
-        for package in REFERENCE_PLUGINS
-        for path in reference_plugin_files(package)
-    )
+STORAGE_TYPE = "sample"
 
 
-def tracked_plugin_packages() -> frozenset[str] | None:
-    """按 git 索引列出随仓入库的插件包名。
+class CompliantPlugin(_PluginBase):
+    plugin_name = "CompliantPlugin"
 
-    索引里必须认得出宿主扩展基类那一项，认不出说明看的不是本仓的索引，判不了谁随仓入库。
+    def init_plugin(self, config=None):
+        logger.info("载入合规样本插件")
+        self._services = import_module("app.sdk.services")
 
-    :return: 插件包名集合；git 不可用、不在仓内或索引对不上本仓时为 None
-    """
-    try:
-        completed = subprocess.run(
-            ("git", "ls-files", "-z", "--", "app/plugins"),
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
+    def get_state(self) -> bool:
+        return True
+
+    def provides_service_instances(self) -> Optional[List[ServiceInstanceDeclaration]]:
+        return [
+            ServiceInstanceDeclaration(
+                capability="storage",
+                type=STORAGE_TYPE,
+                name="样本存储",
+                impl=SampleStorage,
+            )
+        ]
+
+    def probe(self, item: FileItem) -> bool:
+        return bool(item.path)
+''',
+    "storage.py": '''
+from typing import Optional
+
+import app.sdk.storage
+from app.plugins.compliantplugin.naming import STORAGE_NAME
+from app.schemas import FileItem
+
+
+class SampleStorage(app.sdk.storage.StorageBase):
+    schema = None
+    transtype = {}
+
+    def check(self) -> bool:
+        return True
+
+    def label(self) -> str:
+        return STORAGE_NAME
+
+    def head(self) -> Optional[FileItem]:
         return None
-    if completed.returncode:
-        return None
-    entries = [entry for entry in completed.stdout.split("\0") if entry]
-    if HOST_BASE_ENTRY not in entries:
-        return None
-    return frozenset(
-        PurePosixPath(entry).parts[2].removesuffix(".py")
-        for entry in entries
-        if entry != HOST_BASE_ENTRY
-    )
+''',
+    "naming.py": '''
+STORAGE_NAME = "样本存储"
+''',
+}
+
+
+@dataclass(frozen=True)
+class ViolationSample:
+    """一份刻意越界的插件源码样本，连同它应当被判成什么。
+
+    :param package: 发起导入的插件包名
+    :param source: 插件源码
+    :param expected: ``(模块路径, 符号名, 改法应当包含的文字)`` 列表
+    """
+
+    package: str
+    source: str
+    expected: tuple[tuple[str, str, str], ...]
+
+
+# 每一类越界各一份样本；改法文本按 remedy() 的分支逐类核对，抓到但给错改法同样算失守
+VIOLATION_SAMPLES: dict[str, ViolationSample] = {
+    "宿主内部路径": ViolationSample(
+        package="hostreacher",
+        source='''
+from app.db.models.user import User
+from app.runtime.config import Settings
+from app.sdk.extension import _PluginBase
+
+
+class HostReacher(_PluginBase):
+    plugin_name = "HostReacher"
+
+    def init_plugin(self, config=None):
+        self._settings = Settings()
+        self._user_model = User
+''',
+        expected=(
+            ("app.db.models.user", "User", "SDK 未提供该出口"),
+            ("app.runtime.config", "Settings", "改用 app.sdk.config.Settings"),
+        ),
+    ),
+    "schema 子模块": ViolationSample(
+        package="schemadiver",
+        source='''
+import app.schemas.file
+from app.schemas.types import MediaType
+
+
+def parse(kind: str) -> MediaType:
+    return MediaType(kind)
+''',
+        expected=(
+            ("app.schemas.file", "", "改从 app.schemas 聚合入口取"),
+            ("app.schemas.types", "MediaType", "改从 app.schemas 聚合入口取"),
+        ),
+    ),
+    "跨插件导入": ViolationSample(
+        package="borrower",
+        source='''
+from app.plugins.otherplugin import OtherHelper
+from app.plugins.otherplugin.client import OtherClient
+
+
+def borrow() -> OtherHelper:
+    return OtherHelper(OtherClient())
+''',
+        expected=(
+            ("app.plugins.otherplugin", "OtherHelper", "跨插件导入不在公开面内"),
+            ("app.plugins.otherplugin.client", "OtherClient", "跨插件导入不在公开面内"),
+        ),
+    ),
+    "SDK 内部模块": ViolationSample(
+        package="sdkdiver",
+        source='''
+import app.sdk._legacy.storage
+from app.sdk._exports import SDK_DECLARED_EXPORTS
+
+
+def declared() -> dict:
+    return SDK_DECLARED_EXPORTS
+''',
+        expected=(
+            ("app.sdk._exports", "SDK_DECLARED_EXPORTS", "SDK 未提供该出口"),
+            ("app.sdk._legacy.storage", "", "SDK 未提供该出口"),
+        ),
+    ),
+    "动态导入": ViolationSample(
+        package="latebinder",
+        source='''
+from importlib import import_module
+
+
+def late_bind():
+    events = import_module("app.runtime.events")
+    models = __import__("app.db.models")
+    return events, models
+''',
+        expected=(
+            ("app.db.models", "", "SDK 未提供该出口"),
+            ("app.runtime.events", "", "改从 app.sdk.events 取用"),
+        ),
+    ),
+}
 
 
 def imported_paths(tree: ast.Module) -> list[tuple[int, str, str]]:
@@ -218,60 +331,143 @@ def remedy(module_name: str, symbol_name: str) -> str:
     return "SDK 未提供该出口；先在 app/sdk 下补一个门面并刷新导出快照，不要放宽本边界"
 
 
-def test_plugins_only_import_the_sdk_and_public_surface():
-    """参考实现的 app 内导入必须全部落在 SDK、schema 聚合入口或本插件包内。"""
-    violations: list[str] = []
-    for package, path in reference_plugin_sources():
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        relative = path.relative_to(PROJECT_ROOT)
-        violations.extend(
-            f"{relative}:{lineno} 导入 "
-            f"{'.'.join(part for part in (module_name, symbol_name) if part)}；"
-            f"{remedy(module_name, symbol_name)}"
-            for lineno, module_name, symbol_name in imported_paths(tree)
-            if not is_public_surface(module_name, package)
+def source_imports(filename: str, source: str) -> list[tuple[int, str, str]]:
+    """解析一份插件源码，取出其中的绝对 app 导入。
+
+    :param filename: 源码文件名，供语法错误定位
+    :param source: 插件源码
+    :return: ``(行号, 模块路径, 符号名)`` 列表
+    """
+    return imported_paths(ast.parse(source, filename=filename))
+
+
+def source_violations(
+    package: str, filename: str, source: str
+) -> list[tuple[str, str, str]]:
+    """扫描一份插件源码，逐条给出越界导入及其改法。
+
+    :param package: 发起导入的插件包名
+    :param filename: 源码文件名，供语法错误定位
+    :param source: 插件源码
+    :return: 按模块路径与符号名排序的 ``(模块路径, 符号名, 改法)`` 列表
+    """
+    return sorted(
+        (module_name, symbol_name, remedy(module_name, symbol_name))
+        for _lineno, module_name, symbol_name in source_imports(filename, source)
+        if not is_public_surface(module_name, package)
+    )
+
+
+def tracked_paths(pathspec: str) -> list[str] | None:
+    """按 git 索引列出一个路径下被跟踪的文件。
+
+    :param pathspec: git 路径限定符
+    :return: 相对仓库根的路径列表；git 不可用或不在仓内时为 None
+    """
+    try:
+        completed = subprocess.run(
+            ("git", "ls-files", "-z", "--", pathspec),
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if completed.returncode:
+        return None
+    return [entry for entry in completed.stdout.split("\0") if entry]
+
+
+def test_a_plugin_that_only_uses_the_public_surface_has_no_violations():
+    """只用 SDK、schema 聚合入口与本插件包写成的插件，逐个文件都判不出违规。"""
+    violations = {
+        filename: source_violations(COMPLIANT_PACKAGE, filename, source)
+        for filename, source in COMPLIANT_SOURCES.items()
+    }
+
+    assert all(not found for found in violations.values()), (
+        "合规样本被判出违规，判据把公开面之内的写法也拦了：\n"
+        + "\n".join(
+            f"{filename}: {found}" for filename, found in violations.items() if found
+        )
+    )
+
+
+def test_the_compliant_sample_exercises_every_allowed_shape():
+    """合规样本必须把三种允许形态各写到一次。
+
+    只写了本插件包内导入的样本同样零违规，却什么都没验证——上一条的零违规要说明
+    「公开面之内的写法不会被误伤」，前提是这三种形态都在样本里出现过。
+    """
+    modules = {
+        module_name
+        for filename, source in COMPLIANT_SOURCES.items()
+        for _lineno, module_name, _symbol in source_imports(filename, source)
+    }
+
+    assert any(
+        module == SDK_ROOT or module.startswith(f"{SDK_ROOT}.") for module in modules
+    ), f"合规样本没有一条 SDK 门面导入，当前只有 {sorted(modules)}"
+    assert SCHEMA_FACADE in modules, (
+        f"合规样本没有用到 schema 聚合入口，当前只有 {sorted(modules)}"
+    )
+    assert any(
+        module.startswith(f"{PLUGIN_PACKAGE}.{COMPLIANT_PACKAGE}") for module in modules
+    ), f"合规样本没有一条本插件包内的绝对导入，当前只有 {sorted(modules)}"
+
+
+@pytest.mark.parametrize("category", sorted(VIOLATION_SAMPLES))
+def test_each_violation_class_is_caught_with_the_right_remedy(category: str):
+    """每一类越界导入都必须被抓到，且改法说明指向这一类应当的出口。
+
+    抓到而给错改法与没抓到同样是失守：门禁的产出是给插件作者看的改法，指错了地方
+    作者只会去放宽边界。
+    """
+    sample = VIOLATION_SAMPLES[category]
+
+    found = source_violations(sample.package, f"{sample.package}.py", sample.source)
+
+    assert [(module, symbol) for module, symbol, _text in found] == [
+        (module, symbol) for module, symbol, _fragment in sample.expected
+    ], f"「{category}」样本判出的越界条目与预期不符：{found}"
+    for (module, symbol, text), (_module, _symbol, fragment) in zip(
+        found, sample.expected
+    ):
+        assert fragment in text, (
+            f"「{category}」样本里 {module}.{symbol} 的改法是 {text!r}，"
+            f"未指向应有的出口 {fragment!r}"
         )
 
-    assert not violations, "\n".join(
-        [
-            "[插件越界] 以下插件导入了 SDK 与公开面之外的宿主路径：",
-            *violations,
-            "插件可依赖的只有 app.sdk 与 app.schemas 聚合入口，以及本插件包自身。",
-        ]
-    )
 
+def test_the_sample_set_is_not_vacuous():
+    """样本集非空，且每份违规样本都至少期待一条违规。
 
-def test_the_boundary_gate_covers_the_reference_implementations():
-    """三个原生参考实现必须在本门禁的扫描范围内。
-
-    参考实现被搬走、改名，或登记清单被清空时上一条会无声通过——一条不扫任何文件的规则
-    和没有规则是一回事。参考实现是「只用 SDK 也写得出来」的验收标准，它们在场即门禁在跑。
-
-    三个各压一族扩展点：``githubsso`` 声明登录认证族的服务实例类型，``p123disk`` 声明
-    存储族的服务实例类型，``servicehealth`` 声明智能体工具。三者要用的 SDK 出口互不重叠
-    ——登录票据与服务实例发现、存储基类、智能体工具基类与标签——一族缺席即那几个出口
-    「只用 SDK 也写得出来」无人担保。
+    样本被清空或期望被改成空列表时，上面几条会一条不落地通过——一条不判任何东西的
+    规则和没有规则是一回事。
     """
-    scanned = {package for package, _path in reference_plugin_sources()}
-
-    assert {"githubsso", "p123disk", "servicehealth"} <= scanned, (
-        f"参考实现不在扫描范围内，当前只扫到 {sorted(scanned)}"
+    assert COMPLIANT_SOURCES, "合规样本为空，零违规不说明任何事"
+    assert VIOLATION_SAMPLES, "违规样本为空，门禁没有被任何输入检验过"
+    empty = sorted(
+        category
+        for category, sample in VIOLATION_SAMPLES.items()
+        if not sample.expected
     )
+    assert empty == [], f"以下违规样本没有期待任何一条违规：{empty}"
 
 
-def test_every_in_repo_plugin_is_registered_as_a_reference_implementation():
-    """随仓入库的插件必须逐个登记进扫描清单。
+def test_the_mount_point_carries_no_tracked_extension():
+    """``app/plugins/`` 挂载点下不得有任何随仓入库的文件。
 
-    显式清单换来了「不受运行期装了什么插件影响」，代价是新增参考实现要多改一处；漏改
-    的后果不是报错而是这个插件不受门禁保护，本条把这种漏改变成红。
+    挂载点是运行期的安装目录，容器可以把宿主目录整个卷挂上来盖掉它。随仓入库的扩展
+    在部署形态下当场消失，测试却仍在开发机上绿着；本条把这种落差挡在入库那一刻。
     """
-    tracked = tracked_plugin_packages()
-    if tracked is None:
-        pytest.skip("git 索引不可用，判不了哪些插件随仓入库")
+    tracked = tracked_paths(PLUGIN_MOUNT_POINT)
+    gate = tracked_paths(GATE_ENTRY)
+    if tracked is None or gate != [GATE_ENTRY]:
+        pytest.skip("git 索引不可用，判不了挂载点下有没有随仓入库的文件")
 
-    assert tracked == REFERENCE_PLUGINS, (
-        "扫描清单与随仓入库的插件对不上："
-        f"入库但漏登记 {sorted(tracked - REFERENCE_PLUGINS)}，"
-        f"登记了但不在库里 {sorted(REFERENCE_PLUGINS - tracked)}；"
-        "漏登记的插件不受导入边界门禁保护，请把它补进 REFERENCE_PLUGINS。"
+    assert tracked == [], (
+        f"{PLUGIN_MOUNT_POINT}/ 下有 {len(tracked)} 个文件随仓入库：{tracked}\n"
+        "挂载点是纯数据目录，扩展应发布到插件仓由用户安装，不放进本仓。"
     )

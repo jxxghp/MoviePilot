@@ -7,7 +7,7 @@
 
 | 验证时用到的东西 | 本仓状态 |
 |---|---|
-| 插件包 `app/plugins/rclonestorageplugin/` | 不存在。`.gitignore` 只放行 `githubsso`、`p123disk`、`servicehealth` 三个参考实现 |
+| 插件包 `app/plugins/rclonestorageplugin/` | 不存在。`.gitignore` 的 `app/plugins/**` 不放行任何扩展，挂载点是纯数据目录 |
 | 测试 `tests/test_plugin_native_capability.py` | 不存在 |
 | `plugin_module` capability kind | 不存在。`app/runtime/extensions/lifecycle/host_module_adapter.py` 只登记 `HOST_MODULE_KIND = "host_module"` |
 | `build_host_module_registry(extra_roots=...)` | 不存在。该函数不接受任何参数，声明根写死为 `app/modules` |

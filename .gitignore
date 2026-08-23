@@ -14,14 +14,8 @@ app/application/site/*.bin
 # app/helper，同目录的 .so/.pyd 由上面的通配兜住，只有 .bin 漏了网
 app/helper/*.bin
 # 扩展的安装挂载点，是纯数据目录：容器可以把宿主目录整个卷挂到这里，因此不放任何
-# 宿主源码（连 __init__.py 都没有，app.plugins 是命名空间包）。入库的只有三个参考实现。
+# 宿主源码（连 __init__.py 都没有，app.plugins 是命名空间包），也不随仓入库任何扩展。
 app/plugins/**
-!app/plugins/githubsso/
-!app/plugins/githubsso/**
-!app/plugins/p123disk/
-!app/plugins/p123disk/**
-!app/plugins/servicehealth/
-!app/plugins/servicehealth/**
 config/cookies/
 config/app.env
 config/user.db*
@@ -54,6 +48,7 @@ pylint-report.json
 .pylint.d/
 
 # AI
+.codegraph/
 .claude/
 !.claude/*.json
 .claude/settings.local.json

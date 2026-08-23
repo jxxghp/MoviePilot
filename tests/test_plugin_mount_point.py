@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import importlib
-import shutil
 import sys
 from pathlib import Path
 
@@ -19,8 +18,6 @@ from app.sdk.extension import _PluginBase
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = PROJECT_ROOT / "app" / "plugins"
-# 参考实现里依赖最少的一个，用于验证挂载覆盖后仍能按 app.plugins.<id> 导入
-REFERENCE_PLUGIN = "servicehealth"
 # 存量扩展的既有写法，必须继续可用
 LEGACY_PLUGIN_SOURCE = """
 from app.plugins import _PluginBase
@@ -34,6 +31,26 @@ class MountedPlugin(_PluginBase):
 
     def get_state(self) -> bool:
         return True
+"""
+# 按 SDK 门面写的扩展包入口，包内相对导入取同包子模块的常量
+SDK_PLUGIN_INIT_SOURCE = """
+from app.sdk.extension import _PluginBase
+
+from .naming import PLUGIN_TITLE
+
+
+class MountedSdkPlugin(_PluginBase):
+    plugin_name = PLUGIN_TITLE
+
+    def init_plugin(self, config=None):
+        pass
+
+    def get_state(self) -> bool:
+        return True
+"""
+# 扩展包内的子模块，验证包形态扩展的多文件布局在挂载目录里照常解析
+SDK_PLUGIN_NAMING_SOURCE = """
+PLUGIN_TITLE = "挂载目录里的 SDK 扩展"
 """
 
 
@@ -117,20 +134,28 @@ def test_unregistered_names_are_not_invented() -> None:
         from app.plugins import NotAPluginSymbol  # noqa: F401
 
 
-def test_reference_plugin_loads_from_a_mounted_directory(
+def test_sdk_plugin_package_loads_from_a_mounted_directory(
     mounted_plugin_root: Path,
 ) -> None:
-    """挂载目录整体覆盖挂载点后，参考实现仍按 ``app.plugins.<id>`` 导入。"""
-    shutil.copytree(
-        PLUGIN_ROOT / REFERENCE_PLUGIN,
-        mounted_plugin_root / REFERENCE_PLUGIN,
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
+    """挂载目录整体覆盖挂载点后，包形态扩展仍按 ``app.plugins.<id>`` 导入。
+
+    多文件的包与单文件的包走的不是同一条解析路径：包内相对导入要先解析出父包，父包
+    的 ``__path__`` 又来自被卷挂载盖掉的挂载点。子模块与入口都落在挂载目录里，才说明
+    整棵包都是从挂载目录解析出来的。
+    """
+    plugin_dir = mounted_plugin_root / "mountedsdkplugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "__init__.py").write_text(SDK_PLUGIN_INIT_SOURCE, encoding="utf-8")
+    (plugin_dir / "naming.py").write_text(SDK_PLUGIN_NAMING_SOURCE, encoding="utf-8")
     importlib.invalidate_caches()
 
-    module = importlib.import_module(f"app.plugins.{REFERENCE_PLUGIN}")
+    module = importlib.import_module("app.plugins.mountedsdkplugin")
 
+    assert issubclass(module.MountedSdkPlugin, _PluginBase)
+    assert module.MountedSdkPlugin.plugin_name == "挂载目录里的 SDK 扩展"
     assert Path(module.__file__).is_relative_to(mounted_plugin_root)
+    submodule = sys.modules["app.plugins.mountedsdkplugin.naming"]
+    assert Path(submodule.__file__).is_relative_to(mounted_plugin_root)
 
 
 def test_legacy_plugin_source_loads_from_a_mounted_directory(

@@ -112,6 +112,21 @@ def isolate_config_dir() -> str:
     return tmp
 
 
+def ensure_plugin_mount_point() -> Path:
+    """建出扩展安装挂载点，使 ``app.plugins`` 命名空间包可解析（幂等）。
+
+    ``app/plugins/`` 是运行期的安装目录，不随仓入库任何文件，全新克隆里因此没有这个目录；
+    而不存在的目录构不成命名空间包，``from app.plugins import _PluginBase`` 这类存量写法
+    会 ``ModuleNotFoundError``。生产运行期由启动流程建出该目录，测试引导在此建出同一个
+    目录，两边的前置条件一致。
+
+    :return: 挂载点目录
+    """
+    mount_point = Path(__file__).resolve().parents[1] / "plugins"
+    mount_point.mkdir(parents=True, exist_ok=True)
+    return mount_point
+
+
 def _expose_plugin_source(path: Path) -> None:
     """让插件仓源码通过生产运行时的 ``app.plugins.<id>`` 命名空间导入。
 
@@ -176,14 +191,16 @@ def ensure_optional_stub(name: str, **attrs) -> None:
 
 
 def prepare_backend() -> None:
-    """隔离 CONFIG_DIR、补 sites 垫片、建表并加载配置快照。
+    """隔离 CONFIG_DIR、建出扩展挂载点、补 sites 垫片、建表并加载配置快照。
 
     主程序中后端即当前包；插件仓由其 ``tests/_bootstrap.py`` shim 在 import 本模块前
-    先把后端目录注入 ``sys.path``。顺序固定：先隔离 CONFIG_DIR，再补 ``app.application.site.sites`` 垫片，
-    最后建表——隔离出的临时库为空，运行期查 ``systemconfig`` 等表会报 no such table，故建表；
-    ``init_db`` 仅 import models + create_all，无 alembic/网络、幂等、毫秒级。
+    先把后端目录注入 ``sys.path``。顺序固定：先隔离 CONFIG_DIR，再建挂载点与补
+    ``app.application.site.sites`` 垫片，最后建表——隔离出的临时库为空，运行期查
+    ``systemconfig`` 等表会报 no such table，故建表；``init_db`` 仅 import models +
+    create_all，无 alembic/网络、幂等、毫秒级。
     """
     isolate_config_dir()
+    ensure_plugin_mount_point()
     ensure_sites_stub()
     from app.startup.database_initializer import init_db, load_configuration_snapshots
     init_db()
