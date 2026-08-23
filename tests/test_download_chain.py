@@ -142,7 +142,11 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "ThreadHelper", _FakeThreadHelper)
-    monkeypatch.setattr(download_module, "DownloadHistoryOper", _FakeDownloadHistoryOper)
+    monkeypatch.setattr(
+        download_module,
+        "get_chain_download_history_port",
+        _FakeDownloadHistoryOper,
+    )
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
 
     chain = DownloadChain.__new__(DownloadChain)
@@ -268,7 +272,11 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "ThreadHelper", _FakeThreadHelper)
-    monkeypatch.setattr(download_module, "DownloadHistoryOper", _CapturingDownloadHistoryOper)
+    monkeypatch.setattr(
+        download_module,
+        "get_chain_download_history_port",
+        _CapturingDownloadHistoryOper,
+    )
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
 
     chain = DownloadChain.__new__(DownloadChain)
@@ -791,7 +799,11 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
-    monkeypatch.setattr(download_module, "DownloadFailureOper", _CapturingDownloadFailureOper)
+    monkeypatch.setattr(
+        download_module,
+        "get_chain_download_failure_port",
+        _CapturingDownloadFailureOper,
+    )
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
@@ -924,7 +936,11 @@ def test_batch_download_skips_failed_subscription_resource_and_tries_next(monkey
                 next_retry_at="2026-01-02 03:04:05",
             )}
 
-    monkeypatch.setattr(download_module, "DownloadFailureOper", _ActiveDownloadFailureOper)
+    monkeypatch.setattr(
+        download_module,
+        "get_chain_download_failure_port",
+        _ActiveDownloadFailureOper,
+    )
 
     chain = DownloadChain.__new__(DownloadChain)
     chain.download_single = MagicMock(return_value="hash")
@@ -1157,7 +1173,7 @@ def test_downloading_includes_media_type_and_source_site(monkeypatch):
     monkeypatch.setattr(chain, "list_torrents", lambda **_kwargs: [torrent])
     monkeypatch.setattr(
         download_module,
-        "DownloadHistoryOper",
+        "get_chain_download_history_port",
         lambda: SimpleNamespace(get_by_hashes=lambda _hashes: {torrent.hash: history}),
     )
 

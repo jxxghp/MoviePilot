@@ -217,7 +217,10 @@ def test_music_library_exists_uses_atomic_album_lookup():
     mediaserver = Mock()
     mediaserver.get_item_id.return_value = "album-item-1"
 
-    with patch("app.chain.download.MediaServerOper", return_value=mediaserver):
+    with patch(
+        "app.chain.download.get_chain_media_server_port",
+        return_value=mediaserver,
+    ):
         exists, no_exists = chain.get_no_exists_info(
             meta=MetaMusic.from_music_info(album),
             mediainfo=album,
