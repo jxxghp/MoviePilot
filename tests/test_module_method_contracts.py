@@ -303,6 +303,31 @@ def test_sync_and_async_media_capabilities_share_contracts() -> None:
     )
 
 
+def test_sync_and_async_discovery_lists_share_contracts() -> None:
+    """媒体榜单与搜索的同步、异步入口必须共享有序列表契约。"""
+    sync_methods = (
+        "movie_hot",
+        "movie_showing",
+        "movie_top250",
+        "search_collections",
+        "search_persons",
+        "search_subtitles",
+        "search_torrents",
+        "tv_animation",
+        "tv_hot",
+        "tv_weekly_chinese",
+        "tv_weekly_global",
+    )
+
+    for sync_method in sync_methods:
+        async_method = f"async_{sync_method}"
+        contract = get_module_method_contract(sync_method)
+        assert contract is get_module_method_contract(async_method)
+        assert contract.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+        assert contract.result_shape is ModuleResultShape.LIST
+        assert contract.required_parameters
+
+
 def test_attachment_result_diagnostics_distinguish_bytes_and_strings() -> None:
     """附件契约应区分二进制内容和可展示字符串，偏差仍仅供诊断。"""
     assert diagnose_module_result("download_qq_file_bytes", b"content") == ()
