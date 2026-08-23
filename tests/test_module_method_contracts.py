@@ -134,6 +134,53 @@ def test_result_diagnostics_check_only_enabled_basic_shapes() -> None:
     )
 
 
+def test_message_attachment_contracts_use_messaging_family() -> None:
+    """消息附件下载能力不得因 download 前缀误归入下载器能力族。"""
+    expected_parameters = {
+        "download_telegram_file_bytes": ("file_id", "source"),
+        "download_wechat_media_bytes": ("media_ref", "source"),
+        "download_slack_file_to_data_url": ("file_url", "source"),
+        "download_feishu_image_to_data_url": ("image_ref", "source"),
+    }
+
+    for method, parameters in expected_parameters.items():
+        contract = get_module_method_contract(method)
+        assert contract.family == "messaging"
+        assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+        assert contract.required_parameters == parameters
+
+
+def test_downloader_query_contracts_merge_provider_lists() -> None:
+    """下载器查询能力应显式合并各 provider 的有序列表结果。"""
+    for method in ("list_torrents", "downloader_info"):
+        contract = get_module_method_contract(method)
+        assert contract.family == "downloader"
+        assert contract.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+        assert contract.result_shape is ModuleResultShape.LIST
+
+
+def test_heterogeneous_torrent_files_result_remains_legacy_compatible() -> None:
+    """下载器文件集合尚未归一前不得声明虚假的列表聚合语义。"""
+    contract = get_module_method_contract("torrent_files")
+
+    assert contract.required_parameters == ("tid", "downloader")
+    assert contract.result_contract == "DownloaderFileCollection | None"
+    assert contract.aggregation is ModuleResultAggregation.LEGACY
+    assert contract.result_shape is ModuleResultShape.ANY
+
+
+def test_attachment_result_diagnostics_distinguish_bytes_and_strings() -> None:
+    """附件契约应区分二进制内容和可展示字符串，偏差仍仅供诊断。"""
+    assert diagnose_module_result("download_qq_file_bytes", b"content") == ()
+    assert diagnose_module_result("download_qq_file_bytes", "content") == (
+        "unexpected-result:bytes:str",
+    )
+    assert diagnose_module_result(
+        "download_wechat_image_to_data_url",
+        "data:image/png;base64,AA==",
+    ) == ()
+
+
 def test_unknown_plugin_result_keeps_unchecked_legacy_compatibility() -> None:
     """未知第三方方法的任意返回值继续不做结果形状诊断。"""
     assert diagnose_module_result("third_party_custom_method", object()) == ()

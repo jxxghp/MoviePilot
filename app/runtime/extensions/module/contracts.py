@@ -25,6 +25,7 @@ class ModuleResultShape(StrEnum):
     STRING = "string"
     MAPPING = "mapping"
     BOOLEAN = "boolean"
+    BYTES = "bytes"
 
 
 class ModuleExecutionMode(StrEnum):
@@ -101,6 +102,22 @@ _METHOD_CONTRACTS = {
     "register_commands": ModuleMethodContract(family="messaging", input_contract="CommandRegistrationRequest", result_contract="None", required_parameters=("commands",)),
     "scheduler_job": ModuleMethodContract(family="scheduling", input_contract="SchedulerJobRequest", result_contract="None"),
     "webhook_parser": ModuleMethodContract(family="integration", input_contract="WebhookRequest", result_contract="WebhookEventInfo | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("body", "form", "args")),
+    "download_discord_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_ref", "source")),
+    "download_feishu_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_ref", "source")),
+    "download_feishu_image_to_data_url": ModuleMethodContract(family="messaging", input_contract="MessageImageDownloadRequest", result_contract="str | None", result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("image_ref", "source")),
+    "download_qq_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_ref", "source")),
+    "download_slack_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_ref", "source")),
+    "download_slack_file_to_data_url": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="str | None", result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_url", "source")),
+    "download_synologychat_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_ref", "source")),
+    "download_telegram_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_id", "source")),
+    "download_telegram_file_to_base64": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="str | None", result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_id", "source")),
+    "download_vocechat_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_ref", "source")),
+    "download_vocechat_image_to_data_url": ModuleMethodContract(family="messaging", input_contract="MessageImageDownloadRequest", result_contract="str | None", result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("image_ref", "source")),
+    "download_wechat_image_to_data_url": ModuleMethodContract(family="messaging", input_contract="MessageImageDownloadRequest", result_contract="str | None", result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("image_ref", "source")),
+    "download_wechat_media_bytes": ModuleMethodContract(family="messaging", input_contract="MessageMediaDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("media_ref", "source")),
+    "downloader_info": ModuleMethodContract(family="downloader", input_contract="DownloaderInfoRequest", result_contract="list[DownloaderInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("downloader",)),
+    "list_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentListRequest", result_contract="list[DownloaderTorrent]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("status", "hashs", "downloader", "include_all_tags")),
+    "torrent_files": ModuleMethodContract(family="downloader", input_contract="TorrentFilesRequest", result_contract="DownloaderFileCollection | None", required_parameters=("tid", "downloader")),
 }
 
 _PREFIX_CONTRACTS = (
@@ -476,6 +493,7 @@ def diagnose_module_result(method: str, result: Any) -> tuple[str, ...]:
         ModuleResultShape.STRING: isinstance(result, str),
         ModuleResultShape.MAPPING: isinstance(result, dict),
         ModuleResultShape.BOOLEAN: isinstance(result, bool),
+        ModuleResultShape.BYTES: isinstance(result, bytes),
     }
     if matches.get(shape, True):
         return ()
