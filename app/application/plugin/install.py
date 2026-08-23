@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from app.application.database import DatabaseWorkerOverloadedError
+from app.schemas.exception import DatabaseWorkerOverloadedError
 from app.application.plugin.lifecycle import plugin_lifecycle
 from app.runtime.log import logger
 

@@ -23,7 +23,7 @@ from app.factory import (
     localized_unhandled_exception_handler,
     localized_validation_exception_handler,
 )
-from app.application.database import (
+from app.schemas.exception import (
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
 )

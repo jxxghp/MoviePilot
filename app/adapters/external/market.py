@@ -2467,14 +2467,15 @@ class PluginHelper(metaclass=WeakSingleton):
         """异步恢复主程序运行依赖，避免修复命令绕过可取消进程边界。"""
         repair_target = snapshot_file
         repair_desc = "主程序依赖快照"
-        if repair_target and not repair_target.exists():
+        if repair_target and not await _await_thread_operation(repair_target.exists):
             repair_target = None
         if repair_target is None:
             repair_target = settings.ROOT_PATH / "pyproject.toml"
             repair_desc = "主程序 uv.lock"
-        if not repair_target.exists():
+        if not await _await_thread_operation(repair_target.exists):
             return False, f"恢复依赖文件不存在：{repair_target}"
-        if snapshot_file is None and not (settings.ROOT_PATH / "uv.lock").exists():
+        lock_file = settings.ROOT_PATH / "uv.lock"
+        if snapshot_file is None and not await _await_thread_operation(lock_file.exists):
             return False, f"恢复依赖文件不存在：{settings.ROOT_PATH / 'uv.lock'}"
 
         request = cls.__build_package_install_request(
@@ -2568,7 +2569,7 @@ class PluginHelper(metaclass=WeakSingleton):
         candidate_dirs = []
         for dependency_file in resolved_dependency_files:
             wheels_dir = dependency_file.parent / "wheels"
-            if wheels_dir.is_dir():
+            if await _await_thread_operation(wheels_dir.is_dir):
                 candidate_dirs.append(wheels_dir)
         if find_links_dirs:
             candidate_dirs.extend(find_links_dirs)
@@ -2577,9 +2578,11 @@ class PluginHelper(metaclass=WeakSingleton):
         seen_dirs = set()
         for candidate_dir in candidate_dirs:
             candidate_path = Path(candidate_dir)
-            if not candidate_path.is_dir():
+            if not await _await_thread_operation(candidate_path.is_dir):
                 continue
-            candidate_key = str(candidate_path.resolve())
+            candidate_key = str(
+                await _await_thread_operation(candidate_path.resolve)
+            )
             if candidate_key in seen_dirs:
                 continue
             seen_dirs.add(candidate_key)
@@ -2707,7 +2710,10 @@ class PluginHelper(metaclass=WeakSingleton):
             if acquired:
                 cls._package_install_lock.release()
             if constraints_file:
-                constraints_file.unlink(missing_ok=True)
+                await _await_thread_operation(
+                    constraints_file.unlink,
+                    missing_ok=True,
+                )
 
     async def __async_backup_plugin(self, pid: str) -> str:
         """

@@ -47,6 +47,14 @@ class StorageQueryError(Exception):
     pass
 
 
+class DatabaseWorkerClosedError(RuntimeError):
+    """数据库执行器尚未启动或已经停止。"""
+
+
+class DatabaseWorkerOverloadedError(RuntimeError):
+    """数据库执行器的运行与排队容量已经用尽。"""
+
+
 class TMDbException(Exception):
     """
     用于表示TheMovieDB数据源请求失败的跨层异常契约。
