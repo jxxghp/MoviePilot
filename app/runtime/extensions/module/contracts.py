@@ -15,6 +15,7 @@ class ModuleResultAggregation(StrEnum):
     LEGACY = "legacy"
     FIRST_NON_EMPTY = "first_non_empty"
     ORDERED_LIST_MERGE = "ordered_list_merge"
+    ORDERED_MAPPING_MERGE = "ordered_mapping_merge"
 
 
 class ModuleResultShape(StrEnum):
@@ -118,6 +119,7 @@ _METHOD_CONTRACTS = {
     "downloader_info": ModuleMethodContract(family="downloader", input_contract="DownloaderInfoRequest", result_contract="list[DownloaderInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("downloader",)),
     "list_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentListRequest", result_contract="list[DownloaderTorrent]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("status", "hashs", "downloader", "include_all_tags")),
     "torrent_files": ModuleMethodContract(family="downloader", input_contract="TorrentFilesRequest", result_contract="DownloaderFileCollection | None", required_parameters=("tid", "downloader")),
+    "get_torrent_trackers": ModuleMethodContract(family="downloader", input_contract="TorrentTrackersRequest", result_contract="dict[str, list[str]] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.ORDERED_MAPPING_MERGE, required_parameters=("hash_string", "downloader")),
 }
 
 _PREFIX_CONTRACTS = (

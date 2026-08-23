@@ -4178,16 +4178,19 @@
       "version": 1
     },
     "get_torrent_trackers": {
-      "aggregation": "legacy",
+      "aggregation": "ordered_mapping_merge",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "downloader",
-      "input_contract": "DownloaderKeywordArguments",
+      "input_contract": "TorrentTrackersRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "DownloaderProviderResult",
-      "result_shape": "any",
+      "required_parameters": [
+        "downloader",
+        "hash_string"
+      ],
+      "result_contract": "dict[str, list[str]] | None",
+      "result_shape": "mapping",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",

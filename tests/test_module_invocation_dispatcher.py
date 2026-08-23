@@ -242,6 +242,75 @@ def test_ordered_list_contract_bypasses_legacy_signature_relay() -> None:
     assert dispatcher.dispatch("search_medias") == ["plugin", "system"]
 
 
+def test_ordered_mapping_contract_merges_system_downloader_results() -> None:
+    """未指定下载器时应按宿主优先级合并各 provider 的 Tracker 映射。"""
+    class TrackerModule:
+        """返回单个下载器 Tracker 映射的测试模块。"""
+
+        def __init__(self, name: str, priority: int) -> None:
+            """保存下载器名称和 provider 优先级。"""
+            self._name = name
+            self._priority = priority
+
+        def get_name(self) -> str:
+            """返回测试模块名。"""
+            return self._name
+
+        def get_priority(self) -> int:
+            """返回测试优先级。"""
+            return self._priority
+
+        def get_torrent_trackers(
+            self,
+            hash_string: str,
+            downloader: str | None = None,
+        ) -> dict[str, list[str]]:
+            """返回当前测试下载器的 Tracker 映射。"""
+            assert hash_string == "hash"
+            assert downloader is None
+            return {self._name: [f"https://{self._name}.test/announce"]}
+
+    dispatcher, _, _, _ = _dispatcher(
+        modules=[
+            TrackerModule("transmission", 20),
+            TrackerModule("qbittorrent", 10),
+        ]
+    )
+
+    assert dispatcher.dispatch(
+        "get_torrent_trackers",
+        hash_string="hash",
+        downloader=None,
+    ) == {
+        "qbittorrent": ["https://qbittorrent.test/announce"],
+        "transmission": ["https://transmission.test/announce"],
+    }
+
+
+def test_plugin_mapping_keeps_existing_host_short_circuit() -> None:
+    """插件返回 Tracker 映射后仍应保持插件优先，不再调用宿主 provider。"""
+    system_call = Mock(return_value={"system": ["https://system.test"]})
+    module = _Module("系统", 10, system_call)
+    setattr(module, "get_torrent_trackers", module.execute)
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={
+            ("P1", "插件一"): {
+                "get_torrent_trackers": lambda **_kwargs: {
+                    "plugin": ["https://plugin.test"]
+                }
+            },
+        },
+        modules=[module],
+    )
+
+    assert dispatcher.dispatch(
+        "get_torrent_trackers",
+        hash_string="hash",
+        downloader=None,
+    ) == {"plugin": ["https://plugin.test"]}
+    system_call.assert_not_called()
+
+
 def test_module_exception_uses_error_policy_and_continues() -> None:
     """普通异常应交给错误策略，后续空结果模块仍可继续运行。"""
     def broken():

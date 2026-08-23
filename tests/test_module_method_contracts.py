@@ -169,6 +169,15 @@ def test_heterogeneous_torrent_files_result_remains_legacy_compatible() -> None:
     assert contract.result_shape is ModuleResultShape.ANY
 
 
+def test_torrent_tracker_contract_merges_downloader_mappings() -> None:
+    """Tracker 查询应登记跨下载器有序映射合并，而不是首个字典短路。"""
+    contract = get_module_method_contract("get_torrent_trackers")
+
+    assert contract.required_parameters == ("hash_string", "downloader")
+    assert contract.aggregation is ModuleResultAggregation.ORDERED_MAPPING_MERGE
+    assert contract.result_shape is ModuleResultShape.MAPPING
+
+
 def test_attachment_result_diagnostics_distinguish_bytes_and_strings() -> None:
     """附件契约应区分二进制内容和可展示字符串，偏差仍仅供诊断。"""
     assert diagnose_module_result("download_qq_file_bytes", b"content") == ()
