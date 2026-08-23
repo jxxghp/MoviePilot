@@ -47,14 +47,33 @@ def test_clear_global_loop_preserves_new_owner() -> None:
 
     async def verify() -> None:
         current = asyncio.get_running_loop()
-        runtime.set_loop(current)
-        runtime.clear_loop(previous)
+        previous_owner = runtime.set_loop(previous)
+        current_owner = runtime.set_loop(current)
+        runtime.clear_loop(previous_owner)
         assert runtime.loop is current
 
-        runtime.clear_loop(current)
+        runtime.clear_loop(current_owner)
         assert runtime.CURRENT_EVENT_LOOP is None
 
     try:
         asyncio.run(verify())
     finally:
         previous.close()
+
+
+def test_nested_owner_release_restores_same_event_loop() -> None:
+    """同一循环上的内层生命周期退出后，外层 owner 仍保持登记。"""
+    runtime = GlobalVar()
+
+    async def verify() -> None:
+        loop = asyncio.get_running_loop()
+        outer_owner = runtime.set_loop(loop)
+        inner_owner = runtime.set_loop(loop)
+
+        runtime.clear_loop(inner_owner)
+        assert runtime.loop is loop
+
+        runtime.clear_loop(outer_owner)
+        assert runtime.CURRENT_EVENT_LOOP is None
+
+    asyncio.run(verify())
