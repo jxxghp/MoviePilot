@@ -112,10 +112,10 @@ def test_event_dispatch_restores_producer_correlation_id() -> None:
     dispatcher = EventDispatcher(
         registry=registry,
         binding_resolver=resolver,
-        executor=MagicMock(),
-        event_loop=MagicMock(),
         event_factory=Event,
         error_handler=MagicMock(),
+        async_handle_sink=MagicMock(),
+        sync_handle_sink=MagicMock(),
     )
     with correlation_scope("producer-request"):
         event = Event(EventType.SystemError, {})
