@@ -25,7 +25,7 @@
   "system_config_oper_constructions": {
     "calls": [
       {
-        "file": "app/startup/modules_initializer.py",
+        "file": "app/startup/initializers/modules.py",
         "name": "SystemConfigOper"
       }
     ],

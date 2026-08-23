@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import run_legacy_async_query, run_legacy_sync_query
+from app.db.decorators import legacy_async_db_query, legacy_db_query
 
 
 class Message(Base):
@@ -49,6 +49,7 @@ class Message(Base):
         return self.to_dict()
 
     @classmethod
+    @legacy_db_query
     def list_by_page(
         cls,
         db: Session | None = None,
@@ -67,9 +68,10 @@ class Message(Base):
                 .limit(count)
             ).scalars().all())
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_db_query
     def exists_by_source(
         cls,
         db: Session | str | None = None,
@@ -93,9 +95,10 @@ class Message(Base):
                 select(cls.id).where(cls.source == source).limit(1)
             ).scalars().first() is not None
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_list_by_page(
             cls, db: AsyncSession | None = None, page: int = 1, count: int = 30
     ) -> List["Message"]:
@@ -112,9 +115,10 @@ class Message(Base):
             )
             return list(result.scalars().all())
 
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_list_sent_by_page(
             cls,
             db: AsyncSession | None = None,
@@ -155,7 +159,7 @@ class Message(Base):
             )
             return list(result.scalars().all())
 
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
     def delete_before(

@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI
 
-from app.startup import lifecycle, modules_initializer
+from app.startup import lifecycle
+from app.startup.initializers import modules as modules_initializer
 from app.adapters.network import http as http_utils
 from app.runtime.tasks import get_task_registry
 

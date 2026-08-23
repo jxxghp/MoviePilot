@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import run_legacy_async_query
+from app.db.decorators import legacy_async_db_query
 
 
 class SiteStatistic(Base):
@@ -35,6 +35,7 @@ class SiteStatistic(Base):
         return db.execute(select(cls).where(cls.domain == domain)).scalars().first()
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_by_domain(
         cls,
         db: AsyncSession | None = None,
@@ -49,9 +50,7 @@ class SiteStatistic(Base):
             result = await session.execute(select(cls).where(cls.domain == domain))
             return result.scalar_one_or_none()
 
-        if isinstance(db, AsyncSession):
-            return await query(db)
-        return await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
     def reset(cls, db: Session):

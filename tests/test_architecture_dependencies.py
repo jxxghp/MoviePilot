@@ -12,6 +12,7 @@ IMPLEMENTATION_ROOTS = (
     "app.agent.skills",
     "app.adapters",
     "app.application",
+    "app.db.adapters",
     "app.domain",
     "app.foundation",
     "app.runtime",
@@ -66,6 +67,29 @@ RETIRED_CANONICAL_FILES = (
     "app/adapters/network/sites.pyi",
     "app/application/plugins.py",
     "app/application/subscribe.py",
+    "app/startup/agent_initializer.py",
+    "app/startup/cache_initializer.py",
+    "app/startup/chain_events.py",
+    "app/startup/command_initializer.py",
+    "app/startup/configuration.py",
+    "app/startup/context.py",
+    "app/startup/database.py",
+    "app/startup/database_initializer.py",
+    "app/startup/domain_initializer.py",
+    "app/startup/download_failure.py",
+    "app/startup/managed_resources_initializer.py",
+    "app/startup/modules_initializer.py",
+    "app/startup/monitor_initializer.py",
+    "app/startup/outbox.py",
+    "app/startup/plugins_initializer.py",
+    "app/startup/routers_initializer.py",
+    "app/startup/scheduler_initializer.py",
+    "app/startup/site.py",
+    "app/startup/subscription.py",
+    "app/startup/transaction.py",
+    "app/startup/transfer_initializer.py",
+    "app/startup/workflow.py",
+    "app/startup/workflow_initializer.py",
 )
 PLUGIN_COMPONENT_ROOTS = (
     "app/adapters/external/plugin",
@@ -288,6 +312,20 @@ def test_retired_canonical_filenames_do_not_return():
     assert leftovers == []
 
 
+def test_startup_root_contains_only_composition_packages():
+    """组合根顶层只保留稳定分区，禁止再次堆叠扁平实现文件。"""
+    startup_root = APP_ROOT / "startup"
+    root_modules = sorted(path.name for path in startup_root.glob("*.py"))
+    python_packages = sorted(
+        path.name
+        for path in startup_root.iterdir()
+        if path.is_dir() and any(path.rglob("*.py"))
+    )
+
+    assert root_modules == ["__init__.py"]
+    assert python_packages == ["composition", "initializers", "lifecycle"]
+
+
 def test_retired_canonical_roots_contain_no_python_sources():
     """已收敛的新增目录不得再次以顶级 Python 包形式出现。"""
     leftovers = sorted(
@@ -388,6 +426,49 @@ def test_database_internals_do_not_import_db_facades():
         if any(
             isinstance(node, ast.ImportFrom)
             and node.module in {"app.db", "app.db.models"}
+            for node in ast.walk(tree)
+        ):
+            violations.append(str(path.relative_to(PROJECT_ROOT)))
+    assert violations == []
+
+
+def test_base_crud_is_explicitly_legacy_only():
+    """Base 便利 CRUD 只能保留兼容壳，不得伪装成新的正式事务入口。"""
+    path = APP_ROOT / "db" / "base.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    base_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "Base"
+    )
+    formal_decorators = {
+        "db_query",
+        "db_update",
+        "async_db_query",
+        "async_db_update",
+    }
+    violations: list[str] = []
+    for node in base_class.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        decorators = {
+            decorator.id
+            for decorator in node.decorator_list
+            if isinstance(decorator, ast.Name)
+        }
+        if decorators & formal_decorators:
+            violations.append(node.name)
+    assert violations == []
+
+
+def test_models_use_one_legacy_query_compatibility_shell():
+    """旧 Model 查询统一使用 legacy 装饰器，不得再手写隐式会话 runner。"""
+    retired_names = {"run_legacy_sync_query", "run_legacy_async_query"}
+    violations: list[str] = []
+    for path in (APP_ROOT / "db" / "models").glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        if any(
+            isinstance(node, ast.Name) and node.id in retired_names
             for node in ast.walk(tree)
         ):
             violations.append(str(path.relative_to(PROJECT_ROOT)))

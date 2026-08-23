@@ -51,7 +51,7 @@ def configure_plugin_system_services():
     )
     from app.runtime.config import settings
     from app.runtime.settings import configure_runtime_setting_provider
-    from app.startup.configuration import (
+    from app.startup.composition.configuration import (
         build_api_runtime_config,
         build_chain_runtime_config,
         build_scheduler_runtime_config,
@@ -153,11 +153,11 @@ def configure_plugin_system_services():
     from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
     from app.db.oper.message import MessageOper
     from app.db.oper.passkey import PassKeyOper
-    from app.startup.subscription import TransactionalSubscribeWriter
-    from app.startup.download_failure import TransactionalDownloadFailureRepository
-    from app.startup.site import TransactionalSiteRepository
-    from app.startup.workflow import TransactionalWorkflowExecutionService
-    from app.startup.transaction import TransactionalWriteRunner
+    from app.db.adapters.subscription import TransactionalSubscribeWriter
+    from app.db.adapters.download import TransactionalDownloadFailureRepository
+    from app.db.adapters.site import TransactionalSiteRepository
+    from app.db.adapters.workflow import TransactionalWorkflowExecutionService
+    from app.db.adapters.transaction import TransactionalWriteRunner
 
     def compatibility_sync_session() -> Session:
         """动态读取可被存量隔离数据库用例替换的 ScopedSession。"""

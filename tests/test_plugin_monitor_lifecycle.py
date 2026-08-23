@@ -21,7 +21,7 @@ from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
-from app.startup import plugins_initializer
+from app.startup.initializers import plugins as plugins_initializer
 
 
 def _reset_plugin_manager() -> None:

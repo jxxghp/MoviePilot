@@ -15,7 +15,7 @@ from app.foundation.singleton import Singleton
 from app.runtime.config import global_vars
 from app.application.transfer import TransferQueue, TransferTask
 from app.schemas.file import FileItem
-from app.startup import transfer_initializer
+from app.startup.initializers import transfer as transfer_initializer
 
 
 def _build_chain(*, transfer_threads: int = 0) -> TransferChain:

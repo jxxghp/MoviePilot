@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import run_legacy_async_query, run_legacy_sync_query
+from app.db.decorators import legacy_async_db_query, legacy_db_query
 
 
 class Site(Base):
@@ -58,6 +58,7 @@ class Site(Base):
     downloader: Mapped[Optional[str]] = mapped_column(String)
 
     @classmethod
+    @legacy_db_query
     def get_by_domain(cls, db: Session | str | None = None, domain: str | None = None):
         """按域名查询站点，兼容显式会话和旧插件无会话调用。"""
         if domain is None and isinstance(db, str):
@@ -69,9 +70,10 @@ class Site(Base):
             """在给定同步会话中执行域名查询。"""
             return session.execute(select(cls).where(cls.domain == domain)).scalars().first()
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_by_domain(
         cls,
         db: AsyncSession | str | None = None,
@@ -88,9 +90,10 @@ class Site(Base):
             result = await session.execute(select(cls).where(cls.domain == domain))
             return result.scalar_one_or_none()
 
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_by_name(
         cls,
         db: AsyncSession | str | None = None,
@@ -107,18 +110,20 @@ class Site(Base):
             result = await session.execute(select(cls).where(cls.name == name))
             return result.scalar_one_or_none()
 
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def get_actives(cls, db: Session | None = None):
         """查询启用站点，兼容显式会话和旧插件无会话调用。"""
         def query(session: Session):
             """在给定同步会话中执行启用站点查询。"""
             return list(session.execute(select(cls).where(cls.is_active.is_(True))).scalars().all())
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_actives(cls, db: AsyncSession | None = None):
         """异步查询启用站点，兼容显式会话和旧插件无会话调用。"""
         async def query(session: AsyncSession):
@@ -126,18 +131,20 @@ class Site(Base):
             result = await session.execute(select(cls).where(cls.is_active.is_(True)))
             return list(result.scalars().all())
 
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def list_order_by_pri(cls, db: Session | None = None):
         """按优先级升序查询站点，兼容显式会话和旧插件无会话调用。"""
         def query(session: Session):
             """在给定同步会话中执行优先级查询。"""
             return list(session.execute(select(cls).order_by(cls.pri)).scalars().all())
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_list_order_by_pri(cls, db: AsyncSession | None = None):
         """异步按优先级升序查询站点，兼容显式会话和旧插件无会话调用。"""
         async def query(session: AsyncSession):
@@ -145,9 +152,10 @@ class Site(Base):
             result = await session.execute(select(cls).order_by(cls.pri))
             return list(result.scalars().all())
 
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def get_domains_by_ids(
         cls,
         db: Session | list[int] | None = None,
@@ -165,7 +173,7 @@ class Site(Base):
             """在给定同步会话中执行域名投影查询。"""
             return list(session.execute(select(cls.domain).where(cls.id.in_(ids))).scalars().all())
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
     def reset(cls, db: Session):

@@ -64,7 +64,7 @@ def test_agent_initializer_import_only_registers_lazy_providers() -> None:
 import json
 import sys
 
-import app.startup.agent_initializer
+import app.startup.initializers.agent
 
 forbidden = (
     "app.agent.orchestrator",

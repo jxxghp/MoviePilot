@@ -116,7 +116,9 @@ except:
 
 - Do not introduce new third-party libraries without placing them in the correct `pyproject.toml` dependency group and updating `uv.lock`: runtime packages belong in `[project].dependencies`, test/lint/build tooling in `[dependency-groups].dev`.
 - Do not use `requests` or `httpx` directly for external HTTP calls - host code uses `RequestUtils` from `app/adapters/network/http.py`; plugins use `app.sdk.network`.
-- Do not issue raw SQLAlchemy queries from chains, modules, or endpoints — use the Oper classes in `app/db/oper/`.
+- Do not issue raw SQLAlchemy queries or import Oper classes from chains, modules,
+  or endpoints. Define/consume an Application persistence Port; its concrete
+  implementation under `app/db/adapters/` may use Oper classes from `app/db/oper/`.
 - Do not add TODO or FIXME without context. Only keep one if it is genuinely deferred and cannot be addressed in the current task.
 - Do not add noisy markers like `# change starts here`, `# important`, or `# this is a fix`.
 - Do not write comments that restate what the code already clearly says.

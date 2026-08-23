@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import run_legacy_async_query, run_legacy_sync_query
+from app.db.decorators import legacy_async_db_query, legacy_db_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
@@ -140,6 +140,7 @@ class Subscribe(Base):
         return condition
 
     @classmethod
+    @legacy_db_query
     def exists(
             cls, db: Session | MediaSource | None = None,
             media_source: MediaSource | str | None = None,
@@ -164,9 +165,10 @@ class Subscribe(Base):
             return session.execute(
                 statement.where(cls.episode_group == episode_group)
             ).scalars().first()
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_exists(
             cls, db: AsyncSession | MediaSource | None = None,
             media_source: MediaSource | str | None = None,
@@ -192,9 +194,10 @@ class Subscribe(Base):
                 statement.where(cls.episode_group == episode_group)
             )
             return result.scalars().first()
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def exists_by_username(
             cls, db: Session | str | None = None,
             username: str | MediaSource | None = None,
@@ -224,9 +227,10 @@ class Subscribe(Base):
             return session.execute(
                 statement.where(cls.episode_group == episode_group)
             ).scalars().first()
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_exists_by_username(
             cls, db: AsyncSession | str | None = None,
             username: str | MediaSource | None = None,
@@ -256,9 +260,10 @@ class Subscribe(Base):
                 statement.where(cls.episode_group == episode_group)
             )
             return result.scalars().first()
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def get_by_state(cls, db: Session | str | None = None, state: str | None = None):
         """按状态列表查询订阅，兼容显式会话和旧插件无会话调用。"""
         if not isinstance(db, Session):
@@ -269,9 +274,10 @@ class Subscribe(Base):
             if state:
                 statement = statement.where(cls.state.in_(state.split(',')))
             return list(session.execute(statement).scalars().all())
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_by_state(
         cls, db: AsyncSession | str | None = None, state: str | None = None
     ):
@@ -285,9 +291,10 @@ class Subscribe(Base):
                 statement = statement.where(cls.state.in_(state.split(',')))
             result = await session.execute(statement)
             return list(result.scalars().all())
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def get_by_title(
         cls, db: Session | str | None = None, title: str | None = None,
         season: Optional[int] = None,
@@ -301,9 +308,10 @@ class Subscribe(Base):
             if season is not None:
                 statement = statement.where(cls.season == season)
             return session.execute(statement).scalars().first()
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_by_title(
         cls, db: AsyncSession | str | None = None, title: str | None = None,
         season: Optional[int] = None,
@@ -318,9 +326,10 @@ class Subscribe(Base):
                 statement = statement.where(cls.season == season)
             result = await session.execute(statement)
             return result.scalars().first()
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_list_by_title(
         cls, db: AsyncSession | str | None = None, title: str | None = None,
         season: Optional[int] = None,
@@ -335,9 +344,10 @@ class Subscribe(Base):
                 statement = statement.where(cls.season == season)
             result = await session.execute(statement)
             return list(result.scalars().all())
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def list_by_media_identity(
             cls, db: Session | MediaSource | None = None,
             media_source: MediaSource | str | None = None,
@@ -357,9 +367,10 @@ class Subscribe(Base):
         def query(session: Session):
             """在给定会话中执行媒体身份列表查询。"""
             return list(session.execute(select(cls).where(condition)).scalars().all())
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_list_by_media_identity(
             cls, db: AsyncSession | MediaSource | None = None,
             media_source: MediaSource | str | None = None,
@@ -380,9 +391,10 @@ class Subscribe(Base):
             """在给定异步会话中执行媒体身份列表查询。"""
             result = await session.execute(select(cls).where(condition))
             return list(result.scalars().all())
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def get_by(
             cls, db: Session | str | None = None,
             type: str | MediaSource | None = None,
@@ -407,9 +419,10 @@ class Subscribe(Base):
         def query(session: Session):
             """在给定会话中执行类型媒体查询。"""
             return session.execute(statement).scalars().first()
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_by(
             cls, db: AsyncSession | str | None = None,
             type: str | MediaSource | None = None,
@@ -435,9 +448,10 @@ class Subscribe(Base):
             """在给定异步会话中执行类型媒体查询。"""
             result = await session.execute(query)
             return result.scalars().first()
-        return await execute_query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(execute_query)
+        return await execute_query(db)
 
     @classmethod
+    @legacy_db_query
     def list_by_username(cls, db: Session | str | None = None, username: str | None = None,
                          state: Optional[str] = None, mtype: Optional[str] = None):
         """按用户筛选订阅，兼容显式会话和旧插件无会话调用。"""
@@ -451,9 +465,10 @@ class Subscribe(Base):
             if mtype:
                 statement = statement.where(cls.type == mtype)
             return list(session.execute(statement).scalars().all())
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_list_by_username(cls, db: AsyncSession | str | None = None,
                                      username: str | None = None, state: Optional[str] = None,
                                      mtype: Optional[str] = None):
@@ -469,9 +484,10 @@ class Subscribe(Base):
                 statement = statement.where(cls.type == mtype)
             result = await session.execute(statement)
             return list(result.scalars().all())
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)
 
     @classmethod
+    @legacy_db_query
     def list_by_type(cls, db: Session | str | None = None, mtype: str | None = None, days: int = 7):
         """按类型查询最近时间窗内的订阅，兼容显式会话和旧插件无会话调用。"""
         if not isinstance(db, Session):
@@ -483,9 +499,10 @@ class Subscribe(Base):
                 cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
                                           time.localtime(time.time() - 86400 * int(days)))
             )).scalars().all())
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_async_db_query
     async def async_list_by_type(cls, db: AsyncSession | str | None = None,
                                  mtype: str | None = None, days: int = 7):
         """异步按类型查询最近时间窗内的订阅，兼容显式会话和旧插件无会话调用。"""
@@ -499,4 +516,4 @@ class Subscribe(Base):
                                           time.localtime(time.time() - 86400 * int(days)))
             ))
             return list(result.scalars().all())
-        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+        return await query(db)

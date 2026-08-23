@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.startup import modules_initializer
+from app.startup.initializers import modules as modules_initializer
 from app.startup.lifecycle import initialize_modules_component
 from app.application.configuration import configure_runtime_settings
 from app.runtime.settings import RuntimeSettingsCompat

@@ -15,7 +15,8 @@ from app.agent.orchestrator import (
     AgentManagerUnavailableError,
 )
 from app.agent.memory import MemoryManager
-from app.startup import agent_initializer, modules_initializer
+from app.startup.initializers import agent as agent_initializer
+from app.startup.initializers import modules as modules_initializer
 
 
 @pytest.mark.anyio

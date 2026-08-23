@@ -4,7 +4,7 @@ from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import run_legacy_sync_query
+from app.db.decorators import legacy_db_query
 
 
 def _get_for_user_statement(
@@ -85,6 +85,7 @@ class AgentTask(Base):
         return task.id
 
     @classmethod
+    @legacy_db_query
     def get_for_user(
             cls,
             db: Session | int | None = None,
@@ -105,11 +106,10 @@ class AgentTask(Base):
                 _get_for_user_statement(cls, task_id=task_id, user_id=user_id)
             ).scalars().first()
 
-        if isinstance(db, Session):
-            return query(db)
-        return run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_db_query
     def list_for_user(
             cls,
             db: Session | None = None,
@@ -125,9 +125,7 @@ class AgentTask(Base):
                 _list_for_user_statement(cls, user_id=user_id, enabled=enabled)
             ).scalars().all())
 
-        if isinstance(db, Session):
-            return query(db)
-        return run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
     def update_task(

@@ -11,7 +11,6 @@ from app.db.base import Base, execute_dml, get_id_column
 from app.db.decorators import (
     legacy_async_db_query,
     legacy_db_query,
-    run_legacy_sync_query,
 )
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
@@ -189,6 +188,7 @@ class TransferHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
+    @legacy_db_query
     def get_by_hash(
         cls,
         db: Session | str | None = None,
@@ -206,9 +206,10 @@ class TransferHistory(Base):
                 select(cls).where(cls.download_hash == download_hash)
             ).scalars().first()
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_db_query
     def get_by_src(
             cls, db: Session | str | None = None, src: str | None = None,
             storage: Optional[str] = None
@@ -235,9 +236,10 @@ class TransferHistory(Base):
                 statement.order_by(cls.id.desc())
             ).scalars().first()
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_db_query
     def get_success_by_src(
             cls, db: Session | str | None = None, src: str | None = None,
             storage: Optional[str] = None
@@ -266,9 +268,10 @@ class TransferHistory(Base):
                 statement.order_by(cls.id.desc())
             ).scalars().first()
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
+    @legacy_db_query
     def get_by_dest(
             cls, db: Session | str | None = None, dest: str | None = None,
             storage: Optional[str] = None
@@ -295,7 +298,7 @@ class TransferHistory(Base):
                 statement.order_by(cls.id.desc())
             ).scalars().first()
 
-        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
     @legacy_db_query

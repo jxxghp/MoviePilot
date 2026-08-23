@@ -1,4 +1,4 @@
-"""Chain durable 事件写入端口的 SQLAlchemy 启动适配器。"""
+"""Chain durable 事件写入端口的 SQLAlchemy 适配器。"""
 
 from __future__ import annotations
 
@@ -17,10 +17,10 @@ from app.application.chain.durable_events import (
 )
 from app.application.history import TransferHistoryRecord, TransferHistoryWriter
 from app.application.outbox import DurableEventCommand, OutboxIntent
+from app.db.adapters.outbox import SqlAlchemyOutboxRepository
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.uow import SqlAlchemyUnitOfWork
-from app.startup.outbox import SqlAlchemyOutboxRepository
 
 
 class _StagingTransferHistoryWriter:

@@ -53,7 +53,7 @@ from app.application.configuration import (
     configure_system_config,
     configure_transfer_retry_config,
 )
-from app.startup.configuration import (
+from app.startup.composition.configuration import (
     build_api_runtime_config,
     build_chain_runtime_config,
     build_scheduler_runtime_config,
@@ -83,7 +83,7 @@ from app.application.security.userconfig import (
 )
 from app.application.history import configure_transfer_history_provider
 from app.application.outbox import OutboxDispatcher, configure_outbox_dispatcher
-from app.startup.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
+from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
@@ -129,22 +129,22 @@ from app.command import CommandChain
 from app.schemas.message import Message
 from app.schemas.message import MessageType
 from app.schemas.types import EventType, SystemConfigKey
-from app.startup.agent_initializer import init_agent
-from app.startup.database import build_database_governance
-from app.startup.managed_resources_initializer import (
+from app.startup.initializers.agent import init_agent
+from app.startup.composition.database import build_database_governance
+from app.startup.initializers.managed_resources import (
     init_managed_resources,
     stop_managed_resources,
 )
-from app.startup.subscription import (
-    TransactionalSubscribeWriter,
+from app.db.adapters.subscription import TransactionalSubscribeWriter
+from app.startup.composition.subscription import (
     configure_transactional_subscription_scopes,
 )
-from app.startup.chain_events import TransactionalChainDurableEventWriter
-from app.startup.download_failure import TransactionalDownloadFailureRepository
-from app.startup.site import TransactionalSiteRepository
-from app.startup.workflow import TransactionalWorkflowExecutionService
-from app.startup.transaction import TransactionalWriteRunner
-from app.startup.context import (
+from app.db.adapters.chain import TransactionalChainDurableEventWriter
+from app.db.adapters.download import TransactionalDownloadFailureRepository
+from app.db.adapters.site import TransactionalSiteRepository
+from app.db.adapters.workflow import TransactionalWorkflowExecutionService
+from app.db.adapters.transaction import TransactionalWriteRunner
+from app.startup.composition.context import (
     AgentChatRuntime,
     AuthenticationRuntime,
     HistoryRuntime,

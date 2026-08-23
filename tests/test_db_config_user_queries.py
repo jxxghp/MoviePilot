@@ -292,13 +292,9 @@ def test_passkey_lookup_by_credential_id_skips_inactive(db):
     assert asyncio.run(PassKey.async_get_by_credential_id(credential_id="cred-dead")) is None
 
 
-def test_passkey_model_sync_queries_keep_no_session_plugin_abi(db, monkeypatch):
-    """旧插件不传 Session 时仍应获得短会话查询，而不恢复 Model 装饰器。"""
+def test_passkey_model_sync_queries_keep_no_session_plugin_abi(db):
+    """旧插件不传 Session 时仍由统一 legacy 装饰器获得短会话查询。"""
     db.add(_passkey(9004, "cred-legacy"))
-    monkeypatch.setattr(
-        "app.db.models.passkey.run_legacy_sync_query",
-        lambda operation: operation(db.session),
-    )
 
     assert [item.credential_id for item in PassKey.get_by_user_id(user_id=9004)] == [
         "cred-legacy"

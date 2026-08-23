@@ -8,7 +8,6 @@ from app.db.base import Base, get_id_column
 from app.db.decorators import (
     legacy_async_db_query,
     legacy_db_query,
-    run_legacy_sync_query,
 )
 
 
@@ -55,6 +54,7 @@ class PassKey(Base):
     transports: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
+    @legacy_db_query
     def get_by_user_id(
             cls,
             db: Session | int | None = None,
@@ -72,9 +72,7 @@ class PassKey(Base):
                 _get_by_user_id_statement(cls, user_id)
             ).scalars().all())
 
-        if isinstance(db, Session):
-            return query(db)
-        return run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
     @legacy_async_db_query
@@ -86,6 +84,7 @@ class PassKey(Base):
         return list(result.scalars().all())
 
     @classmethod
+    @legacy_db_query
     def get_by_credential_id(
             cls,
             db: Session | str | None = None,
@@ -103,9 +102,7 @@ class PassKey(Base):
                 _get_by_credential_id_statement(cls, credential_id)
             ).scalars().first()
 
-        if isinstance(db, Session):
-            return query(db)
-        return run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
     @legacy_async_db_query

@@ -519,7 +519,7 @@ SYMBOL_ALIASES = {
 4. Event、模块、插件和安全边界改为由 startup composition root 注入 resolver、回调和错误处理器，迁移模块不再处于强连通分量。
 5. 插件稳定入口收敛到 `app.sdk`；存量插件无需同步修改，官方插件可以按正常发布节奏迁移。
 6. 站点二进制和数据资源迁到 `app/application/site`，Build 直接生成 `app.application.site.sites`，Build CI、Resources V3 manifest、Docker 和本地 CLI 使用同一目标路径。
-7. 媒体识别领域不再直接读取 DB/settings，也不导入 Rust 适配器；`startup/domain_initializer.py` 统一注入实时规则、后缀策略、TMDB 图片地址、默认媒体来源和加速器。
+7. 媒体识别领域不再直接读取 DB/settings，也不导入 Rust 适配器；`startup/initializers/domain.py` 统一注入实时规则、后缀策略、TMDB 图片地址、默认媒体来源和加速器。
 8. 缓存按职责拆为 `runtime/cache.py`（契约、内存实现、装饰器、代理）和 `adapters/cache/backends.py`（Redis、文件 I/O）；旧 `app.core.cache` 指向完整 `app.sdk.cache` 门面。
 9. `application/mediaserver.py` 集中负责媒体服务器的配置化服务发现、Provider ID 规范化和音乐库匹配；通用媒体身份规则继续复用 `domain/media.py`。
 10. GC 归入 `runtime/gc.py`，外部 IP 归属查询归入 `adapters/external/location.py`，安全能力统一在 `app/application/security/`，URL 安全策略为 `url.py`，二次认证文件为 `twofactor.py`。

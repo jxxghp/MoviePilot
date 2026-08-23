@@ -119,7 +119,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 | 模块 | 静态出度 | 主要原因 |
 | --- | ---: | --- |
 | `app.agent.tools.factory` | 99 | 一次性导入全部内置工具并维护集中注册表 |
-| `app.startup.modules_initializer` | 55 | 组合根职责，这是合理高出度，但仍需声明式管理 |
+| `app.startup.initializers.modules` | 55 | 组合根职责，这是合理高出度，但仍需声明式管理 |
 | `app.api.endpoints.system` | 54 | 系统设置、规则测试、日志、网络测试、运行控制混合 |
 | `app.api.deps` | 49 | 认证、插件配置和跨端点依赖装配集中 |
 | `app.agent.orchestrator` | 48 | Agent 构建、执行、工具、记忆、审计、用量混合 |
@@ -425,7 +425,7 @@ app/chain/transfer.py  # 保持 TransferChain 兼容门面
 
 #### 已有进展
 
-`app/startup/modules_initializer.py:211-245` 已经承担托管资源、壁纸 Provider、认证载荷、DoH、站点、事件错误通知、模块、Agent 和前端的组合工作。`app/startup/lifecycle.py` 也显式规定数据库预热、路由、模块、插件、调度器、监控器、命令和工作流的顺序。这是正确方向。
+`app/startup/initializers/modules.py` 承担托管资源、壁纸 Provider、认证载荷、DoH、站点、事件错误通知、模块、Agent 和前端的组合工作。`app/startup/lifecycle/` 显式规定数据库预热、路由、模块、插件、调度器、监控器、命令和工作流的顺序。这是正确方向。
 
 #### 历史泄漏与当前收口
 
@@ -701,7 +701,7 @@ app/application/server/share.py                # 订阅/工作流等分享用例
 
 #### 典型证据
 
-- `app/application/messaging/skill.py` 通过 `SkillCatalogPort` 消费技能目录，`app.startup.agent_initializer` 才导入并注入 `SkillHelper`。
+- `app/application/messaging/skill.py` 通过 `SkillCatalogPort` 消费技能目录，`app.startup.initializers.agent` 才导入并注入 `SkillHelper`。
 - `app/application/plugin/routes.py` 持有 `DynamicRouteRegistry` Protocol 和注册/移除用例；FastAPI app、`app.routes`、`openapi_schema` 和 `setup()` 均封装在 `app/adapters/web/plugin/routes.py`。
 - 多个 `modules` 直接导入 `app.application.messaging.agent`、`mediaserver`、`storage` 等；其中一部分是合理 SPI 消费，一部分表明应用能力接口和具体实现未区分。
 - `SystemConfigOper()` 在大量文件中被直接构造，形成持久化配置服务定位器。

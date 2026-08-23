@@ -5,8 +5,8 @@
 未显式传入会话时自动创建，并在结束时归还——异步路径经 async_session_scope 收口，
 连接池与配额都在那里生效。
 
-收尾故障（rollback / close / __aexit__ 自身抛异常）一律只记日志、不上抛，四个装饰器
-的处理一致。理由与代价都要写明，别当成漏写的 raise：
+收尾故障（rollback / close / __aexit__ 自身抛异常）一律只记日志、不上抛，正式装饰器
+和 legacy 兼容壳的处理一致。理由与代价都要写明，别当成漏写的 raise：
 
 - 连接断开、事务已失效这类故障恰恰最容易发生在「出错之后」的收尾阶段。裸写收尾语句时
   它一抛错就顶替掉原始异常，调用方看到的只剩「connection reset」，业务异常连类型都被
@@ -28,30 +28,11 @@ from app.runtime.log import logger
 
 _R = TypeVar("_R")
 
-# 四个装饰器都会重写实参列表：未传会话时自行创建一个并塞回 db 位置。因此包装后的可调用
+# 正式装饰器会重写实参列表：未传会话时自行创建一个并塞回 db 位置。因此包装后的可调用
 # 对象接受的实参与被包装函数的签名并不一致——用 Callable[..., _R] 如实表达「参数由装饰器
 # 接管、返回值原样透传」。否则调用方传 None 或传异步会话都会被判成类型不符，而这恰恰是
 # 装饰器存在的理由（各 Oper 的 self._db 常态就是 None）。
 
-
-def run_legacy_sync_query(operation: Callable[[Session], _R]) -> _R:
-    """为已移除查询装饰器的旧 Model ABI 提供一次性同步会话。"""
-    db = ScopedSession()
-    try:
-        return operation(db)
-    finally:
-        try:
-            db.close()
-        except Exception as close_err:  # noqa: BLE001 兼容查询释放失败不改变返回语义
-            logger.error(f"释放数据库会话失败：{close_err}")
-
-
-async def run_legacy_async_query(
-    operation: Callable[[AsyncSession], Awaitable[_R]],
-) -> _R:
-    """为移除异步查询装饰器的旧 Model ABI 提供一次性异步会话。"""
-    async with async_session_scope() as db:
-        return await operation(db)
 
 def _get_args_db(
     args: tuple[Any, ...],
@@ -341,6 +322,77 @@ def legacy_async_db_query(
         async with async_session_scope() as session:
             call_args, call_kwargs = _inject_legacy_db(func, args, kwargs, session)
             return await func(*call_args, **call_kwargs)
+
+    return wrapper
+
+
+def legacy_db_update(func: Callable[..., _R]) -> Callable[..., _R]:
+    """保留旧 Model 同步写 ABI，并维持历史自动提交语义。
+
+    该装饰器只供已经公开的 Model/Base 方法兼容仓外插件。宿主新写路径必须
+    通过 Application Command、显式 Session 和 UnitOfWork 完成事务收口。
+    """
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> _R:
+        db = _get_args_db(args, kwargs)
+        owns_session = db is None
+        if db is None:
+            db = ScopedSession()
+            args, kwargs = _inject_legacy_db(func, args, kwargs, db)
+        try:
+            result = func(*args, **kwargs)
+            db.commit()
+            return result
+        except Exception:
+            try:
+                db.rollback()
+            except Exception as rollback_err:  # noqa: BLE001  回滚失败不能掩盖原始异常
+                logger.error(f"事务回滚失败，原始异常将原样上抛：{rollback_err}")
+            raise
+        finally:
+            if owns_session:
+                try:
+                    db.close()
+                except Exception as close_err:  # noqa: BLE001  释放故障不得改变旧 ABI 结果
+                    logger.error(f"释放数据库会话失败：{close_err}")
+
+    return wrapper
+
+
+def legacy_async_db_update(
+    func: Callable[..., Awaitable[_R]],
+) -> Callable[..., Awaitable[_R]]:
+    """保留旧 Model 异步写 ABI，并维持历史自动提交语义。
+
+    该装饰器只承接既有兼容面；新宿主代码不得用它创建隐式事务。
+    """
+
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> _R:
+        db = _get_args_async_db(args, kwargs)
+        owns_session = db is None
+        scope = None
+        if db is None:
+            scope = async_session_scope()
+            db = await scope.__aenter__()
+            args, kwargs = _inject_legacy_db(func, args, kwargs, db)
+        try:
+            result = await func(*args, **kwargs)
+            await db.commit()
+            return result
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception as rollback_err:  # noqa: BLE001  回滚失败不能掩盖原始异常
+                logger.error(f"事务回滚失败，原始异常将原样上抛：{rollback_err}")
+            raise
+        finally:
+            if owns_session and scope is not None:
+                try:
+                    await scope.__aexit__(None, None, None)
+                except Exception as close_err:  # noqa: BLE001  释放故障不得改变旧 ABI 结果
+                    logger.error(f"释放数据库会话失败：{close_err}")
 
     return wrapper
 

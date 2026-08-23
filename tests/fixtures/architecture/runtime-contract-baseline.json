@@ -187,8 +187,8 @@
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "startup",
-        "replacement": "app.startup.database_initializer",
-        "target": "app.startup.database_initializer"
+        "replacement": "app.startup.initializers.database",
+        "target": "app.startup.initializers.database"
       },
       "app.db.mediaserver_oper": {
         "introduced": "v3.0.0",
@@ -2029,7 +2029,7 @@
             "count": 1
           },
           {
-            "caller": "app.startup.agent_initializer",
+            "caller": "app.startup.initializers.agent",
             "count": 1
           }
         ],
@@ -2043,7 +2043,7 @@
             "count": 2
           },
           {
-            "caller": "app.startup.modules_initializer",
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]
@@ -2194,7 +2194,7 @@
             "count": 2
           },
           {
-            "caller": "app.startup.modules_initializer",
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]
@@ -2203,11 +2203,11 @@
         "consumers": [],
         "producers": [
           {
-            "caller": "app.startup.modules_initializer",
+            "caller": "app.startup.composition.subscription",
             "count": 1
           },
           {
-            "caller": "app.startup.subscription",
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]
@@ -2220,11 +2220,11 @@
             "count": 1
           },
           {
-            "caller": "app.startup.modules_initializer",
+            "caller": "app.startup.composition.subscription",
             "count": 1
           },
           {
-            "caller": "app.startup.subscription",
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]
@@ -2241,11 +2241,11 @@
             "count": 3
           },
           {
-            "caller": "app.startup.modules_initializer",
+            "caller": "app.startup.composition.subscription",
             "count": 1
           },
           {
-            "caller": "app.startup.subscription",
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]
@@ -2293,7 +2293,7 @@
             "count": 2
           },
           {
-            "caller": "app.startup.modules_initializer",
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]
@@ -2306,7 +2306,7 @@
             "count": 2
           },
           {
-            "caller": "app.startup.modules_initializer",
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]

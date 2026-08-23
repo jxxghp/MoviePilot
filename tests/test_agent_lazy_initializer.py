@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.runtime.capabilities.errors import CapabilityRuntimeClosedError
-from app.startup import agent_initializer
+from app.startup.initializers import agent as agent_initializer
 
 
 @pytest.mark.anyio

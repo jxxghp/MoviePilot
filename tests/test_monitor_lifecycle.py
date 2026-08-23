@@ -12,7 +12,7 @@ import pytest
 from app.monitor.monitor import Monitor
 from app.monitor.recovery import RecoveryExecutor, RecoveryState
 from app.foundation.singleton import SingletonClass
-from app.startup.monitor_initializer import init_monitor, stop_monitor
+from app.startup.initializers.monitor import init_monitor, stop_monitor
 
 
 def _build_monitor() -> Monitor:

@@ -37,7 +37,7 @@ from app.application.subscription.search import SearchSubscriptionsCommand
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.types import EventType
-from app.startup.context import HostRuntime
+from app.startup.composition.context import HostRuntime
 from app.api.context import get_background_task_registry, resolve_background_task_registry
 from app.runtime.tasks import TaskRegistry
 

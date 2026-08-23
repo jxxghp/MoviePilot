@@ -8,7 +8,7 @@ from typing import Callable
 
 from fastapi import FastAPI
 
-from app.startup.cache_initializer import configure_cache_dependencies
+from app.startup.initializers.cache import configure_cache_dependencies
 # 缓存装饰器会在业务模块导入时创建后端，必须先完成适配器装配。
 configure_cache_dependencies()
 # urllib3-future 覆盖 urllib3 命名空间后删除了 format_header_param，导致 telebot 崩溃，需在加载模块前打补丁
@@ -37,17 +37,17 @@ from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger, LoggerManager
-from app.startup.command_initializer import init_command, stop_command, restart_command
-from app.startup.agent_initializer import stop_agent
-from app.startup.domain_initializer import configure_domain_dependencies
-from app.startup.modules_initializer import (
+from app.startup.initializers.command import init_command, stop_command, restart_command
+from app.startup.initializers.agent import stop_agent
+from app.startup.initializers.domain import configure_domain_dependencies
+from app.startup.initializers.modules import (
     drain_events,
     init_modules,
     settle_events,
     stop_modules,
 )
-from app.startup.monitor_initializer import stop_monitor, init_monitor
-from app.startup.plugins_initializer import (
+from app.startup.initializers.monitor import stop_monitor, init_monitor
+from app.startup.initializers.plugins import (
     configure_plugin_services,
     execute_task,
     finalize_plugins,
@@ -57,18 +57,18 @@ from app.startup.plugins_initializer import (
     stop_plugin_monitor,
     sync_plugins,
 )
-from app.startup.routers_initializer import init_routers
-from app.startup.scheduler_initializer import (
+from app.startup.initializers.routers import init_routers
+from app.startup.initializers.scheduler import (
     stop_scheduler,
     init_scheduler,
     init_plugin_scheduler,
 )
 from app.db.engine import check_connection_budget, get_engine, get_global_async_engine
-from app.startup.transfer_initializer import (
+from app.startup.initializers.transfer import (
     replay_pending_transfers,
     stop_transfer_runtime,
 )
-from app.startup.workflow_initializer import init_workflow, stop_workflow
+from app.startup.initializers.workflow import init_workflow, stop_workflow
 from app.startup.lifecycle.components import (
     LifecycleComponent,
     LifecycleFailurePolicy,
@@ -236,7 +236,7 @@ async def initialize_modules_component(app: FastAPI) -> None:
     try:
         runtime = await init_modules()
     except BaseException:
-        from app.startup.modules_initializer import stop_database_worker
+        from app.startup.initializers.modules import stop_database_worker
 
         try:
             await stop_database_worker()
@@ -276,7 +276,7 @@ def prepare_database_component(app: FastAPI) -> None:
     """完成数据库建表、迁移与 head 校验后发布数据库就绪状态。"""
     # Alembic 及全部 ORM 元数据只在 lifespan 真正启动时加载，create_app/import 阶段
     # 继续保持不建库、不加载迁移运行时的纯 ASGI 结构语义。
-    from app.startup.database_initializer import (
+    from app.startup.initializers.database import (
         prepare_database,
         verify_database_revision,
     )
