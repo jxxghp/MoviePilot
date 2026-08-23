@@ -286,7 +286,12 @@ function stage_runtime_payload() {
     else
         mkdir -p "${stage_plugin_dir}" || return 1
     fi
-    rm -f "${stage_plugin_dir}/__init__.py"
+    # 保留 app.plugins 兼容入口；V1/V2 插件仍从这里导入 _PluginBase。
+    # 删除后 app.plugins 会退化为 namespace package，旧插件会在启动时全部导入失败。
+    if [ ! -f "${stage_plugin_dir}/__init__.py" ]; then
+        ERROR "插件运行目录缺少 app.plugins 兼容入口"
+        return 1
+    fi
 
     resource_source_dir="$(existing_resource_dir)"
     mkdir -p "${stage_resource_dir}" || return 1

@@ -20,6 +20,7 @@ from app.application.configuration import (
     get_transfer_retry_config,
 )
 from app.application.security.userconfig import UserConfigurationService
+from app.runtime.settings import RuntimeSettingsCompat, configure_runtime_settings_compat
 
 
 class _InlineDatabaseExecutor:
@@ -69,6 +70,16 @@ def test_runtime_settings_service_hides_mutable_settings_implementation() -> Non
     assert service.update("VALUE", "after") == (True, "")
     assert service.update_many({"VALUE": "final"}) == {"VALUE": (True, "")}
     assert service.get("VALUE") == "final"
+
+
+def test_runtime_settings_compat_delegates_to_concrete_service_backend() -> None:
+    """兼容 Settings 代理委托到真实设置对象时不会在 model_dump 中递归。"""
+    service = RuntimeSettingsService(_MutableSettings())
+    configure_runtime_settings_compat(service)
+
+    assert RuntimeSettingsCompat().model_dump(include={"VALUE"}) == {
+        "VALUE": "before"
+    }
 
 
 def test_system_config_service_supports_separate_reader_and_writer() -> None:
