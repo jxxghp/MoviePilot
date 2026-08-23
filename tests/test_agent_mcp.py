@@ -1,10 +1,11 @@
+import asyncio
 import sys
 import textwrap
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agent.mcp import AgentMcpManager, AgentMcpToolSpec
+from app.agent.mcp import AgentMcpManager, AgentMcpToolSpec, _StdioMcpSession
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.mcp import (
     McpExternalTool,
@@ -84,6 +85,33 @@ async def test_stdio_mcp_server_lists_tools(tmp_path):
     assert tools[0].name == "echo"
     assert tools[0].agent_tool_name == "mcp_fake_mcp_echo"
     assert tools[0].input_schema["properties"]["text"]["type"] == "string"
+
+
+@pytest.mark.anyio
+async def test_stdio_mcp_session_waits_for_stderr_reader_shutdown() -> None:
+    """stdio MCP 会话退出时必须等待 stderr reader 真正完成。"""
+    session = _StdioMcpSession(
+        AgentMcpServerConfig(id="fake", name="Fake MCP", transport="stdio")
+    )
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def reader() -> None:
+        """模拟持续读取 stderr 的会话子任务。"""
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    session.stderr_task = asyncio.create_task(reader())
+    await started.wait()
+
+    await session.__aexit__(None, None, None)
+
+    assert session.stderr_task is None
+    assert cancelled.is_set()
 
 
 @pytest.mark.anyio
