@@ -1177,6 +1177,30 @@ def test_host_consumers_get_agent_manager_through_application_facade():
     assert violations == {}
 
 
+def test_host_consumers_resolve_llm_provider_runtime_through_gateway():
+    """宿主不得绕过 gateway 或 LLM 公共导出穿透 provider 实现。"""
+    violations: dict[str, set[str]] = {}
+    graph = _build_module_graph()
+    for module_name, path in _discover_modules().items():
+        if module_name.startswith(("app.agent", "app.startup")):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module in {"app.agent.llm", "app.agent.llm.provider"}
+            for alias in node.names
+            if alias.name == "LLMProviderManager"
+        }
+        forbidden = set(imported)
+        if "app.agent.llm.provider" in graph[module_name]:
+            forbidden.add("app.agent.llm.provider")
+        if forbidden:
+            violations[module_name] = forbidden
+    assert violations == {}
+
+
 def test_agent_tools_do_not_import_entrypoint_internals():
     """Agent 工具不得穿透导入 HTTP 端点、调度器与命令注册表内部实现。
 

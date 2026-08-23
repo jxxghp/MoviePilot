@@ -5,7 +5,7 @@ from typing import Any, Protocol
 
 
 class LLMProviderRuntimePort(Protocol):
-    """声明 LLM helper 所需的最小 provider 运行时能力。"""
+    """声明 LLM helper 与管理 API 共用的 provider 运行时能力。"""
 
     def resolve_cached_model_metadata(self, **kwargs: Any) -> dict[str, Any] | None:
         """从本地目录缓存解析模型元数据。"""
@@ -25,6 +25,26 @@ class LLMProviderRuntimePort(Protocol):
 
     def resolve_model_list_base_url(self, **kwargs: Any) -> str | None:
         """解析兼容接口用于查询模型列表的基础地址。"""
+        ...
+
+    async def provider_manage(
+        self,
+        provider: str,
+        action: str,
+        **params: Any,
+    ) -> dict[str, Any]:
+        """执行与具体提供商无关的统一管理动作。"""
+        ...
+
+    async def handle_chatgpt_callback(
+        self,
+        provider_id: str,
+        code: str | None,
+        state: str | None,
+        error: str | None,
+        error_description: str | None,
+    ) -> tuple[bool, str]:
+        """完成 ChatGPT OAuth 回调并返回公开结果。"""
         ...
 
 

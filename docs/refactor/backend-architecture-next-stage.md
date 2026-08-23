@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner；阶段 28 已托管旧插件订阅统计线程；阶段 29 已统一 Emby 系条目转换并清零重复代码白名单；阶段 30 已收口插件市场请求级子任务；阶段 31 已托管搜索 AI 推荐任务；阶段 32 已清除事件调度器绕过生命周期 owner 的投递回退；阶段 33 已统一宿主 Agent 运行时的获取路径；阶段 34 已统一 durable-required 事件与 Outbox topic 事实源。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner；阶段 28 已托管旧插件订阅统计线程；阶段 29 已统一 Emby 系条目转换并清零重复代码白名单；阶段 30 已收口插件市场请求级子任务；阶段 31 已托管搜索 AI 推荐任务；阶段 32 已清除事件调度器绕过生命周期 owner 的投递回退；阶段 33 已统一宿主 Agent 运行时的获取路径；阶段 34 已统一 durable-required 事件与 Outbox topic 事实源；阶段 35 已统一 LLM provider 管理 API 的运行时解析路径。
 
 ## 当前复核结论（2026-08-24）
 
@@ -367,6 +367,17 @@
   以及插件 SDK/Compat 均未修改；第三方插件自行写库或发事件仍不在宿主事务边界内。
 - 单一映射新增 `app.application.outbox -> app.schemas.types` 与 `app.chain.transfer -> app.application.outbox`
   语义边，模块仍为 `806`、内部边为 `6549`；12 组禁止边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 35：LLM provider 管理运行时收口（2026-08-24）
+
+- 启动组合根早已把唯一 `LLMProviderManager` 工厂注册到 `app.agent.llm.gateway`，LLM helper 也从该端口
+  获取同一运行时；但 `/llm/manage` 与 OAuth 回调仍在端点内再次惰性导入并实例化 concrete manager，
+  同一目标形成 gateway 与 Singleton 两条解析路径。
+- 管理 API 现在与 helper 共用 `resolve_llm_provider_runtime()`；gateway 合同补齐统一管理与 OAuth 回调
+  能力，架构测试拒绝 startup/agent 之外的宿主代码直接导入 `LLMProviderManager`。原 API 路径、请求与响应
+  数据、OAuth HTML、manager Singleton identity 及 `app.agent.llm` 兼容导出均保持不变。
+- API 的运行时依赖由 concrete provider 边替换为 gateway 边，模块仍为 `806`、内部边仍为 `6549`；
+  12 组禁止边与唯一隔离 TMDB SCC 均未变化。
 
 ### 总体判断
 

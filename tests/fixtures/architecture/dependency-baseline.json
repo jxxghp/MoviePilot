@@ -14,7 +14,7 @@
     "workflow_to_db": []
   },
   "edge_count": 6549,
-  "edge_sha256": "280799d1a7d3a993096834b5e0f961fcc82319d437b4d5f568c78d8a7bfa07a2",
+  "edge_sha256": "fb3c6b77623cc0ad1707fe8cdfc7e8a1c6be429a34da05b4fca5ed8ef512e734",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -1869,7 +1869,7 @@
     "app.api.endpoints.history -> app.schemas.token",
     "app.api.endpoints.llm -> app.agent",
     "app.api.endpoints.llm -> app.agent.llm",
-    "app.api.endpoints.llm -> app.agent.llm.provider",
+    "app.api.endpoints.llm -> app.agent.llm.gateway",
     "app.api.endpoints.llm -> app.api",
     "app.api.endpoints.llm -> app.api.dependencies",
     "app.api.endpoints.llm -> app.api.dependencies.auth",
