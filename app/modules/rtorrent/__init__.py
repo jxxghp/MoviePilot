@@ -2,9 +2,9 @@ from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List, Dict
 
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
-from app.runtime.config import settings
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
+from app.runtime.settings import RuntimeSettingsCompat
 from app.modules._base import _DownloaderModuleBase
 from app.modules.rtorrent.rtorrent import Rtorrent
 from app.schemas.transfer import DownloaderTorrent
@@ -19,8 +19,12 @@ from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 
+settings = RuntimeSettingsCompat()
+
 
 class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
+    """rTorrent 下载器模块，负责任务添加、标签和文件状态转换。"""
+
     def init_module(self) -> None:
         """
         初始化模块
@@ -31,6 +35,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
     @staticmethod
     def get_name() -> str:
+        """返回模块展示名称。"""
         return "Rtorrent"
 
     @staticmethod
@@ -55,9 +60,11 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         return 3
 
     def stop(self):
+        """下载器客户端由服务基类管理，本模块无额外停止动作。"""
         pass
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """下载器实例由系统配置管理，不声明独立模块开关。"""
         pass
 
     def download(

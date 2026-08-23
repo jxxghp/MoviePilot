@@ -10,16 +10,11 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 8,
+    "count": 3,
     "files": [
       "app/db/base.py",
       "app/db/engine.py",
-      "app/db/session.py",
-      "app/modules/postgresql/__init__.py",
-      "app/modules/qbittorrent/__init__.py",
-      "app/modules/redis/__init__.py",
-      "app/modules/rtorrent/__init__.py",
-      "app/modules/transmission/__init__.py"
+      "app/db/session.py"
     ]
   },
   "system_config_oper_constructions": {

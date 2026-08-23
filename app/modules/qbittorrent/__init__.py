@@ -4,9 +4,9 @@ from typing import Set, Tuple, Optional, Union, List, Dict
 from qbittorrentapi import TorrentFilesList
 
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
-from app.runtime.config import settings
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
+from app.runtime.settings import RuntimeSettingsCompat
 from app.modules._base import _DownloaderModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas.transfer import DownloaderTorrent
@@ -20,6 +20,8 @@ from app.schemas.types import (
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
+
+settings = RuntimeSettingsCompat()
 
 _QBITTORRENT_DOWNLOADING_STATES = {
     "allocating",

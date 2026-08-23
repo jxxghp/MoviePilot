@@ -926,6 +926,21 @@ def test_runtime_consumers_use_command_application_facade():
     assert violations == {}
 
 
+def test_modules_read_deployment_settings_through_runtime_port():
+    """宿主 Module 不得绕过 runtime 配置端口直接依赖 Settings 实例。"""
+    violations: list[str] = []
+    for path in (APP_ROOT / "modules").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.module != "app.runtime.config":
+                continue
+            if any(alias.name == "settings" for alias in node.names):
+                violations.append(path.relative_to(PROJECT_ROOT).as_posix())
+                break
+
+    assert violations == []
+
+
 def test_api_does_not_import_factory():
     """装配器（factory）只允许 app.main 使用，HTTP 端点不得回引。"""
     violations: dict[str, set[str]] = {}

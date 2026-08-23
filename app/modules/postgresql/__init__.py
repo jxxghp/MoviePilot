@@ -1,9 +1,11 @@
 from typing import Tuple, Union
 
-from app.runtime.config import settings
 from app.application.database import get_database_governance
 from app.modules import _ModuleBase
+from app.runtime.settings import RuntimeSettingsCompat
 from app.schemas.types import ModuleType, OtherModulesType
+
+settings = RuntimeSettingsCompat()
 
 
 class PostgreSQLModule(_ModuleBase):
@@ -12,10 +14,12 @@ class PostgreSQLModule(_ModuleBase):
     """
 
     def init_module(self) -> None:
+        """PostgreSQL 连接由数据库 adapter 管理，无需模块级初始化。"""
         pass
 
     @staticmethod
     def get_name() -> str:
+        """返回模块展示名称。"""
         return "PostgreSQL"
 
     @staticmethod
@@ -40,9 +44,11 @@ class PostgreSQLModule(_ModuleBase):
         return 0
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """数据库类型由部署配置决定，不声明独立模块开关。"""
         pass
 
     def stop(self) -> None:
+        """连接池由数据库生命周期释放，本模块无独立资源。"""
         pass
 
     def test(self):

@@ -96,6 +96,9 @@
    concrete `PluginManager`，不改变 V1/V2/V3 插件加载与自由响应 API。
    Command 的 API 消费点也已完成原计划迁移：WebAgent 查询和站点认证后的刷新统一使用
    `app.application.commands`，只有 startup 组合根注册 concrete Command；门面保留原命令对象与插件命令语义。
+   宿主 Module 的部署配置读取也已统一到 `RuntimeSettingsCompat`：PostgreSQL、Redis、qBittorrent、
+   rTorrent 和 Transmission 不再直接导入全局 Settings，模块目录由架构测试保持零直连；兼容代理仍保留
+   启动早期与旧插件/测试的动态 Settings 注入语义。
 
 ### P2：中长期可演进性债务
 

@@ -13,8 +13,16 @@ def _load_downloader_base():
     app_module.__path__ = []
     helper_module = types.ModuleType("app.helper")
     helper_module.__path__ = []
+    runtime_module = types.ModuleType("app.runtime")
+    runtime_module.__path__ = []
+    runtime_extensions_module = types.ModuleType("app.runtime.extensions")
+    runtime_extensions_module.__path__ = []
     service_module = types.ModuleType("app.runtime.extensions.service_config")
+    log_module = types.ModuleType("app.runtime.log")
     schemas_module = types.ModuleType("app.schemas")
+    schemas_module.__path__ = []
+    schema_message_module = types.ModuleType("app.schemas.message")
+    schema_system_module = types.ModuleType("app.schemas.system")
     schema_types_module = types.ModuleType("app.schemas.types")
     utils_module = types.ModuleType("app.utils")
     utils_module.__path__ = []
@@ -26,6 +34,13 @@ def _load_downloader_base():
 
     class _ConfigReloadMixin:
         pass
+
+    class _Logger:
+        """隔离模块基类加载时使用的无副作用日志桩。"""
+
+        def error(self, *_args, **_kwargs):
+            """忽略测试范围外的错误日志输出。"""
+            pass
 
     class _ServiceConfigHelper:
         @staticmethod
@@ -59,24 +74,37 @@ def _load_downloader_base():
     )
 
     service_module.ServiceConfigHelper = _ServiceConfigHelper
+    log_module.logger = _Logger()
     mixins_module.ConfigReloadMixin = _ConfigReloadMixin
-    schemas_module.Message = object
-    schemas_module.NotificationConf = object
-    schemas_module.MediaServerConf = object
-    schemas_module.DownloaderConf = object
+    schema_message_module.Message = object
+    schema_system_module.NotificationConf = object
+    schema_system_module.MediaServerConf = object
+    schema_system_module.DownloaderConf = object
 
     app_module.helper = helper_module
+    app_module.runtime = runtime_module
     app_module.schemas = schemas_module
     app_module.utils = utils_module
     helper_module.service = service_module
+    runtime_module.extensions = runtime_extensions_module
+    runtime_module.log = log_module
+    runtime_module.reload = mixins_module
+    runtime_extensions_module.service_config = service_module
+    schemas_module.message = schema_message_module
+    schemas_module.system = schema_system_module
     schemas_module.types = schema_types_module
     utils_module.mixins = mixins_module
 
     stub_modules = {
         "app": app_module,
         "app.helper": helper_module,
+        "app.runtime": runtime_module,
+        "app.runtime.extensions": runtime_extensions_module,
         "app.runtime.extensions.service_config": service_module,
+        "app.runtime.log": log_module,
         "app.schemas": schemas_module,
+        "app.schemas.message": schema_message_module,
+        "app.schemas.system": schema_system_module,
         "app.schemas.types": schema_types_module,
         "app.utils": utils_module,
         "app.runtime.reload": mixins_module,
@@ -108,7 +136,10 @@ def _load_transmission_module():
     torrent_rules_module = types.ModuleType("app.domain.torrent")
     size_tools_module = types.ModuleType("app.foundation.size")
     temporal_tools_module = types.ModuleType("app.foundation.temporal")
+    runtime_module = types.ModuleType("app.runtime")
+    runtime_module.__path__ = []
     cache_module = types.ModuleType("app.runtime.cache")
+    runtime_settings_module = types.ModuleType("app.runtime.settings")
     base_module = types.ModuleType("app.modules._base")
     modules_module = types.ModuleType("app.modules")
     modules_module.__path__ = []
@@ -116,6 +147,9 @@ def _load_transmission_module():
     transmission_package_module.__path__ = []
     transmission_client_module = types.ModuleType("app.modules.transmission.transmission")
     schemas_module = types.ModuleType("app.schemas")
+    schemas_module.__path__ = []
+    schema_dashboard_module = types.ModuleType("app.schemas.dashboard")
+    schema_transfer_module = types.ModuleType("app.schemas.transfer")
     schema_types_module = types.ModuleType("app.schemas.types")
     config_module = types.ModuleType("app.runtime.config")
     metainfo_module = types.ModuleType("app.domain.metainfo")
@@ -225,12 +259,19 @@ def _load_transmission_module():
         def get(self, *_args, **_kwargs):
             return None
 
+    class _RuntimeSettingsCompat:
+        """隔离测试用动态配置代理，保持生产模块的兼容读取语义。"""
+
+        def __getattr__(self, key):
+            """从测试提供的旧 Settings 桩读取配置项。"""
+            return getattr(config_module.settings, key)
+
     transmission_client_module.Transmission = object
     cache_module.FileCache = _FileCache
-    schemas_module.TransferTorrent = _TransferTorrent
-    schemas_module.DownloadingTorrent = _DownloadingTorrent
-    schemas_module.DownloaderTorrent = _DownloaderTorrent
-    schemas_module.DownloaderInfo = object
+    schema_transfer_module.TransferTorrent = _TransferTorrent
+    schema_transfer_module.DownloadingTorrent = _DownloadingTorrent
+    schema_transfer_module.DownloaderTorrent = _DownloaderTorrent
+    schema_dashboard_module.DownloaderInfo = object
     schema_types_module.TorrentStatus = TorrentStatus
     schema_types_module.TorrentQueryStatus = TorrentQueryStatus
     schema_types_module.DownloadTaskState = DownloadTaskState
@@ -239,6 +280,7 @@ def _load_transmission_module():
         "DownloaderType", {"Transmission": "Transmission"}
     )
     config_module.settings = SimpleNamespace(TORRENT_TAG="moviepilot-tag")
+    runtime_settings_module.RuntimeSettingsCompat = _RuntimeSettingsCompat
     metainfo_module.MetaInfo = _MetaInfo
     log_module.logger = _Logger()
     modules_module._ModuleBase = _ModuleBase
@@ -257,6 +299,7 @@ def _load_transmission_module():
     app_module.domain = domain_module
     app_module.foundation = foundation_module
     app_module.modules = modules_module
+    app_module.runtime = runtime_module
     app_module.schemas = schemas_module
     domain_module.torrent = torrent_rules_module
     foundation_module.size = size_tools_module
@@ -264,8 +307,14 @@ def _load_transmission_module():
     core_module.cache = cache_module
     core_module.config = config_module
     core_module.metainfo = metainfo_module
+    runtime_module.cache = cache_module
+    runtime_module.config = config_module
+    runtime_module.log = log_module
+    runtime_module.settings = runtime_settings_module
     modules_module.transmission = transmission_package_module
     transmission_package_module.transmission = transmission_client_module
+    schemas_module.dashboard = schema_dashboard_module
+    schemas_module.transfer = schema_transfer_module
     schemas_module.types = schema_types_module
     torrentool_module.torrent = torrentool_torrent_module
 
@@ -279,13 +328,17 @@ def _load_transmission_module():
         "app.foundation.temporal": temporal_tools_module,
         "app.runtime.cache": cache_module,
         "app.runtime.config": config_module,
+        "app.runtime": runtime_module,
         "app.domain.metainfo": metainfo_module,
         "app.runtime.log": log_module,
+        "app.runtime.settings": runtime_settings_module,
         "app.modules": modules_module,
         "app.modules._base": base_module,
         "app.modules.transmission": transmission_package_module,
         "app.modules.transmission.transmission": transmission_client_module,
         "app.schemas": schemas_module,
+        "app.schemas.dashboard": schema_dashboard_module,
+        "app.schemas.transfer": schema_transfer_module,
         "app.schemas.types": schema_types_module,
         "transmission_rpc": transmission_rpc_module,
         "torrentool": torrentool_module,
