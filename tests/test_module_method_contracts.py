@@ -428,6 +428,42 @@ def test_sync_and_async_tmdb_capabilities_share_contracts() -> None:
         assert contract.required_parameters
 
 
+def test_music_capabilities_distinguish_lists_values_and_async_aliases() -> None:
+    """音乐查询应声明真实聚合，独立异步方法名必须复用同步契约。"""
+    list_methods = {
+        "music_album_related",
+        "music_artist_albums",
+        "music_artist_related",
+        "music_cache_items",
+        "music_chart",
+        "music_discover",
+        "music_fresh_releases",
+        "search_music",
+    }
+    value_methods = {
+        "identify_music_by_fingerprint",
+        "match_music_album",
+        "music_album",
+        "music_artist",
+        "music_cache_delete",
+        "music_lyrics",
+    }
+
+    for method in list_methods:
+        contract = get_module_method_contract(method)
+        assert contract.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+        assert contract.result_shape is ModuleResultShape.LIST
+    for method in value_methods:
+        assert (
+            get_module_method_contract(method).aggregation
+            is ModuleResultAggregation.FIRST_NON_EMPTY
+        )
+    for sync_method in ("identify_music_by_fingerprint", "match_music_album"):
+        assert get_module_method_contract(sync_method) is get_module_method_contract(
+            f"async_{sync_method}"
+        )
+
+
 def test_attachment_result_diagnostics_distinguish_bytes_and_strings() -> None:
     """附件契约应区分二进制内容和可展示字符串，偏差仍仅供诊断。"""
     assert diagnose_module_result("download_qq_file_bytes", b"content") == ()
