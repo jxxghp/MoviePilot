@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from app.schemas.exception import DatabaseWorkerOverloadedError
+from app.schemas.exception import PersistenceUnavailableError
 from app.application.plugin.lifecycle import plugin_lifecycle
 from app.runtime.log import logger
 
@@ -196,7 +196,7 @@ class PluginInstallCommand:
                 message=str(err),
                 package_installed=False,
             )
-            if isinstance(err, DatabaseWorkerOverloadedError):
+            if isinstance(err, PersistenceUnavailableError):
                 raise
             return result
         if not package_installed:
@@ -228,7 +228,7 @@ class PluginInstallCommand:
                     package_installed=True,
                     installed_list_persisted=state.installed_list_touched,
                 )
-                if isinstance(err, DatabaseWorkerOverloadedError):
+                if isinstance(err, PersistenceUnavailableError):
                     raise
                 return result
 
@@ -247,7 +247,7 @@ class PluginInstallCommand:
                 installed_list_persisted=installed_list_persisted,
                 runtime_touched=True,
             )
-            if isinstance(err, DatabaseWorkerOverloadedError):
+            if isinstance(err, PersistenceUnavailableError):
                 raise
             return result
 
@@ -267,7 +267,7 @@ class PluginInstallCommand:
                 runtime_touched=True,
                 registrations_touched=True,
             )
-            if isinstance(err, DatabaseWorkerOverloadedError):
+            if isinstance(err, PersistenceUnavailableError):
                 raise
             return result
 
@@ -412,7 +412,7 @@ class PluginInstallCommand:
                 failure_stage=failure_stage,
                 rollback=rollback,
             )
-            if isinstance(err, DatabaseWorkerOverloadedError):
+            if isinstance(err, PersistenceUnavailableError):
                 raise
             return result
 

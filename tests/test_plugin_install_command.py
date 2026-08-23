@@ -3,7 +3,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.schemas.exception import DatabaseWorkerOverloadedError
+from app.schemas.exception import (
+    DatabaseWorkerClosedError,
+    DatabaseWorkerOverloadedError,
+    PersistenceUnavailableError,
+)
 from app.application.plugin.install import PluginInstallCommand
 
 
@@ -249,17 +253,23 @@ async def test_persistence_exception_after_write_restores_installed_list():
 
 
 @pytest.mark.asyncio
-async def test_database_worker_overload_rolls_back_and_reaches_api_boundary():
-    """配置 worker 背压完成补偿后继续抛出，交由 API 映射为 503。"""
+@pytest.mark.parametrize(
+    "error_type",
+    [DatabaseWorkerClosedError, DatabaseWorkerOverloadedError],
+)
+async def test_persistence_unavailable_rolls_back_and_reaches_api_boundary(
+        error_type: type[PersistenceUnavailableError],
+) -> None:
+    """持久化能力暂不可用时完成补偿并交由 API 映射为 503。"""
     checkpoint = object()
     rollback = AsyncMock()
     command = _command(
         checkpointer=AsyncMock(return_value=checkpoint),
-        writer=AsyncMock(side_effect=DatabaseWorkerOverloadedError("worker full")),
+        writer=AsyncMock(side_effect=error_type("persistence unavailable")),
         rollback=rollback,
     )
 
-    with pytest.raises(DatabaseWorkerOverloadedError):
+    with pytest.raises(error_type):
         await command.execute(
             plugin_id="DemoPlugin",
             repo_url="https://github.com/demo/plugins",

@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from app.schemas.exception import (
-    DatabaseWorkerClosedError,
+    AgentChatPersistenceUnavailableError,
     DatabaseWorkerOverloadedError,
 )
 from app.application.messaging.chat import AgentChatPersistenceService, AgentChatService
@@ -302,7 +302,7 @@ async def test_agent_chat_persistence_bounds_session_waiters_and_releases_cancel
             messages=[],
         )
     )
-    with pytest.raises(DatabaseWorkerOverloadedError):
+    with pytest.raises(AgentChatPersistenceUnavailableError):
         await third
     second.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -347,7 +347,7 @@ async def test_agent_chat_persistence_session_admission_is_fair() -> None:
         )
     )
     await asyncio.sleep(0)
-    with pytest.raises(DatabaseWorkerOverloadedError):
+    with pytest.raises(AgentChatPersistenceUnavailableError):
         await service.async_save_agent_messages(
             session_id="hot-session", user_id="1", messages=[]
         )
@@ -393,7 +393,7 @@ async def test_agent_chat_persistence_shutdown_drains_active_writes() -> None:
     shutdown = asyncio.create_task(service.shutdown())
     await asyncio.sleep(0)
     assert not shutdown.done()
-    with pytest.raises(DatabaseWorkerClosedError):
+    with pytest.raises(AgentChatPersistenceUnavailableError):
         await service.async_save_agent_messages(
             session_id="new-session", user_id="1", messages=[]
         )
