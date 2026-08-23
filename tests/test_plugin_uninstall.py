@@ -269,7 +269,7 @@ def test_uninstall_plugin_runtime_propagates_unknown_plugin_without_deregisterin
     manager.uninstall_plugin.side_effect = LookupError("插件 DemoPlugin 不存在")
 
     with (
-        patch("app.agent.tools.impl._plugin_tool_utils.PluginManager", return_value=manager),
+        patch("app.agent.tools.impl._plugin_tool_utils.get_plugin_manager", return_value=manager),
         patch("app.application.plugin.routes.remove_plugin_api") as remove_api,
         patch("app.application.plugin.folders.remove_plugin_from_folders") as remove_folders,
         patch("app.application.scheduling.remove_plugin_job") as remove_job,
@@ -304,7 +304,7 @@ def test_uninstall_plugin_endpoint_and_agent_tool_share_manager_call():
         plugin_endpoint.uninstall_plugin("DemoPlugin", None)
 
     with (
-        patch("app.agent.tools.impl._plugin_tool_utils.PluginManager", return_value=manager),
+        patch("app.agent.tools.impl._plugin_tool_utils.get_plugin_manager", return_value=manager),
         patch("app.agent.tools.impl._plugin_tool_utils.SystemConfigOper", return_value=config_oper),
         patch("app.application.plugin.routes.remove_plugin_api"),
         patch("app.application.plugin.folders.remove_plugin_from_folders"),

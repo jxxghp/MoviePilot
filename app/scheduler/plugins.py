@@ -119,7 +119,7 @@ class PluginScheduling:
                     # 定时任务的实际调用发生在宿主稍后触发的调度线程/事件循环里，
                     # 这里把回调按其归属实例键包一层，使触发时的日志落到该实例目录
                     owner_plugin_id, owner_instance_id = split_instance_key(owner)
-                    self._jobs[job_id] = {
+                    job = {
                         "func": wrap_for_plugin_instance(
                             service["func"], owner_plugin_id, owner_instance_id
                         ),
@@ -129,6 +129,8 @@ class PluginScheduling:
                         "kwargs": service.get("func_kwargs") or {},
                         "running": False,
                     }
+                    self._assign_job_generation(job_id, job)
+                    self._jobs[job_id] = job
                     self._scheduler.add_job(
                         self.start,
                         service["trigger"],

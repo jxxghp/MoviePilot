@@ -20,6 +20,10 @@ prepare_backend()
 # 复用共享 autouse 网络守卫；同一实现亦供各插件仓 conftest import 复用，避免逐仓维护
 from app.testing.network_guard import block_real_network  # noqa: E402,F401
 
+# 复用共享 autouse 单例复位：走完真实关停路径的用例会把后台任务登记器与 Agent 工具
+# 阻塞执行器留在封口态，不复位则其后所有用例都拿不到可用的进程级单例
+from app.testing.singleton_reset import reset_process_singletons  # noqa: E402,F401
+
 
 class _TestDatabaseExecutor:
     """让绕过完整 lifespan 的测试仍通过线程执行同步数据库写入。"""

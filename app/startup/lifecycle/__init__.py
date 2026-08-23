@@ -25,6 +25,7 @@ except Exception:
     pass
 
 from app.application.orchestration.system import SystemChain
+from app.application.plugin.lifecycle import plugin_lifecycle
 from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.config import global_vars
 from app.runtime.settings import RuntimeSettingsCompat
@@ -32,19 +33,29 @@ from app.runtime.settings import RuntimeSettingsCompat
 settings = RuntimeSettingsCompat()
 from app.runtime.health import get_application_health
 from app.runtime.topology import validate_process_topology
+from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger, LoggerManager
 from app.startup.command_initializer import init_command, stop_command, restart_command
+from app.startup.agent_initializer import stop_agent
 from app.startup.dataports_initializer import configure_data_ports
 from app.startup.domain_initializer import configure_domain_dependencies
-from app.startup.modules_initializer import init_modules, stop_modules
+from app.startup.modules_initializer import (
+    drain_events,
+    init_modules,
+    settle_events,
+    stop_modules,
+)
 from app.startup.monitor_initializer import stop_monitor, init_monitor
 from app.startup.plugins_initializer import (
     configure_plugin_services,
     execute_task,
+    finalize_plugins,
     init_plugins,
-    stop_plugins,
+    quiesce_plugin_services,
+    quiesce_plugins,
+    stop_plugin_monitor,
     sync_plugins,
 )
 from app.startup.routers_initializer import init_routers
@@ -54,10 +65,14 @@ from app.startup.scheduler_initializer import (
     init_plugin_scheduler,
 )
 from app.db.engine import check_connection_budget, get_engine, get_global_async_engine
-from app.startup.transfer_initializer import replay_pending_transfers
+from app.startup.transfer_initializer import (
+    replay_pending_transfers,
+    stop_transfer_runtime,
+)
 from app.startup.workflow_initializer import init_workflow, stop_workflow
 from app.startup.lifecycle.components import (
     LifecycleComponent,
+    LifecycleFailurePolicy,
     LifecycleMode,
     lifecycle_manifest,
 )
@@ -77,13 +92,14 @@ async def init_extra():
         return
     plugin_manager = get_plugin_manager()
     try:
-        if await sync_plugins():
-            await execute_task(
-                global_vars.loop,
-                init_plugin_scheduler,
-                "插件定时服务刷新",
-            )
-            await asyncio.wrap_future(restart_command())
+        async with plugin_lifecycle.hold_startup():
+            if await sync_plugins():
+                await execute_task(
+                    global_vars.loop,
+                    init_plugin_scheduler,
+                    "插件定时服务刷新",
+                )
+                await asyncio.wrap_future(restart_command())
     finally:
         plugin_manager.set_plugin_settling(False)
         plugin_manager.start_monitor()
@@ -99,8 +115,8 @@ async def run_shutdown_step(
     name: str,
     callback: Callable[[], object],
     timeout_seconds: float | None = None,
-) -> None:
-    """在有限预算内执行关闭阶段，并保留未收敛任务的资源所有权。"""
+) -> bool:
+    """在有限预算内执行关闭阶段，并返回资源 owner 是否已经收敛。"""
     try:
         result = callback()
         if inspect.isawaitable(result):
@@ -118,16 +134,22 @@ async def run_shutdown_step(
             task.add_done_callback(_consume_shutdown_result)
             if timeout_seconds:
                 try:
-                    await asyncio.wait_for(
+                    result = await asyncio.wait_for(
                         asyncio.shield(task), timeout=timeout_seconds
                     )
                 except asyncio.TimeoutError:
                     logger.error("关闭%s超时，已请求取消并保留未收敛任务", name)
                     task.cancel()
+                    return False
             else:
-                await task
+                result = await task
+        if result is False:
+            logger.error("关闭%s未收敛，资源所有权保持不变", name)
+            return False
+        return True
     except Exception as err:
         logger.error(f"关闭{name}失败：{err}")
+        return False
 
 
 async def run_startup_step(
@@ -150,6 +172,66 @@ async def run_startup_step(
         logger.info("启动%s完成，耗时=%.2fms", name, elapsed_ms)
 
 
+async def stop_lifecycle_components(
+    components: tuple[LifecycleComponent, ...],
+) -> bool:
+    """按声明顺序关闭组件，并在关键 owner 未收敛时停止释放依赖。"""
+    all_converged = True
+    for component in sorted(
+        (item for item in components if item.stop is not None),
+        key=lambda item: item.stop_order or 0,
+    ):
+        completed = await run_shutdown_step(
+            component.name,
+            component.stop,
+            component.stop_timeout_seconds,
+        )
+        if completed:
+            continue
+        all_converged = False
+        if component.stop_failure is LifecycleFailurePolicy.FAIL_FAST:
+            logger.error(
+                "关闭%s未收敛，停止释放其后续依赖",
+                component.name,
+            )
+            break
+    return all_converged
+
+
+def select_startup_cleanup_components(
+    components: tuple[LifecycleComponent, ...],
+    *,
+    started_names: set[str],
+    active_component: LifecycleComponent | None,
+) -> tuple[LifecycleComponent, ...]:
+    """选择启动失败时已启动、部分启动及其 stop-only owner 的清理集合。"""
+    cleanup_names = set(started_names)
+    if active_component is not None:
+        cleanup_names.add(active_component.name)
+
+    # stop-only owner 没有启动回调，按已激活依赖递归纳入，避免清理时反向
+    # 实例化尚未触达的插件、模块或外部资源。
+    changed = True
+    while changed:
+        changed = False
+        for component in components:
+            if (
+                component.stop is None
+                or component.start is not None
+                or component.name in cleanup_names
+                or not set(component.dependencies).issubset(cleanup_names)
+            ):
+                continue
+            cleanup_names.add(component.name)
+            changed = True
+
+    return tuple(
+        component
+        for component in components
+        if component.stop is not None and component.name in cleanup_names
+    )
+
+
 async def initialize_modules_component(app: FastAPI) -> None:
     """启动模块并把其类型化运行时发布到当前 FastAPI AppState。"""
     try:
@@ -164,6 +246,25 @@ async def initialize_modules_component(app: FastAPI) -> None:
         raise
     if runtime is not None:
         app.state.host_runtime = runtime
+
+
+def initialize_task_registry(app: FastAPI) -> None:
+    """创建当前 lifespan 独占的后台任务登记器。"""
+    task_registry = TaskRegistry()
+    app.state.task_registry = task_registry
+    configure_task_registry(task_registry)
+
+
+async def stop_task_registry(app: FastAPI) -> bool:
+    """停止接收新后台任务，并把已封口登记器保留到下一次显式启动。"""
+    task_registry = getattr(app.state, "task_registry", None)
+    if not isinstance(task_registry, TaskRegistry):
+        configure_task_registry(None)
+        app.state.task_registry = None
+        return True
+    # 即使 owner 已收敛，也不能在后续插件/模块 stop hook 仍会运行时退回永久
+    # accepting 的兼容默认登记器。下一次 initialize_task_registry 会显式替换它。
+    return await task_registry.shutdown(timeout_seconds=30.0)
 
 
 def prepare_plugin_restore() -> None:
@@ -189,6 +290,16 @@ def prepare_database_component(app: FastAPI) -> None:
 def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
     """按现有顺序构建应用组件清单，回调在每次 lifespan 启动时重新绑定。"""
     return (
+        LifecycleComponent(
+            name="后台任务登记器",
+            start=lambda: initialize_task_registry(app),
+            stop=lambda: stop_task_registry(app),
+            start_order=5,
+            stop_order=5,
+            start_timeout_seconds=30,
+            stop_timeout_seconds=60,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
         LifecycleComponent(
             name="数据库准备",
             start=lambda: prepare_database_component(app),
@@ -262,11 +373,21 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("插件备份恢复",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_plugins,
-            stop=stop_plugins,
+            stop=finalize_plugins,
             start_order=90,
             stop_order=60,
             start_timeout_seconds=300,
             stop_timeout_seconds=300,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
+        LifecycleComponent(
+            name="插件变更监控",
+            dependencies=("插件",),
+            mode=LifecycleMode.NORMAL_ONLY,
+            stop=stop_plugin_monitor,
+            stop_order=8,
+            stop_timeout_seconds=10,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
         ),
         LifecycleComponent(
             name="定时器",
@@ -278,6 +399,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             stop_order=50,
             start_timeout_seconds=120,
             stop_timeout_seconds=120,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
         ),
         LifecycleComponent(
             name="监控器",
@@ -289,10 +411,62 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             stop_order=40,
             start_timeout_seconds=120,
             stop_timeout_seconds=120,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
+        LifecycleComponent(
+            name="整理后台服务",
+            dependencies=("模块服务",),
+            stop=stop_transfer_runtime,
+            stop_order=52,
+            stop_timeout_seconds=45,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
+        LifecycleComponent(
+            name="AI智能体会话",
+            dependencies=("模块服务",),
+            stop=stop_agent,
+            stop_order=51,
+            stop_timeout_seconds=300,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
+        LifecycleComponent(
+            name="插件事件入口",
+            dependencies=("插件",),
+            mode=LifecycleMode.NORMAL_ONLY,
+            stop=quiesce_plugins,
+            stop_order=53,
+            stop_timeout_seconds=300,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
+        LifecycleComponent(
+            name="事件尾任务结算",
+            dependencies=("模块服务", "插件"),
+            mode=LifecycleMode.NORMAL_ONLY,
+            stop=settle_events,
+            stop_order=54,
+            stop_timeout_seconds=120,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
+        LifecycleComponent(
+            name="插件后台服务",
+            dependencies=("插件",),
+            mode=LifecycleMode.NORMAL_ONLY,
+            stop=quiesce_plugin_services,
+            stop_order=55,
+            stop_timeout_seconds=300,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
+        LifecycleComponent(
+            name="事件投递屏障",
+            dependencies=("模块服务", "整理后台服务"),
+            stop=drain_events,
+            stop_order=58,
+            stop_timeout_seconds=120,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
         ),
         LifecycleComponent(
             name="待处理整理回放",
-            dependencies=("监控器",),
+            dependencies=("监控器", "整理后台服务"),
             mode=LifecycleMode.NORMAL_ONLY,
             start=replay_pending_transfers,
             start_order=120,
@@ -346,14 +520,17 @@ async def lifespan(app: FastAPI):
     """
     health = get_application_health(app)
     health.begin_startup()
+    main_loop = asyncio.get_running_loop()
+    enabled_components: tuple[LifecycleComponent, ...] = ()
+    started_component_names: set[str] = set()
+    active_start_component: LifecycleComponent | None = None
     try:
         validate_process_topology(
             workers=settings.API_WORKERS,
             safe_mode=settings.MOVIEPILOT_SAFE_MODE,
         )
         print("Starting up...")
-        # 存储当前循环
-        global_vars.set_loop(asyncio.get_event_loop())
+        global_vars.set_loop(main_loop)
         components = build_lifecycle_components(app)
         enabled_components = tuple(
             component
@@ -368,21 +545,37 @@ async def lifespan(app: FastAPI):
             (item for item in enabled_components if item.start is not None),
             key=lambda item: item.start_order or 0,
         ):
+            active_start_component = component
             await run_startup_step(
                 component.name,
                 component.start,
                 component.start_timeout_seconds,
             )
+            started_component_names.add(component.name)
+            active_start_component = None
         if settings.MOVIEPILOT_SAFE_MODE:
             print("MoviePilot safe mode enabled: skip plugins, scheduler, monitor, commands and workflow.")
         # 插件同步到本地
         sync_plugins_task = asyncio.create_task(
             run_startup_step("插件同步与启动收尾", init_extra)
         )
+        task_registry = app.state.task_registry
+        task_registry.register(sync_plugins_task, owner="startup.plugin_settlement")
         health.mark_ready()
     except BaseException:
         # Uvicorn 在 lifespan 抛错时不会开始接流量；状态仍需供嵌入式入口和测试诊断。
         health.mark_failed()
+        cleanup_components = select_startup_cleanup_components(
+            enabled_components,
+            started_names=started_component_names,
+            active_component=active_start_component,
+        )
+        try:
+            await stop_lifecycle_components(cleanup_components)
+        except Exception as cleanup_error:
+            logger.error(f"启动失败后的生命周期清理失败：{cleanup_error}")
+        finally:
+            global_vars.clear_loop(main_loop)
         raise
     try:
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环
@@ -391,21 +584,13 @@ async def lifespan(app: FastAPI):
         health.mark_stopping()
         print("Shutting down...")
         global_vars.stop_system()
-        # 插件恢复会在线程池中修改源码与依赖，必须完成后再进入资源关闭阶段。
         try:
-            await sync_plugins_task
-        except Exception as e:
-            print(str(e))
-        try:
-            for component in sorted(
-                (item for item in enabled_components if item.stop is not None),
-                key=lambda item: item.stop_order or 0,
-            ):
-                await run_shutdown_step(
-                    component.name,
-                    component.stop,
-                    component.stop_timeout_seconds,
-                )
+            # 插件 settlement 已登记到最前置 TaskRegistry。由该 FAIL_FAST owner
+            # 在统一预算内取消/等待，不能在屏障之前无界 await 绕过停机预算。
+            await stop_lifecycle_components(enabled_components)
         finally:
-            # 日志最后关闭，确保其他组件的收尾信息已写入文件
-            LoggerManager.shutdown()
+            try:
+                # 日志最后关闭，确保其他组件的收尾信息已写入文件
+                LoggerManager.shutdown()
+            finally:
+                global_vars.clear_loop(main_loop)

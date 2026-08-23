@@ -2156,8 +2156,16 @@
         "count": 1
       },
       {
+        "caller": "app.runtime.tasks",
+        "count": 1
+      },
+      {
         "caller": "app.startup.hostport_initializer",
         "count": 9
+      },
+      {
+        "caller": "app.startup.lifecycle",
+        "count": 1
       },
       {
         "caller": "app.testing.bootstrap",
@@ -3154,16 +3162,6 @@
     ],
     "app.sdk.browser": [
       {
-        "kind": "import",
-        "name": "Any",
-        "target": "typing.Any"
-      },
-      {
-        "kind": "import",
-        "name": "annotations",
-        "target": "__future__.annotations"
-      },
-      {
         "kind": "FunctionDef",
         "name": "launch_browser_context",
         "target": ""
@@ -3422,31 +3420,6 @@
     "app.sdk.extension": [
       {
         "kind": "import",
-        "name": "ABCMeta",
-        "target": "abc.ABCMeta"
-      },
-      {
-        "kind": "import",
-        "name": "ActionDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.ActionDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "AgentToolDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.AgentToolDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "Any",
-        "target": "typing.Any"
-      },
-      {
-        "kind": "import",
-        "name": "ChainBase",
-        "target": "app.application.orchestration.ChainBase"
-      },
-      {
-        "kind": "import",
         "name": "ChainDataPorts",
         "target": "app.application.orchestration.data.ChainDataPorts"
       },
@@ -3466,134 +3439,9 @@
         "target": "app.application.orchestration.context.ChainRuntimeContext"
       },
       {
-        "kind": "import",
-        "name": "ChannelCapabilities",
-        "target": "app.schemas.notification.ChannelCapabilities"
-      },
-      {
-        "kind": "import",
-        "name": "CommandDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.CommandDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "DEFAULT_INSTANCE_ID",
-        "target": "app.runtime.extensions.contract.instance.DEFAULT_INSTANCE_ID"
-      },
-      {
-        "kind": "import",
-        "name": "DashboardDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.DashboardDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "DeclarativeBase",
-        "target": "sqlalchemy.orm.DeclarativeBase"
-      },
-      {
-        "kind": "import",
-        "name": "Dict",
-        "target": "typing.Dict"
-      },
-      {
-        "kind": "import",
-        "name": "EventManager",
-        "target": "app.runtime.events.EventManager"
-      },
-      {
-        "kind": "import",
-        "name": "FilterRuleDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.FilterRuleDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "FilterRuleGroupDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.FilterRuleGroupDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "List",
-        "target": "typing.List"
-      },
-      {
-        "kind": "import",
-        "name": "MediaSourceDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.MediaSourceDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "Message",
-        "target": "app.schemas.message.Message"
-      },
-      {
-        "kind": "import",
-        "name": "MessageHelper",
-        "target": "app.application.messaging.message.MessageHelper"
-      },
-      {
-        "kind": "import",
-        "name": "MessageType",
-        "target": "app.schemas.types.MessageType"
-      },
-      {
-        "kind": "import",
-        "name": "MetaParserDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.MetaParserDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "ModuleDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.ModuleDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "NotificationChannel",
-        "target": "app.schemas.types.NotificationChannel"
-      },
-      {
-        "kind": "import",
-        "name": "Optional",
-        "target": "typing.Optional"
-      },
-      {
-        "kind": "import",
-        "name": "Path",
-        "target": "pathlib.Path"
-      },
-      {
         "kind": "ClassDef",
         "name": "PluginChian",
         "target": ""
-      },
-      {
-        "kind": "import",
-        "name": "PluginConfigOper",
-        "target": "app.db.oper.pluginconfig.PluginConfigOper"
-      },
-      {
-        "kind": "import",
-        "name": "PluginDataOper",
-        "target": "app.db.oper.plugindata.PluginDataOper"
-      },
-      {
-        "kind": "import",
-        "name": "ScheduleDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.ScheduleDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "ServiceInstanceDeclaration",
-        "target": "app.runtime.extensions.contract.declaration.ServiceInstanceDeclaration"
-      },
-      {
-        "kind": "import",
-        "name": "SystemConfigOper",
-        "target": "app.db.oper.systemconfig.SystemConfigOper"
-      },
-      {
-        "kind": "import",
-        "name": "TYPE_CHECKING",
-        "target": "typing.TYPE_CHECKING"
       },
       {
         "kind": "import",
@@ -3606,44 +3454,9 @@
         "target": "app.application.history.TransferHistoryWriter"
       },
       {
-        "kind": "import",
-        "name": "Tuple",
-        "target": "typing.Tuple"
-      },
-      {
-        "kind": "import",
-        "name": "Type",
-        "target": "typing.Type"
-      },
-      {
-        "kind": "import",
-        "name": "Union",
-        "target": "typing.Union"
-      },
-      {
-        "kind": "import",
-        "name": "abstractmethod",
-        "target": "abc.abstractmethod"
-      },
-      {
-        "kind": "import",
-        "name": "instance_key",
-        "target": "app.runtime.extensions.contract.instance.instance_key"
-      },
-      {
-        "kind": "import",
-        "name": "normalize_instance_id",
-        "target": "app.runtime.extensions.contract.instance.normalize_instance_id"
-      },
-      {
-        "kind": "import",
-        "name": "plugin_instance_path",
-        "target": "app.runtime.extensions.lifecycle.paths.plugin_instance_path"
-      },
-      {
-        "kind": "import",
-        "name": "settings",
-        "target": "app.runtime.config.settings"
+        "kind": "ClassDef",
+        "name": "_PluginBase",
+        "target": ""
       }
     ],
     "app.sdk.logging": [
@@ -4243,11 +4056,6 @@
     ],
     "app.sdk.service_instances": [
       {
-        "kind": "import",
-        "name": "Dict",
-        "target": "typing.Dict"
-      },
-      {
         "kind": "ClassDef",
         "name": "DownloaderInstance",
         "target": ""
@@ -4263,39 +4071,9 @@
         "target": ""
       },
       {
-        "kind": "import",
-        "name": "Protocol",
-        "target": "typing.Protocol"
-      },
-      {
-        "kind": "import",
-        "name": "SERVICE_INSTANCE_REQUIRED_METHODS",
-        "target": "app.runtime.extensions.contract.service_instance.SERVICE_INSTANCE_REQUIRED_METHODS"
-      },
-      {
-        "kind": "import",
-        "name": "Tuple",
-        "target": "typing.Tuple"
-      },
-      {
-        "kind": "import",
-        "name": "annotations",
-        "target": "__future__.annotations"
-      },
-      {
-        "kind": "import",
-        "name": "runtime_checkable",
-        "target": "typing.runtime_checkable"
-      },
-      {
         "kind": "FunctionDef",
         "name": "service_capabilities",
         "target": ""
-      },
-      {
-        "kind": "import",
-        "name": "service_family_registry",
-        "target": "app.runtime.extensions.registry.service_family.service_family_registry"
       },
       {
         "kind": "FunctionDef",
@@ -4394,274 +4172,9 @@
     ],
     "app.sdk.string": [
       {
-        "kind": "import",
-        "name": "Callable",
-        "target": "typing.Callable"
-      },
-      {
-        "kind": "import",
-        "name": "DomUtils",
-        "target": "app.foundation.dom.DomUtils"
-      },
-      {
-        "kind": "import",
-        "name": "HashUtils",
-        "target": "app.foundation.crypto.HashUtils"
-      },
-      {
         "kind": "ClassDef",
         "name": "StringUtils",
         "target": ""
-      },
-      {
-        "kind": "import",
-        "name": "base_url",
-        "target": "app.foundation.url.base_url"
-      },
-      {
-        "kind": "import",
-        "name": "common_prefix",
-        "target": "app.foundation.text.common_prefix"
-      },
-      {
-        "kind": "import",
-        "name": "compact_numbers",
-        "target": "app.domain.episode.compact_numbers"
-      },
-      {
-        "kind": "import",
-        "name": "compare_version",
-        "target": "app.foundation.version.compare_version"
-      },
-      {
-        "kind": "import",
-        "name": "contains_chinese",
-        "target": "app.foundation.text.contains_chinese"
-      },
-      {
-        "kind": "import",
-        "name": "contains_japanese",
-        "target": "app.foundation.text.contains_japanese"
-      },
-      {
-        "kind": "import",
-        "name": "contains_korean",
-        "target": "app.foundation.text.contains_korean"
-      },
-      {
-        "kind": "import",
-        "name": "cookiejar_to_string",
-        "target": "app.foundation.text.cookiejar_to_string"
-      },
-      {
-        "kind": "import",
-        "name": "count_words",
-        "target": "app.foundation.text.count_words"
-      },
-      {
-        "kind": "import",
-        "name": "escape_markdown",
-        "target": "app.foundation.text.escape_markdown"
-      },
-      {
-        "kind": "import",
-        "name": "extract_domain",
-        "target": "app.domain.site.extract_domain"
-      },
-      {
-        "kind": "import",
-        "name": "extract_named_ids",
-        "target": "app.foundation.text.extract_named_ids"
-      },
-      {
-        "kind": "import",
-        "name": "format_amount",
-        "target": "app.foundation.text.format_amount"
-      },
-      {
-        "kind": "import",
-        "name": "format_approx_duration",
-        "target": "app.foundation.temporal.format_approx_duration"
-      },
-      {
-        "kind": "import",
-        "name": "format_compact_size",
-        "target": "app.foundation.size.format_compact_size"
-      },
-      {
-        "kind": "import",
-        "name": "format_duration",
-        "target": "app.foundation.temporal.format_duration"
-      },
-      {
-        "kind": "import",
-        "name": "format_minutes",
-        "target": "app.foundation.temporal.format_minutes"
-      },
-      {
-        "kind": "import",
-        "name": "format_ranges",
-        "target": "app.domain.episode.format_ranges"
-      },
-      {
-        "kind": "import",
-        "name": "format_remaining",
-        "target": "app.foundation.temporal.format_remaining"
-      },
-      {
-        "kind": "import",
-        "name": "format_size",
-        "target": "app.foundation.size.format_size"
-      },
-      {
-        "kind": "import",
-        "name": "format_timestamp",
-        "target": "app.foundation.temporal.format_timestamp"
-      },
-      {
-        "kind": "import",
-        "name": "host_label",
-        "target": "app.foundation.url.host_label"
-      },
-      {
-        "kind": "import",
-        "name": "is_all_chinese",
-        "target": "app.foundation.text.is_all_chinese"
-      },
-      {
-        "kind": "import",
-        "name": "is_english_word",
-        "target": "app.foundation.text.is_english_word"
-      },
-      {
-        "kind": "import",
-        "name": "is_link",
-        "target": "app.foundation.url.is_link"
-      },
-      {
-        "kind": "import",
-        "name": "is_magnet_link",
-        "target": "app.domain.torrent.is_magnet_link"
-      },
-      {
-        "kind": "import",
-        "name": "is_media_title_like",
-        "target": "app.domain.title.is_media_title_like"
-      },
-      {
-        "kind": "import",
-        "name": "is_number",
-        "target": "app.foundation.text.is_number"
-      },
-      {
-        "kind": "import",
-        "name": "natural_sort_key",
-        "target": "app.foundation.text.natural_sort_key"
-      },
-      {
-        "kind": "import",
-        "name": "normalize_datetime",
-        "target": "app.foundation.temporal.normalize_datetime"
-      },
-      {
-        "kind": "import",
-        "name": "normalize_upper",
-        "target": "app.foundation.text.normalize_upper"
-      },
-      {
-        "kind": "import",
-        "name": "parse_address",
-        "target": "app.foundation.url.parse_address"
-      },
-      {
-        "kind": "import",
-        "name": "parse_bool",
-        "target": "app.foundation.text.parse_bool"
-      },
-      {
-        "kind": "import",
-        "name": "parse_datetime",
-        "target": "app.foundation.temporal.parse_datetime"
-      },
-      {
-        "kind": "import",
-        "name": "parse_float",
-        "target": "app.foundation.text.parse_float"
-      },
-      {
-        "kind": "import",
-        "name": "parse_int",
-        "target": "app.foundation.text.parse_int"
-      },
-      {
-        "kind": "import",
-        "name": "parse_search_keyword",
-        "target": "app.domain.title.parse_search_keyword"
-      },
-      {
-        "kind": "import",
-        "name": "parse_size",
-        "target": "app.foundation.size.parse_size"
-      },
-      {
-        "kind": "import",
-        "name": "parse_timestamp",
-        "target": "app.foundation.temporal.parse_timestamp"
-      },
-      {
-        "kind": "import",
-        "name": "random_string",
-        "target": "app.foundation.text.random_string"
-      },
-      {
-        "kind": "import",
-        "name": "remove_punctuation",
-        "target": "app.foundation.text.remove_punctuation"
-      },
-      {
-        "kind": "import",
-        "name": "sanitize_filename",
-        "target": "app.foundation.text.sanitize_filename"
-      },
-      {
-        "kind": "import",
-        "name": "second_level_label",
-        "target": "app.foundation.url.second_level_label"
-      },
-      {
-        "kind": "import",
-        "name": "signature",
-        "target": "inspect.signature"
-      },
-      {
-        "kind": "import",
-        "name": "split_by_bytes",
-        "target": "app.foundation.text.split_by_bytes"
-      },
-      {
-        "kind": "import",
-        "name": "split_netloc",
-        "target": "app.foundation.url.split_netloc"
-      },
-      {
-        "kind": "import",
-        "name": "strip_optional",
-        "target": "app.foundation.text.strip_optional"
-      },
-      {
-        "kind": "import",
-        "name": "title_case",
-        "target": "app.foundation.text.title_case"
-      },
-      {
-        "kind": "import",
-        "name": "urls_match",
-        "target": "app.domain.site.urls_match"
-      },
-      {
-        "kind": "import",
-        "name": "wraps",
-        "target": "functools.wraps"
       }
     ],
     "app.sdk.types": [
@@ -4806,6 +4319,16 @@
         "kind": "import",
         "name": "cut",
         "target": "app.foundation.text.cut"
+      },
+      {
+        "kind": "alias",
+        "name": "decrypt",
+        "target": "app.foundation.crypto.CryptoJsUtils.decrypt"
+      },
+      {
+        "kind": "alias",
+        "name": "encrypt",
+        "target": "app.foundation.crypto.CryptoJsUtils.encrypt"
       },
       {
         "kind": "import",

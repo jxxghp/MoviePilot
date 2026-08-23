@@ -14,6 +14,8 @@ from app.scheduler import composition as composition_module
 def _build_scheduler(job_id, func):
     """构造不启动 APScheduler 的定时服务测试对象。"""
     scheduler = object.__new__(Scheduler)
+    scheduler._scheduler = None
+    scheduler._event = threading.Event()
     scheduler._lock = threading.RLock()
     scheduler._jobs = {
         job_id: {
@@ -23,6 +25,11 @@ def _build_scheduler(job_id, func):
             "running": False,
         }
     }
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
+    scheduler._agent_task_reservations = {}
     return scheduler
 
 
@@ -160,7 +167,7 @@ def test_scheduler_records_cancelled_async_job_as_failed():
     async def run_task():
         job = scheduler._SchedulerEngine__prepare_job(job_id)
         with pytest.raises(asyncio.CancelledError):
-            await scheduler._SchedulerEngine__run_coro_job(task(), job_id, job)
+            await scheduler._SchedulerEngine__run_coro_job(task, job_id, job)
 
     scheduler = _build_scheduler(job_id, task)
     asyncio.run(run_task())
@@ -172,12 +179,47 @@ def test_scheduler_records_cancelled_async_job_as_failed():
     assert progress.error == "任务已取消"
 
 
+def test_scheduler_stop_async_cancels_owned_async_jobs():
+    """Scheduler 关停应取消并等待自身登记的异步作业。"""
+    job_id = f"test-owned-task-{uuid4()}"
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def task():
+        """等待关停信号，验证任务确实由 Scheduler 持有。"""
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    scheduler = _build_scheduler(job_id, task)
+
+    async def run_task():
+        """在当前事件循环启动并收口异步作业。"""
+        scheduler.start(job_id)
+        await started.wait()
+        assert len(scheduler._handles) == 1
+        await scheduler.stop_async()
+
+    asyncio.run(run_task())
+
+    assert cancelled.is_set()
+    assert scheduler._handles == {}
+
+
 def test_scheduler_returns_none_for_unknown_job():
     """未注册且无历史进度的定时服务应返回空。"""
     job_id = f"test-unknown-{uuid4()}"
     scheduler = object.__new__(Scheduler)
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
+    scheduler._agent_task_reservations = {}
 
     assert scheduler.get_progress(job_id) is None
 

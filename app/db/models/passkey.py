@@ -5,7 +5,10 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from datetime import datetime
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import async_db_query, db_query, run_legacy_sync_query
+from app.db.decorators import (
+    legacy_async_db_query,
+    legacy_db_query,
+)
 
 
 def _get_by_user_id_statement(model: type["PassKey"], user_id: int):
@@ -51,6 +54,7 @@ class PassKey(Base):
     transports: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     @classmethod
+    @legacy_db_query
     def get_by_user_id(
             cls,
             db: Session | int | None = None,
@@ -68,20 +72,19 @@ class PassKey(Base):
                 _get_by_user_id_statement(cls, user_id)
             ).scalars().all())
 
-        if isinstance(db, Session):
-            return query(db)
-        return run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_by_user_id(cls, db: AsyncSession, user_id: int):
-        """异步获取用户的所有PassKey"""
+        """异步获取用户的所有 PassKey，并保留旧插件无 Session 调用。"""
         result = await db.execute(
             _get_by_user_id_statement(cls, user_id)
         )
         return list(result.scalars().all())
 
     @classmethod
+    @legacy_db_query
     def get_by_credential_id(
             cls,
             db: Session | str | None = None,
@@ -99,29 +102,27 @@ class PassKey(Base):
                 _get_by_credential_id_statement(cls, credential_id)
             ).scalars().first()
 
-        if isinstance(db, Session):
-            return query(db)
-        return run_legacy_sync_query(query)
+        return query(db)
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_by_credential_id(cls, db: AsyncSession, credential_id: str):
-        """异步根据凭证ID获取PassKey"""
+        """异步根据凭证 ID 获取 PassKey，并保留旧插件无 Session 调用。"""
         result = await db.execute(
             _get_by_credential_id_statement(cls, credential_id)
         )
         return result.scalars().first()
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_by_id(cls, db: Session, passkey_id: int):
-        """根据ID获取PassKey"""
+        """根据 ID 获取 PassKey，并保留旧插件无 Session 调用。"""
         return db.execute(select(cls).where(cls.id == passkey_id)).scalars().first()
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_by_id(cls, db: AsyncSession, passkey_id: int):
-        """异步根据ID获取PassKey"""
+        """异步根据 ID 获取 PassKey，并保留旧插件无 Session 调用。"""
         result = await db.execute(
             select(cls).filter(cls.id == passkey_id)
         )

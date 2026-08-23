@@ -1,3 +1,15 @@
+__all__ = (
+    "ImmediateException",
+    "LimitException",
+    "APIRateLimitException",
+    "RateLimitExceededException",
+    "OperationInterrupted",
+    "PluginMutationRejectedError",
+    "StorageQueryError",
+    "TMDbException",
+)
+
+
 class ImmediateException(Exception):
     """
     用于立即抛出异常而不重试的特殊异常类。
@@ -38,6 +50,15 @@ class OperationInterrupted(KeyboardInterrupt):
     pass
 
 
+class PluginMutationRejectedError(RuntimeError):
+    """表示插件运行时已封口，新的可变事务未获准执行。"""
+
+    def __init__(self, operation: str) -> None:
+        """保存被拒绝的操作名称并生成稳定诊断消息。"""
+        self.operation = operation
+        super().__init__(f"插件运行时已进入停机阶段，拒绝{operation}")
+
+
 class StorageQueryError(Exception):
     """
     用于表示存储查询无法确认结果的异常类。
@@ -45,6 +66,22 @@ class StorageQueryError(Exception):
     调用方不应把该状态当作文件不存在处理。
     """
     pass
+
+
+class PersistenceUnavailableError(RuntimeError):
+    """持久化执行能力暂时拒绝新操作，调用方可在稍后重试。"""
+
+
+class DatabaseWorkerClosedError(PersistenceUnavailableError):
+    """数据库执行器尚未启动或已经停止。"""
+
+
+class DatabaseWorkerOverloadedError(PersistenceUnavailableError):
+    """数据库执行器的运行与排队容量已经用尽。"""
+
+
+class AgentChatPersistenceUnavailableError(PersistenceUnavailableError):
+    """AgentChat 持久化服务因关闭或自身容量限制拒绝新写入。"""
 
 
 class TMDbException(Exception):
@@ -56,19 +93,3 @@ class TMDbException(Exception):
     pass
 
 
-class DatabaseWorkerClosedError(RuntimeError):
-    """
-    用于表示数据库短事务执行器尚未启动或已经停止的跨层异常契约。
-    执行器实现位于数据库层，应用层与API层只捕获本类，
-    不依赖执行器的实现路径。
-    """
-    pass
-
-
-class DatabaseWorkerOverloadedError(RuntimeError):
-    """
-    用于表示数据库短事务执行器运行与排队容量已用尽的跨层异常契约。
-    执行器实现位于数据库层，应用层与API层只捕获本类，
-    不依赖执行器的实现路径。
-    """
-    pass

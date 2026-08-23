@@ -1512,6 +1512,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             state: Optional[str] = 'N',
             manual: Optional[bool] = False,
             progress_callback: Optional[Callable[..., None]] = None,
+            sids: Optional[tuple[int, ...]] = None,
     ) -> None:
         """
         执行订阅搜索。
@@ -1520,6 +1521,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         return self._execute_search(
             sid=sid,
+            sids=sids,
             state=state,
             manual=manual,
             progress_callback=progress_callback,
@@ -1531,6 +1533,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             state: Optional[str] = 'N',
             manual: Optional[bool] = False,
             progress_callback: Optional[Callable[..., None]] = None,
+            sids: Optional[tuple[int, ...]] = None,
     ) -> None:
         """
         订阅搜索
@@ -1538,6 +1541,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         :param state: 订阅状态 N:新建, R:订阅中, P:待定, S:暂停
         :param manual: 是否手动搜索
         :param progress_callback: 定时服务进度更新回调
+        :param sids: 订阅ID集合，有值时按给定顺序处理
         :return: 更新订阅状态为R或删除订阅
         """
         lock_acquired = False
@@ -1550,9 +1554,16 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             if sid:
                 subscribe = subscribeoper.get(sid)
                 subscribes = [subscribe] if subscribe else []
+            elif sids is not None:
+                subscribes = [
+                    subscribe
+                    for current_id in sids
+                    if (subscribe := subscribeoper.get(current_id)) is not None
+                ]
             else:
                 subscribes = subscribeoper.list(self.get_states_for_search(state))
             total_num = len(subscribes)
+            processed_subscribes = []
             if progress_callback:
                 progress_callback(
                     value=0,
@@ -1565,6 +1576,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 for index, subscribe in enumerate(subscribes, start=1):
                     if global_vars.is_system_stopped:
                         break
+                    processed_subscribes.append(subscribe)
                     if progress_callback:
                         progress_callback(
                             value=(index - 1) / total_num * 100 if total_num else 100,
@@ -1586,7 +1598,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                             logger.debug(f"订阅标题：{subscribe.name} 新增小于1分钟，暂不搜索...")
                             continue
                     # 随机休眠1-5分钟
-                    if not sid and state in ['R', 'P']:
+                    if not sid and sids is None and state in ['R', 'P']:
                         sleep_time = random.randint(60, 300)
                         logger.info(f'订阅搜索随机休眠 {sleep_time} 秒 ...')
                         if progress_callback:
@@ -1757,6 +1769,13 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     if subscribes:
                         if sid:
                             self.messagehelper.put(f'{subscribes[0].name} 搜索完成！', title="订阅搜索", role="system")
+                        elif sids is not None:
+                            for subscribe in processed_subscribes:
+                                self.messagehelper.put(
+                                    f'{subscribe.name} 搜索完成！',
+                                    title="订阅搜索",
+                                    role="system",
+                                )
                         else:
                             self.messagehelper.put('所有订阅搜索完成！', title="订阅搜索", role="system")
                     else:

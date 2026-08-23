@@ -3,6 +3,7 @@ from typing import Optional, Union
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_, select
 
 from app.db.base import DbOper
 from app.db.models.message import Message
@@ -105,7 +106,14 @@ class MessageOper(DbOper):
         """
         分页获取消息记录。
         """
-        return Message.list_by_page(self._db, page, count)
+        return self._execute_sync_query(
+            lambda session: list(session.execute(
+                select(Message)
+                .order_by(Message.reg_time.desc(), Message.id.desc())
+                .offset((page - 1) * count)
+                .limit(count)
+            ).scalars().all())
+        )
 
     def exists_by_source(self, source: str) -> bool:
         """
@@ -114,7 +122,11 @@ class MessageOper(DbOper):
         :param source: 消息来源唯一标识
         :return: 是否存在匹配记录
         """
-        return Message.exists_by_source(self._db, source)
+        return self._execute_sync_query(
+            lambda session: session.execute(
+                select(Message.id).where(Message.source == source).limit(1)
+            ).scalars().first() is not None
+        )
 
     async def async_list_by_page(
             self, page: int = 1, count: int = 30
@@ -122,7 +134,17 @@ class MessageOper(DbOper):
         """
         分页获取消息记录。
         """
-        return await Message.async_list_by_page(self._db, page, count)
+        async def query(session: AsyncSession) -> list[Message]:
+            """在调用方异步会话中执行消息分页查询。"""
+            result = await session.execute(
+                select(Message)
+                .order_by(Message.reg_time.desc(), Message.id.desc())
+                .offset((page - 1) * count)
+                .limit(count)
+            )
+            return list(result.scalars().all())
+
+        return await self._execute_async_query(query)
 
     async def async_list_sent_by_page(
             self,
@@ -135,11 +157,28 @@ class MessageOper(DbOper):
         """
         分页获取系统发送的通知消息。
         """
-        return await Message.async_list_sent_by_page(
-            self._db,
-            page,
-            count,
-            all_clear_before=all_clear_before,
-            system_clear_before=system_clear_before,
-            media_clear_before=media_clear_before,
-        )
+        async def query(session: AsyncSession) -> list[Message]:
+            """在调用方异步会话中执行通知消息分页查询。"""
+            statement = select(Message).where(Message.action == 1)
+            if all_clear_before:
+                statement = statement.where(Message.reg_time > all_clear_before)
+            if system_clear_before:
+                statement = statement.where(or_(
+                    and_(Message.image.isnot(None), Message.image != ""),
+                    Message.reg_time > system_clear_before,
+                ))
+            if media_clear_before:
+                statement = statement.where(or_(
+                    Message.image.is_(None),
+                    Message.image == "",
+                    Message.reg_time > media_clear_before,
+                ))
+            result = await session.execute(
+                statement
+                .order_by(Message.reg_time.desc(), Message.id.desc())
+                .offset((page - 1) * count)
+                .limit(count)
+            )
+            return list(result.scalars().all())
+
+        return await self._execute_async_query(query)

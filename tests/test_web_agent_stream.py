@@ -27,7 +27,7 @@ from app.api.endpoints.agent import (
     _extract_web_agent_message_from_event_data,
     _get_web_agent_type,
     _has_web_agent_traditional_interaction,
-    _prepare_web_agent_audio_attachment_path,
+    _prepare_web_agent_audio_attachment_path_async,
     _resolve_web_agent_audio_refs,
     _transcribe_web_agent_audio_files,
     web_agent_stream,
@@ -663,29 +663,269 @@ def test_build_web_agent_message_events_registers_voice_attachment(tmp_path):
     assert attachment["url"].startswith("message/agent/file/")
 
 
-def test_prepare_web_agent_audio_attachment_converts_unsupported_audio(tmp_path):
-    """WebAgent 会把浏览器不稳定支持的语音格式转为 WAV 供面板播放。"""
+def test_prepare_web_agent_audio_attachment_async_keeps_loop_responsive(tmp_path):
+    """异步转码等待期间事件循环仍应可调度其它任务。"""
     source_path = tmp_path / "reply.opus"
     source_path.write_bytes(b"opus-bytes")
     converted_path = tmp_path / "voice" / "reply_web_abcdef12.wav"
+    started = asyncio.Event()
+    release = asyncio.Event()
 
-    with patch("app.api.endpoints.agent.shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-        "app.api.endpoints.agent.uuid.uuid4",
-        return_value=SimpleNamespace(hex="abcdef1234567890"),
-    ), patch("app.api.endpoints.agent.subprocess.run") as run:
-        def write_converted_file(*args, **kwargs):
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self):
+            started.set()
+            await release.wait()
             converted_path.write_bytes(b"wav-bytes")
-            return SimpleNamespace(returncode=0, stderr="")
+            return b"", b""
 
-        run.side_effect = write_converted_file
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        assert args[0] == "/usr/bin/ffmpeg"
+        return FakeProcess()
+
+    async def scenario():
         with patch(
+            "app.api.endpoints.agent.shutil.which",
+            return_value="/usr/bin/ffmpeg",
+        ), patch(
+            "app.api.endpoints.agent.uuid.uuid4",
+            return_value=SimpleNamespace(hex="abcdef1234567890"),
+        ), patch(
+            "app.api.endpoints.agent.asyncio.create_subprocess_exec",
+            side_effect=fake_create_subprocess_exec,
+        ), patch(
             "app.api.endpoints.agent.get_api_runtime_config_snapshot",
             return_value=SimpleNamespace(temp_path=tmp_path),
         ):
-            output_path = _prepare_web_agent_audio_attachment_path(str(source_path))
+            conversion_task = asyncio.create_task(
+                _prepare_web_agent_audio_attachment_path_async(str(source_path))
+            )
+            await asyncio.wait_for(started.wait(), timeout=1)
+            heartbeat = asyncio.create_task(asyncio.sleep(0))
+            await heartbeat
+            assert not conversion_task.done()
+            release.set()
+            return await conversion_task
+
+    output_path = asyncio.run(scenario())
 
     assert output_path == converted_path
     assert output_path.read_bytes() == b"wav-bytes"
+
+
+def test_prepare_web_agent_audio_attachment_async_cancellation_reaps_process(tmp_path):
+    """取消 WebAgent 转码时应终止并回收 ffmpeg，不能留下半成品。"""
+    source_path = tmp_path / "reply.opus"
+    source_path.write_bytes(b"opus-bytes")
+    output_path = tmp_path / "voice" / "reply_web_abcdef12.wav"
+    started = asyncio.Event()
+    killed = False
+
+    class FakeProcess:
+        returncode = None
+        _release = asyncio.Event()
+
+        def kill(self):
+            nonlocal killed
+            killed = True
+            self.returncode = -9
+            self._release.set()
+
+        async def communicate(self):
+            started.set()
+            if self.returncode is None:
+                await self._release.wait()
+            return b"", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return FakeProcess()
+
+    async def scenario():
+        with patch(
+            "app.api.endpoints.agent.shutil.which",
+            return_value="/usr/bin/ffmpeg",
+        ), patch(
+            "app.api.endpoints.agent.uuid.uuid4",
+            return_value=SimpleNamespace(hex="abcdef1234567890"),
+        ), patch(
+            "app.api.endpoints.agent.asyncio.create_subprocess_exec",
+            side_effect=fake_create_subprocess_exec,
+        ), patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(temp_path=tmp_path),
+        ):
+            conversion_task = asyncio.create_task(
+                _prepare_web_agent_audio_attachment_path_async(str(source_path))
+            )
+            await asyncio.wait_for(started.wait(), timeout=1)
+            conversion_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await conversion_task
+
+    asyncio.run(scenario())
+
+    assert killed is True
+    assert not output_path.exists()
+
+
+def test_prepare_web_agent_audio_attachment_async_communicate_error_reaps_process(tmp_path):
+    """ffmpeg 通信异常时应终止仍运行的进程并回退原文件。"""
+    source_path = tmp_path / "reply.opus"
+    source_path.write_bytes(b"opus-bytes")
+    started = asyncio.Event()
+    killed = False
+    communicate_calls = 0
+
+    class FakeProcess:
+        returncode = None
+
+        def kill(self):
+            nonlocal killed
+            killed = True
+            self.returncode = -9
+
+        async def communicate(self):
+            nonlocal communicate_calls
+            communicate_calls += 1
+            started.set()
+            if self.returncode is None:
+                raise OSError("pipe closed")
+            return b"", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return FakeProcess()
+
+    async def scenario():
+        with patch(
+            "app.api.endpoints.agent.shutil.which",
+            return_value="/usr/bin/ffmpeg",
+        ), patch(
+            "app.api.endpoints.agent.asyncio.create_subprocess_exec",
+            side_effect=fake_create_subprocess_exec,
+        ), patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(temp_path=tmp_path),
+        ):
+            output_path = await _prepare_web_agent_audio_attachment_path_async(
+                str(source_path)
+            )
+            return output_path
+
+    output_path = asyncio.run(scenario())
+
+    assert output_path == source_path
+    assert killed is True
+    assert communicate_calls == 2
+
+
+def test_prepare_web_agent_audio_attachment_async_cancellation_cleans_completed_output(
+    tmp_path,
+):
+    """转码完成后检查产物期间取消，也应清理未登记的 WAV。"""
+    source_path = tmp_path / "reply.opus"
+    source_path.write_bytes(b"opus-bytes")
+    output_path = tmp_path / "voice" / "reply_web_abcdef12.wav"
+    exists_started = asyncio.Event()
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self):
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"wav-bytes")
+            return b"", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return FakeProcess()
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        if getattr(func, "__name__", "") == "exists":
+            exists_started.set()
+            await asyncio.Event().wait()
+        return await asyncio.to_thread(func, *args, **kwargs)
+
+    async def scenario():
+        with patch(
+            "app.api.endpoints.agent.shutil.which",
+            return_value="/usr/bin/ffmpeg",
+        ), patch(
+            "app.api.endpoints.agent.uuid.uuid4",
+            return_value=SimpleNamespace(hex="abcdef1234567890"),
+        ), patch(
+            "app.api.endpoints.agent.asyncio.create_subprocess_exec",
+            side_effect=fake_create_subprocess_exec,
+        ), patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(temp_path=tmp_path),
+        ), patch(
+            "app.api.endpoints.agent.run_in_threadpool",
+            side_effect=fake_run_in_threadpool,
+        ):
+            conversion_task = asyncio.create_task(
+                _prepare_web_agent_audio_attachment_path_async(str(source_path))
+            )
+            await asyncio.wait_for(exists_started.wait(), timeout=1)
+            assert output_path.exists()
+            conversion_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await conversion_task
+
+    asyncio.run(scenario())
+
+    assert not output_path.exists()
+
+
+def test_prepare_web_agent_audio_attachment_async_timeout_falls_back(tmp_path):
+    """转码超时应回退原文件并回收 ffmpeg。"""
+    source_path = tmp_path / "reply.opus"
+    source_path.write_bytes(b"opus-bytes")
+    started = asyncio.Event()
+    killed = False
+
+    class FakeProcess:
+        returncode = None
+        _release = asyncio.Event()
+
+        def kill(self):
+            nonlocal killed
+            killed = True
+            self.returncode = -9
+            self._release.set()
+
+        async def communicate(self):
+            started.set()
+            if self.returncode is None:
+                await self._release.wait()
+            return b"", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return FakeProcess()
+
+    async def scenario():
+        with patch(
+            "app.api.endpoints.agent.shutil.which",
+            return_value="/usr/bin/ffmpeg",
+        ), patch(
+            "app.api.endpoints.agent.asyncio.create_subprocess_exec",
+            side_effect=fake_create_subprocess_exec,
+        ), patch(
+            "app.api.endpoints.agent.get_api_runtime_config_snapshot",
+            return_value=SimpleNamespace(temp_path=tmp_path),
+        ), patch(
+            "app.api.endpoints.agent.WEB_AGENT_AUDIO_CONVERSION_TIMEOUT_SECONDS",
+            0.01,
+        ):
+            conversion_task = asyncio.create_task(
+                _prepare_web_agent_audio_attachment_path_async(str(source_path))
+            )
+            await asyncio.wait_for(started.wait(), timeout=1)
+            return await conversion_task
+
+    output_path = asyncio.run(scenario())
+
+    assert output_path == source_path
+    assert killed is True
 
 
 def test_transcribe_web_agent_audio_files_reads_registered_upload(tmp_path):

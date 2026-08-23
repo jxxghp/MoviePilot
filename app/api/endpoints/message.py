@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Protocol, Union, Any, List, Optional
+from typing import Annotated, Any, List, Optional, Protocol, Union
 
-from fastapi import BackgroundTasks, Depends, Request
+from fastapi import Depends, Request
 from starlette.responses import PlainTextResponse
 
 from app.schemas.message import MessageClearBefore as _SchemaMessageClearBefore
@@ -32,6 +32,8 @@ from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.adapters.external.wechat_crypt import WXBizMsgCrypt
 from app.schemas.types import NotificationChannel, SystemConfigKey
+from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.runtime.tasks import TaskRegistry
 
 router = ResponseAPIRouter()
 
@@ -116,7 +118,7 @@ def start_message_chain(body: Any, form: Any, args: Any):
 
 @router.post("/", summary="接收用户消息", response_model=_SchemaResponse[None])
 async def user_message(
-    background_tasks: BackgroundTasks,
+    task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     request: Request,
     _: _SchemaTokenPayload = Depends(verify_apitoken),
 ):
@@ -150,7 +152,9 @@ async def user_message(
         list(form.keys()) if form else [],
         image_markers,
     )
-    background_tasks.add_task(start_message_chain, body, form, args)
+    resolve_background_task_registry(task_registry).create_sync(
+        start_message_chain, body, form, args, owner="api.message.user"
+    )
     return _SchemaResponse(success=True)
 
 

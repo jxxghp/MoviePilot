@@ -22,6 +22,7 @@ from app.startup.ports.context import (
     HostRuntime,
     SubscriptionRuntime,
 )
+from app.runtime.tasks import TaskRegistry, get_task_registry
 
 
 def get_host_runtime(request: Request) -> HostRuntime:
@@ -30,6 +31,28 @@ def get_host_runtime(request: Request) -> HostRuntime:
     if not isinstance(runtime, HostRuntime):
         raise RuntimeError("HostRuntime 尚未由启动组合根装配")
     return runtime
+
+
+def get_background_task_registry(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> TaskRegistry:
+    """返回当前 lifespan 统一管理的后台任务登记器。"""
+    return runtime.tasks
+
+
+def get_background_task_registry_compat(request: Request) -> TaskRegistry:
+    """返回协议兼容端点使用的任务登记器，允许未启动 lifespan 的旧调用回退。"""
+    runtime = getattr(request.app.state, "host_runtime", None)
+    if isinstance(runtime, HostRuntime):
+        return runtime.tasks
+    return get_task_registry()
+
+
+def resolve_background_task_registry(value: object) -> TaskRegistry:
+    """兼容直接调用 endpoint 的旧入口，并优先使用注入的任务登记器。"""
+    if isinstance(value, TaskRegistry):
+        return value
+    return get_task_registry()
 
 
 def get_api_runtime_config(

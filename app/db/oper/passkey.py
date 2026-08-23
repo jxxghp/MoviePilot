@@ -2,6 +2,7 @@
 
 from typing import Any, Optional
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -10,7 +11,6 @@ from app.db.models.passkey import (
     _get_by_credential_id_statement,
     _get_by_user_id_statement,
 )
-from app.db.uow import run_sync_transaction
 
 
 class PassKeyOper(DbOper):
@@ -24,13 +24,13 @@ class PassKeyOper(DbOper):
                 _get_by_user_id_statement(PassKey, user_id)
             ).scalars().all())
 
-        if isinstance(self._db, Session):
-            return query(self._db)
-        return run_sync_transaction(query)
+        return self._execute_sync_query(query)
 
     def list(self) -> list[PassKey]:
         """读取全部 PassKey，用于判断系统是否已配置通行密钥。"""
-        return PassKey.list(self._db)
+        return self._execute_sync_query(
+            lambda session: list(session.execute(select(PassKey)).scalars().all())
+        )
 
     def get_by_credential_id(self, credential_id: str) -> Optional[PassKey]:
         """按凭证 ID 读取启用的 PassKey。"""
@@ -40,9 +40,7 @@ class PassKeyOper(DbOper):
                 _get_by_credential_id_statement(PassKey, credential_id)
             ).scalars().first()
 
-        if isinstance(self._db, Session):
-            return query(self._db)
-        return run_sync_transaction(query)
+        return self._execute_sync_query(query)
 
     def create(self, payload: dict[str, Any]) -> PassKey:
         """创建 PassKey 凭证。"""

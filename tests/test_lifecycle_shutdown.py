@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI
 
-from app.startup import lifecycle, modules_initializer
+from app.startup import lifecycle
+from app.startup import modules_initializer as modules_initializer
 from app.adapters.network import http as http_utils
+from app.runtime.tasks import get_task_registry
 
 
 def _assert_completed_once(mock: MagicMock) -> None:
@@ -21,6 +23,7 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     """隔离 lifespan 的外部依赖，并按名称注入一个关闭失败"""
     monkeypatch.setattr(lifecycle.settings, "MOVIEPILOT_SAFE_MODE", False)
     monkeypatch.setattr(lifecycle.global_vars, "set_loop", MagicMock())
+    monkeypatch.setattr(lifecycle.global_vars, "clear_loop", MagicMock())
     monkeypatch.setattr(lifecycle.global_vars, "stop_system", MagicMock())
 
     for name in (
@@ -58,11 +61,18 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
 
     shutdown_steps = {
         "backup_plugins": system_chain.backup_plugins,
+        "stop_plugin_monitor": MagicMock(return_value=True),
         "stop_workflow": MagicMock(),
         "stop_command": MagicMock(),
         "stop_monitor": MagicMock(),
         "stop_scheduler": MagicMock(),
-        "stop_plugins": MagicMock(),
+        "stop_agent": AsyncMock(return_value=True),
+        "stop_transfer": AsyncMock(return_value=True),
+        "quiesce_plugins": AsyncMock(return_value=True),
+        "settle_events": AsyncMock(return_value=True),
+        "quiesce_plugin_services": AsyncMock(return_value=True),
+        "drain_events": AsyncMock(return_value=True),
+        "finalize_plugins": MagicMock(return_value=True),
         "stop_modules": AsyncMock(),
         "close_http": AsyncMock(),
     }
@@ -71,9 +81,28 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "stop_command",
         "stop_monitor",
         "stop_scheduler",
-        "stop_plugins",
+        "stop_plugin_monitor",
+        "finalize_plugins",
     ):
         monkeypatch.setattr(lifecycle, name, shutdown_steps[name])
+    monkeypatch.setattr(lifecycle, "stop_agent", shutdown_steps["stop_agent"])
+    monkeypatch.setattr(
+        lifecycle,
+        "stop_transfer_runtime",
+        shutdown_steps["stop_transfer"],
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "quiesce_plugins",
+        shutdown_steps["quiesce_plugins"],
+    )
+    monkeypatch.setattr(lifecycle, "settle_events", shutdown_steps["settle_events"])
+    monkeypatch.setattr(
+        lifecycle,
+        "quiesce_plugin_services",
+        shutdown_steps["quiesce_plugin_services"],
+    )
+    monkeypatch.setattr(lifecycle, "drain_events", shutdown_steps["drain_events"])
     monkeypatch.setattr(lifecycle, "stop_modules", shutdown_steps["stop_modules"])
     monkeypatch.setattr(
         lifecycle,
@@ -98,9 +127,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "backup_plugins",
         "stop_workflow",
         "stop_command",
-        "stop_monitor",
-        "stop_scheduler",
-        "stop_plugins",
         "stop_modules",
         "close_http",
     ],
@@ -134,6 +160,8 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
 
     asyncio.run(run_lifespan())
 
+    configured_loop = lifecycle.global_vars.set_loop.call_args.args[0]
+    lifecycle.global_vars.clear_loop.assert_called_once_with(configured_loop)
     lifecycle.init_modules.assert_awaited_once_with()
     lifecycle.prepare_database_component.assert_called_once()
     lifecycle.configure_plugin_services.assert_called_once_with()
@@ -150,8 +178,323 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
         _assert_completed_once(step)
 
 
-def test_lifespan_waits_for_plugin_settlement_before_shutdown(monkeypatch):
-    """关停必须等待插件恢复线程结束，避免与备份和资源释放并发。"""
+@pytest.mark.parametrize(
+    ("failing_step", "completed_steps", "blocked_steps"),
+    [
+        (
+            "stop_plugin_monitor",
+            ("stop_plugin_monitor",),
+            (
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+                "stop_agent",
+                "stop_transfer",
+                "quiesce_plugins",
+                "settle_events",
+                "quiesce_plugin_services",
+                "drain_events",
+                "finalize_plugins",
+                "stop_modules",
+                "close_http",
+            ),
+        ),
+        (
+            "stop_monitor",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+            ),
+            (
+                "stop_scheduler",
+                "stop_agent",
+                "stop_transfer",
+                "quiesce_plugins",
+                "settle_events",
+                "quiesce_plugin_services",
+                "drain_events",
+                "finalize_plugins",
+                "stop_modules",
+                "close_http",
+            ),
+        ),
+        (
+            "stop_scheduler",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+            ),
+            (
+                "stop_agent",
+                "stop_transfer",
+                "quiesce_plugins",
+                "settle_events",
+                "quiesce_plugin_services",
+                "drain_events",
+                "finalize_plugins",
+                "stop_modules",
+                "close_http",
+            ),
+        ),
+        (
+            "stop_agent",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+                "stop_agent",
+            ),
+            (
+                "stop_transfer",
+                "quiesce_plugins",
+                "settle_events",
+                "quiesce_plugin_services",
+                "drain_events",
+                "finalize_plugins",
+                "stop_modules",
+                "close_http",
+            ),
+        ),
+        (
+            "stop_transfer",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+                "stop_agent",
+                "stop_transfer",
+            ),
+            (
+                "quiesce_plugins",
+                "settle_events",
+                "quiesce_plugin_services",
+                "drain_events",
+                "finalize_plugins",
+                "stop_modules",
+                "close_http",
+            ),
+        ),
+        (
+            "quiesce_plugins",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+                "stop_agent",
+                "stop_transfer",
+                "quiesce_plugins",
+            ),
+            (
+                "settle_events",
+                "quiesce_plugin_services",
+                "drain_events",
+                "finalize_plugins",
+                "stop_modules",
+                "close_http",
+            ),
+        ),
+        (
+            "settle_events",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+                "stop_agent",
+                "stop_transfer",
+                "quiesce_plugins",
+                "settle_events",
+            ),
+            (
+                "quiesce_plugin_services",
+                "drain_events",
+                "finalize_plugins",
+                "stop_modules",
+                "close_http",
+            ),
+        ),
+        (
+            "quiesce_plugin_services",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+                "stop_agent",
+                "stop_transfer",
+                "quiesce_plugins",
+                "settle_events",
+                "quiesce_plugin_services",
+            ),
+            (
+                "drain_events",
+                "finalize_plugins",
+                "stop_modules",
+                "close_http",
+            ),
+        ),
+        (
+            "drain_events",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+                "stop_agent",
+                "stop_transfer",
+                "quiesce_plugins",
+                "settle_events",
+                "quiesce_plugin_services",
+                "drain_events",
+            ),
+            ("finalize_plugins", "stop_modules", "close_http"),
+        ),
+        (
+            "finalize_plugins",
+            (
+                "stop_plugin_monitor",
+                "backup_plugins",
+                "stop_workflow",
+                "stop_command",
+                "stop_monitor",
+                "stop_scheduler",
+                "stop_agent",
+                "stop_transfer",
+                "quiesce_plugins",
+                "settle_events",
+                "quiesce_plugin_services",
+                "drain_events",
+                "finalize_plugins",
+            ),
+            ("stop_modules", "close_http"),
+        ),
+    ],
+)
+def test_lifespan_stops_releasing_dependencies_when_owner_does_not_converge(
+    monkeypatch,
+    failing_step,
+    completed_steps,
+    blocked_steps,
+):
+    """关键 owner 未收敛时不得关闭仍被活任务使用的后续依赖。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    shutdown_steps[failing_step].return_value = False
+
+    async def run_lifespan():
+        """启动并关闭隔离后的应用生命周期。"""
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    for name in (*completed_steps, "logger"):
+        _assert_completed_once(shutdown_steps[name])
+    for name in blocked_steps:
+        shutdown_steps[name].assert_not_called()
+
+
+def test_task_registry_nonconvergence_blocks_all_dependency_release(monkeypatch):
+    """最前置任务 owner 超时后不得继续释放插件、模块或 HTTP 依赖。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    shutdown = AsyncMock(return_value=False)
+    monkeypatch.setattr(lifecycle.TaskRegistry, "shutdown", shutdown)
+    app = FastAPI()
+
+    async def run_lifespan() -> None:
+        """运行后台登记器无法收敛的隔离生命周期。"""
+        async with lifecycle.lifespan(app):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    shutdown.assert_awaited_once_with(timeout_seconds=30.0)
+    for name, step in shutdown_steps.items():
+        if name == "logger":
+            _assert_completed_once(step)
+        else:
+            step.assert_not_called()
+    assert isinstance(app.state.task_registry, lifecycle.TaskRegistry)
+
+
+def test_closed_task_registry_rejects_late_shutdown_tasks(monkeypatch) -> None:
+    """首屏障完成后，后续 stop hook 的晚到任务不得落回默认登记器。"""
+    _patch_lifespan(monkeypatch)
+    app = FastAPI()
+
+    async def run_lifespan() -> None:
+        """结束完整 lifespan 后验证当前发布的仍是已封口登记器。"""
+        async with lifecycle.lifespan(app):
+            pass
+        registry = get_task_registry()
+        assert registry is app.state.task_registry
+        with pytest.raises(RuntimeError, match="正在关闭"):
+            registry.create(asyncio.sleep(0), owner="shutdown.late_task")
+
+    asyncio.run(run_lifespan())
+
+
+def test_plugin_settlement_cannot_bypass_task_registry_shutdown_budget(
+    monkeypatch,
+) -> None:
+    """未收敛 settlement 必须交给首屏障判定，lifespan 不得提前无界等待。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    shutdown = AsyncMock(return_value=False)
+    monkeypatch.setattr(lifecycle.TaskRegistry, "shutdown", shutdown)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def settle_plugins() -> None:
+        """模拟停机时仍未结束的插件同步任务。"""
+        started.set()
+        await release.wait()
+
+    lifecycle.init_extra.side_effect = settle_plugins
+
+    async def run_lifespan() -> None:
+        """确认 context 能由 TaskRegistry 的失败结果立即结束。"""
+        async with lifecycle.lifespan(FastAPI()):
+            await started.wait()
+        release.set()
+        await asyncio.sleep(0)
+
+    asyncio.run(asyncio.wait_for(run_lifespan(), timeout=0.5))
+
+    shutdown.assert_awaited_once_with(timeout_seconds=30.0)
+    for name, step in shutdown_steps.items():
+        if name == "logger":
+            _assert_completed_once(step)
+        else:
+            step.assert_not_called()
+
+
+def test_lifespan_waits_for_uncancellable_plugin_settlement_before_shutdown(
+    monkeypatch,
+):
+    """已进入同步 I/O 的 settlement 必须真实结束，才能备份和释放资源。"""
     shutdown_steps = _patch_lifespan(monkeypatch)
     order = []
     shutdown_steps["backup_plugins"].side_effect = lambda: order.append("backup")
@@ -162,7 +505,12 @@ def test_lifespan_waits_for_plugin_settlement_before_shutdown(monkeypatch):
 
         async def settle_plugins():
             started.set()
-            await release.wait()
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                # 模拟 run_in_threadpool_to_completion：外层取消只能封住新工作，
+                # 已进入同步插件源码/依赖修改的调用仍持有 owner 到真实终态。
+                await release.wait()
             order.append("settled")
 
         lifecycle.init_extra.side_effect = settle_plugins
@@ -222,12 +570,31 @@ def test_lifespan_safe_mode_skips_optional_runtime(monkeypatch):
         "stop_command",
         "stop_monitor",
         "stop_scheduler",
-        "stop_plugins",
+        "stop_plugin_monitor",
+        "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
+        "finalize_plugins",
     ):
         shutdown_steps[name].assert_not_called()
     _assert_completed_once(shutdown_steps["stop_modules"])
+    _assert_completed_once(shutdown_steps["stop_agent"])
+    _assert_completed_once(shutdown_steps["stop_transfer"])
+    _assert_completed_once(shutdown_steps["drain_events"])
     _assert_completed_once(shutdown_steps["close_http"])
     _assert_completed_once(shutdown_steps["logger"])
+
+
+@pytest.mark.asyncio
+async def test_event_drain_does_not_materialize_manager(monkeypatch) -> None:
+    """模块尚未创建事件总线时，停机屏障应直接收敛而不反向构造。"""
+    event_manager_type = MagicMock()
+    event_manager_type.get_existing_instance.return_value = None
+    monkeypatch.setattr(modules_initializer, "EventManager", event_manager_type)
+
+    assert await modules_initializer.drain_events() is True
+    event_manager_type.get_existing_instance.assert_called_once_with()
+    event_manager_type.assert_not_called()
 
 
 def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
@@ -253,6 +620,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
     safe_names = {item["name"] for item in safe}
 
     assert normal_start == [
+        "后台任务登记器",
         "数据库准备",
         "HTTP 基础能力",
         "领域依赖装配",
@@ -269,17 +637,29 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "命令服务",
         "工作流",
     ]
+    # 宿主生产任务（插件监控、定时器、Agent、整理）先停；随后封口插件变更、停用插件
+    # 事件入口并结算在途 handler；最后才调用插件私有 close/stop_service 旧停机 hook，
+    # 由事件投递屏障封住新投递后卸载插件实例。
     assert normal_stop == [
+        "后台任务登记器",
+        "插件变更监控",
         "插件备份",
         "工作流",
         "命令服务",
         "监控器",
         "定时器",
+        "AI智能体会话",
+        "整理后台服务",
+        "插件事件入口",
+        "事件尾任务结算",
+        "插件后台服务",
+        "事件投递屏障",
         "插件",
         "模块服务",
         "HTTP 基础能力",
     ]
     assert safe_names == {
+        "后台任务登记器",
         "数据库准备",
         "HTTP 基础能力",
         "领域依赖装配",
@@ -288,9 +668,34 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "数据端口装配",
         "路由",
         "模块服务",
+        "AI智能体会话",
+        "整理后台服务",
+        "事件投递屏障",
     }
     assert all(item["start_failure"] == "fail_fast" for item in normal)
-    assert all(item["stop_failure"] == "continue" for item in normal)
+    fail_fast_stop_names = {
+        "插件变更监控",
+        "后台任务登记器",
+        "监控器",
+        "定时器",
+        "AI智能体会话",
+        "整理后台服务",
+        "插件事件入口",
+        "事件尾任务结算",
+        "插件后台服务",
+        "事件投递屏障",
+        "插件",
+    }
+    assert {
+        item["name"]
+        for item in normal
+        if item["stop_failure"] == "fail_fast"
+    } == fail_fast_stop_names
+    assert all(
+        item["stop_failure"] == "continue"
+        for item in normal
+        if item["name"] not in fail_fast_stop_names
+    )
     assert all(
         item["start_timeout_seconds"] or item["stop_timeout_seconds"]
         for item in normal
@@ -411,6 +816,8 @@ def test_lifespan_fails_fast_when_async_engine_cannot_be_built(monkeypatch):
     with pytest.raises(RuntimeError, match="no async driver"):
         asyncio.run(run_lifespan())
 
+    configured_loop = lifecycle.global_vars.set_loop.call_args.args[0]
+    lifecycle.global_vars.clear_loop.assert_called_once_with(configured_loop)
     # 失败要发生在任何东西被初始化之前，否则模块起来了却没人关：关停块在 yield 处才开始
     lifecycle.init_routers.assert_not_called()
     lifecycle.init_modules.assert_not_called()
@@ -491,6 +898,84 @@ def test_lifespan_does_not_yield_after_migration_failure(monkeypatch):
     assert app.state.moviepilot_health.phase.value == "failed"
 
 
+def test_lifespan_cleans_started_owners_after_late_startup_failure(monkeypatch):
+    """后段启动失败时应按同一停机策略回收已启动及部分启动的 owner。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    startup_error = RuntimeError("command startup failed")
+    lifecycle.init_command.side_effect = startup_error
+    app = FastAPI()
+
+    async def run_lifespan() -> None:
+        """运行一个在命令服务阶段失败的隔离生命周期。"""
+        async with lifecycle.lifespan(app):
+            pytest.fail("命令服务启动失败后不应发布运行态")
+
+    with pytest.raises(RuntimeError) as raised:
+        asyncio.run(run_lifespan())
+
+    assert raised.value is startup_error
+    lifecycle.global_vars.stop_system.assert_not_called()
+    for name in (
+        "stop_plugin_monitor",
+        "backup_plugins",
+        "stop_command",
+        "stop_monitor",
+        "stop_scheduler",
+        "stop_agent",
+        "stop_transfer",
+        "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
+        "drain_events",
+        "finalize_plugins",
+        "stop_modules",
+        "close_http",
+    ):
+        _assert_completed_once(shutdown_steps[name])
+    shutdown_steps["stop_workflow"].assert_not_called()
+    shutdown_steps["logger"].assert_not_called()
+    assert isinstance(app.state.task_registry, lifecycle.TaskRegistry)
+    assert get_task_registry() is app.state.task_registry
+    assert app.state.moviepilot_health.phase.value == "failed"
+
+
+def test_startup_failure_cleanup_honors_transfer_fail_fast(monkeypatch):
+    """启动失败清理中整理 owner 未收敛时也不得继续释放插件和模块。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    lifecycle.init_command.side_effect = RuntimeError("command startup failed")
+    shutdown_steps["stop_transfer"].return_value = False
+
+    async def run_lifespan() -> None:
+        """运行后段失败且整理线程无法收敛的隔离生命周期。"""
+        async with lifecycle.lifespan(FastAPI()):
+            pytest.fail("命令服务启动失败后不应发布运行态")
+
+    with pytest.raises(RuntimeError, match="command startup failed"):
+        asyncio.run(run_lifespan())
+
+    for name in (
+        "stop_plugin_monitor",
+        "backup_plugins",
+        "stop_command",
+        "stop_monitor",
+        "stop_scheduler",
+        "stop_agent",
+        "stop_transfer",
+    ):
+        _assert_completed_once(shutdown_steps[name])
+    for name in (
+        "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
+        "drain_events",
+        "finalize_plugins",
+        "stop_modules",
+        "close_http",
+    ):
+        shutdown_steps[name].assert_not_called()
+    shutdown_steps["stop_workflow"].assert_not_called()
+
+
 def test_uvicorn_preserves_stop_requested_before_serve(monkeypatch):
     """Uvicorn 启动不能清除数据库初始化阶段已经发布的停止请求"""
     from app import main
@@ -559,16 +1044,13 @@ def test_command_restart_failure_does_not_publish_stop_request(monkeypatch):
     assert not stop_event.is_set()
 
 
-def test_stop_modules_continues_after_internal_owner_failures(monkeypatch):
-    """模块关闭编排中的多个失败不能阻断其余清理"""
-    stop_agent = AsyncMock(side_effect=RuntimeError("agent failed"))
-    monkeypatch.setattr(modules_initializer, "stop_agent", stop_agent)
+def test_stop_modules_continues_after_internal_owner_failure(monkeypatch):
+    """模块关闭编排中的单个失败不能阻断其余清理。"""
     dependencies = _patch_module_shutdown_dependencies(monkeypatch)
     dependencies["module"].side_effect = RuntimeError("module failed")
 
     asyncio.run(modules_initializer.stop_modules())
 
-    stop_agent.assert_awaited_once_with()
     for dependency in dependencies.values():
         _assert_completed_once(dependency)
 
@@ -576,7 +1058,6 @@ def test_stop_modules_continues_after_internal_owner_failures(monkeypatch):
 def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
     """关闭时先收口 Web Agent，再关闭持久化准入和数据库任务。"""
     order = []
-    monkeypatch.setattr(modules_initializer, "stop_agent", AsyncMock())
     dependencies = _patch_module_shutdown_dependencies(monkeypatch)
     monkeypatch.setattr(
         modules_initializer,
@@ -614,7 +1095,6 @@ async def test_shutdown_timeout_does_not_skip_database_worker_cleanup(monkeypatc
         started.set()
         await asyncio.Event().wait()
 
-    monkeypatch.setattr(modules_initializer, "stop_agent", AsyncMock())
     _patch_module_shutdown_dependencies(monkeypatch)
     monkeypatch.setattr(
         modules_initializer,
@@ -646,8 +1126,9 @@ async def test_shutdown_timeout_does_not_skip_database_worker_cleanup(monkeypatc
         )
     )
     await started.wait()
-    await shutdown
+    completed = await shutdown
 
+    assert completed is False
     stop_database_worker.assert_awaited_once_with()
 
 
@@ -678,9 +1159,10 @@ async def test_shutdown_timeout_has_hard_bound_for_nonconverging_cleanup() -> No
         )
     )
     await started.wait()
-    await shutdown
+    completed = await shutdown
 
     elapsed = asyncio.get_running_loop().time() - started_at
+    assert completed is False
     assert elapsed < 0.2
     await asyncio.wait_for(cancel_requested.wait(), timeout=0.2)
     assert not settled.is_set()
@@ -689,12 +1171,34 @@ async def test_shutdown_timeout_has_hard_bound_for_nonconverging_cleanup() -> No
     await asyncio.wait_for(settled.wait(), timeout=0.2)
 
 
+@pytest.mark.asyncio
+async def test_shutdown_step_reports_explicit_nonconvergence() -> None:
+    """同步和异步 owner 显式返回 False 时都必须向生命周期传播失败。"""
+
+    async def async_nonconverging_shutdown() -> bool:
+        """模拟已经完成等待但仍持有资源的异步关闭入口。"""
+        return False
+
+    assert await lifecycle.run_shutdown_step(
+        "同步 owner",
+        lambda: False,
+    ) is False
+    assert await lifecycle.run_shutdown_step(
+        "异步 owner",
+        async_nonconverging_shutdown,
+    ) is False
+    assert await lifecycle.run_shutdown_step(
+        "已收敛 owner",
+        lambda: None,
+    ) is True
+
+
 def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     """替换 stop_modules 的资源所有者，避免测试启动真实后台服务"""
     dependencies = {}
     for name, method_name in (
         ("ModuleManager", "shutdown"),
-        ("EventManager", "stop"),
+        ("EventManager", "stop_async"),
         ("DohHelper", "shutdown"),
         ("ThreadHelper", "shutdown"),
         ("RedisHelper", "close"),
@@ -744,7 +1248,6 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
 def test_browser_sessions_close_before_managed_resources(monkeypatch) -> None:
     """显示等宿主资源必须晚于浏览器会话释放，避免存活上下文失去依赖。"""
     calls: list[str] = []
-    monkeypatch.setattr(modules_initializer, "stop_agent", AsyncMock())
     dependencies = _patch_module_shutdown_dependencies(monkeypatch)
     dependencies["close_browser_sessions"].side_effect = lambda: calls.append("browser")
 

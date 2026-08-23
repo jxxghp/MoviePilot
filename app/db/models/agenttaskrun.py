@@ -4,7 +4,7 @@ from sqlalchemy import Index, Integer, String, Text, delete, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import db_query
+from app.db.decorators import legacy_db_query
 from app.db.models.agenttask import AgentTask
 
 
@@ -249,7 +249,7 @@ class AgentTaskRun(Base):
         return True
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_by_run_id(
             cls,
             db: Session,
@@ -261,7 +261,7 @@ class AgentTaskRun(Base):
         ).scalars().first()
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list_for_task(
             cls,
             db: Session,

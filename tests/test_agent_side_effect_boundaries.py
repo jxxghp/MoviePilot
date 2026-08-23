@@ -296,7 +296,7 @@ async def test_agent_cleanup_closes_subagent_middlewares() -> None:
 
     agent._subagent_middlewares = (_Middleware(),)
 
-    await agent.cleanup()
+    assert await agent.cleanup() is True
 
     assert closed == [True]
     assert agent._subagent_middlewares == ()
@@ -357,16 +357,16 @@ def test_subagent_control_middleware_close_is_idempotent() -> None:
     middleware._tasks = {}
 
     async def _close() -> None:
-        await middleware.close()
-        await middleware.close()
+        assert await middleware.close() is True
+        assert await middleware.close() is True
 
     asyncio.run(_close())
     assert middleware._tasks == {}
 
 
 @pytest.mark.anyio
-async def test_subagent_close_has_bounded_cancel_wait() -> None:
-    """子代理忽略首次取消时，控制器关闭仍必须在上限内返回。"""
+async def test_subagent_close_retains_stubborn_owner_until_retry() -> None:
+    """子代理忽略取消时 close 返回 False，任务结束后重试才清理记录。"""
     middleware = object.__new__(SubAgentTaskControlMiddleware)
     release = asyncio.Event()
     cancelled = asyncio.Event()
@@ -395,14 +395,57 @@ async def test_subagent_close_has_bounded_cancel_wait() -> None:
         "app.agent.middleware.subagents.SUBAGENT_CANCEL_GRACE_SECONDS",
         0.01,
     ):
-        await asyncio.wait_for(middleware.close(), timeout=0.2)
+        assert await asyncio.wait_for(middleware.close(), timeout=0.2) is False
 
     assert cancelled.is_set()
     assert task.done() is False
-    assert middleware._tasks == {}
+    assert middleware._tasks == {record.task_id: record}
+    assert task in middleware._close_cancel_requested
 
     release.set()
     await asyncio.wait_for(task, timeout=0.2)
+    assert await middleware.close() is True
+    assert middleware._tasks == {}
+    assert middleware._close_cancel_requested == set()
+
+
+@pytest.mark.anyio
+async def test_subagent_seal_rejects_new_detached_task() -> None:
+    """控制器封口后必须同步拒绝 start，且不能创建新的 asyncio Task。"""
+    middleware = object.__new__(SubAgentTaskControlMiddleware)
+    middleware._tasks = {}
+    middleware._accepting_tasks = True
+    middleware._close_cancel_requested = set()
+
+    middleware.seal()
+    payload = await middleware._control_task(
+        action="start",
+        description="late task",
+    )
+
+    result = json.loads(payload)
+    assert result["success"] is False
+    assert "正在关闭" in result["error"]
+    assert middleware._tasks == {}
+
+
+@pytest.mark.anyio
+async def test_agent_cleanup_retains_nonconverged_subagent_middleware() -> None:
+    """Agent cleanup 必须保留返回 False 的 middleware，供重复调用继续收口。"""
+    agent = MoviePilotAgent(session_id="session-owner", user_id="user-owner")
+    middleware = SimpleNamespace(
+        seal=MagicMock(),
+        close=AsyncMock(side_effect=[False, True]),
+    )
+    agent._subagent_middlewares = (middleware,)
+
+    assert await agent.cleanup() is False
+    assert agent._subagent_middlewares == (middleware,)
+
+    assert await agent.cleanup() is True
+    assert agent._subagent_middlewares == ()
+    assert middleware.seal.call_count == 2
+    assert middleware.close.await_count == 2
 
 
 @pytest.mark.anyio

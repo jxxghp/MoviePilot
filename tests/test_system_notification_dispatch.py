@@ -12,7 +12,8 @@ sys.modules.setdefault("psutil", ModuleType("psutil"))
 
 from app.application.orchestration.message import MessageChain
 from app.application.messaging.message import MessageQueueManager
-from app.schemas import Message
+from app.schemas.message import Message
+from app.runtime.correlation import correlation_scope, get_correlation_id
 from app.foundation.identity import (
     SYSTEM_INTERNAL_USER_ID,
     is_internal_user_id,
@@ -69,23 +70,43 @@ class TestSystemNotificationDispatch(unittest.TestCase):
 
     def test_async_send_message_uses_executor_for_immediate_send(self):
         """异步立即发送不能在事件循环里直接执行同步渠道回调。"""
-
         class _FakeLoop:
             def __init__(self):
                 self.called = False
 
-            async def run_in_executor(self, executor, func):
+            async def run_in_executor(self, _executor, func, *args):
                 self.called = True
-                func()
+                func(*args)
 
         async def _run():
             manager = MessageQueueManager()
             fake_loop = _FakeLoop()
-            with patch("asyncio.get_running_loop", return_value=fake_loop), patch.object(
-                manager, "_send"
-            ) as send:
+            with patch(
+                "asyncio.get_running_loop",
+                return_value=fake_loop,
+            ), patch.object(manager, "_send") as send:
                 await manager.async_send_message("payload", immediately=True)
             self.assertTrue(fake_loop.called)
             send.assert_called_once_with("payload")
 
         asyncio.run(_run())
+
+    def test_async_send_message_preserves_call_context(self):
+        """异步立即发送的同步渠道回调应保留当前请求关联 ID。"""
+        observed = []
+
+        async def _run():
+            manager = MessageQueueManager()
+            with patch.object(
+                manager,
+                "_send",
+                side_effect=lambda *_args, **_kwargs: observed.append(
+                    get_correlation_id()
+                ),
+            ):
+                with correlation_scope("message-request"):
+                    await manager.async_send_message("payload", immediately=True)
+
+        asyncio.run(_run())
+
+        self.assertEqual(observed, ["message-request"])

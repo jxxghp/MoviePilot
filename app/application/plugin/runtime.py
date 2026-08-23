@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Protocol
-
+from typing import Any, ContextManager, Protocol
 
 class PluginRuntime(Protocol):
     """声明入口层消费的插件宿主能力。"""
+
+    def mutation(self, operation: str) -> ContextManager[None]:
+        """为完整插件可变事务取得停机准入 lease。"""
+        ...
 
     def __getattr__(self, name: str) -> Any:
         """允许兼容门面按既有 V3 方法名访问插件宿主能力。"""

@@ -134,7 +134,7 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     """
     包安装缓存清理由通用临时清理入口触发，模块启动路径不直接执行清理。
     """
-    from app.startup import modules_initializer
+    from app.startup import modules_initializer as modules_initializer
 
     called = False
 

@@ -50,6 +50,11 @@ def _build_scheduler() -> Scheduler:
     scheduler._scheduler = _FakeAPScheduler()
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
+    scheduler._agent_task_reservations = {}
     return scheduler
 
 

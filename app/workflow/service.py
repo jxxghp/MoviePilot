@@ -6,7 +6,9 @@ import pickle
 import threading
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import Context, copy_context
 from datetime import date, datetime
+from functools import partial
 from time import sleep
 from typing import Any, Callable, List, Optional, Tuple
 
@@ -370,14 +372,17 @@ class WorkflowExecutor:
                 if not node_id:
                     continue
 
-                # 提交任务到线程池，每个节点使用上下文快照，避免并行节点互相修改同一个对象。
-                future = self.executor.submit(
+                # 节点分别复制业务上下文和调用上下文，避免共享可变状态或丢失触发链路。
+                context = copy_context()
+                future = Context().run(
+                    self.executor.submit,
+                    context.run,
                     self.execute_node,
                     self.workflow.id,
                     node_id,
-                    copy.deepcopy(self.context)
+                    copy.deepcopy(self.context),
                 )
-                future.add_done_callback(self.on_node_complete)
+                future.add_done_callback(partial(context.run, self.on_node_complete))
         finally:
             self.executor.shutdown(wait=True, cancel_futures=True)
 

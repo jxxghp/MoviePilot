@@ -1,8 +1,11 @@
 """插件缺失依赖安装结果测试。"""
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from app.runtime.extensions.contract.dependency import PluginDependencyInstallResult
 from app.runtime.extensions.plugin_manager import PluginManager
 
 
@@ -71,3 +74,22 @@ def test_classify_plugins_maps_installer_tuple_to_named_fields(monkeypatch) -> N
     assert classification.ready == ("Ready",)
     assert classification.missing_dependencies == ("DependencyPending",)
     assert classification.missing_source == ("SourceMissing",)
+
+
+@pytest.mark.asyncio
+async def test_async_install_missing_uses_async_installer(monkeypatch) -> None:
+    """异步启动恢复必须调用可取消的依赖安装入口。"""
+    installer = SimpleNamespace(
+        async_find_missing=AsyncMock(return_value=["demo>=1"]),
+        async_install=AsyncMock(return_value=(True, "")),
+    )
+    _configure_installer(monkeypatch, installer)
+
+    result = await PluginManager.async_install_plugin_missing_dependencies_with_status()
+
+    assert result == PluginDependencyInstallResult(
+        missing=["demo>=1"],
+        success=True,
+    )
+    installer.async_find_missing.assert_awaited_once()
+    installer.async_install.assert_awaited_once_with(["demo>=1"])

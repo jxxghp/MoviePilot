@@ -1,5 +1,6 @@
 """删除整理历史记录工具"""
 
+import asyncio
 from typing import Optional, Type
 
 from pydantic import BaseModel, Field
@@ -18,6 +19,14 @@ class DeleteTransferHistoryInput(BaseModel):
     history_id: int = Field(
         ..., description="The ID of the transfer history record to delete"
     )
+
+
+def _delete_history_destination_file(fileitem: FileItem) -> tuple[bool, bool]:
+    """在存储 worker 内完成旧目标检查和删除，保持历史删除前的顺序。"""
+    storage_chain = StorageChain()
+    if not storage_chain.exists(fileitem):
+        return False, False
+    return True, bool(storage_chain.delete_media_file(fileitem))
 
 
 class DeleteTransferHistoryTool(MoviePilotTool):
@@ -55,9 +64,21 @@ class DeleteTransferHistoryTool(MoviePilotTool):
             deleted_dest = False
             if history.dest_fileitem and not (history.status and history.mode == "move"):
                 dest_fileitem = FileItem(**history.dest_fileitem)
-                storage_chain = StorageChain()
-                if storage_chain.exists(dest_fileitem):
-                    if not storage_chain.delete_media_file(dest_fileitem):
+                try:
+                    destination_exists, destination_deleted = await self.run_blocking(
+                        "storage",
+                        _delete_history_destination_file,
+                        dest_fileitem,
+                    )
+                except asyncio.CancelledError:
+                    logger.warning(
+                        "删除整理历史的旧媒体文件等待已取消，底层文件操作可能仍在继续，"
+                        "请确认实际状态后再重试，历史记录尚未删除，path=%s",
+                        dest_fileitem.path,
+                    )
+                    raise
+                if destination_exists:
+                    if not destination_deleted:
                         return f"错误：旧媒体库文件删除失败，路径={dest_fileitem.path}"
                     deleted_dest = True
             await transferhis.async_delete(history_id)

@@ -82,6 +82,7 @@ class Discord:
         self._tree: Optional[app_commands.CommandTree] = app_commands.CommandTree(self._client)
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self._thread: Optional[threading.Thread] = None
+        self._stop_requested = threading.Event()
         self._ready_event = threading.Event()
         self._user_dm_cache: Dict[str, discord.DMChannel] = {}
         self._user_chat_mapping: Dict[
@@ -211,17 +212,35 @@ class Discord:
             return
 
         def runner():
-            asyncio.set_event_loop(self._loop)
+            loop = self._loop
+            client = self._client
+            asyncio.set_event_loop(loop)
+            start_task: Optional[asyncio.Task] = None
             try:
-                self._loop.create_task(self._client.start(self._token))
-                self._loop.run_forever()
+                if not self._stop_requested.is_set():
+                    start_task = loop.create_task(client.start(self._token))
+                    loop.run_until_complete(start_task)
+            except asyncio.CancelledError:
+                if not self._stop_requested.is_set():
+                    logger.error("Discord Bot 启动任务被意外取消")
             except Exception as err:
-                logger.error(f"Discord Bot 启动失败：{err}")
+                if not self._stop_requested.is_set():
+                    logger.error(f"Discord Bot 启动失败：{err}")
             finally:
+                self._ready_event.clear()
+                if start_task and not start_task.done():
+                    start_task.cancel()
+                    try:
+                        loop.run_until_complete(start_task)
+                    except asyncio.CancelledError:
+                        pass
                 try:
-                    self._loop.run_until_complete(self._client.close())
+                    loop.run_until_complete(client.close())
                 except Exception as err:
                     logger.debug(f"Discord Bot 关闭失败：{err}")
+                finally:
+                    asyncio.set_event_loop(None)
+                    loop.close()
 
         self._thread = threading.Thread(target=runner, daemon=True)
         self._thread.start()
@@ -229,21 +248,32 @@ class Discord:
     def stop(self):
         if not self._client or not self._loop or not self._thread:
             return
-        try:
-            asyncio.run_coroutine_threadsafe(
-                self._stop_all_typing_tasks(), self._loop
-            ).result(timeout=5)
-            asyncio.run_coroutine_threadsafe(self._client.close(), self._loop).result(
-                timeout=10
-            )
-        except Exception as err:
-            logger.error(f"关闭 Discord Bot 失败：{err}")
-        finally:
+        self._stop_requested.set()
+        loop = self._loop
+        thread = self._thread
+        if loop.is_running():
             try:
-                self._loop.call_soon_threadsafe(self._loop.stop)
+                asyncio.run_coroutine_threadsafe(
+                    self._stop_all_typing_tasks(), loop
+                ).result(timeout=5)
+            except Exception as err:
+                logger.error(f"停止 Discord typing 状态失败：{err}")
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self._client.close(), loop
+                ).result(timeout=10)
+            except Exception as err:
+                logger.error(f"关闭 Discord Bot 失败：{err}")
+        self._ready_event.clear()
+        thread.join(timeout=5)
+        if thread.is_alive():
+            try:
+                loop.call_soon_threadsafe(loop.stop)
             except Exception as err:
                 logger.error(f"停止 Discord 事件循环失败：{err}")
-            self._ready_event.clear()
+            thread.join(timeout=5)
+        if thread.is_alive():
+            logger.error("Discord Bot 线程未在超时内停止")
 
     def get_state(self) -> bool:
         return self._ready_event.is_set() and self._client is not None

@@ -9,8 +9,10 @@ import asyncio
 
 import pytest
 
+from app.db import decorators
 from app.db.models.workflow import Workflow
-from app.db.session import async_session_scope
+from app.db.oper.workflow import WorkflowOper
+from app.db.session import SessionFactory, async_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -56,6 +58,44 @@ def test_list_and_get_by_name_match_async_twins(db):
     sync_ids = sorted(w.id for w in Workflow.list(db.session))
     async_ids = sorted(w.id for w in asyncio.run(Workflow.async_list()))
     assert sync_ids == async_ids
+
+
+def test_workflow_oper_reuses_explicit_query_sessions(db, monkeypatch):
+    """WorkflowOper 绑定显式会话后不得再创建兼容查询会话。"""
+    created = db.add(_flow("wf-explicit-session"))
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+    )
+
+    assert WorkflowOper(db.session).get_by_name(created.name).id == created.id
+
+    async def check() -> None:
+        """验证异步 Oper 同样复用调用方会话。"""
+        async with async_session_scope() as session:
+            monkeypatch.setattr(
+                decorators,
+                "async_session_scope",
+                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+            )
+            assert (await WorkflowOper(session).async_get_by_name(created.name)).id == created.id
+
+    asyncio.run(check())
+
+
+def test_workflow_model_legacy_queries_keep_no_session_abi(db, monkeypatch):
+    """旧插件直接调用 Workflow Model 时仍应按签名自动补入短会话。"""
+    created = db.add(_flow("wf-legacy-query"))
+    opened = []
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (opened.append(True) or SessionFactory()),
+    )
+
+    assert Workflow.get_by_name(name=created.name).id == created.id
+    assert opened == [True]
 
 
 def test_enabled_workflows_exclude_paused(db):

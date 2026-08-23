@@ -143,8 +143,8 @@ def _pooled_loop() -> Optional[Any]:
 
     只认常驻主循环：它承载了绝大多数异步 DB 流量，且生命周期与进程一致，
     池中连接不会因循环销毁而失效。
-    直接读 CURRENT_EVENT_LOOP 而不用 global_vars.loop——后者在未设置时会
-    新建一个事件循环，仅为判断就产生副作用是不可接受的。
+    直接读 CURRENT_EVENT_LOOP 而不用 global_vars.loop，避免主循环尚未就绪时
+    把正常的回退引擎选择转换成生命周期异常。
     """
     if not _async_pool_enabled():
         return None

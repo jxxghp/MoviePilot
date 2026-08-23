@@ -5,7 +5,7 @@ from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
 )
-from app.startup import modules_initializer
+from app.startup import modules_initializer as modules_initializer
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]

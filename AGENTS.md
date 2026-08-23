@@ -66,11 +66,12 @@ The legacy roots have no physical directories in the source tree. Current images
 | `app/adapters/cache/` | Redis 与文件缓存等具体持久化实现 | 缓存协议、装饰器和进程内缓存策略 | `backends.py`, `redis.py` |
 | `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `display/`, `stdio.py`, `package.py`, `resource.py`, `rust.py`, `fsproxy.py` |
 | `app/adapters/external/` | CookieCloud、插件市场、OCR、IP 归属和 MoviePilot Server 等命名外部生态 | 通用 HTTP/DNS/文件机制或可复用领域语义 | `market.py`, `server.py`, `cookiecloud.py`, `ocr.py`, `location.py`, `wechat_crypt.py` |
-| `app/application/` | 读取配置/持久化状态的聚焦应用服务和服务族规则 | 多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `filter_rules.py`, `notification.py`, `mediaserver.py`, `rss.py`, `site/sites.*` |
+| `app/application/` | 聚焦应用服务、用例命令，以及由用例拥有的持久化 Port/Protocol | SQLAlchemy、Session、Oper 等具体 DB 实现，多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `outbox.py`, `subscription/write.py`, `workflow.py` |
 | `app/application/messaging/` | 消息渲染/路由、交互和 Agent 到消息桥接：`interaction.py` 通用交互契约和视图工具；`router.py` 统一交互优先级和回调分发；`site.py`/`subscribe.py`/`skill.py` 对应命令的会话、输入解析和视图；`media.py` 媒体交互状态（业务工作流仍由 `MediaInteractionChain` 执行）；`plugin.py` 插件输入接管和插件按钮回调；`agent.py` Agent 选择状态、回调协议和 WebAgent 消息桥接；`message.py` 通知渲染、模板和队列。不作为推荐给插件直接使用的公开 SDK | 认证策略、通用 HTTP、服务发现、仅端点使用的 Web Push 行为 | `message.py`, `interaction.py`, `router.py`, `agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、路径/URL 安全、SSRF 和签名策略 | 通用 URL 解析、进程运行策略、普通业务校验 | `access.py`, `auth.py`, `cookie.py`, `passkey.py`, `otp.py`, `twofactor.py`, `url.py` |
 | `app/application/orchestration/` | Reusable use-case orchestration across modules, services, Oper classes, events, and caches; chains reach modules only through `run_module` dispatch on method-name contracts | Transport schemas, backend-specific protocol details, generic primitives, direct imports of module internals (classes, exceptions, constants) | `media.py`, `download.py`, `subscribe.py`, `transfer.py` |
-| `app/startup/` | Composition root: inject providers/adapters, order initialization and shutdown, decide restart/lifecycle policy | Reusable business rules or adapter implementation details | `lifecycle.py`, `domain_initializer.py`, `cache_initializer.py`, `managed_resources_initializer.py`, `modules_initializer.py` |
+| `app/db/oper/` | 面向表和持久化值的 SQLAlchemy 数据访问；接收调用方 Session，只查询、暂存或 flush | Application 业务规则、隐式事务所有权、外部副作用 | `subscribe.py`, `site.py`, `workflow.py` |
+| `app/startup/` | Composition root: `ports/` 实现 Application 声明的端口，`bindings/` 存被消费方当表读取的绑定，`lifecycle/` 编排启动关闭，顶层 `*_initializer.py` 是被指定时刻执行一次的装配动作 | Reusable business rules or adapter implementation details | `ports/context.py`, `bindings/database.py`, `modules_initializer.py`, `lifecycle/components.py` |
 | `app/sdk/` | Deliberately curated stable imports for new plugins | Canonical implementation logic or host-internal dependencies | `browser.py`, `cache.py`, `logging.py`, `media.py`, `network.py`, `services.py` |
 | `app/runtime/compat/` | 仅依赖标准库的精确旧导入路由、资源前置扫描和 DEBUG 诊断 | 业务实现、通配猜测、目标模块的提前导入 | `manifest.py`, `imports.py`, `resource_imports.py`, `diagnostics.py` |
 
@@ -87,9 +88,10 @@ Use these questions in order before creating or moving a module:
 5. Does it perform configured network, cache, OS/process, file, package/resource, stdio, or Rust I/O? Put it under the matching `adapters` technical boundary.
 6. Does it implement a named external product/ecosystem workflow? Put it in `adapters/external`.
 7. Does it own authentication, authorization, signing, SSRF, URL/path safety, OTP, passkeys, or two-factor behavior? Put it in `application/security`.
-8. Does it read persisted user configuration, coordinate one bounded capability, or normalize/match one service family? Put it in `application`.
-9. Does it coordinate several modules/services/Oper classes for one use case? Put it in `chain`.
-10. Is it public to plugins or only preserving an old path? Curate it in `sdk` or map it in `runtime/compat`; do not move implementation there.
+8. Does it define a use case or the persistence Port required by that use case? Put it in `application`; do not import concrete DB there.
+9. Does it implement an Application persistence Port with SQLAlchemy Session/UoW/Oper? Put it in `db/adapters`.
+10. Does it coordinate several modules/services/Oper classes for one use case? Put it in `chain`.
+11. Is it public to plugins or only preserving an old path? Curate it in `sdk` or map it in `runtime/compat`; do not move implementation there.
 
 ### Enforced Split Examples
 
@@ -97,7 +99,7 @@ These decisions are architectural constraints, not naming suggestions:
 
 * Cache contracts, memory backends, decorators, and proxies stay in `app/runtime/cache.py`; Redis and filesystem implementations stay in `app/adapters/cache/backends.py`. Startup registers concrete factories before decorated business modules are imported. Legacy `app.core.cache` resolves to the complete `app.sdk.cache` facade.
 * The complete logging runtime stays in `app/runtime/log.py`: policy, console/plugin routing, async rotating file output, and shutdown. `app.runtime.config` supplies the resolved settings and log path. `runtime/log.py` remains a dependency leaf with no `app.*` imports. Plugins use `app.sdk.logging`; legacy `app.log` resolves to that SDK facade.
-* Recognition parsing stays pure in `app/domain/meta/` and `app/domain/metainfo.py`. `app/application/recognition.py` reads `SystemConfigOper`; `app/startup/domain_initializer.py` injects rules, extension policy, source defaults, TMDB image construction, and the optional Rust accelerator.
+* Recognition parsing stays pure in `app/domain/meta/` and `app/domain/metainfo.py`. `app/application/recognition.py` consumes injected configuration; `app/startup/domain_initializer.py` injects rules, extension policy, source defaults, TMDB image construction, and the optional Rust accelerator.
 * Kodi-style NFO reading and metadata document generation are one domain capability and stay together in `app/domain/scraper.py`; a separate `domain/nfo.py` must not be recreated.
 * `app/application/mediaserver.py` is the single media-server service capability module. It owns configured service discovery together with Provider ID normalization and music-library matching, while reusing generic identity rules from `app/domain/media.py`.
 * Configured notification-service discovery belongs in `app/application/notification.py`. Web Push subscription and manual-send HTTP behavior stays in `app/api/endpoints/message.py`; it is not a reusable messaging capability module.

@@ -414,8 +414,20 @@ class PluginDependencyInstaller:
         return await asyncio.to_thread(self.find_missing)
 
     async def async_install(self, dependencies: list[str]) -> tuple[bool, str]:
-        """在线程池中安装依赖，复用同步包安装策略。"""
-        return await asyncio.to_thread(self.install, dependencies)
+        """异步安装依赖，使用可取消的包安装子进程。"""
+        if not dependencies:
+            return False, "没有传入需要安装的依赖项"
+        try:
+            manifest_paths = [manifest.path for manifest in self._plugin_manifests()]
+            if not manifest_paths:
+                return False, "没有找到已安装插件的依赖清单"
+            return await self._helper.async_install_packages_with_fallback(
+                manifest_paths,
+                self._wheels_dirs(),
+            )
+        except Exception as err:
+            logger.error(f"安装依赖项时发生错误：{err}")
+            return False, f"安装依赖项时发生错误：{err}"
 
 
 def _bound_version(specifier: Specifier) -> Optional[Version]:

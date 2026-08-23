@@ -10,9 +10,11 @@ import time as _time
 
 import pytest
 
+from app.db import decorators
 from app.db.models import subscribe as subscribe_module
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
+from app.db.session import SessionFactory, async_session_scope
 from app.schemas.types import MediaSource, MediaType
 
 TMDB = str(MediaSource.TMDB)
@@ -69,6 +71,80 @@ def test_exists_matches_async_twin(db):
         media_source=MediaSource.TMDB, media_id="9001", season=1))
 
     assert sync_found.id == async_found.id
+
+
+def test_history_queries_reuse_explicit_sessions(db, monkeypatch):
+    """订阅历史同步/异步查询必须复用调用方会话。"""
+    row = db.add(_history("显式历史", media_id="8501"))
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+    )
+    assert SubscribeHistory.list_by_type(
+        db.session, MediaType.TV.value, page=1, count=10
+    )[0].id == row.id
+    assert SubscribeHistory.exists(
+        db.session, MediaSource.TMDB, "8501", season=1
+    ).id == row.id
+
+    async def check() -> None:
+        """验证异步订阅历史查询复用显式 AsyncSession。"""
+        async with async_session_scope() as session:
+            monkeypatch.setattr(
+                decorators,
+                "async_session_scope",
+                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+            )
+            assert await SubscribeHistory.async_list_by_type(
+                session, MediaType.TV.value, page=1, count=10
+            )
+            assert await SubscribeHistory.async_list_by_type_and_username(
+                session, MediaType.TV.value, "alice", page=1, count=10
+            )
+            assert await SubscribeHistory.async_exists(
+                session, MediaSource.TMDB, "8501", season=1
+            ) is not None
+
+    asyncio.run(check())
+
+
+def test_history_queries_keep_legacy_keyword_abi(db, monkeypatch):
+    """旧插件关键字直调订阅历史查询时仍自动补入兼容会话。"""
+    row = db.add(_history("关键字历史", media_id="8601"))
+    opened_sync = []
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (opened_sync.append(True) or SessionFactory()),
+    )
+    assert SubscribeHistory.list_by_type(
+        mtype=MediaType.TV.value, page=1, count=10
+    )
+    assert SubscribeHistory.exists(
+        media_source=MediaSource.TMDB, media_id="8601", season=1
+    ).id == row.id
+    assert opened_sync == [True, True]
+
+    opened_async = []
+    original_scope = async_session_scope
+
+    def tracked_scope():
+        """记录旧异步 ABI 创建的兼容会话作用域。"""
+        opened_async.append(True)
+        return original_scope()
+
+    monkeypatch.setattr(decorators, "async_session_scope", tracked_scope)
+    assert asyncio.run(SubscribeHistory.async_list_by_type(
+        mtype=MediaType.TV.value, page=1, count=10
+    ))
+    assert asyncio.run(SubscribeHistory.async_list_by_type_and_username(
+        mtype=MediaType.TV.value, username="alice", page=1, count=10
+    ))
+    assert asyncio.run(SubscribeHistory.async_exists(
+        media_source=MediaSource.TMDB, media_id="8601", season=1
+    )) is not None
+    assert opened_async == [True, True, True]
 
 
 @pytest.mark.parametrize("media_id", [None, "", "   "])

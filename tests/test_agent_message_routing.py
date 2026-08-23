@@ -11,7 +11,7 @@ from app.agent.tools.impl.ask_user_choice import (
 )
 from app.agent.tools.impl.send_message import SendMessageTool
 from app.application.orchestration.message import MessageChain
-from app.runtime.config import settings
+from app.runtime.config import global_vars, settings
 from app.db import SessionFactory
 from app.db.oper.message import MessageOper
 from app.db.models.message import Message
@@ -26,6 +26,13 @@ def _clear_messages() -> None:
     with SessionFactory() as db:
         db.query(Message).delete()
         db.commit()
+
+
+def _running_loop_stub() -> Mock:
+    """提供满足主程序生命周期合同的事件循环替身。"""
+    return Mock(
+        **{"is_running.return_value": True, "is_closed.return_value": False}
+    )
 
 
 def test_explicit_ai_message_bypasses_pending_media_interaction():
@@ -69,7 +76,9 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
 
-    with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
+    with patch.object(
+        global_vars, "CURRENT_EVENT_LOOP", _running_loop_stub()
+    ), patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         chain, "_record_user_message"
     ) as record_user_message, patch(
         "app.application.orchestration.message.get_running_agent_manager", return_value=manager
@@ -101,7 +110,11 @@ def test_agent_queue_full_is_reported_to_the_originating_channel():
         coro.close()
         return failed
 
-    with patch.object(settings, "AI_AGENT_ENABLE", True), patch(
+    with patch.object(
+        global_vars, "CURRENT_EVENT_LOOP", _running_loop_stub()
+    ), patch.object(
+        settings, "AI_AGENT_ENABLE", True
+    ), patch(
         "app.chain.message.get_running_agent_manager", return_value=manager
     ), patch(
         "app.chain.message.asyncio.run_coroutine_threadsafe",
@@ -295,7 +308,9 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
     manager = Mock(process_message=AsyncMock())
 
     try:
-        with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
+        with patch.object(
+            global_vars, "CURRENT_EVENT_LOOP", _running_loop_stub()
+        ), patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
             chain, "_record_user_message"
         ) as record_user_message, patch.object(
             chain, "edit_message", return_value=True

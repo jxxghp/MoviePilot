@@ -1,5 +1,5 @@
 """
-监控恢复动作的可放弃执行单元。
+监控恢复动作的有限等待执行单元。
 
 FUSE/网络挂载有两种故障形态，下游程序的免疫力完全不同：
 
@@ -11,8 +11,8 @@ FUSE/网络挂载有两种故障形态，下游程序的免疫力完全不同：
 本模块提供 block 型故障下唯一可行的两种自保手段：
 
 1. RecoveryExecutor —— 把会触碰挂载的动作放进一次性守护线程执行，调用方只
-   等待有限时间。超时即放弃该线程（它会作为守护线程悬挂到进程退出），换取
-   调用方（健康检查这个全局自愈单点）永远活着。
+   等待有限时间。超时后当前健康检查不再等待，但线程句柄仍由生命周期 owner
+   持有到真实终态，换取看门狗可继续检测且停机屏障不会伪装收敛。
 2. probe_path —— 用子进程而非线程做挂载探测。子进程可以被 kill，因此探测
    本身是可放弃的，隔离期间可以无限次周期重试而不累积不可回收的资源。
 """
@@ -41,7 +41,7 @@ class RecoveryState(str, Enum):
     """
     # 动作已在限定时间内执行完毕（内部抛异常也算完成，异常已记录）
     COMPLETED = "completed"
-    # 超时仍未返回，判定为 block 型挂载故障，线程已被放弃
+    # 超时仍未返回，判定为 block 型挂载故障，本轮不再等待但继续持有线程
     TIMEOUT = "timeout"
     # 同 key 的上一个动作仍未结束，本次未提交，避免持续泄漏冻死的线程
     BUSY = "busy"
@@ -55,10 +55,12 @@ class RecoveryExecutor:
     健康检查周期都会在同一个死挂载上多泄漏一个线程。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化在途线程注册表和当前生命周期的提交状态。"""
         # key -> 该 key 最近一次提交的执行线程
         self._running: Dict[str, threading.Thread] = {}
         self._lock = threading.Lock()
+        self._accepting = True
 
     def run(self, actions: Dict[str, Callable[[], None]], timeout: float) -> Dict[str, RecoveryState]:
         """
@@ -85,26 +87,70 @@ class RecoveryExecutor:
             thread.join(timeout=max(0.0, deadline - time.monotonic()))
             if thread.is_alive():
                 results[key] = RecoveryState.TIMEOUT
-                logger.error(f"恢复动作超过 {timeout} 秒未返回，判定挂载无响应并放弃该线程: {key}")
+                logger.error(f"恢复动作超过 {timeout} 秒未返回，判定挂载无响应，本轮不再等待: {key}")
             else:
                 results[key] = RecoveryState.COMPLETED
         return results
 
-    def discard(self, key: str):
+    def discard(self, key: str) -> None:
         """
-        丢弃一个 key 的在途记录。监控停止或配置重载时调用，避免残留条目
-        让重建后的同名目录被误判为 BUSY。
+        清理一个已到终态的 key；活线程继续保留，供生命周期停机屏障追踪。
         :param key: 动作标识
         """
         with self._lock:
-            self._running.pop(key, None)
+            thread = self._running.get(key)
+            if thread is None or not thread.is_alive():
+                self._running.pop(key, None)
 
-    def clear(self):
+    def clear(self) -> None:
         """
-        清空全部在途记录。已经冻死的线程无法回收，这里只是不再跟踪它们。
+        清理已经完成的记录，仍存活的线程继续由执行器持有。
+
+        兼容旧调用名，但不再丢弃挂死线程：遗失句柄会让宿主错误释放它仍可能使用
+        的数据库和整理链资源。
         """
         with self._lock:
+            self._running = {
+                key: thread
+                for key, thread in self._running.items()
+                if thread.is_alive()
+            }
+
+    def request_stop(self) -> None:
+        """封住新恢复动作提交，既有线程只能自然完成。"""
+        with self._lock:
+            self._accepting = False
+
+    def close(self, deadline: float) -> bool:
+        """在绝对截止时间内等待全部恢复线程，超时继续保留活线程句柄。"""
+        self.request_stop()
+        with self._lock:
+            threads = tuple(self._running.values())
+        current_thread = threading.current_thread()
+        for thread in threads:
+            if thread is current_thread or not thread.is_alive():
+                continue
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        self.clear()
+        with self._lock:
+            return not any(thread.is_alive() for thread in self._running.values())
+
+    def reopen(self) -> bool:
+        """在旧恢复线程全部结束后，为新的 Monitor 生命周期恢复提交。"""
+        self.clear()
+        with self._lock:
+            if any(thread.is_alive() for thread in self._running.values()):
+                return False
             self._running.clear()
+            self._accepting = True
+            return True
+
+    def running_threads(self) -> tuple[threading.Thread, ...]:
+        """返回仍存活且由执行器持有的恢复线程快照。"""
+        with self._lock:
+            return tuple(
+                thread for thread in self._running.values() if thread.is_alive()
+            )
 
     def _start(self, key: str, action: Callable[[], None]) -> Optional[threading.Thread]:
         """
@@ -114,6 +160,8 @@ class RecoveryExecutor:
         :return: 执行线程，未启动时为 None
         """
         with self._lock:
+            if not self._accepting:
+                return None
             running = self._running.get(key)
             if running is not None and running.is_alive():
                 return None
@@ -124,11 +172,18 @@ class RecoveryExecutor:
                 daemon=True
             )
             self._running[key] = thread
-        thread.start()
-        return thread
+            # 登记与 start 必须处于同一所有权临界区。否则 close() 可能把尚未
+            # is_alive() 的句柄当成已结束并移除，随后该线程才真正启动。
+            try:
+                thread.start()
+            except BaseException:
+                if self._running.get(key) is thread:
+                    self._running.pop(key, None)
+                raise
+            return thread
 
     @staticmethod
-    def _execute(key: str, action: Callable[[], None]):
+    def _execute(key: str, action: Callable[[], None]) -> None:
         """
         执行一个恢复动作，异常只记录不外抛，避免一个目录的失败连累整批恢复。
         :param key: 动作标识

@@ -18,6 +18,7 @@ from app.adapters.network.browser import (
     launch_browser_context,
     launch_browser_context_async,
 )
+from app.runtime.correlation import correlation_scope, get_correlation_id
 
 
 class _FakeResponse:
@@ -346,6 +347,23 @@ def test_browser_session_helper_runs_same_session_on_one_worker_thread():
     assert len(caller_thread_ids) == 2
     assert len(set(session_thread_ids)) == 1
     assert session_thread_ids[0] not in caller_thread_ids
+
+
+def test_browser_session_helper_preserves_each_call_context():
+    """会话固定线程必须使用每次操作的上下文，不能保留首次请求状态。"""
+    page = _FakePage()
+    context = _FakeContext([page])
+    helper = BrowserSessionHelper()
+    observed = []
+
+    with patch.object(BrowserSessionHelper, "_launch_context", return_value=context):
+        for correlation_id in ("request-one", "request-two"):
+            with correlation_scope(correlation_id):
+                observed.append(
+                    helper.with_session("session-1", lambda _session: get_correlation_id())
+                )
+
+    assert observed == ["request-one", "request-two"]
 
 
 def test_browser_session_helper_closes_session_on_worker_thread():

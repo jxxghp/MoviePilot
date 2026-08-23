@@ -16,7 +16,7 @@ from app.agent.tools.impl.send_local_file import SendLocalFileInput
 from app.agent import MoviePilotAgent, AgentChain
 from app.agent.llm import AgentCapabilityManager
 from app.application.orchestration.message import MessageChain
-from app.runtime.config import settings
+from app.runtime.config import global_vars, settings
 from app.agent.llm import LLMHelper
 from app.modules.discord import DiscordModule
 from app.modules.qqbot import QQBotModule
@@ -454,10 +454,13 @@ class AgentImageSupportTest(unittest.TestCase):
             ai_agent_enable=True,
         )
 
-        with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
+        loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
+        with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+            settings, "AI_AGENT_ENABLE", True
+        ), patch.object(
             settings, "LLM_SUPPORT_IMAGE_INPUT", False
         ), patch(
-            "app.chain.message.supports_image_input", return_value=False
+            "app.application.orchestration.message.supports_image_input", return_value=False
         ), patch.object(chain, "_get_or_create_session_id", return_value="session-1"), patch.object(
             chain, "_download_attachments_to_data_urls"
         ) as download_images, patch.object(
@@ -508,7 +511,10 @@ class AgentImageSupportTest(unittest.TestCase):
             ai_agent_enable=True,
         )
 
-        with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
+        loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
+        with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+            settings, "AI_AGENT_ENABLE", True
+        ), patch.object(
             chain, "_get_or_create_session_id", return_value="session-1"
         ), patch(
             "app.application.orchestration.message.get_running_agent_manager"

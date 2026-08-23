@@ -7,7 +7,9 @@ import queue
 import re
 import threading
 import time
+from contextvars import Context, copy_context
 from datetime import datetime
+from functools import partial
 from typing import Any, Literal, Optional, List, Dict, Protocol, Union
 from typing import Callable
 
@@ -988,8 +990,16 @@ class MessageQueueManager(metaclass=SingletonClass):
         if immediately or self._is_in_scheduled_time(datetime.now()):
             # _send 会执行具体渠道回调，可能包含网络 IO；放到 executor
             # 避免 async 调用方所在事件循环被同步发送阻塞。
+            context = copy_context()
+            call = partial(self._send, *args, **kwargs)
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: self._send(*args, **kwargs))
+            # 默认执行器保持空底层上下文，渠道调用只使用当前消息快照。
+            await Context().run(
+                loop.run_in_executor,
+                None,
+                context.run,
+                call,
+            )
             return
         self.queue.put({
             "args": args,

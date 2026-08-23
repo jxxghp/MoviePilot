@@ -4,6 +4,7 @@
 由组合根持有，混入类通过 ``self`` 取用。
 """
 
+import threading
 from typing import Optional
 
 from apscheduler.jobstores.base import JobLookupError
@@ -27,16 +28,29 @@ class AgentTaskScheduling:
         """
         将指定 Agent 自主定时任务提交到运行时调度器立即执行。
 
+        并发触发同一任务时只有取得预约的调用方能进入执行，预约在本次触发结束后释放。
+
         :param task_id: Agent 自主定时任务 ID
         :return: 任务存在且未运行时返回 True，否则返回 False
         """
         job_id = self._get_agent_task_job_id(task_id)
         with self._lock:
             job = self._jobs.get(job_id)
-            if not job or job.get("running"):
+            if (
+                    not self._accepting_submissions()
+                    or not job
+                    or self._is_job_active(job_id)
+                    or job.get("running")
+                    or job_id in self._agent_task_reservations
+            ):
                 return False
-        self.start(job_id, task_id=task_id, trigger_source="manual")
-        return True
+            self._agent_task_reservations[job_id] = threading.get_ident()
+        try:
+            result = self.start(job_id, task_id=task_id, trigger_source="manual")
+            return result is not False
+        finally:
+            with self._lock:
+                self._agent_task_reservations.pop(job_id, None)
 
     def init_agent_task_jobs(self) -> None:
         """
@@ -102,13 +116,15 @@ class AgentTaskScheduling:
 
         job_id = self._get_agent_task_job_id(task_id)
         with self._lock:
-            self._jobs[job_id] = {
+            job = {
                 "name": task.name,
                 "provider_name": "[Agent]",
                 "func": self.execute_agent_task,
                 "running": False,
                 "kwargs": {"task_id": task_id},
             }
+            self._assign_job_generation(job_id, job)
+            self._jobs[job_id] = job
             # 已开始的一次任务在重启后结果未知，只保留显式执行入口，不能按
             # 过期触发时间自动重放可能已经发生的外部副作用。
             if manual_only:

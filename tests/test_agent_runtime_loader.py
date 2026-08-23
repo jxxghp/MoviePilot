@@ -53,6 +53,7 @@ class _FakeManager:
         self.fail_initialize = False
         self.initialize_entered: asyncio.Event | None = None
         self.initialize_release: asyncio.Event | None = None
+        self.close_converged: bool | None = None
 
     async def initialize(self) -> None:
         self.initialize_calls += 1
@@ -63,8 +64,42 @@ class _FakeManager:
         if self.fail_initialize:
             raise RuntimeError("service initialization failed")
 
-    async def close(self) -> None:
+    async def close(self) -> bool | None:
         self.close_calls += 1
+        return self.close_converged
+
+
+@pytest.mark.anyio
+async def test_shutdown_retains_nonconverged_agent_service_for_retry(
+    runtime_loader,
+    monkeypatch,
+) -> None:
+    """Manager 返回未收敛时 Runtime 必须保留 owner，后续关闭可继续等待。"""
+    manager = _FakeManager()
+    manager.close_converged = False
+    modules = _fake_agent_modules(manager)
+    monkeypatch.setattr(
+        "app.agent.capabilities.adapter.settings.AI_AGENT_ENABLE",
+        True,
+    )
+    monkeypatch.setattr(
+        "app.agent.capabilities.adapter.importlib.import_module",
+        lambda name: (
+            monkeypatch.setitem(sys.modules, name, modules[name]) or modules[name]
+        ),
+    )
+    assert await runtime_loader.activate_agent_service() is manager
+
+    assert await runtime_loader.begin_agent_shutdown() is False
+    snapshot = runtime_loader._agent_runtime.snapshot("agent.service")
+    assert snapshot.lifecycle is CapabilityLifecycleState.FAILED
+    assert snapshot.visible is False
+
+    manager.close_converged = True
+    assert await runtime_loader.begin_agent_shutdown() is True
+    snapshot = runtime_loader._agent_runtime.snapshot("agent.service")
+    assert snapshot.lifecycle is CapabilityLifecycleState.STOPPED
+    assert manager.close_calls == 2
 
 
 def _fake_agent_modules(manager: object | None = None) -> dict[str, types.ModuleType]:

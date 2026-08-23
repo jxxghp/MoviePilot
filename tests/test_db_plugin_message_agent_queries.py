@@ -8,12 +8,14 @@ import asyncio
 
 import pytest
 
+from app.db import decorators
 from app.db.models.agentchat import AgentChat
 from app.db.models.agenttask import AgentTask
 from app.db.models.downloadfailure import DownloadFailure
 from app.db.models.message import Message
 from app.db.models.plugindata import PluginData
 from app.db.oper.agenttask import AgentTaskOper
+from app.db.session import SessionFactory
 
 
 @pytest.fixture(autouse=True)
@@ -238,6 +240,48 @@ def test_agentchat_get_by_session_enforces_user_scope(db):
     assert asyncio.run(AgentChat.async_get_by_session(session_id="s-owned", user_id="bob")) is None
 
 
+def test_agentchat_oper_reuses_explicit_query_sessions(db, monkeypatch):
+    """AgentChatOper 的同步与异步查询必须复用调用方会话。"""
+    db.add(_chat("s-explicit", user_id="explicit"))
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+    )
+
+    from app.db.oper.agentchat import AgentChatOper
+
+    assert AgentChatOper(db.session).get("s-explicit", "explicit") is not None
+
+    async def check() -> None:
+        """验证异步 Agent 会话查询复用显式 AsyncSession。"""
+        from app.db.session import async_session_scope
+
+        async with async_session_scope() as session:
+            monkeypatch.setattr(
+                decorators,
+                "async_session_scope",
+                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+            )
+            assert await AgentChatOper(session).async_get("s-explicit", "explicit")
+
+    asyncio.run(check())
+
+
+def test_agentchat_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
+    """旧插件以关键字直调 AgentChat 时仍自动补入短会话。"""
+    db.add(_chat("s-legacy"))
+    opened = []
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (opened.append(True) or SessionFactory()),
+    )
+
+    assert AgentChat.get_by_session(session_id="s-legacy") is not None
+    assert opened == [True]
+
+
 def test_agentchat_list_by_page_matches_either_user_or_username(db):
     """
     同时给出用户 ID 与用户名时按「或」匹配。
@@ -308,13 +352,10 @@ def test_agenttask_get_for_user_enforces_ownership(db):
     assert AgentTask.get_for_user(db.session, task_id, user_id="bob") is None
 
 
-def test_agenttask_model_queries_keep_no_session_plugin_abi(db, monkeypatch):
-    """旧插件省略 Session 时仍可按原关键字参数查询 Agent 任务。"""
+def test_agenttask_model_queries_keep_no_session_plugin_abi(db):
+    """旧插件省略 Session 时仍由统一 legacy 装饰器按原参数查询。"""
     task_id = AgentTask.add_task(db.session, **_task("legacy", user_id="legacy-user"))
-    monkeypatch.setattr(
-        "app.db.models.agenttask.run_legacy_sync_query",
-        lambda operation: operation(db.session),
-    )
+    db.session.commit()
 
     assert AgentTask.get_for_user(
         task_id=task_id,

@@ -40,4 +40,5 @@ def get_plugin_config_command() -> PluginConfigCommand:
         reload_runtime=manager.reload_plugin,
         publish_reset=publish_reset,
         refresh_registrations=refresh_registrations,
+        mutation=manager.mutation,
     )

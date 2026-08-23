@@ -1,5 +1,7 @@
 """定时服务组合根：把执行引擎与四类作业的登记路径装配到一起。"""
 
+import asyncio
+
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -67,11 +69,21 @@ class Scheduler(
         """
         MessageHelper().put(title=title, message=message, role="system")
 
-    def on_config_changed(self) -> None:
+    async def on_config_changed(self) -> None:
         """
         配置变更后重新初始化定时服务。
+
+        只关闭后续计划的提交入口，已开始的作业保留到自然收尾；旧调度器自有线程池
+        停止前不启动新实例，关停阶段到达的配置事件不得重新打开调度入口。
         """
-        self.init()
+        reload_started, scheduler = self._begin_reload()
+        if not reload_started:
+            return
+        await asyncio.to_thread(self._shutdown_scheduler_sync, scheduler)
+        with self._lock:
+            if self._lifecycle_state != "reloading":
+                return
+        self.init(_already_stopped=True)
 
     def get_reload_name(self) -> str:
         """
@@ -79,22 +91,30 @@ class Scheduler(
         """
         return "定时服务"
 
-    def init(self) -> None:
+    def init(self, *, _already_stopped: bool = False) -> None:
         """
         初始化定时服务
+
+        :param _already_stopped: 调用方是否已经关停旧调度器并接管其收口
         """
 
         # 停止定时服务
-        self.stop()
+        if not _already_stopped:
+            self.stop()
 
         # 调试模式不启动定时服务
         if settings.DEV:
+            with self._lock:
+                self._lifecycle_state = "stopped"
             return
 
         # 对账上个进程未收口的 Agent 任务；进程内重复初始化不会重复改写状态。
         self._reconcile_agent_task_interruptions()
 
         with lock:
+            with self._lock:
+                self._event.clear()
+                self._lifecycle_state = "starting"
             self._jobs = {}
             self._scheduler = BackgroundScheduler(
                 timezone=settings.TZ,
@@ -117,3 +137,5 @@ class Scheduler(
 
             # 启动定时服务
             self._scheduler.start()
+            with self._lock:
+                self._lifecycle_state = "running"

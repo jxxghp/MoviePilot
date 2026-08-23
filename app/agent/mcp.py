@@ -217,8 +217,11 @@ class _StdioMcpSession:
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         """结束 stdio MCP 子进程。"""
-        if self.stderr_task:
-            self.stderr_task.cancel()
+        stderr_task = self.stderr_task
+        self.stderr_task = None
+        if stderr_task:
+            stderr_task.cancel()
+            await asyncio.gather(stderr_task, return_exceptions=True)
         if not self.process:
             return
         if self.process.returncode is None:

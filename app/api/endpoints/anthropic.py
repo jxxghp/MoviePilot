@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from typing import AsyncIterator, List, Optional
 
-from fastapi import APIRouter, Header, Security
+from fastapi import APIRouter, Depends, Header, Security
 from fastapi.responses import JSONResponse
 
 from app.schemas.openai import AnthropicErrorDetail as _SchemaAnthropicErrorDetail
@@ -25,6 +25,11 @@ from app.api.presentation.sse import build_sse_response, encode_named_event
 from app.agent.runtime_loader import get_running_agent_manager
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.web.security.access import anthropic_api_key_header
+from app.api.context import (
+    get_background_task_registry_compat,
+    resolve_background_task_registry,
+)
+from app.runtime.tasks import TaskRegistry
 
 ANTHROPIC_ERROR_RESPONSES = {
     400: {"model": _SchemaAnthropicErrorResponse, "description": "请求格式错误"},
@@ -88,6 +93,7 @@ async def _stream_anthropic_response(
     user_id: str,
     prompt: str,
     images: List[str],
+    task_registry: TaskRegistry | None = None,
 ) -> AsyncIterator[str]:
     event_queue: asyncio.Queue = asyncio.Queue()
 
@@ -113,7 +119,10 @@ async def _stream_anthropic_response(
         finally:
             await event_queue.put(None)
 
-    task = asyncio.create_task(_run_agent())
+    task = resolve_background_task_registry(task_registry).create(
+        _run_agent(),
+        owner="api.anthropic.stream",
+    )
     try:
         yield encode_named_event(
             "message_start",
@@ -207,6 +216,7 @@ async def messages(
     payload: _SchemaAnthropicMessagesRequest,
     x_api_key: Optional[str] = Security(anthropic_api_key_header),
     anthropic_version: Optional[str] = Header(default=None, alias="anthropic-version"),
+    task_registry: TaskRegistry = Depends(get_background_task_registry_compat),
 ):
     auth_error = _check_auth(x_api_key)
     if auth_error:
@@ -242,6 +252,7 @@ async def messages(
                 user_id=session_id,
                 prompt=prompt,
                 images=images,
+                task_registry=task_registry,
             ),
         )
 

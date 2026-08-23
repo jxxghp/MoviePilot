@@ -4,7 +4,7 @@ import sys
 from dataclasses import replace
 from types import ModuleType
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.modules.setdefault("qbittorrentapi", ModuleType("qbittorrentapi"))
 setattr(sys.modules["qbittorrentapi"], "TorrentFilesList", list)
@@ -15,7 +15,7 @@ sys.modules.setdefault("psutil", ModuleType("psutil"))
 from app.application.orchestration.message import MessageChain
 from app.application.orchestration.transfer import TransferChain
 from app.application.messaging.interaction import InteractionContext
-from app.runtime.config import settings
+from app.runtime.config import global_vars, settings
 from app.schemas.types import NotificationChannel
 
 
@@ -132,7 +132,10 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             """关闭被调度的协程：测试中事件循环未运行，不关闭会残留 never-awaited 警告。"""
             coro.close()
 
-        with patch.object(settings, "AI_AGENT_ENABLE", True):
+        loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
+        with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+            settings, "AI_AGENT_ENABLE", True
+        ):
             with patch(
                 "app.application.orchestration._transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(
@@ -209,7 +212,10 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         from app.agent.prompt.transfer_redo import build_manual_redo_prompt
 
         manager = SimpleNamespace(run_background_prompt=fake_run_background_prompt)
-        with patch.object(settings, "AI_AGENT_ENABLE", True):
+        loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
+        with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+            settings, "AI_AGENT_ENABLE", True
+        ):
             with patch(
                 "app.application.orchestration._transfer.TransferHistoryOper"
             ) as history_oper_cls, patch(

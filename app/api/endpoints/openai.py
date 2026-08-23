@@ -4,7 +4,7 @@ import uuid
 from threading import Lock
 from typing import AsyncIterator, List, Optional, Tuple
 
-from fastapi import APIRouter, Request, Security
+from fastapi import APIRouter, Depends, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -34,6 +34,11 @@ from app.agent.contracts import ReplyMode
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.web.security.access import openai_bearer_scheme
 from app.schemas.types import NotificationChannel
+from app.api.context import (
+    get_background_task_registry_compat,
+    resolve_background_task_registry,
+)
+from app.runtime.tasks import TaskRegistry
 
 OPENAI_ERROR_RESPONSES = {
     400: {"model": _SchemaOpenAIErrorResponse, "description": "请求格式错误"},
@@ -228,6 +233,7 @@ async def _stream_response(
     prompt: str,
     images: List[str],
     cleanup_session: bool,
+    task_registry: TaskRegistry | None = None,
 ) -> AsyncIterator[str]:
     event_queue: asyncio.Queue = asyncio.Queue()
 
@@ -255,7 +261,10 @@ async def _stream_response(
         finally:
             await event_queue.put(None)
 
-    task = asyncio.create_task(_run_agent())
+    task = resolve_background_task_registry(task_registry).create(
+        _run_agent(),
+        owner="api.openai.stream",
+    )
 
     try:
         yield _sse_payload(
@@ -488,6 +497,7 @@ async def _chat_completions_impl(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
         openai_bearer_scheme
     ),
+    task_registry: TaskRegistry | None = None,
 ):
     auth_error = _check_auth(credentials)
     if auth_error:
@@ -545,6 +555,7 @@ async def _chat_completions_impl(
                 prompt=prompt,
                 images=images,
                 cleanup_session=not use_server_session,
+                task_registry=task_registry,
             ),
         )
 
@@ -684,9 +695,15 @@ async def chat_completions(
     payload: _SchemaOpenAIChatCompletionsRequest,
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(openai_bearer_scheme),
+    task_registry: TaskRegistry = Depends(get_background_task_registry_compat),
 ):
     """OpenAI Chat Completions 兼容公开入口。"""
-    return await _chat_completions_impl(payload, request, credentials)
+    return await _chat_completions_impl(
+        payload,
+        request,
+        credentials,
+        task_registry=task_registry,
+    )
 
 
 @router.post(

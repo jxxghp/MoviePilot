@@ -1,6 +1,9 @@
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+
+import pytest
 
 from app.adapters.system.plugin.package import PluginPackageManager
 
@@ -44,6 +47,23 @@ def test_checkpoint_rollback_removes_new_package(monkeypatch, tmp_path):
 
     assert not plugin_dir.exists()
     assert not checkpoint.transaction_dir.exists()
+
+
+def test_rollback_does_not_delete_package_when_snapshot_is_missing(monkeypatch, tmp_path):
+    """补偿快照损坏时先失败，不能先删除当前可用插件。"""
+    manager = _manager(monkeypatch, tmp_path)
+    plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("old", encoding="utf-8")
+
+    checkpoint = manager.checkpoint("DemoPlugin")
+    shutil.rmtree(checkpoint.transaction_dir / "package")
+    (plugin_dir / "__init__.py").write_text("new", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError):
+        manager.rollback(checkpoint)
+
+    assert (plugin_dir / "__init__.py").read_text(encoding="utf-8") == "new"
 
 
 def test_local_sync_failure_restores_previous_runtime_copy(monkeypatch, tmp_path):

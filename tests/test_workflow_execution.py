@@ -5,8 +5,9 @@ import time
 from types import SimpleNamespace
 
 from app.workflow import service as workflow_module
-from app.schemas import Action, ActionContext, ActionResult
+from app.runtime.correlation import correlation_scope, get_correlation_id
 from app.schemas.types import EventType
+from app.schemas.workflow import Action, ActionContext, ActionResult
 from app import workflow as workflow_package
 
 
@@ -125,6 +126,58 @@ class _OpaqueValue:
 
     def __str__(self):
         return "opaque-value"
+
+
+def test_workflow_executor_preserves_trigger_context(monkeypatch):
+    """工作流节点及其完成回调应保留触发链路的关联 ID。"""
+    observed = []
+    release = threading.Event()
+
+    def run_action(_action, context):
+        observed.append(("node", get_correlation_id()))
+        assert release.wait(timeout=1)
+        return ActionResult(success=True, message="ok", context=context)
+
+    fake_manager = _FakeWorkflowManager(
+        [],
+        results={"A": run_action},
+    )
+    monkeypatch.setattr(workflow_module, "WorkFlowManager", lambda: fake_manager)
+    monkeypatch.setattr(
+        workflow_module.global_vars,
+        "workflow_resume",
+        lambda _workflow_id: None,
+    )
+    monkeypatch.setattr(
+        workflow_module.global_vars,
+        "is_workflow_stopped",
+        lambda _workflow_id: False,
+    )
+
+    executor = workflow_module.WorkflowExecutor(
+        _build_workflow(
+            actions=[
+                {"id": "A", "type": "FakeAction", "name": "动作A", "data": {}}
+            ],
+            flows=[],
+        ),
+        step_callback=lambda _action, _context: observed.append(
+            ("completion", get_correlation_id())
+        ),
+    )
+    timer = threading.Timer(0.05, release.set)
+    try:
+        with correlation_scope("workflow-request"):
+            timer.start()
+            executor.execute()
+    finally:
+        release.set()
+        timer.join(timeout=1)
+
+    assert observed == [
+        ("node", "workflow-request"),
+        ("completion", "workflow-request"),
+    ]
 
 
 def test_workflow_executor_resumes_downstream_nodes(monkeypatch):

@@ -152,6 +152,11 @@ def test_scheduler_registers_manifest_jobs_into_engine(stub_business_domains):
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
     scheduler._scheduler = _SchedulerStub()
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
+    scheduler._agent_task_reservations = {}
 
     scheduler._register_job(
         manifest_module.ScheduledJob(
@@ -182,6 +187,8 @@ def test_scheduler_registers_manifest_jobs_into_engine(stub_business_domains):
         "running": False,
         "kwargs": {"state": "R"},
         "provider_name": "[系统]",
+        # 每次登记分配单调代次，热重载后旧代次不能改写新登记的状态
+        "_generation": 1,
     }
     assert set(scheduler._scheduler.jobs) == {"demo", "demo|3:0"}
     assert scheduler._scheduler.jobs["demo"]["kwargs"] == {"job_id": "demo"}

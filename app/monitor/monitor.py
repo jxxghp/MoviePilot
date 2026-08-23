@@ -1,4 +1,5 @@
 import time
+import threading
 import traceback
 from functools import partial
 from pathlib import Path
@@ -28,6 +29,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
     """
     目录监控门面，单例模式：装配本地/远程监控、维护生命周期与健康检查。
     """
+    # watcher/scheduler 在构造期启动；异常时保留实例供启动失败屏障收口。
+    _retain_failed_singleton = True
     # 除目录配置外，同时监听仅在监控线程创建时读取的环境变量：这两项经
     # /system/env 保存后运行时值虽已更新，但已运行的监控不会重新决策模式，
     # 必须触发 init() 全量重建才能生效（MONITOR_RESCAN_DELAYS 为实时解析，无需在列）
@@ -55,11 +58,25 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
     REBUILD_KEY_PREFIX = "rebuild:"
     PROBE_KEY = "probe"
     PENDING_KEY = "pending"
+    RELOAD_STOP_TIMEOUT = 30.0
+    LIFECYCLE_CLOSE_TIMEOUT = 90.0
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化目录监控依赖、owner 注册表与当前 lifespan 状态。"""
         super().__init__()
+        # 生命周期操作串行化；永久关闭请求用 Event 提前封口，不能被阻塞 I/O 挡住。
+        self._lifecycle_lock = threading.RLock()
+        self._owner_lock = threading.Lock()
+        self._work_stop_event = threading.Event()
+        self._shutdown_event = threading.Event()
+        self._closed = False
+        self._compensation_threads: Dict[int, threading.Thread] = {}
+        self._scheduler_shutdown_thread: Optional[threading.Thread] = None
+        self._scheduler_shutdown_succeeded = False
         # 本地目录监控服务
         self._watchers = []
+        # 已请求停止但尚未退出的 watcher，只保留 owner 身份，不再参与健康检查
+        self._retired_watchers = []
         # 本地目录监控列表读写锁
         self._watcher_lock = Lock()
         # 启动失败待重试的本地监控配置
@@ -88,9 +105,14 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         self._poller = RemotePoller(store=self._store, dispatcher=self._dispatcher,
                                     alert_cb=self.__poller_alert)
         # 启动目录监控和文件整理
-        self.init()
+        if not self.init():
+            raise RuntimeError("目录监控 owner 初始化未收敛")
 
-    def on_config_changed(self):
+    def on_config_changed(self) -> None:
+        """配置变化时重建监控；lifespan 封口后拒绝重新启动。"""
+        if self._shutdown_event.is_set():
+            logger.info("目录监控已进入生命周期封口，忽略配置热更新")
+            return
         self.init()
 
     def get_reload_name(self):
@@ -119,6 +141,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         """
         强制全量扫描并处理所有文件（包括已存在的文件）。
         """
+        if not self.__accepting_work():
+            return False
         return self._poller.force_full_scan(storage=storage, mon_path=mon_path)
 
     @staticmethod
@@ -135,24 +159,61 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         """
         return SnapshotStore.compare(old_snapshot, new_snapshot)
 
-    def init(self):
+    def init(self, timeout: float = RELOAD_STOP_TIMEOUT) -> bool:
+        """在旧 owner 收敛后启动一代监控，关闭中的生命周期拒绝重开。"""
+        if self._shutdown_event.is_set():
+            logger.info("目录监控生命周期已关闭，跳过启动")
+            return False
+        deadline = time.monotonic() + max(0.0, timeout)
+        if not self._lifecycle_lock.acquire(
+                timeout=max(0.0, deadline - time.monotonic())
+        ):
+            logger.error("目录监控未在 %.1f 秒内取得重载所有权", max(0.0, timeout))
+            return False
+        try:
+            if self._shutdown_event.is_set():
+                return False
+            if not self.__stop_owned(deadline=deadline, close=False):
+                logger.error("旧目录监控 owner 未收敛，取消本次配置热更新")
+                return False
+            if self._shutdown_event.is_set():
+                return False
+            if not self._recovery.reopen():
+                logger.error("目录监控恢复线程仍未退出，取消本次配置热更新")
+                return False
+            if self._shutdown_event.is_set():
+                self._recovery.request_stop()
+                return False
+            self._work_stop_event.clear()
+            return self.__initialize_monitors()
+        finally:
+            self._lifecycle_lock.release()
+
+    def __initialize_monitors(self) -> bool:
         """
-        启动监控
+        在已取得生命周期所有权后启动监控。
+
+        永久关闭请求可以在本方法阻塞于 FUSE 时从其他线程提前设置；每个可能产生
+        新 owner 的边界都重新检查，确保解冻后只能退出，不能穿透旧生命周期。
         """
-        # 停止现有任务
-        self.stop()
+        if not self.__accepting_work():
+            return False
 
         # 读取目录配置
         monitor_dirs = DirectoryHelper().get_download_dirs()
+        if not self.__accepting_work():
+            return False
         if not monitor_dirs:
             logger.info("未找到任何目录监控配置")
-            return
+            return True
 
         messagehelper = MessageHelper()
 
         # 先筛出有效的监控配置，再按下载目录去重，避免非监控配置顶掉监控配置
         valid_dirs = []
         for mon_dir in monitor_dirs:
+            if not self.__accepting_work():
+                return False
             if not mon_dir.library_path:
                 logger.warn(f"跳过监控配置 {mon_dir.download_path}：未设置媒体库目录")
                 continue
@@ -173,6 +234,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         logger.info(f"找到 {len(monitor_dirs)} 个目录监控配置")
 
         # 启动定时服务进程
+        if not self.__accepting_work():
+            return False
         self._scheduler = BackgroundScheduler(timezone=get_runtime_setting("TZ"))
 
         mon_storages: Dict[str, List[Path]] = {}
@@ -180,6 +243,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         local_started = 0
         local_failed = 0
         for mon_dir in monitor_dirs:
+            if not self.__accepting_work():
+                self.__abort_interrupted_startup()
+                return False
             # 检查媒体库目录是不是下载目录的子目录
             mon_path = Path(mon_dir.download_path)
             target_path = Path(mon_dir.library_path)
@@ -198,6 +264,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 mon_storages.setdefault(mon_dir.storage, []).append(mon_path)
 
         for storage, paths in mon_storages.items():
+            if not self.__accepting_work():
+                self.__abort_interrupted_startup()
+                return False
             # 远程目录监控 - 使用智能间隔
             # 先尝试加载已有快照获取文件数量
             snapshot_data = self._store.load(storage)
@@ -239,6 +308,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             logger.info(f"✓ 目录监控健康检查已启动: [间隔: {self.WATCHDOG_INTERVAL}秒]")
 
         # 启动定时服务
+        if not self.__accepting_work():
+            self.__abort_interrupted_startup()
+            return False
         if self._scheduler.get_jobs():
             self._scheduler.print_jobs()
             self._scheduler.start()
@@ -254,6 +326,47 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             logger.warn(summary)
         else:
             logger.info(summary)
+        return True
+
+    def __accepting_work(self) -> bool:
+        """判断当前 monitor 代是否仍允许创建 owner 和派发整理工作。"""
+        return not self._work_stop_event.is_set() and not self._shutdown_event.is_set()
+
+    @property
+    def lifecycle_closed(self) -> bool:
+        """返回当前 Monitor 是否已经被应用生命周期永久封口。"""
+        return self._closed or self._shutdown_event.is_set()
+
+    def reopen(self, timeout: float = RELOAD_STOP_TIMEOUT) -> bool:
+        """确认旧 owner 已收敛后，为新的应用 lifespan 显式解除永久封口。"""
+        if not self.lifecycle_closed:
+            return True
+        deadline = time.monotonic() + max(0.0, timeout)
+        if not self._lifecycle_lock.acquire(
+                timeout=max(0.0, deadline - time.monotonic())
+        ):
+            logger.error("旧目录监控生命周期仍在收尾，无法重新开启")
+            return False
+        try:
+            if not self.__stop_owned(deadline=deadline, close=True):
+                logger.error("旧目录监控 owner 仍未收敛，无法重新开启")
+                return False
+            if not self._recovery.reopen():
+                logger.error("旧目录监控恢复线程仍存活，无法重新开启")
+                return False
+            self._closed = False
+            self._shutdown_event.clear()
+            return True
+        finally:
+            self._lifecycle_lock.release()
+
+    def __abort_interrupted_startup(self) -> None:
+        """关闭请求穿透阻塞启动后，在当前生命周期锁内收拢已经创建的 owner。"""
+        logger.info("目录监控启动期间收到关闭请求，正在回收本次已创建 owner")
+        self.__stop_owned(
+            deadline=time.monotonic() + self.RELOAD_STOP_TIMEOUT,
+            close=self._shutdown_event.is_set(),
+        )
 
     def __start_local_monitor(self, mon_path: Path, monitor_mode: str) -> bool:
         """
@@ -262,6 +375,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         :param monitor_mode: 配置的监控模式
         :return: 是否启动成功
         """
+        if not self.__accepting_work():
+            return False
         logger.info(f"正在启动本地目录监控: {mon_path}")
         logger.info("*** 重要提示：目录监控只处理新增和修改的文件，不会处理监控启动前已存在的文件 ***")
 
@@ -299,6 +414,11 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             # 启动成功后再登记，避免失败的监控残留在列表中
             watcher.start()
             with self._watcher_lock:
+                if not self.__accepting_work():
+                    watcher.stop()
+                    if watcher.is_alive():
+                        self._retired_watchers.append(watcher)
+                    return False
                 self._watchers.append(watcher)
                 self._pending_locals = [
                     pending for pending in self._pending_locals
@@ -313,13 +433,15 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             self.__handle_start_failure(mon_path=mon_path, monitor_mode=monitor_mode, err=e)
             return False
 
-    def __handle_start_failure(self, mon_path: Path, monitor_mode: str, err: Exception):
+    def __handle_start_failure(self, mon_path: Path, monitor_mode: str, err: Exception) -> None:
         """
         处理本地目录监控启动失败，登记待重试并按需告警。
         :param mon_path: 监控目录
         :param monitor_mode: 配置的监控模式
         :param err: 启动异常
         """
+        if not self.__accepting_work():
+            return
         err_msg = str(err)
         logger.error(f"启动本地目录监控失败: {mon_path}")
         logger.error(f"错误详情: {err_msg}")
@@ -347,7 +469,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                           f"启动本地目录监控失败: {mon_path}\n错误: {err_msg}\n"
                           f"将自动退避重试")
 
-    def watchdog(self):
+    def watchdog(self) -> None:
         """
         目录监控健康检查：检测监控线程状态并驱动恢复。
 
@@ -357,8 +479,12 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         动作会把看门狗冻死在它自己要修复的挂载上，随后停滞检测、告警、重试驱动
         全部静默失效——这正是全进程雪崩的起点。
         """
+        if not self.__accepting_work():
+            return
         try:
             broken = self.__check_watchers()
+            if not self.__accepting_work():
+                return
             self.__drive_recovery(broken)
         except Exception as e:
             logger.error(f"目录监控健康检查出现错误：{e}\n{traceback.format_exc()}")
@@ -373,6 +499,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         """
         with self._watcher_lock:
             watchers = list(self._watchers)
+            self._retired_watchers = [
+                watcher for watcher in self._retired_watchers if watcher.is_alive()
+            ]
             isolated = set(self._isolated)
             # 探测已确认挂载恢复的目录，本轮直接送去重建
             resumed = list(self._pending_rebuild.values())
@@ -413,7 +542,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             broken.append(watcher)
         return broken
 
-    def __drive_recovery(self, broken: List[LocalDirectoryWatcher]):
+    def __drive_recovery(self, broken: List[LocalDirectoryWatcher]) -> None:
         """
         把所有会触碰挂载的恢复动作派发到一次性工作线程，并等待有限时间。
 
@@ -422,6 +551,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         可放弃的子进程探测来确认挂载何时恢复。
         :param broken: 需要重建的监控列表
         """
+        if not self.__accepting_work():
+            return
         actions: Dict[str, Callable[[], None]] = {}
         rebuilds: Dict[str, LocalDirectoryWatcher] = {}
         for watcher in broken:
@@ -433,6 +564,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         actions[self.PENDING_KEY] = self.__drive_pending
 
         results = self._recovery.run(actions, timeout=self.RECOVERY_TIMEOUT)
+        if not self.__accepting_work():
+            return
 
         for key, state in results.items():
             if state is RecoveryState.COMPLETED:
@@ -446,11 +579,13 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 logger.warn(f"目录监控恢复动作未在 {self.RECOVERY_TIMEOUT} 秒内完成"
                             f"（{state.value}），将在后续健康检查周期重试: {key}")
 
-    def __enter_isolation(self, watcher: LocalDirectoryWatcher):
+    def __enter_isolation(self, watcher: LocalDirectoryWatcher) -> None:
         """
         将一个监控目录转入挂载级故障隔离：停止对它的一切新访问，等待探测恢复。
         :param watcher: 重建未能返回的监控
         """
+        if not self.__accepting_work():
+            return
         key = str(watcher.watch_path)
         with self._watcher_lock:
             if key in self._isolated:
@@ -467,7 +602,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                           f"已暂停对该目录的所有访问，正在周期探测挂载，恢复后将自动重建监控并补扫",
                           stage="isolated")
 
-    def __probe_isolated(self):
+    def __probe_isolated(self) -> None:
         """
         对隔离中的监控目录做可放弃探测，挂载恢复应答后解除隔离并重建监控。
 
@@ -475,11 +610,17 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         超时可被 kill，因此本线程不会像内联 stat 那样永久冻死。探测通过后的重建
         仍有极小概率再次卡住，届时本线程会被下一轮的 BUSY 判定跳过，不再泄漏。
         """
+        if not self.__accepting_work():
+            return
         with self._watcher_lock:
             keys = list(self._isolated)
         for key in keys:
+            if not self.__accepting_work():
+                return
             mon_path = Path(key)
             if not probe_path(mon_path, timeout=self.MOUNT_PROBE_TIMEOUT):
+                if not self.__accepting_work():
+                    return
                 with self._watcher_lock:
                     entry = self._isolated.get(key)
                     if not entry:
@@ -490,6 +631,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 logger.warn(f"挂载探测未通过（累计 {failures} 次，已隔离 "
                             f"{int(time.time() - since)} 秒），继续隔离: {mon_path}")
                 continue
+            if not self.__accepting_work():
+                return
             with self._watcher_lock:
                 entry = self._isolated.pop(key, None)
             if not entry:
@@ -503,19 +646,24 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             with self._watcher_lock:
                 self._pending_rebuild[key] = entry["watcher"]
 
-    def __drive_pending(self):
+    def __drive_pending(self) -> None:
         """
         驱动两条待重试队列。两者都会访问挂载（启动重试走目录遍历与 exists，
         整理重试走 stat），必须在恢复工作线程里执行而不是看门狗线程里。
         """
+        if not self.__accepting_work():
+            return
         self.__retry_pending_locals()
-        self._dispatcher.retry_pending()
+        if self.__accepting_work():
+            self._dispatcher.retry_pending()
 
-    def __rebuild_watcher(self, watcher: LocalDirectoryWatcher):
+    def __rebuild_watcher(self, watcher: LocalDirectoryWatcher) -> None:
         """
         重建一个本地目录监控线程。
         :param watcher: 需要重建的监控
         """
+        if not self.__accepting_work():
+            return
         # 卡死的线程阻塞在底层调用中无法强制回收，只能请求停止后由守护线程自然退出
         watcher.stop()
         new_watcher = LocalDirectoryWatcher(
@@ -528,8 +676,13 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             new_watcher.start()
         except Exception as e:
             logger.error(f"重建目录监控失败: {watcher.watch_path} - {e}")
+            if not self.__accepting_work():
+                return
             with self._watcher_lock:
+                # 旧 watcher 可能仍卡在 FUSE 调用里；只有真实退出后才能移除句柄。
                 self._watchers = [item for item in self._watchers if item is not watcher]
+                if watcher.is_alive():
+                    self._retired_watchers.append(watcher)
                 if all(pending["mon_path"] != watcher.watch_path for pending in self._pending_locals):
                     self._pending_locals.append({
                         "mon_path": watcher.watch_path,
@@ -538,9 +691,18 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                     })
             return
         with self._watcher_lock:
+            if not self.__accepting_work():
+                new_watcher.stop()
+                if new_watcher.is_alive():
+                    self._retired_watchers.append(new_watcher)
+                return
             registered = any(item is watcher for item in self._watchers)
             if registered:
                 self._watchers = [new_watcher if item is watcher else item for item in self._watchers]
+                if watcher.is_alive():
+                    # stop() 只能发信号，FUSE 上的旧线程可能永久不返回；继续持有它，
+                    # 让生命周期关闭如实失败，而不是把 daemon 泄漏伪装成已收敛。
+                    self._retired_watchers.append(watcher)
         if not registered:
             # 卡死的重建线程可能在挂载恢复后才解冻并走到这里，而该目录此时已由
             # 隔离恢复路径重建过。此处若直接放行，新建的监控既不在 _watchers 里
@@ -548,6 +710,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             # 派发事件的孤儿线程，必须就地停掉
             logger.warn(f"目录监控已由其他路径重建，停止本次重建的冗余监控: {watcher.watch_path}")
             new_watcher.stop()
+            if new_watcher.is_alive():
+                with self._watcher_lock:
+                    self._retired_watchers.append(new_watcher)
             return
         # 新监控的重启计数从零开始，同步重置告警基准
         self._restart_marks.pop(str(watcher.watch_path), None)
@@ -558,7 +723,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         self.__start_compensation(mon_path=watcher.watch_path,
                                   since=watcher.last_activity_time)
 
-    def __start_compensation(self, mon_path: Path, since: float):
+    def __start_compensation(self, mon_path: Path, since: float) -> None:
         """
         在后台线程发起补偿扫描，避免遍历目录阻塞健康检查周期。
         :param mon_path: 监控目录
@@ -568,14 +733,34 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             # 从未活动过说明没有可靠的停摆起点，全量补扫代价不可控，跳过
             logger.debug(f"监控无活动记录，跳过补偿扫描: {mon_path}")
             return
-        Thread(
-            target=self.__compensate_scan,
+        thread = Thread(
+            target=self.__run_compensation,
             kwargs={"mon_path": mon_path, "since": since},
             name=f"MoviePilot-MonitorCompensation-{mon_path.name}",
             daemon=True
-        ).start()
+        )
+        with self._owner_lock:
+            # 与 close() 的 owner 快照共用同一把锁；封口先发生时绝不再启动，
+            # 登记先发生时 close() 必然能看到并等待这条线程。
+            if not self.__accepting_work():
+                return
+            self._compensation_threads[id(thread)] = thread
+            try:
+                thread.start()
+            except Exception:
+                self._compensation_threads.pop(id(thread), None)
+                raise
 
-    def __compensate_scan(self, mon_path: Path, since: float):
+    def __run_compensation(self, mon_path: Path, since: float) -> None:
+        """执行补偿扫描，并在真实终态后释放 owner 句柄。"""
+        current_thread = threading.current_thread()
+        try:
+            self.__compensate_scan(mon_path=mon_path, since=since)
+        finally:
+            with self._owner_lock:
+                self._compensation_threads.pop(id(current_thread), None)
+
+    def __compensate_scan(self, mon_path: Path, since: float) -> None:
         """
         补扫监控停摆期间落地的文件。
 
@@ -587,7 +772,11 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         :param mon_path: 监控目录
         :param since: 停摆起点（墙钟时间戳），仅用于统计与日志
         """
+        if not self.__accepting_work():
+            return
         candidates = self.__collect_compensation_files(mon_path)
+        if not self.__accepting_work():
+            return
         if candidates is None:
             return
         # mtime 不再作为过滤条件，但仍是「最可能是新文件」的排序依据
@@ -600,6 +789,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         changed_count = sum(1 for candidate in candidates if candidate[1] >= threshold)
         handled = 0
         for file_path, file_modify_time, file_size in candidates:
+            if not self.__accepting_work():
+                return
             if self._dispatcher.handle_file(
                     storage="local",
                     event_path=file_path,
@@ -635,14 +826,18 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             return None
         return candidates
 
-    def __retry_pending_locals(self):
+    def __retry_pending_locals(self) -> None:
         """
         重试启动失败的本地目录监控，给网络存储/FUSE 挂载留出就绪时间。
         """
+        if not self.__accepting_work():
+            return
         with self._watcher_lock:
             pending = list(self._pending_locals)
             isolated = set(self._isolated)
         for item in pending:
+            if not self.__accepting_work():
+                return
             if str(item["mon_path"]) in isolated:
                 # 隔离中的挂载不接受任何新访问：启动重试要走目录遍历与 exists，
                 # 在「请求永不返回」的挂载上会再冻死一个线程
@@ -656,7 +851,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 item["attempts"] = item.get("attempts", 0) + 1
                 item["skip_cycles"] = min(item["attempts"], 10)
 
-    def __send_alert(self, mon_path: Path, message: str, stage: str = "fault"):
+    def __send_alert(self, mon_path: Path, message: str, stage: str = "fault") -> None:
         """
         推送目录监控异常告警，同一目录在同一阶段仅推送一次。
         :param mon_path: 监控目录
@@ -665,6 +860,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                       （监控已暂停访问、等待挂载恢复），只按目录去重会把这条
                       关键消息吞掉，因此阶段变化时重新推送
         """
+        if not self.__accepting_work():
+            return
         key = str(mon_path)
         with self._watcher_lock:
             if self._alerted_paths.get(key) == stage:
@@ -673,7 +870,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         MessageHelper().put(message, title="目录监控")
 
     @staticmethod
-    def __poller_alert(storage: str, message: str):
+    def __poller_alert(storage: str, message: str) -> None:
         """
         远程轮询监控告警回调，复用消息渠道推送。
         :param storage: 存储名称
@@ -682,12 +879,14 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         logger.warn(f"[{storage}] {message}")
         MessageHelper().put(message, title="目录监控")
 
-    def __clear_alert(self, mon_path: Path, message: str):
+    def __clear_alert(self, mon_path: Path, message: str) -> None:
         """
         清除目录监控异常告警状态，并在此前告警过时推送恢复消息。
         :param mon_path: 监控目录
         :param message: 恢复内容
         """
+        if not self.__accepting_work():
+            return
         key = str(mon_path)
         with self._watcher_lock:
             if key not in self._alerted_paths:
@@ -696,12 +895,14 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         logger.info(message)
         MessageHelper().put(message, title="目录监控")
 
-    def polling_observer(self, storage: str, mon_paths: List[Path]):
+    def polling_observer(self, storage: str, mon_paths: List[Path]) -> None:
         """
         轮询监控：执行一轮快照并按结果动态调整监控间隔。
         """
+        if not self.__accepting_work():
+            return
         file_count = self._poller.poll(storage=storage, mon_paths=mon_paths)
-        if file_count is None or not self._scheduler:
+        if not self.__accepting_work() or file_count is None or not self._scheduler:
             return
         # 动态调整监控间隔
         new_interval = SnapshotStore.adjust_interval(file_count)
@@ -717,7 +918,10 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         except Exception as e:
             logger.error(f"调整监控间隔失败: {storage} - {e}")
 
-    def event_handler(self, event, text: str, event_path: str, file_size: float = None):
+    def event_handler(
+            self, event: Any, text: str, event_path: str,
+            file_size: Optional[float] = None
+    ) -> None:
         """
         处理文件变化。
         :param event: 事件
@@ -725,7 +929,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         :param event_path: 事件文件路径
         :param file_size: 文件大小
         """
-        if event.is_directory:
+        if not self.__accepting_work() or event.is_directory:
             return
         if not self._dispatcher.is_transfer_candidate_path(Path(event_path)):
             return
@@ -734,6 +938,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             file_modify_time = Path(event_path).stat().st_mtime
         except OSError as err:
             logger.debug(f"读取目录监控文件修改时间失败: {event_path} - {err}")
+        if not self.__accepting_work():
+            return
         # 整理文件
         handle_kwargs = {
             "storage": "local",
@@ -744,55 +950,191 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             handle_kwargs["file_modify_time"] = file_modify_time
         self._dispatcher.handle_file(**handle_kwargs)
 
-    def event_unreadable(self, event_path: Path):
+    def event_unreadable(self, event_path: Path) -> None:
         """
         处理读取失败的监控事件，登记待重试。
         :param event_path: 事件文件路径
         """
+        if not self.__accepting_work():
+            return
         event_path = Path(event_path)
         if not self._dispatcher.is_transfer_candidate_path(event_path):
             return
         self._dispatcher.register_unreadable(storage="local", event_path=event_path)
 
-    def stop(self):
+    def stop(self, timeout: float = RELOAD_STOP_TIMEOUT) -> bool:
+        """在共享预算内临时停止全部监控 owner，供配置热重载使用。"""
+        return self.__stop_with_budget(timeout=timeout, close=False)
+
+    def close(self, timeout: float = LIFECYCLE_CLOSE_TIMEOUT) -> bool:
+        """永久封口当前 lifespan，并在共享预算内等待全部监控 owner。"""
+        return self.__stop_with_budget(timeout=timeout, close=True)
+
+    def __stop_with_budget(self, timeout: float, close: bool) -> bool:
+        """从等待生命周期锁开始计算一次停止操作的完整预算。"""
+        timeout = max(0.0, timeout)
+        deadline = time.monotonic() + timeout
+        # 先封住工作入口再等待锁。配置重载若正阻塞在 FUSE 上，解冻后也只能清理，
+        # 不能在外层生命周期已经超时返回后继续创建 watcher 或派发整理任务。
+        self._work_stop_event.set()
+        if close:
+            self._shutdown_event.set()
+        if not self._lifecycle_lock.acquire(
+                timeout=max(0.0, deadline - time.monotonic())
+        ):
+            logger.error("目录监控未在 %.1f 秒内取得停机所有权", timeout)
+            return False
+        try:
+            return self.__stop_owned(deadline=deadline, close=close)
+        finally:
+            self._lifecycle_lock.release()
+
+    def __stop_owned(self, deadline: float, close: bool) -> bool:
         """
-        退出监控
+        在已取得生命周期锁时等待全部 owner，共享调用方给出的绝对截止时间。
+
+        超时只报告未收敛并保留所有活句柄；只有 watcher、补偿扫描、恢复动作及
+        scheduler shutdown 都到达终态后，才清空这一代的内存状态。
         """
-        # 先停定时服务，避免健康检查在停止过程中重建监控线程
-        if self._scheduler:
-            self._scheduler.remove_all_jobs()
-            if self._scheduler.running:
-                try:
-                    self._scheduler.shutdown()
-                    logger.info("定时监控服务已停止")
-                except Exception as e:
-                    logger.error(f"停止定时服务出现了错误：{e}")
-            self._scheduler = None
-        # 待重试条目按停止前的监控范围登记，重载后范围可能变化，一并清理
+        self._work_stop_event.set()
+        if close:
+            self._closed = True
+            self._shutdown_event.set()
+        self._recovery.request_stop()
+        self.__request_scheduler_stop()
+
+        with self._watcher_lock:
+            watchers = tuple(self._watchers) + tuple(self._retired_watchers)
+        if watchers:
+            logger.info("正在停止本地目录监控服务...")
+        for watcher in watchers:
+            try:
+                watcher.stop()
+            except Exception as err:
+                logger.error(f"请求停止目录监控服务出现了错误：{err}")
+
+        recovery_converged = self._recovery.close(deadline=deadline)
+        current_thread = threading.current_thread()
+        # 恢复线程可能在封口后才从 FUSE 调用返回，并登记一个已经请求停止的新
+        # watcher；RecoveryExecutor 收敛后重新取快照，确保它也使用剩余预算 join。
+        with self._watcher_lock:
+            registered_watchers = tuple(self._watchers) + tuple(self._retired_watchers)
+        for watcher in registered_watchers:
+            try:
+                watcher.stop()
+                watcher.join(timeout=max(0.0, deadline - time.monotonic()))
+            except Exception as err:
+                logger.error(f"等待目录监控服务停止出现了错误：{err}")
+
+        with self._owner_lock:
+            compensation_threads = tuple(self._compensation_threads.values())
+            scheduler_thread = self._scheduler_shutdown_thread
+        for thread in compensation_threads:
+            if thread is not current_thread and thread.is_alive():
+                thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        if (
+                scheduler_thread is not None
+                and scheduler_thread is not current_thread
+                and scheduler_thread.is_alive()
+        ):
+            scheduler_thread.join(timeout=max(0.0, deadline - time.monotonic()))
+
+        with self._watcher_lock:
+            alive_watchers = tuple(
+                watcher
+                for watcher in (*self._watchers, *self._retired_watchers)
+                if watcher.is_alive()
+            )
+        with self._owner_lock:
+            alive_compensations = tuple(
+                thread for thread in self._compensation_threads.values()
+                if thread.is_alive()
+            )
+            scheduler_thread = self._scheduler_shutdown_thread
+            scheduler_converged = (
+                self._scheduler is None
+                or (
+                    scheduler_thread is not None
+                    and not scheduler_thread.is_alive()
+                    and self._scheduler_shutdown_succeeded
+                )
+            )
+        alive_recoveries = self._recovery.running_threads()
+        if (
+                alive_watchers
+                or alive_compensations
+                or alive_recoveries
+                or not recovery_converged
+                or not scheduler_converged
+        ):
+            logger.error(
+                "目录监控 owner 未在截止时间内收敛：watcher=%d，补偿=%d，恢复=%d，scheduler=%s",
+                len(alive_watchers),
+                len(alive_compensations),
+                len(alive_recoveries),
+                "未收敛" if not scheduler_converged else "已收敛",
+            )
+            return False
+
+        # 仅在所有 owner 真实终止后清理业务状态，确保失败重试仍能找到原句柄。
         self._dispatcher.clear_pending()
         with self._watcher_lock:
-            watchers = self._watchers
             self._watchers = []
+            self._retired_watchers = []
             self._pending_locals = []
             self._alerted_paths = {}
             self._restart_marks = {}
             self._stable_cycles = {}
             self._isolated = {}
             self._pending_rebuild = {}
-        # 已冻死的恢复线程无法回收，这里只是不再跟踪它们，避免重载后同名目录
-        # 被残留记录误判为 BUSY 而永远拿不到重建机会
         self._recovery.clear()
+        with self._owner_lock:
+            self._compensation_threads.clear()
+            self._scheduler = None
+            self._scheduler_shutdown_thread = None
+            self._scheduler_shutdown_succeeded = False
         if watchers:
-            logger.info("正在停止本地目录监控服务...")
-            for watcher in watchers:
-                try:
-                    watcher.stop()
-                    watcher.join(timeout=5)
-                    if watcher.is_alive():
-                        logger.warning(f"本地目录监控线程在5秒内未能停止: {watcher.watch_path}")
-                    else:
-                        logger.debug(f"已停止本地目录监控服务: {watcher.watch_path}")
-                except Exception as e:
-                    logger.error(f"停止目录监控服务出现了错误：{e}")
             logger.info("本地目录监控服务已停止")
+        return True
+
+    def __request_scheduler_stop(self) -> None:
+        """创建并登记唯一 scheduler shutdown 线程，避免阻塞生命周期调用线程。"""
+        with self._owner_lock:
+            running = self._scheduler_shutdown_thread
+            if running is not None and running.is_alive():
+                return
+            if running is not None and self._scheduler_shutdown_succeeded:
+                return
+            scheduler = self._scheduler
+            if scheduler is None:
+                return
+            self._scheduler_shutdown_succeeded = False
+            thread = threading.Thread(
+                target=self.__shutdown_scheduler,
+                args=(scheduler,),
+                name="MoviePilot-MonitorSchedulerShutdown",
+                daemon=True,
+            )
+            self._scheduler_shutdown_thread = thread
+            try:
+                thread.start()
+            except Exception as err:
+                self._scheduler_shutdown_thread = None
+                logger.error(f"启动定时监控停止线程失败：{err}")
+
+    def __shutdown_scheduler(self, scheduler: BackgroundScheduler) -> None:
+        """停止 scheduler 及其在途 job，并把真实终态写回 owner 注册表。"""
+        succeeded = False
+        try:
+            scheduler.remove_all_jobs()
+            if scheduler.running:
+                scheduler.shutdown(wait=True)
+            succeeded = True
+            logger.info("定时监控服务已停止")
+        except Exception as err:
+            logger.error(f"停止定时服务出现了错误：{err}")
+        finally:
+            with self._owner_lock:
+                if self._scheduler is scheduler:
+                    self._scheduler_shutdown_succeeded = succeeded
         # 缓存与快照存储是共享后端的代理，生命周期由应用全局管理，这里不再关闭

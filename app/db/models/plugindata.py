@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import run_legacy_async_query, run_legacy_sync_query
+from app.db.decorators import legacy_async_db_query, legacy_db_query
 from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
@@ -23,6 +23,7 @@ class PluginData(Base):
     )
 
     @classmethod
+    @legacy_db_query
     def get_plugin_data(
         cls,
         db: Session | None = None,
@@ -37,15 +38,12 @@ class PluginData(Base):
         """
         if plugin_id is None:
             raise TypeError("plugin_id is required")
-        if not isinstance(db, Session):
-            return run_legacy_sync_query(
-                lambda session: cls.get_plugin_data(session, plugin_id, instance_id)
-            )
         return list(db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
         ).scalars().all())
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_plugin_data(
         cls,
         db: AsyncSession | None = None,
@@ -60,16 +58,13 @@ class PluginData(Base):
         """
         if plugin_id is None:
             raise TypeError("plugin_id is required")
-        if not isinstance(db, AsyncSession):
-            return await run_legacy_async_query(
-                lambda session: cls.async_get_plugin_data(session, plugin_id, instance_id)
-            )
         result = await db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
         )
         return list(result.scalars().all())
 
     @classmethod
+    @legacy_db_query
     def get_plugin_data_by_key(
         cls,
         db: Session | None = None,
@@ -86,15 +81,12 @@ class PluginData(Base):
         """
         if plugin_id is None or key is None:
             raise TypeError("plugin_id and key are required")
-        if not isinstance(db, Session):
-            return run_legacy_sync_query(
-                lambda session: cls.get_plugin_data_by_key(session, plugin_id, key, instance_id)
-            )
         return db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.key == key, cls.instance_id == instance_id)
         ).scalars().first()
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_plugin_data_by_key(
         cls,
         db: AsyncSession | None = None,
@@ -111,12 +103,6 @@ class PluginData(Base):
         """
         if plugin_id is None or key is None:
             raise TypeError("plugin_id and key are required")
-        if not isinstance(db, AsyncSession):
-            return await run_legacy_async_query(
-                lambda session: cls.async_get_plugin_data_by_key(
-                    session, plugin_id, key, instance_id
-                )
-            )
         result = await db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.key == key, cls.instance_id == instance_id)
         )
@@ -159,6 +145,7 @@ class PluginData(Base):
         db.execute(statement)
 
     @classmethod
+    @legacy_db_query
     def get_plugin_data_by_plugin_id(
         cls,
         db: Session | None = None,
@@ -173,15 +160,12 @@ class PluginData(Base):
         """
         if plugin_id is None:
             raise TypeError("plugin_id is required")
-        if not isinstance(db, Session):
-            return run_legacy_sync_query(
-                lambda session: cls.get_plugin_data_by_plugin_id(session, plugin_id, instance_id)
-            )
         return list(db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
         ).scalars().all())
 
     @classmethod
+    @legacy_async_db_query
     async def async_get_plugin_data_by_plugin_id(
         cls,
         db: AsyncSession | None = None,
@@ -196,12 +180,6 @@ class PluginData(Base):
         """
         if plugin_id is None:
             raise TypeError("plugin_id is required")
-        if not isinstance(db, AsyncSession):
-            return await run_legacy_async_query(
-                lambda session: cls.async_get_plugin_data_by_plugin_id(
-                    session, plugin_id, instance_id
-                )
-            )
         result = await db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
         )

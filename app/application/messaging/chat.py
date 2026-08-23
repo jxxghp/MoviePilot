@@ -10,10 +10,7 @@ from weakref import WeakValueDictionary
 
 from app.application.database import AsyncDatabaseExecutor
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
-from app.schemas.exception import (
-    DatabaseWorkerClosedError,
-    DatabaseWorkerOverloadedError,
-)
+from app.schemas.exception import AgentChatPersistenceUnavailableError
 from app.runtime.observability import record_metric
 
 
@@ -73,20 +70,6 @@ class AsyncAgentChatRepository(Protocol):
 
     def get(self, session_id: str, user_id: Optional[str] = None) -> Optional[Any]:
         """同步读取服务端会话。"""
-        ...
-
-    def save_display_messages(
-        self,
-        session_id: str,
-        user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
-        username: Optional[str] = None,
-        channel: Optional[Any] = None,
-        source: Optional[str] = None,
-        original_chat_id: Optional[str] = None,
-        client_session_id: Optional[str] = None,
-    ) -> Optional[Any]:
-        """同步保存用户可见会话消息。"""
         ...
 
 
@@ -265,31 +248,6 @@ class AgentChatService:
         record = self._repository.get(session_id=session_id)
         return self._project(record) if record is not None else None
 
-    def save_display_sync(
-        self,
-        *,
-        session_id: str,
-        user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
-        username: Optional[str] = None,
-        channel: Optional[Any] = None,
-        source: Optional[str] = None,
-        original_chat_id: Optional[str] = None,
-        client_session_id: Optional[str] = None,
-    ) -> Optional[AgentChatRecord]:
-        """同步保存用户可见消息并返回最新投影。"""
-        record = self._repository.save_display_messages(
-            session_id=session_id,
-            user_id=user_id,
-            messages=messages,
-            username=username,
-            channel=channel,
-            source=source,
-            original_chat_id=original_chat_id,
-            client_session_id=client_session_id,
-        )
-        return self._project(record) if record is not None else None
-
     @staticmethod
     def can_access(
         record: AgentChatRecord,
@@ -401,14 +359,16 @@ class AgentChatPersistenceService:
         """在线程 worker 内完成同步写入并丢弃仓储对象返回值。"""
         # 同时限制全局和单会话等待量，避免一个热点会话占满总 admission 后饿死其他会话。
         if self._closing:
-            raise DatabaseWorkerClosedError("AgentChat 持久化服务当前不可接收任务")
+            raise AgentChatPersistenceUnavailableError(
+                "AgentChat 持久化服务当前不可接收任务"
+            )
         session_pending = self._pending_by_session.get(session_id, 0)
         if (
             self._pending_writes >= self._capacity
             or session_pending >= self._session_capacity
         ):
             record_metric("agent.chat.persistence.rejected")
-            raise DatabaseWorkerOverloadedError(
+            raise AgentChatPersistenceUnavailableError(
                 f"AgentChat 写入容量已用尽（全局上限 {self._capacity}，"
                 f"单会话上限 {self._session_capacity}）"
             )

@@ -104,6 +104,34 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
     assert _SubscribeOper.updates == [(31, {"state": "R"})]
 
 
+def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None:
+    """用户归属订阅批次只按指定 ID 顺序读取，不扩大为全局状态搜索。"""
+    first = _new_subscribe(datetime.now() - timedelta(minutes=2))
+    first.state = "R"
+    second = _new_subscribe(datetime.now() - timedelta(minutes=2))
+    second.id = 32
+    second.name = "测试电影 2"
+    second.state = "R"
+    subscribes = {first.id: first, second.id: second}
+    subscribe_oper = Mock()
+    subscribe_oper.get.side_effect = subscribes.get
+    monkeypatch.setattr(
+        subscribe_module,
+        "SubscribeOper",
+        lambda: subscribe_oper,
+    )
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = None
+
+    with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
+        chain = object.__new__(SubscribeChain)
+        chain.search(sids=(31, 32), state=None, manual=False)
+
+    assert [item.args for item in subscribe_oper.get.call_args_list] == [(31,), (32,)]
+    subscribe_oper.list.assert_not_called()
+    assert media_chain.recognize_media.call_count == 2
+
+
 def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
     """订阅搜索锁超时后必须中止，不能在无锁状态下继续访问订阅。"""
     monkeypatch.setattr(SubscribeChain, "_rlock", _TimedOutLock())

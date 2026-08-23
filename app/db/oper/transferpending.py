@@ -54,9 +54,12 @@ class TransferPendingOper(DbOper):
         :param limit: 单次回放上限
         :return: (存储, 源文件路径) 列表
         """
+        items = self._execute_sync_query(
+            lambda session: TransferPending.list_all(session, limit=limit)
+        )
         return [
             (item.storage, item.src_path)
-            for item in TransferPending.list_all(self._db, limit=limit) or []
+            for item in items or []
             if item and item.storage and item.src_path
         ]
 

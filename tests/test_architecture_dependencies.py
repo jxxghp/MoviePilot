@@ -561,6 +561,95 @@ def test_database_internals_do_not_import_db_facades():
     assert violations == []
 
 
+def test_base_crud_is_explicitly_legacy_only():
+    """Base 便利 CRUD 只能保留兼容壳，不得伪装成新的正式事务入口。"""
+    path = APP_ROOT / "db" / "base.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    base_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "Base"
+    )
+    formal_decorators = {
+        "db_query",
+        "db_update",
+        "async_db_query",
+        "async_db_update",
+    }
+    violations: list[str] = []
+    for node in base_class.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        decorators = {
+            decorator.id
+            for decorator in node.decorator_list
+            if isinstance(decorator, ast.Name)
+        }
+        if decorators & formal_decorators:
+            violations.append(node.name)
+    assert violations == []
+
+
+def test_models_use_one_legacy_query_compatibility_shell():
+    """旧 Model 查询统一使用 legacy 装饰器，不得再手写隐式会话 runner。"""
+    retired_names = {"run_legacy_sync_query", "run_legacy_async_query"}
+    violations: list[str] = []
+    for path in (APP_ROOT / "db" / "models").glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        if any(
+            isinstance(node, ast.Name) and node.id in retired_names
+            for node in ast.walk(tree)
+        ):
+            violations.append(str(path.relative_to(PROJECT_ROOT)))
+    assert violations == []
+
+
+def test_entry_layers_do_not_import_database_implementations():
+    """API、应用、编排、Agent、监控、模块和 Runtime 只能经 Oper 与门面访问持久化。
+
+    判据见 docs/rules/05-architecture.md 的 Permitted Call Directions：
+    `entrypoint -> Oper`、`application -> Oper`、`module -> Oper` 均为允许方向，
+    入口层读写数据只经 Oper 类与 `app.db` 门面，不得越过门面直接拿会话工厂、
+    引擎、工作单元或事务装饰器自行开事务。本断言与
+    test_database_internals_do_not_import_db_facades 互为镜像：内部实现不回流门面，
+    入口层不穿透门面，两者合起来把持久化面锁在 `app.db` 门面加 models/oper/plugin。
+    """
+    graph = _build_module_graph()
+    layer_roots = (
+        "app.api",
+        "app.application",
+        "app.agent",
+        "app.monitor",
+        "app.modules",
+        "app.runtime",
+        "app.workflow",
+        "app.adapters",
+    )
+    # 会话、引擎、工作单元与事务装饰器属于持久化机制，入口层不得直接持有
+    database_internals = (
+        "app.db.base",
+        "app.db.decorators",
+        "app.db.diagnostics",
+        "app.db.engine",
+        "app.db.health",
+        "app.db.maintenance",
+        "app.db.session",
+        "app.db.uow",
+        "app.db.worker",
+    )
+    violations = {
+        source: sorted(
+            dependency
+            for dependency in dependencies
+            if dependency.startswith(database_internals)
+        )
+        for source, dependencies in graph.items()
+        if source.startswith(layer_roots)
+        and any(dependency.startswith(database_internals) for dependency in dependencies)
+    }
+    assert violations == {}
+
+
 def test_migrated_modules_are_not_in_import_cycles():
     """任何 canonical 迁移模块都不得进入完整应用依赖图的环。"""
     modules = _discover_modules()

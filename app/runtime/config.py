@@ -1,4 +1,3 @@
-import asyncio
 import copy
 import json
 import os
@@ -1363,18 +1362,8 @@ class GlobalVar(object):
     EMERGENCY_STOP_WORKFLOWS: List[int] = []
     # 需应急停止文件整理
     EMERGENCY_STOP_TRANSFER: List[str] = []
-    # 当前事件循环
-    CURRENT_EVENT_LOOP: AbstractEventLoop = None
-
-    @classmethod
-    def _get_event_loop(cls) -> AbstractEventLoop:
-        """返回当前线程事件循环，缺失时创建并绑定新循环。"""
-        try:
-            return asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            return loop
+    # 生命周期登记的主事件循环
+    CURRENT_EVENT_LOOP: Optional[AbstractEventLoop] = None
 
     def stop_system(self):
         """
@@ -1465,18 +1454,20 @@ class GlobalVar(object):
 
     @property
     def loop(self) -> AbstractEventLoop:
-        """
-        当前循环
-        """
-        if self.CURRENT_EVENT_LOOP is None:
-            self.CURRENT_EVENT_LOOP = self._get_event_loop()
-        return self.CURRENT_EVENT_LOOP
+        """返回由应用生命周期登记的主事件循环。"""
+        loop = self.CURRENT_EVENT_LOOP
+        if loop is None or not loop.is_running() or loop.is_closed():
+            raise RuntimeError("主事件循环尚未启动或已经停止")
+        return loop
 
-    def set_loop(self, loop: AbstractEventLoop):
-        """
-        设置循环
-        """
+    def set_loop(self, loop: AbstractEventLoop) -> None:
+        """登记承载主程序异步任务的事件循环。"""
         self.CURRENT_EVENT_LOOP = loop
+
+    def clear_loop(self, loop: AbstractEventLoop) -> None:
+        """仅在登记值仍为目标循环时清除主事件循环。"""
+        if self.CURRENT_EVENT_LOOP is loop:
+            self.CURRENT_EVENT_LOOP = None
 
 
 # 全局标识

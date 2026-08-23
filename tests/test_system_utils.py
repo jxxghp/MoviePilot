@@ -1,14 +1,18 @@
+import asyncio
 import errno
 import itertools
 import os
 import struct
 import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch
 
+import psutil
 import pytest
 
 from app.runtime.state import SystemHelper
@@ -154,6 +158,148 @@ def test_execute_with_subprocess_uses_safe_command_in_failure_message():
     assert "https://mirror.example/simple" in message
     assert "user:pass" not in message
     assert run_mock.call_args.args[0] == command
+
+
+@pytest.mark.asyncio
+async def test_async_subprocess_timeout_reaps_process():
+    """异步安装命令超时后应终止并回收子进程。"""
+    success, message = await SystemUtils.execute_with_subprocess_async(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        timeout=0.05,
+    )
+
+    assert success is False
+    assert "执行超时" in message
+
+
+@pytest.mark.asyncio
+async def test_async_subprocess_cancellation_reaps_process(tmp_path):
+    """调用方取消安装任务时，底层子进程不得继续运行。"""
+    marker = tmp_path / "pid"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "from pathlib import Path; import os, time; "
+            f"Path({str(marker)!r}).write_text(str(os.getpid())); time.sleep(60)"
+        ),
+    ]
+    task = asyncio.create_task(
+        SystemUtils.execute_with_subprocess_async(command, timeout=30)
+    )
+    deadline = time.monotonic() + 2
+    while not marker.exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert marker.exists()
+
+    pid = int(marker.read_text())
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(100):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail(f"子进程仍在运行：{pid}")
+
+
+@pytest.mark.asyncio
+async def test_async_subprocess_cancellation_reaps_process_tree(tmp_path):
+    """取消安装命令时，子进程派生的构建进程也不得继续运行。"""
+    marker = tmp_path / "pids"
+    child_code = "import time; time.sleep(60)"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "from pathlib import Path; import subprocess, os, time; "
+            f"child = subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}]); "
+            f"Path({str(marker)!r}).write_text(str(os.getpid()) + ':' + str(child.pid)); "
+            "time.sleep(60)"
+        ),
+    ]
+    task = asyncio.create_task(
+        SystemUtils.execute_with_subprocess_async(command, timeout=30)
+    )
+    deadline = time.monotonic() + 2
+    while not marker.exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert marker.exists()
+
+    pids = [int(value) for value in marker.read_text().split(":")]
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(100):
+        alive = []
+        for pid in pids:
+            try:
+                process = psutil.Process(pid)
+                if not process.is_running() or process.status() == psutil.STATUS_ZOMBIE:
+                    continue
+            except (psutil.Error, OSError):
+                continue
+            alive.append(pid)
+        if not alive:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail(f"进程树仍在运行：{alive}")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows 没有 POSIX 进程组信号语义")
+@pytest.mark.asyncio
+async def test_async_subprocess_reaps_descendant_after_early_pipe_close(tmp_path):
+    """父进程关闭管道后，忽略终止信号的后代也必须被强制回收。"""
+    marker = tmp_path / "pids"
+    child_code = (
+        "import os, signal, time; os.close(1); os.close(2); "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+    )
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "from pathlib import Path; import os, signal, subprocess, time; "
+            f"child = subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}], "
+            "start_new_session=True); "
+            f"Path({str(marker)!r}).write_text(str(os.getpid()) + ':' + str(child.pid)); "
+            "signal.signal(signal.SIGTERM, lambda *_: os._exit(0)); time.sleep(60)"
+        ),
+    ]
+    task = asyncio.create_task(
+        SystemUtils.execute_with_subprocess_async(command, timeout=30)
+    )
+    deadline = time.monotonic() + 2
+    while not marker.exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert marker.exists()
+
+    pids = [int(value) for value in marker.read_text().split(":")]
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(100):
+        alive = []
+        for pid in pids:
+            try:
+                process = psutil.Process(pid)
+                if not process.is_running() or process.status() == psutil.STATUS_ZOMBIE:
+                    continue
+            except (psutil.Error, OSError):
+                continue
+            alive.append(pid)
+        if not alive:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail(f"通信已结束但进程树仍在运行：{alive}")
 
 
 def test_execute_with_subprocess_redacts_userinfo_from_stdout_and_stderr():

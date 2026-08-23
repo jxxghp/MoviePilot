@@ -8,9 +8,14 @@ from app.agent.tools.base import (
     MoviePilotTool,
     ToolExecutionTimeoutError,
     _blocking_executors,
+    _blocking_futures,
+    _blocking_retiring_executors,
+    close_blocking_executors,
+    reopen_blocking_executors,
     shutdown_blocking_executors,
 )
 from app.agent.tools.manager import MoviePilotToolsManager
+from app.runtime.correlation import correlation_scope, get_correlation_id
 
 
 class SlowAgentTool(MoviePilotTool):
@@ -34,6 +39,15 @@ class BlockingAgentTool(MoviePilotTool):
     async def run(self, **kwargs) -> str:
         """本测试不会直接调用该方法。"""
         return "unused"
+
+
+@pytest.fixture(autouse=True)
+def _reset_blocking_executor_runtime():
+    """每个用例前后恢复阻塞池门禁，避免进程级 owner 状态串扰。"""
+    assert reopen_blocking_executors() is True
+    yield
+    assert shutdown_blocking_executors(cancel_futures=True) is True
+    assert reopen_blocking_executors() is True
 
 
 def test_arun_raises_timeout_when_tool_exceeds_limit():
@@ -99,6 +113,20 @@ def test_run_blocking_keeps_bucket_slot_until_worker_finishes():
     asyncio.run(_run_scenario())
 
 
+def test_run_blocking_preserves_each_call_context():
+    """长期复用的工具线程必须读取当前调用，而不是首个调用的上下文。"""
+    async def _run_scenario():
+        observed = []
+        for correlation_id in ("request-one", "request-two"):
+            with correlation_scope(correlation_id):
+                observed.append(
+                    await MoviePilotTool.run_blocking("web", get_correlation_id)
+                )
+        return observed
+
+    assert asyncio.run(_run_scenario()) == ["request-one", "request-two"]
+
+
 def test_shutdown_blocking_executors_clears_agent_tool_workers():
     """测试结束清理应关闭 Agent 工具阻塞线程池，避免全量测试退出时等待 worker。"""
 
@@ -111,6 +139,8 @@ def test_shutdown_blocking_executors_clears_agent_tool_workers():
     shutdown_blocking_executors()
 
     assert _blocking_executors == {}
+    assert _blocking_futures == {}
+    assert _blocking_retiring_executors == set()
 
 
 def test_shutdown_blocking_executors_cancels_queued_workers_and_is_idempotent():
@@ -144,8 +174,53 @@ def test_shutdown_blocking_executors_cancels_queued_workers_and_is_idempotent():
     queued_future = asyncio.run(_run_scenario())
 
     assert _blocking_executors == {}
+    assert _blocking_futures == {}
+    assert _blocking_retiring_executors == set()
     assert queued_future.cancelled()
     assert not queued_ran.is_set()
+
+
+@pytest.mark.asyncio
+async def test_close_blocking_executors_retains_owner_until_retry() -> None:
+    """同步调用超时后保留 Future/executor，完成后的重复 close 才成功。"""
+    started = threading.Event()
+    release = threading.Event()
+
+    def _blocking_call() -> str:
+        """等待测试释放，稳定制造超过关停预算的运行 Future。"""
+        started.set()
+        release.wait()
+        return "done"
+
+    task = asyncio.create_task(
+        MoviePilotTool.run_blocking("web", _blocking_call)
+    )
+    assert await asyncio.to_thread(started.wait, 1)
+
+    try:
+        assert await close_blocking_executors(
+            timeout_seconds=0.01,
+            cancel_futures=True,
+        ) is False
+        assert task.done() is False
+        assert _blocking_futures
+        assert _blocking_retiring_executors
+
+        with pytest.raises(RuntimeError, match="正在关闭"):
+            await MoviePilotTool.run_blocking("web", lambda: "late")
+
+        release.set()
+        assert await asyncio.wait_for(task, timeout=1) == "done"
+        assert await close_blocking_executors(
+            timeout_seconds=0.01,
+            cancel_futures=True,
+        ) is True
+        assert _blocking_futures == {}
+        assert _blocking_retiring_executors == set()
+    finally:
+        release.set()
+        if not task.done():
+            await asyncio.wait_for(task, timeout=1)
 
 
 def test_create_agent_config_uses_llm_max_iterations():

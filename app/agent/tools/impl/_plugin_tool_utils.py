@@ -4,7 +4,6 @@ import json
 from typing import Any, Optional
 
 from app.application.plugin.runtime import get_plugin_manager
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.application.plugin.install import PluginInstallCommand
 from app.application.configuration import get_configured_system_config as SystemConfigOper
 from app.adapters.external.server import MoviePilotServerHelper
@@ -81,9 +80,11 @@ def refresh_plugin_registrations(plugin_id: str) -> None:
 
 def reload_plugin_runtime(plugin_id: str) -> PluginRuntimeStatus:
     """重载插件实例并重新注册其命令、定时任务和 API。"""
-    runtime_status = get_plugin_manager().reload_plugin(plugin_id)
-    refresh_plugin_registrations(plugin_id)
-    return runtime_status
+    plugin_manager = get_plugin_manager()
+    with plugin_manager.mutation(f"重载插件 {plugin_id}"):
+        runtime_status = plugin_manager.reload_plugin(plugin_id)
+        refresh_plugin_registrations(plugin_id)
+        return runtime_status
 
 
 def summarize_plugin(plugin: Any) -> dict[str, Any]:
@@ -350,31 +351,32 @@ async def install_plugin_runtime(
             target_id,
         )
 
-    with plugin_manager.suppress_plugin_monitor(plugin_id):
-        result = await PluginInstallCommand(
-            installed_plugins_reader=lambda: SystemConfigOper().get(
-                SystemConfigKey.UserInstalledPlugins
-            ) or [],
-            installed_plugins_writer=save_installed_plugins,
-            plugin_ids_provider=plugin_manager.get_plugin_ids,
-            compatibility_checker=skip_compatibility_check,
-            package_installer=install_package,
-            package_checkpointer=package_manager.async_checkpoint,
-            package_committer=package_manager.async_commit,
-            package_rollback=package_manager.async_rollback,
-            install_reporter=lambda target_id, target_repo: (
-                MoviePilotServerHelper.async_install_plugin_reg(
-                    plugin_id=target_id,
-                    repo_url=target_repo,
-                )
-            ),
-            plugin_reloader=reload_runtime,
-            registration_refresher=refresh_registrations,
-        ).execute(
-            plugin_id=plugin_id,
-            repo_url=repo_url,
-            force=force,
-        )
+    result = await PluginInstallCommand(
+        installed_plugins_reader=lambda: SystemConfigOper().get(
+            SystemConfigKey.UserInstalledPlugins
+        ) or [],
+        installed_plugins_writer=save_installed_plugins,
+        plugin_ids_provider=plugin_manager.get_plugin_ids,
+        compatibility_checker=skip_compatibility_check,
+        package_installer=install_package,
+        package_checkpointer=package_manager.async_checkpoint,
+        package_committer=package_manager.async_commit,
+        package_rollback=package_manager.async_rollback,
+        install_reporter=lambda target_id, target_repo: (
+            MoviePilotServerHelper.async_install_plugin_reg(
+                plugin_id=target_id,
+                repo_url=target_repo,
+            )
+        ),
+        plugin_reloader=reload_runtime,
+        registration_refresher=refresh_registrations,
+        mutation=plugin_manager.mutation,
+        package_write_guard=plugin_manager.suppress_plugin_monitor,
+    ).execute(
+        plugin_id=plugin_id,
+        repo_url=repo_url,
+        force=force,
+    )
     return result.success, result.message, result.refreshed_only
 
 
@@ -391,17 +393,18 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
     from app.application.plugin.routes import remove_plugin_api
     from app.application.scheduling import remove_plugin_job
 
-    plugin_manager = PluginManager()
-    plugin_manager.uninstall_plugin(plugin_id)
+    plugin_manager = get_plugin_manager()
+    with plugin_manager.mutation(f"卸载插件 {plugin_id}"):
+        plugin_manager.uninstall_plugin(plugin_id)
 
-    config_oper = SystemConfigOper()
-    install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
-    if plugin_id in install_plugins:
-        install_plugins = [pid for pid in install_plugins if pid != plugin_id]
-        await config_oper.async_set(SystemConfigKey.UserInstalledPlugins, install_plugins)
+        config_oper = SystemConfigOper()
+        install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
+        if plugin_id in install_plugins:
+            install_plugins = [pid for pid in install_plugins if pid != plugin_id]
+            await config_oper.async_set(SystemConfigKey.UserInstalledPlugins, install_plugins)
 
-    remove_plugin_api(plugin_id)
-    remove_plugin_job(plugin_id)
-    remove_plugin_from_folders(plugin_id)
+        remove_plugin_api(plugin_id)
+        remove_plugin_job(plugin_id)
+        remove_plugin_from_folders(plugin_id)
 
-    return {}
+        return {}

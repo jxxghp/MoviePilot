@@ -1,11 +1,13 @@
 from typing import Any, Annotated
 
-from fastapi import BackgroundTasks, Request, Depends
+from fastapi import Depends, Request
 
 from app.schemas.response import Response as _SchemaResponse
 from app.api.response import ResponseAPIRouter
 from app.application.orchestration.webhook import WebhookChain
 from app.adapters.web.security.access import verify_apitoken
+from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.runtime.tasks import TaskRegistry
 
 router = ResponseAPIRouter()
 
@@ -19,7 +21,7 @@ def start_webhook_chain(body: Any, form: Any, args: Any):
 
 @router.post("/", summary="Webhook消息响应", response_model=_SchemaResponse[None])
 async def webhook_message(
-    background_tasks: BackgroundTasks,
+    task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     request: Request,
     _: Annotated[str, Depends(verify_apitoken)],
 ) -> Any:
@@ -29,13 +31,15 @@ async def webhook_message(
     body = await request.body()
     form = await request.form()
     args = request.query_params
-    background_tasks.add_task(start_webhook_chain, body, form, args)
+    resolve_background_task_registry(task_registry).create_sync(
+        start_webhook_chain, body, form, args, owner="api.webhook.message"
+    )
     return _SchemaResponse(success=True)
 
 
 @router.get("/", summary="Webhook消息响应", response_model=_SchemaResponse[None])
 async def webhook_message_get(
-    background_tasks: BackgroundTasks,
+    task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     request: Request,
     _: Annotated[str, Depends(verify_apitoken)],
 ) -> Any:
@@ -43,5 +47,7 @@ async def webhook_message_get(
     Webhook响应，配置请求中需要添加参数：token=API_TOKEN&source=媒体服务器名
     """
     args = request.query_params
-    background_tasks.add_task(start_webhook_chain, None, None, args)
+    resolve_background_task_registry(task_registry).create_sync(
+        start_webhook_chain, None, None, args, owner="api.webhook.message"
+    )
     return _SchemaResponse(success=True)

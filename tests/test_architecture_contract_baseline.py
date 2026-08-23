@@ -119,6 +119,7 @@ def test_startup_performance_baseline_records_all_cold_import_targets():
     baseline_path = BASELINE_ROOT / "startup-performance-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
+    assert baseline["schema_version"] == 2
     assert baseline["repeat"] >= 3
     assert set(baseline["targets"]) == {
         "app.startup.lifecycle",
@@ -128,7 +129,7 @@ def test_startup_performance_baseline_records_all_cold_import_targets():
     for contract in baseline["targets"].values():
         assert len(contract["samples_ms"]) == baseline["repeat"]
         assert contract["min_ms"] <= contract["median_ms"] <= contract["max_ms"]
-        assert contract["loaded_module_count"] > 0
+        assert contract["loaded_app_module_count"] > 0
 
 
 def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
@@ -146,6 +147,8 @@ def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
     写装饰器让模型自己开事务并提交，绕过 Oper 侧的 UoW；除下列三个模型外的任何模型
     出现写装饰器，或这三个模型再多一条，都会让本断言转红。按名单而不是按条数冻结：
     条数拦不住「删一条旧的、补一条新的」，那种改动一条债没还，账面却看不出来。
+    读路径的旧 ABI 由 legacy_db_query / legacy_async_db_query 兼容壳单独承担，
+    不计入正式装饰器条数，因此这里冻结的是正式 db_query / db_update 家族的剩余量。
     """
     baseline_path = BASELINE_ROOT / "transaction-debt-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
@@ -156,8 +159,8 @@ def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
     }
 
     assert baseline["schema_version"] == 1
-    assert baseline["model_decorators"]["count"] == 142
-    assert sum(baseline["model_decorators"]["by_kind"].values()) == 142
+    assert baseline["model_decorators"]["count"] == 36
+    assert sum(baseline["model_decorators"]["by_kind"].values()) == 36
     assert write_decorators == MODEL_WRITE_DECORATOR_DEBT
     assert baseline["model_transaction_calls"] == {"count": 0, "calls": []}
     assert baseline["model_session_factories"] == {"count": 0, "calls": []}

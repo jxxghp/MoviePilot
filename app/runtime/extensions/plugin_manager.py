@@ -1,5 +1,6 @@
 import ast
 import asyncio
+import concurrent.futures
 import importlib.util
 import inspect
 import os
@@ -12,7 +13,19 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Type, Union, Callable, Tuple
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    Union,
+)
 
 from fastapi import HTTPException
 from starlette import status
@@ -25,9 +38,11 @@ from app.foundation.crypto import RSAUtils
 from app.foundation.paths import ensure_path_segment
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.observability import observe_compat_facade
 from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.thread import ThreadHelper
 
 settings = RuntimeSettingsCompat()
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
@@ -57,6 +72,7 @@ from app.runtime.extensions.contract.instance import (
     normalize_instance_id,
     split_instance_key,
 )
+from app.runtime.extensions.lifecycle.admission import PluginMutationAdmission
 from app.runtime.extensions.admission.instance_selection import resolve_plugin_instance_key
 from app.runtime.extensions.lifecycle.layout import (
     ensure_plugin_version_dir_available,
@@ -95,6 +111,7 @@ from app.runtime.extensions.contract.dependency import (
     PluginDependencyInstallResult,
 )
 from app.schemas.notification import ChannelCapabilityManager
+from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.types import EventType, SystemConfigKey
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
@@ -344,6 +361,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     """插件管理器"""
     CONFIG_WATCH = {"DEV", "PLUGIN_AUTO_RELOAD", "PLUGIN_LOCAL_REPO_PATHS"}
     AGENT_TOOLS_BUILD_MAX_ATTEMPTS = 3
+    _EVENT_HANDLERS_QUIESCED = "__event_handlers__"
 
     def __init__(self):
         """初始化插件注册表、缓存和开发模式监控状态。"""
@@ -364,6 +382,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         # 插件包写入期间的监控抑制计数，按插件标识引用计数
         self._monitor_suppression_lock = threading.Lock()
         self._suppressed_monitor_plugins: Dict[str, int] = {}
+        # 插件文件监控的停机生命周期锁与永久封口标记
+        self._monitor_lifecycle_lock = threading.RLock()
+        self._monitor_closed = False
+        # 插件可变事务准入与停机 quiesce/finalize 两阶段收口状态
+        self._plugin_quiesce_lock = threading.RLock()
+        self._plugin_quiesce_future: Optional[concurrent.futures.Future] = None
+        self._plugin_service_quiesce_future: Optional[concurrent.futures.Future] = None
+        self._plugin_mutation_admission = PluginMutationAdmission()
+        self._plugin_runtime_closed = False
+        # 按实例键记录 quiesce 阶段已收敛的旧 ABI 步骤，支持只重试未收敛部分
+        self._quiesced_hooks: Dict[str, Set[str]] = {}
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
@@ -402,12 +431,16 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def init_config(self):
         """按最新系统配置完整重启插件。"""
-        # 停止已有插件
-        self.stop()
-        classification = self.classify_plugins()
-        self.apply_plugin_dependency_classification(classification)
-        for plugin_id in classification.ready:
-            self.start(plugin_id)
+        try:
+            with self.mutation("配置热重载"):
+                # 停止已有插件
+                self.stop()
+                classification = self.classify_plugins()
+                self.apply_plugin_dependency_classification(classification)
+                for plugin_id in classification.ready:
+                    self.start(plugin_id)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
 
     def start(
         self,
@@ -420,7 +453,26 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param instance_id: 实例标识，为空时加载该插件已登记的全部实例
         :return: 本次涉及的插件ID到其运行状态的映射
         """
+        try:
+            with self.mutation("启动插件"):
+                with self._plugin_quiesce_lock:
+                    return self._start_selective(pid, instance_id)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            if pid:
+                return {pid: PluginRuntimeStatus.LOAD_FAILED}
+            return {}
 
+    def _start_selective(
+        self,
+        pid: Optional[str],
+        instance_id: Optional[str],
+    ) -> Dict[str, PluginRuntimeStatus]:
+        """在已持有可变事务 lease 与 quiesce 锁的前提下执行实际加载。
+        :param pid: 插件ID，为空加载所有插件
+        :param instance_id: 实例标识，为空时加载该插件已登记的全部实例
+        :return: 本次涉及的插件ID到其运行状态的映射
+        """
         _legacy_diagnostics_configurator(
             enabled=settings.DEBUG,
             emitter=logger.warning,
@@ -829,6 +881,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 _plugin_database_ensure(plugin_id, instance_id)
             # 存储运行实例
             self._running_plugins[key] = plugin_obj
+            # 清除上一生命周期遗留的 quiesce 收敛标记，避免新实例被误判为已收敛
+            self._quiesced_hooks.pop(key, None)
             logger.info(f"加载插件：{key} 版本：{plugin_obj.plugin_version}")
             # 同步插件声明的渠道能力
             self._sync_channel_capabilities(key)
@@ -949,35 +1003,40 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param conf: 插件配置
         :param instance_id: 实例标识，为空时按 plugin_id 定位实例
         """
-        key = self._resolve_instance_key(plugin_id, instance_id)
-        if not key:
-            return
-        plugin = self._running_plugins.get(key)
-        if not plugin:
-            return
-        extension = PluginExtension(plugin, key)
-        owner_plugin_id, owner_instance_id = split_instance_key(key)
-        # 初始化插件，期间产生的日志按实例归档，而不是落入插件兜底目录
-        with bind_plugin_instance(owner_plugin_id, owner_instance_id):
-            extension.initialize(conf)
-        # 检查实例状态并启用/禁用其事件处理器
-        if extension.is_enabled():
-            eventmanager.enable_event_handler(type(plugin), key)
-        else:
-            eventmanager.disable_event_handler(type(plugin), key)
-        # 兄弟实例可能仍然启用，整类的事件注册状态按全族重新裁决
-        self._sync_family_event_state(extension_id_of(key), type(plugin))
-        # 配置变更可能启用或停用实例，重新同步渠道能力登记
-        self._sync_channel_capabilities(key)
-        # 配置变更同样可能影响存储与服务实例声明，重新同步服务类型登记
-        self._sync_plugin_service_types(key)
-        # 名称解析器声明同理，重新同步解析器登记
-        self._sync_plugin_meta_parsers(key)
-        # 筛选规则声明同理，重新同步规则登记
-        self._sync_plugin_filter_rules(key)
-        # 命令声明同理，重新同步命令登记
-        self._sync_plugin_commands(key)
-        self.clear_plugin_agent_tools_cache()
+        try:
+            with self.mutation("初始化插件配置"):
+                with self._plugin_quiesce_lock:
+                    key = self._resolve_instance_key(plugin_id, instance_id)
+                    if not key:
+                        return
+                    plugin = self._running_plugins.get(key)
+                    if not plugin:
+                        return
+                    extension = PluginExtension(plugin, key)
+                    owner_plugin_id, owner_instance_id = split_instance_key(key)
+                    # 初始化插件，期间产生的日志按实例归档，而不是落入插件兜底目录
+                    with bind_plugin_instance(owner_plugin_id, owner_instance_id):
+                        extension.initialize(conf)
+                    # 检查实例状态并启用/禁用其事件处理器
+                    if extension.is_enabled():
+                        eventmanager.enable_event_handler(type(plugin), key)
+                    else:
+                        eventmanager.disable_event_handler(type(plugin), key)
+                    # 兄弟实例可能仍然启用，整类的事件注册状态按全族重新裁决
+                    self._sync_family_event_state(extension_id_of(key), type(plugin))
+                    # 配置变更可能启用或停用实例，重新同步渠道能力登记
+                    self._sync_channel_capabilities(key)
+                    # 配置变更同样可能影响存储与服务实例声明，重新同步服务类型登记
+                    self._sync_plugin_service_types(key)
+                    # 名称解析器声明同理，重新同步解析器登记
+                    self._sync_plugin_meta_parsers(key)
+                    # 筛选规则声明同理，重新同步规则登记
+                    self._sync_plugin_filter_rules(key)
+                    # 命令声明同理，重新同步命令登记
+                    self._sync_plugin_commands(key)
+                    self.clear_plugin_agent_tools_cache()
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
 
     def clear_plugin_agent_tools_cache(self) -> None:
         """
@@ -994,11 +1053,31 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         with self._plugin_agent_tools_cache_lock:
             return self._plugin_agent_tools_revision
 
-    def stop(self, pid: Optional[str] = None, instance_id: Optional[str] = None):
+    def stop(self, pid: Optional[str] = None, instance_id: Optional[str] = None) -> None:
         """
         停止插件服务
         :param pid: 插件ID或实例键，为空停止所有插件
         :param instance_id: 实例标识，为空时停止 pid 命中的全部实例
+        """
+        try:
+            with self.mutation("停止插件"):
+                with self._plugin_quiesce_lock:
+                    self._stop_running_instances(pid, instance_id, skip_service_hooks=False)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+
+    def _stop_running_instances(
+        self,
+        pid: Optional[str],
+        instance_id: Optional[str],
+        *,
+        skip_service_hooks: bool,
+    ) -> None:
+        """停止指定实例；stop() 与 finalize_plugins() 共用这份核心机制。
+
+        :param pid: 插件ID或实例键，为空停止所有插件
+        :param instance_id: 实例标识，为空时停止 pid 命中的全部实例
+        :param skip_service_hooks: quiesce_plugin_services 已执行旧 close/stop_service 时为 True，避免重复调用
         """
         # 停止插件
         if pid:
@@ -1021,7 +1100,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             if plugin is None:
                 continue
             eventmanager.disable_event_handler(type(plugin), key)
-            self.__stop_plugin(plugin)
+            if not skip_service_hooks:
+                self.__stop_plugin(plugin)
             # 实例停止后撤销其渠道能力登记，不留残留
             self._revoke_channel_capabilities(key)
             # 实例停止后撤销其存储登记，不留残留
@@ -1034,6 +1114,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._revoke_plugin_filter_rules(key)
             # 实例停止后撤销其命令登记，不留残留
             self._revoke_plugin_commands(key)
+            # 清理停机 quiesce 阶段留下的收敛标记，避免下次启动误判为已收敛
+            self._quiesced_hooks.pop(key, None)
         # 清空对象
         if pid:
             single_instance = bool(instance_id) or pid != extension_id_of(pid)
@@ -1057,6 +1139,201 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._clear_plugin_modules()
         self.clear_plugin_agent_tools_cache()
         logger.info("插件停止完成")
+
+    def mutation(self, operation: str) -> ContextManager[None]:
+        """为一个完整插件可变事务取得可跨异步边界传播的准入 lease。"""
+        return self._plugin_mutation_admission.hold(operation)
+
+    def reopen_plugins(self) -> bool:
+        """为新应用生命周期解除运行时封口，仍活跃的 quiesce owner 禁止复用。"""
+        with self._plugin_quiesce_lock:
+            futures = (
+                self._plugin_quiesce_future,
+                self._plugin_service_quiesce_future,
+            )
+            if any(future is not None and not future.done() for future in futures):
+                logger.warning("插件后台服务仍在停止，无法开启新的应用生命周期")
+                return False
+            if self._plugin_runtime_closed and self._running_plugins:
+                logger.warning("上一应用生命周期仍持有插件实例，拒绝解除运行时封口")
+                return False
+            if not self._plugin_mutation_admission.reopen():
+                logger.warning("上一应用生命周期仍有插件可变事务，拒绝解除运行时封口")
+                return False
+            self._plugin_runtime_closed = False
+            return True
+
+    async def quiesce_plugins(self, timeout: float = 240.0) -> bool:
+        """封口变更事务并停用插件 handler，超时后保留 Future ownership。"""
+        if self._plugin_mutation_admission.is_held():
+            logger.warning("插件可变事务不能等待自身收敛，拒绝在事务内执行停机")
+            return False
+        with self._plugin_quiesce_lock:
+            self._plugin_runtime_closed = True
+            self._plugin_mutation_admission.seal()
+            future = self._plugin_quiesce_future
+            if future is None or future.done():
+                future = ThreadHelper().submit(self._quiesce_after_mutations)
+                self._plugin_quiesce_future = future
+        try:
+            result = await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)),
+                timeout=max(0.0, timeout),
+            )
+            return bool(result)
+        except asyncio.TimeoutError:
+            logger.error(f"插件后台服务未在 {timeout:g} 秒内收敛")
+            return False
+        except Exception as error:  # noqa: BLE001  Future 异常必须转为生命周期结果
+            logger.error(f"插件后台服务停止失败：{error}", exc_info=True)
+            return False
+        finally:
+            if future.done():
+                with self._plugin_quiesce_lock:
+                    if self._plugin_quiesce_future is future:
+                        self._plugin_quiesce_future = None
+
+    async def quiesce_plugin_services(self, timeout: float = 240.0) -> bool:
+        """在事件结算后执行旧插件停机 hook，并有界等待同步 owner。"""
+        with self._plugin_quiesce_lock:
+            prepare_future = self._plugin_quiesce_future
+            if prepare_future is not None and not prepare_future.done():
+                logger.warning("插件事件入口仍在封口，拒绝提前关闭插件资源")
+                return False
+            if not self._plugin_runtime_closed:
+                logger.warning("插件运行时尚未封口，拒绝关闭插件资源")
+                return False
+            if self._plugin_mutation_admission.active_count:
+                logger.warning("插件可变事务仍在执行，拒绝关闭插件资源")
+                return False
+            future = self._plugin_service_quiesce_future
+            if future is None or future.done():
+                future = ThreadHelper().submit(self._quiesce_services_locked)
+                self._plugin_service_quiesce_future = future
+        try:
+            result = await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)),
+                timeout=max(0.0, timeout),
+            )
+            return bool(result)
+        except asyncio.TimeoutError:
+            logger.error(f"插件旧停机 hook 未在 {timeout:g} 秒内收敛")
+            return False
+        except Exception as error:  # noqa: BLE001  Future 异常必须转为生命周期结果
+            logger.error(f"插件旧停机 hook 执行失败：{error}", exc_info=True)
+            return False
+        finally:
+            if future.done():
+                with self._plugin_quiesce_lock:
+                    if self._plugin_service_quiesce_future is future:
+                        self._plugin_service_quiesce_future = None
+
+    def finalize_plugins(self) -> bool:
+        """确认 quiesce owner 已结束后禁用 handler 并卸载插件实例。"""
+        with self._plugin_quiesce_lock:
+            futures = (
+                self._plugin_quiesce_future,
+                self._plugin_service_quiesce_future,
+            )
+        if any(future is not None and not future.done() for future in futures):
+            logger.warning("插件后台服务仍在停止，拒绝释放运行实例")
+            return False
+        if self._plugin_mutation_admission.active_count:
+            logger.warning("插件可变事务仍在执行，拒绝释放运行实例")
+            return False
+        return self._finalize_locked()
+
+    def _quiesce_after_mutations(self) -> bool:
+        """等待已获准变更自然结束后，再停用插件事件入口。"""
+        self._plugin_mutation_admission.wait_until_idle()
+        return self._quiesce_handlers_locked()
+
+    def _quiesce_handlers_locked(self) -> bool:
+        """停用全部运行实例的事件入口，只重试尚未收敛的实例。"""
+        with self._plugin_quiesce_lock:
+            keys = list(self._running_plugins)
+            all_converged = True
+            for key in keys:
+                plugin = self._running_plugins.get(key)
+                if plugin is None:
+                    continue
+                completed = self._quiesced_hooks.setdefault(key, set())
+                if self._EVENT_HANDLERS_QUIESCED in completed:
+                    continue
+                try:
+                    eventmanager.disable_event_handler(type(plugin), key)
+                except Exception as error:  # noqa: BLE001  插件边界必须隔离
+                    all_converged = False
+                    logger.warning(f"停用插件实例 {key} 的事件 handler 时发生错误: {error}")
+                    continue
+                completed.add(self._EVENT_HANDLERS_QUIESCED)
+            return all_converged
+
+    def _quiesce_services_locked(self) -> bool:
+        """在事件 handler 均已停用后执行旧 close、stop_service hook。"""
+        with self._plugin_quiesce_lock:
+            keys = list(self._running_plugins)
+            if not self._all_handlers_quiesced(keys):
+                logger.warning("插件事件 handler 尚未全部停用，拒绝关闭插件资源")
+                return False
+            all_converged = True
+            for key in keys:
+                plugin = self._running_plugins.get(key)
+                if plugin is None:
+                    continue
+                completed = self._quiesced_hooks.setdefault(key, set())
+                for hook_name in ("close", "stop_service"):
+                    if hook_name in completed:
+                        continue
+                    hook = getattr(plugin, hook_name, None)
+                    if not callable(hook):
+                        completed.add(hook_name)
+                        continue
+                    try:
+                        result = hook()
+                    except Exception as error:  # noqa: BLE001  插件边界必须隔离
+                        all_converged = False
+                        logger.warning(f"停止插件实例 {key} 的 {hook_name} 时发生错误: {error}")
+                        continue
+                    if result is False:
+                        all_converged = False
+                        logger.warning(f"停止插件实例 {key} 的 {hook_name} 未收敛")
+                        continue
+                    completed.add(hook_name)
+            return all_converged
+
+    def _all_handlers_quiesced(self, keys: List[str]) -> bool:
+        """判断给定实例是否均已停用事件入口。"""
+        return all(
+            self._EVENT_HANDLERS_QUIESCED in self._quiesced_hooks.get(key, set())
+            for key in keys
+        )
+
+    def _instance_quiesced(self, key: str) -> bool:
+        """判断实例的 handler 及其声明的旧 ABI hooks 是否均已成功收敛。"""
+        plugin = self._running_plugins.get(key)
+        if plugin is None:
+            return True
+        required = {self._EVENT_HANDLERS_QUIESCED} | {
+            hook_name
+            for hook_name in ("close", "stop_service")
+            if callable(getattr(plugin, hook_name, None))
+        }
+        return required.issubset(self._quiesced_hooks.get(key, set()))
+
+    def _finalize_locked(self) -> bool:
+        """确认全部运行实例已收敛后卸载它们，保留未收敛实例的所有权供重试。"""
+        with self._plugin_quiesce_lock:
+            keys = list(self._running_plugins)
+            if any(not self._instance_quiesced(key) for key in keys):
+                logger.warning("插件后台服务尚未全部收敛，拒绝卸载运行实例")
+                return False
+            try:
+                self._stop_running_instances(None, None, skip_service_hooks=True)
+            except Exception as error:  # noqa: BLE001  保留实例所有权供后续重试
+                logger.warning(f"卸载插件运行实例时发生错误: {error}")
+                return False
+            return True
 
     def _stop_targets(self, pid: str, instance_id: Optional[str]) -> List[str]:
         """
@@ -1236,10 +1513,22 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             and bool(settings.DEV or settings.PLUGIN_AUTO_RELOAD)
         )
 
-    def start_monitor(self):
-        """按当前配置启动插件文件修改监测。"""
+    def start_monitor(self, *, reopen: bool = False) -> None:
+        """按当前配置启动插件文件修改监测；新生命周期可显式解除既有封口。"""
+        if reopen and not self._reopen_monitor():
+            return
         if self._monitor_enabled():
             self.__start_monitor()
+
+    def _reopen_monitor(self) -> bool:
+        """为新的应用生命周期解除监控封口，仍有旧线程运行时拒绝重开。"""
+        with self._monitor_lifecycle_lock:
+            if self._monitor_thread and self._monitor_thread.is_alive():
+                logger.warning("旧插件文件监测线程仍在运行，无法开启新生命周期")
+                return False
+            self._monitor_thread = None
+            self._monitor_closed = False
+            return True
 
     def reload_monitor(self):
         """
@@ -1254,36 +1543,61 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         启用监测插件文件修改监测
         """
-        if self._monitor_thread and self._monitor_thread.is_alive():
-            logger.info("插件文件修改监测已经在运行中...")
-            return
+        with self._monitor_lifecycle_lock:
+            if self._monitor_closed:
+                logger.info("插件文件修改监测已进入停机封口，跳过启动")
+                return
+            if self._monitor_thread and self._monitor_thread.is_alive():
+                logger.info("插件文件修改监测已经在运行中...")
+                return
 
-        logger.info("开始监测插件文件修改...")
+            logger.info("开始监测插件文件修改...")
 
-        # 在启动新线程之前，确保停止事件是清除状态
-        self._stop_monitor_event.clear()
+            # 在启动新线程之前，确保停止事件是清除状态
+            self._stop_monitor_event.clear()
 
-        # 创建并启动监控线程
-        self._monitor_thread = threading.Thread(
-            target=self._run_file_watcher,
-            daemon=True
-        )
-        self._monitor_thread.start()
+            # 创建并启动监控线程
+            self._monitor_thread = threading.Thread(
+                target=self._run_file_watcher,
+                daemon=True
+            )
+            self._monitor_thread.start()
 
-    def stop_monitor(self):
-        """
-        停止监测插件文件修改监测
-        """
-        if self._monitor_thread and self._monitor_thread.is_alive():
-            logger.info("正在停止插件文件修改监测...")
+    def stop_monitor(self, timeout: float = 5.0) -> bool:
+        """临时停止插件文件监控，并返回线程是否在预算内真正退出。"""
+        return self._stop_monitor_with_budget(timeout=timeout, close=False)
+
+    def close_monitor(self, timeout: float = 5.0) -> bool:
+        """永久封口当前生命周期的文件监控，并返回线程是否真正退出。"""
+        return self._stop_monitor_with_budget(timeout=timeout, close=True)
+
+    def _stop_monitor_with_budget(self, *, timeout: float, close: bool) -> bool:
+        """在同一预算内取得监控生命周期锁、设置封口并等待线程退出。"""
+        timeout = max(0.0, timeout)
+        deadline = time.monotonic() + timeout
+        self._stop_monitor_event.set()
+        if not self._monitor_lifecycle_lock.acquire(timeout=timeout):
+            logger.warning(f"插件文件修改监测线程在{timeout:g}秒内未能取得停机所有权。")
+            return False
+        try:
+            if close:
+                self._monitor_closed = True
+            thread = self._monitor_thread
             self._stop_monitor_event.set()
-            self._monitor_thread.join(timeout=5)
-            if self._monitor_thread.is_alive():
-                logger.warning("插件文件修改监测线程在5秒内未能正常停止。")
+            if not thread or not thread.is_alive():
+                self._monitor_thread = None
+                logger.info("未启用插件文件修改监测，无需停止")
+                return True
+            logger.info("正在停止插件文件修改监测...")
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+            if thread.is_alive():
+                logger.warning(f"插件文件修改监测线程在{timeout:g}秒内未能正常停止。")
+                return False
             self._monitor_thread = None
             logger.info("插件文件修改监测停止完成")
-        else:
-            logger.info("未启用插件文件修改监测，无需停止")
+            return True
+        finally:
+            self._monitor_lifecycle_lock.release()
 
     def _run_file_watcher(self):
         """
@@ -1649,20 +1963,21 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     @contextmanager
     def suppress_plugin_monitor(self, plugin_id: str):
         """在插件目录原子更新期间阻止文件监控抢先重载半成品。"""
-        normalized_id = plugin_id.lower()
-        with self._monitor_suppression_lock:
-            self._suppressed_monitor_plugins[normalized_id] = (
-                self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
-            )
-        try:
-            yield
-        finally:
+        with self.mutation("更新插件包"):
+            normalized_id = plugin_id.lower()
             with self._monitor_suppression_lock:
-                count = self._suppressed_monitor_plugins.get(normalized_id, 0)
-                if count <= 1:
-                    self._suppressed_monitor_plugins.pop(normalized_id, None)
-                else:
-                    self._suppressed_monitor_plugins[normalized_id] = count - 1
+                self._suppressed_monitor_plugins[normalized_id] = (
+                    self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
+                )
+            try:
+                yield
+            finally:
+                with self._monitor_suppression_lock:
+                    count = self._suppressed_monitor_plugins.get(normalized_id, 0)
+                    if count <= 1:
+                        self._suppressed_monitor_plugins.pop(normalized_id, None)
+                    else:
+                        self._suppressed_monitor_plugins[normalized_id] = count - 1
 
     def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
         """判断指定插件是否处于安装或替换写入阶段。"""
@@ -1674,7 +1989,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         从内存中移除一个插件
         :param plugin_id: 插件ID
         """
-        self.stop(plugin_id)
+        try:
+            with self.mutation("移除插件实例"):
+                self.stop(plugin_id)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
 
     def reload_plugin(self, plugin_id: str) -> PluginRuntimeStatus:
         """
@@ -1682,13 +2001,18 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param plugin_id: 插件ID
         :return: 重新加载后的插件运行状态
         """
-        # 先移除插件实例
-        self.stop(plugin_id)
-        # 重新加载
-        results = self.start(plugin_id)
-        # 广播事件
-        eventmanager.send_event(EventType.PluginReload, data={"plugin_id": plugin_id})
-        return results.get(extension_id_of(plugin_id), PluginRuntimeStatus.LOAD_FAILED)
+        try:
+            with self.mutation("重新加载插件"):
+                # 先移除插件实例
+                self.stop(plugin_id)
+                # 重新加载
+                results = self.start(plugin_id)
+                # 广播事件
+                eventmanager.send_event(EventType.PluginReload, data={"plugin_id": plugin_id})
+                return results.get(extension_id_of(plugin_id), PluginRuntimeStatus.LOAD_FAILED)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return PluginRuntimeStatus.LOAD_FAILED
 
     @staticmethod
     def _clear_plugin_modules(plugin_id: Optional[str] = None, version_dir: Optional[str] = None):
@@ -1741,6 +2065,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         安装本地不存在或需要更新的插件
         """
+        with self.mutation("同步插件包"):
+            return self._sync_locked()
+
+    def _sync_locked(self) -> List[str]:
+        """在已持有可变事务 lease 的前提下执行实际的本地插件包同步。"""
 
         def install_plugin(plugin):
             start_time = time.time()
@@ -1837,25 +2166,50 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         安装插件中缺失或不兼容的依赖项，并给出安装器的明确结果
         :return: 缺失依赖项与本次安装是否全部成功
         """
-        dependency_installer = get_plugin_system().dependency
-        # 第一步：获取需要安装的依赖项列表
-        missing_dependencies = dependency_installer.find_missing()
-        if not missing_dependencies:
-            return PluginDependencyInstallResult(missing=[], success=True)
-        logger.debug(f"检测到缺失的依赖项: {missing_dependencies}")
-        logger.info(f"开始安装缺失的依赖项，共 {len(missing_dependencies)} 个...")
-        # 第二步：安装依赖项并返回结果
-        total_start_time = time.time()
-        success, _message = dependency_installer.install(missing_dependencies)
-        total_elapsed_time = time.time() - total_start_time
-        if success:
-            logger.info(f"已完成 {len(missing_dependencies)} 个依赖项安装，总耗时：{total_elapsed_time:.2f} 秒")
-        else:
-            logger.warning(f"存在缺失依赖项安装失败，请尝试手动安装，总耗时：{total_elapsed_time:.2f} 秒")
-        return PluginDependencyInstallResult(
-            missing=missing_dependencies,
-            success=bool(success),
-        )
+        manager = PluginManager()
+        with manager.mutation("安装插件依赖"):
+            dependency_installer = get_plugin_system().dependency
+            # 第一步：获取需要安装的依赖项列表
+            missing_dependencies = dependency_installer.find_missing()
+            if not missing_dependencies:
+                return PluginDependencyInstallResult(missing=[], success=True)
+            logger.debug(f"检测到缺失的依赖项: {missing_dependencies}")
+            logger.info(f"开始安装缺失的依赖项，共 {len(missing_dependencies)} 个...")
+            # 第二步：安装依赖项并返回结果
+            total_start_time = time.time()
+            success, _message = dependency_installer.install(missing_dependencies)
+            total_elapsed_time = time.time() - total_start_time
+            if success:
+                logger.info(f"已完成 {len(missing_dependencies)} 个依赖项安装，总耗时：{total_elapsed_time:.2f} 秒")
+            else:
+                logger.warning(f"存在缺失依赖项安装失败，请尝试手动安装，总耗时：{total_elapsed_time:.2f} 秒")
+            return PluginDependencyInstallResult(
+                missing=missing_dependencies,
+                success=bool(success),
+            )
+
+    @staticmethod
+    async def async_install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
+        """在异步启动链中恢复插件依赖并保留取消语义。"""
+        manager = PluginManager()
+        with manager.mutation("安装插件依赖"):
+            dependency_installer = get_plugin_system().dependency
+            missing_dependencies = await dependency_installer.async_find_missing()
+            if not missing_dependencies:
+                return PluginDependencyInstallResult(missing=[], success=True)
+            logger.debug(f"检测到缺失的依赖项: {missing_dependencies}")
+            logger.info(f"开始安装缺失的依赖项，共 {len(missing_dependencies)} 个...")
+            total_start_time = time.time()
+            success, _message = await dependency_installer.async_install(missing_dependencies)
+            total_elapsed_time = time.time() - total_start_time
+            if success:
+                logger.info(f"已完成 {len(missing_dependencies)} 个依赖项安装，总耗时：{total_elapsed_time:.2f} 秒")
+            else:
+                logger.warning(f"存在缺失依赖项安装失败，请尝试手动安装，总耗时：{total_elapsed_time:.2f} 秒")
+            return PluginDependencyInstallResult(
+                missing=missing_dependencies,
+                success=bool(success),
+            )
 
     @staticmethod
     def classify_plugins() -> PluginDependencyClassification:
@@ -1958,10 +2312,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param conf: 配置
         :param force: 强制保存
         """
-        if not force and not self._plugins.get(pid):
+        try:
+            with self.mutation("保存插件配置"):
+                if not force and not self._plugins.get(pid):
+                    return False
+                get_plugin_storage().write_config(pid, conf)
+                return True
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
             return False
-        get_plugin_storage().write_config(pid, conf)
-        return True
 
     async def async_save_plugin_config(
         self, pid: str, conf: dict, force: bool = False
@@ -1972,10 +2331,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param conf: 配置
         :param force: 强制保存
         """
-        if not force and not self._plugins.get(pid):
+        try:
+            with self.mutation("保存插件配置"):
+                if not force and not self._plugins.get(pid):
+                    return False
+                await get_plugin_storage().async_write_config(pid, conf)
+                return True
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
             return False
-        await get_plugin_storage().async_write_config(pid, conf)
-        return True
 
     def delete_plugin_config(self, pid: str, force: bool = False) -> bool:
         """
@@ -1983,9 +2347,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param pid: 插件ID
         :param force: 插件停止后仍允许按插件 ID 删除持久化配置
         """
-        if not force and not self._plugins.get(pid):
+        try:
+            with self.mutation("删除插件配置"):
+                if not force and not self._plugins.get(pid):
+                    return False
+                return get_plugin_storage().delete_config(pid)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
             return False
-        return get_plugin_storage().delete_config(pid)
 
     def delete_plugin_data(self, pid: str, force: bool = False) -> bool:
         """
@@ -1993,6 +2362,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param pid: 插件ID
         :param force: 插件停止后仍允许按插件 ID 删除持久化数据
         """
+        try:
+            with self.mutation("删除插件数据"):
+                return self._delete_plugin_data_locked(pid, force)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
+
+    def _delete_plugin_data_locked(self, pid: str, force: bool) -> bool:
+        """在已持有可变事务 lease 的前提下删除插件数据。"""
         if not force and not self._plugins.get(pid):
             return False
         get_plugin_storage().delete_data(pid)
@@ -3245,7 +3623,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     async def async_run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
-        异步运行插件方法
+        异步运行插件方法，同步实现经受控线程入口执行
         :param pid: 实例键，或插件ID（按该插件的默认调用目标裁决）
         :param method: 方法名
         :param args: 参数
@@ -3259,10 +3637,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if not hasattr(plugin, method):
             return None
         method_func = getattr(plugin, method)
-        if asyncio.iscoroutinefunction(method_func):
+        if inspect.iscoroutinefunction(method_func):
             return await method_func(*args, **kwargs)
-        else:
-            return method_func(*args, **kwargs)
+        return await run_in_threadpool_to_completion(method_func, *args, **kwargs)
 
     def get_plugin_ids(self) -> List[str]:
         """
@@ -3725,7 +4102,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         except Exception as e:
             logger.debug(f"获取插件 {plugin_id} 的私钥时发生错误：{e}")
             return None
-
 
 
 def _handle_storage_instance_config_changed(event: Event) -> None:

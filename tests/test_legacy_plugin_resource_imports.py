@@ -18,7 +18,7 @@ from app.runtime.compat.resource_imports import (
 )
 from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.startup import plugins_initializer
+from app.startup import plugins_initializer as plugins_initializer
 
 
 # 版本化布局下用例插件的版本目录名

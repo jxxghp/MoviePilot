@@ -17,7 +17,7 @@ from app.application.messaging.agent import (
 )
 from app.application.messaging.interaction import InteractionContext
 from app.application.orchestration.message import MessageChain
-from app.runtime.config import settings
+from app.runtime.config import global_vars, settings
 from app.schemas.types import NotificationChannel
 
 
@@ -193,7 +193,10 @@ class TestAgentInteraction(unittest.TestCase):
             ],
         )
 
-        with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
+        loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
+        with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+            settings, "AI_AGENT_ENABLE", True
+        ), patch.object(
             chain.messagehelper, "put"
         ) as message_put, patch.object(
             chain.messageoper, "add"

@@ -1,7 +1,7 @@
 from typing import List, Any, Dict, Optional
 
 from fastapi import Depends, HTTPException
-from starlette.background import BackgroundTasks
+from typing import Annotated
 
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.response import Response as _SchemaResponse
@@ -42,6 +42,8 @@ from app.runtime.log import logger
 from app.application.scheduling import Scheduler
 from app.schemas.types import SystemConfigKey, MediaType
 from app.domain import site as site_rules
+from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.runtime.tasks import TaskRegistry
 
 router = ResponseAPIRouter()
 
@@ -169,18 +171,21 @@ async def update_site(
 
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=_SchemaResponse[None])
 async def cookie_cloud_sync(
-    background_tasks: BackgroundTasks,
+    task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
     """
     运行CookieCloud同步站点信息
     """
-    background_tasks.add_task(Scheduler().start, job_id="cookiecloud")
+    resolve_background_task_registry(task_registry).create_sync(
+        Scheduler().start, job_id="cookiecloud", owner="api.site.cookiecloud_sync"
+    )
     return _SchemaResponse(success=True, message="CookieCloud同步任务已启动！")
 
 
 @router.get("/reset", summary="重置站点", response_model=_SchemaResponse[None])
 async def reset(
+    task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     command: SiteMutationCommand = Depends(get_site_mutation_command),
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
@@ -190,9 +195,12 @@ async def reset(
     result = await command.reset()
     await get_configured_system_config().async_set(SystemConfigKey.IndexerSites, [])
     await get_configured_system_config().async_set(SystemConfigKey.RssSites, [])
-    # 启动定时服务
-    Scheduler().start("cookiecloud", manual=True)
-    # 插件站点删除
+    resolve_background_task_registry(task_registry).create_sync(
+        Scheduler().start,
+        job_id="cookiecloud",
+        owner="api.site.reset",
+        manual=True,
+    )
     return _SchemaResponse(success=result.success, message="站点已重置！")
 
 
@@ -572,14 +580,14 @@ def auth_site(
     response_model=_SchemaResponse[_SchemaSiteMappingData],
 )
 async def site_mapping(
-    query: SiteQueryService = Depends(get_site_sync_query_service),
+    query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ):
     """
     获取站点域名到名称的映射关系
     """
     try:
-        sites = query.list_sync()
+        sites = await query.list_ordered()
         mapping = {}
         for site in sites:
             mapping[site.domain] = site.name

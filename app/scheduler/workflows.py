@@ -67,12 +67,14 @@ class WorkflowScheduling:
         with self._lock:
             try:
                 job_id = f"workflow-{workflow.id}"
-                self._jobs[job_id] = {
+                job = {
                     "func": WorkflowChain().process,
                     "name": workflow.name,
                     "provider_name": "工作流",
                     "running": False,
                 }
+                self._assign_job_generation(job_id, job)
+                self._jobs[job_id] = job
                 self._scheduler.add_job(
                     self.start,
                     trigger=CronTrigger.from_crontab(workflow.timer),

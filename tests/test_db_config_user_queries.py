@@ -9,12 +9,14 @@ import asyncio
 
 import pytest
 
+from app.db import decorators
 from app.db.models.passkey import PassKey
 from app.db.models.systemconfig import SystemConfig
 from app.db.models.user import User
 from app.db.models.userconfig import UserConfig
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.user import UserOper
+from app.db.session import SessionFactory, async_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +48,46 @@ def test_systemconfig_get_by_key_returns_none_when_absent(db):
     键不存在时返回 None——调用方据此决定是否落默认值。
     """
     assert SystemConfig.get_by_key(db.session, "mp-test-missing") is None
+
+
+def test_systemconfig_queries_reuse_explicit_sessions(db, monkeypatch):
+    """SystemConfig 显式同步与异步会话不得触发兼容会话。"""
+    db.add(SystemConfig(key="mp-explicit-config", value=True))
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+    )
+    assert SystemConfig.get_by_key(db.session, "mp-explicit-config") is not None
+
+    async def check() -> None:
+        """验证异步配置查询复用显式 AsyncSession。"""
+        async with async_session_scope() as session:
+            monkeypatch.setattr(
+                decorators,
+                "async_session_scope",
+                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+            )
+            assert await SystemConfig.async_get_by_key(
+                session,
+                "mp-explicit-config",
+            ) is not None
+
+    asyncio.run(check())
+
+
+def test_systemconfig_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
+    """旧插件以关键字直调 SystemConfig 时仍自动补入短会话。"""
+    db.add(SystemConfig(key="mp-legacy-config", value=True))
+    opened = []
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (opened.append(True) or SessionFactory()),
+    )
+
+    assert SystemConfig.get_by_key(key="mp-legacy-config") is not None
+    assert opened == [True]
 
 
 def test_systemconfig_delete_by_key_removes_only_that_key(db):
@@ -224,12 +266,16 @@ def test_passkey_oper_queries_use_explicit_session(db, monkeypatch):
     """PassKeyOper 的宿主查询使用调用方 Session，不创建兼容事务。"""
     db.add(_passkey(9002, "cred-oper"), _passkey(9002, "cred-oper-inactive", is_active=False))
     monkeypatch.setattr(
-        "app.db.oper.passkey.run_sync_transaction",
+        "app.db.base.run_sync_transaction",
         lambda _query: pytest.fail("显式 Session 查询不应创建兼容事务"),
     )
 
     oper = PassKeyOper(db.session)
 
+    assert {item.credential_id for item in oper.list()} == {
+        "cred-oper",
+        "cred-oper-inactive",
+    }
     assert [item.credential_id for item in oper.list_by_user_id(9002)] == ["cred-oper"]
     assert oper.get_by_credential_id("cred-oper").user_id == 9002
     assert oper.get_by_credential_id("cred-oper-inactive") is None
@@ -246,18 +292,74 @@ def test_passkey_lookup_by_credential_id_skips_inactive(db):
     assert asyncio.run(PassKey.async_get_by_credential_id(credential_id="cred-dead")) is None
 
 
-def test_passkey_model_sync_queries_keep_no_session_plugin_abi(db, monkeypatch):
-    """旧插件不传 Session 时仍应获得短会话查询，而不恢复 Model 装饰器。"""
+def test_passkey_model_sync_queries_keep_no_session_plugin_abi(db):
+    """旧插件不传 Session 时仍由统一 legacy 装饰器获得短会话查询。"""
     db.add(_passkey(9004, "cred-legacy"))
-    monkeypatch.setattr(
-        "app.db.models.passkey.run_legacy_sync_query",
-        lambda operation: operation(db.session),
-    )
 
     assert [item.credential_id for item in PassKey.get_by_user_id(user_id=9004)] == [
         "cred-legacy"
     ]
     assert PassKey.get_by_credential_id("cred-legacy").user_id == 9004
+
+
+def test_passkey_remaining_queries_reuse_explicit_sessions(db, monkeypatch):
+    """PassKey 其余同步/异步查询必须复用调用方会话。"""
+    key = db.add(_passkey(9008, "cred-explicit"))
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+    )
+    assert PassKey.get_by_id(db.session, key.id).credential_id == "cred-explicit"
+
+    async def check() -> None:
+        """验证三个异步查询都复用显式 AsyncSession。"""
+        async with async_session_scope() as session:
+            monkeypatch.setattr(
+                decorators,
+                "async_session_scope",
+                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+            )
+            assert [item.credential_id for item in await PassKey.async_get_by_user_id(
+                session,
+                9008,
+            )] == ["cred-explicit"]
+            assert await PassKey.async_get_by_credential_id(
+                session,
+                "cred-explicit",
+            ) is not None
+            assert await PassKey.async_get_by_id(session, key.id) is not None
+
+    asyncio.run(check())
+
+
+def test_passkey_remaining_queries_keep_legacy_keyword_abi(db, monkeypatch):
+    """旧插件关键字直调 PassKey 其余查询时仍自动补入短会话。"""
+    key = db.add(_passkey(9009, "cred-keyword"))
+    opened_sync = []
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (opened_sync.append(True) or SessionFactory()),
+    )
+    assert PassKey.get_by_id(passkey_id=key.id) is not None
+    assert opened_sync == [True]
+
+    opened_async = []
+    original_scope = async_session_scope
+
+    def tracked_scope():
+        """记录旧异步 ABI 创建的兼容会话作用域。"""
+        opened_async.append(True)
+        return original_scope()
+
+    monkeypatch.setattr(decorators, "async_session_scope", tracked_scope)
+    assert asyncio.run(PassKey.async_get_by_user_id(user_id=9009))
+    assert asyncio.run(PassKey.async_get_by_credential_id(
+        credential_id="cred-keyword",
+    )) is not None
+    assert asyncio.run(PassKey.async_get_by_id(passkey_id=key.id)) is not None
+    assert opened_async == [True, True, True]
 
 
 def test_passkey_get_by_id_ignores_active_flag(db):

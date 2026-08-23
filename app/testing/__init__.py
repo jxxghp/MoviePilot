@@ -4,7 +4,8 @@
 
 - :mod:`app.testing.stub`：测试期对 ``sys.modules`` 的临时打桩并自动还原，避免残留假模块相互污染；
 - :mod:`app.testing.bootstrap`：隔离 CONFIG_DIR、建表、插件目录注入与 v1/v2 marker 等引导逻辑；
-- :mod:`app.testing.network_guard`：autouse 拦截测试期对非本地主机的真实出站。
+- :mod:`app.testing.network_guard`：autouse 拦截测试期对非本地主机的真实出站；
+- :mod:`app.testing.singleton_reset`：autouse 把关停型进程级单例复位到可接纳态。
 
 子模块各自按需 import（如 ``network_guard`` 依赖 pytest），故此处只 re-export 无第三方依赖的
 :func:`stub_modules`，保持 ``import app.testing`` 不引入 pytest 等测试期依赖。

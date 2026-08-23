@@ -9,10 +9,13 @@ import asyncio
 
 import pytest
 
+from app.db import decorators
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
+from app.db.oper.site import SiteOper
+from app.db.session import SessionFactory, async_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -185,6 +188,46 @@ def test_userdata_get_by_domain_matches_async_twin(db):
         sync_rows = SiteUserData.get_by_domain(db.session, "ud2.test", **kwargs)
         async_rows = asyncio.run(SiteUserData.async_get_by_domain(domain="ud2.test", **kwargs))
         assert len(sync_rows) == len(async_rows)
+
+
+def test_site_oper_reuses_explicit_userdata_query_sessions(db, monkeypatch):
+    """站点用户数据 Oper 必须复用调用方同步与异步会话。"""
+    db.add(_userdata("explicit-site.test", "2026-08-12", "10:00:00"))
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+    )
+
+    assert SiteOper(db.session).get_userdata_by_domain("explicit-site.test")
+
+    async def check() -> None:
+        """验证异步站点用户数据查询复用显式 AsyncSession。"""
+        async with async_session_scope() as session:
+            monkeypatch.setattr(
+                decorators,
+                "async_session_scope",
+                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+            )
+            assert await SiteOper(session).async_get_userdata_by_domain(
+                "explicit-site.test"
+            )
+
+    asyncio.run(check())
+
+
+def test_site_userdata_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
+    """旧插件以关键字直调 SiteUserData 时仍自动补入短会话。"""
+    db.add(_userdata("legacy-site.test", "2026-08-12", "10:00:00"))
+    opened = []
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (opened.append(True) or SessionFactory()),
+    )
+
+    assert SiteUserData.get_by_domain(domain="legacy-site.test")
+    assert opened == [True]
 
 
 def test_userdata_get_by_date_returns_all_domains_of_that_day(db):

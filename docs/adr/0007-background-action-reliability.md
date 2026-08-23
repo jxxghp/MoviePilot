@@ -61,8 +61,12 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 
 ### FastAPI BackgroundTasks
 
-- 订阅手工搜索调度、插件市场刷新、低价值上报：E1；响应成功只表示已接受本进程调度，不表示执行完成。
-- 若任务源于已提交的用户数据且不可从数据库重建，必须提升为 E2，不得继续新增裸 BackgroundTasks。
+- 订阅手工搜索调度、插件市场刷新、低价值上报、CookieCloud 手工调度：E1；响应成功只表示已接受本进程
+  调度，不表示执行完成。
+- Webhook E0 广播、消息入口和 Seerr 订阅入口均已迁入 lifespan TaskRegistry，具备 owner、停止接收和
+  有限等待语义；进程崩溃时仍允许丢失，不因此提升为 durable。
+- 主仓不再新增或保留裸 FastAPI `BackgroundTasks`；若任务源于已提交的用户数据且不可从数据库重建，
+  必须提升为 E2，进入 Outbox 或持久任务表。
 
 ### Scheduler jobs
 
@@ -77,6 +81,15 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 - 已登记的周期 Agent task：E1，重启时通过任务定义重建；单次执行要有 execution 记录。
 - Agent 创建/修改订阅、删除数据等工具：业务事务按 E2/E3；聊天输出不能替代业务完成证据。
 - 会话 stop/cancel：E0 控制信号；被取消工具的底层阻塞 I/O 可能继续，资源所有者必须最终回收。
+- OpenAI/Anthropic 协议流的请求级 Agent worker 由 `api.openai.stream` /
+  `api.anthropic.stream` 登记并在 lifespan shutdown 时取消；它们仍是 E0 请求交付，不提供跨重启恢复。
+- stdio MCP 的 stderr reader 属于会话资源内部任务；会话退出时先取消并等待 reader 收口，再终止子进程，避免
+  资源已释放而 reader 仍悬挂。
+- IMDb 同步 `clear_cache()` ABI 在事件循环内触发的异步缓存清理登记为
+  `module.imdb.cache_clear`；同步调用方式和无运行事件循环时的立即清理行为保持不变，宿主关停后不再
+  接受新的清理任务。
+- Scheduler 的协程作业与异步进度收尾由 Scheduler 自有句柄表持有；同步 `start()` / `stop()` ABI 保持，
+  生命周期关闭入口等待目标事件循环确认真实收尾，跨线程取消代理不作为任务完成凭据。
 
 ### Transfer pending / 文件整理
 

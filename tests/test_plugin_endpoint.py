@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.api.endpoints import plugin as plugin_endpoint
@@ -8,10 +9,13 @@ from app.api.endpoints.plugin import plugin_releases
 from app.api.endpoints.plugin import reset_plugin
 from app.api.endpoints.plugin import reload_plugin
 from app.api.endpoints.plugin import runtime_status
+from app.api.endpoints.plugin import uninstall_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.application.plugin.config import PluginConfigCommand
 from app.runtime.config import settings
+from app.runtime.extensions.lifecycle.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.tasks import TaskRegistry
 from app.schemas.event import PluginDataResetEventData
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import ChainEventType
@@ -310,8 +314,8 @@ def test_plugin_releases_force_uses_cached_release_response_and_schedules_refres
     plugin_helper.async_get_plugin_release_versions = fake_releases
     scheduled = []
 
-    def fake_schedule(plugin_id, repo_url):
-        scheduled.append((plugin_id, repo_url))
+    def fake_schedule(plugin_id, repo_url, task_registry):
+        scheduled.append((plugin_id, repo_url, task_registry))
 
     with (
         patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager),
@@ -322,7 +326,12 @@ def test_plugin_releases_force_uses_cached_release_response_and_schedules_refres
 
     assert result["release_supported"] is True
     assert fresh_states == [False]
-    assert scheduled == [("DemoPlugin", "https://github.com/demo/plugins")]
+    assert len(scheduled) == 1
+    assert scheduled[0][:2] == (
+        "DemoPlugin",
+        "https://github.com/demo/plugins",
+    )
+    assert isinstance(scheduled[0][2], TaskRegistry)
     plugin_helper.async_has_plugin_release_cache.assert_awaited_once_with(
         "https://github.com/demo/plugins"
     )
@@ -487,6 +496,7 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
         reload_runtime=plugin_manager.reload_plugin,
         publish_reset=publish_reset,
         refresh_registrations=lambda _plugin_id: None,
+        mutation=lambda _operation: nullcontext(),
     )
     result = reset_plugin("SubscribeAssistantEnhanced", None, command)
 
@@ -521,6 +531,57 @@ def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
 
     storage.delete_config.assert_called_once_with("DemoPlugin")
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
+
+
+def test_sealed_http_uninstall_rejects_before_first_side_effect(monkeypatch):
+    """HTTP 卸载在封口后明确失败，且不读取或写入插件持久化状态。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    plugin_manager = MagicMock()
+    plugin_manager.mutation.side_effect = admission.hold
+    config_provider = MagicMock()
+    remove_api = MagicMock()
+    remove_job = MagicMock()
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_configured_system_config",
+        config_provider,
+    )
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", remove_api)
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", remove_job)
+
+    result = uninstall_plugin("DemoPlugin", None)
+
+    assert result.success is False
+    assert "停机阶段" in result.message
+    plugin_manager.get_plugin_instance.assert_not_called()
+    config_provider.assert_not_called()
+    remove_api.assert_not_called()
+    remove_job.assert_not_called()
+
+
+def test_sealed_http_folder_update_rejects_before_config_access(monkeypatch):
+    """插件文件夹写入口在封口后不读取或改写持久化配置。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    plugin_manager = MagicMock()
+    plugin_manager.mutation.side_effect = admission.hold
+    config_provider = MagicMock()
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_configured_system_config",
+        config_provider,
+    )
+
+    result = asyncio.run(
+        plugin_endpoint.update_folder_plugins("常用", ["DemoPlugin"], None)
+    )
+
+    assert result.success is False
+    assert "停机阶段" in result.message
+    config_provider.assert_not_called()
 
 
 def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():

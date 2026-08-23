@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from typing import Any, Protocol
 
 from app.foundation.reflection import ObjectUtils
-from app.runtime.execution import run_in_threadpool
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.contract.extension import (
     ExtensionFaultScope,
     ExtensionProvider,
@@ -58,7 +58,7 @@ class ModuleInvocationDispatcher:
         plugin_error_handler: ModuleErrorHandler,
         system_error_handler: ModuleErrorHandler,
         rate_limit_handler: ModuleErrorHandler,
-        async_function_runner: AsyncFunctionRunner = run_in_threadpool,
+        async_function_runner: AsyncFunctionRunner = run_in_threadpool_to_completion,
         extra_sources: Sequence[ExtensionProviderSource] = (),
     ) -> None:
         """保存扩展目录和策略回调，不主动发现或创建任何运行时资源。

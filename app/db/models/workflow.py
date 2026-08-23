@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import db_query, async_db_query
+from app.db.decorators import legacy_async_db_query, legacy_db_query
 
 
 class Workflow(Base):
@@ -56,18 +56,18 @@ class Workflow(Base):
     )
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_enabled_workflows(cls, db):
         return list(db.execute(select(cls).where(cls.state != 'P')).scalars().all())
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_enabled_workflows(cls, db: AsyncSession):
         result = await db.execute(select(cls).where(cls.state != 'P'))
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_timer_triggered_workflows(cls, db):
         """获取定时触发的工作流"""
         return list(db.execute(select(cls).where(
@@ -81,7 +81,7 @@ class Workflow(Base):
         )).scalars().all())
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_timer_triggered_workflows(cls, db: AsyncSession):
         """异步获取定时触发的工作流"""
         result = await db.execute(select(cls).where(
@@ -96,7 +96,7 @@ class Workflow(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_event_triggered_workflows(cls, db):
         """获取事件触发的工作流"""
         return list(db.execute(select(cls).where(
@@ -107,7 +107,7 @@ class Workflow(Base):
         )).scalars().all())
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_event_triggered_workflows(cls, db: AsyncSession):
         """异步获取事件触发的工作流"""
         result = await db.execute(select(cls).where(
@@ -119,12 +119,12 @@ class Workflow(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_by_name(cls, db, name: str):
         return db.execute(select(cls).where(cls.name == name)).scalars().first()
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_by_name(cls, db: AsyncSession, name: str):
         result = await db.execute(select(cls).where(cls.name == name))
         return result.scalars().first()

@@ -89,47 +89,51 @@ class UpdatePluginConfigTool(MoviePilotTool):
             )
 
         plugin_manager = get_plugin_manager()
-        current_config = dict(plugin_manager.get_plugin_config(plugin_id) or {})
+        with plugin_manager.mutation(f"更新插件 {plugin_id} 配置"):
+            current_config = dict(plugin_manager.get_plugin_config(plugin_id) or {})
 
-        # merge 模式以当前保存值为基准，replace 模式则从空配置开始重建。
-        next_config = {} if replace else dict(current_config)
-        if updates:
-            next_config.update(updates)
-        for key in remove_keys:
-            next_config.pop(key, None)
+            # merge 模式以当前保存值为基准，replace 模式则从空配置开始重建。
+            next_config = {} if replace else dict(current_config)
+            if updates:
+                next_config.update(updates)
+            for key in remove_keys:
+                next_config.pop(key, None)
 
-        changed_keys = sorted(
-            key
-            for key in set(current_config.keys()) | set(next_config.keys())
-            if current_config.get(key) != next_config.get(key)
-            or (key in current_config) != (key in next_config)
-        )
-
-        if not await plugin_manager.async_save_plugin_config(plugin_id, next_config):
-            return json.dumps(
-                {
-                    "success": False,
-                    "message": f"保存插件 {plugin_id} 配置失败",
-                },
-                ensure_ascii=False,
+            changed_keys = sorted(
+                key
+                for key in set(current_config.keys()) | set(next_config.keys())
+                if current_config.get(key) != next_config.get(key)
+                or (key in current_config) != (key in next_config)
             )
 
-        return json.dumps(
-            {
-                "success": True,
-                **plugin_info,
-                "message": "插件配置已保存，请调用 reload_plugin 使最新配置生效",
-                "replace": replace,
-                "changed_keys": changed_keys,
-                "removed_keys": remove_keys,
-                "config_requires_reload": True,
-                "previous_config": current_config,
-                "saved_config": next_config,
-            },
-            ensure_ascii=False,
-            indent=2,
-            default=str,
-        )
+            if not await plugin_manager.async_save_plugin_config(
+                plugin_id,
+                next_config,
+            ):
+                return json.dumps(
+                    {
+                        "success": False,
+                        "message": f"保存插件 {plugin_id} 配置失败",
+                    },
+                    ensure_ascii=False,
+                )
+
+            return json.dumps(
+                {
+                    "success": True,
+                    **plugin_info,
+                    "message": "插件配置已保存，请调用 reload_plugin 使最新配置生效",
+                    "replace": replace,
+                    "changed_keys": changed_keys,
+                    "removed_keys": remove_keys,
+                    "config_requires_reload": True,
+                    "previous_config": current_config,
+                    "saved_config": next_config,
+                },
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
 
     async def run(
         self,

@@ -182,7 +182,9 @@ class AgentTaskOper(DbOper):
 
     def get_run(self, run_id: str) -> Optional[AgentTaskRun]:
         """查询一次 Agent 任务运行。"""
-        return AgentTaskRun.get_by_run_id(self._db, run_id=run_id)
+        return self._execute_sync_query(
+            lambda session: AgentTaskRun.get_by_run_id(session, run_id=run_id)
+        )
 
     def list_runs(
             self,
@@ -191,11 +193,13 @@ class AgentTaskOper(DbOper):
             limit: int = 10,
     ) -> list[AgentTaskRun]:
         """查询任务最近的有界运行历史。"""
-        return AgentTaskRun.list_for_task(
-            self._db,
-            task_id=task_id,
-            user_id=user_id,
-            limit=limit,
+        return self._execute_sync_query(
+            lambda session: AgentTaskRun.list_for_task(
+                session,
+                task_id=task_id,
+                user_id=user_id,
+                limit=limit,
+            )
         )
 
     def finish_run(

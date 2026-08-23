@@ -72,6 +72,12 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 - 桩掉 `requirements` 里**真实可用**的第三方包（如把 `cn2an.an2cn` 换成 `str`），导致被测行为漂移；真包能用就用真包。
 - 依赖测试执行顺序。
 
+### 关停型单例由 harness 复位
+
+「关停后不再接纳新任务」的进程级单例——后台任务登记器（`app.runtime.tasks`）与 Agent 工具阻塞执行器（`app.agent.tools.base`）——生产上只关停一次，没有复原路径：登记器封口后仍留在发布位才能拒掉晚到的 stop hook 任务，执行器封口后仍拒绝提交才能保证关停窗口内不再有新的同步调用。任一用例走完真实关停路径，其后所有用例都会撞上封口。
+
+这类复位不摊给用例自己写，由 `app.testing.singleton_reset.reset_process_singletons`（autouse，主程序与插件仓 conftest 同源 import）在每个用例开始前统一完成。单例经 `sys.modules` 取用而非 import：未加载过的模块其单例仍是初始态，且 `app.agent.tools.base` 会牵入整条 LLM 依赖链，为复位而 import 会让每个用例都付出这份代价。
+
 ## 编写新测试：强制 pytest 原生
 
 新增测试**一律** pytest 原生风格，评审不接受新写的 `unittest.TestCase`：

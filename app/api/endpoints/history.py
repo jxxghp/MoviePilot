@@ -20,7 +20,12 @@ from app.agent.prompt.transfer_redo import (
     build_manual_redo_prompt,
 )
 from app.runtime.config import global_vars
-from app.api.context import get_api_runtime_config, resolve_api_runtime_config
+from app.api.context import (
+    get_api_runtime_config,
+    get_background_task_registry,
+    resolve_api_runtime_config,
+    resolve_background_task_registry,
+)
 from app.application.configuration import ApiRuntimeConfig
 from app.adapters.web.security.access import verify_token
 from app.api.dependencies.auth import (
@@ -39,6 +44,7 @@ from app.application.history import (
     TransferHistoryMutationCommand,
 )
 from app.runtime.log import logger
+from app.runtime.tasks import TaskRegistry
 
 router = ResponseAPIRouter()
 
@@ -52,7 +58,12 @@ def normalize_history_ids(history_ids: list[int]) -> list[int]:
     return normalized_ids
 
 
-def _start_ai_redo_task(history_id: int, prompt: str, progress_key: str):
+def _start_ai_redo_task(
+    history_id: int,
+    prompt: str,
+    progress_key: str,
+    task_registry: TaskRegistry | None = None,
+) -> None:
     """在后台任务中启动单条 AI 重新整理任务，并通过异步进度辅助类实时更新进度。"""
     progress = AsyncProgressHelper(progress_key)
 
@@ -99,14 +110,16 @@ def _start_ai_redo_task(history_id: int, prompt: str, progress_key: str):
         finally:
             await progress.end()
 
-    asyncio.run_coroutine_threadsafe(runner(), global_vars.loop)
+    registry = resolve_background_task_registry(task_registry)
+    registry.create(runner(), owner="api.history.ai_redo")
 
 
 def _start_batch_ai_redo_task(
     history_ids: list[int],
     prompt: str,
     progress_key: str,
-):
+    task_registry: TaskRegistry | None = None,
+) -> None:
     """在后台任务中启动批量 AI 重新整理任务，并通过异步进度辅助类实时更新进度。"""
     progress = AsyncProgressHelper(progress_key)
 
@@ -153,7 +166,8 @@ def _start_batch_ai_redo_task(
         finally:
             await progress.end()
 
-    asyncio.run_coroutine_threadsafe(runner(), global_vars.loop)
+    registry = resolve_background_task_registry(task_registry)
+    registry.create(runner(), owner="api.history.ai_redo_batch")
 
 
 @router.get(
@@ -248,6 +262,7 @@ async def ai_redo_transfer_history(
     query: HistoryQueryService = Depends(get_history_query_service),
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
+    task_registry: TaskRegistry = Depends(get_background_task_registry),
 ) -> Any:
     """
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
@@ -266,6 +281,7 @@ async def ai_redo_transfer_history(
         history_id=history_id,
         prompt=prompt,
         progress_key=progress_key,
+        task_registry=task_registry,
     )
 
     return _SchemaResponse(success=True, data={"progress_key": progress_key})
@@ -281,6 +297,7 @@ async def batch_ai_redo_transfer_history(
     query: HistoryQueryService = Depends(get_history_query_service),
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
+    task_registry: TaskRegistry = Depends(get_background_task_registry),
 ) -> Any:
     """
     手动触发多条历史记录的 AI 批量重新整理，并返回进度键。
@@ -308,6 +325,7 @@ async def batch_ai_redo_transfer_history(
         history_ids=history_ids,
         prompt=prompt,
         progress_key=progress_key,
+        task_registry=task_registry,
     )
 
     return _SchemaResponse(

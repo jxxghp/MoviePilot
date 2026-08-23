@@ -9,7 +9,7 @@ import time
 import zipfile
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -1615,39 +1615,251 @@ demo = { index = "private" }
         assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
         assert "user:pass" not in " ".join(safe_command)
 
-    def test_async_package_install_runs_in_threadpool(self):
-        """
-        验证异步安装路径会把同步包安装派发到线程池，避免阻塞事件循环。
-        """
+    def test_async_package_install_uses_cancellable_subprocess(self):
+        """异步依赖安装应直接使用可取消的子进程执行器。"""
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
         helper = PluginHelper()
-        requirements_file = Path("/tmp/demo-requirements.txt")
-        find_links_dirs = [Path("/tmp/demo-wheels")]
-        calls = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "demo-requirements.txt"
+            requirements_file.write_text("demo-package\n", encoding="utf-8")
+            find_links_dirs = [Path(temp_dir) / "wheels"]
 
-        async def run_install():
-            return await helper._PluginHelper__async_install_packages_with_fallback(
-                requirements_file,
-                find_links_dirs
+            async def run_install():
+                return await helper._PluginHelper__async_install_packages_with_fallback(
+                    requirements_file,
+                    find_links_dirs,
+                )
+
+            health = {
+                "uv check": (True, "ok"),
+                "核心依赖导入检查": (True, "ok"),
+            }
+            strategy = Mock(
+                strategy_name="uv:test",
+                command=["uv", "pip", "install"],
+                env={},
+                safe_log_command=["uv", "pip", "install"],
             )
 
-        async def fake_to_thread(func, *args, **kwargs):
-            calls.append((func, args, kwargs))
-            return True, "ok"
-
-        with patch("app.adapters.external.market.asyncio.to_thread", side_effect=fake_to_thread):
-            success, message = asyncio.run(run_install())
+            with patch.object(
+                    PluginHelper,
+                    "_PluginHelper__get_installed_packages",
+                    return_value={},
+            ), patch.object(
+                    PluginHelper,
+                    "_PluginHelper__get_protected_runtime_packages",
+                    return_value={},
+            ), patch.object(
+                    PluginHelper,
+                    "_PluginHelper__validate_runtime_dependency_conflicts",
+                    return_value=(True, ""),
+            ), patch(
+                    "app.adapters.external.market.build_package_install_strategies",
+                    return_value=[strategy],
+            ), patch.object(
+                    PluginHelper,
+                    "_PluginHelper__async_run_runtime_healthcheck",
+                    side_effect=[health, health],
+            ), patch.object(
+                    PluginHelper,
+                    "_PluginHelper__refresh_import_system",
+            ), patch(
+                    "app.adapters.external.market.SystemUtils.execute_with_subprocess_async",
+                    new=AsyncMock(return_value=(True, "ok")),
+            ) as execute_mock:
+                success, message = asyncio.run(run_install())
 
         assert success
         assert "ok" == message
-        assert 1 == len(calls)
-        assert helper.install_packages_with_fallback == calls[0][0]
-        assert (requirements_file, find_links_dirs) == calls[0][1]
-        assert {} == calls[0][2]
+        execute_mock.assert_awaited_once()
+        assert execute_mock.await_args.kwargs["timeout"] == (
+            PluginHelper.PLUGIN_DEPENDENCY_INSTALL_TIMEOUT
+        )
+
+    def test_async_package_install_cancellation_closes_full_lifecycle(self, tmp_path):
+        """取消真实安装进程后必须回收进程树、临时约束和安装锁。"""
+        import psutil
+
+        from app.adapters.external.market import PluginHelper
+
+        helper = PluginHelper()
+        requirements_file = tmp_path / "requirements.txt"
+        requirements_file.write_text("demo-package\n", encoding="utf-8")
+        constraints_file = tmp_path / "runtime-constraints.txt"
+        marker = tmp_path / "install-pids"
+        child_code = "import time; time.sleep(60)"
+        install_code = (
+            "from pathlib import Path; import os, subprocess, time; "
+            f"child = subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}]); "
+            f"Path({str(marker)!r}).write_text(str(os.getpid()) + ':' + str(child.pid)); "
+            "time.sleep(60)"
+        )
+        strategy = Mock(
+            strategy_name="uv:test",
+            command=[sys.executable, "-c", install_code],
+            env=os.environ.copy(),
+            safe_log_command=[sys.executable, "-c", "<install>"],
+        )
+        health = {
+            "uv check": (True, "ok"),
+            "核心依赖导入检查": (True, "ok"),
+        }
+
+        def create_constraints(_protected_packages):
+            constraints_file.write_text("fastapi==0\n", encoding="utf-8")
+            return constraints_file
+
+        async def run_install():
+            task = asyncio.create_task(
+                helper.async_install_packages_with_fallback(requirements_file)
+            )
+            deadline = time.monotonic() + 2
+            while not marker.exists() and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+            assert marker.exists()
+
+            pids = [int(value) for value in marker.read_text().split(":")]
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            assert not constraints_file.exists()
+            assert PluginHelper._package_install_lock.acquire(blocking=False)
+            PluginHelper._package_install_lock.release()
+            for _ in range(100):
+                alive = []
+                for pid in pids:
+                    try:
+                        process = psutil.Process(pid)
+                        if (
+                            process.is_running()
+                            and process.status() != psutil.STATUS_ZOMBIE
+                        ):
+                            alive.append(pid)
+                    except (psutil.Error, OSError):
+                        continue
+                if not alive:
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                pytest.fail(f"安装进程树仍在运行：{alive}")
+
+        with patch.object(
+                PluginHelper,
+                "_PluginHelper__get_installed_packages",
+                return_value={},
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__get_protected_runtime_packages",
+                return_value={"fastapi": "0"},
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__validate_runtime_dependency_conflicts",
+                return_value=(True, ""),
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__create_runtime_constraints_file",
+                side_effect=create_constraints,
+        ), patch(
+                "app.adapters.external.market.build_package_install_strategies",
+                return_value=[strategy],
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__async_run_runtime_healthcheck",
+                new=AsyncMock(return_value=health),
+        ):
+            asyncio.run(run_install())
+
+    def test_constraints_created_during_cancellation_are_removed(self, tmp_path):
+        """约束文件创建线程收口后仍须响应取消并删除临时文件。"""
+        from app.adapters.external.market import PluginHelper
+
+        helper = PluginHelper()
+        requirements_file = tmp_path / "requirements.txt"
+        requirements_file.write_text("demo-package\n", encoding="utf-8")
+        constraints_file = tmp_path / "runtime-constraints.txt"
+        created = threading.Event()
+        release = threading.Event()
+
+        def create_constraints(_protected_packages):
+            constraints_file.write_text("fastapi==0\n", encoding="utf-8")
+            created.set()
+            release.wait(timeout=2)
+            return constraints_file
+
+        async def run_install():
+            task = asyncio.create_task(
+                helper.async_install_packages_with_fallback(requirements_file)
+            )
+            assert await asyncio.to_thread(created.wait, 2)
+            task.cancel()
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        with patch.object(
+                PluginHelper,
+                "_PluginHelper__get_installed_packages",
+                return_value={},
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__get_protected_runtime_packages",
+                return_value={"fastapi": "0"},
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__validate_runtime_dependency_conflicts",
+                return_value=(True, ""),
+        ), patch.object(
+                PluginHelper,
+                "_PluginHelper__create_runtime_constraints_file",
+                side_effect=create_constraints,
+        ):
+            asyncio.run(run_install())
+
+        assert not constraints_file.exists()
+
+    def test_constraints_cleanup_failure_preserves_cancellation(self, tmp_path):
+        """临时文件删除失败只记录日志，不得替换调用方的取消异常。"""
+        from app.adapters.external.market import PluginHelper
+
+        constraints_file = tmp_path / "runtime-constraints.txt"
+        created = threading.Event()
+        release = threading.Event()
+
+        def create_constraints(_protected_packages):
+            constraints_file.write_text("fastapi==0\n", encoding="utf-8")
+            created.set()
+            release.wait(timeout=2)
+            return constraints_file
+
+        async def run_create():
+            task = asyncio.create_task(
+                PluginHelper._PluginHelper__async_create_runtime_constraints_file(
+                    {"fastapi": Version("0")}
+                )
+            )
+            assert await asyncio.to_thread(created.wait, 2)
+            task.cancel()
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        with patch.object(
+                PluginHelper,
+                "_PluginHelper__create_runtime_constraints_file",
+                side_effect=create_constraints,
+        ), patch.object(
+                Path,
+                "unlink",
+                side_effect=PermissionError("locked"),
+        ), patch("app.adapters.external.market.logger.warning") as warning:
+            asyncio.run(run_create())
+
+        warning.assert_called_once()
 
     def test_install_uses_release_package_when_asset_is_available(self, monkeypatch):
         """
