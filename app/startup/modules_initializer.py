@@ -130,6 +130,7 @@ from app.startup.subscription import (
 )
 from app.startup.chain_events import TransactionalChainDurableEventWriter
 from app.startup.download_failure import TransactionalDownloadFailureRepository
+from app.startup.site import TransactionalSiteRepository
 from app.startup.workflow import TransactionalWorkflowExecutionService
 from app.startup.transaction import TransactionalWriteRunner
 from app.startup.context import (
@@ -685,7 +686,10 @@ async def init_modules() -> HostRuntime:
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_legacy_writer(workflow_execution)
     configure_chain_data_ports(
-        site=lambda: SiteOper(),
+        site=lambda: TransactionalSiteRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        ),
         subscribe=lambda: SubscribeOper(),
         workflow=lambda: WorkflowOper(),
         download_history=lambda: DownloadHistoryOper(),
@@ -720,13 +724,19 @@ async def init_modules() -> HostRuntime:
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
     configure_transfer_history_provider(lambda: TransferHistoryOper())
     configure_site_query_service(SiteQueryService(repository=SiteOper()))
-    configure_site_health_service(SiteHealthService(repository=SiteOper()))
+    configure_site_health_service(SiteHealthService(repository=TransactionalSiteRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )))
     configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
     configure_agent_data_ports(
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
         user=lambda: UserOper(),
-        site=lambda: SiteOper(),
+        site=lambda: TransactionalSiteRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        ),
         subscribe=lambda: SubscribeOper(),
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),

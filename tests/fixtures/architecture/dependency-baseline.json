@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6429,
-  "edge_sha256": "664681a500ba1c3d273568829b1b860e4dae7fe7a6c053c566583341fee7f903",
+  "edge_count": 6434,
+  "edge_sha256": "5c47cae41f5d90e1030757d0cb47db8eed373424dda5db17c900271e1d03a9c8",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -6168,6 +6168,7 @@
     "app.startup.modules_initializer -> app.startup.download_failure",
     "app.startup.modules_initializer -> app.startup.managed_resources_initializer",
     "app.startup.modules_initializer -> app.startup.outbox",
+    "app.startup.modules_initializer -> app.startup.site",
     "app.startup.modules_initializer -> app.startup.subscription",
     "app.startup.modules_initializer -> app.startup.transaction",
     "app.startup.modules_initializer -> app.startup.workflow",
@@ -6228,6 +6229,10 @@
     "app.startup.scheduler_initializer -> app.application",
     "app.startup.scheduler_initializer -> app.application.scheduling",
     "app.startup.scheduler_initializer -> app.scheduler",
+    "app.startup.site -> app.db",
+    "app.startup.site -> app.db.oper",
+    "app.startup.site -> app.db.oper.site",
+    "app.startup.site -> app.db.uow",
     "app.startup.subscription -> app.adapters",
     "app.startup.subscription -> app.adapters.external",
     "app.startup.subscription -> app.adapters.external.server",
@@ -6446,7 +6451,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 797,
+  "module_count": 798,
   "modules": [
     "app",
     "app.adapters",
@@ -7219,6 +7224,7 @@
     "app.startup.plugins_initializer",
     "app.startup.routers_initializer",
     "app.startup.scheduler_initializer",
+    "app.startup.site",
     "app.startup.subscription",
     "app.startup.transaction",
     "app.startup.transfer_initializer",
