@@ -14,7 +14,7 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
 from app.api.response import ResponseAPIRouter
 from app.agent.contracts import ReplyMode
-from app.agent.runtime_loader import get_running_agent_manager
+from app.application.agent import get_running_agent_manager
 from app.agent.prompt.transfer_redo import (
     build_batch_manual_redo_prompt,
     build_manual_redo_prompt,

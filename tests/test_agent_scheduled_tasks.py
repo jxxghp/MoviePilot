@@ -404,7 +404,7 @@ async def test_interrupted_date_task_manual_run_disables_and_removes_job(
     )
     manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
     monkeypatch.setattr(
-        "app.agent.runtime_loader.get_running_agent_manager",
+        "app.application.agent.get_running_agent_manager",
         lambda: manager,
     )
 
@@ -432,7 +432,7 @@ async def test_scheduler_propagates_scheduled_trigger_source(monkeypatch) -> Non
     scheduler = _build_agent_task_scheduler()
     execute = AsyncMock(return_value=(True, "执行完成"))
     monkeypatch.setattr(
-        "app.agent.runtime_loader.get_running_agent_manager",
+        "app.application.agent.get_running_agent_manager",
         lambda: SimpleNamespace(execute_scheduled_task=execute),
     )
 
@@ -677,7 +677,7 @@ async def test_scheduler_config_reload_preserves_active_agent_task(
     )
     manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
     monkeypatch.setattr(
-        "app.agent.runtime_loader.get_running_agent_manager",
+        "app.application.agent.get_running_agent_manager",
         lambda: manager,
     )
     monkeypatch.setattr(

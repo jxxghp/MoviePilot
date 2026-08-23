@@ -37,10 +37,8 @@ from app.api.presentation.sse import build_sse_error_response, build_sse_respons
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.mcp import agent_mcp_manager
-from app.agent.runtime_loader import (
-    get_moviepilot_agent_type,
-    get_running_agent_manager,
-)
+from app.agent.runtime_loader import get_moviepilot_agent_type
+from app.application.agent import get_running_agent_manager
 from app.chain.message import MessageChain
 from app.application.commands import get_command, get_commands
 from app.runtime.config import global_vars

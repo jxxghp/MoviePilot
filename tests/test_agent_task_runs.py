@@ -175,7 +175,7 @@ async def test_scheduler_agent_task_cleanup_uses_async_query(monkeypatch) -> Non
     sync_get = Mock(side_effect=AssertionError("不应调用同步 AgentTaskOper.get"))
     scheduler = SimpleNamespace(remove_agent_task_job=Mock())
     monkeypatch.setattr(
-        "app.agent.runtime_loader.get_running_agent_manager",
+        "app.application.agent.get_running_agent_manager",
         lambda: SimpleNamespace(execute_scheduled_task=execute),
     )
     monkeypatch.setattr(AgentTaskOper, "async_get", async_get)
