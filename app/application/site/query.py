@@ -59,10 +59,6 @@ class SiteQueryRepository(Protocol):
         """同步读取全部站点。"""
         ...
 
-    def list_order_by_pri(self) -> list[Any]:
-        """同步按优先级读取站点。"""
-        ...
-
     def get_userdata_latest(self) -> list[Any]:
         """同步读取各站点最新用户数据。"""
         ...
@@ -92,13 +88,6 @@ class SiteQueryService:
         """同步按 ID 返回站点配置 DTO。"""
         item = self._repository.get(site_id)
         return Site.model_validate(item) if item else None
-
-    def list_sync(self) -> list[Site]:
-        """同步返回全部站点配置 DTO。"""
-        return [
-            Site.model_validate(item)
-            for item in self._repository.list_order_by_pri()
-        ]
 
     async def get_by_domain(self, domain: str) -> Optional[Site]:
         """按域名返回站点配置 DTO。"""
