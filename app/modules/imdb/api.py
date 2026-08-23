@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.cache import cached
 from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.tasks import get_task_registry
 
 settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
@@ -339,11 +340,19 @@ class ImdbApi:
         self._cached_get_json.cache_clear()
         self._cached_graphql.cache_clear()
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
             asyncio.run(self.async_clear_cache())
         else:
-            loop.create_task(self.async_clear_cache())
+            # 同步 ABI 不能改成 async；运行中的循环交给宿主登记器收口，避免清理任务悬挂。
+            try:
+                get_task_registry().create(
+                    self.async_clear_cache(),
+                    owner="module.imdb.cache_clear",
+                )
+            except RuntimeError:
+                # 兼容宿主已经进入关停阶段的同步调用：同步缓存已清理，异步缓存无需再启动新任务。
+                return
 
     async def async_clear_cache(self) -> None:
         """清理 IMDb 异步 GET 与 GraphQL 请求缓存区。"""

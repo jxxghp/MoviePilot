@@ -20,6 +20,7 @@ from app.modules.imdb.api import (
     ImdbTitle,
 )
 from app.runtime.config import settings
+from app.runtime.tasks import TaskRegistry
 from app.schemas.types import MediaRecognizeType, MediaSource, MediaType
 
 
@@ -166,6 +167,38 @@ def test_imdb_graphql_error_is_not_cached() -> None:
     assert detail and detail.primary_title == "The Shawshank Redemption"
     assert cached_detail and cached_detail.id == "tt0111161"
     assert api._request.post_json.call_count == 2
+
+
+def test_imdb_clear_cache_registers_async_cleanup_in_running_loop() -> None:
+    """同步清缓存入口在异步宿主中应登记任务，并保留原同步调用约定。"""
+
+    async def scenario() -> None:
+        """验证异步缓存清理直到完成前都由宿主登记器持有。"""
+        api = ImdbApi()
+        registry = TaskRegistry()
+        release = asyncio.Event()
+
+        async def clear_async_cache() -> None:
+            """等待测试释放，确保可以观察登记中的任务。"""
+            await release.wait()
+
+        with (
+            patch("app.modules.imdb.api.get_task_registry", return_value=registry),
+            patch.object(api, "async_clear_cache", side_effect=clear_async_cache),
+        ):
+            assert api.clear_cache() is None
+            assert [record.owner for record in registry.records] == [
+                "module.imdb.cache_clear"
+            ]
+
+            release.set()
+            await registry.records[0].task
+            await asyncio.sleep(0)
+
+        assert registry.records == ()
+        api.close()
+
+    asyncio.run(scenario())
 
 
 def test_async_imdb_api_merges_paginated_episodes() -> None:

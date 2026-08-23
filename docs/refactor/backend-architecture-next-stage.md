@@ -836,6 +836,8 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
 - OpenAI Chat Completions 与 Anthropic Messages 的流式 Agent 执行分别登记为
   `api.openai.stream` 和 `api.anthropic.stream`。SSE payload、断线取消、临时会话清理和非流式入口保持
   原语义；未启动完整 lifespan 的协议校验和旧直接调用通过兼容依赖回退到默认登记器。
+- IMDb 同步清缓存兼容入口在运行事件循环时改由 TaskRegistry 登记异步缓存清理任务，owner 为
+  `module.imdb.cache_clear`；同步签名、模块调用方式和无事件循环时的立即清理语义保持不变。
 
 #### ARCH-251：用现有数据库做首个 durable side-effect pilot
 

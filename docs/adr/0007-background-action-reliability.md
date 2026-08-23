@@ -83,6 +83,9 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   `api.anthropic.stream` 登记并在 lifespan shutdown 时取消；它们仍是 E0 请求交付，不提供跨重启恢复。
 - stdio MCP 的 stderr reader 属于会话资源内部任务；会话退出时先取消并等待 reader 收口，再终止子进程，避免
   资源已释放而 reader 仍悬挂。
+- IMDb 同步 `clear_cache()` ABI 在事件循环内触发的异步缓存清理登记为
+  `module.imdb.cache_clear`；同步调用方式和无运行事件循环时的立即清理行为保持不变，宿主关停后不再
+  接受新的清理任务。
 
 ### Transfer pending / 文件整理
 

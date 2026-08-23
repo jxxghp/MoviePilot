@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6477,
-  "edge_sha256": "41e51256026afbd3abc9684dd1beb653026be927cab14384df6ff6d248806972",
+  "edge_count": 6478,
+  "edge_sha256": "d1c26c72787d07b411f6e047863bfb135005be8d3cf2212f2f03e0d8e0326283",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -4322,6 +4322,7 @@
     "app.modules.imdb.api -> app.runtime.cache",
     "app.modules.imdb.api -> app.runtime.log",
     "app.modules.imdb.api -> app.runtime.settings",
+    "app.modules.imdb.api -> app.runtime.tasks",
     "app.modules.indexer -> app.application",
     "app.modules.indexer -> app.application.site",
     "app.modules.indexer -> app.application.site.health",
