@@ -140,6 +140,9 @@ Agent orchestration, memory and tool implementations follow the same rule via
 the named `get_agent_*_port()` functions from `app/application/agentdata.py`.
 The legacy Agent `*Port` proxy classes remain import-compatible boundaries and
 must not be reintroduced as Oper aliases in canonical Agent modules.
+Monitor history checks use `get_transfer_history_port()` from
+`app/application/history.py`; the constructible `TransferHistoryPort` facade is
+retained only for compatibility and is not a canonical Oper substitute.
 
 ### Adapter boundaries
 

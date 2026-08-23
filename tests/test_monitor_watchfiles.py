@@ -262,7 +262,7 @@ def test_handle_file_skips_transfer_when_history_exists(monkeypatch):
     transfer_chain = MagicMock()
     logger_info = MagicMock()
     logger_debug = MagicMock()
-    monkeypatch.setattr("app.monitor.dispatcher.TransferHistoryOper", FakeTransferHistoryOper)
+    monkeypatch.setattr("app.monitor.dispatcher.get_transfer_history_port", FakeTransferHistoryOper)
     monkeypatch.setattr("app.monitor.dispatcher.TransferChain", transfer_chain)
     monkeypatch.setattr("app.monitor.dispatcher.logger.info", logger_info)
     monkeypatch.setattr("app.monitor.dispatcher.logger.debug", logger_debug)
@@ -300,7 +300,7 @@ def test_handle_file_invokes_transfer_when_history_missing(monkeypatch):
 
     transfer_chain_instance = MagicMock()
     transfer_chain = MagicMock(return_value=transfer_chain_instance)
-    monkeypatch.setattr("app.monitor.dispatcher.TransferHistoryOper", FakeTransferHistoryOper)
+    monkeypatch.setattr("app.monitor.dispatcher.get_transfer_history_port", FakeTransferHistoryOper)
     monkeypatch.setattr("app.monitor.dispatcher.TransferChain", transfer_chain)
 
     handled = dispatcher.handle_file(

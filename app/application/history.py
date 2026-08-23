@@ -85,6 +85,11 @@ class TransferHistoryPort:
         return getattr(_get_transfer_history_writer(None), name)
 
 
+def get_transfer_history_port() -> TransferHistoryWriter:
+    """返回启动组合根登记的整理历史数据端口实例。"""
+    return _get_transfer_history_writer(None)
+
+
 @dataclass(frozen=True, slots=True)
 class HistoryMutationResult:
     """描述历史记录维护操作是否成功及兼容提示。"""

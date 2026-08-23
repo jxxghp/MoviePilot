@@ -599,6 +599,21 @@ def test_agent_consumers_use_explicit_data_port_getters():
     assert violations == []
 
 
+def test_monitor_dispatcher_uses_explicit_history_port_getter():
+    """监控分发器不得把兼容 TransferHistoryPort 伪装成数据库 Oper。"""
+    path = APP_ROOT / "monitor" / "dispatcher.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.history"
+        and any(alias.name == "TransferHistoryPort" for alias in node.names)
+    ]
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []
