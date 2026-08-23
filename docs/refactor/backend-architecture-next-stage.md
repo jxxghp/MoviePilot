@@ -91,7 +91,7 @@
    `shield` 不再让网络请求逃逸生命周期预算，仓库级并发合并、缓存键和 V1/V2/V3 返回兼容保持不变。
    请求作用域的结构化并发不进入全局登记器：传统 WebAgent SSE 的 collection 子任务改由生成器
    `finally` 取消并等待清理，断线和 ASGI 取消均不会留下请求级 task。
-2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `178` 个仍使用 `legacy` aggregation，`27` 个使用 `first_non_empty`、`6` 个使用 `ordered_list_merge`、`1` 个使用 `ordered_mapping_merge`。`app/runtime/extensions/module/contracts.py` 已能登记 family、输入/结果标签和基础签名诊断，调度器也已按这 34 个显式聚合声明执行首个非空、有序列表或有序映射合并；但 `176` 个方法没有 required parameters，其余方法仍主要依赖运行时反射、返回值形状和旧短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
+2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `172` 个仍使用 `legacy` aggregation，`33` 个使用 `first_non_empty`、`6` 个使用 `ordered_list_merge`、`1` 个使用 `ordered_mapping_merge`。`app/runtime/extensions/module/contracts.py` 已能登记 family、输入/结果标签和基础签名诊断，调度器也已按这 40 个显式聚合声明执行首个非空、有序列表或有序映射合并；但 `170` 个方法没有 required parameters，其余方法仍主要依赖运行时反射、返回值形状和旧短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
 3. **Model/Base 的数据库装饰器和隐式会话 ABI 已全部清零。** 查询、写事务和 `legacy_*` 装饰器均为 `0`；所有 Model `db` 参数要求显式 Session，Base CRUD 仅在调用方事务内查询或 stage。可无会话构造的入口统一留在 Oper，经组合根事务执行器运行；插件 SDK 不再导出宿主 Model。后续重点转为减少 ORM 对象跨层流转，并保持 Model 隐式事务零回退。
 
    Oper 内部的执行入口也已统一：最后一处 `AgentTaskOper` 直接 transaction runner 调用已迁入
@@ -801,6 +801,9 @@ ModuleMethodSpec(
 - `get_torrent_trackers` 新增有序映射聚合：未指定下载器时按宿主优先级合并 qBittorrent、Transmission、
   rTorrent 的名称到 Tracker 列表映射，不再由首个非空 dict 隐式截断；插件 provider 返回映射后仍按旧 ABI
   优先短路宿主，未知方法和其他 legacy 映射不受该策略影响。
+- qBittorrent、Transmission、rTorrent 共享的 `download`、删除、启停、标签与更新 6 个目标选择动作已冻结
+  一致参数和首个非空结果语义；bool/dict 结果启用基础形状诊断，tuple 下载结果保持业务合同标签而不强制
+  Python 形状。广播型 `download_added` / `transfer_completed` 和管道型 `filter_torrents` 继续保留 legacy。
 
 #### ARCH-241：Event Contract Registry
 

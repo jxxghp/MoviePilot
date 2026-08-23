@@ -178,6 +178,42 @@ def test_torrent_tracker_contract_merges_downloader_mappings() -> None:
     assert contract.result_shape is ModuleResultShape.MAPPING
 
 
+def test_downloader_action_contracts_freeze_shared_provider_signatures() -> None:
+    """三种宿主下载器的目标选择动作应使用一致的首个非空契约。"""
+    expected_parameters = {
+        "download": (
+            "content",
+            "download_dir",
+            "cookie",
+            "episodes",
+            "category",
+            "label",
+            "downloader",
+        ),
+        "remove_torrents": ("hashs", "delete_file", "downloader"),
+        "set_torrents_tag": ("hashs", "tags", "downloader"),
+        "start_torrents": ("hashs", "downloader"),
+        "stop_torrents": ("hashs", "downloader"),
+        "update_torrent": (
+            "hash_string",
+            "downloader",
+            "download_limit",
+            "upload_limit",
+            "tracker_list",
+            "save_path",
+            "category",
+            "ratio_limit",
+            "seeding_time_limit",
+        ),
+    }
+
+    for method, parameters in expected_parameters.items():
+        contract = get_module_method_contract(method)
+        assert contract.family == "downloader"
+        assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+        assert contract.required_parameters == parameters
+
+
 def test_attachment_result_diagnostics_distinguish_bytes_and_strings() -> None:
     """附件契约应区分二进制内容和可展示字符串，偏差仍仅供诊断。"""
     assert diagnose_module_result("download_qq_file_bytes", b"content") == ()
