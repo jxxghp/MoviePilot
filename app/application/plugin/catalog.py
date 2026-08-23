@@ -148,54 +148,62 @@ class PluginCatalogService:
             plugins = await loader(market, package_version, force)
             return task_index, result_version, plugins or []
 
-        tasks = []
+        tasks: list[asyncio.Task[tuple[int, str, list[Any]]]] = []
         for market in markets:
             tasks.append(asyncio.create_task(
-                fetch(market, None, "base_version", len(tasks))
+                fetch(market, None, "base_version", len(tasks)),
+                name="plugin.catalog.fetch",
             ))
             for flag in compatible_flags:
                 tasks.append(asyncio.create_task(
-                    fetch(market, flag, "higher_version", len(tasks))
+                    fetch(market, flag, "higher_version", len(tasks)),
+                    name="plugin.catalog.fetch",
                 ))
 
-        higher_plugins = []
-        base_plugins = []
-        if tasks:
-            total_tasks = len(tasks)
-            finished_tasks = 0
-            task_results = {}
-            if progress_callback:
-                progress_callback(
-                    value=0,
-                    text=f"开始刷新插件市场，共 {total_tasks} 个请求 ...",
-                    data={"total": total_tasks, "finished": 0},
-                )
-            for completed_task in asyncio.as_completed(tasks):
-                try:
-                    task_index, version, plugins = await completed_task
-                    task_results[task_index] = (version, plugins)
-                except Exception as err:
-                    self._error(f"获取插件市场数据失败：{str(err)}")
-                finished_tasks += 1
+        try:
+            higher_plugins = []
+            base_plugins = []
+            if tasks:
+                total_tasks = len(tasks)
+                finished_tasks = 0
+                task_results = {}
                 if progress_callback:
                     progress_callback(
-                        value=finished_tasks / total_tasks * 100,
-                        text=(
-                            f"插件市场请求（{finished_tasks}/{total_tasks}）"
-                            "处理完成"
-                        ),
-                        data={"total": total_tasks, "finished": finished_tasks},
+                        value=0,
+                        text=f"开始刷新插件市场，共 {total_tasks} 个请求 ...",
+                        data={"total": total_tasks, "finished": 0},
                     )
-            for task_index in sorted(task_results):
-                version, plugins = task_results[task_index]
-                (higher_plugins if version == "higher_version" else base_plugins).extend(
-                    plugins
-                )
+                for completed_task in asyncio.as_completed(tasks):
+                    try:
+                        task_index, version, plugins = await completed_task
+                        task_results[task_index] = (version, plugins)
+                    except Exception as err:
+                        self._error(f"获取插件市场数据失败：{str(err)}")
+                    finished_tasks += 1
+                    if progress_callback:
+                        progress_callback(
+                            value=finished_tasks / total_tasks * 100,
+                            text=(
+                                f"插件市场请求（{finished_tasks}/{total_tasks}）"
+                                "处理完成"
+                            ),
+                            data={"total": total_tasks, "finished": finished_tasks},
+                        )
+                for task_index in sorted(task_results):
+                    version, plugins = task_results[task_index]
+                    target = higher_plugins if version == "higher_version" else base_plugins
+                    target.extend(plugins)
 
-        result = self.merge(higher_plugins, base_plugins, markets)
-        if progress_callback:
-            progress_callback(value=100, text="插件市场缓存刷新完成")
-        return result
+            result = self.merge(higher_plugins, base_plugins, markets)
+            if progress_callback:
+                progress_callback(value=100, text="插件市场缓存刷新完成")
+            return result
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
 
     def merge(
             self,

@@ -111,3 +111,85 @@ async def test_async_collect_isolates_failure_and_completes_progress():
     error.assert_called_once()
     assert progress.call_args_list[0].kwargs["value"] == 0
     assert progress.call_args_list[-1].kwargs["value"] == 100
+
+
+@pytest.mark.asyncio
+async def test_async_collect_cancels_all_loaders_when_parent_is_cancelled():
+    """请求取消时必须取消并回收全部市场 loader，不能把子任务遗留在事件循环。"""
+    service = _service()
+    blocker = asyncio.Event()
+    all_started = asyncio.Event()
+    started = 0
+    cancelled = 0
+
+    async def loader(_market: str, _package_version: str | None, _force: bool):
+        """记录市场 loader 的启动和取消，并等待测试释放。"""
+        nonlocal started, cancelled
+        started += 1
+        if started == 2:
+            all_started.set()
+        try:
+            await blocker.wait()
+        except asyncio.CancelledError:
+            cancelled += 1
+            raise
+        return []
+
+    collect_task = asyncio.create_task(
+        service.async_collect(
+            markets=["https://market-a", "https://market-b"],
+            compatible_flags=[],
+            force=True,
+            loader=loader,
+        )
+    )
+    await asyncio.wait_for(all_started.wait(), timeout=1)
+    collect_task.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await collect_task
+        await asyncio.sleep(0)
+        assert cancelled == 2
+    finally:
+        blocker.set()
+        await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_async_collect_cleans_loaders_when_progress_callback_fails():
+    """进度回调异常也必须取消并回收尚未完成的市场 loader。"""
+    service = _service()
+    blocker = asyncio.Event()
+    slow_started = asyncio.Event()
+    slow_cancelled = asyncio.Event()
+
+    async def loader(market: str, _package_version: str | None, _force: bool):
+        """让一个市场立即完成，另一个保持阻塞以验证异常清理。"""
+        if market == "https://market-a":
+            await slow_started.wait()
+            return []
+        slow_started.set()
+        try:
+            await blocker.wait()
+        except asyncio.CancelledError:
+            slow_cancelled.set()
+            raise
+        return []
+
+    def progress(*, value: float, **_kwargs) -> None:
+        """首个市场完成时模拟进度消费者失败。"""
+        if value > 0:
+            raise RuntimeError("progress unavailable")
+
+    with pytest.raises(RuntimeError, match="progress unavailable"):
+        await asyncio.wait_for(
+            service.async_collect(
+                markets=["https://market-a", "https://market-b"],
+                compatible_flags=[],
+                force=True,
+                loader=loader,
+                progress_callback=progress,
+            ),
+            timeout=1,
+        )
+    assert slow_cancelled.is_set()
