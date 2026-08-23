@@ -19,7 +19,8 @@
 - 启动性能探针会在隔离生命周期中真实创建并释放 TaskRegistry；normal/safe 组件数分别为 `23`/`11`，CI 只读检查使用稳定的宿主模块集合和生命周期组件顺序，不再把 Python/平台模块数量当作硬合同。
 - 官方插件快照覆盖 `plugins.v3`、`plugins.v2` 以及 V3 实际会从 `package.json` 回退加载的 31 个默认实现；`app/plugins/**` 仍只是宿主运行副本，不进入扫描。
 - SDK 快照以各模块显式 `__all__` 为公开合同，能够记录赋值别名；`typing`、`__future__` 等实现期导入不再被误冻结，既有数据库备份门面已补精确导出清单。
-- async 阻塞实际债务已由 fixture 中的 10 项下降到 1 项并固化低水位；剩余项是 Scheduler Agent task 查询，后续阶段迁入异步查询边界后归零。
+- async 阻塞实际债务已由 fixture 中的 10 项归零；Scheduler Agent task 收尾查询已复用
+  `AgentTaskOper.async_get` 的统一 AsyncSession 边界，CI 继续以零债务基线拒绝回退。
 
 本阶段只修复治理信号和事实源，不把基线刷新当作业务重构完成。后台任务所有权、Module Contract V2、typed runtime、durable 副作用和质量规模化仍按下列 P1/P2 顺序推进。
 

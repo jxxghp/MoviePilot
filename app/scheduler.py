@@ -1600,7 +1600,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 trigger_source=trigger_source,
             )
         finally:
-            task = AgentTaskOper().get(task_id)
+            task = await AgentTaskOper().async_get(task_id)
             if task and task.trigger_type == "date" and not task.enabled:
                 self.remove_agent_task_job(task_id)
 
