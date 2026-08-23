@@ -42,7 +42,7 @@ from app.agent.runtime_loader import (
     get_running_agent_manager,
 )
 from app.chain.message import MessageChain
-from app.command import Command
+from app.application.commands import get_command, get_commands
 from app.runtime.config import global_vars
 from app.runtime.events import Event, EventManager
 from app.api.principal import ApiPrincipal
@@ -1548,7 +1548,7 @@ def _build_web_agent_command_items() -> list[dict]:
 
     :return: 按分类和命令名排序的命令列表
     """
-    commands = Command().get_commands() or {}
+    commands = get_commands() or {}
     items = []
     for command, data in commands.items():
         if not command.startswith("/"):
@@ -1591,7 +1591,7 @@ def _get_web_agent_unknown_command_message(text: str) -> Optional[str]:
     command = _extract_web_agent_slash_command(text)
     if not command:
         return None
-    if Command().get(command):
+    if get_command(command):
         return None
     return f"命令不存在：{command}"
 

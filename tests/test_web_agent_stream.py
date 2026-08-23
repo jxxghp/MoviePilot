@@ -290,14 +290,12 @@ def test_build_web_agent_input_attachments_marks_kinds():
 def test_build_web_agent_command_items_returns_slash_commands():
     """WebAgent 命令建议应返回可展示的斜杠命令。"""
     with patch(
-        "app.api.endpoints.agent.Command",
-        return_value=SimpleNamespace(
-            get_commands=lambda: {
-                "/sites": {"description": "管理站点", "category": "站点"},
-                "hidden": {"description": "忽略", "category": "其他"},
-                "/hidden": {"description": "隐藏", "category": "其他", "show": False},
-            }
-        ),
+        "app.api.endpoints.agent.get_commands",
+        return_value={
+            "/sites": {"description": "管理站点", "category": "站点"},
+            "hidden": {"description": "忽略", "category": "其他"},
+            "/hidden": {"description": "隐藏", "category": "其他", "show": False},
+        },
     ):
         commands = _build_web_agent_command_items()
 
@@ -344,8 +342,8 @@ def test_web_agent_stream_returns_error_for_unknown_command():
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
 
     with patch(
-        "app.api.endpoints.agent.Command",
-        return_value=SimpleNamespace(get=lambda _: {}),
+        "app.api.endpoints.agent.get_command",
+        return_value=None,
     ), patch("app.api.endpoints.agent.MessageChain.handle_message") as handle_message:
         response = asyncio.run(web_agent_stream(payload, request, user))
         body = "".join(asyncio.run(_collect_streaming_response(response)))

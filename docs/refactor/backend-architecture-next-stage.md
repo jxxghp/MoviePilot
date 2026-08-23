@@ -91,6 +91,8 @@
    插件运行时也采用相同边界：factory 的动态路由投影和 Scheduler 插件任务统一延迟调用
    `app.application.plugin.runtime`，只有 startup 组合根与 `app.sdk.plugins` 兼容面允许直接引用
    concrete `PluginManager`，不改变 V1/V2/V3 插件加载与自由响应 API。
+   Command 的 API 消费点也已完成原计划迁移：WebAgent 查询和站点认证后的刷新统一使用
+   `app.application.commands`，只有 startup 组合根注册 concrete Command；门面保留原命令对象与插件命令语义。
 
 ### P2：中长期可演进性债务
 

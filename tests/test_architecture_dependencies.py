@@ -894,6 +894,21 @@ def test_runtime_consumers_use_plugin_application_facade():
     assert violations == {}
 
 
+def test_runtime_consumers_use_command_application_facade():
+    """Command concrete 实现只允许 startup 组合根直接依赖。"""
+    allowed = {
+        "app.startup.initializers.command",
+        "app.startup.initializers.modules",
+    }
+    violations = {
+        module_name: dependencies & {"app.command"}
+        for module_name, dependencies in _build_module_graph().items()
+        if module_name not in allowed and "app.command" in dependencies
+    }
+
+    assert violations == {}
+
+
 def test_api_does_not_import_factory():
     """装配器（factory）只允许 app.main 使用，HTTP 端点不得回引。"""
     violations: dict[str, set[str]] = {}

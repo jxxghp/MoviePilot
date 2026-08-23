@@ -21,7 +21,7 @@ from app.application.site.query import SiteQueryService
 from app.api.endpoints.plugin import register_plugin_api
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
-from app.command import Command
+from app.application.commands import init_commands
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.adapters.web.security.access import verify_token
 from app.api.principal import ApiPrincipal
@@ -569,7 +569,7 @@ def auth_site(
     # 认证成功后，重新初始化插件
     PluginManager().init_config()
     Scheduler().init_plugin_jobs()
-    Command().init_commands()
+    init_commands()
     register_plugin_api()
     return _SchemaResponse(success=status, message=msg)
 
