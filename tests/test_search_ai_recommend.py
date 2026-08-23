@@ -12,7 +12,8 @@ ensure_optional_stub("transmission_rpc", File=object)
 ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil", loader=None))
 
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent import ReplyMode
+from app.agent.contracts import ReplyMode
+from app.agent.orchestrator import agent_manager
 from app.chain.search import SearchChain
 from app.runtime.config import settings
 from app.modules.indexer import IndexerModule
@@ -103,7 +104,6 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_invoke_recommend_llm_disables_output_message_persistence(self):
         chain = self._make_chain()
-        from app.agent import agent_manager
         from app.agent.prompt import prompt_manager
 
         captured = {}
