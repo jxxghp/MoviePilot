@@ -181,6 +181,40 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
 
 
 @pytest.mark.anyio
+async def test_stale_progress_cannot_update_replaced_job(monkeypatch) -> None:
+    """旧 generation 的延迟进度不得写入新注册的同 ID 任务。"""
+    updates = []
+
+    class RecordingProgress:
+        def __init__(self, _key: str) -> None:
+            pass
+
+        async def update(self, **kwargs) -> None:
+            updates.append(kwargs)
+
+    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", RecordingProgress)
+    scheduler = _scheduler("generation-progress", lambda: None)
+    old_job = scheduler._jobs["generation-progress"]
+    callback = scheduler._Scheduler__build_progress_callback(
+        "generation-progress",
+        old_job,
+    )
+    scheduler._jobs["generation-progress"] = {
+        "name": "新一代",
+        "provider_name": "测试",
+        "running": True,
+        "_generation": 2,
+    }
+
+    callback(value=42, text="旧进度")
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert updates == []
+    assert scheduler._handles == {}
+
+
+@pytest.mark.anyio
 async def test_stale_generation_cannot_finish_replaced_job(monkeypatch) -> None:
     """旧 generation 收尾不得改写同 ID 的新任务状态或进度。"""
     monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)

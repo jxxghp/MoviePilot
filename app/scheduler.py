@@ -867,6 +867,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         构建传递给定时任务内部的进度更新回调。
         """
+        generation = job.get("_generation", 0)
 
         def update_progress(
                 value: Optional[float] = None,
@@ -888,6 +889,13 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             key = self._get_progress_key(job_id)
 
             async def _update() -> None:
+                with self._lock:
+                    current_job = self._jobs.get(job_id)
+                    if (
+                            current_job is not job
+                            or current_job.get("_generation", 0) != generation
+                    ):
+                        return
                 # 异步后端更新，避免任务函数在事件循环内调用回调时阻塞
                 await AsyncProgressHelper(key).update(
                     value=value,
