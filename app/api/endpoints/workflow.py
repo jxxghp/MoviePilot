@@ -13,10 +13,10 @@ from app.application.workflow import (
     WorkflowDefinitionCommand,
     WorkflowMutationCommand,
     WorkflowQueryService,
+    get_workflow_manager,
 )
 from app.chain.workflow import WorkflowChain
 from app.application.plugin.runtime import get_plugin_manager as PluginManager
-from app.workflow import WorkFlowManager
 from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -78,7 +78,7 @@ async def list_actions(_: Any = Depends(get_current_active_manage_user_async)) -
     """
     获取所有动作
     """
-    return WorkFlowManager().list_actions()
+    return get_workflow_manager().list_actions()
 
 
 @router.get(

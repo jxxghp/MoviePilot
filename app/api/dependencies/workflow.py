@@ -14,9 +14,9 @@ from app.application.workflow import (
     WorkflowDefinitionCommand,
     WorkflowMutationCommand,
     WorkflowQueryService,
+    get_workflow_manager,
 )
 from app.runtime.config import global_vars
-from app.workflow import WorkFlowManager
 from app.startup.composition.context import HostRuntime
 
 
@@ -26,7 +26,7 @@ def get_workflow_mutation_command(
 ) -> WorkflowMutationCommand:
     """组装请求级工作流写用例和提交后的调度副作用。"""
     scheduler = Scheduler()
-    workflow_manager = WorkFlowManager()
+    workflow_manager = get_workflow_manager()
     system_config = cast(WorkflowCachePort, runtime.workflow.system_config())
     return WorkflowMutationCommand(
         repository=runtime.workflow.repository(db),

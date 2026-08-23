@@ -425,6 +425,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/initializers/agent.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
 | `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugin/routes.py`, `plugin/folders.py`, `scheduling.py` and `commands.py` application services |
 | `api -> factory` | Forbidden; the FastAPI route adapter is injected into `app/application/plugin/routes.py` by the composition root after creation |
+| `api / chain -> app.workflow` | Forbidden; workflow consumers use `app/application/workflow.py`, while only `app/workflow/**` and `app/startup/initializers/workflow.py` access the concrete runtime |
 | `application -> domain / runtime contract` | Allowed |
 | `application -> DB / Oper / concrete adapter` | Forbidden; define a Protocol in Application and inject an implementation |
 | `db.adapters -> application persistence Protocol / db.oper / UoW` | Allowed; this is dependency inversion, not an upper-layer use-case call |
@@ -446,6 +447,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
+| `app/application/workflow.py` | Workflow use cases plus the runtime port consumed by API and Chain; `WorkFlowManager` is registered by `app/startup/initializers/workflow.py` |
 | `app/db/adapters/` | SQLAlchemy repository/UoW implementations for Application-owned persistence Protocols |
 | `app/startup/composition/` | HostRuntime, configuration snapshots and cross-layer adapter wiring |
 | `app/startup/initializers/` | Domain-scoped initialization and shutdown hooks |

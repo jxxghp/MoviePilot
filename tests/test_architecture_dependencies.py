@@ -926,6 +926,20 @@ def test_runtime_consumers_use_command_application_facade():
     assert violations == {}
 
 
+def test_runtime_consumers_use_workflow_application_facade():
+    """WorkFlowManager concrete 实现只允许 startup 组合根直接依赖。"""
+    allowed = {"app.startup.initializers.workflow"}
+    violations = {
+        module_name: dependencies & {"app.workflow"}
+        for module_name, dependencies in _build_module_graph().items()
+        if not module_name.startswith("app.workflow")
+        and module_name not in allowed
+        and "app.workflow" in dependencies
+    }
+
+    assert violations == {}
+
+
 def test_modules_read_deployment_settings_through_runtime_port():
     """宿主 Module 不得绕过 runtime 配置端口直接依赖 Settings 实例。"""
     violations: list[str] = []
