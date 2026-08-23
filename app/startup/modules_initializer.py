@@ -580,7 +580,7 @@ async def stop_modules():
 
     await run_step("AI智能体", stop_agent)
     await run_step("模块", lambda: ModuleManager().shutdown())
-    await run_step("事件消费", lambda: EventManager().stop())
+    await run_step("事件消费", lambda: EventManager().stop_async())
     await run_step("浏览器会话", close_browser_sessions)
     await run_step("托管资源", stop_managed_resources)
     await run_step("DoH服务", lambda: DohHelper().shutdown())

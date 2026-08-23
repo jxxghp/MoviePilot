@@ -54,13 +54,13 @@ def test_scheduler_initializer_stop_preserves_sync_abi(monkeypatch):
 
     assert scheduler_initializer.stop_scheduler() is None
     scheduler.stop.assert_called_once_with()
-    scheduler.async_stop.assert_not_called()
+    scheduler.stop_async.assert_not_called()
 
 
 def test_scheduler_initializer_stop_awaits_in_running_loop(monkeypatch):
     """生命周期事件循环中的停止入口应返回可等待的异步收口。"""
     scheduler = Mock()
-    scheduler.async_stop = AsyncMock()
+    scheduler.stop_async = AsyncMock()
     monkeypatch.setattr(scheduler_initializer, "Scheduler", Mock(return_value=scheduler))
 
     async def scenario():
@@ -69,7 +69,7 @@ def test_scheduler_initializer_stop_awaits_in_running_loop(monkeypatch):
         await result
 
     asyncio.run(scenario())
-    scheduler.async_stop.assert_awaited_once_with()
+    scheduler.stop_async.assert_awaited_once_with()
     scheduler.stop.assert_not_called()
 
 
@@ -117,6 +117,11 @@ def test_clear_cache_is_manual_only(monkeypatch):
     scheduler._event = threading.Event()
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
+    scheduler._lifecycle_state = "new"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
+    scheduler._agent_task_reservations = {}
     scheduler._agent_task_interruptions_reconciled = True
     scheduler._auth_count = 0
     scheduler._auth_message = False

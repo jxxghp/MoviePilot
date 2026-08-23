@@ -127,9 +127,15 @@ def _add_agent_task(trigger_type: str, trigger_value: str, prefix: str):
 def _build_agent_task_scheduler(reconcile: bool = False) -> Scheduler:
     """构造不启动后台线程的 Agent 任务调度器。"""
     scheduler = object.__new__(Scheduler)
+    scheduler._event = threading.Event()
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
     scheduler._scheduler = BackgroundScheduler(timezone=settings.TZ)
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
+    scheduler._agent_task_reservations = {}
     scheduler._agent_task_interruptions_reconciled = False
     if reconcile:
         scheduler._reconcile_agent_task_interruptions()
@@ -316,6 +322,11 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
     scheduler._scheduler = BackgroundScheduler(timezone=settings.TZ)
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
+    scheduler._agent_task_reservations = {}
 
     next_run_at = scheduler.update_agent_task_job(task.id)
     job_id = scheduler._get_agent_task_job_id(task.id)
@@ -642,6 +653,63 @@ async def test_scheduler_config_reload_does_not_interrupt_running_agent_task() -
     manager.process_message.assert_not_awaited()
 
 
+@pytest.mark.anyio
+async def test_scheduler_config_reload_preserves_active_agent_task(
+        monkeypatch,
+) -> None:
+    """配置热重载只替换后续计划，已开始的 AgentTask 仍按真实结果收口。"""
+    task = _add_agent_task("cron", "0 * * * *", "reload-active")
+    scheduler = _build_agent_task_scheduler()
+    scheduler.init_agent_task_jobs()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def process_message(**_kwargs) -> str:
+        started.set()
+        await release.wait()
+        return "执行完成"
+
+    manager = SimpleNamespace(
+        execute_scheduled_task=AgentManager.execute_scheduled_task,
+        process_message=process_message,
+    )
+    manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
+    monkeypatch.setattr(
+        "app.agent.runtime_loader.get_running_agent_manager",
+        lambda: manager,
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "init",
+        Mock(side_effect=lambda **_kwargs: setattr(
+            scheduler,
+            "_lifecycle_state",
+            "running",
+        )),
+    )
+
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    assert scheduler.start(job_id) is True
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert AgentTaskOper().get(task.id).last_status == "running"
+
+    await scheduler.on_config_changed()
+    assert AgentTaskOper().get(task.id).last_status == "running"
+    assert scheduler._handles
+
+    release.set()
+
+    async def wait_until_released() -> None:
+        while scheduler._handles:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_until_released(), timeout=1)
+
+    completed = AgentTaskOper().get(task.id)
+    assert completed.last_status == "success"
+    assert completed.last_result == "执行完成"
+
+
 def test_scheduler_restart_keeps_interrupted_cron_future_schedule() -> None:
     """周期任务中断后只保留下次正常调度，不抹掉本轮中断事实。"""
     task = _add_agent_task("cron", "0 * * * *", "restart-cron")
@@ -699,6 +767,11 @@ def test_scheduler_starts_registered_agent_task_without_waiting() -> None:
             "running": False,
         }
     }
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
+    scheduler._agent_task_reservations = {}
     scheduler.start = Mock()
 
     assert scheduler.start_agent_task(7) is True
