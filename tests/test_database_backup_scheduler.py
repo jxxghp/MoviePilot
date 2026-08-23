@@ -1,6 +1,7 @@
 """数据库备份与宿主调度器的接入合同。"""
 
 import ast
+import threading
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
@@ -27,6 +28,11 @@ def _scheduler() -> Scheduler:
     scheduler = object.__new__(Scheduler)
     scheduler._scheduler = _SchedulerStub()
     scheduler._jobs = {}
+    scheduler._lock = threading.RLock()
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._agent_task_reservations = {}
     return scheduler
 
 

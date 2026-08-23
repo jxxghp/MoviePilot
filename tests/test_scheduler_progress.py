@@ -14,8 +14,6 @@ def _build_scheduler(job_id, func):
     scheduler._scheduler = None
     scheduler._event = threading.Event()
     scheduler._lock = threading.RLock()
-    scheduler._async_tasks = set()
-    scheduler._accepting_async_tasks = True
     scheduler._jobs = {
         job_id: {
             "name": "测试定时服务",
@@ -24,6 +22,10 @@ def _build_scheduler(job_id, func):
             "running": False,
         }
     }
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._agent_task_reservations = {}
     return scheduler
 
 
@@ -173,7 +175,7 @@ def test_scheduler_records_cancelled_async_job_as_failed():
     assert progress.error == "任务已取消"
 
 
-def test_scheduler_async_stop_cancels_owned_async_jobs():
+def test_scheduler_stop_async_cancels_owned_async_jobs():
     """Scheduler 关停应取消并等待自身登记的异步作业。"""
     job_id = f"test-owned-task-{uuid4()}"
     started = asyncio.Event()
@@ -194,13 +196,13 @@ def test_scheduler_async_stop_cancels_owned_async_jobs():
         """在当前事件循环启动并收口异步作业。"""
         scheduler.start(job_id)
         await started.wait()
-        assert len(scheduler._async_tasks) == 1
-        await scheduler.async_stop(timeout_seconds=1)
+        assert len(scheduler._handles) == 1
+        await scheduler.stop_async()
 
     asyncio.run(run_task())
 
     assert cancelled.is_set()
-    assert scheduler._async_tasks == set()
+    assert scheduler._handles == {}
 
 
 def test_scheduler_returns_none_for_unknown_job():
@@ -209,5 +211,9 @@ def test_scheduler_returns_none_for_unknown_job():
     scheduler = object.__new__(Scheduler)
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._agent_task_reservations = {}
 
     assert scheduler.get_progress(job_id) is None

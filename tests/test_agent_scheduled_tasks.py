@@ -130,6 +130,10 @@ def _build_agent_task_scheduler(reconcile: bool = False) -> Scheduler:
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
     scheduler._scheduler = BackgroundScheduler(timezone=settings.TZ)
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._agent_task_reservations = {}
     scheduler._agent_task_interruptions_reconciled = False
     if reconcile:
         scheduler._reconcile_agent_task_interruptions()
@@ -316,6 +320,10 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
     scheduler._scheduler = BackgroundScheduler(timezone=settings.TZ)
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._agent_task_reservations = {}
 
     next_run_at = scheduler.update_agent_task_job(task.id)
     job_id = scheduler._get_agent_task_job_id(task.id)
@@ -699,6 +707,10 @@ def test_scheduler_starts_registered_agent_task_without_waiting() -> None:
             "running": False,
         }
     }
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._agent_task_reservations = {}
     scheduler.start = Mock()
 
     assert scheduler.start_agent_task(7) is True

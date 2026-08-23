@@ -24,7 +24,7 @@ def stop_scheduler():
     except RuntimeError:
         scheduler.stop()
         return None
-    return scheduler.async_stop()
+    return scheduler.stop_async()
 
 
 def restart_scheduler():

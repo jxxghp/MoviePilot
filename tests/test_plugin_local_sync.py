@@ -122,6 +122,10 @@ def _build_scheduler_for_plugin_reload(jobs: dict, backend) -> Scheduler:
     scheduler._lock = threading.RLock()
     scheduler._jobs = jobs
     scheduler._scheduler = backend
+    scheduler._lifecycle_state = "running"
+    scheduler._handles = {}
+    scheduler._job_generations = {}
+    scheduler._agent_task_reservations = {}
     return scheduler
 
 
