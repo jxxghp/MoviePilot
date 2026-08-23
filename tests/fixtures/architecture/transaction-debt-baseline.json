@@ -1,43 +1,13 @@
 {
   "model_decorators": {
     "by_kind": {
-      "async_db_query": 9,
+      "async_db_query": 7,
       "async_db_update": 0,
-      "db_query": 9,
+      "db_query": 5,
       "db_update": 0
     },
-    "count": 18,
+    "count": 12,
     "methods": [
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/agentchat.py",
-        "method": "AgentChat.async_get_by_session"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/agentchat.py",
-        "method": "AgentChat.async_list_by_page"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/agentchat.py",
-        "method": "AgentChat.get_by_session"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/agentchat.py",
-        "method": "AgentChat.list_by_page"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/agenttaskrun.py",
-        "method": "AgentTaskRun.get_by_run_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/agenttaskrun.py",
-        "method": "AgentTaskRun.list_for_task"
-      },
       {
         "decorator": "async_db_query",
         "file": "app/db/models/passkey.py",

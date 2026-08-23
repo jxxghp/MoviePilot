@@ -77,7 +77,9 @@ class AgentChatOper(DbOper):
         """
         获取 Agent 会话。
         """
-        return AgentChat.get_by_session(self._db, session_id, user_id)
+        return self._execute_sync_query(
+            lambda session: AgentChat.get_by_session(session, session_id, user_id)
+        )
 
     async def async_get(
         self, session_id: str, user_id: Optional[str] = None
@@ -85,7 +87,9 @@ class AgentChatOper(DbOper):
         """
         异步获取 Agent 会话。
         """
-        return await AgentChat.async_get_by_session(self._db, session_id, user_id)
+        return await self._execute_async_query(
+            lambda session: AgentChat.async_get_by_session(session, session_id, user_id)
+        )
 
     def ensure_session(
         self,
@@ -295,12 +299,14 @@ class AgentChatOper(DbOper):
         """
         异步分页获取 Agent 会话历史。
         """
-        return await AgentChat.async_list_by_page(
-            self._db,
-            page=page,
-            count=count,
-            user_id=user_id,
-            username=username,
+        return await self._execute_async_query(
+            lambda session: AgentChat.async_list_by_page(
+                session,
+                page=page,
+                count=count,
+                user_id=user_id,
+                username=username,
+            )
         )
 
     async def async_delete(
