@@ -103,7 +103,7 @@ def test_sync_persists_music_without_querying_tv_episodes(database):
     with database() as session:
         with patch.object(
             MEDIA_SERVER_CHAIN_MODULE,
-            "MediaServerOper",
+            "get_chain_media_server_port",
             lambda: MediaServerOper(session),
         ), patch.object(
             MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
@@ -196,7 +196,7 @@ def test_sync_updates_rows_and_removes_stale_entries(database):
     with database() as session:
         with patch.object(
             MEDIA_SERVER_CHAIN_MODULE,
-            "MediaServerOper",
+            "get_chain_media_server_port",
             lambda: MediaServerOper(session),
         ), patch.object(
             MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
@@ -280,7 +280,7 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
     with database() as session:
         with patch.object(
             MEDIA_SERVER_CHAIN_MODULE,
-            "MediaServerOper",
+            "get_chain_media_server_port",
             lambda: MediaServerOper(session),
         ), patch.object(
             MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
@@ -334,7 +334,11 @@ def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeyp
             excluded_server_calls.append(servers)
 
     chain.librarys = lambda server: library_calls.append(server) or []
-    monkeypatch.setattr(MEDIA_SERVER_CHAIN_MODULE, "MediaServerOper", FakeMediaServerOper)
+    monkeypatch.setattr(
+        MEDIA_SERVER_CHAIN_MODULE,
+        "get_chain_media_server_port",
+        FakeMediaServerOper,
+    )
     monkeypatch.setattr(
         MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
         "get_mediaserver_configs",
@@ -367,7 +371,11 @@ def test_sync_stops_without_emitting_completion_after_stop_signal(monkeypatch):
         global_vars.stop_system()
         return 0, 0
 
-    monkeypatch.setattr(MEDIA_SERVER_CHAIN_MODULE, "MediaServerOper", FakeMediaServerOper)
+    monkeypatch.setattr(
+        MEDIA_SERVER_CHAIN_MODULE,
+        "get_chain_media_server_port",
+        FakeMediaServerOper,
+    )
     monkeypatch.setattr(
         chain,
         "_prepare_sync_contexts",

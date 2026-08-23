@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Union, Optional, Generator, Any, Tuple
 
 from app.chain import ChainBase
 from app.runtime.config import global_vars
-from app.application.chain.data import MediaServerPortProxy as MediaServerOper
+from app.application.chain.data import get_chain_media_server_port
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas.mediaserver import MediaServerLibrary
@@ -284,7 +284,7 @@ class MediaServerChain(ChainBase):
             item.name for item in mediaservers
             if item and item.enabled and item.name
         ]
-        dboper = MediaServerOper()
+        dboper = get_chain_media_server_port()
         dboper.delete_excluded_servers(enabled_servers)
         selected_servers = [
             item for item in mediaservers
@@ -335,7 +335,7 @@ class MediaServerChain(ChainBase):
         server_name: str,
         selected_libraries: List[Any],
         library_media_counts: Dict[str, Optional[int]],
-        dboper: MediaServerOper,
+        dboper: Any,
         sync_time: str,
         progress_callback: Optional[Callable[..., None]],
         server_index: int,
@@ -466,7 +466,7 @@ class MediaServerChain(ChainBase):
         with lock:
             # 汇总统计
             total_count = 0
-            dboper = MediaServerOper()
+            dboper = get_chain_media_server_port()
             mediaservers, total_servers, server_sync_contexts, global_media_total = (
                 self._prepare_sync_contexts(mediaservers, server)
             )

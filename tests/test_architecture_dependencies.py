@@ -486,6 +486,21 @@ def test_site_chains_use_explicit_site_data_port_getter():
     assert violations == []
 
 
+def test_mediaserver_chain_uses_explicit_data_port_getter():
+    """媒体服务器链不得把 MediaServerPortProxy 伪装成 MediaServerOper。"""
+    path = APP_ROOT / "chain" / "mediaserver.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.chain.data"
+        and any(alias.name == "MediaServerPortProxy" for alias in node.names)
+    ]
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []
