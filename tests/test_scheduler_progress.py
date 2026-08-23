@@ -25,6 +25,7 @@ def _build_scheduler(job_id, func):
     scheduler._lifecycle_state = "running"
     scheduler._handles = {}
     scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
     scheduler._agent_task_reservations = {}
     return scheduler
 
@@ -163,7 +164,7 @@ def test_scheduler_records_cancelled_async_job_as_failed():
     async def run_task():
         job = scheduler._Scheduler__prepare_job(job_id)
         with pytest.raises(asyncio.CancelledError):
-            await scheduler._Scheduler__run_coro_job(task(), job_id, job)
+            await scheduler._Scheduler__run_coro_job(task, job_id, job)
 
     scheduler = _build_scheduler(job_id, task)
     asyncio.run(run_task())
@@ -214,6 +215,7 @@ def test_scheduler_returns_none_for_unknown_job():
     scheduler._lifecycle_state = "running"
     scheduler._handles = {}
     scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
     scheduler._agent_task_reservations = {}
 
     assert scheduler.get_progress(job_id) is None

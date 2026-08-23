@@ -1,7 +1,9 @@
 """Scheduler 任务句柄、generation 与 AgentTask reservation 回归。"""
 
 import asyncio
+import gc
 import threading
+import warnings
 
 import pytest
 
@@ -21,6 +23,10 @@ class _ProgressStub:
 
     def update(self, **_kwargs) -> None:
         """忽略中间进度。"""
+
+    def get(self):
+        """返回空的历史进度。"""
+        return None
 
 
 class _AsyncProgressStub:
@@ -58,6 +64,7 @@ def _scheduler(job_id: str, func) -> Scheduler:
     scheduler._lifecycle_state = "running"
     scheduler._handles = {}
     scheduler._job_generations = {job_id: 1}
+    scheduler._active_job_generations = {}
     scheduler._agent_task_reservations = {}
     return scheduler
 
@@ -90,6 +97,113 @@ async def test_stop_async_cancels_and_awaits_scheduler_owned_job(monkeypatch) ->
     assert scheduler._jobs["lifecycle-job"]["last_error"] == "任务已取消"
     assert scheduler._handles == {}
     assert scheduler._lifecycle_state == "stopped"
+
+
+@pytest.mark.anyio
+async def test_foreign_loop_submission_runs_on_main_loop_and_finishes_before_stop(
+        monkeypatch,
+) -> None:
+    """自建事件循环提交的任务仍由应用主循环拥有并完成取消收尾。"""
+    main_loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    cancelling = asyncio.Event()
+    cleanup_release = asyncio.Event()
+    execution_loop = None
+
+    async def job() -> None:
+        nonlocal execution_loop
+        execution_loop = asyncio.get_running_loop()
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelling.set()
+            await cleanup_release.wait()
+            raise
+
+    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
+    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
+    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", main_loop)
+    scheduler = _scheduler("foreign-loop-job", job)
+
+    def submit_from_foreign_loop() -> bool:
+        async def submit() -> bool:
+            return scheduler.start("foreign-loop-job")
+
+        return asyncio.run(submit())
+
+    assert await asyncio.to_thread(submit_from_foreign_loop) is True
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert execution_loop is main_loop
+
+    stop_task = asyncio.create_task(scheduler.stop_async())
+    await asyncio.wait_for(cancelling.wait(), timeout=1)
+    await asyncio.sleep(0)
+    assert not stop_task.done()
+    assert scheduler._lifecycle_state == "stopping"
+
+    stop_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await stop_task
+    assert scheduler._handles
+    assert scheduler._lifecycle_state == "stopping"
+
+    cleanup_release.set()
+
+    async def wait_until_released() -> None:
+        while scheduler._handles:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_until_released(), timeout=1)
+    await scheduler.stop_async()
+    assert scheduler._handles == {}
+    assert scheduler._lifecycle_state == "stopped"
+
+
+@pytest.mark.anyio
+async def test_cross_thread_submission_is_registered_before_stop_snapshot(
+        monkeypatch,
+) -> None:
+    """跨线程提交与 owner 登记必须对关闭快照表现为同一原子操作。"""
+    main_loop = asyncio.get_running_loop()
+    registration_entered = threading.Event()
+    registration_release = threading.Event()
+
+    async def job() -> None:
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
+    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
+    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", main_loop)
+    scheduler = _scheduler("atomic-submit", job)
+    register_handle = scheduler._register_handle
+
+    def delayed_register(**kwargs) -> bool:
+        registration_entered.set()
+        registration_release.wait(timeout=1)
+        return register_handle(**kwargs)
+
+    monkeypatch.setattr(scheduler, "_register_handle", delayed_register)
+    submit_thread = threading.Thread(target=scheduler.start, args=("atomic-submit",))
+    submit_thread.start()
+    assert await asyncio.to_thread(registration_entered.wait, 1)
+
+    stop_result = []
+    stop_thread = threading.Thread(target=lambda: stop_result.append(scheduler._begin_stop()))
+    stop_thread.start()
+    await asyncio.sleep(0.02)
+    assert stop_thread.is_alive()
+
+    registration_release.set()
+    await asyncio.to_thread(submit_thread.join, 1)
+    await asyncio.to_thread(stop_thread.join, 1)
+    assert not submit_thread.is_alive()
+    assert not stop_thread.is_alive()
+    assert len(stop_result[0][1]) == 1
+
+    for handle in stop_result[0][1]:
+        scheduler._cancel_handle(handle)
+    await scheduler._await_cancelled_handles(stop_result[0][1])
 
 
 @pytest.mark.anyio
@@ -215,6 +329,63 @@ async def test_stale_progress_cannot_update_replaced_job(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
+async def test_replaced_job_keeps_active_state_without_stale_progress(monkeypatch) -> None:
+    """同 ID 新 generation 显示真实运行态，但不继承旧任务进度详情。"""
+    detail = {}
+
+    class RecordingProgress:
+        def __init__(self, _key: str) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+        def update(self, **kwargs) -> None:
+            detail.update(kwargs)
+
+        def get(self):
+            return detail
+
+    class RecordingAsyncProgress:
+        def __init__(self, _key: str) -> None:
+            pass
+
+        async def get(self):
+            return detail
+
+    monkeypatch.setattr(scheduler_module, "ProgressHelper", RecordingProgress)
+    monkeypatch.setattr(
+        scheduler_module,
+        "AsyncProgressHelper",
+        RecordingAsyncProgress,
+    )
+    scheduler = _scheduler("generation-cache", lambda: None)
+    old_job = scheduler._Scheduler__prepare_job("generation-cache")
+    assert old_job is not None
+    assert detail["data"]["_generation"] == 1
+
+    scheduler._jobs["generation-cache"] = {
+        "name": "新一代",
+        "provider_name": "测试",
+        "running": False,
+        "_generation": 2,
+    }
+
+    progress = scheduler.get_progress("generation-cache")
+    assert progress is not None
+    assert progress.status == "running"
+    assert progress.enable is True
+    assert progress.value == 0
+    assert "_generation" not in progress.data
+    async_progress = await scheduler.aget_progress("generation-cache")
+    assert async_progress is not None
+    assert async_progress.status == "running"
+    assert async_progress.enable is True
+    assert async_progress.value == 0
+    assert "_generation" not in async_progress.data
+
+
+@pytest.mark.anyio
 async def test_stale_generation_cannot_finish_replaced_job(monkeypatch) -> None:
     """旧 generation 收尾不得改写同 ID 的新任务状态或进度。"""
     monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
@@ -280,3 +451,274 @@ def test_scheduler_rejects_new_submission_after_stop() -> None:
 
     assert scheduler.start("stopped-job") is False
     assert scheduler._jobs["stopped-job"]["running"] is False
+
+
+@pytest.mark.anyio
+async def test_config_reload_does_not_restart_scheduler_during_shutdown() -> None:
+    """系统关闭开始后到达的配置事件不得重新打开调度入口。"""
+    scheduler = _scheduler("shutdown-reload", lambda: None)
+    scheduler._lifecycle_state = "stopping"
+    scheduler.init = lambda **_kwargs: pytest.fail("关闭阶段不得重新初始化调度器")
+
+    await scheduler.on_config_changed()
+
+    assert scheduler._lifecycle_state == "stopping"
+
+
+@pytest.mark.anyio
+async def test_concurrent_config_reload_waits_for_old_scheduler_shutdown(
+        monkeypatch,
+) -> None:
+    """并发配置事件合并为一次重建，旧调度线程池结束前不得启动新实例。"""
+    shutdown_started = threading.Event()
+    shutdown_release = threading.Event()
+
+    class BlockingScheduler:
+        running = True
+
+        @staticmethod
+        def remove_all_jobs() -> None:
+            pass
+
+        @staticmethod
+        def shutdown() -> None:
+            shutdown_started.set()
+            shutdown_release.wait(timeout=1)
+
+    scheduler = _scheduler("reload-once", lambda: None)
+    scheduler._scheduler = BlockingScheduler()
+    init_calls = 0
+
+    def init(**_kwargs) -> None:
+        nonlocal init_calls
+        init_calls += 1
+        scheduler._lifecycle_state = "running"
+
+    monkeypatch.setattr(scheduler, "init", init)
+    first = asyncio.create_task(scheduler.on_config_changed())
+    assert await asyncio.to_thread(shutdown_started.wait, 1)
+
+    await scheduler.on_config_changed()
+    assert init_calls == 0
+    assert scheduler._lifecycle_state == "reloading"
+
+    shutdown_release.set()
+    await asyncio.wait_for(first, timeout=1)
+    assert init_calls == 1
+    assert scheduler._lifecycle_state == "running"
+
+
+@pytest.mark.anyio
+async def test_config_reload_preserves_overlap_guard_across_job_generations(
+        monkeypatch,
+) -> None:
+    """热重载替换任务定义后，同 ID 旧任务结束前不得启动新 generation。"""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    finished = asyncio.Event()
+    run_count = 0
+
+    async def job() -> None:
+        nonlocal run_count
+        run_count += 1
+        if run_count == 1:
+            started.set()
+            await release.wait()
+            finished.set()
+
+    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
+    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
+    scheduler = _scheduler("reload-overlap", job)
+
+    class ActiveScheduler:
+        """提供列表接口所需的最小 APScheduler 状态。"""
+
+        running = True
+
+        @staticmethod
+        def get_jobs() -> list:
+            """当前用例只关注正在运行任务，不提供后续计划。"""
+            return []
+
+    def init(**_kwargs) -> None:
+        replacement = {
+            "name": "生命周期测试",
+            "provider_name": "测试",
+            "func": job,
+            "running": False,
+        }
+        scheduler._assign_job_generation("reload-overlap", replacement)
+        scheduler._jobs = {"reload-overlap": replacement}
+        scheduler._scheduler = ActiveScheduler()
+        scheduler._lifecycle_state = "running"
+
+    monkeypatch.setattr(scheduler, "init", init)
+
+    assert scheduler.start("reload-overlap") is True
+    await asyncio.wait_for(started.wait(), timeout=1)
+    await scheduler.on_config_changed()
+
+    progress = scheduler.get_progress("reload-overlap")
+    assert progress is not None
+    assert progress.status == "running"
+    assert progress.enable is True
+    listed = scheduler.list()
+    assert len(listed) == 1
+    assert listed[0].id == "reload-overlap"
+    assert listed[0].status == "正在运行"
+    assert scheduler.start("reload-overlap") is False
+    assert run_count == 1
+    assert len(scheduler._handles) == 1
+
+    release.set()
+    await asyncio.wait_for(finished.wait(), timeout=1)
+
+    async def wait_until_released() -> None:
+        while scheduler._active_job_generations or scheduler._handles:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_until_released(), timeout=1)
+    assert scheduler.start("reload-overlap") is True
+
+    async def wait_until_second_run_finishes() -> None:
+        while scheduler._active_job_generations or scheduler._handles:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_until_second_run_finishes(), timeout=1)
+    assert run_count == 2
+
+
+def test_stop_between_prepare_and_submission_releases_active_generation(
+        monkeypatch,
+) -> None:
+    """关闭插入准备与提交之间时，不得遗留未实际运行的 generation。"""
+    calls = 0
+    scheduler = _scheduler("stop-race", None)
+
+    async def job() -> None:
+        nonlocal calls
+        calls += 1
+
+    scheduler._jobs["stop-race"]["func"] = job
+    original_prepare = scheduler._Scheduler__prepare_job
+
+    def prepare_then_stop(job_id: str):
+        prepared = original_prepare(job_id)
+        scheduler._begin_stop()
+        return prepared
+
+    monkeypatch.setattr(scheduler, "_Scheduler__prepare_job", prepare_then_stop)
+
+    assert scheduler.start("stop-race") is False
+    assert calls == 0
+    assert scheduler._handles == {}
+    assert scheduler._active_job_generations == {}
+    assert scheduler._jobs["stop-race"]["running"] is False
+    assert scheduler._jobs["stop-race"]["last_error"] == "任务未提交"
+
+    monkeypatch.setattr(scheduler, "_Scheduler__prepare_job", original_prepare)
+    scheduler._lifecycle_state = "running"
+    assert scheduler.start("stop-race") is True
+    assert calls == 1
+    assert scheduler._active_job_generations == {}
+
+
+@pytest.mark.anyio
+async def test_cross_thread_rejection_closes_unstarted_business_coroutine(
+        monkeypatch,
+) -> None:
+    """跨线程提交被关闭门禁拒绝时，包装与业务协程都必须释放。"""
+    main_loop = asyncio.get_running_loop()
+    prepared = threading.Event()
+    release = threading.Event()
+    calls = 0
+    scheduler = _scheduler("cross-thread-stop-race", None)
+
+    async def job() -> None:
+        nonlocal calls
+        calls += 1
+
+    scheduler._jobs["cross-thread-stop-race"]["func"] = job
+    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", main_loop)
+    original_prepare = scheduler._Scheduler__prepare_job
+
+    def prepare_then_wait(job_id: str):
+        result = original_prepare(job_id)
+        prepared.set()
+        release.wait(timeout=1)
+        return result
+
+    monkeypatch.setattr(scheduler, "_Scheduler__prepare_job", prepare_then_wait)
+
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always", RuntimeWarning)
+        start_task = asyncio.create_task(
+            asyncio.to_thread(scheduler.start, "cross-thread-stop-race")
+        )
+        assert await asyncio.to_thread(prepared.wait, 1)
+        scheduler._begin_stop()
+        release.set()
+        assert await asyncio.wait_for(start_task, timeout=1) is False
+        gc.collect()
+
+    assert calls == 0
+    assert scheduler._active_job_generations == {}
+    assert scheduler._handles == {}
+    assert not any("was never awaited" in str(item.message) for item in captured)
+
+
+def test_cancelled_cross_thread_proxy_waits_for_target_loop_cleanup(
+        monkeypatch,
+) -> None:
+    """跨线程代理提前取消后，真实完成信号必须等待目标循环清理。"""
+    target_loop = asyncio.new_event_loop()
+    loop_blocked = threading.Event()
+    loop_release = threading.Event()
+    loop_drained = threading.Event()
+    loop_errors = []
+    loop_thread = threading.Thread(target=target_loop.run_forever)
+    loop_thread.start()
+
+    def block_target_loop() -> None:
+        loop_blocked.set()
+        loop_release.wait(timeout=1)
+
+    target_loop.set_exception_handler(
+        lambda _loop, context: loop_errors.append(context)
+    )
+    target_loop.call_soon_threadsafe(block_target_loop)
+    assert loop_blocked.wait(timeout=1)
+
+    scheduler = _scheduler("cancel-before-start", None)
+    calls = 0
+
+    async def business() -> None:
+        nonlocal calls
+        calls += 1
+
+    scheduler._jobs["cancel-before-start"]["func"] = business
+    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", target_loop)
+
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always", RuntimeWarning)
+        try:
+            assert scheduler.start("cancel-before-start") is True
+            scheduler_handle = next(iter(scheduler._handles.values()))
+            scheduler._cancel_handle(scheduler_handle)
+            assert not scheduler_handle.completion.done()
+
+            loop_release.set()
+            target_loop.call_soon_threadsafe(loop_drained.set)
+            assert loop_drained.wait(timeout=1)
+            assert scheduler_handle.completion.done()
+            gc.collect()
+        finally:
+            target_loop.call_soon_threadsafe(target_loop.stop)
+            loop_thread.join(timeout=1)
+            target_loop.close()
+
+    assert calls == 0
+    assert loop_errors == []
+    assert scheduler._active_job_generations == {}
+    assert scheduler._handles == {}
+    assert not any("was never awaited" in str(item.message) for item in captured)

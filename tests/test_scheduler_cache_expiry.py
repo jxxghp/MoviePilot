@@ -120,6 +120,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
     scheduler._lifecycle_state = "new"
     scheduler._handles = {}
     scheduler._job_generations = {}
+    scheduler._active_job_generations = {}
     scheduler._agent_task_reservations = {}
     scheduler._agent_task_interruptions_reconciled = True
     scheduler._auth_count = 0

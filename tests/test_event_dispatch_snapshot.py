@@ -6,6 +6,7 @@ import threading
 import pytest
 
 from app.runtime.config import global_vars
+from app.runtime import events as events_module
 from app.runtime.events import Event, eventmanager
 from app.schemas.types import ChainEventType, EventType
 
@@ -225,3 +226,106 @@ async def test_async_broadcast_handles_are_cancelled_on_shutdown(isolated_eventm
         thread.is_alive()
         for thread in consumer_threads
     )
+
+
+@pytest.mark.asyncio
+async def test_async_broadcast_shutdown_waits_for_handler_cleanup(
+        isolated_eventmanager,
+) -> None:
+    """提交代理变为 cancelled 后仍须等待处理器 finally 真正完成。"""
+    global_vars.set_loop(asyncio.get_running_loop())
+    started = asyncio.Event()
+    cancelling = asyncio.Event()
+    cleanup_release = asyncio.Event()
+
+    async def handler(_event):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelling.set()
+            await cleanup_release.wait()
+            raise
+
+    isolated_eventmanager.add_event_listener(EventType.ConfigChanged, handler)
+    isolated_eventmanager.start()
+    isolated_eventmanager.send_event(EventType.ConfigChanged, {"key": {"shutdown"}})
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    stop_task = asyncio.create_task(isolated_eventmanager.stop_async())
+    await asyncio.wait_for(cancelling.wait(), timeout=1)
+    await asyncio.sleep(0)
+    assert not stop_task.done()
+    assert isolated_eventmanager._EventManager__lifecycle_state == "stopping"
+
+    stop_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await stop_task
+    assert isolated_eventmanager._EventManager__async_handles
+    assert isolated_eventmanager._EventManager__lifecycle_state == "stopping"
+
+    cleanup_release.set()
+
+    async def wait_until_released() -> None:
+        while isolated_eventmanager._EventManager__async_handles:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_until_released(), timeout=1)
+    await isolated_eventmanager.stop_async()
+    assert isolated_eventmanager._EventManager__async_handles == {}
+    assert isolated_eventmanager._EventManager__lifecycle_state == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_async_broadcast_submission_is_registered_before_stop_snapshot(
+        isolated_eventmanager,
+        monkeypatch,
+) -> None:
+    """事件处理器提交和 owner 登记不得被关闭快照从中切开。"""
+    global_vars.set_loop(asyncio.get_running_loop())
+    submission_entered = threading.Event()
+    submission_release = threading.Event()
+    real_submit = events_module.asyncio.run_coroutine_threadsafe
+
+    def delayed_submit(coroutine, loop):
+        handle = real_submit(coroutine, loop)
+        submission_entered.set()
+        submission_release.wait(timeout=1)
+        return handle
+
+    monkeypatch.setattr(
+        events_module.asyncio,
+        "run_coroutine_threadsafe",
+        delayed_submit,
+    )
+    isolated_eventmanager.start()
+
+    async def handler() -> None:
+        await asyncio.Event().wait()
+
+    submit_thread = threading.Thread(
+        target=isolated_eventmanager._EventManager__register_async_handle,
+        args=(handler(),),
+    )
+    submit_thread.start()
+    assert await asyncio.to_thread(submission_entered.wait, 1)
+
+    stop_result = []
+    stop_thread = threading.Thread(
+        target=lambda: stop_result.append(
+            isolated_eventmanager._EventManager__begin_stop()
+        )
+    )
+    stop_thread.start()
+    await asyncio.sleep(0.02)
+    assert stop_thread.is_alive()
+
+    submission_release.set()
+    await asyncio.to_thread(submit_thread.join, 1)
+    await asyncio.to_thread(stop_thread.join, 1)
+    assert not submit_thread.is_alive()
+    assert not stop_thread.is_alive()
+    assert len(isolated_eventmanager._EventManager__async_handles) == 1
+
+    await isolated_eventmanager.stop_async()
+    assert isolated_eventmanager._EventManager__async_handles == {}

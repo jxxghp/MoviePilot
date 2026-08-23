@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import inspect
 import time
 from collections.abc import Callable
@@ -30,7 +29,7 @@ class EventDispatcher:
         event_loop: Callable[[], Any],
         event_factory: Callable[..., Any],
         error_handler: Callable[..., None],
-        async_handle_sink: Callable[[concurrent.futures.Future[Any]], bool] | None = None,
+        async_handle_sink: Callable[[Any], bool] | None = None,
     ) -> None:
         """注入注册表、绑定器、执行器和错误策略回调。"""
         self._registry = registry
@@ -123,20 +122,17 @@ class EventDispatcher:
             )
             if inspect.iscoroutinefunction(handler):
                 coroutine = self.safe_invoke_async(handler, isolated)
+                if self._async_handle_sink:
+                    self._async_handle_sink(coroutine)
+                    continue
                 try:
-                    future = asyncio.run_coroutine_threadsafe(
-                        coroutine,
-                        self._event_loop(),
-                    )
+                    asyncio.run_coroutine_threadsafe(coroutine, self._event_loop())
                 except RuntimeError:
                     coroutine.close()
                     logger.warning(
                         "事件 %s 的异步处理器无法投递，事件循环已停止",
                         event.event_type,
                     )
-                    continue
-                if self._async_handle_sink and not self._async_handle_sink(future):
-                    future.cancel()
             else:
                 self._executor().submit(
                     self.safe_invoke_sync,

@@ -4,6 +4,7 @@ import random
 import threading
 import traceback
 import uuid
+from dataclasses import dataclass
 from queue import Empty, PriorityQueue
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any, Type
 
@@ -30,8 +31,15 @@ DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
 MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
 INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 1  # 事件队列空闲时的初始超时时间（秒）
 MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 5  # 事件队列空闲时的最大超时时间（秒）
-EVENT_STOP_TIMEOUT_SECONDS = 30
 _EVENT_STOP_SENTINEL = object()
+
+
+@dataclass(slots=True)
+class _EventAsyncHandle:
+    """记录异步广播的取消代理和真实完成信号。"""
+
+    handle: concurrent.futures.Future[Any]
+    completion: concurrent.futures.Future[Any]
 
 
 class Event:
@@ -116,7 +124,7 @@ class EventManager(metaclass=Singleton):
         # 广播异步处理器的生命周期由事件总线自己持有，避免关闭后仍向主循环运行。
         self.__lifecycle_lock = threading.RLock()
         self.__lifecycle_state = "new"
-        self.__async_handles: Dict[int, concurrent.futures.Future[Any]] = {}
+        self.__async_handles: Dict[int, _EventAsyncHandle] = {}
         # 由上层管理器注册的处理器实例解析器
         self.__handler_instance_resolvers: Dict[str, HandlerInstanceResolver] = {}
         # 由启动组合层注入的错误通知回调
@@ -221,27 +229,22 @@ class EventManager(metaclass=Singleton):
             with self.__lifecycle_lock:
                 handles = tuple(self.__async_handles.values())
             for handle in handles:
-                handle.cancel()
+                handle.handle.cancel()
             if handles:
-                await asyncio.wait_for(
-                    asyncio.gather(
-                        *(asyncio.wrap_future(handle) for handle in handles),
-                        return_exceptions=True,
+                await asyncio.gather(
+                    *(
+                        asyncio.shield(asyncio.wrap_future(handle.completion))
+                        for handle in handles
                     ),
-                    timeout=EVENT_STOP_TIMEOUT_SECONDS,
+                    return_exceptions=True,
                 )
             logger.info("事件处理停止完成")
-        except asyncio.TimeoutError:
-            logger.error(
-                "停止事件处理超时，仍有 %s 个异步处理器未收口",
-                self.__async_handle_count(),
-            )
         except Exception as e:
             logger.error(f"停止事件处理线程出错：{str(e)} - {traceback.format_exc()}")
-        finally:
-            with self.__lifecycle_lock:
-                self.__lifecycle_state = "stopped"
-                self.__consumer_threads = []
+            raise
+        with self.__lifecycle_lock:
+            self.__lifecycle_state = "stopped"
+            self.__consumer_threads = []
 
     def __begin_stop(self) -> tuple[threading.Thread, ...]:
         """关闭提交入口并唤醒消费者线程。"""
@@ -277,23 +280,56 @@ class EventManager(metaclass=Singleton):
         with self.__lifecycle_lock:
             handles = tuple(self.__async_handles.values())
         for handle in handles:
-            handle.cancel()
-
-    def __async_handle_count(self) -> int:
-        """返回尚未完成的异步广播句柄数量。"""
-        with self.__lifecycle_lock:
-            return len(self.__async_handles)
+            handle.handle.cancel()
 
     def __register_async_handle(
             self,
-            handle: concurrent.futures.Future[Any],
+            coroutine: Any,
     ) -> bool:
-        """登记异步广播句柄；关闭竞态下拒绝新提交。"""
+        """在同一生命周期临界区提交并登记异步广播处理器。"""
         with self.__lifecycle_lock:
             if self.__lifecycle_state != "running":
+                coroutine.close()
                 return False
-            self.__async_handles[id(handle)] = handle
-        handle.add_done_callback(self.__remove_async_handle)
+            completion: concurrent.futures.Future[Any] = concurrent.futures.Future()
+            started = threading.Event()
+
+            async def _tracked() -> None:
+                started.set()
+                try:
+                    result = await coroutine
+                except asyncio.CancelledError:
+                    if not completion.done():
+                        completion.cancel()
+                except Exception as err:
+                    if not completion.done():
+                        completion.set_exception(err)
+                else:
+                    if not completion.done():
+                        completion.set_result(result)
+
+            tracked = _tracked()
+            try:
+                handle = asyncio.run_coroutine_threadsafe(tracked, global_vars.loop)
+            except RuntimeError:
+                tracked.close()
+                coroutine.close()
+                logger.warning("异步事件处理器无法投递，事件循环已停止")
+                return False
+            self.__async_handles[id(completion)] = _EventAsyncHandle(
+                handle=handle,
+                completion=completion,
+            )
+
+            def _complete_unstarted_submission(
+                    submitted: concurrent.futures.Future[Any],
+            ) -> None:
+                if submitted.cancelled() and not started.is_set():
+                    coroutine.close()
+                    completion.cancel()
+
+            handle.add_done_callback(_complete_unstarted_submission)
+        completion.add_done_callback(self.__remove_async_handle)
         return True
 
     def __remove_async_handle(self, handle: concurrent.futures.Future[Any]) -> None:
