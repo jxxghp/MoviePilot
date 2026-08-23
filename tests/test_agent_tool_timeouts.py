@@ -11,6 +11,7 @@ from app.agent.tools.base import (
     shutdown_blocking_executors,
 )
 from app.agent.tools.manager import MoviePilotToolsManager
+from app.runtime.correlation import correlation_scope, get_correlation_id
 
 
 class SlowAgentTool(MoviePilotTool):
@@ -97,6 +98,20 @@ def test_run_blocking_keeps_bucket_slot_until_worker_finishes():
 
     loop = None
     asyncio.run(_run_scenario())
+
+
+def test_run_blocking_preserves_each_call_context():
+    """长期复用的工具线程必须读取当前调用，而不是首个调用的上下文。"""
+    async def _run_scenario():
+        observed = []
+        for correlation_id in ("request-one", "request-two"):
+            with correlation_scope(correlation_id):
+                observed.append(
+                    await MoviePilotTool.run_blocking("web", get_correlation_id)
+                )
+        return observed
+
+    assert asyncio.run(_run_scenario()) == ["request-one", "request-two"]
 
 
 def test_shutdown_blocking_executors_clears_agent_tool_workers():
