@@ -71,6 +71,7 @@ from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
 )
 from app.application.messaging.agent import (
+    dispatch_web_agent_message_event,
     shutdown_web_agent_background_tasks,
     wait_web_agent_background_tasks,
 )
@@ -855,6 +856,11 @@ async def init_modules() -> HostRuntime:
     user_auth()
     # 事件错误通知由启动组合层接入消息服务。
     EventManager().set_error_notifier(notify_event_error)
+    # WebAgent 事件监听由组合根统一装配，HTTP 请求只管理自己的队列。
+    EventManager().add_event_listener(
+        EventType.NoticeMessage,
+        dispatch_web_agent_message_event,
+    )
     # 宿主类处理器在启动层显式登记，事件总线不再兜底 owner_class()。
     configure_host_event_handler_resolver()
     # 加载模块

@@ -13,7 +13,6 @@ from app.agent.orchestrator import agent_manager
 from app.api.endpoints.agent import (
     _WebAgentEventPublisher,
     _WEB_AGENT_FILE_REGISTRY,
-    _WEB_AGENT_MESSAGE_QUEUES,
     _apply_web_agent_display_event,
     _build_web_agent_input_attachments,
     _build_web_agent_message_events,
@@ -23,8 +22,6 @@ from app.api.endpoints.agent import (
     _build_web_agent_traditional_callback_payload,
     _build_web_agent_display_message_from_events,
     _collect_web_agent_traditional_events,
-    _dispatch_web_agent_message_event,
-    _extract_web_agent_message_from_event_data,
     _get_web_agent_type,
     _has_web_agent_traditional_interaction,
     _prepare_web_agent_audio_attachment_path_async,
@@ -38,8 +35,15 @@ from app.runtime.events import Event
 from app.db.oper.agentchat import AgentChatOper
 from app.db.models.agentchat import AgentChat
 from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
-from app.application.messaging.agent import build_web_agent_message_update_event
-from app.application.messaging.agent import AgentInteractionOption, agent_interaction_manager
+from app.application.messaging.agent import (
+    AgentInteractionOption,
+    agent_interaction_manager,
+    attach_web_agent_message_queue,
+    build_web_agent_message_update_event,
+    detach_web_agent_message_queue,
+    dispatch_web_agent_message_event,
+    extract_web_agent_message_from_event_data,
+)
 from app.application.messaging.skill import skill_interaction_manager
 from app.chain.message import MessageChain
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
@@ -561,7 +565,7 @@ def test_extract_web_agent_message_supports_wrapped_message_event():
         userid="1",
     )
 
-    extracted = _extract_web_agent_message_from_event_data(
+    extracted = extract_web_agent_message_from_event_data(
         {"message": message, "current_time": "2026-06-26 09:18:38"}
     )
 
@@ -571,7 +575,7 @@ def test_extract_web_agent_message_supports_wrapped_message_event():
 def test_dispatch_web_agent_message_event_accepts_wrapped_message_event():
     """WebAgent 等待队列应接收 message 包装格式的 NoticeMessage 事件。"""
     notice_queue = Queue()
-    _WEB_AGENT_MESSAGE_QUEUES["1"] = [notice_queue]
+    attach_web_agent_message_queue("1", notice_queue)
     message = schemas.Message(
         channel=NotificationChannel.WebAgent,
         source="web-agent",
@@ -580,14 +584,14 @@ def test_dispatch_web_agent_message_event_accepts_wrapped_message_event():
     )
 
     try:
-        _dispatch_web_agent_message_event(
+        dispatch_web_agent_message_event(
             Event(
                 EventType.NoticeMessage,
                 {"message": message, "current_time": "2026-06-26 09:18:38"},
             )
         )
     finally:
-        _WEB_AGENT_MESSAGE_QUEUES.pop("1", None)
+        detach_web_agent_message_queue("1", notice_queue)
 
     assert notice_queue.get_nowait() == message
 
