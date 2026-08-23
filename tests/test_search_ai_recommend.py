@@ -16,6 +16,7 @@ from app.agent.contracts import ReplyMode
 from app.agent.orchestrator import agent_manager
 from app.chain.search import SearchChain
 from app.runtime.config import settings
+from app.runtime.tasks import TaskRegistry
 from app.modules.indexer import IndexerModule
 from app.schemas.types import MediaType
 
@@ -99,6 +100,52 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             [("__ai_recommend_indices__", [4, 2])],
             saved,
         )
+        self.assertFalse(SearchChain._ai_recommend_running)
+        self.assertIsNone(SearchChain._ai_recommend_task)
+
+    async def test_recommend_task_is_owned_by_runtime_registry(self):
+        """搜索推荐必须登记稳定 owner，并在宿主关停时取消阻塞中的 LLM 调用。"""
+        chain = self._make_chain()
+        registry = TaskRegistry()
+        started = asyncio.Event()
+        blocker = asyncio.Event()
+
+        async def blocked_recommend(_search_results_text: str) -> str:
+            """模拟已进入外部 Agent、等待宿主关停取消的推荐调用。"""
+            started.set()
+            await blocker.wait()
+            return "[0]"
+
+        with (
+            patch.object(settings, "AI_AGENT_ENABLE", True, create=True),
+            patch.object(settings, "AI_RECOMMEND_ENABLED", True, create=True),
+            patch.object(settings, "AI_RECOMMEND_MAX_ITEMS", 50, create=True),
+            patch.object(
+                SearchChain,
+                "_invoke_recommend_llm",
+                new=AsyncMock(side_effect=blocked_recommend),
+            ),
+            patch(
+                "app.chain.search.get_task_registry",
+                return_value=registry,
+            ),
+        ):
+            chain.start_recommend_task(
+                filtered_indices=None,
+                search_results_count=1,
+                results=[_make_result("item-0", 1024, 1)],
+            )
+            await asyncio.wait_for(started.wait(), timeout=1)
+            task = SearchChain._ai_recommend_task
+
+            self.assertEqual(
+                [record.owner for record in registry.records],
+                ["chain.search.ai_recommend"],
+            )
+            self.assertTrue(await registry.shutdown(timeout_seconds=1))
+
+        self.assertIsNotNone(task)
+        self.assertTrue(task.done())
         self.assertFalse(SearchChain._ai_recommend_running)
         self.assertIsNone(SearchChain._ai_recommend_task)
 

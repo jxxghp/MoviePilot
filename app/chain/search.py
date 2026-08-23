@@ -25,6 +25,7 @@ from app.application.configuration import (
     get_configured_system_config,
 )
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
+from app.runtime.tasks import get_task_registry
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.search.state import (
     SearchStateService,
@@ -605,7 +606,10 @@ class SearchChain(ChainBase):
                     state._ai_recommend_running = False
                     state._ai_recommend_task = None
 
-        state._ai_recommend_task = asyncio.create_task(run_recommend())
+        state._ai_recommend_task = get_task_registry().create(
+            run_recommend(),
+            owner="chain.search.ai_recommend",
+        )
 
     def search_by_id(
             self, media_source: MediaSource, media_id: str,
