@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,15 @@ from app.db.models.agenttask import (
     _list_for_user_statement,
 )
 from app.db.models.agenttaskrun import AgentTaskRun
+
+
+@dataclass(frozen=True, slots=True)
+class AgentTaskFinishRecord:
+    """一次运行收口后由数据库事务确认的三个独立事实。"""
+
+    run_finalized: bool
+    task_projection_updated: bool
+    date_task_disabled: bool
 
 
 class AgentTaskOper(DbOper):
@@ -237,6 +248,62 @@ class AgentTaskOper(DbOper):
                 disable_date_task=disable_date_task,
             )
         )
+
+    def finish_run_outcome(
+            self,
+            run_id: str,
+            success: bool,
+            result: str,
+    ) -> AgentTaskFinishRecord:
+        """收口运行，并返回当前事务实际更新的任务投影和停用事实。"""
+        finished_at = self._now()
+        normalized_result = (result or "")[:20000]
+        expected_status = "success" if success else "failed"
+
+        def finalize(session: Session) -> AgentTaskFinishRecord:
+            """使用列查询绕过 ORM identity-map，读取刚写入的真实投影。"""
+            finalized = AgentTaskRun.finish_run(
+                session,
+                run_id=run_id,
+                success=success,
+                result=normalized_result,
+                finished_at=finished_at,
+                disable_date_task=True,
+            )
+            run = session.execute(
+                select(
+                    AgentTaskRun.task_id,
+                    AgentTaskRun.trigger_type,
+                ).where(AgentTaskRun.run_id == run_id)
+            ).mappings().first()
+            task = None
+            if run:
+                task = session.execute(
+                    select(
+                        AgentTask.last_run_id,
+                        AgentTask.last_status,
+                        AgentTask.enabled,
+                    ).where(AgentTask.id == run["task_id"])
+                ).mappings().first()
+            projection_updated = bool(
+                finalized
+                and task
+                and task["last_run_id"] == run_id
+                and task["last_status"] == expected_status
+            )
+            return AgentTaskFinishRecord(
+                run_finalized=finalized,
+                task_projection_updated=projection_updated,
+                date_task_disabled=bool(
+                    projection_updated
+                    and run
+                    and run["trigger_type"] == "date"
+                    and task
+                    and not task["enabled"]
+                ),
+            )
+
+        return self._execute_sync_write(finalize)
 
     def finish(
             self,

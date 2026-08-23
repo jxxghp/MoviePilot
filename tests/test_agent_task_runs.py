@@ -1,8 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Thread, current_thread
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -17,7 +15,6 @@ from app.db.oper.agenttask import AgentTaskOper
 from app.db.models.agenttask import AgentTask
 from app.db.models.agenttaskrun import AgentTaskRun
 from app.db.session import SessionFactory
-from app.scheduler import Scheduler
 
 
 Engine = get_engine()
@@ -165,31 +162,6 @@ async def test_agenttask_oper_async_get_uses_async_query_boundary() -> None:
     assert await AgentTaskOper().async_get(task.id, user_id="another-user") is None
 
 
-@pytest.mark.anyio
-async def test_scheduler_agent_task_cleanup_uses_async_query(monkeypatch) -> None:
-    """async 调度收尾必须等待异步任务查询，不得退回同步 Oper 调用。"""
-    execute = AsyncMock(return_value=(True, "执行完成"))
-    async_get = AsyncMock(
-        return_value=SimpleNamespace(trigger_type="cron", enabled=True)
-    )
-    sync_get = Mock(side_effect=AssertionError("不应调用同步 AgentTaskOper.get"))
-    scheduler = SimpleNamespace(remove_agent_task_job=Mock())
-    monkeypatch.setattr(
-        "app.application.agent.get_running_agent_manager",
-        lambda: SimpleNamespace(execute_scheduled_task=execute),
-    )
-    monkeypatch.setattr(AgentTaskOper, "async_get", async_get)
-    monkeypatch.setattr(AgentTaskOper, "get", sync_get)
-
-    result = await Scheduler.execute_agent_task(scheduler, task_id=42)
-
-    assert result == (True, "执行完成")
-    execute.assert_awaited_once_with(42, trigger_source="scheduled")
-    async_get.assert_awaited_once_with(42)
-    sync_get.assert_not_called()
-    scheduler.remove_agent_task_job.assert_not_called()
-
-
 def test_begin_run_rolls_back_task_claim_when_run_insert_fails() -> None:
     """运行记录插入失败时，任务的 running 投影必须随事务回滚。"""
     first_task = _add_task("run-rollback-first")
@@ -258,7 +230,10 @@ def test_stale_finish_cannot_overwrite_latest_run_projection() -> None:
     second = oper.begin_run(task.id, "manual")
     assert second
 
-    assert oper.finish_run(first.run_id, success=True, result="旧结果")
+    outcome = oper.finish_run_outcome(first.run_id, success=True, result="旧结果")
+    assert outcome.run_finalized is True
+    assert outcome.task_projection_updated is False
+    assert outcome.date_task_disabled is False
     current = oper.get(task.id)
     assert current.last_run_id == second.run_id
     assert current.last_status == "running"

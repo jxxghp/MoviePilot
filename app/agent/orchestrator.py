@@ -79,7 +79,7 @@ from app.application.plugin.runtime import get_plugin_manager
 def _get_plugin_tools_revision() -> int:
     """读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。"""
     return get_plugin_manager().get_plugin_agent_tools_revision()
-from app.application.agentdata import get_agent_task_port
+from app.application.agenttask import get_agent_task_execution_service
 from app.application.agentdata import get_agent_user_port
 from app.application.messaging.chat import (
     get_configured_agent_chat_service,
@@ -3504,6 +3504,8 @@ class AgentManager:
             self,
             task_id: int,
             trigger_source: str = "scheduled",
+            scheduler_generation: int | None = None,
+            remove_schedule: Callable[[int, int, str], bool] | None = None,
     ) -> tuple[bool, str]:
         """
         按持久化上下文唤醒 Agent 执行自主定时任务并向用户回传结果。
@@ -3514,13 +3516,17 @@ class AgentManager:
         """
         if not settings.AI_AGENT_ENABLE:
             return False, "AI Agent 未启用"
-        oper = get_agent_task_port()
-        task = oper.get(task_id)
-        if not task or not task.enabled:
-            return False, "Agent 定时任务不存在或已停用"
-        run = oper.begin_run(task_id=task_id, trigger_source=trigger_source)
-        if not run:
-            return False, "Agent 定时任务当前不可执行"
+        accepting_before_claim = self._accepting_tasks
+        task_service = get_agent_task_execution_service()
+        claim = await task_service.claim(
+            task_id=task_id,
+            trigger_source=trigger_source,
+            scheduler_generation=scheduler_generation,
+            remove_schedule=remove_schedule,
+        )
+        run = claim.run
+        if run is None:
+            return False, claim.rejection or "Agent 定时任务当前不可执行"
 
         trigger_description = (
             "已手动触发" if run.trigger_source == "manual" else "已按计划触发"
@@ -3558,7 +3564,14 @@ class AgentManager:
             raise
         except Exception as err:
             success = False
-            result = f"Agent 定时任务执行失败：{str(err)}"
+            error_message = str(err)
+            if (
+                accepting_before_claim
+                and not self._accepting_tasks
+                and error_message == "AgentManager 未运行或已关闭"
+            ):
+                error_message = "AgentManager 已关闭"
+            result = f"Agent 定时任务执行失败：{error_message}"
             logger.error(f"Agent 定时任务 {task_id} 执行失败: {str(err)}")
             await AgentChain().async_post_message(
                 Message(
@@ -3570,11 +3583,12 @@ class AgentManager:
                 )
             )
         finally:
-            oper.finish_run(
-                run_id=run.run_id,
+            await task_service.finalize(
+                run,
                 success=success,
                 result=str(result or ""),
-                disable_date_task=run.trigger_type == "date",
+                scheduler_generation=scheduler_generation,
+                remove_schedule=remove_schedule,
             )
 
         return success, str(result or "任务执行完成")

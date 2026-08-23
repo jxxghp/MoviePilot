@@ -95,6 +95,10 @@ from app.application.site.query import SiteQueryService, configure_site_query_se
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
 from app.application.agentdata import configure_agent_data_ports
+from app.application.agenttask import (
+    AgentTaskExecutionService,
+    configure_agent_task_execution,
+)
 from app.api.data import ApiDataPorts, configure_api_data_runtime
 from app.application.subscription.write import configure_subscribe_writer
 from app.adapters.external.server import (
@@ -831,6 +835,11 @@ async def init_modules() -> HostRuntime:
         workflow=lambda: WorkflowOper(),
         plugin_data=lambda: PluginDataOper(),
     )
+    configure_agent_task_execution(AgentTaskExecutionService(
+        repository=lambda session: AgentTaskOper(session),
+        async_executor=database_worker,
+        sync_transaction=transaction_runner.sync,
+    ))
     configure_subscribe_writer(
         lambda: TransactionalSubscribeWriter(
             sync_session=SessionFactory,

@@ -599,6 +599,30 @@ def test_agent_consumers_use_explicit_data_port_getters():
     assert violations == []
 
 
+def test_scheduler_does_not_depend_on_database_implementation():
+    """Scheduler 只能消费应用端口，不得重新直连 app.db 实现。"""
+    dependencies = _build_module_graph().get("app.scheduler", set())
+    assert {
+        dependency
+        for dependency in dependencies
+        if dependency == "app.db" or dependency.startswith("app.db.")
+    } == set()
+
+
+def test_agent_task_async_execution_uses_application_service():
+    """AgentTask async 执行不得经动态数据端口隐藏同步 Oper 调用。"""
+    path = APP_ROOT / "agent" / "orchestrator.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    violations = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.agentdata"
+        and any(alias.name == "get_agent_task_port" for alias in node.names)
+    ]
+    assert violations == []
+
+
 def test_monitor_dispatcher_uses_explicit_history_port_getter():
     """监控分发器不得把兼容 TransferHistoryPort 伪装成数据库 Oper。"""
     path = APP_ROOT / "monitor" / "dispatcher.py"

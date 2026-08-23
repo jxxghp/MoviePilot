@@ -153,6 +153,10 @@ def configure_plugin_system_services():
     from app.workflow import WorkFlowManager
     configure_workflow_runtime(lambda: WorkFlowManager())
     from app.application.agentdata import configure_agent_data_ports
+    from app.application.agenttask import (
+        AgentTaskExecutionService,
+        configure_agent_task_execution,
+    )
     from app.db.oper.agentchat import AgentChatOper
     from app.db.oper.downloadfailure import DownloadFailureOper
     from app.db.oper.downloadhistory import DownloadHistoryOper
@@ -272,6 +276,11 @@ def configure_plugin_system_services():
         workflow=lambda: WorkflowOper(),
         plugin_data=lambda: PluginDataOper(),
     )
+    configure_agent_task_execution(AgentTaskExecutionService(
+        repository=lambda session: AgentTaskOper(session),
+        async_executor=database_executor,
+        sync_transaction=transaction_runner.sync,
+    ))
     configure_agent_chat_persistence(
         AgentChatPersistenceService(
             repository=lambda session: AgentChatOper(session),
