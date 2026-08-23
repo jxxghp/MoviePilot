@@ -3,6 +3,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import Context, copy_context
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol
 from urllib.parse import urlparse
@@ -288,7 +289,11 @@ class BrowserSessionHelper:
 
         executor = cls._get_existing_session_executor(session_key)
         if executor:
-            future = executor.submit(
+            context = copy_context()
+            # 会话线程保持空底层上下文，每次操作只使用当前调用快照。
+            future = Context().run(
+                executor.submit,
+                context.run,
                 cls._run_session_task,
                 session_key,
                 cls._close_session_in_thread,
@@ -387,7 +392,11 @@ class BrowserSessionHelper:
         for _ in range(2):
             executor = cls._get_session_executor(session_key)
             try:
-                future = executor.submit(
+                context = copy_context()
+                # 会话线程保持空底层上下文，每次操作只使用当前调用快照。
+                future = Context().run(
+                    executor.submit,
+                    context.run,
                     cls._run_session_task,
                     session_key,
                     callback,

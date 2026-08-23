@@ -4,6 +4,7 @@ import json
 import threading
 from abc import ABCMeta, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import Context, copy_context
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Protocol
@@ -225,7 +226,13 @@ async def run_agent_blocking(
 
     await semaphore.acquire()
     try:
-        future = _get_blocking_executor(bucket_name).submit(bound_call)
+        context = copy_context()
+        # 长期 worker 保持空底层上下文，每个任务只在自己的调用快照内运行。
+        future = Context().run(
+            _get_blocking_executor(bucket_name).submit,
+            context.run,
+            bound_call,
+        )
     except Exception:
         semaphore.release()
         raise
