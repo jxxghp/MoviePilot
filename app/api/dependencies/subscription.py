@@ -95,20 +95,43 @@ def get_delete_subscriptions_by_identity_command(
     )
 
 
+def _start_subscription_search_batch(
+    subscribe_ids: tuple[int, ...] | None,
+    state: str | None,
+) -> None:
+    """把一个请求的搜索目标作为同一调度任务提交。"""
+    if subscribe_ids is None:
+        start_scheduler_job(
+            "subscribe_search",
+            sid=None,
+            state=state,
+            manual=True,
+        )
+        return
+    start_scheduler_job(
+        "subscribe_search",
+        sids=subscribe_ids,
+        state=None,
+        manual=True,
+    )
+
+
 def get_search_subscriptions_command(
     task_registry: TaskRegistry = Depends(get_background_task_registry),
     db: AsyncSession = Depends(get_async_session),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> SearchSubscriptionsCommand:
     """组装手工订阅搜索用例，并把调度延迟到响应后的后台任务。"""
-    def schedule_search(subscribe_id: int | None, state: str | None) -> None:
-        """按历史参数提交订阅搜索调度任务。"""
+    def schedule_search(
+        subscribe_ids: tuple[int, ...] | None,
+        state: str | None,
+    ) -> None:
+        """把当前用户的搜索目标提交为一个顺序后台批次。"""
         resolve_background_task_registry(task_registry).create_sync(
-            start_scheduler_job,
-            job_id="subscribe_search",
-            sid=subscribe_id,
-            state=state,
-            manual=True,
+            _start_subscription_search_batch,
+            subscribe_ids,
+            state,
+            owner="api.subscribe.search",
         )
 
     return SearchSubscriptionsCommand(

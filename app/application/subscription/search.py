@@ -29,7 +29,7 @@ class SubscribeSearchRepository(Protocol):
         ...
 
 
-SubscribeSearchScheduler = Callable[[int | None, str | None], None]
+SubscribeSearchScheduler = Callable[[tuple[int, ...] | None, str | None], None]
 
 
 class SearchSubscriptionsCommand:
@@ -54,7 +54,7 @@ class SearchSubscriptionsCommand:
             candidate = await self._repository.get_candidate(subscribe_id)
             if not self._can_access(candidate, actor):
                 return False
-            self._schedule_search(subscribe_id, None)
+            self._schedule_search((subscribe_id,), None)
             return True
 
         if actor.is_superuser:
@@ -65,8 +65,8 @@ class SearchSubscriptionsCommand:
             actor.username,
             "R",
         )
-        for current_id in subscribe_ids:
-            self._schedule_search(current_id, None)
+        if subscribe_ids:
+            self._schedule_search(tuple(subscribe_ids), None)
         return True
 
     @staticmethod
