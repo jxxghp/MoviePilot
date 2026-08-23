@@ -1,6 +1,6 @@
 """工作流领域的请求级 command/query 依赖。"""
 
-from typing import Any, cast
+from typing import cast
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,7 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.api.context import get_async_session, get_host_runtime, get_sync_session
 from app.application.scheduling import Scheduler
 from app.application.workflow import (
+    WorkflowCachePort,
     WorkflowDefinitionCommand,
     WorkflowMutationCommand,
     WorkflowQueryService,
@@ -26,6 +27,7 @@ def get_workflow_mutation_command(
     """组装请求级工作流写用例和提交后的调度副作用。"""
     scheduler = Scheduler()
     workflow_manager = WorkFlowManager()
+    system_config = cast(WorkflowCachePort, runtime.workflow.system_config())
     return WorkflowMutationCommand(
         repository=runtime.workflow.repository(db),
         unit_of_work=runtime.persistence.sync_transaction(db),
@@ -35,9 +37,9 @@ def get_workflow_mutation_command(
         remove_event=workflow_manager.remove_workflow_event,
         refresh_event=workflow_manager.update_workflow_event,
         stop_running=global_vars.stop_workflow,
-        delete_cache=lambda workflow_id: cast(
-            Any, runtime.workflow.system_config()
-        ).delete(f"WorkflowCache-{workflow_id}"),
+        delete_cache=lambda workflow_id: system_config.delete(
+            f"WorkflowCache-{workflow_id}"
+        ),
     )
 
 
@@ -46,13 +48,14 @@ def get_workflow_definition_command(
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> WorkflowDefinitionCommand:
     """组装工作流创建、复用和重置的异步写用例。"""
+    system_config = cast(WorkflowCachePort, runtime.workflow.system_config())
     return WorkflowDefinitionCommand(
         repository=runtime.workflow.repository(db),
         unit_of_work=runtime.persistence.async_transaction(db),
         stop_running=global_vars.stop_workflow,
-        delete_cache=lambda workflow_id: cast(
-            Any, runtime.workflow.system_config()
-        ).delete(f"WorkflowCache-{workflow_id}"),
+        async_delete_cache=lambda workflow_id: system_config.async_delete(
+            f"WorkflowCache-{workflow_id}"
+        ),
         report_fork=MoviePilotServerHelper.async_workflow_fork_by_id,
     )
 

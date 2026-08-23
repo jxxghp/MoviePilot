@@ -318,6 +318,12 @@ class SystemConfigService:
         result = await self._async_executor.run(partial(self._writer.set, key, value))
         return cast(bool | None, result)
 
+    async def async_delete(self, key: Any) -> Any:
+        """异步删除配置，并等待数据库提交或回滚完成。"""
+        if self._async_executor is None:
+            raise RuntimeError("系统配置异步数据库执行端口尚未配置")
+        return await self._async_executor.run(partial(self._writer.delete, key))
+
     def delete(self, key: Any) -> Any:
         """删除配置。"""
         return self._writer.delete(key)

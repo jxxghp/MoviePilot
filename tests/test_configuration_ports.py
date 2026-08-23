@@ -88,6 +88,7 @@ def test_system_config_service_supports_separate_reader_and_writer() -> None:
     reader.get.return_value = "old"
     writer = MagicMock()
     writer.set.return_value = True
+    writer.delete.return_value = True
     service = SystemConfigService(
         reader=reader,
         writer=writer,
@@ -98,13 +99,17 @@ def test_system_config_service_supports_separate_reader_and_writer() -> None:
     assert service.set("key", "new") is True
     assert asyncio.run(service.async_set("key", "new")) is True
     service.delete("key")
+    assert asyncio.run(service.async_delete("key")) is True
 
     reader.get.assert_called_once_with("key")
     assert writer.set.call_args_list == [
         (("key", "new"), {}),
         (("key", "new"), {}),
     ]
-    writer.delete.assert_called_once_with("key")
+    assert writer.delete.call_args_list == [
+        (("key",), {}),
+        (("key",), {}),
+    ]
 
 
 def test_user_configuration_service_supports_sync_and_async_writes() -> None:

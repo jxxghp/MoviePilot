@@ -671,7 +671,7 @@ async def init_modules() -> HostRuntime:
         ),
         workflow=WorkflowRuntime(
             repository=WorkflowOper,
-            system_config=SystemConfigOper,
+            system_config=get_configured_system_config,
         ),
         configuration=runtime_configuration,
         settings=runtime_settings,
