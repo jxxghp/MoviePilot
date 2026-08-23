@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6543,
-  "edge_sha256": "b9b6ba268382e7027f5557643defb09848c054cb68079345f2394d9b7faeb42c",
+  "edge_count": 6545,
+  "edge_sha256": "5a57ed0ff52fda67abf49f5ca956fea0adeb0ac595054e0f8f81374ad843a2bd",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2595,6 +2595,8 @@
     "app.application.mediaserver -> app.application.service",
     "app.application.mediaserver -> app.domain",
     "app.application.mediaserver -> app.domain.context",
+    "app.application.mediaserver -> app.runtime",
+    "app.application.mediaserver -> app.runtime.log",
     "app.application.mediaserver -> app.schemas",
     "app.application.mediaserver -> app.schemas.media",
     "app.application.mediaserver -> app.schemas.mediaserver",

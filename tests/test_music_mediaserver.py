@@ -14,8 +14,8 @@ from app.modules.jellyfin import JellyfinModule
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.modules.plex import PlexModule
 from app.modules.plex.plex import Plex
-from app.modules.trimemedia import TrimeMediaModule
-from app.modules.ugreen import UgreenModule
+from app.modules.trimemedia import TrimeMediaModule  # pylint: disable=no-name-in-module
+from app.modules.ugreen import UgreenModule  # pylint: disable=no-name-in-module
 from app.modules.zspace import ZSpaceModule
 from app.modules.zspace.zspace import ZSpace
 
@@ -97,25 +97,42 @@ def test_music_media_server_helper_normalizes_emby_music_fields():
 
 
 @pytest.mark.parametrize(
-    "formatter",
+    ("formatter", "server", "server_id"),
     [
-        Emby._Emby__format_item_info,
-        Jellyfin._Jellyfin__format_item_info,
-        ZSpace._ZSpace__format_item_info,
+        (Emby._Emby__format_item_info, "emby", "server-1"),
+        (Jellyfin._Jellyfin__format_item_info, "jellyfin", None),
+        (ZSpace._ZSpace__format_item_info, "zspace", None),
     ],
 )
-def test_emby_family_clients_preserve_music_match_fields(formatter):
-    """Emby 系客户端格式化音乐结果时必须保留艺术家、专辑和曲目数。"""
+def test_emby_family_clients_preserve_item_contract(formatter, server, server_id):
+    """Emby 系客户端复用统一转换时必须保留服务身份及音乐匹配字段。"""
     item = formatter({
         "Id": "album-1",
+        "ServerId": "server-1",
+        "ParentId": "library-1",
         "Type": "MusicAlbum",
         "Name": "叶惠美",
         "AlbumArtists": [{"Name": "周杰伦"}],
         "ChildCount": 11,
-        "ProviderIds": {},
+        "ProviderIds": {"Tmdb": "123"},
+        "UserData": {
+            "Played": False,
+            "PlaybackPositionTicks": 1,
+            "LastPlayedDate": "2026-08-24T12:34:56.123456Z",
+            "PlayCount": 2,
+            "PlayedPercentage": 25.5,
+        },
     })
 
     assert item is not None
+    assert item.server == server
+    assert item.server_id == server_id
+    assert item.library == "library-1"
+    assert item.media_source == "themoviedb"
+    assert item.media_id == "123"
+    assert item.user_state is not None
+    assert item.user_state.resume is True
+    assert item.user_state.last_played_date == "2026-08-24 12:34:56"
     assert item.note == {
         "artist": "周杰伦",
         "artists": ["周杰伦"],
