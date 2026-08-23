@@ -4,14 +4,13 @@ import hashlib
 import json
 import mimetypes
 import shutil
-import subprocess
 import time
 import uuid
 from collections import deque
 from queue import Empty, Queue
 from pathlib import Path
 from threading import Lock
-from typing import Any, AsyncIterator, Callable, Optional, Union
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional, Union
 
 import aiofiles
 from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -85,6 +84,7 @@ WEB_AGENT_FILE_TTL_SECONDS = 6 * 60 * 60
 WEB_AGENT_FILE_MAX_ITEMS = 256
 WEB_AGENT_UPLOAD_MAX_BYTES = 32 * 1024 * 1024
 WEB_AGENT_UPLOAD_CHUNK_SIZE = 1024 * 1024
+WEB_AGENT_AUDIO_CONVERSION_TIMEOUT_SECONDS = 60.0
 WEB_AGENT_BROWSER_AUDIO_SUFFIXES = {".aac", ".m4a", ".mp3", ".mp4", ".wav", ".wave"}
 WEB_AGENT_TRADITIONAL_IDLE_TIMEOUT_SECONDS = 2.0
 WEB_AGENT_TRADITIONAL_MAX_WAIT_SECONDS = 60.0
@@ -401,7 +401,9 @@ class _WebAgentMoviePilotAgentMixin:
     def __init__(
         self,
         *args: Any,
-        message_callback: Optional[Callable[[_SchemaMessage], None]] = None,
+        message_callback: Optional[
+            Callable[[_SchemaMessage], Awaitable[None] | None]
+        ] = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -418,7 +420,9 @@ class _WebAgentMoviePilotAgentMixin:
 
     def set_message_callback(
             self,
-            message_callback: Optional[Callable[[_SchemaMessage], None]],
+            message_callback: Optional[
+                Callable[[_SchemaMessage], Awaitable[None] | None]
+            ],
     ) -> None:
         """
         更新 Web SSE 通知回调，复用 Agent 实例时指向当前请求队列。
@@ -998,48 +1002,115 @@ def _get_web_agent_audio_mime_type(audio_path: Path) -> Optional[str]:
     return mimetypes.guess_type(audio_path.name)[0]
 
 
-def _prepare_web_agent_audio_attachment_path(voice_path: str) -> Path:
-    """
-    将 Agent 语音回复准备成 Web 面板可稳定播放的音频文件。
-
-    部分 TTS provider 会生成 Opus/Ogg，桌面 Chromium 通常可播放，但 iOS/Safari
-    兼容性不稳定；WebAgent 只在浏览器内播放，因此这里单独转成 WAV。
-    """
+def _resolve_web_agent_audio_source_path(voice_path: str) -> Path:
+    """解析语音源文件；文件暂时不可用时保留原始路径以维持回退语义。"""
     try:
-        source_path = Path(voice_path).expanduser().resolve(strict=True)
+        return Path(voice_path).expanduser().resolve(strict=True)
     except OSError:
         return Path(voice_path)
+
+
+def _remove_web_agent_audio_output(path: Path) -> None:
+    """清理未完成的转码产物。"""
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as err:
+        logger.debug("WebAgent 清理未完成语音转码产物失败: path=%s, error=%s", path, err)
+
+
+async def _terminate_web_agent_audio_process(
+    process: Optional[asyncio.subprocess.Process],
+) -> None:
+    """终止并回收转码进程，避免取消或超时留下孤儿 ffmpeg。"""
+    if process is None or process.returncode is not None:
+        return
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return
+    try:
+        await process.communicate()
+    except (OSError, ProcessLookupError):
+        pass
+
+
+async def _prepare_web_agent_audio_attachment_path_async(voice_path: str) -> Path:
+    """异步准备 WebAgent 语音附件，转码等待可取消且有超时。"""
+    source_path = await run_in_threadpool(
+        _resolve_web_agent_audio_source_path,
+        voice_path,
+    )
     if source_path.suffix.lower() in WEB_AGENT_BROWSER_AUDIO_SUFFIXES:
         return source_path
-    if not shutil.which("ffmpeg"):
+
+    ffmpeg_path = await run_in_threadpool(shutil.which, "ffmpeg")
+    if not ffmpeg_path:
         logger.warning("WebAgent 语音转 WAV 跳过：ffmpeg 不可用，path=%s", source_path)
         return source_path
 
     voice_dir = get_api_runtime_config_snapshot().temp_path / "voice"
-    voice_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        await run_in_threadpool(voice_dir.mkdir, parents=True, exist_ok=True)
+    except OSError as err:
+        logger.warning("WebAgent 语音转 WAV 目录不可用，将回退原文件: path=%s, error=%s", voice_dir, err)
+        return source_path
+
     output_path = voice_dir / f"{source_path.stem}_web_{uuid.uuid4().hex[:8]}.wav"
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(source_path),
-        "-ar",
-        "24000",
-        "-ac",
-        "1",
-        "-f",
-        "wav",
-        str(output_path),
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if result.returncode != 0 or not output_path.exists():
+    process: Optional[asyncio.subprocess.Process] = None
+
+    async def cleanup_conversion_output() -> None:
+        """清理失败或取消的转码进程及临时产物。"""
+        await _terminate_web_agent_audio_process(process)
+        await run_in_threadpool(_remove_web_agent_audio_output, output_path)
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            ffmpeg_path,
+            "-y",
+            "-i",
+            str(source_path),
+            "-ar",
+            "24000",
+            "-ac",
+            "1",
+            "-f",
+            "wav",
+            str(output_path),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=WEB_AGENT_AUDIO_CONVERSION_TIMEOUT_SECONDS,
+        )
+        output_exists = await run_in_threadpool(output_path.exists)
+        if process.returncode != 0 or not output_exists:
+            await cleanup_conversion_output()
+            logger.warning(
+                "WebAgent 语音转 WAV 失败，将回退原文件: returncode=%s, stderr=%s",
+                process.returncode,
+                (stderr or b"").decode("utf-8", errors="replace").strip()[:500],
+            )
+            return source_path
+        return output_path
+    except asyncio.TimeoutError:
+        await cleanup_conversion_output()
         logger.warning(
-            "WebAgent 语音转 WAV 失败，将回退原文件: returncode=%s, stderr=%s",
-            result.returncode,
-            (result.stderr or "").strip()[:500],
+            "WebAgent 语音转 WAV 超时，将回退原文件: timeout=%ss, path=%s",
+            WEB_AGENT_AUDIO_CONVERSION_TIMEOUT_SECONDS,
+            source_path,
         )
         return source_path
-    return output_path
+    except asyncio.CancelledError:
+        await cleanup_conversion_output()
+        logger.warning("WebAgent 语音转 WAV 已取消，path=%s", source_path)
+        raise
+    except OSError as err:
+        await cleanup_conversion_output()
+        logger.warning("WebAgent 语音转 WAV 启动失败，将回退原文件: path=%s, error=%s", source_path, err)
+        return source_path
 
 
 def _get_web_agent_registered_file(ref: str) -> Optional[dict[str, Any]]:
@@ -1213,6 +1284,8 @@ def _resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Optio
 
 def _build_web_agent_message_events(
     message: _SchemaMessage,
+    *,
+    prepared_audio_path: Optional[Path] = None,
 ) -> list[dict]:
     """
     将 Agent 工具通知转换为 Web SSE 事件。
@@ -1250,7 +1323,7 @@ def _build_web_agent_message_events(
         events.append({"type": "attachment", "attachment": attachment})
 
     if message.voice_path:
-        audio_path = _prepare_web_agent_audio_attachment_path(message.voice_path)
+        audio_path = prepared_audio_path or Path(message.voice_path)
         attachment = _register_web_agent_file(
             str(audio_path),
             file_name=audio_path.name,
@@ -1269,6 +1342,21 @@ def _build_web_agent_message_events(
             events.append({"type": "attachment", "attachment": attachment})
 
     return events
+
+
+async def _build_web_agent_message_events_async(
+    message: _SchemaMessage,
+) -> list[dict]:
+    """异步构造 WebAgent 通知，确保语音转码不占用事件循环。"""
+    prepared_audio_path = None
+    if message.voice_path:
+        prepared_audio_path = await _prepare_web_agent_audio_attachment_path_async(
+            message.voice_path
+        )
+    return _build_web_agent_message_events(
+        message,
+        prepared_audio_path=prepared_audio_path,
+    )
 
 
 def _build_web_agent_display_message_from_events(
@@ -1581,7 +1669,7 @@ async def _collect_web_agent_traditional_events(
 
             if not _is_web_agent_message_for_user(message, user_id):
                 continue
-            events.extend(_build_web_agent_message_events(message))
+            events.extend(await _build_web_agent_message_events_async(message))
             idle_deadline = time.monotonic() + WEB_AGENT_TRADITIONAL_IDLE_TIMEOUT_SECONDS
         return events
     finally:
@@ -2231,11 +2319,11 @@ async def _web_agent_stream_impl(
             _apply_web_agent_display_event(item, assistant_display_message)
             event_publisher.publish(item)
 
-    def message_callback(message: _SchemaMessage) -> None:
+    async def message_callback(message: _SchemaMessage) -> None:
         """
         接收 Agent 工具主动发送的 Web 通知。
         """
-        for item in _build_web_agent_message_events(message):
+        for item in await _build_web_agent_message_events_async(message):
             _apply_web_agent_display_event(item, assistant_display_message)
             event_publisher.publish(item)
 
