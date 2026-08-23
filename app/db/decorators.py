@@ -16,6 +16,8 @@
   SQLAlchemy 归还连接时已在池层吞掉异常并 invalidate 坏连接，再把释放故障升级成调用方
   的异常，只会让一次已经落库的写入看起来像失败，诱发重复提交。
 """
+from functools import wraps
+from inspect import Parameter, signature
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -296,3 +298,79 @@ def async_db_query(func: Callable[..., Awaitable[_R]]) -> Callable[..., Awaitabl
         return result
 
     return wrapper
+
+
+def legacy_db_query(func: Callable[..., _R]) -> Callable[..., _R]:
+    """保留旧 Model 查询 ABI，同时让新调用方复用显式 Session。
+
+    旧插件通常省略 ``db``，直接把业务参数放在第一个位置；通用 ``db_query``
+    装饰器只适用于固定的 ``(db, ...)`` 形状，不能把这类位置参数直接套进去。
+    这里按签名插入会话，避免丢失旧插件传入的第一个业务参数。
+    """
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> _R:
+        db = _get_args_db(args, kwargs)
+        if db is not None:
+            return func(*args, **kwargs)
+
+        session = ScopedSession()
+        call_args, call_kwargs = _inject_legacy_db(func, args, kwargs, session)
+        try:
+            return func(*call_args, **call_kwargs)
+        finally:
+            try:
+                session.close()
+            except Exception as close_err:  # noqa: BLE001  释放故障不得改变旧 ABI 返回值
+                logger.error(f"释放数据库会话失败：{close_err}")
+
+    return wrapper
+
+
+def legacy_async_db_query(
+    func: Callable[..., Awaitable[_R]],
+) -> Callable[..., Awaitable[_R]]:
+    """保留旧 Model 异步查询 ABI，同时让新调用方复用显式 AsyncSession。"""
+
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> _R:
+        db = _get_args_async_db(args, kwargs)
+        if db is not None:
+            return await func(*args, **kwargs)
+
+        async with async_session_scope() as session:
+            call_args, call_kwargs = _inject_legacy_db(func, args, kwargs, session)
+            return await func(*call_args, **call_kwargs)
+
+    return wrapper
+
+
+def _inject_legacy_db(
+    func: Callable[..., _R],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    db: Any,
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """按旧 Model 方法签名注入兼容会话，不吞掉位置业务参数。"""
+    call_args = list(args)
+    call_kwargs = dict(kwargs)
+    parameters = list(signature(func).parameters.values())
+    db_index = next(
+        (index for index, parameter in enumerate(parameters) if parameter.name == "db"),
+        None,
+    )
+    if "db" in call_kwargs:
+        call_kwargs["db"] = db
+        return tuple(call_args), call_kwargs
+    if db_index is None:
+        # 兼容没有显式 db 参数的极旧函数，保持调用失败方式与普通 Python 一致。
+        return tuple(call_args), {"db": db, **call_kwargs}
+    if db_index < len(call_args) and call_args[db_index] is None:
+        call_args[db_index] = db
+    elif db_index < len(parameters) and parameters[db_index].kind is Parameter.POSITIONAL_ONLY:
+        call_args.insert(db_index, db)
+    elif db_index <= len(call_args):
+        call_args.insert(db_index, db)
+    else:
+        call_kwargs["db"] = db
+    return tuple(call_args), call_kwargs

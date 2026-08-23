@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import async_db_query, db_query
+from app.db.decorators import (
+    legacy_async_db_query,
+    legacy_db_query,
+    run_legacy_sync_query,
+)
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 
@@ -94,7 +98,7 @@ class TransferHistory(Base):
     )
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list_by_title(cls, db: Session, title: str, page: int = 1, count: int = 30,
                       status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
@@ -121,7 +125,7 @@ class TransferHistory(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: int = 1, count: int = 30,
                                   status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
@@ -149,7 +153,7 @@ class TransferHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: Optional[bool] = None):
         statement = select(cls)
         if status is not None:
@@ -163,7 +167,7 @@ class TransferHistory(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_list_by_page(cls, db: AsyncSession, page: int = 1, count: int = 30,
                                  status: Optional[bool] = None):
         if status is not None:
@@ -185,16 +189,29 @@ class TransferHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
-    def get_by_hash(cls, db: Session, download_hash: str):
-        return db.execute(
-            select(cls).where(cls.download_hash == download_hash)
-        ).scalars().first()
+    def get_by_hash(
+        cls,
+        db: Session | str | None = None,
+        download_hash: str | None = None,
+    ):
+        """按下载哈希查询最新记录，兼容旧插件无会话调用。"""
+        if download_hash is None and isinstance(db, str):
+            download_hash, db = db, None
+        if download_hash is None:
+            raise TypeError("download_hash is required")
+
+        def query(session: Session):
+            """在调用方提供的同步会话中执行哈希查询。"""
+            return session.execute(
+                select(cls).where(cls.download_hash == download_hash)
+            ).scalars().first()
+
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @db_query
     def get_by_src(
-            cls, db: Session, src: str, storage: Optional[str] = None
+            cls, db: Session | str | None = None, src: str | None = None,
+            storage: Optional[str] = None
     ) -> Optional["TransferHistory"]:
         """
         按源路径和存储查询单条整理记录。
@@ -204,17 +221,26 @@ class TransferHistory(Base):
         :param storage: 源存储类型
         :return: 命中的整理记录，未命中时返回 None
         """
-        statement = select(cls).where(cls.src == src)
-        if storage:
-            statement = statement.where(cls.src_storage == storage)
-        return db.execute(
-            statement.order_by(cls.id.desc())
-        ).scalars().first()
+        if src is None and isinstance(db, str):
+            src, db = db, None
+        if src is None:
+            raise TypeError("src is required")
+
+        def query(session: Session):
+            """在调用方提供的同步会话中执行源路径查询。"""
+            statement = select(cls).where(cls.src == src)
+            if storage:
+                statement = statement.where(cls.src_storage == storage)
+            return session.execute(
+                statement.order_by(cls.id.desc())
+            ).scalars().first()
+
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @db_query
     def get_success_by_src(
-            cls, db: Session, src: str, storage: Optional[str] = None
+            cls, db: Session | str | None = None, src: str | None = None,
+            storage: Optional[str] = None
     ) -> Optional["TransferHistory"]:
         """
         按源路径和存储查询成功的整理记录，源路径原样精确匹配。
@@ -226,17 +252,26 @@ class TransferHistory(Base):
         :param storage: 源存储类型
         :return: 命中的成功整理记录，未命中时返回 None
         """
-        statement = select(cls).where(cls.src == src, cls.status.is_(True))
-        if storage:
-            statement = statement.where(cls.src_storage == storage)
-        return db.execute(
-            statement.order_by(cls.id.desc())
-        ).scalars().first()
+        if src is None and isinstance(db, str):
+            src, db = db, None
+        if src is None:
+            raise TypeError("src is required")
+
+        def query(session: Session):
+            """在调用方提供的同步会话中执行成功源路径查询。"""
+            statement = select(cls).where(cls.src == src, cls.status.is_(True))
+            if storage:
+                statement = statement.where(cls.src_storage == storage)
+            return session.execute(
+                statement.order_by(cls.id.desc())
+            ).scalars().first()
+
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @db_query
     def get_by_dest(
-            cls, db: Session, dest: str, storage: Optional[str] = None
+            cls, db: Session | str | None = None, dest: str | None = None,
+            storage: Optional[str] = None
     ) -> Optional["TransferHistory"]:
         """
         按目标路径和存储查询单条整理记录。
@@ -246,15 +281,24 @@ class TransferHistory(Base):
         :param storage: 目标存储类型
         :return: 命中的整理记录，未命中时返回 None
         """
-        statement = select(cls).where(cls.dest == dest)
-        if storage:
-            statement = statement.where(cls.dest_storage == storage)
-        return db.execute(
-            statement.order_by(cls.id.desc())
-        ).scalars().first()
+        if dest is None and isinstance(db, str):
+            dest, db = db, None
+        if dest is None:
+            raise TypeError("dest is required")
+
+        def query(session: Session):
+            """在调用方提供的同步会话中执行目标路径查询。"""
+            statement = select(cls).where(cls.dest == dest)
+            if storage:
+                statement = statement.where(cls.dest_storage == storage)
+            return session.execute(
+                statement.order_by(cls.id.desc())
+            ).scalars().first()
+
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list_success_by_src(
             cls,
             db: Session,
@@ -294,7 +338,7 @@ class TransferHistory(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list_success_move_by_dest(
             cls,
             db: Session,
@@ -337,14 +381,14 @@ class TransferHistory(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list_by_hash(cls, db: Session, download_hash: str):
         return list(db.execute(
             select(cls).where(cls.download_hash == download_hash)
         ).scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def statistic(cls, db: Session, days: int = 7):
         """
         统计最近days天的下载历史数量，按日期分组返回每日数量
@@ -361,7 +405,7 @@ class TransferHistory(Base):
         ).all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def monthly_media_statistics(cls, db: Session):
         """
         统计当月成功整理的电影、电视剧、剧集和音乐数量。
@@ -427,7 +471,7 @@ class TransferHistory(Base):
         return 1
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_statistic(cls, db: AsyncSession, days: int = 7):
         """
         统计最近days天的下载历史数量，按日期分组返回每日数量
@@ -442,7 +486,7 @@ class TransferHistory(Base):
         return result.all()
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def count(cls, db: Session, status: Optional[bool] = None):
         statement = select(func.count(cls.id))
         if status is not None:
@@ -450,7 +494,7 @@ class TransferHistory(Base):
         return db.execute(statement).scalar()
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_count(cls, db: AsyncSession, status: Optional[bool] = None):
         if status is not None:
             result = await db.execute(
@@ -463,7 +507,7 @@ class TransferHistory(Base):
         return result.scalar()
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def count_by_title(cls, db: Session, title: str, status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
@@ -483,7 +527,7 @@ class TransferHistory(Base):
         return db.execute(statement).scalar()
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_count_by_title(cls, db: AsyncSession, title: str, status: Optional[bool] = None, wildcard: bool = False):
         if wildcard:
             text_filter = or_(
@@ -504,7 +548,7 @@ class TransferHistory(Base):
         return result.scalar()
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list_by(cls, db: Session, mtype: Optional[str] = None, title: Optional[str] = None, year: Optional[str] = None,
                 season: Optional[str] = None,
                 episode: Optional[str] = None,
@@ -542,7 +586,7 @@ class TransferHistory(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_by_media_identity(
             cls, db: Session, media_source: MediaSource, media_id: str,
             mtype: Optional[str] = None,
@@ -589,7 +633,7 @@ class TransferHistory(Base):
         return history
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def list_by_date(cls, db: Session, date: str):
         """
         查询某时间之后的转移历史

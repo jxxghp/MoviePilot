@@ -28,7 +28,7 @@
 
 1. **后台任务的统一所有权已覆盖 API 入口，但仍有更深层任务机制待分级。** `app/runtime/tasks.py` 已建立 lifespan 级 TaskRegistry，启动收尾、插件 Release 刷新、Webhook E0 广播、CookieCloud E1 手工调度、消息入口、Seerr 订阅和 WebAgent 断线后执行/快照保存均不再维护端点模块级任务集合或 Starlette 回调，shutdown 会停止接收、取消并有限等待，且生命周期清单明确登记其顺序。主仓 `app/` 已无裸 FastAPI `BackgroundTasks`；当前仍有约 `50` 个更底层 `create_task`/等价任务创建点，与线程池和 APScheduler 并存，后续需逐项确认 owner、取消、等待、重试、幂等和是否 durable，关键业务副作用优先接入已有 Outbox/恢复表。
 2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `194` 个仍使用 `legacy` aggregation，只有 `14` 个 `first_non_empty`、`4` 个 `ordered_list_merge`。`app/runtime/extensions/module/contracts.py:422-455` 已能登记 family、输入/结果标签和基础签名诊断，但 `193` 个方法没有 required parameters，调度器 `app/runtime/extensions/module/dispatcher.py:109-260` 仍主要依赖运行时反射、返回值形状和短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
-3. **查询侧数据库兼容 ABI 仍未完全收口。** 写事务装饰器已降为 `0`，事务所有权已经明显改善；但 `app/db/models` 仍有 `75` 个 `db_query/async_db_query`（`48` 个同步、`27` 个异步）。这些装饰器会在调用方未传 Session 时隐式创建并关闭会话（见 `app/db/decorators.py:224-298`），查询返回的 ORM 对象仍可能跨层流转，导致事务组合、对象生命周期和懒加载行为需要依赖隐含约定。站点、消息、用户和订阅高频查询已迁到对应 Oper 显式 Session 路径，后续继续按历史等风险切片迁移，不一次性全仓改写。
+3. **查询侧数据库兼容 ABI 仍未完全收口。** 写事务装饰器已降为 `0`，正式 `db_query/async_db_query` 已降至 `38` 个（`20` 个同步、`18` 个异步）。站点、消息、用户、订阅以及下载/整理历史的宿主 Oper 已迁到显式 Session 路径；下载/整理历史的旧插件 Model 调用由独立 `legacy_*` 外壳保留，可同时接受显式 Session 与无 Session 的位置/关键字参数。剩余正式装饰器仍会隐式创建会话，查询返回的 ORM 对象也可能跨层流转，后续继续按 Workflow、MediaServer 等风险切片迁移。
 4. **组合根和全局状态仍形成复杂的隐式运行时图。** Singleton 实例、模块级 provider、`configure_*` 注册函数和兼容 Facade 同时存在；它们解决了旧 ABI 和启动顺序问题，但增加测试污染、重复装配、实例身份和初始化顺序风险。`app/startup/lifecycle/__init__.py:161-376` 已有声明式生命周期，`app/startup/modules_initializer.py:505-530` 也有分阶段关闭，但尚未做到所有进程级资源都只通过 typed HostRuntime 访问。后续应以“新代码禁止新增 Service Locator/Singleton 依赖、旧入口有命中观测”为 ratchet。
 
 ### P2：中长期可演进性债务
@@ -55,7 +55,7 @@
 1. 未知第三方插件自定义模块方法继续走 `legacy` fallback，不能因宿主契约收口而拒绝加载旧插件。
 2. `PluginManager`、`PluginHelper`、`MoviePilotServerHelper` 等 Facade 继续保留旧公开/私有调用面，并通过 `compat.facade.hit` 统计迁移命中。
 3. `app/runtime/compat` 的精确旧导入映射、`app.sdk._legacy` 薄门面和插件 V1/V2/V3 三代索引继续存在，直到命中数据和发行策略支持删除。
-4. 查询装饰器保留为只读兼容入口，迁移以高频路径和可观测收益为依据，不以“全仓零装饰器”作为短期目标。
+4. 既有查询 Model 方法保留只读兼容入口；宿主 Oper 必须走显式 Session，`legacy_*` 只服务旧插件 ABI，不得成为新 Model 方法的默认模式。
 
 ### 建议的后续治理顺序
 
@@ -904,7 +904,7 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   事务低水位从 174 降到 168，Oper 仍不创建 Session、也不直接 commit/rollback。
 - 剩余同步/异步 Model 写装饰器已全部迁移：AgentTask、PassKey、User、消息、历史清理、
   站点快照、媒体服务器、插件数据、TransferPending 等写入由调用方 Session 和 UoW 收口；无 Session
-  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 75 个查询装饰器（同步 48、异步 27），
+  的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 正式查询装饰器仅剩 38 个（同步 20、异步 18），
   `db_update` 与 `async_db_update` 均为 0，Oper 自建 Session/直接提交仍为 0。
 - 数据清理按批次显式提交 UoW，单表失败先回滚会话再继续汇总后续表；不再依赖删除 Model 的隐式提交。
 - 收尾批次进一步移除宿主 Oper 对 `Base.create/update/delete/truncate` 八个兼容包装器的调用：显式
@@ -1174,8 +1174,14 @@ Settings 读取作为基础设施边界，架构基线已明确记录该例外�
 `model_dump` 旧 Settings ABI，并由应用组合根注入服务对象，低层 runtime 不再反向导入 `app.application`；
 `SkillHelper` 的技能市场写入继续经过兼容代理，旧插件/测试的模块级替换语义保持。`UserConfigOper` 的
 无 Session 查询改为一次性兼容查询会话，显式 Session 仍由调用方持有。配置债务稳定为 8 个文件，Model
-查询装饰器在消息、用户和订阅查询切片后进一步降至 75 个且写装饰器为 0；四分片全量测试 `5492 passed, 3 skipped`，mypy、复杂度、异步阻塞、
+查询装饰器在消息、用户和订阅查询切片后曾降至 75 个且写装饰器为 0；四分片全量测试 `5492 passed, 3 skipped`，mypy、复杂度、异步阻塞、
 host/plugin 架构基线均通过。
+
+2026-08-23 完成下载/整理历史查询切片：`TransferHistoryOper`、`DownloadHistoryOper` 的正式入口统一
+通过 `_execute_sync_query` / `_execute_async_query` 复用调用方 Session，正式查询装饰器由 75 降至
+38 个且写装饰器保持 0。旧插件仍可直接调用 Model 方法；`legacy_db_query` / `legacy_async_db_query`
+按签名插入一次性会话，兼容无 Session 的位置参数和关键字参数，同时显式 Session 不创建额外会话。
+历史查询、删除工具、类型门禁和插件架构专项共 `101 passed`，host/plugin 架构基线通过。
 
 #### ARCH-272：异步阻塞检测
 
@@ -1354,7 +1360,7 @@ rollback:
 | 基线写入行为 | 默认命令可能覆盖 fixture | 所有默认/check 命令保证工作树不变；write 必须显式 scope |
 | 全功能 worker | 配置允许 >1，控制面会复制 | 启动期明确拒绝 >1；文档与配置一致 |
 | 健康接口 | 认证 `/system/ping` 为主 | 分离公开 live 与受限/安全 ready；失败原因可诊断 |
-| Model 事务装饰器 | 当前 75 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
+| Model 事务装饰器 | 当前 38 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
 | 新写用例事务 | 宿主写 Oper 已脱离 Base 隐式提交 | 100% 由入口/Application 边界拥有 Session/UoW |
 | 高频 Module 契约 | 212 个宿主能力显式登记 | 新观察到的宿主方法必须同步登记完整契约 |
 | Event payload | 53 类型全部登记 typed payload 与可靠性 | 新事件必须同步登记，不回退裸 dict |

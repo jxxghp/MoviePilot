@@ -18,20 +18,28 @@ class DownloadHistoryOper(DbOper):
         按路径查询下载记录
         :param path: 数据key
         """
-        return DownloadHistory.get_by_path(self._db, path)
+        return self._execute_sync_query(
+            lambda session: DownloadHistory.get_by_path(session, path)
+        )
 
     def get_by_hash(self, download_hash: str) -> Optional[DownloadHistory]:
         """
         按Hash查询下载记录
         :param download_hash: 数据key
         """
-        return DownloadHistory.get_by_hash(self._db, download_hash)
+        return self._execute_sync_query(
+            lambda session: DownloadHistory.get_by_hash(session, download_hash)
+        )
 
     def get_by_hashes(self, download_hashes: List[str]) -> Dict[str, DownloadHistory]:
         """
         批量按 Hash 查询下载记录，并返回以 Hash 为键的映射。
         """
-        histories = DownloadHistory.get_by_hashes(self._db, download_hashes)
+        histories = self._execute_sync_query(
+            lambda session: DownloadHistory.get_by_hashes(
+                session, download_hashes
+            )
+        )
         return {
             history.download_hash: history
             for history in histories
@@ -48,11 +56,13 @@ class DownloadHistoryOper(DbOper):
         :param media_id: 数据源原生 ID
         :param music_type: 音乐实体类型
         """
-        return DownloadHistory.get_by_media_identity(
-            self._db,
-            media_source=media_source,
-            media_id=media_id,
-            music_type=music_type,
+        return self._execute_sync_query(
+            lambda session: DownloadHistory.get_by_media_identity(
+                session,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=music_type,
+            )
         )
 
     def add(self, **kwargs):
@@ -97,30 +107,48 @@ class DownloadHistoryOper(DbOper):
         :param download_hash: 数据key
         :param state: 删除状态
         """
-        return DownloadFiles.get_by_hash(self._db, download_hash, state)
+        return self._execute_sync_query(
+            lambda session: DownloadFiles.get_by_hash(
+                session, download_hash, state
+            )
+        )
 
     def get_file_by_fullpath(self, fullpath: str) -> Optional[DownloadFiles]:
         """
         按fullpath查询下载文件记录
         :param fullpath: 数据key
         """
-        return cast(Optional[DownloadFiles],
-                    DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False))
+        return self._execute_sync_query(
+            lambda session: cast(
+                Optional[DownloadFiles],
+                DownloadFiles.get_by_fullpath(
+                    session, fullpath=fullpath, all_files=False
+                ),
+            )
+        )
 
     def get_files_by_fullpath(self, fullpath: str) -> List[DownloadFiles]:
         """
         按fullpath查询下载文件记录
         :param fullpath: 数据key
         """
-        return cast(List[DownloadFiles],
-                    DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=True))
+        return self._execute_sync_query(
+            lambda session: cast(
+                List[DownloadFiles],
+                DownloadFiles.get_by_fullpath(
+                    session, fullpath=fullpath, all_files=True
+                ),
+            )
+        )
 
     def get_files_by_savepath(self, fullpath: str) -> List[DownloadFiles]:
         """
         按savepath查询下载文件记录
         :param fullpath: 数据key
         """
-        return DownloadFiles.get_by_savepath(self._db, fullpath)
+        return self._execute_sync_query(
+            lambda session: DownloadFiles.get_by_savepath(session, fullpath)
+        )
 
     def delete_file_by_fullpath(self, fullpath: str):
         """
@@ -147,8 +175,14 @@ class DownloadHistoryOper(DbOper):
         按fullpath查询下载文件记录hash
         :param fullpath: 数据key
         """
-        fileinfo = cast(Optional[DownloadFiles],
-                        DownloadFiles.get_by_fullpath(self._db, fullpath=fullpath, all_files=False))
+        fileinfo = self._execute_sync_query(
+            lambda session: cast(
+                Optional[DownloadFiles],
+                DownloadFiles.get_by_fullpath(
+                    session, fullpath=fullpath, all_files=False
+                ),
+            )
+        )
         if fileinfo:
             return fileinfo.download_hash
         return ""
@@ -157,7 +191,9 @@ class DownloadHistoryOper(DbOper):
         """
         分页查询下载历史
         """
-        return DownloadHistory.list_by_page(self._db, page, count)
+        return self._execute_sync_query(
+            lambda session: DownloadHistory.list_by_page(session, page, count)
+        )
 
     async def async_list_by_page(
         self,
@@ -165,7 +201,11 @@ class DownloadHistoryOper(DbOper):
         count: int = 30,
     ) -> List[DownloadHistory]:
         """异步分页查询下载历史。"""
-        return await DownloadHistory.async_list_by_page(self._db, page, count)
+        return await self._execute_async_query(
+            lambda session: DownloadHistory.async_list_by_page(
+                session, page, count
+            )
+        )
 
     async def async_delete_history(self, historyid: int):
         """
@@ -187,22 +227,30 @@ class DownloadHistoryOper(DbOper):
         按类型、标题、年份、季集查询下载记录
         媒体身份 + mtype 或 title + year
         """
-        return DownloadHistory.get_last_by(db=self._db,
-                                           mtype=mtype,
-                                           title=title,
-                                           year=year,
-                                           season=season,
-                                           episode=episode,
-                                           media_source=media_source,
-                                           media_id=media_id)
+        return self._execute_sync_query(
+            lambda session: DownloadHistory.get_last_by(
+                db=session,
+                mtype=mtype,
+                title=title,
+                year=year,
+                season=season,
+                episode=episode,
+                media_source=media_source,
+                media_id=media_id,
+            )
+        )
 
     def list_by_user_date(self, date: str, username: Optional[str] = None) -> List[DownloadHistory]:
         """
         查询某用户某时间之前的下载历史
         """
-        return DownloadHistory.list_by_user_date(db=self._db,
-                                                 date=date,
-                                                 username=username)
+        return self._execute_sync_query(
+            lambda session: DownloadHistory.list_by_user_date(
+                db=session,
+                date=date,
+                username=username,
+            )
+        )
 
     def list_by_date(
             self, date: str, type: str, media_source: MediaSource, media_id: str,
@@ -211,20 +259,28 @@ class DownloadHistoryOper(DbOper):
         """
         查询某时间之后的下载历史
         """
-        return DownloadHistory.list_by_date(db=self._db,
-                                            date=date,
-                                            type=type,
-                                            media_source=media_source,
-                                            media_id=media_id,
-                                            seasons=seasons)
+        return self._execute_sync_query(
+            lambda session: DownloadHistory.list_by_date(
+                db=session,
+                date=date,
+                type=type,
+                media_source=media_source,
+                media_id=media_id,
+                seasons=seasons,
+            )
+        )
 
     def list_by_type(self, mtype: str, days: int = 7) -> List[DownloadHistory]:
         """
         获取指定类型的下载历史
         """
-        return DownloadHistory.list_by_type(db=self._db,
-                                            mtype=mtype,
-                                            days=days)
+        return self._execute_sync_query(
+            lambda session: DownloadHistory.list_by_type(
+                db=session,
+                mtype=mtype,
+                days=days,
+            )
+        )
 
     def delete_history(self, historyid):
         """
