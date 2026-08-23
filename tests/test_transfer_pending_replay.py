@@ -8,11 +8,12 @@
 这些测试固定三项不变量：入队即落盘登记、终态即注销、重启能回放。
 """
 from pathlib import Path
+import threading
 from unittest.mock import MagicMock
 
 from app.chain.transfer import TransferChain
-from app.schemas import FileItem
 from app.application.transfer import TransferTask
+from app.schemas.file import FileItem
 
 
 def _build_chain(pendingoper) -> TransferChain:
@@ -231,3 +232,32 @@ def test_replay_continues_after_single_file_failure(tmp_path, monkeypatch):
     chain._TransferChain__replay_pending()
 
     assert handled == ["B.mkv"]
+
+
+def test_replay_stop_keeps_unprocessed_registrations(tmp_path, monkeypatch):
+    """
+    宿主关闭后不得继续检查或注销下一条登记，未处理项留给下次启动回放。
+    """
+    first = tmp_path / "A.mkv"
+    first.write_bytes(b"x")
+    missing_second = tmp_path / "gone.mkv"
+    pendingoper = MagicMock()
+    pendingoper.list_all.return_value = [
+        ("local", str(first)),
+        ("local", str(missing_second)),
+    ]
+    chain = _build_chain(pendingoper)
+    stop_event = threading.Event()
+    transferred = []
+
+    def transfer_first(**kwargs):
+        """首条回放送入整理链后模拟宿主发出关闭信号。"""
+        transferred.append(kwargs["fileitem"].path)
+        stop_event.set()
+
+    monkeypatch.setattr(chain, "do_transfer", transfer_first)
+
+    chain._TransferChain__replay_pending(stop_event)
+
+    assert transferred == [first.as_posix()]
+    pendingoper.discard.assert_not_called()

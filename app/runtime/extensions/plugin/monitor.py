@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import time
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
@@ -27,6 +27,8 @@ class PluginMonitorController:
         self._logger = log
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._lifecycle_lock = threading.RLock()
+        self._closed = False
 
     @property
     def stop_event(self) -> threading.Event:
@@ -35,32 +37,73 @@ class PluginMonitorController:
 
     def reload(self, enabled: bool) -> None:
         """按当前配置停止旧线程，并在启用时创建新线程。"""
-        self.stop()
-        if enabled:
+        stopped = self.stop()
+        if enabled and stopped:
             self.start()
 
     def start(self) -> None:
         """启动唯一的守护监控线程。"""
-        if self._thread and self._thread.is_alive():
-            self._logger.info("插件文件修改监测已经在运行中...")
-            return
-        self._logger.info("开始监测插件文件修改...")
-        self._stop_event.clear()
-        self._thread = threading.Thread(target=self._runner, daemon=True)
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._closed:
+                self._logger.info("插件文件修改监测已进入停机封口，跳过启动")
+                return
+            if self._thread and self._thread.is_alive():
+                self._logger.info("插件文件修改监测已经在运行中...")
+                return
+            self._logger.info("开始监测插件文件修改...")
+            self._stop_event.clear()
+            self._thread = threading.Thread(target=self._runner, daemon=True)
+            self._thread.start()
 
-    def stop(self) -> None:
-        """请求监控线程退出，并在限定时间内等待其清理。"""
-        if not self._thread or not self._thread.is_alive():
-            self._logger.info("未启用插件文件修改监测，无需停止")
-            return
-        self._logger.info("正在停止插件文件修改监测...")
+    def reopen(self) -> bool:
+        """为新的应用生命周期解除封口，仍有旧线程时拒绝重开。"""
+        with self._lifecycle_lock:
+            if self._thread and self._thread.is_alive():
+                self._logger.warning("旧插件文件监测线程仍在运行，无法开启新生命周期")
+                return False
+            self._thread = None
+            self._closed = False
+            return True
+
+    def stop(self, timeout: float = 5.0) -> bool:
+        """临时停止监控线程，并返回其是否在预算内真正退出。"""
+        return self._stop_with_budget(timeout=timeout, close=False)
+
+    def close(self, timeout: float = 5.0) -> bool:
+        """永久封口当前生命周期，并返回监控线程是否真正退出。"""
+        return self._stop_with_budget(timeout=timeout, close=True)
+
+    def _stop_with_budget(self, *, timeout: float, close: bool) -> bool:
+        """在同一预算内取得生命周期锁、设置封口并等待线程退出。"""
+        timeout = max(0.0, timeout)
+        deadline = time.monotonic() + timeout
         self._stop_event.set()
-        self._thread.join(timeout=5)
-        if self._thread.is_alive():
-            self._logger.warning("插件文件修改监测线程在5秒内未能正常停止。")
-        self._thread = None
-        self._logger.info("插件文件修改监测停止完成")
+        if not self._lifecycle_lock.acquire(timeout=timeout):
+            self._logger.warning(
+                f"插件文件修改监测线程在{timeout:g}秒内未能取得停机所有权。"
+            )
+            return False
+        try:
+            if close:
+                self._closed = True
+            thread = self._thread
+            self._stop_event.set()
+            if not thread or not thread.is_alive():
+                self._thread = None
+                self._logger.info("未启用插件文件修改监测，无需停止")
+                return True
+            self._logger.info("正在停止插件文件修改监测...")
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+            if thread.is_alive():
+                self._logger.warning(
+                    f"插件文件修改监测线程在{timeout:g}秒内未能正常停止。"
+                )
+                return False
+            self._thread = None
+            self._logger.info("插件文件修改监测停止完成")
+            return True
+        finally:
+            self._lifecycle_lock.release()
 
 
 class PluginChangeMonitor:

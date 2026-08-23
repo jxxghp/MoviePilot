@@ -4,7 +4,12 @@ from types import SimpleNamespace
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.agent.tools.impl._plugin_tool_utils import install_plugin_runtime
+import pytest
+
+from app.agent.tools.impl._plugin_tool_utils import (
+    install_plugin_runtime,
+    uninstall_plugin_runtime,
+)
 from app.agent.tools.impl.install_plugin import InstallPluginTool
 from app.agent.tools.impl.query_installed_plugins import QueryInstalledPluginsTool
 from app.agent.tools.impl.query_market_plugins import QueryMarketPluginsTool
@@ -14,6 +19,10 @@ from app.agent.tools.impl.reload_plugin import ReloadPluginTool
 from app.schemas.plugin import PluginRuntimeStatus
 from app.agent.tools.impl.uninstall_plugin import UninstallPluginTool
 from app.agent.tools.impl.update_plugin_config import UpdatePluginConfigTool
+from app.runtime.extensions.plugin.admission import (
+    PluginMutationAdmission,
+    PluginMutationRejectedError,
+)
 
 
 def _plugin_snapshot(state: bool = True) -> dict:
@@ -334,8 +343,7 @@ def test_install_plugin_runtime_reloads_in_threadpool() -> None:
     )
     assert len(calls) == 2
     assert calls[0][0] == "plugin"
-    assert calls[0][1] == plugin_manager.reload_plugin_tree
-    assert calls[0][2] == ("DemoPlugin",)
+    assert calls[0][2] == (plugin_manager.reload_plugin_tree, "DemoPlugin")
     assert calls[0][3] == {}
     assert calls[1][0] == "plugin"
     assert calls[1][1] == refresh_registrations
@@ -370,6 +378,32 @@ def test_uninstall_plugin_uninstalls_installed_candidate() -> None:
     assert payload["success"]
     assert payload["plugin"]["id"] == "DemoPlugin"
     uninstall_runtime.assert_awaited_once_with("DemoPlugin")
+
+
+def test_sealed_agent_uninstall_rejects_before_persistence() -> None:
+    """Agent 卸载未获 admission 时不读取实例或修改安装清单。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    plugin_manager = MagicMock()
+    plugin_manager.mutation.side_effect = admission.hold
+    config_oper = MagicMock()
+
+    with (
+        patch(
+            "app.agent.tools.impl._plugin_tool_utils.get_plugin_manager",
+            return_value=plugin_manager,
+        ),
+        patch(
+            "app.agent.tools.impl._plugin_tool_utils.SystemConfigOper",
+            return_value=config_oper,
+        ) as config_provider,
+        pytest.raises(PluginMutationRejectedError),
+    ):
+        asyncio.run(uninstall_plugin_runtime("DemoPlugin"))
+
+    plugin_manager.get_plugin_instance.assert_not_called()
+    config_provider.assert_not_called()
+    config_oper.async_set.assert_not_called()
 
 
 def test_query_plugin_data_truncates_large_payload() -> None:

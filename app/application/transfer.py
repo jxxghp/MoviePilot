@@ -191,9 +191,16 @@ class TransferFailureNotificationAggregator:
     NOTIFICATION_DEBOUNCE_SECONDS = 30
 
     def __init__(self) -> None:
-        """初始化分组缓冲和定时器。"""
+        """初始化分组缓冲、回调、定时器与关闭状态。"""
         self._buffers: dict[str, list[TransferFailureNotification]] = {}
+        self._callbacks: dict[
+            str,
+            Callable[[list[TransferFailureNotification]], None],
+        ] = {}
         self._timers: dict[str, asyncio.TimerHandle] = {}
+        self._generations: dict[str, int] = {}
+        self._lock = threading.Lock()
+        self._closed = False
 
     def schedule(
             self,
@@ -204,47 +211,127 @@ class TransferFailureNotificationAggregator:
             loop: asyncio.AbstractEventLoop,
     ) -> None:
         """从整理线程安全地把失败快照加入事件循环中的聚合缓冲。"""
-        loop.call_soon_threadsafe(
-            self._schedule_on_loop,
-            group_key,
-            notification,
-            callback,
-            loop,
-        )
+        # 先在调用线程登记快照，关闭流程才能覆盖已接收但尚未进入事件循环的通知。
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("整理失败通知聚合器正在关闭，不能再接收通知")
+            self._buffers.setdefault(group_key, []).append(notification)
+            self._callbacks[group_key] = callback
+            generation = self._generations.get(group_key, 0) + 1
+            self._generations[group_key] = generation
+        try:
+            loop.call_soon_threadsafe(
+                self._schedule_on_loop,
+                group_key,
+                generation,
+                callback,
+                loop,
+            )
+        except Exception as err:
+            logger.error(
+                f"创建整理失败通知聚合定时器失败，将立即发送 "
+                f"(group={group_key}): {err}"
+            )
+            self.flush(group_key, generation, callback)
 
     def _schedule_on_loop(
             self,
             group_key: str,
-            notification: TransferFailureNotification,
+            generation: int,
             callback: Callable[[list[TransferFailureNotification]], None],
             loop: asyncio.AbstractEventLoop,
     ) -> None:
-        """在所属事件循环中更新缓冲并重置静默窗口。"""
-        self._buffers.setdefault(group_key, []).append(notification)
-        timer = self._timers.pop(group_key, None)
-        if timer:
-            timer.cancel()
-        self._timers[group_key] = loop.call_later(
-            self.NOTIFICATION_DEBOUNCE_SECONDS,
-            self.flush,
-            group_key,
-            callback,
-        )
+        """在所属事件循环中为已登记缓冲重置静默窗口。"""
+        schedule_error: Optional[Exception] = None
+        with self._lock:
+            if (
+                    self._closed
+                    or group_key not in self._buffers
+                    or self._generations.get(group_key) != generation
+            ):
+                return
+            timer = self._timers.pop(group_key, None)
+            if timer:
+                timer.cancel()
+            try:
+                self._timers[group_key] = loop.call_later(
+                    self.NOTIFICATION_DEBOUNCE_SECONDS,
+                    self.flush,
+                    group_key,
+                    generation,
+                    callback,
+                )
+            except Exception as err:
+                schedule_error = err
+        if schedule_error is not None:
+            logger.error(
+                f"创建整理失败通知聚合定时器失败，将立即发送 "
+                f"(group={group_key}): {schedule_error}"
+            )
+            self.flush(group_key, generation, callback)
 
     def flush(
             self,
             group_key: str,
+            generation: int,
             callback: Callable[[list[TransferFailureNotification]], None],
     ) -> None:
         """发送一个分组内的聚合结果并释放缓冲。"""
-        notifications = self._buffers.pop(group_key, [])
-        self._timers.pop(group_key, None)
+        with self._lock:
+            # 新通知已登记但 timer 重置回调尚未执行时，旧代不得提前发送新批次。
+            if self._generations.get(group_key) != generation:
+                return
+            notifications = self._buffers.pop(group_key, [])
+            self._callbacks.pop(group_key, None)
+            timer = self._timers.pop(group_key, None)
+            self._generations.pop(group_key, None)
+        if timer:
+            timer.cancel()
         if not notifications:
             return
+        self._deliver(group_key, notifications, callback)
+
+    @staticmethod
+    def _deliver(
+            group_key: str,
+            notifications: list[TransferFailureNotification],
+            callback: Callable[[list[TransferFailureNotification]], None],
+    ) -> None:
+        """调用聚合通知回调，并统一观察发送异常。"""
         try:
             callback(notifications)
         except Exception as err:
             logger.error(f"发送整理失败聚合通知失败 (group={group_key}): {err}")
+
+    def close(self) -> None:
+        """停止接收新通知，取消定时器并同步发送全部已缓冲通知。"""
+        with self._lock:
+            if self._closed and not self._buffers and not self._timers:
+                return
+            self._closed = True
+            timers = list(self._timers.values())
+            pending = []
+            orphaned = []
+            for group_key, notifications in self._buffers.items():
+                callback = self._callbacks.get(group_key)
+                if callback is None:
+                    orphaned.append((group_key, len(notifications)))
+                    continue
+                pending.append((group_key, notifications, callback))
+            self._timers.clear()
+            self._generations.clear()
+            self._buffers.clear()
+            self._callbacks.clear()
+
+        for timer in timers:
+            timer.cancel()
+        for group_key, notification_count in orphaned:
+            logger.error(
+                f"整理失败通知聚合缓冲缺少发送回调，无法刷新 "
+                f"(group={group_key}, count={notification_count})"
+            )
+        for group_key, notifications, callback in pending:
+            self._deliver(group_key, notifications, callback)
 
 
 # 作业锁：JobManager 与 TransferChain 共享，保护整理作业视图。
@@ -267,7 +354,8 @@ class JobManager:
     # 记录仍由主程序整理线程直接执行的任务，避免把阻塞中的本地任务误判为失活
     _active_executions: set[Tuple[str, str]] = set()
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化当前进程内的整理作业状态。"""
         self._job_view = {}
         self._season_episodes = {}
         self._meta_to_media_ids = {}
@@ -1011,25 +1099,68 @@ class JobManager:
 
 class FailedRetryScheduler:
     """
-    负责失败整理记录的 debounce 聚合与 AI 重试调度。
+    负责失败整理记录的进程内 debounce 聚合与 AI 重试调度。
+
+    缓冲不提供持久化保证；关闭时会取消尚未触发的记录，由上层 durable
+    工作流在后续阶段承接需要跨进程保证的重试意图。
     """
 
     RETRY_TRANSFER_DEBOUNCE_SECONDS = 300
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化重试缓冲、定时器、活跃任务集合与关闭状态。"""
         super().__init__()
         self._retry_transfer_buffer: dict[str, list[int]] = {}
         self._retry_transfer_timers: dict[str, asyncio.TimerHandle] = {}
+        self._retry_transfer_generations: dict[str, int] = {}
+        self._retry_transfer_tasks: set[asyncio.Task[None]] = set()
         self._retry_transfer_lock = asyncio.Lock()
+        self._closed = False
 
-    async def close(self):
+    async def close(self) -> None:
+        """停止接收重试，取消定时器，并等待活跃 flush 任务完成取消。"""
         async with self._retry_transfer_lock:
+            self._closed = True
             timers = list(self._retry_transfer_timers.values())
+            buffered_count = sum(
+                len(history_ids)
+                for history_ids in self._retry_transfer_buffer.values()
+            )
             self._retry_transfer_timers.clear()
+            self._retry_transfer_generations.clear()
             self._retry_transfer_buffer.clear()
+            tasks = tuple(self._retry_transfer_tasks)
 
         for timer in timers:
             timer.cancel()
+        if buffered_count:
+            logger.warning(
+                f"智能体重试整理调度器关闭，取消 {buffered_count} 条未持久化缓冲记录"
+            )
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _start_retry_transfer_task(self, group_key: str, generation: int) -> None:
+        """把定时器到期后的 flush 建为具名且受本调度器管理的任务。"""
+        if self._closed:
+            return
+        task = asyncio.create_task(
+            self._flush_retry_transfer(group_key, generation),
+            name="transfer.failed_retry.flush",
+        )
+        self._retry_transfer_tasks.add(task)
+        task.add_done_callback(self._observe_retry_transfer_task)
+
+    def _observe_retry_transfer_task(self, task: asyncio.Task[None]) -> None:
+        """移除已结束任务，并观察未被 flush 逻辑处理的异常。"""
+        self._retry_transfer_tasks.discard(task)
+        if task.cancelled():
+            return
+        exception = task.exception()
+        if exception is not None:
+            logger.error(f"智能体重试整理后台任务异常: {exception}")
 
     @staticmethod
     def _build_retry_transfer_template_context(
@@ -1054,7 +1185,7 @@ class FailedRetryScheduler:
             template_context=template_context,
         )
 
-    async def schedule_retry(self, history_id: int, group_key: str = ""):
+    async def schedule_retry(self, history_id: int, group_key: str = "") -> None:
         """
         同一 group_key 的失败记录会在缓冲期内合并为一次 agent 调用。
         """
@@ -1062,6 +1193,8 @@ class FailedRetryScheduler:
             group_key = f"_default_{history_id}"
 
         async with self._retry_transfer_lock:
+            if self._closed:
+                raise RuntimeError("智能体重试整理调度器正在关闭，不能再接收任务")
             if group_key not in self._retry_transfer_buffer:
                 self._retry_transfer_buffer[group_key] = []
             if history_id not in self._retry_transfer_buffer[group_key]:
@@ -1075,18 +1208,26 @@ class FailedRetryScheduler:
                 self._retry_transfer_timers[group_key].cancel()
 
             loop = asyncio.get_running_loop()
+            generation = self._retry_transfer_generations.get(group_key, 0) + 1
+            self._retry_transfer_generations[group_key] = generation
             self._retry_transfer_timers[group_key] = loop.call_later(
                 self.RETRY_TRANSFER_DEBOUNCE_SECONDS,
-                lambda gk=group_key: asyncio.create_task(self._flush_retry_transfer(gk)),
+                self._start_retry_transfer_task,
+                group_key,
+                generation,
             )
 
-    async def _flush_retry_transfer(self, group_key: str):
+    async def _flush_retry_transfer(self, group_key: str, generation: int) -> None:
         """
         延迟定时器到期后，取出该分组的所有 history_id 并合并为一次 agent 调用。
         """
         async with self._retry_transfer_lock:
+            # callback 到期与真正取得锁之间可能有新记录续期；旧代不能提前取走新批次。
+            if self._retry_transfer_generations.get(group_key) != generation:
+                return
             history_ids = self._retry_transfer_buffer.pop(group_key, [])
             self._retry_transfer_timers.pop(group_key, None)
+            self._retry_transfer_generations.pop(group_key, None)
 
         if not history_ids:
             return

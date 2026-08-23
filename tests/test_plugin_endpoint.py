@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import nullcontext
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from app.api.endpoints import plugin as plugin_endpoint
@@ -13,6 +14,7 @@ from app.api.endpoints.plugin import uninstall_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.application.plugin.config import PluginConfigCommand
 from app.runtime.config import settings
+from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.tasks import TaskRegistry
 from app.schemas.event import PluginDataResetEventData
@@ -495,6 +497,7 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
         reload_runtime=plugin_manager.reload_plugin,
         publish_reset=publish_reset,
         refresh_registrations=lambda _plugin_id: None,
+        mutation=lambda _operation: nullcontext(),
     )
     result = reset_plugin("SubscribeAssistantEnhanced", None, command)
 
@@ -590,6 +593,82 @@ def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
     )
     plugin_manager.delete_plugin_instance.assert_called_once_with("DemoPluginwork")
     plugin_manager.remove_plugin.assert_called_once_with("DemoPluginwork")
+
+
+def test_sealed_http_uninstall_rejects_before_first_side_effect(monkeypatch):
+    """HTTP 卸载在封口后明确失败，且不读取或写入插件持久化状态。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    plugin_manager = MagicMock()
+    plugin_manager.mutation.side_effect = admission.hold
+    config_provider = MagicMock()
+    remove_api = MagicMock()
+    remove_job = MagicMock()
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_configured_system_config",
+        config_provider,
+    )
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", remove_api)
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", remove_job)
+
+    result = uninstall_plugin("DemoPlugin", None)
+
+    assert result.success is False
+    assert "停机阶段" in result.message
+    plugin_manager.get_plugin_instance.assert_not_called()
+    config_provider.assert_not_called()
+    remove_api.assert_not_called()
+    remove_job.assert_not_called()
+
+
+def test_sealed_http_clone_rejects_before_runtime_and_registration(monkeypatch):
+    """HTTP 分身事务未获 admission 时不创建实例、不刷新注册或文件夹。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    plugin_manager = MagicMock()
+    plugin_manager.mutation.side_effect = admission.hold
+    register = MagicMock()
+    add_to_folder = MagicMock()
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_endpoint, "register_plugin", register)
+    monkeypatch.setattr(plugin_endpoint, "_add_clone_to_plugin_folder", add_to_folder)
+
+    result = plugin_endpoint.clone_plugin(
+        "DemoPlugin",
+        schemas.PluginCloneRequest(suffix="Work"),
+        None,
+    )
+
+    assert result.success is False
+    assert "停机阶段" in result.message
+    plugin_manager.clone_plugin.assert_not_called()
+    register.assert_not_called()
+    add_to_folder.assert_not_called()
+
+
+def test_sealed_http_folder_update_rejects_before_config_access(monkeypatch):
+    """插件文件夹写入口在封口后不读取或改写持久化配置。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    plugin_manager = MagicMock()
+    plugin_manager.mutation.side_effect = admission.hold
+    config_provider = MagicMock()
+    monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_configured_system_config",
+        config_provider,
+    )
+
+    result = asyncio.run(
+        plugin_endpoint.update_folder_plugins("常用", ["DemoPlugin"], None)
+    )
+
+    assert result.success is False
+    assert "停机阶段" in result.message
+    config_provider.assert_not_called()
 
 
 def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():

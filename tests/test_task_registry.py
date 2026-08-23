@@ -50,7 +50,7 @@ def test_task_registry_cancels_tasks_and_rejects_late_registration() -> None:
 
         task = registry.create(worker(), owner="test.shutdown")
         await started.wait()
-        await registry.shutdown(timeout_seconds=1.0)
+        assert await registry.shutdown(timeout_seconds=1.0) is True
 
         assert task.cancelled()
         assert cancelled.is_set()
@@ -108,7 +108,7 @@ def test_task_registry_keeps_timed_out_sync_owner_until_real_completion() -> Non
             task = registry.create_sync(worker, owner="test.sync-timeout")
             assert await asyncio.to_thread(started.wait, 1.0)
 
-            await registry.shutdown(timeout_seconds=0.001)
+            assert await registry.shutdown(timeout_seconds=0.001) is False
 
             assert not task.done()
             assert [record.owner for record in registry.records] == [
@@ -155,7 +155,7 @@ def test_task_registry_keeps_stubborn_cancelled_task_visible() -> None:
         task = registry.create(worker(), owner="test.stubborn")
         await started.wait()
         try:
-            await registry.shutdown(timeout_seconds=0.001)
+            assert await registry.shutdown(timeout_seconds=0.001) is False
 
             assert cleanup_started.is_set()
             assert not task.done()
@@ -165,7 +165,7 @@ def test_task_registry_keeps_stubborn_cancelled_task_visible() -> None:
             ]
             assert reports[-1]["owners"] == ("test.stubborn",)
 
-            await registry.shutdown(timeout_seconds=0.001)
+            assert await registry.shutdown(timeout_seconds=0.001) is False
             assert not task.done()
             assert cancellation_count == 1
             assert len(reports) == 1

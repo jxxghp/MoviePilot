@@ -129,7 +129,7 @@ from app.command import CommandChain
 from app.schemas.message import Message
 from app.schemas.message import MessageType
 from app.schemas.types import EventType, SystemConfigKey
-from app.startup.agent_initializer import init_agent, stop_agent
+from app.startup.agent_initializer import init_agent
 from app.startup.database import build_database_governance
 from app.startup.managed_resources_initializer import (
     init_managed_resources,
@@ -560,6 +560,22 @@ def close_browser_sessions() -> None:
     BrowserSessionHelper.close_all_sessions()
 
 
+async def drain_events() -> bool:
+    """在插件卸载前等待已接收事件及其同步、异步处理器完成。"""
+    event_manager = EventManager.get_existing_instance()
+    if event_manager is None:
+        return True
+    return await event_manager.drain_async(seal=True)
+
+
+async def settle_events() -> bool:
+    """在插件 handler 停用后结算在途事件，但保留停机 hook 的尾事件入口。"""
+    event_manager = EventManager.get_existing_instance()
+    if event_manager is None:
+        return True
+    return await event_manager.drain_async(seal=False)
+
+
 async def stop_modules():
     """
     服务关闭
@@ -578,7 +594,6 @@ async def stop_modules():
             logger.error(f"关闭{name}失败：{err}")
             return True
 
-    await run_step("AI智能体", stop_agent)
     await run_step("模块", lambda: ModuleManager().shutdown())
     await run_step("事件消费", lambda: EventManager().stop_async())
     await run_step("浏览器会话", close_browser_sessions)

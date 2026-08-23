@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权。
 
 ## 当前复核结论（2026-08-23）
 
@@ -15,8 +15,8 @@
 
 ### 长期整改阶段 0：治理门禁恢复（2026-08-23）
 
-- 宿主依赖基线已审查 TaskRegistry 接入后的语义差异：当前为 `800` 个模块、`6479` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
-- 启动性能探针会在隔离生命周期中真实创建并释放 TaskRegistry；normal/safe 组件数分别为 `16`/`8`，CI 只读检查使用稳定的宿主模块集合和生命周期组件顺序，不再把 Python/平台模块数量当作硬合同。
+- 宿主依赖基线已审查 TaskRegistry 与有界后台 owner 接入后的语义差异：当前为 `800` 个模块、`6482` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
+- 启动性能探针会在隔离生命周期中真实创建并释放 TaskRegistry；normal/safe 组件数分别为 `20`/`10`，CI 只读检查使用稳定的宿主模块集合和生命周期组件顺序，不再把 Python/平台模块数量当作硬合同。
 - 官方插件快照覆盖 `plugins.v3`、`plugins.v2` 以及 V3 实际会从 `package.json` 回退加载的 31 个默认实现；`app/plugins/**` 仍只是宿主运行副本，不进入扫描。
 - SDK 快照以各模块显式 `__all__` 为公开合同，能够记录赋值别名；`typing`、`__future__` 等实现期导入不再被误冻结，既有数据库备份门面已补精确导出清单。
 - async 阻塞实际债务已由 fixture 中的 10 项下降到 1 项并固化低水位；剩余项是 Scheduler Agent task 查询，后续阶段迁入异步查询边界后归零。
@@ -35,6 +35,36 @@
   关停不会再次打断其异步清理，超时诊断也按任务去重。
 - 本子阶段仍只覆盖 TaskRegistry。Transfer worker/replay、Agent blocking executor、Event handler
   drain、通道线程和 E2/E3 durable 完成点继续作为阶段 1 后续切片，不能因 owner 门禁通过而宣称完成。
+
+### 长期整改阶段 1b1：整理后台生命周期所有权（2026-08-23）
+
+- `TransferChain` 为每一代整理 worker 使用独立停止信号；配置热更新只让旧代完成已经进入同步 I/O 的
+  工作，不再让旧线程重新领取新任务。超时旧线程继续由 `_retiring_threads` 持有，重复关闭可以继续等待，
+  不把无法强制取消的文件操作伪装成已结束。生命周期锁等待与 worker/replay join 共用同一个 deadline，
+  停止哨兵也不再被误算成真实队列任务而阻止最后一批进度结算。
+- pending 回放改为单一受管线程，启动重复调用不会并发扫描；关停信号会在查询、`stat` 和逐条回放边界
+  重新检查，尚未处理的 `TransferPending` 登记保持不变。关闭与 `queue.get()` 竞争时，尚未开始的任务会
+  原样放回队列并保持 `task_done()` 计数平衡。
+- 失败通知聚合器和 AI 重试 scheduler 现在拥有 timer、buffer 与 flush task 的显式 `close()`；分组使用
+  generation 阻止旧 timer 在新静默窗口尚未 armed 时提前消费新批次。跨线程提交 AI 重试产生的 Future
+  也会观察最终异常，不再只用提交调用外层的 `try/except` 假设异步执行成功。
+- 生命周期新增常驻“整理后台服务” owner：正常模式和安全模式都只关闭已存在的单例，不会在 shutdown
+  反向创建 worker。插件文件监控、Scheduler、Agent 和整理 owner 先停止宿主生产任务；随后封口插件变更、
+  停用插件事件入口并结算全部在途 handler，最后才调用插件私有 timer、scheduler、watcher 的旧停机 hook。
+  任一阶段返回 `False` 或超时，`FAIL_FAST` 屏障都会停止释放仍可能被活线程使用的后续依赖。
+- EventManager 同时持有线程池同步 handler Future 和事件循环异步 handler completion；“事件投递屏障”会
+  等待队列、handler 及 handler 派生事件自然收敛，再原子封住新的广播提交。为兼容无法声明资源依赖的
+  旧插件，宿主先停用其新 handler 投递，再用非封口屏障等待已经开始的 handler 退出，之后按原顺序调用
+  `close`/`stop_service`；hook 产生的尾事件仍可由其他宿主 handler 消费，最终屏障后才卸载插件实例。
+  事件消费、共享线程池和模块资源仍在插件之后关闭。
+- lifespan 启动中途失败会记录已完成及当前部分启动的组件，递归纳入已激活依赖对应的 stop-only owner，
+  并复用正常停机的顺序、超时和 `FAIL_FAST` 策略。后段初始化失败不再只停止 TaskRegistry 后遗留 Scheduler、
+  Transfer、Event、插件或 HTTP 资源。
+- 兼容边界没有变化：`do_transfer`、队列与手工整理公开签名、模块方法 kwargs、插件整理事件类型及 payload、
+  同步插件 ABI 和动态 API 原生返回结构均未改名或包裹；本阶段也没有 schema/Alembic 变更。
+- 本阶段只证明进程内 owner、取消、等待和依赖释放顺序。失败通知仍可能在业务提交后、消息接受前随进程
+  崩溃而丢失；五分钟 AI 重试缓冲仍未持久化；`TransferPending` 仍只有 `storage + src_path`，不能表达文件
+  副作用 checkpoint、lease 和未知完成状态。它们分别留给阶段 1b2、1b3、1b4，不能据此宣称 E2/E3 完成。
 
 ### 总体判断
 

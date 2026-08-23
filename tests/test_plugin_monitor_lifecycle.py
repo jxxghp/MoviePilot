@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +17,7 @@ from app.runtime.extensions.plugin.monitor import (
     PluginChangeMonitor,
     PluginMonitorController,
 )
+from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
@@ -65,8 +67,9 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
         missing_dependencies=("DependencyPending",),
         missing_source=("SourcePending",),
     )
+    manager.reopen_plugins.side_effect = lambda: order.append("reopen") or True
     manager.start.side_effect = lambda plugin_id: order.append(f"plugin:{plugin_id}")
-    manager.start_monitor.side_effect = lambda: order.append("monitor")
+    manager.start_monitor.side_effect = lambda **_kwargs: order.append("monitor")
     monkeypatch.setattr(
         plugins_initializer,
         "configure_plugin_services",
@@ -81,8 +84,16 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
 
     plugins_initializer.init_plugins()
 
-    assert order == ["services", "plugin:ReadyPlugin", "routes", "monitor"]
+    assert order == [
+        "services",
+        "reopen",
+        "plugin:ReadyPlugin",
+        "routes",
+        "monitor",
+    ]
+    manager.reopen_plugins.assert_called_once_with()
     manager.set_plugin_settling.assert_called_once_with(True)
+    manager.start_monitor.assert_called_once_with(reopen=True)
 
 
 def test_plugin_manager_projects_dependency_classification_to_runtime_status() -> None:
@@ -153,6 +164,26 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
     )
     manager.get_plugin_runtime_statuses.return_value = {}
     return register
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_rejects_before_configuring_mutable_services(
+    monkeypatch,
+) -> None:
+    """启动后同步在 admission 封口后不重装配服务、不写包或运行态。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    manager = MagicMock()
+    manager.mutation.side_effect = admission.hold
+    configure = MagicMock()
+    monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
+    monkeypatch.setattr(plugins_initializer, "configure_plugin_services", configure)
+
+    assert await plugins_initializer.sync_plugins() is False
+
+    configure.assert_not_called()
+    manager.set_plugin_settling.assert_not_called()
+    manager.sync.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -392,6 +423,303 @@ def test_plugin_monitor_waits_until_dependency_settlement(monkeypatch) -> None:
     _reset_plugin_manager()
 
 
+def test_monitor_stop_keeps_thread_owned_until_it_really_exits() -> None:
+    """停止超时后保留活线程引用，使后续停机调用仍能继续等待。"""
+    started = threading.Event()
+    release = threading.Event()
+
+    def runner() -> None:
+        """模拟暂时无法响应停止事件的文件监控循环。"""
+        started.set()
+        release.wait()
+
+    controller = PluginMonitorController(runner=runner, log=MagicMock())
+    controller.start()
+    assert started.wait(1)
+    owned_thread = controller._thread
+
+    try:
+        assert controller.stop(timeout=0.01) is False
+        assert controller._thread is owned_thread
+        assert owned_thread is not None and owned_thread.is_alive()
+    finally:
+        release.set()
+        assert controller.stop(timeout=1) is True
+
+    assert controller._thread is None
+    assert controller.stop(timeout=0) is True
+
+
+def test_monitor_stop_counts_lifecycle_lock_wait_in_timeout() -> None:
+    """并发重建占用生命周期锁时，停止调用不得突破自身预算。"""
+    controller = PluginMonitorController(runner=lambda: None, log=MagicMock())
+    lock_acquired = threading.Event()
+    release = threading.Event()
+
+    def hold_lifecycle_lock() -> None:
+        """模拟配置重载在停止请求到达时仍持有生命周期锁。"""
+        with controller._lifecycle_lock:
+            lock_acquired.set()
+            release.wait()
+
+    holder = threading.Thread(target=hold_lifecycle_lock, daemon=True)
+    holder.start()
+    assert lock_acquired.wait(1)
+    started_at = time.monotonic()
+
+    try:
+        assert controller.stop(timeout=0.01) is False
+        assert time.monotonic() - started_at < 0.2
+    finally:
+        release.set()
+        holder.join(timeout=1)
+
+    assert holder.is_alive() is False
+    assert controller.stop(timeout=0) is True
+
+
+def test_shutdown_seal_blocks_reload_between_stop_and_start(monkeypatch) -> None:
+    """停机封口落在热重载停启间隙时，旧重载不得再创建监控线程。"""
+    reload_stopped = threading.Event()
+    resume_reload = threading.Event()
+    runner_started = threading.Event()
+    controller = PluginMonitorController(
+        runner=lambda: runner_started.set(),
+        log=MagicMock(),
+    )
+    original_stop = controller.stop
+
+    def pause_after_stop(timeout: float = 5.0) -> bool:
+        """把配置热重载稳定暂停在旧线程已停、新线程未启的窗口。"""
+        stopped = original_stop(timeout=timeout)
+        reload_stopped.set()
+        resume_reload.wait()
+        return stopped
+
+    monkeypatch.setattr(controller, "stop", pause_after_stop)
+    reload_thread = threading.Thread(
+        target=lambda: controller.reload(enabled=True),
+        daemon=True,
+    )
+    reload_thread.start()
+    assert reload_stopped.wait(1)
+
+    try:
+        assert controller.close(timeout=1) is True
+        resume_reload.set()
+        reload_thread.join(timeout=1)
+        assert reload_thread.is_alive() is False
+        assert runner_started.is_set() is False
+        assert controller._thread is None
+    finally:
+        resume_reload.set()
+        reload_thread.join(timeout=1)
+
+    assert controller.reopen() is True
+    controller.start()
+    assert runner_started.wait(1)
+    assert controller.close(timeout=1) is True
+
+
+def test_plugin_manager_stop_monitor_returns_controller_result(monkeypatch) -> None:
+    """管理器停止入口透传线程收口结果和调用预算。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    manager = PluginManager()
+    stop = MagicMock(return_value=False)
+    manager._plugin_monitor.stop = stop
+
+    try:
+        assert manager.stop_monitor(timeout=0.25) is False
+        stop.assert_called_once_with(timeout=0.25)
+    finally:
+        _reset_plugin_manager()
+
+
+def test_plugin_manager_start_monitor_can_reopen_new_lifespan(monkeypatch) -> None:
+    """新应用生命周期可显式解除封口，再按运行配置启动监控。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.settings",
+        SimpleNamespace(
+            DEV=True,
+            PLUGIN_AUTO_RELOAD=False,
+            ROOT_PATH=MagicMock(),
+        ),
+    )
+    manager = PluginManager()
+    reopen = MagicMock(return_value=True)
+    start = MagicMock()
+    manager._plugin_monitor.reopen = reopen
+    manager._plugin_monitor.start = start
+
+    try:
+        manager.start_monitor(reopen=True)
+        reopen.assert_called_once_with()
+        start.assert_called_once_with()
+    finally:
+        _reset_plugin_manager()
+
+
+def test_stop_plugin_monitor_does_not_materialize_manager() -> None:
+    """插件运行时尚未创建时，独立停机入口直接视为已完成。"""
+    _reset_plugin_manager()
+
+    assert plugins_initializer.stop_plugin_monitor(timeout=0) is True
+    assert PluginManager.get_existing_instance() is None
+
+
+def test_stop_plugin_monitor_returns_existing_manager_result(monkeypatch) -> None:
+    """启动层入口只操作既有管理器，并透传超时失败。"""
+    manager = MagicMock()
+    manager.close_monitor.return_value = False
+    manager_type = SimpleNamespace(get_existing_instance=lambda: manager)
+    monkeypatch.setattr(plugins_initializer, "PluginManager", manager_type)
+
+    assert plugins_initializer.stop_plugin_monitor(timeout=0.25) is False
+    manager.close_monitor.assert_called_once_with(timeout=0.25)
+
+
+@pytest.mark.asyncio
+async def test_two_phase_plugin_shutdown_does_not_materialize_manager() -> None:
+    """两阶段入口在插件管理器尚未创建时都直接视为已收敛。"""
+    _reset_plugin_manager()
+
+    assert await plugins_initializer.quiesce_plugins(timeout=0) is True
+    assert plugins_initializer.finalize_plugins() is True
+    assert PluginManager.get_existing_instance() is None
+
+
+@pytest.mark.asyncio
+async def test_quiesce_timeout_retains_future_owner_until_worker_finishes(
+    monkeypatch,
+) -> None:
+    """同步插件 hook 超时后必须保留 Future，且未结束前拒绝卸载实例。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.settings",
+        SimpleNamespace(
+            DEV=False,
+            PLUGIN_AUTO_RELOAD=False,
+            ROOT_PATH=MagicMock(),
+        ),
+    )
+    manager = PluginManager()
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_quiesce() -> bool:
+        """模拟无法由 asyncio 取消的同步旧插件 hook。"""
+        started.set()
+        release.wait(timeout=2)
+        return True
+
+    manager._plugin_lifecycle.quiesce = MagicMock(side_effect=blocking_quiesce)
+    manager._plugin_lifecycle.finalize = MagicMock(return_value=True)
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            thread_helper = SimpleNamespace(submit=executor.submit)
+            monkeypatch.setattr(
+                "app.runtime.extensions.plugin_manager.ThreadHelper",
+                lambda: thread_helper,
+            )
+
+            assert await manager.quiesce_plugins(timeout=0.01) is False
+            assert started.is_set()
+            owner = manager._plugin_quiesce_future
+            assert owner is not None
+            assert owner.done() is False
+            assert manager.finalize_plugins() is False
+            manager._plugin_lifecycle.finalize.assert_not_called()
+
+            release.set()
+            assert await asyncio.wrap_future(owner) is True
+            assert manager.finalize_plugins() is True
+            manager._plugin_lifecycle.finalize.assert_called_once_with()
+    finally:
+        release.set()
+        _reset_plugin_manager()
+
+
+@pytest.mark.asyncio
+async def test_quiesce_seals_runtime_until_new_lifespan_reopens(monkeypatch) -> None:
+    """屏障前封口后 start/reload/config 不能重开 producer，新 lifespan 可显式恢复。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.settings",
+        SimpleNamespace(
+            DEBUG=False,
+            DEV=False,
+            PLUGIN_AUTO_RELOAD=False,
+            ROOT_PATH=MagicMock(),
+        ),
+    )
+    manager = PluginManager()
+    manager._plugin_lifecycle.quiesce = MagicMock(return_value=True)
+    manager._plugin_lifecycle.start = MagicMock(
+        return_value={"DemoPlugin": PluginRuntimeStatus.ACTIVE}
+    )
+    manager._plugin_lifecycle.reload = MagicMock(
+        return_value=PluginRuntimeStatus.ACTIVE
+    )
+    manager._plugin_lifecycle.stop = MagicMock(return_value=True)
+    manager._plugin_lifecycle.initialize = MagicMock()
+    manager._plugin_lifecycle._disable_events = MagicMock()
+    manager._plugin_registry.remove = MagicMock()
+    manager._plugin_registry.set_runtime_status = MagicMock()
+    manager.classify_plugins = MagicMock()
+
+    class DemoPlugin:
+        """代表 quiesce 后仍由严格生命周期持有的运行实例。"""
+
+    plugin_instance = DemoPlugin()
+    manager._plugins["DemoPlugin"] = DemoPlugin
+    manager._running_plugins["DemoPlugin"] = plugin_instance
+
+    try:
+        assert await manager.quiesce_plugins(timeout=1) is True
+
+        assert manager.start("DemoPlugin") == {
+            "DemoPlugin": PluginRuntimeStatus.LOAD_FAILED
+        }
+        assert manager.stop("DemoPlugin") is None
+        assert manager.remove_plugin("DemoPlugin") is None
+        assert (
+            manager.reload_plugin("DemoPlugin")
+            is PluginRuntimeStatus.LOAD_FAILED
+        )
+        manager.init_plugin("DemoPlugin", {})
+        manager.init_config()
+        manager._plugin_lifecycle.start.assert_not_called()
+        manager._plugin_lifecycle.stop.assert_not_called()
+        manager._plugin_lifecycle.reload.assert_not_called()
+        manager._plugin_lifecycle.initialize.assert_not_called()
+        manager._plugin_lifecycle._disable_events.assert_not_called()
+        manager._plugin_registry.remove.assert_not_called()
+        manager._plugin_registry.set_runtime_status.assert_not_called()
+        manager.classify_plugins.assert_not_called()
+        assert manager._plugins["DemoPlugin"] is DemoPlugin
+        assert manager._running_plugins["DemoPlugin"] is plugin_instance
+
+        assert manager.reopen_plugins() is False
+        manager._plugins.clear()
+        manager._running_plugins.clear()
+        assert manager.reopen_plugins() is True
+        assert manager.start("DemoPlugin") == {
+            "DemoPlugin": PluginRuntimeStatus.ACTIVE
+        }
+        assert (
+            manager.reload_plugin("DemoPlugin")
+            is PluginRuntimeStatus.ACTIVE
+        )
+    finally:
+        _reset_plugin_manager()
+
+
 def test_plugin_monitor_skips_installing_plugin_until_package_write_finishes(tmp_path) -> None:
     """安装替换目录期间，文件事件不得抢先导入未完成的插件包。"""
     reload_plugin = MagicMock()
@@ -466,11 +794,12 @@ def test_stop_plugins_stops_monitor_before_plugin_runtime(monkeypatch) -> None:
     """关闭时先隔离文件变化，再停止插件实例。"""
     order: list[str] = []
     manager = MagicMock()
-    manager.stop_monitor.side_effect = lambda: order.append("monitor")
+    manager.stop_monitor.side_effect = lambda: order.append("monitor") or True
     manager.stop.side_effect = lambda: order.append("plugins")
-    monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
+    manager_type = SimpleNamespace(get_existing_instance=lambda: manager)
+    monkeypatch.setattr(plugins_initializer, "PluginManager", manager_type)
 
-    plugins_initializer.stop_plugins()
+    assert plugins_initializer.stop_plugins() is True
 
     assert order == ["monitor", "plugins"]
 
@@ -479,8 +808,89 @@ def test_stop_plugins_still_stops_runtime_when_monitor_stop_fails(monkeypatch) -
     """监控线程停止异常不得阻止插件实例释放资源。"""
     manager = MagicMock()
     manager.stop_monitor.side_effect = RuntimeError("monitor stop failed")
-    monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
+    manager_type = SimpleNamespace(get_existing_instance=lambda: manager)
+    monkeypatch.setattr(plugins_initializer, "PluginManager", manager_type)
 
-    plugins_initializer.stop_plugins()
+    assert plugins_initializer.stop_plugins() is False
 
     manager.stop.assert_called_once_with()
+
+
+def test_stop_plugins_does_not_materialize_manager() -> None:
+    """插件初始化尚未创建管理器时，失败清理不得反向构造运行时。"""
+    _reset_plugin_manager()
+
+    assert plugins_initializer.stop_plugins() is True
+
+    assert PluginManager.get_existing_instance() is None
+
+
+def test_stop_plugins_remains_idempotent(monkeypatch) -> None:
+    """兼容停机入口可重复调用，并保持每次先停监控再停插件。"""
+    order: list[str] = []
+    manager = MagicMock()
+    manager.stop_monitor.side_effect = lambda: order.append("monitor") or True
+    manager.stop.side_effect = lambda: order.append("plugins")
+    manager_type = SimpleNamespace(get_existing_instance=lambda: manager)
+    monkeypatch.setattr(plugins_initializer, "PluginManager", manager_type)
+
+    assert plugins_initializer.stop_plugins() is True
+    assert plugins_initializer.stop_plugins() is True
+
+    assert order == ["monitor", "plugins", "monitor", "plugins"]
+
+
+def test_plugin_manager_legacy_stop_preserves_none_return() -> None:
+    """公共 PluginManager.stop 委托单阶段停机后保持历史 None 返回 ABI。"""
+    manager = object.__new__(PluginManager)
+    manager._plugin_quiesce_lock = threading.RLock()
+    manager._plugin_runtime_closed = False
+    manager._plugin_quiesce_future = None
+    manager._plugin_mutation_admission = PluginMutationAdmission()
+    manager._plugin_lifecycle = SimpleNamespace(stop=MagicMock(return_value=True))
+
+    assert PluginManager.stop(manager, "DemoPlugin") is None
+
+    manager._plugin_lifecycle.stop.assert_called_once_with("DemoPlugin")
+
+
+def test_config_reload_continues_after_legacy_stop() -> None:
+    """配置热重载保持旧行为，stop 的 None 返回不得阻止重新分类和启动。"""
+    manager = object.__new__(PluginManager)
+    manager._plugin_quiesce_lock = threading.RLock()
+    manager._plugin_runtime_closed = False
+    manager._plugin_mutation_admission = PluginMutationAdmission()
+    manager.stop = MagicMock(return_value=None)
+    manager.classify_plugins = MagicMock(
+        return_value=PluginDependencyClassification(
+            ready=("ReadyPlugin",),
+            missing_dependencies=(),
+            missing_source=(),
+        )
+    )
+    manager.apply_plugin_dependency_classification = MagicMock()
+    manager.start = MagicMock()
+
+    PluginManager.init_config(manager)
+
+    manager.stop.assert_called_once_with()
+    manager.classify_plugins.assert_called_once_with()
+    manager.apply_plugin_dependency_classification.assert_called_once_with(
+        manager.classify_plugins.return_value
+    )
+    manager.start.assert_called_once_with("ReadyPlugin")
+
+
+def test_remove_plugin_clears_registry_after_legacy_stop() -> None:
+    """卸载路径保持忽略旧 stop 返回值并继续清理注册表。"""
+    manager = object.__new__(PluginManager)
+    manager._plugin_quiesce_lock = threading.RLock()
+    manager._plugin_runtime_closed = False
+    manager._plugin_mutation_admission = PluginMutationAdmission()
+    manager._plugin_lifecycle = SimpleNamespace(stop=MagicMock(return_value=None))
+    manager._plugin_registry = SimpleNamespace(remove=MagicMock())
+
+    PluginManager.remove_plugin(manager, "DemoPlugin")
+
+    manager._plugin_lifecycle.stop.assert_called_once_with("DemoPlugin")
+    manager._plugin_registry.remove.assert_called_once_with("DemoPlugin")

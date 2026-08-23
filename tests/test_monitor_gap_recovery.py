@@ -1,14 +1,16 @@
 import os
+import threading
 import time
 from unittest.mock import MagicMock
 
 from watchfiles import Change
 
 from app.runtime.config import settings
-from app.monitor import LocalDirectoryWatcher, Monitor
 from app.monitor.dispatcher import TransferDispatcher
+from app.monitor.monitor import Monitor
 from app.monitor.recovery import RecoveryExecutor
 from app.monitor.syslimits import decide_monitor_mode
+from app.monitor.watcher import LocalDirectoryWatcher
 from app.adapters.system.host import SystemUtils
 
 
@@ -24,13 +26,24 @@ def _build_monitor(handle_file: MagicMock = None):
     if handle_file is not None:
         dispatcher.handle_file = handle_file
     monitor._dispatcher = dispatcher
+    monitor._lifecycle_lock = threading.RLock()
+    monitor._owner_lock = threading.Lock()
+    monitor._work_stop_event = threading.Event()
+    monitor._shutdown_event = threading.Event()
+    monitor._closed = False
+    monitor._compensation_threads = {}
+    monitor._scheduler_shutdown_thread = None
+    monitor._scheduler_shutdown_succeeded = False
+    monitor._scheduler = None
     monitor._watchers = []
+    monitor._retired_watchers = []
     monitor._watcher_lock = Lock()
     monitor._alerted_paths = {}
     monitor._restart_marks = {}
     monitor._stable_cycles = {}
     monitor._isolated = {}
     monitor._pending_rebuild = {}
+    monitor._pending_locals = []
     monitor._recovery = RecoveryExecutor()
     return monitor, dispatcher
 

@@ -638,6 +638,8 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         )
         self._semaphore = asyncio.Semaphore(SUBAGENT_MAX_CONCURRENT_TASKS)
         self._tasks: dict[str, _SubAgentRuntimeTask] = {}
+        self._accepting_tasks = True
+        self._close_cancel_requested: set[asyncio.Task] = set()
         self.tools = [
             StructuredTool.from_function(
                 coroutine=self._control_task,
@@ -811,6 +813,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
 
     def _mark_task_finished(self, task_id: str, task: asyncio.Task) -> None:
         """记录任务完成时间并取出异常避免未读取告警。"""
+        cancel_requested = getattr(self, "_close_cancel_requested", None)
+        if cancel_requested is not None:
+            cancel_requested.discard(task)
         record = self._tasks.get(task_id)
         if record:
             record.finished_at = datetime.now()
@@ -895,6 +900,8 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
     @staticmethod
     async def _cancel_records(
         records: list[_SubAgentRuntimeTask],
+        *,
+        cancel_requested: Optional[set[asyncio.Task]] = None,
     ) -> list[_SubAgentRuntimeTask]:
         """取消一组任务，并返回等待上限内仍未收敛的记录。"""
         cancellable_tasks = [
@@ -903,7 +910,11 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         if cancellable_tasks:
             logger.info(f"开始取消子代理任务: tasks={len(cancellable_tasks)}")
         for task in cancellable_tasks:
+            if cancel_requested is not None and task in cancel_requested:
+                continue
             task.cancel()
+            if cancel_requested is not None:
+                cancel_requested.add(task)
         if not cancellable_tasks:
             return []
 
@@ -922,8 +933,15 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             logger.info(f"子代理任务取消完成: tasks={len(cancellable_tasks)}")
         return [record for record in records if record.task in pending]
 
-    async def close(self) -> None:
-        """取消脱离当前 Agent 回合的子代理任务。"""
+    def seal(self) -> None:
+        """封住新的 detached 子代理提交，既有任务继续由记录表持有。"""
+        self._accepting_tasks = False
+
+    async def close(self) -> bool:
+        """有限等待 detached 子代理；超时保留记录并返回 False。"""
+        self.seal()
+        if not hasattr(self, "_close_cancel_requested"):
+            self._close_cancel_requested = set()
         unfinished_records = [
             record for record in self._tasks.values() if not record.task.done()
         ]
@@ -931,8 +949,19 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             logger.info(
                 f"关闭子代理任务控制器，取消未完成任务: tasks={len(unfinished_records)}"
             )
-        await self._cancel_records(unfinished_records)
+        pending_records = await self._cancel_records(
+            unfinished_records,
+            cancel_requested=self._close_cancel_requested,
+        )
+        if pending_records:
+            self._tasks = {
+                record.task_id: record
+                for record in pending_records
+            }
+            return False
         self._tasks.clear()
+        self._close_cancel_requested.clear()
+        return True
 
     @staticmethod
     def _pipeline_description(
@@ -1051,6 +1080,8 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         previous_results: list[tuple[_SubAgentRuntimeTask, str]] = []
         timeout = normalized_timeout_ms / 1000
         for step_index, spec in enumerate(specs, start=1):
+            if not self._accepting_tasks:
+                return records, "子代理任务控制器正在关闭，不能再启动新任务。"
             record = self._create_pipeline_record(spec)
             records.append(record)
             pipeline_description = self._pipeline_description(
@@ -1108,6 +1139,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         """管理异步子代理任务。"""
         logger.info(f"收到子代理管控操作: action={action}")
         if action in {"start", "run", "pipeline"}:
+            if not self._accepting_tasks:
+                error = "子代理任务控制器正在关闭，不能再启动新任务。"
+                return self._json_response({"success": False, "error": error})
             specs, error = self._normalize_specs(
                 description=description,
                 subagent_type=subagent_type,

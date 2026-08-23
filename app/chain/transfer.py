@@ -2,9 +2,12 @@ import asyncio
 import queue
 import re
 import threading
+import time
 import traceback
 import uuid
 from collections import Counter
+from concurrent.futures import CancelledError as FutureCancelledError
+from concurrent.futures import Future
 from copy import deepcopy
 from pathlib import Path
 from typing import List, Optional, Tuple, Union, Dict, Callable, Any
@@ -87,9 +90,16 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
     文件整理处理链
     """
 
+    # worker 在构造期启动；若中途失败，单例仍需先发布给 lifespan 清理入口。
+    _retain_failed_singleton = True
+
     CONFIG_WATCH = {
         "TRANSFER_THREADS",
     }
+
+    _WORKER_RESTART_TIMEOUT_SECONDS = 30.0
+    _WORKER_CLOSE_TIMEOUT_SECONDS = 30.0
+    _QUEUE_STOP_SENTINEL = object()
 
     @staticmethod
     def _transfer_result_payload(
@@ -108,7 +118,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             "transfer_history_id": history_id,
         }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化文件整理处理链。"""
         super().__init__()
         # 主要媒体文件后缀
@@ -141,7 +151,17 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         self._progress = ProgressHelper(ProgressKey.FileTransfer)
         # 队列相关状态
         self._threads = []
+        self._retiring_threads: List[threading.Thread] = []
         self._queue_active = False
+        # 每一代 worker 使用独立停止信号，避免热更新启动新 worker 后旧线程重新取任务
+        self._worker_stop_event = threading.Event()
+        # 生命周期操作串行化；状态锁只保护短临界区，不覆盖同步文件 I/O 等待
+        self._worker_lifecycle_lock = threading.RLock()
+        self._worker_state_lock = threading.RLock()
+        self._closing = False
+        # pending 回放同样由整理链持有，关闭时可阻止继续处理下一条登记
+        self._replay_thread: Optional[threading.Thread] = None
+        self._replay_stop_event = threading.Event()
         self._active_tasks = 0
         self._processed_num = 0
         self._fail_num = 0
@@ -149,33 +169,210 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         # 启动整理任务
         self.__init()
 
-    def __init(self):
-        """
-        启动文件整理线程
-        """
-        self._queue_active = True
-        for i in range(self.runtime_config.transfer_threads):
-            logger.info(f"启动文件整理线程 {i + 1} ...")
-            thread = threading.Thread(
-                target=self.__start_transfer, name=f"transfer-{i}", daemon=True
+    def __init(self) -> bool:
+        """启动一代文件整理线程，并返回是否成功取得 worker 所有权。"""
+        with self._worker_lifecycle_lock:
+            with self._worker_state_lock:
+                if self._closing:
+                    logger.warning("文件整理链已进入关闭状态，拒绝重新启动 worker")
+                    return False
+                self._retiring_threads = [
+                    thread for thread in self._retiring_threads if thread.is_alive()
+                ]
+                alive_threads = [thread for thread in self._threads if thread.is_alive()]
+                if alive_threads:
+                    logger.error(
+                        "上一代文件整理线程尚未收敛，拒绝并行启动新 worker：%s",
+                        ", ".join(thread.name for thread in alive_threads),
+                    )
+                    self._threads = alive_threads
+                    return False
+                stop_event = threading.Event()
+                threads = [
+                    threading.Thread(
+                        target=self.__start_transfer,
+                        args=(stop_event,),
+                        name=f"transfer-{index}",
+                        daemon=True,
+                    )
+                    for index in range(self.runtime_config.transfer_threads)
+                ]
+                self._worker_stop_event = stop_event
+                self._threads = threads
+                self._queue_active = True
+                for index, thread in enumerate(threads):
+                    logger.info(f"启动文件整理线程 {index + 1} ...")
+                    thread.start()
+                return True
+
+    @staticmethod
+    def __join_threads(
+            threads: List[threading.Thread], deadline: float
+    ) -> List[threading.Thread]:
+        """在统一截止时间内等待线程，返回仍未收敛且继续由调用方持有的线程。"""
+        current_thread = threading.current_thread()
+        for thread in threads:
+            if thread is current_thread or not thread.is_alive():
+                continue
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        return [thread for thread in threads if thread.is_alive()]
+
+    def __acquire_worker_lifecycle_lock(self, deadline: float) -> bool:
+        """在统一截止时间内取得 worker 生命周期锁，并兼容同线程 RLock 重入。"""
+        return self._worker_lifecycle_lock.acquire(
+            timeout=max(0.0, deadline - time.monotonic())
+        )
+
+    def __request_worker_stop(self) -> List[threading.Thread]:
+        """发布当前 worker 代的停止信号，并用哨兵唤醒空闲线程。"""
+        with self._worker_state_lock:
+            self._queue_active = False
+            self._worker_stop_event.set()
+            current_threads = list(self._threads)
+            threads = [*self._retiring_threads, *current_threads]
+            for _ in current_threads:
+                self._queue.put(self._QUEUE_STOP_SENTINEL)
+            return threads
+
+    def __stop(self, timeout_seconds: float = _WORKER_RESTART_TIMEOUT_SECONDS) -> bool:
+        """在锁等待与线程 join 的共享预算内停止当前 worker 代。"""
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        if not self.__acquire_worker_lifecycle_lock(deadline):
+            logger.error(
+                "未在 %.1f 秒内取得文件整理 worker 生命周期锁",
+                max(0.0, timeout_seconds),
             )
-            self._threads.append(thread)
-            thread.start()
+            return False
+        try:
+            threads = self.__request_worker_stop()
+            alive_threads = self.__join_threads(threads, deadline)
+            with self._worker_state_lock:
+                self._threads = []
+                self._retiring_threads = alive_threads
+            if alive_threads:
+                logger.error(
+                    "文件整理线程未在 %.1f 秒内收敛，仍由 TransferChain 持有：%s",
+                    max(0.0, timeout_seconds),
+                    ", ".join(thread.name for thread in alive_threads),
+                )
+                return False
+            logger.info("文件整理线程已停止")
+            return True
+        finally:
+            self._worker_lifecycle_lock.release()
 
-    def __stop(self):
+    def close_workers(self, timeout_seconds: float = _WORKER_CLOSE_TIMEOUT_SECONDS) -> bool:
         """
-        停止文件整理进程
-        """
-        self._queue_active = False
-        for thread in self._threads:
-            thread.join()
-        self._threads = []
-        logger.info("文件整理线程已停止")
+        关闭整理 worker 与 pending 回放，并拒绝后续队列写入。
 
-    def on_config_changed(self):
+        这是宿主生命周期使用的同步边界。停止信号只能阻止线程领取下一项工作，不能
+        取消已经进入同步文件或数据库 I/O 的调用；超过预算时保留活线程句柄并返回
+        False，调用方据此避免过早释放仍被使用的数据库等下游资源。
+        :param timeout_seconds: 生命周期锁、worker 与回放线程共享的最大等待秒数
+        :return: 全部后台线程均已收敛时返回 True，否则返回 False
+        """
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        if not self.__acquire_worker_lifecycle_lock(deadline):
+            logger.error(
+                "未在 %.1f 秒内取得整理后台生命周期锁，关闭未开始",
+                max(0.0, timeout_seconds),
+            )
+            return False
+        try:
+            with self._worker_state_lock:
+                self._closing = True
+                worker_threads = self.__request_worker_stop()
+                replay_thread = self._replay_thread
+                self._replay_stop_event.set()
+
+            alive_workers = self.__join_threads(worker_threads, deadline)
+            alive_replays = self.__join_threads(
+                [replay_thread] if replay_thread else [], deadline
+            )
+            with self._worker_state_lock:
+                self._threads = []
+                self._retiring_threads = alive_workers
+                if replay_thread and not alive_replays and self._replay_thread is replay_thread:
+                    self._replay_thread = None
+
+            alive_threads = [*alive_workers, *alive_replays]
+            if alive_threads:
+                logger.error(
+                    "整理后台线程未在 %.1f 秒内收敛，仍由 TransferChain 持有：%s",
+                    max(0.0, timeout_seconds),
+                    ", ".join(thread.name for thread in alive_threads),
+                )
+                return False
+            logger.info("文件整理 worker 与待处理回放线程已关闭")
+            return True
+        finally:
+            self._worker_lifecycle_lock.release()
+
+    async def close(self, timeout_seconds: float = _WORKER_CLOSE_TIMEOUT_SECONDS) -> bool:
+        """
+        收口整理线程、失败通知和 AI 重试，并返回依赖是否可以安全释放。
+
+        同步文件 I/O 在线程内无法被 asyncio 取消，因此先在线程池中执行有界
+        ``close_workers``。只有 worker 与 replay 全部退出后才关闭通知和重试；若
+        超时则保留这些依赖，供仍在运行的整理回调继续使用。
+        :param timeout_seconds: worker 与 replay 共享的最大等待秒数
+        :return: 所有整理后台 owner 均已收敛时返回 True
+        """
+        workers_closed = await asyncio.to_thread(
+            self.close_workers,
+            timeout_seconds,
+        )
+        if not workers_closed:
+            return False
+        self.failure_notification_aggregator.close()
+        await self.retry_scheduler.close()
+        return True
+
+    @staticmethod
+    def _observe_failed_retry_schedule(future: Future[None]) -> None:
+        """观察跨线程 AI 重试调度的完成结果，避免关闭竞态变成静默异常。"""
+        try:
+            future.result()
+        except FutureCancelledError:
+            return
+        except Exception as err:
+            logger.error(f"触发AI智能体重试整理失败: {err}")
+
+    def _schedule_failed_transfer_retry(
+            self,
+            history_id: int,
+            group_key: str,
+    ) -> None:
+        """把失败历史提交到主事件循环，并持续持有和观察调度结果。"""
+        retry_coroutine = self.retry_scheduler.schedule_retry(
+            history_id,
+            group_key=group_key,
+        )
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                retry_coroutine,
+                global_vars.loop,
+            )
+        except Exception as err:
+            retry_coroutine.close()
+            logger.error(f"触发AI智能体重试整理失败: {err}")
+            return
+        future.add_done_callback(self._observe_failed_retry_schedule)
+        logger.info(f"已触发AI智能体重试整理历史记录 #{history_id}")
+
+    def on_config_changed(self) -> None:
         """配置变更时重启文件整理线程。"""
-        self.__stop()
-        self.__init()
+        with self._worker_lifecycle_lock:
+            if self._closing:
+                logger.info("文件整理链正在关闭，忽略 worker 配置热更新")
+                return
+            if not self.__stop(
+                    timeout_seconds=self._WORKER_RESTART_TIMEOUT_SECONDS
+            ):
+                logger.warning(
+                    "旧文件整理 worker 仍在收尾；其停止信号保持有效，新一代接管后续队列"
+                )
+            self.__init()
 
     def __default_callback(
             self, task: TransferTask, transferinfo: TransferInfo, /
@@ -344,19 +541,12 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     and self.runtime_config.ai_agent_enable
                     and self.runtime_config.ai_agent_retry_transfer
             ):
-                try:
-                    # 使用 download_hash 或源文件父目录作为分组键，
-                    # 同一批次（如同一个种子）的失败记录会被合并为一次agent调用
-                    group_key = build_transfer_failure_group_key(task)
-                    asyncio.run_coroutine_threadsafe(
-                        self.retry_scheduler.schedule_retry(
-                            history.id, group_key=group_key
-                        ),
-                        global_vars.loop,
-                    )
-                    logger.info(f"已触发AI智能体重试整理历史记录 #{history.id}")
-                except Exception as e:
-                    logger.error(f"触发AI智能体重试整理失败: {e}")
+                # 使用 download_hash 或源文件父目录作为分组键，
+                # 同一批次（如同一个种子）的失败记录会被合并为一次agent调用
+                self._schedule_failed_transfer_retry(
+                    history.id,
+                    build_transfer_failure_group_key(task),
+                )
 
             # 返回失败
             ret_status = False
@@ -653,7 +843,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         :param task: 任务信息
         :return: True表示任务已添加到队列，False表示任务无效或已存在（重复）
         """
-        return self._transfer_queue_service().put(task, self.__default_callback)
+        with self._worker_state_lock:
+            if self._closing:
+                logger.warning("文件整理链已关闭，拒绝新的队列任务")
+                return False
+            return self._transfer_queue_service().put(task, self.__default_callback)
 
     def _transfer_queue_service(self) -> TransferQueueService:
         """构建保持旧队列对象和私有兼容接缝的应用服务。"""
@@ -667,26 +861,54 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             expire_tasks=self.__expire_stale_transfer_tasks,
         )
 
-    def replay_pending(self):
+    def replay_pending(self) -> None:
         """
         回放上次进程退出时仍未整理完的文件。
 
         在后台线程执行：回放要 stat 源文件，而启动期挂载可能尚未就绪甚至处于
         挂死状态，同步执行会把整个启动流程堵住。
         """
-        threading.Thread(
-            target=self.__replay_pending,
-            name="MoviePilot-TransferReplay",
-            daemon=True
-        ).start()
+        with self._worker_state_lock:
+            if self._closing:
+                logger.info("文件整理链正在关闭，跳过待处理文件回放")
+                return
+            if self._replay_thread and self._replay_thread.is_alive():
+                logger.info("待处理文件回放已在运行，跳过重复启动")
+                return
+            stop_event = threading.Event()
+            thread = threading.Thread(
+                target=self.__run_replay_pending,
+                args=(stop_event,),
+                name="MoviePilot-TransferReplay",
+                daemon=True,
+            )
+            self._replay_stop_event = stop_event
+            self._replay_thread = thread
+            # 在状态锁内启动，避免 close_workers 看到尚未 start 的线程后错误 join。
+            thread.start()
 
-    def __replay_pending(self):
+    def __run_replay_pending(self, stop_event: threading.Event) -> None:
+        """执行一次受控回放，并在自然结束后释放当前线程句柄。"""
+        try:
+            self.__replay_pending(stop_event)
+        finally:
+            with self._worker_state_lock:
+                if self._replay_thread is threading.current_thread():
+                    self._replay_thread = None
+
+    def __replay_pending(
+            self, stop_event: Optional[threading.Event] = None
+    ) -> None:
         """
         把落盘登记的待整理文件重新送回整理入口。
 
         只回放「存储 + 源路径」这一最小事实，重新走完整的识别与整理流程，
         已经整理完成的由整理历史查重挡掉，因此不存在重复整理的问题。
+        :param stop_event: 宿主关闭信号；只阻止处理下一条登记，不取消运行中的同步 I/O
         """
+        stop_event = stop_event or threading.Event()
+        if stop_event.is_set():
+            return
         try:
             pendings = self._pendingoper.list_all()
         except Exception as err:
@@ -697,8 +919,13 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         logger.info(f"发现 {len(pendings)} 个上次未整理完的文件，正在重新送入整理链 ...")
         replayed = 0
         for storage, src_path in pendings:
+            if stop_event.is_set():
+                break
             try:
                 fileitem, should_discard = self.__build_replay_fileitem(storage, src_path)
+                # stat 等同步 I/O 返回后重新检查，关闭期间不得注销尚未完成的登记。
+                if stop_event.is_set():
+                    break
                 if not fileitem:
                     if should_discard:
                         # 源文件确认已消失，注销登记避免每次启动重复回放
@@ -708,7 +935,13 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 replayed += 1
             except Exception as err:
                 logger.error(f"回放待整理文件失败：{storage}:{src_path} - {err}")
-        logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")
+        if stop_event.is_set():
+            logger.info(
+                "待整理文件回放收到关闭请求，已送入 %s 个文件，其余登记保持待处理",
+                replayed,
+            )
+        else:
+            logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")
 
     @staticmethod
     def __build_replay_fileitem(storage: str, src_path: str) -> Tuple[Optional[FileItem], bool]:
@@ -876,21 +1109,69 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         self.jobview.try_remove_job(task)
         self._finish_scrape_batch_task(task)
 
-    def __start_transfer(self):
+    def __settle_transfer_progress_if_idle(self) -> None:
+        """在没有 active 或未结算真实任务时结束进度并重置本批计数。"""
+        with task_lock:
+            # unfinished_tasks 同时覆盖队列内任务和已被其他 worker 取走、尚未来得及
+            # 登记 active 的任务。持有 Queue 自身互斥锁完成判断和计数重置，使并发
+            # enqueue 只能发生在旧批次归零之后；仍在 deque 中的停止哨兵不算真实任务。
+            with self._queue.all_tasks_done:
+                queued_stop_sentinels = sum(
+                    item is self._QUEUE_STOP_SENTINEL
+                    for item in self._queue.queue
+                )
+                has_unsettled_tasks = (
+                    self._queue.unfinished_tasks > queued_stop_sentinels
+                )
+                if (
+                        self._active_tasks != 0
+                        or self._processed_num <= 0
+                        or has_unsettled_tasks
+                ):
+                    return
+                processed_num = self._processed_num
+                fail_num = self._fail_num
+                self._total_num = 0
+                self._processed_num = 0
+                self._fail_num = 0
+            __end_msg = (
+                f"整理队列处理完成，共整理 {processed_num} 个文件，"
+                f"失败 {fail_num} 个"
+            )
+            logger.info(__end_msg)
+            self._progress.update(value=100, text=__end_msg)
+            self._progress.end()
+
+    def __start_transfer(self, stop_event: threading.Event) -> None:
         """
-        处理队列
+        处理当前 worker 代的队列，停止后不领取下一项任务。
+
+        :param stop_event: 当前 worker 代专属停止信号，热更新后不会被重新清除
         """
-        while not global_vars.is_system_stopped and self._queue_active:
+        while not global_vars.is_system_stopped and not stop_event.is_set():
             try:
                 item: TransferQueue = self._queue.get(
                     block=True, timeout=self._transfer_interval
                 )
+                if item is self._QUEUE_STOP_SENTINEL:
+                    self._queue.task_done()
+                    self.__settle_transfer_progress_if_idle()
+                    if stop_event.is_set() or global_vars.is_system_stopped:
+                        break
+                    continue
+                if stop_event.is_set() or global_vars.is_system_stopped:
+                    # 关闭信号与 queue.get 竞态时，把尚未处理的任务放回队列；其
+                    # TransferPending 登记保持不变，供同进程重启 worker 或下次启动回放。
+                    self._queue.put(item)
+                    self._queue.task_done()
+                    break
                 if not item:
                     continue
 
                 task = item.task
                 if not task:
                     self._queue.task_done()
+                    self.__settle_transfer_progress_if_idle()
                     continue
 
                 # 文件信息
@@ -966,18 +1247,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     with task_lock:
                         # 减少运行中的任务数
                         self._active_tasks -= 1
-                        # 检查是否所有任务都已完成且队列为空
-                        if self._active_tasks == 0 and self._queue.empty():
-                            # 结束进度
-                            __end_msg = f"整理队列处理完成，共整理 {self._processed_num} 个文件，失败 {self._fail_num} 个"
-                            logger.info(__end_msg)
-                            self._progress.update(value=100, text=__end_msg)
-                            self._progress.end()
-                            # 重置计数，_total_num 一并归零，否则会作为历史最大值一直
-                            # 累积，令后续批次的「当前共 N 个文件」与进度百分比失真
-                            self._total_num = 0
-                            self._processed_num = 0
-                            self._fail_num = 0
+                    self.__settle_transfer_progress_if_idle()
 
             except queue.Empty:
                 # 即使队列空了，如果还有任务在运行，也不应该结束进度
@@ -1113,18 +1383,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             and self.runtime_config.ai_agent_enable
                             and self.runtime_config.ai_agent_retry_transfer
                     ):
-                        try:
-                            # 使用 download_hash 或源文件父目录作为分组键
-                            group_key = build_transfer_failure_group_key(task)
-                            asyncio.run_coroutine_threadsafe(
-                                self.retry_scheduler.schedule_retry(
-                                    his.id, group_key=group_key
-                                ),
-                                global_vars.loop,
-                            )
-                            logger.info(f"已触发AI智能体重试整理历史记录 #{his.id}")
-                        except Exception as e:
-                            logger.error(f"触发AI智能体重试整理失败: {e}")
+                        # 使用 download_hash 或源文件父目录作为分组键
+                        self._schedule_failed_transfer_retry(
+                            his.id,
+                            build_transfer_failure_group_key(task),
+                        )
 
                     return False, "未识别到媒体信息"
 

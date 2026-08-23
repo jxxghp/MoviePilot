@@ -4,6 +4,7 @@ import random
 import threading
 import traceback
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 from queue import Empty, PriorityQueue
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any, Type
@@ -32,6 +33,10 @@ MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
 INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 1  # 事件队列空闲时的初始超时时间（秒）
 MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 5  # 事件队列空闲时的最大超时时间（秒）
 _EVENT_STOP_SENTINEL = object()
+_CURRENT_EVENT_HANDLER_OWNER: ContextVar[object | None] = ContextVar(
+    "current_event_handler_owner",
+    default=None,
+)
 
 
 @dataclass(slots=True)
@@ -121,10 +126,11 @@ class EventManager(metaclass=Singleton):
         self.__lock = threading.Lock()
         # 退出事件
         self.__event = threading.Event()
-        # 广播异步处理器的生命周期由事件总线自己持有，避免关闭后仍向主循环运行。
+        # 广播处理器由事件总线统一持有，确保插件卸载前可以建立结算屏障。
         self.__lifecycle_lock = threading.RLock()
         self.__lifecycle_state = "new"
-        self.__async_handles: Dict[int, _EventAsyncHandle] = {}
+        self.__sync_handles: Dict[object, concurrent.futures.Future[Any]] = {}
+        self.__async_handles: Dict[object, _EventAsyncHandle] = {}
         # 由上层管理器注册的处理器实例解析器
         self.__handler_instance_resolvers: Dict[str, HandlerInstanceResolver] = {}
         # 由启动组合层注入的错误通知回调
@@ -155,6 +161,7 @@ class EventManager(metaclass=Singleton):
             event_factory=Event,
             error_handler=lambda **kwargs: self.__handle_event_error(**kwargs),
             async_handle_sink=self.__register_async_handle,
+            sync_handle_sink=self.__register_sync_handle,
         )
 
     def register_handler_instance_resolver(
@@ -188,6 +195,9 @@ class EventManager(metaclass=Singleton):
             if self.__lifecycle_state == "stopping":
                 logger.warning("事件处理仍在停止，忽略重复启动")
                 return
+            if self.__lifecycle_state == "sealed":
+                logger.warning("事件处理已封口，忽略重复启动")
+                return
             self.__lifecycle_state = "running"
             self.__event.set()
             self.__consumer_threads = []
@@ -199,14 +209,19 @@ class EventManager(metaclass=Singleton):
 
     def stop(self):
         """
-        停止广播事件处理线程
+        兼容同步关闭入口，等待同步处理器并请求取消异步处理器。
+
+        调用线程无法安全等待主事件循环完成异步清理；需要完整异步收口时应使用
+        stop_async()。
         """
         logger.info("正在停止事件处理...")
         consumer_threads = self.__begin_stop()
         try:
             self.__join_consumer_threads(consumer_threads)
             self.__discard_stop_sentinels()
-            self.__cancel_async_handles()
+            current_owner = _CURRENT_EVENT_HANDLER_OWNER.get()
+            self.__cancel_async_handles(exclude_owner=current_owner)
+            self.__wait_sync_handles(exclude_owner=current_owner)
             logger.info("事件处理停止完成")
         except Exception as e:
             logger.error(f"停止事件处理线程出错：{str(e)} - {traceback.format_exc()}")
@@ -216,7 +231,7 @@ class EventManager(metaclass=Singleton):
                 self.__consumer_threads = []
 
     async def stop_async(self) -> None:
-        """停止广播消费者并等待已投递的异步处理器收口。"""
+        """停止广播消费者，等待同步处理器并取消收口异步处理器。"""
         logger.info("正在停止事件处理...")
         consumer_threads = self.__begin_stop()
         try:
@@ -226,15 +241,29 @@ class EventManager(metaclass=Singleton):
                     consumer_threads,
                 )
             self.__discard_stop_sentinels()
+            current_owner = _CURRENT_EVENT_HANDLER_OWNER.get()
             with self.__lifecycle_lock:
-                handles = tuple(self.__async_handles.values())
-            for handle in handles:
+                async_handles = tuple(
+                    handle
+                    for owner, handle in self.__async_handles.items()
+                    if owner is not current_owner
+                )
+                sync_handles = tuple(
+                    handle
+                    for owner, handle in self.__sync_handles.items()
+                    if owner is not current_owner
+                )
+            for handle in async_handles:
                 handle.handle.cancel()
-            if handles:
+            if async_handles or sync_handles:
                 await asyncio.gather(
                     *(
                         asyncio.shield(asyncio.wrap_future(handle.completion))
-                        for handle in handles
+                        for handle in async_handles
+                    ),
+                    *(
+                        asyncio.shield(asyncio.wrap_future(handle))
+                        for handle in sync_handles
                     ),
                     return_exceptions=True,
                 )
@@ -272,15 +301,80 @@ class EventManager(metaclass=Singleton):
                 break
             if item[1] is not _EVENT_STOP_SENTINEL:
                 pending.append(item)
+            self.__event_queue.task_done()
         for item in pending:
             self.__event_queue.put(item)
 
-    def __cancel_async_handles(self) -> None:
-        """请求取消所有仍由事件总线持有的异步处理器。"""
+    def __cancel_async_handles(
+            self,
+            *,
+            exclude_owner: object | None = None,
+    ) -> None:
+        """请求取消异步处理器，并避免 handler 关闭事件总线时取消自身。"""
         with self.__lifecycle_lock:
-            handles = tuple(self.__async_handles.values())
+            handles = tuple(
+                handle
+                for owner, handle in self.__async_handles.items()
+                if owner is not exclude_owner
+            )
         for handle in handles:
             handle.handle.cancel()
+
+    def __wait_sync_handles(
+            self,
+            *,
+            exclude_owner: object | None = None,
+    ) -> None:
+        """等待同步处理器完成，并避免 handler 关闭事件总线时等待自身。"""
+        with self.__lifecycle_lock:
+            handles = tuple(
+                handle
+                for owner, handle in self.__sync_handles.items()
+                if owner is not exclude_owner
+            )
+        if handles:
+            concurrent.futures.wait(handles)
+
+    def __register_sync_handle(
+            self,
+            callback: Callable[..., Any],
+            args: tuple[Any, ...],
+    ) -> bool:
+        """在同一生命周期临界区提交并登记同步广播处理器。"""
+        with self.__lifecycle_lock:
+            if self.__lifecycle_state != "running":
+                logger.warning(
+                    "事件处理处于 %s 状态，拒绝同步广播处理器",
+                    self.__lifecycle_state,
+                )
+                return False
+            try:
+                owner = object()
+
+                def _tracked_sync() -> Any:
+                    """在同步 handler 调用栈中发布当前事件 owner。"""
+                    context_token = _CURRENT_EVENT_HANDLER_OWNER.set(owner)
+                    try:
+                        return callback(*args)
+                    finally:
+                        _CURRENT_EVENT_HANDLER_OWNER.reset(context_token)
+
+                handle = self.__executor.submit(_tracked_sync)
+            except RuntimeError:
+                logger.warning("同步事件处理器无法投递，线程池已停止")
+                return False
+            self.__sync_handles[owner] = handle
+            handle.add_done_callback(
+                lambda _completed, current_owner=owner: (
+                    self.__remove_sync_handle(current_owner)
+                )
+            )
+        return True
+
+    def __remove_sync_handle(self, owner: object) -> None:
+        """同步处理器完成后移除其 owner 句柄。"""
+        with self.__lifecycle_lock:
+            self.__sync_handles.pop(owner, None)
 
     def __register_async_handle(
             self,
@@ -290,12 +384,18 @@ class EventManager(metaclass=Singleton):
         with self.__lifecycle_lock:
             if self.__lifecycle_state != "running":
                 coroutine.close()
+                logger.warning(
+                    "事件处理处于 %s 状态，拒绝异步广播处理器",
+                    self.__lifecycle_state,
+                )
                 return False
             completion: concurrent.futures.Future[Any] = concurrent.futures.Future()
             started = threading.Event()
+            owner = object()
 
             async def _tracked() -> None:
                 started.set()
+                context_token = _CURRENT_EVENT_HANDLER_OWNER.set(owner)
                 try:
                     result = await coroutine
                 except asyncio.CancelledError:
@@ -307,6 +407,8 @@ class EventManager(metaclass=Singleton):
                 else:
                     if not completion.done():
                         completion.set_result(result)
+                finally:
+                    _CURRENT_EVENT_HANDLER_OWNER.reset(context_token)
 
             tracked = _tracked()
             try:
@@ -316,7 +418,7 @@ class EventManager(metaclass=Singleton):
                 coroutine.close()
                 logger.warning("异步事件处理器无法投递，事件循环已停止")
                 return False
-            self.__async_handles[id(completion)] = _EventAsyncHandle(
+            self.__async_handles[owner] = _EventAsyncHandle(
                 handle=handle,
                 completion=completion,
             )
@@ -329,13 +431,54 @@ class EventManager(metaclass=Singleton):
                     completion.cancel()
 
             handle.add_done_callback(_complete_unstarted_submission)
-        completion.add_done_callback(self.__remove_async_handle)
+        completion.add_done_callback(
+            lambda _completed, current_owner=owner: (
+                self.__remove_async_handle(current_owner)
+            )
+        )
         return True
 
-    def __remove_async_handle(self, handle: concurrent.futures.Future[Any]) -> None:
+    def __remove_async_handle(self, owner: object) -> None:
         """异步处理器完成后移除其 owner 句柄。"""
         with self.__lifecycle_lock:
-            self.__async_handles.pop(id(handle), None)
+            self.__async_handles.pop(owner, None)
+
+    async def drain_async(
+            self,
+            timeout: Optional[float] = None,
+            *,
+            seal: bool = False,
+    ) -> bool:
+        """
+        等待已接纳的广播事件及其派生事件自然结算。
+
+        seal=True 会在确认稳定空闲的同一临界区关闭后续广播提交，供插件卸载前
+        建立不可穿透的投递屏障；超时或停止交错时保持原提交状态并返回 False。
+        广播处理器调用栈内无法等待自身完成，因此会立即返回 False，且不执行封口。
+        """
+        if _CURRENT_EVENT_HANDLER_OWNER.get() is not None:
+            logger.warning("事件处理器内部不能建立事件投递屏障")
+            return False
+        loop = asyncio.get_running_loop()
+        deadline = None if timeout is None else loop.time() + max(timeout, 0)
+        while True:
+            with self.__lifecycle_lock:
+                if self.__lifecycle_state not in {"running", "sealed"}:
+                    return False
+                with self.__event_queue.all_tasks_done:
+                    queue_idle = self.__event_queue.unfinished_tasks == 0
+                handlers_idle = not self.__sync_handles and not self.__async_handles
+                if queue_idle and handlers_idle:
+                    if seal:
+                        self.__lifecycle_state = "sealed"
+                    return True
+            if deadline is not None:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    return False
+                await asyncio.sleep(min(0.01, remaining))
+            else:
+                await asyncio.sleep(0.01)
 
     def check(self, etype: Union[EventType, ChainEventType]) -> bool:
         """
@@ -470,7 +613,15 @@ class EventManager(metaclass=Singleton):
         :param event: 要处理的事件对象
         """
         logger.debug(f"Triggering broadcast event: {event}")
-        self.__event_queue.put((event.priority, event))
+        with self.__lifecycle_lock:
+            if self.__lifecycle_state in {"sealed", "stopping", "stopped"}:
+                logger.warning(
+                    "事件处理处于 %s 状态，拒绝广播事件 %s",
+                    self.__lifecycle_state,
+                    event.event_type,
+                )
+                return None
+            self.__event_queue.put((event.priority, event))
         record_metric(
             "event.queue.depth",
             self.__event_queue.qsize(),
@@ -580,15 +731,18 @@ class EventManager(metaclass=Singleton):
         while self.__event.is_set():
             try:
                 priority, event = self.__event_queue.get(timeout=rate_limiter.current_wait)
-                if event is _EVENT_STOP_SENTINEL:
-                    break
-                record_metric(
-                    "event.queue.depth",
-                    self.__event_queue.qsize(),
-                    delivery="broadcast",
-                )
-                rate_limiter.reset()
-                self.__dispatch_broadcast_event(event)
+                try:
+                    if event is _EVENT_STOP_SENTINEL:
+                        break
+                    record_metric(
+                        "event.queue.depth",
+                        self.__event_queue.qsize(),
+                        delivery="broadcast",
+                    )
+                    rate_limiter.reset()
+                    self.__dispatch_broadcast_event(event)
+                finally:
+                    self.__event_queue.task_done()
             except Empty:
                 rate_limiter.current_wait = rate_limiter.current_wait * random.uniform(1, 1 + jitter_factor)
                 rate_limiter.trigger_limit()

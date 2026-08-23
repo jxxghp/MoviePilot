@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, ContextManager, Optional
 
 from app.schemas.exception import PersistenceUnavailableError
 from app.application.plugin.lifecycle import plugin_lifecycle
 from app.runtime.log import logger
+from app.schemas.exception import PluginMutationRejectedError
 
 
 InstalledPluginsReader = Callable[[], list[str]]
@@ -25,6 +26,8 @@ PackageCheckpointAction = Callable[[Any], Awaitable[object]]
 InstallReporter = Callable[[str, Optional[str]], Awaitable[object]]
 PluginReloader = Callable[[str], Awaitable[object]]
 PluginRegistrationRefresher = Callable[[str], Awaitable[object]]
+PluginMutationAdmission = Callable[[str], ContextManager[None]]
+PluginPackageWriteGuard = Callable[[str], ContextManager[None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +97,8 @@ class PluginInstallCommand:
         install_reporter: InstallReporter,
         plugin_reloader: PluginReloader,
         registration_refresher: PluginRegistrationRefresher,
+        mutation: PluginMutationAdmission,
+        package_write_guard: PluginPackageWriteGuard,
     ) -> None:
         """保存安装用例所需端口，不绑定数据库、网络或运行时实现。"""
         self._installed_plugins_reader = installed_plugins_reader
@@ -107,6 +112,8 @@ class PluginInstallCommand:
         self._install_reporter = install_reporter
         self._plugin_reloader = plugin_reloader
         self._registration_refresher = registration_refresher
+        self._mutation = mutation
+        self._package_write_guard = package_write_guard
 
     async def execute(
         self,
@@ -120,20 +127,29 @@ class PluginInstallCommand:
         state = _InstallState()
         async with plugin_lifecycle.hold(plugin_id):
             try:
-                return await self._execute_locked(
-                    plugin_id=plugin_id,
-                    repo_url=repo_url,
-                    release_version=release_version,
-                    force=force,
-                    state=state,
+                with self._mutation(f"安装插件 {plugin_id}"):
+                    with self._package_write_guard(plugin_id):
+                        try:
+                            return await self._execute_locked(
+                                plugin_id=plugin_id,
+                                repo_url=repo_url,
+                                release_version=release_version,
+                                force=force,
+                                state=state,
+                            )
+                        except asyncio.CancelledError:
+                            await self._rollback_cancelled(
+                                plugin_id=plugin_id,
+                                original_plugins=state.original_plugins,
+                                state=state,
+                            )
+                            raise
+            except PluginMutationRejectedError as error:
+                return PluginInstallResult(
+                    success=False,
+                    message=str(error),
+                    failure_stage="admission",
                 )
-            except asyncio.CancelledError:
-                await self._rollback_cancelled(
-                    plugin_id=plugin_id,
-                    original_plugins=state.original_plugins,
-                    state=state,
-                )
-                raise
 
     async def _execute_locked(
         self,

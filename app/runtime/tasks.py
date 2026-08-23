@@ -106,8 +106,8 @@ class TaskRegistry:
                 }
             )
 
-    async def shutdown(self, *, timeout_seconds: float = 10.0) -> None:
-        """停止接收并有限等待存量任务，超时任务保留登记并报告责任域。"""
+    async def shutdown(self, *, timeout_seconds: float = 10.0) -> bool:
+        """停止接收并有限等待存量任务，返回全部 owner 是否真实收敛。"""
         self._accepting = False
         records = self.records
         tasks = [record.task for record in records]
@@ -139,6 +139,7 @@ class TaskRegistry:
                     "timeout_seconds": timeout_seconds,
                 }
             )
+        return all(record.task.done() for record in records)
 
 
 _default_registry = TaskRegistry()
