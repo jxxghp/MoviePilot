@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Union, Optional, Generator, Any, Tuple
 from app.chain import ChainBase
 from app.runtime.config import global_vars
 from app.application.chain.data import get_chain_media_server_port
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.application.mediaserver import get_mediaserver_configs
 from app.runtime.log import logger
 from app.schemas.mediaserver import MediaServerLibrary
 from app.schemas.mediaserver import MediaServerItem
@@ -458,7 +458,7 @@ class MediaServerChain(ChainBase):
         :param server: 指定媒体服务器名称，为空时同步全部已启用服务器
         """
         # 设置的媒体服务器
-        mediaservers = ServiceConfigHelper.get_mediaserver_configs()
+        mediaservers = get_mediaserver_configs(include_disabled=True)
         if not mediaservers:
             if progress_callback:
                 progress_callback(value=100, text="未配置媒体服务器，跳过同步")

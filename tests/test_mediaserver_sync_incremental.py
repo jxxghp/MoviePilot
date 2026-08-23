@@ -106,7 +106,7 @@ def test_sync_persists_music_without_querying_tv_episodes(database):
             "get_chain_media_server_port",
             lambda: MediaServerOper(session),
         ), patch.object(
-            MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+            MEDIA_SERVER_CHAIN_MODULE,
             "get_mediaserver_configs",
             return_value=[SimpleNamespace(name="navidrome", enabled=True, sync_libraries=["all"])],
         ):
@@ -199,7 +199,7 @@ def test_sync_updates_rows_and_removes_stale_entries(database):
             "get_chain_media_server_port",
             lambda: MediaServerOper(session),
         ), patch.object(
-            MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+            MEDIA_SERVER_CHAIN_MODULE,
             "get_mediaserver_configs",
             return_value=[SimpleNamespace(name="plex", enabled=True, sync_libraries=["movies"])],
         ):
@@ -283,7 +283,7 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
             "get_chain_media_server_port",
             lambda: MediaServerOper(session),
         ), patch.object(
-            MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+            MEDIA_SERVER_CHAIN_MODULE,
             "get_mediaserver_configs",
             return_value=[
                 SimpleNamespace(name="plex-a", enabled=True, sync_libraries=["all"]),
@@ -340,9 +340,9 @@ def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeyp
         FakeMediaServerOper,
     )
     monkeypatch.setattr(
-        MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+        MEDIA_SERVER_CHAIN_MODULE,
         "get_mediaserver_configs",
-        lambda: [
+        lambda **_kwargs: [
             SimpleNamespace(name="plex-a", enabled=True, sync_libraries=["all"]),
             SimpleNamespace(name="plex-b", enabled=True, sync_libraries=["all"]),
         ],
@@ -383,9 +383,9 @@ def test_sync_stops_without_emitting_completion_after_stop_signal(monkeypatch):
     )
     monkeypatch.setattr(chain, "_sync_server_libraries", stop_during_sync)
     monkeypatch.setattr(
-        MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+        MEDIA_SERVER_CHAIN_MODULE,
         "get_mediaserver_configs",
-        lambda: [server],
+        lambda **_kwargs: [server],
     )
     global_vars.STOP_EVENT.clear()
     try:

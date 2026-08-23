@@ -28,7 +28,7 @@ from app.application.configuration import (
 from app.api.dependencies.agent import get_message_query_service
 from app.api.dependencies.auth import get_current_active_superuser
 from app.application.messaging.message import MessageQueryService
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.application.notification import get_notification_configs
 from app.runtime.log import logger
 from app.adapters.external.wechat_crypt import WXBizMsgCrypt
 from app.schemas.types import NotificationChannel, SystemConfigKey
@@ -261,7 +261,7 @@ def wechat_verify(
     微信验证响应
     """
     # 获取服务配置
-    client_configs = ServiceConfigHelper.get_notification_configs()
+    client_configs = get_notification_configs(include_disabled=True)
     if not client_configs:
         return "未找到对应的消息配置"
     client_config = next(

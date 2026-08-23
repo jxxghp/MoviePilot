@@ -304,3 +304,12 @@ class MediaServerHelper(ServiceBaseHelper[MediaServerConf]):
         """判断给定服务或服务名称是否属于指定媒体服务器类型。"""
         service = service or self.get_service(name=name)
         return bool(service and service.type == service_type)
+
+
+def get_mediaserver_configs(
+    include_disabled: bool = False,
+) -> list[MediaServerConf]:
+    """返回媒体服务器配置列表，并按调用方需要决定是否包含禁用项。"""
+    return list(
+        MediaServerHelper().get_configs(include_disabled=include_disabled).values()
+    )

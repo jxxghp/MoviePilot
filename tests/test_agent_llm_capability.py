@@ -199,7 +199,7 @@ class AgentCapabilityManagerTest(unittest.TestCase):
         ]
 
         with patch(
-            "app.runtime.extensions.service_config.ServiceConfigHelper.get_notification_configs",
+            "app.agent.llm.capability.get_notification_configs",
             return_value=configs,
         ):
             self.assertTrue(

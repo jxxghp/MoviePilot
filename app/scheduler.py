@@ -38,10 +38,10 @@ from app.application.configuration import (
     get_scheduler_runtime_config,
 )
 from app.application.image import WallpaperHelper
+from app.application.mediaserver import get_mediaserver_configs
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.adapters.external.server import MoviePilotServerHelper
-from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -603,7 +603,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
             # 按媒体服务器分别注册自动同步任务
             mediaserver_schedules = self._build_mediaserver_sync_schedules(
-                mediaservers=ServiceConfigHelper.get_mediaserver_configs(),
+                mediaservers=get_mediaserver_configs(include_disabled=True),
                 default_interval=config.mediaserver_sync_interval,
             )
             for mediaserver_schedule in mediaserver_schedules:

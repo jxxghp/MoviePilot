@@ -143,6 +143,11 @@ must not be reintroduced as Oper aliases in canonical Agent modules.
 Monitor history checks use `get_transfer_history_port()` from
 `app/application/history.py`; the constructible `TransferHistoryPort` facade is
 retained only for compatibility and is not a canonical Oper substitute.
+Canonical Chain, API, Scheduler and Agent consumers read notification and media
+server configuration through the named helpers in `app/application/notification.py`
+and `app/application/mediaserver.py`. `ServiceConfigHelper` remains the parser at
+the startup/runtime module boundary and a plugin SDK compatibility export; it is
+not a second application-facing service directory.
 
 ### Adapter boundaries
 

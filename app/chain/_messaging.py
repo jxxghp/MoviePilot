@@ -13,7 +13,7 @@ from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.foundation.identity import normalize_internal_user_id
 from app.application.messaging.message import MessageTemplateHelper
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.application.notification import get_notification_switch
 from app.runtime.log import logger
 from app.schemas.message import MessageResponse
 from app.schemas.message import Message
@@ -159,7 +159,7 @@ class NotificationMixin:
         # 发送消息按设置隔离
         if not dispatch_message.userid and dispatch_message.mtype:
             # 消息隔离设置
-            notify_action = ServiceConfigHelper.get_notification_switch(
+            notify_action = get_notification_switch(
                 dispatch_message.mtype
             )
             if notify_action:
@@ -277,7 +277,7 @@ class NotificationMixin:
         # 发送消息按设置隔离
         if not dispatch_message.userid and dispatch_message.mtype:
             # 消息隔离设置
-            notify_action = ServiceConfigHelper.get_notification_switch(
+            notify_action = get_notification_switch(
                 dispatch_message.mtype
             )
             if notify_action:

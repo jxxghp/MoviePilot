@@ -614,6 +614,32 @@ def test_monitor_dispatcher_uses_explicit_history_port_getter():
     assert violations == []
 
 
+def test_canonical_service_config_consumers_use_application_directory():
+    """Chain、API、Scheduler 与 Agent 不得绕过应用目录读取运行时配置 Helper。"""
+    paths = [
+        APP_ROOT / "chain" / "_messaging.py",
+        APP_ROOT / "chain" / "mediaserver.py",
+        APP_ROOT / "api" / "endpoints" / "message.py",
+        APP_ROOT / "scheduler.py",
+        APP_ROOT / "agent" / "llm" / "capability.py",
+        APP_ROOT / "agent" / "tools" / "base.py",
+        APP_ROOT / "agent" / "tools" / "impl" / "query_library_latest.py",
+    ]
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "app.runtime.extensions.service_config"
+            ):
+                violations.append(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                )
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []
