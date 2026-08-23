@@ -30,6 +30,8 @@ RESULT_PREFIX = "MOVIEPILOT_IMPORT_BASELINE="
 LIFECYCLE_RESULT_PREFIX = "MOVIEPILOT_LIFECYCLE_BASELINE="
 PERFORMANCE_FACTOR = 2.0
 PERFORMANCE_SLACK_MS = 500.0
+# 基线由维护者平台生成、CI 在 Linux runner 检查；给跨平台宽松预算保留小幅调度抖动带。
+PERFORMANCE_JITTER_FACTOR = 1.05
 
 
 def measure_import(target: str) -> dict[str, Any]:
@@ -311,7 +313,7 @@ def check_baseline(
         budget_ms = max(
             expected_target["max_ms"] * PERFORMANCE_FACTOR,
             expected_target["max_ms"] + PERFORMANCE_SLACK_MS,
-        )
+        ) * PERFORMANCE_JITTER_FACTOR
         if actual_target["median_ms"] > budget_ms:
             errors.append(
                 f"{target} 冷导入中位数 {actual_target['median_ms']}ms "

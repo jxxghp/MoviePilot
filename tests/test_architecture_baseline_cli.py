@@ -636,6 +636,20 @@ def test_performance_check_ignores_environment_provenance_drift():
     assert startup_performance.check_baseline(expected, actual) == []
 
 
+def test_performance_check_keeps_small_cross_platform_jitter_margin():
+    """跨平台 runner 可使用 5% 抖动带，但超过最终预算仍必须失败。"""
+    expected = _performance_sample()
+    within_margin = _performance_sample()
+    within_margin["targets"]["app.factory"]["median_ms"] = 630.0
+    above_margin = _performance_sample()
+    above_margin["targets"]["app.factory"]["median_ms"] = 630.001
+
+    assert startup_performance.check_baseline(expected, within_margin) == []
+    assert startup_performance.check_baseline(expected, above_margin) == [
+        "app.factory 冷导入中位数 630.001ms 超过预算 630.0ms"
+    ]
+
+
 def test_performance_check_reports_lifecycle_component_replacement():
     """组件数量未变时，生命周期成员或顺序变化仍必须失败。"""
     expected = _performance_sample()
