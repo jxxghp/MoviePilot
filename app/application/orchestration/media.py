@@ -43,6 +43,16 @@ from app.domain import title as title_rules
 recognize_lock = Lock()
 
 
+def _is_regular_file(path: Path) -> bool:
+    """判断路径是否仍指向可读取的普通文件。"""
+    return path.exists() and path.is_file()
+
+
+def _is_directory(path: Path) -> bool:
+    """判断路径是否仍指向目录。"""
+    return path.is_dir()
+
+
 class MediaChain(ChainBase, metaclass=Singleton):
     """
     媒体信息处理链，单例运行
@@ -1068,7 +1078,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
     ) -> Optional[MusicInfo]:
         """异步查找所在目录专辑匹配中属于当前文件的结果。"""
         file_path = Path(path)
-        if not file_path.exists() or not file_path.is_file():
+        if not await run_in_threadpool(_is_regular_file, file_path):
             return None
         try:
             matched = await self.async_recognize_music_album_directory(
@@ -1212,7 +1222,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
     ) -> dict[str, MusicInfo]:
         """异步按目录级线索批量识别整张专辑。"""
         directory = Path(path)
-        if not directory.is_dir():
+        if not await run_in_threadpool(_is_directory, directory):
             return {}
         files = await run_in_threadpool(self._directory_audio_files, directory)
         if len(files) < self._album_match_min_files:

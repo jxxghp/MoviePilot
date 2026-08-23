@@ -274,3 +274,19 @@ def test_async_identify_music_by_fingerprint_uses_async_process_and_http(
     post_res.assert_awaited_once()
     assert post_res.await_args.kwargs["data"]["meta"] == "recordingids"
     assert response.closed is True
+
+
+def test_async_identify_skips_missing_file_after_threaded_check(monkeypatch):
+    """异步指纹入口应在线程中检查文件，并保持缺失文件的跳过语义。"""
+    module = AcoustIdModule()
+    module._fpcalc_path = "/usr/bin/fpcalc"
+    check_file = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.modules.acoustid.run_in_threadpool", check_file)
+
+    result = asyncio.run(
+        module.async_identify_music_by_fingerprint(Path("/music/missing.flac"))
+    )
+
+    assert result is None
+    check_file.assert_awaited_once()
+    assert check_file.await_args.args[1] == Path("/music/missing.flac")

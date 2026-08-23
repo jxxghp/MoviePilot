@@ -262,7 +262,8 @@ class AgentChatOper(DbOper):
         )
         if not chat:
             return None
-        display_messages = self._normalize_messages(chat.display_messages)
+        # JSON 列不是 MutableList；必须复制旧列表，原地 extend 会让 SQLAlchemy 误认为字段未变化。
+        display_messages = list(self._normalize_messages(chat.display_messages))
         display_messages.extend(self._normalize_messages(messages))
         title = chat.title if self.has_custom_title(chat.title) else None
         return self.save_display_messages(

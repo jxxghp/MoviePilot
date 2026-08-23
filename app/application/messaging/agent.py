@@ -1,9 +1,10 @@
+import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from queue import Queue
 from threading import Lock
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Awaitable, Dict, List, Optional, Tuple, Union
 
 from app.runtime.channels import (  # noqa: F401  渠道管理员判定的对外导出
     matches_channel_admin,
@@ -179,6 +180,35 @@ agent_interaction_manager = AgentInteractionManager()
 
 _WEB_AGENT_EDIT_QUEUES: dict[str, list[Queue[dict]]] = {}
 _WEB_AGENT_EDIT_LOCK = Lock()
+_WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task[object]] = set()
+
+
+def create_web_agent_background_task(
+    coroutine: Awaitable[object],
+) -> asyncio.Task[object]:
+    """登记 Web Agent 后台任务，使应用关闭时可以统一收口。"""
+    task = asyncio.create_task(coroutine)
+    _WEB_AGENT_BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_WEB_AGENT_BACKGROUND_TASKS.discard)
+    return task
+
+
+async def shutdown_web_agent_background_tasks() -> None:
+    """取消并等待 Web Agent 后台任务，避免关闭数据库后仍提交快照。"""
+    tasks = tuple(_WEB_AGENT_BACKGROUND_TASKS)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        # asyncio.wait 不会因关闭阶段自身被取消而再次取消这些任务；仍在收尾的
+        # Agent 任务会保留在注册表中，直到自己的数据库操作取得确定终态。
+        await asyncio.wait(tasks)
+
+
+async def wait_web_agent_background_tasks() -> None:
+    """等待已登记的 Web Agent 任务完成取消后的最终收尾。"""
+    tasks = tuple(_WEB_AGENT_BACKGROUND_TASKS)
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def normalize_web_agent_button_rows(buttons: Optional[list[list[dict]]]) -> list[list[dict]]:
