@@ -267,13 +267,24 @@
 - 整理失败按钮的 AI 接管从裸 `run_coroutine_threadsafe` 迁为 `chain.transfer.ai_takeover`，消息文案、Agent
   prompt/参数、回调返回和 V2/V3 插件 ABI 保持不变；该动作仍为 E0，不宣称跨进程恢复。
 
+### 长期整改阶段 26：Agent 会话清理提交路径统一（2026-08-24）
+
+- 过期会话回收与远程清理命令原先各自构造 `clear_session()` 协程并裸提交主循环，形成同一目标的两套
+  实现；远程命令现在复用 `_schedule_agent_session_clear()` 唯一入口。
+- 唯一入口通过 TaskRegistry 以 `chain.message.agent_session_clear` owner 跨线程提交，目标循环先登记再执行，
+  shutdown 可取消并等待；调度失败仍关闭协程并记录告警，不泄漏 Agent 资源清理对象。
+- `/clear_session` 命令、会话映射、成功/空会话提示、Agent manager 合同及 V2/V3 插件 ABI 均未修改；实时
+  Agent 消息和停止命令仍保留各自的 Future 结果观察，不被机械改成 fire-and-forget。
+- 依赖基线仅新增 `app.chain.message -> app.runtime.tasks`，模块数保持 `806`，内部边为 `6541`；12 组禁止
+  边与唯一隔离 TMDB SCC 均未变化。
+
 ### 总体判断
 
 当前架构总体合理，已经从跨层混合的遗留单体收敛为**边界清晰的模块化单体**：
 
 - 继续采用单进程控制面是正确选择，不建议现在拆成微服务；插件、调度器、工作流、事件和数据库共享进程内状态，拆分会放大部署、事务和兼容成本。
 - `foundation/domain/runtime/adapters/application/chain/api/startup` 的职责方向基本成立；宿主架构基线、复杂度 ratchet、异步阻塞 ratchet 当前均通过。
-- 依赖图当前为 `806` 个 Python 模块、`6539` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
+- 依赖图当前为 `806` 个 Python 模块、`6541` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
 - 当前主要风险已经从“目录和依赖失控”转移到运行时协议、后台副作用的可靠性和遗留兼容面。换言之，下一阶段重点应是**语义收口和可验证性**，而不是继续搬文件或机械拆大文件。
 
 综合评价：架构方向可持续，生产可用性较高；可演进性仍处于中等水平。现阶段没有静态审计发现必须立即推倒重来的 P0 架构问题，但存在需要按 P1/P2 计划治理的真实债务。

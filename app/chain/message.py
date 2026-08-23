@@ -22,6 +22,7 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.chain.interaction import MediaInteractionChain as _MediaInteractionChain
 from app.runtime.config import global_vars
+from app.runtime.tasks import get_task_registry
 from app.application.messaging.agent import agent_interaction_manager, parse_agent_choice_callback
 from app.application.messaging.interaction import InteractionContext, InteractionDispatch
 from app.application.messaging.media import media_interaction_manager
@@ -66,9 +67,10 @@ class MessageChain(ChainBase):
             clear_task = manager.clear_session(
                 session_id=session_id, user_id=str(userid)
             )
-            asyncio.run_coroutine_threadsafe(
+            get_task_registry().submit_threadsafe(
                 clear_task,
-                global_vars.loop,
+                loop=global_vars.loop,
+                owner="chain.message.agent_session_clear",
             )
         except Exception as e:
             if clear_task:
@@ -956,21 +958,7 @@ class MessageChain(ChainBase):
 
         # 如果有会话ID，同时清除智能体的会话记忆
         if session_id:
-            manager = get_running_agent_manager()
-            clear_task = None
-            if manager is not None:
-                try:
-                    clear_task = manager.clear_session(
-                        session_id=session_id, user_id=str(userid)
-                    )
-                    asyncio.run_coroutine_threadsafe(
-                        clear_task,
-                        global_vars.loop,
-                    )
-                except Exception as e:
-                    if clear_task:
-                        clear_task.close()
-                    logger.warning(f"清除智能体会话记忆失败: {e}")
+            self._schedule_agent_session_clear(session_id, userid)
 
             self.post_message(
                 Message(

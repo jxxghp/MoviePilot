@@ -88,6 +88,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 - 已登记的周期 Agent task：E1，重启时通过任务定义重建；单次执行要有 execution 记录。
 - Agent 创建/修改订阅、删除数据等工具：业务事务按 E2/E3；聊天输出不能替代业务完成证据。
 - 会话 stop/cancel：E0 控制信号；被取消工具的底层阻塞 I/O 可能继续，资源所有者必须最终回收。
+- 过期会话与远程清理命令统一经 `chain.message.agent_session_clear` owner 提交 Agent 资源释放；两条入口
+  不再各自维护裸跨线程任务，宿主关停会取消并等待已登记清理。该清理仍是 E0 资源回收，不跨重启恢复。
 - OpenAI/Anthropic 协议流的请求级 Agent worker 由 `api.openai.stream` /
   `api.anthropic.stream` 登记并在 lifespan shutdown 时取消；它们仍是 E0 请求交付，不提供跨重启恢复。
 - stdio MCP 的 stderr reader 属于会话资源内部任务；会话退出时先取消并等待 reader 收口，再终止子进程，避免
