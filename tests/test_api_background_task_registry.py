@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from app.api.endpoints import history, message, site, subscribe, webhook
+from app.api.endpoints import anthropic, history, message, openai, site, subscribe, webhook
 from app.runtime.tasks import TaskRegistry
 
 
@@ -29,6 +29,40 @@ class _TaskRegistry(TaskRegistry):
         """保存异步任务登记参数，并关闭未执行的 coroutine。"""
         coroutine.close()
         self.calls.append((None, (), {"cancel_on_shutdown": cancel_on_shutdown}, owner))
+
+
+class _RunningTaskRegistry(TaskRegistry):
+    """执行协议流任务并保留 owner，验证真实 TaskRegistry 行为。"""
+
+    def __init__(self) -> None:
+        """初始化 owner 调用记录。"""
+        super().__init__()
+        self.owners: list[str] = []
+
+    def create(
+        self,
+        coroutine,
+        *,
+        owner: str,
+        cancel_on_shutdown: bool = True,
+    ) -> asyncio.Task:
+        """记录 owner 后委托真实登记器创建任务。"""
+        self.owners.append(owner)
+        return super().create(
+            coroutine,
+            owner=owner,
+            cancel_on_shutdown=cancel_on_shutdown,
+        )
+
+
+class _ProtocolManager:
+    """提供兼容协议流结束时需要的最小 AgentManager 接口。"""
+
+    async def clear_session(self, **_kwargs) -> None:
+        """模拟清理临时协议会话。"""
+
+    async def stop_current_task(self, _session_id: str) -> None:
+        """模拟停止保留会话的当前任务。"""
 
 
 class _WebhookRequest:
@@ -182,3 +216,65 @@ def test_history_batch_ai_redo_uses_task_registry() -> None:
     assert registry.calls == [
         (None, (), {"cancel_on_shutdown": True}, "api.history.ai_redo_batch")
     ]
+
+
+def test_openai_stream_uses_task_registry(monkeypatch) -> None:
+    """OpenAI SSE Agent 执行应登记为请求级后台任务。"""
+
+    async def run_agent(**kwargs):
+        """向协议队列写入一个增量后结束。"""
+        await kwargs["event_queue"].put("reply")
+        return "", []
+
+    monkeypatch.setattr(openai, "_run_managed_agent", run_agent)
+
+    async def scenario() -> None:
+        registry = _RunningTaskRegistry()
+        events = [
+            event
+            async for event in openai._stream_response(
+                manager=_ProtocolManager(),
+                session_id="session",
+                user_id="user",
+                username="tester",
+                prompt="hello",
+                images=[],
+                cleanup_session=True,
+                task_registry=registry,
+            )
+        ]
+
+        assert events[-1] == "data: [DONE]\n\n"
+        assert registry.owners == ["api.openai.stream"]
+
+    asyncio.run(scenario())
+
+
+def test_anthropic_stream_uses_task_registry(monkeypatch) -> None:
+    """Anthropic SSE Agent 执行应登记为请求级后台任务。"""
+
+    async def run_agent(**kwargs):
+        """向协议队列写入一个增量后结束。"""
+        await kwargs["event_queue"].put("reply")
+        return "", []
+
+    monkeypatch.setattr(anthropic, "_run_managed_agent", run_agent)
+
+    async def scenario() -> None:
+        registry = _RunningTaskRegistry()
+        events = [
+            event
+            async for event in anthropic._stream_anthropic_response(
+                manager=_ProtocolManager(),
+                session_id="session",
+                user_id="user",
+                prompt="hello",
+                images=[],
+                task_registry=registry,
+            )
+        ]
+
+        assert "event: message_stop" in events[-1]
+        assert registry.owners == ["api.anthropic.stream"]
+
+    asyncio.run(scenario())

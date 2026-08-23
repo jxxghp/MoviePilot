@@ -26,7 +26,7 @@
 
 ### P1：需要优先治理的真实债务
 
-1. **后台任务的统一所有权已覆盖 API 入口，但仍有更深层任务机制待分级。** `app/runtime/tasks.py` 已建立 lifespan 级 TaskRegistry，启动收尾、插件 Release 刷新、Webhook E0 广播、CookieCloud E1 手工调度、消息入口、Seerr 订阅、整理历史 AI 重做和 WebAgent 断线后执行/快照保存均不再维护端点模块级任务集合或 Starlette 回调，shutdown 会停止接收、取消并有限等待，且生命周期清单明确登记其顺序。主仓 `app/` 已无裸 FastAPI `BackgroundTasks`；当前仍有约 `50` 个更底层 `create_task`/等价任务创建点，与线程池和 APScheduler 并存，后续需逐项确认 owner、取消、等待、重试、幂等和是否 durable，关键业务副作用优先接入已有 Outbox/恢复表。
+1. **后台任务的统一所有权已覆盖 API 入口，但仍有更深层任务机制待分级。** `app/runtime/tasks.py` 已建立 lifespan 级 TaskRegistry，启动收尾、插件 Release 刷新、Webhook E0 广播、CookieCloud E1 手工调度、消息入口、Seerr 订阅、整理历史 AI 重做、OpenAI/Anthropic 协议流和 WebAgent 断线后执行/快照保存均不再维护端点模块级任务集合或 Starlette 回调，shutdown 会停止接收、取消并有限等待，且生命周期清单明确登记其顺序。主仓 `app/` 已无裸 FastAPI `BackgroundTasks`；当前仍有约 `50` 个更底层 `create_task`/等价任务创建点，与线程池和 APScheduler 并存，后续需逐项确认 owner、取消、等待、重试、幂等和是否 durable，关键业务副作用优先接入已有 Outbox/恢复表。
 2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `194` 个仍使用 `legacy` aggregation，只有 `14` 个 `first_non_empty`、`4` 个 `ordered_list_merge`。`app/runtime/extensions/module/contracts.py:422-455` 已能登记 family、输入/结果标签和基础签名诊断，但 `193` 个方法没有 required parameters，调度器 `app/runtime/extensions/module/dispatcher.py:109-260` 仍主要依赖运行时反射、返回值形状和短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
 3. **查询侧数据库兼容 ABI 已完成正式装饰器清零。** 写事务装饰器和正式 `db_query/async_db_query` 均为 `0`。站点、消息、用户、订阅、下载/整理历史、工作流、MediaServer、SiteUserData、AgentChat、AgentTaskRun、TransferPending、SystemConfig、PassKey 和 SubscribeHistory 的宿主查询已迁到显式 Session 路径；对应旧插件 Model 调用由独立 `legacy_*` 外壳保留，可同时接受显式 Session 与无 Session 的位置/关键字参数。后续重点转为减少 ORM 对象跨层流转，并保持正式装饰器零回退。
 4. **组合根和全局状态仍形成复杂的隐式运行时图。** Singleton 实例、模块级 provider、`configure_*` 注册函数和兼容 Facade 同时存在；它们解决了旧 ABI 和启动顺序问题，但增加测试污染、重复装配、实例身份和初始化顺序风险。`app/startup/lifecycle/__init__.py:161-376` 已有声明式生命周期，`app/startup/modules_initializer.py:505-530` 也有分阶段关闭，但尚未做到所有进程级资源都只通过 typed HostRuntime 访问。后续应以“新代码禁止新增 Service Locator/Singleton 依赖、旧入口有命中观测”为 ratchet。
@@ -833,6 +833,9 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
 - 整理历史单条与批量 AI 重做分别登记为 `api.history.ai_redo` 和
   `api.history.ai_redo_batch`；请求响应、进度键、Agent prompt、输出回调与旧直接调用入口保持不变。
   两类任务随 lifespan shutdown 取消并有限等待，但仍属于进程内 E1 工作，不宣称崩溃后自动恢复。
+- OpenAI Chat Completions 与 Anthropic Messages 的流式 Agent 执行分别登记为
+  `api.openai.stream` 和 `api.anthropic.stream`。SSE payload、断线取消、临时会话清理和非流式入口保持
+  原语义；未启动完整 lifespan 的协议校验和旧直接调用通过兼容依赖回退到默认登记器。
 
 #### ARCH-251：用现有数据库做首个 durable side-effect pilot
 

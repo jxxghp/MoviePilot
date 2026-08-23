@@ -40,6 +40,14 @@ def get_background_task_registry(
     return runtime.tasks
 
 
+def get_background_task_registry_compat(request: Request) -> TaskRegistry:
+    """返回协议兼容端点使用的任务登记器，允许未启动 lifespan 的旧调用回退。"""
+    runtime = getattr(request.app.state, "host_runtime", None)
+    if isinstance(runtime, HostRuntime):
+        return runtime.tasks
+    return get_task_registry()
+
+
 def resolve_background_task_registry(value: object) -> TaskRegistry:
     """兼容直接调用 endpoint 的旧入口，并优先使用注入的任务登记器。"""
     if isinstance(value, TaskRegistry):
