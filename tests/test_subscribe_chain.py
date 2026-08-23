@@ -257,6 +257,13 @@ def _load_subscribe_chain_class():
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
+    class _SubscribeDeletedEventData:
+        """提供订阅删除应用服务在隔离加载时需要的事件快照。"""
+
+        def __init__(self, **kwargs):
+            """保存事件字段，行为与测试所需的 schema 投影一致。"""
+            self.__dict__.update(kwargs)
+
     mediaserver_schema_module = ensure_module(
         "app.schemas.mediaserver",
         types.ModuleType("app.schemas.mediaserver"),
@@ -293,6 +300,7 @@ def _load_subscribe_chain_class():
     event_schema_module.SubscribeCompletionCheckEventData = (
         _SubscribeCompletionCheckEventData
     )
+    event_schema_module.SubscribeDeletedEventData = _SubscribeDeletedEventData
 
     logger_module = ensure_module("app.runtime.log", types.ModuleType("app.runtime.log"))
 
@@ -586,7 +594,7 @@ class SubscribeChainTest(TestCase):
         chain = SubscribeChain()
         chain.check_and_handle_existing_media = lambda **kwargs: (False, {})
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port", _SubscribeOper), patch.object(
             SUBSCRIBE_CHAIN_MODULE,
             "TorrentHelper",
             _PlainTorrentHelper,
@@ -669,7 +677,7 @@ class SubscribeChainTest(TestCase):
         chain.filter_torrents = lambda **_kwargs: [context.torrent_info]
         chain.finish_subscribe_or_not = lambda **_kwargs: None
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port", _SubscribeOper), patch.object(
             SUBSCRIBE_CHAIN_MODULE,
             "TorrentHelper",
             _TorrentHelper,
@@ -834,7 +842,7 @@ class SubscribeChainTest(TestCase):
 
         with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _DownloadChain), patch.object(
             SUBSCRIBE_CHAIN_MODULE,
-            "SubscribeOper",
+            "get_chain_subscribe_port",
             _SubscribeOper,
         ):
             satisfied, no_exists = chain.resolve_subscribe_missing(
@@ -1054,7 +1062,7 @@ class SubscribeChainTest(TestCase):
         def _metainfo(title):
             return SimpleNamespace(name=title, begin_season=None, episode_list=[])
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port", _SubscribeOper), patch.object(
             SUBSCRIBE_CHAIN_MODULE,
             "get_configured_system_config",
             _SystemConfigOper,
@@ -1699,7 +1707,7 @@ class SubscribeChainTest(TestCase):
         chain = SubscribeChain()
         mediainfo = SimpleNamespace(title_year="Test Show (2026)")
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls:
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port") as subscribe_oper_cls:
             subscribe_oper = subscribe_oper_cls.return_value
             subscribe_oper.update.return_value = None
 
@@ -1734,7 +1742,7 @@ class SubscribeChainTest(TestCase):
         chain = SubscribeChain()
         mediainfo = SimpleNamespace(title_year="Test Show (2026)")
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls, \
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port") as subscribe_oper_cls, \
                 patch.object(SUBSCRIBE_CHAIN_MODULE, "logger") as logger_mock:
             subscribe_oper = subscribe_oper_cls.return_value
             subscribe_oper.update.return_value = None
@@ -1767,7 +1775,7 @@ class SubscribeChainTest(TestCase):
         chain = SubscribeChain()
         mediainfo = SimpleNamespace(title_year="Test Show (2026)")
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls:
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port") as subscribe_oper_cls:
             subscribe_oper = subscribe_oper_cls.return_value
             subscribe_oper.update.return_value = None
 
@@ -1794,7 +1802,7 @@ class SubscribeChainTest(TestCase):
         chain = SubscribeChain()
         mediainfo = SimpleNamespace(title_year="Test Show (2026)")
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls:
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port") as subscribe_oper_cls:
             subscribe_oper = subscribe_oper_cls.return_value
             subscribe_oper.update.return_value = None
 
@@ -1826,7 +1834,7 @@ class SubscribeChainTest(TestCase):
         meta = SimpleNamespace(type=MediaType.TV)
         mediainfo = SimpleNamespace(title_year="Test Show (2026)")
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls, patch.object(
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port") as subscribe_oper_cls, patch.object(
             SubscribeChain,
             "_SubscribeChain__finish_subscribe",
         ) as finish_mock:
@@ -1868,7 +1876,7 @@ class SubscribeChainTest(TestCase):
             get_backdrop_image=lambda: "backdrop",
         )
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper") as subscribe_oper_cls, \
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port") as subscribe_oper_cls, \
                 _patch_media_recognize(SUBSCRIBE_CHAIN_MODULE, mediainfo):
             subscribe_oper = subscribe_oper_cls.return_value
             subscribe_oper.list.return_value = [subscribe]
@@ -2084,7 +2092,7 @@ class SubscribeNoteTrackingTest(TestCase):
             def get(self, *args, **kwargs):
                 return subscribe
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port", _SubscribeOper), patch.object(
             SubscribeChain,
             "_SubscribeChain__update_movie_download_priority",
         ), patch.object(
@@ -2124,7 +2132,7 @@ class SubscribeNoteTrackingTest(TestCase):
             def get(self, *args, **kwargs):
                 return subscribe
 
-        with patch.object(SUBSCRIBE_CHAIN_MODULE, "SubscribeOper", _SubscribeOper), patch.object(
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "get_chain_subscribe_port", _SubscribeOper), patch.object(
             SubscribeChain,
             "_SubscribeChain__is_best_version_complete",
             return_value=False,
@@ -2266,7 +2274,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append((subscribe_id, payload))
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             summary = self.SubscribeChain().backfill_existing_episodes(
                 subscribe,
                 [1, 2, 3, 9, "bad"],
@@ -2293,7 +2301,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             summary = self.SubscribeChain().backfill_existing_episodes(
                 subscribe,
                 [1, 2, 3],
@@ -2315,7 +2323,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             invalid = self.SubscribeChain().backfill_existing_episodes(
                 subscribe,
                 [1, 2],
@@ -2359,7 +2367,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             summary = self.SubscribeChain().backfill_existing_episodes(
                 subscribe,
                 [1],
@@ -2381,7 +2389,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             summary = self.SubscribeChain().backfill_existing_episodes(
                 subscribe,
                 [1],
@@ -2404,7 +2412,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             summary = self.SubscribeChain().backfill_existing_episodes(
                 subscribe,
                 [1, 2, 3, 4, 5],
@@ -2430,7 +2438,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             self.SubscribeChain().backfill_existing_episodes(
                 subscribe,
                 [3],
@@ -2453,7 +2461,7 @@ class SubscribeProgressEntrypointTest(TestCase):
                 updates.append(payload)
 
         chain = self.SubscribeChain()
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()), \
                 patch.object(chain, "refresh_subscribe_progress", return_value={
                     "scene": "unit",
                     "updated": True,
@@ -2489,7 +2497,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             summary = self.SubscribeChain()._SubscribeChain__refresh_subscribe_progress_with_no_exists(
                 subscribe=subscribe,
                 no_exists={},
@@ -2515,7 +2523,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             self.SubscribeChain()._SubscribeChain__refresh_subscribe_progress_with_no_exists(
                 subscribe=subscribe,
                 no_exists={},
@@ -2547,7 +2555,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()), \
                 _patch_media_recognize(self.module, mediainfo), \
                 patch.object(self.SubscribeChain, "resolve_subscribe_missing", return_value=(False, no_exists)) as resolve_missing:
             summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
@@ -2580,7 +2588,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 raise AssertionError("resolve failure must not write progress")
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()), \
                 _patch_media_recognize(self.module, mediainfo), \
                 patch.object(self.SubscribeChain, "resolve_subscribe_missing", return_value=(False, {})):
             summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
@@ -2596,7 +2604,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 raise AssertionError("recognition failure must not write progress")
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()), \
                 _patch_media_recognize(self.module, None):
             summary = self.SubscribeChain().refresh_subscribe_progress(subscribe, scene="unit")
 
@@ -2618,7 +2626,7 @@ class SubscribeProgressEntrypointTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()), \
                 patch.object(self.SubscribeChain, "_SubscribeChain__finish_subscribe"):
             self.SubscribeChain().finish_subscribe_or_not(
                 subscribe=subscribe,
@@ -2738,7 +2746,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append((subscribe_id, payload))
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             SubscribeChain()._SubscribeChain__refresh_total_episode_before_completion(
                 subscribe,
                 mediainfo,
@@ -2789,7 +2797,7 @@ class SubscribeProgressConsolidationTest(TestCase):
 
         chain.resolve_subscribe_missing = _resolve_missing
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
@@ -2832,7 +2840,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append((subscribe_id, payload))
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
@@ -2968,7 +2976,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append((subscribe_id, payload))
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
@@ -3017,7 +3025,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append((subscribe_id, payload))
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
@@ -3066,7 +3074,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append((subscribe_id, payload))
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
@@ -3109,7 +3117,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             def update(self, *_args, **_kwargs):
                 raise AssertionError("manual total episode must not be updated")
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             _EventManager(),
@@ -3150,7 +3158,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             def update(self, *_args, **_kwargs):
                 raise AssertionError("non-tv subscribe must not be updated")
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             _EventManager(),
@@ -3195,7 +3203,7 @@ class SubscribeProgressConsolidationTest(TestCase):
 
         chain = SubscribeChain()
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), \
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), \
                 _patch_media_recognize(module, lambda **_kwargs: self._mediainfo(total_episode=5)):
             chain.check()
 
@@ -3241,7 +3249,7 @@ class SubscribeProgressConsolidationTest(TestCase):
 
         chain = SubscribeChain()
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
@@ -3300,7 +3308,7 @@ class SubscribeProgressConsolidationTest(TestCase):
             },
         )
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             eventmanager,
@@ -3350,7 +3358,7 @@ class SubscribeProgressConsolidationTest(TestCase):
 
         chain = SubscribeChain()
 
-        with patch.object(module, "SubscribeOper", return_value=_SubscribeOper()), patch.object(
+        with patch.object(module, "get_chain_subscribe_port", return_value=_SubscribeOper()), patch.object(
             module,
             "eventmanager",
             _EventManager(),
@@ -3500,7 +3508,7 @@ class SubscribeDownloadFactsTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
                 subscribe,
                 mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
@@ -3521,7 +3529,7 @@ class SubscribeDownloadFactsTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
                 subscribe,
                 mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
@@ -3548,7 +3556,7 @@ class SubscribeDownloadFactsTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
                 subscribe,
                 mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
@@ -3568,7 +3576,7 @@ class SubscribeDownloadFactsTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
                 subscribe,
                 mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
@@ -3596,7 +3604,7 @@ class SubscribeDownloadFactsTest(TestCase):
             episode_priority={"1": 60},
         )
 
-        with patch.object(self.module, "SubscribeOper") as subscribe_oper_cls:
+        with patch.object(self.module, "get_chain_subscribe_port") as subscribe_oper_cls:
             self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
                 subscribe,
                 mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
@@ -3615,7 +3623,7 @@ class SubscribeDownloadFactsTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()):
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()):
             snapshot = self.SubscribeChain()._SubscribeChain__record_subscribe_download_facts(
                 subscribe,
                 mediainfo=SimpleNamespace(title_year="下载事实剧 (2026)"),
@@ -3659,7 +3667,7 @@ class SubscribeDownloadFactsTest(TestCase):
             def update(self, subscribe_id, payload):
                 updates.append(payload)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()), \
                 patch.object(self.SubscribeChain, "_SubscribeChain__finish_subscribe"):
             self.SubscribeChain().finish_subscribe_or_not(
                 subscribe=subscribe,
@@ -3695,7 +3703,7 @@ class SubscribeDownloadFactsTest(TestCase):
         download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
         chain = self.SubscribeChain()
 
-        with patch.object(self.module, "SubscribeOper") as subscribe_oper_cls, \
+        with patch.object(self.module, "get_chain_subscribe_port") as subscribe_oper_cls, \
                 patch.object(chain, "_SubscribeChain__refresh_subscribe_progress_with_no_exists") as refresh_mock, \
                 patch.object(chain, "_SubscribeChain__finish_subscribe"):
             subscribe_oper = subscribe_oper_cls.return_value
@@ -3732,7 +3740,7 @@ class SubscribeDownloadFactsTest(TestCase):
         download.meta_info = SimpleNamespace(episode_list=[], season_list=[])
         chain = self.SubscribeChain()
 
-        with patch.object(self.module, "SubscribeOper") as subscribe_oper_cls, \
+        with patch.object(self.module, "get_chain_subscribe_port") as subscribe_oper_cls, \
                 patch.object(chain, "_SubscribeChain__refresh_subscribe_progress_with_no_exists") as refresh_mock, \
                 patch.object(chain, "_SubscribeChain__finish_subscribe"):
             subscribe_oper = subscribe_oper_cls.return_value
@@ -3779,7 +3787,7 @@ class SubscribeDownloadFactsTest(TestCase):
         def finish_probe(subscribe, **_kwargs):
             finished.append(subscribe.current_priority)
 
-        with patch.object(self.module, "SubscribeOper", return_value=_SubscribeOper()), \
+        with patch.object(self.module, "get_chain_subscribe_port", return_value=_SubscribeOper()), \
                 patch.object(chain, "_SubscribeChain__finish_subscribe", side_effect=finish_probe):
             chain.finish_subscribe_or_not(
                 subscribe=subscribe,

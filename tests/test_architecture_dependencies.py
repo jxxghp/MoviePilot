@@ -522,6 +522,27 @@ def test_download_chain_uses_explicit_data_port_getters():
     assert violations == []
 
 
+def test_subscribe_chain_uses_explicit_data_port_getters():
+    """订阅链不得把三个迁移期 PortProxy 伪装成数据库 Oper。"""
+    path = APP_ROOT / "chain" / "subscribe.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    forbidden = {
+        "DownloadHistoryPortProxy",
+        "SitePortProxy",
+        "SubscribePortProxy",
+    }
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.chain.data"
+        for alias in node.names
+        if alias.name in forbidden
+    ]
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []
