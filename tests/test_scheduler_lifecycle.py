@@ -92,6 +92,36 @@ async def test_stop_async_cancels_and_awaits_scheduler_owned_job(monkeypatch) ->
 
 
 @pytest.mark.anyio
+async def test_submit_to_loop_tracks_internal_progress_or_finish_tasks() -> None:
+    """进度和收尾协程也必须归 Scheduler 所有并可在关闭时收口。"""
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def pending() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    scheduler = _scheduler("internal-task", lambda: None)
+    scheduler._submit_to_loop(
+        pending(),
+        job_id="internal-task",
+        generation=1,
+    )
+
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert len(scheduler._handles) == 1
+
+    await scheduler.stop_async()
+
+    assert cancelled.is_set()
+    assert scheduler._handles == {}
+
+
+@pytest.mark.anyio
 async def test_stale_generation_cannot_finish_replaced_job(monkeypatch) -> None:
     """旧 generation 收尾不得改写同 ID 的新任务状态或进度。"""
     monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)

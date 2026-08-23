@@ -897,7 +897,11 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
             # 回调可能在事件循环内（async 任务）或线程池中（sync 任务）被调用，
             # 统一经事件循环提交；无运行中循环时同步执行兜底
-            self._submit_to_loop(_update())
+            self._submit_to_loop(
+                _update(),
+                job_id=job_id,
+                generation=job.get("_generation", 0),
+            )
 
         return update_progress
 
@@ -1063,34 +1067,65 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         finally:
             if not deferred_finish:
                 # 同步上下文执行异步收尾：优先提交到当前/全局事件循环，无循环时新建循环
-                self._submit_to_loop(self.__finish_job(
+                self._submit_to_loop(
+                    self.__finish_job(
+                        job_id=job_id,
+                        job=job,
+                        generation=generation,
+                        success=success,
+                        error=error,
+                    ),
                     job_id=job_id,
-                    job=job,
                     generation=generation,
-                    success=success,
-                    error=error,
-                ))
+                )
         return True
 
-    def _submit_to_loop(self, coro: Any) -> None:
+    def _submit_to_loop(
+            self,
+            coro: Any,
+            *,
+            job_id: Optional[str] = None,
+            generation: int = 0,
+    ) -> None:
         """
         把协程提交到事件循环执行，兼容以下调用环境：
         - 已在事件循环内（async 任务内部）：排队为独立任务，避免阻塞
         - 外部线程且全局循环在运行：跨线程提交，非阻塞
         - 无运行中循环（测试/CLI）：新建循环同步执行，确保进度不丢失
+
+        带有 job 标识的句柄由 Scheduler 自己持有，关闭时可以取消并等待。
         """
         try:
             running_loop = asyncio.get_running_loop()
         except RuntimeError:
             running_loop = None
         if running_loop:
-            asyncio.create_task(coro)
+            handle = running_loop.create_task(coro)
+            if job_id is not None:
+                self._register_handle(
+                    job_id=job_id,
+                    generation=generation,
+                    loop=running_loop,
+                    handle=handle,
+                )
         elif (
                 global_vars.CURRENT_EVENT_LOOP
                 and global_vars.CURRENT_EVENT_LOOP.is_running()
                 and not global_vars.CURRENT_EVENT_LOOP.is_closed()
         ):
-            asyncio.run_coroutine_threadsafe(coro, global_vars.CURRENT_EVENT_LOOP)
+            target_loop = global_vars.CURRENT_EVENT_LOOP
+            try:
+                handle = asyncio.run_coroutine_threadsafe(coro, target_loop)
+            except RuntimeError:
+                coro.close()
+                return
+            if job_id is not None:
+                self._register_handle(
+                    job_id=job_id,
+                    generation=generation,
+                    loop=target_loop,
+                    handle=handle,
+                )
         elif self._lifecycle_state in {"stopping", "stopped"}:
             coro.close()
         else:
