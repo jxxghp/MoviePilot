@@ -20,8 +20,8 @@ from app.adapters.system.plugin.manifest import (
     PluginDependencyManifestError,
     load_dependency_manifest,
 )
-from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 # 精确锁定版本的比较运算符，同一包出现两个不同锁定值即为不相容
 _PINNING_OPERATORS = frozenset({"==", "==="})
@@ -64,7 +64,7 @@ class PluginDependencyInstaller:
         self._helper = helper
         self._installed_plugins_provider = installed_plugins_provider or (lambda: [])
         self._plugin_dir = plugin_dir or (
-            Path(settings.ROOT_PATH) / "app" / "plugins"
+            Path(get_runtime_setting("ROOT_PATH")) / "app" / "plugins"
         )
 
     @staticmethod

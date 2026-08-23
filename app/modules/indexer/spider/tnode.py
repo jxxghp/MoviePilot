@@ -2,7 +2,9 @@ import re
 from typing import Tuple, List, Optional
 
 from app.runtime.cache import cached
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import SingletonClass

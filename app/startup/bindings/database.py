@@ -20,7 +20,9 @@ from app.db.engine import get_engine
 from app.db.health import probe_database
 from app.db.maintenance import DatabaseCleanupRepository
 from app.db.session import SessionFactory
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 
 
 def build_database_governance() -> DatabaseGovernance:

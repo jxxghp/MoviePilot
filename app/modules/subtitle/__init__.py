@@ -4,7 +4,9 @@ from urllib.parse import urljoin, urlparse
 
 from lxml import etree
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import Context
 from app.db.oper.site import SiteOper
 from app.runtime.log import logger

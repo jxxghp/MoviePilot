@@ -17,7 +17,7 @@ app/application/history.py 里整理历史的写入路径同构。
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
-from typing import Optional, Protocol, Tuple
+from typing import Mapping, Optional, Protocol, Tuple
 
 from app.application.outbox import OutboxIntent
 from app.domain.context import MediaInfo, MusicInfo
@@ -55,6 +55,7 @@ class SubscribeWriter(Protocol):
         payload: dict,
         username: Optional[str] = None,
         after_commit: Optional[AfterCommitEffect] = None,
+        notification: Mapping[str, object] | None = None,
     ) -> Tuple[int, str]:
         """同步新增订阅，并在事务成功后执行外部副作用。"""
 
@@ -64,6 +65,7 @@ class SubscribeWriter(Protocol):
         payload: dict,
         username: Optional[str] = None,
         after_commit: Optional[AsyncAfterCommitEffect] = None,
+        notification: Mapping[str, object] | None = None,
     ) -> Tuple[int, str]:
         """异步新增订阅，并在事务成功后执行外部副作用。"""
 
@@ -153,6 +155,7 @@ class CreateSubscriptionCommand:
         payload: dict,
         username: Optional[str] = None,
         after_commit: Optional[AfterCommitEffect] = None,
+        notification: Mapping[str, object] | None = None,
     ) -> Tuple[int, str]:
         """执行同步新增；事务失败回滚，提交后副作用失败不反向回滚。"""
         try:
@@ -164,6 +167,7 @@ class CreateSubscriptionCommand:
                         staged.subscribe_id,
                         payload,
                         username,
+                        notification,
                     ):
                         self._outbox.stage(intent, now)
                 self._unit_of_work.commit()
@@ -195,6 +199,7 @@ class AsyncCreateSubscriptionCommand:
         payload: dict,
         username: Optional[str] = None,
         after_commit: Optional[AsyncAfterCommitEffect] = None,
+        notification: Mapping[str, object] | None = None,
     ) -> Tuple[int, str]:
         """执行异步新增；事务失败回滚，提交后副作用失败不反向回滚。"""
         try:
@@ -210,6 +215,7 @@ class AsyncCreateSubscriptionCommand:
                         staged.subscribe_id,
                         payload,
                         username,
+                        notification,
                     ):
                         await self._outbox.stage(intent, now)
                 await self._unit_of_work.commit()
@@ -225,26 +231,44 @@ def _subscribe_added_intents(
     subscribe_id: int,
     payload: dict,
     username: str | None,
-) -> tuple[OutboxIntent, OutboxIntent]:
-    """构造订阅新增事件与外部统计的同事务 durable intents。"""
+    notification: Mapping[str, object] | None = None,
+) -> tuple[OutboxIntent, ...]:
+    """构造订阅新增事件、通知与外部统计的同事务 durable intents。"""
     event_key = subscription_added_event_key(subscribe_id, payload)
     event_payload = {
         "subscribe_id": subscribe_id,
         "username": username,
         "mediainfo": dict(payload),
     }
-    return (
+    intents: list[OutboxIntent] = [
         OutboxIntent(
             event_key=event_key,
             topic="subscribe.added",
             payload=event_payload,
         ),
+    ]
+    if notification:
+        intents.append(
+            OutboxIntent(
+                event_key=subscription_added_notification_key(subscribe_id, payload),
+                topic="subscribe.added.notification",
+                payload={
+                    "idempotency_key": subscription_added_notification_key(
+                        subscribe_id,
+                        payload,
+                    ),
+                    "message": dict(notification),
+                },
+            )
+        )
+    intents.append(
         OutboxIntent(
             event_key=subscription_added_report_key(subscribe_id, payload),
             topic="subscribe.added.report",
             payload={"subscribe_info": dict(payload)},
-        ),
+        )
     )
+    return tuple(intents)
 
 
 def subscription_added_event_key(subscribe_id: int, payload: dict) -> str:
@@ -259,6 +283,11 @@ def subscription_added_event_key(subscribe_id: int, payload: dict) -> str:
 def subscription_added_report_key(subscribe_id: int, payload: dict) -> str:
     """返回与新增事件身份一致但可独立重试的统计幂等键。"""
     return f"{subscription_added_event_key(subscribe_id, payload)}:report"
+
+
+def subscription_added_notification_key(subscribe_id: int, payload: dict) -> str:
+    """构造订阅新增通知的稳定幂等键。"""
+    return f"{subscription_added_event_key(subscribe_id, payload)}:notification"
 
 
 _configured_subscribe_writer: Callable[[], SubscribeWriter] | None = None
@@ -345,6 +374,7 @@ def add_subscribe(
     mediainfo: MediaInfo | MusicInfo,
     subscribe_oper: Optional[SubscribeWriter] = None,
     after_commit: Optional[AfterCommitEffect] = None,
+    notification: Mapping[str, object] | None = None,
     **kwargs,
 ) -> Tuple[int, str]:
     """
@@ -361,13 +391,20 @@ def add_subscribe(
         return INCOMPLETE_IDENTITY
     identity, payload, username = translated
     oper = _get_subscribe_writer(subscribe_oper)
+    extra = {"notification": notification} if notification is not None else {}
     if after_commit is None:
-        return oper.add(identity=identity, payload=payload, username=username)
+        return oper.add(
+            identity=identity,
+            payload=payload,
+            username=username,
+            **extra,
+        )
     return oper.add(
         identity=identity,
         payload=payload,
         username=username,
         after_commit=after_commit,
+        **extra,
     )
 
 
@@ -375,6 +412,7 @@ async def async_add_subscribe(
     mediainfo: MediaInfo | MusicInfo,
     subscribe_oper: Optional[SubscribeWriter] = None,
     after_commit: Optional[AsyncAfterCommitEffect] = None,
+    notification: Mapping[str, object] | None = None,
     **kwargs,
 ) -> Tuple[int, str]:
     """
@@ -391,13 +429,20 @@ async def async_add_subscribe(
         return INCOMPLETE_IDENTITY
     identity, payload, username = translated
     oper = _get_subscribe_writer(subscribe_oper)
+    extra = {"notification": notification} if notification is not None else {}
     if after_commit is None:
-        return await oper.async_add(identity=identity, payload=payload, username=username)
+        return await oper.async_add(
+            identity=identity,
+            payload=payload,
+            username=username,
+            **extra,
+        )
     return await oper.async_add(
         identity=identity,
         payload=payload,
         username=username,
         after_commit=after_commit,
+        **extra,
     )
 
 

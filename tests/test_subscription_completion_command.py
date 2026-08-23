@@ -139,3 +139,28 @@ def test_completion_success_closes_event_then_report_intent():
     ]
     assert calls[6][1]["idempotency_key"] == calls[2][1].event_key
     assert calls[8][1]["idempotency_key"] == calls[3][1].event_key
+
+
+def test_completion_stages_and_closes_notification_snapshot() -> None:
+    """完成通知快照与业务事务同提交，成功即时投递后独立收口。"""
+    calls = []
+    command, notify, report = _command(calls)
+
+    command.execute(
+        7,
+        {"id": 7, "media_source": "tmdb", "media_id": "123", "season": 2},
+        {"title": "Test"},
+        notify=notify,
+        report=report,
+        notification={"title": "完成", "text": "Test"},
+    )
+
+    staged = [call[1] for call in calls if call[0] == "stage"]
+    assert [intent.topic for intent in staged] == [
+        "subscribe.complete",
+        "subscribe.complete.notification",
+        "subscribe.complete.report",
+    ]
+    assert staged[1].payload["message"]["title"] == "完成"
+    completed = [call[1] for call in calls if call[0] == "complete"]
+    assert completed[0].endswith(":notification")

@@ -4,7 +4,9 @@ from typing import Optional
 import requests
 
 from app.runtime.cache import cached
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 
 

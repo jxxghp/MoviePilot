@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import importlib
 import shutil
 import threading
 import time
@@ -12,7 +13,7 @@ from typing import Any, Iterable, Optional
 
 import yaml
 
-from app.runtime.config import settings
+from app.application.configuration import get_runtime_settings
 from app.runtime.log import logger
 
 CURRENT_PERSONA_FILE = "CURRENT_PERSONA.md"
@@ -30,6 +31,16 @@ PERSONA_SCHEMA_VERSION = 1
 SUBAGENT_SCHEMA_VERSION = 1
 DEFAULT_PERSONA_ID = "default"
 PERSONA_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def _default_agent_root_dir() -> Path:
+    """从组合根设置服务取得 Agent 目录，导入早期保留旧设置回退。"""
+    try:
+        config_path = get_runtime_settings().get("CONFIG_PATH")
+    except RuntimeError:
+        legacy_settings = importlib.import_module("app.runtime.config").settings
+        config_path = legacy_settings.CONFIG_PATH
+    return Path(config_path) / "agent"
 
 ROOT_LEVEL_RUNTIME_FILES = {
     CURRENT_PERSONA_FILE,
@@ -231,7 +242,7 @@ class AgentRuntimeManager:
         agent_root_dir: Optional[Path] = None,
         bundled_defaults_dir: Optional[Path] = None,
     ) -> None:
-        self.agent_root_dir = agent_root_dir or (settings.CONFIG_PATH / "agent")
+        self.agent_root_dir = agent_root_dir or _default_agent_root_dir()
         self.runtime_dir = self.agent_root_dir / SYSTEM_RUNTIME_DIR
         self.memory_dir = self.agent_root_dir / MEMORY_DIR
         self.skills_dir = self.agent_root_dir / SKILLS_DIR

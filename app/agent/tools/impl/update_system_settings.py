@@ -16,11 +16,10 @@ from app.agent.tools.impl._system_setting_utils import (
     resolve_setting_spec,
     should_redact_setting,
 )
-from app.runtime.config import settings
 from app.runtime.events import eventmanager
 from app.runtime.extensions.service_config import service_capability
 from app.runtime.extensions.admission.service_config import service_config_write_violation
-from app.application.configuration import SystemConfigService
+from app.application.configuration import SystemConfigService, get_runtime_settings
 from app.application.service_config import (
     async_write_system_setting,
     read_system_setting,
@@ -129,7 +128,7 @@ class UpdateSystemSettingsTool(MoviePilotTool):
         `read_system_setting`，服务实例配置族的事实源才不会被绕过。
         """
         if spec.source == "settings":
-            return getattr(settings, spec.key)
+            return get_runtime_settings().get(spec.key)
         if self._system_config is not None:
             return self._system_config.get(spec.systemconfig_key)
         return read_system_setting(spec.systemconfig_key)
@@ -279,7 +278,7 @@ class UpdateSystemSettingsTool(MoviePilotTool):
             changed = False
             message = ""
             if spec.source == "settings":
-                success, message = settings.update_setting(spec.key, next_value)
+                success, message = get_runtime_settings().update(spec.key, next_value)
                 if success is False:
                     return json.dumps(
                         {

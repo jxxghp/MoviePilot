@@ -1,3 +1,5 @@
+import copy
+import threading
 from typing import Any, Union, Dict, Optional
 
 from app.db.base import DbOper
@@ -11,13 +13,30 @@ class UserConfigOper(DbOper, metaclass=Singleton):
     用户配置管理
     """
     def __init__(self):
-        """
-        加载配置到内存
-        """
+        """初始化空快照，数据库加载由启动组合根显式执行。"""
         super().__init__()
         self.__USERCONF = {}
-        for item in UserConfig.list(self._db):
-            self.__set_config_cache(username=item.username, key=item.key, value=item.value)
+        self._snapshot_lock = threading.RLock()
+        self._write_lock = threading.RLock()
+        self._loaded = False
+
+    def load_snapshot(self) -> None:
+        """从数据库加载完整用户配置，并一次性发布新的内存快照。"""
+        with self._write_lock:
+            snapshot: dict[str, dict[str, Any]] = {}
+            for item in UserConfig.list(self._db):
+                if item.username and item.key:
+                    snapshot.setdefault(item.username, {})[item.key] = copy.deepcopy(
+                        item.value
+                    )
+            with self._snapshot_lock:
+                self.__USERCONF = snapshot
+                self._loaded = True
+
+    def _require_loaded(self) -> None:
+        """阻止消费者读取尚未完成启动加载的半成品快照。"""
+        if not self._loaded:
+            raise RuntimeError("用户配置快照尚未加载")
 
     def set(self, username: str, key: Union[str, UserConfigKey], value: Any):
         """
@@ -25,30 +44,43 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         """
         if isinstance(key, UserConfigKey):
             key = key.value
-        # 更新内存
-        self.__set_config_cache(username=username, key=key, value=value)
-        # 写入数据库
-        conf = UserConfig.get_by_key(db=self._db, username=username, key=key)
-        if conf:
-            if value:
-                self._stage_update(conf, {"value": value})
-            else:
-                self._stage_delete(UserConfig, conf.id)
-        else:
-            conf = UserConfig(username=username, key=key, value=value)
-            self._stage_create(conf)
+        self._require_loaded()
+        with self._write_lock:
+
+            def write(db):
+                """在当前事务中按用户配置的假值规则写入记录。"""
+                conf = UserConfig.get_by_key(db=db, username=username, key=key)
+                if conf:
+                    if value:
+                        conf.value = copy.deepcopy(value)
+                    else:
+                        db.delete(conf)
+                else:
+                    db.add(
+                        UserConfig(
+                            username=username,
+                            key=key,
+                            value=copy.deepcopy(value),
+                        )
+                    )
+
+            self._execute_sync_write(write)
+            # 既有运行时语义会保留刚写入的假值，即使其数据库记录被删除。
+            self.__set_config_cache(username=username, key=key, value=value)
 
     def get(self, username: str, key: Optional[Union[str, UserConfigKey]] = None) -> Any:
         """
         获取用户配置
         """
-        if not username:
-            return self.__USERCONF
-        if isinstance(key, UserConfigKey):
-            key = key.value
-        if not key:
-            return self.__get_config_caches(username=username)
-        return self.__get_config_cache(username=username, key=key)
+        with self._snapshot_lock:
+            self._require_loaded()
+            if not username:
+                return copy.deepcopy(self.__USERCONF)
+            if isinstance(key, UserConfigKey):
+                key = key.value
+            if not key:
+                return copy.deepcopy(self.__get_config_caches(username=username))
+            return copy.deepcopy(self.__get_config_cache(username=username, key=key))
 
     def __set_config_cache(self, username: str, key: str, value: Any):
         """
@@ -56,15 +88,9 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         """
         if not username or not key:
             return
-        cache = self.__USERCONF
-        if not cache:
-            cache = {}
-        user_cache = cache.get(username)
-        if not user_cache:
-            user_cache = {}
-            cache[username] = user_cache
-        user_cache[key] = value
-        self.__USERCONF = cache
+        with self._snapshot_lock:
+            user_cache = self.__USERCONF.setdefault(username, {})
+            user_cache[key] = copy.deepcopy(value)
 
     def __get_config_caches(self, username: str) -> Optional[Dict[str, Any]]:
         """

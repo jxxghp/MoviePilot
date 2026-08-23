@@ -12,7 +12,9 @@ from app.agent.tools.tags import ToolTag
 from app.application.orchestration.download import DownloadChain
 from app.application.orchestration.media import MediaChain
 from app.application.orchestration.search import SearchChain
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo
 from app.application.agentdata import SitePort as SiteOper

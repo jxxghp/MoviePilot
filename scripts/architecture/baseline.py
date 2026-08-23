@@ -85,6 +85,37 @@ def parse_source(path: Path) -> ast.Module:
     return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
 
 
+def _is_type_checking_test(test: ast.expr) -> bool:
+    """判断条件是否只在静态类型检查阶段成立。"""
+    return (
+        isinstance(test, ast.Name)
+        and test.id == "TYPE_CHECKING"
+    ) or (
+        isinstance(test, ast.Attribute)
+        and isinstance(test.value, ast.Name)
+        and test.value.id == "typing"
+        and test.attr == "TYPE_CHECKING"
+    )
+
+
+def iter_runtime_import_nodes(tree: ast.AST):
+    """遍历运行期导入，排除 ``if TYPE_CHECKING`` 内的仅类型依赖。"""
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        parent = parents.get(node)
+        while parent is not None:
+            if isinstance(parent, ast.If) and _is_type_checking_test(parent.test):
+                break
+            parent = parents.get(parent)
+        else:
+            yield node
+
+
 def collect_configuration_debt_baseline() -> dict[str, Any]:
     """收集宿主 canonical 代码直接读取 settings 和构造数据库配置适配器的债务。"""
     settings_files: list[str] = []
@@ -100,7 +131,8 @@ def collect_configuration_debt_baseline() -> dict[str, Any]:
             if not isinstance(node, ast.ImportFrom):
                 continue
             if node.module == "app.runtime.config" and any(
-                alias.name == "settings" for alias in node.names
+                alias.name == "settings" and alias.asname in (None, "settings")
+                for alias in node.names
             ):
                 imports_settings = True
             if node.module == "app.db.oper.systemconfig":
@@ -144,7 +176,7 @@ def iter_import_candidates(
     """提取模块导入候选，第二项记录 from-import 的具体符号。"""
     package = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
     candidates: list[tuple[str, Optional[str]]] = []
-    for node in ast.walk(parse_source(path)):
+    for node in iter_runtime_import_nodes(parse_source(path)):
         if isinstance(node, ast.Import):
             candidates.extend((alias.name, None) for alias in node.names)
             continue

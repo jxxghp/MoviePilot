@@ -14,7 +14,9 @@ from app.runtime.capabilities.model import (
     SelectorSchema,
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.extensions.contract.extension import (
     ExtensionDistribution,
     ExtensionFaultScope,

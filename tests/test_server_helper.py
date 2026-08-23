@@ -29,9 +29,12 @@ class MoviePilotServerHelperTests(unittest.TestCase):
                 config_writer=Mock(),
                 installed_plugins_provider=Mock(return_value=[]),
                 subscribes_provider=Mock(return_value=[]),
+                async_subscribes_provider=AsyncMock(return_value=[]),
                 plugin_report_sender=Mock(),
                 async_plugin_report_sender=AsyncMock(),
                 subscribe_report_sender=Mock(),
+                async_subscribe_report_sender=AsyncMock(),
+                async_config_writer=AsyncMock(),
                 repo_url_sanitizer=MoviePilotServerHelper.sanitize_plugin_repo_url,
             ),
             sharing_service=ServerSharingService(

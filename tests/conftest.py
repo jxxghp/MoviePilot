@@ -3,6 +3,7 @@
 引导与网络守卫均复用 ``app/testing`` 的共享 harness（与插件仓 conftest 同源），
 引导逻辑只在 ``app/testing`` 维护一处。
 """
+import asyncio
 import sys
 
 import pytest
@@ -20,6 +21,14 @@ prepare_backend()
 from app.testing.network_guard import block_real_network  # noqa: E402,F401
 
 
+class _TestDatabaseExecutor:
+    """让绕过完整 lifespan 的测试仍通过线程执行同步数据库写入。"""
+
+    async def run(self, operation):
+        """在线程中执行测试事务。"""
+        return await asyncio.to_thread(operation)
+
+
 @pytest.fixture(autouse=True)
 def configure_plugin_system_services():
     """为绕过完整启动流程的单元测试装配真实插件系统适配器。"""
@@ -34,6 +43,7 @@ def configure_plugin_system_services():
         RuntimeSettingsService,
         SystemConfigService,
         TransferRetryConfig,
+        configure_token_runtime_config,
         configure_runtime_configuration,
         configure_runtime_settings,
         configure_system_config,
@@ -45,10 +55,12 @@ def configure_plugin_system_services():
         get_configured_service_instance_configs,
     )
     from app.runtime.config import settings
+    from app.runtime.settings import configure_runtime_setting_provider
     from app.startup.ports.configuration import (
         build_api_runtime_config,
         build_chain_runtime_config,
         build_scheduler_runtime_config,
+        build_token_runtime_config,
     )
     from app.db.session import (
         SessionFactory,
@@ -66,6 +78,11 @@ def configure_plugin_system_services():
     from app.runtime.extensions.service_config import (
         configure_service_instance_config_reader,
     )
+    from app.db.oper.userconfig import UserConfigOper
+    from app.application.security.userconfig import (
+        UserConfigurationService,
+        configure_user_configuration,
+    )
 
     configure_token_codec(create_access_token, decode_access_token)
     configure_runtime_configuration(
@@ -76,7 +93,25 @@ def configure_plugin_system_services():
         )
     )
     configure_runtime_settings(RuntimeSettingsService(settings))
-    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    configure_runtime_setting_provider(lambda key: getattr(settings, key))
+    configure_token_runtime_config(lambda: build_token_runtime_config(settings))
+    database_executor = _TestDatabaseExecutor()
+    system_config = SystemConfigOper()
+    system_config.load_snapshot()
+    user_config = UserConfigOper()
+    user_config.load_snapshot()
+    configure_system_config(
+        SystemConfigService(
+            repository=system_config,
+            async_executor=database_executor,
+        )
+    )
+    configure_user_configuration(
+        UserConfigurationService(
+            repository=user_config,
+            async_executor=database_executor,
+        )
+    )
     configure_service_instance_configs(
         ServiceInstanceConfigService(repository=ServiceConfigOper())
     )
@@ -123,6 +158,8 @@ def configure_plugin_system_services():
     from app.db.oper.passkey import PassKeyOper
     from app.db.oper.user_identity import UserIdentityOper
     from app.startup.ports.subscription import TransactionalSubscribeWriter
+    from app.startup.ports.download_failure import TransactionalDownloadFailureRepository
+    from app.startup.ports.site import TransactionalSiteRepository
     from app.startup.ports.workflow import TransactionalWorkflowExecutionService
     from app.startup.ports.transaction import TransactionalWriteRunner
 
@@ -185,15 +222,24 @@ def configure_plugin_system_services():
         provisioning=UserOper(),
     )
 
+    def site_repository() -> TransactionalSiteRepository:
+        """按生产组合根方式创建显式事务站点仓储。"""
+        return TransactionalSiteRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+
     configure_chain_data_ports(
-        site=lambda: SiteOper(),
+        site=site_repository,
         subscribe=lambda: SubscribeOper(),
         workflow=lambda: WorkflowOper(),
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransferPendingOper(),
         media_server=lambda: MediaServerOper(),
-        download_failure=lambda: DownloadFailureOper(),
+        download_failure=lambda: TransactionalDownloadFailureRepository(
+            SessionFactory
+        ),
         user=lambda: UserOper(),
     )
     configure_chain_runtime_context_provider(lambda: ChainRuntimeContext(
@@ -210,8 +256,8 @@ def configure_plugin_system_services():
         module_dispatcher_factory=ModuleInvocationDispatcher,
         configuration=build_chain_runtime_config(settings),
     ))
-    configure_site_query_service(SiteQueryService(repository=SiteOper()))
-    configure_site_health_service(SiteHealthService(repository=SiteOper()))
+    configure_site_query_service(SiteQueryService(repository=site_repository()))
+    configure_site_health_service(SiteHealthService(repository=site_repository()))
     configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
     from app.db.oper.agenttask import AgentTaskOper
     from app.db.oper.plugindata import PluginDataOper
@@ -219,7 +265,7 @@ def configure_plugin_system_services():
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
         user=lambda: UserOper(),
-        site=lambda: SiteOper(),
+        site=site_repository,
         subscribe=lambda: SubscribeOper(),
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),

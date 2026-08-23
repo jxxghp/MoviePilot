@@ -12,7 +12,9 @@ from typing import Optional, List, Tuple
 from PIL import Image
 
 from app.runtime.cache import FileCache
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger

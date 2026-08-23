@@ -4,7 +4,9 @@ from urllib.parse import urljoin
 from typing import Optional, Tuple
 
 from app.runtime.log import logger
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils
 from app.domain import site as site_rules
 from app.foundation import temporal as time_tools

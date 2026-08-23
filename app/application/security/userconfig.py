@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any, Protocol
+
+from app.application.database import AsyncDatabaseExecutor
 
 
 class UserConfigurationRepository(Protocol):
@@ -18,9 +21,15 @@ class UserConfigurationRepository(Protocol):
 class UserConfigurationService:
     """编排用户个性化配置读写。"""
 
-    def __init__(self, repository: UserConfigurationRepository) -> None:
-        """注入用户配置数据端口。"""
+    def __init__(
+        self,
+        repository: UserConfigurationRepository,
+        *,
+        async_executor: AsyncDatabaseExecutor | None = None,
+    ) -> None:
+        """注入用户配置数据端口及可选的异步事务执行能力。"""
         self._repository = repository
+        self._async_executor = async_executor
 
     def get(self, username: str, key: str) -> Any:
         """读取用户配置。"""
@@ -29,6 +38,14 @@ class UserConfigurationService:
     def set(self, username: str, key: str, value: Any) -> Any:
         """写入用户配置。"""
         return self._repository.set(username=username, key=key, value=value)
+
+    async def async_set(self, username: str, key: str, value: Any) -> Any:
+        """异步写入用户配置，并等待数据库提交或回滚完成。"""
+        if self._async_executor is None:
+            raise RuntimeError("用户配置异步数据库执行端口尚未配置")
+        return await self._async_executor.run(
+            partial(self._repository.set, username=username, key=key, value=value)
+        )
 
 
 _configured_user_configuration: UserConfigurationService | None = None

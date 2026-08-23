@@ -10,7 +10,9 @@ from alembic.util import CommandError
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.db.base import Base
 from app.db.engine import get_engine
 from app.db.models import load_all_models
@@ -142,6 +144,17 @@ def init_db():
 
     # 全量建表
     Base.metadata.create_all(bind=get_engine())
+
+
+def load_configuration_snapshots():
+    """
+    把系统配置与用户配置读入进程内快照缓存
+    """
+    from app.db.oper.systemconfig import SystemConfigOper
+    from app.db.oper.userconfig import UserConfigOper
+
+    SystemConfigOper().load_snapshot()
+    UserConfigOper().load_snapshot()
 
 
 def update_db(alembic_cfg: Config | None = None):

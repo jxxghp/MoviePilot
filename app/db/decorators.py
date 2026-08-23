@@ -43,6 +43,14 @@ def run_legacy_sync_query(operation: Callable[[Session], _R]) -> _R:
         except Exception as close_err:  # noqa: BLE001 兼容查询释放失败不改变返回语义
             logger.error(f"释放数据库会话失败：{close_err}")
 
+
+async def run_legacy_async_query(
+    operation: Callable[[AsyncSession], Awaitable[_R]],
+) -> _R:
+    """为移除异步查询装饰器的旧 Model ABI 提供一次性异步会话。"""
+    async with async_session_scope() as db:
+        return await operation(db)
+
 def _get_args_db(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],

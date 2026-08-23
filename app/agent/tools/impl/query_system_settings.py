@@ -15,8 +15,7 @@ from app.agent.tools.impl._system_setting_utils import (
     resolve_setting_spec,
     should_redact_setting,
 )
-from app.runtime.config import settings
-from app.application.configuration import SystemConfigReader
+from app.application.configuration import SystemConfigReader, get_runtime_settings
 from app.application.service_config import read_system_setting
 from app.runtime.log import logger
 
@@ -126,7 +125,7 @@ class QuerySystemSettingsTool(MoviePilotTool):
         `read_system_setting`，服务实例配置族的事实源才不会被绕过。
         """
         if spec.source == "settings":
-            return getattr(settings, spec.key)
+            return get_runtime_settings().get(spec.key)
         if self._system_config is not None:
             return self._system_config.get(spec.systemconfig_key)
         return read_system_setting(spec.systemconfig_key)

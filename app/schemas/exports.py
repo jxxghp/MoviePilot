@@ -86,6 +86,8 @@ SCHEMA_EXPORTS = {
     'DashboardMemoryInfo': ('app.schemas.dashboard', 'DashboardMemoryInfo'),
     'DashboardSystemInfo': ('app.schemas.dashboard', 'DashboardSystemInfo'),
     'DataT': ('app.schemas.response', 'DataT'),
+    'DatabaseWorkerClosedError': ('app.schemas.exception', 'DatabaseWorkerClosedError'),
+    'DatabaseWorkerOverloadedError': ('app.schemas.exception', 'DatabaseWorkerOverloadedError'),
     'Dict': ('app.schemas.mcp', 'Dict'),
     'DiscoverMediaSource': ('app.schemas.event', 'DiscoverMediaSource'),
     'DiscoverSourceEventData': ('app.schemas.event', 'DiscoverSourceEventData'),

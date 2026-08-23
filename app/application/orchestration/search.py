@@ -2321,9 +2321,15 @@ class SearchChain(ChainBase):
             # 检查站点索引开关
             if not sites or indexer.get("id") in sites:
                 indexer_sites.append(indexer)
+
+        plugin_results = self.search_plugin_torrents(
+            keyword=keyword,
+            mtype=mediainfo.type if mediainfo else mtype,
+            page=page,
+        )
         if not indexer_sites:
-            logger.warn('未开启任何有效站点，无法搜索资源')
-            return []
+            logger.info(f'未开启有效站点，插件资源源返回 {len(plugin_results)} 条资源')
+            return plugin_results
 
         # 开始进度
         progress = ProgressHelper(ProgressKey.Search)
@@ -2339,7 +2345,7 @@ class SearchChain(ChainBase):
         progress.update(value=0,
                         text=f"开始搜索，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
         # 结果集
-        results = []
+        results = list(plugin_results)
         # 同一站点按页顺序抓取，避免空页后仍继续请求该站点的后续页。
         max_workers = min(
             len(indexer_sites),
@@ -2356,13 +2362,13 @@ class SearchChain(ChainBase):
                 search_keyword = mediainfo.imdb_id if area == "imdbid" and mediainfo else keyword
                 if area == "imdbid":
                     # 搜索IMDBID
-                    task = executor.submit(self.search_torrents, site=site,
+                    task = executor.submit(self.search_site_torrents, site=site,
                                            keyword=search_keyword,
                                            mtype=mediainfo.type if mediainfo else mtype,
                                            page=search_page)
                 else:
                     # 搜索标题
-                    task = executor.submit(self.search_torrents, site=site,
+                    task = executor.submit(self.search_site_torrents, site=site,
                                            keyword=search_keyword,
                                            mtype=mediainfo.type if mediainfo else mtype,
                                            page=search_page)
@@ -2438,9 +2444,15 @@ class SearchChain(ChainBase):
             # 检查站点索引开关
             if not sites or indexer.get("id") in sites:
                 indexer_sites.append(indexer)
+
+        plugin_results = await self.async_search_plugin_torrents(
+            keyword=keyword,
+            mtype=mediainfo.type if mediainfo else mtype,
+            page=page,
+        )
         if not indexer_sites:
-            logger.warn('未开启任何有效站点，无法搜索资源')
-            return []
+            logger.info(f'未开启有效站点，插件资源源返回 {len(plugin_results)} 条资源')
+            return plugin_results
 
         # 开始进度（异步后端，避免同步 Redis 在事件循环上阻塞）
         progress = AsyncProgressHelper(ProgressKey.Search)
@@ -2456,7 +2468,7 @@ class SearchChain(ChainBase):
         await progress.update(value=0,
                               text=f"开始搜索，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ...")
         # 结果集
-        results = []
+        results = list(plugin_results)
         semaphore = asyncio.Semaphore(
             self.runtime_config.search_threadpool_size or total_num
         )
@@ -2468,12 +2480,12 @@ class SearchChain(ChainBase):
             async with semaphore:
                 if area == "imdbid":
                     # 搜索IMDBID
-                    return await self.async_search_torrents(site=site,
+                    return await self.async_search_site_torrents(site=site,
                                                             keyword=mediainfo.imdb_id if mediainfo else None,
                                                             mtype=mediainfo.type if mediainfo else mtype,
                                                             page=search_page)
                 # 搜索标题
-                return await self.async_search_torrents(site=site,
+                return await self.async_search_site_torrents(site=site,
                                                         keyword=keyword,
                                                         mtype=mediainfo.type if mediainfo else mtype,
                                                         page=search_page)
@@ -2562,16 +2574,37 @@ class SearchChain(ChainBase):
         for indexer in await SitesHelper().async_get_indexers():
             if not sites or indexer.get("id") in sites:
                 indexer_sites.append(indexer)
+
+        plugin_results = await self.async_search_plugin_torrents(
+            keyword=keyword,
+            mtype=mediainfo.type if mediainfo else mtype,
+            page=page,
+        )
+        if plugin_results:
+            yield {
+                "type": "append",
+                "stage": "searching",
+                "value": 100 if not indexer_sites else 0,
+                "text": f"插件资源源返回 {len(plugin_results)} 条资源",
+                "items": plugin_results,
+                "site": "插件资源源",
+                "site_id": None,
+                "page": page,
+                "finished": 0,
+                "total": len(indexer_sites),
+                "total_items": len(plugin_results),
+            }
         if not indexer_sites:
-            logger.warn('未开启任何有效站点，无法搜索资源')
+            logger.info(f'未开启有效站点，插件资源源返回 {len(plugin_results)} 条资源')
             yield {
                 "type": "done",
                 "stage": "searching",
                 "value": 100,
-                "text": "未开启任何有效站点，无法搜索资源",
+                "text": f"搜索完成，共 {len(plugin_results)} 条资源",
                 "items": [],
                 "finished": 0,
-                "total": 0
+                "total": 0,
+                "total_items": len(plugin_results),
             }
             return
 
@@ -2604,12 +2637,12 @@ class SearchChain(ChainBase):
             """
             async with semaphore:
                 if area == "imdbid":
-                    site_result = await self.async_search_torrents(site=site,
+                    site_result = await self.async_search_site_torrents(site=site,
                                                                    keyword=mediainfo.imdb_id if mediainfo else None,
                                                                    mtype=mediainfo.type if mediainfo else mtype,
                                                                    page=search_page)
                 else:
-                    site_result = await self.async_search_torrents(site=site,
+                    site_result = await self.async_search_site_torrents(site=site,
                                                                    keyword=keyword,
                                                                    mtype=mediainfo.type if mediainfo else mtype,
                                                                    page=search_page)
@@ -2629,7 +2662,7 @@ class SearchChain(ChainBase):
         for site in indexer_sites:
             submit_site_page(site=site, page_index=0)
 
-        results_count = 0
+        results_count = len(plugin_results)
         try:
             while tasks:
                 if global_vars.is_system_stopped:

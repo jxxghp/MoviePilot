@@ -88,13 +88,15 @@ Oper classes accept and return persistence values. Turning a `MediaInfo` or
 ### Transaction ownership ratchet
 
 - `tests/fixtures/architecture/transaction-debt-baseline.json` records the
-  existing Model transaction decorators. The current 155 decorators (83 `db_query`,
-  56 `async_db_query`, 11 `db_update`, 5 `async_db_update`) are migration debt: they
-  may decrease but must never increase or move to a new Model method. The 16 write
+  existing Model transaction decorators. They are migration debt: the count may
+  decrease but must never increase or move to a new Model method. The write
   decorators are frozen by name in `MODEL_WRITE_DECORATOR_DEBT`
   (`tests/test_architecture_contract_baseline.py`) and confined to `PluginConfig`,
-  `ServiceConfig` and `UserIdentity`; no other Model may gain one, and these three
-  may not gain another.
+  `ServiceConfig` and `UserIdentity` — three models this fork owns and upstream
+  does not, which is why upstream holds both write kinds at zero and this fork
+  cannot yet. No other Model may gain one, and these three may not gain another.
+  Freezing by name rather than by count is deliberate: a count tolerates removing
+  one decorator and adding another.
 - New Model methods must not use `db_query`, `db_update`, `async_db_query`, or
   `async_db_update`, create a Session, or call `commit()` / `rollback()`.
 - Oper receives a caller-owned Session and may query, add, update, delete, or

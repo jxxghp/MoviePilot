@@ -7,8 +7,8 @@ def test_doh_executor_is_lazy_and_shutdown_restores_socket(monkeypatch):
     """DoH 线程池按需创建，并在模块关闭时恢复系统 DNS"""
     original_getaddrinfo = socket.getaddrinfo
     helper = object.__new__(doh.DohHelper)
-    monkeypatch.setattr(doh.settings, "DOH_DOMAINS", "example.com")
-    monkeypatch.setattr(doh.settings, "DOH_RESOLVERS", "resolver.test")
+    monkeypatch.setattr("app.runtime.config.settings.DOH_DOMAINS", "example.com")
+    monkeypatch.setattr("app.runtime.config.settings.DOH_RESOLVERS", "resolver.test")
     monkeypatch.setattr(doh, "_doh_query", lambda resolver, host: "203.0.113.7")
     monkeypatch.setattr(doh, "_orig_getaddrinfo", lambda host, *args, **kwargs: [])
 
@@ -35,8 +35,8 @@ def test_doh_config_reload_disables_and_closes_executor(monkeypatch):
     """热更新关闭 DoH 时恢复系统 DNS 并释放已创建的线程池"""
     original_getaddrinfo = socket.getaddrinfo
     helper = object.__new__(doh.DohHelper)
-    monkeypatch.setattr(doh.settings, "DOH_DOMAINS", "example.com")
-    monkeypatch.setattr(doh.settings, "DOH_RESOLVERS", "resolver.test")
+    monkeypatch.setattr("app.runtime.config.settings.DOH_DOMAINS", "example.com")
+    monkeypatch.setattr("app.runtime.config.settings.DOH_RESOLVERS", "resolver.test")
     monkeypatch.setattr(doh, "_doh_query", lambda resolver, host: "203.0.113.7")
     monkeypatch.setattr(doh, "_orig_getaddrinfo", lambda host, *args, **kwargs: [])
 
@@ -46,7 +46,7 @@ def test_doh_config_reload_disables_and_closes_executor(monkeypatch):
         socket.getaddrinfo("example.com", None)
         executor = doh._executor
         assert executor is not None
-        monkeypatch.setattr(doh.settings, "DOH_ENABLE", False)
+        monkeypatch.setattr("app.runtime.config.settings.DOH_ENABLE", False)
 
         helper.on_config_changed()
 
@@ -73,8 +73,8 @@ def test_enable_doh_reuses_cached_host_resolution(monkeypatch):
         resolved_hosts.append(host)
         return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", (host, 0))]
 
-    monkeypatch.setattr(doh.settings, "DOH_DOMAINS", "example.com")
-    monkeypatch.setattr(doh.settings, "DOH_RESOLVERS", "resolver.test")
+    monkeypatch.setattr("app.runtime.config.settings.DOH_DOMAINS", "example.com")
+    monkeypatch.setattr("app.runtime.config.settings.DOH_RESOLVERS", "resolver.test")
     monkeypatch.setattr(doh, "_doh_query", fake_query)
     monkeypatch.setattr(doh, "_orig_getaddrinfo", fake_getaddrinfo)
 

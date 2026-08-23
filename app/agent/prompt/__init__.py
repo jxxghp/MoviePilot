@@ -10,7 +10,9 @@ from typing import Any, Dict, Optional
 import yaml
 
 from app.agent.llm.capability import AgentCapabilityManager
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.notification import ChannelCapability
 from app.schemas.notification import ChannelCapabilities

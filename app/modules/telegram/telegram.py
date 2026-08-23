@@ -36,7 +36,9 @@ try:
 except ImportError:
     from telegramify_markdown.type import ContentTypes, File, Photo, Text  # noqa: E402
 
-from app.runtime.config import settings  # noqa: E402
+from app.runtime.settings import RuntimeSettingsCompat  # noqa: E402
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, Context  # noqa: E402
 from app.domain.metainfo import MetaInfo  # noqa: E402
 from app.adapters.media.image import ImageHelper  # noqa: E402

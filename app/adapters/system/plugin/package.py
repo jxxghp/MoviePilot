@@ -11,8 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from app.adapters.external.market import PluginHelper as _PluginHelper
-from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.settings import RuntimeSettingsCompat
+
+
+# 保留旧模块级入口，插件本地同步测试和旧扩展仍可能覆盖这些设置。
+settings = RuntimeSettingsCompat()
 
 # 插件已装版本元信息文件名，位于插件目录下，源码下沉到版本目录时原地保留
 PLUGIN_VERSIONS_MANIFEST_NAME = "versions.json"

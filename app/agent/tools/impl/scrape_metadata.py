@@ -10,7 +10,9 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.application.orchestration.media import MediaChain
 from app.application.orchestration.scraping import ScrapingChain
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.file import FileURI
 from app.schemas.workflow import FileItem

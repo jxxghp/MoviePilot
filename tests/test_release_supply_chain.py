@@ -76,6 +76,7 @@ def test_release_scans_both_architectures_before_registry_login_and_publish() ->
         "Scan arm64 candidate vulnerabilities",
     ):
         scan = indexed[name]
+        assert scan["with"]["cache-dir"] == "${{ runner.temp }}/trivy"
         assert scan["uses"] == (
             "aquasecurity/trivy-action@"
             "a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8"

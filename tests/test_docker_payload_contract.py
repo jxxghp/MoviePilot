@@ -25,6 +25,7 @@ def test_build_context_excludes_runtime_state_and_keeps_release_inputs() -> None
         ".agent-work/",
         ".runtime/",
         ".tmp/",
+        ".cache/",
         "node_modules/",
         "public/",
         ".moviepilot.env",
@@ -75,6 +76,15 @@ def test_dockerfile_assigns_each_payload_to_an_independent_stage() -> None:
         assert final.count(copy) == 1
     assert "COPY --from=prepare_control /bundle/entrypoint.sh /entrypoint.sh" in final
     assert "RUN rm -rf /app/frontend-dist" in dockerfile
+
+
+def test_plugin_runtime_updates_preserve_legacy_base_entrypoint() -> None:
+    """更新和性能覆盖镜像必须保留旧插件导入 _PluginBase 所需的兼容入口。"""
+    update_script = _read(ROOT / "docker" / "update.sh")
+    perf_script = _read(ROOT / "scripts" / "perf" / "moviepilot_docker_ab.py")
+
+    assert 'rm -f "${stage_plugin_dir}/__init__.py"' not in update_script
+    assert "rm -f /frozen/plugins/__init__.py" not in perf_script
 
 
 def test_release_workflows_pin_and_record_external_payload_identities() -> None:

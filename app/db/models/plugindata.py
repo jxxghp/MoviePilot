@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import db_query, async_db_query
+from app.db.decorators import run_legacy_async_query, run_legacy_sync_query
 from app.runtime.extensions.contract.instance import DEFAULT_INSTANCE_ID
 
 
@@ -23,63 +23,100 @@ class PluginData(Base):
     )
 
     @classmethod
-    @db_query
-    def get_plugin_data(cls, db: Session, plugin_id: str, instance_id: str = DEFAULT_INSTANCE_ID):
-        """
-        查询某实例下某插件的全部数据。
+    def get_plugin_data(
+        cls,
+        db: Session | None = None,
+        plugin_id: str | None = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
+    ):
+        """在调用方 Session 中读取某实例下插件全部数据，并兼容旧无会话入口。
         :param db: 数据库会话
         :param plugin_id: 插件标识
         :param instance_id: 实例标识，默认取默认实例
         :return: 该实例下该插件的数据行列表
         """
+        if plugin_id is None:
+            raise TypeError("plugin_id is required")
+        if not isinstance(db, Session):
+            return run_legacy_sync_query(
+                lambda session: cls.get_plugin_data(session, plugin_id, instance_id)
+            )
         return list(db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
         ).scalars().all())
 
     @classmethod
-    @async_db_query
-    async def async_get_plugin_data(cls, db: AsyncSession, plugin_id: str, instance_id: str = DEFAULT_INSTANCE_ID):
-        """
-        异步查询某实例下某插件的全部数据。
+    async def async_get_plugin_data(
+        cls,
+        db: AsyncSession | None = None,
+        plugin_id: str | None = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
+    ):
+        """在调用方 AsyncSession 中读取某实例下插件全部数据，并兼容旧无会话入口。
         :param db: 异步数据库会话
         :param plugin_id: 插件标识
         :param instance_id: 实例标识，默认取默认实例
         :return: 该实例下该插件的数据行列表
         """
+        if plugin_id is None:
+            raise TypeError("plugin_id is required")
+        if not isinstance(db, AsyncSession):
+            return await run_legacy_async_query(
+                lambda session: cls.async_get_plugin_data(session, plugin_id, instance_id)
+            )
         result = await db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
         )
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
-    def get_plugin_data_by_key(cls, db: Session, plugin_id: str, key: str,
-                                instance_id: str = DEFAULT_INSTANCE_ID):
-        """
-        按键查询某实例下某插件的单条数据。
+    def get_plugin_data_by_key(
+        cls,
+        db: Session | None = None,
+        plugin_id: str | None = None,
+        key: str | None = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
+    ):
+        """在调用方 Session 中按键读取某实例下插件数据，并兼容旧无会话入口。
         :param db: 数据库会话
         :param plugin_id: 插件标识
         :param key: 数据键
         :param instance_id: 实例标识，默认取默认实例
         :return: 命中的数据行，不存在返回 None
         """
+        if plugin_id is None or key is None:
+            raise TypeError("plugin_id and key are required")
+        if not isinstance(db, Session):
+            return run_legacy_sync_query(
+                lambda session: cls.get_plugin_data_by_key(session, plugin_id, key, instance_id)
+            )
         return db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.key == key, cls.instance_id == instance_id)
         ).scalars().first()
 
     @classmethod
-    @async_db_query
     async def async_get_plugin_data_by_key(
-        cls, db: AsyncSession, plugin_id: str, key: str, instance_id: str = DEFAULT_INSTANCE_ID
+        cls,
+        db: AsyncSession | None = None,
+        plugin_id: str | None = None,
+        key: str | None = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
     ):
-        """
-        异步按键查询某实例下某插件的单条数据。
+        """在调用方 AsyncSession 中按键读取某实例下插件数据，并兼容旧无会话入口。
         :param db: 异步数据库会话
         :param plugin_id: 插件标识
         :param key: 数据键
         :param instance_id: 实例标识，默认取默认实例
         :return: 命中的数据行，不存在返回 None
         """
+        if plugin_id is None or key is None:
+            raise TypeError("plugin_id and key are required")
+        if not isinstance(db, AsyncSession):
+            return await run_legacy_async_query(
+                lambda session: cls.async_get_plugin_data_by_key(
+                    session, plugin_id, key, instance_id
+                )
+            )
         result = await db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.key == key, cls.instance_id == instance_id)
         )
@@ -122,31 +159,49 @@ class PluginData(Base):
         db.execute(statement)
 
     @classmethod
-    @db_query
-    def get_plugin_data_by_plugin_id(cls, db: Session, plugin_id: str, instance_id: str = DEFAULT_INSTANCE_ID):
-        """
-        查询某实例下某插件的全部数据。
+    def get_plugin_data_by_plugin_id(
+        cls,
+        db: Session | None = None,
+        plugin_id: str | None = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
+    ):
+        """在调用方 Session 中按插件 ID 读取某实例下插件全部数据，并兼容旧无会话入口。
         :param db: 数据库会话
         :param plugin_id: 插件标识
         :param instance_id: 实例标识，默认取默认实例
         :return: 该实例下该插件的数据行列表
         """
+        if plugin_id is None:
+            raise TypeError("plugin_id is required")
+        if not isinstance(db, Session):
+            return run_legacy_sync_query(
+                lambda session: cls.get_plugin_data_by_plugin_id(session, plugin_id, instance_id)
+            )
         return list(db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
         ).scalars().all())
 
     @classmethod
-    @async_db_query
     async def async_get_plugin_data_by_plugin_id(
-        cls, db: AsyncSession, plugin_id: str, instance_id: str = DEFAULT_INSTANCE_ID
+        cls,
+        db: AsyncSession | None = None,
+        plugin_id: str | None = None,
+        instance_id: str = DEFAULT_INSTANCE_ID,
     ):
-        """
-        异步查询某实例下某插件的全部数据。
+        """在调用方 AsyncSession 中按插件 ID 读取某实例下插件全部数据，并兼容旧无会话入口。
         :param db: 异步数据库会话
         :param plugin_id: 插件标识
         :param instance_id: 实例标识，默认取默认实例
         :return: 该实例下该插件的数据行列表
         """
+        if plugin_id is None:
+            raise TypeError("plugin_id is required")
+        if not isinstance(db, AsyncSession):
+            return await run_legacy_async_query(
+                lambda session: cls.async_get_plugin_data_by_plugin_id(
+                    session, plugin_id, instance_id
+                )
+            )
         result = await db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.instance_id == instance_id)
         )

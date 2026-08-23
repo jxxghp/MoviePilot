@@ -64,6 +64,7 @@ from app.api.deps import (
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
+from app.schemas.exception import DatabaseWorkerOverloadedError
 from app.runtime.log import (
     clear_plugin_instance_log_level,
     get_effective_plugin_instance_log_level,
@@ -894,8 +895,13 @@ async def save_plugin_folders(
     保存插件文件夹分组配置
     """
     try:
-        get_configured_system_config().set(SystemConfigKey.PluginFolders, folders)
+        await get_configured_system_config().async_set(
+            SystemConfigKey.PluginFolders,
+            folders,
+        )
         return _SchemaResponse(success=True)
+    except DatabaseWorkerOverloadedError:
+        raise
     except Exception as e:
         logger.error(f"[文件夹API] 保存文件夹配置失败: {str(e)}")
         return _SchemaResponse(success=False, message=str(e))
@@ -913,7 +919,10 @@ async def create_plugin_folder(
     folders = get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
     if folder_name not in folders:
         folders[folder_name] = []
-        get_configured_system_config().set(SystemConfigKey.PluginFolders, folders)
+        await get_configured_system_config().async_set(
+            SystemConfigKey.PluginFolders,
+            folders,
+        )
         return _SchemaResponse(
             success=True, message=f"文件夹 '{folder_name}' 创建成功"
         )

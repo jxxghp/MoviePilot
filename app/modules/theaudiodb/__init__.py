@@ -1,7 +1,9 @@
 from typing import Any, Optional, Tuple, Union
 
 from app.runtime.cache import cached
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,

@@ -155,8 +155,8 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     monkeypatch.setattr(modules_initializer, "user_auth", lambda: None)
     monkeypatch.setattr(modules_initializer, "ModuleManager", lambda: None)
     monkeypatch.setattr(modules_initializer.EventManager, "start", lambda self: None)
-    monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "init_plugin_report", lambda: None)
-    monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "init_subscribe_report", lambda: None)
+    monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "async_init_plugin_report", AsyncMock())
+    monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "async_init_subscribe_report", AsyncMock())
     monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "get_user_uuid", lambda: None)
     monkeypatch.setattr(modules_initializer.MoviePilotServerHelper, "get_github_user", lambda: None)
     init_agent = AsyncMock()
@@ -164,7 +164,13 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     monkeypatch.setattr(modules_initializer, "start_frontend", lambda: None)
     monkeypatch.setattr(modules_initializer, "check_auth", lambda: None)
 
-    asyncio.run(modules_initializer.init_modules())
+    async def initialize_modules() -> None:
+        try:
+            await modules_initializer.init_modules()
+        finally:
+            await modules_initializer.stop_database_worker()
+
+    asyncio.run(initialize_modules())
 
     assert called is False
     init_agent.assert_awaited_once_with()

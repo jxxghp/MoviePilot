@@ -20,7 +20,9 @@ import psutil
 
 from app.adapters.system.backup.database import verify_database_backup
 from app.adapters.system.backup.files import BackupFiles
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import PLUGIN_LOG_FILENAME
 from app.runtime.compat.plugin_version_readiness import (
     PluginVersionReadiness,

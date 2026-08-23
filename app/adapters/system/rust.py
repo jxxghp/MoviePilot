@@ -2,8 +2,8 @@ import logging
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
-from app.runtime.config import settings
 from app.runtime.log import logger, log_settings
+from app.runtime.settings import get_runtime_setting
 
 try:
     import moviepilot_rust as _moviepilot_rust
@@ -12,6 +12,11 @@ except Exception as err:  # pragma: no cover - 取决于运行环境是否安装
     _import_error = err
 else:
     _import_error = None
+
+
+def _rust_accel_enabled() -> bool:
+    """读取 Rust 开关快照，组合根未装配时回退旧 Settings。"""
+    return bool(get_runtime_setting("RUST_ACCEL"))
 
 
 def is_available() -> bool:
@@ -25,7 +30,7 @@ def is_config_enabled() -> bool:
     """
     判断系统配置是否允许使用 Rust 加速。
     """
-    return bool(settings.RUST_ACCEL)
+    return _rust_accel_enabled()
 
 
 def is_enabled() -> bool:

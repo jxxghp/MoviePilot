@@ -2383,10 +2383,22 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         from app.startup.database_initializer import prepare_database
         from app.db.oper.systemconfig import SystemConfigOper
         from app.schemas.types import SystemConfigKey
+        from app.db.session import SessionFactory, async_session_scope
+        from app.db.uow import configure_transaction_runners
+        from app.startup.ports.transaction import TransactionalWriteRunner
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
         ) from exc
+
+    transaction_runner = TransactionalWriteRunner(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+    configure_transaction_runners(
+        sync=transaction_runner.sync,
+        async_=transaction_runner.async_,
+    )
 
     generated_password = None
 
@@ -2400,6 +2412,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         print_step(f"超级管理员初始密码：{generated_password}")
 
     system_config = SystemConfigOper()
+    system_config.load_snapshot()
     directory_items = config_payload.get("directories") or []
     if directory_items:
         current_directories = system_config.get(SystemConfigKey.Directories) or []

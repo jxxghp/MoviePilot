@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.schemas.exception import DatabaseWorkerOverloadedError
 from app.application.plugin.install import PluginInstallCommand
 
 
@@ -179,6 +180,26 @@ async def test_persistence_failure_restores_package_without_touching_runtime():
     assert result.rollback.runtime_attempted is False
     rollback.assert_awaited_once_with(checkpoint)
     reloader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_database_worker_overload_rolls_back_and_reaches_api_boundary():
+    """配置 worker 背压完成补偿后继续抛出，交由 API 映射为 503。"""
+    checkpoint = object()
+    rollback = AsyncMock()
+    command = _command(
+        checkpointer=AsyncMock(return_value=checkpoint),
+        writer=AsyncMock(side_effect=DatabaseWorkerOverloadedError("worker full")),
+        rollback=rollback,
+    )
+
+    with pytest.raises(DatabaseWorkerOverloadedError):
+        await command.execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+
+    rollback.assert_awaited_once_with(checkpoint)
 
 
 @pytest.mark.asyncio

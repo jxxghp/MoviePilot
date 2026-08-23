@@ -14,6 +14,7 @@ from sqlalchemy.pool import Pool
 
 from app.runtime.config import settings
 from app.db.diagnostics import _register_database_error_logging
+from app.db.worker import DATABASE_WORKER_MAX_WORKERS
 from app.runtime.log import logger
 from app.runtime.observability import record_metric
 
@@ -321,8 +322,8 @@ def connection_budget() -> Dict[str, int]:
     else:
         sync_max = settings.DB_SQLITE_POOL_SIZE + settings.DB_SQLITE_MAX_OVERFLOW
     if settings.DB_POOL_TYPE == "NullPool":
-        # 同步侧也可能被配成 NullPool，此时同样无界，用线程池规模作为可观测的上限估计
-        sync_max = settings.CONF.threadpool
+        # 未池化连接由通用线程池和专属数据库 worker 共同创建，二者都要计入上限估计。
+        sync_max = settings.CONF.threadpool + DATABASE_WORKER_MAX_WORKERS
     async_max = (settings.DB_ASYNC_POOL_SIZE + settings.DB_ASYNC_MAX_OVERFLOW
                  if _async_pool_enabled() else 0)
     fallback = settings.DB_ASYNC_FALLBACK_LIMIT if _async_pool_enabled() else settings.CONF.scheduler

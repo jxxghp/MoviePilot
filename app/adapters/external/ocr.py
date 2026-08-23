@@ -1,8 +1,8 @@
 import base64
 from typing import Optional
 
-from app.runtime.config import settings
 from app.adapters.network.http import RequestUtils
+from app.runtime.settings import get_runtime_setting
 
 
 class OcrHelper:
@@ -10,7 +10,11 @@ class OcrHelper:
     OCR 辅助类，负责获取验证码图片并调用 OCR 服务识别文本。
     """
 
-    _ocr_b64_url = f"{settings.OCR_HOST}/captcha/base64"
+    def __init__(self, ocr_base_url: Optional[str] = None) -> None:
+        """初始化 OCR 服务地址，优先使用组合根设置快照。"""
+        if ocr_base_url is None:
+            ocr_base_url = get_runtime_setting("OCR_HOST")
+        self._ocr_b64_url = f"{str(ocr_base_url).rstrip('/')}/captcha/base64"
 
     def get_captcha_text(
             self,

@@ -33,11 +33,29 @@ class CapabilityDispatch(Protocol):
     async def async_multicast(self, method: str, *args: Any, **kwargs: Any) -> List[Any]:
         """异步在实现该方法的能力族内收集全部非空答案。"""
 
+    def scoped_multicast(
+        self, scope: Any, method: str, *args: Any, **kwargs: Any
+    ) -> List[Any]:
+        """只在指定归属方的提供者内收集全部非空答案。"""
+
+    async def async_scoped_multicast(
+        self, scope: Any, method: str, *args: Any, **kwargs: Any
+    ) -> List[Any]:
+        """异步只在指定归属方的提供者内收集全部非空答案。"""
+
     def unicast(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """在实现该方法的能力族内仲裁单一答案。"""
 
     async def async_unicast(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """异步在实现该方法的能力族内仲裁单一答案。"""
+
+    def scoped_unicast(self, scope: Any, method: str, *args: Any, **kwargs: Any) -> Any:
+        """只在指定归属方的提供者内仲裁单一答案。"""
+
+    async def async_scoped_unicast(
+        self, scope: Any, method: str, *args: Any, **kwargs: Any
+    ) -> Any:
+        """异步只在指定归属方的提供者内仲裁单一答案。"""
 
     def pipeline(self, method: str, initial: Any, *args: Any, **kwargs: Any) -> Any:
         """在实现该方法的能力族内按提供者顺序接力增强同一产出。"""

@@ -1,7 +1,9 @@
 from typing import Any, List, Optional, Tuple, Union
 
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper

@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.agent.orchestrator as agent_module
-from app.agent import AgentManager
 from app.agent.orchestrator import (
     AGENT_SESSION_QUEUE_MAX_SIZE,
+    AgentManager,
     AgentManagerQueueFullError,
     AgentManagerUnavailableError,
 )
@@ -135,22 +135,28 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
     monkeypatch.setattr(modules_initializer, "user_auth", MagicMock())
     monkeypatch.setattr(modules_initializer.EventManager, "start", MagicMock())
     for name in (
-        "init_plugin_report",
-        "init_subscribe_report",
+        "async_init_plugin_report",
+        "async_init_subscribe_report",
         "get_user_uuid",
         "get_github_user",
     ):
         monkeypatch.setattr(
             modules_initializer.MoviePilotServerHelper,
             name,
-            MagicMock(),
+            AsyncMock() if name.startswith("async_") else MagicMock(),
         )
     start_frontend = MagicMock()
     check_auth = MagicMock()
     monkeypatch.setattr(modules_initializer, "start_frontend", start_frontend)
     monkeypatch.setattr(modules_initializer, "check_auth", check_auth)
 
-    await modules_initializer.init_modules()
+    try:
+        runtime = await modules_initializer.init_modules()
+        assert runtime.workflow.system_config() is (
+            modules_initializer.get_configured_system_config()
+        )
+    finally:
+        await modules_initializer.stop_database_worker()
 
     manager.initialize.assert_awaited_once_with()
     start_frontend.assert_called_once_with()

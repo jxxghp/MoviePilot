@@ -30,7 +30,7 @@ from importlib.metadata import distributions
 from requests import Response
 
 from app.runtime.cache import cached, is_fresh
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
 from app.adapters.system.package import (
     PackageInstallRequest,
     build_package_install_strategies,
@@ -52,6 +52,8 @@ from app.adapters.system.host import SystemUtils
 from app.foundation.url import UrlUtils
 from version import APP_VERSION
 
+# 保留模块级可替换入口，代理默认读取组合根的最新 runtime 配置。
+settings = RuntimeSettingsCompat()
 PLUGIN_DIR = Path(settings.ROOT_PATH) / "app" / "plugins"
 LOCAL_REPO_PREFIX = "local://"
 PLUGIN_SYSTEM_VERSION_FIELD = "system_version"

@@ -12,7 +12,8 @@ ensure_optional_stub("transmission_rpc", File=object)
 ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil", loader=None))
 
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent import ReplyMode
+from app.agent.contracts import ReplyMode
+from app.agent.orchestrator import agent_manager
 from app.application.orchestration.search import SearchChain
 from app.runtime.config import settings
 from app.modules.indexer import IndexerModule
@@ -55,6 +56,12 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
         chain.save_cache = lambda _cache, _filename: None
         chain.remove_cache = lambda _filename: None
         chain.get_search_page_size = IndexerModule.get_search_page_size
+        chain.search_plugin_torrents = lambda **_kwargs: []
+
+        async def no_plugin_results(**_kwargs):
+            return []
+
+        chain.async_search_plugin_torrents = no_plugin_results
         return chain
 
     async def test_start_recommend_task_restores_original_indices(self):
@@ -97,7 +104,6 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_invoke_recommend_llm_disables_output_message_persistence(self):
         chain = self._make_chain()
-        from app.agent import agent_manager
         from app.agent.prompt import prompt_manager
 
         captured = {}
@@ -185,7 +191,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 for index in range(count)
             ]
 
-        chain.search_torrents = search_torrents
+        chain.search_site_torrents = search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
@@ -231,7 +237,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 for index in range(count)
             ]
 
-        chain.search_torrents = search_torrents
+        chain.search_site_torrents = search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
@@ -277,7 +283,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 for index in range(count)
             ]
 
-        chain.search_torrents = search_torrents
+        chain.search_site_torrents = search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
@@ -342,7 +348,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 for index in range(count)
             ]
 
-        chain.async_search_torrents = async_search_torrents
+        chain.async_search_site_torrents = async_search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
@@ -388,7 +394,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 for index in range(count)
             ]
 
-        chain.async_search_torrents = async_search_torrents
+        chain.async_search_site_torrents = async_search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),

@@ -6,7 +6,9 @@ from typing import Dict, List, Optional
 
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.application.agentdata import AgentChatPort as AgentChatOper
 from app.runtime.log import logger
 from app.schemas.agent import ConversationMemory

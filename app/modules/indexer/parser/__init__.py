@@ -8,7 +8,9 @@ from urllib.parse import urljoin, urlsplit
 
 from requests import Session
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.adapters.network.cloudflare import under_challenge
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils

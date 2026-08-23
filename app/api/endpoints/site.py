@@ -188,8 +188,8 @@ async def reset(
     清空所有站点数据并重新同步CookieCloud站点信息
     """
     result = await command.reset()
-    get_configured_system_config().set(SystemConfigKey.IndexerSites, [])
-    get_configured_system_config().set(SystemConfigKey.RssSites, [])
+    await get_configured_system_config().async_set(SystemConfigKey.IndexerSites, [])
+    await get_configured_system_config().async_set(SystemConfigKey.RssSites, [])
     # 启动定时服务
     Scheduler().start("cookiecloud", manual=True)
     # 插件站点删除

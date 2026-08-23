@@ -12,7 +12,9 @@ import docker
 import psutil
 
 from app.foundation import hostenv
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 

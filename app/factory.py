@@ -14,6 +14,7 @@ from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.adapters.web.health import install_health_routes
 from app.application.plugin.routes import configure_plugin_routes
+from app.schemas.exception import DatabaseWorkerOverloadedError
 from app.adapters.web.security.access import (
     configure_token_codec,
     verify_apikey,
@@ -22,7 +23,9 @@ from app.adapters.web.security.access import (
 from app.application.security.token import create_access_token, decode_access_token
 from app.runtime.extensions.contract.instance import matches_extension
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.correlation import get_correlation_id
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import configure_correlation_id_provider, logger
@@ -79,6 +82,7 @@ def _native_ai_error_response(
         protocol: str,
         status_code: int,
         message: str,
+        headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """按 OpenAI 或 Anthropic 兼容协议构造原生错误响应。"""
     if protocol == "openai":
@@ -98,6 +102,7 @@ def _native_ai_error_response(
                     code=error_type,
                 )
             ).model_dump(mode="json"),
+            headers=headers,
         )
 
     error_type = (
@@ -112,6 +117,7 @@ def _native_ai_error_response(
         content=AnthropicErrorResponse(
             error=AnthropicErrorDetail(type=error_type, message=message)
         ).model_dump(mode="json"),
+        headers=headers,
     )
 
 
@@ -119,6 +125,7 @@ def _mcp_jsonrpc_error_response(
         status_code: int,
         code: int,
         message: str,
+        headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """构造带 HTTP 状态码的 MCP JSON-RPC 原生错误响应。"""
     return JSONResponse(
@@ -128,6 +135,7 @@ def _mcp_jsonrpc_error_response(
             id=None,
             error=McpJsonRpcErrorDetail(code=code, message=message),
         ).model_dump(mode="json"),
+        headers=headers,
     )
 
 
@@ -202,6 +210,7 @@ async def localized_http_exception_handler(
             protocol=native_ai_protocol,
             status_code=exc.status_code,
             message=message,
+            headers=exc.headers,
         )
     if _is_mcp_jsonrpc_request(request):
         error_codes = {
@@ -215,11 +224,27 @@ async def localized_http_exception_handler(
             status_code=exc.status_code,
             code=error_codes.get(exc.status_code, -32000),
             message=message,
+            headers=exc.headers,
         )
     return JSONResponse(
         status_code=exc.status_code,
         content=ApiResponse[None](success=False, message=message).model_dump(mode="json"),
         headers=exc.headers,
+    )
+
+
+async def database_worker_overloaded_handler(
+        request: Request,
+        _exc: DatabaseWorkerOverloadedError,
+) -> JSONResponse:
+    """将数据库短事务背压映射为可重试的 503 响应。"""
+    return await localized_http_exception_handler(
+        request,
+        HTTPException(
+            status_code=503,
+            detail="服务当前繁忙，请稍后重试",
+            headers={"Retry-After": "1"},
+        ),
     )
 
 
@@ -307,6 +332,10 @@ def create_app() -> FastAPI:
     )
 
     _app.add_exception_handler(HTTPException, localized_http_exception_handler)
+    _app.add_exception_handler(
+        DatabaseWorkerOverloadedError,
+        database_worker_overloaded_handler,
+    )
     _app.add_exception_handler(
         RequestValidationError,
         localized_validation_exception_handler,

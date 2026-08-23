@@ -1,12 +1,12 @@
 {
   "model_decorators": {
     "by_kind": {
-      "async_db_query": 56,
+      "async_db_query": 51,
       "async_db_update": 5,
-      "db_query": 83,
+      "db_query": 75,
       "db_update": 11
     },
-    "count": 155,
+    "count": 142,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -269,36 +269,6 @@
         "method": "PluginConfig.set_default_target"
       },
       {
-        "decorator": "async_db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.async_get_plugin_data"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.async_get_plugin_data_by_key"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.async_get_plugin_data_by_plugin_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.get_plugin_data"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.get_plugin_data_by_key"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/plugindata.py",
-        "method": "PluginData.get_plugin_data_by_plugin_id"
-      },
-      {
         "decorator": "db_update",
         "file": "app/db/models/serviceconfig.py",
         "method": "ServiceConfig.clear_default_target"
@@ -392,26 +362,6 @@
         "decorator": "db_query",
         "file": "app/db/models/site.py",
         "method": "Site.list_order_by_pri"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/siteicon.py",
-        "method": "SiteIcon.async_get_by_domain"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/siteicon.py",
-        "method": "SiteIcon.get_by_domain"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/sitestatistic.py",
-        "method": "SiteStatistic.async_get_by_domain"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/sitestatistic.py",
-        "method": "SiteStatistic.get_by_domain"
       },
       {
         "decorator": "async_db_query",
@@ -679,16 +629,6 @@
         "method": "User.async_get_by_name"
       },
       {
-        "decorator": "db_query",
-        "file": "app/db/models/user.py",
-        "method": "User.get_by_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/user.py",
-        "method": "User.get_by_name"
-      },
-      {
         "decorator": "async_db_update",
         "file": "app/db/models/user_identity.py",
         "method": "UserIdentity.async_delete_by_id"
@@ -737,11 +677,6 @@
         "decorator": "db_query",
         "file": "app/db/models/user_identity.py",
         "method": "UserIdentity.get_by_user_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/userconfig.py",
-        "method": "UserConfig.get_by_key"
       },
       {
         "decorator": "async_db_query",

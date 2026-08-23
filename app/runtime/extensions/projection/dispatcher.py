@@ -180,6 +180,76 @@ class ModuleInvocationDispatcher:
                 results.append(result)
         return results
 
+    def scoped_multicast(
+        self, scope: ExtensionFaultScope, method: str, *args: Any, **kwargs: Any
+    ) -> list[Any]:
+        """只在指定归属方的提供者里收集全部非空答案。
+
+        :param scope: 提供者归属方，只有该归属方的提供者参与本次分发
+        :param method: 模块方法名称
+        :param args: 透传给提供者的位置参数
+        :param kwargs: 透传给提供者的命名参数
+        :return: 该归属方内按优先级排序的非空结果列表
+        """
+        results: list[Any] = []
+        for provider in self._scoped_answer_providers(scope, method):
+            result = self._invoke(provider, method, *args, **kwargs)
+            if not self.is_valid_empty(result):
+                results.append(result)
+        return results
+
+    async def async_scoped_multicast(
+        self, scope: ExtensionFaultScope, method: str, *args: Any, **kwargs: Any
+    ) -> list[Any]:
+        """以多播语义只在指定归属方内收集同步或异步提供者的非空答案。
+
+        :param scope: 提供者归属方，只有该归属方的提供者参与本次分发
+        :param method: 模块方法名称
+        :param args: 透传给提供者的位置参数
+        :param kwargs: 透传给提供者的命名参数
+        :return: 该归属方内按优先级排序的非空结果列表
+        """
+        results: list[Any] = []
+        for provider in self._scoped_answer_providers(scope, method):
+            result = await self._async_invoke(provider, method, *args, **kwargs)
+            if not self.is_valid_empty(result):
+                results.append(result)
+        return results
+
+    def scoped_unicast(
+        self, scope: ExtensionFaultScope, method: str, *args: Any, **kwargs: Any
+    ) -> Any:
+        """只在指定归属方的提供者里仲裁出单一答案。
+
+        :param scope: 提供者归属方，只有该归属方的提供者参与本次分发
+        :param method: 模块方法名称
+        :param args: 透传给提供者的位置参数
+        :param kwargs: 透传给提供者的命名参数
+        :return: 该归属方内首个非空结果；无人认领时返回 ``None``
+        """
+        for provider in self._scoped_answer_providers(scope, method):
+            result = self._invoke(provider, method, *args, **kwargs)
+            if not self.is_valid_empty(result):
+                return result
+        return None
+
+    async def async_scoped_unicast(
+        self, scope: ExtensionFaultScope, method: str, *args: Any, **kwargs: Any
+    ) -> Any:
+        """以单播语义只在指定归属方内仲裁同步或异步提供者的首个非空答案。
+
+        :param scope: 提供者归属方，只有该归属方的提供者参与本次分发
+        :param method: 模块方法名称
+        :param args: 透传给提供者的位置参数
+        :param kwargs: 透传给提供者的命名参数
+        :return: 该归属方内首个非空结果；无人认领时返回 ``None``
+        """
+        for provider in self._scoped_answer_providers(scope, method):
+            result = await self._async_invoke(provider, method, *args, **kwargs)
+            if not self.is_valid_empty(result):
+                return result
+        return None
+
     def unicast(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """在能力族内仲裁出单一答案，首个非空结果即为最终答案。
 
@@ -279,6 +349,22 @@ class ModuleInvocationDispatcher:
         """
         for source in self._sources:
             yield from source.answer_providers(method)
+
+    def _scoped_answer_providers(
+        self, scope: ExtensionFaultScope, method: str
+    ) -> Iterator[ExtensionProvider]:
+        """按目录顺序遍历指定归属方的仲裁提供者。
+
+        按提供者自报的 ``fault_scope`` 而非目录身份过滤，
+        使追加目录也能按其提供者的实际归属参与作用域分发。
+
+        :param scope: 提供者归属方
+        :param method: 模块方法名称
+        :return: 提供者迭代器
+        """
+        for provider in self._answer_providers(method):
+            if provider.fault_scope is scope:
+                yield provider
 
     def _invoke(
         self,

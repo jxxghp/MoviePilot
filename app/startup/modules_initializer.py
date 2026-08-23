@@ -17,12 +17,16 @@ except ImportError as e:
 
 from app.adapters.system.host import SystemUtils
 from app.runtime.log import logger
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.config import settings as legacy_settings
+
+settings = RuntimeSettingsCompat()
 from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.observability import record_metric
 from app.runtime.state import SystemHelper
+from app.runtime.settings import configure_runtime_setting_provider
 from app.runtime.thread import ThreadHelper
 from app.adapters.network.doh import DohHelper
 from app.adapters.system.resource import (
@@ -42,6 +46,7 @@ from app.application.configuration import (
     SystemConfigService,
     get_configured_system_config,
     TransferRetryConfig,
+    configure_token_runtime_config,
     configure_runtime_configuration,
     configure_runtime_settings,
     configure_system_config,
@@ -51,6 +56,7 @@ from app.startup.ports.configuration import (
     build_api_runtime_config,
     build_chain_runtime_config,
     build_scheduler_runtime_config,
+    build_token_runtime_config,
 )
 from app.application.database import configure_database_governance
 from app.application.plugin.runtime import configure_plugin_runtime
@@ -85,6 +91,7 @@ from app.db.session import (
     get_async_db,
     get_db,
 )
+from app.db.worker import DatabaseWorker
 from app.db.uow import (
     SqlAlchemyAsyncUnitOfWork,
     SqlAlchemyUnitOfWork,
@@ -123,6 +130,7 @@ from app.startup.ports.subscription import (
 )
 from app.startup.ports.chain_events import TransactionalChainDurableEventWriter
 from app.startup.ports.download_failure import TransactionalDownloadFailureRepository
+from app.startup.ports.site import TransactionalSiteRepository
 from app.startup.ports.workflow import TransactionalWorkflowExecutionService
 from app.startup.ports.transaction import TransactionalWriteRunner
 from app.startup.ports.context import (
@@ -191,6 +199,45 @@ def build_default_chain_runtime_context() -> ChainRuntimeContext:
     )
 
 
+_database_worker: DatabaseWorker | None = None
+
+
+async def stop_database_worker() -> None:
+    """停止当前进程的数据库短事务 worker。"""
+    global _database_worker
+    worker = _database_worker
+    if worker is not None:
+        await worker.shutdown()
+        _database_worker = None
+
+
+async def _initialize_configuration_services(
+    database_worker: DatabaseWorker,
+) -> None:
+    """加载完整配置快照后发布系统与用户配置服务。"""
+    system_config = SystemConfigOper()
+    user_config = UserConfigOper()
+    await database_worker.run(system_config.load_snapshot)
+    await database_worker.run(user_config.load_snapshot)
+    configure_system_config(
+        SystemConfigService(
+            repository=system_config,
+            async_executor=database_worker,
+        )
+    )
+    configure_user_configuration(
+        UserConfigurationService(
+            repository=user_config,
+            async_executor=database_worker,
+        )
+    )
+
+
+def _build_runtime_settings_service() -> RuntimeSettingsService:
+    """将可变部署配置实现注入管理服务，避免把兼容代理再次包装。"""
+    return RuntimeSettingsService(legacy_settings)
+
+
 async def _async_get_subscribe(subscribe_id: int):
     """通过数据库操作器异步读取订阅，供服务端共享用例使用。"""
     return await SubscribeOper().async_get(subscribe_id)
@@ -217,15 +264,20 @@ def configure_runtime_data_providers() -> None:
         report_service=ServerReportService(
             config_reader=lambda key: get_configured_system_config().get(key),
             config_writer=lambda key, value: get_configured_system_config().set(key, value),
+            async_config_writer=lambda key, value: get_configured_system_config().async_set(
+                key, value
+            ),
             installed_plugins_provider=lambda: get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
             subscribes_provider=lambda: SubscribeOper().list(),
+            async_subscribes_provider=lambda: SubscribeOper().async_list(),
             plugin_report_sender=MoviePilotServerHelper.plugin_install_report,
             async_plugin_report_sender=(
                 MoviePilotServerHelper.async_plugin_install_report
             ),
             subscribe_report_sender=MoviePilotServerHelper.subscribe_report,
+            async_subscribe_report_sender=MoviePilotServerHelper.async_subscribe_report,
             repo_url_sanitizer=MoviePilotServerHelper.sanitize_plugin_repo_url,
         ),
         sharing_service=ServerSharingService(
@@ -274,6 +326,20 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
         ):
             raise RuntimeError("订阅完成统计上报未确认")
 
+    def dispatch_subscribe_notification(message) -> None:
+        """恢复订阅完成通知；消息快照无需重建领域对象。"""
+        snapshot = message.payload.get("message") or {}
+        if not isinstance(snapshot, dict):
+            raise RuntimeError("订阅完成通知快照格式无效")
+        CommandChain().post_message(Message.model_validate(snapshot))
+
+    def dispatch_subscribe_added_notification(message) -> None:
+        """恢复订阅新增通知；恢复使用提交前冻结的渲染消息快照。"""
+        snapshot = message.payload.get("message") or {}
+        if not isinstance(snapshot, dict):
+            raise RuntimeError("订阅新增通知快照格式无效")
+        CommandChain().post_message(Message.model_validate(snapshot))
+
     session = SessionFactory()
     return OutboxDispatcher(
         repository=SqlAlchemyOutboxRepository(session),
@@ -283,6 +349,7 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
                 message.payload,
             ),
             "subscribe.added.report": dispatch_subscribe_added_report,
+            "subscribe.added.notification": dispatch_subscribe_added_notification,
             "subscribe.modified": lambda message: EventManager().send_event(
                 EventType.SubscribeModified,
                 message.payload,
@@ -297,6 +364,7 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
                 message.payload,
             ),
             "subscribe.complete.report": dispatch_subscribe_complete_report,
+            "subscribe.complete.notification": dispatch_subscribe_notification,
             "download.added": lambda message: EventManager().send_event(
                 EventType.DownloadAdded,
                 restore_download_added(message.payload),
@@ -525,7 +593,11 @@ async def stop_modules():
     await run_step("消息服务", stop_message)
     await run_step("Redis缓存连接", lambda: RedisHelper().close())
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
-    await run_step("数据库连接", close_database)
+    await run_step("数据库任务", stop_database_worker)
+    if _database_worker is None:
+        await run_step("数据库连接", close_database)
+    else:
+        logger.error("数据库任务未收敛，跳过数据库连接关闭以避免运行中事务使用已释放连接")
     await run_step("前端服务", stop_frontend)
     await run_step("临时文件", clear_temp)
 
@@ -534,6 +606,7 @@ async def init_modules() -> HostRuntime:
     """
     启动模块并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
+    global _database_worker
     # 扩展经端口取用目录、存储、命名、站点资源与规则配置，须先于模块加载完成注入。
     configure_host_ports()
     # 入口层经应用端口取用模块目录与插件目录，不直接构造运行时单例。
@@ -548,6 +621,17 @@ async def init_modules() -> HostRuntime:
         sync=transaction_runner.sync,
         async_=transaction_runner.async_,
     )
+    database_worker = DatabaseWorker()
+    await database_worker.start()
+    _database_worker = database_worker
+    try:
+        await _initialize_configuration_services(database_worker)
+    except BaseException:
+        try:
+            await stop_database_worker()
+        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+            logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
+        raise
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
     api_data = ApiDataPorts(
         sync_session=get_db,
@@ -579,7 +663,7 @@ async def init_modules() -> HostRuntime:
         scheduler=lambda: build_scheduler_runtime_config(settings),
         chain=lambda: build_chain_runtime_config(settings),
     )
-    runtime_settings = RuntimeSettingsService(settings)
+    runtime_settings = _build_runtime_settings_service()
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
@@ -614,22 +698,25 @@ async def init_modules() -> HostRuntime:
         ),
         workflow=WorkflowRuntime(
             repository=WorkflowOper,
-            system_config=SystemConfigOper,
+            system_config=get_configured_system_config,
         ),
         configuration=runtime_configuration,
         settings=runtime_settings,
     )
     configure_runtime_configuration(host_runtime.configuration)
     configure_runtime_settings(host_runtime.settings)
-    # 先发布系统配置服务，后续启动组合步骤统一复用同一配置端口。
-    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    configure_runtime_setting_provider(lambda key: getattr(legacy_settings, key))
+    configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
     configure_runtime_data_providers()
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_legacy_writer(workflow_execution)
     configure_chain_data_ports(
-        site=lambda: SiteOper(),
+        site=lambda: TransactionalSiteRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        ),
         subscribe=lambda: SubscribeOper(),
         workflow=lambda: WorkflowOper(),
         download_history=lambda: DownloadHistoryOper(),
@@ -662,16 +749,24 @@ async def init_modules() -> HostRuntime:
         )
     )
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
-    configure_user_configuration(UserConfigurationService(repository=UserConfigOper()))
     configure_transfer_history_provider(lambda: TransferHistoryOper())
-    configure_site_query_service(SiteQueryService(repository=SiteOper()))
-    configure_site_health_service(SiteHealthService(repository=SiteOper()))
+    configure_site_query_service(SiteQueryService(repository=TransactionalSiteRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )))
+    configure_site_health_service(SiteHealthService(repository=TransactionalSiteRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )))
     configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
     configure_agent_data_ports(
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
         user=lambda: UserOper(),
-        site=lambda: SiteOper(),
+        site=lambda: TransactionalSiteRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        ),
         subscribe=lambda: SubscribeOper(),
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
@@ -713,8 +808,8 @@ async def init_modules() -> HostRuntime:
     # 启动事件消费
     EventManager().start()
     # 初始化共享服务端状态
-    MoviePilotServerHelper.init_plugin_report()
-    MoviePilotServerHelper.init_subscribe_report()
+    await MoviePilotServerHelper.async_init_plugin_report()
+    await MoviePilotServerHelper.async_init_subscribe_report()
     MoviePilotServerHelper.get_user_uuid()
     MoviePilotServerHelper.get_github_user()
     # LLM 提供商管理动作（测试连接、模型目录查询）依赖的构建能力独立于 Agent 启用开关，

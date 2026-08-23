@@ -11,7 +11,9 @@ from app.agent.runtime_loader import (
 )
 from app.agent.llm.gateway import register_llm_provider_runtime
 from app.application.agent import register_agent_service_providers
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.schemas.types import EventType

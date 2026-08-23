@@ -921,6 +921,9 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
     (live_app / "app" / "application" / "site").mkdir(parents=True)
     live_public.mkdir()
     (live_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (live_app / "app" / "plugins" / "__init__.py").write_text(
+        "# legacy plugin compatibility entrypoint\n", encoding="utf-8"
+    )
     (live_app / "app" / "plugins" / "plugin.py").write_text("plugin", encoding="utf-8")
     (live_app / "app" / "application" / "site" / "user.sites.v3.bin").write_text(
         "sites", encoding="utf-8"
@@ -931,6 +934,9 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
 
     update_tree = tmp_path / "update" / "App"
     (update_tree / "app" / "plugins").mkdir(parents=True)
+    (update_tree / "app" / "plugins" / "__init__.py").write_text(
+        "# legacy plugin compatibility entrypoint\n", encoding="utf-8"
+    )
     (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
     (update_tree / "uv.lock").write_text("version = 1\n", encoding="utf-8")
     (update_tree / "version.py").write_text("FRONTEND_VERSION = 'v3.0.1'\n", encoding="utf-8")

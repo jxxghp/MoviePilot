@@ -89,6 +89,13 @@ def test_ocr_helper_extracts_data_url_base64_without_downloading_image():
     }
 
 
+def test_ocr_helper_accepts_injected_runtime_base_url():
+    """OCR 地址支持由组合根显式注入，并统一补齐接口路径。"""
+    helper = OcrHelper(ocr_base_url="https://ocr.example.test/")
+
+    assert helper._ocr_b64_url == "https://ocr.example.test/captcha/base64"
+
+
 def test_ocr_helper_normalizes_data_url_base64_padding():
     """data:image 地址缺少 padding 时应补齐后提交给 OCR 服务。"""
     image_url = "data:image/jpeg;base64,YWJjZA"

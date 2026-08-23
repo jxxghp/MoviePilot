@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import FrozenInstanceError
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,6 +19,16 @@ from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_transfer_retry_config,
 )
+from app.application.security.userconfig import UserConfigurationService
+from app.runtime.settings import RuntimeSettingsCompat, configure_runtime_settings_compat
+
+
+class _InlineDatabaseExecutor:
+    """同步执行测试操作，并保留异步应用端口的调用形态。"""
+
+    async def run(self, operation):
+        """执行并返回操作结果。"""
+        return operation()
 
 
 class _MutableSettings:
@@ -62,25 +72,61 @@ def test_runtime_settings_service_hides_mutable_settings_implementation() -> Non
     assert service.get("VALUE") == "final"
 
 
+def test_runtime_settings_compat_delegates_to_concrete_service_backend() -> None:
+    """兼容 Settings 代理委托到真实设置对象时不会在 model_dump 中递归。"""
+    service = RuntimeSettingsService(_MutableSettings())
+    configure_runtime_settings_compat(service)
+
+    assert RuntimeSettingsCompat().model_dump(include={"VALUE"}) == {
+        "VALUE": "before"
+    }
+
+
 def test_system_config_service_supports_separate_reader_and_writer() -> None:
     """应用服务可以分别注入只读与写入适配器。"""
     reader = MagicMock()
     reader.get.return_value = "old"
-    reader.async_get = AsyncMock(return_value="async-old")
     writer = MagicMock()
     writer.set.return_value = True
-    writer.async_set = AsyncMock(return_value=True)
-    service = SystemConfigService(reader=reader, writer=writer)
+    writer.delete.return_value = True
+    service = SystemConfigService(
+        reader=reader,
+        writer=writer,
+        async_executor=_InlineDatabaseExecutor(),
+    )
 
     assert service.get("key") == "old"
     assert service.set("key", "new") is True
-    assert asyncio.run(service.async_get("key")) == "async-old"
     assert asyncio.run(service.async_set("key", "new")) is True
     service.delete("key")
+    assert asyncio.run(service.async_delete("key")) is True
 
     reader.get.assert_called_once_with("key")
-    writer.set.assert_called_once_with("key", "new")
-    writer.delete.assert_called_once_with("key")
+    assert writer.set.call_args_list == [
+        (("key", "new"), {}),
+        (("key", "new"), {}),
+    ]
+    assert writer.delete.call_args_list == [
+        (("key",), {}),
+        (("key",), {}),
+    ]
+
+
+def test_user_configuration_service_supports_sync_and_async_writes() -> None:
+    """用户配置服务的同步与异步入口执行同一仓储方法。"""
+    repository = MagicMock()
+    repository.set.return_value = True
+    service = UserConfigurationService(
+        repository,
+        async_executor=_InlineDatabaseExecutor(),
+    )
+
+    assert service.set("alice", "theme", "dark") is True
+    assert asyncio.run(service.async_set("alice", "theme", "light")) is True
+    assert repository.set.call_args_list == [
+        ((), {"username": "alice", "key": "theme", "value": "dark"}),
+        ((), {"username": "alice", "key": "theme", "value": "light"}),
+    ]
 
 
 def test_transfer_retry_provider_returns_frozen_snapshot_per_call() -> None:

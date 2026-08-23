@@ -6,7 +6,9 @@ import sys
 from datetime import datetime
 from typing import Any, Optional
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.doctor.checks import default_checks
 from app.doctor.models import (
     DoctorFinding,

@@ -176,7 +176,7 @@ def ensure_optional_stub(name: str, **attrs) -> None:
 
 
 def prepare_backend() -> None:
-    """隔离 CONFIG_DIR、补 sites 垫片并建表（后端须已在 ``sys.path`` 上）。
+    """隔离 CONFIG_DIR、补 sites 垫片、建表并加载配置快照。
 
     主程序中后端即当前包；插件仓由其 ``tests/_bootstrap.py`` shim 在 import 本模块前
     先把后端目录注入 ``sys.path``。顺序固定：先隔离 CONFIG_DIR，再补 ``app.application.site.sites`` 垫片，
@@ -185,8 +185,10 @@ def prepare_backend() -> None:
     """
     isolate_config_dir()
     ensure_sites_stub()
-    from app.startup.database_initializer import init_db
+    from app.startup.database_initializer import init_db, load_configuration_snapshots
     init_db()
+    # 配置读取统一走进程内快照，建表后须先把空库的快照装入缓存。
+    load_configuration_snapshots()
     # 缓存装饰器在测试模块导入时即创建后端，先装配隔离配置对应的适配器。
     from app.startup.cache_initializer import configure_cache_dependencies
     configure_cache_dependencies()

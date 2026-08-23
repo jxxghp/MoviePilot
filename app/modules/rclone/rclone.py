@@ -8,7 +8,9 @@ from typing import Optional, List, Union
 
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.modules._base.storage import StorageBase, transfer_process
 from app.schemas.exception import StorageQueryError

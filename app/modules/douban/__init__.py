@@ -4,7 +4,9 @@ from typing import Any, List, Optional, Tuple, Union
 import cn2an
 
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import (
     MediaInfo,
     MusicAlbumInfo,

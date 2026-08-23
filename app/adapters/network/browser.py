@@ -7,13 +7,17 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol
 from urllib.parse import urlparse
 
-from app.runtime.config import settings
 from app.runtime.log import logger
+from app.runtime.settings import RuntimeSettingsCompat
 from app.runtime.managed_resources import (
     acquire_managed_resource,
     acquire_managed_resource_async,
 )
 from app.adapters.network.http import RequestUtils, cookie_parse
+
+
+# 保留旧插件可覆盖的模块级入口，默认通过 runtime 代理动态读取浏览器配置。
+settings = RuntimeSettingsCompat()
 
 
 class BrowserElement(Protocol):
@@ -1114,6 +1118,7 @@ class PlaywrightHelper:
         :param headless: 是否无头模式
         :param timeout: 超时时间
         """
+        timeout = timeout or 60
         source = None
         # 如果配置为 FlareSolverr，则直接调用获取页面源码
         if self.__browser_emulation() == "flaresolverr":
@@ -1136,10 +1141,33 @@ class PlaywrightHelper:
                 if cookies:
                     page.set_extra_http_headers({"cookie": cookies})
 
-                page.goto(url)
-                page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+                page.goto(url, wait_until="load", timeout=timeout * 1000)
 
-                source = page.content()
+                # 修复: 部分站点(如 Cloudflare 质询页)会持续轮询请求,
+                # 导致 networkidle 永不触发而超时。改为等待页面加载完成后
+                # 轮询检查标题, 直到不再停留在质询/加载页。
+                challenge_titles = ("just a moment", "请稍候", "loading")
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    try:
+                        current_title = (page.title() or "").strip().lower()
+                    except Exception:
+                        current_title = ""
+                    if current_title and not any(
+                            t in current_title for t in challenge_titles):
+                        break
+                    time.sleep(2)
+
+                # 页面跳转中 content() 可能失败, 重试几次
+                source = None
+                for _attempt in range(5):
+                    try:
+                        source = page.content()
+                        if source:
+                            break
+                    except Exception:
+                        source = None
+                        time.sleep(2)
 
             except Exception as e:
                 logger.error(f"获取网页源码失败: {str(e)}")

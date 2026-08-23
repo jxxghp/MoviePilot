@@ -43,6 +43,7 @@ venv.bak/
 .agent-work/
 .runtime/
 .tmp/
+.cache/
 node_modules/
 public/
 .moviepilot.env

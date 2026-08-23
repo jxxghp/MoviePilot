@@ -2,7 +2,9 @@ import re
 import traceback
 from typing import Optional, List
 
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.foundation import text as text_tools

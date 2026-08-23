@@ -54,3 +54,21 @@ class TMDbException(Exception):
     不依赖模块内部实现路径。
     """
     pass
+
+
+class DatabaseWorkerClosedError(RuntimeError):
+    """
+    用于表示数据库短事务执行器尚未启动或已经停止的跨层异常契约。
+    执行器实现位于数据库层，应用层与API层只捕获本类，
+    不依赖执行器的实现路径。
+    """
+    pass
+
+
+class DatabaseWorkerOverloadedError(RuntimeError):
+    """
+    用于表示数据库短事务执行器运行与排队容量已用尽的跨层异常契约。
+    执行器实现位于数据库层，应用层与API层只捕获本类，
+    不依赖执行器的实现路径。
+    """
+    pass

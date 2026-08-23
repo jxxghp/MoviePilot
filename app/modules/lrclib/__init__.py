@@ -4,7 +4,9 @@ import time
 from typing import Any, Optional, Tuple, Union
 
 from app.runtime.cache import cached
-from app.runtime.config import settings
+from app.runtime.settings import RuntimeSettingsCompat
+
+settings = RuntimeSettingsCompat()
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger

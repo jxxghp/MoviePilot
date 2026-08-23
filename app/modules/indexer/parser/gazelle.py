@@ -93,6 +93,27 @@ class GazelleSiteUserInfo(SiteParserBase):
                     '//div[contains(@class, "box_userinfo_stats")]//li[contains(text(), "加入时间")]/span/text()')
                 if join_at_text:
                     self.join_at = time_tools.normalize_datetime(join_at_text[0].strip())
+
+            # 兼容部分 Gazelle 站点(如 JPopsuki)以文本形式展示上传/下载:
+            # <li>Uploaded: 77.44 GB</li> / <li>Downloaded: 8.51 GB</li>
+            if not self.upload:
+                upload_text = html.xpath(
+                    '//li[starts-with(normalize-space(text()), "Uploaded:")]')
+                if upload_text:
+                    size_match = re.search(
+                        r"([\d.,]+\s*[GMKT]?i?B)", upload_text[0].xpath("string(.)"), re.I)
+                    if size_match:
+                        self.upload = size_tools.parse_size(size_match.group(1))
+            if not self.download:
+                download_text = html.xpath(
+                    '//li[starts-with(normalize-space(text()), "Downloaded:")]')
+                if download_text:
+                    size_match = re.search(
+                        r"([\d.,]+\s*[GMKT]?i?B)", download_text[0].xpath("string(.)"), re.I)
+                    if size_match:
+                        self.download = size_tools.parse_size(size_match.group(1))
+            if not self.ratio and self.upload and self.download:
+                self.ratio = round(self.upload / self.download, 3)
         finally:
             if html is not None:
                 del html
