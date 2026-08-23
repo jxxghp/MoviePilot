@@ -125,3 +125,53 @@ def get_agent_data_ports() -> AgentDataPorts:
     if _ports is None:
         raise RuntimeError("Agent 数据端口尚未配置")
     return _ports
+
+
+def get_agent_chat_port() -> Any:
+    """创建 Agent 会话数据端口实例。"""
+    return get_agent_data_ports().agent_chat()
+
+
+def get_agent_task_port() -> Any:
+    """创建 Agent 定时任务数据端口实例。"""
+    return get_agent_data_ports().agent_task()
+
+
+def get_agent_user_port() -> Any:
+    """创建 Agent 用户数据端口实例。"""
+    return get_agent_data_ports().user()
+
+
+def get_agent_site_port() -> Any:
+    """创建 Agent 站点数据端口实例。"""
+    return get_agent_data_ports().site()
+
+
+def get_agent_subscribe_port() -> Any:
+    """创建 Agent 订阅数据端口实例。"""
+    return get_agent_data_ports().subscribe()
+
+
+def get_agent_subscribe_history_port() -> Any:
+    """创建 Agent 订阅历史数据端口实例。"""
+    return get_agent_data_ports().subscribe_history()
+
+
+def get_agent_transfer_history_port() -> Any:
+    """创建 Agent 整理历史数据端口实例。"""
+    return get_agent_data_ports().transfer_history()
+
+
+def get_agent_download_history_port() -> Any:
+    """创建 Agent 下载历史数据端口实例。"""
+    return get_agent_data_ports().download_history()
+
+
+def get_agent_workflow_port() -> Any:
+    """创建 Agent 工作流数据端口实例。"""
+    return get_agent_data_ports().workflow()
+
+
+def get_agent_plugin_data_port() -> Any:
+    """创建 Agent 插件数据端口实例。"""
+    return get_agent_data_ports().plugin_data()

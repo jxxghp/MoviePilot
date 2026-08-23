@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.site import SiteChain
-from app.application.agentdata import SitePort as SiteOper
+from app.application.agentdata import get_agent_site_port
 from app.runtime.log import logger
 
 
@@ -59,7 +59,7 @@ class UpdateSiteCookieTool(MoviePilotTool):
         """
         在同步线程里执行站点登录和 Cookie 更新，避免网络登录阻塞协程。
         """
-        site = SiteOper().get(site_identifier)
+        site = get_agent_site_port().get(site_identifier)
         if not site:
             return None, False, f"未找到站点：{site_identifier}，请使用 query_sites 工具查询可用的站点"
 

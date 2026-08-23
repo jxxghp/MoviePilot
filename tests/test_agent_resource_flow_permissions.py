@@ -115,7 +115,7 @@ def test_query_sites_hides_only_sensitive_fields_for_non_admin_user():
     )
 
     with patch(
-        "app.agent.tools.impl.query_sites.SiteOper"
+        "app.agent.tools.impl.query_sites.get_agent_site_port"
     ) as site_oper:
         site_oper.return_value.async_list = AsyncMock(return_value=[site])
         result = asyncio.run(tool.run())
@@ -177,7 +177,7 @@ def test_query_sites_keeps_full_fields_for_admin_context():
     )
 
     with patch(
-        "app.agent.tools.impl.query_sites.SiteOper"
+        "app.agent.tools.impl.query_sites.get_agent_site_port"
     ) as site_oper:
         site_oper.return_value.async_list = AsyncMock(return_value=[site])
         result = asyncio.run(tool.run())
@@ -369,7 +369,7 @@ def test_channel_agent_admin_user_id_does_not_bypass_user_lookup():
         username="normal-user",
     )
 
-    with patch("app.agent.orchestrator.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
         user_oper.return_value.async_get_by_name.return_value = SimpleNamespace(
             is_superuser=False
         )
@@ -391,7 +391,7 @@ def test_channel_agent_rejects_local_admin_username_without_trusted_principal():
     )
     agent.is_channel_admin = False
 
-    with patch("app.agent.orchestrator.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
         user_oper.return_value.async_get_by_name = AsyncMock(
             return_value=SimpleNamespace(is_superuser=True)
         )
@@ -414,7 +414,7 @@ def test_channel_agent_accepts_trusted_admin_principal_without_local_user():
     )
     agent.is_channel_admin = True
 
-    with patch("app.agent.orchestrator.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
         context = asyncio.run(
             agent._build_tool_context(should_dispatch_reply=True)
         )

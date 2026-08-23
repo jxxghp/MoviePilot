@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.storage import StorageChain
-from app.application.agentdata import TransferHistoryPort as TransferHistoryOper
+from app.application.agentdata import get_agent_transfer_history_port
 from app.runtime.log import logger
 from app.schemas.workflow import FileItem
 
@@ -53,7 +53,7 @@ class DeleteTransferHistoryTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: history_id={history_id}")
 
         try:
-            transferhis = TransferHistoryOper()
+            transferhis = get_agent_transfer_history_port()
             history = await transferhis.async_get(history_id)
             if not history:
                 return f"错误：整理历史记录不存在，ID={history_id}"

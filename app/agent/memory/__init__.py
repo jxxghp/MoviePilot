@@ -9,7 +9,7 @@ from langchain_core.messages import BaseMessage, messages_from_dict, messages_to
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
-from app.application.agentdata import AgentChatPort as AgentChatOper
+from app.application.agentdata import get_agent_chat_port
 from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
     get_configured_agent_chat_service,
@@ -86,9 +86,9 @@ class MemoryManager:
             return memory.messages
 
         try:
-            chat = AgentChatOper().get(session_id=session_id, user_id=user_id)
+            chat = get_agent_chat_port().get(session_id=session_id, user_id=user_id)
             if not chat:
-                chat = AgentChatOper().get(session_id=session_id)
+                chat = get_agent_chat_port().get(session_id=session_id)
         except Exception as e:
             logger.debug(f"读取持久化Agent会话失败: {e}")
             return []
@@ -161,7 +161,7 @@ class MemoryManager:
         # 更新内存缓存
         self.save_memory(memory)
         try:
-            AgentChatOper().save_agent_messages(
+            get_agent_chat_port().save_agent_messages(
                 session_id=session_id,
                 user_id=user_id,
                 messages=messages_to_dict(messages),

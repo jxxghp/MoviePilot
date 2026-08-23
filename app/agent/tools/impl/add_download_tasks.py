@@ -17,7 +17,7 @@ from app.runtime.settings import RuntimeSettingsCompat
 settings = RuntimeSettingsCompat()
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo
-from app.application.agentdata import SitePort as SiteOper
+from app.application.agentdata import get_agent_site_port
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.runtime.log import logger
 from app.schemas.file import FileURI
@@ -277,7 +277,7 @@ class AddDownloadTasksTool(MoviePilotTool):
                         failed_messages.append(f"{torrent_input} 缺少站点名称")
                         continue
 
-                    siteinfo = await SiteOper().async_get_by_name(site_name)
+                    siteinfo = await get_agent_site_port().async_get_by_name(site_name)
                     if not siteinfo:
                         failed_messages.append(f"{torrent_input} 未找到站点信息 {site_name}")
                         continue

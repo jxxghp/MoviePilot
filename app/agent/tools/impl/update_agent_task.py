@@ -10,7 +10,7 @@ from app.agent.tools.tags import ToolTag
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
-from app.application.agentdata import AgentTaskPort as AgentTaskOper
+from app.application.agentdata import get_agent_task_port
 from app.runtime.scheduling import TimerUtils
 
 
@@ -104,7 +104,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
         """更新当前用户的任务并刷新运行时调度。"""
         from app.application.scheduling import update_agent_task_job
 
-        oper = AgentTaskOper()
+        oper = get_agent_task_port()
         task = oper.get(task_id=payload.task_id, user_id=str(self._user_id))
         if not task:
             return None

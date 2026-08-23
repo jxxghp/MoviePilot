@@ -47,7 +47,7 @@ def test_search_subscribe_uses_async_data_port(monkeypatch) -> None:
             raise AssertionError("async 工具不应调用同步订阅更新")
 
     port = _AsyncSubscribePort()
-    monkeypatch.setattr(search_subscribe_module, "SubscribeOper", lambda: port)
+    monkeypatch.setattr(search_subscribe_module, "get_agent_subscribe_port", lambda: port)
 
     async def _run_blocking(*_args, **_kwargs):
         await asyncio.sleep(0)
@@ -79,7 +79,7 @@ def test_search_subscribe_rejects_paused_subscription_without_search(monkeypatch
         async_update = AsyncMock()
 
     port = _AsyncSubscribePort()
-    monkeypatch.setattr(search_subscribe_module, "SubscribeOper", lambda: port)
+    monkeypatch.setattr(search_subscribe_module, "get_agent_subscribe_port", lambda: port)
     run_blocking = AsyncMock()
     monkeypatch.setattr(SearchSubscribeTool, "run_blocking", run_blocking)
 

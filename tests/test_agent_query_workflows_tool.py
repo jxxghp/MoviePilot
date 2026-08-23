@@ -28,7 +28,7 @@ class TestQueryWorkflowsTool(unittest.TestCase):
         workflow_oper.async_list = AsyncMock(return_value=[workflow])
 
         with patch(
-            "app.agent.tools.impl.query_workflows.WorkflowOper",
+            "app.agent.tools.impl.query_workflows.get_agent_workflow_port",
             return_value=workflow_oper,
         ):
             result = asyncio.run(tool.run())

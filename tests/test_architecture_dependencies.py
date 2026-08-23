@@ -568,6 +568,37 @@ def test_transfer_chains_use_explicit_data_port_getters():
     assert violations == []
 
 
+def test_agent_consumers_use_explicit_data_port_getters():
+    """Agent 生产模块不得把兼容数据端口代理重新伪装成数据库 Oper。"""
+    forbidden = {
+        "AgentChatPort",
+        "AgentTaskPort",
+        "DownloadHistoryPort",
+        "PluginDataPort",
+        "SitePort",
+        "SubscribeHistoryPort",
+        "SubscribePort",
+        "TransferHistoryPort",
+        "UserPort",
+        "WorkflowPort",
+    }
+    violations: list[str] = []
+    for path in (APP_ROOT / "agent").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.application.agentdata":
+                continue
+            for alias in node.names:
+                if alias.name in forbidden:
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
+                    )
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []

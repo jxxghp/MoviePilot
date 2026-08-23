@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import AgentTaskPort as AgentTaskOper
+from app.application.agentdata import get_agent_task_port
 
 
 class DeleteAgentTaskInput(BaseModel):
@@ -33,7 +33,7 @@ class DeleteAgentTaskTool(MoviePilotTool):
         """删除当前用户的任务并移除运行时调度。"""
         from app.application.scheduling import remove_agent_task_job
 
-        deleted = AgentTaskOper().delete(
+        deleted = get_agent_task_port().delete(
             task_id=task_id,
             user_id=str(self._user_id),
         )

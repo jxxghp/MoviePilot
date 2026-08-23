@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import WorkflowPort as WorkflowOper
+from app.application.agentdata import get_agent_workflow_port
 from app.runtime.log import logger
 
 
@@ -54,7 +54,7 @@ class QueryWorkflowsTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: state={state}, name={name}, trigger_type={trigger_type}")
 
         try:
-            workflow_oper = WorkflowOper()
+            workflow_oper = get_agent_workflow_port()
             workflows = await workflow_oper.async_list()
 
             # 过滤工作流

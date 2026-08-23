@@ -12,7 +12,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     build_preview_payload,
     get_plugin_snapshot,
 )
-from app.application.agentdata import PluginDataPort as PluginDataOper
+from app.application.agentdata import get_agent_plugin_data_port
 from app.runtime.log import logger
 
 
@@ -73,7 +73,7 @@ class QueryPluginDataTool(MoviePilotTool):
                 ensure_ascii=False,
             )
 
-        plugin_data_oper = PluginDataOper()
+        plugin_data_oper = get_agent_plugin_data_port()
         if key:
             value = await plugin_data_oper.async_get_data(plugin_id, key)
             if value is None:

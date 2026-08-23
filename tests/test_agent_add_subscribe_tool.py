@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.agent.tools.impl.add_subscribe import AddSubscribeTool
@@ -28,8 +29,10 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
             "app.agent.tools.impl.add_subscribe.SubscribeChain.async_add",
             new=AsyncMock(return_value=(1, "")),
         ) as async_add, patch(
-            "app.agent.tools.impl.add_subscribe.UserOper.get_name",
-            return_value="moviepilot-user",
+            "app.agent.tools.impl.add_subscribe.get_agent_user_port",
+            return_value=SimpleNamespace(
+                get_name=lambda **_kwargs: "moviepilot-user"
+            ),
         ):
             result = asyncio.run(
                 tool.run(
@@ -55,8 +58,8 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
             "app.agent.tools.impl.add_subscribe.SubscribeChain.async_add",
             new=AsyncMock(return_value=(1, "")),
         ) as async_add, patch(
-            "app.agent.tools.impl.add_subscribe.UserOper.get_name",
-            return_value=None,
+            "app.agent.tools.impl.add_subscribe.get_agent_user_port",
+            return_value=SimpleNamespace(get_name=lambda **_kwargs: None),
         ):
             result = asyncio.run(
                 tool.run(
@@ -81,8 +84,8 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
             "app.agent.tools.impl.add_subscribe.SubscribeChain.async_add",
             new=AsyncMock(return_value=(1, "")),
         ) as async_add, patch(
-            "app.agent.tools.impl.add_subscribe.UserOper.get_name",
-            return_value=None,
+            "app.agent.tools.impl.add_subscribe.get_agent_user_port",
+            return_value=SimpleNamespace(get_name=lambda **_kwargs: None),
         ):
             result = asyncio.run(
                 tool.run(

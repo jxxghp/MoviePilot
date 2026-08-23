@@ -10,8 +10,8 @@ from app.agent.tools.tags import ToolTag
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
-from app.application.agentdata import AgentChatPort as AgentChatOper
-from app.application.agentdata import AgentTaskPort as AgentTaskOper
+from app.application.agentdata import get_agent_chat_port
+from app.application.agentdata import get_agent_task_port
 from app.runtime.scheduling import TimerUtils
 
 
@@ -115,11 +115,11 @@ class CreateAgentTaskTool(MoviePilotTool):
             timezone_name=settings.TZ,
             require_future=True,
         )
-        chat = AgentChatOper().get(
+        chat = get_agent_chat_port().get(
             session_id=self._session_id,
             user_id=self._user_id,
         )
-        task = AgentTaskOper().add(
+        task = get_agent_task_port().add(
             name=payload.name.strip(),
             content=payload.content.strip(),
             trigger_type=payload.trigger_type,
@@ -133,7 +133,7 @@ class CreateAgentTaskTool(MoviePilotTool):
             original_chat_id=chat.original_chat_id if chat else None,
         )
         next_run_at = update_agent_task_job(task.id)
-        return AgentTaskOper.to_dict(
+        return get_agent_task_port().to_dict(
             task,
             next_run_at=next_run_at,
             timezone=settings.TZ,

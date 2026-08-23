@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import AgentTaskPort as AgentTaskOper
+from app.application.agentdata import get_agent_task_port
 
 
 class RunAgentTaskInput(BaseModel):
@@ -42,7 +42,7 @@ class RunAgentTaskTool(MoviePilotTool):
 
     def _get_task_state(self, task_id: int) -> tuple[str, Optional[str]]:
         """校验任务归属和状态，返回可执行性及任务名称。"""
-        task = AgentTaskOper().get(
+        task = get_agent_task_port().get(
             task_id=task_id,
             user_id=str(self._user_id),
         )

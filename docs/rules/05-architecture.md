@@ -136,6 +136,10 @@ Chain consumers use the named `get_chain_*_port()` functions from
 `app/application/chain/data.py`; they must not alias migration-time `*PortProxy`
 classes back to database Oper names. Those proxy classes remain compatibility
 boundaries while the other established Chain domains migrate independently.
+Agent orchestration, memory and tool implementations follow the same rule via
+the named `get_agent_*_port()` functions from `app/application/agentdata.py`.
+The legacy Agent `*Port` proxy classes remain import-compatible boundaries and
+must not be reintroduced as Oper aliases in canonical Agent modules.
 
 ### Adapter boundaries
 

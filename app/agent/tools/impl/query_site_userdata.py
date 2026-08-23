@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import SitePort as SiteOper
+from app.application.agentdata import get_agent_site_port
 from app.runtime.log import logger
 
 SITE_USERDATA_DETAIL_PREVIEW_LIMIT = 10
@@ -62,7 +62,7 @@ class QuerySiteUserdataTool(MoviePilotTool):
         )
 
         try:
-            site_oper = SiteOper()
+            site_oper = get_agent_site_port()
             site = await site_oper.async_get(site_id)
             if not site:
                 return json.dumps(

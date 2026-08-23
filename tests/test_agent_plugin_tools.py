@@ -422,7 +422,7 @@ def test_query_plugin_data_truncates_large_payload() -> None:
             return_value=_plugin_snapshot(),
         ),
         patch(
-            "app.agent.tools.impl.query_plugin_data.PluginDataOper",
+            "app.agent.tools.impl.query_plugin_data.get_agent_plugin_data_port",
             return_value=plugin_data_oper,
         ),
     ):

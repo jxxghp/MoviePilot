@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import SubscribePort as SubscribeOper
+from app.application.agentdata import get_agent_subscribe_port
 from app.runtime.log import logger
 from app.schemas.subscribe import Subscribe as SubscribeSchema
 from app.schemas.types import (
@@ -157,7 +157,7 @@ class QuerySubscribesTool(MoviePilotTool):
                 if media_type not in ("all", "music"):
                     return "错误：music_type 仅能与 media_type='music' 或 'all' 一起使用"
 
-            subscribe_oper = SubscribeOper()
+            subscribe_oper = get_agent_subscribe_port()
             subscribes = await subscribe_oper.async_list()
             filtered_subscribes = []
             for sub in subscribes:
