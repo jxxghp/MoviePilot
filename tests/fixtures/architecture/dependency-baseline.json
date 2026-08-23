@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6464,
-  "edge_sha256": "256ae6f9cd8950b0fe2743e81300551877eb595bda37b8ce114f439b33496af9",
+  "edge_count": 6463,
+  "edge_sha256": "086c14fef27199ae6f19fbe5e6a07c348cd1dc8a406ab3129a341647fd90a28f",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3629,7 +3629,6 @@
     "app.db.oper.passkey -> app.db.base",
     "app.db.oper.passkey -> app.db.models",
     "app.db.oper.passkey -> app.db.models.passkey",
-    "app.db.oper.passkey -> app.db.uow",
     "app.db.oper.plugindata -> app.db",
     "app.db.oper.plugindata -> app.db.base",
     "app.db.oper.plugindata -> app.db.models",

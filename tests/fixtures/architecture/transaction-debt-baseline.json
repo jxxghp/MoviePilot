@@ -1,33 +1,13 @@
 {
   "model_decorators": {
     "by_kind": {
-      "async_db_query": 6,
+      "async_db_query": 3,
       "async_db_update": 0,
-      "db_query": 3,
+      "db_query": 2,
       "db_update": 0
     },
-    "count": 9,
+    "count": 5,
     "methods": [
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.async_get_by_credential_id"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.async_get_by_id"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.async_get_by_user_id"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/passkey.py",
-        "method": "PassKey.get_by_id"
-      },
       {
         "decorator": "async_db_query",
         "file": "app/db/models/subscribehistory.py",

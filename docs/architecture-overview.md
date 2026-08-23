@@ -378,7 +378,7 @@ flowchart LR
   成功后执行。订阅新增样板由 `startup/subscription.py` 创建独占 Session，
   `application/subscription/write.py` 决定事务与 post-commit 边界，`SubscribeOper.stage_add()`
   只查重、`add` 和 `flush`。旧 SDK 显式构造的无会话 Oper 暂留兼容自动短会话，不得被新代码复用。
-  `transaction-debt-baseline.json` 当前冻结 9 个正式只读查询装饰器；原有同步/异步写装饰器
+  `transaction-debt-baseline.json` 当前冻结 5 个正式只读查询装饰器；原有同步/异步写装饰器
   已全部移除，`db_update` 与 `async_db_update` 必须持续保持为 0。下载/整理历史的旧插件 Model
   与工作流、媒体服务器、站点用户数据旧插件 Model 调用由 `legacy_*` 兼容外壳承接，宿主 Oper 必须显式传递 Session。宿主 Oper 也不得调用 Base 保留的
   `create/update/delete/truncate` 兼容包装器；AST 门禁保证显式 Session 的提交权不会被底层抢走。
