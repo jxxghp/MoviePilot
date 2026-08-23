@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from app.api.endpoints import message, site, subscribe, webhook
+from app.api.endpoints import history, message, site, subscribe, webhook
 from app.runtime.tasks import TaskRegistry
 
 
@@ -18,6 +18,17 @@ class _TaskRegistry(TaskRegistry):
     def create_sync(self, function, *args, owner: str, **kwargs) -> None:
         """保存函数、参数和 owner。"""
         self.calls.append((function, args, kwargs, owner))
+
+    def create(
+        self,
+        coroutine,
+        *,
+        owner: str,
+        cancel_on_shutdown: bool = True,
+    ) -> None:
+        """保存异步任务登记参数，并关闭未执行的 coroutine。"""
+        coroutine.close()
+        self.calls.append((None, (), {"cancel_on_shutdown": cancel_on_shutdown}, owner))
 
 
 class _WebhookRequest:
@@ -139,3 +150,35 @@ def test_seerr_subscribe_uses_task_registry(monkeypatch) -> None:
         "username": "tester",
     }
     assert owner == "api.subscribe.seerr"
+
+
+def test_history_ai_redo_uses_task_registry() -> None:
+    """单条历史 AI 重做应登记宿主任务并使用稳定 owner。"""
+    registry = _TaskRegistry()
+
+    history._start_ai_redo_task(
+        history_id=7,
+        prompt="整理记录",
+        progress_key="progress-7",
+        task_registry=registry,
+    )
+
+    assert registry.calls == [
+        (None, (), {"cancel_on_shutdown": True}, "api.history.ai_redo")
+    ]
+
+
+def test_history_batch_ai_redo_uses_task_registry() -> None:
+    """批量历史 AI 重做应登记宿主任务并区分批量 owner。"""
+    registry = _TaskRegistry()
+
+    history._start_batch_ai_redo_task(
+        history_ids=[7, 8],
+        prompt="批量整理",
+        progress_key="progress-batch",
+        task_registry=registry,
+    )
+
+    assert registry.calls == [
+        (None, (), {"cancel_on_shutdown": True}, "api.history.ai_redo_batch")
+    ]

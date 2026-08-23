@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6470,
-  "edge_sha256": "571b66b75b51e801a053e4164c5dbe0eb580b91f20cf84fa554e13b9469dd650",
+  "edge_count": 6471,
+  "edge_sha256": "30a14c4218ffd8e2798ab93231e7fa0d4ed3e368a5f1cdf75b09336e863e0a50",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -1836,6 +1836,7 @@
     "app.api.endpoints.history -> app.runtime.config",
     "app.api.endpoints.history -> app.runtime.log",
     "app.api.endpoints.history -> app.runtime.progress",
+    "app.api.endpoints.history -> app.runtime.tasks",
     "app.api.endpoints.history -> app.schemas",
     "app.api.endpoints.history -> app.schemas.common",
     "app.api.endpoints.history -> app.schemas.history",
