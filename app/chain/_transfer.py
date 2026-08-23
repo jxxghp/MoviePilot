@@ -37,6 +37,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.config import global_vars
 from app.runtime.log import logger
+from app.runtime.tasks import get_task_registry
 from app.schemas.workflow import FileItem
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
@@ -1461,7 +1462,11 @@ class FailedRetryMixin:
                     )
                 )
 
-        asyncio.run_coroutine_threadsafe(_run_ai_takeover(), global_vars.loop)
+        get_task_registry().submit_threadsafe(
+            _run_ai_takeover(),
+            loop=global_vars.loop,
+            owner="chain.transfer.ai_takeover",
+        )
 
     def _re_transfer(
             self,

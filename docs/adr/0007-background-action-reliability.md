@@ -64,6 +64,9 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   调度，不表示执行完成。
 - Webhook E0 广播、消息入口和 Seerr 订阅入口均已迁入 lifespan TaskRegistry，具备 owner、停止接收和
   有限等待语义；进程崩溃时仍允许丢失，不因此提升为 durable。
+- TaskRegistry 提供跨宿主线程的 `submit_threadsafe()`；提交回目标循环后先原子登记 owner 再执行，关停
+  竞态中要么纳入取消/等待，要么拒绝并关闭协程。整理失败按钮的 AI 接管使用
+  `chain.transfer.ai_takeover` owner，不再绕过登记器直接投递主循环。
 - Slack、Telegram、Discord、飞书、QQBot、企业微信与 WeChatClawBot 的渠道回环统一经
   `application.messaging.ingress` 进入同一个 API/TaskRegistry 主链；需要立即返回 SDK 回调的渠道把同步
   HTTP 交给宿主共享线程池，模块关闭后由线程池生命周期等待，不再创建逐消息 daemon 线程。

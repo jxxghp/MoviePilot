@@ -87,6 +87,74 @@ def test_task_registry_runs_sync_function_and_tracks_until_completion() -> None:
     asyncio.run(scenario())
 
 
+def test_task_registry_owns_threadsafe_submission_until_shutdown() -> None:
+    """宿主线程提交的协程应先登记 owner，并由 Registry 关停取消和等待。"""
+
+    async def scenario() -> None:
+        registry = TaskRegistry()
+        loop = asyncio.get_running_loop()
+        started = asyncio.Event()
+        cleaned = asyncio.Event()
+
+        async def worker() -> None:
+            """保持运行直到 Registry 发出取消，并记录清理已完成。"""
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaned.set()
+
+        completion = await asyncio.to_thread(
+            registry.submit_threadsafe,
+            worker(),
+            loop=loop,
+            owner="test.threadsafe",
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        assert [record.owner for record in registry.records] == [
+            "test.threadsafe"
+        ]
+
+        assert await registry.shutdown(timeout_seconds=1.0) is True
+        assert cleaned.is_set()
+        assert completion.cancelled()
+        assert registry.records == ()
+
+    asyncio.run(scenario())
+
+
+def test_task_registry_rejects_threadsafe_submission_after_shutdown() -> None:
+    """关停先赢得竞态时应关闭协程并通过 completion 报告拒绝原因。"""
+
+    async def scenario() -> None:
+        registry = TaskRegistry()
+        loop = asyncio.get_running_loop()
+        reports: list[dict[str, object]] = []
+        previous_handler = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _, context: reports.append(context))
+
+        async def late_worker() -> None:
+            """模拟关停完成后从宿主线程到达的晚任务。"""
+
+        try:
+            assert await registry.shutdown(timeout_seconds=1.0) is True
+            completion = await asyncio.to_thread(
+                registry.submit_threadsafe,
+                late_worker(),
+                loop=loop,
+                owner="test.threadsafe-late",
+            )
+            with pytest.raises(RuntimeError, match="正在关闭"):
+                await asyncio.wrap_future(completion)
+
+            assert registry.records == ()
+            assert reports[-1]["owner"] == "test.threadsafe-late"
+        finally:
+            loop.set_exception_handler(previous_handler)
+
+    asyncio.run(scenario())
+
+
 def test_task_registry_keeps_timed_out_sync_owner_until_real_completion() -> None:
     """同步线程超过关停预算后仍应保留 owner，不能把包装任务取消成伪完成。"""
 
