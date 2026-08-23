@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MusicTargetEntityType
@@ -41,6 +41,18 @@ class DownloaderTorrent(BaseModel):
     userid: Optional[str] = None
     username: Optional[str] = None
     left_time: Optional[str] = None
+
+
+class DownloaderFile(BaseModel):
+    """下载器文件项的宿主投影，隔离各 provider SDK 的对象差异。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[Union[int, str]] = None
+    name: str
+    size: Optional[int] = None
+    priority: Optional[int] = None
+    progress: Optional[float] = None
 
 
 class DownloadTaskMedia(OptionalMediaIdentityMixin, BaseModel):

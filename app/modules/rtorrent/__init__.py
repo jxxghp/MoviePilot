@@ -7,7 +7,7 @@ from app.runtime.log import logger
 from app.runtime.settings import RuntimeSettingsCompat
 from app.modules._base import _DownloaderModuleBase
 from app.modules.rtorrent.rtorrent import Rtorrent
-from app.schemas.transfer import DownloaderTorrent
+from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
     DownloaderType,
@@ -526,14 +526,16 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
     def torrent_files(
         self, tid: str, downloader: Optional[str] = None
-    ) -> Optional[List[Dict]]:
+    ) -> Optional[List[DownloaderFile]]:
         """
-        获取种子文件列表
+        获取种子文件列表，并在模块边界把字典投影为宿主 DTO。
         """
         server: Rtorrent = self.get_instance(downloader)
         if not server:
             return None
-        return server.get_files(tid=tid)
+        return self._normalize_torrent_files(
+            server.get_files(tid=tid), DownloaderFile.model_validate
+        )
 
     def downloader_info(
         self, downloader: Optional[str] = None

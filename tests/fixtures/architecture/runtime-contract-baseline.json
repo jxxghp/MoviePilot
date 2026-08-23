@@ -6138,7 +6138,7 @@
       "version": 1
     },
     "torrent_files": {
-      "aggregation": "legacy",
+      "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "downloader",
@@ -6149,8 +6149,8 @@
         "downloader",
         "tid"
       ],
-      "result_contract": "DownloaderFileCollection | None",
-      "result_shape": "any",
+      "result_contract": "list[DownloaderFile]",
+      "result_shape": "list",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",

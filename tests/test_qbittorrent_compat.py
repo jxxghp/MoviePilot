@@ -113,6 +113,14 @@ def _load_qbittorrent_modules():
         def scheduler_job(self):
             pass
 
+        @staticmethod
+        def _normalize_torrent_files(files, item_factory):
+            """镜像宿主边界的文件集合投影。"""
+            if files is None:
+                return None
+            source = getattr(files, "data", files)
+            return [item_factory(item) for item in source]
+
         def _get_torrent_info(self, content):
             torrent_info, torrent_content = None, None
             if isinstance(content, Path):
@@ -148,6 +156,20 @@ def _load_qbittorrent_modules():
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
+    class _DownloaderFile:
+        """隔离加载测试使用的最小下载器文件 DTO。"""
+
+        def __init__(self, **kwargs):
+            """保存文件字段。"""
+            self.__dict__.update(kwargs)
+
+        @classmethod
+        def model_validate(cls, item):
+            """兼容字典和属性对象输入。"""
+            if isinstance(item, dict):
+                return cls(**item)
+            return cls(**vars(item))
+
     class TorrentStatus(Enum):
         TRANSFER = "transfer"
         DOWNLOADING = "downloading"
@@ -179,6 +201,7 @@ def _load_qbittorrent_modules():
     schema_transfer_module.TransferTorrent = object
     schema_transfer_module.DownloadingTorrent = object
     schema_transfer_module.DownloaderTorrent = _DownloaderTorrent
+    schema_transfer_module.DownloaderFile = _DownloaderFile
     schema_types_module.TorrentStatus = TorrentStatus
     schema_types_module.TorrentQueryStatus = TorrentQueryStatus
     schema_types_module.DownloadTaskState = DownloadTaskState

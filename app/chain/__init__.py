@@ -21,7 +21,7 @@ from app.runtime.log import logger
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.transfer import TransferInfo
 from app.schemas.mediaserver import ExistMediaInfo
-from app.schemas.transfer import DownloaderTorrent
+from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.message import IncomingMessage
 from app.schemas.mediaserver import WebhookEventInfo
 from app.schemas.tmdb import TmdbEpisode
@@ -1023,12 +1023,12 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
 
     def torrent_files(
             self, tid: str, downloader: Optional[str] = None
-    ) -> Optional[Any]:
+    ) -> Optional[List[DownloaderFile]]:
         """
         获取种子文件
         :param tid:  种子Hash
         :param downloader:  下载器
-        :return: 种子文件，具体类型由下载器实现决定（链层不引入下载器协议类型）
+        :return: 与下载器 SDK 解耦的统一文件项列表
         """
         return self.run_module("torrent_files", tid=tid, downloader=downloader)
 

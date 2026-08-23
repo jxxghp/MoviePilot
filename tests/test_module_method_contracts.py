@@ -317,14 +317,14 @@ def test_side_effect_hooks_use_non_short_circuiting_fan_out_contracts() -> None:
         assert contract.plugin_short_circuit is False
 
 
-def test_heterogeneous_torrent_files_result_remains_legacy_compatible() -> None:
-    """下载器文件集合尚未归一前不得声明虚假的列表聚合语义。"""
+def test_torrent_files_uses_normalized_first_provider_result() -> None:
+    """下载器文件项归一后应按目标 provider 返回宿主 DTO 列表。"""
     contract = get_module_method_contract("torrent_files")
 
     assert contract.required_parameters == ("tid", "downloader")
-    assert contract.result_contract == "DownloaderFileCollection | None"
-    assert contract.aggregation is ModuleResultAggregation.LEGACY
-    assert contract.result_shape is ModuleResultShape.ANY
+    assert contract.result_contract == "list[DownloaderFile]"
+    assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+    assert contract.result_shape is ModuleResultShape.LIST
 
 
 def test_torrent_tracker_contract_merges_downloader_mappings() -> None:

@@ -1,15 +1,13 @@
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List, Dict
 
-from transmission_rpc import File
-
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.runtime.settings import RuntimeSettingsCompat
 from app.modules._base import _DownloaderModuleBase
 from app.modules.transmission.transmission import Transmission
-from app.schemas.transfer import DownloaderTorrent
+from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
     DownloaderType,
@@ -530,15 +528,19 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             return None
         return server.stop_torrents(ids=hashs)
 
-    def torrent_files(self, tid: str, downloader: Optional[str] = None) -> Optional[List[File]]:
+    def torrent_files(
+        self, tid: str, downloader: Optional[str] = None
+    ) -> Optional[List[DownloaderFile]]:
         """
-        获取种子文件列表
+        获取种子文件列表，并在模块边界隔离 Transmission SDK 对象。
         """
         # 获取下载器
         server: Transmission = self.get_instance(downloader)
         if not server:
             return None
-        return server.get_files(tid=tid)
+        return self._normalize_torrent_files(
+            server.get_files(tid=tid), DownloaderFile.model_validate
+        )
 
     def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[_SchemaDownloaderInfo]]:
         """
