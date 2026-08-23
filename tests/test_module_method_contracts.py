@@ -203,6 +203,34 @@ def test_storage_value_contracts_use_explicit_provider_semantics() -> None:
     assert media_files.required_parameters == ("mediainfo",)
 
 
+def test_lookup_contracts_separate_value_routes_from_list_aggregation() -> None:
+    """分类、站点、元数据、认证与 TVDB 查询应声明真实的值或列表语义。"""
+    list_methods = {"site_subtitle_links", "search_tvdb"}
+    value_methods = {
+        "media_category",
+        "load_category_config",
+        "save_category_config",
+        "get_search_page_size",
+        "refresh_userdata",
+        "metadata_img",
+        "metadata_nfo",
+        "obtain_specific_image",
+        "recommend_name",
+        "user_authenticate",
+        "tvdb_info",
+        "tvdb_slug",
+    }
+
+    for method in list_methods:
+        contract = get_module_method_contract(method)
+        assert contract.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+        assert contract.result_shape is ModuleResultShape.LIST
+    for method in value_methods:
+        contract = get_module_method_contract(method)
+        assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+        assert contract.result_contract
+
+
 def test_heterogeneous_torrent_files_result_remains_legacy_compatible() -> None:
     """下载器文件集合尚未归一前不得声明虚假的列表聚合语义。"""
     contract = get_module_method_contract("torrent_files")
