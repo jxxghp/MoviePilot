@@ -21,6 +21,31 @@ async def run_in_threadpool(
     return await run_sync(context.run, func, *args)
 
 
+async def run_in_threadpool_to_completion(
+    func: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """在线程调用取得终态后传播取消，避免提前释放仍在使用的执行容量。"""
+    worker_task = asyncio.create_task(run_in_threadpool(func, *args, **kwargs))
+    cancellation: asyncio.CancelledError | None = None
+    while not worker_task.done():
+        try:
+            await asyncio.wait({worker_task})
+        except asyncio.CancelledError as error:
+            cancellation = cancellation or error
+            continue
+    try:
+        result = worker_task.result()
+    except Exception as error:
+        if cancellation is not None:
+            raise cancellation from error
+        raise
+    if cancellation is not None:
+        raise cancellation
+    return result
+
+
 def retry(ExceptionToCheck: Any,
           tries: int = 3, delay: int = 3, backoff: int = 2, logger: Any = None):
     """
