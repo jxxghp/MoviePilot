@@ -82,3 +82,24 @@ def test_read_sites_by_media_type_rejects_unknown_type():
 
     assert error.value.status_code == 400
     assert error.value.detail == "不支持的媒体类型"
+
+
+def test_site_mapping_uses_async_query_port():
+    """异步站点映射不得在事件循环内调用同步数据库查询。"""
+    sites = [
+        SimpleNamespace(domain="one.example", name="One"),
+        SimpleNamespace(domain="two.example", name="Two"),
+    ]
+    query = SimpleNamespace(
+        list_ordered=AsyncMock(return_value=sites),
+        list_sync=pytest.fail,
+    )
+
+    result = asyncio.run(site_endpoint.site_mapping(query=query))
+
+    assert result.success is True
+    assert result.data == {
+        "one.example": "One",
+        "two.example": "Two",
+    }
+    query.list_ordered.assert_awaited_once()

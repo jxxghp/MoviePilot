@@ -580,14 +580,14 @@ def auth_site(
     response_model=_SchemaResponse[_SchemaSiteMappingData],
 )
 async def site_mapping(
-    query: SiteQueryService = Depends(get_site_sync_query_service),
+    query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ):
     """
     获取站点域名到名称的映射关系
     """
     try:
-        sites = query.list_sync()
+        sites = await query.list_ordered()
         mapping = {}
         for site in sites:
             mapping[site.domain] = site.name
