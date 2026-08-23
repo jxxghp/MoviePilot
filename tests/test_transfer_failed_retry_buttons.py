@@ -137,7 +137,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             settings, "AI_AGENT_ENABLE", True
         ):
             with patch(
-                "app.chain._transfer.TransferHistoryOper"
+                "app.chain._transfer.get_chain_transfer_history_port"
             ) as history_oper_cls, patch(
                 "app.chain._transfer.build_manual_redo_prompt",
                 return_value="retry transfer prompt",
@@ -217,7 +217,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             settings, "AI_AGENT_ENABLE", True
         ):
             with patch(
-                "app.chain._transfer.TransferHistoryOper"
+                "app.chain._transfer.get_chain_transfer_history_port"
             ) as history_oper_cls, patch(
                 "app.chain._transfer.build_manual_redo_prompt",
                 side_effect=build_manual_redo_prompt,

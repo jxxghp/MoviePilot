@@ -104,10 +104,10 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
         try_remove_job=lambda task: None,
     )
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None))
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_type_tmdbid=lambda **kwargs: None))
     monkeypatch.setattr(
         "app.chain.transfer.MediaChain",
         lambda: SimpleNamespace(
@@ -187,12 +187,12 @@ def test_movie_collection_conflict_only_drops_automatic_media(
 
     chain._TransferChain__handle_transfer = fake_handle_transfer
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
-    monkeypatch.setattr("app.chain.transfer.DownloadHistoryOper", lambda: history_oper)
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: history_oper)
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain.transfer.get_chain_download_history_port", lambda: history_oper)
+    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: history_oper)
     monkeypatch.setattr(
         "app.chain.transfer.get_configured_system_config",
         lambda: SimpleNamespace(get=lambda key: None),

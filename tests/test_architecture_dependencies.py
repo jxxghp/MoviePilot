@@ -543,6 +543,31 @@ def test_subscribe_chain_uses_explicit_data_port_getters():
     assert violations == []
 
 
+def test_transfer_chains_use_explicit_data_port_getters():
+    """整理主链与 mixin 不得把迁移期 PortProxy 伪装成数据库 Oper。"""
+    paths = [APP_ROOT / "chain" / "transfer.py", APP_ROOT / "chain" / "_transfer.py"]
+    forbidden = {
+        "DownloadHistoryPortProxy",
+        "TransferHistoryPortProxy",
+        "TransferPendingPortProxy",
+    }
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.application.chain.data":
+                continue
+            for alias in node.names:
+                if alias.name in forbidden:
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
+                    )
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []

@@ -76,10 +76,10 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
     chain = object.__new__(TransferChain)
     chain.jobview = SimpleNamespace(try_remove_job=lambda _task: None)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace())
     monkeypatch.setattr(
         "app.chain.transfer.MediaChain",
         lambda: SimpleNamespace(

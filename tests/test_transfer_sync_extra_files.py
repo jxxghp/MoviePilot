@@ -139,12 +139,12 @@ def test_sync_extra_subtitle_inherits_matching_video_episode(monkeypatch):
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper",
+        "app.chain.transfer.get_chain_download_history_port",
         lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
@@ -152,7 +152,7 @@ def test_sync_extra_subtitle_inherits_matching_video_episode(monkeypatch):
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
             get_files_by_savepath=lambda savepath: [],
@@ -236,12 +236,12 @@ def test_single_subtitle_transfer_reuses_same_name_video_episode(monkeypatch):
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper",
+        "app.chain.transfer.get_chain_download_history_port",
         lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
@@ -249,7 +249,7 @@ def test_single_subtitle_transfer_reuses_same_name_video_episode(monkeypatch):
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
             get_files_by_savepath=lambda savepath: [],
@@ -351,12 +351,12 @@ def test_single_video_transfer_lists_parent_once_for_same_name_extra(monkeypatch
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper",
+        "app.chain.transfer.get_chain_download_history_port",
         lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
@@ -364,7 +364,7 @@ def test_single_video_transfer_lists_parent_once_for_same_name_extra(monkeypatch
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
             get_files_by_savepath=lambda savepath: [],
@@ -449,12 +449,12 @@ def test_episode_format_filters_extra_files_before_sync_planning(monkeypatch):
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper",
+        "app.chain.transfer.get_chain_download_history_port",
         lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
@@ -462,7 +462,7 @@ def test_episode_format_filters_extra_files_before_sync_planning(monkeypatch):
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
             get_files_by_savepath=lambda savepath: [],
@@ -536,12 +536,12 @@ def test_episode_format_keeps_matching_extra_files_following_main(monkeypatch):
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper",
+        "app.chain.transfer.get_chain_download_history_port",
         lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
@@ -549,7 +549,7 @@ def test_episode_format_keeps_matching_extra_files_following_main(monkeypatch):
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
             get_files_by_savepath=lambda savepath: [],
@@ -632,12 +632,12 @@ def test_single_matching_subtitle_uses_unmatched_video_only_as_context(monkeypat
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper",
+        "app.chain.transfer.get_chain_download_history_port",
         lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
@@ -645,7 +645,7 @@ def test_single_matching_subtitle_uses_unmatched_video_only_as_context(monkeypat
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
             get_files_by_savepath=lambda savepath: [],
@@ -728,12 +728,12 @@ def test_cleanup_dest_fileitem_is_deleted_only_after_allowed_items_exist(monkeyp
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
     monkeypatch.setattr(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None),
     )
-    monkeypatch.setattr("app.chain._transfer.TransferHistoryOper", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
+    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr(
-        "app.chain.transfer.DownloadHistoryOper",
+        "app.chain.transfer.get_chain_download_history_port",
         lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
@@ -741,7 +741,7 @@ def test_cleanup_dest_fileitem_is_deleted_only_after_allowed_items_exist(monkeyp
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.DownloadHistoryOper", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: SimpleNamespace(
             get_by_hash=lambda download_hash: None,
             get_file_by_fullpath=lambda fullpath: None,
             get_files_by_savepath=lambda savepath: [],
