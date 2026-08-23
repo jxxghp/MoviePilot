@@ -1,12 +1,12 @@
 {
   "model_decorators": {
     "by_kind": {
-      "async_db_query": 18,
+      "async_db_query": 14,
       "async_db_update": 0,
-      "db_query": 20,
+      "db_query": 16,
       "db_update": 0
     },
-    "count": 38,
+    "count": 30,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -157,46 +157,6 @@
         "decorator": "db_query",
         "file": "app/db/models/transferpending.py",
         "method": "TransferPending.list_all"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_get_by_name"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_get_enabled_workflows"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_get_event_triggered_workflows"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.async_get_timer_triggered_workflows"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.get_by_name"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.get_enabled_workflows"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.get_event_triggered_workflows"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/workflow.py",
-        "method": "Workflow.get_timer_triggered_workflows"
       }
     ]
   },
