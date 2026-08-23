@@ -653,4 +653,6 @@ class SubscribeOper(DbOper):
             "season": season,
             "episode_group": episode_group,
         }
-        return bool(SubscribeHistory.exists(self._db, **identity_params))
+        return bool(self._execute_sync_query(
+            lambda session: SubscribeHistory.exists(session, **identity_params)
+        ))
