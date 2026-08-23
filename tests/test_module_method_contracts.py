@@ -374,6 +374,29 @@ def test_sync_and_async_bangumi_capabilities_share_contracts() -> None:
         assert contract.aggregation is expected
 
 
+def test_sync_and_async_anilist_capabilities_share_contracts() -> None:
+    """AniList 同步与异步 provider 应共享列表或首值契约。"""
+    list_methods = {
+        "anilist_credits",
+        "anilist_discover",
+        "anilist_person_credits",
+        "anilist_popular_this_season",
+        "anilist_recommendations",
+        "anilist_trending",
+    }
+    value_methods = {"anilist_info", "anilist_person_detail"}
+
+    for sync_method in list_methods | value_methods:
+        contract = get_module_method_contract(sync_method)
+        assert contract is get_module_method_contract(f"async_{sync_method}")
+        expected = (
+            ModuleResultAggregation.ORDERED_LIST_MERGE
+            if sync_method in list_methods
+            else ModuleResultAggregation.FIRST_NON_EMPTY
+        )
+        assert contract.aggregation is expected
+
+
 def test_attachment_result_diagnostics_distinguish_bytes_and_strings() -> None:
     """附件契约应区分二进制内容和可展示字符串，偏差仍仅供诊断。"""
     assert diagnose_module_result("download_qq_file_bytes", b"content") == ()
