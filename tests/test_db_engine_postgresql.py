@@ -103,6 +103,17 @@ def test_budget_uses_sqlite_pool_for_sqlite(monkeypatch):
     assert engine_module.connection_budget()["sync"] == 7
 
 
+def test_budget_counts_database_worker_with_sync_nullpool(monkeypatch):
+    """同步 NullPool 需要同时计入通用线程池和专属数据库 worker。"""
+    monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
+    monkeypatch.setattr(settings, "DB_POOL_TYPE", "NullPool", raising=False)
+    threadpool_size = settings.CONF.threadpool
+
+    budget = engine_module.connection_budget()
+
+    assert budget["sync"] == threadpool_size + 4
+
+
 # --------------------------------------------------------------------------- #
 # 额度校验（PostgreSQL 路径）
 # --------------------------------------------------------------------------- #

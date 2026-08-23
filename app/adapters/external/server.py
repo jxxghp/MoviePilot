@@ -360,6 +360,15 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
+    async def async_init_subscribe_report(cls) -> None:
+        """异步初始化订阅统计标记。"""
+        await cls._report_service().async_init_report(
+            enabled=settings.SUBSCRIBE_STATISTIC_SHARE,
+            state_key=SystemConfigKey.SubscribeReport,
+            reporter=cls.async_sub_report,
+        )
+
+    @classmethod
     def init_plugin_report(cls) -> None:
         """
         初始化插件安装统计上报状态。
@@ -368,6 +377,15 @@ class MoviePilotServerHelper:
             enabled=settings.PLUGIN_STATISTIC_SHARE,
             state_key=SystemConfigKey.PluginInstallReport,
             reporter=cls.install_plugin_report,
+        )
+
+    @classmethod
+    async def async_init_plugin_report(cls) -> None:
+        """异步初始化插件统计标记。"""
+        await cls._report_service().async_init_report(
+            enabled=settings.PLUGIN_STATISTIC_SHARE,
+            state_key=SystemConfigKey.PluginInstallReport,
+            reporter=cls.async_install_plugin_report,
         )
 
     @staticmethod
@@ -678,6 +696,15 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
+    async def async_subscribe_report(cls, subscribes: List[Dict[str, Any]]):
+        """异步批量上报存量订阅统计。"""
+        return await cls._async_post_json(
+            cls._server_url(cls._SUBSCRIBE_REPORT_PATH),
+            {"subscribes": subscribes},
+            timeout=10,
+        )
+
+    @classmethod
     def subscribe_report(cls, subscribes: List[Dict[str, Any]]):
         """
         批量上报存量订阅统计。
@@ -950,6 +977,13 @@ class MoviePilotServerHelper:
         上报存量订阅统计。
         """
         return cls._report_service().report_subscribes(
+            enabled=settings.SUBSCRIBE_STATISTIC_SHARE,
+        )
+
+    @classmethod
+    async def async_sub_report(cls) -> bool:
+        """异步上报存量订阅统计。"""
+        return await cls._report_service().async_report_subscribes(
             enabled=settings.SUBSCRIBE_STATISTIC_SHARE,
         )
 

@@ -31,6 +31,7 @@ from app.startup import database_initializer as db_init
 from app.startup import database as startup_database
 from app.startup import lifecycle
 from app.runtime.health import get_application_health
+from app.db.models.systemconfig import SystemConfig
 
 
 LOCAL_SETUP_PATH = (
@@ -782,3 +783,32 @@ def test_local_setup_returns_failure_when_database_migration_fails(
 
     assert module.main() == 1
     assert "migration failed" in capsys.readouterr().err
+
+
+def test_local_setup_apply_config_registers_offline_transaction_runner(
+        monkeypatch,
+        tmp_path: Path,
+        db,
+) -> None:
+    """离线 apply-config 写入配置前必须装配同步事务执行器。"""
+    db.watermark(SystemConfig)
+    module = _load_local_setup_module()
+    monkeypatch.setattr(db_init, "prepare_database", lambda **_kwargs: None)
+    monkeypatch.setattr(module, "_ensure_superuser_account_inner", lambda: None)
+    payload = {
+        "directories": [{
+            "name": "offline-config",
+            "download_path": str(tmp_path / "downloads"),
+            "library_path": str(tmp_path / "library"),
+            "priority": 0,
+        }],
+    }
+
+    module._apply_local_system_config_inner(payload)
+
+    persisted = SystemConfig.get_by_key(
+        db.session,
+        "Directories",
+    )
+    assert persisted is not None
+    assert persisted.value[0]["name"] == "offline-config"

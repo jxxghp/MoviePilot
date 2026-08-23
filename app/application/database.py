@@ -3,17 +3,35 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Protocol, TypeVar
 
-from app.application.backup import (
-    BackupArtifact,
-    BackupVerification,
-    DatabaseBackupService,
-)
-from app.application.maintenance import DataCleanupService
+if TYPE_CHECKING:
+    from app.application.backup import (
+        BackupArtifact,
+        BackupVerification,
+        DatabaseBackupService,
+    )
+    from app.application.maintenance import DataCleanupService
 
 
 DatabaseProbe = Callable[[], Optional[str]]
+T = TypeVar("T")
+
+
+class DatabaseWorkerClosedError(RuntimeError):
+    """数据库执行器尚未启动或已经停止。"""
+
+
+class DatabaseWorkerOverloadedError(RuntimeError):
+    """数据库执行器的运行与排队容量已经用尽。"""
+
+
+class AsyncDatabaseExecutor(Protocol):
+    """让异步业务调用同步短事务而不阻塞事件循环。"""
+
+    async def run(self, operation: Callable[[], T]) -> T:
+        """等待数据库操作完成提交或回滚，并返回执行结果。"""
+        ...
 
 
 class DatabaseHealthService:

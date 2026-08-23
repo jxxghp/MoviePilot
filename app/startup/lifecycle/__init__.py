@@ -133,7 +133,16 @@ async def run_startup_step(
 
 async def initialize_modules_component(app: FastAPI) -> None:
     """启动模块并把其类型化运行时发布到当前 FastAPI AppState。"""
-    runtime = await init_modules()
+    try:
+        runtime = await init_modules()
+    except BaseException:
+        from app.startup.modules_initializer import stop_database_worker
+
+        try:
+            await stop_database_worker()
+        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+            logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
+        raise
     if runtime is not None:
         app.state.host_runtime = runtime
 

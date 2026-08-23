@@ -180,6 +180,7 @@ def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
         "app/plugins",
         "app/sdk",
         "app/runtime/compat",
+        "app/testing",
     ]
     assert baseline["settings_imports"]["count"] == len(
         baseline["settings_imports"]["files"]

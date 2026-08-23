@@ -92,6 +92,7 @@ from app.db.session import (
     get_async_db,
     get_db,
 )
+from app.db.worker import DatabaseWorker
 from app.db.uow import (
     SqlAlchemyAsyncUnitOfWork,
     SqlAlchemyUnitOfWork,
@@ -160,6 +161,45 @@ from app.runtime.extensions.service_config import (
 )
 
 
+_database_worker: DatabaseWorker | None = None
+
+
+async def stop_database_worker() -> None:
+    """停止当前进程的数据库短事务 worker。"""
+    global _database_worker
+    worker = _database_worker
+    if worker is not None:
+        await worker.shutdown()
+        _database_worker = None
+
+
+async def _initialize_configuration_services(
+    database_worker: DatabaseWorker,
+) -> None:
+    """加载完整配置快照后发布系统与用户配置服务。"""
+    system_config = SystemConfigOper()
+    user_config = UserConfigOper()
+    await database_worker.run(system_config.load_snapshot)
+    await database_worker.run(user_config.load_snapshot)
+    configure_system_config(
+        SystemConfigService(
+            repository=system_config,
+            async_executor=database_worker,
+        )
+    )
+    configure_user_configuration(
+        UserConfigurationService(
+            repository=user_config,
+            async_executor=database_worker,
+        )
+    )
+
+
+def _build_runtime_settings_service() -> RuntimeSettingsService:
+    """将可变部署配置实现注入管理服务，避免把兼容代理再次包装。"""
+    return RuntimeSettingsService(legacy_settings)
+
+
 async def _async_get_subscribe(subscribe_id: int):
     """通过数据库操作器异步读取订阅，供服务端共享用例使用。"""
     return await SubscribeOper().async_get(subscribe_id)
@@ -205,15 +245,20 @@ def configure_runtime_data_providers() -> None:
         report_service=ServerReportService(
             config_reader=lambda key: get_configured_system_config().get(key),
             config_writer=lambda key, value: get_configured_system_config().set(key, value),
+            async_config_writer=lambda key, value: get_configured_system_config().async_set(
+                key, value
+            ),
             installed_plugins_provider=lambda: get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
             subscribes_provider=lambda: SubscribeOper().list(),
+            async_subscribes_provider=lambda: SubscribeOper().async_list(),
             plugin_report_sender=MoviePilotServerHelper.plugin_install_report,
             async_plugin_report_sender=(
                 MoviePilotServerHelper.async_plugin_install_report
             ),
             subscribe_report_sender=MoviePilotServerHelper.subscribe_report,
+            async_subscribe_report_sender=MoviePilotServerHelper.async_subscribe_report,
             repo_url_sanitizer=MoviePilotServerHelper.sanitize_plugin_repo_url,
         ),
         sharing_service=ServerSharingService(
@@ -525,7 +570,11 @@ async def stop_modules():
     await run_step("消息服务", stop_message)
     await run_step("Redis缓存连接", lambda: RedisHelper().close())
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
-    await run_step("数据库连接", close_database)
+    await run_step("数据库任务", stop_database_worker)
+    if _database_worker is None:
+        await run_step("数据库连接", close_database)
+    else:
+        logger.error("数据库任务未收敛，跳过数据库连接关闭以避免运行中事务使用已释放连接")
     await run_step("前端服务", stop_frontend)
     await run_step("临时文件", clear_temp)
 
@@ -534,6 +583,7 @@ async def init_modules() -> HostRuntime:
     """
     启动模块并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
+    global _database_worker
     # 兼容 Oper 的无 Session 写入口仍由组合根持有事务，避免模型恢复自动提交。
     transaction_runner = TransactionalWriteRunner(
         sync_session=SessionFactory,
@@ -543,6 +593,17 @@ async def init_modules() -> HostRuntime:
         sync=transaction_runner.sync,
         async_=transaction_runner.async_,
     )
+    database_worker = DatabaseWorker()
+    await database_worker.start()
+    _database_worker = database_worker
+    try:
+        await _initialize_configuration_services(database_worker)
+    except BaseException:
+        try:
+            await stop_database_worker()
+        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+            logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
+        raise
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
     api_data = ApiDataPorts(
         sync_session=get_db,
@@ -574,9 +635,7 @@ async def init_modules() -> HostRuntime:
         scheduler=lambda: build_scheduler_runtime_config(settings),
         chain=lambda: build_chain_runtime_config(settings),
     )
-    # RuntimeSettingsService 必须持有真实 Settings；RuntimeSettingsCompat 是旧 ABI 代理，
-    # 将代理自身注入服务会让 model_dump() 在代理和服务之间无限递归。
-    runtime_settings = RuntimeSettingsService(legacy_settings)
+    runtime_settings = _build_runtime_settings_service()
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
@@ -620,8 +679,6 @@ async def init_modules() -> HostRuntime:
     configure_runtime_settings(host_runtime.settings)
     configure_runtime_setting_provider(lambda key: getattr(legacy_settings, key))
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
-    # 先发布系统配置服务，后续启动组合步骤统一复用同一配置端口。
-    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
     configure_runtime_data_providers()
@@ -661,7 +718,6 @@ async def init_modules() -> HostRuntime:
         )
     )
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
-    configure_user_configuration(UserConfigurationService(repository=UserConfigOper()))
     configure_transfer_history_provider(lambda: TransferHistoryOper())
     configure_site_query_service(SiteQueryService(repository=SiteOper()))
     configure_site_health_service(SiteHealthService(repository=SiteOper()))
@@ -710,8 +766,8 @@ async def init_modules() -> HostRuntime:
     # 启动事件消费
     EventManager().start()
     # 初始化共享服务端状态
-    MoviePilotServerHelper.init_plugin_report()
-    MoviePilotServerHelper.init_subscribe_report()
+    await MoviePilotServerHelper.async_init_plugin_report()
+    await MoviePilotServerHelper.async_init_subscribe_report()
     MoviePilotServerHelper.get_user_uuid()
     MoviePilotServerHelper.get_github_user()
     # 初始化AI智能体

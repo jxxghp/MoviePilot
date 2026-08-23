@@ -24,19 +24,25 @@ class ServerReportService:
             config_writer: Callable[[Any, Any], Any],
             installed_plugins_provider: Callable[[], list[str]],
             subscribes_provider: Callable[[], list[Any]],
+            async_subscribes_provider: Callable[[], Awaitable[list[Any]]] | None = None,
             plugin_report_sender: Callable[[list[dict]], Any],
             async_plugin_report_sender: Callable[[list[dict]], Awaitable[Any]],
             subscribe_report_sender: Callable[[list[dict]], Any],
             repo_url_sanitizer: Callable[[Optional[str]], Optional[str]],
+            async_subscribe_report_sender: Callable[[list[dict]], Awaitable[Any]] | None = None,
+            async_config_writer: Callable[[Any, Any], Awaitable[Any]] | None = None,
     ) -> None:
         """保存本地读取端口和只负责 I/O 的中心服务发送端口。"""
         self._config_reader = config_reader
         self._config_writer = config_writer
         self._installed_plugins_provider = installed_plugins_provider
         self._subscribes_provider = subscribes_provider
+        self._async_subscribes_provider = async_subscribes_provider
         self._plugin_report_sender = plugin_report_sender
         self._async_plugin_report_sender = async_plugin_report_sender
         self._subscribe_report_sender = subscribe_report_sender
+        self._async_subscribe_report_sender = async_subscribe_report_sender
+        self._async_config_writer = async_config_writer
         self._repo_url_sanitizer = repo_url_sanitizer
 
     def init_report(
@@ -49,6 +55,22 @@ class ServerReportService:
         """首次成功上报后写入对应的完成标记。"""
         if enabled and not self._config_reader(state_key) and reporter():
             self._config_writer(state_key, "1")
+
+    async def async_init_report(
+        self,
+        *,
+        enabled: bool,
+        state_key: Any,
+        reporter: Callable[[], Awaitable[bool]],
+    ) -> None:
+        """异步完成首次上报，并通过异步配置端口持久化完成标记。"""
+        if not enabled or self._config_reader(state_key):
+            return
+        if not await reporter():
+            return
+        if self._async_config_writer is None:
+            raise RuntimeError("中心服务上报未配置异步配置写入端口")
+        await self._async_config_writer(state_key, "1")
 
     def build_subscribe_payload(self, item: Optional[dict]) -> Optional[dict]:
         """构造中心服务订阅统计载荷并移除本地运行字段。"""
@@ -131,4 +153,25 @@ class ServerReportService:
         if not payload:
             return False
         response = await self._async_plugin_report_sender(payload)
+        return bool(response is not None and response.status_code == 200)
+
+    async def async_report_subscribes(self, *, enabled: bool) -> bool:
+        """异步上报当前全部有效订阅的公开统计字段。"""
+        if not enabled:
+            return False
+        if self._async_subscribe_report_sender is None:
+            raise RuntimeError("中心服务上报未配置异步订阅发送端口")
+        if self._async_subscribes_provider is None:
+            raise RuntimeError("中心服务未配置异步订阅读取端口")
+        subscribes = await self._async_subscribes_provider()
+        if not subscribes:
+            return True
+        payloads = [
+            payload
+            for subscribe in subscribes
+            if (payload := self.build_subscribe_payload(subscribe.to_dict()))
+        ]
+        if not payloads:
+            return True
+        response = await self._async_subscribe_report_sender(payloads)
         return bool(response is not None and response.status_code == 200)

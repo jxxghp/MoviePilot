@@ -3,6 +3,7 @@
 引导与网络守卫均复用 ``app/testing`` 的共享 harness（与插件仓 conftest 同源），
 引导逻辑只在 ``app/testing`` 维护一处。
 """
+import asyncio
 import sys
 
 import pytest
@@ -18,6 +19,14 @@ prepare_backend()
 
 # 复用共享 autouse 网络守卫；同一实现亦供各插件仓 conftest import 复用，避免逐仓维护
 from app.testing.network_guard import block_real_network  # noqa: E402,F401
+
+
+class _TestDatabaseExecutor:
+    """让绕过完整 lifespan 的测试仍通过线程执行同步数据库写入。"""
+
+    async def run(self, operation):
+        """在线程中执行测试事务。"""
+        return await asyncio.to_thread(operation)
 
 
 @pytest.fixture(autouse=True)
@@ -61,6 +70,11 @@ def configure_plugin_system_services():
         configure_transaction_runners,
     )
     from app.db.oper.systemconfig import SystemConfigOper
+    from app.db.oper.userconfig import UserConfigOper
+    from app.application.security.userconfig import (
+        UserConfigurationService,
+        configure_user_configuration,
+    )
 
     configure_token_codec(create_access_token, decode_access_token)
     configure_runtime_configuration(
@@ -73,7 +87,23 @@ def configure_plugin_system_services():
     configure_runtime_settings(RuntimeSettingsService(settings))
     configure_runtime_setting_provider(lambda key: getattr(settings, key))
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
-    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
+    database_executor = _TestDatabaseExecutor()
+    system_config = SystemConfigOper()
+    system_config.load_snapshot()
+    user_config = UserConfigOper()
+    user_config.load_snapshot()
+    configure_system_config(
+        SystemConfigService(
+            repository=system_config,
+            async_executor=database_executor,
+        )
+    )
+    configure_user_configuration(
+        UserConfigurationService(
+            repository=user_config,
+            async_executor=database_executor,
+        )
+    )
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
             max_failed_retries=settings.TRANSFER_MAX_FAILED_RETRIES,
