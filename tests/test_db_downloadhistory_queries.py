@@ -108,8 +108,11 @@ def test_list_by_page_is_newest_first_and_paged(db):
     assert [h.title for h in page1] == ["p-3", "p-2"]
     assert [h.title for h in DownloadHistory.list_by_page(db.session, page=2, count=2)] == \
         ["p-1", "p-0"]
-    assert [h.title for h in asyncio.run(
-        DownloadHistory.async_list_by_page(page=1, count=2))] == ["p-3", "p-2"]
+    assert [h.title for h in db.run_async_session(
+        lambda session: DownloadHistory.async_list_by_page(
+            session, page=1, count=2
+        )
+    )] == ["p-3", "p-2"]
 
 
 def test_get_by_path_finds_the_download_directory(db):
@@ -312,10 +315,17 @@ def test_count_and_title_search_match_async_twins(db):
     """
     db.add(_history("Unique Title Here", date="2026-08-13 10:00:00"))
 
-    assert asyncio.run(DownloadHistory.async_count()) >= 1
-    assert asyncio.run(DownloadHistory.async_count_by_title(title="unique title")) == 1
-    assert [h.title for h in asyncio.run(DownloadHistory.async_list_by_title(
-        title="UNIQUE TITLE"))] == ["Unique Title Here"]
+    assert db.run_async_session(DownloadHistory.async_count) >= 1
+    assert db.run_async_session(
+        lambda session: DownloadHistory.async_count_by_title(
+            session, title="unique title"
+        )
+    ) == 1
+    assert [h.title for h in db.run_async_session(
+        lambda session: DownloadHistory.async_list_by_title(
+            session, title="UNIQUE TITLE"
+        )
+    )] == ["Unique Title Here"]
 
 
 # --------------------------------------------------------------------------- #

@@ -432,46 +432,76 @@ def test_database_internals_do_not_import_db_facades():
     assert violations == []
 
 
-def test_base_crud_is_explicitly_legacy_only():
-    """Base 便利 CRUD 只能保留兼容壳，不得伪装成新的正式事务入口。"""
-    path = APP_ROOT / "db" / "base.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    base_class = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "Base"
-    )
-    formal_decorators = {
+def test_models_and_base_require_explicit_database_sessions():
+    """Model/Base 不得装饰事务，且所有 db 参数必须由调用方显式传入。"""
+    decorator_names = {
         "db_query",
         "db_update",
         "async_db_query",
         "async_db_update",
+        "legacy_db_query",
+        "legacy_db_update",
+        "legacy_async_db_query",
+        "legacy_async_db_update",
     }
     violations: list[str] = []
-    for node in base_class.body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        decorators = {
-            decorator.id
-            for decorator in node.decorator_list
-            if isinstance(decorator, ast.Name)
-        }
-        if decorators & formal_decorators:
-            violations.append(node.name)
+    paths = [APP_ROOT / "db" / "base.py"]
+    paths.extend((APP_ROOT / "db" / "models").rglob("*.py"))
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        relative = str(path.relative_to(PROJECT_ROOT))
+        nodes = list(ast.walk(tree))
+        for node in nodes:
+            if isinstance(node, ast.ImportFrom) and node.module == "app.db.decorators":
+                violations.append(f"{relative}:{node.lineno}:decorator-import")
+        if path.name == "base.py":
+            base_class = next(
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == "Base"
+            )
+            nodes = list(ast.walk(base_class))
+        for node in nodes:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                name = (
+                    decorator.id
+                    if isinstance(decorator, ast.Name)
+                    else decorator.attr
+                    if isinstance(decorator, ast.Attribute)
+                    else None
+                )
+                if name in decorator_names:
+                    violations.append(f"{relative}:{node.lineno}:@{name}")
+            arguments = [*node.args.posonlyargs, *node.args.args]
+            defaults = [None] * (len(arguments) - len(node.args.defaults)) + list(
+                node.args.defaults
+            )
+            for argument, default in zip(arguments, defaults):
+                if argument.arg != "db":
+                    continue
+                annotation = ast.unparse(argument.annotation) if argument.annotation else ""
+                if default is not None or "None" in annotation:
+                    violations.append(
+                        f"{relative}:{node.lineno}:{node.name}:optional-db"
+                    )
     assert violations == []
 
 
-def test_models_use_one_legacy_query_compatibility_shell():
-    """旧 Model 查询统一使用 legacy 装饰器，不得再手写隐式会话 runner。"""
-    retired_names = {"run_legacy_sync_query", "run_legacy_async_query"}
+def test_plugin_sdk_does_not_import_or_export_host_models():
+    """插件 SDK 只能暴露 Oper，不得把宿主 ORM Model 作为插件接口。"""
     violations: list[str] = []
-    for path in (APP_ROOT / "db" / "models").glob("*.py"):
+    for path in (APP_ROOT / "sdk").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        if any(
-            isinstance(node, ast.Name) and node.id in retired_names
-            for node in ast.walk(tree)
-        ):
-            violations.append(str(path.relative_to(PROJECT_ROOT)))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and (
+                node.module == "app.db.models"
+                or node.module.startswith("app.db.models.")
+            ):
+                violations.append(
+                    f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}:{node.module}"
+                )
     assert violations == []
 
 

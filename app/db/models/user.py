@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import legacy_async_db_query, legacy_db_query
 
 
 class User(Base):
@@ -35,78 +34,38 @@ class User(Base):
     settings: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
 
     @classmethod
-    @legacy_db_query
     def get_by_name(
         cls,
-        db: Session | str | None = None,
-        name: str | None = None,
+        db: Session,
+        name: str,
     ):
-        """按用户名查询用户，兼容显式会话和旧插件无会话调用。"""
-        if name is None and isinstance(db, str):
-            name, db = db, None
-        if name is None:
-            raise TypeError("name is required")
-
-        def query(session: Session):
-            """在给定会话中执行用户名查询。"""
-            return session.execute(select(cls).where(cls.name == name)).scalars().first()
-
-        return query(db)
+        """在调用方同步会话中按用户名查询用户。"""
+        return db.execute(select(cls).where(cls.name == name)).scalars().first()
 
     @classmethod
-    @legacy_async_db_query
     async def async_get_by_name(
         cls,
-        db: AsyncSession | str | None = None,
-        name: str | None = None,
+        db: AsyncSession,
+        name: str,
     ):
-        """异步按用户名查询，兼容显式会话和旧插件无会话调用。"""
-        if name is None and isinstance(db, str):
-            name, db = db, None
-        if name is None:
-            raise TypeError("name is required")
-
-        async def query(session: AsyncSession):
-            """在给定异步会话中执行用户名查询。"""
-            result = await session.execute(select(cls).filter(cls.name == name))
-            return result.scalars().first()
-
-        return await query(db)
+        """在调用方异步会话中按用户名查询用户。"""
+        result = await db.execute(select(cls).filter(cls.name == name))
+        return result.scalars().first()
 
     @classmethod
-    @legacy_db_query
-    def get_by_id(cls, db: Session | int | None = None, user_id: int | None = None):
-        """按用户 ID 查询用户，兼容显式会话和旧插件无会话调用。"""
-        if user_id is None and isinstance(db, int):
-            user_id, db = db, None
-        if user_id is None:
-            raise TypeError("user_id is required")
-
-        def query(session: Session):
-            """在给定会话中执行用户 ID 查询。"""
-            return session.execute(select(cls).where(cls.id == user_id)).scalars().first()
-
-        return query(db)
+    def get_by_id(cls, db: Session, user_id: int):
+        """在调用方同步会话中按用户 ID 查询用户。"""
+        return db.execute(select(cls).where(cls.id == user_id)).scalars().first()
 
     @classmethod
-    @legacy_async_db_query
     async def async_get_by_id(
         cls,
-        db: AsyncSession | int | None = None,
-        user_id: int | None = None,
+        db: AsyncSession,
+        user_id: int,
     ):
-        """异步按用户 ID 查询，兼容显式会话和旧插件无会话调用。"""
-        if user_id is None and isinstance(db, int):
-            user_id, db = db, None
-        if user_id is None:
-            raise TypeError("user_id is required")
-
-        async def query(session: AsyncSession):
-            """在给定异步会话中执行用户 ID 查询。"""
-            result = await session.execute(select(cls).filter(cls.id == user_id))
-            return result.scalars().first()
-
-        return await query(db)
+        """在调用方异步会话中按用户 ID 查询用户。"""
+        result = await db.execute(select(cls).filter(cls.id == user_id))
+        return result.scalars().first()
 
     def delete_by_name(self, db: Session, name: str):
         user = self.get_by_name(db, name)

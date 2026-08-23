@@ -19,7 +19,11 @@ class PluginDataOper(DbOper):
         :param key: 数据key
         :param value: 数据值
         """
-        plugin = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
+        plugin = self._execute_sync_query(
+            lambda session: PluginData.get_plugin_data_by_key(
+                session, plugin_id, key
+            )
+        )
         if plugin:
             self._stage_update(plugin, {
                 "value": value
@@ -35,8 +39,10 @@ class PluginDataOper(DbOper):
         :param key: 数据键
         :param value: 数据值
         """
-        plugin = await PluginData.async_get_plugin_data_by_key(
-            self._db, plugin_id, key
+        plugin = await self._execute_async_query(
+            lambda session: PluginData.async_get_plugin_data_by_key(
+                session, plugin_id, key
+            )
         )
         if plugin:
             await self._stage_async_update(plugin, {"value": value})
@@ -52,12 +58,18 @@ class PluginDataOper(DbOper):
         :param key: 数据key
         """
         if key:
-            data = PluginData.get_plugin_data_by_key(self._db, plugin_id, key)
+            data = self._execute_sync_query(
+                lambda session: PluginData.get_plugin_data_by_key(
+                    session, plugin_id, key
+                )
+            )
             if not data:
                 return None
             return data.value
         else:
-            return PluginData.get_plugin_data(self._db, plugin_id)
+            return self._execute_sync_query(
+                lambda session: PluginData.get_plugin_data(session, plugin_id)
+            )
 
     async def async_get_data(self, plugin_id: str, key: Optional[str] = None) -> Any:
         """
@@ -66,13 +78,17 @@ class PluginDataOper(DbOper):
         :param key: 数据key
         """
         if key:
-            data = await PluginData.async_get_plugin_data_by_key(
-                self._db, plugin_id, key
+            data = await self._execute_async_query(
+                lambda session: PluginData.async_get_plugin_data_by_key(
+                    session, plugin_id, key
+                )
             )
             if not data:
                 return None
             return data.value
-        return await PluginData.async_get_plugin_data(self._db, plugin_id)
+        return await self._execute_async_query(
+            lambda session: PluginData.async_get_plugin_data(session, plugin_id)
+        )
 
     def del_data(self, plugin_id: str, key: Optional[str] = None) -> Any:
         """
@@ -81,7 +97,7 @@ class PluginDataOper(DbOper):
         :param key: 数据key
         """
         def stage(session: Session) -> None:
-            """把兼容删除入口映射到调用方或组合根持有的事务。"""
+            """把删除入口映射到调用方或组合根持有的事务。"""
             if key:
                 PluginData.del_plugin_data_by_key(session, plugin_id, key)
             else:
@@ -109,11 +125,19 @@ class PluginDataOper(DbOper):
         获取插件所有数据
         :param plugin_id: 插件id
         """
-        return PluginData.get_plugin_data_by_plugin_id(self._db, plugin_id)
+        return self._execute_sync_query(
+            lambda session: PluginData.get_plugin_data_by_plugin_id(
+                session, plugin_id
+            )
+        )
 
     async def async_get_data_all(self, plugin_id: str) -> Any:
         """
         异步获取插件所有数据。
         :param plugin_id: 插件id
         """
-        return await PluginData.async_get_plugin_data_by_plugin_id(self._db, plugin_id)
+        return await self._execute_async_query(
+            lambda session: PluginData.async_get_plugin_data_by_plugin_id(
+                session, plugin_id
+            )
+        )

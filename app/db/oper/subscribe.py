@@ -11,7 +11,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any, Tuple, List, Optional
 
-from sqlalchemy import delete as sqlalchemy_delete, select
+from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -100,25 +100,6 @@ class SubscribeOper(DbOper):
     订阅管理
     """
 
-    @staticmethod
-    def _identity_statement(identity: dict, username: Optional[str] = None):
-        """构造订阅查重语句，SQL 所有权收口在 Oper。"""
-        condition = Subscribe._identity_condition(  # pylint: disable=protected-access
-            identity.get("media_source"),
-            identity.get("media_id"),
-            identity.get("music_type"),
-        )
-        if condition is None or username == "":
-            return None
-        statement = select(Subscribe).where(condition)
-        if username:
-            statement = statement.where(Subscribe.username == username)
-        if identity.get("season") is not None:
-            statement = statement.where(Subscribe.season == identity["season"])
-        return statement.where(
-            Subscribe.episode_group == identity.get("episode_group")
-        )
-
     def _exists(self, identity: dict, username: Optional[str]) -> Optional[Any]:
         """
         按身份查重。
@@ -126,19 +107,19 @@ class SubscribeOper(DbOper):
         :param username: 非空时只在该用户的订阅内查
         :return: 命中的订阅行，未命中为 None
         """
-        if isinstance(self._db, Session):
-            statement = self._identity_statement(identity, username)
-            if statement is None:
-                return None
-            return self._db.execute(statement).scalars().first()
-        # 旧 SDK 允许无会话构造 Oper；保留其自动短会话行为，但规范入口不得走这里。
+        if username == "":
+            return None
         if username:
-            return Subscribe.exists_by_username(
-                self._db,
-                username=username,
-                **identity,
+            return self._execute_sync_query(
+                lambda session: Subscribe.exists_by_username(
+                    session,
+                    username=username,
+                    **identity,
+                )
             )
-        return Subscribe.exists(self._db, **identity)
+        return self._execute_sync_query(
+            lambda session: Subscribe.exists(session, **identity)
+        )
 
     async def _async_exists(self, identity: dict, username: Optional[str]) -> Optional[Any]:
         """
@@ -147,20 +128,18 @@ class SubscribeOper(DbOper):
         :param username: 非空时只在该用户的订阅内查
         :return: 命中的订阅行，未命中为 None
         """
-        if isinstance(self._db, AsyncSession):
-            statement = self._identity_statement(identity, username)
-            if statement is None:
+        async def query(session: AsyncSession) -> Optional[Subscribe]:
+            """在调用方或组合根异步会话中执行订阅查重。"""
+            if username == "":
                 return None
-            result = await self._db.execute(statement)
-            return result.scalars().first()
-        # 同步路径一样只为无会话旧入口保留 Model 的自动短会话兼容。
-        if username:
-            return await Subscribe.async_exists_by_username(
-                self._db,
-                username=username,
-                **identity,
-            )
-        return await Subscribe.async_exists(self._db, **identity)
+            if username:
+                return await Subscribe.async_exists_by_username(
+                    session,
+                    username=username,
+                    **identity,
+                )
+            return await Subscribe.async_exists(session, **identity)
+        return await self._execute_async_query(query)
 
     def stage_add(
         self,
@@ -297,24 +276,15 @@ class SubscribeOper(DbOper):
         """
         获取订阅
         """
-        return self._execute_sync_query(
-            lambda session: session.execute(
-                select(Subscribe).where(Subscribe.id == sid)
-            ).scalars().first()
-        )
+        return self._execute_sync_query(lambda session: Subscribe.get(session, sid))
 
     async def async_get(self, sid: int) -> Optional[Subscribe]:
         """
         获取订阅
         """
-        if self._db is not None and not isinstance(self._db, (Session, AsyncSession)):
-            # 保留旧测试替身与插件注入对象对 Model ABI 的兼容入口。
-            return await Subscribe.async_get(self._db, rid=sid)
-        async def query(session: AsyncSession) -> Optional[Subscribe]:
-            """在调用方异步会话中执行订阅主键查询。"""
-            result = await session.execute(select(Subscribe).where(Subscribe.id == sid))
-            return result.scalars().first()
-        return await self._execute_async_query(query)
+        return await self._execute_async_query(
+            lambda session: Subscribe.async_get(session, sid)
+        )
 
     async def async_list_by_media_identity(
         self,
@@ -323,18 +293,14 @@ class SubscribeOper(DbOper):
         music_type: Optional[str] = None,
     ) -> List[Subscribe]:
         """异步按规范媒体身份读取订阅。"""
-        async def query(session: AsyncSession) -> List[Subscribe]:
-            """在调用方异步会话中执行媒体身份列表查询。"""
-            condition = Subscribe._identity_condition(  # pylint: disable=protected-access
-                media_source, media_id, music_type
+        return await self._execute_async_query(
+            lambda session: Subscribe.async_list_by_media_identity(
+                session,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=music_type,
             )
-            if condition is None:
-                return []
-            result = await session.execute(select(Subscribe).where(condition))
-            return list(result.scalars().all())
-        if isinstance(self._db, AsyncSession):
-            return await query(self._db)
-        return await self._execute_async_query(query)
+        )
 
     def list_by_media_identity(
         self,
@@ -343,15 +309,14 @@ class SubscribeOper(DbOper):
         music_type: Optional[str] = None,
     ) -> List[Subscribe]:
         """同步按规范媒体身份读取订阅。"""
-        def query(session: Session) -> List[Subscribe]:
-            """在调用方同步会话中执行媒体身份列表查询。"""
-            condition = Subscribe._identity_condition(  # pylint: disable=protected-access
-                media_source, media_id, music_type
+        return self._execute_sync_query(
+            lambda session: Subscribe.list_by_media_identity(
+                session,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=music_type,
             )
-            if condition is None:
-                return []
-            return list(session.execute(select(Subscribe).where(condition)).scalars().all())
-        return self._execute_sync_query(query)
+        )
 
     async def get_candidate(
             self,
@@ -423,18 +388,16 @@ class SubscribeOper(DbOper):
         """
         根据条件查询订阅
         """
-        def query(session: Session) -> Optional[Subscribe]:
-            """在调用方同步会话中执行类型媒体查询。"""
-            condition = Subscribe._identity_condition(  # pylint: disable=protected-access
-                media_source, media_id, music_type
+        return self._execute_sync_query(
+            lambda session: Subscribe.get_by(
+                session,
+                type=type,
+                media_source=media_source,
+                media_id=media_id,
+                season=season,
+                music_type=music_type,
             )
-            if condition is None:
-                return None
-            statement = select(Subscribe).where(condition, Subscribe.type == type)
-            if season is not None:
-                statement = statement.where(Subscribe.season == season)
-            return session.execute(statement).scalars().first()
-        return self._execute_sync_query(query)
+        )
 
     async def async_get_by(
             self, type: str, media_source: MediaSource, media_id: str,
@@ -444,55 +407,34 @@ class SubscribeOper(DbOper):
         """
         根据条件查询订阅
         """
-        async def query(session: AsyncSession) -> Optional[Subscribe]:
-            """在调用方异步会话中执行类型媒体查询。"""
-            condition = Subscribe._identity_condition(  # pylint: disable=protected-access
-                media_source, media_id, music_type
+        return await self._execute_async_query(
+            lambda session: Subscribe.async_get_by(
+                session,
+                type=type,
+                media_source=media_source,
+                media_id=media_id,
+                season=season,
+                music_type=music_type,
             )
-            if condition is None:
-                return None
-            statement = select(Subscribe).where(condition, Subscribe.type == type)
-            if season is not None:
-                statement = statement.where(Subscribe.season == season)
-            result = await session.execute(statement)
-            return result.scalars().first()
-        return await self._execute_async_query(query)
+        )
 
     def list(self, state: Optional[str] = None) -> List[Subscribe]:
         """
         获取订阅列表
         """
-        if state:
-            return self._execute_sync_query(
-                lambda session: list(session.execute(
-                    select(Subscribe).where(Subscribe.state.in_(state.split(',')))
-                ).scalars().all())
-            )
         return self._execute_sync_query(
-            lambda session: list(session.execute(select(Subscribe)).scalars().all())
+            lambda session: Subscribe.get_by_state(session, state)
         )
 
     async def async_list(self, state: Optional[str] = None) -> List[Subscribe]:
         """
         异步获取订阅列表
         """
-        if self._db is not None and not isinstance(self._db, (Session, AsyncSession)):
-            if state:
-                return await Subscribe.async_get_by_state(self._db, state)
-            return await Subscribe.async_list(self._db)
         if state:
-            async def query(session: AsyncSession) -> List[Subscribe]:
-                """在调用方异步会话中执行状态列表查询。"""
-                result = await session.execute(
-                    select(Subscribe).where(Subscribe.state.in_(state.split(',')))
-                )
-                return list(result.scalars().all())
-            return await self._execute_async_query(query)
-        async def query_all(session: AsyncSession) -> List[Subscribe]:
-            """在调用方异步会话中执行全量订阅查询。"""
-            result = await session.execute(select(Subscribe))
-            return list(result.scalars().all())
-        return await self._execute_async_query(query_all)
+            return await self._execute_async_query(
+                lambda session: Subscribe.async_get_by_state(session, state)
+            )
+        return await self._execute_async_query(Subscribe.async_list)
 
     async def async_list_by_username(
         self,
@@ -501,35 +443,28 @@ class SubscribeOper(DbOper):
         mtype: Optional[str] = None,
     ) -> List[Subscribe]:
         """异步按用户获取订阅。"""
-        if self._db is not None and not isinstance(self._db, (Session, AsyncSession)):
-            return await Subscribe.async_list_by_username(
-                self._db, username=username, state=state, mtype=mtype
+        return await self._execute_async_query(
+            lambda session: Subscribe.async_list_by_username(
+                session,
+                username=username,
+                state=state,
+                mtype=mtype,
             )
-        async def query(session: AsyncSession) -> List[Subscribe]:
-            """在调用方异步会话中执行用户筛选查询。"""
-            statement = select(Subscribe).where(Subscribe.username == username)
-            if state:
-                statement = statement.where(Subscribe.state == state)
-            if mtype:
-                statement = statement.where(Subscribe.type == mtype)
-            result = await session.execute(statement)
-            return list(result.scalars().all())
-        return await self._execute_async_query(query)
+        )
 
     async def async_list_by_title(
         self,
         title: str,
         season: Optional[int] = None,
     ) -> List[Subscribe]:
-        """异步按标题获取订阅，供旧查询测试和迁移调用兼容。"""
-        async def query(session: AsyncSession) -> List[Subscribe]:
-            """在调用方异步会话中执行标题列表查询。"""
-            statement = select(Subscribe).where(Subscribe.name == title)
-            if season is not None:
-                statement = statement.where(Subscribe.season == season)
-            result = await session.execute(statement)
-            return list(result.scalars().all())
-        return await self._execute_async_query(query)
+        """在 Oper 会话边界内异步按标题获取订阅。"""
+        return await self._execute_async_query(
+            lambda session: Subscribe.async_list_by_title(
+                session,
+                title=title,
+                season=season,
+            )
+        )
 
     def delete(self, sid: int):
         """
@@ -598,30 +533,22 @@ class SubscribeOper(DbOper):
         """
         获取指定用户的订阅
         """
-        def query(session: Session) -> List[Subscribe]:
-            """在调用方同步会话中执行用户筛选查询。"""
-            statement = select(Subscribe).where(Subscribe.username == username)
-            if state:
-                statement = statement.where(Subscribe.state == state)
-            if mtype:
-                statement = statement.where(Subscribe.type == mtype)
-            return list(session.execute(statement).scalars().all())
-        return self._execute_sync_query(query)
+        return self._execute_sync_query(
+            lambda session: Subscribe.list_by_username(
+                session,
+                username=username,
+                state=state,
+                mtype=mtype,
+            )
+        )
 
     def list_by_type(self, mtype: str, days: int = 7) -> List[Subscribe]:
         """
         获取指定类型的订阅
         """
-        def query(session: Session) -> List[Subscribe]:
-            """在调用方同步会话中执行时间窗订阅查询。"""
-            cutoff = time.strftime(
-                "%Y-%m-%d %H:%M:%S",
-                time.localtime(time.time() - 86400 * int(days)),
-            )
-            return list(session.execute(select(Subscribe).where(
-                Subscribe.type == mtype, Subscribe.date >= cutoff
-            )).scalars().all())
-        return self._execute_sync_query(query)
+        return self._execute_sync_query(
+            lambda session: Subscribe.list_by_type(session, mtype, days)
+        )
 
     def add_history(self, **kwargs):
         """

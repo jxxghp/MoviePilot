@@ -1,7 +1,7 @@
 """
 ORM 基类与数据访问基类。
 
-Base 提供声明式基类与兼容行为（字典转换、旧增删改查便利方法）；
+Base 提供声明式基类与显式会话增删改查原语；
 DbOper 是各业务 Oper 的基类，持有一个可注入的会话。
 """
 from collections.abc import Awaitable, Callable
@@ -12,12 +12,6 @@ from sqlalchemy import (CursorResult, Executable, Identity, Integer, Sequence,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, declared_attr, mapped_column
 
-from app.db.decorators import (
-    legacy_async_db_query,
-    legacy_async_db_update,
-    legacy_db_query,
-    legacy_db_update,
-)
 from app.db.uow import run_async_transaction, run_sync_transaction
 from app.runtime.config import settings
 
@@ -70,98 +64,87 @@ class Base(DeclarativeBase):  # type: ignore[misc]  # SQLAlchemy 无 py.typed �
     继承本类的模型一律使用 mapped_column() + Mapped[] 注解；确需非映射的类级属性时
     用 ClassVar 显式声明，而不是把这个标志加回来。
 
-    create/get/update/delete/list/truncate 及其异步版本仅保留旧插件 ABI。宿主新代码应由
-    Application Command 定义事务边界，经显式 Session 调用 Oper，不得新增对这些方法的依赖。
+    create/get/update/delete/list/truncate 及其异步版本都是显式会话原语：只在调用方
+    Session 中暂存或查询，不自行创建、提交、回滚或关闭事务。宿主业务代码应通过 Oper
+    或 Application Command 使用这些能力，插件不得直接依赖宿主模型。
     """
 
     # 由 get_id_column() 在各模型中提供实际的列定义，这里只声明类型供 IDE 使用
     id: Mapped[int]
 
-    @legacy_db_update
     def create(self, db: Session) -> None:
-        """兼容旧插件调用：新增当前模型并提交。"""
+        """在调用方同步事务中暂存当前模型。"""
         db.add(self)
 
-    @legacy_async_db_update
     async def async_create(self, db: AsyncSession) -> Self:
-        """兼容旧插件调用：异步新增当前模型、刷新主键并提交。"""
+        """在调用方异步事务中暂存当前模型并刷新主键。"""
         db.add(self)
         await db.flush()
         return self
 
     @classmethod
-    @legacy_db_query
     def get(cls, db: Session, rid: int) -> Optional[Self]:
-        """兼容旧插件调用：按主键查询当前模型。"""
+        """在调用方同步会话中按主键查询当前模型。"""
         return cast(
             Optional[Self],
             db.execute(select(cls).where(and_(cls.id == rid))).scalars().first(),
         )
 
     @classmethod
-    @legacy_async_db_query
     async def async_get(cls, db: AsyncSession, rid: int) -> Optional[Self]:
-        """兼容旧插件调用：异步按主键查询当前模型。"""
+        """在调用方异步会话中按主键查询当前模型。"""
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         return cast(Optional[Self], result.scalars().first())
 
-    @legacy_db_update
     def update(self, db: Session, payload: dict[str, Any]) -> None:
-        """兼容旧插件调用：更新当前模型字段并提交。"""
+        """在调用方同步事务中更新当前模型字段。"""
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
             db.add(self)
 
-    @legacy_async_db_update
     async def async_update(
         self,
         db: AsyncSession,
         payload: dict[str, Any],
     ) -> None:
-        """兼容旧插件调用：异步更新当前模型字段并提交。"""
+        """在调用方异步事务中更新当前模型字段。"""
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
             db.add(self)
 
     @classmethod
-    @legacy_db_update
     def delete(cls, db: Session, rid: Any) -> None:
-        """兼容旧插件调用：按主键删除当前模型并提交。"""
+        """在调用方同步事务中按主键删除当前模型。"""
         db.execute(delete(cls).where(and_(cls.id == rid)))
 
     @classmethod
-    @legacy_async_db_update
     async def async_delete(cls, db: AsyncSession, rid: Any) -> None:
-        """兼容旧插件调用：异步按主键删除当前模型并提交。"""
+        """在调用方异步事务中按主键删除当前模型。"""
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         user = result.scalars().first()
         if user:
             await db.delete(user)
 
     @classmethod
-    @legacy_db_update
     def truncate(cls, db: Session) -> None:
-        """兼容旧插件调用：清空当前模型表并提交。"""
+        """在调用方同步事务中清空当前模型表。"""
         db.execute(delete(cls))
 
     @classmethod
-    @legacy_async_db_update
     async def async_truncate(cls, db: AsyncSession) -> None:
-        """兼容旧插件调用：异步清空当前模型表并提交。"""
+        """在调用方异步事务中清空当前模型表。"""
         await db.execute(delete(cls))
 
     @classmethod
-    @legacy_db_query
     def list(cls, db: Session) -> List[Self]:
-        """兼容旧插件调用：查询当前模型的全部记录。"""
+        """在调用方同步会话中查询当前模型的全部记录。"""
         return list(db.execute(select(cls)).scalars().all())
 
     @classmethod
-    @legacy_async_db_query
     async def async_list(cls, db: AsyncSession) -> List[Self]:
-        """兼容旧插件调用：异步查询当前模型的全部记录。"""
+        """在调用方异步会话中查询当前模型的全部记录。"""
         result = await db.execute(select(cls))
         return list(result.scalars().all())
 
@@ -183,19 +166,19 @@ class DbOper:
     """
 
     def __init__(self, db: Optional[Union[Session, AsyncSession]] = None):
-        """保存调用方会话；无会话写入由组合根兼容事务执行器承接。"""
+        """保存调用方会话；无会话调用由组合根事务执行器承接。"""
         self._db = db
 
     def _execute_sync_write(self, operation: Callable[[Session], T]) -> T:
-        """在当前同步会话暂存，或委托组合根创建兼容事务。"""
+        """在当前同步会话暂存，或委托组合根创建事务。"""
         if self._db is None or isinstance(self._db, AsyncSession):
             # 旧调用可能在同一 Oper 上混用同步/异步方法；跨会话类型时使用匹配的
-            # 兼容事务，不能把 AsyncSession 交给同步 SQLAlchemy API。
+            # 独立事务，不能把 AsyncSession 交给同步 SQLAlchemy API。
             return run_sync_transaction(operation)
         return operation(self._db)
 
     def _execute_sync_query(self, operation: Callable[[Session], T]) -> T:
-        """在当前同步会话查询，或委托组合根创建一次性兼容会话。"""
+        """在当前同步会话查询，或委托组合根创建一次性会话。"""
         if self._db is None or isinstance(self._db, AsyncSession):
             return run_sync_transaction(operation)
         return operation(self._db)
@@ -204,10 +187,9 @@ class DbOper:
         self,
         operation: Callable[[AsyncSession], Awaitable[T]],
     ) -> T:
-        """在当前异步会话暂存，或委托组合根创建兼容事务。"""
+        """在当前异步会话暂存，或委托组合根创建事务。"""
         if self._db is None or isinstance(self._db, Session):
-            # 与查询装饰器的历史行为一致：同步会话不会被错误传入异步模型写入，
-            # 而是由组合根另开匹配的异步事务。
+            # 同步会话不会被错误传入异步模型写入，而是由组合根另开匹配的异步事务。
             return await run_async_transaction(operation)
         return await operation(self._db)
 
@@ -215,13 +197,13 @@ class DbOper:
         self,
         operation: Callable[[AsyncSession], Awaitable[T]],
     ) -> T:
-        """在当前异步会话查询，或委托组合根创建一次性兼容会话。"""
+        """在当前异步会话查询，或委托组合根创建一次性会话。"""
         if self._db is None or isinstance(self._db, Session):
             return await run_async_transaction(operation)
         return await operation(self._db)
 
     def _stage_create(self, model: TModel) -> TModel:
-        """在显式同步事务中暂存新模型，不触发 Base 的兼容提交装饰器。"""
+        """在调用方或组合根持有的同步事务中暂存新模型。"""
         def stage(session: Session) -> TModel:
             """把模型加入当前同步会话。"""
             session.add(model)

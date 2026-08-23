@@ -379,10 +379,11 @@ flowchart LR
   `db/adapters/subscription.py` 创建独占 Session，`startup/composition/subscription.py` 只装配回调，
   `application/subscription/write.py` 决定事务与 post-commit 边界，`SubscribeOper.stage_add()`
   只查重、`add` 和 `flush`。旧 SDK 显式构造的无会话 Oper 暂留兼容自动短会话，不得被新代码复用。
-  `transaction-debt-baseline.json` 当前要求正式只读查询装饰器保持为 0；原有同步/异步写装饰器
-  已全部移除，`db_update` 与 `async_db_update` 必须持续保持为 0。下载/整理历史的旧插件 Model
-  与工作流、媒体服务器、站点用户数据、PassKey、SubscribeHistory 旧插件 Model 调用由 `legacy_*` 兼容外壳承接，宿主 Oper 必须显式传递 Session。宿主 Oper 也不得调用 Base 保留的
-  `create/update/delete/truncate` 兼容包装器；AST 门禁保证显式 Session 的提交权不会被底层抢走。
+  `transaction-debt-baseline.json` 要求 Model 上的查询/写装饰器持续保持为 0。Model 与 Base
+  已不再导入数据库装饰器，所有 `db` 参数都要求显式 Session；这些方法只查询或 stage，不能
+  创建、提交、回滚或关闭事务。无会话入口只存在于 Oper，由 `_execute_*` 经组合根事务执行器
+  承接；内置插件必须调用 Oper，不得直接导入宿主 Model。AST 门禁同时约束装饰器、可选 Session
+  和插件到 Model 的依赖，保证提交权不会被底层抢走。
 - 站点、历史、工作流、Agent 会话删除和插件数据重置已经形成同构事务切片；对应 Application
   Command/Service 持有 UoW，Oper 的 `stage_*` 方法只修改当前会话。插件数据重置从
   `startup/initializers/plugins.py` 注入事务能力，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。

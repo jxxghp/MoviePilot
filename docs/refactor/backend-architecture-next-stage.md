@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权。
 
 ## 当前复核结论（2026-08-23）
 
@@ -15,7 +15,7 @@
 
 ### 长期整改阶段 0：治理门禁恢复（2026-08-23）
 
-- 宿主依赖基线已审查 TaskRegistry、有界后台 owner 与插件变更准入接入后的语义差异：当前为 `805` 个模块、`6525` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
+- 宿主依赖基线已审查 TaskRegistry、有界后台 owner 与插件变更准入接入后的语义差异：当前为 `805` 个模块、`6500` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
 - 启动性能探针会在隔离生命周期中真实创建并释放 TaskRegistry；normal/safe 组件数分别为 `23`/`11`，CI 只读检查使用稳定的宿主模块集合和生命周期组件顺序，不再把 Python/平台模块数量当作硬合同。
 - 官方插件快照覆盖 `plugins.v3`、`plugins.v2` 以及 V3 实际会从 `package.json` 回退加载的 31 个默认实现；`app/plugins/**` 仍只是宿主运行副本，不进入扫描。
 - SDK 快照以各模块显式 `__all__` 为公开合同，能够记录赋值别名；`typing`、`__future__` 等实现期导入不再被误冻结，既有数据库备份门面已补精确导出清单。
@@ -72,7 +72,7 @@
 
 - 继续采用单进程控制面是正确选择，不建议现在拆成微服务；插件、调度器、工作流、事件和数据库共享进程内状态，拆分会放大部署、事务和兼容成本。
 - `foundation/domain/runtime/adapters/application/chain/api/startup` 的职责方向基本成立；宿主架构基线、复杂度 ratchet、异步阻塞 ratchet 当前均通过。
-- 依赖图当前为 `805` 个 Python 模块、`6525` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
+- 依赖图当前为 `805` 个 Python 模块、`6500` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
 - 当前主要风险已经从“目录和依赖失控”转移到运行时协议、后台副作用的可靠性和遗留兼容面。换言之，下一阶段重点应是**语义收口和可验证性**，而不是继续搬文件或机械拆大文件。
 
 综合评价：架构方向可持续，生产可用性较高；可演进性仍处于中等水平。现阶段没有静态审计发现必须立即推倒重来的 P0 架构问题，但存在需要按 P1/P2 计划治理的真实债务。
@@ -81,7 +81,7 @@
 
 1. **后台任务的统一所有权已覆盖 API 入口，但仍有更深层任务机制待分级。** `app/runtime/tasks.py` 已建立 lifespan 级 TaskRegistry，启动收尾、插件 Release 刷新、Webhook E0 广播、CookieCloud E1 手工调度、消息入口、Seerr 订阅、整理历史 AI 重做、OpenAI/Anthropic 协议流和 WebAgent 断线后执行/快照保存均不再维护端点模块级任务集合或 Starlette 回调，shutdown 会停止接收、取消并有限等待，且生命周期清单明确登记其顺序。主仓 `app/` 已无裸 FastAPI `BackgroundTasks`；当前仍有约 `50` 个更底层 `create_task`/等价任务创建点，与线程池和 APScheduler 并存，后续需逐项确认 owner、取消、等待、重试、幂等和是否 durable，关键业务副作用优先接入已有 Outbox/恢复表。
 2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `194` 个仍使用 `legacy` aggregation，只有 `14` 个 `first_non_empty`、`4` 个 `ordered_list_merge`。`app/runtime/extensions/module/contracts.py:422-455` 已能登记 family、输入/结果标签和基础签名诊断，但 `193` 个方法没有 required parameters，调度器 `app/runtime/extensions/module/dispatcher.py:109-260` 仍主要依赖运行时反射、返回值形状和短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
-3. **查询侧数据库兼容 ABI 已完成正式装饰器清零。** 写事务装饰器和正式 `db_query/async_db_query` 均为 `0`。站点、消息、用户、订阅、下载/整理历史、工作流、MediaServer、SiteUserData、AgentChat、AgentTaskRun、TransferPending、SystemConfig、PassKey 和 SubscribeHistory 的宿主查询已迁到显式 Session 路径；对应旧插件 Model 调用由独立 `legacy_*` 外壳保留，可同时接受显式 Session 与无 Session 的位置/关键字参数。后续重点转为减少 ORM 对象跨层流转，并保持正式装饰器零回退。
+3. **Model/Base 的数据库装饰器和隐式会话 ABI 已全部清零。** 查询、写事务和 `legacy_*` 装饰器均为 `0`；所有 Model `db` 参数要求显式 Session，Base CRUD 仅在调用方事务内查询或 stage。可无会话构造的入口统一留在 Oper，经组合根事务执行器运行；插件 SDK 不再导出宿主 Model。后续重点转为减少 ORM 对象跨层流转，并保持 Model 隐式事务零回退。
 4. **组合根和全局状态仍形成复杂的隐式运行时图。** Singleton 实例、模块级 provider、`configure_*` 注册函数和兼容 Facade 同时存在；它们解决了旧 ABI 和启动顺序问题，但增加测试污染、重复装配、实例身份和初始化顺序风险。`app/startup/lifecycle/__init__.py` 已有声明式生命周期，`app/startup/initializers/modules.py` 也有分阶段关闭，但尚未做到所有进程级资源都只通过 typed HostRuntime 访问。后续应以“新代码禁止新增 Service Locator/Singleton 依赖、旧入口有命中观测”为 ratchet。
 
 ### P2：中长期可演进性债务
@@ -108,7 +108,7 @@
 1. 未知第三方插件自定义模块方法继续走 `legacy` fallback，不能因宿主契约收口而拒绝加载旧插件。
 2. `PluginManager`、`PluginHelper`、`MoviePilotServerHelper` 等 Facade 继续保留旧公开/私有调用面，并通过 `compat.facade.hit` 统计迁移命中。
 3. `app/runtime/compat` 的精确旧导入映射、`app.sdk._legacy` 薄门面和插件 V1/V2/V3 三代索引继续存在，直到命中数据和发行策略支持删除。
-4. 既有查询 Model 方法保留只读兼容入口；宿主 Oper 必须走显式 Session，`legacy_*` 只服务旧插件 ABI，不得成为新 Model 方法的默认模式。
+4. 插件访问宿主持久化必须经过 Oper 或稳定 SDK；不再保留直接调用宿主 Model 的事务兼容。
 
 ### 建议的后续治理顺序
 
@@ -184,7 +184,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
 | 直接读取 `settings` 的文件 | 105 | 仍按模块族迁移，动态协议和安全端口暂保留 |
 | `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
-| Model 上的正式 DB 查询装饰器 | 0 | 查询/写装饰器均保持为 0；旧插件只读 ABI 由 `legacy_*` 外壳承接 |
+| Model/Base 上的 DB 装饰器 | 0 | 正式与 legacy 查询/写装饰器全部为 0；`db` 参数必须显式传入 |
 | 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
 | Chain 方法超过 150 行 | 18 | 最大 `TransferChain.do_transfer()` 885 行 |
 | Application 方法超过 150 行 | 8 | 最大 296 行 |
@@ -230,8 +230,8 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 | 对标来源 | 可复用实践 | MoviePilot 当前差距 | 采用方式 |
 | --- | --- | --- | --- |
 | [FastAPI：Bigger Applications](https://fastapi.tiangolo.com/tutorial/bigger-applications/) | Router、依赖和主应用分离；路由按领域聚合 | Router 已分文件，但 `app/api/deps.py` 集中 33 个依赖工厂，部分端点仍编排完整用例 | 保留现有 Router；按垂直切片拆依赖和 presentation mapper，不重做目录树 |
-| [FastAPI 官方 Full Stack Template](https://github.com/fastapi/full-stack-fastapi-template/tree/master/backend/app) | 请求依赖提供 Session，测试和迁移入口明确 | MoviePilot 已有请求 Session 和 UoW，但大量 Model 方法仍自行取得 Session/commit | 将 Session 生命周期留在请求/作业边界，Repository 只登记变更 |
-| [SQLAlchemy Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html) | Session/事务生命周期应与具体数据操作分离；Session per thread、AsyncSession per task | `@db_update`/`@async_db_update` 隐式创建和提交，跨多个 Repository 的原子性不清晰 | 新写用例强制请求/任务级 UoW；Model 逐步变为映射和约束载体 |
+| [FastAPI 官方 Full Stack Template](https://github.com/fastapi/full-stack-fastapi-template/tree/master/backend/app) | 请求依赖提供 Session，测试和迁移入口明确 | MoviePilot 已有请求 Session 和 UoW，Model 隐式事务已清零；仍需继续减少 ORM 对象跨层流转 | 将 Session 生命周期留在请求/作业边界，Repository 只登记变更 |
+| [SQLAlchemy Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html) | Session/事务生命周期应与具体数据操作分离；Session per thread、AsyncSession per task | Model/Base 已要求显式 Session；无会话 Oper 仍依赖组合根事务执行器 | 新写用例强制请求/任务级 UoW；持续禁止 Model 重新拥有事务 |
 | [Starlette Lifespan](https://www.starlette.io/lifespan/) | Lifespan 完成前不接流量；用 typed state 共享进程资源；用 task group 管理异步任务 | 已有声明式生命周期，但仍依赖多个模块全局注册表和裸 `create_task`/线程 | 建立类型化 `HostRuntime/AppState`，旧 provider 继续作兼容门面 |
 | [Uvicorn Deployment](https://www.uvicorn.org/deployment/) 与 [Lifespan](https://www.uvicorn.org/concepts/lifespan/) | reload/workers 使用 import string/factory；每个 worker 独立执行 lifespan | 当前 app 实例与 reload/workers 配置并存，多 worker 会重复控制面 | V3 先明确只支持单 worker；开发 reload 改为 factory/import string；未来再拆 control role |
 | [Home Assistant：Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/) | 插件/集成按可测试性、错误处理、异步安全、类型和文档分级；豁免必须说明 | Module 能力差异大，只有统一发现和方法名快照，没有每个集成的质量状态 | 为宿主 Module 建立轻量质量清单和逐项 ratchet，不阻塞历史模块运行 |
@@ -532,22 +532,16 @@ flowchart TB
 - `app/application/subscription/write.py` 定义用例 Port，`app/db/adapters/subscription.py` 为每次规范新增创建独占同步/异步 Session，`app/startup/composition/subscription.py` 只负责注入；
   `CreateSubscriptionCommand` / `AsyncCreateSubscriptionCommand` 持有 UoW，Oper 只执行
   查重、`add` 与 `flush`。
-- `SubscribeOper.stage_add()` 的查重 SQL 已收口到 Oper，不再调用 Model 自动会话装饰器；
-  无会话构造 `SubscribeOper()` 的旧 SDK 路径保留原自动短会话和返回值，未扩散为规范入口。
+- `SubscribeOper.stage_add()` 的查重 SQL已收口到 Oper；无会话构造 `SubscribeOper()` 时由
+  Oper 的 `_execute_*` 委托组合根事务执行器，Model 不再创建会话。
 - Chain 把原有“成功消息 → `SubscribeAdded` 事件 → Server 统计”作为显式 post-commit
   回调交给 Command；commit/flush 失败回滚，事件或上报失败只传播原异常，不回滚已提交记录。
 - 同步/异步 `SubscribeChain.add` 方法长度从各 203 行降至 183/186 行；新增 9 个事务边界测试，
   覆盖成功顺序、commit/flush 失败、重复请求、Oper 不提交、事件失败、上报失败与真实落库。
-- Model 查询装饰器此前为 123 个：本切片绕开了继承自 `Base.create/async_create` 的自动提交，
-  并继续保留既有 Model/旧 SDK 查询兼容；本次 AgentTask 切片将查询装饰器减少到 121 个。
-  2026-08-23 已完成 AgentTask 查询切片：`AgentTaskOper.get/list` 直接在调用方 Session 中执行查询，
-  `AgentTask.get_for_user/list_for_user` 保留原签名和返回语义供旧调用方使用，但不再持有查询装饰器；
-  无 Session 的旧 Oper 入口继续由组合根兼容事务执行器承接。随后 PassKey 的宿主同步查询迁移到
-  `PassKeyOper`，其按用户/凭证的启用状态过滤由显式 Session 测试覆盖；异步 Model 查询保留旧 ABI。
-  查询装饰器低水位由 123 降至 119，归属过滤、启用状态过滤和创建时间/主键稳定排序由 canonical
-  Oper 测试覆盖。`PassKey.get_by_user_id/get_by_credential_id` 与
-  `AgentTask.get_for_user/list_for_user` 同时保留旧插件省略 Session 的同步调用方式；该路径显式委托
-  一次性兼容查询会话，不重新增加 Model 查询装饰器，也不影响宿主显式 Session 的事务所有权。
+- Model 查询装饰器曾有 123 个，分切片迁移后已连同 Base 的 12 个 legacy 查询/写装饰器全部删除。
+  `AgentTask`、PassKey 等 Model 方法保留查询语义，但签名统一要求显式 Session；无 Session 使用方式
+  只在对应 Oper 上存在，由组合根事务执行器承接。归属过滤、启用状态过滤和稳定排序继续由显式
+  Session 的 Model 测试与无会话 Oper 测试共同覆盖。
 
 #### ARCH-222：按风险迁移其余写用例
 
@@ -971,9 +965,9 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 正式查询装饰器仅剩 30 个（同步 16、异步 14），
   `db_update` 与 `async_db_update` 均为 0，Oper 自建 Session/直接提交仍为 0。
 - 数据清理按批次显式提交 UoW，单表失败先回滚会话再继续汇总后续表；不再依赖删除 Model 的隐式提交。
-- 收尾批次进一步移除宿主 Oper 对 `Base.create/update/delete/truncate` 八个兼容包装器的调用：显式
-  Session 只 stage，由 Application UoW 提交；无 Session 的旧 Oper 入口才委托 Startup 的短事务执行器。
-  Base 包装器继续保留给插件/旧模型 ABI，新增 AST 门禁禁止宿主 Oper 回退到隐式提交。
+- 收尾批次进一步移除宿主 Oper 对 `Base.create/update/delete/truncate` 隐式提交语义的依赖：显式
+  Session 只 stage，由 Application UoW 提交；无 Session 的 Oper 入口委托 Startup 的短事务执行器。
+  Base 方法最终改成纯显式 Session 原语，AST 门禁禁止 Model/Base 再引入装饰器或可选 Session。
 
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 
@@ -1237,49 +1231,21 @@ Settings 读取作为基础设施边界，架构基线已明确记录该例外�
 2026-08-23 收口兼容回归：`RuntimeSettingsCompat` 补齐 `update_setting`、`update_settings` 和
 `model_dump` 旧 Settings ABI，并由应用组合根注入服务对象，低层 runtime 不再反向导入 `app.application`；
 `SkillHelper` 的技能市场写入继续经过兼容代理，旧插件/测试的模块级替换语义保持。`UserConfigOper` 的
-无 Session 查询改为一次性兼容查询会话，显式 Session 仍由调用方持有。配置债务稳定为 8 个文件，Model
-查询装饰器在消息、用户和订阅查询切片后曾降至 75 个且写装饰器为 0；四分片全量测试 `5492 passed, 3 skipped`，mypy、复杂度、异步阻塞、
+无 Session 查询由组合根事务执行器创建一次性会话，显式 Session 仍由调用方持有。配置债务稳定为
+8 个文件；Model 查询装饰器在消息、用户和订阅查询切片后曾降至 75 个，随后已全部清零。该阶段
+四分片全量测试 `5492 passed, 3 skipped`，mypy、复杂度、异步阻塞、
 host/plugin 架构基线均通过。
 
-2026-08-23 完成下载/整理历史查询切片：`TransferHistoryOper`、`DownloadHistoryOper` 的正式入口统一
-通过 `_execute_sync_query` / `_execute_async_query` 复用调用方 Session，正式查询装饰器由 75 降至
-38 个且写装饰器保持 0。旧插件仍可直接调用 Model 方法；`legacy_db_query` / `legacy_async_db_query`
-按签名插入一次性会话，兼容无 Session 的位置参数和关键字参数，同时显式 Session 不创建额外会话。
-历史查询、删除工具、类型门禁和插件架构专项共 `101 passed`，host/plugin 架构基线通过。
+2026-08-23 分阶段完成下载/整理历史、Workflow、MediaServer、SiteUserData、AgentChat、AgentTaskRun、
+TransferPending、SystemConfig、PassKey 与 SubscribeHistory 查询切片：宿主 Oper 统一通过
+`_execute_sync_query` / `_execute_async_query` 复用调用方 Session，正式 Model 查询装饰器由 75 逐步降至
+0。各阶段显式 Session 查询、过滤语义、架构基线和全量测试均有回归记录。
 
-2026-08-23 完成 Workflow 查询切片：`WorkflowOper` 的同步/异步查询入口统一通过
-`_execute_sync_query` / `_execute_async_query` 复用调用方 Session，正式查询装饰器由 38 降至
-30 个且写装饰器保持 0。旧插件仍可直接调用 Workflow Model 方法，显式 Session 与无 Session 的
-关键字调用均有回归覆盖；Workflow、架构基线专项共 `76 passed`，host/plugin 架构基线通过。
-
-2026-08-23 完成 MediaServer 与 SiteUserData 查询切片：`MediaServerOper`、`SiteOper` 的同步/异步
-查询入口统一通过 `_execute_sync_query` / `_execute_async_query` 复用调用方 Session，正式查询装饰器
-由 30 降至 18 个（同步 9、异步 9），写装饰器保持 0。旧插件仍可直接调用对应 Model 方法，显式
-Session 不创建额外会话，无 Session 的位置参数和关键字参数继续由 `legacy_*` 外壳兼容；专项测试
-`158 passed`，四分片全量测试 `5539 passed, 3 skipped`，host/plugin 架构基线和 Pylint 均通过。
-
-2026-08-23 完成 AgentChat 与 AgentTaskRun 查询切片：`AgentChatOper`、`AgentTaskOper` 的查询入口
-统一通过 `_execute_sync_query` / `_execute_async_query` 复用调用方 Session，正式查询装饰器由 18
-降至 12 个（同步 5、异步 7），写装饰器保持 0。旧插件仍可直接调用对应 Model 方法，显式 Session
-不创建额外会话，无 Session 的关键字调用继续由 `legacy_*` 外壳兼容；专项测试 `44 passed`，四分片
-全量测试 `5543 passed, 4 skipped`。
-
-2026-08-23 完成 TransferPending 与 SystemConfig 查询切片：待整理回放和系统配置的宿主查询统一
-复用调用方 Session，正式查询装饰器由 12 降至 9 个（同步 3、异步 6），写装饰器保持 0。旧插件
-仍可直接调用对应 Model 方法，显式 Session 不创建额外会话，无 Session 的关键字调用继续由
-`legacy_*` 外壳兼容；专项与架构测试 `146 passed`，四分片全量测试 `5547 passed, 3 skipped`，
-host/plugin 架构基线和 Pylint 均通过。
-
-2026-08-23 完成 PassKey 查询切片：三个异步查询与按 ID 同步查询改由 `legacy_*` 外壳承接，
-正式查询装饰器由 9 降至 5 个（同步 2、异步 3），写装饰器保持 0。显式 Session/AsyncSession
-不创建额外会话，旧插件无 Session 的位置与关键字调用仍保持兼容；专项与架构测试 `99 passed`，
-四分片全量测试 `5549 passed, 3 skipped`，host/plugin 架构基线和 Pylint 均通过。
-
-2026-08-23 完成 SubscribeHistory 查询切片：同步/异步分页、owner 筛选和存在性查询均由
-`legacy_*` 外壳保留旧插件 ABI，`SubscribeHistoryOper` 与 `SubscribeOper.exist_history` 统一复用
-显式 Session/AsyncSession，且按 ID 查询不再调用 Base 查询包装器。正式查询装饰器由 5 降至 0，
-同步/异步写装饰器继续保持 0；专项与架构测试 `176 passed`（另有 11 个子测试），四分片全量
-测试 `5551 passed, 3 skipped`，host/plugin 架构基线和 Pylint 均通过。
+2026-08-23 在正式装饰器清零后继续删除过渡性的 `legacy_db_query`、`legacy_async_db_query`、
+`legacy_db_update`、`legacy_async_db_update`：Base 与全部 Model 只接受显式 Session，不再替无会话调用
+创建或提交事务。原先把 `self._db=None` 直传 Model 的 User、PluginData、Subscribe、Site、配置和下载失败
+Oper 已迁到 `_execute_*`，插件 SDK 也移除了 User、Subscribe、TransferHistory Model 导出。架构测试新增
+三项硬约束：Model/Base 不得导入 DB 装饰器、`db` 参数不得可选、插件 SDK 不得导入 `app.db.models`。
 
 #### ARCH-272：异步阻塞检测
 
@@ -1458,7 +1424,7 @@ rollback:
 | 基线写入行为 | 默认命令可能覆盖 fixture | 所有默认/check 命令保证工作树不变；write 必须显式 scope |
 | 全功能 worker | 配置允许 >1，控制面会复制 | 启动期明确拒绝 >1；文档与配置一致 |
 | 健康接口 | 认证 `/system/ping` 为主 | 分离公开 live 与受限/安全 ready；失败原因可诊断 |
-| Model 事务装饰器 | 正式查询/写装饰器均为 0 | 持续保持为 0；兼容外壳不得被宿主新增调用 |
+| Model/Base 事务装饰器 | 正式与 legacy 查询/写装饰器均为 0 | 持续保持为 0；`db` 参数保持显式必传 |
 | 新写用例事务 | 宿主写 Oper 已脱离 Base 隐式提交 | 100% 由入口/Application 边界拥有 Session/UoW |
 | 高频 Module 契约 | 212 个宿主能力显式登记 | 新观察到的宿主方法必须同步登记完整契约 |
 | Event payload | 53 类型全部登记 typed payload 与可靠性 | 新事件必须同步登记，不回退裸 dict |

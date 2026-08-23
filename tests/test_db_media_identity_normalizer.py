@@ -145,6 +145,7 @@ def test_normalization_also_applies_on_update(db):
     row = _write(db, _history(media_source=MediaSource.TMDB, media_id="550"))
 
     row.update(db.session, {"media_source": "douban", "media_id": "  1291546  "})
+    db.session.commit()
     db.session.expire_all()
     updated = TransferHistory.get(db.session, row.id)
 

@@ -11,12 +11,10 @@ from app.api.deps import (
     get_current_user_async,
 )
 from app.db.oper.user import UserOper
-from app.db.models.user import User
 
 
 __all__ = [
     "UserOper",
-    "User",
     "get_current_active_manage_user",
     "get_current_active_manage_user_async",
     "get_current_active_superuser",

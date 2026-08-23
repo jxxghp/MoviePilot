@@ -9,10 +9,10 @@ import asyncio
 
 import pytest
 
-from app.db import decorators
+from app.db import base as db_base
 from app.db.models.mediaserver import MediaServerItem
 from app.db.oper.mediaserver import MediaServerOper
-from app.db.session import SessionFactory, async_session_scope
+from app.db.session import async_session_scope
 from app.schemas.types import MediaSource
 
 
@@ -39,7 +39,9 @@ def test_get_by_itemid_matches_async_twin(db):
     db.add(_item("emby", "it-1"), _item("plex", "it-2"))
 
     assert MediaServerItem.get_by_itemid(db.session, "it-1").server == "emby"
-    assert asyncio.run(MediaServerItem.async_get_by_itemid(item_id="it-1")).server == "emby"
+    assert db.run_async_session(
+        lambda session: MediaServerItem.async_get_by_itemid(session, "it-1")
+    ).server == "emby"
     assert MediaServerItem.get_by_itemid(db.session, "it-missing") is None
 
 
@@ -47,9 +49,11 @@ def test_mediaserver_oper_reuses_explicit_query_sessions(db, monkeypatch):
     """媒体服务器 Oper 绑定调用方会话后不得再创建兼容查询会话。"""
     db.add(_item("emby", "explicit-ms", media_id="explicit-1001"))
     monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
     )
 
     assert MediaServerOper(db.session).exists(
@@ -62,9 +66,11 @@ def test_mediaserver_oper_reuses_explicit_query_sessions(db, monkeypatch):
         """验证异步存在性查询复用显式 AsyncSession。"""
         async with async_session_scope() as session:
             monkeypatch.setattr(
-                decorators,
-                "async_session_scope",
-                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+                db_base,
+                "run_async_transaction",
+                lambda _operation: (_ for _ in ()).throw(
+                    AssertionError("不应创建额外异步事务")
+                ),
             )
             assert await MediaServerOper(session).async_exists(
                 media_source=MediaSource.TMDB,
@@ -73,20 +79,6 @@ def test_mediaserver_oper_reuses_explicit_query_sessions(db, monkeypatch):
             ) is not None
 
     asyncio.run(check())
-
-
-def test_mediaserver_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
-    """旧插件以关键字直调媒体服务器 Model 时仍自动补入短会话。"""
-    db.add(_item("emby", "legacy-ms"))
-    opened = []
-    monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (opened.append(True) or SessionFactory()),
-    )
-
-    assert MediaServerItem.get_by_itemid(item_id="legacy-ms") is not None
-    assert opened == [True]
 
 
 def test_get_by_server_itemid_scopes_by_server(db):
@@ -118,8 +110,14 @@ def test_exist_by_media_identity_requires_source_id_and_type(db):
     assert MediaServerItem.exist_by_media_identity(
         db.session, MediaSource.TMDB, "556", "电影") is None
 
-    assert asyncio.run(MediaServerItem.async_exist_by_media_identity(
-        media_source=MediaSource.TMDB, media_id="555", mtype="电影")) is not None
+    assert db.run_async_session(
+        lambda session: MediaServerItem.async_exist_by_media_identity(
+            session,
+            media_source=MediaSource.TMDB,
+            media_id="555",
+            mtype="电影",
+        )
+    ) is not None
 
 
 @pytest.mark.parametrize("mtype,year,expected", [
@@ -152,8 +150,11 @@ def test_exists_by_title_matches_async_twin(db):
 
     for mtype, year in ((None, None), ("电影", None), (None, "2026"), ("电影", "2026")):
         sync_found = MediaServerItem.exists_by_title(db.session, "并行标题", mtype, year)
-        async_found = asyncio.run(MediaServerItem.async_exists_by_title(
-            title="并行标题", mtype=mtype, year=year))
+        async_found = db.run_async_session(
+            lambda session: MediaServerItem.async_exists_by_title(
+                session, title="并行标题", mtype=mtype, year=year
+            )
+        )
         assert (sync_found is None) == (async_found is None)
 
 

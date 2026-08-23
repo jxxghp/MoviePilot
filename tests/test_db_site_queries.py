@@ -9,13 +9,13 @@ import asyncio
 
 import pytest
 
-from app.db import decorators
+from app.db import base as db_base
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
 from app.db.oper.site import SiteOper
-from app.db.session import SessionFactory, async_session_scope
+from app.db.session import async_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -40,8 +40,12 @@ def test_site_get_by_domain_matches_async_twin(db):
     db.add(_site("站点A", "a.test"), _site("站点B", "b.test"))
 
     assert Site.get_by_domain(db.session, "a.test").name == "站点A"
-    assert asyncio.run(Site.async_get_by_domain(domain="a.test")).name == "站点A"
-    assert asyncio.run(Site.async_get_by_name(name="站点B")).domain == "b.test"
+    assert db.run_async_session(
+        lambda session: Site.async_get_by_domain(session, "a.test")
+    ).name == "站点A"
+    assert db.run_async_session(
+        lambda session: Site.async_get_by_name(session, "站点B")
+    ).domain == "b.test"
 
 
 def test_site_get_by_domain_returns_none_when_absent(db):
@@ -61,7 +65,9 @@ def test_site_get_actives_excludes_disabled_sites(db):
            _site("停用", "off.test", is_active=False))
 
     assert {s.domain for s in Site.get_actives(db.session)} == {"on1.test", "on2.test"}
-    assert {s.domain for s in asyncio.run(Site.async_get_actives())} == {"on1.test", "on2.test"}
+    assert {s.domain for s in db.run_async_session(Site.async_get_actives)} == {
+        "on1.test", "on2.test"
+    }
 
 
 def test_site_list_order_by_pri_is_ascending(db):
@@ -73,7 +79,7 @@ def test_site_list_order_by_pri_is_ascending(db):
 
     assert [s.domain for s in Site.list_order_by_pri(db.session)] == \
         ["p1.test", "p2.test", "p3.test"]
-    assert [s.domain for s in asyncio.run(Site.async_list_order_by_pri())] == \
+    assert [s.domain for s in db.run_async_session(Site.async_list_order_by_pri)] == \
         ["p1.test", "p2.test", "p3.test"]
 
 
@@ -123,7 +129,9 @@ def test_siteicon_get_by_domain_matches_async_twin(db):
            SiteIcon(name="站点B", domain="icon-b.test", url="https://icon-b.test/f.ico"))
 
     assert SiteIcon.get_by_domain(db.session, "icon-a.test").name == "站点A"
-    assert asyncio.run(SiteIcon.async_get_by_domain(domain="icon-a.test")).name == "站点A"
+    assert db.run_async_session(
+        lambda session: SiteIcon.async_get_by_domain(session, "icon-a.test")
+    ).name == "站点A"
     assert SiteIcon.get_by_domain(db.session, "icon-missing.test") is None
 
 
@@ -135,7 +143,9 @@ def test_sitestatistic_get_by_domain_matches_async_twin(db):
            SiteStatistic(domain="stat-b.test", success=1, fail=0, seconds=1, lst_state=0))
 
     assert SiteStatistic.get_by_domain(db.session, "stat-a.test").success == 3
-    assert asyncio.run(SiteStatistic.async_get_by_domain(domain="stat-a.test")).success == 3
+    assert db.run_async_session(
+        lambda session: SiteStatistic.async_get_by_domain(session, "stat-a.test")
+    ).success == 3
     assert SiteStatistic.get_by_domain(db.session, "stat-missing.test") is None
 
 
@@ -186,7 +196,11 @@ def test_userdata_get_by_domain_matches_async_twin(db):
     for kwargs in ({}, {"workdate": "2026-08-12"},
                    {"workdate": "2026-08-12", "worktime": "20:00:00"}):
         sync_rows = SiteUserData.get_by_domain(db.session, "ud2.test", **kwargs)
-        async_rows = asyncio.run(SiteUserData.async_get_by_domain(domain="ud2.test", **kwargs))
+        async_rows = db.run_async_session(
+            lambda session: SiteUserData.async_get_by_domain(
+                session, domain="ud2.test", **kwargs
+            )
+        )
         assert len(sync_rows) == len(async_rows)
 
 
@@ -194,9 +208,11 @@ def test_site_oper_reuses_explicit_userdata_query_sessions(db, monkeypatch):
     """站点用户数据 Oper 必须复用调用方同步与异步会话。"""
     db.add(_userdata("explicit-site.test", "2026-08-12", "10:00:00"))
     monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
     )
 
     assert SiteOper(db.session).get_userdata_by_domain("explicit-site.test")
@@ -205,29 +221,17 @@ def test_site_oper_reuses_explicit_userdata_query_sessions(db, monkeypatch):
         """验证异步站点用户数据查询复用显式 AsyncSession。"""
         async with async_session_scope() as session:
             monkeypatch.setattr(
-                decorators,
-                "async_session_scope",
-                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+                db_base,
+                "run_async_transaction",
+                lambda _operation: (_ for _ in ()).throw(
+                    AssertionError("不应创建额外异步事务")
+                ),
             )
             assert await SiteOper(session).async_get_userdata_by_domain(
                 "explicit-site.test"
             )
 
     asyncio.run(check())
-
-
-def test_site_userdata_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
-    """旧插件以关键字直调 SiteUserData 时仍自动补入短会话。"""
-    db.add(_userdata("legacy-site.test", "2026-08-12", "10:00:00"))
-    opened = []
-    monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (opened.append(True) or SessionFactory()),
-    )
-
-    assert SiteUserData.get_by_domain(domain="legacy-site.test")
-    assert opened == [True]
 
 
 def test_userdata_get_by_date_returns_all_domains_of_that_day(db):
@@ -283,7 +287,10 @@ def test_userdata_get_latest_matches_async_twin(db):
            _userdata("par.test", "2026-08-12", "10:00:00"))
 
     sync_rows = [(r.domain, r.updated_day) for r in SiteUserData.get_latest(db.session)]
-    async_rows = [(r.domain, r.updated_day) for r in asyncio.run(SiteUserData.async_get_latest())]
+    async_rows = [
+        (r.domain, r.updated_day)
+        for r in db.run_async_session(SiteUserData.async_get_latest)
+    ]
 
     assert sorted(sync_rows) == sorted(async_rows)
 

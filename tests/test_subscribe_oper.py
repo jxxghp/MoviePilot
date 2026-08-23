@@ -418,11 +418,10 @@ def test_exists_defaults_to_main_season_episode_group():
         assert history_model.exists.call_args.kwargs["episode_group"] == "eg-1"
 
 
-def test_subscribe_exists_distinguishes_same_season_episode_groups():
+def test_subscribe_exists_distinguishes_same_season_episode_groups(db):
     """同一媒体同一季的主季、自定义剧集组应分别命中各自订阅。"""
-    oper = SubscribeOper()
+    db.watermark(Subscribe)
     media_id = str(-(900_000_000 + os.getpid()))
-    created_ids = []
     rows = [
         Subscribe(name="主季订阅", type=MediaType.TV.value, state="N",
                   media_source=MediaSource.TMDB.value, media_id=media_id,
@@ -431,43 +430,38 @@ def test_subscribe_exists_distinguishes_same_season_episode_groups():
                   media_source=MediaSource.TMDB.value, media_id=media_id,
                   season=1, episode_group="eg-1"),
     ]
-    try:
-        for row in rows:
-            row.create(oper._db)
+    for row in rows:
+        row.create(db.session)
+    db.session.commit()
 
-        main_season = Subscribe.exists(
-            oper._db, media_source=MediaSource.TMDB,
-            media_id=media_id, season=1, episode_group=None,
-        )
-        created_ids.append(main_season.id)
-        main_name = main_season.name
-        episode_group = Subscribe.exists(
-            oper._db, media_source=MediaSource.TMDB,
-            media_id=media_id, season=1, episode_group="eg-1",
-        )
-        created_ids.append(episode_group.id)
-        episode_group_name = episode_group.name
+    main_season = Subscribe.exists(
+        db.session, media_source=MediaSource.TMDB,
+        media_id=media_id, season=1, episode_group=None,
+    )
+    main_name = main_season.name
+    episode_group = Subscribe.exists(
+        db.session, media_source=MediaSource.TMDB,
+        media_id=media_id, season=1, episode_group="eg-1",
+    )
+    episode_group_name = episode_group.name
 
-        assert main_name == "主季订阅"
-        assert episode_group_name == "剧集组订阅"
+    assert main_name == "主季订阅"
+    assert episode_group_name == "剧集组订阅"
 
-        Subscribe.delete(oper._db, rid=created_ids.pop(0))
-        assert Subscribe.exists(
-            oper._db,
-            media_source=MediaSource.TMDB,
-            media_id=media_id,
-            season=1,
-        ) is None
-    finally:
-        for subscribe_id in created_ids:
-            Subscribe.delete(oper._db, rid=subscribe_id)
+    Subscribe.delete(db.session, rid=main_season.id)
+    db.session.commit()
+    assert Subscribe.exists(
+        db.session,
+        media_source=MediaSource.TMDB,
+        media_id=media_id,
+        season=1,
+    ) is None
 
 
-def test_subscribe_exists_distinguishes_music_entities_with_same_source_id():
+def test_subscribe_exists_distinguishes_music_entities_with_same_source_id(db):
     """统一来源 ID 相同时，单曲与专辑仍是两条独立订阅身份。"""
-    oper = SubscribeOper()
+    db.watermark(Subscribe)
     media_id = f"music-shared-{os.getpid()}"
-    created_ids = []
     rows = [
         Subscribe(
             name="同名单曲",
@@ -487,29 +481,24 @@ def test_subscribe_exists_distinguishes_music_entities_with_same_source_id():
             total_tracks=10,
         ),
     ]
-    try:
-        for row in rows:
-            row.create(oper._db)
+    for row in rows:
+        row.create(db.session)
+    db.session.commit()
 
-        recording = Subscribe.exists(
-            oper._db,
-            media_source="musicbrainz",
-            media_id=media_id,
-            music_type="recording",
-        )
-        created_ids.append(recording.id)
-        album = Subscribe.exists(
-            oper._db,
-            media_source="musicbrainz",
-            media_id=media_id,
-            music_type="album",
-        )
-        created_ids.append(album.id)
-        assert recording.name == "同名单曲"
-        assert album.name == "同名专辑"
-    finally:
-        for subscribe_id in created_ids:
-            Subscribe.delete(oper._db, rid=subscribe_id)
+    recording = Subscribe.exists(
+        db.session,
+        media_source="musicbrainz",
+        media_id=media_id,
+        music_type="recording",
+    )
+    album = Subscribe.exists(
+        db.session,
+        media_source="musicbrainz",
+        media_id=media_id,
+        music_type="album",
+    )
+    assert recording.name == "同名单曲"
+    assert album.name == "同名专辑"
 
 
 def test_subscribe_chain_exists_forwards_episode_group():

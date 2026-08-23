@@ -2,6 +2,8 @@ import copy
 import threading
 from typing import Any, Union, Dict, Optional
 
+from sqlalchemy.orm import Session
+
 from app.db.base import DbOper
 from app.db.models.userconfig import UserConfig
 from app.schemas.types import UserConfigKey
@@ -20,11 +22,14 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         self._write_lock = threading.RLock()
         self._loaded = False
 
-    def load_snapshot(self) -> None:
-        """从数据库加载完整用户配置，并一次性发布新的内存快照。"""
+    def load_snapshot(self, db: Optional[Session] = None) -> None:
+        """从显式会话或 Oper 事务边界加载用户配置并发布内存快照。"""
         with self._write_lock:
             snapshot: dict[str, dict[str, Any]] = {}
-            for item in UserConfig.list(self._db):
+            items = UserConfig.list(db) if db is not None else self._execute_sync_query(
+                UserConfig.list
+            )
+            for item in items:
                 if item.username and item.key:
                     snapshot.setdefault(item.username, {})[item.key] = copy.deepcopy(
                         item.value

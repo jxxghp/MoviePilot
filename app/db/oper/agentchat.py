@@ -321,6 +321,10 @@ class AgentChatOper(DbOper):
         await self._stage_async_delete(AgentChat, chat.id)
         return True
 
+    def delete_by_id(self, chat_id: int) -> None:
+        """在 Oper 事务边界内按主键删除 Agent 会话。"""
+        self._stage_delete(AgentChat, chat_id)
+
     async def async_stage_delete(
         self,
         session_id: str,

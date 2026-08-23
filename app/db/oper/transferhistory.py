@@ -269,7 +269,7 @@ class TransferHistoryOper(DbOper):
         self._stage_delete(TransferHistory, historyid)
 
     def stage_delete(self, historyid: int) -> None:
-        """暂存整理记录删除，不由模型装饰器提交事务。"""
+        """暂存整理记录删除，事务由调用方统一提交。"""
         self._db.execute(
             sqlalchemy_delete(TransferHistory).where(
                 TransferHistory.id == historyid

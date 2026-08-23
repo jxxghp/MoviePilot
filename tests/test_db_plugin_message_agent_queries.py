@@ -8,14 +8,13 @@ import asyncio
 
 import pytest
 
-from app.db import decorators
+from app.db import base as db_base
 from app.db.models.agentchat import AgentChat
 from app.db.models.agenttask import AgentTask
 from app.db.models.downloadfailure import DownloadFailure
 from app.db.models.message import Message
 from app.db.models.plugindata import PluginData
 from app.db.oper.agenttask import AgentTaskOper
-from app.db.session import SessionFactory
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +38,9 @@ def test_plugindata_is_scoped_by_plugin_id(db):
     rows = PluginData.get_plugin_data(db.session, "PluginA")
 
     assert {r.key for r in rows} == {"k1", "k2"}
-    assert {r.key for r in asyncio.run(PluginData.async_get_plugin_data(plugin_id="PluginA"))} \
+    assert {r.key for r in db.run_async_session(
+        lambda session: PluginData.async_get_plugin_data(session, "PluginA")
+    )} \
         == {"k1", "k2"}
 
 
@@ -53,8 +54,11 @@ def test_plugindata_get_by_key_needs_both_plugin_and_key(db):
     assert PluginData.get_plugin_data_by_key(db.session, "PluginA", "shared").value == {"v": 1}
     assert PluginData.get_plugin_data_by_key(db.session, "PluginB", "shared").value == {"v": 2}
     assert PluginData.get_plugin_data_by_key(db.session, "PluginC", "shared") is None
-    assert asyncio.run(PluginData.async_get_plugin_data_by_key(
-        plugin_id="PluginA", key="shared")).value == {"v": 1}
+    assert db.run_async_session(
+        lambda session: PluginData.async_get_plugin_data_by_key(
+            session, plugin_id="PluginA", key="shared"
+        )
+    ).value == {"v": 1}
 
 
 def test_plugindata_delete_by_key_removes_only_that_entry(db):
@@ -120,7 +124,9 @@ def test_message_list_by_page_matches_async_twin(db):
         db.add(_message(f"2026-08-13 11:00:0{index}", f"par-{index}"))
 
     sync_titles = [m.title for m in Message.list_by_page(db.session, page=1, count=3)]
-    async_titles = [m.title for m in asyncio.run(Message.async_list_by_page(page=1, count=3))]
+    async_titles = [m.title for m in db.run_async_session(
+        lambda session: Message.async_list_by_page(session, page=1, count=3)
+    )]
 
     assert sync_titles == async_titles
 
@@ -181,7 +187,11 @@ def test_message_async_list_sent_excludes_the_clear_boundary(db):
 
     def _titles(**clears) -> set:
         """取本用例写入的消息标题集合，隔离其他用例可能残留的消息。"""
-        rows = asyncio.run(Message.async_list_sent_by_page(page=1, count=100, **clears))
+        rows = db.run_async_session(
+            lambda session: Message.async_list_sent_by_page(
+                session, page=1, count=100, **clears
+            )
+        )
         return {m.title for m in rows if m.title.startswith("bd-")}
 
     # 全量清空水位：边界上的两条都属于被清空的那一批
@@ -226,7 +236,9 @@ def test_agentchat_get_by_session_takes_the_newest_row(db):
     newest = db.add(_chat("s-dup"))
 
     assert AgentChat.get_by_session(db.session, "s-dup").id == newest.id
-    assert asyncio.run(AgentChat.async_get_by_session(session_id="s-dup")).id == newest.id
+    assert db.run_async_session(
+        lambda session: AgentChat.async_get_by_session(session, "s-dup")
+    ).id == newest.id
 
 
 def test_agentchat_get_by_session_enforces_user_scope(db):
@@ -237,16 +249,22 @@ def test_agentchat_get_by_session_enforces_user_scope(db):
 
     assert AgentChat.get_by_session(db.session, "s-owned", user_id="alice") is not None
     assert AgentChat.get_by_session(db.session, "s-owned", user_id="bob") is None
-    assert asyncio.run(AgentChat.async_get_by_session(session_id="s-owned", user_id="bob")) is None
+    assert db.run_async_session(
+        lambda session: AgentChat.async_get_by_session(
+            session, session_id="s-owned", user_id="bob"
+        )
+    ) is None
 
 
 def test_agentchat_oper_reuses_explicit_query_sessions(db, monkeypatch):
     """AgentChatOper 的同步与异步查询必须复用调用方会话。"""
     db.add(_chat("s-explicit", user_id="explicit"))
     monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
     )
 
     from app.db.oper.agentchat import AgentChatOper
@@ -259,27 +277,15 @@ def test_agentchat_oper_reuses_explicit_query_sessions(db, monkeypatch):
 
         async with async_session_scope() as session:
             monkeypatch.setattr(
-                decorators,
-                "async_session_scope",
-                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+                db_base,
+                "run_async_transaction",
+                lambda _operation: (_ for _ in ()).throw(
+                    AssertionError("不应创建额外异步事务")
+                ),
             )
             assert await AgentChatOper(session).async_get("s-explicit", "explicit")
 
     asyncio.run(check())
-
-
-def test_agentchat_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
-    """旧插件以关键字直调 AgentChat 时仍自动补入短会话。"""
-    db.add(_chat("s-legacy"))
-    opened = []
-    monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (opened.append(True) or SessionFactory()),
-    )
-
-    assert AgentChat.get_by_session(session_id="s-legacy") is not None
-    assert opened == [True]
 
 
 def test_agentchat_list_by_page_matches_either_user_or_username(db):
@@ -324,8 +330,11 @@ def test_agentchat_list_by_page_is_newest_first_and_paged(db):
 
     assert [c.session_id for c in page1] == ["s-p3", "s-p2"]
     assert [c.session_id for c in page2] == ["s-p1", "s-p0"]
-    assert [c.session_id for c in asyncio.run(
-        AgentChat.async_list_by_page(page=1, count=2, user_id="uid-page"))] == ["s-p3", "s-p2"]
+    assert [c.session_id for c in db.run_async_session(
+        lambda session: AgentChat.async_list_by_page(
+            session, page=1, count=2, user_id="uid-page"
+        )
+    )] == ["s-p3", "s-p2"]
 
 
 # --------------------------------------------------------------------------- #
@@ -350,18 +359,6 @@ def test_agenttask_get_for_user_enforces_ownership(db):
     assert AgentTask.get_for_user(db.session, task_id).id == task_id
     assert AgentTask.get_for_user(db.session, task_id, user_id="alice").id == task_id
     assert AgentTask.get_for_user(db.session, task_id, user_id="bob") is None
-
-
-def test_agenttask_model_queries_keep_no_session_plugin_abi(db):
-    """旧插件省略 Session 时仍由统一 legacy 装饰器按原参数查询。"""
-    task_id = AgentTask.add_task(db.session, **_task("legacy", user_id="legacy-user"))
-    db.session.commit()
-
-    assert AgentTask.get_for_user(
-        task_id=task_id,
-        user_id="legacy-user",
-    ).id == task_id
-    assert [task.id for task in AgentTask.list_for_user(user_id="legacy-user")] == [task_id]
 
 
 def test_agenttask_oper_reads_with_explicit_session(db, monkeypatch):

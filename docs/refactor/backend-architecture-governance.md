@@ -377,12 +377,12 @@ app/chain/transfer.py  # 保持 TransferChain 兼容门面
 
 - `app/api/endpoints/subscribe.py` 直接持有 Session、模型和 Oper 是治理前证据；当前 endpoint→Session/Model 目标边已清零。
 - Chain、Scheduler、Application 的模型直连属于治理前扫描结果；当前目标 Application/Chain/Runtime→DB 边均为零。
-- `app/db/models/subscribe.py:121` 起在 ORM 模型上定义查询方法，并通过 `@db_query` 等装饰器执行数据库访问。
+- ORM Model 仍保留贴近表结构的查询原语，但已全部要求调用方显式传入 Session；Model/Base 的查询、写入和 legacy 事务装饰器均已清零。
 - `app/db/__init__.py` 的根入口和模型回流曾参与 DB SCC；该自有 SCC 已消除，旧根入口仅作为兼容边界保留。
 
 #### 问题本质
 
-当前同时存在三种数据访问风格：
+治理前同时存在三种数据访问风格：
 
 1. `db/oper` 服务。
 2. ORM 模型类方法。

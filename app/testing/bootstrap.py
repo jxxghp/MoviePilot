@@ -184,9 +184,11 @@ def prepare_backend() -> None:
     init_db()
     from app.db.oper.systemconfig import SystemConfigOper
     from app.db.oper.userconfig import UserConfigOper
+    from app.db.session import SessionFactory
 
-    SystemConfigOper().load_snapshot()
-    UserConfigOper().load_snapshot()
+    with SessionFactory() as session:
+        SystemConfigOper().load_snapshot(session)
+        UserConfigOper().load_snapshot(session)
     # 缓存装饰器在测试模块导入时即创建后端，先装配隔离配置对应的适配器。
     from app.startup.initializers.cache import configure_cache_dependencies
     configure_cache_dependencies()

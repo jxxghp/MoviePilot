@@ -91,21 +91,21 @@ adapters; it does not retain reusable repository implementations.
 
 - `tests/fixtures/architecture/transaction-debt-baseline.json` records formal
   decorators in concrete files under `app/db/models/`. Their count is zero and
-  must remain zero. Compatibility-only `legacy_*` shells are tracked separately
-  and must never be treated as the target design.
-- `legacy_db_query` / `legacy_async_db_query` preserve an existing plugin-facing
-  Model method whose no-Session call shape cannot be removed yet. If a Model
-  method has no external ABI obligation, move the query into its Oper and remove
-  the Model method instead of adding `legacy_*`.
-- `Base.create/get/update/delete/list/truncate` and their async forms are inherited
-  plugin ABI, so `app/db/base.py` deliberately uses legacy query/write wrappers.
-  New host code must not call these convenience methods; Oper staging methods and
-  explicit UoW are the canonical path. Removal requires plugin-usage evidence and
-  a separately announced compatibility break, not a mechanical rename.
-- Host Oper code must pass an explicit Session through `_execute_sync_query` /
-  `_execute_async_query`; new Model methods must not add any legacy decorator.
-- New Model methods must not use `db_query`, `db_update`, `async_db_query`, or
-  `async_db_update`, create a Session, or call `commit()` / `rollback()`.
+  must remain zero. Model/Base code may not import `app.db.decorators`; legacy
+  Model transaction shells have been removed and must not be recreated.
+- Every Model method with a `db` parameter requires an explicit `Session` or
+  `AsyncSession`. The parameter may not default to `None`, accept displaced
+  business arguments, create a Session, or call `commit()` / `rollback()`.
+- `Base.create/get/update/delete/list/truncate` and their async forms are plain
+  explicit-session primitives. They only query or stage changes in the caller's
+  transaction; they never own transaction lifecycle.
+- Host Oper code routes optional-session entry points through
+  `_execute_sync_query` / `_execute_async_query` / `_execute_*_write`. Plugins
+  access host persistence through Oper or a curated SDK contract, never by
+  importing `app.db.models`.
+- The public `db_query`, `db_update`, `async_db_query`, and `async_db_update`
+  exports remain available only for plugin-owned database functions. They are
+  forbidden on host Model/Base methods.
 - Oper receives a caller-owned Session and may query, add, update, delete, or
   flush. A composable Oper method must not create its own Session and must not
   commit or roll back.

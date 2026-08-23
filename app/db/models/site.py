@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import legacy_async_db_query, legacy_db_query
 
 
 class Site(Base):
@@ -58,122 +57,66 @@ class Site(Base):
     downloader: Mapped[Optional[str]] = mapped_column(String)
 
     @classmethod
-    @legacy_db_query
-    def get_by_domain(cls, db: Session | str | None = None, domain: str | None = None):
-        """按域名查询站点，兼容显式会话和旧插件无会话调用。"""
-        if domain is None and isinstance(db, str):
-            domain, db = db, None
-        if domain is None:
-            raise TypeError("domain is required")
-
-        def query(session: Session):
-            """在给定同步会话中执行域名查询。"""
-            return session.execute(select(cls).where(cls.domain == domain)).scalars().first()
-
-        return query(db)
+    def get_by_domain(cls, db: Session, domain: str):
+        """在调用方 Session 中按域名查询站点。"""
+        return db.execute(select(cls).where(cls.domain == domain)).scalars().first()
 
     @classmethod
-    @legacy_async_db_query
     async def async_get_by_domain(
         cls,
-        db: AsyncSession | str | None = None,
-        domain: str | None = None,
+        db: AsyncSession,
+        domain: str,
     ):
-        """异步按域名查询站点，兼容显式会话和旧插件无会话调用。"""
-        if domain is None and isinstance(db, str):
-            domain, db = db, None
-        if domain is None:
-            raise TypeError("domain is required")
-
-        async def query(session: AsyncSession):
-            """在给定异步会话中执行域名查询。"""
-            result = await session.execute(select(cls).where(cls.domain == domain))
-            return result.scalar_one_or_none()
-
-        return await query(db)
+        """在调用方 AsyncSession 中按域名查询站点。"""
+        result = await db.execute(select(cls).where(cls.domain == domain))
+        return result.scalar_one_or_none()
 
     @classmethod
-    @legacy_async_db_query
     async def async_get_by_name(
         cls,
-        db: AsyncSession | str | None = None,
-        name: str | None = None,
+        db: AsyncSession,
+        name: str,
     ):
-        """异步按站点名称查询，兼容显式会话和旧插件无会话调用。"""
-        if name is None and isinstance(db, str):
-            name, db = db, None
-        if name is None:
-            raise TypeError("name is required")
-
-        async def query(session: AsyncSession):
-            """在给定异步会话中执行名称查询。"""
-            result = await session.execute(select(cls).where(cls.name == name))
-            return result.scalar_one_or_none()
-
-        return await query(db)
+        """在调用方 AsyncSession 中按站点名称查询。"""
+        result = await db.execute(select(cls).where(cls.name == name))
+        return result.scalar_one_or_none()
 
     @classmethod
-    @legacy_db_query
-    def get_actives(cls, db: Session | None = None):
-        """查询启用站点，兼容显式会话和旧插件无会话调用。"""
-        def query(session: Session):
-            """在给定同步会话中执行启用站点查询。"""
-            return list(session.execute(select(cls).where(cls.is_active.is_(True))).scalars().all())
-
-        return query(db)
+    def get_actives(cls, db: Session):
+        """在调用方 Session 中查询启用站点。"""
+        return list(db.execute(
+            select(cls).where(cls.is_active.is_(True))
+        ).scalars().all())
 
     @classmethod
-    @legacy_async_db_query
-    async def async_get_actives(cls, db: AsyncSession | None = None):
-        """异步查询启用站点，兼容显式会话和旧插件无会话调用。"""
-        async def query(session: AsyncSession):
-            """在给定异步会话中执行启用站点查询。"""
-            result = await session.execute(select(cls).where(cls.is_active.is_(True)))
-            return list(result.scalars().all())
-
-        return await query(db)
+    async def async_get_actives(cls, db: AsyncSession):
+        """在调用方 AsyncSession 中查询启用站点。"""
+        result = await db.execute(select(cls).where(cls.is_active.is_(True)))
+        return list(result.scalars().all())
 
     @classmethod
-    @legacy_db_query
-    def list_order_by_pri(cls, db: Session | None = None):
-        """按优先级升序查询站点，兼容显式会话和旧插件无会话调用。"""
-        def query(session: Session):
-            """在给定同步会话中执行优先级查询。"""
-            return list(session.execute(select(cls).order_by(cls.pri)).scalars().all())
-
-        return query(db)
+    def list_order_by_pri(cls, db: Session):
+        """在调用方 Session 中按优先级升序查询站点。"""
+        return list(db.execute(select(cls).order_by(cls.pri)).scalars().all())
 
     @classmethod
-    @legacy_async_db_query
-    async def async_list_order_by_pri(cls, db: AsyncSession | None = None):
-        """异步按优先级升序查询站点，兼容显式会话和旧插件无会话调用。"""
-        async def query(session: AsyncSession):
-            """在给定异步会话中执行优先级查询。"""
-            result = await session.execute(select(cls).order_by(cls.pri))
-            return list(result.scalars().all())
-
-        return await query(db)
+    async def async_list_order_by_pri(cls, db: AsyncSession):
+        """在调用方 AsyncSession 中按优先级升序查询站点。"""
+        result = await db.execute(select(cls).order_by(cls.pri))
+        return list(result.scalars().all())
 
     @classmethod
-    @legacy_db_query
     def get_domains_by_ids(
         cls,
-        db: Session | list[int] | None = None,
-        ids: list[int] | None = None,
+        db: Session,
+        ids: list[int],
     ):
-        """按 ID 查询域名，兼容显式会话和旧插件无会话调用。"""
-        if ids is None and isinstance(db, list):
-            ids, db = db, None
-        if ids is None:
-            raise TypeError("ids is required")
+        """在调用方 Session 中按 ID 查询域名。"""
         if not ids:
             return []
-
-        def query(session: Session):
-            """在给定同步会话中执行域名投影查询。"""
-            return list(session.execute(select(cls.domain).where(cls.id.in_(ids))).scalars().all())
-
-        return query(db)
+        return list(db.execute(
+            select(cls.domain).where(cls.id.in_(ids))
+        ).scalars().all())
 
     @classmethod
     def reset(cls, db: Session):

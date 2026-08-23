@@ -9,14 +9,14 @@ import asyncio
 
 import pytest
 
-from app.db import decorators
+from app.db import base as db_base
 from app.db.models.passkey import PassKey
 from app.db.models.systemconfig import SystemConfig
 from app.db.models.user import User
 from app.db.models.userconfig import UserConfig
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.user import UserOper
-from app.db.session import SessionFactory, async_session_scope
+from app.db.session import async_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +39,9 @@ def test_systemconfig_get_by_key_matches_async_twin(db):
     found = SystemConfig.get_by_key(db.session, "mp-test-a")
     assert found.value == {"n": 1}
 
-    async_found = asyncio.run(SystemConfig.async_get_by_key(key="mp-test-a"))
+    async_found = db.run_async_session(
+        lambda session: SystemConfig.async_get_by_key(session, "mp-test-a")
+    )
     assert async_found.value == found.value
 
 
@@ -54,9 +56,11 @@ def test_systemconfig_queries_reuse_explicit_sessions(db, monkeypatch):
     """SystemConfig 显式同步与异步会话不得触发兼容会话。"""
     db.add(SystemConfig(key="mp-explicit-config", value=True))
     monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
     )
     assert SystemConfig.get_by_key(db.session, "mp-explicit-config") is not None
 
@@ -64,9 +68,11 @@ def test_systemconfig_queries_reuse_explicit_sessions(db, monkeypatch):
         """验证异步配置查询复用显式 AsyncSession。"""
         async with async_session_scope() as session:
             monkeypatch.setattr(
-                decorators,
-                "async_session_scope",
-                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+                db_base,
+                "run_async_transaction",
+                lambda _operation: (_ for _ in ()).throw(
+                    AssertionError("不应创建额外异步事务")
+                ),
             )
             assert await SystemConfig.async_get_by_key(
                 session,
@@ -74,20 +80,6 @@ def test_systemconfig_queries_reuse_explicit_sessions(db, monkeypatch):
             ) is not None
 
     asyncio.run(check())
-
-
-def test_systemconfig_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
-    """旧插件以关键字直调 SystemConfig 时仍自动补入短会话。"""
-    db.add(SystemConfig(key="mp-legacy-config", value=True))
-    opened = []
-    monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (opened.append(True) or SessionFactory()),
-    )
-
-    assert SystemConfig.get_by_key(key="mp-legacy-config") is not None
-    assert opened == [True]
 
 
 def test_systemconfig_delete_by_key_removes_only_that_key(db):
@@ -163,8 +155,12 @@ def test_user_lookup_by_name_and_id_matches_async_twin(db):
     by_id = User.get_by_id(db.session, created.id)
     assert by_name.id == by_id.id == created.id
 
-    assert asyncio.run(User.async_get_by_name(name="mp-test-user")).id == created.id
-    assert asyncio.run(User.async_get_by_id(user_id=created.id)).id == created.id
+    assert db.run_async_session(
+        lambda session: User.async_get_by_name(session, "mp-test-user")
+    ).id == created.id
+    assert db.run_async_session(
+        lambda session: User.async_get_by_id(session, created.id)
+    ).id == created.id
 
 
 def test_user_lookup_returns_none_when_absent(db):
@@ -173,14 +169,6 @@ def test_user_lookup_returns_none_when_absent(db):
     """
     assert User.get_by_name(db.session, "mp-test-nobody") is None
     assert User.get_by_id(db.session, -1) is None
-
-
-def test_user_sync_queries_preserve_legacy_no_session_abi(db):
-    """旧插件省略 Session 时仍可按用户名和用户 ID 查询。"""
-    created = db.add(User(name="mp-legacy-query-user", hashed_password="secret"))
-
-    assert User.get_by_name("mp-legacy-query-user").id == created.id
-    assert User.get_by_id(created.id).name == "mp-legacy-query-user"
 
 
 def test_user_delete_by_name_and_by_id_remove_only_the_target(db):
@@ -258,7 +246,9 @@ def test_passkey_listing_excludes_inactive_credentials(db):
     listed = PassKey.get_by_user_id(db.session, 9001)
 
     assert {p.credential_id for p in listed} == {"cred-active-1", "cred-active-2"}
-    assert {p.credential_id for p in asyncio.run(PassKey.async_get_by_user_id(user_id=9001))} == \
+    assert {p.credential_id for p in db.run_async_session(
+        lambda session: PassKey.async_get_by_user_id(session, 9001)
+    )} == \
         {"cred-active-1", "cred-active-2"}
 
 
@@ -289,26 +279,20 @@ def test_passkey_lookup_by_credential_id_skips_inactive(db):
 
     assert PassKey.get_by_credential_id(db.session, "cred-live").user_id == 9003
     assert PassKey.get_by_credential_id(db.session, "cred-dead") is None
-    assert asyncio.run(PassKey.async_get_by_credential_id(credential_id="cred-dead")) is None
-
-
-def test_passkey_model_sync_queries_keep_no_session_plugin_abi(db):
-    """旧插件不传 Session 时仍由统一 legacy 装饰器获得短会话查询。"""
-    db.add(_passkey(9004, "cred-legacy"))
-
-    assert [item.credential_id for item in PassKey.get_by_user_id(user_id=9004)] == [
-        "cred-legacy"
-    ]
-    assert PassKey.get_by_credential_id("cred-legacy").user_id == 9004
+    assert db.run_async_session(
+        lambda session: PassKey.async_get_by_credential_id(session, "cred-dead")
+    ) is None
 
 
 def test_passkey_remaining_queries_reuse_explicit_sessions(db, monkeypatch):
     """PassKey 其余同步/异步查询必须复用调用方会话。"""
     key = db.add(_passkey(9008, "cred-explicit"))
     monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
     )
     assert PassKey.get_by_id(db.session, key.id).credential_id == "cred-explicit"
 
@@ -316,9 +300,11 @@ def test_passkey_remaining_queries_reuse_explicit_sessions(db, monkeypatch):
         """验证三个异步查询都复用显式 AsyncSession。"""
         async with async_session_scope() as session:
             monkeypatch.setattr(
-                decorators,
-                "async_session_scope",
-                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+                db_base,
+                "run_async_transaction",
+                lambda _operation: (_ for _ in ()).throw(
+                    AssertionError("不应创建额外异步事务")
+                ),
             )
             assert [item.credential_id for item in await PassKey.async_get_by_user_id(
                 session,
@@ -333,35 +319,6 @@ def test_passkey_remaining_queries_reuse_explicit_sessions(db, monkeypatch):
     asyncio.run(check())
 
 
-def test_passkey_remaining_queries_keep_legacy_keyword_abi(db, monkeypatch):
-    """旧插件关键字直调 PassKey 其余查询时仍自动补入短会话。"""
-    key = db.add(_passkey(9009, "cred-keyword"))
-    opened_sync = []
-    monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (opened_sync.append(True) or SessionFactory()),
-    )
-    assert PassKey.get_by_id(passkey_id=key.id) is not None
-    assert opened_sync == [True]
-
-    opened_async = []
-    original_scope = async_session_scope
-
-    def tracked_scope():
-        """记录旧异步 ABI 创建的兼容会话作用域。"""
-        opened_async.append(True)
-        return original_scope()
-
-    monkeypatch.setattr(decorators, "async_session_scope", tracked_scope)
-    assert asyncio.run(PassKey.async_get_by_user_id(user_id=9009))
-    assert asyncio.run(PassKey.async_get_by_credential_id(
-        credential_id="cred-keyword",
-    )) is not None
-    assert asyncio.run(PassKey.async_get_by_id(passkey_id=key.id)) is not None
-    assert opened_async == [True, True, True]
-
-
 def test_passkey_get_by_id_ignores_active_flag(db):
     """
     按主键取记录是管理用途，不应过滤停用状态——否则管理端看不到自己刚停用的凭据。
@@ -369,7 +326,9 @@ def test_passkey_get_by_id_ignores_active_flag(db):
     dead = db.add(_passkey(9004, "cred-admin", is_active=False))
 
     assert PassKey.get_by_id(db.session, dead.id).credential_id == "cred-admin"
-    assert asyncio.run(PassKey.async_get_by_id(passkey_id=dead.id)).credential_id == "cred-admin"
+    assert db.run_async_session(
+        lambda session: PassKey.async_get_by_id(session, dead.id)
+    ).credential_id == "cred-admin"
 
 
 def test_passkey_delete_requires_matching_owner(db):

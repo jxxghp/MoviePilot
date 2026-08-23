@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import legacy_async_db_query
 
 
 class SiteIcon(Base):
@@ -27,19 +26,11 @@ class SiteIcon(Base):
         return db.execute(select(cls).where(cls.domain == domain)).scalars().first()
 
     @classmethod
-    @legacy_async_db_query
     async def async_get_by_domain(
         cls,
-        db: AsyncSession | None = None,
-        domain: str | None = None,
+        db: AsyncSession,
+        domain: str,
     ):
         """在调用方 AsyncSession 中查询站点图标。"""
-        if domain is None:
-            raise TypeError("domain is required")
-
-        async def query(session: AsyncSession):
-            """在给定异步会话中执行站点图标查询。"""
-            result = await session.execute(select(cls).where(cls.domain == domain))
-            return result.scalar_one_or_none()
-
-        return await query(db)
+        result = await db.execute(select(cls).where(cls.domain == domain))
+        return result.scalar_one_or_none()

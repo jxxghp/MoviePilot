@@ -190,16 +190,13 @@ def test_default_sync_writer_persists_once_and_reuses_duplicate(db) -> None:
     ]
 
 
-def test_stage_add_executes_identity_sql_in_oper(db, monkeypatch) -> None:
-    """规范新增路径直接由 Oper 查询，不能退回 Model 自动会话装饰器。"""
+def test_stage_add_reuses_explicit_session_without_commit(db, monkeypatch) -> None:
+    """Oper 将调用方 Session 传给 Model 查询原语，暂存期间不自行提交。"""
     db.watermark(Subscribe)
     commit = Mock(wraps=db.session.commit)
+    exists = Mock(wraps=Subscribe.exists)
     monkeypatch.setattr(db.session, "commit", commit)
-    monkeypatch.setattr(
-        Subscribe,
-        "exists",
-        Mock(side_effect=AssertionError("model query must not run")),
-    )
+    monkeypatch.setattr(Subscribe, "exists", exists)
     oper = SubscribeOper(db.session)
     identity = {
         "media_source": str(MediaSource.TMDB),
@@ -221,6 +218,7 @@ def test_stage_add_executes_identity_sql_in_oper(db, monkeypatch) -> None:
 
     assert staged.created is True
     assert staged.subscribe_id > 0
+    assert exists.call_args.args[0] is db.session
     commit.assert_not_called()
     db.session.rollback()
 

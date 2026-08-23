@@ -27,7 +27,7 @@ class UserOper(DbOper):
         """
         获取用户列表
         """
-        return User.list(self._db)
+        return self._execute_sync_query(User.list)
 
     def add(self, **kwargs):
         """
@@ -40,15 +40,19 @@ class UserOper(DbOper):
         """
         根据用户名获取用户
         """
-        return User.get_by_name(self._db, name)
+        return self._execute_sync_query(
+            lambda session: User.get_by_name(session, name)
+        )
 
     def get_by_id(self, user_id: int) -> Optional[User]:
         """按 ID 获取用户。"""
-        return User.get_by_id(self._db, user_id)
+        return self._execute_sync_query(
+            lambda session: User.get_by_id(session, user_id)
+        )
 
     async def async_list(self) -> List[User]:
         """异步获取用户列表。"""
-        return await User.async_list(self._db)
+        return await self._execute_async_query(User.async_list)
 
     async def async_create(self, payload: dict) -> Optional[User]:
         """异步创建用户。"""
@@ -126,7 +130,7 @@ class UserOper(DbOper):
         """
         获取用户权限
         """
-        user = User.get_by_name(self._db, name)
+        user = self.get_by_name(name)
         if user:
             return user.permissions or {}
         return {}
@@ -135,7 +139,7 @@ class UserOper(DbOper):
         """
         获取用户个性化设置，返回None表示用户不存在
         """
-        user = User.get_by_name(self._db, name)
+        user = self.get_by_name(name)
         if user:
             return user.settings or {}
         return None

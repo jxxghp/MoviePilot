@@ -4,7 +4,6 @@ from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import legacy_db_query
 
 
 def _get_for_user_statement(
@@ -85,47 +84,28 @@ class AgentTask(Base):
         return task.id
 
     @classmethod
-    @legacy_db_query
     def get_for_user(
             cls,
-            db: Session | int | None = None,
-            task_id: int | None = None,
+            db: Session,
+            task_id: int,
             user_id: Optional[str] = None,
     ) -> Optional["AgentTask"]:
-        """
-        按任务 ID 和可选用户 ID 查询，并保留无 Session 的旧插件调用方式。
-        """
-        if task_id is None and isinstance(db, int):
-            task_id, db = db, None
-        if task_id is None:
-            raise TypeError("task_id is required")
-
-        def query(session: Session) -> Optional["AgentTask"]:
-            """在给定会话中读取单个 Agent 任务。"""
-            return session.execute(
-                _get_for_user_statement(cls, task_id=task_id, user_id=user_id)
-            ).scalars().first()
-
-        return query(db)
+        """在调用方会话中按任务 ID 和可选用户 ID 查询。"""
+        return db.execute(
+            _get_for_user_statement(cls, task_id=task_id, user_id=user_id)
+        ).scalars().first()
 
     @classmethod
-    @legacy_db_query
     def list_for_user(
             cls,
-            db: Session | None = None,
+            db: Session,
             user_id: Optional[str] = None,
             enabled: Optional[bool] = None,
     ) -> list["AgentTask"]:
-        """
-        按用户和启用状态查询，并保留无 Session 的旧插件调用方式。
-        """
-        def query(session: Session) -> list["AgentTask"]:
-            """在给定会话中读取 Agent 任务列表。"""
-            return list(session.execute(
-                _list_for_user_statement(cls, user_id=user_id, enabled=enabled)
-            ).scalars().all())
-
-        return query(db)
+        """在调用方会话中按用户和启用状态查询。"""
+        return list(db.execute(
+            _list_for_user_statement(cls, user_id=user_id, enabled=enabled)
+        ).scalars().all())
 
     @classmethod
     def update_task(

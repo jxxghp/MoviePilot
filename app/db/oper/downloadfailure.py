@@ -17,10 +17,12 @@ class DownloadFailureOper(DbOper):
         """
         批量按指纹查询仍在冷却期的失败记录。
         """
-        failures = DownloadFailure.get_active_by_fingerprints(
-            self._db,
-            fingerprints=fingerprints,
-            now_time=now_time,
+        failures = self._execute_sync_query(
+            lambda session: DownloadFailure.get_active_by_fingerprints(
+                session,
+                fingerprints=fingerprints,
+                now_time=now_time,
+            )
         )
         return {
             failure.fingerprint: failure
@@ -38,12 +40,14 @@ class DownloadFailureOper(DbOper):
         """
         新增或更新资源失败记录。
         """
-        return DownloadFailure.record_failure(
-            self._db,
-            fingerprint=fingerprint,
-            now_time=now_time,
-            next_retry_at=next_retry_at,
-            **kwargs,
+        return self._execute_sync_write(
+            lambda session: DownloadFailure.record_failure(
+                session,
+                fingerprint=fingerprint,
+                now_time=now_time,
+                next_retry_at=next_retry_at,
+                **kwargs,
+            )
         )
 
     def delete_expired(

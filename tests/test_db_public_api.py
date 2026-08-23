@@ -22,8 +22,8 @@ def test_session_factories_are_not_part_of_the_public_contract():
     """
     三个会话工厂不得出现在 ``__all__`` 里。
 
-    插件要访问数据库应走 ``DbOper`` 子类或 ``db_query`` / ``async_db_query`` 装饰器，
-    由装饰器收口会话的提交、回滚与释放。
+    插件访问宿主数据应走 ``DbOper``；插件自有表可使用 ``db_query`` / ``async_db_query``
+    装饰器，由装饰器收口插件自有会话的提交、回滚与释放。
     """
     leaked = [name for name in INTERNAL_FACTORY_NAMES if name in db_package.__all__]
     assert not leaked, f"会话工厂被重新放进了对外契约：{leaked}"

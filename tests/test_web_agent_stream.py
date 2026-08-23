@@ -1206,7 +1206,7 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
         worker = agent_manager._session_workers.pop(session_id, None)
         if worker:
             worker.cancel()
-        AgentChat.delete(rid=existing_chat.id)
+        AgentChatOper().delete_by_id(existing_chat.id)
 
 
 def test_web_agent_cancel_keeps_existing_display_history():
@@ -1265,7 +1265,7 @@ def test_web_agent_cancel_keeps_existing_display_history():
         assert preserved_chat.message_count == 2
         assert preserved_chat.preview == "保留的回答"
     finally:
-        AgentChat.delete(rid=existing_chat.id)
+        AgentChatOper().delete_by_id(existing_chat.id)
 
 
 def test_web_agent_stream_rejects_confirmation_without_protected_capability():
@@ -1411,7 +1411,7 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
         assert preserved_chat.message_count == 2
         assert preserved_chat.preview == "断线前的回答"
     finally:
-        AgentChat.delete(rid=existing_chat.id)
+        AgentChatOper().delete_by_id(existing_chat.id)
 
 
 def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():

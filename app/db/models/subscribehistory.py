@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import legacy_async_db_query, legacy_db_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
@@ -107,9 +106,8 @@ class SubscribeHistory(Base):
     )
 
     @classmethod
-    @legacy_db_query
     def list_by_type(cls, db: Session, mtype: str, page: int = 1, count: int = 30):
-        """按媒体类型分页查询订阅历史，并保留旧插件无 Session 调用。"""
+        """在调用方 Session 中按媒体类型分页查询订阅历史。"""
         return list(db.execute(
             select(cls).where(
                 cls.type == mtype
@@ -119,9 +117,8 @@ class SubscribeHistory(Base):
         ).scalars().all())
 
     @classmethod
-    @legacy_async_db_query
     async def async_list_by_type(cls, db: AsyncSession, mtype: str, page: int = 1, count: int = 30):
-        """异步按媒体类型分页查询订阅历史，并保留旧插件无 Session 调用。"""
+        """在调用方 AsyncSession 中按媒体类型分页查询订阅历史。"""
         result = await db.execute(
             select(cls).filter(
                 cls.type == mtype
@@ -132,7 +129,6 @@ class SubscribeHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @legacy_async_db_query
     async def async_list_by_type_and_username(
             cls,
             db: AsyncSession,
@@ -177,7 +173,6 @@ class SubscribeHistory(Base):
         return condition
 
     @classmethod
-    @legacy_db_query
     def exists(
             cls, db: Session, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,
@@ -197,7 +192,6 @@ class SubscribeHistory(Base):
         return db.execute(statement).scalars().first()
 
     @classmethod
-    @legacy_async_db_query
     async def async_exists(
             cls, db: AsyncSession, media_source: MediaSource, media_id: str,
             season: Optional[int] = None,

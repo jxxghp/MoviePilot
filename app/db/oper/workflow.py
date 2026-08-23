@@ -1,6 +1,7 @@
 from typing import List, Mapping, Tuple, Optional, Any, Protocol
 
 from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.workflow import Workflow
@@ -202,6 +203,8 @@ class WorkflowOper(DbOper):
 
     def stage_start(self, wid: int) -> bool:
         """在调用方持有的会话中暂存运行中状态。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         return Workflow.start(self._db, wid)
 
     def success(self, wid: int, result: Optional[str] = None) -> bool:
@@ -214,6 +217,8 @@ class WorkflowOper(DbOper):
 
     def stage_success(self, wid: int, result: Optional[str] = None) -> bool:
         """在调用方持有的会话中暂存成功状态。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         return Workflow.success(self._db, wid, result)
 
     def fail(self, wid: int, result: str) -> bool:
@@ -226,6 +231,8 @@ class WorkflowOper(DbOper):
 
     def stage_fail(self, wid: int, result: str) -> bool:
         """在调用方持有的会话中暂存失败状态。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         return Workflow.fail(self._db, wid, result)
 
     def step(
@@ -255,6 +262,8 @@ class WorkflowOper(DbOper):
             execution_state: Optional[dict[str, Any]] = None,
     ) -> bool:
         """在调用方持有的会话中暂存动作进度。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         return Workflow.update_current_action(
             self._db,
             wid,
@@ -277,4 +286,6 @@ class WorkflowOper(DbOper):
             reset_count: bool = False,
     ) -> bool:
         """在调用方持有的会话中暂存执行状态重置。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         return Workflow.reset(self._db, wid, reset_count=reset_count)
