@@ -146,6 +146,13 @@ _METHOD_CONTRACTS = {
     "douban_person_detail": ModuleMethodContract(family="douban", input_contract="DoubanPersonRequest", result_contract="MediaPerson | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("person_id",)),
     "douban_tv_credits": ModuleMethodContract(family="douban", input_contract="DoubanMediaRequest", result_contract="list[MediaPerson]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("doubanid",)),
     "douban_tv_recommend": ModuleMethodContract(family="douban", input_contract="DoubanMediaRequest", result_contract="list[MediaInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("doubanid",)),
+    "bangumi_calendar": ModuleMethodContract(family="bangumi", input_contract="BangumiCalendarRequest", result_contract="list[MediaInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE),
+    "bangumi_credits": ModuleMethodContract(family="bangumi", input_contract="BangumiMediaRequest", result_contract="list[MediaPerson]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("bangumiid",)),
+    "bangumi_discover": ModuleMethodContract(family="bangumi", input_contract="BangumiDiscoverArguments", result_contract="list[MediaInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE),
+    "bangumi_info": ModuleMethodContract(family="bangumi", input_contract="BangumiMediaRequest", result_contract="dict | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("bangumiid",)),
+    "bangumi_person_credits": ModuleMethodContract(family="bangumi", input_contract="BangumiPersonRequest", result_contract="list[MediaInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("person_id",)),
+    "bangumi_person_detail": ModuleMethodContract(family="bangumi", input_contract="BangumiPersonRequest", result_contract="MediaPerson | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("person_id",)),
+    "bangumi_recommend": ModuleMethodContract(family="bangumi", input_contract="BangumiMediaRequest", result_contract="list[MediaInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("bangumiid",)),
     "send_message": ModuleMethodContract(family="messaging", input_contract="MessageSendRequest", result_contract="Message | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY),
     "finalize_message": ModuleMethodContract(family="messaging", input_contract="MessageFinalizeRequest", result_contract="Message | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("response",)),
     "register_commands": ModuleMethodContract(family="messaging", input_contract="CommandRegistrationRequest", result_contract="None", required_parameters=("commands",)),
@@ -200,6 +207,13 @@ _METHOD_CONTRACTS.update({
     "async_douban_person_detail": _METHOD_CONTRACTS["douban_person_detail"],
     "async_douban_tv_credits": _METHOD_CONTRACTS["douban_tv_credits"],
     "async_douban_tv_recommend": _METHOD_CONTRACTS["douban_tv_recommend"],
+    "async_bangumi_calendar": _METHOD_CONTRACTS["bangumi_calendar"],
+    "async_bangumi_credits": _METHOD_CONTRACTS["bangumi_credits"],
+    "async_bangumi_discover": _METHOD_CONTRACTS["bangumi_discover"],
+    "async_bangumi_info": _METHOD_CONTRACTS["bangumi_info"],
+    "async_bangumi_person_credits": _METHOD_CONTRACTS["bangumi_person_credits"],
+    "async_bangumi_person_detail": _METHOD_CONTRACTS["bangumi_person_detail"],
+    "async_bangumi_recommend": _METHOD_CONTRACTS["bangumi_recommend"],
 })
 
 _PREFIX_CONTRACTS = (
