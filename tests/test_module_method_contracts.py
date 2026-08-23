@@ -268,6 +268,36 @@ def test_lookup_contracts_separate_value_routes_from_list_aggregation() -> None:
         assert contract.result_contract
 
 
+def test_recognition_match_and_cache_contracts_share_sync_async_semantics() -> None:
+    """媒体匹配与缓存回填的同步、异步入口必须复用同一目标路由契约。"""
+    pairs = {
+        "match_doubaninfo": "async_match_doubaninfo",
+        "match_tmdbinfo": "async_match_tmdbinfo",
+        "update_recognize_cache": "async_update_recognize_cache",
+    }
+
+    for sync_method, async_method in pairs.items():
+        contract = get_module_method_contract(sync_method)
+        assert contract is get_module_method_contract(async_method)
+        assert contract.family == "media-recognition"
+        assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+        assert contract.required_parameters
+
+
+def test_torrent_filter_contract_preserves_original_argument_list_merge() -> None:
+    """种子过滤 provider 应接收原始参数并有序合并结果，不得误用单参数接力。"""
+    contract = get_module_method_contract("filter_torrents")
+
+    assert contract.family == "downloader"
+    assert contract.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+    assert contract.result_shape is ModuleResultShape.LIST
+    assert contract.required_parameters == (
+        "rule_groups",
+        "torrent_list",
+        "mediainfo",
+    )
+
+
 def test_heterogeneous_torrent_files_result_remains_legacy_compatible() -> None:
     """下载器文件集合尚未归一前不得声明虚假的列表聚合语义。"""
     contract = get_module_method_contract("torrent_files")

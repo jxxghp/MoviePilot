@@ -79,6 +79,9 @@ _METHOD_CONTRACTS = {
         result_contract="MediaInfo | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("meta", "mtype", "media_source", "media_id", "episode_group", "cache"),
     ),
+    "match_doubaninfo": ModuleMethodContract(family="media-recognition", input_contract="DoubanMatchRequest", result_contract="dict[str, Any] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("name", "imdbid", "mtype", "year", "season", "raise_exception")),
+    "match_tmdbinfo": ModuleMethodContract(family="media-recognition", input_contract="TmdbMatchRequest", result_contract="dict[str, Any] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("name", "mtype", "year", "season")),
+    "update_recognize_cache": ModuleMethodContract(family="media-recognition", input_contract="RecognitionCacheUpdateRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("meta", "mediainfo")),
     "search_medias": ModuleMethodContract(
         family="media-recognition", input_contract="MediaSearchRequest",
         result_contract="list[MediaInfo]", result_shape=ModuleResultShape.LIST,
@@ -217,6 +220,7 @@ _METHOD_CONTRACTS = {
     "download_wechat_media_bytes": ModuleMethodContract(family="messaging", input_contract="MessageMediaDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("media_ref", "source")),
     "downloader_info": ModuleMethodContract(family="downloader", input_contract="DownloaderInfoRequest", result_contract="list[DownloaderInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("downloader",)),
     "list_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentListRequest", result_contract="list[DownloaderTorrent]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("status", "hashs", "downloader", "include_all_tags")),
+    "filter_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentFilterRequest", result_contract="list[TorrentInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("rule_groups", "torrent_list", "mediainfo")),
     "refresh_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentRefreshRequest", result_contract="list[TorrentInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("site", "keyword", "cat", "page", "mtype")),
     "torrent_files": ModuleMethodContract(family="downloader", input_contract="TorrentFilesRequest", result_contract="DownloaderFileCollection | None", required_parameters=("tid", "downloader")),
     "get_torrent_trackers": ModuleMethodContract(family="downloader", input_contract="TorrentTrackersRequest", result_contract="dict[str, list[str]] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.ORDERED_MAPPING_MERGE, required_parameters=("hash_string", "downloader")),
@@ -233,6 +237,9 @@ _METHOD_CONTRACTS = {
 # 同一能力的同步/异步入口共享不可变契约对象，避免参数和聚合语义各自漂移。
 _METHOD_CONTRACTS.update({
     "async_recognize_media": _METHOD_CONTRACTS["recognize_media"],
+    "async_match_doubaninfo": _METHOD_CONTRACTS["match_doubaninfo"],
+    "async_match_tmdbinfo": _METHOD_CONTRACTS["match_tmdbinfo"],
+    "async_update_recognize_cache": _METHOD_CONTRACTS["update_recognize_cache"],
     "async_search_medias": _METHOD_CONTRACTS["search_medias"],
     "async_obtain_images": _METHOD_CONTRACTS["obtain_images"],
     "async_movie_hot": _METHOD_CONTRACTS["movie_hot"],
