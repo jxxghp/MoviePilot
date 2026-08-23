@@ -6,23 +6,23 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界。
 
-## 当前复核结论（2026-08-23）
+## 当前复核结论（2026-08-24）
 
 本节是本轮全面复核后的当前事实源。本文后续的阶段实施记录保留历史审计证据，
 其中的数量和判断以当时审计提交为准，不能直接当作当前未完成项。
 
 ### 长期整改阶段 0：治理门禁恢复（2026-08-23）
 
-- 宿主依赖基线已审查 TaskRegistry、有界后台 owner 与插件变更准入接入后的语义差异：当前为 `805` 个模块、`6500` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
+- 宿主依赖基线已审查 TaskRegistry、有界后台 owner 与插件变更准入接入后的语义差异：当前为 `805` 个模块、`6502` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
 - 启动性能探针会在隔离生命周期中真实创建并释放 TaskRegistry；normal/safe 组件数分别为 `23`/`11`，CI 只读检查使用稳定的宿主模块集合和生命周期组件顺序，不再把 Python/平台模块数量当作硬合同。
 - 官方插件快照覆盖 `plugins.v3`、`plugins.v2` 以及 V3 实际会从 `package.json` 回退加载的 31 个默认实现；`app/plugins/**` 仍只是宿主运行副本，不进入扫描。
 - SDK 快照以各模块显式 `__all__` 为公开合同，能够记录赋值别名；`typing`、`__future__` 等实现期导入不再被误冻结，既有数据库备份门面已补精确导出清单。
 - async 阻塞实际债务已由 fixture 中的 10 项归零；Scheduler Agent task 收尾查询已复用
   `AgentTaskOper.async_get` 的统一 AsyncSession 边界，CI 继续以零债务基线拒绝回退。
 
-本阶段只修复治理信号和事实源，不把基线刷新当作业务重构完成。后台任务所有权、Module Contract V2、typed runtime、durable 副作用和质量规模化仍按下列 P1/P2 顺序推进。
+本阶段只修复治理信号和事实源，不把基线刷新当作业务重构完成。后台任务所有权、typed runtime、durable 副作用和质量规模化仍按下列 P1/P2 顺序推进；Module Contract V2 的宿主观察面已在阶段 2 收口。
 
 ### 长期整改阶段 1a：TaskRegistry owner 与关停契约（2026-08-23）
 
@@ -67,13 +67,26 @@
   崩溃而丢失；五分钟 AI 重试缓冲仍未持久化；`TransferPending` 仍只有 `storage + src_path`，不能表达文件
   副作用 checkpoint、lease 和未知完成状态。它们分别留给阶段 1b2、1b3、1b4，不能据此宣称 E2/E3 完成。
 
+### 长期整改阶段 2：Module Contract V2 宿主收口（2026-08-24）
+
+- 212 个显式 spec 当前分布为 `first_non_empty=94`、`ordered_list_merge=108`、
+  `ordered_mapping_merge=1`、`pipeline_relay=2`、`fan_out=7`，已观察宿主方法的 `legacy` aggregation 为 `0`。
+- 媒体发现、豆瓣、Bangumi、AniList、TMDB、音乐、媒体服务器、存储、消息、识别和下载器能力均按真实
+  同步/异步入口复用契约；15 个无 required parameters 的方法均为真实无参调用，不再是 family 默认值遗漏。
+- `plugin_short_circuit` 已接入同步与异步 dispatcher；缓存清理、命令注册、调度、下载新增和整理完成等
+  副作用方法使用 `fan_out`，忽略 provider 返回值并执行全部插件和宿主实现，异常仍按 provider 隔离。
+- `torrent_files` 不再把 qBittorrent SDK 集合、Transmission 对象和 rTorrent 字典泄漏给 Chain；三个宿主
+  provider 在共同适配边界投影为 `DownloaderFile`，修复 rTorrent 字典与调用方 `.name` 假设并存的双实现。
+- 兼容边界不变：未知第三方自定义方法继续走开放 legacy fallback；旧插件签名和结果不匹配仍只诊断、
+  不拒绝加载。已登记方法的名称、kwargs、插件优先级、同步/异步入口和异常隔离 ABI 均保留。
+
 ### 总体判断
 
 当前架构总体合理，已经从跨层混合的遗留单体收敛为**边界清晰的模块化单体**：
 
 - 继续采用单进程控制面是正确选择，不建议现在拆成微服务；插件、调度器、工作流、事件和数据库共享进程内状态，拆分会放大部署、事务和兼容成本。
 - `foundation/domain/runtime/adapters/application/chain/api/startup` 的职责方向基本成立；宿主架构基线、复杂度 ratchet、异步阻塞 ratchet 当前均通过。
-- 依赖图当前为 `805` 个 Python 模块、`6500` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
+- 依赖图当前为 `805` 个 Python 模块、`6502` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
 - 当前主要风险已经从“目录和依赖失控”转移到运行时协议、后台副作用的可靠性和遗留兼容面。换言之，下一阶段重点应是**语义收口和可验证性**，而不是继续搬文件或机械拆大文件。
 
 综合评价：架构方向可持续，生产可用性较高；可演进性仍处于中等水平。现阶段没有静态审计发现必须立即推倒重来的 P0 架构问题，但存在需要按 P1/P2 计划治理的真实债务。
@@ -91,12 +104,11 @@
    `shield` 不再让网络请求逃逸生命周期预算，仓库级并发合并、缓存键和 V1/V2/V3 返回兼容保持不变。
    请求作用域的结构化并发不进入全局登记器：传统 WebAgent SSE 的 collection 子任务改由生成器
    `finally` 取消并等待清理，断线和 ASGI 取消均不会留下请求级 task。
-2. **动态模块契约仍以 legacy 聚合语义为主。** 当前登记 `212` 个模块方法，其中 `168` 个仍使用 `legacy` aggregation，`34` 个使用 `first_non_empty`、`7` 个使用 `ordered_list_merge`、`1` 个使用 `ordered_mapping_merge`、`2` 个使用 `pipeline_relay`。`app/runtime/extensions/module/contracts.py` 已能登记 family、输入/结果标签和基础签名诊断，调度器也已按这 44 个显式聚合声明执行首个非空、有序集合合并或接力管道；但 `167` 个方法没有 required parameters，其余方法仍主要依赖运行时反射、返回值形状和旧短路规则。未知第三方方法保留 legacy fallback 是兼容要求，不应删除；宿主高频能力则应逐族补齐可执行的输入校验、结果校验、超时和错误语义。
-3. **Model/Base 的数据库装饰器和隐式会话 ABI 已全部清零。** 查询、写事务和 `legacy_*` 装饰器均为 `0`；所有 Model `db` 参数要求显式 Session，Base CRUD 仅在调用方事务内查询或 stage。可无会话构造的入口统一留在 Oper，经组合根事务执行器运行；插件 SDK 不再导出宿主 Model。后续重点转为减少 ORM 对象跨层流转，并保持 Model 隐式事务零回退。
+2. **Model/Base 的数据库装饰器和隐式会话 ABI 已全部清零。** 查询、写事务和 `legacy_*` 装饰器均为 `0`；所有 Model `db` 参数要求显式 Session，Base CRUD 仅在调用方事务内查询或 stage。可无会话构造的入口统一留在 Oper，经组合根事务执行器运行；插件 SDK 不再导出宿主 Model。后续重点转为减少 ORM 对象跨层流转，并保持 Model 隐式事务零回退。
 
    Oper 内部的执行入口也已统一：最后一处 `AgentTaskOper` 直接 transaction runner 调用已迁入
    `DbOper._execute_sync_query`，静态门禁禁止 `app/db/oper` 再绕过统一的 Session 类型分派。
-4. **组合根和全局状态仍形成复杂的隐式运行时图。** Singleton 实例、模块级 provider、`configure_*` 注册函数和兼容 Facade 同时存在；它们解决了旧 ABI 和启动顺序问题，但增加测试污染、重复装配、实例身份和初始化顺序风险。`app/startup/lifecycle/__init__.py` 已有声明式生命周期，`app/startup/initializers/modules.py` 也有分阶段关闭，但尚未做到所有进程级资源都只通过 typed HostRuntime 访问。后续应以“新代码禁止新增 Service Locator/Singleton 依赖、旧入口有命中观测”为 ratchet。
+3. **组合根和全局状态仍形成复杂的隐式运行时图。** Singleton 实例、模块级 provider、`configure_*` 注册函数和兼容 Facade 同时存在；它们解决了旧 ABI 和启动顺序问题，但增加测试污染、重复装配、实例身份和初始化顺序风险。`app/startup/lifecycle/__init__.py` 已有声明式生命周期，`app/startup/initializers/modules.py` 也有分阶段关闭，但尚未做到所有进程级资源都只通过 typed HostRuntime 访问。后续应以“新代码禁止新增 Service Locator/Singleton 依赖、旧入口有命中观测”为 ratchet。
 
    Scheduler 已先完成一个可验证切片：API、Agent 与 Command 统一经
    `app.application.scheduling` Facade 获取实例，只有 `app.scheduler` 实现本身及 startup 组合根允许
@@ -127,6 +139,7 @@
 - 全功能多 worker 的误导性配置已由 `app/runtime/topology.py` 和 `app/main.py` 拒绝；V3 默认单 worker 的部署事实已经明确。
 - 写事务已由组合根/UoW/Outbox 方向收口，`db_update/async_db_update` 为零；不要重新引入 Model 自动提交。
 - 已具备 correlation ID、`/health/live`、`/health/ready`、模块/事件/调度观测端口和兼容 Facade 命中指标；历史文档中“完全缺少观测能力”的描述已过时。
+- 212 个已观察宿主模块方法已全部使用可执行的非 legacy aggregation；只为未知第三方自定义方法保留开放 fallback，不再重复按能力族补聚合标签。
 - 旧导入路径、显式 `__all__` SDK 合同、插件 manifest 和 V3 实际可加载的三层索引实现均有白名单或版本约束；兼容层应继续保持“薄、可观测、只增不删”，不应为了清理目录直接删除。
 - TMDB 移植包内部 SCC 属于第三方隔离代码，按现状豁免是合理的技术决策。
 
@@ -142,10 +155,9 @@
 ### 建议的后续治理顺序
 
 1. **先做后台任务审计与统一登记**：建立 TaskOwner/生命周期协议，区分请求后非关键通知、可重试 Outbox 副作用和必须在请求内完成的业务写入；为断线、崩溃、重复执行和 shutdown 补测试。
-2. **再做模块契约 V2 增量收口**：优先识别调用量最高、影响下载/整理/识别的能力族，补真实参数对象、结果验证、超时预算和 provider 行为快照；legacy fallback 只保留给第三方未知方法。
-3. **随后收敛组合根和全局状态**：为新代码禁止新增 Service Locator/Singleton 依赖，逐步让关键服务只通过 typed HostRuntime 获取；旧 Facade 继续保留命中观测和插件 ABI。
-4. **最后扩展类型和复杂度预算**：每次触碰大型职责域时拆一个可回滚垂直切片，同时扩大 mypy strict 清单和 Pylint 新增问题 ratchet；不要为追求行数指标进行无行为收益的拆分。查询 ABI 已完成正式装饰器清零，后续只做零回退和 ORM 跨层收口。
-5. **跨仓发布以契约为中心**：保持插件索引、前端远程组件、资源版本、Rust wheel 和主仓依赖的 provenance；将插件测试环境固定为主仓 `uv.lock` 可复现安装，避免本地和 CI 依赖漂移。
+2. **随后收敛组合根和全局状态**：为新代码禁止新增 Service Locator/Singleton 依赖，逐步让关键服务只通过 typed HostRuntime 获取；旧 Facade 继续保留命中观测和插件 ABI。
+3. **再扩展类型和复杂度预算**：每次触碰大型职责域时拆一个可回滚垂直切片，同时扩大 mypy strict 清单和 Pylint 新增问题 ratchet；不要为追求行数指标进行无行为收益的拆分。Module Contract V2 只继续保持新增方法门禁和第三方 fallback 观测。
+4. **跨仓发布以契约为中心**：保持插件索引、前端远程组件、资源版本、Rust wheel 和主仓依赖的 provenance；将插件测试环境固定为主仓 `uv.lock` 可复现安装，避免本地和 CI 依赖漂移。
 
 本轮复核结论：**当前架构不需要推倒重来，真正未完成的是运行时可靠性和协议收口。** 下一轮治理完成上述 P1 后，再评估是否值得继续拆分大型文件或扩大严格类型范围。
 
@@ -166,7 +178,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 2. **V3 部署拓扑边界已完成。**全功能模式在 startup、launcher 和 Doctor 共同拒绝 `API_WORKERS > 1`，生产入口固定单 worker；开发 reload/监督模式使用 `app.factory:create_app` import-string factory，不再把 app 实例交给多进程 supervisor。旧配置键继续可解析，未来只有拆出 control role 后才重新评估全功能多 worker。
 3. **事务所有权已完成装饰器层收口，但 ORM 对象跨层流转仍需治理。**正式 Model 查询/写装饰器均已清零，宿主 Oper 查询统一接收显式 Session；调用方仍需继续明确 ORM 对象生命周期、懒加载和业务提交后副作用边界。
 4. **组合根之后仍存在全局服务定位，但配置和 API 数据主路径已收口。**canonical 未批准 Settings 导入与非组合根 `SystemConfigOper()` 构造均为 `0`；数据库基础设施 3 处和 startup 唯一构造点作为不可扩张边界登记。正式 FastAPI 依赖只读取 AppState `HostRuntime` 的命名领域，字符串 API 数据注册表仅允许 startup 注入和旧 Facade 转发；后续对象是 Singleton 与模块级 `configure/get` provider，不应再迁移已类型化 API 依赖。
-5. **模块契约仍在推进，Event Registry 已完成全量登记。**当前 212 个模块 spec 中 168 个仍使用 legacy aggregation，44 个已使用可执行聚合/接力语义；53 个事件全部绑定 typed payload，可见性、投递等级、错误行为和敏感字段均有基线，legacy event payload 为 `0`。后续重点是模块能力逐族收口和 6 个 durable-required 事件的真实持久投递，不是重复创建事件 DTO。
+5. **模块与事件契约登记均已完成。**当前 212 个模块 spec 的宿主观察面已无 legacy aggregation，53 个事件全部绑定 typed payload，可见性、投递等级、错误行为和敏感字段均有基线，legacy event payload 为 `0`。后续重点是保持新增能力 ratchet、观察未知第三方 fallback 命中，以及 6 个 durable-required 事件的真实持久投递，不是重复创建契约或事件 DTO。
 6. **后台副作用缺少统一可靠性定义。**事件队列、APScheduler、FastAPI BackgroundTasks 和线程池任务的丢失、重试、幂等、关停语义各不相同；数据库提交与事件/上报之间仍有进程崩溃窗口。
 7. **核心关联与健康边界已落地，指标导出仍未收口。**HTTP/SSE correlation ID 已传播到线程池、事件、工作流、子进程、外部请求和日志；`/health/live`、`/health/ready` 已由部署入口消费，事件/数据库队列深度及模块/事件耗时使用低基数指标登记。当前缺口是稳定 exporter、运维查询面和跨进程聚合，而不是重新实现 request ID 或健康路由。
 8. **质量门禁已具备增量硬约束，但覆盖面仍需扩大。**push/PR 对变更 Python 文件执行 Pylint，CI 同时运行 host architecture、37 个 strict mypy 文件、复杂度、async 阻塞和 task owner ratchet；全仓 Pylint 仍是 advisory，strict 类型和复杂度拆分仍应随业务切片渐进扩展。
@@ -801,17 +813,24 @@ ModuleMethodSpec(
 - 消息附件下载的 13 个宿主能力不再因 `download_*` 名称误归到下载器族，已按真实 `file/image/media`
   参数、bytes/string 结果和首个非空语义登记；`list_torrents`、`downloader_info` 按三个下载器宿主实现
   冻结为有序列表合并。`torrent_files` 因 qBittorrent 的 `TorrentFilesList` 与其他下载器普通列表并存，
-  只补真实参数与异构结果合同，继续显式保留 legacy 聚合，不能用错误的列表标签掩盖待归一化边界。
+  当时只补真实参数与异构结果合同，继续显式保留 legacy 聚合；该临时状态已由下方 2026-08-24 的
+  `DownloaderFile` 宿主投影取代。
 - `get_torrent_trackers` 新增有序映射聚合：未指定下载器时按宿主优先级合并 qBittorrent、Transmission、
   rTorrent 的名称到 Tracker 列表映射，不再由首个非空 dict 隐式截断；插件 provider 返回映射后仍按旧 ABI
   优先短路宿主，未知方法和其他 legacy 映射不受该策略影响。
 - qBittorrent、Transmission、rTorrent 共享的 `download`、删除、启停、标签与更新 6 个目标选择动作已冻结
   一致参数和首个非空结果语义；bool/dict 结果启用基础形状诊断，tuple 下载结果保持业务合同标签而不强制
-  Python 形状。广播型 `download_added` / `transfer_completed` 和管道型 `filter_torrents` 继续保留 legacy。
+  Python 形状。当时广播型 `download_added` / `transfer_completed` 和 `filter_torrents` 继续保留 legacy；
+  该临时状态已由下方 2026-08-24 的 `fan_out` 和有序列表契约取代。
 - 识别与搜索的 sync/async 方法现在复用同一个不可变契约对象，`async_recognize_media` 与
   `async_search_medias` 不再落入不同 family/aggregation；同步、异步 `obtain_images` 也统一登记为显式
   `pipeline_relay`，按宿主优先级把同一 `MediaInfo` 交给后续图片 provider。未知插件方法和 legacy 接力
   仍使用原算法，插件先返回非空对象时继续优先短路宿主。
+- 2026-08-24 完成全部宿主观察方法的聚合收口：此前逐族登记的发现、元数据、存储、消息、识别、音乐和
+  下载器契约均切换到真实可执行语义；`filter_torrents` 按现有原参数调用与列表合并 ABI 登记，而不是误用
+  单参数 pipeline。7 个副作用 hook 新增 `fan_out` 并启用非短路执行；`torrent_files` 在三个内置下载器
+  边界统一投影为 `DownloaderFile`。最终 212 个 spec 的 legacy aggregation 为 0，未知第三方方法仍由
+  `_DEFAULT_CONTRACT` 兼容，签名或结果差异只记录诊断。
 
 #### ARCH-241：Event Contract Registry
 

@@ -25,8 +25,10 @@
 3. `PluginManager` 的加载、生命周期、注册表、投影、存储、目录、路径、同步、依赖、克隆和文件监控分别由 `app/runtime/extensions/plugin/` 下的单职责组件承担；旧管理器只保留 V3 ABI 门面和兼容调用顺序。
 4. 动态插件 API 使用专用 raw 路由；主程序统一响应信封不进入插件 `get_api()`。前端 `pluginApi` 对非 `Response` envelope 的 payload 原样交付调用方。
 5. 旧插件导入仅由 `app/runtime/compat/manifest.py` 精确映射；canonical 模块不复制旧 Manager/Helper/Oper 导出。`app/plugins/` 仍是运行时副本，继续排除在宿主架构扫描之外。
-6. 2026-08-23 当前机器基线为 800 个宿主 Python 模块、6,479 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
+6. 2026-08-24 当前机器基线为 805 个宿主 Python 模块、6,502 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
 7. 订阅写入统一归入 `app/application/subscription/write.py`；插件动态路由和文件夹操作统一归入 `app/application/plugin/routes.py`、`folders.py`。重构期间新增且未形成插件 ABI 的 `app/application/subscribe.py`、`app/application/plugins.py` 已直接删除，不进入 compat manifest。
+8. 2026-08-24 完成 Module Contract V2 宿主观察面收口：212 个 spec 均使用可执行的显式 aggregation，
+   `legacy` 只保留为未知第三方自定义方法的开放 fallback；插件方法名、kwargs、优先级和异常隔离 ABI 不变。
 
 ## 2. 范围与明确排除项
 
@@ -57,7 +59,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 以下八类是本轮治理开始时的审计问题清单，不代表 2026-08-18 收口后的未完成项；当前剩余工作以“3.1 当前未完成项”和各阶段收口表为准：
 
 1. **规范比门禁严格（历史基线）。**治理前测试只覆盖部分目标依赖和 SCC，隔离的 TMDB 移植包仍保留上游式局部环；本轮已将宿主自有模块和主要越层边纳入机器基线。
-2. **核心运行契约是字符串和约定。**`ChainBase.run_module()` 依赖方法名、签名探测、返回值形态和执行顺序；插件生命周期也依赖一组隐式 `get_*`/`init_*` 方法。它们是实际 ABI，却没有统一契约清单。
+2. **核心运行契约是字符串和约定（历史基线）。**`ChainBase.run_module()` 依赖方法名、签名探测、返回值形态和执行顺序；当前已为 212 个宿主观察方法建立统一可执行契约，未知第三方方法继续保留开放 fallback。
 3. **编排类和端点承担过多职责。**订阅、搜索、整理、下载、Agent、插件管理、外部市场和服务端客户端均出现千行级文件、百行级方法和多种基础设施混合。
 4. **数据库边界没有收口（历史基线）。**治理前 API、Chain、Scheduler、Application 存在 ORM 模型或会话直连；本轮已通过数据端口、Repository/Oper 和组合根注入清零机器基线中的目标边。
 5. **组合根仍有泄漏（历史基线）。**治理前存在导入期 app、事件解析器兜底实例化和 Chain 隐式抓取管理器；本轮已改为生命周期/运行时上下文显式装配。
@@ -99,7 +101,7 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 ### 4.3 模块规模
 
-排除 `app/plugins/` 后，2026-08-23 当前静态扫描得到 800 个 Python 模块、6,479 条内部导入边。下表保留 2026-08-18 收口时的一级目录规模快照（代码行数包含注释和空行，用于趋势比较而非质量评分）：
+排除 `app/plugins/` 后，2026-08-24 当前静态扫描得到 805 个 Python 模块、6,502 条内部导入边。下表保留 2026-08-18 收口时的一级目录规模快照（代码行数包含注释和空行，用于趋势比较而非质量评分）：
 
 | 一级目录 | 约代码行数 | Python 文件数 | 判断 |
 | --- | ---: | ---: | --- |
@@ -147,8 +149,8 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 | 指标 | 初始审计 | 当前基线 | 说明 |
 | --- | ---: | ---: | --- |
-| Python 模块数 | 约 654 | 800 | 增量来自单一职责的 Application、Runtime、Adapter、插件组件和维护用例模块 |
-| 内部导入边 | 约 5,623 | 6,479 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
+| Python 模块数 | 约 654 | 805 | 增量来自单一职责的 Application、Runtime、Adapter、插件组件和维护用例模块 |
+| 内部导入边 | 约 5,623 | 6,502 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
 | SCC 数 | 14 | 1 | 自有代码 SCC 已归零，仅保留 TMDB 移植包内部隔离例外 |
 | `adapters -> db` | 存在 | 0 | `PluginHelper`、`MoviePilotServerHelper` 的本地数据读取已移到组合根/Application |
 | `runtime -> db` | 存在 | 0 | 插件存储、服务配置均改为启动注入 |
@@ -1386,6 +1388,7 @@ done_when: []
 
 - 动态插件 API 返回契约明确并有真实请求测试。
 - `run_module` 方法名和插件 hook 100% 进入契约快照。
+- 212 个宿主观察模块 spec 的 legacy aggregation 为 0；未知第三方方法继续兼容并记录真实命中。
 - 自有 SCC 不增长，消除 `_music`/`subscribe`、schemas、DB 根回流等首批环。
 - Adapter→DB、Runtime→DB、Application→DB、API/Agent/Chain/Workflow→DB 新增裸依赖均为零。
 - 生命周期组件和 Event resolver 命中可观测。
