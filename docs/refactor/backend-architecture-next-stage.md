@@ -1277,8 +1277,10 @@ Settings 读取作为基础设施边界，架构基线已明确记录该例外�
 保留原参数、对象类型、锁、进度回调、停止信号、候选过滤、失败冷却日志和下载结算语义。
 `MediaServerChain.sync` 补回停止信号后的立即退出，避免系统停止后继续发送服务器/全局完成进度。
 下载、订阅、媒体服务器及 durable/outbox 专项共 370 项测试通过，复杂度基线移除上述三个订阅/下载入口。
-当前仍不把普通用户通知和 MoviePilot Server 外部统计标记为 durable：它们尚未与业务写入和 outbox intent
-绑定在同一事务，继续保持 post-commit 的准确边界。
+该阶段当时尚未把普通用户通知和 MoviePilot Server 外部统计标记为 durable；后续仅将宿主可追踪的
+`SubscribeAdded` 与订阅完成通知/统计同业务写入一起登记为独立 outbox intent。通用自定义通知、非订阅类
+MoviePilot Server 调用及第三方插件自行写库、通知或上报仍不在宿主事务边界内，不能从订阅切片外推为
+全部副作用都已 durable。
 
 2026-08-23 收口兼容回归：`RuntimeSettingsCompat` 补齐 `update_setting`、`update_settings` 和
 `model_dump` 旧 Settings ABI，并由应用组合根注入服务对象，低层 runtime 不再反向导入 `app.application`；
