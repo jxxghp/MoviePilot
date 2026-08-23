@@ -91,6 +91,13 @@ class MessageChain(ChainBase):
             expired_handler=self._schedule_agent_session_clear,
         )
 
+    def _plugin_input_interaction_handler(self) -> PluginInputInteractionHandler:
+        """构造使用当前 Chain 消息与事件端口的插件输入处理器。"""
+        return PluginInputInteractionHandler(
+            messenger=self,
+            event_publisher=self.eventmanager,
+        )
+
     @dataclass
     class _ProcessingStatus:
         channel: NotificationChannel
@@ -253,10 +260,7 @@ class MessageChain(ChainBase):
                 is_channel_admin=is_channel_admin,
             )
 
-            if PluginInputInteractionHandler(
-                    messenger=self,
-                    event_publisher=self.eventmanager,
-            ).handle_text(
+            if self._plugin_input_interaction_handler().handle_text(
                     context=interaction_context,
                     text=text,
                     reply_to_message_id=reply_to_message_id,
@@ -418,10 +422,7 @@ class MessageChain(ChainBase):
                 )
             return False
 
-        if PluginInputInteractionHandler(
-                messenger=self,
-                event_publisher=self.eventmanager,
-        ).handle_text(
+        if self._plugin_input_interaction_handler().handle_text(
                 context=context,
                 text=text,
                 reply_to_message_id=reply_to_message_id,
