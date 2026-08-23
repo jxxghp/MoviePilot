@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import async_db_query, db_query
+from app.db.decorators import legacy_async_db_query, legacy_db_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MediaSource
 
@@ -53,12 +53,12 @@ class MediaServerItem(Base):
     )
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_by_itemid(cls, db: Session, item_id: str):
         return db.execute(select(cls).where(cls.item_id == item_id)).scalars().first()
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_by_server_itemid(cls, db: Session, server: str, item_id: str):
         return db.execute(
             select(cls).where(cls.server == server, cls.item_id == item_id)
@@ -97,7 +97,7 @@ class MediaServerItem(Base):
         )
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def exist_by_media_identity(
             cls, db: Session, media_source: MediaSource, media_id: str, mtype: str,
     ):
@@ -109,7 +109,7 @@ class MediaServerItem(Base):
         )).scalars().first()
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def exists_by_title(cls, db: Session, title: str, mtype: str, year: str):
         statement = select(cls).where(cls.title == title)
         if mtype:
@@ -119,13 +119,13 @@ class MediaServerItem(Base):
         return db.execute(statement).scalars().first()
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_by_itemid(cls, db: AsyncSession, item_id: str):
         result = await db.execute(select(cls).filter(cls.item_id == item_id))
         return result.scalars().first()
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_exist_by_media_identity(
             cls, db: AsyncSession, media_source: MediaSource, media_id: str, mtype: str,
     ):
@@ -138,7 +138,7 @@ class MediaServerItem(Base):
         return result.scalars().first()
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_exists_by_title(cls, db: AsyncSession, title: str, mtype: str, year: str):
         if not mtype and not year:
             result = await db.execute(select(cls).filter(cls.title == title))

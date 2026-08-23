@@ -9,7 +9,10 @@ import asyncio
 
 import pytest
 
+from app.db import decorators
 from app.db.models.mediaserver import MediaServerItem
+from app.db.oper.mediaserver import MediaServerOper
+from app.db.session import SessionFactory, async_session_scope
 from app.schemas.types import MediaSource
 
 
@@ -38,6 +41,52 @@ def test_get_by_itemid_matches_async_twin(db):
     assert MediaServerItem.get_by_itemid(db.session, "it-1").server == "emby"
     assert asyncio.run(MediaServerItem.async_get_by_itemid(item_id="it-1")).server == "emby"
     assert MediaServerItem.get_by_itemid(db.session, "it-missing") is None
+
+
+def test_mediaserver_oper_reuses_explicit_query_sessions(db, monkeypatch):
+    """媒体服务器 Oper 绑定调用方会话后不得再创建兼容查询会话。"""
+    db.add(_item("emby", "explicit-ms", media_id="explicit-1001"))
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+    )
+
+    assert MediaServerOper(db.session).exists(
+        media_source=MediaSource.TMDB,
+        media_id="explicit-1001",
+        mtype="电影",
+    ) is not None
+
+    async def check() -> None:
+        """验证异步存在性查询复用显式 AsyncSession。"""
+        async with async_session_scope() as session:
+            monkeypatch.setattr(
+                decorators,
+                "async_session_scope",
+                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+            )
+            assert await MediaServerOper(session).async_exists(
+                media_source=MediaSource.TMDB,
+                media_id="explicit-1001",
+                mtype="电影",
+            ) is not None
+
+    asyncio.run(check())
+
+
+def test_mediaserver_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
+    """旧插件以关键字直调媒体服务器 Model 时仍自动补入短会话。"""
+    db.add(_item("emby", "legacy-ms"))
+    opened = []
+    monkeypatch.setattr(
+        decorators,
+        "ScopedSession",
+        lambda: (opened.append(True) or SessionFactory()),
+    )
+
+    assert MediaServerItem.get_by_itemid(item_id="legacy-ms") is not None
+    assert opened == [True]
 
 
 def test_get_by_server_itemid_scopes_by_server(db):

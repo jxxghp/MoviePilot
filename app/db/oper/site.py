@@ -280,7 +280,13 @@ class SiteOper(DbOper):
             "err_msg": payload.get("err_msg") or ""
         })
         # 按站点+天判断是否存在数据
-        siteuserdatas = SiteUserData.get_by_domain(self._db, domain=domain, workdate=current_day)
+        siteuserdatas = self._execute_sync_query(
+            lambda session: SiteUserData.get_by_domain(
+                session,
+                domain=domain,
+                workdate=current_day,
+            )
+        )
         if siteuserdatas:
             # 存在则更新
             if not payload.get("err_msg"):
@@ -294,13 +300,21 @@ class SiteOper(DbOper):
         """
         获取站点用户数据
         """
-        return SiteUserData.list(self._db)
+        return self._execute_sync_query(
+            lambda session: SiteUserData.list(session)
+        )
 
     def get_userdata_by_domain(self, domain: str, workdate: Optional[str] = None) -> List[SiteUserData]:
         """
         获取站点用户数据
         """
-        return SiteUserData.get_by_domain(self._db, domain=domain, workdate=workdate)
+        return self._execute_sync_query(
+            lambda session: SiteUserData.get_by_domain(
+                session,
+                domain=domain,
+                workdate=workdate,
+            )
+        )
 
     async def async_get_userdata_by_domain(
         self, domain: str, workdate: Optional[str] = None
@@ -308,13 +322,19 @@ class SiteOper(DbOper):
         """
         异步获取站点用户数据。
         """
-        return await SiteUserData.async_get_by_domain(
-            self._db, domain=domain, workdate=workdate
+        return await self._execute_async_query(
+            lambda session: SiteUserData.async_get_by_domain(
+                session,
+                domain=domain,
+                workdate=workdate,
+            )
         )
 
     async def async_get_userdata_latest(self) -> List[SiteUserData]:
         """异步获取各站点最新用户数据。"""
-        return await SiteUserData.async_get_latest(self._db)
+        return await self._execute_async_query(
+            lambda session: SiteUserData.async_get_latest(session)
+        )
 
     async def async_get_icon_by_domain(self, domain: str) -> Optional[SiteIcon]:
         """异步按域名获取站点图标。"""
@@ -335,13 +355,17 @@ class SiteOper(DbOper):
         """
         获取站点用户数据
         """
-        return SiteUserData.get_by_date(self._db, date)
+        return self._execute_sync_query(
+            lambda session: SiteUserData.get_by_date(session, date)
+        )
 
     def get_userdata_latest(self) -> List[SiteUserData]:
         """
         获取站点最新数据
         """
-        return SiteUserData.get_latest(self._db)
+        return self._execute_sync_query(
+            lambda session: SiteUserData.get_latest(session)
+        )
 
     def get_icon_by_domain(self, domain: str) -> Optional[SiteIcon]:
         """

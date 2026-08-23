@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import async_db_query, db_query
+from app.db.decorators import legacy_async_db_query, legacy_db_query
 
 
 class SiteUserData(Base):
@@ -61,7 +61,7 @@ class SiteUserData(Base):
     )
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_by_domain(cls, db: Session, domain: str, workdate: Optional[str] = None, worktime: Optional[str] = None):
         statement = select(cls).where(cls.domain == domain)
         if workdate and worktime:
@@ -72,7 +72,7 @@ class SiteUserData(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_by_domain(cls, db: AsyncSession, domain: str, workdate: Optional[str] = None, worktime: Optional[str] = None):
         query = select(cls).filter(cls.domain == domain)
         if workdate and worktime:
@@ -83,12 +83,12 @@ class SiteUserData(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_by_date(cls, db: Session, date: str):
         return list(db.execute(select(cls).where(cls.updated_day == date)).scalars().all())
 
     @classmethod
-    @db_query
+    @legacy_db_query
     def get_latest(cls, db: Session):
         """
         获取各站点最新一天的数据
@@ -113,7 +113,7 @@ class SiteUserData(Base):
         ).scalars().all())
 
     @classmethod
-    @async_db_query
+    @legacy_async_db_query
     async def async_get_latest(cls, db: AsyncSession):
         """
         异步获取各站点最新一天的数据
