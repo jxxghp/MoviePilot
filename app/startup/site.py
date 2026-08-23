@@ -88,6 +88,14 @@ class TransactionalSiteRepository:
         """查询全部站点。"""
         return self._read(lambda repository: repository.list())
 
+    def list_order_by_pri(self) -> list[Any]:
+        """同步按优先级查询站点。"""
+        return self._read(lambda repository: repository.list_order_by_pri())
+
+    def get_userdata_latest(self) -> list[Any]:
+        """同步查询各站点最新用户数据。"""
+        return self._read(lambda repository: repository.get_userdata_latest())
+
     async def async_get(self, site_id: int) -> Any:
         """异步按 ID 查询站点。"""
         return await self._async_read(lambda repository: repository.async_get(site_id))
@@ -128,6 +136,30 @@ class TransactionalSiteRepository:
         """异步查询站点用户数据。"""
         return await self._async_read(
             lambda repository: repository.async_get_userdata_by_domain(domain, workdate)
+        )
+
+    async def async_get_userdata_latest(self) -> list[Any]:
+        """异步查询各站点最新用户数据。"""
+        return await self._async_read(
+            lambda repository: repository.async_get_userdata_latest()
+        )
+
+    async def async_get_icon_by_domain(self, domain: str) -> Any:
+        """异步按域名查询站点图标。"""
+        return await self._async_read(
+            lambda repository: repository.async_get_icon_by_domain(domain)
+        )
+
+    async def async_get_statistic_by_domain(self, domain: str) -> Any:
+        """异步按域名查询站点统计。"""
+        return await self._async_read(
+            lambda repository: repository.async_get_statistic_by_domain(domain)
+        )
+
+    async def async_list_statistics(self) -> list[Any]:
+        """异步查询全部站点统计。"""
+        return await self._async_read(
+            lambda repository: repository.async_list_statistics()
         )
 
     def update(self, site_id: int, payload: dict[str, Any]) -> Any:

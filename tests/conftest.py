@@ -238,7 +238,7 @@ def configure_plugin_system_services():
         module_dispatcher_factory=ModuleInvocationDispatcher,
         configuration=build_chain_runtime_config(settings),
     ))
-    configure_site_query_service(SiteQueryService(repository=SiteOper()))
+    configure_site_query_service(SiteQueryService(repository=site_repository()))
     configure_site_health_service(SiteHealthService(repository=site_repository()))
     configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
     from app.db.oper.agenttask import AgentTaskOper

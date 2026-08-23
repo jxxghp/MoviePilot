@@ -723,7 +723,10 @@ async def init_modules() -> HostRuntime:
     )
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
     configure_transfer_history_provider(lambda: TransferHistoryOper())
-    configure_site_query_service(SiteQueryService(repository=SiteOper()))
+    configure_site_query_service(SiteQueryService(repository=TransactionalSiteRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )))
     configure_site_health_service(SiteHealthService(repository=TransactionalSiteRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
