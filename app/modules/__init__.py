@@ -202,9 +202,18 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         """
         获取默认服务配置的名称
 
-        :return: 默认第一个配置的名称
+        优先返回被显式标记为默认的配置。只有在没有任何配置带标记时，才退回到第一个配置——
+        配置的先后来自读取顺序，用户既看不见也控制不了，删掉一个配置会让「默认」静默改指
+        另一个，因此它只能作为无标记时的兜底，不能盖过用户的显式选择。
+
+        :return: 默认配置的名称，无配置时为 None
         """
-        # 默认使用第一个配置的名称
+        marked = next(
+            (conf for conf in self._configs.values() if getattr(conf, "default", False)),
+            None,
+        )
+        if marked:
+            return marked.name
         first_conf = next(iter(self._configs.values()), None)
         return first_conf.name if first_conf else None
 
