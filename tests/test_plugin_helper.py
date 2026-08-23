@@ -196,7 +196,10 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
     monkeypatch.setattr(helper, "_PluginHelper__async_install_dependencies_if_required", fake_dependencies)
     monkeypatch.setattr(helper, "_PluginHelper__async_install_from_release", fake_release)
     monkeypatch.setattr(helper, "_PluginHelper__prepare_content_via_filelist_async", fake_filelist)
-    monkeypatch.setattr("app.adapters.external.market.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr(
+        "app.adapters.external.market._await_thread_operation",
+        fake_to_thread,
+    )
     return calls
 
 

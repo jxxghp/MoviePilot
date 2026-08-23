@@ -6,7 +6,18 @@ import threading
 import pytest
 from anyio.to_thread import current_default_thread_limiter
 
+from app.adapters.external import market as market_adapter
+from app.adapters.system.plugin import package as plugin_package_adapter
 from app.runtime.execution import run_in_threadpool_to_completion
+
+
+def test_plugin_file_adapters_share_runtime_completion_contract() -> None:
+    """市场与插件包适配器不得各自维护另一套线程取消实现。"""
+    assert market_adapter._await_thread_operation is run_in_threadpool_to_completion
+    assert (
+        plugin_package_adapter._await_thread_operation
+        is run_in_threadpool_to_completion
+    )
 
 
 @pytest.mark.asyncio

@@ -44,6 +44,9 @@ from app.adapters.system.plugin.manifest import (
 )
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
+from app.runtime.execution import (
+    run_in_threadpool_to_completion as _await_thread_operation,
+)
 from app.runtime.tasks import get_task_registry
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import WeakSingleton
@@ -81,20 +84,6 @@ def _empty_installed_plugins() -> List[str]:
 
 
 _installed_plugins_provider: InstalledPluginsProvider = _empty_installed_plugins
-
-
-async def _await_thread_operation(func, *args, **kwargs):
-    """取消请求到达时先等待同步插件操作收口，避免目录写入继续进行。"""
-    task = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        try:
-            await asyncio.shield(task)
-        except BaseException:
-            pass
-        raise
-
 
 def configure_installed_plugins_provider(
     provider: InstalledPluginsProvider,

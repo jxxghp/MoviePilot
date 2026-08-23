@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6529,
-  "edge_sha256": "daf8459c6194e28766d62c5f16a0e1bb64caf3f3430f51736b57da505e4401e1",
+  "edge_count": 6531,
+  "edge_sha256": "86b2ad0b585deba78c5e0e5e7e4b55cd66e05a2d5e988ed28ac7f6a4ae15ff2f",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -62,6 +62,7 @@
     "app.adapters.external.market -> app.foundation.version",
     "app.adapters.external.market -> app.runtime",
     "app.adapters.external.market -> app.runtime.cache",
+    "app.adapters.external.market -> app.runtime.execution",
     "app.adapters.external.market -> app.runtime.log",
     "app.adapters.external.market -> app.runtime.observability",
     "app.adapters.external.market -> app.runtime.settings",
@@ -145,6 +146,7 @@
     "app.adapters.system.plugin.package -> app.adapters.external",
     "app.adapters.system.plugin.package -> app.adapters.external.market",
     "app.adapters.system.plugin.package -> app.runtime",
+    "app.adapters.system.plugin.package -> app.runtime.execution",
     "app.adapters.system.plugin.package -> app.runtime.log",
     "app.adapters.system.plugin.package -> app.runtime.settings",
     "app.adapters.system.resource -> app.adapters",

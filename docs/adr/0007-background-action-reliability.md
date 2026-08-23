@@ -95,6 +95,14 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 - Scheduler 的协程作业与异步进度收尾由 Scheduler 自有句柄表持有；同步 `start()` / `stop()` ABI 保持，
   生命周期关闭入口等待目标事件循环确认真实收尾，跨线程取消代理不作为任务完成凭据。
 
+### Plugin package mutations
+
+- 插件快照、安装、回滚和持久备份刷新中的同步文件操作属于 E3 步骤；取消只能延迟传播到同步 worker
+  到达终态后，不能让文件仍在写入时释放插件 mutation owner。
+- 市场适配器和插件包适配器统一复用 `runtime.execution.run_in_threadpool_to_completion`；两个模块内的
+  `_await_thread_operation` 私有接缝保留为同一函数别名，不改变 `PluginHelper` 或 `PluginPackageManager`
+  的同步/异步调用合同。
+
 ### Transfer pending / 文件整理
 
 - transfer pending、队列任务和实际文件移动：E3。完成点是文件步骤、历史状态和必要清理均达到一致终态。
