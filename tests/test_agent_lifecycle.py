@@ -15,6 +15,7 @@ from app.agent.orchestrator import (
     AgentManagerUnavailableError,
 )
 from app.agent.memory import MemoryManager
+from app.agent.tools.base import reopen_blocking_executors
 from app.startup.initializers import agent as agent_initializer
 from app.startup.initializers import modules as modules_initializer
 
@@ -144,11 +145,14 @@ async def test_agent_entrypoint_reuses_tasks_and_closes_idempotently(
     assert manager._idle_cleanup_task is idle_cleanup_task
     assert memory_manager.cleanup_task is memory_cleanup_task
 
-    await agent_initializer.stop_agent()
-    await agent_initializer.stop_agent()
-    assert initializer._initialized is False
-    assert manager._idle_cleanup_task is None
-    assert memory_manager.cleanup_task is None
+    try:
+        await agent_initializer.stop_agent()
+        await agent_initializer.stop_agent()
+        assert initializer._initialized is False
+        assert manager._idle_cleanup_task is None
+        assert memory_manager.cleanup_task is None
+    finally:
+        assert reopen_blocking_executors() is True
 
 
 @pytest.mark.anyio

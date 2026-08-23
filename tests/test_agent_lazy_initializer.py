@@ -319,15 +319,22 @@ async def test_stop_retains_running_blocking_tool_until_retry(monkeypatch) -> No
     started = threading.Event()
     release = threading.Event()
 
+    assert reopen_blocking_executors() is True
+
     def _blocking_call() -> str:
         started.set()
         release.wait()
         return "done"
 
+    async def _wait_until_started() -> None:
+        """等待阻塞工具线程启动，避免把永久等待任务留在默认线程池。"""
+        while not started.is_set():
+            await asyncio.sleep(0)
+
     worker = asyncio.create_task(
         MoviePilotTool.run_blocking("web", _blocking_call)
     )
-    assert await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    await asyncio.wait_for(_wait_until_started(), timeout=1)
     monkeypatch.setattr(
         agent_initializer,
         "begin_agent_shutdown",

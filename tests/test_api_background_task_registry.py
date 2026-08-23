@@ -189,7 +189,7 @@ def test_seerr_subscribe_uses_task_registry(monkeypatch) -> None:
 
 
 def test_manual_subscription_search_uses_task_registry() -> None:
-    """手工订阅搜索命令应以稳定 owner 提交历史兼容的调度参数。"""
+    """手工订阅搜索命令应以稳定 owner 提交顺序搜索批次。"""
     registry = _TaskRegistry()
     repository = object()
     runtime = SimpleNamespace(
@@ -207,15 +207,10 @@ def test_manual_subscription_search_uses_task_registry() -> None:
 
     function, args, kwargs, owner = registry.calls[0]
     assert found is True
-    assert function is subscription_dependencies.start_scheduler_job
-    assert args == ()
-    assert kwargs == {
-        "job_id": "subscribe_search",
-        "sid": None,
-        "state": "R",
-        "manual": True,
-    }
-    assert owner == "api.subscription.search_schedule"
+    assert function is subscription_dependencies._start_subscription_search_batch
+    assert args == (None, "R")
+    assert kwargs == {}
+    assert owner == "api.subscribe.search"
 
 
 def test_history_ai_redo_uses_task_registry() -> None:
