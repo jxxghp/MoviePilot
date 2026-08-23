@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6434,
-  "edge_sha256": "5c47cae41f5d90e1030757d0cb47db8eed373424dda5db17c900271e1d03a9c8",
+  "edge_count": 6435,
+  "edge_sha256": "ed079837faf943d744ba7c6dee9172449bc204a2068a89db75e030e0be12fbb2",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -5979,6 +5979,7 @@
     "app.startup.context -> app.application.subscription.delete",
     "app.startup.context -> app.application.subscription.identity",
     "app.startup.context -> app.application.subscription.mutation",
+    "app.startup.context -> app.application.workflow",
     "app.startup.database -> app.adapters",
     "app.startup.database -> app.adapters.system",
     "app.startup.database -> app.adapters.system.backup",

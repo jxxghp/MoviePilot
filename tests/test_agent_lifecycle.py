@@ -139,7 +139,10 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
     monkeypatch.setattr(modules_initializer, "check_auth", check_auth)
 
     try:
-        await modules_initializer.init_modules()
+        runtime = await modules_initializer.init_modules()
+        assert runtime.workflow.system_config() is (
+            modules_initializer.get_configured_system_config()
+        )
     finally:
         await modules_initializer.stop_database_worker()
 

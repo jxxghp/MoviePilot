@@ -192,7 +192,7 @@ def _definition_command(*, existing=None, commit_error=None, report_fork=None):
         "repository": repository,
         "unit_of_work": unit_of_work,
         "stop_running": Mock(),
-        "delete_cache": Mock(),
+        "async_delete_cache": AsyncMock(),
         "report_fork": report_fork or AsyncMock(),
     }
     return WorkflowDefinitionCommand(**dependencies), dependencies
@@ -279,7 +279,7 @@ async def test_reset_commit_failure_does_not_stop_runtime_or_delete_cache():
 
     dependencies["unit_of_work"].rollback.assert_awaited_once_with()
     dependencies["stop_running"].assert_not_called()
-    dependencies["delete_cache"].assert_not_called()
+    dependencies["async_delete_cache"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -289,9 +289,13 @@ async def test_reset_commits_before_runtime_cleanup():
     command, dependencies = _definition_command(existing=_workflow())
     dependencies["unit_of_work"].commit.side_effect = lambda: calls.append("commit")
     dependencies["stop_running"].side_effect = lambda _id: calls.append("stop")
-    dependencies["delete_cache"].side_effect = lambda _id: calls.append("cache")
+    async def delete_cache(_id):
+        calls.append("cache")
+
+    dependencies["async_delete_cache"].side_effect = delete_cache
 
     result = await command.reset(7)
 
     assert result.success is True
     assert calls == ["commit", "stop", "cache"]
+    dependencies["async_delete_cache"].assert_awaited_once_with(7)

@@ -1,6 +1,6 @@
 """宿主启动阶段构建的类型化运行时上下文。"""
 
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Generator
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -16,6 +16,7 @@ from app.application.subscription.mutation import (
     SubscriptionHistoryMutationRepository,
     SubscriptionMutationRepository,
 )
+from app.application.workflow import WorkflowCachePort
 
 
 class AgentChatRepositoryFactory(Protocol):
@@ -162,7 +163,7 @@ class WorkflowRuntime:
     """工作流定义、状态与缓存操作所需的数据工厂。"""
 
     repository: RepositoryFactory
-    system_config: StandaloneRepositoryFactory
+    system_config: Callable[[], WorkflowCachePort]
 
 
 @dataclass(frozen=True, slots=True)
