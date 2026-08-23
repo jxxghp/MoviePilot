@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6546,
-  "edge_sha256": "64bd673bda7224d371b91e229d23eeea6ac14655301357a209dff510e30e151b",
+  "edge_count": 6549,
+  "edge_sha256": "280799d1a7d3a993096834b5e0f961fcc82319d437b4d5f568c78d8a7bfa07a2",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2699,6 +2699,8 @@
     "app.application.notification -> app.schemas",
     "app.application.notification -> app.schemas.system",
     "app.application.notification -> app.schemas.types",
+    "app.application.outbox -> app.schemas",
+    "app.application.outbox -> app.schemas.types",
     "app.application.plugin.config -> app.schemas",
     "app.application.plugin.config -> app.schemas.exception",
     "app.application.plugin.folders -> app.application",
@@ -3432,6 +3434,7 @@
     "app.chain.transfer -> app.application.directory",
     "app.chain.transfer -> app.application.formatting",
     "app.chain.transfer -> app.application.history",
+    "app.chain.transfer -> app.application.outbox",
     "app.chain.transfer -> app.application.transfer",
     "app.chain.transfer -> app.chain",
     "app.chain.transfer -> app.chain._transfer",

@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner；阶段 28 已托管旧插件订阅统计线程；阶段 29 已统一 Emby 系条目转换并清零重复代码白名单；阶段 30 已收口插件市场请求级子任务；阶段 31 已托管搜索 AI 推荐任务；阶段 32 已清除事件调度器绕过生命周期 owner 的投递回退；阶段 33 已统一宿主 Agent 运行时的获取路径。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner；阶段 28 已托管旧插件订阅统计线程；阶段 29 已统一 Emby 系条目转换并清零重复代码白名单；阶段 30 已收口插件市场请求级子任务；阶段 31 已托管搜索 AI 推荐任务；阶段 32 已清除事件调度器绕过生命周期 owner 的投递回退；阶段 33 已统一宿主 Agent 运行时的获取路径；阶段 34 已统一 durable-required 事件与 Outbox topic 事实源。
 
 ## 当前复核结论（2026-08-24）
 
@@ -354,13 +354,27 @@
 - 依赖边集合按新门面路径刷新，模块数仍为 `806`、内部边仍为 `6546`；12 组禁止边
   与唯一隔离 TMDB SCC 均未变化。
 
+### 长期整改阶段 34：durable-required 事件事实源收口（2026-08-24）
+
+- 当前 Event Contract 将订阅新增/修改/删除、下载添加、整理成功/失败六个事件标为
+  `durable_required`；它们的宿主正式生产者早已与业务写入同事务暂存 Outbox intent，但 topic
+  字符串在订阅、Chain adapter 和 startup dispatcher 中分散重复，当前复核结论仍误写成六个事件待实现。
+- `DURABLE_EVENT_TOPICS` 现在是六个 EventType 与版本化 topic 的单一映射；订阅命令、下载/整理
+  writer 和恢复 dispatcher 共用该映射，不再各自维护同义字符串。启动恢复器也会拒绝缺失任一
+  durable topic handler 的配置。
+- 事件契约测试保证全部 `durable_required` 事件与 topic 键集合一致、topic 不重复，并冻结恢复
+  handler 完整性。原 topic、payload、幂等键、at-least-once 语义、无 writer 的测试/嵌入式兼容分支
+  以及插件 SDK/Compat 均未修改；第三方插件自行写库或发事件仍不在宿主事务边界内。
+- 单一映射新增 `app.application.outbox -> app.schemas.types` 与 `app.chain.transfer -> app.application.outbox`
+  语义边，模块仍为 `806`、内部边为 `6549`；12 组禁止边与唯一隔离 TMDB SCC 均未变化。
+
 ### 总体判断
 
 当前架构总体合理，已经从跨层混合的遗留单体收敛为**边界清晰的模块化单体**：
 
 - 继续采用单进程控制面是正确选择，不建议现在拆成微服务；插件、调度器、工作流、事件和数据库共享进程内状态，拆分会放大部署、事务和兼容成本。
 - `foundation/domain/runtime/adapters/application/chain/api/startup` 的职责方向基本成立；宿主架构基线、复杂度 ratchet、异步阻塞 ratchet 当前均通过。
-- 依赖图当前为 `806` 个 Python 模块、`6546` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
+- 依赖图当前为 `806` 个 Python 模块、`6549` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
 - 当前主要风险已经从“目录和依赖失控”转移到运行时协议、后台副作用的可靠性和遗留兼容面。换言之，下一阶段重点应是**语义收口和可验证性**，而不是继续搬文件或机械拆大文件。
 
 综合评价：架构方向可持续，生产可用性较高；可演进性仍处于中等水平。现阶段没有静态审计发现必须立即推倒重来的 P0 架构问题，但存在需要按 P1/P2 计划治理的真实债务。
@@ -471,8 +485,8 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 2. **V3 部署拓扑边界已完成。**全功能模式在 startup、launcher 和 Doctor 共同拒绝 `API_WORKERS > 1`，生产入口固定单 worker；开发 reload/监督模式使用 `app.factory:create_app` import-string factory，不再把 app 实例交给多进程 supervisor。旧配置键继续可解析，未来只有拆出 control role 后才重新评估全功能多 worker。
 3. **事务所有权已完成装饰器层收口，但 ORM 对象跨层流转仍需治理。**正式 Model 查询/写装饰器均已清零，宿主 Oper 查询统一接收显式 Session；调用方仍需继续明确 ORM 对象生命周期、懒加载和业务提交后副作用边界。
 4. **组合根之后仍存在全局服务定位，但配置和 API 数据主路径已收口。**canonical 未批准 Settings 导入与非组合根 `SystemConfigOper()` 构造均为 `0`；数据库基础设施 3 处和 startup 唯一构造点作为不可扩张边界登记。正式 FastAPI 依赖只读取 AppState `HostRuntime` 的命名领域，字符串 API 数据注册表仅允许 startup 注入和旧 Facade 转发；后续对象是 Singleton 与模块级 `configure/get` provider，不应再迁移已类型化 API 依赖。
-5. **模块与事件契约登记均已完成。**当前 212 个模块 spec 的宿主观察面已无 legacy aggregation，53 个事件全部绑定 typed payload，可见性、投递等级、错误行为和敏感字段均有基线，legacy event payload 为 `0`。后续重点是保持新增能力 ratchet、观察未知第三方 fallback 命中，以及 6 个 durable-required 事件的真实持久投递，不是重复创建契约或事件 DTO。
-6. **后台副作用缺少统一可靠性定义。**事件队列、APScheduler、FastAPI BackgroundTasks 和线程池任务的丢失、重试、幂等、关停语义各不相同；数据库提交与事件/上报之间仍有进程崩溃窗口。
+5. **模块与事件契约登记均已完成。**当前 212 个模块 spec 的宿主观察面已无 legacy aggregation，53 个事件全部绑定 typed payload，可见性、投递等级、错误行为和敏感字段均有基线，legacy event payload 为 `0`。六个 durable-required 事件的宿主正式生产者已通过业务同事务 Outbox 提供真实持久投递，事件与 topic 映射及恢复 handler 完整性已纳入 ratchet。后续重点是保持新增能力门禁和观察未知第三方 fallback 命中，不是重复创建契约、DTO 或 Outbox。
+6. **后台副作用已有统一可靠性分类，但其他 E1/E3 机制仍需逐项收口。** ADR-0007 已分类事件队列、APScheduler、进程内任务、Agent task 与 transfer pending 的完成点、恢复和失败表达；不能因六个关键事件已接 Outbox，就把仍需定时重建、持久任务表或人工恢复的其他 E1/E3 机制误报为全部完成。
 7. **核心关联与健康边界已落地，指标导出仍未收口。**HTTP/SSE correlation ID 已传播到线程池、事件、工作流、子进程、外部请求和日志；`/health/live`、`/health/ready` 已由部署入口消费，事件/数据库队列深度及模块/事件耗时使用低基数指标登记。当前缺口是稳定 exporter、运维查询面和跨进程聚合，而不是重新实现 request ID 或健康路由。
 8. **质量门禁已具备增量硬约束，但覆盖面仍需扩大。**push/PR 对变更 Python 文件执行 Pylint，CI 同时运行 host architecture、39 个 strict mypy 文件、复杂度、async 阻塞和 task owner ratchet；全仓 Pylint 仍是 advisory，strict 类型和复杂度拆分仍应随业务切片渐进扩展。
 

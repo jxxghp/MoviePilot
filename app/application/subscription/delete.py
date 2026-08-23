@@ -12,6 +12,7 @@ from app.application.outbox import (
     OutboxIntent,
     SyncOutboxTransaction,
     SyncUnitOfWork,
+    SUBSCRIBE_DELETED_TOPIC,
 )
 from app.schemas.event import SubscribeDeletedEventData
 
@@ -251,7 +252,7 @@ def _build_deletion_effects(
         report_payload=report_payload,
         event_intent=OutboxIntent(
             event_key=event_key,
-            topic="subscribe.deleted",
+            topic=SUBSCRIBE_DELETED_TOPIC,
             payload=event_payload,
         ),
         report_intent=OutboxIntent(

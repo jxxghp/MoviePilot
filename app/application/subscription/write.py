@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Mapping, Optional, Protocol, Tuple
 
-from app.application.outbox import OutboxIntent
+from app.application.outbox import OutboxIntent, SUBSCRIBE_ADDED_TOPIC
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
@@ -243,7 +243,7 @@ def _subscribe_added_intents(
     intents: list[OutboxIntent] = [
         OutboxIntent(
             event_key=event_key,
-            topic="subscribe.added",
+            topic=SUBSCRIBE_ADDED_TOPIC,
             payload=event_payload,
         ),
     ]

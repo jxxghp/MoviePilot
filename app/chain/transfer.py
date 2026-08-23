@@ -36,6 +36,7 @@ from app.application.history import (add_transfer_fail, add_transfer_success,
                                      clear_transfer_failures, describe_history_gate,
                                      evaluate_history_gate, is_skip_action,
                                      record_transfer_failure)
+from app.application.outbox import TRANSFER_COMPLETED_TOPIC, TRANSFER_FAILED_TOPIC
 from app.runtime.log import logger
 from app.schemas.event import StorageOperSelectionEventData
 from app.schemas.transfer import TransferInfo
@@ -456,7 +457,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 if durable_transfer_failed:
                     event_payload = self._transfer_result_payload(task, transferinfo)
                     history = self.durable_event_writer.transfer_result(
-                        topic="transfer.failed",
+                        topic=TRANSFER_FAILED_TOPIC,
                         stage_history=lambda writer: add_transfer_fail(
                             fileitem=task.fileitem,
                             mode=transferinfo.transfer_type if transferinfo else "",
@@ -569,7 +570,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             if durable_transfer_complete:
                 event_payload = self._transfer_result_payload(task, transferinfo)
                 history = self.durable_event_writer.transfer_result(
-                    topic="transfer.completed",
+                    topic=TRANSFER_COMPLETED_TOPIC,
                     stage_history=lambda writer: add_transfer_success(
                         fileitem=task.fileitem,
                         mode=transferinfo.transfer_type if transferinfo else "",
