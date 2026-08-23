@@ -190,6 +190,13 @@ _METHOD_CONTRACTS = {
     "music_fresh_releases": ModuleMethodContract(family="music", input_contract="MusicFreshReleasesRequest", result_contract="list[MusicInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("days", "sort", "past", "future", "offset", "count")),
     "music_lyrics": ModuleMethodContract(family="music", input_contract="MusicLyricsRequest", result_contract="MusicLyrics | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("music",)),
     "search_music": ModuleMethodContract(family="music", input_contract="MusicSearchRequest", result_contract="list[MusicInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("meta", "limit", "media_source")),
+    "channel_manage": ModuleMethodContract(family="messaging", input_contract="ChannelManageRequest", result_contract="dict[str, Any] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("channel", "action")),
+    "delete_message": ModuleMethodContract(family="messaging", input_contract="MessageDeleteRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("channel", "source", "message_id", "chat_id")),
+    "edit_message": ModuleMethodContract(family="messaging", input_contract="MessageEditRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("channel", "source", "message_id", "chat_id", "text", "title", "buttons", "metadata")),
+    "mark_message_processing_started": ModuleMethodContract(family="messaging", input_contract="MessageProcessingStartRequest", result_contract="dict[str, Any] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("channel", "source", "userid", "message_id", "chat_id", "text")),
+    "mark_message_processing_finished": ModuleMethodContract(family="messaging", input_contract="MessageProcessingFinishRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("channel", "source", "userid", "message_id", "chat_id", "status")),
+    "message_parser": ModuleMethodContract(family="messaging", input_contract="MessageParseRequest", result_contract="IncomingMessage | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("source", "body", "form", "args")),
+    "send_direct_message": ModuleMethodContract(family="messaging", input_contract="DirectMessageSendRequest", result_contract="MessageResponse | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("message",)),
     "send_message": ModuleMethodContract(family="messaging", input_contract="MessageSendRequest", result_contract="Message | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY),
     "finalize_message": ModuleMethodContract(family="messaging", input_contract="MessageFinalizeRequest", result_contract="Message | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("response",)),
     "register_commands": ModuleMethodContract(family="messaging", input_contract="CommandRegistrationRequest", result_contract="None", required_parameters=("commands",)),
@@ -210,6 +217,7 @@ _METHOD_CONTRACTS = {
     "download_wechat_media_bytes": ModuleMethodContract(family="messaging", input_contract="MessageMediaDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("media_ref", "source")),
     "downloader_info": ModuleMethodContract(family="downloader", input_contract="DownloaderInfoRequest", result_contract="list[DownloaderInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("downloader",)),
     "list_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentListRequest", result_contract="list[DownloaderTorrent]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("status", "hashs", "downloader", "include_all_tags")),
+    "refresh_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentRefreshRequest", result_contract="list[TorrentInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("site", "keyword", "cat", "page", "mtype")),
     "torrent_files": ModuleMethodContract(family="downloader", input_contract="TorrentFilesRequest", result_contract="DownloaderFileCollection | None", required_parameters=("tid", "downloader")),
     "get_torrent_trackers": ModuleMethodContract(family="downloader", input_contract="TorrentTrackersRequest", result_contract="dict[str, list[str]] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.ORDERED_MAPPING_MERGE, required_parameters=("hash_string", "downloader")),
     "download": ModuleMethodContract(family="downloader", input_contract="DownloadTaskRequest", result_contract="DownloadTaskResult | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("content", "download_dir", "cookie", "episodes", "category", "label", "downloader")),
@@ -218,6 +226,8 @@ _METHOD_CONTRACTS = {
     "start_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentControlRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hashs", "downloader")),
     "stop_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentControlRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hashs", "downloader")),
     "update_torrent": ModuleMethodContract(family="downloader", input_contract="TorrentUpdateRequest", result_contract="dict[str, bool] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hash_string", "downloader", "download_limit", "upload_limit", "tracker_list", "save_path", "category", "ratio_limit", "seeding_time_limit")),
+    "tmdb_cache_items": ModuleMethodContract(family="tmdb", input_contract="TmdbCacheListRequest", result_contract="list[dict[str, Any]]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE),
+    "tmdb_cache_delete": ModuleMethodContract(family="tmdb", input_contract="TmdbCacheDeleteRequest", result_contract="dict[str, Any] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("cache_key",)),
 }
 
 # 同一能力的同步/异步入口共享不可变契约对象，避免参数和聚合语义各自漂移。
@@ -276,6 +286,7 @@ _METHOD_CONTRACTS.update({
     "async_tmdb_tv_similar": _METHOD_CONTRACTS["tmdb_tv_similar"],
     "async_identify_music_by_fingerprint": _METHOD_CONTRACTS["identify_music_by_fingerprint"],
     "async_match_music_album": _METHOD_CONTRACTS["match_music_album"],
+    "async_refresh_torrents": _METHOD_CONTRACTS["refresh_torrents"],
 })
 
 _PREFIX_CONTRACTS = (

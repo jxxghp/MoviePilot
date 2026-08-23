@@ -150,6 +150,43 @@ def test_message_attachment_contracts_use_messaging_family() -> None:
         assert contract.required_parameters == parameters
 
 
+def test_message_route_contracts_use_first_matching_provider() -> None:
+    """消息路由能力应保留渠道筛选语义，并停止依赖 legacy 结果接力。"""
+    expected_shapes = {
+        "channel_manage": ModuleResultShape.MAPPING,
+        "delete_message": ModuleResultShape.BOOLEAN,
+        "edit_message": ModuleResultShape.BOOLEAN,
+        "mark_message_processing_started": ModuleResultShape.MAPPING,
+        "mark_message_processing_finished": ModuleResultShape.BOOLEAN,
+        "message_parser": ModuleResultShape.ANY,
+        "send_direct_message": ModuleResultShape.ANY,
+    }
+
+    for method, result_shape in expected_shapes.items():
+        contract = get_module_method_contract(method)
+        assert contract.family == "messaging"
+        assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+        assert contract.result_shape is result_shape
+        assert contract.required_parameters
+
+
+def test_refresh_and_tmdb_cache_contracts_match_host_result_shapes() -> None:
+    """刷新种子与 TMDB 缓存入口应声明列表合并或目标值路由语义。"""
+    refresh = get_module_method_contract("refresh_torrents")
+    async_refresh = get_module_method_contract("async_refresh_torrents")
+    cache_items = get_module_method_contract("tmdb_cache_items")
+    cache_delete = get_module_method_contract("tmdb_cache_delete")
+
+    assert refresh is async_refresh
+    assert refresh.family == "downloader"
+    assert refresh.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+    assert refresh.result_shape is ModuleResultShape.LIST
+    assert cache_items.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+    assert cache_items.result_shape is ModuleResultShape.LIST
+    assert cache_delete.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
+    assert cache_delete.result_shape is ModuleResultShape.MAPPING
+
+
 def test_downloader_query_contracts_merge_provider_lists() -> None:
     """下载器查询能力应显式合并各 provider 的有序列表结果。"""
     for method in ("list_torrents", "downloader_info"):
