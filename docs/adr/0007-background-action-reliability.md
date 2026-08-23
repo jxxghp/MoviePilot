@@ -93,7 +93,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   `module.imdb.cache_clear`；同步调用方式和无运行事件循环时的立即清理行为保持不变，宿主关停后不再
   接受新的清理任务。
 - Scheduler 的协程作业与异步进度收尾由 Scheduler 自有句柄表持有；同步 `start()` / `stop()` ABI 保持，
-  生命周期关闭入口等待目标事件循环确认真实收尾，跨线程取消代理不作为任务完成凭据。
+  生命周期关闭入口等待目标事件循环确认真实收尾，跨线程取消代理不作为任务完成凭据。内部事件循环提交
+  必须携带 `job_id` owner，当前循环和跨线程路径均登记句柄，不保留 fire-and-forget 分支。
 
 ### Plugin package mutations
 

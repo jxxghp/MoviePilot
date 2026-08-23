@@ -1333,7 +1333,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             self,
             coro: Any,
             *,
-            job_id: Optional[str] = None,
+            job_id: str,
             generation: int = 0,
             on_unstarted_cancel: Optional[Callable[[], None]] = None,
     ) -> bool:
@@ -1343,7 +1343,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         - 仅调用方循环可用：在当前循环排队为独立任务
         - 无运行中循环（测试/CLI）：新建循环同步执行，确保进度不丢失
 
-        带有 job 标识的句柄由 Scheduler 自己持有，关闭时可以取消并等待。
+        job 标识是所有权键；所有句柄都由 Scheduler 持有，关闭时可以取消并等待。
         """
         try:
             running_loop = asyncio.get_running_loop()
@@ -1356,42 +1356,34 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             and not target_loop.is_closed()
         )
         if running_loop and (not target_loop_available or running_loop is target_loop):
-            if job_id is not None:
-                with self._lock:
-                    if not self._accepts_handle(job_id, generation):
-                        coro.close()
-                        return False
-                    handle = running_loop.create_task(coro)
-                    registered = self._register_handle(
-                        job_id=job_id,
-                        generation=generation,
-                        loop=running_loop,
-                        handle=handle,
-                    )
-                    if on_unstarted_cancel:
-                        handle.add_done_callback(
-                            lambda submitted: (
-                                on_unstarted_cancel()
-                                if submitted.cancelled()
-                                else None
-                            )
-                        )
-                    return registered
-            else:
-                running_loop.create_task(coro)
-                return True
-        elif target_loop_available:
-            if job_id is not None:
-                return self._submit_cross_thread(
-                    coro,
-                    target_loop=target_loop,
+            with self._lock:
+                if not self._accepts_handle(job_id, generation):
+                    coro.close()
+                    return False
+                handle = running_loop.create_task(coro)
+                registered = self._register_handle(
                     job_id=job_id,
                     generation=generation,
-                    on_unstarted_cancel=on_unstarted_cancel,
+                    loop=running_loop,
+                    handle=handle,
                 )
-            else:
-                asyncio.run_coroutine_threadsafe(coro, target_loop)
-                return True
+                if on_unstarted_cancel:
+                    handle.add_done_callback(
+                        lambda submitted: (
+                            on_unstarted_cancel()
+                            if submitted.cancelled()
+                            else None
+                        )
+                    )
+                return registered
+        elif target_loop_available:
+            return self._submit_cross_thread(
+                coro,
+                target_loop=target_loop,
+                job_id=job_id,
+                generation=generation,
+                on_unstarted_cancel=on_unstarted_cancel,
+            )
         elif self._lifecycle_state in {"stopping", "stopped"}:
             coro.close()
             return False
