@@ -613,6 +613,29 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             "search_torrents", site=site, keyword=keyword, mtype=mtype, page=page
         )
 
+    def search_plugin_torrents(
+            self,
+            keyword: str,
+            mtype: Optional[MediaType] = None,
+            page: Optional[int] = 0,
+    ) -> List[TorrentInfo]:
+        """仅搜索插件提供的资源源，避免依赖或重复绑定站点索引器。"""
+        return self._module_dispatcher.execute_plugin_modules(
+            "search_torrents", None, site={}, keyword=keyword, mtype=mtype, page=page
+        ) or []
+
+    def search_site_torrents(
+            self,
+            site: dict,
+            keyword: str,
+            mtype: Optional[MediaType] = None,
+            page: Optional[int] = 0,
+    ) -> List[TorrentInfo]:
+        """仅搜索指定站点索引器；插件资源源由搜索链统一调用一次。"""
+        return self._module_dispatcher.execute_system_modules(
+            "search_torrents", None, site=site, keyword=keyword, mtype=mtype, page=page
+        ) or []
+
     def search_subtitles(
             self,
             site: dict,
@@ -648,6 +671,31 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         return await self.async_run_module(
             "async_search_torrents", site=site, keyword=keyword, mtype=mtype, page=page
         )
+
+    async def async_search_plugin_torrents(
+            self,
+            keyword: str,
+            mtype: Optional[MediaType] = None,
+            page: Optional[int] = 0,
+    ) -> List[TorrentInfo]:
+        """异步搜索插件提供的资源源。"""
+        return await self._module_dispatcher.async_execute_plugin_modules(
+            "async_search_torrents", None,
+            site={}, keyword=keyword, mtype=mtype, page=page
+        ) or []
+
+    async def async_search_site_torrents(
+            self,
+            site: dict,
+            keyword: str,
+            mtype: Optional[MediaType] = None,
+            page: Optional[int] = 0,
+    ) -> List[TorrentInfo]:
+        """异步搜索指定站点索引器。"""
+        return await self._module_dispatcher.async_execute_system_modules(
+            "async_search_torrents", None,
+            site=site, keyword=keyword, mtype=mtype, page=page
+        ) or []
 
     async def async_search_subtitles(
             self,
