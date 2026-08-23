@@ -148,10 +148,8 @@ async def sync_plugins() -> bool:
         plugin_manager.set_plugin_settling(True)
 
         sync_result = await execute_task(loop, plugin_manager.sync, "插件同步到本地")
-        dependency_result = await execute_task(
-            loop,
-            plugin_manager.install_plugin_missing_dependencies_with_status,
-            "缺失依赖项安装",
+        dependency_result = await (
+            plugin_manager.async_install_plugin_missing_dependencies_with_status()
         )
         if dependency_result is None:
             return False

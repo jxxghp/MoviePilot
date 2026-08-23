@@ -25,6 +25,7 @@ except Exception:
     pass
 
 from app.chain.system import SystemChain
+from app.application.plugin.lifecycle import plugin_lifecycle
 from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.config import global_vars
 from app.runtime.settings import RuntimeSettingsCompat
@@ -77,13 +78,14 @@ async def init_extra():
         return
     plugin_manager = get_plugin_manager()
     try:
-        if await sync_plugins():
-            await execute_task(
-                global_vars.loop,
-                init_plugin_scheduler,
-                "插件定时服务刷新",
-            )
-            await asyncio.wrap_future(restart_command())
+        async with plugin_lifecycle.hold_startup():
+            if await sync_plugins():
+                await execute_task(
+                    global_vars.loop,
+                    init_plugin_scheduler,
+                    "插件定时服务刷新",
+                )
+                await asyncio.wrap_future(restart_command())
     finally:
         plugin_manager.set_plugin_settling(False)
         plugin_manager.start_monitor()

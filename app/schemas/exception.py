@@ -1,3 +1,14 @@
+__all__ = (
+    "ImmediateException",
+    "LimitException",
+    "APIRateLimitException",
+    "RateLimitExceededException",
+    "OperationInterrupted",
+    "StorageQueryError",
+    "TMDbException",
+)
+
+
 class ImmediateException(Exception):
     """
     用于立即抛出异常而不重试的特殊异常类。
@@ -45,6 +56,14 @@ class StorageQueryError(Exception):
     调用方不应把该状态当作文件不存在处理。
     """
     pass
+
+
+class DatabaseWorkerClosedError(RuntimeError):
+    """数据库执行器尚未启动或已经停止。"""
+
+
+class DatabaseWorkerOverloadedError(RuntimeError):
+    """数据库执行器的运行与排队容量已经用尽。"""
 
 
 class TMDbException(Exception):

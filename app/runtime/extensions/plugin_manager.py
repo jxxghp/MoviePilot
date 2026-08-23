@@ -603,6 +603,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             log=logger,
         ).install_missing_with_status()
 
+    @staticmethod
+    async def async_install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
+        """在异步启动链中恢复插件依赖并保留取消语义。"""
+        return await PluginDependencyService(
+            system=get_plugin_system,
+            log=logger,
+        ).async_install_missing_with_status()
+
     def classify_plugins(self) -> PluginDependencyClassification:
         """按源码依赖状态分类物理插件，并把结果映射到虚拟实例。"""
         source_classification = PluginDependencyService(

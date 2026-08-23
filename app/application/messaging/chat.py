@@ -10,10 +10,12 @@ from weakref import WeakValueDictionary
 
 from app.application.database import (
     AsyncDatabaseExecutor,
+)
+from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
+from app.schemas.exception import (
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
 )
-from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
 from app.runtime.observability import record_metric
 
 

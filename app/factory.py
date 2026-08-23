@@ -14,7 +14,7 @@ from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.adapters.web.health import install_health_routes
 from app.application.plugin.routes import configure_plugin_routes
-from app.application.database import (
+from app.schemas.exception import (
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
 )

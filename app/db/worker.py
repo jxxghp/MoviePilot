@@ -10,7 +10,7 @@ from contextvars import copy_context
 from dataclasses import dataclass
 from typing import Callable, TypeVar
 
-from app.application.database import (
+from app.schemas.exception import (
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
 )
