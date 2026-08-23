@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6528,
-  "edge_sha256": "2e30c775e78f578d804f69972ab1348e1e9d0872b00bdbfcffad08398fae68ac",
+  "edge_count": 6529,
+  "edge_sha256": "daf8459c6194e28766d62c5f16a0e1bb64caf3f3430f51736b57da505e4401e1",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -6183,6 +6183,7 @@
     "app.startup.initializers.modules -> app.application.security",
     "app.startup.initializers.modules -> app.application.security.auth",
     "app.startup.initializers.modules -> app.application.security.passkeys",
+    "app.startup.initializers.modules -> app.application.security.url",
     "app.startup.initializers.modules -> app.application.security.user",
     "app.startup.initializers.modules -> app.application.security.userconfig",
     "app.startup.initializers.modules -> app.application.server",

@@ -52,7 +52,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 
 - `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted`：订阅业务行 commit 是业务完成点；事件、
   通知和服务端上报必须由同事务 durable intent 驱动。ARCH-251 首选 `SubscribeAdded` pilot。
-- `DownloadAdded`：下载提交成功后，历史/通知不得仅依赖进程内回调；后续独立 pilot。
+- `DownloadAdded`：下载器确认接收后，下载历史与事件 intent 已在返回前原子提交；通知和模块后处理只在
+  commit 后启动，事件由 Outbox 恢复投递。
 - `TransferComplete`、`TransferFailed`：整理步骤本身属于 E3，但向事件消费者发布结果属于 E2。
 
 ## 非 Event 后台机制映射
@@ -66,6 +67,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 - Slack、Telegram、Discord、飞书、QQBot、企业微信与 WeChatClawBot 的渠道回环统一经
   `application.messaging.ingress` 进入同一个 API/TaskRegistry 主链；需要立即返回 SDK 回调的渠道把同步
   HTTP 交给宿主共享线程池，模块关闭后由线程池生命周期等待，不再创建逐消息 daemon 线程。
+- 图片代理安全日志的窗口聚合属于 E1 观测；`EventCoalescer` 持有到期 flush task，模块关闭会取消未到期
+  timer、刷新剩余摘要并等待已启动回调，不再把 `create_task` 留给事件循环隐式回收。
 - 主仓不再新增或保留裸 FastAPI `BackgroundTasks`；若任务源于已提交的用户数据且不可从数据库重建，
   必须提升为 E2，进入 Outbox 或持久任务表。
 

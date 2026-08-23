@@ -171,6 +171,28 @@ class EventCoalescerTest(IsolatedAsyncioTestCase):
         self.assertEqual(len(awaited), 1)
         self.assertEqual(awaited[0].count, 2)
 
+    async def test_close_waits_for_started_flush_task(self):
+        """窗口任务已经进入异步回调时，close 必须等待它真正结束。"""
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def on_flush(_summary: CoalesceSummary) -> None:
+            """阻塞 flush 回调，暴露关闭与在途任务之间的时序。"""
+            started.set()
+            await release.wait()
+
+        coalescer = EventCoalescer(_TEST_WINDOW, on_flush)
+        await coalescer.record("k", payload="a")
+        await coalescer.record("k", payload="b")
+        await asyncio.wait_for(started.wait(), timeout=_TEST_WAIT)
+
+        close_task = asyncio.create_task(coalescer.close())
+        await asyncio.sleep(0)
+        self.assertFalse(close_task.done())
+
+        release.set()
+        await asyncio.wait_for(close_task, timeout=_TEST_WAIT)
+
     async def test_on_flush_exception_is_swallowed(self):
         """
         on_flush 抛异常不能影响 coalescer 自身或上层调用方，仅 debug 记录。

@@ -1120,6 +1120,16 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
         monkeypatch.setattr(modules_initializer, name, dependency)
         dependencies[name] = dependency
 
+    close_image_proxy_block_log_coalescer = AsyncMock()
+    monkeypatch.setattr(
+        modules_initializer,
+        "close_image_proxy_block_log_coalescer",
+        close_image_proxy_block_log_coalescer,
+    )
+    dependencies["close_image_proxy_block_log_coalescer"] = (
+        close_image_proxy_block_log_coalescer
+    )
+
     stop_managed_resources = AsyncMock()
     monkeypatch.setattr(
         modules_initializer,
@@ -1156,6 +1166,15 @@ def test_browser_sessions_close_before_managed_resources(monkeypatch) -> None:
     asyncio.run(modules_initializer.stop_modules())
 
     assert calls == ["browser", "resources"]
+
+
+def test_module_shutdown_waits_for_image_proxy_log_coalescer(monkeypatch) -> None:
+    """模块关闭必须等待图片安全日志的在途聚合任务收口。"""
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+
+    asyncio.run(modules_initializer.stop_modules())
+
+    dependencies["close_image_proxy_block_log_coalescer"].assert_awaited_once_with()
 
 
 def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):

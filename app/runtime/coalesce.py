@@ -97,6 +97,7 @@ class EventCoalescer:
         self._source = source
         self._buckets: Dict[Hashable, _BucketState] = {}
         self._is_flush_async = inspect.iscoroutinefunction(on_flush)
+        self._flush_tasks: set[asyncio.Task[None]] = set()
 
     @property
     def window_seconds(self) -> float:
@@ -144,6 +145,12 @@ class EventCoalescer:
             if bucket.flush_handle is not None:
                 bucket.flush_handle.cancel()
             await self._emit_summary_if_needed(key, bucket)
+        current_task = asyncio.current_task()
+        flush_tasks = tuple(
+            task for task in self._flush_tasks if task is not current_task
+        )
+        if flush_tasks:
+            await asyncio.gather(*flush_tasks, return_exceptions=True)
 
     def _schedule_flush(self, key: Hashable) -> asyncio.TimerHandle:
         """
@@ -161,7 +168,9 @@ class EventCoalescer:
         `loop.call_later` 到期回调：从事件循环里把异步 flush 任务接力起来。
         """
         try:
-            asyncio.get_running_loop().create_task(self._flush_key(key))
+            task = asyncio.get_running_loop().create_task(self._flush_key(key))
+            self._flush_tasks.add(task)
+            task.add_done_callback(self._flush_tasks.discard)
         except RuntimeError as exc:
             # 事件循环已关闭等罕见路径：记录后丢弃，避免影响其它 bucket
             self._log_debug(f"flush 调度失败，已忽略 key={key!r}: {exc}")

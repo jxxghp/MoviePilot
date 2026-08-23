@@ -77,6 +77,7 @@ from app.application.messaging.agent import (
 from app.application.security.user import configure_user_lookups
 from app.application.security.auth import AuthService, configure_auth_service
 from app.application.security.passkeys import PasskeyService, configure_passkey_service
+from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.security.userconfig import (
     UserConfigurationService,
     configure_user_configuration,
@@ -594,6 +595,7 @@ async def stop_modules():
             logger.error(f"关闭{name}失败：{err}")
             return True
 
+    await run_step("图片代理安全日志合并器", close_image_proxy_block_log_coalescer)
     await run_step("模块", lambda: ModuleManager().shutdown())
     await run_step("事件消费", lambda: EventManager().stop_async())
     await run_step("浏览器会话", close_browser_sessions)
