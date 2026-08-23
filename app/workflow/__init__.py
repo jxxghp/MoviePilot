@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.runtime.config import global_vars
 from app.runtime.events import eventmanager, Event
-from app.application.chain.data import WorkflowPortProxy as WorkflowOper
+from app.application.chain.data import get_chain_workflow_port
 from app.foundation.reflection import ModuleHelper
 from app.runtime.log import logger
 from app.schemas.workflow import ActionContext
@@ -282,11 +282,11 @@ class WorkFlowManager(metaclass=Singleton):
         """
         workflows = []
         if workflow_id:
-            workflow = WorkflowOper().get(workflow_id)
+            workflow = get_chain_workflow_port().get(workflow_id)
             if workflow:
                 workflows = [workflow]
         else:
-            workflows = WorkflowOper().get_event_triggered_workflows()
+            workflows = get_chain_workflow_port().get_event_triggered_workflows()
         try:
             for workflow in workflows:
                 self.update_workflow_event(workflow)
@@ -359,7 +359,7 @@ class WorkFlowManager(metaclass=Singleton):
         """
         try:
             # 检查工作流是否存在且启用
-            workflow = WorkflowOper().get(workflow_id)
+            workflow = get_chain_workflow_port().get(workflow_id)
             if not workflow or workflow.state == 'P':
                 return
 

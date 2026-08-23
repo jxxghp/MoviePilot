@@ -123,7 +123,7 @@ def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
     monkeypatch.setattr(add_subscribe_module.global_vars, "is_workflow_stopped", lambda _: False)
     monkeypatch.setattr(
         add_subscribe_module,
-        "SubscribeOper",
+        "get_chain_subscribe_port",
         lambda: SimpleNamespace(get=lambda sid: sid),
     )
 

@@ -635,7 +635,7 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
     fake_oper = _FakeWorkflowOper(workflow)
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module, "WorkflowOper", lambda: fake_oper)
+    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: fake_oper)
     monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
     monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
 
