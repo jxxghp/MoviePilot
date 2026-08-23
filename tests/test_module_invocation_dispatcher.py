@@ -94,6 +94,56 @@ def test_plugin_scalar_short_circuits_system_modules() -> None:
     system_call.assert_not_called()
 
 
+def test_fan_out_contract_runs_every_provider_and_ignores_results() -> None:
+    """副作用广播应执行全部插件和宿主 provider，并稳定返回 None。"""
+    calls = []
+
+    def record(name: str, result):
+        """生成记录调用顺序并返回测试哨兵的 provider。"""
+        return lambda: calls.append(name) or result
+
+    system_20 = _Module("系统二", 20, record("system-20", "ignored-system"))
+    system_10 = _Module("系统一", 10, record("system-10", None))
+    setattr(system_20, "clear_cache", system_20.execute)
+    setattr(system_10, "clear_cache", system_10.execute)
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={
+            ("P1", "插件一"): {"clear_cache": record("plugin-1", "ignored-plugin")},
+            ("P2", "插件二"): {"clear_cache": record("plugin-2", None)},
+        },
+        modules=[system_20, system_10],
+    )
+
+    assert dispatcher.dispatch("clear_cache") is None
+    assert calls == ["plugin-1", "plugin-2", "system-10", "system-20"]
+
+
+@pytest.mark.asyncio
+async def test_async_fan_out_contract_matches_sync_execution() -> None:
+    """异步广播也应忽略返回值并执行全部同步或异步 provider。"""
+    calls = []
+
+    async def plugin_call():
+        """记录异步插件调用并返回应被忽略的哨兵。"""
+        calls.append("plugin")
+        return "ignored-plugin"
+
+    def system_call():
+        """记录同步宿主调用并返回应被忽略的哨兵。"""
+        calls.append("system")
+        return "ignored-system"
+
+    module = _Module("系统", 10, system_call)
+    setattr(module, "clear_cache", module.execute)
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={("P1", "插件一"): {"clear_cache": plugin_call}},
+        modules=[module],
+    )
+
+    assert await dispatcher.async_dispatch("clear_cache") is None
+    assert calls == ["plugin", "system"]
+
+
 def test_list_results_merge_in_plugin_then_priority_order() -> None:
     """列表结果应先按插件顺序合并，再按宿主优先级继续合并。"""
     calls = []

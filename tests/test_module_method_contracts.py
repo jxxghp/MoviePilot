@@ -34,7 +34,7 @@ def test_all_scanned_host_module_methods_have_explicit_v2_contracts() -> None:
         assert isinstance(contract.aggregation, ModuleResultAggregation)
         assert contract.input_contract != "legacy_args"
         assert contract.result_contract != "Any"
-        assert contract.plugin_short_circuit is True
+        assert isinstance(contract.plugin_short_circuit, bool)
 
 
 def test_high_frequency_capability_families_are_explicit() -> None:
@@ -296,6 +296,25 @@ def test_torrent_filter_contract_preserves_original_argument_list_merge() -> Non
         "torrent_list",
         "mediainfo",
     )
+
+
+def test_side_effect_hooks_use_non_short_circuiting_fan_out_contracts() -> None:
+    """副作用钩子必须执行全部 provider，不能被任意返回值提前截断。"""
+    methods = {
+        "clear_cache",
+        "download_added",
+        "music_cache_clear",
+        "register_commands",
+        "scheduler_job",
+        "tmdb_cache_clear",
+        "transfer_completed",
+    }
+
+    for method in methods:
+        contract = get_module_method_contract(method)
+        assert contract.aggregation is ModuleResultAggregation.FAN_OUT
+        assert contract.result_contract == "None"
+        assert contract.plugin_short_circuit is False
 
 
 def test_heterogeneous_torrent_files_result_remains_legacy_compatible() -> None:

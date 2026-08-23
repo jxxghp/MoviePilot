@@ -85,7 +85,11 @@ class ModuleInvocationDispatcher:
             "module.provider.duration", method=method, provider_type="plugin"
         ):
             result = self.execute_plugin_modules(method, None, *args, **kwargs)
-        if not self.is_valid_empty(result) and not isinstance(result, list):
+        if (
+            contract.plugin_short_circuit
+            and not self.is_valid_empty(result)
+            and not isinstance(result, list)
+        ):
             return result
         with observe_duration(
             "module.provider.duration", method=method, provider_type="system"
@@ -105,7 +109,11 @@ class ModuleInvocationDispatcher:
                 *args,
                 **kwargs,
             )
-        if not self.is_valid_empty(result) and not isinstance(result, list):
+        if (
+            contract.plugin_short_circuit
+            and not self.is_valid_empty(result)
+            and not isinstance(result, list)
+        ):
             return result
         with observe_duration(
             "module.provider.duration", method=method, provider_type="system"
@@ -158,6 +166,7 @@ class ModuleInvocationDispatcher:
                     result,
                     provider_result,
                     call_mode,
+                    aggregation,
                 )
             except RateLimitExceededException as err:
                 self._rate_limit_handler(
@@ -219,6 +228,7 @@ class ModuleInvocationDispatcher:
                     result,
                     provider_result,
                     call_mode,
+                    aggregation,
                 )
             except RateLimitExceededException as err:
                 self._rate_limit_handler(
@@ -281,6 +291,7 @@ class ModuleInvocationDispatcher:
                     result,
                     provider_result,
                     call_mode,
+                    aggregation,
                 )
             except RateLimitExceededException as err:
                 self._rate_limit_handler(
@@ -343,6 +354,7 @@ class ModuleInvocationDispatcher:
                     result,
                     provider_result,
                     call_mode,
+                    aggregation,
                 )
             except RateLimitExceededException as err:
                 self._rate_limit_handler(
@@ -373,6 +385,8 @@ class ModuleInvocationDispatcher:
         allow_relay: bool,
     ) -> _ProviderCallMode:
         """按契约选择下一 provider 的调用方式，并冻结 legacy 接力语义。"""
+        if aggregation is ModuleResultAggregation.FAN_OUT:
+            return _ProviderCallMode.ORIGINAL
         if cls.is_valid_empty(result):
             return _ProviderCallMode.ORIGINAL
         if aggregation is ModuleResultAggregation.FIRST_NON_EMPTY:
@@ -404,8 +418,11 @@ class ModuleInvocationDispatcher:
         result: Any,
         provider_result: Any,
         call_mode: _ProviderCallMode,
+        aggregation: ModuleResultAggregation,
     ) -> Any:
         """合并单个 provider 结果，接力调用则用新结果替换旧结果。"""
+        if aggregation is ModuleResultAggregation.FAN_OUT:
+            return result
         if call_mode is _ProviderCallMode.RELAY:
             return provider_result
         if isinstance(result, list) and isinstance(provider_result, list):

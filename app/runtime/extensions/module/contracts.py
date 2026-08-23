@@ -17,6 +17,7 @@ class ModuleResultAggregation(StrEnum):
     ORDERED_LIST_MERGE = "ordered_list_merge"
     ORDERED_MAPPING_MERGE = "ordered_mapping_merge"
     PIPELINE_RELAY = "pipeline_relay"
+    FAN_OUT = "fan_out"
 
 
 class ModuleResultShape(StrEnum):
@@ -118,6 +119,7 @@ _METHOD_CONTRACTS = {
     "snapshot_storage": ModuleMethodContract(family="storage", input_contract="StorageSnapshotRequest", result_contract="dict[str, dict] | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("storage", "path", "last_snapshot_time", "max_depth", "previous_snapshot")),
     "transfer": ModuleMethodContract(family="storage", input_contract="TransferRequest", result_contract="TransferInfo | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("fileitem", "meta", "mediainfo", "target_directory", "target_storage", "target_path", "transfer_type", "scrape", "library_type_folder", "library_category_folder", "episodes_info", "source_oper", "target_oper", "preview")),
     "load_category_config": ModuleMethodContract(family="category", input_contract="CategoryConfigReadRequest", result_contract="CategoryConfig | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY),
+    "clear_cache": ModuleMethodContract(family="category", input_contract="CacheClearRequest", result_contract="None", aggregation=ModuleResultAggregation.FAN_OUT, plugin_short_circuit=False),
     "save_category_config": ModuleMethodContract(family="category", input_contract="CategoryConfigWriteRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("config",)),
     "get_search_page_size": ModuleMethodContract(family="site", input_contract="SiteSearchPageSizeRequest", result_contract="int | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("site", "keyword")),
     "refresh_userdata": ModuleMethodContract(family="site", input_contract="SiteUserDataRequest", result_contract="SiteUserData | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("site",)),
@@ -188,6 +190,7 @@ _METHOD_CONTRACTS = {
     "music_artist_related": ModuleMethodContract(family="music", input_contract="MusicRelatedRequest", result_contract="list[MusicArtistInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("media_source", "media_id", "count")),
     "music_cache_delete": ModuleMethodContract(family="music", input_contract="MusicCacheDeleteRequest", result_contract="dict | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("cache_key",)),
     "music_cache_items": ModuleMethodContract(family="music", input_contract="MusicCacheReadRequest", result_contract="list[dict]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE),
+    "music_cache_clear": ModuleMethodContract(family="music", input_contract="MusicCacheClearRequest", result_contract="None", aggregation=ModuleResultAggregation.FAN_OUT, plugin_short_circuit=False),
     "music_chart": ModuleMethodContract(family="music", input_contract="MusicChartRequest", result_contract="list[MusicInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("range_name", "offset", "count", "entity")),
     "music_discover": ModuleMethodContract(family="music", input_contract="MusicDiscoverRequest", result_contract="list[MusicInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("media_source", "page", "count", "entity", "mode", "tags", "sort")),
     "music_fresh_releases": ModuleMethodContract(family="music", input_contract="MusicFreshReleasesRequest", result_contract="list[MusicInfo]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("days", "sort", "past", "future", "offset", "count")),
@@ -202,8 +205,8 @@ _METHOD_CONTRACTS = {
     "send_direct_message": ModuleMethodContract(family="messaging", input_contract="DirectMessageSendRequest", result_contract="MessageResponse | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("message",)),
     "send_message": ModuleMethodContract(family="messaging", input_contract="MessageSendRequest", result_contract="Message | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY),
     "finalize_message": ModuleMethodContract(family="messaging", input_contract="MessageFinalizeRequest", result_contract="Message | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("response",)),
-    "register_commands": ModuleMethodContract(family="messaging", input_contract="CommandRegistrationRequest", result_contract="None", required_parameters=("commands",)),
-    "scheduler_job": ModuleMethodContract(family="scheduling", input_contract="SchedulerJobRequest", result_contract="None"),
+    "register_commands": ModuleMethodContract(family="messaging", input_contract="CommandRegistrationRequest", result_contract="None", aggregation=ModuleResultAggregation.FAN_OUT, required_parameters=("commands",), plugin_short_circuit=False),
+    "scheduler_job": ModuleMethodContract(family="scheduling", input_contract="SchedulerJobRequest", result_contract="None", aggregation=ModuleResultAggregation.FAN_OUT, plugin_short_circuit=False),
     "webhook_parser": ModuleMethodContract(family="integration", input_contract="WebhookRequest", result_contract="WebhookEventInfo | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("body", "form", "args")),
     "download_discord_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_ref", "source")),
     "download_feishu_file_bytes": ModuleMethodContract(family="messaging", input_contract="MessageFileDownloadRequest", result_contract="bytes | None", result_shape=ModuleResultShape.BYTES, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("file_ref", "source")),
@@ -225,13 +228,16 @@ _METHOD_CONTRACTS = {
     "torrent_files": ModuleMethodContract(family="downloader", input_contract="TorrentFilesRequest", result_contract="DownloaderFileCollection | None", required_parameters=("tid", "downloader")),
     "get_torrent_trackers": ModuleMethodContract(family="downloader", input_contract="TorrentTrackersRequest", result_contract="dict[str, list[str]] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.ORDERED_MAPPING_MERGE, required_parameters=("hash_string", "downloader")),
     "download": ModuleMethodContract(family="downloader", input_contract="DownloadTaskRequest", result_contract="DownloadTaskResult | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("content", "download_dir", "cookie", "episodes", "category", "label", "downloader")),
+    "download_added": ModuleMethodContract(family="downloader", input_contract="DownloadAddedHook", result_contract="None", aggregation=ModuleResultAggregation.FAN_OUT, required_parameters=("context", "torrent_content", "download_dir"), plugin_short_circuit=False),
     "remove_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentRemoveRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hashs", "delete_file", "downloader")),
     "set_torrents_tag": ModuleMethodContract(family="downloader", input_contract="TorrentTagRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hashs", "tags", "downloader")),
     "start_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentControlRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hashs", "downloader")),
     "stop_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentControlRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hashs", "downloader")),
     "update_torrent": ModuleMethodContract(family="downloader", input_contract="TorrentUpdateRequest", result_contract="dict[str, bool] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hash_string", "downloader", "download_limit", "upload_limit", "tracker_list", "save_path", "category", "ratio_limit", "seeding_time_limit")),
+    "transfer_completed": ModuleMethodContract(family="downloader", input_contract="TransferCompletedHook", result_contract="None", aggregation=ModuleResultAggregation.FAN_OUT, required_parameters=("hashs", "downloader"), plugin_short_circuit=False),
     "tmdb_cache_items": ModuleMethodContract(family="tmdb", input_contract="TmdbCacheListRequest", result_contract="list[dict[str, Any]]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE),
     "tmdb_cache_delete": ModuleMethodContract(family="tmdb", input_contract="TmdbCacheDeleteRequest", result_contract="dict[str, Any] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("cache_key",)),
+    "tmdb_cache_clear": ModuleMethodContract(family="tmdb", input_contract="TmdbCacheClearRequest", result_contract="None", aggregation=ModuleResultAggregation.FAN_OUT, plugin_short_circuit=False),
 }
 
 # 同一能力的同步/异步入口共享不可变契约对象，避免参数和聚合语义各自漂移。

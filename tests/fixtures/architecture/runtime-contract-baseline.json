@@ -3762,15 +3762,15 @@
       "version": 1
     },
     "clear_cache": {
-      "aggregation": "legacy",
+      "aggregation": "fan_out",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "category",
-      "input_contract": "CategoryKeywordArguments",
-      "plugin_short_circuit": true,
+      "input_contract": "CacheClearRequest",
+      "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [],
-      "result_contract": "CategoryProviderResult",
+      "result_contract": "None",
       "result_shape": "any",
       "supports_async": true,
       "supports_sync": true,
@@ -4011,15 +4011,19 @@
       "version": 1
     },
     "download_added": {
-      "aggregation": "legacy",
+      "aggregation": "fan_out",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "downloader",
-      "input_contract": "DownloaderKeywordArguments",
-      "plugin_short_circuit": true,
+      "input_contract": "DownloadAddedHook",
+      "plugin_short_circuit": false,
       "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "DownloaderProviderResult",
+      "required_parameters": [
+        "context",
+        "download_dir",
+        "torrent_content"
+      ],
+      "result_contract": "None",
       "result_shape": "any",
       "supports_async": true,
       "supports_sync": true,
@@ -5160,15 +5164,15 @@
       "version": 1
     },
     "music_cache_clear": {
-      "aggregation": "legacy",
+      "aggregation": "fan_out",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "music",
-      "input_contract": "MusicKeywordArguments",
-      "plugin_short_circuit": true,
+      "input_contract": "MusicCacheClearRequest",
+      "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [],
-      "result_contract": "MusicProviderResult",
+      "result_contract": "None",
       "result_shape": "any",
       "supports_async": true,
       "supports_sync": true,
@@ -5420,12 +5424,12 @@
       "version": 1
     },
     "register_commands": {
-      "aggregation": "legacy",
+      "aggregation": "fan_out",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "CommandRegistrationRequest",
-      "plugin_short_circuit": true,
+      "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [
         "commands"
@@ -5495,12 +5499,12 @@
       "version": 1
     },
     "scheduler_job": {
-      "aggregation": "legacy",
+      "aggregation": "fan_out",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "scheduling",
       "input_contract": "SchedulerJobRequest",
-      "plugin_short_circuit": true,
+      "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [],
       "result_contract": "None",
@@ -5798,15 +5802,15 @@
       "version": 1
     },
     "tmdb_cache_clear": {
-      "aggregation": "legacy",
+      "aggregation": "fan_out",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "tmdb",
-      "input_contract": "TmdbKeywordArguments",
-      "plugin_short_circuit": true,
+      "input_contract": "TmdbCacheClearRequest",
+      "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [],
-      "result_contract": "TmdbProviderResult",
+      "result_contract": "None",
       "result_shape": "any",
       "supports_async": true,
       "supports_sync": true,
@@ -6184,15 +6188,18 @@
       "version": 1
     },
     "transfer_completed": {
-      "aggregation": "legacy",
+      "aggregation": "fan_out",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "downloader",
-      "input_contract": "DownloaderKeywordArguments",
-      "plugin_short_circuit": true,
+      "input_contract": "TransferCompletedHook",
+      "plugin_short_circuit": false,
       "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "DownloaderProviderResult",
+      "required_parameters": [
+        "downloader",
+        "hashs"
+      ],
+      "result_contract": "None",
       "result_shape": "any",
       "supports_async": true,
       "supports_sync": true,
