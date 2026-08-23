@@ -16,6 +16,7 @@ class ModuleResultAggregation(StrEnum):
     FIRST_NON_EMPTY = "first_non_empty"
     ORDERED_LIST_MERGE = "ordered_list_merge"
     ORDERED_MAPPING_MERGE = "ordered_mapping_merge"
+    PIPELINE_RELAY = "pipeline_relay"
 
 
 class ModuleResultShape(StrEnum):
@@ -80,10 +81,11 @@ _METHOD_CONTRACTS = {
     ),
     "search_medias": ModuleMethodContract(
         family="media-recognition", input_contract="MediaSearchRequest",
-        result_contract="list[MediaInfo]", aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
+        result_contract="list[MediaInfo]", result_shape=ModuleResultShape.LIST,
+        aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("meta", "media_source"),
     ),
-    "obtain_images": ModuleMethodContract(family="media-recognition", input_contract="MediaInfo", result_contract="MediaInfo | None", required_parameters=("mediainfo",)),
+    "obtain_images": ModuleMethodContract(family="media-recognition", input_contract="MediaInfo", result_contract="MediaInfo | None", aggregation=ModuleResultAggregation.PIPELINE_RELAY, required_parameters=("mediainfo",)),
     "media_category": ModuleMethodContract(family="media-recognition", input_contract="MediaCategoryRequest", result_contract="CategoryConfig | None"),
     "mediaserver_items": ModuleMethodContract(family="media-server", input_contract="MediaServerItemsRequest", result_contract="list[MediaServerItem]", aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("server", "library_id", "start_index", "limit")),
     "mediaserver_iteminfo": ModuleMethodContract(family="media-server", input_contract="MediaServerItemRequest", result_contract="MediaServerItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("server", "item_id")),
@@ -127,6 +129,13 @@ _METHOD_CONTRACTS = {
     "stop_torrents": ModuleMethodContract(family="downloader", input_contract="TorrentControlRequest", result_contract="bool | None", result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hashs", "downloader")),
     "update_torrent": ModuleMethodContract(family="downloader", input_contract="TorrentUpdateRequest", result_contract="dict[str, bool] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("hash_string", "downloader", "download_limit", "upload_limit", "tracker_list", "save_path", "category", "ratio_limit", "seeding_time_limit")),
 }
+
+# 同一能力的同步/异步入口共享不可变契约对象，避免参数和聚合语义各自漂移。
+_METHOD_CONTRACTS.update({
+    "async_recognize_media": _METHOD_CONTRACTS["recognize_media"],
+    "async_search_medias": _METHOD_CONTRACTS["search_medias"],
+    "async_obtain_images": _METHOD_CONTRACTS["obtain_images"],
+})
 
 _PREFIX_CONTRACTS = (
     ("async_tmdb_", ModuleMethodContract(family="tmdb")),

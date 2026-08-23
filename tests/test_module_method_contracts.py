@@ -214,6 +214,23 @@ def test_downloader_action_contracts_freeze_shared_provider_signatures() -> None
         assert contract.required_parameters == parameters
 
 
+def test_sync_and_async_media_capabilities_share_contracts() -> None:
+    """同一识别能力的同步与异步入口必须复用完全相同的契约。"""
+    for sync_method, async_method in (
+        ("recognize_media", "async_recognize_media"),
+        ("search_medias", "async_search_medias"),
+        ("obtain_images", "async_obtain_images"),
+    ):
+        assert get_module_method_contract(sync_method) is get_module_method_contract(
+            async_method
+        )
+
+    assert (
+        get_module_method_contract("obtain_images").aggregation
+        is ModuleResultAggregation.PIPELINE_RELAY
+    )
+
+
 def test_attachment_result_diagnostics_distinguish_bytes_and_strings() -> None:
     """附件契约应区分二进制内容和可展示字符串，偏差仍仅供诊断。"""
     assert diagnose_module_result("download_qq_file_bytes", b"content") == ()

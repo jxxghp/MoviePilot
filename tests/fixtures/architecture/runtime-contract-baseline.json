@@ -2972,15 +2972,17 @@
       "version": 1
     },
     "async_obtain_images": {
-      "aggregation": "legacy",
+      "aggregation": "pipeline_relay",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "media-recognition",
-      "input_contract": "MediaRecognitionKeywordArguments",
+      "input_contract": "MediaInfo",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "MediaRecognitionProviderResult",
+      "required_parameters": [
+        "mediainfo"
+      ],
+      "result_contract": "MediaInfo | None",
       "result_shape": "any",
       "supports_async": true,
       "supports_sync": true,
@@ -2988,15 +2990,22 @@
       "version": 1
     },
     "async_recognize_media": {
-      "aggregation": "legacy",
+      "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "media-recognition",
-      "input_contract": "MediaRecognitionKeywordArguments",
+      "input_contract": "MediaRecognitionRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "MediaRecognitionProviderResult",
+      "required_parameters": [
+        "cache",
+        "episode_group",
+        "media_id",
+        "media_source",
+        "meta",
+        "mtype"
+      ],
+      "result_contract": "MediaInfo | None",
       "result_shape": "any",
       "supports_async": true,
       "supports_sync": true,
@@ -3036,16 +3045,19 @@
       "version": 1
     },
     "async_search_medias": {
-      "aggregation": "legacy",
+      "aggregation": "ordered_list_merge",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
-      "family": "media-discovery",
-      "input_contract": "MediaDiscoveryKeywordArguments",
+      "family": "media-recognition",
+      "input_contract": "MediaSearchRequest",
       "plugin_short_circuit": true,
       "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "MediaDiscoveryProviderResult",
-      "result_shape": "any",
+      "required_parameters": [
+        "media_source",
+        "meta"
+      ],
+      "result_contract": "list[MediaInfo]",
+      "result_shape": "list",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -4899,7 +4911,7 @@
       "version": 1
     },
     "obtain_images": {
-      "aggregation": "legacy",
+      "aggregation": "pipeline_relay",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "media-recognition",
@@ -5121,7 +5133,7 @@
         "meta"
       ],
       "result_contract": "list[MediaInfo]",
-      "result_shape": "any",
+      "result_shape": "list",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",

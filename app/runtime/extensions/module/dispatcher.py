@@ -389,10 +389,14 @@ class ModuleInvocationDispatcher:
                 if isinstance(result, dict)
                 else _ProviderCallMode.STOP
             )
-        if allow_relay and ObjectUtils.check_signature(func, result):
-            return _ProviderCallMode.RELAY
-        if isinstance(result, list):
-            return _ProviderCallMode.ORIGINAL
+        if aggregation in {
+            ModuleResultAggregation.LEGACY,
+            ModuleResultAggregation.PIPELINE_RELAY,
+        }:
+            if allow_relay and ObjectUtils.check_signature(func, result):
+                return _ProviderCallMode.RELAY
+            if isinstance(result, list):
+                return _ProviderCallMode.ORIGINAL
         return _ProviderCallMode.STOP
 
     @staticmethod

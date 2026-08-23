@@ -167,6 +167,43 @@ def test_system_signature_relay_passes_previous_result() -> None:
     assert dispatcher.dispatch("execute") == {"value": 2}
 
 
+def test_explicit_pipeline_contract_relays_previous_result() -> None:
+    """图片补全契约应按优先级把上一 provider 结果交给下一 provider。"""
+    class ImageModule:
+        """在统一媒体对象上记录当前图片 provider。"""
+
+        def __init__(self, name: str, priority: int) -> None:
+            """保存 provider 名称和优先级。"""
+            self._name = name
+            self._priority = priority
+
+        def get_name(self) -> str:
+            """返回测试模块名。"""
+            return self._name
+
+        def get_priority(self) -> int:
+            """返回测试优先级。"""
+            return self._priority
+
+        def obtain_images(self, mediainfo: dict) -> dict:
+            """追加当前 provider 名称并返回同一媒体结果。"""
+            return {
+                **mediainfo,
+                "providers": [*mediainfo.get("providers", []), self._name],
+            }
+
+    dispatcher, _, _, _ = _dispatcher(
+        modules=[
+            ImageModule("fanart", 20),
+            ImageModule("tmdb", 10),
+        ]
+    )
+
+    assert dispatcher.dispatch("obtain_images", mediainfo={}) == {
+        "providers": ["tmdb", "fanart"]
+    }
+
+
 def test_first_non_empty_contract_stops_legacy_signature_relay() -> None:
     """显式首个非空契约不得再把结果交给后续宿主 provider 改写。"""
     class FirstModule:
