@@ -14,7 +14,6 @@ from app.db.models.agenttask import (
     _list_for_user_statement,
 )
 from app.db.models.agenttaskrun import AgentTaskRun
-from app.db.uow import run_sync_transaction
 
 
 class AgentTaskOper(DbOper):
@@ -63,9 +62,7 @@ class AgentTaskOper(DbOper):
                 )
             ).scalars().first()
 
-        if isinstance(self._db, Session):
-            return query(self._db)
-        return run_sync_transaction(query)
+        return self._execute_sync_query(query)
 
     async def async_get(
             self,
@@ -104,9 +101,7 @@ class AgentTaskOper(DbOper):
                 )
             ).scalars().all())
 
-        if isinstance(self._db, Session):
-            return query(self._db)
-        return run_sync_transaction(query)
+        return self._execute_sync_query(query)
 
     def update(
             self,

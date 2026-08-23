@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6500,
-  "edge_sha256": "c27b649d471e40e8580426bdee28fdd927be03b7868a1b28bd8d9374c10be280",
+  "edge_count": 6499,
+  "edge_sha256": "f21eea0878e60d4b955a87da15cf0653eaecf07d147dc43e9eabc9f9573bb793",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3660,7 +3660,6 @@
     "app.db.oper.agenttask -> app.db.models",
     "app.db.oper.agenttask -> app.db.models.agenttask",
     "app.db.oper.agenttask -> app.db.models.agenttaskrun",
-    "app.db.oper.agenttask -> app.db.uow",
     "app.db.oper.downloadfailure -> app.db",
     "app.db.oper.downloadfailure -> app.db.base",
     "app.db.oper.downloadfailure -> app.db.models",

@@ -432,6 +432,23 @@ def test_database_internals_do_not_import_db_facades():
     assert violations == []
 
 
+def test_database_opers_use_dboper_transaction_dispatchers():
+    """Oper 不得绕过 DbOper 的统一 Session 类型分派直接调用事务 runner。"""
+    runner_names = {"run_sync_transaction", "run_async_transaction"}
+    violations: list[str] = []
+    for path in (APP_ROOT / "db" / "oper").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.module != "app.db.uow":
+                continue
+            imported = {alias.name for alias in node.names} & runner_names
+            if imported:
+                relative = path.relative_to(PROJECT_ROOT).as_posix()
+                violations.append(f"{relative}:{node.lineno}:{','.join(sorted(imported))}")
+
+    assert violations == []
+
+
 def test_models_and_base_require_explicit_database_sessions():
     """Model/Base 不得装饰事务，且所有 db 参数必须由调用方显式传入。"""
     decorator_names = {

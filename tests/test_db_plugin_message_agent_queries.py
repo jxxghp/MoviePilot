@@ -366,7 +366,8 @@ def test_agenttask_oper_reads_with_explicit_session(db, monkeypatch):
     task_id = AgentTask.add_task(db.session, **_task("canonical", user_id="alice"))
 
     monkeypatch.setattr(
-        "app.db.oper.agenttask.run_sync_transaction",
+        db_base,
+        "run_sync_transaction",
         lambda _query: pytest.fail("显式 Session 查询不应创建兼容事务"),
     )
 
