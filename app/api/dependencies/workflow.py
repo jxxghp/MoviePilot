@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.api.context import get_async_session, get_host_runtime, get_sync_session
-from app.application.scheduling import Scheduler
+from app.application.scheduling import get_scheduler
 from app.application.workflow import (
     WorkflowCachePort,
     WorkflowDefinitionCommand,
@@ -25,7 +25,7 @@ def get_workflow_mutation_command(
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> WorkflowMutationCommand:
     """组装请求级工作流写用例和提交后的调度副作用。"""
-    scheduler = Scheduler()
+    scheduler = get_scheduler()
     workflow_manager = get_workflow_manager()
     system_config = cast(WorkflowCachePort, runtime.workflow.system_config())
     return WorkflowMutationCommand(

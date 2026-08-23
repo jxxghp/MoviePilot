@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).parents[1]
 def test_create_app_does_not_start_plugin_manager_or_threads(monkeypatch):
     """ASGI factory 只构建应用结构，不得在创建阶段物化插件运行时。"""
     plugin_manager = MagicMock(side_effect=AssertionError("plugin runtime started"))
-    monkeypatch.setattr(factory, "PluginManager", plugin_manager)
+    monkeypatch.setattr(factory, "get_plugin_manager", plugin_manager)
     threads_before = threading.active_count()
 
     created = factory.create_app()

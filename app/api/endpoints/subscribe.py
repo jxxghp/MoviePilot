@@ -55,7 +55,7 @@ from app.api.dependencies.subscription import (
     get_subscription_sync_mutation_service,
 )
 from app.adapters.external.server import MoviePilotServerHelper
-from app.application.scheduling import Scheduler
+from app.application.scheduling import get_scheduler
 from app.runtime.tasks import TaskRegistry
 from app.schemas.event import SubscribeModifiedEventData
 from app.schemas.types import (
@@ -376,7 +376,7 @@ def refresh_subscribes(
     """
     if not current_user.is_superuser:
         return _SchemaResponse(success=False, message="订阅不存在")
-    Scheduler().start("subscribe_refresh")
+    get_scheduler().start("subscribe_refresh")
     return _SchemaResponse(success=True)
 
 
@@ -418,7 +418,7 @@ def check_subscribes(
     """
     if not current_user.is_superuser:
         return _SchemaResponse(success=False, message="订阅不存在")
-    Scheduler().start("subscribe_tmdb")
+    get_scheduler().start("subscribe_tmdb")
     return _SchemaResponse(success=True)
 
 

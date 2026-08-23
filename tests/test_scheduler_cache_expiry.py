@@ -86,7 +86,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
         "TransferChain",
         "WallpaperHelper",
         "WorkflowChain",
-        "PluginManager",
+        "get_plugin_manager",
     ]:
         monkeypatch.setattr(scheduler_module, name, lambda: generic_chain)
     monkeypatch.setattr(

@@ -107,6 +107,12 @@ API dependencies must narrow that object to a domain runtime (for example,
 `AgentChatRuntime`) instead of adding a string key to a global service map.
 Legacy registries may delegate the same object while domains migrate, but they
 must not construct a second set of service instances.
+Canonical host consumers of the process-wide module, plugin and scheduler
+runtimes must call `get_module_manager()`, `get_plugin_manager()` and
+`get_scheduler()` explicitly. The class-shaped `ModuleManager` and `Scheduler`
+application facades, and concrete plugin manager class paths, remain compatibility
+boundaries for plugins and startup composition; host code must not import those
+facades or alias a getter back to a manager class name.
 API, Scheduler and Chain deployment values are exposed as frozen snapshots from
 `HostRuntime.configuration`; canonical callers must not add a fresh direct
 `settings` import when the required field belongs to an existing snapshot.

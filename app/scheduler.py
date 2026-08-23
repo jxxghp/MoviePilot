@@ -31,7 +31,7 @@ from app.runtime.events import Event, eventmanager
 from app.db.oper.agenttask import AgentTaskOper
 from app.application.database import get_database_governance
 from app.application.outbox import dispatch_pending_outbox
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.application.configuration import (
     SchedulerRuntimeConfig,
     get_configured_system_config,
@@ -551,7 +551,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 JobSpec("random_wallpager", "壁纸缓存", WallpaperHelper().get_wallpapers, "image"),
                 JobSpec("sitedata_refresh", "站点数据刷新", SiteChain().refresh_userdatas, "site"),
                 JobSpec("recommend_refresh", "推荐缓存", RecommendChain().refresh_recommend, "recommend"),
-                JobSpec("plugin_market_refresh", "插件市场缓存", PluginManager().async_get_online_plugins, "plugin", kwargs={"force": True}),
+                JobSpec("plugin_market_refresh", "插件市场缓存", get_plugin_manager().async_get_online_plugins, "plugin", kwargs={"force": True}),
                 JobSpec("subscribe_calendar_cache", "订阅日历缓存", SubscribeChain().cache_calendar, "subscription"),
                 JobSpec("full_gc", "主动内存回收", self.full_gc, "runtime"),
                 JobSpec("agent_heartbeat", "智能体定时任务", self.agent_heartbeat, "agent"),
@@ -1608,7 +1608,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         初始化插件定时服务
         """
-        for pid in PluginManager().get_running_plugin_ids():
+        for pid in get_plugin_manager().get_running_plugin_ids():
             self.update_plugin_job(pid)
 
     @eventmanager.register(EventType.PluginReload)
@@ -1684,7 +1684,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     self._jobs.pop(job_id, None)
             if not jobs_to_remove:
                 return
-            plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
+            plugin_name = get_plugin_manager().get_plugin_attr(pid, "plugin_name")
             # 遍历移除任务
             for job_id, service in jobs_to_remove:
                 try:
@@ -1758,7 +1758,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         self.remove_plugin_job(pid)
         # 获取插件服务列表
         with self._lock:
-            plugin_manager = PluginManager()
+            plugin_manager = get_plugin_manager()
             try:
                 plugin_services = plugin_manager.get_plugin_services(pid=pid)
             except Exception as e:
@@ -2047,7 +2047,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 )
             )
             # 认证通过后重新初始化插件
-            PluginManager().init_config()
+            get_plugin_manager().init_config()
             self.init_plugin_jobs()
 
         else:

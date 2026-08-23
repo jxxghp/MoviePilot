@@ -35,7 +35,7 @@ from app.application.commands import init_commands
 from app.application.scheduling import remove_plugin_job, update_plugin_job
 from app.runtime.cache import async_fresh
 from app.application.configuration import get_api_runtime_config_snapshot
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.application.plugin.runtime import PluginRuntime, get_plugin_manager
 from app.runtime.extensions.plugin.contracts import (
     PluginDashboardError,
     PluginNotFoundError,
@@ -71,7 +71,7 @@ _plugin_release_refresh_tasks: set[asyncio.Task] = set()
 
 
 async def _get_market_plugin_from_repo(
-    plugin_manager: PluginManager,
+    plugin_manager: PluginRuntime,
     plugin_id: str,
     repo_url: str,
     force: bool,
@@ -175,7 +175,7 @@ def _is_plugin_auth_remote_file(plugin_id: str, filepath: str) -> bool:
     """
     path = filepath.lstrip("/")
     normalized_plugin_id = plugin_id.lower()
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     for provider in plugin_manager.get_plugin_auth_providers():
         remote = provider.get("remote") or {}
         if str(remote.get("id") or "").lower() != normalized_plugin_id:
@@ -214,7 +214,7 @@ async def _get_plugin_history_detail(
     """
     按需获取插件远端元数据，避免插件列表加载时批量访问网络。
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     installed_plugin = next(
         (
             plugin
@@ -266,7 +266,7 @@ async def all_plugins(
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
     # 本地插件
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     local_plugins = plugin_manager.get_local_plugins()
     # 已安装插件
     installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
@@ -332,7 +332,7 @@ async def runtime_status(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaPluginRuntimeSummary:
     """返回插件页轮询所需的轻量状态摘要。"""
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     statuses = plugin_manager.get_plugin_runtime_statuses()
     pending = {
         _SchemaPluginRuntimeStatus.SOURCE_MISSING,
@@ -394,7 +394,7 @@ async def plugin_releases(
             "items": [],
         }
 
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     market_plugin = await _get_market_plugin_from_repo(
         plugin_manager, plugin_id, repo_url, force
     )
@@ -523,7 +523,7 @@ def reload_plugin(
     """
     重新加载插件
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     try:
         with plugin_manager.mutation(f"重载插件 {plugin_id}"):
             # 重新加载插件
@@ -557,7 +557,7 @@ async def install(
     """
     plugin_helper = PluginHelper()
     package_manager = PluginPackageManager(plugin_helper)
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
 
     async def save_installed_plugins(plugin_ids: List[str]) -> object:
         """保存安装用例确认后的插件列表。"""
@@ -582,7 +582,9 @@ async def install(
 
     async def reload_runtime(target_id: str) -> object:
         """在线程池中重建源插件及其全部虚拟实例。"""
-        return await run_in_threadpool(PluginManager().reload_plugin_tree, target_id)
+        return await run_in_threadpool(
+            get_plugin_manager().reload_plugin_tree, target_id
+        )
 
     async def refresh_registrations(target_id: str) -> object:
         """在线程池中刷新源插件及其虚拟实例的全部宿主注册。"""
@@ -594,7 +596,7 @@ async def install(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
         installed_plugins_writer=save_installed_plugins,
-        plugin_ids_provider=lambda: PluginManager().get_plugin_ids(),
+        plugin_ids_provider=lambda: get_plugin_manager().get_plugin_ids(),
         compatibility_checker=plugin_helper.async_get_plugin_system_version_check_message,
         package_installer=install_package,
         package_checkpointer=package_manager.async_checkpoint,
@@ -633,7 +635,7 @@ async def remotes(token: str) -> Any:
     """
     if token != "moviepilot":
         raise HTTPException(status_code=403, detail="Forbidden")
-    return PluginManager().get_plugin_remotes()
+    return get_plugin_manager().get_plugin_remotes()
 
 
 @router.get(
@@ -645,7 +647,7 @@ def plugin_sidebar_nav(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     聚合已启用 Vue 插件声明的侧栏入口（get_sidebar_nav），供前端主界面侧栏展示。
     """
-    return PluginManager().get_plugin_sidebar_nav()
+    return get_plugin_manager().get_plugin_sidebar_nav()
 
 
 @router.get(
@@ -659,7 +661,7 @@ def plugin_form(
     """
     根据插件ID获取插件配置表单或Vue组件URL
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     plugin_instance = plugin_manager.running_plugins.get(plugin_id)
     if not plugin_instance:
         raise HTTPException(
@@ -695,7 +697,7 @@ def plugin_page(
     """
     根据插件ID获取插件数据页面
     """
-    plugin_instance = PluginManager().running_plugins.get(plugin_id)
+    plugin_instance = get_plugin_manager().running_plugins.get(plugin_id)
     if not plugin_instance:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -723,7 +725,7 @@ def plugin_dashboard_meta(
     """
     获取所有插件仪表板元信息
     """
-    return PluginManager().get_plugin_dashboard_meta()
+    return get_plugin_manager().get_plugin_dashboard_meta()
 
 
 @router.get("/dashboard/{plugin_id}/{key}", summary="获取插件仪表板配置")
@@ -737,7 +739,7 @@ def plugin_dashboard_by_key(
     根据插件ID获取插件仪表板
     """
     try:
-        return PluginManager().get_plugin_dashboard(plugin_id, key, user_agent)
+        return get_plugin_manager().get_plugin_dashboard(plugin_id, key, user_agent)
     except PluginNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except PluginDashboardError as error:
@@ -804,7 +806,7 @@ async def plugin_static_file(
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    source_plugin_id = PluginManager().get_plugin_source_id(plugin_id)
+    source_plugin_id = get_plugin_manager().get_plugin_source_id(plugin_id)
     plugin_base_dir = (
         AsyncPath(get_api_runtime_config_snapshot().root_path)
         / "app"
@@ -897,7 +899,7 @@ async def save_plugin_folders(
     保存插件文件夹分组配置
     """
     try:
-        with PluginManager().mutation("保存插件文件夹配置"):
+        with get_plugin_manager().mutation("保存插件文件夹配置"):
             await get_configured_system_config().async_set(
                 SystemConfigKey.PluginFolders,
                 folders,
@@ -920,7 +922,7 @@ async def create_plugin_folder(
     创建新的插件文件夹
     """
     try:
-        with PluginManager().mutation(f"创建插件文件夹 {folder_name}"):
+        with get_plugin_manager().mutation(f"创建插件文件夹 {folder_name}"):
             folders = (
                 get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
             )
@@ -951,7 +953,7 @@ async def delete_plugin_folder(
     删除插件文件夹
     """
     try:
-        with PluginManager().mutation(f"删除插件文件夹 {folder_name}"):
+        with get_plugin_manager().mutation(f"删除插件文件夹 {folder_name}"):
             folders = (
                 get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
             )
@@ -986,7 +988,7 @@ async def update_folder_plugins(
     更新指定文件夹中的插件列表
     """
     try:
-        with PluginManager().mutation(f"更新插件文件夹 {folder_name}"):
+        with get_plugin_manager().mutation(f"更新插件文件夹 {folder_name}"):
             folders = (
                 get_configured_system_config().get(SystemConfigKey.PluginFolders) or {}
             )
@@ -1014,7 +1016,7 @@ def clone_plugin(
     """
     创建插件分身
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     try:
         with plugin_manager.mutation(f"创建插件 {plugin_id} 分身"):
             success, message = plugin_manager.clone_plugin(
@@ -1049,7 +1051,7 @@ async def plugin_config(
     """
     根据插件ID获取插件配置信息
     """
-    return PluginManager().get_plugin_config(plugin_id)
+    return get_plugin_manager().get_plugin_config(plugin_id)
 
 
 @router.put("/{plugin_id}", summary="更新插件配置", response_model=_SchemaResponse[None])
@@ -1073,7 +1075,7 @@ def uninstall_plugin(
     """
     卸载插件
     """
-    plugin_manager = PluginManager()
+    plugin_manager = get_plugin_manager()
     try:
         with plugin_manager.mutation(f"卸载插件 {plugin_id}"):
             virtual_instance = plugin_manager.get_plugin_instance(plugin_id)

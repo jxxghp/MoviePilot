@@ -16,7 +16,7 @@ from app.application.workflow import (
     get_workflow_manager,
 )
 from app.chain.workflow import WorkflowChain
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -66,7 +66,7 @@ def list_plugin_actions(
     """
     获取所有动作
     """
-    return PluginManager().get_plugin_actions(plugin_id)
+    return get_plugin_manager().get_plugin_actions(plugin_id)
 
 
 @router.get(

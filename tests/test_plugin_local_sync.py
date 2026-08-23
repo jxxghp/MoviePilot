@@ -727,7 +727,7 @@ def test_plugin_reload_refreshes_scheduler_services_idempotently(monkeypatch):
         }
     ]
     plugin_manager.get_plugin_attr.return_value = "测试插件"
-    monkeypatch.setattr("app.scheduler.PluginManager", lambda: plugin_manager)
+    monkeypatch.setattr("app.scheduler.get_plugin_manager", lambda: plugin_manager)
     backend = _FakeSchedulerBackend(["DemoPlugin_old"])
     scheduler = _build_scheduler_for_plugin_reload(
         jobs={

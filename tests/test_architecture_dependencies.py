@@ -352,6 +352,40 @@ def test_host_code_does_not_import_legacy_roots():
     assert violations == {}
 
 
+def test_host_code_uses_explicit_runtime_facade_getters():
+    """宿主消费者必须显式调用 getter，不得把兼容 Facade 当作新代码入口。"""
+    forbidden_imports = {
+        "app.application.module": {"ModuleManager"},
+        "app.application.scheduling": {"Scheduler"},
+    }
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(APP_ROOT)
+        if relative.parts[0] == "plugins" or relative.parts[:2] == (
+            "runtime",
+            "compat",
+        ):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            forbidden_names = forbidden_imports.get(node.module, set())
+            for alias in node.names:
+                class_shaped_plugin_getter = (
+                    node.module == "app.application.plugin.runtime"
+                    and alias.name == "get_plugin_manager"
+                    and alias.asname is not None
+                )
+                if alias.name in forbidden_names or class_shaped_plugin_getter:
+                    imported_name = alias.asname or alias.name
+                    violations.append(
+                        f"{relative.as_posix()}:{node.lineno}:{imported_name}"
+                    )
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []

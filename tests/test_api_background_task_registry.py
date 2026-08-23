@@ -134,7 +134,7 @@ def test_cookiecloud_sync_uses_task_registry(monkeypatch) -> None:
     """CookieCloud 手工同步应登记 Scheduler E1 任务而非 Starlette 后台回调。"""
     registry = _TaskRegistry()
     scheduler = SimpleNamespace(start=lambda **_kwargs: None)
-    monkeypatch.setattr(site, "Scheduler", lambda: scheduler)
+    monkeypatch.setattr(site, "get_scheduler", lambda: scheduler)
 
     response = asyncio.run(site.cookie_cloud_sync(registry, SimpleNamespace()))
 

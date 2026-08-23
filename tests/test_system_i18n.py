@@ -22,7 +22,7 @@ class _FakeModuleManager:
 def test_system_modulelist_keeps_chinese_name_and_adds_i18n_name():
     """模块列表接口应保留旧中文字段，并提供前端可用的多语言字段。"""
     token = LocaleHelper.set_current_locale("en-US")
-    with patch.object(system_endpoint, "ModuleManager", return_value=_FakeModuleManager()):
+    with patch.object(system_endpoint, "get_module_manager", return_value=_FakeModuleManager()):
         try:
             response = system_endpoint.modulelist(_="token")
         finally:
@@ -38,7 +38,7 @@ def test_system_modulelist_keeps_chinese_name_and_adds_i18n_name():
 def test_system_moduletest_localizes_message():
     """模块测试接口应按当前请求语言直接返回翻译后的 message。"""
     token = LocaleHelper.set_current_locale("en-US")
-    with patch.object(system_endpoint, "ModuleManager", return_value=_FakeModuleManager()):
+    with patch.object(system_endpoint, "get_module_manager", return_value=_FakeModuleManager()):
         try:
             response = system_endpoint.moduletest("DoubanModule", _="token")
         finally:
