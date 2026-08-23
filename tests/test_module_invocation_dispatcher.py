@@ -167,6 +167,81 @@ def test_system_signature_relay_passes_previous_result() -> None:
     assert dispatcher.dispatch("execute") == {"value": 2}
 
 
+def test_first_non_empty_contract_stops_legacy_signature_relay() -> None:
+    """显式首个非空契约不得再把结果交给后续宿主 provider 改写。"""
+    class FirstModule:
+        """返回首个识别结果的宿主模块。"""
+
+        @staticmethod
+        def get_name() -> str:
+            """返回测试模块名。"""
+            return "第一识别源"
+
+        @staticmethod
+        def get_priority() -> int:
+            """返回第一优先级。"""
+            return 10
+
+        @staticmethod
+        def recognize_media() -> str:
+            """返回首个非空识别结果。"""
+            return "first"
+
+    class RelayCompatibleModule:
+        """模拟可接受上一结果的旧式宿主模块。"""
+
+        @staticmethod
+        def get_name() -> str:
+            """返回测试模块名。"""
+            return "旧式接力源"
+
+        @staticmethod
+        def get_priority() -> int:
+            """返回第二优先级。"""
+            return 20
+
+        @staticmethod
+        def recognize_media(previous: str) -> str:
+            """若被调用则改写上一结果。"""
+            return f"relayed:{previous}"
+
+    dispatcher, _, _, _ = _dispatcher(
+        modules=[RelayCompatibleModule(), FirstModule()]
+    )
+
+    assert dispatcher.dispatch("recognize_media") == "first"
+
+
+def test_ordered_list_contract_bypasses_legacy_signature_relay() -> None:
+    """显式列表聚合契约应按原参数调用并保留 provider 顺序。"""
+    class SearchModule:
+        """区分原参数调用与旧式结果接力的搜索模块。"""
+
+        @staticmethod
+        def get_name() -> str:
+            """返回测试模块名。"""
+            return "系统搜索源"
+
+        @staticmethod
+        def get_priority() -> int:
+            """返回稳定优先级。"""
+            return 10
+
+        @staticmethod
+        def search_medias(previous: list | None = None) -> list[str]:
+            """原参数调用返回系统结果，接力调用返回可检测哨兵。"""
+            return ["relayed"] if previous is not None else ["system"]
+
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={
+            ("P1", "插件一"): {"search_medias": lambda: ["plugin"]},
+        },
+        modules=[SearchModule()],
+    )
+
+    assert dispatcher.dispatch("search_medias") == ["plugin", "system"]
+
+
 def test_module_exception_uses_error_policy_and_continues() -> None:
     """普通异常应交给错误策略，后续空结果模块仍可继续运行。"""
     def broken():
@@ -207,6 +282,44 @@ async def test_async_dispatch_awaits_coroutines_and_offloads_sync_functions() ->
 
     assert await dispatcher.async_dispatch("execute") == ["plugin", "system"]
     assert offloaded == [sync_module.execute]
+
+
+@pytest.mark.asyncio
+async def test_async_ordered_list_contract_uses_same_aggregation_policy() -> None:
+    """异步 dispatcher 应与同步路径共享显式列表聚合语义。"""
+    class SearchModule:
+        """提供异步路径下可识别调用方式的同步 provider。"""
+
+        @staticmethod
+        def get_name() -> str:
+            """返回测试模块名。"""
+            return "异步系统搜索源"
+
+        @staticmethod
+        def get_priority() -> int:
+            """返回稳定优先级。"""
+            return 10
+
+        @staticmethod
+        def search_medias(previous: list | None = None) -> list[str]:
+            """原参数调用返回系统结果，接力调用返回可检测哨兵。"""
+            return ["relayed"] if previous is not None else ["system"]
+
+    async def plugin_search() -> list[str]:
+        """返回插件搜索结果。"""
+        return ["plugin"]
+
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={
+            ("P1", "插件一"): {"search_medias": plugin_search},
+        },
+        modules=[SearchModule()],
+    )
+
+    assert await dispatcher.async_dispatch("search_medias") == [
+        "plugin",
+        "system",
+    ]
 
 
 def test_plugin_non_mapping_module_decl_is_reported_and_skipped() -> None:

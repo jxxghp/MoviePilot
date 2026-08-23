@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Mapping
+from enum import StrEnum
 from typing import Any, Protocol, cast
 
 from app.foundation.reflection import ObjectUtils
@@ -11,6 +12,7 @@ from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.log import logger
 from app.runtime.observability import observe_duration, record_metric
 from app.runtime.extensions.module.contracts import (
+    ModuleResultAggregation,
     diagnose_module_callable,
     diagnose_module_result,
     get_module_method_contract,
@@ -37,6 +39,14 @@ class PluginModuleCatalog(Protocol):
 
 ModuleErrorHandler = Callable[..., None]
 AsyncFunctionRunner = Callable[..., Any]
+
+
+class _ProviderCallMode(StrEnum):
+    """描述当前 provider 应采用的兼容调用方式。"""
+
+    ORIGINAL = "original"
+    RELAY = "relay"
+    STOP = "stop"
 
 
 class ModuleInvocationDispatcher:
@@ -115,6 +125,7 @@ class ModuleInvocationDispatcher:
         **kwargs: Any,
     ) -> Any:
         """同步执行插件方法，保留插件顺序、短路和列表合并语义。"""
+        aggregation = get_module_method_contract(method).aggregation
         for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
             plugin_id, plugin_name = plugin
             try:
@@ -133,16 +144,21 @@ class ModuleInvocationDispatcher:
                 )
                 self._diagnose_callable(method, func, f"插件 {plugin_id}")
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
-                if self.is_valid_empty(result):
-                    result = func(*args, **kwargs)
-                    self._diagnose_result(method, result, "plugin")
-                elif isinstance(result, list):
-                    temp = func(*args, **kwargs)
-                    self._diagnose_result(method, temp, "plugin")
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
+                call_mode = self._provider_call_mode(
+                    aggregation,
+                    result,
+                    func,
+                    allow_relay=False,
+                )
+                if call_mode is _ProviderCallMode.STOP:
                     break
+                provider_result = func(*args, **kwargs)
+                self._diagnose_result(method, provider_result, "plugin")
+                result = self._aggregate_provider_result(
+                    result,
+                    provider_result,
+                    call_mode,
+                )
             except RateLimitExceededException as err:
                 self._rate_limit_handler(
                     err,
@@ -170,6 +186,7 @@ class ModuleInvocationDispatcher:
         **kwargs: Any,
     ) -> Any:
         """异步执行插件方法，并把同步函数移入线程池。"""
+        aggregation = get_module_method_contract(method).aggregation
         for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
             plugin_id, plugin_name = plugin
             try:
@@ -188,16 +205,21 @@ class ModuleInvocationDispatcher:
                 )
                 self._diagnose_callable(method, func, f"插件 {plugin_id}")
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
-                if self.is_valid_empty(result):
-                    result = await self._async_call(func, *args, **kwargs)
-                    self._diagnose_result(method, result, "plugin")
-                elif isinstance(result, list):
-                    temp = await self._async_call(func, *args, **kwargs)
-                    self._diagnose_result(method, temp, "plugin")
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
+                call_mode = self._provider_call_mode(
+                    aggregation,
+                    result,
+                    func,
+                    allow_relay=False,
+                )
+                if call_mode is _ProviderCallMode.STOP:
                     break
+                provider_result = await self._async_call(func, *args, **kwargs)
+                self._diagnose_result(method, provider_result, "plugin")
+                result = self._aggregate_provider_result(
+                    result,
+                    provider_result,
+                    call_mode,
+                )
             except RateLimitExceededException as err:
                 self._rate_limit_handler(
                     err,
@@ -226,6 +248,7 @@ class ModuleInvocationDispatcher:
     ) -> Any:
         """同步执行按优先级排序的宿主模块，并支持签名接力。"""
         logger.debug("请求系统模块执行：%s ...", method)
+        aggregation = get_module_method_contract(method).aggregation
         modules = sorted(
             self._module_catalog.get_running_modules(method),
             key=lambda module: module.get_priority(),
@@ -241,19 +264,24 @@ class ModuleInvocationDispatcher:
                     abi_source="host_module",
                 )
                 self._diagnose_callable(method, func, f"宿主模块 {module_id}")
-                if self.is_valid_empty(result):
-                    result = func(*args, **kwargs)
-                    self._diagnose_result(method, result, "system")
-                elif ObjectUtils.check_signature(func, result):
-                    result = func(result)
-                    self._diagnose_result(method, result, "system")
-                elif isinstance(result, list):
-                    temp = func(*args, **kwargs)
-                    self._diagnose_result(method, temp, "system")
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
+                call_mode = self._provider_call_mode(
+                    aggregation,
+                    result,
+                    func,
+                    allow_relay=True,
+                )
+                if call_mode is _ProviderCallMode.STOP:
                     break
+                if call_mode is _ProviderCallMode.RELAY:
+                    provider_result = func(result)
+                else:
+                    provider_result = func(*args, **kwargs)
+                self._diagnose_result(method, provider_result, "system")
+                result = self._aggregate_provider_result(
+                    result,
+                    provider_result,
+                    call_mode,
+                )
             except RateLimitExceededException as err:
                 self._rate_limit_handler(
                     err,
@@ -282,6 +310,7 @@ class ModuleInvocationDispatcher:
     ) -> Any:
         """异步执行宿主模块，并保持同步路径的签名接力与聚合顺序。"""
         logger.debug("请求系统模块执行：%s ...", method)
+        aggregation = get_module_method_contract(method).aggregation
         modules = sorted(
             self._module_catalog.get_running_modules(method),
             key=lambda module: module.get_priority(),
@@ -297,19 +326,24 @@ class ModuleInvocationDispatcher:
                     abi_source="host_module",
                 )
                 self._diagnose_callable(method, func, f"宿主模块 {module_id}")
-                if self.is_valid_empty(result):
-                    result = await self._async_call(func, *args, **kwargs)
-                    self._diagnose_result(method, result, "system")
-                elif ObjectUtils.check_signature(func, result):
-                    result = await self._async_call(func, result)
-                    self._diagnose_result(method, result, "system")
-                elif isinstance(result, list):
-                    temp = await self._async_call(func, *args, **kwargs)
-                    self._diagnose_result(method, temp, "system")
-                    if isinstance(temp, list):
-                        result.extend(temp)
-                else:
+                call_mode = self._provider_call_mode(
+                    aggregation,
+                    result,
+                    func,
+                    allow_relay=True,
+                )
+                if call_mode is _ProviderCallMode.STOP:
                     break
+                if call_mode is _ProviderCallMode.RELAY:
+                    provider_result = await self._async_call(func, result)
+                else:
+                    provider_result = await self._async_call(func, *args, **kwargs)
+                self._diagnose_result(method, provider_result, "system")
+                result = self._aggregate_provider_result(
+                    result,
+                    provider_result,
+                    call_mode,
+                )
             except RateLimitExceededException as err:
                 self._rate_limit_handler(
                     err,
@@ -327,6 +361,45 @@ class ModuleInvocationDispatcher:
                     method,
                     **kwargs,
                 )
+        return result
+
+    @classmethod
+    def _provider_call_mode(
+        cls,
+        aggregation: ModuleResultAggregation,
+        result: Any,
+        func: Callable[..., Any],
+        *,
+        allow_relay: bool,
+    ) -> _ProviderCallMode:
+        """按契约选择下一 provider 的调用方式，并冻结 legacy 接力语义。"""
+        if cls.is_valid_empty(result):
+            return _ProviderCallMode.ORIGINAL
+        if aggregation is ModuleResultAggregation.FIRST_NON_EMPTY:
+            return _ProviderCallMode.STOP
+        if aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE:
+            return (
+                _ProviderCallMode.ORIGINAL
+                if isinstance(result, list)
+                else _ProviderCallMode.STOP
+            )
+        if allow_relay and ObjectUtils.check_signature(func, result):
+            return _ProviderCallMode.RELAY
+        if isinstance(result, list):
+            return _ProviderCallMode.ORIGINAL
+        return _ProviderCallMode.STOP
+
+    @staticmethod
+    def _aggregate_provider_result(
+        result: Any,
+        provider_result: Any,
+        call_mode: _ProviderCallMode,
+    ) -> Any:
+        """合并单个 provider 结果，接力调用则用新结果替换旧结果。"""
+        if call_mode is _ProviderCallMode.RELAY or not isinstance(result, list):
+            return provider_result
+        if isinstance(provider_result, list):
+            result.extend(provider_result)
         return result
 
     @staticmethod
