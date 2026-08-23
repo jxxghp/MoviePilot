@@ -856,9 +856,9 @@ class TransferJobManagerTest(unittest.TestCase):
                 "app.chain.transfer.add_transfer_fail",
                 lambda **kwargs: SimpleNamespace(id=1),
             ), patch(
-                "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+                "app.runtime.config.settings.AI_AGENT_ENABLE", False
             ), patch(
-                "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+                "app.runtime.config.settings.AI_AGENT_RETRY_TRANSFER", False
             ):
                 state, _ = chain._TransferChain__default_callback(task, failed_transferinfo)
 
@@ -928,9 +928,9 @@ class TransferJobManagerTest(unittest.TestCase):
         ), patch(
             "app.chain.transfer.MediaChain"
         ) as media_chain_cls, patch(
-            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+            "app.runtime.config.settings.AI_AGENT_ENABLE", False
         ), patch(
-            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+            "app.runtime.config.settings.AI_AGENT_RETRY_TRANSFER", False
         ):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             state, errmsg = chain._TransferChain__handle_transfer(task)
@@ -970,9 +970,9 @@ class TransferJobManagerTest(unittest.TestCase):
         ), patch(
             "app.chain.transfer.MediaChain"
         ) as media_chain_cls, patch(
-            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+            "app.runtime.config.settings.AI_AGENT_ENABLE", False
         ), patch(
-            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+            "app.runtime.config.settings.AI_AGENT_RETRY_TRANSFER", False
         ):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             state, errmsg = chain._TransferChain__handle_transfer(task)
@@ -1013,9 +1013,9 @@ class TransferJobManagerTest(unittest.TestCase):
         ), patch(
             "app.chain.transfer.MediaChain"
         ) as media_chain_cls, patch(
-            "app.chain.transfer.settings.AI_AGENT_ENABLE", False
+            "app.runtime.config.settings.AI_AGENT_ENABLE", False
         ), patch(
-            "app.chain.transfer.settings.AI_AGENT_RETRY_TRANSFER", False
+            "app.runtime.config.settings.AI_AGENT_RETRY_TRANSFER", False
         ):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             chain._TransferChain__handle_transfer(task)

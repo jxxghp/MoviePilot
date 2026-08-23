@@ -30,17 +30,21 @@ def configure_plugin_system_services():
     )
     from app.api.data import configure_api_data_ports
     from app.application.configuration import (
-        ApiRuntimeConfig,
-        ChainRuntimeConfig,
         RuntimeConfiguration,
-        SchedulerRuntimeConfig,
+        RuntimeSettingsService,
         SystemConfigService,
         TransferRetryConfig,
         configure_runtime_configuration,
+        configure_runtime_settings,
         configure_system_config,
         configure_transfer_retry_config,
     )
     from app.runtime.config import settings
+    from app.startup.configuration import (
+        build_api_runtime_config,
+        build_chain_runtime_config,
+        build_scheduler_runtime_config,
+    )
     from app.application.service import configure_service_directory
     from app.db.session import (
         SessionFactory,
@@ -58,20 +62,12 @@ def configure_plugin_system_services():
     configure_token_codec(create_access_token, decode_access_token)
     configure_runtime_configuration(
         RuntimeConfiguration(
-            api=lambda: ApiRuntimeConfig(
-                advanced_mode=settings.ADVANCED_MODE,
-                access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
-                btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
-                ai_agent_enable=settings.AI_AGENT_ENABLE,
-            ),
-            scheduler=lambda: SchedulerRuntimeConfig(
-                False, settings.TZ, 1, False, "", None, None, False, 24,
-                "rss", 30, False, None, None, settings.AI_AGENT_ENABLE,
-                None, False, None,
-            ),
-            chain=lambda: ChainRuntimeConfig(media_extensions=()),
+            api=lambda: build_api_runtime_config(settings),
+            scheduler=lambda: build_scheduler_runtime_config(settings),
+            chain=lambda: build_chain_runtime_config(settings),
         )
     )
+    configure_runtime_settings(RuntimeSettingsService(settings))
     configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
@@ -194,6 +190,7 @@ def configure_plugin_system_services():
             send_callback=callback
         ),
         module_dispatcher_factory=ModuleInvocationDispatcher,
+        configuration=build_chain_runtime_config(settings),
     ))
     configure_site_query_service(SiteQueryService(repository=SiteOper()))
     configure_site_health_service(SiteHealthService(repository=SiteOper()))

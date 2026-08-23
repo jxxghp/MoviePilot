@@ -13,8 +13,8 @@ from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain
-from app.runtime.config import settings, global_vars
-from app.domain.context import MediaInfo, MusicInfo
+from app.runtime.config import global_vars
+from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -112,11 +112,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """初始化文件整理处理链。"""
         super().__init__()
         # 主要媒体文件后缀
-        self._media_exts = settings.RMT_MEDIAEXT
+        self._media_exts = self.runtime_config.video_extensions
         # 字幕文件后缀
-        self._subtitle_exts = settings.RMT_SUBEXT
+        self._subtitle_exts = self.runtime_config.subtitle_extensions
         # 音频文件后缀
-        self._audio_exts = settings.RMT_AUDIOEXT
+        self._audio_exts = self.runtime_config.audio_extensions
         # 可处理的文件后缀（视频文件、字幕、音频文件）
         self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts
         # 待整理任务队列
@@ -154,7 +154,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         启动文件整理线程
         """
         self._queue_active = True
-        for i in range(settings.TRANSFER_THREADS):
+        for i in range(self.runtime_config.transfer_threads):
             logger.info(f"启动文件整理线程 {i + 1} ...")
             thread = threading.Thread(
                 target=self.__start_transfer, name=f"transfer-{i}", daemon=True
@@ -341,8 +341,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             # AI智能体自动重试整理
             if (
                     history
-                    and settings.AI_AGENT_ENABLE
-                    and settings.AI_AGENT_RETRY_TRANSFER
+                    and self.runtime_config.ai_agent_enable
+                    and self.runtime_config.ai_agent_retry_transfer
             ):
                 try:
                     # 使用 download_hash 或源文件父目录作为分组键，
@@ -554,7 +554,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             username=task.username,
             manual_identity=manual_identity,
         )
-        if not settings.TRANSFER_FAILURE_NOTIFICATION_AGGREGATION:
+        if not self.runtime_config.transfer_failure_notification_aggregation:
             self._send_transfer_failure_notifications([notification])
             return
         try:
@@ -616,7 +616,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             text = "\n".join(text_parts)
             buttons = [[{
                 "text": "批量处理",
-                "url": settings.MP_DOMAIN("#/history"),
+                "url": self.runtime_config.history_url,
             }]]
             title = f"{first.media_title} 入库失败（{len(notifications)} 个文件）"
         self.post_message(
@@ -626,7 +626,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 text=text,
                 image=first.image,
                 username=first.username,
-                link=settings.MP_DOMAIN("#/history"),
+                link=self.runtime_config.history_url,
                 buttons=buttons,
             )
         )
@@ -855,7 +855,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
     def __expire_stale_transfer_tasks(self):
         """清理外部接管后失去状态心跳的运行中整理任务。"""
-        timeout_minutes = max(int(settings.TRANSFER_TASK_TIMEOUT), 0)
+        timeout_minutes = max(int(self.runtime_config.transfer_task_timeout), 0)
         expire_tasks = getattr(self.jobview, "expire_stale_running_tasks", None)
         expired_tasks = (
             expire_tasks(timeout_seconds=timeout_minutes * 60)
@@ -1110,8 +1110,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     # AI智能体自动重试整理
                     if (
                             his
-                            and settings.AI_AGENT_ENABLE
-                            and settings.AI_AGENT_RETRY_TRANSFER
+                            and self.runtime_config.ai_agent_enable
+                            and self.runtime_config.ai_agent_retry_transfer
                     ):
                         try:
                             # 使用 download_hash 或源文件父目录作为分组键
@@ -1136,7 +1136,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
             # 只有 TMDB 主源沿用历史 TMDB 标题，避免辅助 ID 改写其它识别源标题。
             if (
-                    not settings.SCRAP_FOLLOW_TMDB
+                    not self.runtime_config.scrape_follow_tmdb
                     and mediainfo.media_source == MediaSource.TMDB
             ):
                 transfer_history = transferhis.get_by_media_identity(
@@ -1416,15 +1416,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
                     # 执行异步整理，匹配源目录
                     self.do_transfer(
-                        fileitem=FileItem(
-                            storage="local",
-                            path=file_path.as_posix()
-                                 + ("/" if file_path.is_dir() else ""),
-                            type="dir" if not file_path.is_file() else "file",
-                            name=file_path.name,
-                            size=file_path.stat().st_size,
-                            extension=file_path.suffix.lstrip("."),
-                        ),
+                        fileitem=self._build_transfer_fileitem(torrent),
                         mediainfo=mediainfo,
                         mtype=mtype,
                         downloader=torrent.downloader,
@@ -1442,6 +1434,19 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 del torrents
 
             return True
+
+    @staticmethod
+    def _build_transfer_fileitem(torrent: TorrentInfo) -> FileItem:
+        """把下载器任务路径转换为整理链使用的本地文件项。"""
+        file_path = torrent.path
+        return FileItem(
+            storage="local",
+            path=file_path.as_posix() + ("/" if file_path.is_dir() else ""),
+            type="dir" if not file_path.is_file() else "file",
+            name=file_path.name,
+            size=file_path.stat().st_size,
+            extension=file_path.suffix.lstrip("."),
+        )
 
     def __get_trans_fileitems(
             self,
@@ -1601,7 +1606,199 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
         return shared_roots
 
+    @staticmethod
+    def _normalize_transfer_identity(
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]],
+        mtype: Optional[MediaType],
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        meta: Optional[MetaBase],
+    ) -> Tuple[
+        Optional[Union[MediaInfo, MusicInfo]],
+        Optional[MediaSource],
+        Optional[str],
+        Optional[str],
+    ]:
+        """
+        规范整理请求的媒体身份，并在显式身份缺失时短路。
+
+        :return: ``(媒体信息、媒体来源、媒体 ID、错误信息)``；错误信息为空表示可继续执行
+        """
+        explicit_identity = media_source is not None or media_id is not None
+        normalized_source, normalized_media_id = resolve_media_identity(
+            media_source=media_source,
+            media_id=media_id,
+        )
+        if explicit_identity and (
+                not normalized_source or not normalized_media_id
+        ):
+            return (
+                mediainfo,
+                normalized_source,
+                normalized_media_id,
+                "整理任务需要同时提供有效的 media_source 和 media_id",
+            )
+        if not explicit_identity and mediainfo:
+            normalized_source, normalized_media_id = resolve_media_identity(
+                media=mediainfo
+            )
+        if explicit_identity and not mediainfo:
+            mediainfo = MediaChain().recognize_media(
+                mtype=mtype,
+                media_source=normalized_source,
+                media_id=normalized_media_id,
+                music_type=getattr(meta, "music_type", None),
+            )
+            if not mediainfo:
+                return (
+                    mediainfo,
+                    normalized_source,
+                    normalized_media_id,
+                    "未识别到媒体信息，"
+                    f"media_source：{normalized_source}，media_id：{normalized_media_id}",
+                )
+        return mediainfo, normalized_source, normalized_media_id, None
+
+    def _collect_transfer_candidates(
+        self,
+        fileitem: FileItem,
+        batch_mtype: Optional[MediaType],
+        min_filesize: int,
+        epformat: Optional[EpisodeFormat],
+        season: Optional[int],
+        continue_callback: Optional[Callable],
+    ) -> Tuple[List[Tuple[FileItem, bool]], bool]:
+        """
+        收集并过滤本次整理的候选文件。
+
+        候选遍历只负责发现文件，业务过滤集中在此阶段；返回模板命中状态供公开整理流程
+        保持“未命中自定义集数模板时跳过”的旧行为。
+        """
+        format_handler = (
+            FormatParser(
+                eformat=epformat.format,
+                details=epformat.detail,
+                part=epformat.part,
+                offset=epformat.offset,
+            )
+            if epformat
+            else None
+        )
+        has_template = bool(epformat and epformat.format)
+        exclude_words = get_configured_system_config().get(
+            SystemConfigKey.TransferExcludeWords
+        )
+        matched_template = False
+
+        def keep_candidate(item: FileItem, _is_bluray_dir: bool) -> bool:
+            """候选遍历阶段只响应取消请求，不提前应用业务过滤。"""
+            if continue_callback and not continue_callback():
+                raise OperationInterrupted()
+            return True
+
+        def is_allowed(item: FileItem, is_bluray_dir: bool) -> bool:
+            """判断候选文件是否符合格式、后缀、大小和屏蔽词约束。"""
+            nonlocal matched_template
+            if continue_callback and not continue_callback():
+                raise OperationInterrupted()
+            if has_template and format_handler:
+                if not format_handler.match(item.name):
+                    return False
+                matched_template = True
+            if batch_mtype == MediaType.MUSIC:
+                if not self._is_media_file(item, batch_mtype):
+                    return False
+                if not self._is_allow_filesize(item, min_filesize):
+                    return False
+            elif (
+                not is_bluray_dir
+                and not self._is_subtitle_file(item)
+                and not self._is_audio_file(item)
+            ):
+                if not self._is_media_file(item, batch_mtype):
+                    return False
+                if not self._is_allow_filesize(item, min_filesize):
+                    return False
+            if any(
+                marker in item.path
+                for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")
+            ):
+                logger.debug(f"{item.path} 是回收站或隐藏的文件")
+                return False
+            return not self._is_blocked_by_exclude_words(item.path, exclude_words)
+
+        candidates = self.__get_trans_fileitems(fileitem, predicate=keep_candidate)
+        return [
+            (item, is_bluray_dir)
+            for item, is_bluray_dir in candidates
+            if is_allowed(item, is_bluray_dir)
+        ], matched_template
+
     def do_transfer(
+            self,
+            fileitem: FileItem,
+            meta: MetaBase = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+            mtype: Optional[MediaType] = None,
+            media_source: Optional[MediaSource] = None,
+            media_id: Optional[str] = None,
+            target_directory: TransferDirectoryConf = None,
+            target_storage: Optional[str] = None,
+            target_path: Path = None,
+            transfer_type: Optional[str] = None,
+            scrape: Optional[bool] = None,
+            library_type_folder: Optional[bool] = None,
+            library_category_folder: Optional[bool] = None,
+            season: Optional[int] = None,
+            epformat: EpisodeFormat = None,
+            min_filesize: Optional[int] = 0,
+            downloader: Optional[str] = None,
+            download_hash: Optional[str] = None,
+            force: Optional[bool] = False,
+            background: Optional[bool] = True,
+            manual: Optional[bool] = False,
+            preview: Optional[bool] = False,
+            sync_extra_files: Optional[bool] = False,
+            cleanup_dest_fileitem: Optional[FileItem] = None,
+            continue_callback: Callable = None,
+            reorganize: Optional[bool] = False,
+    ) -> Tuple[bool, Union[str, dict]]:
+        """
+        兼容公开整理入口，委托给内部批次执行阶段。
+
+        公开签名是 API、工作流、监控器和插件共同使用的稳定契约；具体整理阶段保留在
+        内部方法中，后续可以独立拆分规划、执行和结算，而不迫使调用方迁移参数。
+        """
+        return self._execute_transfer(
+            fileitem=fileitem,
+            meta=meta,
+            mediainfo=mediainfo,
+            mtype=mtype,
+            media_source=media_source,
+            media_id=media_id,
+            target_directory=target_directory,
+            target_storage=target_storage,
+            target_path=target_path,
+            transfer_type=transfer_type,
+            scrape=scrape,
+            library_type_folder=library_type_folder,
+            library_category_folder=library_category_folder,
+            season=season,
+            epformat=epformat,
+            min_filesize=min_filesize,
+            downloader=downloader,
+            download_hash=download_hash,
+            force=force,
+            background=background,
+            manual=manual,
+            preview=preview,
+            sync_extra_files=sync_extra_files,
+            cleanup_dest_fileitem=cleanup_dest_fileitem,
+            continue_callback=continue_callback,
+            reorganize=reorganize,
+        )
+
+    def _execute_transfer(
             self,
             fileitem: FileItem,
             meta: MetaBase = None,
@@ -1660,33 +1857,17 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         :param continue_callback: 继续处理回调
         返回：成功标识，错误信息
         """
-        explicit_identity = media_source is not None or media_id is not None
-        normalized_source, normalized_media_id = resolve_media_identity(
-            media_source=media_source,
-            media_id=media_id,
-        )
-        if explicit_identity and (
-                not normalized_source or not normalized_media_id
-        ):
-            return False, "整理任务需要同时提供有效的 media_source 和 media_id"
-        if not explicit_identity and mediainfo:
-            normalized_source, normalized_media_id = resolve_media_identity(
-                media=mediainfo
-            )
-        media_source = normalized_source
-        media_id = normalized_media_id
-        if explicit_identity and not mediainfo:
-            mediainfo = MediaChain().recognize_media(
+        mediainfo, media_source, media_id, identity_error = (
+            self._normalize_transfer_identity(
+                mediainfo=mediainfo,
                 mtype=mtype,
                 media_source=media_source,
                 media_id=media_id,
-                music_type=getattr(meta, "music_type", None),
+                meta=meta,
             )
-            if not mediainfo:
-                return False, (
-                    "未识别到媒体信息，"
-                    f"media_source：{media_source}，media_id：{media_id}"
-                )
+        )
+        if identity_error:
+            return False, identity_error
 
         # 是否全部成功
         all_success = True
@@ -1710,13 +1891,22 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             else None
         )
 
-        # 整理屏蔽词
+        # 汇总错误信息
+        err_msgs: List[str] = []
         transfer_exclude_words = get_configured_system_config().get(
             SystemConfigKey.TransferExcludeWords
         )
-        # 汇总错误信息
-        err_msgs: List[str] = []
-        matched_episode_format_template = False
+        has_episode_format_template = bool(epformat and epformat.format)
+        formaterHandler = (
+            FormatParser(
+                eformat=epformat.format,
+                details=epformat.detail,
+                part=epformat.part,
+                offset=epformat.offset,
+            )
+            if epformat
+            else None
+        )
 
         def _build_file_meta(
                 source_path: Path,
@@ -1796,78 +1986,18 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
             return current_meta
 
-        def _is_allowed_transfer_item(item: FileItem, is_bluray_dir: bool) -> bool:
-            """
-            判断候选文件项是否允许进入整理规划。
-
-            :return: True 表示保留，False 表示排除
-            """
-            nonlocal matched_episode_format_template
+        def _is_allowed_transfer_item(item: FileItem, _is_bluray_dir: bool) -> bool:
+            """筛选单文件模式额外读取的字幕/音频，保持模板和屏蔽词语义。"""
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
-            # 存在集数定位模板时，模板匹配结果作为手动整理的硬过滤条件。
-            if has_episode_format_template and formaterHandler:
-                if not formaterHandler.match(item.name):
-                    return False
-                matched_episode_format_template = True
-            if batch_mtype == MediaType.MUSIC:
-                # 明确的音乐批次只接收音频主文件，避免混合下载目录中的视频或字幕
-                # 被音乐身份和命名模板整理进音乐库。
-                if not self._is_media_file(item, batch_mtype):
-                    return False
-                if not self._is_allow_filesize(item, min_filesize):
-                    return False
-            # 过滤后缀和大小（蓝光目录、附加文件不过滤）
-            elif (
-                    not is_bluray_dir
-                    and not self._is_subtitle_file(item)
-                    and not self._is_audio_file(item)
-            ):
-                if not self._is_media_file(item, batch_mtype):
-                    return False
-                if not self._is_allow_filesize(item, min_filesize):
-                    return False
-            # 回收站及隐藏的文件不处理
-            if (
-                    item.path.find("/@Recycle/") != -1
-                    or item.path.find("/#recycle/") != -1
-                    or item.path.find("/.") != -1
-                    or item.path.find("/@eaDir") != -1
-            ):
-                logger.debug(f"{item.path} 是回收站或隐藏的文件")
+            if has_episode_format_template and formaterHandler and not formaterHandler.match(item.name):
                 return False
-            # 整理屏蔽词不处理
-            if self._is_blocked_by_exclude_words(
-                    item.path, transfer_exclude_words
+            if any(
+                marker in item.path
+                for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")
             ):
                 return False
-            return True
-
-        def _keep_candidate_item(item: FileItem, is_bluray_dir: bool) -> bool:
-            """
-            收集候选文件时仅检查中断状态，不套用整理业务过滤。
-            """
-            if continue_callback and not continue_callback():
-                raise OperationInterrupted()
-            return True
-
-        def _collect_candidate_file_items() -> List[Tuple[FileItem, bool]]:
-            """
-            收集来源下的候选文件项，不在此阶段套用整理业务过滤。
-            """
-            return self.__get_trans_fileitems(fileitem, predicate=_keep_candidate_item)
-
-        def _filter_allowed_file_items(
-                candidates: List[Tuple[FileItem, bool]]
-        ) -> List[Tuple[FileItem, bool]]:
-            """
-            将候选文件项筛选为本轮允许整理的文件项。
-            """
-            return [
-                (candidate_item, candidate_bluray_dir)
-                for candidate_item, candidate_bluray_dir in candidates
-                if _is_allowed_transfer_item(candidate_item, candidate_bluray_dir)
-            ]
+            return not self._is_blocked_by_exclude_words(item.path, transfer_exclude_words)
 
         def _build_main_meta(
                 main_fileitem: FileItem,
@@ -2110,14 +2240,17 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
             return planned_items, inherited_map
 
-        candidate_file_items: List[Tuple[FileItem, bool]] = []
         try:
-            candidate_file_items = _collect_candidate_file_items()
-            file_items = _filter_allowed_file_items(candidate_file_items)
+            file_items, matched_episode_format_template = self._collect_transfer_candidates(
+                fileitem=fileitem,
+                batch_mtype=batch_mtype,
+                min_filesize=min_filesize,
+                epformat=epformat,
+                season=season,
+                continue_callback=continue_callback,
+            )
         except OperationInterrupted:
             return False, f"{fileitem.name} 已取消"
-        finally:
-            candidate_file_items.clear()
 
         if not file_items:
             if has_episode_format_template and not matched_episode_format_template:
@@ -2533,7 +2666,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         source=source,
                         text=errmsg,
                         userid=userid,
-                        link=settings.MP_DOMAIN("#/history"),
+                        link=self.runtime_config.history_url,
                         save_history=False,
                     )
                 )
@@ -2570,7 +2703,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     source=source,
                     text=errmsg,
                     userid=userid,
-                    link=settings.MP_DOMAIN("#/history"),
+                    link=self.runtime_config.history_url,
                     save_history=False,
                 )
             )
@@ -2734,7 +2867,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 ctype=ContentType.OrganizeSuccess,
                 image=mediainfo.get_message_image(),
                 username=username,
-                link=settings.MP_DOMAIN("#/history"),
+                link=self.runtime_config.history_url,
             ),
             meta=meta,
             mediainfo=mediainfo,

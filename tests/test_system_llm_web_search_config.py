@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import patch
 
 from app.api.endpoints import system as system_endpoint
+from app.runtime.config import settings
 
 
 def test_set_env_rejects_unsupported_builtin_web_search() -> None:
@@ -15,7 +16,7 @@ def test_set_env_rejects_unsupported_builtin_web_search() -> None:
         "LLM_WEB_SEARCH_MODE": "builtin",
     }
 
-    with patch.object(type(system_endpoint.settings), "update_settings") as update_settings:
+    with patch.object(type(settings), "update_settings") as update_settings:
         response = asyncio.run(system_endpoint.set_env_setting(env=env, _=object()))
 
     assert response.success is False
@@ -33,7 +34,7 @@ def test_set_env_accepts_supported_deepseek_builtin_web_search() -> None:
     }
 
     with patch.object(
-        type(system_endpoint.settings),
+        type(settings),
         "update_settings",
         return_value={key: (True, None) for key in env},
     ) as update_settings, patch.object(

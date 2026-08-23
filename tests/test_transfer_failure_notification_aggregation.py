@@ -1,4 +1,5 @@
 from unittest.mock import Mock
+from types import SimpleNamespace
 
 from app.chain import transfer as transfer_module
 from app.chain.transfer import TransferChain
@@ -114,6 +115,7 @@ def test_aggregator_debounces_same_group_and_flushes_once():
 def test_aggregated_message_contains_count_reason_stats_and_batch_entry():
     """聚合消息应给出失败数、原因统计、历史 ID 和批量处理入口。"""
     chain = object.__new__(TransferChain)
+    chain.runtime_config = SimpleNamespace(history_url="#/history")
     sent = []
     chain.post_message = sent.append
     notices = [
@@ -132,13 +134,16 @@ def test_aggregated_message_contains_count_reason_stats_and_batch_entry():
     assert "整理记录：#11、#12、#13" in message.text
     assert message.buttons == [[{
         "text": "批量处理",
-        "url": transfer_module.settings.MP_DOMAIN("#/history"),
+        "url": "#/history",
     }]]
 
 
-def test_enabled_queue_uses_shared_group_key(monkeypatch):
+def test_enabled_queue_uses_shared_group_key():
     """开启聚合后公开通知入口应投递到聚合器而不是立即发送。"""
     chain = object.__new__(TransferChain)
+    chain.runtime_config = SimpleNamespace(
+        transfer_failure_notification_aggregation=True,
+    )
     chain.failure_notification_aggregator = Mock()
     chain.post_message = Mock()
     task = _task(episode=1)
@@ -149,11 +154,6 @@ def test_enabled_queue_uses_shared_group_key(monkeypatch):
         transfer_type="copy",
     )
     loop = transfer_module.global_vars.loop
-    monkeypatch.setattr(
-        transfer_module.settings,
-        "TRANSFER_FAILURE_NOTIFICATION_AGGREGATION",
-        True,
-    )
     chain.queue_failed_transfer_notification(
         task=task,
         transferinfo=transferinfo,

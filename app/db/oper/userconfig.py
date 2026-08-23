@@ -31,12 +31,12 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         conf = UserConfig.get_by_key(db=self._db, username=username, key=key)
         if conf:
             if value:
-                conf.update(self._db, {"value": value})
+                self._stage_update(conf, {"value": value})
             else:
-                conf.delete(self._db, conf.id)
+                self._stage_delete(UserConfig, conf.id)
         else:
             conf = UserConfig(username=username, key=key, value=value)
-            conf.create(self._db)
+            self._stage_create(conf)
 
     def get(self, username: str, key: Optional[Union[str, UserConfigKey]] = None) -> Any:
         """

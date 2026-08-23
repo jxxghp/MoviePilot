@@ -1,6 +1,7 @@
 import unittest
 import asyncio
 import sys
+from dataclasses import replace
 from types import ModuleType
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -101,6 +102,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
 
     def test_transfer_ai_retry_callback_schedules_agent_takeover(self):
         chain = TransferChain()
+        chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
         history = SimpleNamespace(
             id=34,
             status=False,
@@ -159,6 +161,7 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
 
     def test_transfer_ai_retry_callback_uses_successful_move_dest_as_source(self):
         chain = TransferChain()
+        chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
         captured = {}
         history = SimpleNamespace(
             id=35,

@@ -20,7 +20,7 @@ from app.api.response import ResponseAPIRouter
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.tmdb import TmdbChain
-from app.runtime.config import settings
+from app.application.configuration import get_api_runtime_config_snapshot
 from app.domain.context import Context, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -150,7 +150,8 @@ def _build_recognize_metainfo(
     if (
         ("/" in title or "\\" in title)
         and "://" not in title
-        and title_path.suffix.lower() in settings.RMT_MEDIAEXT
+        and title_path.suffix.lower()
+        in get_api_runtime_config_snapshot().media_extensions
     ):
         metainfo = MetaInfoPath(
             title_path,
@@ -369,7 +370,8 @@ async def search(
         return []
 
     # 排序和分页
-    setting_order = settings.SEARCH_SOURCE.split(",") if settings.SEARCH_SOURCE else []
+    search_source = get_api_runtime_config_snapshot().search_source
+    setting_order = search_source.split(",") if search_source else []
     sort_order = {source: index for index, source in enumerate(setting_order)}
 
     sorted_result = sorted(result, key=lambda x: sort_order.get(__get_source(x), 4))
@@ -386,10 +388,7 @@ def source(_: _SchemaTokenPayload = Depends(verify_token)) -> list[_SchemaMediaS
     return _registered_media_sources()
 
 
-@router.post(
-    "/scrape/{storage}", summary="刮削媒体信息", response_model=_SchemaResponse[None]
-)
-def scrape(
+def _scrape_impl(
     fileitem: _SchemaFileItem,
     storage: Optional[str] = "local",
     media_source: Optional[MediaSource] = None,
@@ -494,6 +493,22 @@ def scrape(
         overwrite=True,
     )
     return _SchemaResponse(success=True, message=f"{fileitem.path} 刮削完成")
+
+
+@router.post(
+    "/scrape/{storage}", summary="刮削媒体信息", response_model=_SchemaResponse[None]
+)
+def scrape(
+    fileitem: _SchemaFileItem,
+    storage: Optional[str] = "local",
+    media_source: Optional[MediaSource] = None,
+    media_id: Optional[str] = None,
+    type_name: Optional[MediaType] = None,
+    music_type: Optional[str] = None,
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> Any:
+    """刮削媒体信息的兼容公开入口。"""
+    return _scrape_impl(fileitem, storage, media_source, media_id, type_name, music_type, _)
 
 
 @router.get(

@@ -268,6 +268,27 @@ class SkillInteractionHandler:
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
     ) -> bool:
+        """处理 /skills 回调并保持消息链公开 ABI。"""
+        return self._handle_callback_interaction(
+            callback_data,
+            channel,
+            source,
+            userid,
+            username,
+            original_message_id,
+            original_chat_id,
+        )
+
+    def _handle_callback_interaction(
+            self,
+            callback_data: str,
+            channel: NotificationChannel,
+            source: str,
+            userid: Union[str, int],
+            username: str,
+            original_message_id: Optional[Union[str, int]] = None,
+            original_chat_id: Optional[str] = None,
+    ) -> bool:
         """
         处理按钮交互，并在同一条消息上刷新当前视图。
         """
@@ -418,6 +439,17 @@ class SkillInteractionHandler:
         return True
 
     def handle_text_interaction(
+            self,
+            channel: NotificationChannel,
+            source: str,
+            userid: Union[str, int],
+            username: str,
+            text: str,
+    ) -> bool:
+        """处理 /skills 文本交互并保持消息链公开 ABI。"""
+        return self._handle_text_interaction(channel, source, userid, username, text)
+
+    def _handle_text_interaction(
             self,
             channel: NotificationChannel,
             source: str,

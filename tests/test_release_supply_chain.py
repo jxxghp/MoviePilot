@@ -1,5 +1,6 @@
 """正式镜像发布的供应链门禁合同。"""
 
+from datetime import date
 from pathlib import Path
 
 from ruamel.yaml import YAML
@@ -8,6 +9,7 @@ from ruamel.yaml import YAML
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "docker" / "Dockerfile"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "build-v3.yml"
+TRIVY_IGNORE = ROOT / ".trivyignore.yaml"
 
 
 def _load_workflow() -> dict:
@@ -92,6 +94,18 @@ def test_release_scans_both_architectures_before_registry_login_and_publish() ->
     assert last_scan < names.index("Login DockerHub")
     assert last_scan < names.index("Login GitHub Container Registry")
     assert last_scan < names.index("Publish multi-architecture image")
+
+
+def test_vulnerability_ignores_are_scoped_justified_and_time_bounded() -> None:
+    """漏洞豁免必须限定制品范围，并保留复查期限和接受理由。"""
+    yaml = YAML(typ="safe")
+    vulnerabilities = yaml.load(TRIVY_IGNORE.read_text(encoding="utf-8"))["vulnerabilities"]
+
+    for vulnerability in vulnerabilities:
+        assert vulnerability["paths"]
+        assert vulnerability["purls"]
+        assert vulnerability["statement"]
+        assert isinstance(vulnerability["expired_at"], date)
 
 
 def test_publish_reuses_scanned_architecture_caches_without_refreshing_base() -> None:

@@ -16,7 +16,8 @@ from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.runtime.cache import FileCache
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -128,7 +129,7 @@ class DownloadChain(ChainBase):
                 mtype=MessageType.Download,
                 ctype=ContentType.DownloadAdded,
                 image=media.get_message_image(),
-                link=settings.MP_DOMAIN('/#/downloading'),
+                link=self.runtime_config.downloading_url,
                 userid=userid,
                 username=username,
             ),
@@ -171,7 +172,8 @@ class DownloadChain(ChainBase):
         track_identities = {
             identity
             for file in file_list
-            if Path(str(file)).suffix.lower() in settings.RMT_AUDIOEXT
+            if Path(str(file)).suffix.lower()
+            in get_chain_runtime_config_snapshot().audio_extensions
             and (identity := DownloadChain._music_resource_track_identity(file))
         }
         actual_tracks = len(track_identities)
@@ -264,7 +266,10 @@ class DownloadChain(ChainBase):
         """
         判断是否为支持的字幕文件。
         """
-        return Path(file_name).suffix.lower() in settings.RMT_SUBEXT
+        return (
+            Path(file_name).suffix.lower()
+            in get_chain_runtime_config_snapshot().subtitle_extensions
+        )
 
     @classmethod
     def _get_subtitle_working_dir(
@@ -441,10 +446,10 @@ class DownloadChain(ChainBase):
             return False, message, []
 
         saved_files = []
-        temp_file = settings.TEMP_PATH / file_name
+        temp_file = self.runtime_config.temporary_path / file_name
         temp_extract_dir = temp_file.with_name(temp_file.stem)
         try:
-            settings.TEMP_PATH.mkdir(parents=True, exist_ok=True)
+            self.runtime_config.temporary_path.mkdir(parents=True, exist_ok=True)
             temp_file.write_bytes(response.content)
             if self._is_subtitle_archive(file_name):
                 try:
@@ -457,7 +462,10 @@ class DownloadChain(ChainBase):
                     message = f"字幕压缩包解压失败：{str(err)}"
                     logger.error(f"{message}，文件：{temp_file}")
                     return False, message, []
-                for sub_file in SystemUtils.list_files(temp_extract_dir, settings.RMT_SUBEXT):
+                for sub_file in SystemUtils.list_files(
+                    temp_extract_dir,
+                    self.runtime_config.subtitle_extensions,
+                ):
                     uploaded_path, message = self._upload_subtitle_file(
                         storage_chain=storage_chain,
                         storage=storage,
@@ -537,8 +545,8 @@ class DownloadChain(ChainBase):
 
         request = RequestUtils(
             cookies=subtitle.site_cookie,
-            ua=subtitle.site_ua or settings.USER_AGENT,
-            proxies=settings.PROXY if subtitle.site_proxy else None,
+            ua=subtitle.site_ua or self.runtime_config.user_agent,
+            proxies=self.runtime_config.proxy if subtitle.site_proxy else None,
         )
         try:
             response = request.get_res(subtitle.enclosure, raise_exception=True)
@@ -621,7 +629,7 @@ class DownloadChain(ChainBase):
         :param download_dir:  下载目录
         :param torrent_content: 种子内容，如果是种子文件，则为文件内容，否则为种子字符串
         """
-        if not settings.DOWNLOAD_SUBTITLE:
+        if not self.runtime_config.download_subtitle:
             return
 
         # 没有种子文件不处理
@@ -673,9 +681,9 @@ class DownloadChain(ChainBase):
         request = RequestUtils(
             cookies=torrent.site_cookie,
             ua=torrent.site_ua,
-            proxies=settings.PROXY if torrent.site_proxy else None,
+            proxies=self.runtime_config.proxy if torrent.site_proxy else None,
         )
-        settings.TEMP_PATH.mkdir(parents=True, exist_ok=True)
+        self.runtime_config.temporary_path.mkdir(parents=True, exist_ok=True)
         for sublink in sublink_list:
             logger.info(f"找到字幕下载链接：{sublink}，开始下载...")
             # 下载
@@ -687,7 +695,7 @@ class DownloadChain(ChainBase):
                     continue
                 archive_format = self._SUBTITLE_ARCHIVE_FORMATS.get(Path(file_name).suffix.lower())
                 if archive_format:
-                    archive_file = settings.TEMP_PATH / file_name
+                    archive_file = self.runtime_config.temporary_path / file_name
                     # 保存
                     archive_file.write_bytes(ret.content)
                     # 解压路径
@@ -700,7 +708,10 @@ class DownloadChain(ChainBase):
                             archive_format=archive_format,
                         )
                         # 遍历转移文件
-                        for sub_file in SystemUtils.list_files(archive_path, settings.RMT_SUBEXT):
+                        for sub_file in SystemUtils.list_files(
+                            archive_path,
+                            self.runtime_config.subtitle_extensions,
+                        ):
                             target_sub_file = Path(working_dir_item.path) / Path(sub_file.name)
                             if storage_chain.get_file_item(storage, target_sub_file):
                                 logger.info(f"字幕文件已存在：{target_sub_file}")
@@ -718,10 +729,13 @@ class DownloadChain(ChainBase):
                     except Exception as err:
                         logger.error(f"删除临时文件失败：{str(err)}")
                 else:
-                    if Path(file_name).suffix.lower() not in settings.RMT_SUBEXT:
+                    if (
+                        Path(file_name).suffix.lower()
+                        not in self.runtime_config.subtitle_extensions
+                    ):
                         logger.warn(f"链接不是支持的字幕文件：{sublink} - {file_name}")
                         continue
-                    sub_file = settings.TEMP_PATH / file_name
+                    sub_file = self.runtime_config.temporary_path / file_name
                     # 保存
                     sub_file.write_bytes(ret.content)
                     target_sub_file = Path(working_dir_item.path) / Path(sub_file.name)
@@ -911,6 +925,118 @@ class DownloadChain(ChainBase):
             logger.error(f"查询下载失败冷却失败：{str(err)}")
             return {}
 
+    @staticmethod
+    def _log_download_failure_cooldown(
+            context: Context,
+            failure: Optional["DownloadFailure"],
+    ) -> None:
+        """记录候选资源处于失败冷却期时的跳过原因和下次重试时间。"""
+        reason = getattr(failure, "error_message", None) or "未知原因"
+        retry_at = getattr(failure, "next_retry_at", None)
+        if retry_at:
+            logger.info(
+                f"{context.torrent_info.title} 近期添加下载失败（失败原因：{reason}），"
+                f"暂时跳过该资源，将于 {retry_at} 后重试"
+            )
+        else:
+            logger.info(
+                f"{context.torrent_info.title} 近期添加下载失败（失败原因：{reason}），"
+                "暂时跳过该资源"
+            )
+
+    def _prepare_batch_download_contexts(
+        self,
+        contexts: List[Context],
+        downloader: Optional[str],
+        source: Optional[str],
+    ) -> Tuple[List[Context], Dict[str, "DownloadFailure"]]:
+        """
+        执行批量下载前的资源选择、排序和失败冷却准备。
+
+        :return: 排序后的上下文和本轮失败冷却记录；资源选择事件仍可替换上下文列表
+        """
+        logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
+        event_data = ResourceSelectionEventData(
+            contexts=contexts,
+            downloader=downloader,
+            origin=source,
+        )
+        event = eventmanager.send_event(ChainEventType.ResourceSelection, event_data)
+        if event and event.event_data:
+            event_data = event.event_data
+            if event_data.updated and event_data.updated_contexts is not None:
+                logger.debug(
+                    f"Contexts updated by event: {len(event_data.updated_contexts)} "
+                    f"items (source: {event_data.source})"
+                )
+                contexts = event_data.updated_contexts
+        contexts = TorrentHelper().sort_torrents(contexts)
+        return contexts, self._active_download_failure_fingerprints(
+            contexts=contexts,
+            source=source,
+        )
+
+    def _download_movie_music_candidates(
+        self,
+        contexts: List[Context],
+        downloaded_list: List[Context],
+        active_failure_records: Dict[str, "DownloadFailure"],
+        save_path: Optional[str],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        userid: Optional[str],
+        username: Optional[str],
+        downloader: Optional[str],
+        custom_words: Optional[str],
+    ) -> None:
+        """
+        处理电影与音乐的直接候选下载。
+
+        两类媒体都遵循成功后按身份去重、失败后继续尝试后续候选的规则，差异只在去重键。
+        """
+        downloaded_keys: Dict[MediaType, Set[str]] = {
+            MediaType.MOVIE: set(),
+            MediaType.MUSIC: set(),
+        }
+        for context in contexts:
+            if global_vars.is_system_stopped:
+                break
+            media_type = context.media_info.type
+            if media_type not in downloaded_keys:
+                continue
+            fingerprint = self._build_download_failure_fingerprint(context)
+            if fingerprint and fingerprint in active_failure_records:
+                self._log_download_failure_cooldown(
+                    context,
+                    active_failure_records[fingerprint],
+                )
+                continue
+            if media_type == MediaType.MOVIE:
+                download_key = context.media_info.title_year
+                label = "电影"
+            else:
+                media_source, media_id = resolve_media_identity(media=context.media_info)
+                download_key = build_media_key(media_source, media_id) or context.media_info.title_year
+                label = "音乐"
+            if download_key in downloaded_keys[media_type]:
+                continue
+            logger.info(f"开始下载{label} {context.torrent_info.title} ...")
+            if self.download_single(
+                context,
+                save_path=save_path,
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+                downloader=downloader,
+                custom_words=custom_words,
+            ):
+                logger.info(f"{context.torrent_info.title} 添加下载成功")
+                downloaded_list.append(context)
+                downloaded_keys[media_type].add(download_key)
+            elif fingerprint:
+                active_failure_records[fingerprint] = None
+
     def download_torrent(self, torrent: TorrentInfo,
                          channel: NotificationChannel = None,
                          source: Optional[str] = None,
@@ -953,7 +1079,7 @@ class DownloadChain(ChainBase):
                         ua=ua,
                         cookies=cookie,
                         headers=headers,
-                        proxies=settings.PROXY if proxy else None
+                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None
                     ).get_res(url, params=req_params.get('params'))
                 else:
                     # POST请求
@@ -961,7 +1087,7 @@ class DownloadChain(ChainBase):
                         ua=ua,
                         cookies=cookie,
                         headers=headers,
-                        proxies=settings.PROXY if proxy else None
+                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None
                     ).post_res(url, params=req_params.get('params'))
                 if not res:
                     return None
@@ -1016,7 +1142,7 @@ class DownloadChain(ChainBase):
         _, content, download_folder, files, error_msg = TorrentHelper().download_torrent(
             url=torrent_url,
             cookie=site_cookie,
-            ua=torrent.site_ua or settings.USER_AGENT,
+            ua=torrent.site_ua or self.runtime_config.user_agent,
             proxy=torrent.site_proxy,
             cache_invalid=not indirect_download)
 
@@ -1083,7 +1209,130 @@ class DownloadChain(ChainBase):
             logger.warn(str(err))
             return save_path, str(err)
 
+    def _settle_download_success(
+            self,
+            *,
+            context: Context,
+            media: MediaInfo,
+            meta: MetaInfo,
+            torrent: TorrentInfo,
+            folder_name: str,
+            file_list: list,
+            download_dir: Path,
+            layout: Optional[str],
+            downloader: Optional[str],
+            download_hash: str,
+            download_episodes: Optional[str],
+            episodes: Optional[Set[int]],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            userid: Union[str, int, None],
+            username: Optional[str],
+            torrent_content: Union[str, bytes],
+            custom_words: Optional[str],
+    ) -> None:
+        """提交下载历史、文件明细和 durable 下载事件。"""
+        if layout == "NoSubfolder" or not folder_name:
+            download_path = download_dir / file_list[0] if file_list else download_dir
+        elif folder_name:
+            download_path = download_dir / folder_name
+        else:
+            download_path = download_dir / Path(file_list[0]).stem if file_list else download_dir
+        save_path = download_dir if layout == "NoSubfolder" or not folder_name else download_path
+        media_source, media_id = resolve_media_identity(media=media)
+        history_payload = {
+            "path": download_path.as_posix(), "type": media.type.value,
+            "title": media.title, "year": media.year,
+            "media_source": media_source, "media_id": media_id,
+            "music_type": getattr(media, "music_type", None), "seasons": meta.season,
+            "episodes": download_episodes or meta.episode,
+            "image": media.get_backdrop_image(), "poster": media.get_poster_image(),
+            "downloader": downloader, "download_hash": download_hash,
+            "torrent_name": torrent.title, "torrent_description": torrent.description,
+            "torrent_site": torrent.site_name, "userid": userid, "username": username,
+            "channel": channel.value if channel else None,
+            "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "media_category": media.category, "episode_group": media.episode_group,
+            "note": self._build_download_note(source, media, meta),
+            "custom_words": custom_words,
+        }
+        files_to_add = []
+        for file in file_list:
+            if episodes:
+                file_meta = MetaInfo(Path(file).stem)
+                if not file_meta.begin_episode or file_meta.begin_episode not in episodes:
+                    continue
+            if not Path(file).suffix or Path(file).suffix.lower() not in self.runtime_config.media_extensions:
+                continue
+            files_to_add.append({
+                "download_hash": download_hash, "downloader": downloader,
+                "fullpath": (save_path / file).as_posix(), "savepath": save_path.as_posix(),
+                "filepath": file, "torrentname": meta.org_string,
+            })
+        event_payload = {
+            "hash": download_hash, "context": context, "username": username,
+            "downloader": downloader, "episodes": episodes or meta.episode_list, "source": source,
+        }
+
+        def after_commit() -> None:
+            """在历史与 intent 提交后保持原有通知和任务编排。"""
+            self._after_download_history_commit(
+                context=context, media=media, meta=meta, torrent=torrent,
+                channel=channel, source=source, userid=userid, username=username,
+                download_episodes=download_episodes, download_dir=download_dir,
+                torrent_content=torrent_content,
+            )
+
+        durable_event_writer = getattr(self, "durable_event_writer", None)
+        if durable_event_writer:
+            durable_event_writer.download_added(
+                history_payload=history_payload, file_payloads=files_to_add,
+                event_payload=event_payload, after_commit=after_commit,
+                publish=lambda payload: self.eventmanager.send_event(EventType.DownloadAdded, payload),
+            )
+            return
+        downloadhis = DownloadHistoryOper()
+        downloadhis.add(**history_payload)
+        if files_to_add:
+            downloadhis.add_files(files_to_add)
+        after_commit()
+        self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
+
     def download_single(self, context: Context,
+                        torrent_file: Path = None,
+                        torrent_content: Optional[Union[str, bytes]] = None,
+                        episodes: Set[int] = None,
+                        channel: NotificationChannel = None,
+                        source: Optional[str] = None,
+                        downloader: Optional[str] = None,
+                        save_path: Optional[str] = None,
+                        userid: Union[str, int] = None,
+                        username: Optional[str] = None,
+                        label: Optional[str] = None,
+                        return_detail: bool = False,
+                        custom_words: Optional[str] = None) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
+        """
+        下载单个资源并发送结果通知。
+
+        保持下载链、消息入口和插件使用的公开签名，实际流程委托给内部执行阶段。
+        """
+        return self._execute_download_single(
+            context=context,
+            torrent_file=torrent_file,
+            torrent_content=torrent_content,
+            episodes=episodes,
+            channel=channel,
+            source=source,
+            downloader=downloader,
+            save_path=save_path,
+            userid=userid,
+            username=username,
+            label=label,
+            return_detail=return_detail,
+            custom_words=custom_words,
+        )
+
+    def _execute_download_single(self, context: Context,
                         torrent_file: Path = None,
                         torrent_content: Optional[Union[str, bytes]] = None,
                         episodes: Set[int] = None,
@@ -1204,114 +1453,26 @@ class DownloadChain(ChainBase):
             _downloader, _hash, _layout, error_msg = None, None, None, "未找到下载器"
 
         if _hash:
-            # `不创建子文件夹` 或 `不存在子文件夹`
-            if _layout == "NoSubfolder" or not _folder_name:
-                # 下载路径记录至文件
-                download_path = download_dir / _file_list[0] if _file_list else download_dir
-            # 原始布局
-            elif _folder_name:
-                download_path = download_dir / _folder_name
-            # 创建子文件夹
-            else:
-                download_path = download_dir / Path(_file_list[0]).stem if _file_list else download_dir
-            # 文件保存路径
-            _save_path = download_dir if _layout == "NoSubfolder" or not _folder_name else download_path
-
-            media_source, media_id = resolve_media_identity(media=_media)
-            history_payload = {
-                "path": download_path.as_posix(),
-                "type": _media.type.value,
-                "title": _media.title,
-                "year": _media.year,
-                "media_source": media_source,
-                "media_id": media_id,
-                "music_type": getattr(_media, "music_type", None),
-                "seasons": _meta.season,
-                "episodes": download_episodes or _meta.episode,
-                "image": _media.get_backdrop_image(),
-                "poster": _media.get_poster_image(),
-                "downloader": _downloader,
-                "download_hash": _hash,
-                "torrent_name": _torrent.title,
-                "torrent_description": _torrent.description,
-                "torrent_site": _torrent.site_name,
-                "userid": userid,
-                "username": username,
-                "channel": channel.value if channel else None,
-                "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-                "media_category": _media.category,
-                "episode_group": _media.episode_group,
-                "note": self._build_download_note(source, _media, _meta),
-                "custom_words": custom_words,
-            }
-
-            # 登记下载文件
-            files_to_add = []
-            for file in _file_list:
-                if episodes:
-                    # 识别文件集
-                    file_meta = MetaInfo(Path(file).stem)
-                    if not file_meta.begin_episode \
-                            or file_meta.begin_episode not in episodes:
-                        continue
-                # 只处理音视频、字幕格式
-                media_exts = settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT
-                if not Path(file).suffix \
-                        or Path(file).suffix.lower() not in media_exts:
-                    continue
-                files_to_add.append({
-                    "download_hash": _hash,
-                    "downloader": _downloader,
-                    "fullpath": (_save_path / file).as_posix(),
-                    "savepath": _save_path.as_posix(),
-                    "filepath": file,
-                    "torrentname": _meta.org_string,
-                })
-            event_payload = {
-                "hash": _hash,
-                "context": context,
-                "username": username,
-                "downloader": _downloader,
-                "episodes": episodes or _meta.episode_list,
-                "source": source,
-            }
-
-            def after_commit() -> None:
-                """在历史与 intent 提交后保持原有通知和任务编排。"""
-                self._after_download_history_commit(
-                    context=context,
-                    media=_media,
-                    meta=_meta,
-                    torrent=_torrent,
-                    channel=channel,
-                    source=source,
-                    userid=userid,
-                    username=username,
-                    download_episodes=download_episodes,
-                    download_dir=download_dir,
-                    torrent_content=torrent_content,
-                )
-
-            durable_event_writer = getattr(self, "durable_event_writer", None)
-            if durable_event_writer:
-                durable_event_writer.download_added(
-                    history_payload=history_payload,
-                    file_payloads=files_to_add,
-                    event_payload=event_payload,
-                    after_commit=after_commit,
-                    publish=lambda payload: self.eventmanager.send_event(
-                        EventType.DownloadAdded,
-                        payload,
-                    ),
-                )
-            else:
-                # 显式注入旧测试上下文时保持兼容；正式启动上下文总会提供 durable writer。
-                downloadhis = DownloadHistoryOper()
-                downloadhis.add(**history_payload)
-                if files_to_add:
-                    downloadhis.add_files(files_to_add)
-                after_commit()
-                self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
+            self._settle_download_success(
+                context=context,
+                media=_media,
+                meta=_meta,
+                torrent=_torrent,
+                folder_name=_folder_name,
+                file_list=_file_list,
+                download_dir=download_dir,
+                layout=_layout,
+                downloader=_downloader,
+                download_hash=_hash,
+                download_episodes=download_episodes,
+                episodes=episodes,
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+                torrent_content=torrent_content,
+                custom_words=custom_words,
+            )
         else:
             # 下载失败
             logger.error(f"{_media.title_year} 添加下载任务失败："
@@ -1339,7 +1500,37 @@ class DownloadChain(ChainBase):
             return _hash, error_msg
         return _hash
 
-    def batch_download(self,
+    def batch_download(
+                       self,
+                       contexts: List[Context],
+                       no_exists: Dict[str, Dict[int, NotExistMediaInfo]] = None,
+                       save_path: Optional[str] = None,
+                       channel: NotificationChannel = None,
+                       source: Optional[str] = None,
+                       userid: Optional[str] = None,
+                       username: Optional[str] = None,
+                       downloader: Optional[str] = None,
+                       custom_words: Optional[str] = None
+                       ) -> Tuple[List[Context], Dict[str, Dict[int, NotExistMediaInfo]]]:
+        """
+        兼容批量下载公开入口，委托给内部候选匹配阶段。
+
+        该签名被订阅链、消息入口和插件调用；内部策略拆分不改变候选排序、失败冷却、
+        完整覆盖判断或剩余缺集的返回结构。
+        """
+        return self._execute_batch_download(
+            contexts=contexts,
+            no_exists=no_exists,
+            save_path=save_path,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            downloader=downloader,
+            custom_words=custom_words,
+        )
+
+    def _execute_batch_download(self,
                        contexts: List[Context],
                        no_exists: Dict[str, Dict[int, NotExistMediaInfo]] = None,
                        save_path: Optional[str] = None,
@@ -1476,26 +1667,10 @@ class DownloadChain(ChainBase):
             media_source, media_id = resolve_media_identity(media=_context.media_info)
             return build_media_key(media_source, media_id) or _context.media_info.title_year
 
-        # 发送资源选择事件，允许外部修改上下文数据
-        logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
-        event_data = ResourceSelectionEventData(
+        # 仅排序，不提前按媒体控重；下载失败时需要继续尝试同组后续候选。
+        contexts, active_failure_records = self._prepare_batch_download_contexts(
             contexts=contexts,
             downloader=downloader,
-            origin=source
-        )
-        event = eventmanager.send_event(ChainEventType.ResourceSelection, event_data)
-        # 如果事件修改了上下文数据，使用更新后的数据
-        if event and event.event_data:
-            event_data: ResourceSelectionEventData = event.event_data
-            if event_data.updated and event_data.updated_contexts is not None:
-                logger.debug(f"Contexts updated by event: "
-                             f"{len(event_data.updated_contexts)} items (source: {event_data.source})")
-                contexts = event_data.updated_contexts
-
-        # 仅排序，不提前按媒体控重；下载失败时需要继续尝试同组后续候选。
-        contexts = TorrentHelper().sort_torrents(contexts)
-        active_failure_records = self._active_download_failure_fingerprints(
-            contexts=contexts,
             source=source,
         )
 
@@ -1505,15 +1680,10 @@ class DownloadChain(ChainBase):
             """
             fingerprint = self._build_download_failure_fingerprint(_context)
             if fingerprint and fingerprint in active_failure_records:
-                _failure = active_failure_records[fingerprint]
-                _reason = getattr(_failure, "error_message", None) or "未知原因"
-                _retry_at = getattr(_failure, "next_retry_at", None)
-                if _retry_at:
-                    logger.info(f"{_context.torrent_info.title} 近期添加下载失败（失败原因：{_reason}），"
-                                f"暂时跳过该资源，将于 {_retry_at} 后重试")
-                else:
-                    logger.info(f"{_context.torrent_info.title} 近期添加下载失败（失败原因：{_reason}），"
-                                f"暂时跳过该资源")
+                self._log_download_failure_cooldown(
+                    _context,
+                    active_failure_records[fingerprint],
+                )
                 return True
             return False
 
@@ -1525,49 +1695,18 @@ class DownloadChain(ChainBase):
             if fingerprint:
                 active_failure_records[fingerprint] = None
 
-        # 如果是电影，直接下载
-        downloaded_movies = set()
-        for context in contexts:
-            if global_vars.is_system_stopped:
-                break
-            if context.media_info.type == MediaType.MOVIE:
-                if __is_context_in_failure_cooldown(context):
-                    continue
-                movie_key = __get_movie_download_key(context)
-                if movie_key in downloaded_movies:
-                    continue
-                logger.info(f"开始下载电影 {context.torrent_info.title} ...")
-                if self.download_single(context, save_path=save_path, channel=channel,
-                                        source=source, userid=userid, username=username,
-                                        downloader=downloader, custom_words=custom_words):
-                    # 下载成功
-                    logger.info(f"{context.torrent_info.title} 添加下载成功")
-                    downloaded_list.append(context)
-                    downloaded_movies.add(movie_key)
-                else:
-                    __remember_context_failure(context)
-
-        # 音乐按单个订阅目标择一下载；专辑在 download_single 内先按文件清单确认整专覆盖。
-        downloaded_music = set()
-        for context in contexts:
-            if global_vars.is_system_stopped:
-                break
-            if context.media_info.type != MediaType.MUSIC:
-                continue
-            if __is_context_in_failure_cooldown(context):
-                continue
-            music_key = __get_music_download_key(context)
-            if music_key in downloaded_music:
-                continue
-            logger.info(f"开始下载音乐 {context.torrent_info.title} ...")
-            if self.download_single(context, save_path=save_path, channel=channel,
-                                    source=source, userid=userid, username=username,
-                                    downloader=downloader, custom_words=custom_words):
-                logger.info(f"{context.torrent_info.title} 添加下载成功")
-                downloaded_list.append(context)
-                downloaded_music.add(music_key)
-            else:
-                __remember_context_failure(context)
+        self._download_movie_music_candidates(
+            contexts=contexts,
+            downloaded_list=downloaded_list,
+            active_failure_records=active_failure_records,
+            save_path=save_path,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            downloader=downloader,
+            custom_words=custom_words,
+        )
 
         # 电视剧整季匹配
         if no_exists:
@@ -2074,7 +2213,7 @@ class DownloadChain(ChainBase):
                 mtype=MessageType.Download,
                 title="没有正在下载的任务！",
                 userid=userid,
-                link=settings.MP_DOMAIN('#/downloading'),
+                link=self.runtime_config.downloading_url,
                 save_history=False,
             ))
             return
@@ -2094,7 +2233,7 @@ class DownloadChain(ChainBase):
             title=title,
             text="\n".join(messages),
             userid=userid,
-            link=settings.MP_DOMAIN('#/downloading'),
+            link=self.runtime_config.downloading_url,
             save_history=False,
         ))
 

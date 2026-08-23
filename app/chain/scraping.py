@@ -12,7 +12,6 @@ from app.chain import ChainBase
 from app.chain.lrclib import LrclibChain
 from app.chain.storage import StorageChain
 from app.runtime.cache import cached
-from app.runtime.config import settings
 from app.domain.context import (
     MediaInfo,
     MusicAlbumInfo,
@@ -23,7 +22,10 @@ from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_chain_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.application.audio import AudioMetadataHelper
 from app.runtime.log import logger
 from app.schemas.workflow import FileItem
@@ -314,7 +316,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         try:
             logger.info(f"正在下载图片：{url} ...")
             request_utils = RequestUtils(
-                proxies=settings.PROXY, ua=settings.NORMAL_USER_AGENT
+                proxies=self.runtime_config.proxy,
+                ua=self.runtime_config.normal_user_agent,
             )
             with request_utils.get_stream(url=url) as r:
                 if r and r.status_code == 200:
@@ -932,7 +935,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             or isinstance(meta, MetaMusic)
             or (
                 fileitem.type == "file"
-                and filepath.suffix.lower() in settings.RMT_AUDIOEXT
+                and filepath.suffix.lower() in self.runtime_config.audio_extensions
             )
         )
         if is_music:
@@ -953,7 +956,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 **music_kwargs,
             )
         if fileitem.type == "file" and (
-                not filepath.suffix or filepath.suffix.lower() not in settings.RMT_MEDIAEXT
+                not filepath.suffix
+                or filepath.suffix.lower() not in self.runtime_config.video_extensions
         ):
             return False, "刮削路径不是支持的媒体文件"
 
@@ -1130,12 +1134,16 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         )
 
     @staticmethod
-    @cached(maxsize=64, ttl=settings.CONF.meta, skip_none=True)
+    @cached(
+        maxsize=64,
+        ttl_provider=lambda: get_chain_runtime_config_snapshot().metadata_cache_ttl,
+        skip_none=True,
+    )
     def _request_music_cover(url: str) -> Optional[tuple[Optional[bytes], str]]:
         """下载并缓存音乐封面；仅稳定 404 与成功响应进入有界缓存。"""
         response = RequestUtils(
-            proxies=settings.PROXY,
-            ua=settings.NORMAL_USER_AGENT,
+            proxies=get_chain_runtime_config_snapshot().proxy,
+            ua=get_chain_runtime_config_snapshot().normal_user_agent,
             timeout=20,
         ).get_res(url)
         if response is None:
@@ -1161,7 +1169,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     @staticmethod
     def _is_music_audio_file(path: str) -> bool:
         """判断路径是否指向系统支持的音频文件。"""
-        return Path(path).suffix.lower() in settings.RMT_AUDIOEXT
+        return Path(path).suffix.lower() in get_chain_runtime_config_snapshot().audio_extensions
 
     def _music_audio_fileitems(self, fileitem: _SchemaFileItem) -> list[_SchemaFileItem]:
         """展开待刮削目录并过滤系统支持的音频文件。"""
@@ -1803,7 +1811,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             for file in files:
                 if (
                         file.type == "dir"
-                        and file.name not in settings.RENAME_FORMAT_S0_NAMES
+                        and file.name not in self.runtime_config.season_zero_names
                         and MetaInfo(file.name).begin_season is None
                 ):
                     # 电视剧不处理非季子目录
@@ -1843,7 +1851,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         season_meta = MetaInfo(filepath.name)
 
         # 特殊季目录处理（Specials/SPs）
-        if filepath.name in settings.RENAME_FORMAT_S0_NAMES:
+        if filepath.name in self.runtime_config.season_zero_names:
             season_meta.begin_season = 0
         elif season_meta.name and season_meta.begin_season is not None:
             # 排除辅助词重新识别，避免误判根目录 (issue https://github.com/jxxghp/MoviePilot/issues/5501)

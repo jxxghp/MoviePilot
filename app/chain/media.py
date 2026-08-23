@@ -12,7 +12,7 @@ from app.chain.douban import DoubanChain
 from app.chain.musicbrainz import MusicBrainzChain, _MusicMetadataSourceChain
 from app.chain.theaudiodb import TheAudioDbChain
 from app.runtime.cache import async_fresh, fresh
-from app.runtime.config import settings
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -172,7 +172,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
     @classmethod
     def _simplify_recognized_music_info(cls, info: MusicInfo) -> MusicInfo:
         """按开关转换标准音乐文本字段，并避免修改来源模块的缓存对象。"""
-        if not settings.MUSIC_METADATA_TO_SIMPLIFIED:
+        if not get_chain_runtime_config_snapshot().music_metadata_to_simplified:
             return info
         updates: dict[str, Any] = {}
         for field_name in cls._music_simplified_text_fields:
@@ -462,7 +462,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             is_recognized = lambda result: bool(result)
         mediainfo = None
         plugin_available = eventmanager.check(plugin_event)
-        if settings.RECOGNIZE_PLUGIN_FIRST and plugin_available:
+        if get_chain_runtime_config_snapshot().recognize_plugin_first and plugin_available:
             # 插件优先
             logger.info(f"插件识别优先模式已开启。请求辅助识别，标题：{log_name} ...")
             helped = plugin_fn()
@@ -912,7 +912,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
     @classmethod
     def is_audio_path(cls, path: Union[str, Path]) -> bool:
         """判断路径是否指向系统支持的音频文件。"""
-        return Path(path).suffix.lower() in settings.RMT_AUDIOEXT
+        return Path(path).suffix.lower() in get_chain_runtime_config_snapshot().audio_extensions
 
     @classmethod
     def read_path_meta(cls, path: Union[str, Path]) -> MetaMusic:
@@ -1094,7 +1094,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 item for item in entries
                 if not item.name.startswith(".")
                 and item.is_file()
-                and item.suffix.lower() in settings.RMT_AUDIOEXT
+                and item.suffix.lower() in get_chain_runtime_config_snapshot().audio_extensions
             )
 
         collect(directory)
@@ -1525,7 +1525,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             is_recognized = lambda result: bool(result)
         mediainfo = None
         plugin_available = eventmanager.check(plugin_event)
-        if settings.RECOGNIZE_PLUGIN_FIRST and plugin_available:
+        if get_chain_runtime_config_snapshot().recognize_plugin_first and plugin_available:
             # 插件优先
             logger.info(f"插件优先模式已开启。请求辅助识别，标题：{log_name} ...")
             helped = await plugin_fn()

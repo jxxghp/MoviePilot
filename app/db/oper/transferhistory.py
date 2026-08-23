@@ -177,7 +177,7 @@ class TransferHistoryOper(DbOper):
         kwargs.update({
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         })
-        TransferHistory(**kwargs).create(self._db)
+        self._stage_create(TransferHistory(**kwargs))
 
     def statistic(self, days: int = 7) -> List[Any]:
         """
@@ -226,7 +226,7 @@ class TransferHistoryOper(DbOper):
         """
         删除转移记录
         """
-        TransferHistory.delete(self._db, historyid)
+        self._stage_delete(TransferHistory, historyid)
 
     def stage_delete(self, historyid: int) -> None:
         """暂存整理记录删除，不由模型装饰器提交事务。"""
@@ -244,13 +244,13 @@ class TransferHistoryOper(DbOper):
         """
         异步删除转移记录。
         """
-        await TransferHistory.async_delete(self._db, historyid)
+        await self._stage_async_delete(TransferHistory, historyid)
 
     def truncate(self):
         """
         清空转移记录
         """
-        TransferHistory.truncate(self._db)
+        self._stage_truncate(TransferHistory)
 
     def add_force(self, **kwargs) -> Optional[TransferHistory]:
         """

@@ -18,10 +18,13 @@ from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
 from app.chain.message import MessageChain
-from app.runtime.config import settings, global_vars
+from app.runtime.config import global_vars
 from app.adapters.web.security.access import verify_token, verify_apitoken
 from app.api.principal import ApiPrincipal
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_api_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.api.dependencies.agent import get_message_query_service
 from app.api.dependencies.auth import get_current_active_superuser
 from app.application.messaging.message import MessageQueryService
@@ -372,8 +375,8 @@ def send_notification(
             webpush(
                 subscription_info=sub,
                 data=json.dumps(payload.model_dump()),
-                vapid_private_key=settings.VAPID.get("privateKey"),
-                vapid_claims={"sub": settings.VAPID.get("subject")},
+                vapid_private_key=get_api_runtime_config_snapshot().vapid_private_key,
+                vapid_claims={"sub": get_api_runtime_config_snapshot().vapid_subject},
                 **webpush_options_for_endpoint(sub.get("endpoint")),
             )
         except WebPushException as err:

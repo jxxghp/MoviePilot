@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import subprocess
@@ -133,6 +134,40 @@ def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
     assert baseline["model_session_factories"] == {"count": 0, "calls": []}
     assert baseline["oper_transaction_calls"] == {"count": 0, "calls": []}
     assert baseline["oper_session_factories"] == {"count": 0, "calls": []}
+
+
+def test_host_oper_does_not_call_base_implicit_write_wrappers() -> None:
+    """宿主 Oper 不得重新借 Base 兼容写方法隐式提交调用方事务。"""
+    implicit_methods = {
+        "create",
+        "async_create",
+        "update",
+        "async_update",
+        "delete",
+        "async_delete",
+        "truncate",
+        "async_truncate",
+    }
+    violations = []
+    for path in (PROJECT_ROOT / "app" / "db" / "oper").glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr not in implicit_methods or not node.args:
+                continue
+            first_argument = node.args[0]
+            if (
+                isinstance(first_argument, ast.Attribute)
+                and isinstance(first_argument.value, ast.Name)
+                and first_argument.value.id == "self"
+                and first_argument.attr == "_db"
+            ):
+                violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}")
+
+    assert violations == []
 
 
 def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:

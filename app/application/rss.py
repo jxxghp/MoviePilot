@@ -5,7 +5,7 @@ from urllib.parse import urljoin, urlparse
 import dateutil.parser
 from lxml import etree
 
-from app.runtime.config import settings
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.adapters.network.browser import PlaywrightHelper
 from app.runtime.log import logger
 from app.adapters.system import rust as rust_accel
@@ -264,6 +264,12 @@ class RssHelper:
 
     def parse(self, url, proxy: bool = False,
               timeout: Optional[int] = 15, headers: dict = None, ua: str = None) -> Union[List[dict], None, bool]:
+        """解析 RSS 地址并保留插件兼容的返回约定。"""
+        return self._parse_impl(url, proxy=proxy, timeout=timeout, headers=headers, ua=ua)
+
+    def _parse_impl(self, url, proxy: bool = False,
+                    timeout: Optional[int] = 15, headers: dict = None,
+                    ua: str = None) -> Union[List[dict], None, bool]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址
@@ -280,7 +286,7 @@ class RssHelper:
 
         try:
             ret = RequestUtils(ua=ua,
-                               proxies=settings.PROXY if proxy else None,
+                               proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,
                                timeout=timeout or 30, headers=headers).get_res(url)
             if not ret:
                 logger.error(f"获取RSS失败：请求返回空值，URL: {url}")
@@ -306,8 +312,8 @@ class RssHelper:
                 if raw_data:
                     ret_xml = RequestUtils.get_decoded_xml_content(
                         ret,
-                        performance_mode=settings.ENCODING_DETECTION_PERFORMANCE_MODE,
-                        confidence_threshold=settings.ENCODING_DETECTION_MIN_CONFIDENCE
+                        performance_mode=get_chain_runtime_config_snapshot().encoding_detection_performance_mode,
+                        confidence_threshold=get_chain_runtime_config_snapshot().encoding_detection_min_confidence
                     )
                     rust_items = self.__parse_with_rust(ret_xml)
                     if rust_items is not None:
@@ -494,7 +500,7 @@ class RssHelper:
                     url=rss_url,
                     cookies=cookie,
                     ua=ua,
-                    proxies=settings.PROXY_SERVER if proxy else None,
+                    proxies=get_chain_runtime_config_snapshot().proxy_server if proxy else None,
                     timeout=timeout or 60
                 )
             else:
@@ -502,7 +508,7 @@ class RssHelper:
                     cookies=cookie,
                     timeout=timeout or 30,
                     ua=ua,
-                    proxies=settings.PROXY if proxy else None
+                    proxies=get_chain_runtime_config_snapshot().proxy if proxy else None
                 ).post_res(url=rss_url, data=rss_params)
                 if res:
                     html_text = res.text

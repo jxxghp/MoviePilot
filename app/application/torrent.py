@@ -8,7 +8,7 @@ from urllib.parse import unquote
 from torrentool.api import Torrent
 
 from app.runtime.cache import TTLCache, FileCache
-from app.runtime.config import settings
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.domain.context import Context, TorrentInfo, MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import audio_quality_tier, normalize_audio_format, parse_audio_quality
@@ -126,11 +126,12 @@ class TorrentHelper:
             except Exception as err:
                 logger.error(f"处理缓存的种子文件 {cache_path} 时出错: {err}，将重新下载")
         # 下载种子文件
+        config = get_chain_runtime_config_snapshot()
         req = RequestUtils(
             ua=ua,
             cookies=cookie,
             referer=referer,
-            proxies=settings.PROXY if proxy else None
+            proxies=config.proxy if proxy else None
         ).get_res(url=url, allow_redirects=False)
         while req and req.status_code in [301, 302]:
             url = req.headers['Location']
@@ -140,7 +141,7 @@ class TorrentHelper:
                 ua=ua,
                 cookies=cookie,
                 referer=referer,
-                proxies=settings.PROXY if proxy else None
+                proxies=config.proxy if proxy else None
             ).get_res(url=url, allow_redirects=False)
         if req and req.status_code == 200:
             if not req.content:
@@ -169,7 +170,7 @@ class TorrentHelper:
                                 ua=ua,
                                 cookies=cookie,
                                 referer=referer,
-                                proxies=settings.PROXY if proxy else None
+                                proxies=config.proxy if proxy else None
                             ).post_res(url=action, data=data)
                             if req and req.status_code == 200:
                                 # 检查是不是种子文件，如果不是抛出异常
@@ -401,11 +402,12 @@ class TorrentHelper:
         :return: 识别到的全部集数
         """
         episodes = []
+        config = get_chain_runtime_config_snapshot()
         for file in files:
             if not file:
                 continue
             file_path = Path(file)
-            if not file_path.suffix or file_path.suffix.lower() not in settings.RMT_MEDIAEXT:
+            if not file_path.suffix or file_path.suffix.lower() not in config.video_extensions:
                 continue
             # 只使用文件名识别
             meta = MetaInfo(file_path.name, custom_words=custom_words)

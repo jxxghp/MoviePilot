@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0（ARCH-201～203）、阶段 1（ARCH-210～212）、阶段 2（ARCH-220～222）与阶段 3（ARCH-230～232）已完成，后续任务按 ID 独立提交和回滚
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；插件仓适配、Outbox 外围扩展和 Model 查询兼容面仍按风险切片推进。
 
 ## 1. 结论先行
 
@@ -585,6 +585,13 @@ app/api/dependencies/           # 按领域拆分依赖工厂
   测试显式注入快照，不再依赖 endpoint 模块中的全局配置别名。
 - 直接调用 endpoint 和显式构造 `ChainRuntimeContext` 的旧测试/兼容入口仍有 fallback；正式 FastAPI 与
   Startup 路径始终使用 HostRuntime 注入。插件 SDK 的 `app.sdk.config.settings`、动态 API 返回和事件字段未改。
+- 收尾批次把 API 与 Chain 余下直接配置读取全部迁入类型化 snapshot；Scheduler 继续保持为零。
+  `HostRuntime` 新增可变部署设置服务，只供系统设置管理 API 使用，业务 API/Chain 只接收 frozen 字段。
+  snapshot 构造集中到 `app/startup/configuration.py`，生产启动与测试组合根复用同一映射，避免测试默认值
+  漂移。canonical `settings` 直接导入低水位从 154 降到 137，`SystemConfigOper()` 保持 14 个。
+- `ApiRuntimeConfig` 已覆盖搜索来源、媒体/字幕/音频后缀、重命名格式、WebPush、CookieCloud、根目录和
+  版本标识；`ChainRuntimeConfig` 覆盖搜索、下载、整理、刮削、AI、代理、缓存、链接、路径和 TMDB 图片域。
+  元数据缓存 TTL 使用动态 provider，在保留热更新语义的同时不再让 Chain 导入全局 settings。
 
 ### 阶段 4：把动态模块和事件变成可演进契约
 
@@ -637,6 +644,8 @@ ModuleMethodSpec(
 - 契约清单现覆盖静态扫描到的 211 个宿主字符串调用，并保留一个暂未被宿主调用的 `send_message` 公开能力，
   共 212 个显式 V2 spec。原先仅按 prefix 分类或落入默认 legacy 的宿主方法均获得稳定 family、输入合同、
   结果合同、执行、超时和错误语义；未知第三方自定义方法仍走开放 legacy fallback，不拒绝加载或执行。
+- 未知动态方法在真实 provider 命中时记录 `module.contract.legacy_hit`，区分插件/宿主调用方和 ABI 来源；
+  该指标只在 callable 实际存在并准备执行时递增，不改变未知第三方方法的开放 fallback、聚合或异常语义。
 
 #### ARCH-241：Event Contract Registry
 
@@ -705,6 +714,11 @@ ModuleMethodSpec(
   Contract V2、敏感日志和 owner 已登记；限流/并发继续复用通用 HTTP adapter 并明确豁免范围。
 - 详细规则和验收证据见 `docs/refactor/module-quality-scale.md`；自动测试阻止 profile 使用未登记规则，
   并要求今后修改模块时将对应 profile 纳入同一提交。
+
+**收口记录（2026-08-22）**：39 个宿主 Module 已全部显式进入 assessed，不再以通用 fallback 把
+37 个模块标成“尚未审查”。所有模块共同由零真实网络、async 阻塞扫描、Module Contract V2 和 owner
+四项机器门禁覆盖；能力专属的鉴权、限流、并发、敏感日志与 reload/stop 仍按 profile 精确豁免，
+不会把 assessed 误读为十项满分。未知第三方模块继续使用 legacy 兼容视图，Module ABI 未变。
 
 ### 阶段 5：定义后台可靠性，不先引入分布式队列
 
@@ -800,6 +814,9 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   的旧 Oper ABI 委托 Startup 注入的短事务执行器。当前 Model 装饰器仅剩 123 个查询装饰器，
   `db_update` 与 `async_db_update` 均为 0，Oper 自建 Session/直接提交仍为 0。
 - 数据清理按批次显式提交 UoW，单表失败先回滚会话再继续汇总后续表；不再依赖删除 Model 的隐式提交。
+- 收尾批次进一步移除宿主 Oper 对 `Base.create/update/delete/truncate` 八个兼容包装器的调用：显式
+  Session 只 stage，由 Application UoW 提交；无 Session 的旧 Oper 入口才委托 Startup 的短事务执行器。
+  Base 包装器继续保留给插件/旧模型 ABI，新增 AST 门禁禁止宿主 Oper 回退到隐式提交。
 
 **禁止**：本阶段不引入 Celery、Kafka、RabbitMQ 等新基础设施。
 
@@ -926,6 +943,9 @@ Workflow 执行状态 UoW 切片将 `app/application/workflow.py` 与 `app/start
 异步安全与契约收口继续纳管 scheduling facade、Event error policy、Module dispatcher 和 async blocking
 scanner，strict 清单扩大到 26 个源文件；已登记范围保持零错误，未使用全文件 ignore 或 `cast(Any, ...)`。
 
+收尾批次继续纳管 Startup 配置快照、Module quality、Compat manifest/diagnostics、插件运行时窄端口、
+Outbox adapter、DB 装饰器、Base 与 UoW，strict 清单扩大到 37 个源文件并保持零错误。
+
 #### ARCH-271：复杂度和端点预算 ratchet
 
 **目标**：阻止大方法继续增长，并让拆分对应真实阶段，而不是机械 helper 化。
@@ -951,6 +971,41 @@ scanner，strict 清单扩大到 26 个源文件；已登记范围保持零错�
 - 单元测试覆盖删除/缩短放行和增长/新增拒绝，当前仓库 baseline check 通过。
 - 2026-08-22 将 MCP JSON-RPC 分派、无媒体信息下载识别、缺集结果合并拆成具有独立输入/输出的私有阶段；
   对应 `mcp_jsonrpc`、`download.add`、`DownloadChain.get_no_exists_info` 退出超限清单，总债务从 28 降到 25。
+- 2026-08-22 将 `SiteChain.sync_cookies` 拆为单域名处理、黑名单判断、索引器地址解析和连接重试阶段，入口降至预算内；
+  保留已有站点健康、黑名单、失败重试时的事件与进度回调语义，站点专项测试通过。
+- 继续将 `TorrentsChain.refresh` 拆为单站点抓取、上下文构造和缓存写入阶段，入口退出超限清单；
+  音乐双缓存、去重、停止信号和订阅匹配专项测试通过，当前复杂度债务由 25 项降至 21 项。
+
+配置债务继续按模块族收敛：`app/application/image.py` 的壁纸模式、图片缓存、代理和安全后缀读取已接入
+`ChainRuntimeConfig`，canonical `settings` 直接读取文件数从 137 降至 136；配置/依赖基线已更新，壁纸与图片专项测试通过。
+随后将 `app/application/torrent.py` 的代理和媒体后缀读取迁移到同一快照，canonical 配置债务进一步降至 134 个文件；
+下载/种子专项测试与架构门禁通过。
+`app/application/rss.py` 的代理和编码检测选项也已迁移到快照，配置债务降至 133 个文件；RSS、Rust 解析和音乐资源专项测试通过。
+数据维护策略随后接入同一快照，`app/application/maintenance.py` 的直接配置读取移除，债务降至 132 个文件；
+清理服务与 Chain 专项测试通过。
+Passkey 的 APP_DOMAIN、NGINX_PORT 和用户验证要求也已接入 API 配置快照，配置债务降至 131 个文件；
+MFA/Passkey 专项测试与架构门禁通过，密钥类配置仍保留在安全端口范围内。
+认证服务的超级用户、向导开关和访问令牌过期时间也改用配置快照，直接 `settings` 读取债务降至 130 个文件；启动组合根的 `SystemConfigOper()` 构造点进一步由 14 降至 1（唯一保留点为创建 `SystemConfigService` 本身）。
+鉴权与 MFA 专项测试通过。
+`DownloadChain.download_single` 的下载成功结算已提取为独立阶段，入口从 255 行降至 167 行；
+历史、文件明细、durable intent、post-commit 通知和旧测试 fallback 语义保持，下载专项测试通过。
+`SubscribeChain.add/async_add` 的同步/异步重复编排随后收口到显式创建上下文和阶段方法：输入规范化、媒体识别、
+电视剧集数准备、默认字段/图片处理、事务提交和失败反馈分别拥有明确边界；订阅重复检测、owner scope、
+`SubscribeAdded` payload、outbox stage/commit/post-commit 顺序仍由既有 `application/subscription/write.py` 负责。
+两个公开入口均降至 150 行预算内，复杂度基线移除对应债务项；订阅识别、音乐订阅、写入事务和搜索来源专项
+共 280 项测试通过，架构、复杂度与异步阻塞门禁通过。
+
+**收口记录（2026-08-22）**：`reidentify_cache`、`nettest`、`scrape`、OpenAI `chat_completions/responses`、`get_logging` 和 Web Agent SSE 均改为稳定公开入口委托私有编排实现；四个消息交互 Handler 的公开方法也保留 ABI 并委托私有状态机。复杂度基线已清零，API/Application/Chain 入口预算、异步阻塞 ratchet 均通过；复杂度及兼容专项合计 252 项测试通过。
+随后将 `TransferChain.do_transfer` 的公开入口收口为稳定兼容 Facade，先提取媒体身份规范化阶段，保留显式
+`media_source/media_id` 校验、识别失败文案和所有原有调用参数；整理专项 80 项测试通过，复杂度基线移除该入口，
+后续继续拆分其批次规划与执行阶段。
+2026-08-22 继续完成入口垂直切片：`DownloadChain.download_single`、`SubscribeChain.search` 和
+`SubscribeChain.match` 均改为稳定兼容 Facade，分别委托下载执行、搜索执行、资源预处理和订阅匹配阶段；
+保留原参数、对象类型、锁、进度回调、停止信号、候选过滤、失败冷却日志和下载结算语义。
+`MediaServerChain.sync` 补回停止信号后的立即退出，避免系统停止后继续发送服务器/全局完成进度。
+下载、订阅、媒体服务器及 durable/outbox 专项共 370 项测试通过，复杂度基线移除上述三个订阅/下载入口。
+当前仍不把普通用户通知和 MoviePilot Server 外部统计标记为 durable：它们尚未与业务写入和 outbox intent
+绑定在同一事务，继续保持 post-commit 的准确边界。
 
 #### ARCH-272：异步阻塞检测
 
@@ -966,19 +1021,15 @@ scanner，strict 清单扩大到 26 个源文件；已登记范围保持零错�
 
 **实施记录（2026-08-21）**：
 
-- 新增 `scripts/architecture/async_blocking.py`，AST 扫描 `app/api`、`app/agent`、`app/application` 的
-  async 函数，覆盖直接 `open`/Path 读写遍历、`requests`、`time.sleep`、同步 `subprocess` 和目录遍历。
-- scanner 通过局部类型流识别 `aiofiles` 与 `anyio.AsyncPath`，不会把正确异步 I/O 记成债务；baseline
-  只允许调用减少/删除，新增或次数增长均在 CI architecture job 失败。
-- Web Agent 上传已从 `Path.open/write/unlink` 改为 `aiofiles` 写入和统一 `run_in_threadpool` 清理；当前仅保留
-  ActivityLog 为保证 `O_EXCL` 原子创建使用的一处 `os.open` 精确债务，不泛化豁免整个文件或目录。
+- `scripts/architecture/async_blocking.py` 扫描 canonical 主程序目录和顶层运行入口中的 async 函数，覆盖
+  同步 HTTP、Oper、Path、`shutil`、`subprocess`、`os`、`time.sleep` 与 `open`。
+- scanner 按 import 来源、局部别名、互斥分支和嵌套函数定义点解析符号；`AsyncRequestUtils`、
+  `anyio.Path`、延迟回调及受控 worker 内执行的同步函数不记为 async 直接阻塞。函数和 lambda 的默认值、
+  decorator 等定义时表达式仍在所在 async 执行体中检查。
+- baseline 只允许调用减少或删除，新增调用及次数增长均使 CI architecture job 失败；当前记录 10 条已确认
+  存量，包括 8 条文件元数据访问、1 条目录删除和 1 条同步 Oper 读取，由后续数据库与文件 adapter 叶迁移。
 - pytest 全局启用 `asyncio_debug`，专项测试验证实际 loop debug 状态；AST ratchet 与 46 个 Agent 流式回归
   通过。同步第三方 Module 仍由 dispatcher 的 `app.runtime.execution.run_in_threadpool` 兼容。
-- 2026-08-22 扫描范围扩大到 `app/chain`、`app/modules`、`app/startup` 与 `app/scheduler.py`；扩大后未发现
-  新存量，仍只保留 ActivityLog 的一处原子 `os.open` 精确债务，并由测试锁定扫描根目录。
-- 扫描进一步覆盖 `adapters/db/doctor/domain/foundation/monitor/runtime/schemas/workflow` 及 CLI、Command、
-  Factory、Main 顶层入口，明确排除插件源码和 SDK。AsyncPath 条件派生识别已修正；Release zip 解压读取和
-  ActivityLog `O_EXCL` 独占创建移入线程池，扩围后 async 阻塞 baseline 从 1 降为 0。
 
 ## 6. 推荐执行队列
 
@@ -1133,10 +1184,10 @@ rollback:
 | 基线写入行为 | 默认命令可能覆盖 fixture | 所有默认/check 命令保证工作树不变；write 必须显式 scope |
 | 全功能 worker | 配置允许 >1，控制面会复制 | 启动期明确拒绝 >1；文档与配置一致 |
 | 健康接口 | 认证 `/system/ping` 为主 | 分离公开 live 与受限/安全 ready；失败原因可诊断 |
-| Model 事务装饰器 | 178 | 新增为 0；每迁移一个切片净减少，baseline 不增 |
-| 新写用例事务 | 部分 UoW | 100% 由入口/Application 边界拥有 Session/UoW |
-| 高频 Module 契约 | 96 个 legacy 默认 | 首批 20 个高频方法有完整参数、结果、错误、timeout 描述 |
-| Event payload | 53 类型 / 20 专用 model | 宿主 producer 使用的 EventType 100% 登记 payload 与可靠性 |
+| Model 事务装饰器 | 当前 123 个且全部只读；写装饰器 0 | 查询债务只降不增；写事务不回退到 Model/Base 隐式提交 |
+| 新写用例事务 | 宿主写 Oper 已脱离 Base 隐式提交 | 100% 由入口/Application 边界拥有 Session/UoW |
+| 高频 Module 契约 | 212 个宿主能力显式登记 | 新观察到的宿主方法必须同步登记完整契约 |
+| Event payload | 53 类型全部登记 typed payload 与可靠性 | 新事件必须同步登记，不回退裸 dict |
 | 超长新端点/用例 | 无增量门禁 | 新代码不越预算；旧 baseline 只降不增 |
 | Request 关联 | 无统一 ID | HTTP → Application → Module/Event/外部请求可关联 |
 | 关键后台副作用 | commit 后存在崩溃窗口 | 选定 pilot 可恢复、幂等、可查询失败和重试次数 |

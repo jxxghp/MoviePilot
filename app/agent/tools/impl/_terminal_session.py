@@ -721,3 +721,11 @@ class _TerminalSessionManager:
 
 
 terminal_session_manager = _TerminalSessionManager()
+
+
+def get_terminal_session_manager() -> _TerminalSessionManager:
+    """返回当前进程的终端会话管理器，避免复用已完成关停的实例。"""
+    global terminal_session_manager
+    if terminal_session_manager._closed:
+        terminal_session_manager = _TerminalSessionManager()
+    return terminal_session_manager

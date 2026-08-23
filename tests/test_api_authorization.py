@@ -148,7 +148,9 @@ def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
     response = asyncio.run(system_endpoint.get_public_setting("PLUGIN_MARKET"))
 
     assert response.success is True
-    assert response.data == {"value": system_endpoint.settings.PLUGIN_MARKET}
+    assert response.data == {
+        "value": system_endpoint.get_runtime_settings().get("PLUGIN_MARKET")
+    }
     assert calls == [SystemConfigKey.Directories]
 
     with pytest.raises(HTTPException) as exc_info:

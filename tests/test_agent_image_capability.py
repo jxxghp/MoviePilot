@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -78,6 +79,12 @@ def test_handle_ai_message_routes_text_only_model_images_to_files(
 ):
     """纯文本模型收到图片消息时，应降级为文件附件而非 image_url 内容块。"""
     chain = MessageChain()
+    chain.runtime_config = replace(
+        chain.runtime_config,
+        ai_agent_enable=True,
+        llm_provider="minimax",
+        llm_model="MiniMax-M2.7",
+    )
     monkeypatch.setattr(settings, "AI_AGENT_ENABLE", True)
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
     monkeypatch.setattr(settings, "LLM_PROVIDER", "minimax")

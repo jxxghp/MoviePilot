@@ -37,15 +37,20 @@ from app.application.messaging.message import (
     stop_message,
 )
 from app.application.configuration import (
-    ApiRuntimeConfig,
-    ChainRuntimeConfig,
     RuntimeConfiguration,
-    SchedulerRuntimeConfig,
+    RuntimeSettingsService,
     SystemConfigService,
+    get_configured_system_config,
     TransferRetryConfig,
     configure_runtime_configuration,
+    configure_runtime_settings,
     configure_system_config,
     configure_transfer_retry_config,
+)
+from app.startup.configuration import (
+    build_api_runtime_config,
+    build_chain_runtime_config,
+    build_scheduler_runtime_config,
 )
 from app.application.database import configure_database_governance
 from app.application.service import configure_service_directory
@@ -173,91 +178,15 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
             send_callback=callback
         ),
         module_dispatcher_factory=ModuleInvocationDispatcher,
-        configuration=_build_chain_runtime_config(),
+        configuration=build_chain_runtime_config(settings),
         data_ports=get_chain_data_ports(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
     )
 
 
-def _normalize_subscribe_rss_interval(value: object) -> int:
-    """把无效或过小的 RSS 间隔收敛为兼容的安全值。"""
-    try:
-        return max(int(value), 5)
-    except (TypeError, ValueError):
-        return 30
-
-
-def _build_api_runtime_config() -> ApiRuntimeConfig:
-    """从可热更新 settings 构建一次 API 请求配置快照。"""
-    return ApiRuntimeConfig(
-        advanced_mode=settings.ADVANCED_MODE,
-        access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
-        btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
-        ai_agent_enable=settings.AI_AGENT_ENABLE,
-        api_token=settings.API_TOKEN,
-        temp_path=settings.TEMP_PATH,
-        media_recognize_share=settings.MEDIA_RECOGNIZE_SHARE,
-        subscribe_mode=settings.SUBSCRIBE_MODE,
-    )
-
-
-def _build_scheduler_runtime_config() -> SchedulerRuntimeConfig:
-    """从可热更新 settings 构建一次 Scheduler 操作配置快照。"""
-    return SchedulerRuntimeConfig(
-        dev=settings.DEV,
-        timezone=settings.TZ,
-        scheduler_workers=settings.CONF.scheduler,
-        db_backup_enable=settings.DB_BACKUP_ENABLE,
-        db_backup_cron=settings.DB_BACKUP_CRON,
-        cookiecloud_interval=settings.COOKIECLOUD_INTERVAL,
-        mediaserver_sync_interval=settings.MEDIASERVER_SYNC_INTERVAL,
-        subscribe_search=settings.SUBSCRIBE_SEARCH,
-        subscribe_search_interval=settings.SUBSCRIBE_SEARCH_INTERVAL,
-        subscribe_mode=settings.SUBSCRIBE_MODE,
-        subscribe_rss_interval=_normalize_subscribe_rss_interval(
-            settings.SUBSCRIBE_RSS_INTERVAL
-        ),
-        data_cleanup_enable=settings.DATA_CLEANUP_ENABLE,
-        sitedata_refresh_interval=settings.SITEDATA_REFRESH_INTERVAL,
-        memory_gc_interval=settings.MEMORY_GC_INTERVAL,
-        ai_agent_enable=settings.AI_AGENT_ENABLE,
-        ai_agent_job_interval=settings.AI_AGENT_JOB_INTERVAL,
-        usage_statistic_share=settings.USAGE_STATISTIC_SHARE,
-        site_link=settings.MP_DOMAIN("#/site"),
-    )
-
-
-def _build_chain_runtime_config() -> ChainRuntimeConfig:
-    """构建 Chain 在本次实例生命周期内使用的部署配置快照。"""
-    return ChainRuntimeConfig(
-        media_extensions=tuple(
-            settings.RMT_MEDIAEXT
-            + settings.DOWNLOAD_TMPEXT
-            + settings.RMT_SUBEXT
-            + settings.RMT_AUDIOEXT
-        ),
-        superuser=settings.SUPERUSER,
-        media_recognize_share=settings.MEDIA_RECOGNIZE_SHARE,
-        auxiliary_auth_enable=settings.AUXILIARY_AUTH_ENABLE,
-        global_image_cache=settings.GLOBAL_IMAGE_CACHE,
-        auto_download_user=settings.AUTO_DOWNLOAD_USER,
-        resource_url=settings.MP_DOMAIN("#/resource"),
-        user_agent=settings.USER_AGENT,
-        proxy=settings.PROXY,
-        proxy_server=settings.PROXY_SERVER,
-        proxy_host=settings.PROXY_HOST,
-        cookiecloud_blacklist=settings.COOKIECLOUD_BLACKLIST,
-        subscribe_mode=settings.SUBSCRIBE_MODE,
-        no_cache_site_key=settings.NO_CACHE_SITE_KEY,
-        refresh_batch_size=settings.CONF.refresh,
-        torrent_cache_size=settings.CONF.torrents,
-        site_url=settings.MP_DOMAIN("#/site"),
-    )
-
-
 def configure_runtime_data_providers() -> None:
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
-    configure_service_config_reader(lambda key: SystemConfigOper().get(key))
+    configure_service_config_reader(lambda key: get_configured_system_config().get(key))
     configure_module_runtime(lambda: ModuleManager())
     configure_plugin_runtime(lambda: PluginManager())
     configure_service_directory(
@@ -268,9 +197,9 @@ def configure_runtime_data_providers() -> None:
     )
     configure_server_application_services(
         report_service=ServerReportService(
-            config_reader=lambda key: SystemConfigOper().get(key),
-            config_writer=lambda key, value: SystemConfigOper().set(key, value),
-            installed_plugins_provider=lambda: SystemConfigOper().get(
+            config_reader=lambda key: get_configured_system_config().get(key),
+            config_writer=lambda key, value: get_configured_system_config().set(key, value),
+            installed_plugins_provider=lambda: get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
             subscribes_provider=lambda: SubscribeOper().list(),
@@ -306,6 +235,13 @@ def configure_runtime_data_providers() -> None:
 
 def _build_outbox_dispatcher() -> OutboxDispatcher:
     """创建一次恢复批次独占的 Session、Repository 和事件 handler。"""
+    def dispatch_subscribe_deleted_report(message) -> None:
+        """重放订阅删除统计；未确认时抛错以进入有限重试。"""
+        if not MoviePilotServerHelper.sub_done(
+            message.payload.get("subscribe_info") or {}
+        ):
+            raise RuntimeError("订阅删除统计上报未确认")
+
     session = SessionFactory()
     return OutboxDispatcher(
         repository=SqlAlchemyOutboxRepository(session),
@@ -322,6 +258,7 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
                 EventType.SubscribeDeleted,
                 message.payload,
             ),
+            "subscribe.deleted.report": dispatch_subscribe_deleted_report,
             "download.added": lambda message: EventManager().send_event(
                 EventType.DownloadAdded,
                 restore_download_added(message.payload),
@@ -478,7 +415,7 @@ def user_auth():
     sites_helper = SitesHelper()
     if sites_helper.auth_level >= 2:
         return
-    auth_conf = SystemConfigOper().get(SystemConfigKey.UserSiteAuthParams)
+    auth_conf = get_configured_system_config().get(SystemConfigKey.UserSiteAuthParams)
     status, msg = sites_helper.check_user(**auth_conf) if auth_conf else sites_helper.check_user()
     if status:
         logger.info(f"{msg} 用户认证成功")
@@ -591,10 +528,11 @@ async def init_modules() -> HostRuntime:
         },
     )
     runtime_configuration = RuntimeConfiguration(
-        api=_build_api_runtime_config,
-        scheduler=_build_scheduler_runtime_config,
-        chain=_build_chain_runtime_config,
+        api=lambda: build_api_runtime_config(settings),
+        scheduler=lambda: build_scheduler_runtime_config(settings),
+        chain=lambda: build_chain_runtime_config(settings),
     )
+    runtime_settings = RuntimeSettingsService(settings)
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
@@ -632,8 +570,12 @@ async def init_modules() -> HostRuntime:
             system_config=SystemConfigOper,
         ),
         configuration=runtime_configuration,
+        settings=runtime_settings,
     )
     configure_runtime_configuration(host_runtime.configuration)
+    configure_runtime_settings(host_runtime.settings)
+    # 先发布系统配置服务，后续启动组合步骤统一复用同一配置端口。
+    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
     configure_runtime_data_providers()
@@ -652,7 +594,6 @@ async def init_modules() -> HostRuntime:
         ),
         user=lambda: UserOper(),
     )
-    configure_system_config(SystemConfigService(repository=SystemConfigOper()))
     configure_outbox_dispatcher(_build_outbox_dispatcher)
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
@@ -669,7 +610,7 @@ async def init_modules() -> HostRuntime:
     configure_auth_service(
         AuthService(
             users=UserOper(),
-            config=SystemConfigOper(),
+            config=get_configured_system_config(),
             passkeys=PassKeyOper(),
         )
     )

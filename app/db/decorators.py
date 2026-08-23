@@ -16,7 +16,7 @@
   SQLAlchemy 归还连接时已在池层吞掉异常并 invalidate 坏连接，再把释放故障升级成调用方
   的异常，只会让一次已经落库的写入看起来像失败，诱发重复提交。
 """
-from typing import Any, Awaitable, Callable, Optional, Tuple, TypeVar
+from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -31,7 +31,10 @@ _R = TypeVar("_R")
 # 接管、返回值原样透传」。否则调用方传 None 或传异步会话都会被判成类型不符，而这恰恰是
 # 装饰器存在的理由（各 Oper 的 self._db 常态就是 None）。
 
-def _get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
+def _get_args_db(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> Optional[Session]:
     """
     从参数中获取数据库Session对象
     """
@@ -49,7 +52,10 @@ def _get_args_db(args: tuple, kwargs: dict) -> Optional[Session]:
     return db
 
 
-def _get_args_async_db(args: tuple, kwargs: dict) -> Optional[AsyncSession]:
+def _get_args_async_db(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> Optional[AsyncSession]:
     """
     从参数中获取异步数据库AsyncSession对象
     """
@@ -67,7 +73,11 @@ def _get_args_async_db(args: tuple, kwargs: dict) -> Optional[AsyncSession]:
     return db
 
 
-def _update_args_db(args: tuple, kwargs: dict, db: Session) -> Tuple[tuple, dict]:
+def _update_args_db(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    db: Session,
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
     """
     更新参数中的数据库Session对象，关键字传参时更新db的值，否则更新第1或第2个参数
     """
@@ -81,7 +91,11 @@ def _update_args_db(args: tuple, kwargs: dict, db: Session) -> Tuple[tuple, dict
     return args, kwargs
 
 
-def _update_args_async_db(args: tuple, kwargs: dict, db: AsyncSession) -> Tuple[tuple, dict]:
+def _update_args_async_db(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    db: AsyncSession,
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
     """
     更新参数中的异步数据库AsyncSession对象，关键字传参时更新db的值，否则更新第1或第2个参数
     """

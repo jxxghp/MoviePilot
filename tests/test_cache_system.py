@@ -5,6 +5,8 @@ import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 from app.adapters.cache.backends import (
     AsyncFileBackend,
     AsyncRedisBackend,
@@ -303,6 +305,39 @@ def test_cached_zero_ttl_does_not_cache_async_result():
         return await load_value(), await load_value()
 
     assert asyncio.run(run_test()) == (1, 2)
+
+
+def test_cached_ttl_provider_resolves_current_value_for_each_write():
+    """动态 TTL 工厂应在每次写入时读取新快照，而不是在导入期固化。"""
+    state = {"ttl": 10}
+    calls = 0
+
+    @cached(region="sync_dynamic_ttl", ttl_provider=lambda: state["ttl"])
+    def load_value():
+        nonlocal calls
+        calls += 1
+        return calls
+
+    assert load_value() == 1
+    region_cache = MemoryBackend._region_caches[
+        MemoryBackend.get_region("sync_dynamic_ttl")
+    ]
+    started_at = region_cache.timer()
+    region_cache.expire(time=started_at + 11)
+
+    state["ttl"] = 30
+    assert load_value() == 2
+    region_cache.expire(time=started_at + 20)
+    assert load_value() == 2
+
+
+def test_cached_rejects_fixed_and_dynamic_ttl_together():
+    """固定 TTL 与动态 TTL 同时存在时应在装饰阶段明确拒绝。"""
+    with pytest.raises(ValueError, match="不能同时设置"):
+
+        @cached(ttl=10, ttl_provider=lambda: 20)
+        def load_value():
+            return 1
 
 
 def test_cached_empty_ttl_expires_empty_result_sooner_sync():

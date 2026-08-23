@@ -194,8 +194,7 @@ def test_plugin_first_keeps_fallback_when_help_unidentified(monkeypatch):
         "name": "另一个晴天",
     })
     with patch("app.chain.media.eventmanager") as em, \
-            patch("app.chain.media.settings") as settings_mock:
-        settings_mock.RECOGNIZE_PLUGIN_FIRST = True
+            patch("app.runtime.config.settings.RECOGNIZE_PLUGIN_FIRST", True):
         em.check.return_value = True
         em.send_event.return_value = event
         result = chain.recognize_by_meta(meta)

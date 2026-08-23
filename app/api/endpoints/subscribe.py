@@ -13,7 +13,6 @@ from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.schemas.workflow import Subscribe as _SchemaSubscribe
 from app.api.response import ResponseAPIRouter
 from app.chain.subscribe import SubscribeChain
-from app.runtime.config import settings
 from app.runtime.events import eventmanager
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -35,7 +34,10 @@ from app.application.subscription.mutation import (
     SubscriptionActor,
     SubscriptionMutationService,
 )
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_api_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.api.dependencies.auth import (
     get_current_active_user,
     get_current_active_user_async,
@@ -493,7 +495,7 @@ async def seerr_subscribe(
     """
     Jellyseerr/Overseerr网络勾子通知订阅
     """
-    if not authorization or authorization != settings.API_TOKEN:
+    if not authorization or authorization != get_api_runtime_config_snapshot().api_token:
         raise HTTPException(
             status_code=400,
             detail="授权失败",

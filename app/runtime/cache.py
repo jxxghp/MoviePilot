@@ -756,6 +756,7 @@ def AsyncCache(cache_type: Literal['ttl', 'lru'] = 'ttl',
 
 
 def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Optional[int] = None,
+           ttl_provider: Optional[Callable[[], Optional[int]]] = None,
            skip_none: Optional[bool] = True, skip_empty: Optional[bool] = False, shared_key: Optional[str] = None,
            skip_if: Optional[Callable[[Any], bool]] = None,
            empty_ttl: Optional[int] = None, empty_if: Optional[Callable[[Any], bool]] = None):
@@ -765,6 +766,8 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
     :param region: 缓存区域的标识符，默认根据模块名、函数名等自动生成标识
     :param maxsize: 缓存区内的最大条目数
     :param ttl: 缓存的存活时间，单位秒；未传入时使用 LRU 缓存
+    :param ttl_provider: 每次写入时解析 TTL 的配置快照工厂；用于可热更新配置，
+        与固定 ttl 互斥
     :param skip_none: 跳过 None 缓存，默认为 True
     :param skip_empty: 跳过空值缓存（如 None, [], {}, "", set()），默认为 False
     :param shared_key: 同步/异步函数共享缓存的键，默认使用函数名（异步函数名会标准化为同步格式，如移除 `async_` 前缀）
@@ -806,6 +809,9 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 return False
             return True
 
+        if ttl is not None and ttl_provider is not None:
+            raise ValueError("cached 的 ttl 与 ttl_provider 不能同时设置")
+
         def get_cache_ttl(value: Any) -> Optional[int]:
             """
             返回写入该返回值时应使用的 TTL，空结果改用独立的短 TTL（empty_ttl）
@@ -813,13 +819,14 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
             :param value: 待写入缓存的返回值
             :return: 实际使用的 TTL，单位秒
             """
+            configured_ttl = ttl_provider() if ttl_provider is not None else ttl
             if empty_ttl is None:
-                return ttl
+                return configured_ttl
             if value is None:
                 return empty_ttl
             if empty_if is not None:
-                return empty_ttl if empty_if(value) else ttl
-            return empty_ttl if not value else ttl
+                return empty_ttl if empty_if(value) else configured_ttl
+            return empty_ttl if not value else configured_ttl
 
         def is_valid_cache_value(_cache_key: str, _cached_value: Any, _cache_region: str) -> bool:
             """
@@ -897,7 +904,11 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
 
         if is_async:
             # 异步函数使用异步缓存后端
-            cache_backend = AsyncCache(cache_type="ttl" if ttl is not None else "lru", maxsize=maxsize, ttl=ttl)
+            cache_backend = AsyncCache(
+                cache_type="ttl" if ttl is not None or ttl_provider is not None else "lru",
+                maxsize=maxsize,
+                ttl=ttl if ttl is not None else 1,
+            )
             # 异步函数的缓存装饰器
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
@@ -950,7 +961,11 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
             return async_wrapper
         else:
             # 同步函数使用同步缓存后端
-            cache_backend = Cache(cache_type="ttl" if ttl is not None else "lru", maxsize=maxsize, ttl=ttl)
+            cache_backend = Cache(
+                cache_type="ttl" if ttl is not None or ttl_provider is not None else "lru",
+                maxsize=maxsize,
+                ttl=ttl if ttl is not None else 1,
+            )
             # 同步函数的缓存装饰器
             @wraps(func)
             def wrapper(*args, **kwargs):

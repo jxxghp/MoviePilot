@@ -13,6 +13,7 @@ from app.runtime.observability import observe_duration, record_metric
 from app.runtime.extensions.module.contracts import (
     diagnose_module_callable,
     get_module_method_contract,
+    is_explicit_module_method,
 )
 from app.schemas.exception import RateLimitExceededException
 
@@ -124,6 +125,11 @@ class ModuleInvocationDispatcher:
                 func = module_dict.get(method)
                 if not func:
                     continue
+                self._record_legacy_hit(
+                    method,
+                    caller_type="plugin",
+                    abi_source="third_party_plugin",
+                )
                 self._diagnose_callable(method, func, f"插件 {plugin_id}")
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
                 if self.is_valid_empty(result):
@@ -172,6 +178,11 @@ class ModuleInvocationDispatcher:
                 func = module_dict.get(method)
                 if not func:
                     continue
+                self._record_legacy_hit(
+                    method,
+                    caller_type="plugin",
+                    abi_source="third_party_plugin",
+                )
                 self._diagnose_callable(method, func, f"插件 {plugin_id}")
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
                 if self.is_valid_empty(result):
@@ -219,6 +230,11 @@ class ModuleInvocationDispatcher:
             module_name = self._module_name(module, module_id)
             try:
                 func = getattr(module, method)
+                self._record_legacy_hit(
+                    method,
+                    caller_type="system",
+                    abi_source="host_module",
+                )
                 self._diagnose_callable(method, func, f"宿主模块 {module_id}")
                 if self.is_valid_empty(result):
                     result = func(*args, **kwargs)
@@ -267,6 +283,11 @@ class ModuleInvocationDispatcher:
             module_name = self._module_name(module, module_id)
             try:
                 func = getattr(module, method)
+                self._record_legacy_hit(
+                    method,
+                    caller_type="system",
+                    abi_source="host_module",
+                )
                 self._diagnose_callable(method, func, f"宿主模块 {module_id}")
                 if self.is_valid_empty(result):
                     result = await self._async_call(func, *args, **kwargs)
@@ -305,6 +326,22 @@ class ModuleInvocationDispatcher:
                 "module.provider.timeout",
                 method=method,
                 provider_type=provider_type,
+            )
+
+    @staticmethod
+    def _record_legacy_hit(
+        method: str,
+        *,
+        caller_type: str,
+        abi_source: str,
+    ) -> None:
+        """记录未知动态方法的兼容命中，便于按真实调用逐项迁移。"""
+        if not is_explicit_module_method(method):
+            record_metric(
+                "module.contract.legacy_hit",
+                method=method,
+                caller_type=caller_type,
+                abi_source=abi_source,
             )
 
     @staticmethod

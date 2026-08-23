@@ -37,6 +37,11 @@ METRIC_SPECS = {
         MetricSpec("event.handler.duration", MetricKind.HISTOGRAM, frozenset({"event_type", "handler_type", "outcome"})),
         MetricSpec("module.provider.duration", MetricKind.HISTOGRAM, frozenset({"method", "provider_type", "outcome"})),
         MetricSpec("module.provider.timeout", MetricKind.COUNTER, frozenset({"method", "provider_type"})),
+        MetricSpec(
+            "module.contract.legacy_hit",
+            MetricKind.COUNTER,
+            frozenset({"method", "caller_type", "abi_source"}),
+        ),
         MetricSpec("scheduler.job.duration", MetricKind.HISTOGRAM, frozenset({"owner", "outcome"})),
         MetricSpec("scheduler.job.overlap_skip", MetricKind.COUNTER, frozenset({"owner"})),
         MetricSpec("scheduler.job.retry", MetricKind.COUNTER, frozenset({"owner"})),

@@ -418,14 +418,15 @@ def test_sync_plugin_market_from_wiki_merges_and_deduplicates_repos():
     response = MagicMock(status_code=200, text=markdown)
     request_utils = MagicMock()
     request_utils.get_res = AsyncMock(return_value=response)
+    runtime_settings = MagicMock()
+    runtime_settings.get.return_value = "https://github.com/local/existing"
+    runtime_settings.update.return_value = (True, "")
     with (
         patch("app.api.endpoints.system.AsyncRequestUtils", return_value=request_utils),
-        patch("app.api.endpoints.system.settings.PLUGIN_MARKET", "https://github.com/local/existing"),
         patch(
-            "app.runtime.config.Settings.update_setting",
-            autospec=True,
-            return_value=(True, ""),
-        ) as update_setting,
+            "app.api.endpoints.system.get_runtime_settings",
+            return_value=runtime_settings,
+        ),
         patch("app.api.endpoints.system.eventmanager.async_send_event", new=AsyncMock()) as send_event,
     ):
         result = asyncio.run(sync_plugin_market_from_wiki(None, None))
@@ -437,8 +438,7 @@ def test_sync_plugin_market_from_wiki_merges_and_deduplicates_repos():
     ]
     assert result.data["added_count"] == 1
     assert result.data["total_count"] == 2
-    update_setting.assert_called_once_with(
-        ANY,
+    runtime_settings.update.assert_called_once_with(
         "PLUGIN_MARKET",
         "https://github.com/local/existing,https://github.com/wiki/new-repo",
     )
@@ -534,8 +534,8 @@ def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monk
     monkeypatch.setattr(plugin_endpoint, "PluginManager", lambda: plugin_manager)
     monkeypatch.setattr(
         plugin_endpoint,
-        "settings",
-        MagicMock(ROOT_PATH=tmp_path),
+        "get_api_runtime_config_snapshot",
+        lambda: MagicMock(root_path=tmp_path),
     )
 
     response = asyncio.run(

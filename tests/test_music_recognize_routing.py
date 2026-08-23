@@ -365,7 +365,9 @@ def test_media_chain_converts_recognized_music_metadata_without_mutating_source(
     source_chain.recognize_music.return_value = source_info
     chain = MediaChain()
     monkeypatch.setattr(chain, "_music_source_chain", Mock(return_value=source_chain))
-    monkeypatch.setattr("app.chain.media.settings.MUSIC_METADATA_TO_SIMPLIFIED", True)
+    monkeypatch.setattr(
+        "app.runtime.config.settings.MUSIC_METADATA_TO_SIMPLIFIED", True
+    )
 
     result = chain.recognize_music_from_source(
         media_source="musicbrainz",
@@ -397,7 +399,9 @@ def test_media_chain_preserves_original_music_metadata_when_conversion_disabled(
     source_chain.recognize_music.return_value = source_info
     chain = MediaChain()
     monkeypatch.setattr(chain, "_music_source_chain", Mock(return_value=source_chain))
-    monkeypatch.setattr("app.chain.media.settings.MUSIC_METADATA_TO_SIMPLIFIED", False)
+    monkeypatch.setattr(
+        "app.runtime.config.settings.MUSIC_METADATA_TO_SIMPLIFIED", False
+    )
 
     result = chain.recognize_music_from_source(
         media_source="musicbrainz",
@@ -427,7 +431,9 @@ def test_music_path_fallback_converts_local_tag_metadata(monkeypatch):
         Mock(return_value=None),
     )
     monkeypatch.setattr(chain, "recognize_media", Mock(return_value=None))
-    monkeypatch.setattr("app.chain.media.settings.MUSIC_METADATA_TO_SIMPLIFIED", True)
+    monkeypatch.setattr(
+        "app.runtime.config.settings.MUSIC_METADATA_TO_SIMPLIFIED", True
+    )
 
     _, result = chain.recognize_music_by_path("track.flac")
 
