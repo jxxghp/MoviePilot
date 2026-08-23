@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6499,
-  "edge_sha256": "54ddd2d6cd5669354a2d1303b24c95e573368e145fdd74e4240b01bb8ef1f687",
+  "edge_count": 6500,
+  "edge_sha256": "6fa263f6f10aa51b4395aa41cf32a0c24254c2131d7882341936412400a10e4a",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -255,6 +255,7 @@
     "app.agent.middleware.activity_log -> app.agent.tools.tags",
     "app.agent.middleware.activity_log -> app.runtime",
     "app.agent.middleware.activity_log -> app.runtime.log",
+    "app.agent.middleware.activity_log -> app.runtime.tasks",
     "app.agent.middleware.jobs -> app.agent",
     "app.agent.middleware.jobs -> app.agent.middleware",
     "app.agent.middleware.jobs -> app.agent.middleware.utils",
