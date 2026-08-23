@@ -1,3 +1,5 @@
+import asyncio
+
 from app.application.scheduling import register_scheduler_class
 from app.scheduler import Scheduler
 
@@ -14,9 +16,15 @@ def init_scheduler():
 
 def stop_scheduler():
     """
-    停止定时器
+    停止定时器；生命周期事件循环中返回有限等待的兼容协程。
     """
-    Scheduler().stop()
+    scheduler = Scheduler()
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        scheduler.stop()
+        return None
+    return scheduler.async_stop()
 
 
 def restart_scheduler():

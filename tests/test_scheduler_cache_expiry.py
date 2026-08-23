@@ -1,5 +1,6 @@
+import asyncio
 import threading
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from app import scheduler as scheduler_module
 from app.scheduler import Scheduler
@@ -44,6 +45,32 @@ def test_scheduler_initializer_starts_background_jobs(monkeypatch):
     scheduler_initializer.init_scheduler()
 
     scheduler.init.assert_called_once_with()
+
+
+def test_scheduler_initializer_stop_preserves_sync_abi(monkeypatch):
+    """同步调用停止入口仍应立即关闭 Scheduler，不返回 coroutine。"""
+    scheduler = Mock()
+    monkeypatch.setattr(scheduler_initializer, "Scheduler", Mock(return_value=scheduler))
+
+    assert scheduler_initializer.stop_scheduler() is None
+    scheduler.stop.assert_called_once_with()
+    scheduler.async_stop.assert_not_called()
+
+
+def test_scheduler_initializer_stop_awaits_in_running_loop(monkeypatch):
+    """生命周期事件循环中的停止入口应返回可等待的异步收口。"""
+    scheduler = Mock()
+    scheduler.async_stop = AsyncMock()
+    monkeypatch.setattr(scheduler_initializer, "Scheduler", Mock(return_value=scheduler))
+
+    async def scenario():
+        result = scheduler_initializer.stop_scheduler()
+        assert result is not None
+        await result
+
+    asyncio.run(scenario())
+    scheduler.async_stop.assert_awaited_once_with()
+    scheduler.stop.assert_not_called()
 
 
 def test_clear_cache_is_manual_only(monkeypatch):

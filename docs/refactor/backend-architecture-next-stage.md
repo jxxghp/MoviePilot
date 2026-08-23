@@ -838,6 +838,9 @@ ADR 必须逐个映射当前 Event、BackgroundTasks、Scheduler job、Agent tas
   原语义；未启动完整 lifespan 的协议校验和旧直接调用通过兼容依赖回退到默认登记器。
 - IMDb 同步清缓存兼容入口在运行事件循环时改由 TaskRegistry 登记异步缓存清理任务，owner 为
   `module.imdb.cache_clear`；同步签名、模块调用方式和无事件循环时的立即清理语义保持不变。
+- Scheduler 的协程作业和异步进度收尾不再使用无主 `create_task` 或丢弃跨线程 Future；由 Scheduler 自有
+  任务集合登记、停止时取消，生命周期入口通过异步兼容包装器在有限预算内等待收口，保留旧同步
+  `Scheduler.start()` / `Scheduler.stop()` 与插件调度 ABI。
 
 #### ARCH-251：用现有数据库做首个 durable side-effect pilot
 

@@ -86,6 +86,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 - IMDb 同步 `clear_cache()` ABI 在事件循环内触发的异步缓存清理登记为
   `module.imdb.cache_clear`；同步调用方式和无运行事件循环时的立即清理行为保持不变，宿主关停后不再
   接受新的清理任务。
+- Scheduler 的协程作业与异步进度收尾由 Scheduler 自有任务集合持有；同步 `start()` / `stop()` ABI 保持，
+  生命周期关闭入口额外等待有限预算，跨线程提交的 Future 也会在停止时收到取消请求。
 
 ### Transfer pending / 文件整理
 

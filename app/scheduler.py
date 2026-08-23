@@ -1,4 +1,6 @@
 import asyncio
+from concurrent.futures import CancelledError as ConcurrentCancelledError
+from concurrent.futures import Future as ConcurrentFuture
 import gc
 import hashlib
 import inspect
@@ -129,6 +131,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         self._auth_count = 0
         # 用户认证失败消息发送
         self._auth_message = False
+        # 记录由 Scheduler 提交到事件循环的协程，避免 stop() 后继续悬挂。
+        self._async_tasks: set[asyncio.Task[Any] | ConcurrentFuture[Any]] = set()
+        self._accepting_async_tasks = True
 
     def on_config_changed(self) -> None:
         """
@@ -250,6 +255,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         config = get_scheduler_runtime_config()
         # 停止定时服务
         self.stop()
+        self._accepting_async_tasks = True
 
         # 调试模式不启动定时服务
         if config.dev:
@@ -558,6 +564,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         准备定时任务
         """
+        if not getattr(self, "_accepting_async_tasks", True):
+            return None
         started_at = self._format_time()
         with self._lock:
             job = self._jobs.get(job_id)
@@ -822,6 +830,38 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             # 协程收尾在事件循环上完成，同步路径（线程池/调用线程）提交到事件循环执行
             await self.__finish_job(job_id=job_id, success=success, error=error)
 
+    def _track_async_task(
+            self,
+            task: asyncio.Task[Any] | ConcurrentFuture[Any],
+    ) -> asyncio.Task[Any] | ConcurrentFuture[Any]:
+        """登记 Scheduler 自有协程任务，并在完成后移除和消费异常。"""
+        tasks = getattr(self, "_async_tasks", None)
+        if tasks is None:
+            tasks = set()
+            self._async_tasks = tasks
+
+        def _discard(done: asyncio.Task[Any] | ConcurrentFuture[Any]) -> None:
+            """释放已完成任务，并避免跨线程 Future 产生未取回异常。"""
+            with self._lock:
+                tasks.discard(done)
+            try:
+                done.exception()
+            except (asyncio.CancelledError, ConcurrentCancelledError):
+                pass
+
+        with self._lock:
+            tasks.add(task)
+            task.add_done_callback(_discard)
+        return task
+
+    def _create_async_task(self, coro: Any) -> bool:
+        """在当前事件循环创建并登记任务，返回是否已异步接管。"""
+        if not getattr(self, "_accepting_async_tasks", True):
+            coro.close()
+            return False
+        self._track_async_task(asyncio.create_task(coro))
+        return True
+
     def start(self, job_id: str, *args, **kwargs) -> None:
         """
         启动定时服务
@@ -837,12 +877,18 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 running_loop = None
             target_loop = global_vars.loop
             if running_loop:
-                asyncio.create_task(self.__run_coro_job(coro=coro, job_id=job_id, job=job))
-                return True
+                return self._create_async_task(
+                    self.__run_coro_job(coro=coro, job_id=job_id, job=job)
+                )
             if target_loop and target_loop.is_running():
-                asyncio.run_coroutine_threadsafe(
-                    self.__run_coro_job(coro=coro, job_id=job_id, job=job),
-                    target_loop,
+                if not getattr(self, "_accepting_async_tasks", True):
+                    coro.close()
+                    return False
+                self._track_async_task(
+                    asyncio.run_coroutine_threadsafe(
+                        self.__run_coro_job(coro=coro, job_id=job_id, job=job),
+                        target_loop,
+                    )
                 )
                 return True
             asyncio.run(coro)
@@ -895,8 +941,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     job_id=job_id, success=success, error=error
                 ))
 
-    @staticmethod
-    def _submit_to_loop(coro: Any) -> None:
+    def _submit_to_loop(self, coro: Any) -> None:
         """
         把协程提交到事件循环执行，兼容以下调用环境：
         - 已在事件循环内（async 任务内部）：排队为独立任务，避免阻塞
@@ -908,11 +953,54 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         except RuntimeError:
             running_loop = None
         if running_loop:
-            asyncio.create_task(coro)
+            self._create_async_task(coro)
         elif global_vars.loop and global_vars.loop.is_running():
-            asyncio.run_coroutine_threadsafe(coro, global_vars.loop)
+            if not getattr(self, "_accepting_async_tasks", True):
+                coro.close()
+                return
+            self._track_async_task(
+                asyncio.run_coroutine_threadsafe(coro, global_vars.loop)
+            )
         else:
             asyncio.run(coro)
+
+    def _cancel_async_tasks(self) -> tuple[asyncio.Task[Any] | ConcurrentFuture[Any], ...]:
+        """停止接收新协程并请求取消现有 Scheduler 任务。"""
+        with self._lock:
+            self._accepting_async_tasks = False
+            tasks = tuple(getattr(self, "_async_tasks", ()))
+        for task in tasks:
+            if isinstance(task, asyncio.Task):
+                loop = task.get_loop()
+                if loop.is_running():
+                    loop.call_soon_threadsafe(task.cancel)
+                else:
+                    task.cancel()
+            else:
+                task.cancel()
+        return tasks
+
+    async def async_stop(self, *, timeout_seconds: float = 30.0) -> None:
+        """异步关闭 Scheduler，并在有限预算内等待其协程任务收口。"""
+        self.stop()
+        tasks = tuple(getattr(self, "_async_tasks", ()))
+        if not tasks:
+            return
+        awaitables = []
+        for task in tasks:
+            if isinstance(task, asyncio.Future):
+                awaitables.append(task)
+            else:
+                awaitables.append(asyncio.wrap_future(task))
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*awaitables, return_exceptions=True),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.error("等待定时器协程任务收口超时")
+            for task in tasks:
+                task.cancel()
 
     @staticmethod
     def _get_agent_task_job_id(task_id: int) -> str:
@@ -1396,6 +1484,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         关闭定时服务
         """
+        self._cancel_async_tasks()
         with lock:
             try:
                 if self._scheduler:
