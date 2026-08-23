@@ -253,7 +253,10 @@ class MessageChain(ChainBase):
                 is_channel_admin=is_channel_admin,
             )
 
-            if PluginInputInteractionHandler(messenger=self).handle_text(
+            if PluginInputInteractionHandler(
+                    messenger=self,
+                    event_publisher=self.eventmanager,
+            ).handle_text(
                     context=interaction_context,
                     text=text,
                     reply_to_message_id=reply_to_message_id,
@@ -415,7 +418,10 @@ class MessageChain(ChainBase):
                 )
             return False
 
-        if PluginInputInteractionHandler(messenger=self).handle_text(
+        if PluginInputInteractionHandler(
+                messenger=self,
+                event_publisher=self.eventmanager,
+        ).handle_text(
                 context=context,
                 text=text,
                 reply_to_message_id=reply_to_message_id,

@@ -1221,6 +1221,17 @@ def test_host_consumers_use_agent_audio_capability_application_port():
     assert violations == {}
 
 
+def test_application_services_do_not_resolve_event_manager_singleton():
+    """Application 服务必须接收事件端口，不得自行定位进程级事件单例。"""
+    violations = {
+        module_name: dependencies & {"app.runtime.events"}
+        for module_name, dependencies in _build_module_graph().items()
+        if module_name.startswith("app.application")
+        and "app.runtime.events" in dependencies
+    }
+    assert violations == {}
+
+
 def test_agent_tools_do_not_import_entrypoint_internals():
     """Agent 工具不得穿透导入 HTTP 端点、调度器与命令注册表内部实现。
 

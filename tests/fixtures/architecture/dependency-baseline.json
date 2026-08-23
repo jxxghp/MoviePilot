@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6547,
-  "edge_sha256": "66726be779aae9069c32e8ccba1e7371eb99cfcc459666bc9805ddc25061ac63",
+  "edge_count": 6545,
+  "edge_sha256": "e74daad54d04652df3946334297eac0dd9a4560ca87f84365b25dc9f553436da",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2651,8 +2651,6 @@
     "app.application.messaging.plugin -> app.application",
     "app.application.messaging.plugin -> app.application.messaging",
     "app.application.messaging.plugin -> app.application.messaging.interaction",
-    "app.application.messaging.plugin -> app.runtime",
-    "app.application.messaging.plugin -> app.runtime.events",
     "app.application.messaging.plugin -> app.schemas",
     "app.application.messaging.plugin -> app.schemas.message",
     "app.application.messaging.plugin -> app.schemas.types",

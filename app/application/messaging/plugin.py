@@ -2,12 +2,19 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 from app.application.messaging.interaction import InteractionContext, MessageGateway
-from app.runtime.events import EventManager
 from app.schemas.message import Message
 from app.schemas.types import EventType, NotificationChannel
+
+
+class PluginEventPublisher(Protocol):
+    """声明插件输入交互所需的同步事件发布端口。"""
+
+    def send_event(self, event_type: EventType, payload: dict) -> Any:
+        """同步发布插件输入事件，并返回宿主事件分发结果。"""
+        ...
 
 
 @dataclass
@@ -370,9 +377,14 @@ plugin_input_interaction_manager = PluginInputInteractionManager()
 class PluginInputInteractionHandler:
     """消费插件申请接管的下一条用户文本输入。"""
 
-    def __init__(self, messenger: MessageGateway):
-        """保存消息投递接口。"""
+    def __init__(
+            self,
+            messenger: MessageGateway,
+            event_publisher: PluginEventPublisher,
+    ):
+        """保存消息投递接口和宿主注入的事件发布端口。"""
         self._messenger = messenger
+        self._event_publisher = event_publisher
 
     def handle_text(
             self,
@@ -410,8 +422,7 @@ class PluginInputInteractionHandler:
             return False
 
         if status == "expired":
-            # 调用时解析单例，避免模块级绑定在单例注册表被重置后与宿主脱钩
-            EventManager().send_event(
+            self._event_publisher.send_event(
                 EventType.MessageAction,
                 {
                     "plugin_id": request.plugin_id,
@@ -442,7 +453,7 @@ class PluginInputInteractionHandler:
             return not text.strip().startswith("/")
 
         if is_cancel_text:
-            EventManager().send_event(
+            self._event_publisher.send_event(
                 EventType.MessageAction,
                 {
                     "plugin_id": request.plugin_id,
@@ -472,7 +483,7 @@ class PluginInputInteractionHandler:
             )
             return True
 
-        EventManager().send_event(
+        self._event_publisher.send_event(
             EventType.MessageAction,
             {
                 "plugin_id": request.plugin_id,
