@@ -136,12 +136,22 @@ def ensure_sites_stub() -> None:
     try:
         import app.application.site.sites  # noqa: F401  本地已拉取时用真实模块
     except (ModuleNotFoundError, ImportError):
-        from importlib.util import spec_from_loader
-        from types import ModuleType
-        stub = ModuleType("app.application.site.sites")
-        stub.SitesHelper = _SitesHelperStub
-        stub.__spec__ = spec_from_loader("app.application.site.sites", None)
-        sys.modules["app.application.site.sites"] = stub
+        install_sites_stub()
+
+
+def install_sites_stub() -> None:
+    """强制安装确定性的站点资源垫片，供隔离探针排除本机动态资源差异。
+
+    与 :func:`ensure_sites_stub` 的“真实资源优先”语义不同，性能与架构探针需要在开发机和
+    source-only CI 中使用完全相同的 import 前提，因此必须在导入被测宿主模块前覆盖资源模块。
+    """
+    from importlib.util import spec_from_loader
+    from types import ModuleType
+
+    stub = ModuleType("app.application.site.sites")
+    setattr(stub, "SitesHelper", _SitesHelperStub)
+    stub.__spec__ = spec_from_loader("app.application.site.sites", None)
+    sys.modules["app.application.site.sites"] = stub
 
 
 def ensure_optional_stub(name: str, **attrs) -> None:

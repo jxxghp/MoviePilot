@@ -40,6 +40,9 @@ import json
 import sys
 import time
 
+from app.testing.bootstrap import install_sites_stub
+
+install_sites_stub()
 before = set(sys.modules)
 started_at = time.perf_counter()
 importlib.import_module({target!r})
@@ -94,9 +97,9 @@ import time
 
 from fastapi import FastAPI
 
-from app.testing.bootstrap import ensure_sites_stub
+from app.testing.bootstrap import install_sites_stub
 
-ensure_sites_stub()
+install_sites_stub()
 from app.startup import lifecycle
 
 
