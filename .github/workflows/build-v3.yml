@@ -69,10 +69,27 @@ jobs:
           esac
           [[ "$frontend_sha256" =~ ^[0-9a-f]{64}$ ]]
 
+          resource_dir=$(mktemp -d)
+          trap 'rm -rf "$resource_dir"' EXIT
+          resource_base="https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${resources_revision}/resources.v3"
+          for resource_file in \
+            user.sites.v3.bin \
+            sites.cpython-314-x86_64-linux-gnu.so \
+            sites.cpython-314-aarch64-linux-gnu.so; do
+            curl --fail --show-error --silent --location \
+              "${resource_base}/${resource_file}" -o "${resource_dir}/${resource_file}"
+          done
+          resource_index_sha256=$(sha256sum "${resource_dir}/user.sites.v3.bin" | awk '{print $1}')
+          resource_amd64_sha256=$(sha256sum "${resource_dir}/sites.cpython-314-x86_64-linux-gnu.so" | awk '{print $1}')
+          resource_arm64_sha256=$(sha256sum "${resource_dir}/sites.cpython-314-aarch64-linux-gnu.so" | awk '{print $1}')
+
           echo "plugins_revision=$plugins_revision" >> "$GITHUB_OUTPUT"
           echo "resources_revision=$resources_revision" >> "$GITHUB_OUTPUT"
           echo "frontend_digest=$frontend_digest" >> "$GITHUB_OUTPUT"
           echo "frontend_sha256=$frontend_sha256" >> "$GITHUB_OUTPUT"
+          echo "resource_index_sha256=$resource_index_sha256" >> "$GITHUB_OUTPUT"
+          echo "resource_amd64_sha256=$resource_amd64_sha256" >> "$GITHUB_OUTPUT"
+          echo "resource_arm64_sha256=$resource_arm64_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Wiki Plugin Market
         uses: actions/checkout@v4
@@ -121,6 +138,45 @@ jobs:
           fi
           echo "release_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Generate Source Update Payload
+        id: source_update_payload
+        env:
+          RELEASE_GENERATION: ${{ github.run_id }}.${{ github.run_attempt }}
+          BACKEND_REVISION: ${{ steps.release_snapshot.outputs.release_commit }}
+          FRONTEND_VERSION: ${{ steps.release_version.outputs.frontend_version }}
+          FRONTEND_SHA256: ${{ steps.payloads.outputs.frontend_sha256 }}
+          RESOURCES_REVISION: ${{ steps.payloads.outputs.resources_revision }}
+          RESOURCE_INDEX_SHA256: ${{ steps.payloads.outputs.resource_index_sha256 }}
+          RESOURCE_AMD64_SHA256: ${{ steps.payloads.outputs.resource_amd64_sha256 }}
+          RESOURCE_ARM64_SHA256: ${{ steps.payloads.outputs.resource_arm64_sha256 }}
+        run: |
+          mkdir -p .build
+          jq -n \
+            --arg release_generation "$RELEASE_GENERATION" \
+            --arg backend_revision "$BACKEND_REVISION" \
+            --arg frontend_version "$FRONTEND_VERSION" \
+            --arg frontend_sha256 "$FRONTEND_SHA256" \
+            --arg resources_revision "$RESOURCES_REVISION" \
+            --arg resource_index_sha256 "$RESOURCE_INDEX_SHA256" \
+            --arg resource_amd64_sha256 "$RESOURCE_AMD64_SHA256" \
+            --arg resource_arm64_sha256 "$RESOURCE_ARM64_SHA256" \
+            '{
+              schema_version: 2,
+              channel: "release",
+              release_generation: $release_generation,
+              backend_revision: $backend_revision,
+              frontend_version: $frontend_version,
+              frontend_sha256: $frontend_sha256,
+              resources_revision: $resources_revision,
+              resource_sha256: {
+                "user.sites.v3.bin": $resource_index_sha256,
+                "sites.cpython-314-x86_64-linux-gnu.so": $resource_amd64_sha256,
+                "sites.cpython-314-aarch64-linux-gnu.so": $resource_arm64_sha256
+              }
+            }' > .build/source-update-payload.json
+          jq -e . .build/source-update-payload.json >/dev/null
+          echo "sha256=$(sha256sum .build/source-update-payload.json | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
       - name: Docker Meta
         id: meta
         uses: docker/metadata-action@v5
@@ -149,10 +205,17 @@ jobs:
           pull: true
           tags: moviepilot-v3-candidate:linux-amd64
           build-args: |
+            MOVIEPILOT_BUILD_CHANNEL=release
+            MOVIEPILOT_RELEASE_GENERATION=${{ github.run_id }}.${{ github.run_attempt }}
+            MOVIEPILOT_SOURCE_UPDATE_PAYLOAD_SHA256=${{ steps.source_update_payload.outputs.sha256 }}
+            MOVIEPILOT_BACKEND_REVISION=${{ steps.release_snapshot.outputs.release_commit }}
             MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
             MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
+            MOVIEPILOT_RESOURCE_INDEX_SHA256=${{ steps.payloads.outputs.resource_index_sha256 }}
+            MOVIEPILOT_RESOURCE_AMD64_SHA256=${{ steps.payloads.outputs.resource_amd64_sha256 }}
+            MOVIEPILOT_RESOURCE_ARM64_SHA256=${{ steps.payloads.outputs.resource_arm64_sha256 }}
           cache-from: type=gha,scope=moviepilot-v3-docker-amd64,version=2
           cache-to: type=gha,scope=moviepilot-v3-docker-amd64,mode=max,version=2
 
@@ -180,10 +243,17 @@ jobs:
           pull: true
           tags: moviepilot-v3-candidate:linux-arm64
           build-args: |
+            MOVIEPILOT_BUILD_CHANNEL=release
+            MOVIEPILOT_RELEASE_GENERATION=${{ github.run_id }}.${{ github.run_attempt }}
+            MOVIEPILOT_SOURCE_UPDATE_PAYLOAD_SHA256=${{ steps.source_update_payload.outputs.sha256 }}
+            MOVIEPILOT_BACKEND_REVISION=${{ steps.release_snapshot.outputs.release_commit }}
             MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
             MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
+            MOVIEPILOT_RESOURCE_INDEX_SHA256=${{ steps.payloads.outputs.resource_index_sha256 }}
+            MOVIEPILOT_RESOURCE_AMD64_SHA256=${{ steps.payloads.outputs.resource_amd64_sha256 }}
+            MOVIEPILOT_RESOURCE_ARM64_SHA256=${{ steps.payloads.outputs.resource_arm64_sha256 }}
           cache-from: type=gha,scope=moviepilot-v3-docker-arm64,version=2
           cache-to: type=gha,scope=moviepilot-v3-docker-arm64,mode=max,version=2
 
@@ -225,10 +295,17 @@ jobs:
           pull: false
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
+            MOVIEPILOT_BUILD_CHANNEL=release
+            MOVIEPILOT_RELEASE_GENERATION=${{ github.run_id }}.${{ github.run_attempt }}
+            MOVIEPILOT_SOURCE_UPDATE_PAYLOAD_SHA256=${{ steps.source_update_payload.outputs.sha256 }}
+            MOVIEPILOT_BACKEND_REVISION=${{ steps.release_snapshot.outputs.release_commit }}
             MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
             MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
+            MOVIEPILOT_RESOURCE_INDEX_SHA256=${{ steps.payloads.outputs.resource_index_sha256 }}
+            MOVIEPILOT_RESOURCE_AMD64_SHA256=${{ steps.payloads.outputs.resource_amd64_sha256 }}
+            MOVIEPILOT_RESOURCE_ARM64_SHA256=${{ steps.payloads.outputs.resource_arm64_sha256 }}
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.revision=${{ steps.release_snapshot.outputs.release_commit }}
@@ -386,6 +463,7 @@ jobs:
           tag_name: v${{ env.app_version }}
           name: v${{ env.app_version }}
           body: ${{ env.RELEASE_BODY }}
+          files: .build/source-update-payload.json
           draft: false
           prerelease: false
           make_latest: true

@@ -31,6 +31,7 @@ PUBLIC_DIR=/public
 UPDATE_PENDING_FILE="${CONFIG_DIR}/temp/__update_pending__"
 UPDATE_PREVIOUS_APP="${APP_DIR}.__update_previous__"
 UPDATE_PREVIOUS_PUBLIC="${PUBLIC_DIR}.__update_previous__"
+UPDATE_PAYLOAD_ASSET="source-update-payload.json"
 
 function apply_package_cache_env() {
     PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
@@ -48,6 +49,17 @@ UPDATE_RECOVERY_REQUIRED="false"
 UPDATE_RECOVERY_COMPLETED="false"
 DEPENDENCY_SYNC_ATTEMPTED="false"
 PACKAGE_ROUTE_READY="false"
+TARGET_UPDATE_CHANNEL=""
+TARGET_RELEASE_GENERATION=""
+TARGET_PAYLOAD_SHA256=""
+TARGET_PAYLOAD_UNCHANGED="false"
+TARGET_BACKEND_REVISION=""
+TARGET_FRONTEND_VERSION=""
+TARGET_FRONTEND_SHA256=""
+TARGET_RESOURCES_REVISION=""
+TARGET_RESOURCE_INDEX_SHA256=""
+TARGET_RESOURCE_SITES_SHA256=""
+TARGET_PAYLOAD_FILE=""
 
 function set_package_proxy_env() {
     PACKAGE_ENV=()
@@ -61,30 +73,59 @@ function set_package_proxy_env() {
     fi
 }
 
-# 下载及解压
-function download_and_unzip() {
+function download_file() {
     local retries=0
     local max_retries=3
     local url="$1"
-    local target_dir="$2"
+    local destination="$2"
+    local expected_sha256="${3:-}"
+    local temporary="${destination}.part.$$"
+
     INFO "→ 正在下载 ${url}..."
     while [ $retries -lt $max_retries ]; do
-        if curl ${CURL_OPTIONS} "${url}" ${CURL_HEADERS} | busybox unzip -d ${TMP_PATH} - > /dev/null; then
-            if [ -e ${TMP_PATH}/MoviePilot-* ]; then
-                mv ${TMP_PATH}/MoviePilot-* ${TMP_PATH}/"${target_dir}"
+        rm -f "${temporary}"
+        if curl ${CURL_OPTIONS} --fail "${url}" ${CURL_HEADERS} -o "${temporary}" \
+            && [ -s "${temporary}" ]; then
+            if [ -n "${expected_sha256}" ] \
+                && ! printf '%s  %s\n' "${expected_sha256}" "${temporary}" | sha256sum -c - > /dev/null; then
+                ERROR "${url} 完整性校验失败"
+                rm -f "${temporary}"
+                return 1
             fi
-            break
-        else
-            WARN "下载 ${url} 失败，正在进行第 $((retries + 1)) 次重试..."
-            retries=$((retries + 1))
+            mv -f "${temporary}" "${destination}"
+            return 0
         fi
+        WARN "下载 ${url} 失败，正在进行第 $((retries + 1)) 次重试..."
+        retries=$((retries + 1))
     done
-    if [ $retries -eq $max_retries ]; then
-        ERROR "下载 ${url} 失败，已达到最大重试次数！"
+
+    rm -f "${temporary}"
+    ERROR "下载 ${url} 失败，已达到最大重试次数！"
+    return 1
+}
+
+# 下载及解压
+function download_and_unzip() {
+    local url="$1"
+    local target_dir="$2"
+    local expected_sha256="${3:-}"
+    local archive="${TMP_PATH}/.${target_dir}.zip"
+    local extracted_dir
+
+    download_file "${url}" "${archive}" "${expected_sha256}" || return 1
+    if ! busybox unzip -t "${archive}" > /dev/null \
+        || ! busybox unzip -q "${archive}" -d "${TMP_PATH}"; then
+        ERROR "${url} 不是完整的 ZIP 制品"
         return 1
-    else
-        return 0
     fi
+    if [ ! -d "${TMP_PATH}/${target_dir}" ]; then
+        extracted_dir=$(find "${TMP_PATH}" -mindepth 1 -maxdepth 1 -type d \
+            -name 'MoviePilot-*' -print -quit)
+        if [ -n "${extracted_dir}" ]; then
+            mv "${extracted_dir}" "${TMP_PATH}/${target_dir}" || return 1
+        fi
+    fi
+    [ -d "${TMP_PATH}/${target_dir}" ]
 }
 
 function sync_project_dependencies() {
@@ -232,44 +273,252 @@ function recover_pending_update() {
     INFO "→ 未完成的容器更新事务已恢复"
 }
 
-function existing_resource_dir() {
-    local resource_source_dir="${APP_DIR}/app/application/site"
-    for legacy_resource_dir in "${APP_DIR}/app/infrastructure" "${APP_DIR}/app/adapters/network" "${APP_DIR}/app/helper"; do
-        if [ ! -d "${resource_source_dir}" ] && [ -d "${legacy_resource_dir}" ]; then
-            resource_source_dir="${legacy_resource_dir}"
-        fi
-    done
-    printf '%s\n' "${resource_source_dir}"
+function resource_sites_file() {
+    local python_version
+    local arch
+    local arch_suffix
+
+    python_version="$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')" \
+        || return 1
+    arch="$(uname -m)"
+    case "${arch}" in
+        aarch64|arm64) arch_suffix="aarch64-linux-gnu" ;;
+        x86_64|amd64) arch_suffix="x86_64-linux-gnu" ;;
+        *)
+            ERROR "不支持的更新资源架构：${arch}"
+            return 1
+            ;;
+    esac
+    printf 'sites.%s-%s.so\n' "${python_version}" "${arch_suffix}"
 }
 
-function download_staged_resource() {
-    local url="$1"
-    local destination="$2"
-    local fallback="$3"
-    local label="$4"
+function payload_identity_file() {
+    printf '%s/.moviepilot-payload.json\n' "${APP_DIR}"
+}
 
-    if curl ${CURL_OPTIONS} --fail "${url}" -o "${destination}" \
-        && [ -s "${destination}" ]; then
-        return 0
-    fi
-    rm -f "${destination}"
-    if [ -f "${fallback}" ]; then
-        cp -a "${fallback}" "${destination}"
+function installed_payload_value() {
+    local field="$1"
+    local identity_file
+    identity_file="$(payload_identity_file)"
+
+    if [ -f "${identity_file}" ] \
+        && jq -e '.schema_version == 2' "${identity_file}" > /dev/null 2>&1; then
+        jq -er --arg field "${field}" '.[$field] | strings | select(length > 0)' \
+            "${identity_file}" 2>/dev/null
         return $?
     fi
-    ERROR "${label} 下载失败且没有可用旧资源"
-    return 1
+
+    case "${field}" in
+        channel) printf '%s\n' "${MOVIEPILOT_IMAGE_UPDATE_CHANNEL:-}" ;;
+        release_generation) printf '%s\n' "${MOVIEPILOT_IMAGE_RELEASE_GENERATION:-}" ;;
+        payload_sha256) printf '%s\n' "${MOVIEPILOT_IMAGE_SOURCE_UPDATE_PAYLOAD_SHA256:-}" ;;
+        backend_revision) printf '%s\n' "${MOVIEPILOT_IMAGE_BACKEND_REVISION:-}" ;;
+        frontend_version) printf '%s\n' "${MOVIEPILOT_IMAGE_FRONTEND_VERSION:-}" ;;
+        frontend_sha256) printf '%s\n' "${MOVIEPILOT_IMAGE_FRONTEND_SHA256:-}" ;;
+        resources_revision) printf '%s\n' "${MOVIEPILOT_IMAGE_RESOURCES_REVISION:-}" ;;
+        *) return 1 ;;
+    esac
+}
+
+function validate_target_payload() {
+    local sites_file="$1"
+
+    [[ "${TARGET_UPDATE_CHANNEL}" =~ ^(release|dev)$ ]] \
+        && { [ "${TARGET_UPDATE_CHANNEL}" = "dev" ] \
+            || [[ "${TARGET_RELEASE_GENERATION}" =~ ^[1-9][0-9]*\.[1-9][0-9]*$ ]]; } \
+        && { [ "${TARGET_UPDATE_CHANNEL}" = "dev" ] \
+            || [[ "${TARGET_PAYLOAD_SHA256}" =~ ^[0-9a-f]{64}$ ]]; } \
+        && [[ "${TARGET_BACKEND_REVISION}" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "${TARGET_FRONTEND_VERSION}" =~ ^v3\.[0-9A-Za-z._-]+$ ]] \
+        && [[ "${TARGET_FRONTEND_SHA256}" =~ ^[0-9a-f]{64}$ ]] \
+        && [[ "${TARGET_RESOURCES_REVISION}" =~ ^[0-9a-f]{40}$ ]] \
+        && { [ -z "${TARGET_RESOURCE_INDEX_SHA256}" ] \
+            || [[ "${TARGET_RESOURCE_INDEX_SHA256}" =~ ^[0-9a-f]{64}$ ]]; } \
+        && { [ -z "${TARGET_RESOURCE_SITES_SHA256}" ] \
+            || [[ "${TARGET_RESOURCE_SITES_SHA256}" =~ ^[0-9a-f]{64}$ ]]; } \
+        && [[ "${sites_file}" =~ ^sites\.cpython-[0-9]+-(x86_64|aarch64)-linux-gnu\.so$ ]]
+}
+
+function load_release_payload() {
+    local release_tag="$1"
+    local sites_file
+    local payload_url
+    local release_metadata="${TMP_PATH}/latest-v3-release.json"
+    local payload_digest
+
+    TARGET_PAYLOAD_SHA256=""
+    TARGET_PAYLOAD_UNCHANGED="false"
+    if [ ! -s "${release_metadata}" ]; then
+        curl ${CURL_OPTIONS} --compressed --fail --connect-timeout 5 --max-time 15 \
+            "https://api.github.com/repos/jxxghp/MoviePilot/releases/tags/${release_tag}" \
+            ${CURL_HEADERS} > "${release_metadata}" || return 1
+    fi
+    payload_digest=$(jq -er --arg asset "${UPDATE_PAYLOAD_ASSET}" \
+        '.assets[] | select(.name == $asset) | .digest' "${release_metadata}") || return 1
+    TARGET_PAYLOAD_SHA256="${payload_digest#sha256:}"
+    [[ "${TARGET_PAYLOAD_SHA256}" =~ ^[0-9a-f]{64}$ ]] || return 1
+    if [ "$(installed_payload_value payload_sha256 2>/dev/null)" = "${TARGET_PAYLOAD_SHA256}" ]; then
+        TARGET_PAYLOAD_UNCHANGED="true"
+        return 0
+    fi
+
+    sites_file="$(resource_sites_file)" || return 1
+    TARGET_PAYLOAD_FILE="${TMP_PATH}/${UPDATE_PAYLOAD_ASSET}"
+    payload_url="${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/releases/download/${release_tag}/${UPDATE_PAYLOAD_ASSET}"
+    download_file "${payload_url}" "${TARGET_PAYLOAD_FILE}" "${TARGET_PAYLOAD_SHA256}" || return 1
+    if ! jq -e '.schema_version == 2 and .channel == "release"' \
+        "${TARGET_PAYLOAD_FILE}" > /dev/null; then
+        ERROR "发布载荷清单格式无效"
+        return 1
+    fi
+    TARGET_UPDATE_CHANNEL="$(jq -r '.channel' "${TARGET_PAYLOAD_FILE}")"
+    TARGET_RELEASE_GENERATION="$(jq -r '.release_generation' "${TARGET_PAYLOAD_FILE}")"
+    TARGET_BACKEND_REVISION="$(jq -r '.backend_revision' "${TARGET_PAYLOAD_FILE}")"
+    TARGET_FRONTEND_VERSION="$(jq -r '.frontend_version' "${TARGET_PAYLOAD_FILE}")"
+    TARGET_FRONTEND_SHA256="$(jq -r '.frontend_sha256' "${TARGET_PAYLOAD_FILE}")"
+    TARGET_RESOURCES_REVISION="$(jq -r '.resources_revision' "${TARGET_PAYLOAD_FILE}")"
+    TARGET_RESOURCE_INDEX_SHA256="$(jq -r '.resource_sha256["user.sites.v3.bin"] // ""' \
+        "${TARGET_PAYLOAD_FILE}")"
+    TARGET_RESOURCE_SITES_SHA256="$(jq -r --arg sites_file "${sites_file}" \
+        '.resource_sha256[$sites_file] // ""' "${TARGET_PAYLOAD_FILE}")"
+    if ! validate_target_payload "${sites_file}" \
+        || [ -z "${TARGET_RESOURCE_INDEX_SHA256}" ] \
+        || [ -z "${TARGET_RESOURCE_SITES_SHA256}" ]; then
+        ERROR "发布载荷清单缺少当前平台的完整身份"
+        return 1
+    fi
+}
+
+function github_commit_revision() {
+    local repository="$1"
+    local ref="$2"
+    local revision
+
+    revision=$(curl ${CURL_OPTIONS} --compressed --fail --connect-timeout 5 --max-time 15 \
+        "https://api.github.com/repos/${repository}/commits/${ref}" ${CURL_HEADERS} \
+        | jq -er '.sha') || return 1
+    [[ "${revision}" =~ ^[0-9a-f]{40}$ ]] || return 1
+    printf '%s\n' "${revision}"
+}
+
+function fetch_latest_frontend_v3_release() {
+    local response
+    local release_tag
+
+    response=$(curl ${CURL_OPTIONS} --compressed --fail --connect-timeout 5 --max-time 15 \
+        "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases" \
+        ${CURL_HEADERS}) || return 1
+    release_tag=$(printf '%s\n' "${response}" | jq -r '.[].tag_name' \
+        | grep '^v3\.' | sort -V | tail -n 1)
+    [[ -n "${release_tag}" ]] || return 1
+    printf '%s\n' "${release_tag}"
+}
+
+function frontend_release_sha256() {
+    local release_tag="$1"
+    local digest
+
+    digest=$(curl ${CURL_OPTIONS} --compressed --fail --connect-timeout 5 --max-time 15 \
+        "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases/tags/${release_tag}" \
+        ${CURL_HEADERS} \
+        | jq -er '.assets[] | select(.name == "dist.zip") | .digest') || return 1
+    digest="${digest#sha256:}"
+    [[ "${digest}" =~ ^[0-9a-f]{64}$ ]] || return 1
+    printf '%s\n' "${digest}"
+}
+
+function load_dev_payload() {
+    local sites_file
+
+    sites_file="$(resource_sites_file)" || return 1
+    TARGET_UPDATE_CHANNEL="dev"
+    TARGET_RELEASE_GENERATION=""
+    TARGET_PAYLOAD_SHA256=""
+    TARGET_PAYLOAD_UNCHANGED="false"
+    TARGET_BACKEND_REVISION="$(github_commit_revision jxxghp/MoviePilot v3)" || return 1
+    TARGET_FRONTEND_VERSION="$(fetch_latest_frontend_v3_release)" || return 1
+    TARGET_FRONTEND_SHA256="$(frontend_release_sha256 "${TARGET_FRONTEND_VERSION}")" || return 1
+    TARGET_RESOURCES_REVISION="$(github_commit_revision jxxghp/MoviePilot-Resources main)" || return 1
+    TARGET_RESOURCE_INDEX_SHA256=""
+    TARGET_RESOURCE_SITES_SHA256=""
+    validate_target_payload "${sites_file}"
+}
+
+function installed_payload_matches_target() {
+    [ "$(installed_payload_value channel 2>/dev/null)" = "${TARGET_UPDATE_CHANNEL}" ] \
+        && [ "$(installed_payload_value release_generation 2>/dev/null)" = "${TARGET_RELEASE_GENERATION}" ] \
+        && [ "$(installed_payload_value payload_sha256 2>/dev/null)" = "${TARGET_PAYLOAD_SHA256}" ] \
+        && [ "$(installed_payload_value backend_revision 2>/dev/null)" = "${TARGET_BACKEND_REVISION}" ] \
+        && [ "$(installed_payload_value frontend_version 2>/dev/null)" = "${TARGET_FRONTEND_VERSION}" ] \
+        && [ "$(installed_payload_value frontend_sha256 2>/dev/null)" = "${TARGET_FRONTEND_SHA256}" ] \
+        && [ "$(installed_payload_value resources_revision 2>/dev/null)" = "${TARGET_RESOURCES_REVISION}" ]
+}
+
+function target_release_is_older_than_installed() {
+    local installed_generation
+    local installed_run
+    local installed_attempt
+    local target_run
+    local target_attempt
+
+    [ "${TARGET_UPDATE_CHANNEL}" = "release" ] \
+        && [ "$(installed_payload_value channel 2>/dev/null)" = "release" ] || return 1
+    installed_generation="$(installed_payload_value release_generation 2>/dev/null)"
+    [[ "${installed_generation}" =~ ^[1-9][0-9]*\.[1-9][0-9]*$ ]] \
+        && [[ "${TARGET_RELEASE_GENERATION}" =~ ^[1-9][0-9]*\.[1-9][0-9]*$ ]] || return 1
+
+    installed_run="${installed_generation%.*}"
+    installed_attempt="${installed_generation##*.}"
+    target_run="${TARGET_RELEASE_GENERATION%.*}"
+    target_attempt="${TARGET_RELEASE_GENERATION##*.}"
+    (( 10#${target_run} < 10#${installed_run} \
+        || (10#${target_run} == 10#${installed_run} \
+            && 10#${target_attempt} < 10#${installed_attempt}) ))
+}
+
+function write_staged_payload_identity() {
+    local stage_app="${TMP_PATH}/App"
+    local stage_resource_dir="${stage_app}/app/application/site"
+    local sites_file
+    local resource_index_sha256
+    local resource_sites_sha256
+
+    sites_file="$(resource_sites_file)" || return 1
+    resource_index_sha256=$(sha256sum "${stage_resource_dir}/user.sites.v3.bin" | awk '{print $1}') \
+        || return 1
+    resource_sites_sha256=$(sha256sum "${stage_resource_dir}/${sites_file}" | awk '{print $1}') \
+        || return 1
+    jq -n \
+        --arg channel "${TARGET_UPDATE_CHANNEL}" \
+        --arg release_generation "${TARGET_RELEASE_GENERATION}" \
+        --arg payload_sha256 "${TARGET_PAYLOAD_SHA256}" \
+        --arg backend_revision "${TARGET_BACKEND_REVISION}" \
+        --arg frontend_version "${TARGET_FRONTEND_VERSION}" \
+        --arg frontend_sha256 "${TARGET_FRONTEND_SHA256}" \
+        --arg resources_revision "${TARGET_RESOURCES_REVISION}" \
+        --arg resource_index_sha256 "${resource_index_sha256}" \
+        --arg sites_file "${sites_file}" \
+        --arg resource_sites_sha256 "${resource_sites_sha256}" \
+        '{
+            schema_version: 2,
+            channel: $channel,
+            release_generation: $release_generation,
+            payload_sha256: $payload_sha256,
+            backend_revision: $backend_revision,
+            frontend_version: $frontend_version,
+            frontend_sha256: $frontend_sha256,
+            resources_revision: $resources_revision,
+            resource_sha256: {
+                "user.sites.v3.bin": $resource_index_sha256,
+                ($sites_file): $resource_sites_sha256
+            }
+        }' > "${stage_app}/.moviepilot-payload.json"
 }
 
 function stage_runtime_payload() {
     local stage_app="${TMP_PATH}/App"
     local stage_plugin_dir="${stage_app}/app/plugins"
     local stage_resource_dir="${stage_app}/app/application/site"
-    local resource_source_dir
-    local resource_file
-    local python_version
-    local arch
-    local arch_suffix
     local sites_file
 
     [ -f "${stage_app}/version.py" ] || return 1
@@ -293,35 +542,17 @@ function stage_runtime_payload() {
         return 1
     fi
 
-    resource_source_dir="$(existing_resource_dir)"
     mkdir -p "${stage_resource_dir}" || return 1
-    if [ -f "${resource_source_dir}/user.sites.v3.bin" ] \
-        && ! cp -a "${resource_source_dir}/user.sites.v3.bin" "${stage_resource_dir}/"; then
-        return 1
-    fi
-    for resource_file in "${resource_source_dir}"/sites.cp*; do
-        [ -f "${resource_file}" ] || continue
-        cp -a "${resource_file}" "${stage_resource_dir}/" || return 1
-    done
-
-    python_version="$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')" || return 1
-    arch="$(uname -m)"
-    if [ "${arch}" = "aarch64" ]; then
-        arch_suffix="aarch64-linux-gnu"
-    else
-        arch_suffix="x86_64-linux-gnu"
-    fi
-    sites_file="sites.${python_version}-${arch_suffix}.so"
-    download_staged_resource \
-        "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" \
+    sites_file="$(resource_sites_file)" || return 1
+    download_file \
+        "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${TARGET_RESOURCES_REVISION}/resources.v3/user.sites.v3.bin" \
         "${stage_resource_dir}/user.sites.v3.bin" \
-        "${resource_source_dir}/user.sites.v3.bin" \
-        "user.sites.v3.bin" || return 1
-    download_staged_resource \
-        "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}" \
+        "${TARGET_RESOURCE_INDEX_SHA256}" || return 1
+    download_file \
+        "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${TARGET_RESOURCES_REVISION}/resources.v3/${sites_file}" \
         "${stage_resource_dir}/${sites_file}" \
-        "${resource_source_dir}/${sites_file}" \
-        "${sites_file}" || return 1
+        "${TARGET_RESOURCE_SITES_SHA256}" || return 1
+    write_staged_payload_identity || return 1
 }
 
 function swap_staged_payload() {
@@ -339,8 +570,39 @@ function swap_staged_payload() {
 
 # 下载程序资源，$1: 后端版本路径
 function install_backend_and_download_resources() {
+    local backend_url
+    local frontend_version
+    local release_tag
+
+    if [[ "${1}" == "heads/v3.zip" ]]; then
+        if ! load_dev_payload; then
+            ERROR "Dev 更新载荷身份解析失败"
+            return 1
+        fi
+    else
+        release_tag="${1#tags/}"
+        release_tag="${release_tag%.zip}"
+        if ! load_release_payload "${release_tag}"; then
+            ERROR "Release 更新载荷身份解析失败"
+            return 1
+        fi
+        if [ "${TARGET_PAYLOAD_UNCHANGED}" = "true" ]; then
+            INFO "发布载荷身份未变化，跳过载荷下载"
+            return 0
+        fi
+    fi
+    if target_release_is_older_than_installed; then
+        INFO "远程发布清单早于当前镜像，跳过旧代际载荷"
+        return 0
+    fi
+    if installed_payload_matches_target; then
+        INFO "后端、前端和站点资源身份均未变化，跳过载荷下载"
+        return 0
+    fi
+
     # 更新后端程序
-    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
+    backend_url="${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/${TARGET_BACKEND_REVISION}.zip"
+    if ! download_and_unzip "${backend_url}" "App"; then
         WARN "后端程序下载失败，继续使用旧的程序来启动..."
         return 1
     fi
@@ -360,31 +622,18 @@ function install_backend_and_download_resources() {
         return 1
     fi
     
-    # 如果是"heads/v3.zip"，则查找v3开头的最新版本号
-    if [[ "${1}" == "heads/v3.zip" ]]; then
-        INFO "→ 正在获取前端最新版本号..."
-        # 获取所有发布的版本列表，并筛选出以v3开头的版本号
-        releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v3\.")
-        if [ -z "$releases" ]; then
-            WARN "未找到任何v3前端版本，继续启动..."
-            return 1
-        else
-            # 找到最新的v3版本
-            frontend_version=$(echo "$releases" | sort -V | tail -n 1)
-        fi
-        INFO "前端最新版本号：${frontend_version}"
-    else
-        INFO "→ 正在获取前端版本号..."
-        # 从后端文件中读取前端版本号
-        frontend_version=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" ${TMP_PATH}/App/version.py)
-        if [[ "${frontend_version}" != *v* ]]; then
-            WARN "前端版本号获取失败，继续启动..."
-            return 1
-        fi
-        INFO "前端版本号：${frontend_version}"
+    frontend_version=$(sed -n "s/^FRONTEND_VERSION\s*=\s*'\([^']*\)'/\1/p" "${TMP_PATH}/App/version.py")
+    if [ "${TARGET_UPDATE_CHANNEL}" = "release" ] \
+        && [ "${frontend_version}" != "${TARGET_FRONTEND_VERSION}" ]; then
+        ERROR "后端源码声明的前端版本与发布载荷清单不一致"
+        return 1
     fi
+    INFO "前端版本号：${TARGET_FRONTEND_VERSION}"
     # 更新前端程序
-    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
+    if ! download_and_unzip \
+        "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${TARGET_FRONTEND_VERSION}/dist.zip" \
+        "dist" \
+        "${TARGET_FRONTEND_SHA256}"; then
         WARN "前端程序下载失败，继续使用旧的程序来启动..."
         return 1
     fi
@@ -429,7 +678,7 @@ function install_backend_and_download_resources() {
     fi
     rm -rf "${TMP_PATH}"
     MOVIEPILOT_UPDATE_RESULT="updated"
-    INFO "程序更新成功，前端版本：${frontend_version}，后端版本：${1}"
+    INFO "程序更新成功，前端版本：${TARGET_FRONTEND_VERSION}，后端 revision：${TARGET_BACKEND_REVISION}"
     return 0
 }
 
@@ -552,6 +801,7 @@ function fetch_latest_v3_release() {
     local response
     local releases
     local latest_release
+    local release_metadata="${TMP_PATH}/latest-v3-release.json"
 
     response=$(curl ${CURL_OPTIONS} --compressed --fail --connect-timeout 5 --max-time 15 \
         "https://api.github.com/repos/jxxghp/MoviePilot/releases" \
@@ -559,6 +809,9 @@ function fetch_latest_v3_release() {
     releases=$(printf '%s\n' "${response}" | jq -r '.[].tag_name') || return 1
     latest_release=$(printf '%s\n' "${releases}" | grep "^v3\." | sort -V | tail -n 1)
     [[ -n "${latest_release}" ]] || return 1
+    printf '%s\n' "${response}" \
+        | jq -e --arg tag "${latest_release}" '.[] | select(.tag_name == $tag)' \
+            > "${release_metadata}" || return 1
     printf '%s\n' "${latest_release}"
 }
 
@@ -604,6 +857,14 @@ function compare_versions() {
             fi
         fi
     done
+    if [ "$(installed_payload_value channel 2>/dev/null)" = "release" ]; then
+        INFO "当前版本号未变化，继续核对发布载荷身份..."
+        if install_backend_and_download_resources "tags/$2.zip"; then
+            return 0
+        fi
+        MOVIEPILOT_UPDATE_RESULT="failed"
+        return 1
+    fi
     WARN "当前版本已是最新版本，跳过更新步骤..."
 }
 

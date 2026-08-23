@@ -120,3 +120,30 @@ def test_publish_reuses_scanned_architecture_caches_without_refreshing_base() ->
     assert publish["pull"] is False
     assert "scope=moviepilot-v3-docker-amd64" in publish["cache-from"]
     assert "scope=moviepilot-v3-docker-arm64" in publish["cache-from"]
+
+
+def test_release_binds_source_update_identity_to_image_payload() -> None:
+    """源码更新清单与镜像必须使用同一发布快照和外部载荷身份。"""
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["Docker-build"]["steps"]
+    names = [step.get("name") for step in steps]
+    indexed = _steps_by_name(workflow)
+    generate = indexed["Generate Source Update Payload"]
+    release = indexed["Generate Release"]
+
+    assert names.index("Create Release Snapshot") < names.index("Generate Source Update Payload")
+    assert names.index("Generate Source Update Payload") < names.index("Build amd64 candidate")
+    assert generate["env"]["BACKEND_REVISION"] == (
+        "${{ steps.release_snapshot.outputs.release_commit }}"
+    )
+    assert generate["env"]["RELEASE_GENERATION"] == (
+        "${{ github.run_id }}.${{ github.run_attempt }}"
+    )
+    assert generate["env"]["FRONTEND_SHA256"] == (
+        "${{ steps.payloads.outputs.frontend_sha256 }}"
+    )
+    assert generate["env"]["RESOURCES_REVISION"] == (
+        "${{ steps.payloads.outputs.resources_revision }}"
+    )
+    assert "sha256=" in generate["run"]
+    assert release["with"]["files"] == ".build/source-update-payload.json"

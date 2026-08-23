@@ -184,19 +184,28 @@ FROM prepare_payload AS prepare_resources
 
 ARG TARGETARCH
 ARG MOVIEPILOT_RESOURCES_REF="main"
+ARG MOVIEPILOT_RESOURCE_INDEX_SHA256=""
+ARG MOVIEPILOT_RESOURCE_AMD64_SHA256=""
+ARG MOVIEPILOT_RESOURCE_ARM64_SHA256=""
 
 RUN set -eu; \
     test -n "${MOVIEPILOT_RESOURCES_REF}"; \
     python_ver="$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')"; \
     target_arch="${TARGETARCH:-$(uname -m)}"; \
     case "${target_arch}" in \
-        arm64|aarch64) suffix="aarch64-linux-gnu" ;; \
-        amd64|x86_64) suffix="x86_64-linux-gnu" ;; \
+        arm64|aarch64) suffix="aarch64-linux-gnu"; sites_sha256="${MOVIEPILOT_RESOURCE_ARM64_SHA256}" ;; \
+        amd64|x86_64) suffix="x86_64-linux-gnu"; sites_sha256="${MOVIEPILOT_RESOURCE_AMD64_SHA256}" ;; \
         *) printf 'Unsupported architecture: %s\n' "${target_arch}" >&2; exit 1 ;; \
     esac; \
     mkdir -p /resources; \
     curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${MOVIEPILOT_RESOURCES_REF}/resources.v3/user.sites.v3.bin" -o /resources/user.sites.v3.bin; \
-    curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${MOVIEPILOT_RESOURCES_REF}/resources.v3/sites.${python_ver}-${suffix}.so" -o "/resources/sites.${python_ver}-${suffix}.so"
+    curl -fsSL "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${MOVIEPILOT_RESOURCES_REF}/resources.v3/sites.${python_ver}-${suffix}.so" -o "/resources/sites.${python_ver}-${suffix}.so"; \
+    if [ -n "${MOVIEPILOT_RESOURCE_INDEX_SHA256}" ]; then \
+        printf '%s  %s\n' "${MOVIEPILOT_RESOURCE_INDEX_SHA256}" /resources/user.sites.v3.bin | sha256sum -c -; \
+    fi; \
+    if [ -n "${sites_sha256}" ]; then \
+        printf '%s  %s\n' "${sites_sha256}" "/resources/sites.${python_ver}-${suffix}.so" | sha256sum -c -; \
+    fi
 
 
 # 准备容器控制面
@@ -220,8 +229,23 @@ RUN mkdir -p /bundle/control /bundle/nginx /bundle/bin \
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final
 
+ARG MOVIEPILOT_BUILD_CHANNEL=""
+ARG MOVIEPILOT_RELEASE_GENERATION=""
+ARG MOVIEPILOT_SOURCE_UPDATE_PAYLOAD_SHA256=""
+ARG MOVIEPILOT_BACKEND_REVISION=""
+ARG MOVIEPILOT_FRONTEND_VERSION=""
+ARG MOVIEPILOT_FRONTEND_SHA256=""
+ARG MOVIEPILOT_RESOURCES_REF=""
+
 ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
-    MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE="true"
+    MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE="true" \
+    MOVIEPILOT_IMAGE_UPDATE_CHANNEL="${MOVIEPILOT_BUILD_CHANNEL}" \
+    MOVIEPILOT_IMAGE_RELEASE_GENERATION="${MOVIEPILOT_RELEASE_GENERATION}" \
+    MOVIEPILOT_IMAGE_SOURCE_UPDATE_PAYLOAD_SHA256="${MOVIEPILOT_SOURCE_UPDATE_PAYLOAD_SHA256}" \
+    MOVIEPILOT_IMAGE_BACKEND_REVISION="${MOVIEPILOT_BACKEND_REVISION}" \
+    MOVIEPILOT_IMAGE_FRONTEND_VERSION="${MOVIEPILOT_FRONTEND_VERSION}" \
+    MOVIEPILOT_IMAGE_FRONTEND_SHA256="${MOVIEPILOT_FRONTEND_SHA256}" \
+    MOVIEPILOT_IMAGE_RESOURCES_REVISION="${MOVIEPILOT_RESOURCES_REF}"
 
 # 引入支持 amr 编码的静态 ffmpeg
 COPY --from=ffmpeg /ffmpeg /usr/local/bin/

@@ -50,10 +50,27 @@ jobs:
           esac
           [[ "$frontend_sha256" =~ ^[0-9a-f]{64}$ ]]
 
+          resource_dir=$(mktemp -d)
+          trap 'rm -rf "$resource_dir"' EXIT
+          resource_base="https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/${resources_revision}/resources.v3"
+          for resource_file in \
+            user.sites.v3.bin \
+            sites.cpython-314-x86_64-linux-gnu.so \
+            sites.cpython-314-aarch64-linux-gnu.so; do
+            curl --fail --show-error --silent --location \
+              "${resource_base}/${resource_file}" -o "${resource_dir}/${resource_file}"
+          done
+          resource_index_sha256=$(sha256sum "${resource_dir}/user.sites.v3.bin" | awk '{print $1}')
+          resource_amd64_sha256=$(sha256sum "${resource_dir}/sites.cpython-314-x86_64-linux-gnu.so" | awk '{print $1}')
+          resource_arm64_sha256=$(sha256sum "${resource_dir}/sites.cpython-314-aarch64-linux-gnu.so" | awk '{print $1}')
+
           echo "plugins_revision=$plugins_revision" >> "$GITHUB_OUTPUT"
           echo "resources_revision=$resources_revision" >> "$GITHUB_OUTPUT"
           echo "frontend_digest=$frontend_digest" >> "$GITHUB_OUTPUT"
           echo "frontend_sha256=$frontend_sha256" >> "$GITHUB_OUTPUT"
+          echo "resource_index_sha256=$resource_index_sha256" >> "$GITHUB_OUTPUT"
+          echo "resource_amd64_sha256=$resource_amd64_sha256" >> "$GITHUB_OUTPUT"
+          echo "resource_arm64_sha256=$resource_arm64_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Wiki Plugin Market
         uses: actions/checkout@v4
@@ -129,10 +146,15 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
+            MOVIEPILOT_BUILD_CHANNEL=beta
+            MOVIEPILOT_BACKEND_REVISION=${{ env.SOURCE_COMMIT }}
             MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
             MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
+            MOVIEPILOT_RESOURCE_INDEX_SHA256=${{ steps.payloads.outputs.resource_index_sha256 }}
+            MOVIEPILOT_RESOURCE_AMD64_SHA256=${{ steps.payloads.outputs.resource_amd64_sha256 }}
+            MOVIEPILOT_RESOURCE_ARM64_SHA256=${{ steps.payloads.outputs.resource_arm64_sha256 }}
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.revision=${{ env.SOURCE_COMMIT }}

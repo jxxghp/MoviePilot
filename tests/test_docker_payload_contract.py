@@ -93,10 +93,15 @@ def test_release_workflows_pin_and_record_external_payload_identities() -> None:
         workflow = _read(workflow_path)
 
         for build_arg in (
+            "MOVIEPILOT_BUILD_CHANNEL=",
+            "MOVIEPILOT_BACKEND_REVISION=",
             "MOVIEPILOT_FRONTEND_VERSION=",
             "MOVIEPILOT_FRONTEND_SHA256=",
             "MOVIEPILOT_PLUGINS_REF=",
             "MOVIEPILOT_RESOURCES_REF=",
+            "MOVIEPILOT_RESOURCE_INDEX_SHA256=",
+            "MOVIEPILOT_RESOURCE_AMD64_SHA256=",
+            "MOVIEPILOT_RESOURCE_ARM64_SHA256=",
         ):
             assert build_arg in workflow
 
@@ -117,6 +122,24 @@ def test_release_workflows_pin_and_record_external_payload_identities() -> None:
         assert "^[0-9a-f]{40}$" in workflow
         assert "^[0-9a-f]{64}$" in workflow
 
+    release_workflow = _read(RELEASE_WORKFLOW)
+    assert "MOVIEPILOT_RELEASE_GENERATION=" in release_workflow
+    assert "MOVIEPILOT_SOURCE_UPDATE_PAYLOAD_SHA256=" in release_workflow
+
+    dockerfile = _read(DOCKERFILE)
+    for variable in (
+        "MOVIEPILOT_IMAGE_UPDATE_CHANNEL",
+        "MOVIEPILOT_IMAGE_RELEASE_GENERATION",
+        "MOVIEPILOT_IMAGE_SOURCE_UPDATE_PAYLOAD_SHA256",
+        "MOVIEPILOT_IMAGE_BACKEND_REVISION",
+        "MOVIEPILOT_IMAGE_FRONTEND_VERSION",
+        "MOVIEPILOT_IMAGE_FRONTEND_SHA256",
+        "MOVIEPILOT_IMAGE_RESOURCES_REVISION",
+    ):
+        assert variable in dockerfile
+    assert 'printf \'%s  %s\\n\' "${MOVIEPILOT_RESOURCE_INDEX_SHA256}"' in dockerfile
+    assert 'printf \'%s  %s\\n\' "${sites_sha256}"' in dockerfile
+
 
 def test_same_version_rebuild_identity_is_not_derived_from_image_tag() -> None:
     """重复发布同一版本时，缓存身份必须来自源码和制品而不是镜像 Tag。"""
@@ -131,6 +154,11 @@ def test_same_version_rebuild_identity_is_not_derived_from_image_tag() -> None:
     assert "type=raw,value=${{ env.app_version }}" in release_workflow
     assert "MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}" in release_workflow
     assert "MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}" in release_workflow
+    assert "Generate Source Update Payload" in release_workflow
+    assert "backend_revision: $backend_revision" in release_workflow
+    assert "frontend_sha256: $frontend_sha256" in release_workflow
+    assert "resources_revision: $resources_revision" in release_workflow
+    assert "files: .build/source-update-payload.json" in release_workflow
 
 
 def test_custom_frontend_directory_is_stable_but_artifacts_remain_untracked() -> None:

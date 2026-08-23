@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import shlex
 import subprocess
@@ -11,6 +13,38 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "docker" / "launcher.sh"
 UPDATER = ROOT / "docker" / "update.sh"
 BASE_CONTROL_FILES = ("entrypoint.sh", "update.sh", "browser.sh", "cert.sh")
+
+
+def _write_update_payload(
+    path: Path,
+    *,
+    backend_revision: str = "a" * 40,
+    frontend_sha256: str = "b" * 64,
+    resources_revision: str = "c" * 40,
+    release_generation: str = "100.1",
+    payload_sha256: str | None = "9" * 64,
+) -> None:
+    """写入覆盖两种 Linux 架构的正式源码更新载荷身份。"""
+    payload = {
+        "schema_version": 2,
+        "channel": "release",
+        "release_generation": release_generation,
+        "backend_revision": backend_revision,
+        "frontend_version": "v3.0.0",
+        "frontend_sha256": frontend_sha256,
+        "resources_revision": resources_revision,
+        "resource_sha256": {
+            "user.sites.v3.bin": "d" * 64,
+            "sites.cpython-314-x86_64-linux-gnu.so": "e" * 64,
+            "sites.cpython-314-aarch64-linux-gnu.so": "f" * 64,
+        },
+    }
+    if payload_sha256 is not None:
+        payload["payload_sha256"] = payload_sha256
+    path.write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
 
 
 def _write_bundle(path: Path, label: str, *, extra_files: tuple[str, ...] = ()) -> None:
@@ -874,6 +908,15 @@ def test_dependency_update_requires_complete_uv_manifests(
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
+        load_release_payload() {{
+            TARGET_UPDATE_CHANNEL=release
+            TARGET_BACKEND_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            TARGET_FRONTEND_VERSION=v3.0.1
+            TARGET_FRONTEND_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+            TARGET_RESOURCES_REVISION=cccccccccccccccccccccccccccccccccccccccc
+            TARGET_RESOURCE_INDEX_SHA256=
+            TARGET_RESOURCE_SITES_SHA256=
+        }}
         download_and_unzip() {{ return 0; }}
         configure_package_route() {{ touch "${{ROUTE_MARKER}}"; }}
         cp() {{ touch "${{COPY_MARKER}}"; }}
@@ -959,6 +1002,15 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
+        load_release_payload() {{
+            TARGET_UPDATE_CHANNEL=release
+            TARGET_BACKEND_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            TARGET_FRONTEND_VERSION=v3.0.1
+            TARGET_FRONTEND_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+            TARGET_RESOURCES_REVISION=cccccccccccccccccccccccccccccccccccccccc
+            TARGET_RESOURCE_INDEX_SHA256=
+            TARGET_RESOURCE_SITES_SHA256=
+        }}
         download_and_unzip() {{ return 0; }}
         curl() {{
             local output=""
@@ -1027,8 +1079,13 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
     (previous_app / "app").mkdir(parents=True)
     previous_public.mkdir()
     (live_app / "app" / "new.py").write_text("new", encoding="utf-8")
+    _write_update_payload(live_app / ".moviepilot-payload.json", backend_revision="1" * 40)
     (live_public / "index.html").write_text("new-front", encoding="utf-8")
     (previous_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    _write_update_payload(
+        previous_app / ".moviepilot-payload.json",
+        backend_revision="2" * 40,
+    )
     (previous_app / "pyproject.toml").write_text("old-project", encoding="utf-8")
     (previous_app / "uv.lock").write_text("old-lock", encoding="utf-8")
     (previous_public / "index.html").write_text("old-front", encoding="utf-8")
@@ -1058,11 +1115,12 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
         ERROR() {{ :; }}
         configure_package_route() {{ PACKAGE_ENV=(); UV_OPTIONS=(); }}
         recover_pending_update
-        printf '%s|%s|%s|%s\\n' \\
+        printf '%s|%s|%s|%s|%s\\n' \\
             "$([[ -f "${{APP_DIR}}/app/old.py" ]] && printf old || printf missing)" \\
             "$([[ -f "${{PUBLIC_DIR}}/index.html" ]] && head -n1 "${{PUBLIC_DIR}}/index.html" || printf missing)" \\
             "$([[ -f "${{CONFIG_DIR}}/temp/__update_pending__" ]] && printf present || printf cleared)" \\
-            "${{UPDATE_RECOVERY_COMPLETED}}"
+            "${{UPDATE_RECOVERY_COMPLETED}}" \\
+            "$(jq -r .backend_revision "${{APP_DIR}}/.moviepilot-payload.json")"
         """
     )
     result = subprocess.run(
@@ -1084,7 +1142,7 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
         check=True,
     )
 
-    assert result.stdout == "old|old-front|cleared|true\n"
+    assert result.stdout == f"old|old-front|cleared|true|{'2' * 40}\n"
     assert uv_log.read_text(encoding="utf-8").startswith(
         f"sync --project {live_app} --locked --inexact --no-dev"
     )
@@ -1187,7 +1245,7 @@ def test_restore_does_not_nest_previous_app_when_current_removal_fails(tmp_path:
     assert result.stdout == "current|absent|retained|clean\n"
 
 
-def test_staged_resource_download_rejects_empty_response_and_keeps_fallback(
+def test_staged_resource_download_rejects_empty_response_without_using_fallback(
     tmp_path: Path,
 ) -> None:
     destination = tmp_path / "stage" / "sites.bin"
@@ -1202,9 +1260,7 @@ def test_staged_resource_download_rejects_empty_response_and_keeps_fallback(
         WARN() {{ :; }}
         ERROR() {{ :; }}
         curl() {{ return 0; }}
-        download_staged_resource https://resources.example/sites.bin \\
-            "$1" "$2" sites.bin
-        cat "$1"
+        download_file https://resources.example/sites.bin "$1"
         """
     )
     result = subprocess.run(
@@ -1214,14 +1270,344 @@ def test_staged_resource_download_rejects_empty_response_and_keeps_fallback(
             script,
             "resource-download-test",
             str(destination),
-            str(fallback),
         ],
         text=True,
         capture_output=True,
-        check=True,
+        check=False,
     )
 
-    assert result.stdout == "old-resource\n"
+    assert result.returncode != 0
+    assert not destination.exists()
+    assert fallback.read_text(encoding="utf-8") == "old-resource\n"
+
+
+def test_resource_generation_is_not_mixed_when_one_download_fails(tmp_path: Path) -> None:
+    """同一资源 revision 的任一文件失败时，整组准备失败且旧代际保持不变。"""
+    live_app = tmp_path / "app"
+    stage_root = tmp_path / "stage"
+    stage_app = stage_root / "App"
+    (live_app / "app" / "plugins").mkdir(parents=True)
+    (live_app / "app" / "application" / "site").mkdir(parents=True)
+    (live_app / "app" / "plugins" / "__init__.py").write_text("# compat\n", encoding="utf-8")
+    (live_app / "app" / "application" / "site" / "user.sites.v3.bin").write_text(
+        "old-resource\n", encoding="utf-8"
+    )
+    (stage_app / "app" / "plugins").mkdir(parents=True)
+    (stage_app / "app" / "plugins" / "__init__.py").write_text("# compat\n", encoding="utf-8")
+    (stage_app / "app" / "application" / "site").mkdir(parents=True)
+    (stage_app / "app" / "application" / "site" / "query.py").write_text(
+        "# application source\n", encoding="utf-8"
+    )
+    (stage_app / "version.py").write_text("FRONTEND_VERSION = 'v3.0.0'\n", encoding="utf-8")
+    (stage_app / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (stage_app / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (stage_root / "dist").mkdir()
+    (stage_root / "dist" / "index.html").write_text("front\n", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1/config"
+        TMP_PATH="$2"
+        source {UPDATER!s}
+        APP_DIR="$3"
+        TARGET_UPDATE_CHANNEL=release
+        TARGET_BACKEND_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        TARGET_FRONTEND_VERSION=v3.0.0
+        TARGET_FRONTEND_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        TARGET_RESOURCES_REVISION=cccccccccccccccccccccccccccccccccccccccc
+        TARGET_RESOURCE_INDEX_SHA256=
+        TARGET_RESOURCE_SITES_SHA256=
+        GITHUB_PROXY= CURL_OPTIONS= CURL_HEADERS=
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        curl() {{
+            local url=""
+            local output=""
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    http*) url="$1"; shift ;;
+                    -o) output="$2"; shift 2 ;;
+                    *) shift ;;
+                esac
+            done
+            if [[ "${{url}}" == *sites.cpython-* ]]; then return 1; fi
+            printf 'new-resource\n' > "${{output}}"
+        }}
+        stage_runtime_payload
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "resource-generation-test",
+            str(tmp_path),
+            str(stage_root),
+            str(live_app),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert not (stage_app / ".moviepilot-payload.json").exists()
+    assert (
+        stage_app / "app" / "application" / "site" / "query.py"
+    ).read_text(encoding="utf-8") == "# application source\n"
+    assert (
+        live_app / "app" / "application" / "site" / "user.sites.v3.bin"
+    ).read_text(encoding="utf-8") == "old-resource\n"
+
+
+def test_matching_release_payload_skips_large_downloads(tmp_path: Path) -> None:
+    """正式镜像与发布清单身份一致时不重复下载运行载荷。"""
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    installed_payload = app_dir / ".moviepilot-payload.json"
+    release_payload = tmp_path / "release-payload.json"
+    _write_update_payload(release_payload, payload_sha256=None)
+    release_payload_sha256 = hashlib.sha256(release_payload.read_bytes()).hexdigest()
+    _write_update_payload(installed_payload, payload_sha256=release_payload_sha256)
+    large_download_log = tmp_path / "large-download.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1/config"
+        TMP_PATH="$1/stage"
+        mkdir -p "${{TMP_PATH}}"
+        GITHUB_PROXY= CURL_OPTIONS= CURL_HEADERS=
+        source {UPDATER!s}
+        APP_DIR="$2"
+        RELEASE_PAYLOAD="$3"
+        LARGE_DOWNLOAD_LOG="$4"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        release_payload_sha256=$(sha256sum "${{RELEASE_PAYLOAD}}" | awk '{{print $1}}')
+        printf '{{"assets":[{{"name":"source-update-payload.json","digest":"sha256:%s"}}]}}\n' \
+            "${{release_payload_sha256}}" > "${{TMP_PATH}}/latest-v3-release.json"
+        download_file() {{ printf 'unexpected\n' > "${{LARGE_DOWNLOAD_LOG}}"; return 1; }}
+        download_and_unzip() {{ printf '%s\n' "$1" >> "${{LARGE_DOWNLOAD_LOG}}"; return 1; }}
+        install_backend_and_download_resources tags/v3.0.0.zip
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "matching-release-payload-test",
+            str(tmp_path),
+            str(app_dir),
+            str(release_payload),
+            str(large_download_log),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not large_download_log.exists()
+
+
+def test_changed_release_revision_uses_immutable_backend_archive(tmp_path: Path) -> None:
+    """同版本发布 revision 变化时按目标 commit 下载，不再被版本号短路。"""
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    installed_payload = app_dir / ".moviepilot-payload.json"
+    release_payload = tmp_path / "release-payload.json"
+    _write_update_payload(installed_payload, backend_revision="a" * 40)
+    _write_update_payload(
+        release_payload,
+        backend_revision="1" * 40,
+        payload_sha256=None,
+    )
+    download_log = tmp_path / "download.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1/config"
+        TMP_PATH="$1/stage"
+        mkdir -p "${{TMP_PATH}}"
+        GITHUB_PROXY= CURL_OPTIONS= CURL_HEADERS=
+        source {UPDATER!s}
+        APP_DIR="$2"
+        RELEASE_PAYLOAD="$3"
+        DOWNLOAD_LOG="$4"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        release_payload_sha256=$(sha256sum "${{RELEASE_PAYLOAD}}" | awk '{{print $1}}')
+        printf '{{"assets":[{{"name":"source-update-payload.json","digest":"sha256:%s"}}]}}\n' \
+            "${{release_payload_sha256}}" > "${{TMP_PATH}}/latest-v3-release.json"
+        download_file() {{ cp "${{RELEASE_PAYLOAD}}" "$2"; }}
+        download_and_unzip() {{ printf '%s\n' "$1" > "${{DOWNLOAD_LOG}}"; return 1; }}
+        install_backend_and_download_resources tags/v3.0.0.zip
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "changed-release-payload-test",
+            str(tmp_path),
+            str(app_dir),
+            str(release_payload),
+            str(download_log),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert download_log.read_text(encoding="utf-8").strip().endswith(
+        f"/MoviePilot/archive/{'1' * 40}.zip"
+    )
+
+
+def test_newer_image_generation_rejects_stale_release_payload(tmp_path: Path) -> None:
+    """发布资产替换窗口内，旧清单不得把同版本新镜像降回旧代际。"""
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    installed_payload = app_dir / ".moviepilot-payload.json"
+    release_payload = tmp_path / "release-payload.json"
+    _write_update_payload(
+        installed_payload,
+        backend_revision="2" * 40,
+        release_generation="200.1",
+    )
+    _write_update_payload(
+        release_payload,
+        backend_revision="1" * 40,
+        release_generation="100.1",
+        payload_sha256=None,
+    )
+    large_download_log = tmp_path / "large-download.log"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1/config"
+        TMP_PATH="$1/stage"
+        mkdir -p "${{TMP_PATH}}"
+        GITHUB_PROXY= CURL_OPTIONS= CURL_HEADERS=
+        source {UPDATER!s}
+        APP_DIR="$2"
+        RELEASE_PAYLOAD="$3"
+        LARGE_DOWNLOAD_LOG="$4"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        release_payload_sha256=$(sha256sum "${{RELEASE_PAYLOAD}}" | awk '{{print $1}}')
+        printf '{{"assets":[{{"name":"source-update-payload.json","digest":"sha256:%s"}}]}}\n' \
+            "${{release_payload_sha256}}" > "${{TMP_PATH}}/latest-v3-release.json"
+        download_file() {{ cp "${{RELEASE_PAYLOAD}}" "$2"; }}
+        download_and_unzip() {{ printf '%s\n' "$1" >> "${{LARGE_DOWNLOAD_LOG}}"; return 1; }}
+        install_backend_and_download_resources tags/v3.0.0.zip
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "stale-release-payload-test",
+            str(tmp_path),
+            str(app_dir),
+            str(release_payload),
+            str(large_download_log),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not large_download_log.exists()
+
+
+def test_same_version_only_rechecks_identity_for_release_channel(tmp_path: Path) -> None:
+    """Beta 或本地镜像不会被同版本正式发布清单覆盖。"""
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1/config"
+        source {UPDATER!s}
+        CHANNEL="$2"
+        CALL_LOG="$3"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        installed_payload_value() {{ [ "$1" = channel ] && printf '%s\n' "${{CHANNEL}}"; }}
+        install_backend_and_download_resources() {{ printf '%s\n' "$1" > "${{CALL_LOG}}"; }}
+        compare_versions v3.0.0 v3.0.0
+        """
+    )
+
+    for channel, should_call in (("release", True), ("beta", False), ("", False)):
+        call_log = tmp_path / f"{channel or 'legacy'}.log"
+        result = subprocess.run(
+            [
+                "/bin/bash",
+                "-c",
+                script,
+                "same-version-channel-test",
+                str(tmp_path),
+                channel,
+                str(call_log),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert call_log.exists() is should_call
+        if should_call:
+            assert call_log.read_text(encoding="utf-8") == "tags/v3.0.0.zip\n"
+
+
+def test_download_file_rejects_digest_mismatch(tmp_path: Path) -> None:
+    """摘要不匹配的制品不得进入正式目标路径。"""
+    destination = tmp_path / "dist.zip"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1/config"
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        curl() {{
+            while [ "$#" -gt 0 ]; do
+                if [ "$1" = -o ]; then printf 'corrupt' > "$2"; return 0; fi
+                shift
+            done
+            return 1
+        }}
+        download_file https://example.invalid/dist.zip "$2" \
+            aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            script,
+            "digest-mismatch-test",
+            str(tmp_path),
+            str(destination),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert not destination.exists()
 
 
 def test_staged_payload_swap_failure_restores_previous_generation(tmp_path: Path) -> None:
