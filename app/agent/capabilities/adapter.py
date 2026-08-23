@@ -155,7 +155,11 @@ class AgentServiceAdapter:
             raise CapabilityAdapterContractError(
                 f"{spec.entrypoint}.close() 必须返回 awaitable"
             )
-        await result
+        converged = await result
+        if converged is False:
+            raise CapabilityAdapterContractError(
+                f"{spec.entrypoint}.close() 返回未收敛，保留 service owner"
+            )
 
     @staticmethod
     async def cleanup(

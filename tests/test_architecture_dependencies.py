@@ -12,6 +12,7 @@ IMPLEMENTATION_ROOTS = (
     "app.agent.skills",
     "app.adapters",
     "app.application",
+    "app.db.adapters",
     "app.domain",
     "app.foundation",
     "app.runtime",
@@ -66,6 +67,29 @@ RETIRED_CANONICAL_FILES = (
     "app/adapters/network/sites.pyi",
     "app/application/plugins.py",
     "app/application/subscribe.py",
+    "app/startup/agent_initializer.py",
+    "app/startup/cache_initializer.py",
+    "app/startup/chain_events.py",
+    "app/startup/command_initializer.py",
+    "app/startup/configuration.py",
+    "app/startup/context.py",
+    "app/startup/database.py",
+    "app/startup/database_initializer.py",
+    "app/startup/domain_initializer.py",
+    "app/startup/download_failure.py",
+    "app/startup/managed_resources_initializer.py",
+    "app/startup/modules_initializer.py",
+    "app/startup/monitor_initializer.py",
+    "app/startup/outbox.py",
+    "app/startup/plugins_initializer.py",
+    "app/startup/routers_initializer.py",
+    "app/startup/scheduler_initializer.py",
+    "app/startup/site.py",
+    "app/startup/subscription.py",
+    "app/startup/transaction.py",
+    "app/startup/transfer_initializer.py",
+    "app/startup/workflow.py",
+    "app/startup/workflow_initializer.py",
 )
 PLUGIN_COMPONENT_ROOTS = (
     "app/adapters/external/plugin",
@@ -288,6 +312,20 @@ def test_retired_canonical_filenames_do_not_return():
     assert leftovers == []
 
 
+def test_startup_root_contains_only_composition_packages():
+    """组合根顶层只保留稳定分区，禁止再次堆叠扁平实现文件。"""
+    startup_root = APP_ROOT / "startup"
+    root_modules = sorted(path.name for path in startup_root.glob("*.py"))
+    python_packages = sorted(
+        path.name
+        for path in startup_root.iterdir()
+        if path.is_dir() and any(path.rglob("*.py"))
+    )
+
+    assert root_modules == ["__init__.py"]
+    assert python_packages == ["composition", "initializers", "lifecycle"]
+
+
 def test_retired_canonical_roots_contain_no_python_sources():
     """已收敛的新增目录不得再次以顶级 Python 包形式出现。"""
     leftovers = sorted(
@@ -391,6 +429,96 @@ def test_database_internals_do_not_import_db_facades():
             for node in ast.walk(tree)
         ):
             violations.append(str(path.relative_to(PROJECT_ROOT)))
+    assert violations == []
+
+
+def test_database_opers_use_dboper_transaction_dispatchers():
+    """Oper 不得绕过 DbOper 的统一 Session 类型分派直接调用事务 runner。"""
+    runner_names = {"run_sync_transaction", "run_async_transaction"}
+    violations: list[str] = []
+    for path in (APP_ROOT / "db" / "oper").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.module != "app.db.uow":
+                continue
+            imported = {alias.name for alias in node.names} & runner_names
+            if imported:
+                relative = path.relative_to(PROJECT_ROOT).as_posix()
+                violations.append(f"{relative}:{node.lineno}:{','.join(sorted(imported))}")
+
+    assert violations == []
+
+
+def test_models_and_base_require_explicit_database_sessions():
+    """Model/Base 不得装饰事务，且所有 db 参数必须由调用方显式传入。"""
+    decorator_names = {
+        "db_query",
+        "db_update",
+        "async_db_query",
+        "async_db_update",
+        "legacy_db_query",
+        "legacy_db_update",
+        "legacy_async_db_query",
+        "legacy_async_db_update",
+    }
+    violations: list[str] = []
+    paths = [APP_ROOT / "db" / "base.py"]
+    paths.extend((APP_ROOT / "db" / "models").rglob("*.py"))
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        relative = str(path.relative_to(PROJECT_ROOT))
+        nodes = list(ast.walk(tree))
+        for node in nodes:
+            if isinstance(node, ast.ImportFrom) and node.module == "app.db.decorators":
+                violations.append(f"{relative}:{node.lineno}:decorator-import")
+        if path.name == "base.py":
+            base_class = next(
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == "Base"
+            )
+            nodes = list(ast.walk(base_class))
+        for node in nodes:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                name = (
+                    decorator.id
+                    if isinstance(decorator, ast.Name)
+                    else decorator.attr
+                    if isinstance(decorator, ast.Attribute)
+                    else None
+                )
+                if name in decorator_names:
+                    violations.append(f"{relative}:{node.lineno}:@{name}")
+            arguments = [*node.args.posonlyargs, *node.args.args]
+            defaults = [None] * (len(arguments) - len(node.args.defaults)) + list(
+                node.args.defaults
+            )
+            for argument, default in zip(arguments, defaults):
+                if argument.arg != "db":
+                    continue
+                annotation = ast.unparse(argument.annotation) if argument.annotation else ""
+                if default is not None or "None" in annotation:
+                    violations.append(
+                        f"{relative}:{node.lineno}:{node.name}:optional-db"
+                    )
+    assert violations == []
+
+
+def test_plugin_sdk_does_not_import_or_export_host_models():
+    """插件 SDK 只能暴露 Oper，不得把宿主 ORM Model 作为插件接口。"""
+    violations: list[str] = []
+    for path in (APP_ROOT / "sdk").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and (
+                node.module == "app.db.models"
+                or node.module.startswith("app.db.models.")
+            ):
+                violations.append(
+                    f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}:{node.module}"
+                )
     assert violations == []
 
 
@@ -748,6 +876,69 @@ def test_agent_tools_do_not_import_entrypoint_internals():
         if forbidden:
             violations[module_name] = forbidden
     assert violations == {}
+
+
+def test_runtime_consumers_use_scheduler_application_facade():
+    """非组合根消费者必须经 application Facade 访问进程级 Scheduler。"""
+    allowed = {
+        "app.scheduler",
+        "app.startup.initializers.modules",
+        "app.startup.initializers.scheduler",
+    }
+    violations = {
+        module_name: dependencies & {"app.scheduler"}
+        for module_name, dependencies in _build_module_graph().items()
+        if module_name not in allowed and "app.scheduler" in dependencies
+    }
+
+    assert violations == {}
+
+
+def test_runtime_consumers_use_plugin_application_facade():
+    """插件 concrete 管理器只允许组合根和兼容 SDK 直接依赖。"""
+    allowed = {
+        "app.sdk.plugins",
+        "app.startup.initializers.modules",
+        "app.startup.initializers.plugins",
+    }
+    violations = {
+        module_name: dependencies & {"app.runtime.extensions.plugin_manager"}
+        for module_name, dependencies in _build_module_graph().items()
+        if module_name not in allowed
+        and "app.runtime.extensions.plugin_manager" in dependencies
+    }
+
+    assert violations == {}
+
+
+def test_runtime_consumers_use_command_application_facade():
+    """Command concrete 实现只允许 startup 组合根直接依赖。"""
+    allowed = {
+        "app.startup.initializers.command",
+        "app.startup.initializers.modules",
+    }
+    violations = {
+        module_name: dependencies & {"app.command"}
+        for module_name, dependencies in _build_module_graph().items()
+        if module_name not in allowed and "app.command" in dependencies
+    }
+
+    assert violations == {}
+
+
+def test_modules_read_deployment_settings_through_runtime_port():
+    """宿主 Module 不得绕过 runtime 配置端口直接依赖 Settings 实例。"""
+    violations: list[str] = []
+    for path in (APP_ROOT / "modules").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.module != "app.runtime.config":
+                continue
+            if any(alias.name == "settings" for alias in node.names):
+                violations.append(path.relative_to(PROJECT_ROOT).as_posix())
+                break
+
+    assert violations == []
 
 
 def test_api_does_not_import_factory():

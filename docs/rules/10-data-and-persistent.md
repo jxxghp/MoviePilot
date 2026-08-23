@@ -81,33 +81,49 @@ the stub.
 Oper classes accept and return persistence values. Turning a `MediaInfo` or
 `MetaBase` into a row is business logic and lives in `app/application/`.
 
+Application owns use-case commands and persistence Protocols, but does not import
+`app.db`, SQLAlchemy, Session or Oper. Concrete persistence is used in
+`app/db/adapters/`: adapters implement those Protocols with explicit Session,
+UnitOfWork and Oper objects. `app/startup/composition/` creates and injects the
+adapters; it does not retain reusable repository implementations.
+
 ### Transaction ownership ratchet
 
-- `tests/fixtures/architecture/transaction-debt-baseline.json` records the
-  existing Model transaction decorators. All formal query and write decorators
-  are now zero and must remain zero; compatibility-only `legacy_*` shells must
-  not be counted as new transaction ownership.
-- `legacy_db_query` / `legacy_async_db_query` are compatibility-only shells for
-  existing plugin-facing Model methods. Host Oper code must pass an explicit
-  Session through `_execute_sync_query` / `_execute_async_query`; new Model
-  methods must not add either legacy decorator.
-- New Model methods must not use `db_query`, `db_update`, `async_db_query`, or
-  `async_db_update`, create a Session, or call `commit()` / `rollback()`.
+- `tests/fixtures/architecture/transaction-debt-baseline.json` records formal
+  decorators in concrete files under `app/db/models/`. Their count is zero and
+  must remain zero. Model/Base code may not import `app.db.decorators`; legacy
+  Model transaction shells have been removed and must not be recreated.
+- Every Model method with a `db` parameter requires an explicit `Session` or
+  `AsyncSession`. The parameter may not default to `None`, accept displaced
+  business arguments, create a Session, or call `commit()` / `rollback()`.
+- `Base.create/get/update/delete/list/truncate` and their async forms are plain
+  explicit-session primitives. They only query or stage changes in the caller's
+  transaction; they never own transaction lifecycle.
+- Host Oper code routes optional-session entry points through
+  `_execute_sync_query` / `_execute_async_query` / `_execute_*_write`. Plugins
+  access host persistence through Oper or a curated SDK contract, never by
+  importing `app.db.models`.
+- The public `db_query`, `db_update`, `async_db_query`, and `async_db_update`
+  exports remain available only for plugin-owned database functions. They are
+  forbidden on host Model/Base methods.
 - Oper receives a caller-owned Session and may query, add, update, delete, or
   flush. A composable Oper method must not create its own Session and must not
   commit or roll back.
-- The API, Scheduler, Agent, or another logical operation entry creates the
-  Session and adapts it through `app/db/uow.py`. Application command code owns
-  `commit()` / `rollback()`; events, scheduling refresh, reports, and other
-  external effects run only after a successful commit.
+- API, Scheduler, Agent and Chain consume an injected Application Port; they do
+  not import or create a Session. The concrete `app/db/adapters/` implementation
+  creates the Session and adapts it through `app/db/uow.py`. Application command
+  code decides when the injected UoW commits or rolls back; events, scheduling
+  refresh, reports and other external effects run only after a successful commit.
 - A synchronous Session is private to one worker thread. An AsyncSession is
   private to one asyncio task/operation; neither may be stored in a process
   singleton or reused by concurrent work.
-- Subscription creation is the reference slice: `app/startup/subscription.py`
-  creates an exclusive Session, `app/application/subscription/write.py` owns the
-  UoW and post-commit callback, and `SubscribeOper.stage_add()` only queries,
-  adds, and flushes. Preserve `SubscribeOper.add()` only for legacy SDK callers;
-  new host code must not use that auto-commit compatibility path.
+- Subscription creation is the reference slice:
+  `app/application/subscription/write.py` owns the command and persistence Port,
+  `app/db/adapters/subscription.py` creates an exclusive Session and adapts Oper/UoW,
+  and `app/startup/composition/subscription.py` only wires scopes and post-commit
+  callbacks. `SubscribeOper.stage_add()` only queries, adds and flushes. Preserve
+  `SubscribeOper.add()` only for legacy SDK callers; new host code must not use
+  that auto-commit compatibility path.
 - The same rule applies to `SiteMutationCommand`, history/workflow commands,
   `AgentChatService.delete()`, and `DeletePluginDataCommand`: bind the repository
   and UoW to one request/operation Session. Legacy plugin-facing Oper methods may
@@ -117,7 +133,18 @@ Run `./.venv/bin/python scripts/architecture/baseline.py --check-host` after
 persistence changes. A deliberate debt reduction may refresh the low-water mark
 with `--write-host`; never refresh it to accept newly introduced debt.
 
-**Standard Oper method conventions:**
+**Canonical explicit-session Oper conventions:**
+
+```python
+with SessionFactory() as session:
+    oper = SubscribeOper(session)
+    subscribe = oper.get(sid=1)       # Query in caller-owned Session
+    subscribes = oper.list()          # List in caller-owned Session
+    oper.stage_add(Subscribe(...))    # Stage only; caller-owned UoW commits
+```
+
+The following no-Session form is legacy plugin ABI only and must not be copied
+into host code:
 
 ```python
 oper = SubscribeOper()

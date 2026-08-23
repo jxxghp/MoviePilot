@@ -1,11 +1,13 @@
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
 from watchfiles import Change
 
-from app.monitor import DirectoryChangeEvent, LocalDirectoryWatcher, Monitor
 from app.monitor.dispatcher import TransferDispatcher
-from app.schemas import TransferDirectoryConf
+from app.monitor.monitor import Monitor
+from app.monitor.watcher import DirectoryChangeEvent, LocalDirectoryWatcher
+from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import MediaType
 
 
@@ -42,6 +44,15 @@ def _build_monitor_with_dispatcher(handle_file: MagicMock = None):
     if handle_file is not None:
         dispatcher.handle_file = handle_file
     monitor._dispatcher = dispatcher
+    monitor._lifecycle_lock = threading.RLock()
+    monitor._owner_lock = threading.Lock()
+    monitor._work_stop_event = threading.Event()
+    monitor._shutdown_event = threading.Event()
+    monitor._closed = False
+    monitor._compensation_threads = {}
+    monitor._scheduler_shutdown_thread = None
+    monitor._scheduler_shutdown_succeeded = False
+    monitor._scheduler = None
     return monitor, dispatcher
 
 

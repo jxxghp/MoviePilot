@@ -245,12 +245,12 @@ sequenceDiagram
   和 TestClient 因而共享同一 fail-fast 语义。
 - **引擎预热 fail-fast**：同步/异步数据库引擎在单线程期完成首次创建，
   避免调度器放出大量线程后再创建引擎导致连接锁竞争。
-- **类型化请求装配**：`startup/context.py` 的 frozen slots `HostRuntime` 是 lifespan 内唯一宿主
+- **类型化请求装配**：`startup/composition/context.py` 的 frozen slots `HostRuntime` 是 lifespan 内唯一宿主
   上下文，`api/context.py` 从 `app.state` 收窄到具体领域能力。认证、消息、历史、媒体服务器、站点、
   订阅、工作流和请求事务均使用命名 runtime 字段，不再通过字符串仓储键定位；API、Scheduler、Chain
   从 `HostRuntime.configuration` 获取 frozen 配置快照。系统设置管理 API 通过
   `HostRuntime.settings` 的窄服务读写可变部署设置，业务域不接触 Settings 实例；生产与测试组合根统一
-  复用 `startup/configuration.py` 的映射。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
+  复用 `startup/composition/configuration.py` 的映射。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **进程拓扑**：全功能 V3 强制 `API_WORKERS=1`，避免每个 worker 重复启动插件和后台控制面；安全模式可临时使用多 worker 诊断，但不是正式扩容方案。
 - **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
@@ -375,16 +375,18 @@ flowchart LR
   不再保留主题包之外的第二个写入入口。
 - 规范写入口中的 Oper 只 stage mutation，不创建独立 Session、不提交；Application Command
   通过请求或任务入口注入的 UnitOfWork 统一 `commit/rollback`，事件、刷新和上报只在 commit
-  成功后执行。订阅新增样板由 `startup/subscription.py` 创建独占 Session，
+  成功后执行。订阅新增 Port 位于 `application/subscription/write.py`，由
+  `db/adapters/subscription.py` 创建独占 Session，`startup/composition/subscription.py` 只装配回调，
   `application/subscription/write.py` 决定事务与 post-commit 边界，`SubscribeOper.stage_add()`
   只查重、`add` 和 `flush`。旧 SDK 显式构造的无会话 Oper 暂留兼容自动短会话，不得被新代码复用。
-  `transaction-debt-baseline.json` 当前要求正式只读查询装饰器保持为 0；原有同步/异步写装饰器
-  已全部移除，`db_update` 与 `async_db_update` 必须持续保持为 0。下载/整理历史的旧插件 Model
-  与工作流、媒体服务器、站点用户数据、PassKey、SubscribeHistory 旧插件 Model 调用由 `legacy_*` 兼容外壳承接，宿主 Oper 必须显式传递 Session。宿主 Oper 也不得调用 Base 保留的
-  `create/update/delete/truncate` 兼容包装器；AST 门禁保证显式 Session 的提交权不会被底层抢走。
+  `transaction-debt-baseline.json` 要求 Model 上的查询/写装饰器持续保持为 0。Model 与 Base
+  已不再导入数据库装饰器，所有 `db` 参数都要求显式 Session；这些方法只查询或 stage，不能
+  创建、提交、回滚或关闭事务。无会话入口只存在于 Oper，由 `_execute_*` 经组合根事务执行器
+  承接；内置插件必须调用 Oper，不得直接导入宿主 Model。AST 门禁同时约束装饰器、可选 Session
+  和插件到 Model 的依赖，保证提交权不会被底层抢走。
 - 站点、历史、工作流、Agent 会话删除和插件数据重置已经形成同构事务切片；对应 Application
   Command/Service 持有 UoW，Oper 的 `stage_*` 方法只修改当前会话。插件数据重置从
-  `startup/plugins_initializer.py` 创建独占会话，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。
+  `startup/initializers/plugins.py` 注入事务能力，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。
 - 每次表结构变更必须新增 `database/versions/` 下的 Alembic 迁移。
 - 运行期业务配置使用 `SystemConfigKey` 枚举 + `SystemConfigOper`，禁止裸字符串键；
   用户级配置使用 `UserConfigOper`。
@@ -489,7 +491,7 @@ Agent 采用**门面 + 惰性物化**设计，避免 `application → agent` 形
 ```mermaid
 flowchart TB
     Entry["消息渠道 / API / MCP"] --> Facade["app/application/agent.py<br/>编排门面（get_agent_manager 等）"]
-    Reg["app/startup/agent_initializer.py<br/>导入期注册轻量 Provider"]
+    Reg["app/startup/initializers/agent.py<br/>导入期注册轻量 Provider"]
     Facade -.能力启用或首次使用时物化.-> RT["app/agent/runtime_loader.py<br/>能力发现与服务物化"]
     RT --> ORC["app/agent/orchestrator.py<br/>会话编排"]
     ORC --> Tools["app/agent/tools<br/>系统工具（经 application 门面）"]

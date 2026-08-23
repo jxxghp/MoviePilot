@@ -18,7 +18,7 @@ from app.chain.storage import StorageChain
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.startup.context import HostRuntime
+from app.startup.composition.context import HostRuntime
 
 
 def get_mediaserver_query_service(

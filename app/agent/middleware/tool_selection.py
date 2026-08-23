@@ -26,7 +26,7 @@ from langchain_core.tools import BaseTool
 from langgraph.runtime import Runtime
 from typing_extensions import TypedDict  # noqa
 
-from app.agent.llm import LLMHelper
+from app.agent.llm.helper import LLMHelper
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 

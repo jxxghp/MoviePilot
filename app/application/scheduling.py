@@ -17,7 +17,7 @@ from typing import Any, Awaitable, Callable, List, Optional, cast
 # Agent 自主定时任务在运行时调度器中的任务 ID 前缀。
 AGENT_TASK_JOB_PREFIX = "agent-task"
 
-# Scheduler 类：由 startup/scheduler_initializer 在导入期注册。
+# Scheduler 类：由 startup/initializers/scheduler.py 在导入期注册。
 _scheduler_class: Any = None
 
 

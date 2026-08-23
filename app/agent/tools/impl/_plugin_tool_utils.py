@@ -2,6 +2,7 @@
 
 import json
 import shutil
+from contextvars import copy_context
 from pathlib import Path
 from typing import Any, Optional
 
@@ -96,9 +97,11 @@ def refresh_plugin_registrations(plugin_id: str) -> None:
 
 def reload_plugin_runtime(plugin_id: str) -> PluginRuntimeStatus:
     """重载插件实例并重新注册其命令、定时任务和 API。"""
-    runtime_status = get_plugin_manager().reload_plugin(plugin_id)
-    refresh_plugin_registrations(plugin_id)
-    return runtime_status
+    plugin_manager = get_plugin_manager()
+    with plugin_manager.mutation(f"重载插件 {plugin_id}"):
+        runtime_status = plugin_manager.reload_plugin(plugin_id)
+        refresh_plugin_registrations(plugin_id)
+        return runtime_status
 
 
 def summarize_plugin(plugin: Any) -> dict[str, Any]:
@@ -351,8 +354,10 @@ async def install_plugin_runtime(
 
     async def reload_runtime(target_id: str) -> object:
         """通过 Agent 阻塞任务适配器重载源插件及其虚拟实例。"""
+        mutation_context = copy_context()
         return await run_agent_blocking(
             "plugin",
+            mutation_context.run,
             plugin_manager.reload_plugin_tree,
             target_id,
         )
@@ -371,31 +376,32 @@ async def install_plugin_runtime(
             )
         return result
 
-    with plugin_manager.suppress_plugin_monitor(plugin_id):
-        result = await PluginInstallCommand(
-            installed_plugins_reader=lambda: SystemConfigOper().get(
-                SystemConfigKey.UserInstalledPlugins
-            ) or [],
-            installed_plugins_writer=save_installed_plugins,
-            plugin_ids_provider=plugin_manager.get_plugin_ids,
-            compatibility_checker=skip_compatibility_check,
-            package_installer=install_package,
-            package_checkpointer=package_manager.async_checkpoint,
-            package_committer=package_manager.async_commit,
-            package_rollback=package_manager.async_rollback,
-            install_reporter=lambda target_id, target_repo: (
-                MoviePilotServerHelper.async_install_plugin_reg(
-                    plugin_id=target_id,
-                    repo_url=target_repo,
-                )
-            ),
-            plugin_reloader=reload_runtime,
-            registration_refresher=refresh_registrations,
-        ).execute(
-            plugin_id=plugin_id,
-            repo_url=repo_url,
-            force=force,
-        )
+    result = await PluginInstallCommand(
+        installed_plugins_reader=lambda: SystemConfigOper().get(
+            SystemConfigKey.UserInstalledPlugins
+        ) or [],
+        installed_plugins_writer=save_installed_plugins,
+        plugin_ids_provider=plugin_manager.get_plugin_ids,
+        compatibility_checker=skip_compatibility_check,
+        package_installer=install_package,
+        package_checkpointer=package_manager.async_checkpoint,
+        package_committer=package_manager.async_commit,
+        package_rollback=package_manager.async_rollback,
+        install_reporter=lambda target_id, target_repo: (
+            MoviePilotServerHelper.async_install_plugin_reg(
+                plugin_id=target_id,
+                repo_url=target_repo,
+            )
+        ),
+        plugin_reloader=reload_runtime,
+        registration_refresher=refresh_registrations,
+        mutation=plugin_manager.mutation,
+        package_write_guard=plugin_manager.suppress_plugin_monitor,
+    ).execute(
+        plugin_id=plugin_id,
+        repo_url=repo_url,
+        force=force,
+    )
     return result.success, result.message, result.refreshed_only
 
 
@@ -409,48 +415,54 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
     from app.agent.tools.base import run_agent_blocking
 
     plugin_manager = get_plugin_manager()
-    virtual_instance = plugin_manager.get_plugin_instance(plugin_id)
-    source_instances = plugin_manager.get_plugin_source_instances(plugin_id)
-    if not virtual_instance and source_instances:
-        instance_ids = "、".join(item.instance_id for item in source_instances)
-        raise ValueError(f"请先卸载该插件的分身：{instance_ids}")
+    with plugin_manager.mutation(f"卸载插件 {plugin_id}"):
+        virtual_instance = plugin_manager.get_plugin_instance(plugin_id)
+        source_instances = plugin_manager.get_plugin_source_instances(plugin_id)
+        if not virtual_instance and source_instances:
+            instance_ids = "、".join(item.instance_id for item in source_instances)
+            raise ValueError(f"请先卸载该插件的分身：{instance_ids}")
 
-    config_oper = SystemConfigOper()
-    install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
-    if plugin_id in install_plugins:
-        install_plugins = [plugin for plugin in install_plugins if plugin != plugin_id]
-        await config_oper.async_set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-
-    remove_plugin_api(plugin_id)
-    remove_plugin_job(plugin_id)
-
-    plugin_class = plugin_manager.plugins.get(plugin_id)
-    was_clone = bool(getattr(plugin_class, "is_clone", False))
-    clone_files_removed = False
-
-    if virtual_instance:
-        plugin_manager.delete_plugin_config(plugin_id, force=True)
-        plugin_manager.delete_plugin_data(plugin_id, force=True)
-        plugin_manager.delete_plugin_instance(plugin_id)
-    elif was_clone:
-        plugin_manager.delete_plugin_config(plugin_id)
-        plugin_manager.delete_plugin_data(plugin_id)
-        plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
-        try:
-            clone_files_removed = await run_agent_blocking(
-                "plugin",
-                _remove_plugin_directory,
-                plugin_base_dir,
+        config_oper = SystemConfigOper()
+        install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
+        if plugin_id in install_plugins:
+            install_plugins = [
+                plugin for plugin in install_plugins if plugin != plugin_id
+            ]
+            await config_oper.async_set(
+                SystemConfigKey.UserInstalledPlugins,
+                install_plugins,
             )
-            if clone_files_removed:
-                plugin_manager.plugins.pop(plugin_id, None)
-        except Exception:
-            clone_files_removed = False
 
-    remove_plugin_from_folders(plugin_id)
-    plugin_manager.remove_plugin(plugin_id)
+        remove_plugin_api(plugin_id)
+        remove_plugin_job(plugin_id)
 
-    return {
-        "was_clone": was_clone,
-        "clone_files_removed": clone_files_removed,
-    }
+        plugin_class = plugin_manager.plugins.get(plugin_id)
+        was_clone = bool(getattr(plugin_class, "is_clone", False))
+        clone_files_removed = False
+
+        if virtual_instance:
+            plugin_manager.delete_plugin_config(plugin_id, force=True)
+            plugin_manager.delete_plugin_data(plugin_id, force=True)
+            plugin_manager.delete_plugin_instance(plugin_id)
+        elif was_clone:
+            plugin_manager.delete_plugin_config(plugin_id)
+            plugin_manager.delete_plugin_data(plugin_id)
+            plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+            try:
+                clone_files_removed = await run_agent_blocking(
+                    "plugin",
+                    _remove_plugin_directory,
+                    plugin_base_dir,
+                )
+                if clone_files_removed:
+                    plugin_manager.plugins.pop(plugin_id, None)
+            except Exception:
+                clone_files_removed = False
+
+        remove_plugin_from_folders(plugin_id)
+        plugin_manager.remove_plugin(plugin_id)
+
+        return {
+            "was_clone": was_clone,
+            "clone_files_removed": clone_files_removed,
+        }

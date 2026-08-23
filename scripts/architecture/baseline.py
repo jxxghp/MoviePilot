@@ -65,6 +65,15 @@ CONFIGURATION_EXCLUDED_ROOTS = (
     APP_ROOT / "runtime" / "compat",
     APP_ROOT / "testing",
 )
+FOUNDATIONAL_SETTINGS_BOUNDARIES = {
+    "app/db/base.py": "模型声明阶段必须在运行时配置服务装配前确定数据库主键类型",
+    "app/db/engine.py": "数据库引擎是运行时配置服务的底层依赖，不能通过兼容代理自递归",
+    "app/db/session.py": "数据库会话与连接配额必须在应用组合根装配前可用",
+}
+COMPOSITION_ROOT_OPER_BOUNDARIES = {
+    ("app/startup/initializers/modules.py", "SystemConfigOper"):
+        "启动组合根负责构造唯一的系统配置数据库适配器",
+}
 
 
 def discover_modules() -> dict[str, Path]:
@@ -118,9 +127,11 @@ def iter_runtime_import_nodes(tree: ast.AST):
 
 
 def collect_configuration_debt_baseline() -> dict[str, Any]:
-    """收集宿主 canonical 代码直接读取 settings 和构造数据库配置适配器的债务。"""
+    """分离配置债务与数据库基础设施、组合根的固定批准边界。"""
     settings_files: list[str] = []
+    foundational_settings: list[dict[str, str]] = []
     oper_calls: list[dict[str, Any]] = []
+    composition_root_calls: list[dict[str, str]] = []
     for path in sorted(APP_ROOT.rglob("*.py")):
         if any(path.is_relative_to(root) for root in CONFIGURATION_EXCLUDED_ROOTS):
             continue
@@ -143,14 +154,22 @@ def collect_configuration_debt_baseline() -> dict[str, Any]:
                     if alias.name == "SystemConfigOper"
                 )
         if imports_settings:
-            settings_files.append(relative)
+            if reason := FOUNDATIONAL_SETTINGS_BOUNDARIES.get(relative):
+                foundational_settings.append({"file": relative, "reason": reason})
+            else:
+                settings_files.append(relative)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
                 continue
             if node.func.id in direct_oper_names:
-                oper_calls.append({"file": relative, "name": node.func.id})
+                call = {"file": relative, "name": node.func.id}
+                boundary_key = (relative, node.func.id)
+                if reason := COMPOSITION_ROOT_OPER_BOUNDARIES.get(boundary_key):
+                    composition_root_calls.append({**call, "reason": reason})
+                else:
+                    oper_calls.append(call)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "scope": {
             "root": "app",
             "excluded": [
@@ -164,9 +183,17 @@ def collect_configuration_debt_baseline() -> dict[str, Any]:
             "count": len(settings_files),
             "files": settings_files,
         },
+        "foundational_settings_boundaries": {
+            "count": len(foundational_settings),
+            "entries": foundational_settings,
+        },
         "system_config_oper_constructions": {
             "count": len(oper_calls),
             "calls": oper_calls,
+        },
+        "composition_root_oper_boundaries": {
+            "count": len(composition_root_calls),
+            "entries": composition_root_calls,
         },
     }
 
@@ -753,34 +780,121 @@ def collect_event_diagnostics() -> dict[str, Any]:
     }
 
 
+def _sdk_all_names(tree: ast.Module, path: Path) -> tuple[str, ...]:
+    """读取 SDK 模块显式声明的 ``__all__``，未声明时不推断公开合同。"""
+    value_node: Optional[ast.expr] = None
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in node.targets
+        ):
+            value_node = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "__all__"
+        ):
+            value_node = node.value
+    if value_node is None:
+        return ()
+    try:
+        names = ast.literal_eval(value_node)
+    except (ValueError, TypeError) as err:
+        raise ValueError(f"SDK 模块 {path} 的 __all__ 必须是字符串列表") from err
+    if not isinstance(names, (list, tuple)) or not all(
+        isinstance(name, str) for name in names
+    ):
+        raise ValueError(f"SDK 模块 {path} 的 __all__ 必须是字符串列表")
+    if len(names) != len(set(names)):
+        raise ValueError(f"SDK 模块 {path} 的 __all__ 存在重复名称")
+    return tuple(names)
+
+
+def _sdk_alias_target(
+    value: ast.expr,
+    imported_targets: dict[str, str],
+) -> str:
+    """把顶层别名赋值解析为稳定目标，保留其真实 canonical 来源。"""
+    if isinstance(value, ast.Name):
+        return imported_targets.get(value.id, value.id)
+    if isinstance(value, ast.Attribute):
+        return f"{_sdk_alias_target(value.value, imported_targets)}.{value.attr}"
+    return ast.unparse(value)
+
+
+def _collect_sdk_module_exports(path: Path) -> list[dict[str, str]]:
+    """按单个 SDK 模块的显式 ``__all__`` 生成可比较的符号合同。"""
+    tree = parse_source(path)
+    export_names = _sdk_all_names(tree, path)
+    imported_targets: dict[str, str] = {}
+    bindings: dict[str, dict[str, str]] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module:
+            module_name = f"{'.' * node.level}{node.module}"
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                public_name = alias.asname or alias.name
+                target = f"{module_name}.{alias.name}"
+                imported_targets[public_name] = target
+                bindings[public_name] = {
+                    "name": public_name,
+                    "kind": "import",
+                    "target": target,
+                }
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                public_name = alias.asname or alias.name.split(".", maxsplit=1)[0]
+                imported_targets[public_name] = alias.name
+                bindings[public_name] = {
+                    "name": public_name,
+                    "kind": "import",
+                    "target": alias.name,
+                }
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bindings[node.name] = {
+                "name": node.name,
+                "kind": type(node).__name__,
+                "target": "",
+            }
+        elif isinstance(node, ast.Assign):
+            for target_node in node.targets:
+                if not isinstance(target_node, ast.Name) or target_node.id == "__all__":
+                    continue
+                bindings[target_node.id] = {
+                    "name": target_node.id,
+                    "kind": "alias",
+                    "target": _sdk_alias_target(node.value, imported_targets),
+                }
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id != "__all__"
+            and node.value is not None
+        ):
+            bindings[node.target.id] = {
+                "name": node.target.id,
+                "kind": "alias",
+                "target": _sdk_alias_target(node.value, imported_targets),
+            }
+
+    unresolved = sorted(set(export_names) - set(bindings))
+    if unresolved:
+        raise ValueError(
+            f"SDK 模块 {path} 的 __all__ 含无法解析的顶层名称：{', '.join(unresolved)}"
+        )
+    return sorted(
+        (bindings[name] for name in export_names),
+        key=lambda item: (item["name"], item["kind"], item["target"]),
+    )
+
+
 def collect_sdk_exports() -> dict[str, list[dict[str, str]]]:
-    """通过 AST 收集顶层 SDK 公开符号，避免导入时物化运行资源。"""
+    """按显式 ``__all__`` 收集 SDK 合同，避免导入时物化运行资源。"""
     result: dict[str, list[dict[str, str]]] = {}
     for path in sorted((APP_ROOT / "sdk").glob("*.py")):
         module_name = f"app.sdk.{path.stem}" if path.stem != "__init__" else "app.sdk"
-        exports: list[dict[str, str]] = []
-        for node in parse_source(path).body:
-            if isinstance(node, ast.ImportFrom) and node.module:
-                for alias in node.names:
-                    public_name = alias.asname or alias.name
-                    if public_name.startswith("_") or alias.name == "*":
-                        continue
-                    exports.append(
-                        {
-                            "name": public_name,
-                            "kind": "import",
-                            "target": f"{node.module}.{alias.name}",
-                        }
-                    )
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                if not node.name.startswith("_"):
-                    exports.append(
-                        {"name": node.name, "kind": type(node).__name__, "target": ""}
-                    )
-        result[module_name] = sorted(
-            exports,
-            key=lambda item: (item["name"], item["kind"], item["target"]),
-        )
+        result[module_name] = _collect_sdk_module_exports(path)
     return result
 
 
@@ -982,14 +1096,50 @@ def collect_plugin_api_contracts(path: Path) -> list[dict[str, Any]]:
     return sorted(routes, key=lambda item: (item["path"], item["endpoint"]))
 
 
+def _read_plugin_index(path: Path) -> dict[str, Any]:
+    """读取插件索引；缺失索引按该代没有候选处理。"""
+    if not path.is_file():
+        return {}
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"插件索引必须是对象：{path}")
+    return value
+
+
+def _v3_default_plugin_roots(plugin_repo: Path) -> dict[str, Path]:
+    """返回 V3/V2 专用索引均未接管时可回退的默认插件源码目录。"""
+    default_index = _read_plugin_index(plugin_repo / "package.json")
+    v2_index = _read_plugin_index(plugin_repo / "package.v2.json")
+    v3_index = _read_plugin_index(plugin_repo / "package.v3.json")
+    roots: dict[str, Path] = {}
+    for plugin_id, plugin_info in default_index.items():
+        if not isinstance(plugin_info, dict):
+            continue
+        if plugin_info.get("v2") is not True or plugin_info.get("v3") is False:
+            continue
+        if plugin_id in v3_index:
+            continue
+        v2_info = v2_index.get(plugin_id)
+        if isinstance(v2_info, dict) and v2_info.get("v3") is not False:
+            continue
+        plugin_root = plugin_repo / "plugins" / plugin_id.lower()
+        if not plugin_root.is_dir():
+            raise FileNotFoundError(f"V3 默认兼容插件缺少源码目录：{plugin_root}")
+        roots[plugin_id] = plugin_root
+    return roots
+
+
 def collect_official_plugin_baseline(plugin_repo: Path) -> dict[str, Any]:
-    """扫描独立官方插件仓的导入面、Hook 和动态 API 契约。"""
-    roots = [plugin_repo / "plugins.v2", plugin_repo / "plugins.v3"]
+    """扫描独立官方插件仓中 V3 可见实现的导入面、Hook 和动态 API 契约。"""
+    versioned_roots = [plugin_repo / "plugins.v2", plugin_repo / "plugins.v3"]
+    default_roots = _v3_default_plugin_roots(plugin_repo)
     paths = sorted(
-        path
-        for root in roots
-        if root.exists()
-        for path in root.rglob("*.py")
+        {
+            path
+            for root in [*versioned_roots, *default_roots.values()]
+            if root.exists()
+            for path in root.rglob("*.py")
+        }
     )
     import_files: dict[str, set[str]] = defaultdict(set)
     hook_files: dict[str, set[str]] = defaultdict(set)
@@ -1019,7 +1169,8 @@ def collect_official_plugin_baseline(plugin_repo: Path) -> dict[str, Any]:
         "schema_version": 3,
         "scope": {
             "repository": "MoviePilot-Plugins",
-            "roots": [root.name for root in roots],
+            "roots": [*[root.name for root in versioned_roots], "plugins"],
+            "default_plugins": sorted(default_roots),
         },
         "provenance": {
             "head": git_head(plugin_repo),
@@ -1202,6 +1353,8 @@ def configuration_ratchet_matches(
     sections = (
         ("settings_imports", "files"),
         ("system_config_oper_constructions", "calls"),
+        ("foundational_settings_boundaries", "entries"),
+        ("composition_root_oper_boundaries", "entries"),
     )
     for section, entries_key in sections:
         expected_section = expected.get(section, {})

@@ -15,7 +15,7 @@ from app.api.context import (
 )
 from app.api.dependencies.agent import get_agent_chat_persistence
 from app.startup import lifecycle
-from app.startup.context import (
+from app.startup.composition.context import (
     AgentChatRuntime,
     AuthenticationRuntime,
     HistoryRuntime,
@@ -207,28 +207,23 @@ def test_fastapi_dependencies_use_fake_runtime_without_real_services() -> None:
     assert response.json() == {"same_session": True, "has_persistence": True}
 
 
-def test_official_api_dependencies_do_not_use_string_data_locator() -> None:
-    """正式业务依赖只能读取 HostRuntime 命名领域，禁止回退字符串注册表。"""
-    dependency_root = PROJECT_ROOT / "app" / "api" / "dependencies"
-    official_modules = {
-        "agent.py",
-        "auth.py",
-        "history.py",
-        "site.py",
-        "subscription.py",
-        "workflow.py",
-    }
-    for filename in official_modules:
-        tree = ast.parse(
-            (dependency_root / filename).read_text(encoding="utf-8")
-        )
+def test_string_api_data_locator_is_confined_to_compatibility_boundary() -> None:
+    """字符串数据注册表只能由 startup 注入并经旧 Facade 转发。"""
+    importers = set()
+    for path in (PROJECT_ROOT / "app").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         imported_modules = {
             node.module
             for node in ast.walk(tree)
             if isinstance(node, ast.ImportFrom) and node.module
         }
-        assert "app.api.data" not in imported_modules
-        assert "app.api.dependencies.data" not in imported_modules
+        if imported_modules & {"app.api.data", "app.api.dependencies.data"}:
+            importers.add(path.relative_to(PROJECT_ROOT).as_posix())
+
+    assert importers == {
+        "app/api/dependencies/data.py",
+        "app/startup/initializers/modules.py",
+    }
 
 
 @pytest.mark.asyncio

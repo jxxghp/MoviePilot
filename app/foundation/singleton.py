@@ -14,14 +14,24 @@ class Singleton(abc.ABCMeta, type):
     def get_existing_instance(cls, *args, **kwargs):
         """按相同参数返回已创建实例，不触发初始化"""
         key = (cls, args, frozenset(kwargs.items()))
-        return cls._instances.get(key)
+        with cls._lock:
+            return cls._instances.get(key)
 
     def __call__(cls, *args, **kwargs):
         """按类和构造参数创建或复用实例。"""
         key = (cls, args, frozenset(kwargs.items()))
         with cls._lock:
             if key not in cls._instances:
-                cls._instances[key] = super().__call__(*args, **kwargs)
+                if getattr(cls, "_retain_failed_singleton", False):
+                    # 启动线程的 lifecycle owner 必须先发布身份再执行 __init__；
+                    # 构造中途抛错时保留实例，启动失败清理才能找到已创建的 owner。
+                    instance = cls.__new__(cls, *args, **kwargs)
+                    if not isinstance(instance, cls):
+                        return instance
+                    cls._instances[key] = instance
+                    cls.__init__(instance, *args, **kwargs)
+                else:
+                    cls._instances[key] = super().__call__(*args, **kwargs)
             return cls._instances[key]
 
 
@@ -42,13 +52,23 @@ class SingletonClass(abc.ABCMeta, type):
 
     def get_existing_instance(cls):
         """返回已创建实例，不触发初始化"""
-        return cls._instances.get(cls)
+        with cls._lock:
+            return cls._instances.get(cls)
 
     def __call__(cls, *args, **kwargs):
         """按类创建或复用唯一实例。"""
         with cls._lock:
             if cls not in cls._instances:
-                cls._instances[cls] = super().__call__(*args, **kwargs)
+                if getattr(cls, "_retain_failed_singleton", False):
+                    # 与参数化单例保持相同的 owner 发布顺序；锁会阻止其他线程
+                    # 在 __init__ 返回或抛错前读取半构造实例。
+                    instance = cls.__new__(cls, *args, **kwargs)
+                    if not isinstance(instance, cls):
+                        return instance
+                    cls._instances[cls] = instance
+                    cls.__init__(instance, *args, **kwargs)
+                else:
+                    cls._instances[cls] = super().__call__(*args, **kwargs)
             return cls._instances[cls]
 
 

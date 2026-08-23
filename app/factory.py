@@ -14,6 +14,7 @@ from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.adapters.web.health import install_health_routes
 from app.application.plugin.routes import configure_plugin_routes
+from app.application.plugin.runtime import get_plugin_manager as PluginManager
 from app.schemas.exception import (
     PersistenceUnavailableError,
 )
@@ -23,7 +24,6 @@ from app.adapters.web.security.access import (
     verify_token,
 )
 from app.application.security.token import create_access_token, decode_access_token
-from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()

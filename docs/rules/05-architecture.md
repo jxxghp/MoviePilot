@@ -72,10 +72,13 @@ to make the directory tree look symmetrical.
 | `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
-Application services may use domain rules, runtime contracts, Oper classes and
-adapters. Multi-domain workflows still belong in the existing `app/chain/`
-package. `Chain`, `Service` and `Manager` remain class patterns; they do not
-create additional top-level directory categories.
+Application services may use domain rules and runtime contracts. They own the
+persistence Protocol needed by a use case, but must not import `app.db`,
+SQLAlchemy, Session, Oper classes or concrete adapters. `app/db/adapters/`
+implements those Protocols and startup injects the implementation. Multi-domain
+workflows still belong in the existing `app/chain/` package. `Chain`, `Service`
+and `Manager` remain class patterns; they do not create additional top-level
+directory categories.
 
 ### Runtime boundaries
 
@@ -94,8 +97,11 @@ create additional top-level directory categories.
 | `app/runtime/compat/` | Standard-library-only exact legacy import routing, resource preflight scanning and DEBUG diagnostics |
 
 `app/startup/` remains the established composition root and is not nested under
-runtime. It injects providers and callbacks, orders initialization/shutdown and
-decides restart policy. Lower-level runtime modules must not import startup.
+runtime. Its root contains only `composition/`, `initializers/` and `lifecycle/`:
+composition constructs and injects cross-layer dependencies, initializers expose
+domain-scoped startup/shutdown hooks, and lifecycle orders those hooks and decides
+restart policy. Reusable persistence implementations belong in `app/db/adapters/`,
+not startup. Lower-level runtime modules must not import startup.
 Startup publishes its frozen, slotted `HostRuntime` through FastAPI `app.state`.
 API dependencies must narrow that object to a domain runtime (for example,
 `AgentChatRuntime`) instead of adding a string key to a global service map.
@@ -105,13 +111,19 @@ API, Scheduler and Chain deployment values are exposed as frozen snapshots from
 `HostRuntime.configuration`; canonical callers must not add a fresh direct
 `settings` import when the required field belongs to an existing snapshot.
 
-`app.schemas` and `app.db` are compatibility facades, not implementation
-dependency hubs. Host code imports concrete schema submodules; the schema root
+`app.schemas` and the `app.db` package root are compatibility facades, not
+implementation dependency hubs. Host code imports concrete schema submodules; the schema root
 resolves its generated export manifest lazily for plugins and legacy callers.
 DB internals import `base`, `decorators`, `engine`, `session`, concrete models
 and Oper modules directly. `app.db.models.load_all_models()` is the explicit
 composition entry used before metadata creation or migration; importing one
 model must not import every table.
+
+`app/db/oper/` owns table-oriented SQLAlchemy access and receives a caller-owned
+Session. `app/db/adapters/` is the concrete persistence-adapter layer: it may
+depend on Application-owned Protocols, UoW/Session and Oper implementations.
+This deliberate dependency inversion is the only `DB implementation ->
+Application contract` direction; Application must remain free of DB imports.
 
 ### Adapter boundaries
 
@@ -123,6 +135,7 @@ model must not import every table.
 | `app/adapters/external/` | CookieCloud, plugin market, OCR, IP-location providers and MoviePilot Server |
 | `app/adapters/external/plugin/client.py` | Read-only plugin-market and local-repository client over the established `PluginHelper` implementation |
 | `app/adapters/system/plugin/` | Plugin package and dependency I/O (`package.py`, `dependency.py`) |
+| `app/db/adapters/` | SQLAlchemy implementations of Application-owned persistence Protocols |
 
 Generic protocol transport belongs in `adapters/network`; a named product or
 ecosystem workflow belongs in `adapters/external`. An adapter may depend on
@@ -381,7 +394,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
   emits no runtime logs; upper-layer owners decide whether failures are
   operationally relevant.
 - `app/adapters/system/resource.py` only reports whether installation occurred;
-  `app/startup/modules_initializer.py` supplies the loaded site-resource
+  `app/startup/initializers/modules.py` supplies the loaded site-resource
   versions and decides whether to restart. The adapter never imports the site
   application service.
 - Configured notification discovery lives in
@@ -407,13 +420,15 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 
 | Direction | Status |
 |---|---|
-| `entrypoint -> chain / application / Oper` | Allowed according to workflow complexity |
-| `chain -> module (only via run_module dispatch) / application / Oper / canonical capability` | Allowed; direct `chain -> module` imports forbidden |
-| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/agent_initializer.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
+| `entrypoint -> chain / application / injected persistence Port` | Allowed according to workflow complexity |
+| `chain -> module (only via run_module dispatch) / application / injected Port / canonical capability` | Allowed; direct `chain -> module` and `chain -> Oper` imports forbidden |
+| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/initializers/agent.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
 | `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugin/routes.py`, `plugin/folders.py`, `scheduling.py` and `commands.py` application services |
 | `api -> factory` | Forbidden; the FastAPI route adapter is injected into `app/application/plugin/routes.py` by the composition root after creation |
-| `application -> domain / runtime / adapter / Oper` | Allowed |
-| `module -> canonical capability / Oper` | Allowed |
+| `application -> domain / runtime contract` | Allowed |
+| `application -> DB / Oper / concrete adapter` | Forbidden; define a Protocol in Application and inject an implementation |
+| `db.adapters -> application persistence Protocol / db.oper / UoW` | Allowed; this is dependency inversion, not an upper-layer use-case call |
+| `module -> canonical capability / Application persistence Port` | Allowed; direct Oper imports are forbidden for new code |
 | `module -> module / chain` | Forbidden for new code |
 | `adapter -> application / runtime.extensions / sdk / compat` | Forbidden |
 | `domain -> runtime / adapter / application / DB` | Forbidden |
@@ -426,11 +441,14 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 
 | Path | Purpose |
 |---|---|
-| `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/agent_initializer.py`, with no static `application -> agent` edge |
+| `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
-| `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/scheduler_initializer.py` |
-| `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/command_initializer.py` |
+| `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
+| `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
+| `app/db/adapters/` | SQLAlchemy repository/UoW implementations for Application-owned persistence Protocols |
+| `app/startup/composition/` | HostRuntime, configuration snapshots and cross-layer adapter wiring |
+| `app/startup/initializers/` | Domain-scoped initialization and shutdown hooks |
 | `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
 | `app/runtime/topology.py` | Single-worker full-runtime policy and safe-mode topology validation |

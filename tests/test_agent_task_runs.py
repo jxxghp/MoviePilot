@@ -1,6 +1,8 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Thread, current_thread
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -10,11 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from app.agent.orchestrator import AgentManager
 from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
 from app.db.engine import get_engine
+from app.db import base as db_base
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.models.agenttask import AgentTask
 from app.db.models.agenttaskrun import AgentTaskRun
 from app.db.session import SessionFactory
-from app.db import decorators
+from app.scheduler import Scheduler
 
 
 Engine = get_engine()
@@ -141,9 +144,11 @@ def test_agenttaskrun_oper_reuses_explicit_query_session(db, monkeypatch):
     run = AgentTaskOper().begin_run(task.id)
     assert run
     monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
     )
 
     oper = AgentTaskOper(db.session)
@@ -151,17 +156,38 @@ def test_agenttaskrun_oper_reuses_explicit_query_session(db, monkeypatch):
     assert oper.list_runs(task.id)
 
 
-def test_agenttaskrun_model_legacy_query_keeps_keyword_abi(monkeypatch):
-    """旧插件以关键字直调 AgentTaskRun 时仍自动补入短会话。"""
-    opened = []
-    monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (opened.append(True) or SessionFactory()),
-    )
+@pytest.mark.anyio
+async def test_agenttask_oper_async_get_uses_async_query_boundary() -> None:
+    """异步任务查询应复用统一 AsyncSession 路径并保持 owner 过滤语义。"""
+    task = _add_task("run-async-query")
 
-    assert AgentTaskRun.get_by_run_id(run_id="missing-legacy") is None
-    assert opened == [True]
+    assert await AgentTaskOper().async_get(task.id, user_id=task.user_id) is not None
+    assert await AgentTaskOper().async_get(task.id, user_id="another-user") is None
+
+
+@pytest.mark.anyio
+async def test_scheduler_agent_task_cleanup_uses_async_query(monkeypatch) -> None:
+    """async 调度收尾必须等待异步任务查询，不得退回同步 Oper 调用。"""
+    execute = AsyncMock(return_value=(True, "执行完成"))
+    async_get = AsyncMock(
+        return_value=SimpleNamespace(trigger_type="cron", enabled=True)
+    )
+    sync_get = Mock(side_effect=AssertionError("不应调用同步 AgentTaskOper.get"))
+    scheduler = SimpleNamespace(remove_agent_task_job=Mock())
+    monkeypatch.setattr(
+        "app.agent.runtime_loader.get_running_agent_manager",
+        lambda: SimpleNamespace(execute_scheduled_task=execute),
+    )
+    monkeypatch.setattr(AgentTaskOper, "async_get", async_get)
+    monkeypatch.setattr(AgentTaskOper, "get", sync_get)
+
+    result = await Scheduler.execute_agent_task(scheduler, task_id=42)
+
+    assert result == (True, "执行完成")
+    execute.assert_awaited_once_with(42, trigger_source="scheduled")
+    async_get.assert_awaited_once_with(42)
+    sync_get.assert_not_called()
+    scheduler.remove_agent_task_job.assert_not_called()
 
 
 def test_begin_run_rolls_back_task_claim_when_run_insert_fails() -> None:

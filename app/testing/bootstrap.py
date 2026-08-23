@@ -136,12 +136,22 @@ def ensure_sites_stub() -> None:
     try:
         import app.application.site.sites  # noqa: F401  本地已拉取时用真实模块
     except (ModuleNotFoundError, ImportError):
-        from importlib.util import spec_from_loader
-        from types import ModuleType
-        stub = ModuleType("app.application.site.sites")
-        stub.SitesHelper = _SitesHelperStub
-        stub.__spec__ = spec_from_loader("app.application.site.sites", None)
-        sys.modules["app.application.site.sites"] = stub
+        install_sites_stub()
+
+
+def install_sites_stub() -> None:
+    """强制安装确定性的站点资源垫片，供隔离探针排除本机动态资源差异。
+
+    与 :func:`ensure_sites_stub` 的“真实资源优先”语义不同，性能与架构探针需要在开发机和
+    source-only CI 中使用完全相同的 import 前提，因此必须在导入被测宿主模块前覆盖资源模块。
+    """
+    from importlib.util import spec_from_loader
+    from types import ModuleType
+
+    stub = ModuleType("app.application.site.sites")
+    setattr(stub, "SitesHelper", _SitesHelperStub)
+    stub.__spec__ = spec_from_loader("app.application.site.sites", None)
+    sys.modules["app.application.site.sites"] = stub
 
 
 def ensure_optional_stub(name: str, **attrs) -> None:
@@ -180,18 +190,20 @@ def prepare_backend() -> None:
     """
     isolate_config_dir()
     ensure_sites_stub()
-    from app.startup.database_initializer import init_db
+    from app.startup.initializers.database import init_db
     init_db()
     from app.db.oper.systemconfig import SystemConfigOper
     from app.db.oper.userconfig import UserConfigOper
+    from app.db.session import SessionFactory
 
-    SystemConfigOper().load_snapshot()
-    UserConfigOper().load_snapshot()
+    with SessionFactory() as session:
+        SystemConfigOper().load_snapshot(session)
+        UserConfigOper().load_snapshot(session)
     # 缓存装饰器在测试模块导入时即创建后端，先装配隔离配置对应的适配器。
-    from app.startup.cache_initializer import configure_cache_dependencies
+    from app.startup.initializers.cache import configure_cache_dependencies
     configure_cache_dependencies()
     # 测试与生产使用同一组合入口，确保领域解析器获得隔离库和测试 settings。
-    from app.startup.domain_initializer import configure_domain_dependencies
+    from app.startup.initializers.domain import configure_domain_dependencies
     configure_domain_dependencies()
 
 

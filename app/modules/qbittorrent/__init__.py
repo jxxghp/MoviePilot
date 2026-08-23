@@ -1,15 +1,13 @@
 from pathlib import Path
 from typing import Set, Tuple, Optional, Union, List, Dict
 
-from qbittorrentapi import TorrentFilesList
-
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
-from app.runtime.config import settings
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
+from app.runtime.settings import RuntimeSettingsCompat
 from app.modules._base import _DownloaderModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
-from app.schemas.transfer import DownloaderTorrent
+from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
     DownloadTaskState,
     DownloaderType,
@@ -20,6 +18,8 @@ from app.schemas.types import (
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
+
+settings = RuntimeSettingsCompat()
 
 _QBITTORRENT_DOWNLOADING_STATES = {
     "allocating",
@@ -513,14 +513,18 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
             return None
         return server.stop_torrents(ids=hashs)
 
-    def torrent_files(self, tid: str, downloader: Optional[str] = None) -> Optional[TorrentFilesList]:
+    def torrent_files(
+        self, tid: str, downloader: Optional[str] = None
+    ) -> Optional[List[DownloaderFile]]:
         """
-        获取种子文件列表
+        获取种子文件列表，并在模块边界隔离 qBittorrent SDK 集合类型。
         """
         server: Qbittorrent = self.get_instance(downloader)
         if not server:
             return None
-        return server.get_files(tid=tid)
+        return self._normalize_torrent_files(
+            server.get_files(tid=tid), DownloaderFile.model_validate
+        )
 
     def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[_SchemaDownloaderInfo]]:
         """

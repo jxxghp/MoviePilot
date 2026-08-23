@@ -16,6 +16,7 @@ from app.agent.middleware.activity_log import (
 )
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.tags import ToolTag
+from app.runtime.tasks import TaskRegistry
 
 
 def _write_activity_log(activity_dir, date_str: str, lines: list[str]) -> None:
@@ -273,6 +274,44 @@ def test_activity_log_after_agent_does_not_wait_for_summary(tmp_path):
     assert pending_before_wait == 1
     summarize_mock.assert_awaited_once()
     append_mock.assert_awaited_once_with("用户要求检查下载任务，助手调用工具完成检查。")
+
+
+def test_activity_log_background_task_follows_host_shutdown(tmp_path):
+    """活动摘要任务必须登记 owner，并随宿主关停取消和收敛。"""
+
+    async def _run_test():
+        """启动阻塞摘要后关闭登记器，返回 owner 与最终任务状态。"""
+        registry = TaskRegistry()
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def _blocked_record(_messages: list) -> None:
+            """保持记录任务运行，直到宿主关停发出取消。"""
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        middleware = ActivityLogMiddleware(
+            activity_dir=str(tmp_path),
+            task_registry=registry,
+        )
+        with patch.object(middleware, "_record_activity", side_effect=_blocked_record):
+            middleware._schedule_activity_recording([])
+            await started.wait()
+            owners = tuple(record.owner for record in registry.records)
+            converged = await registry.shutdown(timeout_seconds=1.0)
+            await asyncio.sleep(0)
+            return owners, converged, cancelled.is_set(), middleware._background_tasks
+
+    owners, converged, cancelled, background_tasks = asyncio.run(_run_test())
+
+    assert owners == ("agent.activity_log.record",)
+    assert converged is True
+    assert cancelled is True
+    assert background_tasks == set()
 
 
 def test_query_activity_logs_filters_by_keyword_and_date(tmp_path):

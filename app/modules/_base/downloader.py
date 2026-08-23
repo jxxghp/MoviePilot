@@ -5,7 +5,8 @@
 （任务添加、原始状态映射、任务列表构建）仍留在各模块。
 """
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Any, List, Optional, Tuple, TypeVar, Union
 
 from torrentool.torrent import Torrent
 
@@ -14,6 +15,9 @@ from app.modules import _DownloaderBase, _ModuleBase, TService
 from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.schemas.types import TorrentQueryStatus, TorrentStatus
+
+
+TFile = TypeVar("TFile")
 
 
 class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[TService]):
@@ -42,6 +46,16 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[TService]):
             if server.is_inactive():
                 logger.info(f"{self.get_name()}下载器 {name} 连接断开，尝试重连 ...")
                 server.reconnect()
+
+    @staticmethod
+    def _normalize_torrent_files(
+        files: Any, item_factory: Callable[[Any], TFile]
+    ) -> Optional[List[TFile]]:
+        """把 provider 文件集合统一投影为不依赖外部 SDK 的宿主 DTO。"""
+        if files is None:
+            return None
+        source = getattr(files, "data", files)
+        return [item_factory(item) for item in source]
 
     def _get_torrent_info(self, content: Union[Path, str, bytes]) \
             -> Tuple[Optional[Torrent], Optional[bytes]]:

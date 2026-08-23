@@ -1,9 +1,8 @@
 """把旧整理历史 Oper 的业务写入方法转交给应用服务。"""
 
-from typing import Optional
+from typing import Any, Optional
 
 from app.application.history import add_transfer_fail, add_transfer_success
-from app.db.models.transferhistory import TransferHistory
 from app.db.oper.transferhistory import TransferHistoryOper as CanonicalTransferHistoryOper
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
@@ -23,7 +22,7 @@ class TransferHistoryOper(CanonicalTransferHistoryOper):
             transferinfo: TransferInfo,
             downloader: Optional[str] = None,
             download_hash: Optional[str] = None,
-    ) -> Optional[TransferHistory]:
+    ) -> Optional[Any]:
         """
         按旧签名新增整理成功历史。
 
@@ -49,7 +48,7 @@ class TransferHistoryOper(CanonicalTransferHistoryOper):
             transferinfo: Optional[TransferInfo] = None,
             downloader: Optional[str] = None,
             download_hash: Optional[str] = None,
-    ) -> Optional[TransferHistory]:
+    ) -> Optional[Any]:
         """
         按旧签名新增整理失败历史。
 

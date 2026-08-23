@@ -58,7 +58,7 @@ def _resolve_skill_catalog() -> SkillCatalogPort:
     """解析已注入的技能目录；缺少组合根装配时给出明确错误。"""
     if _skill_catalog_provider is None:
         raise RuntimeError(
-            "技能目录服务未注册：请先导入 app.startup.agent_initializer "
+            "技能目录服务未注册：请先导入 app.startup.initializers.agent "
             "完成组合根装配"
         )
     return _skill_catalog_provider()

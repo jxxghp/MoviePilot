@@ -56,7 +56,7 @@ def _route_contract(route: APIRoute) -> tuple[Any, ...]:
 def test_init_routers_directly_includes_endpoint_router_specs(monkeypatch):
     """启动聚合应直接 include 原始端点路由器并一次性附加完整 v1 前缀。"""
     from app.api.router_specs import API_V1_ROUTER_SPECS
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = FastAPI()
     include_calls = []
@@ -90,7 +90,7 @@ def test_init_routers_directly_includes_endpoint_router_specs(monkeypatch):
 def test_direct_v1_routes_and_openapi_match_compatibility_router():
     """最终应用的 v1 路由合同与 OpenAPI 应和兼容聚合结果完全一致。"""
     from app.api.apiv1 import api_router
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     compatibility_app = FastAPI()
     compatibility_app.include_router(api_router, prefix=settings.API_V1_STR)
@@ -123,7 +123,7 @@ def test_direct_v1_routes_and_openapi_match_compatibility_router():
 @pytest.mark.anyio
 async def test_direct_routes_honor_application_dependency_overrides():
     """直接聚合后的路由仍应由最终 FastAPI 应用解析依赖覆盖。"""
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = FastAPI()
     init_routers(app)
@@ -163,7 +163,7 @@ def test_compatibility_api_router_keeps_public_contract():
 
 def test_init_routers_accepts_composition_root_api_prefix():
     """路由初始化应使用组合根传入的 API 前缀。"""
-    from app.startup.routers_initializer import init_routers
+    from app.startup.initializers.routers import init_routers
 
     app = FastAPI()
     init_routers(app, "/custom/v1")

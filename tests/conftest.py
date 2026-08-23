@@ -5,8 +5,11 @@
 """
 import asyncio
 import sys
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 # 必须早于首个牵入 app.runtime.config 的 import（app.db / app.chain.* 都会牵入）：引擎本身已惰性，
@@ -19,6 +22,9 @@ prepare_backend()
 
 # 复用共享 autouse 网络守卫；同一实现亦供各插件仓 conftest import 复用，避免逐仓维护
 from app.testing.network_guard import block_real_network  # noqa: E402,F401
+
+
+TResult = TypeVar("TResult")
 
 
 class _TestDatabaseExecutor:
@@ -51,7 +57,7 @@ def configure_plugin_system_services():
     )
     from app.runtime.config import settings
     from app.runtime.settings import configure_runtime_setting_provider
-    from app.startup.configuration import (
+    from app.startup.composition.configuration import (
         build_api_runtime_config,
         build_chain_runtime_config,
         build_scheduler_runtime_config,
@@ -89,9 +95,10 @@ def configure_plugin_system_services():
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     database_executor = _TestDatabaseExecutor()
     system_config = SystemConfigOper()
-    system_config.load_snapshot()
     user_config = UserConfigOper()
-    user_config.load_snapshot()
+    with SessionFactory() as session:
+        system_config.load_snapshot(session)
+        user_config.load_snapshot(session)
     configure_system_config(
         SystemConfigService(
             repository=system_config,
@@ -153,20 +160,18 @@ def configure_plugin_system_services():
     from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
     from app.db.oper.message import MessageOper
     from app.db.oper.passkey import PassKeyOper
-    from app.startup.subscription import TransactionalSubscribeWriter
-    from app.startup.download_failure import TransactionalDownloadFailureRepository
-    from app.startup.site import TransactionalSiteRepository
-    from app.startup.workflow import TransactionalWorkflowExecutionService
-    from app.startup.transaction import TransactionalWriteRunner
+    from app.db.adapters.subscription import TransactionalSubscribeWriter
+    from app.db.adapters.download import TransactionalDownloadFailureRepository
+    from app.db.adapters.site import TransactionalSiteRepository
+    from app.db.adapters.workflow import TransactionalWorkflowExecutionService
+    from app.db.adapters.transaction import TransactionalWriteRunner
 
-    def compatibility_sync_session() -> Session:
-        """动态读取可被存量隔离数据库用例替换的 ScopedSession。"""
-        from app.db import decorators
-
-        return decorators.ScopedSession()
+    def create_sync_session() -> Session:
+        """为无显式会话的 Oper 测试入口创建独占同步 Session。"""
+        return SessionFactory()
 
     transaction_runner = TransactionalWriteRunner(
-        sync_session=compatibility_sync_session,
+        sync_session=create_sync_session,
         async_session=async_session_scope,
     )
     configure_transaction_runners(
@@ -346,6 +351,20 @@ class DbHarness:
             self.session.add(row)
         self.session.commit()
         return rows[0] if len(rows) == 1 else list(rows)
+
+    def run_async_session(
+        self,
+        operation: Callable[[AsyncSession], Awaitable[TResult]],
+    ) -> TResult:
+        """在临时数据库的显式 AsyncSession 中执行被测操作。"""
+        from app.db.session import async_session_scope
+
+        async def execute() -> TResult:
+            """打开异步会话并把事务所有权留在测试载具。"""
+            async with async_session_scope() as session:
+                return await operation(session)
+
+        return asyncio.run(execute())
 
     def cleanup(self) -> None:
         """按水位删除本用例新增的全部行。"""

@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import run_legacy_async_query
 
 
 class SiteStatistic(Base):
@@ -37,21 +36,12 @@ class SiteStatistic(Base):
     @classmethod
     async def async_get_by_domain(
         cls,
-        db: AsyncSession | None = None,
-        domain: str | None = None,
+        db: AsyncSession,
+        domain: str,
     ):
-        """在调用方 AsyncSession 中查询站点统计，并兼容旧无会话调用。"""
-        if domain is None:
-            raise TypeError("domain is required")
-
-        async def query(session: AsyncSession):
-            """在给定异步会话中执行站点统计查询。"""
-            result = await session.execute(select(cls).where(cls.domain == domain))
-            return result.scalar_one_or_none()
-
-        if isinstance(db, AsyncSession):
-            return await query(db)
-        return await run_legacy_async_query(query)
+        """在调用方 AsyncSession 中查询站点统计。"""
+        result = await db.execute(select(cls).where(cls.domain == domain))
+        return result.scalar_one_or_none()
 
     @classmethod
     def reset(cls, db: Session):

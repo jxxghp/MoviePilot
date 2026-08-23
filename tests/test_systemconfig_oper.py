@@ -7,6 +7,7 @@ import pytest
 
 from app.db.models.systemconfig import SystemConfig
 from app.db.oper.systemconfig import SystemConfigOper
+from app.db.session import SessionFactory
 from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton
 
@@ -22,6 +23,12 @@ def _fresh_oper() -> SystemConfigOper:
     oper = SystemConfigOper()
     oper.load_snapshot()
     return oper
+
+
+def _stored_config(key: str) -> SystemConfig | None:
+    """使用显式短会话回读系统配置持久化结果。"""
+    with SessionFactory() as session:
+        return SystemConfig.get_by_key(session, key)
 
 
 def test_constructor_does_not_query_database(monkeypatch):
@@ -167,7 +174,7 @@ def test_set_creates_record_for_falsy_value():
 
     assert oper.set(key, False) is True
     assert oper.get(key) is False
-    assert SystemConfig.get_by_key(oper._db, key) is not None
+    assert _stored_config(key) is not None
 
 
 def test_set_persists_falsy_value_on_existing_record():
@@ -178,7 +185,7 @@ def test_set_persists_falsy_value_on_existing_record():
     oper.set(key, True)
     assert oper.set(key, False) is True
     assert oper.get(key) is False
-    assert SystemConfig.get_by_key(oper._db, key).value is False
+    assert _stored_config(key).value is False
 
 
 @pytest.mark.asyncio
@@ -200,7 +207,7 @@ async def test_async_set_persists_falsy_value_on_existing_record():
     )
     assert await service.async_set(key, False) is True
     assert oper.get(key) is False
-    assert SystemConfig.get_by_key(oper._db, key).value is False
+    assert _stored_config(key).value is False
 
 
 @pytest.mark.asyncio
@@ -221,7 +228,7 @@ async def test_async_set_creates_record_for_falsy_value():
     )
     assert await service.async_set(key, 0) is True
     assert oper.get(key) == 0
-    assert SystemConfig.get_by_key(oper._db, key).value == 0
+    assert _stored_config(key).value == 0
 
 
 def test_delete_removes_record_explicitly():
@@ -232,7 +239,7 @@ def test_delete_removes_record_explicitly():
     oper.set(key, False)
     assert oper.delete(key) is True
     assert oper.get(key) is None
-    assert SystemConfig.get_by_key(oper._db, key) is None
+    assert _stored_config(key) is None
 
 
 def test_mounted_local_disk_delete_empty_dirs_off_is_persisted():

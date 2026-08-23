@@ -9,10 +9,10 @@ import asyncio
 
 import pytest
 
-from app.db import decorators
+from app.db import base as db_base
 from app.db.models.workflow import Workflow
 from app.db.oper.workflow import WorkflowOper
-from app.db.session import SessionFactory, async_session_scope
+from app.db.session import async_session_scope
 
 
 @pytest.fixture(autouse=True)
@@ -52,11 +52,13 @@ def test_list_and_get_by_name_match_async_twins(db):
     created = db.add(_flow("wf-name"))
 
     assert Workflow.get_by_name(db.session, "wf-name").id == created.id
-    assert asyncio.run(Workflow.async_get_by_name(name="wf-name")).id == created.id
+    assert db.run_async_session(
+        lambda session: Workflow.async_get_by_name(session, "wf-name")
+    ).id == created.id
     assert Workflow.get_by_name(db.session, "wf-missing") is None
 
     sync_ids = sorted(w.id for w in Workflow.list(db.session))
-    async_ids = sorted(w.id for w in asyncio.run(Workflow.async_list()))
+    async_ids = sorted(w.id for w in db.run_async_session(Workflow.async_list))
     assert sync_ids == async_ids
 
 
@@ -64,9 +66,11 @@ def test_workflow_oper_reuses_explicit_query_sessions(db, monkeypatch):
     """WorkflowOper 绑定显式会话后不得再创建兼容查询会话。"""
     created = db.add(_flow("wf-explicit-session"))
     monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
     )
 
     assert WorkflowOper(db.session).get_by_name(created.name).id == created.id
@@ -75,27 +79,15 @@ def test_workflow_oper_reuses_explicit_query_sessions(db, monkeypatch):
         """验证异步 Oper 同样复用调用方会话。"""
         async with async_session_scope() as session:
             monkeypatch.setattr(
-                decorators,
-                "async_session_scope",
-                lambda: (_ for _ in ()).throw(AssertionError("不应创建额外异步会话")),
+                db_base,
+                "run_async_transaction",
+                lambda _operation: (_ for _ in ()).throw(
+                    AssertionError("不应创建额外异步事务")
+                ),
             )
             assert (await WorkflowOper(session).async_get_by_name(created.name)).id == created.id
 
     asyncio.run(check())
-
-
-def test_workflow_model_legacy_queries_keep_no_session_abi(db, monkeypatch):
-    """旧插件直接调用 Workflow Model 时仍应按签名自动补入短会话。"""
-    created = db.add(_flow("wf-legacy-query"))
-    opened = []
-    monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (opened.append(True) or SessionFactory()),
-    )
-
-    assert Workflow.get_by_name(name=created.name).id == created.id
-    assert opened == [True]
 
 
 def test_enabled_workflows_exclude_paused(db):
@@ -111,8 +103,9 @@ def test_enabled_workflows_exclude_paused(db):
 
     assert {"wf-waiting", "wf-running"} <= names
     assert "wf-paused" not in names
-    assert "wf-paused" not in {w.name for w in
-                               asyncio.run(Workflow.async_get_enabled_workflows())}
+    assert "wf-paused" not in {
+        w.name for w in db.run_async_session(Workflow.async_get_enabled_workflows)
+    }
 
 
 def test_timer_triggered_includes_legacy_null_trigger_type(db):
@@ -156,9 +149,13 @@ def test_trigger_lists_match_async_twins(db):
     db.add(_flow("wf-t", trigger_type="timer"), _flow("wf-e", trigger_type="event"))
 
     assert sorted(w.id for w in Workflow.get_timer_triggered_workflows(db.session)) == \
-        sorted(w.id for w in asyncio.run(Workflow.async_get_timer_triggered_workflows()))
+        sorted(w.id for w in db.run_async_session(
+            Workflow.async_get_timer_triggered_workflows
+        ))
     assert sorted(w.id for w in Workflow.get_event_triggered_workflows(db.session)) == \
-        sorted(w.id for w in asyncio.run(Workflow.async_get_event_triggered_workflows()))
+        sorted(w.id for w in db.run_async_session(
+            Workflow.async_get_event_triggered_workflows
+        ))
 
 
 # --------------------------------------------------------------------------- #

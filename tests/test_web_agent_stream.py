@@ -290,14 +290,12 @@ def test_build_web_agent_input_attachments_marks_kinds():
 def test_build_web_agent_command_items_returns_slash_commands():
     """WebAgent 命令建议应返回可展示的斜杠命令。"""
     with patch(
-        "app.api.endpoints.agent.Command",
-        return_value=SimpleNamespace(
-            get_commands=lambda: {
-                "/sites": {"description": "管理站点", "category": "站点"},
-                "hidden": {"description": "忽略", "category": "其他"},
-                "/hidden": {"description": "隐藏", "category": "其他", "show": False},
-            }
-        ),
+        "app.api.endpoints.agent.get_commands",
+        return_value={
+            "/sites": {"description": "管理站点", "category": "站点"},
+            "hidden": {"description": "忽略", "category": "其他"},
+            "/hidden": {"description": "隐藏", "category": "其他", "show": False},
+        },
     ):
         commands = _build_web_agent_command_items()
 
@@ -314,7 +312,12 @@ def test_build_web_agent_command_items_returns_slash_commands():
 
 def test_build_web_agent_command_items_includes_sites_command():
     """WebAgent 命令建议应包含内建站点管理命令。"""
-    with patch("app.command.Scheduler"), patch("app.command.ThreadHelper"):
+    with patch(
+        "app.api.endpoints.agent.get_commands",
+        return_value={
+            "/sites": {"description": "管理站点", "category": "站点"},
+        },
+    ):
         commands = _build_web_agent_command_items()
 
     assert any(command["command"] == "/sites" for command in commands)
@@ -344,8 +347,8 @@ def test_web_agent_stream_returns_error_for_unknown_command():
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
 
     with patch(
-        "app.api.endpoints.agent.Command",
-        return_value=SimpleNamespace(get=lambda _: {}),
+        "app.api.endpoints.agent.get_command",
+        return_value=None,
     ), patch("app.api.endpoints.agent.MessageChain.handle_message") as handle_message:
         response = asyncio.run(web_agent_stream(payload, request, user))
         body = "".join(asyncio.run(_collect_streaming_response(response)))
@@ -1206,7 +1209,7 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
         worker = agent_manager._session_workers.pop(session_id, None)
         if worker:
             worker.cancel()
-        AgentChat.delete(rid=existing_chat.id)
+        AgentChatOper().delete_by_id(existing_chat.id)
 
 
 def test_web_agent_cancel_keeps_existing_display_history():
@@ -1265,7 +1268,7 @@ def test_web_agent_cancel_keeps_existing_display_history():
         assert preserved_chat.message_count == 2
         assert preserved_chat.preview == "保留的回答"
     finally:
-        AgentChat.delete(rid=existing_chat.id)
+        AgentChatOper().delete_by_id(existing_chat.id)
 
 
 def test_web_agent_stream_rejects_confirmation_without_protected_capability():
@@ -1411,7 +1414,7 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
         assert preserved_chat.message_count == 2
         assert preserved_chat.preview == "断线前的回答"
     finally:
-        AgentChat.delete(rid=existing_chat.id)
+        AgentChatOper().delete_by_id(existing_chat.id)
 
 
 def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
@@ -1651,6 +1654,64 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
         snapshot_release.set()
 
     assert snapshot_finished.wait(timeout=1)
+
+
+def test_web_agent_traditional_stream_drains_collection_on_cancellation():
+    """传统 SSE 被取消时必须等待请求级 collection 子任务完成清理。"""
+    payload = schemas.AgentWebChatRequest(text="/状态", session_id="traditional-cancel")
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+
+    async def scenario():
+        """取消正在等待的 SSE 读取，并观察 collection 的清理时序。"""
+        started = asyncio.Event()
+        cancelling = asyncio.Event()
+        release_cleanup = asyncio.Event()
+        cleanup_finished = asyncio.Event()
+
+        async def blocked_collect(**_kwargs):
+            """阻塞传统消息收集，并在取消后等待测试释放清理。"""
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelling.set()
+                await release_cleanup.wait()
+                cleanup_finished.set()
+                raise
+
+        with patch(
+            "app.api.endpoints.agent._is_web_agent_traditional_message",
+            return_value=True,
+        ), patch(
+            "app.api.endpoints.agent._ensure_web_agent_command_allowed",
+            return_value=None,
+        ), patch(
+            "app.api.endpoints.agent._get_web_agent_unknown_command_message",
+            return_value=None,
+        ), patch(
+            "app.api.endpoints.agent._build_web_agent_session_id_async",
+            return_value="web-agent:traditional-cancel",
+        ), patch(
+            "app.api.endpoints.agent._collect_web_agent_traditional_events",
+            side_effect=blocked_collect,
+        ):
+            response = await web_agent_stream(payload, request, user)
+            iterator = response.body_iterator.__aiter__()
+            await asyncio.wait_for(anext(iterator), timeout=1)
+            pending_chunk = asyncio.create_task(anext(iterator))
+            await asyncio.wait_for(started.wait(), timeout=1)
+            pending_chunk.cancel()
+            await asyncio.wait_for(cancelling.wait(), timeout=1)
+            assert pending_chunk.done() is False
+            assert cleanup_finished.is_set() is False
+
+            release_cleanup.set()
+            result = await asyncio.gather(pending_chunk, return_exceptions=True)
+            assert isinstance(result[0], StopAsyncIteration)
+            assert cleanup_finished.is_set() is True
+
+    asyncio.run(scenario())
 
 
 def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():

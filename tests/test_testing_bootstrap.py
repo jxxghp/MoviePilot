@@ -2,10 +2,35 @@
 from __future__ import annotations
 
 import builtins
+import sys
 import types
 from pathlib import Path
 
 from app.testing import bootstrap
+
+
+def test_install_sites_stub_replaces_loaded_dynamic_resource(monkeypatch):
+    """隔离探针必须覆盖本机资源模块，保证 source-only CI 与开发机前提一致。"""
+    real_module = types.ModuleType("app.application.site.sites")
+    real_module.SitesHelper = object
+    monkeypatch.setitem(sys.modules, "app.application.site.sites", real_module)
+
+    bootstrap.install_sites_stub()
+
+    installed = sys.modules["app.application.site.sites"]
+    assert installed is not real_module
+    assert installed.SitesHelper is bootstrap._SitesHelperStub
+
+
+def test_ensure_sites_stub_preserves_loaded_dynamic_resource(monkeypatch):
+    """常规测试引导仍应优先复用已经加载的真实站点资源。"""
+    real_module = types.ModuleType("app.application.site.sites")
+    real_module.SitesHelper = object
+    monkeypatch.setitem(sys.modules, "app.application.site.sites", real_module)
+
+    bootstrap.ensure_sites_stub()
+
+    assert sys.modules["app.application.site.sites"] is real_module
 
 
 def test_isolate_config_cleanup_uses_loaded_db_module_without_late_import(monkeypatch):

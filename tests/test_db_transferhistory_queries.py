@@ -401,8 +401,11 @@ def test_list_by_title_matches_async_twin(db):
 
     sync_titles = [h.title for h in TransferHistory.list_by_title(
         db.session, "ParallelSearch", count=-1)]
-    async_titles = [h.title for h in asyncio.run(TransferHistory.async_list_by_title(
-        title="ParallelSearch", count=-1))]
+    async_titles = [h.title for h in db.run_async_session(
+        lambda session: TransferHistory.async_list_by_title(
+            session, title="ParallelSearch", count=-1
+        )
+    )]
 
     assert sync_titles == async_titles
 
@@ -415,13 +418,21 @@ def test_count_and_count_by_title_match_async_twins(db):
     db.add(_hist("CountMe", status=True, src="/downloads/c1.mkv", dest="/media/c1.mkv"),
            _hist("CountMe", status=False, src="/downloads/c2.mkv", dest="/media/c2.mkv"))
 
-    assert TransferHistory.count(db.session) == asyncio.run(TransferHistory.async_count())
+    assert TransferHistory.count(db.session) == db.run_async_session(
+        TransferHistory.async_count
+    )
     assert TransferHistory.count(db.session, status=True) == \
-        asyncio.run(TransferHistory.async_count(status=True))
+        db.run_async_session(
+            lambda session: TransferHistory.async_count(session, status=True)
+        )
     assert TransferHistory.count_by_title(db.session, "CountMe") == 2
     assert TransferHistory.count_by_title(db.session, "CountMe", status=False) == 1
     assert TransferHistory.count_by_title(db.session, "CountMe") == \
-        asyncio.run(TransferHistory.async_count_by_title(title="CountMe"))
+        db.run_async_session(
+            lambda session: TransferHistory.async_count_by_title(
+                session, title="CountMe"
+            )
+        )
 
 
 def test_statistic_groups_by_day_within_the_window(db):
@@ -452,7 +463,9 @@ def test_statistic_includes_the_window_start_boundary(db, frozen_now):
     db.add(_hist("窗口起点上", src="/data/bstat.mkv", date=window_start))
 
     rows = dict(TransferHistory.statistic(db.session, days=7))
-    async_rows = dict(asyncio.run(TransferHistory.async_statistic(days=7)))
+    async_rows = dict(db.run_async_session(
+        lambda session: TransferHistory.async_statistic(session, days=7)
+    ))
 
     assert rows.get(boundary_day, 0) == 1
     assert async_rows.get(boundary_day, 0) == 1

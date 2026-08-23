@@ -7,10 +7,9 @@
 """
 import pytest
 
-from app.db import decorators
+from app.db import base as db_base
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferpending import TransferPendingOper
-from app.db.session import SessionFactory
 
 
 @pytest.fixture(autouse=True)
@@ -160,30 +159,14 @@ def test_oper_reuses_explicit_query_session(db, monkeypatch):
         created_at="2026-08-13 10:00:00",
     ))
     monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (_ for _ in ()).throw(AssertionError("不应创建额外同步会话")),
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
     )
 
     assert ("local", "/mnt/explicit.mkv") in TransferPendingOper(db.session).list_all()
-
-
-def test_model_legacy_query_keeps_keyword_abi(db, monkeypatch):
-    """旧插件以关键字直调 TransferPending 时仍自动补入短会话。"""
-    db.add(TransferPending(
-        storage="local",
-        src_path="/mnt/legacy.mkv",
-        created_at="2026-08-13 10:00:00",
-    ))
-    opened = []
-    monkeypatch.setattr(
-        decorators,
-        "ScopedSession",
-        lambda: (opened.append(True) or SessionFactory()),
-    )
-
-    assert TransferPending.list_all(limit=1)
-    assert opened == [True]
 
 
 def test_oper_drops_rows_with_missing_fields(db):

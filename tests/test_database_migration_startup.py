@@ -27,8 +27,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine.url import make_url
 
-from app.startup import database_initializer as db_init
-from app.startup import database as startup_database
+from app.startup.composition import database as startup_database
+from app.startup.initializers import database as db_init
 from app.startup import lifecycle
 from app.runtime.health import get_application_health
 from app.db.models.systemconfig import SystemConfig

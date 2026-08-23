@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 from app import scheduler as scheduler_module
 from app.scheduler import Scheduler
 from app.application.configuration import SchedulerRuntimeConfig
-from app.startup import scheduler_initializer
+from app.startup.initializers import scheduler as scheduler_initializer
 
 
 class _BackgroundSchedulerStub:

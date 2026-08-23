@@ -100,12 +100,18 @@ def test_sync_persists_music_without_querying_tv_episodes(database):
     )
     chain.episodes = lambda *_args, **_kwargs: pytest.fail("音乐条目不应查询电视剧分集")
 
-    with patch("app.db.decorators.ScopedSession", database), patch.object(
-        MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
-        "get_mediaserver_configs",
-        return_value=[SimpleNamespace(name="navidrome", enabled=True, sync_libraries=["all"])],
-    ):
-        chain.sync()
+    with database() as session:
+        with patch.object(
+            MEDIA_SERVER_CHAIN_MODULE,
+            "MediaServerOper",
+            lambda: MediaServerOper(session),
+        ), patch.object(
+            MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+            "get_mediaserver_configs",
+            return_value=[SimpleNamespace(name="navidrome", enabled=True, sync_libraries=["all"])],
+        ):
+            chain.sync()
+            session.commit()
 
     with database() as db:
         item = db.query(MediaServerItem).one()
@@ -187,12 +193,18 @@ def test_sync_updates_rows_and_removes_stale_entries(database):
     )
     chain.episodes = lambda *_args, **_kwargs: []
 
-    with patch("app.db.decorators.ScopedSession", database), patch.object(
-        MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
-        "get_mediaserver_configs",
-        return_value=[SimpleNamespace(name="plex", enabled=True, sync_libraries=["movies"])],
-    ):
-        chain.sync()
+    with database() as session:
+        with patch.object(
+            MEDIA_SERVER_CHAIN_MODULE,
+            "MediaServerOper",
+            lambda: MediaServerOper(session),
+        ), patch.object(
+            MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+            "get_mediaserver_configs",
+            return_value=[SimpleNamespace(name="plex", enabled=True, sync_libraries=["movies"])],
+        ):
+            chain.sync()
+            session.commit()
 
     with database() as db:
         items = (
@@ -265,17 +277,23 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
     chain.items = items
     chain.episodes = lambda *_args, **_kwargs: []
 
-    with patch("app.db.decorators.ScopedSession", database), patch.object(
-        MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
-        "get_mediaserver_configs",
-        return_value=[
-            SimpleNamespace(name="plex-a", enabled=True, sync_libraries=["all"]),
-            SimpleNamespace(name="plex-b", enabled=True, sync_libraries=["all"]),
-        ],
-    ):
-        chain.sync(
-            progress_callback=lambda **kwargs: progress_snapshots.append(kwargs)
-        )
+    with database() as session:
+        with patch.object(
+            MEDIA_SERVER_CHAIN_MODULE,
+            "MediaServerOper",
+            lambda: MediaServerOper(session),
+        ), patch.object(
+            MEDIA_SERVER_CHAIN_MODULE.ServiceConfigHelper,
+            "get_mediaserver_configs",
+            return_value=[
+                SimpleNamespace(name="plex-a", enabled=True, sync_libraries=["all"]),
+                SimpleNamespace(name="plex-b", enabled=True, sync_libraries=["all"]),
+            ],
+        ):
+            chain.sync(
+                progress_callback=lambda **kwargs: progress_snapshots.append(kwargs)
+            )
+            session.commit()
 
     assert events == [
         "count:plex-a",

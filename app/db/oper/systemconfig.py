@@ -2,6 +2,8 @@ import copy
 import threading
 from typing import Any, Optional, Union
 
+from sqlalchemy.orm import Session
+
 from app.db.base import DbOper
 from app.db.models.systemconfig import SystemConfig
 from app.schemas.types import SystemConfigKey
@@ -20,12 +22,15 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         self._write_lock = threading.RLock()
         self._loaded = False
 
-    def load_snapshot(self) -> None:
-        """从数据库加载完整配置，并一次性发布新的内存快照。"""
+    def load_snapshot(self, db: Optional[Session] = None) -> None:
+        """从显式会话或 Oper 事务边界加载配置并发布内存快照。"""
         with self._write_lock:
+            items = SystemConfig.list(db) if db is not None else self._execute_sync_query(
+                SystemConfig.list
+            )
             snapshot = {
                 item.key: copy.deepcopy(item.value)
-                for item in SystemConfig.list(self._db)
+                for item in items
             }
             with self._snapshot_lock:
                 self.__SYSTEMCONF = snapshot

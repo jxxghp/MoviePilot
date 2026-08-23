@@ -8,6 +8,7 @@ from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
+from app.runtime.tasks import get_task_registry
 from app.modules import _ModuleBase
 from app.schemas.types import MediaType, ModuleType, OtherModulesType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
@@ -626,16 +627,22 @@ class FanartModule(_ModuleBase):
             return cls._movie_url % queryid
         return cls._tv_url % queryid
 
-    def clear_cache(self):
-        """
-        清除缓存
-        """
+    def clear_cache(self) -> None:
+        """清理同步缓存，并由宿主登记运行中事件循环的异步清理。"""
         logger.info(f"开始清除{self.get_name()}缓存 ...")
         self.__request_fanart.cache_clear()
         async_cache_clear = self.__async_request_fanart.cache_clear()
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(async_cache_clear)
+            asyncio.get_running_loop()
         except RuntimeError:
             asyncio.run(async_cache_clear)
+        else:
+            try:
+                get_task_registry().create(
+                    async_cache_clear,
+                    owner="module.fanart.cache_clear",
+                )
+            except RuntimeError:
+                # 关停阶段拒绝新 owner 时，同步缓存已清理且登记器会关闭 coroutine。
+                return
         logger.info(f"{self.get_name()}缓存清除完成")

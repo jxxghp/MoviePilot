@@ -851,7 +851,7 @@ from app.testing.bootstrap import prepare_backend
 prepare_backend()
 
 import sys
-from typing import Any, Optional, get_type_hints
+from typing import List, Optional, get_type_hints
 
 provider_prefixes = ("qbittorrentapi", "transmission_rpc", "pywebpush")
 
@@ -869,8 +869,9 @@ assert loaded_provider_modules() == []
 
 from app.chain import ChainBase
 from app.api.endpoints.message import WebPushError, is_webpush_subscription_gone
+from app.schemas.transfer import DownloaderFile
 
-assert get_type_hints(ChainBase.torrent_files)["return"] == Optional[Any]
+assert get_type_hints(ChainBase.torrent_files)["return"] == Optional[List[DownloaderFile]]
 assert get_type_hints(is_webpush_subscription_gone)["error"] is WebPushError
 assert loaded_provider_modules() == []
 """

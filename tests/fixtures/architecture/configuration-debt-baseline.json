@@ -1,5 +1,32 @@
 {
-  "schema_version": 1,
+  "composition_root_oper_boundaries": {
+    "count": 1,
+    "entries": [
+      {
+        "file": "app/startup/initializers/modules.py",
+        "name": "SystemConfigOper",
+        "reason": "启动组合根负责构造唯一的系统配置数据库适配器"
+      }
+    ]
+  },
+  "foundational_settings_boundaries": {
+    "count": 3,
+    "entries": [
+      {
+        "file": "app/db/base.py",
+        "reason": "模型声明阶段必须在运行时配置服务装配前确定数据库主键类型"
+      },
+      {
+        "file": "app/db/engine.py",
+        "reason": "数据库引擎是运行时配置服务的底层依赖，不能通过兼容代理自递归"
+      },
+      {
+        "file": "app/db/session.py",
+        "reason": "数据库会话与连接配额必须在应用组合根装配前可用"
+      }
+    ]
+  },
+  "schema_version": 2,
   "scope": {
     "excluded": [
       "app/plugins",
@@ -10,25 +37,11 @@
     "root": "app"
   },
   "settings_imports": {
-    "count": 8,
-    "files": [
-      "app/db/base.py",
-      "app/db/engine.py",
-      "app/db/session.py",
-      "app/modules/postgresql/__init__.py",
-      "app/modules/qbittorrent/__init__.py",
-      "app/modules/redis/__init__.py",
-      "app/modules/rtorrent/__init__.py",
-      "app/modules/transmission/__init__.py"
-    ]
+    "count": 0,
+    "files": []
   },
   "system_config_oper_constructions": {
-    "calls": [
-      {
-        "file": "app/startup/modules_initializer.py",
-        "name": "SystemConfigOper"
-      }
-    ],
-    "count": 1
+    "calls": [],
+    "count": 0
   }
 }

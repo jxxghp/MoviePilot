@@ -1,4 +1,4 @@
-"""启动组合层使用的 SQLAlchemy outbox 持久化适配器。"""
+"""Application outbox 端口的 SQLAlchemy 持久化适配器。"""
 
 from datetime import datetime
 

@@ -3,6 +3,14 @@
 from app.application.backup import BackupArtifact, BackupVerification
 from app.application.database import get_database_governance as _get_database_governance
 
+__all__ = [
+    "BackupArtifact",
+    "BackupVerification",
+    "create_backup",
+    "list_backups",
+    "verify_backup",
+]
+
 
 def create_backup() -> BackupArtifact:
     """在宿主管理目录中创建当前数据库的一致备份。"""

@@ -40,7 +40,7 @@ def test_clear_package_tool_cache_only_removes_pip_and_uv_old_files(tmp_path, mo
     """
     包安装工具缓存清理只处理 pip/uv 子目录，不接管整个 .cache 或业务缓存。
     """
-    from app.startup.modules_initializer import clear_package_tool_cache
+    from app.startup.initializers.modules import clear_package_tool_cache
 
     old_time = time.time() - 40 * 24 * 3600
     cache_root = tmp_path / ".cache"
@@ -68,7 +68,7 @@ def test_clear_package_tool_cache_disabled_when_days_non_positive(tmp_path, monk
     """
     PACKAGE_CACHE_DAYS 小于等于 0 时不清理包安装缓存。
     """
-    from app.startup.modules_initializer import clear_package_tool_cache
+    from app.startup.initializers.modules import clear_package_tool_cache
 
     old_time = time.time() - 40 * 24 * 3600
     old_pip = tmp_path / ".cache" / "pip" / "old.whl"
@@ -88,7 +88,7 @@ def test_clear_package_tool_cache_isolates_subdir_errors(tmp_path, monkeypatch):
     """
     单个工具缓存目录清理失败，不影响另一个工具缓存目录。
     """
-    from app.startup.modules_initializer import clear_package_tool_cache
+    from app.startup.initializers.modules import clear_package_tool_cache
 
     calls = []
 
@@ -100,7 +100,7 @@ def test_clear_package_tool_cache_isolates_subdir_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(settings, "PACKAGE_CACHE_ROOT", str(tmp_path / "custom-package-cache"))
     monkeypatch.setattr(settings, "PACKAGE_CACHE_DAYS", 30)
-    monkeypatch.setattr("app.startup.modules_initializer.SystemUtils.clear", fake_clear)
+    monkeypatch.setattr("app.startup.initializers.modules.SystemUtils.clear", fake_clear)
 
     clear_package_tool_cache()
 
@@ -110,7 +110,7 @@ def test_clear_package_tool_cache_uses_package_cache_root(tmp_path, monkeypatch)
     """
     PACKAGE_CACHE_ROOT 用作 pip/uv 清理根目录，不扩大到配置目录下其他缓存。
     """
-    from app.startup.modules_initializer import clear_package_tool_cache
+    from app.startup.initializers.modules import clear_package_tool_cache
 
     old_time = time.time() - 40 * 24 * 3600
     package_cache_root = tmp_path / "custom-package-cache"
@@ -134,7 +134,7 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     """
     包安装缓存清理由通用临时清理入口触发，模块启动路径不直接执行清理。
     """
-    from app.startup import modules_initializer
+    from app.startup.initializers import modules as modules_initializer
 
     called = False
 

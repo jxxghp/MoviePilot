@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import legacy_async_db_query, legacy_db_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MediaSource
 
@@ -77,7 +76,6 @@ class DownloadHistory(Base):
     )
 
     @classmethod
-    @legacy_db_query
     def get_by_hash(cls, db: Session, download_hash: str):
         return db.execute(
             select(DownloadHistory)
@@ -86,7 +84,6 @@ class DownloadHistory(Base):
         ).scalars().first()
 
     @classmethod
-    @legacy_db_query
     def get_by_hashes(cls, db: Session, download_hashes: List[str]):
         """
         批量查询多个下载任务的最新历史记录，避免在上层形成 N+1 查询。
@@ -119,7 +116,6 @@ class DownloadHistory(Base):
         ]
 
     @classmethod
-    @legacy_db_query
     def get_by_media_identity(
             cls, db: Session, media_source: MediaSource, media_id: str,
             music_type: Optional[str] = None,
@@ -136,7 +132,6 @@ class DownloadHistory(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    @legacy_db_query
     def list_by_page(
         cls, db: Session, page: int = 1, count: int = 30
     ):
@@ -148,7 +143,6 @@ class DownloadHistory(Base):
         ).scalars().all())
 
     @classmethod
-    @legacy_async_db_query
     async def async_list_by_page(
         cls, db: AsyncSession, page: int = 1, count: int = 30
     ):
@@ -161,7 +155,6 @@ class DownloadHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @legacy_async_db_query
     async def async_list_by_title(
         cls,
         db: AsyncSession,
@@ -177,13 +170,11 @@ class DownloadHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    @legacy_async_db_query
     async def async_count(cls, db: AsyncSession):
         result = await db.execute(select(func.count(cls.id)))
         return result.scalar()
 
     @classmethod
-    @legacy_async_db_query
     async def async_count_by_title(cls, db: AsyncSession, title: str):
         result = await db.execute(
             select(func.count(cls.id)).filter(_title_like(cls.title, title))
@@ -191,14 +182,12 @@ class DownloadHistory(Base):
         return result.scalar()
 
     @classmethod
-    @legacy_db_query
     def get_by_path(cls, db: Session, path: str):
         return db.execute(
             select(DownloadHistory).where(DownloadHistory.path == path)
         ).scalars().first()
 
     @classmethod
-    @legacy_db_query
     def get_last_by(
         cls,
         db: Session,
@@ -237,7 +226,6 @@ class DownloadHistory(Base):
 
 
     @classmethod
-    @legacy_db_query
     def list_by_user_date(cls, db: Session, date: str, username: Optional[str] = None):
         """
         查询某用户某时间之前的下载历史。
@@ -256,7 +244,6 @@ class DownloadHistory(Base):
         ).scalars().all())
 
     @classmethod
-    @legacy_db_query
     def list_by_date(
         cls,
         db: Session,
@@ -282,7 +269,6 @@ class DownloadHistory(Base):
         ).scalars().all())
 
     @classmethod
-    @legacy_db_query
     def list_by_type(cls, db: Session, mtype: str, days: int):
         return list(db.execute(
             select(DownloadHistory).where(
@@ -345,7 +331,6 @@ class DownloadFiles(Base):
     )
 
     @classmethod
-    @legacy_db_query
     def get_by_hash(cls, db: Session, download_hash: str, state: Optional[int] = None):
         statement = select(cls).where(cls.download_hash == download_hash)
         if state is not None:
@@ -353,7 +338,6 @@ class DownloadFiles(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    @legacy_db_query
     def get_by_fullpath(cls, db: Session, fullpath: str, all_files: bool = False):
         result = db.execute(
             select(cls).where(cls.fullpath == fullpath).order_by(cls.id.desc())
@@ -361,7 +345,6 @@ class DownloadFiles(Base):
         return list(result.all()) if all_files else result.first()
 
     @classmethod
-    @legacy_db_query
     def get_by_savepath(cls, db: Session, savepath: str):
         return list(db.execute(select(cls).where(cls.savepath == savepath)).scalars().all())
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import traceback
 from collections.abc import Callable
 from functools import wraps
+import threading
 import time
 from typing import Any, Optional, ParamSpec, TypeVar, cast
 
@@ -30,7 +31,7 @@ def observe_plugin_lifecycle(operation: str) -> Callable[[Callable[P, R]], Calla
             try:
                 result = func(*args, **kwargs)
                 statuses = result.values() if isinstance(result, dict) else (result,)
-                if PluginRuntimeStatus.LOAD_FAILED in statuses:
+                if result is False or PluginRuntimeStatus.LOAD_FAILED in statuses:
                     outcome = "error"
                 return result
             except BaseException:
@@ -51,6 +52,8 @@ def observe_plugin_lifecycle(operation: str) -> Callable[[Callable[P, R]], Calla
 
 class PluginLifecycle:
     """管理插件发现、初始化、启停和热重载，不持有市场或 HTTP 路由职责。"""
+
+    _EVENT_HANDLERS_QUIESCED = "__event_handlers__"
 
     def __init__(
         self,
@@ -83,6 +86,8 @@ class PluginLifecycle:
         self._runtime_status_writer = runtime_status_writer
         self._logger = log
         self._event_sender = event_sender
+        self._lifecycle_lock = threading.RLock()
+        self._quiesced_hooks: dict[str, set[str]] = {}
 
     @observe_plugin_lifecycle("start")
     def start(
@@ -116,6 +121,7 @@ class PluginLifecycle:
                 self._classes[current_id] = plugin
                 instance = plugin()
                 instance.init_plugin(self._plugin_config(current_id))
+                self._quiesced_hooks.pop(current_id, None)
                 self._running[current_id] = instance
                 self._logger.info(
                     f"加载插件：{current_id} 版本：{instance.plugin_version}"
@@ -156,31 +162,168 @@ class PluginLifecycle:
 
     @observe_plugin_lifecycle("stop")
     def stop(self, plugin_id: Optional[str] = None) -> None:
-        """停止指定插件或全部插件，并清理模块缓存。"""
+        """按旧单阶段 ABI 先解绑 handler，再停止并强制卸载插件。"""
+        with self._lifecycle_lock:
+            plugins = self._select_running_plugins(plugin_id)
+            self._quiesce_selected(plugins)
+            self._finalize(
+                plugin_id,
+                require_quiesced=False,
+                disable_events=not self._handlers_quiesced(plugins),
+            )
+
+    @observe_plugin_lifecycle("quiesce")
+    def quiesce(self, plugin_id: Optional[str] = None) -> bool:
+        """先解绑事件 handler，再按旧 hook 顺序停止生产者并保留实例。"""
+        with self._lifecycle_lock:
+            plugins = self._select_running_plugins(plugin_id)
+            return self._quiesce_selected(plugins)
+
+    @observe_plugin_lifecycle("quiesce_handlers")
+    def quiesce_handlers(self, plugin_id: Optional[str] = None) -> bool:
+        """禁止目标插件接收新事件，保留实例供在途 handler 和后续 hook 使用。"""
+        with self._lifecycle_lock:
+            plugins = self._select_running_plugins(plugin_id)
+            return self._disable_selected_handlers(plugins)
+
+    @observe_plugin_lifecycle("quiesce_services")
+    def quiesce_services(self, plugin_id: Optional[str] = None) -> bool:
+        """在事件结算屏障后执行旧 close、stop_service hook。"""
+        with self._lifecycle_lock:
+            plugins = self._select_running_plugins(plugin_id)
+            if not self._handlers_quiesced(plugins):
+                self._logger.warning("插件事件 handler 尚未全部停用，拒绝关闭插件资源")
+                return False
+            return self._quiesce_hooks(plugins)
+
+    def _quiesce_selected(self, plugins: dict[str, Any]) -> bool:
+        """兼容单阶段调用：先停用全部 handler，再执行稳定快照的旧 hooks。"""
+        if not self._disable_selected_handlers(plugins):
+            return False
+        return self._quiesce_hooks(plugins)
+
+    def _disable_selected_handlers(self, plugins: dict[str, Any]) -> bool:
+        """先停用稳定快照的全部事件入口，任一失败时不执行破坏性 hook。"""
+        all_converged = True
+        for current_id, plugin in plugins.items():
+            completed = self._quiesced_hooks.setdefault(current_id, set())
+            if self._EVENT_HANDLERS_QUIESCED in completed:
+                continue
+            try:
+                self._disable_events(type(plugin))
+            except Exception as error:  # noqa: BLE001  插件边界必须隔离
+                all_converged = False
+                self._logger.warning(
+                    f"停用插件 {current_id} 的事件 handler 时发生错误: {error}"
+                )
+                continue
+            completed.add(self._EVENT_HANDLERS_QUIESCED)
+        return all_converged
+
+    def _quiesce_hooks(self, plugins: dict[str, Any]) -> bool:
+        """执行旧 ABI hooks，并只重试尚未成功的步骤。"""
+        all_converged = True
+        for current_id, plugin in plugins.items():
+            completed = self._quiesced_hooks.setdefault(current_id, set())
+            for hook_name in ("close", "stop_service"):
+                if hook_name in completed:
+                    continue
+                hook = getattr(plugin, hook_name, None)
+                if not callable(hook):
+                    completed.add(hook_name)
+                    continue
+                try:
+                    result = hook()
+                except Exception as error:  # noqa: BLE001  插件边界必须隔离
+                    all_converged = False
+                    self._logger.warning(
+                        f"停止插件 {current_id} 的 {hook_name} 时发生错误: {error}"
+                    )
+                    continue
+                if result is False:
+                    all_converged = False
+                    self._logger.warning(
+                        f"停止插件 {current_id} 的 {hook_name} 未收敛"
+                    )
+                    continue
+                completed.add(hook_name)
+        return all_converged
+
+    @observe_plugin_lifecycle("finalize")
+    def finalize(self, plugin_id: Optional[str] = None) -> bool:
+        """在 handler、旧 hook 和事件屏障均收敛后卸载插件实例。"""
+        return self._finalize(
+            plugin_id,
+            require_quiesced=True,
+            disable_events=False,
+        )
+
+    def _finalize(
+        self,
+        plugin_id: Optional[str],
+        *,
+        require_quiesced: bool,
+        disable_events: bool = True,
+    ) -> bool:
+        """按严格或兼容策略卸载插件，并在清理失败时保留实例所有权。"""
+        with self._lifecycle_lock:
+            plugins = self._select_running_plugins(plugin_id)
+            if require_quiesced and any(
+                not self._is_quiesced(current_id, plugin)
+                for current_id, plugin in plugins.items()
+            ):
+                self._logger.warning("插件后台服务尚未全部收敛，拒绝卸载运行实例")
+                return False
+
+            try:
+                if disable_events:
+                    for plugin in plugins.values():
+                        self._disable_events(type(plugin))
+                self._clear_modules(plugin_id)
+                self._clear_tools()
+            except Exception as error:  # noqa: BLE001  保留实例所有权供后续重试
+                self._logger.warning(f"卸载插件运行实例时发生错误: {error}")
+                return False
+
+            if plugin_id:
+                self._classes.pop(plugin_id, None)
+                self._running.pop(plugin_id, None)
+                self._quiesced_hooks.pop(plugin_id, None)
+            else:
+                self._classes.clear()
+                self._running.clear()
+                self._quiesced_hooks.clear()
+            self._logger.info("插件停止完成")
+            return True
+
+    def _select_running_plugins(self, plugin_id: Optional[str]) -> dict[str, Any]:
+        """返回本阶段处理的稳定实例快照，并保持旧停机日志语义。"""
         if plugin_id:
             self._logger.info(f"正在停止插件 {plugin_id}...")
             plugin = self._running.get(plugin_id)
             plugins = {plugin_id: plugin} if plugin else {}
             if not plugin:
                 self._logger.debug(f"插件 {plugin_id} 不存在或未加载")
-        else:
-            self._logger.info("正在停止所有插件...")
-            plugins = dict(self._running)
+            return plugins
+        self._logger.info("正在停止所有插件...")
+        return dict(self._running)
 
-        for current_id, plugin in plugins.items():
-            self._disable_events(type(plugin))
-            self._stop_plugin(plugin)
+    def _is_quiesced(self, plugin_id: str, plugin: Any) -> bool:
+        """判断 handler 及当前实例声明的旧 ABI hooks 是否均已成功收敛。"""
+        required = {self._EVENT_HANDLERS_QUIESCED} | {
+            hook_name
+            for hook_name in ("close", "stop_service")
+            if callable(getattr(plugin, hook_name, None))
+        }
+        return required.issubset(self._quiesced_hooks.get(plugin_id, set()))
 
-        if plugin_id:
-            self._classes.pop(plugin_id, None)
-            self._running.pop(plugin_id, None)
-            self._clear_modules(plugin_id)
-        else:
-            self._classes.clear()
-            self._running.clear()
-            self._clear_modules(None)
-        self._clear_tools()
-        self._logger.info("插件停止完成")
+    def _handlers_quiesced(self, plugins: dict[str, Any]) -> bool:
+        """判断稳定快照中的全部插件是否已经停用事件入口。"""
+        return all(
+            self._EVENT_HANDLERS_QUIESCED
+            in self._quiesced_hooks.get(plugin_id, set())
+            for plugin_id in plugins
+        )
 
     @observe_plugin_lifecycle("reload")
     def reload(
@@ -194,14 +337,3 @@ class PluginLifecycle:
         status = self.start(plugin_id)[plugin_id]
         self._event_sender(reload_event, data={"plugin_id": plugin_id})
         return status
-
-    def _stop_plugin(self, plugin: Any) -> None:
-        """按插件旧 ABI 顺序关闭资源和服务。"""
-        try:
-            if hasattr(plugin, "close"):
-                plugin.close()
-            if hasattr(plugin, "stop_service"):
-                plugin.stop_service()
-        except Exception as error:  # noqa: BLE001
-            name = plugin.get_name() if hasattr(plugin, "get_name") else type(plugin).__name__
-            self._logger.warning(f"停止插件 {name} 时发生错误: {error}")

@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from app.schemas.exception import (
     PersistenceUnavailableError,
 )
 from app.application.plugin.install import PluginInstallCommand
+from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 
 
 def _command(
@@ -24,6 +26,8 @@ def _command(
     checkpointer=None,
     committer=None,
     rollback=None,
+    mutation=None,
+    package_write_guard=None,
 ):
     """构造可观测每一步副作用的插件安装命令。"""
     return PluginInstallCommand(
@@ -38,6 +42,9 @@ def _command(
         install_reporter=reporter or AsyncMock(),
         plugin_reloader=reloader or AsyncMock(),
         registration_refresher=refresher or AsyncMock(),
+        mutation=mutation or (lambda _operation: nullcontext()),
+        package_write_guard=package_write_guard
+        or (lambda _plugin_id: nullcontext()),
     )
 
 
@@ -72,6 +79,30 @@ async def test_install_failure_stops_before_report_persistence_and_reload():
     reporter.assert_not_awaited()
     writer.assert_not_awaited()
     reloader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sealed_install_rejects_before_package_guard_and_checkpoint() -> None:
+    """安装事务在封口后不进入监控抑制，也不创建文件快照。"""
+    admission = PluginMutationAdmission()
+    admission.seal()
+    package_guard = Mock(return_value=nullcontext())
+    checkpointer = AsyncMock()
+
+    result = await _command(
+        mutation=admission.hold,
+        package_write_guard=package_guard,
+        checkpointer=checkpointer,
+    ).execute(
+        plugin_id="DemoPlugin",
+        repo_url="https://github.com/demo/plugins",
+    )
+
+    assert result.success is False
+    assert result.failure_stage == "admission"
+    assert "停机阶段" in result.message
+    package_guard.assert_not_called()
+    checkpointer.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -444,6 +475,103 @@ async def test_cancelled_install_waits_for_rollback_before_releasing_lifecycle()
         await task
 
     rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_repeated_checkpoint_cancellation_retains_mutation_owner() -> None:
+    """快照等待被连续取消时，lease 必须保留到快照子任务终态。"""
+    admission = PluginMutationAdmission()
+    checkpoint_started = asyncio.Event()
+    checkpoint_release = asyncio.Event()
+    checkpoint_finished = asyncio.Event()
+
+    async def checkpoint(_plugin_id: str) -> object:
+        """阻塞快照创建，直到测试确认 owner 仍被持有。"""
+        checkpoint_started.set()
+        await checkpoint_release.wait()
+        checkpoint_finished.set()
+        return object()
+
+    task = asyncio.create_task(
+        _command(
+            checkpointer=checkpoint,
+            mutation=admission.hold,
+        ).execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await checkpoint_started.wait()
+    task.cancel()
+    await asyncio.sleep(0)
+    task.cancel()
+    await asyncio.sleep(0)
+
+    assert task.done() is False
+    assert admission.seal() == 1
+    idle_waiter = asyncio.create_task(asyncio.to_thread(admission.wait_until_idle))
+    await asyncio.sleep(0.02)
+    assert idle_waiter.done() is False
+
+    checkpoint_release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await idle_waiter
+    assert checkpoint_finished.is_set()
+    assert admission.active_count == 0
+
+
+@pytest.mark.asyncio
+async def test_repeated_rollback_cancellation_retains_mutation_owner() -> None:
+    """补偿等待被再次连续取消时，lease 必须保留到补偿子任务终态。"""
+    admission = PluginMutationAdmission()
+    install_started = asyncio.Event()
+    rollback_started = asyncio.Event()
+    rollback_release = asyncio.Event()
+    rollback_finished = asyncio.Event()
+
+    async def install(*_args) -> tuple[bool, str]:
+        """阻塞包安装，使首次取消进入补偿路径。"""
+        install_started.set()
+        await asyncio.Event().wait()
+        return True, "ok"
+
+    async def rollback(_checkpoint: object) -> None:
+        """阻塞文件补偿，直到测试确认 owner 仍被持有。"""
+        rollback_started.set()
+        await rollback_release.wait()
+        rollback_finished.set()
+
+    task = asyncio.create_task(
+        _command(
+            installer=install,
+            rollback=rollback,
+            mutation=admission.hold,
+        ).execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await install_started.wait()
+    task.cancel()
+    await rollback_started.wait()
+    assert admission.seal() == 1
+    idle_waiter = asyncio.create_task(asyncio.to_thread(admission.wait_until_idle))
+
+    task.cancel()
+    await asyncio.sleep(0)
+    task.cancel()
+    await asyncio.sleep(0.02)
+    assert task.done() is False
+    assert idle_waiter.done() is False
+    assert admission.active_count == 1
+
+    rollback_release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await idle_waiter
+    assert rollback_finished.is_set()
+    assert admission.active_count == 0
 
 
 @pytest.mark.asyncio

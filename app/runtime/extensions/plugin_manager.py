@@ -1,9 +1,21 @@
+import asyncio
+import concurrent.futures
 import inspect
 import posixpath
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union, Callable, Tuple
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 from watchfiles import watch
 
@@ -17,6 +29,7 @@ from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
 from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.thread import ThreadHelper
 
 settings = RuntimeSettingsCompat()
 from app.runtime.events import EventHandlerBinding, eventmanager
@@ -39,6 +52,7 @@ from app.runtime.extensions.plugin.sync import (
 )
 from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
+from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.runtime.extensions.plugin.paths import PluginPathResolver
 from app.runtime.extensions.plugin.dependency import (
@@ -47,6 +61,7 @@ from app.runtime.extensions.plugin.dependency import (
     PluginDependencyService,
 )
 from app.runtime.extensions.plugin.storage import PluginConfigStore, PluginInstanceStore
+from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.types import EventType, SystemConfigKey
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
@@ -195,6 +210,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             runner=self._run_file_watcher,
             log=logger,
         )
+        self._plugin_quiesce_lock = threading.RLock()
+        self._plugin_quiesce_future: Optional[
+            concurrent.futures.Future[bool]
+        ] = None
+        self._plugin_service_quiesce_future: Optional[
+            concurrent.futures.Future[bool]
+        ] = None
+        self._plugin_mutation_admission = PluginMutationAdmission()
+        self._plugin_runtime_closed = False
         self._plugin_dependencies = PluginDependencyService(
             system=get_plugin_system,
             log=logger,
@@ -315,12 +339,16 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def init_config(self):
         """按最新系统配置完整重启插件。"""
-        # 停止已有插件
-        self.stop()
-        classification = self.classify_plugins()
-        self.apply_plugin_dependency_classification(classification)
-        for plugin_id in classification.ready:
-            self.start(plugin_id)
+        try:
+            with self.mutation("配置热重载"):
+                # 停止已有插件
+                self.stop()
+                classification = self.classify_plugins()
+                self.apply_plugin_dependency_classification(classification)
+                for plugin_id in classification.ready:
+                    self.start(plugin_id)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
 
     def start(self, pid: Optional[str] = None) -> Dict[str, PluginRuntimeStatus]:
         """
@@ -328,8 +356,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param pid: 插件ID，为空加载所有插件
         """
 
-        _legacy_diagnostics_configurator(enabled=settings.DEBUG, emitter=logger.warning)
-        return self._plugin_lifecycle.start(pid)
+        try:
+            with self.mutation("启动插件"):
+                with self._plugin_quiesce_lock:
+                    _legacy_diagnostics_configurator(
+                        enabled=settings.DEBUG,
+                        emitter=logger.warning,
+                    )
+                    return self._plugin_lifecycle.start(pid)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            if pid:
+                return {pid: PluginRuntimeStatus.LOAD_FAILED}
+            return {}
 
     def init_plugin(self, plugin_id: str, conf: dict):
         """
@@ -337,7 +376,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param plugin_id: 插件ID
         :param conf: 插件配置
         """
-        self._plugin_lifecycle.initialize(plugin_id, conf)
+        try:
+            with self.mutation("初始化插件配置"):
+                with self._plugin_quiesce_lock:
+                    self._plugin_lifecycle.initialize(plugin_id, conf)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
 
     def clear_plugin_agent_tools_cache(self) -> None:
         """
@@ -356,12 +400,127 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """兼容读取旧私有字段，实际版本由独立工具目录持有。"""
         return self._plugin_tool_catalog.revision
 
-    def stop(self, pid: Optional[str] = None):
+    def stop(self, pid: Optional[str] = None) -> None:
         """
         停止插件服务
         :param pid: 插件ID，为空停止所有插件
         """
-        self._plugin_lifecycle.stop(pid)
+        try:
+            with self.mutation("停止插件"):
+                with self._plugin_quiesce_lock:
+                    self._plugin_lifecycle.stop(pid)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+
+    def mutation(self, operation: str) -> ContextManager[None]:
+        """为一个完整插件可变事务取得可跨异步边界传播的准入 lease。"""
+        return self._plugin_mutation_admission.hold(operation)
+
+    def reopen_plugins(self) -> bool:
+        """为新应用生命周期解除运行时封口，仍活跃的 quiesce owner 禁止复用。"""
+        with self._plugin_quiesce_lock:
+            futures = (
+                self._plugin_quiesce_future,
+                self._plugin_service_quiesce_future,
+            )
+            if any(future is not None and not future.done() for future in futures):
+                logger.warning("插件后台服务仍在停止，无法开启新的应用生命周期")
+                return False
+            if self._plugin_runtime_closed and self._running_plugins:
+                logger.warning("上一应用生命周期仍持有插件实例，拒绝解除运行时封口")
+                return False
+            if not self._plugin_mutation_admission.reopen():
+                logger.warning("上一应用生命周期仍有插件可变事务，拒绝解除运行时封口")
+                return False
+            self._plugin_runtime_closed = False
+            return True
+
+    async def quiesce_plugins(self, timeout: float = 240.0) -> bool:
+        """封口变更事务并停用插件 handler，超时后保留 Future ownership。"""
+        if self._plugin_mutation_admission.is_held():
+            logger.warning("插件可变事务不能等待自身收敛，拒绝在事务内执行停机")
+            return False
+        with self._plugin_quiesce_lock:
+            self._plugin_runtime_closed = True
+            self._plugin_mutation_admission.seal()
+            future = self._plugin_quiesce_future
+            if future is None or future.done():
+                future = ThreadHelper().submit(self._quiesce_after_mutations)
+                self._plugin_quiesce_future = future
+        try:
+            result = await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)),
+                timeout=max(0.0, timeout),
+            )
+            return bool(result)
+        except asyncio.TimeoutError:
+            logger.error(f"插件后台服务未在 {timeout:g} 秒内收敛")
+            return False
+        except Exception as error:  # noqa: BLE001  Future 异常必须转为生命周期结果
+            logger.error(f"插件后台服务停止失败：{error}", exc_info=True)
+            return False
+        finally:
+            if future.done():
+                with self._plugin_quiesce_lock:
+                    if self._plugin_quiesce_future is future:
+                        self._plugin_quiesce_future = None
+
+    async def quiesce_plugin_services(self, timeout: float = 240.0) -> bool:
+        """在事件结算后执行旧插件停机 hook，并有界等待同步 owner。"""
+        with self._plugin_quiesce_lock:
+            prepare_future = self._plugin_quiesce_future
+            if prepare_future is not None and not prepare_future.done():
+                logger.warning("插件事件入口仍在封口，拒绝提前关闭插件资源")
+                return False
+            if not self._plugin_runtime_closed:
+                logger.warning("插件运行时尚未封口，拒绝关闭插件资源")
+                return False
+            if self._plugin_mutation_admission.active_count:
+                logger.warning("插件可变事务仍在执行，拒绝关闭插件资源")
+                return False
+            future = self._plugin_service_quiesce_future
+            if future is None or future.done():
+                future = ThreadHelper().submit(
+                    self._plugin_lifecycle.quiesce_services,
+                )
+                self._plugin_service_quiesce_future = future
+        try:
+            result = await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)),
+                timeout=max(0.0, timeout),
+            )
+            return bool(result)
+        except asyncio.TimeoutError:
+            logger.error(f"插件旧停机 hook 未在 {timeout:g} 秒内收敛")
+            return False
+        except Exception as error:  # noqa: BLE001  Future 异常必须转为生命周期结果
+            logger.error(f"插件旧停机 hook 执行失败：{error}", exc_info=True)
+            return False
+        finally:
+            if future.done():
+                with self._plugin_quiesce_lock:
+                    if self._plugin_service_quiesce_future is future:
+                        self._plugin_service_quiesce_future = None
+
+    def finalize_plugins(self) -> bool:
+        """确认 quiesce owner 已结束后禁用 handler 并卸载插件实例。"""
+        with self._plugin_quiesce_lock:
+            futures = (
+                self._plugin_quiesce_future,
+                self._plugin_service_quiesce_future,
+            )
+        if any(future is not None and not future.done() for future in futures):
+            logger.warning("插件后台服务仍在停止，拒绝释放运行实例")
+            return False
+        if self._plugin_mutation_admission.active_count:
+            logger.warning("插件可变事务仍在执行，拒绝释放运行实例")
+            return False
+        return self._plugin_lifecycle.finalize()
+
+    def _quiesce_after_mutations(self) -> bool:
+        """等待已获准变更自然结束后，再停用插件事件入口。"""
+        self._plugin_mutation_admission.wait_until_idle()
+        return self._plugin_lifecycle.quiesce_handlers()
 
     @staticmethod
     def _load_selective_plugins(pid: Optional[str], installed_plugins: List[str],
@@ -428,8 +587,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """返回配置重载日志使用的功能名称。"""
         return "插件文件修改监测"
 
-    def start_monitor(self):
-        """按当前配置启动插件文件修改监测。"""
+    def start_monitor(self, *, reopen: bool = False) -> None:
+        """按当前配置启动监控；新生命周期可显式解除既有封口。"""
+        if reopen and not self._plugin_monitor.reopen():
+            return
         if (
             not self.is_plugin_settling()
             and (settings.DEV or settings.PLUGIN_AUTO_RELOAD)
@@ -447,11 +608,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             )
         )
 
-    def stop_monitor(self):
-        """
-        停止监测插件文件修改监测
-        """
-        self._plugin_monitor.stop()
+    def stop_monitor(self, timeout: float = 5.0) -> bool:
+        """停止插件文件监控，并返回线程是否在预算内真正退出。"""
+        return self._plugin_monitor.stop(timeout=timeout)
+
+    def close_monitor(self, timeout: float = 5.0) -> bool:
+        """封口当前生命周期的文件监控，并返回线程是否真正退出。"""
+        return self._plugin_monitor.close(timeout=timeout)
 
     def _run_file_watcher(self):
         """
@@ -504,25 +667,31 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         已安装本地插件源码变化时，同步到运行目录
         """
-        return self._local_plugin_sync.sync(pid, candidate)
+        try:
+            with self.mutation("同步本地插件源码"):
+                return self._local_plugin_sync.sync(pid, candidate)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
 
     @contextmanager
     def suppress_plugin_monitor(self, plugin_id: str):
         """在插件目录原子更新期间阻止文件监控抢先重载半成品。"""
-        normalized_id = plugin_id.lower()
-        with self._monitor_suppression_lock:
-            self._suppressed_monitor_plugins[normalized_id] = (
-                self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
-            )
-        try:
-            yield
-        finally:
+        with self.mutation("更新插件包"):
+            normalized_id = plugin_id.lower()
             with self._monitor_suppression_lock:
-                count = self._suppressed_monitor_plugins.get(normalized_id, 0)
-                if count <= 1:
-                    self._suppressed_monitor_plugins.pop(normalized_id, None)
-                else:
-                    self._suppressed_monitor_plugins[normalized_id] = count - 1
+                self._suppressed_monitor_plugins[normalized_id] = (
+                    self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
+                )
+            try:
+                yield
+            finally:
+                with self._monitor_suppression_lock:
+                    count = self._suppressed_monitor_plugins.get(normalized_id, 0)
+                    if count <= 1:
+                        self._suppressed_monitor_plugins.pop(normalized_id, None)
+                    else:
+                        self._suppressed_monitor_plugins[normalized_id] = count - 1
 
     def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
         """判断指定插件是否处于安装或替换写入阶段。"""
@@ -534,23 +703,43 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         从内存中移除一个插件
         :param plugin_id: 插件ID
         """
-        self._plugin_lifecycle.stop(plugin_id)
-        self._plugin_registry.remove(plugin_id)
+        try:
+            with self.mutation("移除插件实例"):
+                with self._plugin_quiesce_lock:
+                    self._plugin_lifecycle.stop(plugin_id)
+                    self._plugin_registry.remove(plugin_id)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
 
     def reload_plugin(self, plugin_id: str) -> PluginRuntimeStatus:
         """
         将一个插件重新加载到内存
         :param plugin_id: 插件ID
         """
-        return self._plugin_lifecycle.reload(plugin_id, EventType.PluginReload)
+        try:
+            with self.mutation("重新加载插件"):
+                with self._plugin_quiesce_lock:
+                    return self._plugin_lifecycle.reload(
+                        plugin_id,
+                        EventType.PluginReload,
+                    )
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return PluginRuntimeStatus.LOAD_FAILED
 
     def reload_plugin_tree(self, plugin_id: str) -> PluginRuntimeStatus:
         """重载源码插件，并同步刷新所有引用该源码的虚拟实例。"""
-        source_plugin_id = self.get_plugin_source_id(plugin_id)
-        status = self.reload_plugin(source_plugin_id)
-        for instance in self._plugin_instance_store.for_source(source_plugin_id):
-            self.reload_plugin(instance.instance_id)
-        return status
+        try:
+            with self.mutation("重载插件实例树"):
+                with self._plugin_quiesce_lock:
+                    source_plugin_id = self.get_plugin_source_id(plugin_id)
+                    status = self.reload_plugin(source_plugin_id)
+                    for instance in self._plugin_instance_store.for_source(source_plugin_id):
+                        self.reload_plugin(instance.instance_id)
+                    return status
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return PluginRuntimeStatus.LOAD_FAILED
 
     def get_plugin_reload_targets(self, plugin_id: str) -> List[str]:
         """返回源码更新后需要刷新注册信息的源插件及其实例 ID。"""
@@ -584,33 +773,40 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         安装本地不存在或需要更新的插件
         """
 
-        return self._plugin_sync.sync()
+        with self.mutation("同步插件包"):
+            return self._plugin_sync.sync()
 
     @staticmethod
     def install_plugin_missing_dependencies() -> List[str]:
         """
         安装插件中缺失或不兼容的依赖项
         """
-        return PluginDependencyService(
-            system=get_plugin_system,
-            log=logger,
-        ).install_missing()
+        manager = PluginManager()
+        with manager.mutation("安装插件依赖"):
+            return PluginDependencyService(
+                system=get_plugin_system,
+                log=logger,
+            ).install_missing()
 
     @staticmethod
     def install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
         """安装插件缺失依赖并返回缺失项及安装成功状态。"""
-        return PluginDependencyService(
-            system=get_plugin_system,
-            log=logger,
-        ).install_missing_with_status()
+        manager = PluginManager()
+        with manager.mutation("安装插件依赖"):
+            return PluginDependencyService(
+                system=get_plugin_system,
+                log=logger,
+            ).install_missing_with_status()
 
     @staticmethod
     async def async_install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
         """在异步启动链中恢复插件依赖并保留取消语义。"""
-        return await PluginDependencyService(
-            system=get_plugin_system,
-            log=logger,
-        ).async_install_missing_with_status()
+        manager = PluginManager()
+        with manager.mutation("安装插件依赖"):
+            return await PluginDependencyService(
+                system=get_plugin_system,
+                log=logger,
+            ).async_install_missing_with_status()
 
     def classify_plugins(self) -> PluginDependencyClassification:
         """按源码依赖状态分类物理插件，并把结果映射到虚拟实例。"""
@@ -706,7 +902,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def delete_plugin_instance(self, plugin_id: str) -> bool:
         """删除虚拟实例描述；调用方仍负责停止实例和清理业务数据。"""
-        return self._plugin_instance_store.delete(plugin_id)
+        try:
+            with self.mutation("删除插件实例描述"):
+                return self._plugin_instance_store.delete(plugin_id)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
 
     def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
         """
@@ -715,7 +916,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param conf: 配置
         :param force: 强制保存
         """
-        return self._plugin_config_store.write(pid, conf, force)
+        try:
+            with self.mutation("保存插件配置"):
+                return self._plugin_config_store.write(pid, conf, force)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
 
     async def async_save_plugin_config(
         self, pid: str, conf: dict, force: bool = False
@@ -726,7 +932,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param conf: 配置
         :param force: 强制保存
         """
-        return await self._plugin_config_store.async_write(pid, conf, force)
+        try:
+            with self.mutation("保存插件配置"):
+                return await self._plugin_config_store.async_write(pid, conf, force)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
 
     def delete_plugin_config(self, pid: str, force: bool = False) -> bool:
         """
@@ -734,7 +945,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param pid: 插件ID
         :param force: 插件停止后仍允许按插件 ID 删除持久化配置
         """
-        return self._plugin_config_store.delete(pid, force)
+        try:
+            with self.mutation("删除插件配置"):
+                return self._plugin_config_store.delete(pid, force)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
 
     def delete_plugin_data(self, pid: str, force: bool = False) -> bool:
         """
@@ -742,7 +958,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param pid: 插件ID
         :param force: 插件停止后仍允许按插件 ID 删除持久化数据
         """
-        return self._plugin_config_store.delete_data(pid, force)
+        try:
+            with self.mutation("删除插件数据"):
+                return self._plugin_config_store.delete_data(pid, force)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
 
     def get_plugin_state(self, pid: str) -> bool:
         """
@@ -1130,14 +1351,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param icon: 自定义图标URL
         :return: (是否成功, 错误信息)
         """
-        return self._plugin_clone.clone(
-            plugin_id=plugin_id,
-            suffix=suffix,
-            name=name,
-            description=description,
-            version=version,
-            icon=icon,
-        )
+        try:
+            with self.mutation("创建插件分身"):
+                return self._plugin_clone.clone(
+                    plugin_id=plugin_id,
+                    suffix=suffix,
+                    name=name,
+                    description=description,
+                    version=version,
+                    icon=icon,
+                )
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False, str(error)
 
     def _modify_plugin_files(self, plugin_dir: Path, original_id: str, suffix: str,
                              name: str, description: str, version: str = None,

@@ -24,7 +24,7 @@ from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field
 
 from app.agent.middleware.utils import append_to_system_message
-from app.agent.policy import sanitize_for_host, summarize_error
+from app.agent.policy.sanitizer import sanitize_for_host, summarize_error
 from app.agent.tools.tags import ToolTag
 from app.agent.skills.metadata import (
     MAX_SKILL_FILE_SIZE,

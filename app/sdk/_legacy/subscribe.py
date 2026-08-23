@@ -3,7 +3,6 @@
 from typing import Any, Optional
 
 from app.application.subscription.write import add_subscribe, async_add_subscribe
-from app.db.models.subscribe import Subscribe
 from app.db.oper.subscribe import SubscribeOper as CanonicalSubscribeOper
 from app.domain.context import MediaInfo, MusicInfo
 
@@ -72,4 +71,4 @@ class SubscribeOper(CanonicalSubscribeOper):
         )
 
 
-__all__ = ["Subscribe", "SubscribeOper"]
+__all__ = ["SubscribeOper"]

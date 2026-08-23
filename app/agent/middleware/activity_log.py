@@ -40,6 +40,7 @@ from app.agent.policy.sanitizer import (
 )
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
+from app.runtime.tasks import TaskRegistry, get_task_registry
 
 # 活动日志保留天数
 DEFAULT_RETENTION_DAYS = 7
@@ -511,12 +512,14 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
         retention_days: int = DEFAULT_RETENTION_DAYS,
         prompt_load_days: int = PROMPT_LOAD_DAYS,
         stream_handler: Optional[Any] = None,
+        task_registry: Optional[TaskRegistry] = None,
     ) -> None:
-        """初始化活动日志中间件。"""
+        """初始化活动日志中间件，并绑定宿主后台任务 owner。"""
         self.activity_dir = activity_dir
         self.retention_days = retention_days
         self.prompt_load_days = prompt_load_days
         self.stream_handler = stream_handler
+        self._task_registry = task_registry or get_task_registry()
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._tool_provider = _ActivityLogToolProvider(activity_dir=activity_dir)
         self.tools = [
@@ -626,7 +629,10 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
 
     def _schedule_activity_recording(self, messages: list) -> None:
         """提交后台活动记录任务，不阻塞当前 Agent 会话结束。"""
-        task = asyncio.create_task(self._record_activity(messages))
+        task = self._task_registry.create(
+            self._record_activity(messages),
+            owner="agent.activity_log.record",
+        )
         self._background_tasks.add(task)
         task.add_done_callback(self._on_activity_recording_done)
 

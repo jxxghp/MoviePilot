@@ -20,7 +20,10 @@ from app.agent.capabilities.adapter import (
     build_agent_capability_registry,
     should_run_agent_service,
 )
-from app.runtime.capabilities.model import CapabilityMaterializationState
+from app.runtime.capabilities.model import (
+    CapabilityLifecycleState,
+    CapabilityMaterializationState,
+)
 from app.runtime.capabilities.runtime import CapabilityRuntime
 
 
@@ -142,9 +145,11 @@ async def close_materialized_terminal_sessions() -> None:
         await close()
 
 
-async def begin_agent_shutdown() -> None:
-    """不可逆关闭首用闸门，并等待全部同步及异步能力释放。"""
-    try:
-        await _ensure_runtime().shutdown_async(reason="application_shutdown")
-    finally:
-        await close_materialized_terminal_sessions()
+async def begin_agent_shutdown() -> bool:
+    """不可逆关闭首用闸门，并返回 Agent service 是否真实收敛。"""
+    runtime = _ensure_runtime()
+    await runtime.shutdown_async(reason="application_shutdown")
+    return (
+        runtime.snapshot(AGENT_SERVICE_CAPABILITY_ID).lifecycle
+        is CapabilityLifecycleState.STOPPED
+    )

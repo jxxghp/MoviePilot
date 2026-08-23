@@ -1,12 +1,15 @@
 """
-数据库事务装饰器。
+插件自有数据库函数使用的公共事务装饰器。
 
 同步/异步各一对：查询装饰器负责会话的获取与释放，更新装饰器额外负责提交与回滚。
 未显式传入会话时自动创建，并在结束时归还——异步路径经 async_session_scope 收口，
 连接池与配额都在那里生效。
 
-收尾故障（rollback / close / __aexit__ 自身抛异常）一律只记日志、不上抛，四个装饰器
-的处理一致。理由与代价都要写明，别当成漏写的 raise：
+宿主 Model、Base 与 Oper 不使用这些装饰器；它们通过显式 Session、事务执行器或 UoW
+管理事务。这里保留的四个入口只供插件操作插件自有表，不能用于访问宿主 Model。
+
+收尾故障（rollback / close / __aexit__ 自身抛异常）一律只记日志、不上抛。理由与代价
+都要写明，别当成漏写的 raise：
 
 - 连接断开、事务已失效这类故障恰恰最容易发生在「出错之后」的收尾阶段。裸写收尾语句时
   它一抛错就顶替掉原始异常，调用方看到的只剩「connection reset」，业务异常连类型都被
@@ -16,8 +19,6 @@
   SQLAlchemy 归还连接时已在池层吞掉异常并 invalidate 坏连接，再把释放故障升级成调用方
   的异常，只会让一次已经落库的写入看起来像失败，诱发重复提交。
 """
-from functools import wraps
-from inspect import Parameter, signature
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,30 +29,10 @@ from app.runtime.log import logger
 
 _R = TypeVar("_R")
 
-# 四个装饰器都会重写实参列表：未传会话时自行创建一个并塞回 db 位置。因此包装后的可调用
+# 公共装饰器会重写实参列表：未传会话时自行创建一个并塞回 db 位置。因此包装后的可调用
 # 对象接受的实参与被包装函数的签名并不一致——用 Callable[..., _R] 如实表达「参数由装饰器
-# 接管、返回值原样透传」。否则调用方传 None 或传异步会话都会被判成类型不符，而这恰恰是
-# 装饰器存在的理由（各 Oper 的 self._db 常态就是 None）。
+# 接管、返回值原样透传」。否则插件自有数据库函数传 None 或传异步会话时会被判成类型不符。
 
-
-def run_legacy_sync_query(operation: Callable[[Session], _R]) -> _R:
-    """为已移除查询装饰器的旧 Model ABI 提供一次性同步会话。"""
-    db = ScopedSession()
-    try:
-        return operation(db)
-    finally:
-        try:
-            db.close()
-        except Exception as close_err:  # noqa: BLE001 兼容查询释放失败不改变返回语义
-            logger.error(f"释放数据库会话失败：{close_err}")
-
-
-async def run_legacy_async_query(
-    operation: Callable[[AsyncSession], Awaitable[_R]],
-) -> _R:
-    """为移除异步查询装饰器的旧 Model ABI 提供一次性异步会话。"""
-    async with async_session_scope() as db:
-        return await operation(db)
 
 def _get_args_db(
     args: tuple[Any, ...],
@@ -298,79 +279,3 @@ def async_db_query(func: Callable[..., Awaitable[_R]]) -> Callable[..., Awaitabl
         return result
 
     return wrapper
-
-
-def legacy_db_query(func: Callable[..., _R]) -> Callable[..., _R]:
-    """保留旧 Model 查询 ABI，同时让新调用方复用显式 Session。
-
-    旧插件通常省略 ``db``，直接把业务参数放在第一个位置；通用 ``db_query``
-    装饰器只适用于固定的 ``(db, ...)`` 形状，不能把这类位置参数直接套进去。
-    这里按签名插入会话，避免丢失旧插件传入的第一个业务参数。
-    """
-
-    @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> _R:
-        db = _get_args_db(args, kwargs)
-        if db is not None:
-            return func(*args, **kwargs)
-
-        session = ScopedSession()
-        call_args, call_kwargs = _inject_legacy_db(func, args, kwargs, session)
-        try:
-            return func(*call_args, **call_kwargs)
-        finally:
-            try:
-                session.close()
-            except Exception as close_err:  # noqa: BLE001  释放故障不得改变旧 ABI 返回值
-                logger.error(f"释放数据库会话失败：{close_err}")
-
-    return wrapper
-
-
-def legacy_async_db_query(
-    func: Callable[..., Awaitable[_R]],
-) -> Callable[..., Awaitable[_R]]:
-    """保留旧 Model 异步查询 ABI，同时让新调用方复用显式 AsyncSession。"""
-
-    @wraps(func)
-    async def wrapper(*args: Any, **kwargs: Any) -> _R:
-        db = _get_args_async_db(args, kwargs)
-        if db is not None:
-            return await func(*args, **kwargs)
-
-        async with async_session_scope() as session:
-            call_args, call_kwargs = _inject_legacy_db(func, args, kwargs, session)
-            return await func(*call_args, **call_kwargs)
-
-    return wrapper
-
-
-def _inject_legacy_db(
-    func: Callable[..., _R],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    db: Any,
-) -> tuple[tuple[Any, ...], dict[str, Any]]:
-    """按旧 Model 方法签名注入兼容会话，不吞掉位置业务参数。"""
-    call_args = list(args)
-    call_kwargs = dict(kwargs)
-    parameters = list(signature(func).parameters.values())
-    db_index = next(
-        (index for index, parameter in enumerate(parameters) if parameter.name == "db"),
-        None,
-    )
-    if "db" in call_kwargs:
-        call_kwargs["db"] = db
-        return tuple(call_args), call_kwargs
-    if db_index is None:
-        # 兼容没有显式 db 参数的极旧函数，保持调用失败方式与普通 Python 一致。
-        return tuple(call_args), {"db": db, **call_kwargs}
-    if db_index < len(call_args) and call_args[db_index] is None:
-        call_args[db_index] = db
-    elif db_index < len(parameters) and parameters[db_index].kind is Parameter.POSITIONAL_ONLY:
-        call_args.insert(db_index, db)
-    elif db_index <= len(call_args):
-        call_args.insert(db_index, db)
-    else:
-        call_kwargs["db"] = db
-    return tuple(call_args), call_kwargs

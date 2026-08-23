@@ -289,7 +289,7 @@ class DownloadHistoryOper(DbOper):
         self._stage_delete(DownloadHistory, historyid)
 
     def stage_delete_history(self, historyid: int) -> None:
-        """暂存下载记录删除，不由模型装饰器提交事务。"""
+        """暂存下载记录删除，事务由调用方统一提交。"""
         self._db.execute(
             sqlalchemy_delete(DownloadHistory).where(
                 DownloadHistory.id == historyid

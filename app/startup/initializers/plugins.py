@@ -18,6 +18,7 @@ from app.runtime.extensions.plugin_manager import (
     configure_plugin_resource_import_preparer,
     configure_site_auth_level_provider,
 )
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
 from app.application.plugin.catalog import PluginCatalogService
 from app.application.plugin.data import DeletePluginDataCommand
@@ -49,6 +50,7 @@ from app.db.uow import SqlAlchemyUnitOfWork
 from app.runtime.log import logger
 from app.foundation.version import compare_version
 from app.schemas.plugin import PluginRuntimeStatus
+from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.types import SystemConfigKey
 
 
@@ -142,54 +144,62 @@ async def sync_plugins() -> bool:
     """
     plugin_manager = None
     try:
-        configure_plugin_services()
         loop = global_vars.loop
         plugin_manager = PluginManager()
-        plugin_manager.set_plugin_settling(True)
-
-        sync_result = await execute_task(loop, plugin_manager.sync, "插件同步到本地")
-        dependency_result = await (
-            plugin_manager.async_install_plugin_missing_dependencies_with_status()
-        )
-        if dependency_result is None:
-            return False
-        if not isinstance(dependency_result, PluginDependencyInstallResult):
-            logger.error("缺失依赖项安装返回了无效结果，跳过插件重新初始化")
-            return False
-        previous_statuses = plugin_manager.get_plugin_runtime_statuses()
-        classification = plugin_manager.classify_plugins()
-        plugin_manager.apply_plugin_dependency_classification(classification)
-        if not dependency_result.success:
-            logger.error("缺失依赖项安装未完成，将继续激活当前已就绪插件")
-        changed_ids = await execute_task(
-            loop,
-            lambda: _activate_ready_plugins(
-                plugin_manager,
-                classification.ready,
-                sync_result or [],
-                previous_statuses,
-            ),
-            "插件运行态激活",
-        )
-        if changed_ids is None:
-            return False
-
-        if not changed_ids:
-            logger.debug("没有新的插件进入可运行状态")
-            return False
-
-        for plugin_id in changed_ids:
-            register_plugin_api(plugin_id)
-        if dependency_result.success:
-            logger.info(f"后台插件加载完成，共处理 {len(changed_ids)} 个插件")
-        else:
-            logger.warning(
-                f"缺失依赖项仍未全部恢复，已激活 {len(changed_ids)} 个就绪插件"
-            )
-        return True
+        with plugin_manager.mutation("启动后同步插件"):
+            configure_plugin_services()
+            plugin_manager.set_plugin_settling(True)
+            return await _sync_plugins_admitted(plugin_manager, loop)
+    except PluginMutationRejectedError as error:
+        logger.warning(str(error))
+        return False
     except Exception as e:
         logger.error(f"插件初始化过程中出现异常: {e}")
         return False
+
+
+async def _sync_plugins_admitted(plugin_manager: PluginManager, loop) -> bool:
+    """在一个 admission lease 内完成包、依赖、实例和动态路由同步。"""
+    sync_result = await execute_task(loop, plugin_manager.sync, "插件同步到本地")
+    dependency_result = await (
+        plugin_manager.async_install_plugin_missing_dependencies_with_status()
+    )
+    if dependency_result is None:
+        return False
+    if not isinstance(dependency_result, PluginDependencyInstallResult):
+        logger.error("缺失依赖项安装返回了无效结果，跳过插件重新初始化")
+        return False
+    previous_statuses = plugin_manager.get_plugin_runtime_statuses()
+    classification = plugin_manager.classify_plugins()
+    plugin_manager.apply_plugin_dependency_classification(classification)
+    if not dependency_result.success:
+        logger.error("缺失依赖项安装未完成，将继续激活当前已就绪插件")
+    changed_ids = await execute_task(
+        loop,
+        lambda: _activate_ready_plugins(
+            plugin_manager,
+            classification.ready,
+            sync_result or [],
+            previous_statuses,
+        ),
+        "插件运行态激活",
+    )
+    if changed_ids is None:
+        return False
+
+    if not changed_ids:
+        logger.debug("没有新的插件进入可运行状态")
+        return False
+
+    for plugin_id in changed_ids:
+        register_plugin_api(plugin_id)
+    if dependency_result.success:
+        logger.info(f"后台插件加载完成，共处理 {len(changed_ids)} 个插件")
+    else:
+        logger.warning(
+            f"缺失依赖项仍未全部恢复，已激活 {len(changed_ids)} 个就绪插件"
+        )
+    return True
 
 
 def _activate_ready_plugins(
@@ -217,12 +227,39 @@ def _activate_ready_plugins(
     return changed_ids
 
 
+async def quiesce_plugins(timeout: float = 240.0) -> bool:
+    """封口插件变更并停用 handler，保留超时 Future 的运行所有权。"""
+    plugin_manager = PluginManager.get_existing_instance()
+    if plugin_manager is None:
+        return True
+    return await plugin_manager.quiesce_plugins(timeout=timeout)
+
+
+async def quiesce_plugin_services(timeout: float = 240.0) -> bool:
+    """在事件结算后有界执行旧插件 close、stop_service hook。"""
+    plugin_manager = PluginManager.get_existing_instance()
+    if plugin_manager is None:
+        return True
+    return await plugin_manager.quiesce_plugin_services(timeout=timeout)
+
+
+def finalize_plugins() -> bool:
+    """在事件屏障封口后卸载已停用 handler 的插件实例。"""
+    plugin_manager = PluginManager.get_existing_instance()
+    if plugin_manager is None:
+        return True
+    return bool(plugin_manager.finalize_plugins())
+
+
 async def execute_task(loop, task_func, task_name):
     """
-    执行后台任务
+    执行后台任务；取消调用方时仍持有同步线程直到真实完成。
     """
     try:
-        result = await loop.run_in_executor(None, task_func)
+        # loop 参数属于既有调用 ABI；同步执行改由 completion-aware 适配器持有，
+        # 避免外层 Task 被取消后把仍在修改插件源码/依赖的线程伪装成已结束。
+        del loop
+        result = await run_in_threadpool_to_completion(task_func)
         if isinstance(result, PluginDependencyInstallResult):
             processed_count = len(result.missing)
         elif isinstance(result, list):
@@ -245,13 +282,15 @@ def init_plugins():
     """
     configure_plugin_services()
     plugin_manager = PluginManager()
+    if not plugin_manager.reopen_plugins():
+        raise RuntimeError("上一应用生命周期的插件后台服务仍未收敛")
     classification = plugin_manager.classify_plugins()
     plugin_manager.apply_plugin_dependency_classification(classification)
     plugin_manager.set_plugin_settling(True)
     for plugin_id in classification.ready:
         plugin_manager.start(plugin_id)
     register_plugin_api()
-    plugin_manager.start_monitor()
+    plugin_manager.start_monitor(reopen=True)
     logger.info(
         "插件启动分类：立即加载=%s，等待依赖=%s，等待源码=%s",
         len(classification.ready),
@@ -260,15 +299,30 @@ def init_plugins():
     )
 
 
-def stop_plugins():
-    """
-    停止插件
-    """
+def stop_plugin_monitor(timeout: float = 5.0) -> bool:
+    """封口已创建管理器的文件监控线程，并返回是否完成收口。"""
+    plugin_manager = PluginManager.get_existing_instance()
+    if plugin_manager is None:
+        return True
     try:
-        plugin_manager = PluginManager()
+        return bool(plugin_manager.close_monitor(timeout=timeout))
+    except Exception as e:
+        logger.error(f"停止插件文件监控时发生错误：{e}", exc_info=True)
+        return False
+
+
+def stop_plugins() -> bool:
+    """停止已创建的插件监控和运行实例，不在停机阶段反向物化管理器。"""
+    try:
+        plugin_manager = PluginManager.get_existing_instance()
+        if plugin_manager is None:
+            return True
+        monitor_stopped = True
         try:
-            plugin_manager.stop_monitor()
+            monitor_stopped = plugin_manager.stop_monitor()
         finally:
             plugin_manager.stop()
+        return bool(monitor_stopped)
     except Exception as e:
         logger.error(f"停止插件时发生错误：{e}", exc_info=True)
+        return False

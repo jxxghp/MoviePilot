@@ -44,6 +44,7 @@ from app.adapters.system.plugin.manifest import (
 )
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
+from app.runtime.tasks import get_task_registry
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import WeakSingleton
 
@@ -2336,8 +2337,12 @@ class PluginHelper(metaclass=WeakSingleton):
                     if pending_normal_task and pending_normal_task.done():
                         pending_normal_task = None
                     task_key = force_task_key
-                    task = loop.create_task(
-                        self._async_refresh_plugin_repo_releases(normalized_repo_url, pending_normal_task)
+                    task = get_task_registry().create(
+                        self._async_refresh_plugin_repo_releases(
+                            normalized_repo_url,
+                            pending_normal_task,
+                        ),
+                        owner="plugin.market.release_refresh",
                     )
                     self._release_tasks[task_key] = task
                     task.add_done_callback(
@@ -2347,7 +2352,10 @@ class PluginHelper(metaclass=WeakSingleton):
                 task_key = normal_task_key
                 pending_normal_task = self._release_tasks.get(normal_task_key)
                 if pending_normal_task is None or pending_normal_task.done():
-                    task = loop.create_task(self._async_get_plugin_repo_releases(normalized_repo_url))
+                    task = get_task_registry().create(
+                        self._async_get_plugin_repo_releases(normalized_repo_url),
+                        owner="plugin.market.release_read",
+                    )
                     self._release_tasks[task_key] = task
                     task.add_done_callback(
                         lambda completed_task: self._remove_release_task(task_key, completed_task)

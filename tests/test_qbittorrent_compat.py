@@ -26,11 +26,17 @@ def _load_qbittorrent_modules():
     modules_module.__path__ = []
     qbittorrent_package_module = types.ModuleType("app.modules.qbittorrent")
     qbittorrent_package_module.__path__ = []
+    runtime_module = types.ModuleType("app.runtime")
+    runtime_module.__path__ = []
     log_module = types.ModuleType("app.runtime.log")
     cache_module = types.ModuleType("app.runtime.cache")
     config_module = types.ModuleType("app.runtime.config")
+    runtime_settings_module = types.ModuleType("app.runtime.settings")
     metainfo_module = types.ModuleType("app.domain.metainfo")
     schemas_module = types.ModuleType("app.schemas")
+    schemas_module.__path__ = []
+    schema_dashboard_module = types.ModuleType("app.schemas.dashboard")
+    schema_transfer_module = types.ModuleType("app.schemas.transfer")
     schema_types_module = types.ModuleType("app.schemas.types")
     torrentool_module = types.ModuleType("torrentool")
     torrentool_module.__path__ = []
@@ -78,6 +84,13 @@ def _load_qbittorrent_modules():
         def get(self, *_args, **_kwargs):
             return None
 
+    class _RuntimeSettingsCompat:
+        """隔离测试用动态配置代理，保持生产模块的兼容读取语义。"""
+
+        def __getattr__(self, key):
+            """从测试提供的旧 Settings 桩读取配置项。"""
+            return getattr(config_module.settings, key)
+
     class _MetaInfo:
         def __init__(self, name):
             self.name = name
@@ -99,6 +112,14 @@ def _load_qbittorrent_modules():
 
         def scheduler_job(self):
             pass
+
+        @staticmethod
+        def _normalize_torrent_files(files, item_factory):
+            """镜像宿主边界的文件集合投影。"""
+            if files is None:
+                return None
+            source = getattr(files, "data", files)
+            return [item_factory(item) for item in source]
 
         def _get_torrent_info(self, content):
             torrent_info, torrent_content = None, None
@@ -135,6 +156,20 @@ def _load_qbittorrent_modules():
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
+    class _DownloaderFile:
+        """隔离加载测试使用的最小下载器文件 DTO。"""
+
+        def __init__(self, **kwargs):
+            """保存文件字段。"""
+            self.__dict__.update(kwargs)
+
+        @classmethod
+        def model_validate(cls, item):
+            """兼容字典和属性对象输入。"""
+            if isinstance(item, dict):
+                return cls(**item)
+            return cls(**vars(item))
+
     class TorrentStatus(Enum):
         TRANSFER = "transfer"
         DOWNLOADING = "downloading"
@@ -160,11 +195,13 @@ def _load_qbittorrent_modules():
     log_module.logger = _Logger()
     cache_module.FileCache = _FileCache
     config_module.settings = types.SimpleNamespace(TORRENT_TAG="moviepilot-tag")
+    runtime_settings_module.RuntimeSettingsCompat = _RuntimeSettingsCompat
     metainfo_module.MetaInfo = _MetaInfo
-    schemas_module.DownloaderInfo = object
-    schemas_module.TransferTorrent = object
-    schemas_module.DownloadingTorrent = object
-    schemas_module.DownloaderTorrent = _DownloaderTorrent
+    schema_dashboard_module.DownloaderInfo = object
+    schema_transfer_module.TransferTorrent = object
+    schema_transfer_module.DownloadingTorrent = object
+    schema_transfer_module.DownloaderTorrent = _DownloaderTorrent
+    schema_transfer_module.DownloaderFile = _DownloaderFile
     schema_types_module.TorrentStatus = TorrentStatus
     schema_types_module.TorrentQueryStatus = TorrentQueryStatus
     schema_types_module.DownloadTaskState = DownloadTaskState
@@ -195,6 +232,7 @@ def _load_qbittorrent_modules():
     app_module.foundation = foundation_module
     app_module.log = log_module
     app_module.modules = modules_module
+    app_module.runtime = runtime_module
     app_module.schemas = schemas_module
     domain_module.torrent = torrent_rules_module
     foundation_module.size = size_tools_module
@@ -204,6 +242,12 @@ def _load_qbittorrent_modules():
     core_module.cache = cache_module
     core_module.config = config_module
     core_module.metainfo = metainfo_module
+    runtime_module.cache = cache_module
+    runtime_module.config = config_module
+    runtime_module.log = log_module
+    runtime_module.settings = runtime_settings_module
+    schemas_module.dashboard = schema_dashboard_module
+    schemas_module.transfer = schema_transfer_module
     schemas_module.types = schema_types_module
     modules_module.qbittorrent = qbittorrent_package_module
     torrentool_module.torrent = torrentool_torrent_module
@@ -220,12 +264,16 @@ def _load_qbittorrent_modules():
         "app.foundation.url": url_tools_module,
         "app.runtime.cache": cache_module,
         "app.runtime.config": config_module,
+        "app.runtime": runtime_module,
         "app.domain.metainfo": metainfo_module,
         "app.runtime.log": log_module,
+        "app.runtime.settings": runtime_settings_module,
         "app.modules": modules_module,
         "app.modules._base": base_module,
         "app.modules.qbittorrent": qbittorrent_package_module,
         "app.schemas": schemas_module,
+        "app.schemas.dashboard": schema_dashboard_module,
+        "app.schemas.transfer": schema_transfer_module,
         "app.schemas.types": schema_types_module,
         "qbittorrentapi": qbittorrentapi_module,
         "qbittorrentapi.client": qbittorrentapi_client_module,

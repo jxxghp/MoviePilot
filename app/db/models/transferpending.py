@@ -4,7 +4,6 @@ from sqlalchemy import Index, String, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import legacy_db_query
 
 
 class TransferPending(Base):
@@ -73,7 +72,6 @@ class TransferPending(Base):
         )
 
     @classmethod
-    @legacy_db_query
     def list_all(cls, db: Session, limit: Optional[int] = 5000) -> List["TransferPending"]:
         """
         列出全部待整理登记，供启动回放使用。

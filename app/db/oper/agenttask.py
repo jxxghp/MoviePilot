@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -13,7 +14,6 @@ from app.db.models.agenttask import (
     _list_for_user_statement,
 )
 from app.db.models.agenttaskrun import AgentTaskRun
-from app.db.uow import run_sync_transaction
 
 
 class AgentTaskOper(DbOper):
@@ -62,9 +62,26 @@ class AgentTaskOper(DbOper):
                 )
             ).scalars().first()
 
-        if isinstance(self._db, Session):
-            return query(self._db)
-        return run_sync_transaction(query)
+        return self._execute_sync_query(query)
+
+    async def async_get(
+            self,
+            task_id: int,
+            user_id: Optional[str] = None,
+    ) -> Optional[AgentTask]:
+        """通过异步会话查询单个 Agent 定时任务。"""
+        async def query(session: AsyncSession) -> Optional[AgentTask]:
+            """在调用方异步会话中执行与同步入口相同的查询语义。"""
+            result = await session.execute(
+                _get_for_user_statement(
+                    AgentTask,
+                    task_id=task_id,
+                    user_id=user_id,
+                )
+            )
+            return result.scalars().first()
+
+        return await self._execute_async_query(query)
 
     def list(
             self,
@@ -84,9 +101,7 @@ class AgentTaskOper(DbOper):
                 )
             ).scalars().all())
 
-        if isinstance(self._db, Session):
-            return query(self._db)
-        return run_sync_transaction(query)
+        return self._execute_sync_query(query)
 
     def update(
             self,
