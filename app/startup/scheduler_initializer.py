@@ -16,7 +16,7 @@ def init_scheduler():
 
 def stop_scheduler():
     """
-    停止定时器；生命周期事件循环中返回有限等待的兼容协程。
+    停止定时器；生命周期事件循环中返回可等待的收口协程。
     """
     scheduler = Scheduler()
     try:

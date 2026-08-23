@@ -1,11 +1,23 @@
-import threading
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from starlette.background import BackgroundTasks
 
 from app.api.endpoints import site as site_endpoint
 from app.application.site.mutation import SiteMutationResult
+from app.runtime.tasks import TaskRegistry
+
+
+class _TaskRegistry(TaskRegistry):
+    """记录站点重置提交的同步后台任务。"""
+
+    def __init__(self) -> None:
+        """初始化任务记录。"""
+        super().__init__()
+        self.calls: list[tuple] = []
+
+    def create_sync(self, function, *args, owner: str, **kwargs) -> None:
+        """保存函数、参数和 owner，避免端点测试启动真实任务。"""
+        self.calls.append((function, args, kwargs, owner))
 
 
 @pytest.mark.asyncio
@@ -13,14 +25,8 @@ async def test_reset_submits_cookiecloud_after_site_transaction(monkeypatch):
     """站点重置提交 CookieCloud 后台任务，不在请求事件循环内直接执行。"""
     command = Mock()
     command.reset = AsyncMock(return_value=SiteMutationResult(success=True))
-    background_tasks = BackgroundTasks()
+    task_registry = _TaskRegistry()
     scheduler = Mock()
-    loop_thread = threading.get_ident()
-
-    def start_scheduler(**_kwargs):
-        assert threading.get_ident() != loop_thread
-
-    scheduler.start.side_effect = start_scheduler
     system_config = Mock()
     system_config.async_set = AsyncMock()
 
@@ -32,7 +38,7 @@ async def test_reset_submits_cookiecloud_after_site_transaction(monkeypatch):
     )
 
     response = await site_endpoint.reset(
-        background_tasks=background_tasks,
+        task_registry=task_registry,
         command=command,
         _=Mock(),
     )
@@ -44,8 +50,11 @@ async def test_reset_submits_cookiecloud_after_site_transaction(monkeypatch):
         site_endpoint.SystemConfigKey.IndexerSites, []
     )
     system_config.async_set.assert_any_await(site_endpoint.SystemConfigKey.RssSites, [])
-    assert len(background_tasks.tasks) == 1
-
-    await background_tasks()
-
-    scheduler.start.assert_called_once_with(job_id="cookiecloud", manual=True)
+    assert task_registry.calls == [
+        (
+            scheduler.start,
+            (),
+            {"job_id": "cookiecloud", "manual": True},
+            "api.site.reset",
+        )
+    ]
