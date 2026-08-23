@@ -8,7 +8,10 @@ from anyio.to_thread import current_default_thread_limiter
 
 from app.adapters.external import market as market_adapter
 from app.adapters.system.plugin import package as plugin_package_adapter
-from app.runtime.execution import run_in_threadpool_to_completion
+from app.runtime.execution import (
+    await_task_to_terminal,
+    run_in_threadpool_to_completion,
+)
 
 
 def test_plugin_file_adapters_share_runtime_completion_contract() -> None:
@@ -18,6 +21,32 @@ def test_plugin_file_adapters_share_runtime_completion_contract() -> None:
         plugin_package_adapter._await_thread_operation
         is run_in_threadpool_to_completion
     )
+
+
+@pytest.mark.asyncio
+async def test_await_task_to_terminal_ignores_repeated_cancellation() -> None:
+    """调用方连续取消时，受保护任务仍须结束并返回真实结果。"""
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def protected_operation() -> str:
+        """阻塞到测试释放，用于观察受保护任务的真实终态。"""
+        started.set()
+        await release.wait()
+        return "completed"
+
+    protected_task = asyncio.create_task(protected_operation())
+    waiter = asyncio.create_task(await_task_to_terminal(protected_task))
+    await started.wait()
+
+    waiter.cancel()
+    await asyncio.sleep(0)
+    waiter.cancel()
+    await asyncio.sleep(0)
+    assert waiter.done() is False
+
+    release.set()
+    assert await waiter == "completed"
 
 
 @pytest.mark.asyncio

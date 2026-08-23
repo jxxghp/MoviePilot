@@ -45,6 +45,7 @@ from app.adapters.system.plugin.manifest import (
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
 from app.runtime.execution import (
+    await_task_to_terminal,
     run_in_threadpool_to_completion as _await_thread_operation,
 )
 from app.runtime.tasks import get_task_registry
@@ -1499,15 +1500,8 @@ class PluginHelper(metaclass=WeakSingleton):
                 await asyncio.to_thread(created_file.unlink, missing_ok=True)
 
             cleanup_task = asyncio.create_task(cleanup_created_file())
-            while not cleanup_task.done():
-                try:
-                    await asyncio.shield(cleanup_task)
-                except asyncio.CancelledError:
-                    continue
-                except Exception:
-                    break
             try:
-                await cleanup_task
+                await await_task_to_terminal(cleanup_task)
             except Exception as err:
                 logger.warning(f"[UV] 取消后清理运行环境约束文件失败：{err}")
             raise

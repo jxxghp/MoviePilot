@@ -3,10 +3,27 @@ import inspect
 import time
 from contextvars import copy_context
 from functools import partial, wraps
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 from app.schemas.exception import ImmediateException
 from anyio.to_thread import run_sync
+
+
+TaskResult = TypeVar("TaskResult")
+
+
+async def await_task_to_terminal(
+    task: asyncio.Future[TaskResult],
+) -> TaskResult:
+    """忽略当前调用方的重复取消，直到受保护任务进入真实终态。"""
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            continue
+        except BaseException:
+            break
+    return task.result()
 
 
 async def run_in_threadpool(

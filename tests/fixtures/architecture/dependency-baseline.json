@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6531,
-  "edge_sha256": "86b2ad0b585deba78c5e0e5e7e4b55cd66e05a2d5e988ed28ac7f6a4ae15ff2f",
+  "edge_count": 6532,
+  "edge_sha256": "3fdba2c6862f9ea28ab4f059c04dd6bb819b86fa9d9fb74d09a0cfcf69f6b711",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2704,6 +2704,7 @@
     "app.application.plugin.install -> app.application.plugin",
     "app.application.plugin.install -> app.application.plugin.lifecycle",
     "app.application.plugin.install -> app.runtime",
+    "app.application.plugin.install -> app.runtime.execution",
     "app.application.plugin.install -> app.runtime.log",
     "app.application.plugin.install -> app.schemas",
     "app.application.plugin.install -> app.schemas.exception",

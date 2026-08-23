@@ -102,6 +102,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 - 市场适配器和插件包适配器统一复用 `runtime.execution.run_in_threadpool_to_completion`；两个模块内的
   `_await_thread_operation` 私有接缝保留为同一函数别名，不改变 `PluginHelper` 或 `PluginPackageManager`
   的同步/异步调用合同。
+- 插件安装快照、取消补偿和临时约束文件清理统一复用 `runtime.execution.await_task_to_terminal`，连续取消
+  不再由 Application 与 Adapter 各自维护近似循环；数据库 worker 的可中断队列等待仍保留独立职责。
 
 ### Transfer pending / 文件整理
 
