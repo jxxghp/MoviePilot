@@ -173,6 +173,12 @@ class DbOper:
             return run_sync_transaction(operation)
         return operation(self._db)
 
+    def _execute_sync_query(self, operation: Callable[[Session], T]) -> T:
+        """在当前同步会话查询，或委托组合根创建一次性兼容会话。"""
+        if self._db is None or isinstance(self._db, AsyncSession):
+            return run_sync_transaction(operation)
+        return operation(self._db)
+
     async def _execute_async_write(
         self,
         operation: Callable[[AsyncSession], Awaitable[T]],
@@ -181,6 +187,15 @@ class DbOper:
         if self._db is None or isinstance(self._db, Session):
             # 与查询装饰器的历史行为一致：同步会话不会被错误传入异步模型写入，
             # 而是由组合根另开匹配的异步事务。
+            return await run_async_transaction(operation)
+        return await operation(self._db)
+
+    async def _execute_async_query(
+        self,
+        operation: Callable[[AsyncSession], Awaitable[T]],
+    ) -> T:
+        """在当前异步会话查询，或委托组合根创建一次性兼容会话。"""
+        if self._db is None or isinstance(self._db, Session):
             return await run_async_transaction(operation)
         return await operation(self._db)
 

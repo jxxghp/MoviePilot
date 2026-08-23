@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Any, List, Mapping, Tuple, Optional
 
-from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy import delete as sqlalchemy_delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -9,6 +10,18 @@ from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
+
+
+async def _async_first(session: AsyncSession, statement: Any) -> Optional[Site]:
+    """执行异步站点查询并返回首条记录。"""
+    result = await session.execute(statement)
+    return result.scalars().first()
+
+
+async def _async_all(session: AsyncSession, statement: Any) -> list[Site]:
+    """执行异步站点查询并返回稳定列表。"""
+    result = await session.execute(statement)
+    return list(result.scalars().all())
 
 
 class SiteOper(DbOper):
@@ -21,7 +34,7 @@ class SiteOper(DbOper):
         新增站点
         """
         site = Site(**kwargs)
-        if not site.get_by_domain(self._db, kwargs.get("domain")):
+        if not self.get_by_domain(kwargs.get("domain")):
             self._stage_create(site)
             return True, "新增站点成功"
         return False, "站点已存在"
@@ -30,13 +43,22 @@ class SiteOper(DbOper):
         """
         查询单个站点
         """
-        return Site.get(self._db, sid)
+        return self._execute_sync_query(
+            lambda session: session.execute(
+                select(Site).where(Site.id == sid)
+            ).scalars().first()
+        )
 
     async def async_get(self, sid: int) -> Optional[Site]:
         """
         异步查询单个站点
         """
-        return await Site.async_get(self._db, sid)
+        return await self._execute_async_query(
+            lambda session: _async_first(
+                session,
+                select(Site).where(Site.id == sid),
+            )
+        )
 
     async def get_by_id(self, site_id: int) -> Optional[Site]:
         """读取站点写用例需要的目标站点。"""
@@ -80,35 +102,59 @@ class SiteOper(DbOper):
         """
         获取站点列表
         """
-        return Site.list(self._db)
+        return self._execute_sync_query(
+            lambda session: list(session.execute(select(Site)).scalars().all())
+        )
 
     async def async_list(self) -> List[Site]:
         """
         异步获取站点列表
         """
-        return await Site.async_list(self._db)
+        return await self._execute_async_query(
+            lambda session: _async_all(session, select(Site))
+        )
 
     async def async_list_order_by_pri(self) -> List[Site]:
         """异步按优先级获取站点，供站点查询应用服务使用。"""
-        return await Site.async_list_order_by_pri(self._db)
+        return await self._execute_async_query(
+            lambda session: _async_all(
+                session,
+                select(Site).order_by(Site.pri),
+            )
+        )
 
     def list_order_by_pri(self) -> List[Site]:
         """
         获取站点列表
         """
-        return Site.list_order_by_pri(self._db)
+        return self._execute_sync_query(
+            lambda session: list(
+                session.execute(select(Site).order_by(Site.pri)).scalars().all()
+            )
+        )
 
     def list_active(self) -> List[Site]:
         """
         按状态获取站点列表
         """
-        return Site.get_actives(self._db)
+        return self._execute_sync_query(
+            lambda session: list(
+                session.execute(
+                    select(Site).where(Site.is_active.is_(True))
+                ).scalars().all()
+            )
+        )
 
     async def async_list_active(self) -> List[Site]:
         """
         异步按状态获取站点列表
         """
-        return await Site.async_get_actives(self._db)
+        return await self._execute_async_query(
+            lambda session: _async_all(
+                session,
+                select(Site).where(Site.is_active.is_(True)),
+            )
+        )
 
     def delete(self, sid: int):
         """
@@ -128,7 +174,7 @@ class SiteOper(DbOper):
         """
         更新站点
         """
-        site = Site.get(self._db, sid)
+        site = self.get(sid)
         if not site:
             return None
         self._stage_update(site, payload)
@@ -147,37 +193,59 @@ class SiteOper(DbOper):
         """
         按域名获取站点
         """
-        return Site.get_by_domain(self._db, domain)
+        return self._execute_sync_query(
+            lambda session: session.execute(
+                select(Site).where(Site.domain == domain)
+            ).scalars().first()
+        )
 
     async def async_get_by_domain(self, domain: str) -> Optional[Site]:
         """
         异步按域名获取站点
         """
-        return await Site.async_get_by_domain(self._db, domain)
+        return await self._execute_async_query(
+            lambda session: _async_first(
+                session,
+                select(Site).where(Site.domain == domain),
+            )
+        )
 
     async def async_get_by_name(self, name: str) -> Optional[Site]:
         """
         异步按名称获取站点
         """
-        return await Site.async_get_by_name(self._db, name)
+        return await self._execute_async_query(
+            lambda session: _async_first(
+                session,
+                select(Site).where(Site.name == name),
+            )
+        )
 
     def get_domains_by_ids(self, ids: List[int]) -> List[Optional[str]]:
         """
         按ID获取站点域名
         """
-        return Site.get_domains_by_ids(self._db, ids)
+        if not ids:
+            return []
+        return self._execute_sync_query(
+            lambda session: list(
+                session.execute(
+                    select(Site.domain).where(Site.id.in_(ids))
+                ).scalars().all()
+            )
+        )
 
     def exists(self, domain: str) -> bool:
         """
         判断站点是否存在
         """
-        return Site.get_by_domain(self._db, domain) is not None
+        return self.get_by_domain(domain) is not None
 
     def update_cookie(self, domain: str, cookies: str) -> Tuple[bool, str]:
         """
         更新站点Cookie
         """
-        site = Site.get_by_domain(self._db, domain)
+        site = self.get_by_domain(domain)
         if not site:
             return False, "站点不存在"
         self._stage_update(site, {
@@ -189,7 +257,7 @@ class SiteOper(DbOper):
         """
         更新站点rss
         """
-        site = Site.get_by_domain(self._db, domain)
+        site = self.get_by_domain(domain)
         if not site:
             return False, "站点不存在"
         self._stage_update(site, {

@@ -1,7 +1,7 @@
 from typing import List, Any, Dict, Optional
 
 from fastapi import Depends, HTTPException
-from starlette.background import BackgroundTasks
+from typing import Annotated
 
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.response import Response as _SchemaResponse
@@ -42,6 +42,8 @@ from app.runtime.log import logger
 from app.application.scheduling import Scheduler
 from app.schemas.types import SystemConfigKey, MediaType
 from app.domain import site as site_rules
+from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.runtime.tasks import TaskRegistry
 
 router = ResponseAPIRouter()
 
@@ -169,13 +171,15 @@ async def update_site(
 
 @router.get("/cookiecloud", summary="CookieCloud同步", response_model=_SchemaResponse[None])
 async def cookie_cloud_sync(
-    background_tasks: BackgroundTasks,
+    task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
     """
     运行CookieCloud同步站点信息
     """
-    background_tasks.add_task(Scheduler().start, job_id="cookiecloud")
+    resolve_background_task_registry(task_registry).create_sync(
+        Scheduler().start, job_id="cookiecloud", owner="api.site.cookiecloud_sync"
+    )
     return _SchemaResponse(success=True, message="CookieCloud同步任务已启动！")
 
 

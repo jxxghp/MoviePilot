@@ -17,6 +17,16 @@ class ModuleResultAggregation(StrEnum):
     ORDERED_LIST_MERGE = "ordered_list_merge"
 
 
+class ModuleResultShape(StrEnum):
+    """描述模块 provider 返回值的基础 Python 形状。"""
+
+    ANY = "any"
+    LIST = "list"
+    STRING = "string"
+    MAPPING = "mapping"
+    BOOLEAN = "boolean"
+
+
 class ModuleExecutionMode(StrEnum):
     """描述 provider 可以采用的执行形态。"""
 
@@ -45,6 +55,7 @@ class ModuleMethodContract:
     version: int = 1
     input_contract: str = "legacy_args"
     result_contract: str = "Any"
+    result_shape: ModuleResultShape = ModuleResultShape.ANY
     required_parameters: tuple[str, ...] = ()
     execution: ModuleExecutionMode = ModuleExecutionMode.SYNC_OR_ASYNC
     timeout_policy: str = "caller_budget"
@@ -74,11 +85,11 @@ _METHOD_CONTRACTS = {
     "media_category": ModuleMethodContract(family="media-recognition", input_contract="MediaCategoryRequest", result_contract="CategoryConfig | None"),
     "mediaserver_items": ModuleMethodContract(family="media-server", input_contract="MediaServerItemsRequest", result_contract="list[MediaServerItem]", aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("server", "library_id", "start_index", "limit")),
     "mediaserver_iteminfo": ModuleMethodContract(family="media-server", input_contract="MediaServerItemRequest", result_contract="MediaServerItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("server", "item_id")),
-    "mediaserver_play_url": ModuleMethodContract(family="media-server", input_contract="MediaServerPlayRequest", result_contract="str | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("server", "item_id")),
+    "mediaserver_play_url": ModuleMethodContract(family="media-server", input_contract="MediaServerPlayRequest", result_contract="str | None", result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("server", "item_id")),
     "mediaserver_tv_episodes": ModuleMethodContract(family="media-server", input_contract="MediaServerEpisodesRequest", result_contract="list[MediaServerPlayItem]", aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("server", "item_id")),
     "download_file": ModuleMethodContract(family="storage", input_contract="StorageDownloadRequest", result_contract="FileItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("fileitem", "path")),
     "upload_file": ModuleMethodContract(family="storage", input_contract="StorageUploadRequest", result_contract="FileItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("fileitem", "path", "new_name")),
-    "list_files": ModuleMethodContract(family="storage", input_contract="StorageListRequest", result_contract="list[FileItem]", aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("fileitem", "recursion")),
+    "list_files": ModuleMethodContract(family="storage", input_contract="StorageListRequest", result_contract="list[FileItem]", result_shape=ModuleResultShape.LIST, aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE, required_parameters=("fileitem", "recursion")),
     "get_file_item": ModuleMethodContract(family="storage", input_contract="StorageItemRequest", result_contract="FileItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("storage", "path")),
     "get_folder": ModuleMethodContract(family="storage", input_contract="StorageFolderRequest", result_contract="FileItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("storage", "path")),
     "get_parent_item": ModuleMethodContract(family="storage", input_contract="StorageParentRequest", result_contract="FileItem | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("fileitem",)),
@@ -453,6 +464,22 @@ def diagnose_module_callable(method: str, callback: Callable[..., Any]) -> tuple
         )
     )
     return tuple(f"missing-parameter:{name}" for name in missing)
+
+
+def diagnose_module_result(method: str, result: Any) -> tuple[str, ...]:
+    """诊断显式模块结果的基础形状，兼容阶段只告警而不改写返回值。"""
+    shape = get_module_method_contract(method).result_shape
+    if shape is ModuleResultShape.ANY or result is None:
+        return ()
+    matches = {
+        ModuleResultShape.LIST: isinstance(result, list),
+        ModuleResultShape.STRING: isinstance(result, str),
+        ModuleResultShape.MAPPING: isinstance(result, dict),
+        ModuleResultShape.BOOLEAN: isinstance(result, bool),
+    }
+    if matches.get(shape, True):
+        return ()
+    return (f"unexpected-result:{shape.value}:{type(result).__name__}",)
 
 
 def list_explicit_module_contracts() -> dict[str, ModuleMethodContract]:

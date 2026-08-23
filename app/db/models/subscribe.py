@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import get_id_column, Base
-from app.db.decorators import async_db_query, db_query
+from app.db.decorators import run_legacy_async_query, run_legacy_sync_query
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
@@ -140,50 +140,66 @@ class Subscribe(Base):
         return condition
 
     @classmethod
-    @db_query
     def exists(
-            cls, db: Session, media_source: MediaSource, media_id: str,
+            cls, db: Session | MediaSource | None = None,
+            media_source: MediaSource | str | None = None,
+            media_id: str | None = None,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """按媒体身份、季号与剧集组查询已有订阅。"""
+        if db is not None and not isinstance(db, Session):
+            media_source, media_id, db = db, media_source, None
         condition = cls._identity_condition(
             media_source, media_id, music_type
         )
         if condition is None:
             return None
-        statement = select(cls).where(condition)
-        if season is not None:
-            statement = statement.where(cls.season == season)
-        statement = statement.where(cls.episode_group == episode_group)
-        return db.execute(statement).scalars().first()
+        def query(session: Session):
+            """在给定会话中执行订阅身份查询。"""
+            statement = select(cls).where(condition)
+            if season is not None:
+                statement = statement.where(cls.season == season)
+            return session.execute(
+                statement.where(cls.episode_group == episode_group)
+            ).scalars().first()
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
     async def async_exists(
-            cls, db: AsyncSession, media_source: MediaSource, media_id: str,
+            cls, db: AsyncSession | MediaSource | None = None,
+            media_source: MediaSource | str | None = None,
+            media_id: str | None = None,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """异步按媒体身份、季号与剧集组查询已有订阅。"""
+        if db is not None and not isinstance(db, AsyncSession):
+            media_source, media_id, db = db, media_source, None
         condition = cls._identity_condition(
             media_source, media_id, music_type
         )
         if condition is None:
             return None
-        query = select(cls).filter(condition)
-        if season is not None:
-            query = query.filter(cls.season == season)
-        query = query.filter(cls.episode_group == episode_group)
-        result = await db.execute(query)
-        return result.scalars().first()
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行订阅身份查询。"""
+            statement = select(cls).where(condition)
+            if season is not None:
+                statement = statement.where(cls.season == season)
+            result = await session.execute(
+                statement.where(cls.episode_group == episode_group)
+            )
+            return result.scalars().first()
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     @classmethod
-    @db_query
     def exists_by_username(
-            cls, db: Session, username: str, media_source: MediaSource, media_id: str,
+            cls, db: Session | str | None = None,
+            username: str | MediaSource | None = None,
+            media_source: MediaSource | str | None = None,
+            media_id: str | None = None,
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
@@ -191,6 +207,8 @@ class Subscribe(Base):
         """
         按订阅 owner、媒体身份、季号与剧集组查询订阅行。
         """
+        if db is not None and not isinstance(db, Session):
+            username, media_source, media_id, db = db, username, media_source, None
         if not username:
             return None
         condition = cls._identity_condition(
@@ -198,23 +216,30 @@ class Subscribe(Base):
         )
         if condition is None:
             return None
-        statement = select(cls).where(cls.username == username, condition)
-        if season is not None:
-            statement = statement.where(cls.season == season)
-        statement = statement.where(cls.episode_group == episode_group)
-        return db.execute(statement).scalars().first()
+        def query(session: Session):
+            """在给定会话中执行订阅 owner 查询。"""
+            statement = select(cls).where(cls.username == username, condition)
+            if season is not None:
+                statement = statement.where(cls.season == season)
+            return session.execute(
+                statement.where(cls.episode_group == episode_group)
+            ).scalars().first()
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
     async def async_exists_by_username(
-            cls, db: AsyncSession, username: str, media_source: MediaSource,
-            media_id: str, season: Optional[int] = None,
+            cls, db: AsyncSession | str | None = None,
+            username: str | MediaSource | None = None,
+            media_source: MediaSource | str | None = None,
+            media_id: str | None = None, season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """
         异步按订阅 owner、媒体身份、季号与剧集组查询订阅行。
         """
+        if db is not None and not isinstance(db, AsyncSession):
+            username, media_source, media_id, db = db, username, media_source, None
         if not username:
             return None
         condition = cls._identity_condition(
@@ -222,80 +247,106 @@ class Subscribe(Base):
         )
         if condition is None:
             return None
-        query = select(cls).filter(cls.username == username, condition)
-        if season is not None:
-            query = query.filter(cls.season == season)
-        query = query.filter(cls.episode_group == episode_group)
-        result = await db.execute(query)
-        return result.scalars().first()
-
-    @classmethod
-    @db_query
-    def get_by_state(cls, db: Session, state: str):
-        # 如果 state 为空或 None，返回所有订阅
-        statement = select(cls)
-        if state:
-            # 如果传入的状态不为空，拆分成多个状态
-            statement = statement.where(cls.state.in_(state.split(',')))
-        return list(db.execute(statement).scalars().all())
-
-    @classmethod
-    @async_db_query
-    async def async_get_by_state(cls, db: AsyncSession, state: str):
-        # 如果 state 为空或 None，返回所有订阅
-        if not state:
-            result = await db.execute(select(cls))
-        else:
-            # 如果传入的状态不为空，拆分成多个状态
-            result = await db.execute(
-                select(cls).filter(cls.state.in_(state.split(',')))
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行订阅 owner 查询。"""
+            statement = select(cls).where(cls.username == username, condition)
+            if season is not None:
+                statement = statement.where(cls.season == season)
+            result = await session.execute(
+                statement.where(cls.episode_group == episode_group)
             )
-        return list(result.scalars().all())
+            return result.scalars().first()
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     @classmethod
-    @db_query
-    def get_by_title(cls, db: Session, title: str, season: Optional[int] = None):
-        statement = select(cls).where(cls.name == title)
-        if season is not None:
-            statement = statement.where(cls.season == season)
-        return db.execute(statement).scalars().first()
+    def get_by_state(cls, db: Session | str | None = None, state: str | None = None):
+        """按状态列表查询订阅，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, Session):
+            state, db = db if state is None else state, None
+        def query(session: Session):
+            """在给定会话中执行状态查询。"""
+            statement = select(cls)
+            if state:
+                statement = statement.where(cls.state.in_(state.split(',')))
+            return list(session.execute(statement).scalars().all())
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
-    async def async_get_by_title(cls, db: AsyncSession, title: str, season: Optional[int] = None):
-        if season is not None:
-            result = await db.execute(
-                select(cls).filter(cls.name == title, cls.season == season)
-            )
-        else:
-            result = await db.execute(
-                select(cls).filter(cls.name == title)
-            )
-        return result.scalars().first()
+    async def async_get_by_state(
+        cls, db: AsyncSession | str | None = None, state: str | None = None
+    ):
+        """异步按状态列表查询订阅，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, AsyncSession):
+            state, db = db if state is None else state, None
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行状态查询。"""
+            statement = select(cls)
+            if state:
+                statement = statement.where(cls.state.in_(state.split(',')))
+            result = await session.execute(statement)
+            return list(result.scalars().all())
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     @classmethod
-    @async_db_query
-    async def async_list_by_title(cls, db: AsyncSession, title: str, season: Optional[int] = None):
-        """
-        异步按标题查询候选订阅列表。
-        """
-        if season is not None:
-            result = await db.execute(
-                select(cls).filter(cls.name == title, cls.season == season)
-            )
-        else:
-            result = await db.execute(
-                select(cls).filter(cls.name == title)
-            )
-        return list(result.scalars().all())
+    def get_by_title(
+        cls, db: Session | str | None = None, title: str | None = None,
+        season: Optional[int] = None,
+    ):
+        """按标题查询订阅，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, Session):
+            title, db = db if title is None else title, None
+        def query(session: Session):
+            """在给定会话中执行标题查询。"""
+            statement = select(cls).where(cls.name == title)
+            if season is not None:
+                statement = statement.where(cls.season == season)
+            return session.execute(statement).scalars().first()
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @db_query
+    async def async_get_by_title(
+        cls, db: AsyncSession | str | None = None, title: str | None = None,
+        season: Optional[int] = None,
+    ):
+        """异步按标题查询订阅，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, AsyncSession):
+            title, db = db if title is None else title, None
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行标题查询。"""
+            statement = select(cls).where(cls.name == title)
+            if season is not None:
+                statement = statement.where(cls.season == season)
+            result = await session.execute(statement)
+            return result.scalars().first()
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+
+    @classmethod
+    async def async_list_by_title(
+        cls, db: AsyncSession | str | None = None, title: str | None = None,
+        season: Optional[int] = None,
+    ):
+        """异步按标题查询候选订阅列表，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, AsyncSession):
+            title, db = db if title is None else title, None
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行标题列表查询。"""
+            statement = select(cls).where(cls.name == title)
+            if season is not None:
+                statement = statement.where(cls.season == season)
+            result = await session.execute(statement)
+            return list(result.scalars().all())
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
+
+    @classmethod
     def list_by_media_identity(
-            cls, db: Session, media_source: MediaSource, media_id: str,
+            cls, db: Session | MediaSource | None = None,
+            media_source: MediaSource | str | None = None,
+            media_id: str | None = None,
             music_type: Optional[str] = None,
     ):
         """同步按统一媒体身份查询候选订阅列表。"""
+        if db is not None and not isinstance(db, Session):
+            media_source, media_id, db = db, media_source, None
         condition = cls._identity_condition(
             media_source=media_source,
             media_id=media_id,
@@ -303,15 +354,21 @@ class Subscribe(Base):
         )
         if condition is None:
             return []
-        return list(db.execute(select(cls).where(condition)).scalars().all())
+        def query(session: Session):
+            """在给定会话中执行媒体身份列表查询。"""
+            return list(session.execute(select(cls).where(condition)).scalars().all())
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
     async def async_list_by_media_identity(
-            cls, db: AsyncSession, media_source: MediaSource, media_id: str,
+            cls, db: AsyncSession | MediaSource | None = None,
+            media_source: MediaSource | str | None = None,
+            media_id: str | None = None,
             music_type: Optional[str] = None,
     ):
         """异步按统一媒体身份查询候选订阅列表。"""
+        if db is not None and not isinstance(db, AsyncSession):
+            media_source, media_id, db = db, media_source, None
         condition = cls._identity_condition(
             media_source=media_source,
             media_id=media_id,
@@ -319,19 +376,26 @@ class Subscribe(Base):
         )
         if condition is None:
             return []
-        result = await db.execute(select(cls).filter(condition))
-        return list(result.scalars().all())
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行媒体身份列表查询。"""
+            result = await session.execute(select(cls).where(condition))
+            return list(result.scalars().all())
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     @classmethod
-    @db_query
     def get_by(
-            cls, db: Session, type: str, media_source: MediaSource, media_id: str,
+            cls, db: Session | str | None = None,
+            type: str | MediaSource | None = None,
+            media_source: MediaSource | str | None = None,
+            media_id: str | None = None,
             season: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """
         根据条件查询订阅
         """
+        if db is not None and not isinstance(db, Session):
+            type, media_source, media_id, db = db, type, media_source, None
         condition = cls._identity_condition(
             media_source, media_id, music_type
         )
@@ -340,18 +404,25 @@ class Subscribe(Base):
         statement = select(cls).where(condition, cls.type == type)
         if season is not None:
             statement = statement.where(cls.season == season)
-        return db.execute(statement).scalars().first()
+        def query(session: Session):
+            """在给定会话中执行类型媒体查询。"""
+            return session.execute(statement).scalars().first()
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
     async def async_get_by(
-            cls, db: AsyncSession, type: str, media_source: MediaSource, media_id: str,
+            cls, db: AsyncSession | str | None = None,
+            type: str | MediaSource | None = None,
+            media_source: MediaSource | str | None = None,
+            media_id: str | None = None,
             season: Optional[str] = None,
             music_type: Optional[str] = None,
     ):
         """
         根据条件查询订阅
         """
+        if db is not None and not isinstance(db, AsyncSession):
+            type, media_source, media_id, db = db, type, media_source, None
         condition = cls._identity_condition(
             media_source, media_id, music_type
         )
@@ -360,62 +431,72 @@ class Subscribe(Base):
         query = select(cls).filter(condition, cls.type == type)
         if season is not None:
             query = query.filter(cls.season == season)
-        result = await db.execute(query)
-        return result.scalars().first()
+        async def execute_query(session: AsyncSession):
+            """在给定异步会话中执行类型媒体查询。"""
+            result = await session.execute(query)
+            return result.scalars().first()
+        return await execute_query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(execute_query)
 
     @classmethod
-    @db_query
-    def list_by_username(cls, db: Session, username: str, state: Optional[str] = None, mtype: Optional[str] = None):
-        statement = select(cls).where(cls.username == username)
-        if state:
-            statement = statement.where(cls.state == state)
-        if mtype:
-            statement = statement.where(cls.type == mtype)
-        return list(db.execute(statement).scalars().all())
+    def list_by_username(cls, db: Session | str | None = None, username: str | None = None,
+                         state: Optional[str] = None, mtype: Optional[str] = None):
+        """按用户筛选订阅，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, Session):
+            username, db = db if username is None else username, None
+        def query(session: Session):
+            """在给定会话中执行用户筛选查询。"""
+            statement = select(cls).where(cls.username == username)
+            if state:
+                statement = statement.where(cls.state == state)
+            if mtype:
+                statement = statement.where(cls.type == mtype)
+            return list(session.execute(statement).scalars().all())
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
-    async def async_list_by_username(cls, db: AsyncSession, username: str, state: Optional[str] = None,
+    async def async_list_by_username(cls, db: AsyncSession | str | None = None,
+                                     username: str | None = None, state: Optional[str] = None,
                                      mtype: Optional[str] = None):
-        if mtype:
+        """异步按用户筛选订阅，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, AsyncSession):
+            username, db = db if username is None else username, None
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行用户筛选查询。"""
+            statement = select(cls).where(cls.username == username)
             if state:
-                result = await db.execute(
-                    select(cls).filter(cls.state == state, cls.username == username, cls.type == mtype)
-                )
-            else:
-                result = await db.execute(
-                    select(cls).filter(cls.username == username, cls.type == mtype)
-                )
-        else:
-            if state:
-                result = await db.execute(
-                    select(cls).filter(cls.state == state, cls.username == username)
-                )
-            else:
-                result = await db.execute(
-                    select(cls).filter(cls.username == username)
-                )
-        return list(result.scalars().all())
+                statement = statement.where(cls.state == state)
+            if mtype:
+                statement = statement.where(cls.type == mtype)
+            result = await session.execute(statement)
+            return list(result.scalars().all())
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     @classmethod
-    @db_query
-    def list_by_type(cls, db: Session, mtype: str, days: int):
-        return list(db.execute(
-            select(cls).where(
+    def list_by_type(cls, db: Session | str | None = None, mtype: str | None = None, days: int = 7):
+        """按类型查询最近时间窗内的订阅，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, Session):
+            mtype, db = db if mtype is None else mtype, None
+        def query(session: Session):
+            """在给定会话中执行时间窗订阅查询。"""
+            return list(session.execute(select(cls).where(
                 cls.type == mtype,
                 cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
                                           time.localtime(time.time() - 86400 * int(days)))
-            )
-        ).scalars().all())
+            )).scalars().all())
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
-    async def async_list_by_type(cls, db: AsyncSession, mtype: str, days: int):
-        result = await db.execute(
-            select(cls).filter(
+    async def async_list_by_type(cls, db: AsyncSession | str | None = None,
+                                 mtype: str | None = None, days: int = 7):
+        """异步按类型查询最近时间窗内的订阅，兼容显式会话和旧插件无会话调用。"""
+        if not isinstance(db, AsyncSession):
+            mtype, db = db if mtype is None else mtype, None
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行时间窗订阅查询。"""
+            result = await session.execute(select(cls).where(
                 cls.type == mtype,
                 cls.date >= time.strftime("%Y-%m-%d %H:%M:%S",
                                           time.localtime(time.time() - 86400 * int(days)))
-            )
-        )
-        return list(result.scalars().all())
+            ))
+            return list(result.scalars().all())
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)

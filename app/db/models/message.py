@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
-from app.db.decorators import async_db_query, db_query
+from app.db.decorators import run_legacy_async_query, run_legacy_sync_query
 
 
 class Message(Base):
@@ -49,21 +49,32 @@ class Message(Base):
         return self.to_dict()
 
     @classmethod
-    @db_query
-    def list_by_page(cls, db: Session, page: int = 1, count: int = 30) -> List["Message"]:
+    def list_by_page(
+        cls,
+        db: Session | None = None,
+        page: int = 1,
+        count: int = 30,
+    ) -> List["Message"]:
         """
-        分页获取消息记录。
+        分页获取消息记录，兼容显式会话和旧插件无会话调用。
         """
-        return list(db.execute(
-            select(cls)
-            .order_by(cls.reg_time.desc(), cls.id.desc())
-            .offset((page - 1) * count)
-            .limit(count)
-        ).scalars().all())
+        def query(session: Session) -> List["Message"]:
+            """在给定同步会话中执行消息分页查询。"""
+            return list(session.execute(
+                select(cls)
+                .order_by(cls.reg_time.desc(), cls.id.desc())
+                .offset((page - 1) * count)
+                .limit(count)
+            ).scalars().all())
+
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @db_query
-    def exists_by_source(cls, db: Session, source: str) -> bool:
+    def exists_by_source(
+        cls,
+        db: Session | str | None = None,
+        source: str | None = None,
+    ) -> bool:
         """
         判断指定来源标识的消息记录是否存在。
 
@@ -71,31 +82,42 @@ class Message(Base):
         :param source: 消息来源唯一标识
         :return: 是否存在匹配记录
         """
-        return db.execute(
-            select(cls.id).where(cls.source == source).limit(1)
-        ).scalars().first() is not None
+        if source is None and isinstance(db, str):
+            source, db = db, None
+        if source is None:
+            raise TypeError("source is required")
+
+        def query(session: Session) -> bool:
+            """在给定同步会话中执行来源存在性查询。"""
+            return session.execute(
+                select(cls.id).where(cls.source == source).limit(1)
+            ).scalars().first() is not None
+
+        return query(db) if isinstance(db, Session) else run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
     async def async_list_by_page(
-            cls, db: AsyncSession, page: int = 1, count: int = 30
+            cls, db: AsyncSession | None = None, page: int = 1, count: int = 30
     ) -> List["Message"]:
         """
         异步分页获取消息记录。
         """
-        result = await db.execute(
-            select(cls)
-            .order_by(cls.reg_time.desc(), cls.id.desc())
-            .offset((page - 1) * count)
-            .limit(count)
-        )
-        return list(result.scalars().all())
+        async def query(session: AsyncSession) -> List["Message"]:
+            """在给定异步会话中执行消息分页查询。"""
+            result = await session.execute(
+                select(cls)
+                .order_by(cls.reg_time.desc(), cls.id.desc())
+                .offset((page - 1) * count)
+                .limit(count)
+            )
+            return list(result.scalars().all())
+
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     @classmethod
-    @async_db_query
     async def async_list_sent_by_page(
             cls,
-            db: AsyncSession,
+            db: AsyncSession | None = None,
             page: int = 1,
             count: int = 30,
             all_clear_before: Optional[str] = None,
@@ -105,32 +127,35 @@ class Message(Base):
         """
         分页获取系统发送的通知消息。
         """
-        statement = select(cls).where(cls.action == 1)
-        if all_clear_before:
-            statement = statement.where(cls.reg_time > all_clear_before)
-        if system_clear_before:
-            statement = statement.where(
-                or_(
-                    and_(cls.image.isnot(None), cls.image != ""),
-                    cls.reg_time > system_clear_before,
+        async def query(session: AsyncSession) -> List["Message"]:
+            """在给定异步会话中执行通知消息分页查询。"""
+            statement = select(cls).where(cls.action == 1)
+            if all_clear_before:
+                statement = statement.where(cls.reg_time > all_clear_before)
+            if system_clear_before:
+                statement = statement.where(
+                    or_(
+                        and_(cls.image.isnot(None), cls.image != ""),
+                        cls.reg_time > system_clear_before,
+                    )
                 )
-            )
-        if media_clear_before:
-            statement = statement.where(
-                or_(
-                    cls.image.is_(None),
-                    cls.image == "",
-                    cls.reg_time > media_clear_before,
+            if media_clear_before:
+                statement = statement.where(
+                    or_(
+                        cls.image.is_(None),
+                        cls.image == "",
+                        cls.reg_time > media_clear_before,
+                    )
                 )
+            result = await session.execute(
+                statement
+                .order_by(cls.reg_time.desc(), cls.id.desc())
+                .offset((page - 1) * count)
+                .limit(count)
             )
+            return list(result.scalars().all())
 
-        result = await db.execute(
-            statement
-            .order_by(cls.reg_time.desc(), cls.id.desc())
-            .offset((page - 1) * count)
-            .limit(count)
-        )
-        return list(result.scalars().all())
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     @classmethod
     def delete_before(

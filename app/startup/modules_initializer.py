@@ -171,6 +171,7 @@ from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     configure_service_config_reader,
 )
+from app.runtime.tasks import get_task_registry
 
 
 _database_worker: DatabaseWorker | None = None
@@ -719,6 +720,7 @@ async def init_modules() -> HostRuntime:
         ),
         configuration=runtime_configuration,
         settings=runtime_settings,
+        tasks=get_task_registry(),
     )
     configure_runtime_configuration(host_runtime.configuration)
     configure_runtime_settings(host_runtime.settings)

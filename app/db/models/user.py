@@ -4,7 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
-from app.db.decorators import async_db_query, run_legacy_sync_query
+from app.db.decorators import (
+    run_legacy_async_query,
+    run_legacy_sync_query,
+)
 
 
 class User(Base):
@@ -55,12 +58,23 @@ class User(Base):
         return run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
-    async def async_get_by_name(cls, db: AsyncSession, name: str):
-        result = await db.execute(
-            select(cls).filter(cls.name == name)
-        )
-        return result.scalars().first()
+    async def async_get_by_name(
+        cls,
+        db: AsyncSession | str | None = None,
+        name: str | None = None,
+    ):
+        """异步按用户名查询，兼容显式会话和旧插件无会话调用。"""
+        if name is None and isinstance(db, str):
+            name, db = db, None
+        if name is None:
+            raise TypeError("name is required")
+
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行用户名查询。"""
+            result = await session.execute(select(cls).filter(cls.name == name))
+            return result.scalars().first()
+
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     @classmethod
     def get_by_id(cls, db: Session | int | None = None, user_id: int | None = None):
@@ -79,12 +93,23 @@ class User(Base):
         return run_legacy_sync_query(query)
 
     @classmethod
-    @async_db_query
-    async def async_get_by_id(cls, db: AsyncSession, user_id: int):
-        result = await db.execute(
-            select(cls).filter(cls.id == user_id)
-        )
-        return result.scalars().first()
+    async def async_get_by_id(
+        cls,
+        db: AsyncSession | int | None = None,
+        user_id: int | None = None,
+    ):
+        """异步按用户 ID 查询，兼容显式会话和旧插件无会话调用。"""
+        if user_id is None and isinstance(db, int):
+            user_id, db = db, None
+        if user_id is None:
+            raise TypeError("user_id is required")
+
+        async def query(session: AsyncSession):
+            """在给定异步会话中执行用户 ID 查询。"""
+            result = await session.execute(select(cls).filter(cls.id == user_id))
+            return result.scalars().first()
+
+        return await query(db) if isinstance(db, AsyncSession) else await run_legacy_async_query(query)
 
     def delete_by_name(self, db: Session, name: str):
         user = self.get_by_name(db, name)

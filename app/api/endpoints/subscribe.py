@@ -1,7 +1,7 @@
 from typing import List, Any, Annotated, Optional
 
 import cn2an
-from fastapi import Request, BackgroundTasks, Depends, HTTPException, Header
+from fastapi import Request, Depends, HTTPException, Header
 
 from app.schemas.common import IdData as _SchemaIdData
 from app.schemas.response import Response as _SchemaResponse
@@ -12,6 +12,10 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.schemas.workflow import Subscribe as _SchemaSubscribe
 from app.api.response import ResponseAPIRouter
+from app.api.context import (
+    get_background_task_registry,
+    resolve_background_task_registry,
+)
 from app.chain.subscribe import SubscribeChain
 from app.runtime.events import eventmanager
 from app.domain.context import MediaInfo
@@ -52,6 +56,7 @@ from app.api.dependencies.subscription import (
 )
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.scheduling import Scheduler
+from app.runtime.tasks import TaskRegistry
 from app.schemas.event import SubscribeModifiedEventData
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -489,7 +494,7 @@ async def delete_subscribe_by_media_identity(
 )
 async def seerr_subscribe(
     request: Request,
-    background_tasks: BackgroundTasks,
+    task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> Any:
     """
@@ -521,7 +526,7 @@ async def seerr_subscribe(
     user_name = req_json.get("request", {}).get("requestedBy_username")
     # 添加订阅
     if media_type == MediaType.MOVIE:
-        background_tasks.add_task(
+        resolve_background_task_registry(task_registry).create_sync(
             start_subscribe_add,
             mtype=media_type,
             media_source=MediaSource.TMDB,
@@ -531,6 +536,7 @@ async def seerr_subscribe(
             # 电影不传季号，避免被误判为剧集（S00）并污染通知标题
             season=None,
             username=user_name,
+            owner="api.subscribe.seerr",
         )
     else:
         seasons = []
@@ -543,7 +549,7 @@ async def seerr_subscribe(
                 ]
                 break
         for season in seasons:
-            background_tasks.add_task(
+            resolve_background_task_registry(task_registry).create_sync(
                 start_subscribe_add,
                 mtype=media_type,
                 media_source=MediaSource.TMDB,
@@ -552,6 +558,7 @@ async def seerr_subscribe(
                 year="",
                 season=season,
                 username=user_name,
+                owner="api.subscribe.seerr",
             )
 
     return _SchemaResponse(success=True)

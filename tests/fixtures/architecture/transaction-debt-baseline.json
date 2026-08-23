@@ -1,12 +1,12 @@
 {
   "model_decorators": {
     "by_kind": {
-      "async_db_query": 44,
+      "async_db_query": 27,
       "async_db_update": 0,
-      "db_query": 62,
+      "db_query": 48,
       "db_update": 0
     },
-    "count": 106,
+    "count": 75,
     "methods": [
       {
         "decorator": "async_db_query",
@@ -155,26 +155,6 @@
       },
       {
         "decorator": "async_db_query",
-        "file": "app/db/models/message.py",
-        "method": "Message.async_list_by_page"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/message.py",
-        "method": "Message.async_list_sent_by_page"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/message.py",
-        "method": "Message.exists_by_source"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/message.py",
-        "method": "Message.list_by_page"
-      },
-      {
-        "decorator": "async_db_query",
         "file": "app/db/models/passkey.py",
         "method": "PassKey.async_get_by_credential_id"
       },
@@ -192,46 +172,6 @@
         "decorator": "db_query",
         "file": "app/db/models/passkey.py",
         "method": "PassKey.get_by_id"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/site.py",
-        "method": "Site.async_get_actives"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/site.py",
-        "method": "Site.async_get_by_domain"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/site.py",
-        "method": "Site.async_get_by_name"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/site.py",
-        "method": "Site.async_list_order_by_pri"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/site.py",
-        "method": "Site.get_actives"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/site.py",
-        "method": "Site.get_by_domain"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/site.py",
-        "method": "Site.get_domains_by_ids"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/site.py",
-        "method": "Site.list_order_by_pri"
       },
       {
         "decorator": "async_db_query",
@@ -257,91 +197,6 @@
         "decorator": "db_query",
         "file": "app/db/models/siteuserdata.py",
         "method": "SiteUserData.get_latest"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_exists"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_exists_by_username"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_get_by"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_get_by_state"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_get_by_title"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_list_by_media_identity"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_list_by_title"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_list_by_type"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.async_list_by_username"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.exists"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.exists_by_username"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.get_by"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.get_by_state"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.get_by_title"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.list_by_media_identity"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.list_by_type"
-      },
-      {
-        "decorator": "db_query",
-        "file": "app/db/models/subscribe.py",
-        "method": "Subscribe.list_by_username"
       },
       {
         "decorator": "async_db_query",
@@ -487,16 +342,6 @@
         "decorator": "db_query",
         "file": "app/db/models/transferpending.py",
         "method": "TransferPending.list_all"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/user.py",
-        "method": "User.async_get_by_id"
-      },
-      {
-        "decorator": "async_db_query",
-        "file": "app/db/models/user.py",
-        "method": "User.async_get_by_name"
       },
       {
         "decorator": "async_db_query",

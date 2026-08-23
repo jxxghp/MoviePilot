@@ -7,7 +7,9 @@ from app.runtime.extensions.module.contracts import (
     ModuleErrorPolicy,
     ModuleExecutionMode,
     ModuleResultAggregation,
+    ModuleResultShape,
     diagnose_module_callable,
+    diagnose_module_result,
     get_module_method_contract,
     is_explicit_module_method,
     list_explicit_module_contracts,
@@ -116,3 +118,22 @@ def test_signature_diagnostics_accept_keyword_compatibility_provider() -> None:
         return kwargs
 
     assert diagnose_module_callable("snapshot_storage", compatible_provider) == ()
+
+
+def test_result_diagnostics_check_only_enabled_basic_shapes() -> None:
+    """高频方法检查基础结果形状，业务对象合同仍留给逐族适配器。"""
+    assert get_module_method_contract("list_files").result_shape is ModuleResultShape.LIST
+    assert diagnose_module_result("list_files", [object()]) == ()
+    assert diagnose_module_result("list_files", None) == ()
+    assert diagnose_module_result("list_files", "legacy-value") == (
+        "unexpected-result:list:str",
+    )
+    assert diagnose_module_result("mediaserver_play_url", "https://example.test") == ()
+    assert diagnose_module_result("mediaserver_play_url", 7) == (
+        "unexpected-result:string:int",
+    )
+
+
+def test_unknown_plugin_result_keeps_unchecked_legacy_compatibility() -> None:
+    """未知第三方方法的任意返回值继续不做结果形状诊断。"""
+    assert diagnose_module_result("third_party_custom_method", object()) == ()

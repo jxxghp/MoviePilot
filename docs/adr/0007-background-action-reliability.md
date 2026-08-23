@@ -59,8 +59,12 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 
 ### FastAPI BackgroundTasks
 
-- 订阅手工搜索调度、插件市场刷新、低价值上报：E1；响应成功只表示已接受本进程调度，不表示执行完成。
-- 若任务源于已提交的用户数据且不可从数据库重建，必须提升为 E2，不得继续新增裸 BackgroundTasks。
+- 订阅手工搜索调度、插件市场刷新、低价值上报、CookieCloud 手工调度：E1；响应成功只表示已接受本进程
+  调度，不表示执行完成。
+- Webhook E0 广播、消息入口和 Seerr 订阅入口均已迁入 lifespan TaskRegistry，具备 owner、停止接收和
+  有限等待语义；进程崩溃时仍允许丢失，不因此提升为 durable。
+- 主仓不再新增或保留裸 FastAPI `BackgroundTasks`；若任务源于已提交的用户数据且不可从数据库重建，
+  必须提升为 E2，进入 Outbox 或持久任务表。
 
 ### Scheduler jobs
 

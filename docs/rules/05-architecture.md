@@ -48,7 +48,7 @@ cycle passes through an established package that was not moved.
 | `app/foundation/` | Stateless, config-free and I/O-free primitives: reflection and dynamic import, crypto, DOM parsing, identity, collections, singleton, text conversion/segmentation, URL and version helpers |
 | `app/domain/` | Pure MoviePilot business semantics for media, recognition, sites and torrents; live configuration, persistence, transport and acceleration are injected |
 | `app/application/` | Focused stateful application services, configured capability selection and service-bound rules |
-| `app/runtime/` | Process-wide config, events, complete logging runtime, cache contracts/in-memory policy, execution, localization, scheduling, restart state, concurrency, GC and rate limits |
+| `app/runtime/` | Process-wide config, events, complete logging runtime, cache contracts/in-memory policy, execution, background-task ownership, localization, scheduling, restart state, concurrency, GC and rate limits |
 | `app/adapters/` | Concrete technical I/O and named external ecosystems, split by cache, network, system and external boundaries |
 | `app/sdk/` | Stable, deliberately curated imports for plugin authors |
 
@@ -88,6 +88,7 @@ create additional top-level directory categories.
 | `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
 | `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
 | `app/runtime/managed_resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
+| `app/runtime/tasks.py` | Lifespan-scoped ownership, cancellation and bounded shutdown waiting for in-process background tasks |
 | `app/runtime/state.py` | Process restart and update state |
 | `app/runtime/extensions/` | Module, plugin, configured-service and managed-resource discovery/registration/lifecycle adapters |
 | `app/runtime/compat/` | Standard-library-only exact legacy import routing, resource preflight scanning and DEBUG diagnostics |
@@ -145,6 +146,9 @@ mechanism remains in `app/adapters/system/resource.py`.
 应用级启动顺序使用 `app/startup/lifecycle/components.py` 的组件描述声明依赖、
 normal/safe-mode 范围、start/stop 顺序、超时预算和失败策略。新增进程级资源不得只在
 `lifespan()` 中追加过程代码，必须先进入可导出的生命周期清单并补顺序快照测试。
+API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/tasks.py`；登记器先于其他
+运行资源启动，并在资源释放前停止接收、取消和有限等待。需要崩溃恢复的 E2/E3 副作用仍应
+进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。
 Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
 插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
 旧插件若直接导入有资源前置条件的第三方包，compat 在插件 import 前递归扫描源码并保守准备资源；

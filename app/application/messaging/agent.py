@@ -7,6 +7,7 @@ from threading import Lock
 from typing import Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from app.schemas.types import NotificationChannel
+from app.runtime.tasks import get_task_registry
 
 # Agent 选择按钮回调前缀（新旧两种格式都必须继续兼容）
 AGENT_CHOICE_PREFIX = "agent_interaction:choice:"
@@ -185,7 +186,10 @@ def create_web_agent_background_task(
     coroutine: Awaitable[object],
 ) -> asyncio.Task[object]:
     """登记 Web Agent 后台任务，使应用关闭时可以统一收口。"""
-    task = asyncio.create_task(coroutine)
+    task = get_task_registry().create(
+        coroutine,
+        owner="api.agent.web_execution",
+    )
     _WEB_AGENT_BACKGROUND_TASKS.add(task)
     task.add_done_callback(_WEB_AGENT_BACKGROUND_TASKS.discard)
     return task

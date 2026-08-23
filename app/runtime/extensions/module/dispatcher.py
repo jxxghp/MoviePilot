@@ -12,6 +12,7 @@ from app.runtime.log import logger
 from app.runtime.observability import observe_duration, record_metric
 from app.runtime.extensions.module.contracts import (
     diagnose_module_callable,
+    diagnose_module_result,
     get_module_method_contract,
     is_explicit_module_method,
 )
@@ -134,8 +135,10 @@ class ModuleInvocationDispatcher:
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
                 if self.is_valid_empty(result):
                     result = func(*args, **kwargs)
+                    self._diagnose_result(method, result, "plugin")
                 elif isinstance(result, list):
                     temp = func(*args, **kwargs)
+                    self._diagnose_result(method, temp, "plugin")
                     if isinstance(temp, list):
                         result.extend(temp)
                 else:
@@ -187,8 +190,10 @@ class ModuleInvocationDispatcher:
                 logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
                 if self.is_valid_empty(result):
                     result = await self._async_call(func, *args, **kwargs)
+                    self._diagnose_result(method, result, "plugin")
                 elif isinstance(result, list):
                     temp = await self._async_call(func, *args, **kwargs)
+                    self._diagnose_result(method, temp, "plugin")
                     if isinstance(temp, list):
                         result.extend(temp)
                 else:
@@ -238,10 +243,13 @@ class ModuleInvocationDispatcher:
                 self._diagnose_callable(method, func, f"宿主模块 {module_id}")
                 if self.is_valid_empty(result):
                     result = func(*args, **kwargs)
+                    self._diagnose_result(method, result, "system")
                 elif ObjectUtils.check_signature(func, result):
                     result = func(result)
+                    self._diagnose_result(method, result, "system")
                 elif isinstance(result, list):
                     temp = func(*args, **kwargs)
+                    self._diagnose_result(method, temp, "system")
                     if isinstance(temp, list):
                         result.extend(temp)
                 else:
@@ -291,10 +299,13 @@ class ModuleInvocationDispatcher:
                 self._diagnose_callable(method, func, f"宿主模块 {module_id}")
                 if self.is_valid_empty(result):
                     result = await self._async_call(func, *args, **kwargs)
+                    self._diagnose_result(method, result, "system")
                 elif ObjectUtils.check_signature(func, result):
                     result = await self._async_call(func, result)
+                    self._diagnose_result(method, result, "system")
                 elif isinstance(result, list):
                     temp = await self._async_call(func, *args, **kwargs)
+                    self._diagnose_result(method, temp, "system")
                     if isinstance(temp, list):
                         result.extend(temp)
                 else:
@@ -357,6 +368,24 @@ class ModuleInvocationDispatcher:
                 "%s 的模块方法 %s 与契约不一致：%s；当前仅诊断",
                 owner,
                 method,
+                ", ".join(problems),
+            )
+
+    @staticmethod
+    def _diagnose_result(method: str, result: Any, provider_type: str) -> None:
+        """记录 provider 结果形状偏差，保持旧插件返回值原样继续执行。"""
+        problems = diagnose_module_result(method, result)
+        if problems:
+            record_metric(
+                "module.contract.result_mismatch",
+                method=method,
+                provider_type=provider_type,
+                problem=problems[0],
+            )
+            logger.warning(
+                "模块方法 %s 的 %s provider 返回值与契约不一致：%s；当前仅诊断",
+                method,
+                provider_type,
                 ", ".join(problems),
             )
 

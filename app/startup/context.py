@@ -1,8 +1,10 @@
 """宿主启动阶段构建的类型化运行时上下文。"""
 
 from collections.abc import AsyncGenerator, Callable, Generator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
+
+from app.runtime.tasks import TaskRegistry
 
 from app.application.messaging.chat import (
     AsyncAgentChatRepository,
@@ -193,3 +195,4 @@ class HostRuntime:
     workflow: WorkflowRuntime
     configuration: RuntimeConfiguration
     settings: RuntimeSettingsService
+    tasks: TaskRegistry = field(default_factory=TaskRegistry)

@@ -32,6 +32,7 @@ from app.runtime.settings import RuntimeSettingsCompat
 settings = RuntimeSettingsCompat()
 from app.runtime.health import get_application_health
 from app.runtime.topology import validate_process_topology
+from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger, LoggerManager
@@ -165,6 +166,24 @@ async def initialize_modules_component(app: FastAPI) -> None:
         app.state.host_runtime = runtime
 
 
+def initialize_task_registry(app: FastAPI) -> None:
+    """创建当前 lifespan 独占的后台任务登记器。"""
+    task_registry = TaskRegistry()
+    app.state.task_registry = task_registry
+    configure_task_registry(task_registry)
+
+
+async def stop_task_registry(app: FastAPI) -> None:
+    """停止接收新后台任务，并取消、等待当前 lifespan 的存量任务。"""
+    task_registry = getattr(app.state, "task_registry", None)
+    try:
+        if isinstance(task_registry, TaskRegistry):
+            await task_registry.shutdown(timeout_seconds=30.0)
+    finally:
+        configure_task_registry(None)
+        app.state.task_registry = None
+
+
 def prepare_plugin_restore() -> None:
     """先装配插件外部系统服务，再恢复插件及其依赖。"""
     configure_plugin_services()
@@ -188,6 +207,15 @@ def prepare_database_component(app: FastAPI) -> None:
 def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
     """按现有顺序构建应用组件清单，回调在每次 lifespan 启动时重新绑定。"""
     return (
+        LifecycleComponent(
+            name="后台任务登记器",
+            start=lambda: initialize_task_registry(app),
+            stop=lambda: stop_task_registry(app),
+            start_order=5,
+            stop_order=5,
+            start_timeout_seconds=30,
+            stop_timeout_seconds=60,
+        ),
         LifecycleComponent(
             name="数据库准备",
             start=lambda: prepare_database_component(app),
@@ -371,10 +399,16 @@ async def lifespan(app: FastAPI):
         sync_plugins_task = asyncio.create_task(
             run_startup_step("插件同步与启动收尾", init_extra)
         )
+        task_registry = app.state.task_registry
+        task_registry.register(sync_plugins_task, owner="startup.plugin_settlement")
         health.mark_ready()
     except BaseException:
         # Uvicorn 在 lifespan 抛错时不会开始接流量；状态仍需供嵌入式入口和测试诊断。
         health.mark_failed()
+        try:
+            await stop_task_registry(app)
+        except Exception as cleanup_error:
+            logger.error(f"启动失败后的后台任务清理失败：{cleanup_error}")
         raise
     try:
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环

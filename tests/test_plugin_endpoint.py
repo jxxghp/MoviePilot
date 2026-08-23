@@ -14,6 +14,7 @@ from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.application.plugin.config import PluginConfigCommand
 from app.runtime.config import settings
 from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.tasks import TaskRegistry
 from app.schemas.event import PluginDataResetEventData
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import ChainEventType, SystemConfigKey
@@ -312,8 +313,8 @@ def test_plugin_releases_force_uses_cached_release_response_and_schedules_refres
     plugin_helper.async_get_plugin_release_versions = fake_releases
     scheduled = []
 
-    def fake_schedule(plugin_id, repo_url):
-        scheduled.append((plugin_id, repo_url))
+    def fake_schedule(plugin_id, repo_url, task_registry):
+        scheduled.append((plugin_id, repo_url, task_registry))
 
     with (
         patch("app.api.endpoints.plugin.PluginManager", return_value=plugin_manager),
@@ -324,7 +325,12 @@ def test_plugin_releases_force_uses_cached_release_response_and_schedules_refres
 
     assert result["release_supported"] is True
     assert fresh_states == [False]
-    assert scheduled == [("DemoPlugin", "https://github.com/demo/plugins")]
+    assert len(scheduled) == 1
+    assert scheduled[0][:2] == (
+        "DemoPlugin",
+        "https://github.com/demo/plugins",
+    )
+    assert isinstance(scheduled[0][2], TaskRegistry)
     plugin_helper.async_has_plugin_release_cache.assert_awaited_once_with(
         "https://github.com/demo/plugins"
     )

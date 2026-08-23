@@ -12,6 +12,7 @@ runtime 兼容映射指向 SDK 薄门面；canonical 数据访问模块仍只依
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.db.base import DbOper
 from app.db.models.user import User
@@ -103,13 +104,23 @@ class UserOper(DbOper):
         """
         异步根据用户名获取用户。
         """
-        return await User.async_get_by_name(self._db, name)
+        async def query(session: AsyncSession) -> Optional[User]:
+            """在调用方异步会话中执行用户名查询。"""
+            result = await session.execute(select(User).where(User.name == name))
+            return result.scalars().first()
+
+        return await self._execute_async_query(query)
 
     async def async_get_by_id(self, user_id: int) -> Optional[User]:
         """
         异步根据用户 ID 获取用户。
         """
-        return await User.async_get_by_id(self._db, user_id)
+        async def query(session: AsyncSession) -> Optional[User]:
+            """在调用方异步会话中执行用户 ID 查询。"""
+            result = await session.execute(select(User).where(User.id == user_id))
+            return result.scalars().first()
+
+        return await self._execute_async_query(query)
 
     def get_permissions(self, name: str) -> dict:
         """

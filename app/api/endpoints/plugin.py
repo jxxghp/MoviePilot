@@ -60,6 +60,8 @@ from app.adapters.system.plugin.package import PluginPackageManager
 from app.application.database import DatabaseWorkerOverloadedError
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
+from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.runtime.tasks import TaskRegistry
 
 router = ResponseAPIRouter()
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()
@@ -112,11 +114,17 @@ async def _refresh_plugin_release_versions(plugin_id: str, repo_url: str) -> Non
         logger.warning(f"后台刷新插件 {plugin_id} Release 列表失败：{e}")
 
 
-def _schedule_plugin_release_refresh(plugin_id: str, repo_url: str) -> None:
+def _schedule_plugin_release_refresh(
+    plugin_id: str, repo_url: str, task_registry: TaskRegistry | None = None
+) -> None:
     """
     保留后台任务引用，避免任务被回收，同时让 helper 负责同仓库强刷合并。
     """
-    task = asyncio.create_task(_refresh_plugin_release_versions(plugin_id, repo_url))
+    registry = resolve_background_task_registry(task_registry)
+    task = registry.create(
+        _refresh_plugin_release_versions(plugin_id, repo_url),
+        owner="api.plugin.release_refresh",
+    )
     _plugin_release_refresh_tasks.add(task)
 
     def _discard_task(completed_task: asyncio.Task) -> None:
@@ -368,6 +376,7 @@ async def plugin_releases(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     repo_url: Optional[str] = "",
     force: bool = False,
+    task_registry: TaskRegistry = Depends(get_background_task_registry),
 ) -> dict:
     """
     查询指定插件可直接安装的 GitHub Release 版本。
@@ -404,7 +413,11 @@ async def plugin_releases(
     )
     release_items = await plugin_helper.async_get_plugin_release_versions(plugin_id, repo_url)
     if force and has_release_cache:
-        _schedule_plugin_release_refresh(plugin_id, repo_url)
+        _schedule_plugin_release_refresh(
+            plugin_id,
+            repo_url,
+            resolve_background_task_registry(task_registry),
+        )
     items = []
     for item in release_items:
         version = item.get("version")
