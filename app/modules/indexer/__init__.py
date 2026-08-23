@@ -634,12 +634,14 @@ class IndexerModule(_ModuleBase):
         :return: 用户数据
         """
 
-        def __get_site_obj() -> Optional[SiteParserBase]:
+        def __get_site_obj(schema_value: Optional[str] = None) -> Optional[SiteParserBase]:
             """
             获取站点解析器
+            :param schema_value: 指定 schema, 默认取站点声明的 schema
             """
+            schema_value = schema_value or site.get("schema")
             for site_schema in self._site_schemas:
-                if site_schema.schema and site_schema.schema.value == site.get("schema"):
+                if site_schema.schema and site_schema.schema.value == schema_value:
                     return site_schema(
                         site_name=site.get("name"),
                         url=site.get("url"),
@@ -651,6 +653,7 @@ class IndexerModule(_ModuleBase):
                         api_url=site.get("api_url"))
             return None
 
+        # 按站点声明的 schema 获取解析器
         site_obj = __get_site_obj()
         if not site_obj:
             if not site.get("public"):
@@ -662,6 +665,28 @@ class IndexerModule(_ModuleBase):
             logger.info(f"站点 {site.get('name')} 开始以 {site.get('schema')} 模型解析数据...")
             site_obj.parse()
             logger.debug(f"站点 {site.get('name')} 数据解析完成")
+            # 站点声明的 schema 解析失败(userid 为空)时, 自动尝试其他解析器,
+            # 兼容资源文件 schema 标注错误/变种站点的场景
+            if not site_obj.userid and not site.get("public"):
+                tried = {site.get("schema")}
+                for site_schema in self._site_schemas:
+                    if not site_schema.schema or site_schema.schema.value in tried:
+                        continue
+                    tried.add(site_schema.schema.value)
+                    logger.info(f"站点 {site.get('name')} schema {site.get('schema')} 解析失败, "
+                                f"尝试 {site_schema.schema.value} 模型...")
+                    alt_obj = __get_site_obj(site_schema.schema.value)
+                    if not alt_obj:
+                        continue
+                    try:
+                        alt_obj.parse()
+                    except Exception as e:
+                        logger.error(f"站点 {site.get('name')} 以 {site_schema.schema.value} 解析失败: {str(e)}")
+                        continue
+                    if alt_obj.userid:
+                        site_obj = alt_obj
+                        logger.info(f"站点 {site.get('name')} 改用 {site_schema.schema.value} 模型解析成功")
+                        break
             return SiteUserData(
                 domain=site_rules.extract_domain(site.get("url")),
                 userid=site_obj.userid,
