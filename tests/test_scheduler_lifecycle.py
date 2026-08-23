@@ -6,6 +6,7 @@ import threading
 import pytest
 
 from app import scheduler as scheduler_module
+from app.runtime.config import global_vars
 from app.scheduler import Scheduler
 
 
@@ -118,6 +119,64 @@ async def test_submit_to_loop_tracks_internal_progress_or_finish_tasks() -> None
     await scheduler.stop_async()
 
     assert cancelled.is_set()
+    assert scheduler._handles == {}
+
+
+@pytest.mark.anyio
+async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> None:
+    """同步任务回投的进度与收尾句柄都必须纳入关闭收口。"""
+    update_started = asyncio.Event()
+    finish_started = asyncio.Event()
+    gate = asyncio.Event()
+    cancelled = 0
+
+    class BlockingProgress:
+        """让进度和收尾停在异步后端，便于验证 owner registry。"""
+
+        def __init__(self, _key: str) -> None:
+            pass
+
+        async def update(self, **_kwargs) -> None:
+            nonlocal cancelled
+            update_started.set()
+            try:
+                await gate.wait()
+            except asyncio.CancelledError:
+                cancelled += 1
+                raise
+
+        async def get(self):
+            nonlocal cancelled
+            finish_started.set()
+            try:
+                await gate.wait()
+            except asyncio.CancelledError:
+                cancelled += 1
+                raise
+            return None
+
+        async def end(self, **_kwargs) -> None:
+            pass
+
+    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
+    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", BlockingProgress)
+    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", asyncio.get_running_loop())
+
+    def job(progress_callback) -> None:
+        progress_callback(value=50)
+
+    scheduler = _scheduler("callback-handles", job)
+    await asyncio.to_thread(scheduler.start, "callback-handles")
+    await asyncio.wait_for(
+        asyncio.gather(update_started.wait(), finish_started.wait()),
+        timeout=1,
+    )
+
+    assert len(scheduler._handles) == 2
+
+    await scheduler.stop_async()
+
+    assert cancelled == 2
     assert scheduler._handles == {}
 
 
