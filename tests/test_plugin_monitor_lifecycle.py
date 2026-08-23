@@ -2,7 +2,7 @@ import asyncio
 import threading
 import time
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -139,6 +139,12 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(plugins_initializer, "execute_task", execute)
     monkeypatch.setattr(plugins_initializer, "register_plugin_api", register)
+    dependency_result = (
+        manager.async_install_plugin_missing_dependencies_with_status.return_value
+    )
+    manager.async_install_plugin_missing_dependencies_with_status = AsyncMock(
+        return_value=dependency_result,
+    )
     manager.get_plugin_runtime_statuses.return_value = {}
     return register
 
@@ -150,7 +156,7 @@ async def test_sync_plugins_activates_ready_plugins_when_dependencies_fail(
     """依赖恢复失败时仍激活无关的已就绪插件。"""
     manager = MagicMock()
     manager.sync.return_value = ["demo"]
-    manager.install_plugin_missing_dependencies_with_status.return_value = (
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
         PluginDependencyInstallResult(missing=["demo>=1"], success=False)
     )
     manager.classify_plugins.return_value = PluginDependencyClassification(
@@ -175,7 +181,7 @@ async def test_sync_plugins_loads_only_plugins_that_become_ready(
     """后台依赖恢复后只启动尚未运行且当前已就绪的插件。"""
     manager = MagicMock()
     manager.sync.return_value = []
-    manager.install_plugin_missing_dependencies_with_status.return_value = (
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
         PluginDependencyInstallResult(missing=["demo>=1"], success=True)
     )
     manager.classify_plugins.return_value = PluginDependencyClassification(
@@ -204,7 +210,7 @@ async def test_sync_plugins_reloads_only_updated_running_plugins(monkeypatch) ->
     """源码同步只重载对应运行实例，不重启其他插件。"""
     manager = MagicMock()
     manager.sync.return_value = ["UpdatedPlugin"]
-    manager.install_plugin_missing_dependencies_with_status.return_value = (
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
         PluginDependencyInstallResult(missing=[], success=True)
     )
     manager.classify_plugins.return_value = PluginDependencyClassification(
@@ -232,7 +238,7 @@ async def test_sync_plugins_reloads_running_plugin_after_dependency_recovery(
     """依赖恢复后，已运行的旧实例必须切换到新源码。"""
     manager = MagicMock()
     manager.sync.return_value = []
-    manager.install_plugin_missing_dependencies_with_status.return_value = (
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
         PluginDependencyInstallResult(missing=["demo>=1"], success=True)
     )
     manager.classify_plugins.return_value = PluginDependencyClassification(
@@ -258,7 +264,7 @@ async def test_sync_plugins_keeps_runtime_when_nothing_changed(monkeypatch) -> N
     """源码和依赖均无变化时保留首次初始化结果。"""
     manager = MagicMock()
     manager.sync.return_value = []
-    manager.install_plugin_missing_dependencies_with_status.return_value = (
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
         PluginDependencyInstallResult(missing=[], success=True)
     )
     manager.classify_plugins.return_value = PluginDependencyClassification(
@@ -283,7 +289,7 @@ async def test_sync_plugins_keeps_event_loop_responsive_during_activation(
     """插件初始化运行在线程池时，Web 事件循环仍可继续调度。"""
     manager = MagicMock()
     manager.sync.return_value = []
-    manager.install_plugin_missing_dependencies_with_status.return_value = (
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
         PluginDependencyInstallResult(missing=[], success=True)
     )
     manager.classify_plugins.return_value = PluginDependencyClassification(
@@ -299,6 +305,9 @@ async def test_sync_plugins_keeps_event_loop_responsive_during_activation(
         time.sleep(0.1)
 
     manager.start.side_effect = slow_start
+    manager.async_install_plugin_missing_dependencies_with_status = AsyncMock(
+        return_value=PluginDependencyInstallResult(missing=[], success=True),
+    )
     monkeypatch.setattr(plugins_initializer, "configure_plugin_services", lambda: None)
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(plugins_initializer, "register_plugin_api", MagicMock())

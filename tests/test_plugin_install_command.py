@@ -1,8 +1,9 @@
-from unittest.mock import AsyncMock, Mock
+import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.application.database import DatabaseWorkerOverloadedError
+from app.schemas.exception import DatabaseWorkerOverloadedError
 from app.application.plugin.install import PluginInstallCommand
 
 
@@ -156,6 +157,42 @@ async def test_existing_plugin_checks_compatibility_without_reinstalling_package
 
 
 @pytest.mark.asyncio
+async def test_cancelled_existing_plugin_refresh_restores_runtime_and_registrations():
+    """已存在插件刷新被取消时，必须重新收敛运行态和注册。"""
+    registration_started = asyncio.Event()
+    calls: list[str] = []
+
+    async def reload_plugin(_plugin_id: str) -> None:
+        calls.append("reload")
+
+    async def refresh_registrations(_plugin_id: str) -> None:
+        calls.append("registrations")
+        if calls.count("registrations") == 1:
+            registration_started.set()
+            await asyncio.Event().wait()
+
+    with patch("app.application.plugin.install.logger.warning") as warning:
+        task = asyncio.create_task(
+            _command(
+                installed=["DemoPlugin"],
+                plugin_ids=["DemoPlugin"],
+                reloader=reload_plugin,
+                refresher=refresh_registrations,
+            ).execute(
+                plugin_id="DemoPlugin",
+                repo_url="https://github.com/demo/plugins",
+            )
+        )
+        await registration_started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert calls == ["reload", "registrations", "reload", "registrations"]
+    warning.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_persistence_failure_restores_package_without_touching_runtime():
     """已安装列表保存失败时恢复文件，且运行态尚未开始切换。"""
     checkpoint = object()
@@ -176,10 +213,39 @@ async def test_persistence_failure_restores_package_without_touching_runtime():
     assert result.success is False
     assert result.failure_stage == "installed_list_persistence"
     assert result.rollback.file_restored is True
-    assert result.rollback.installed_list_attempted is False
+    assert result.rollback.installed_list_attempted is True
     assert result.rollback.runtime_attempted is False
     rollback.assert_awaited_once_with(checkpoint)
     reloader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persistence_exception_after_write_restores_installed_list():
+    """清单写入已提交后抛异常时，文件和清单必须一起恢复。"""
+    persisted: list[list[str]] = []
+    checkpoint = object()
+    rollback = AsyncMock()
+
+    async def write(plugin_ids: list[str]) -> None:
+        persisted.append(list(plugin_ids))
+        if len(persisted) == 1:
+            raise RuntimeError("write acknowledgement lost")
+
+    result = await _command(
+        checkpointer=AsyncMock(return_value=checkpoint),
+        writer=write,
+        rollback=rollback,
+    ).execute(
+        plugin_id="DemoPlugin",
+        repo_url="https://github.com/demo/plugins",
+    )
+
+    assert result.success is False
+    assert result.failure_stage == "installed_list_persistence"
+    assert result.rollback.installed_list_attempted is True
+    assert result.rollback.installed_list_restored is True
+    assert persisted == [["DemoPlugin"], []]
+    rollback.assert_awaited_once_with(checkpoint)
 
 
 @pytest.mark.asyncio
@@ -304,6 +370,148 @@ async def test_registration_failure_restores_instance_files_and_routes() -> None
         "reload",
         ("registrations", 2),
     ]
+
+
+@pytest.mark.asyncio
+async def test_same_plugin_install_lifecycle_is_serialized() -> None:
+    """同一插件的两个安装调用不得同时修改包、运行态和注册信息。"""
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    calls: list[str] = []
+
+    async def install(plugin_id, *_args):
+        calls.append(plugin_id)
+        if len(calls) == 1:
+            first_started.set()
+            await release_first.wait()
+        return True, "ok"
+
+    command = _command(installer=install)
+    first = asyncio.create_task(
+        command.execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await first_started.wait()
+    second = asyncio.create_task(
+        command.execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await asyncio.sleep(0.02)
+    assert calls == ["DemoPlugin"]
+
+    release_first.set()
+    results = await asyncio.gather(first, second)
+    assert all(result.success for result in results)
+    assert calls == ["DemoPlugin", "DemoPlugin"]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_install_waits_for_rollback_before_releasing_lifecycle() -> None:
+    """取消安装后先完成包快照补偿，再允许同一插件的新调用进入。"""
+    install_started = asyncio.Event()
+    release_install = asyncio.Event()
+    rollback = AsyncMock()
+
+    async def install(*_args):
+        install_started.set()
+        await release_install.wait()
+        return True, "ok"
+
+    command = _command(installer=install, rollback=rollback)
+    task = asyncio.create_task(
+        command.execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await install_started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_persisted_list_is_restored_conservatively() -> None:
+    """清单写入已产生副作用但尚未返回时取消，也必须恢复原清单。"""
+    persisted: list[list[str]] = []
+    writer_started = asyncio.Event()
+    rollback = AsyncMock()
+
+    async def writer(plugin_ids: list[str]) -> None:
+        persisted.append(list(plugin_ids))
+        if len(persisted) == 1:
+            writer_started.set()
+            await asyncio.Event().wait()
+
+    task = asyncio.create_task(
+        _command(writer=writer, rollback=rollback).execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await writer_started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert persisted == [["DemoPlugin"], []]
+    rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_snapshot_cleanup_does_not_rollback_committed_plugin() -> None:
+    """运行态提交后清理快照期间取消，不得删除已生效插件。"""
+    cleanup_started = asyncio.Event()
+    rollback = AsyncMock()
+
+    async def committer(_checkpoint) -> None:
+        cleanup_started.set()
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(
+        _command(committer=committer, rollback=rollback).execute(
+            plugin_id="DemoPlugin",
+            repo_url="https://github.com/demo/plugins",
+        )
+    )
+    await cleanup_started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_startup_lifecycle_lock_blocks_plugin_install_until_settlement() -> None:
+    """启动同步持有全局资格时，插件安装不得穿过启动收口。"""
+    from app.application.plugin.lifecycle import plugin_lifecycle
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def startup_scope():
+        async with plugin_lifecycle.hold_startup():
+            entered.set()
+            await release.wait()
+
+    startup = asyncio.create_task(startup_scope())
+    await entered.wait()
+    plugin_context = plugin_lifecycle.hold("DemoPlugin")
+    plugin_scope = asyncio.create_task(plugin_context.__aenter__())
+    await asyncio.sleep(0.02)
+    assert plugin_scope.done() is False
+
+    release.set()
+    await plugin_scope
+    await plugin_context.__aexit__(None, None, None)
+    await startup
 
 
 @pytest.mark.asyncio

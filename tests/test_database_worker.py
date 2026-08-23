@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.db.worker import (
-    DatabaseWorker,
+from app.db.worker import DatabaseWorker
+from app.schemas.exception import (
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
 )

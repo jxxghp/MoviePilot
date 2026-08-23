@@ -11,7 +11,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete, select
 
-from app.application.database import (
+from app.schemas.exception import (
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
 )
