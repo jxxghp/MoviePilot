@@ -100,6 +100,56 @@ async def test_stop_async_cancels_and_awaits_scheduler_owned_job(monkeypatch) ->
 
 
 @pytest.mark.anyio
+async def test_stop_during_final_progress_does_not_mark_completed_job_unsubmitted(
+        monkeypatch,
+) -> None:
+    """业务协程已完成后，取消最终进度写入不得改写任务执行结果。"""
+    finish_started = asyncio.Event()
+
+    class BlockingFinishProgress(_AsyncProgressStub):
+        """把任务停在最终进度读取阶段。"""
+
+        async def get(self):
+            finish_started.set()
+            await asyncio.Event().wait()
+
+    async def job() -> None:
+        return None
+
+    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
+    monkeypatch.setattr(
+        scheduler_module,
+        "AsyncProgressHelper",
+        BlockingFinishProgress,
+    )
+    scheduler = _scheduler("final-progress-stop", job)
+
+    assert scheduler.start("final-progress-stop") is True
+    await asyncio.wait_for(finish_started.wait(), timeout=1)
+
+    await scheduler.stop_async()
+
+    assert scheduler._jobs["final-progress-stop"]["running"] is False
+    assert scheduler._jobs["final-progress-stop"]["last_error"] is None
+    assert scheduler._handles == {}
+    assert scheduler._active_job_generations == {}
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "AsyncProgressHelper",
+        _AsyncProgressStub,
+    )
+    scheduler._lifecycle_state = "running"
+    assert scheduler.start("final-progress-stop") is True
+
+    async def wait_until_finished() -> None:
+        while scheduler._handles or scheduler._active_job_generations:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_until_finished(), timeout=1)
+
+
+@pytest.mark.anyio
 async def test_foreign_loop_submission_runs_on_main_loop_and_finishes_before_stop(
         monkeypatch,
 ) -> None:
