@@ -14,7 +14,7 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
 from app.api.endpoints.openai import _get_openai_streaming_handler_type
 from app.runtime.config import settings
-from app.schemas.message import MessageResponse
+from app.schemas.message import Message, MessageResponse
 from app.schemas.types import NotificationChannel, MessageType
 
 
@@ -76,6 +76,31 @@ class AdminOnlyDummyTool(MoviePilotTool):
 
 class TestAgentToolStreaming:
     """Agent 工具流式输出测试。"""
+
+    def test_web_message_callback_can_await_async_delivery(self):
+        """WebAgent 通知回调支持异步附件准备并保持发送顺序。"""
+        received = []
+
+        async def scenario():
+            tool = DummyTool(session_id="session-1", user_id="10001")
+            tool.set_message_attr("WebAgent", "web-agent", "admin")
+
+            async def callback(message):
+                await asyncio.sleep(0)
+                received.append(message.text)
+
+            tool.set_agent_context({"message_callback": callback})
+            await tool.send_message(
+                Message(
+                    text="异步通知",
+                    channel=NotificationChannel.WebAgent,
+                    mtype=MessageType.Agent,
+                )
+            )
+
+        asyncio.run(scenario())
+
+        assert received == ["异步通知"]
 
     async def _run_tool(self, initial_buffer: str) -> tuple[str, str]:
         """运行测试工具并返回工具结果与缓冲内容。"""

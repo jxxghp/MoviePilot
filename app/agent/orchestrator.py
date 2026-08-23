@@ -9,7 +9,7 @@ import uuid
 import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
@@ -2572,7 +2572,7 @@ class _MessageTask:
     allow_message_tools: bool = True
     output_callback: Optional[Callable[[str], None]] = None
     protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None
-    message_callback: Optional[Callable[[Any], None]] = None
+    message_callback: Optional[Callable[[Any], Awaitable[None] | None]] = None
     agent_factory: Optional[Callable[..., MoviePilotAgent]] = None
     agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None
     completion_future: Optional[asyncio.Future] = None
@@ -2834,7 +2834,7 @@ class AgentManager:
             allow_message_tools: bool = True,
             output_callback: Optional[Callable[[str], None]] = None,
             protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
-            message_callback: Optional[Callable[[Any], None]] = None,
+            message_callback: Optional[Callable[[Any], Awaitable[None] | None]] = None,
             agent_factory: Optional[Callable[..., MoviePilotAgent]] = None,
             agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None,
             wait_for_completion: bool = False,
