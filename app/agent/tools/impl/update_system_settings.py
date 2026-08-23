@@ -22,6 +22,7 @@ from app.application.configuration import (
     get_configured_system_config as SystemConfigOper,
     get_runtime_settings,
 )
+from app.application.plugin.runtime import plugin_system_config_mutation
 from app.runtime.log import logger
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType
@@ -259,94 +260,101 @@ class UpdateSystemSettingsTool(MoviePilotTool):
                     ensure_ascii=False,
                 )
 
-            current_value = self._load_setting_value(spec)
-            next_value = self._prepare_next_value(
-                spec=spec,
-                current_value=current_value,
-                value=value,
-                operation=operation,
-                remove_keys=remove_keys,
-                match_field=match_field,
-                match_value=match_value,
+            mutation_key = (
+                spec.systemconfig_key if spec.source == "systemconfig" else None
             )
+            with plugin_system_config_mutation(mutation_key):
+                current_value = self._load_setting_value(spec)
+                next_value = self._prepare_next_value(
+                    spec=spec,
+                    current_value=current_value,
+                    value=value,
+                    operation=operation,
+                    remove_keys=remove_keys,
+                    match_field=match_field,
+                    match_value=match_value,
+                )
 
-            event_value = next_value
-            changed = False
-            message = ""
-            if spec.source == "settings":
-                success, message = get_runtime_settings().update(spec.key, next_value)
-                if success is False:
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "message": message or f"更新设置 {spec.key} 失败",
-                        },
-                        ensure_ascii=False,
+                event_value = next_value
+                changed = False
+                message = ""
+                if spec.source == "settings":
+                    success, message = get_runtime_settings().update(
+                        spec.key,
+                        next_value,
                     )
-                changed = success is True
-            else:
-                normalized_value = self._normalize_systemconfig_value(next_value)
-                event_value = normalized_value
-                success = await self._get_system_config().async_set(
-                    spec.systemconfig_key,
-                    normalized_value,
-                )
-                changed = success is True
+                    if success is False:
+                        return json.dumps(
+                            {
+                                "success": False,
+                                "message": message or f"更新设置 {spec.key} 失败",
+                            },
+                            ensure_ascii=False,
+                        )
+                    changed = success is True
+                else:
+                    normalized_value = self._normalize_systemconfig_value(next_value)
+                    event_value = normalized_value
+                    success = await self._get_system_config().async_set(
+                        spec.systemconfig_key,
+                        normalized_value,
+                    )
+                    changed = success is True
 
-            if changed:
-                await eventmanager.async_send_event(
-                    etype=EventType.ConfigChanged,
-                    data=ConfigChangeEventData(
-                        key=spec.key,
-                        value=event_value,
-                        change_type="update",
-                    ),
-                )
+                if changed:
+                    await eventmanager.async_send_event(
+                        etype=EventType.ConfigChanged,
+                        data=ConfigChangeEventData(
+                            key=spec.key,
+                            value=event_value,
+                            change_type="update",
+                        ),
+                    )
 
-            saved_value = self._load_setting_value(spec)
-            redact_values = (
-                should_redact_setting(spec, saved_value)
-                or should_redact_setting(spec, current_value)
-            )
-            response_previous_value = (
-                redact_secret_value(
-                    current_value,
-                    redact_scalar=is_secret_setting_key(spec.key),
+                saved_value = self._load_setting_value(spec)
+                redact_values = (
+                    should_redact_setting(spec, saved_value)
+                    or should_redact_setting(spec, current_value)
                 )
-                if redact_values
-                else current_value
-            )
-            response_saved_value = (
-                redact_secret_value(
-                    saved_value,
-                    redact_scalar=is_secret_setting_key(spec.key),
+                response_previous_value = (
+                    redact_secret_value(
+                        current_value,
+                        redact_scalar=is_secret_setting_key(spec.key),
+                    )
+                    if redact_values
+                    else current_value
                 )
-                if redact_values
-                else saved_value
-            )
-            if not changed and not message:
-                message = "配置值未发生变化"
+                response_saved_value = (
+                    redact_secret_value(
+                        saved_value,
+                        redact_scalar=is_secret_setting_key(spec.key),
+                    )
+                    if redact_values
+                    else saved_value
+                )
+                if not changed and not message:
+                    message = "配置值未发生变化"
 
-            return json.dumps(
-                {
-                    "success": True,
-                    "message": message or f"系统设置 {spec.key} 已更新",
-                    "changed": changed,
-                    "operation": operation,
-                    "setting": {
-                        "setting_key": spec.key,
-                        "source": spec.source,
-                        "group": spec.group,
-                        "label": spec.label,
+                return json.dumps(
+                    {
+                        "success": True,
+                        "message": message or f"系统设置 {spec.key} 已更新",
+                        "changed": changed,
+                        "operation": operation,
+                        "setting": {
+                            "setting_key": spec.key,
+                            "source": spec.source,
+                            "group": spec.group,
+                            "label": spec.label,
+                        },
+                        "values_redacted": redact_values,
+                        "previous_value": response_previous_value,
+                        "saved_value": response_saved_value,
                     },
-                    "values_redacted": redact_values,
-                    "previous_value": response_previous_value,
-                    "saved_value": response_saved_value,
-                },
-                ensure_ascii=False,
-                indent=2,
-                default=str,
-            )
+                    ensure_ascii=False,
+                    indent=2,
+                    default=str,
+                )
         except Exception as e:
             logger.error(f"更新系统设置失败: {e}", exc_info=True)
             return json.dumps(

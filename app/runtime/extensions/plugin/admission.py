@@ -48,34 +48,34 @@ class PluginMutationAdmission:
     def is_held(self) -> bool:
         """判断当前执行上下文是否持有仍有效的本 admission lease。"""
         context = self._current_context.get()
-        return bool(
-            context
-            and context.admission is self
-            and context.open
-            and context.holders > 0
-        )
+        with self._condition:
+            return bool(
+                context
+                and context.admission is self
+                and context.open
+                and context.holders > 0
+            )
 
     @contextmanager
     def hold(self, operation: str) -> Iterator[None]:
         """取得可变事务 lease；封口后仅允许已获准事务的嵌套调用。"""
         context = self._current_context.get()
-        nested = bool(
-            context
-            and context.admission is self
-            and context.open
-            and context.holders > 0
-        )
         context_token = None
-        if not nested:
-            context = _MutationContext(admission=self)
-            context_token = self._current_context.set(context)
-        assert context is not None
-
         acquired = False
         try:
             with self._condition:
+                nested = bool(
+                    context
+                    and context.admission is self
+                    and context.open
+                    and context.holders > 0
+                )
                 if not self._accepting and not nested:
                     raise PluginMutationRejectedError(operation)
+                if not nested:
+                    context = _MutationContext(admission=self)
+                    context_token = self._current_context.set(context)
+                assert context is not None
                 self._active_count += 1
                 context.holders += 1
                 acquired = True

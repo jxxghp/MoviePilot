@@ -297,6 +297,8 @@ def test_failed_retry_schedule_registers_future_observer(monkeypatch) -> None:
     chain.retry_scheduler = MagicMock(schedule_retry=schedule_retry)
     future = MagicMock(spec=Future)
     event_loop = MagicMock()
+    event_loop.is_running.return_value = True
+    event_loop.is_closed.return_value = False
     monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", event_loop)
 
     def submit(coroutine, loop):

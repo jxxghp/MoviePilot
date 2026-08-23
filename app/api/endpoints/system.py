@@ -45,6 +45,7 @@ from app.application.configuration import (
     get_configured_system_config,
     get_runtime_settings,
 )
+from app.application.plugin.runtime import plugin_system_config_mutation
 from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_superuser_async,
@@ -67,6 +68,7 @@ from app.runtime.state import SystemHelper
 from app.runtime.log import logger
 from app.application.scheduling import Scheduler
 from app.schemas.event import ConfigChangeEventData
+from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.types import SystemConfigKey, EventType
 from app.foundation.crypto import HashUtils
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
@@ -1070,14 +1072,22 @@ async def set_setting(
         if isinstance(value, list):
             value = list(filter(None, value))
             value = value if value else None
-        success = await get_configured_system_config().async_set(key, value)
-        if success:
-            # 发送配置变更事件
-            await eventmanager.async_send_event(
-                etype=EventType.ConfigChanged,
-                data=ConfigChangeEventData(key=key, value=value, change_type="update"),
-            )
-        return _SchemaResponse(success=True)
+        try:
+            with plugin_system_config_mutation(key):
+                success = await get_configured_system_config().async_set(key, value)
+                if success:
+                    # 发送配置变更事件
+                    await eventmanager.async_send_event(
+                        etype=EventType.ConfigChanged,
+                        data=ConfigChangeEventData(
+                            key=key,
+                            value=value,
+                            change_type="update",
+                        ),
+                    )
+                return _SchemaResponse(success=True)
+        except PluginMutationRejectedError as error:
+            return _SchemaResponse(success=False, message=str(error))
     else:
         return _SchemaResponse(success=False, message=f"配置项 '{key}' 不存在")
 

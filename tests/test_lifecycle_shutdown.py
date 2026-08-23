@@ -69,6 +69,8 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "stop_agent": AsyncMock(return_value=True),
         "stop_transfer": AsyncMock(return_value=True),
         "quiesce_plugins": AsyncMock(return_value=True),
+        "settle_events": AsyncMock(return_value=True),
+        "quiesce_plugin_services": AsyncMock(return_value=True),
         "drain_events": AsyncMock(return_value=True),
         "finalize_plugins": MagicMock(return_value=True),
         "stop_modules": AsyncMock(),
@@ -93,6 +95,16 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         lifecycle,
         "quiesce_plugins",
         shutdown_steps["quiesce_plugins"],
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "settle_events",
+        shutdown_steps["settle_events"],
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "quiesce_plugin_services",
+        shutdown_steps["quiesce_plugin_services"],
     )
     monkeypatch.setattr(lifecycle, "drain_events", shutdown_steps["drain_events"])
     monkeypatch.setattr(lifecycle, "stop_modules", shutdown_steps["stop_modules"])
@@ -191,166 +203,83 @@ def test_lifespan_validation_failure_does_not_clear_outer_loop_owner(monkeypatch
     lifecycle.global_vars.clear_loop.assert_not_called()
 
 
+def test_lifespan_settles_plugin_handlers_before_legacy_hooks(monkeypatch) -> None:
+    """整理尾事件必须在 handler 停用后结算，并先于旧插件停机 hook。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    order: list[str] = []
+    for name in (
+        "stop_transfer",
+        "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
+        "drain_events",
+        "finalize_plugins",
+    ):
+        shutdown_steps[name].side_effect = (
+            lambda current=name: order.append(current) or True
+        )
+
+    async def run_lifespan() -> None:
+        """运行一个完整的隔离生命周期。"""
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    asyncio.run(run_lifespan())
+
+    assert order == [
+        "stop_transfer",
+        "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
+        "drain_events",
+        "finalize_plugins",
+    ]
+
+
+_ORDERED_SHUTDOWN_STEPS = (
+    "stop_plugin_monitor",
+    "backup_plugins",
+    "stop_workflow",
+    "stop_command",
+    "stop_monitor",
+    "stop_scheduler",
+    "stop_agent",
+    "stop_transfer",
+    "quiesce_plugins",
+    "settle_events",
+    "quiesce_plugin_services",
+    "drain_events",
+    "finalize_plugins",
+    "stop_modules",
+    "close_http",
+)
+
+
 @pytest.mark.parametrize(
-    ("failing_step", "completed_steps", "blocked_steps"),
-    [
-        (
-            "stop_plugin_monitor",
-            ("stop_plugin_monitor",),
-            (
-                "backup_plugins",
-                "stop_workflow",
-                "stop_command",
-                "stop_monitor",
-                "stop_scheduler",
-                "stop_agent",
-                "quiesce_plugins",
-                "stop_transfer",
-                "drain_events",
-                "finalize_plugins",
-                "stop_modules",
-                "close_http",
-            ),
-        ),
-        (
-            "stop_monitor",
-            (
-                "stop_plugin_monitor",
-                "backup_plugins",
-                "stop_workflow",
-                "stop_command",
-                "stop_monitor",
-            ),
-            (
-                "stop_scheduler",
-                "stop_agent",
-                "quiesce_plugins",
-                "stop_transfer",
-                "drain_events",
-                "finalize_plugins",
-                "stop_modules",
-                "close_http",
-            ),
-        ),
-        (
-            "stop_scheduler",
-            (
-                "stop_plugin_monitor",
-                "backup_plugins",
-                "stop_workflow",
-                "stop_command",
-                "stop_monitor",
-                "stop_scheduler",
-            ),
-            (
-                "stop_agent",
-                "quiesce_plugins",
-                "stop_transfer",
-                "drain_events",
-                "finalize_plugins",
-                "stop_modules",
-                "close_http",
-            ),
-        ),
-        (
-            "stop_agent",
-            (
-                "stop_plugin_monitor",
-                "backup_plugins",
-                "stop_workflow",
-                "stop_command",
-                "stop_monitor",
-                "stop_scheduler",
-                "stop_agent",
-            ),
-            (
-                "quiesce_plugins",
-                "stop_transfer",
-                "drain_events",
-                "finalize_plugins",
-                "stop_modules",
-                "close_http",
-            ),
-        ),
-        (
-            "quiesce_plugins",
-            (
-                "stop_plugin_monitor",
-                "backup_plugins",
-                "stop_workflow",
-                "stop_command",
-                "stop_monitor",
-                "stop_scheduler",
-                "stop_agent",
-                "quiesce_plugins",
-            ),
-            (
-                "stop_transfer",
-                "drain_events",
-                "finalize_plugins",
-                "stop_modules",
-                "close_http",
-            ),
-        ),
-        (
-            "stop_transfer",
-            (
-                "stop_plugin_monitor",
-                "backup_plugins",
-                "stop_workflow",
-                "stop_command",
-                "stop_monitor",
-                "stop_scheduler",
-                "stop_agent",
-                "quiesce_plugins",
-                "stop_transfer",
-            ),
-            ("drain_events", "finalize_plugins", "stop_modules", "close_http"),
-        ),
-        (
-            "drain_events",
-            (
-                "stop_plugin_monitor",
-                "backup_plugins",
-                "stop_workflow",
-                "stop_command",
-                "stop_monitor",
-                "stop_scheduler",
-                "stop_agent",
-                "quiesce_plugins",
-                "stop_transfer",
-                "drain_events",
-            ),
-            ("finalize_plugins", "stop_modules", "close_http"),
-        ),
-        (
-            "finalize_plugins",
-            (
-                "stop_plugin_monitor",
-                "backup_plugins",
-                "stop_workflow",
-                "stop_command",
-                "stop_monitor",
-                "stop_scheduler",
-                "stop_agent",
-                "quiesce_plugins",
-                "stop_transfer",
-                "drain_events",
-                "finalize_plugins",
-            ),
-            ("stop_modules", "close_http"),
-        ),
-    ],
+    "failing_step",
+    (
+        "stop_plugin_monitor",
+        "stop_monitor",
+        "stop_scheduler",
+        "stop_agent",
+        "stop_transfer",
+        "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
+        "drain_events",
+        "finalize_plugins",
+    ),
 )
 def test_lifespan_stops_releasing_dependencies_when_owner_does_not_converge(
     monkeypatch,
     failing_step,
-    completed_steps,
-    blocked_steps,
 ):
     """关键 owner 未收敛时不得关闭仍被活任务使用的后续依赖。"""
     shutdown_steps = _patch_lifespan(monkeypatch)
     shutdown_steps[failing_step].return_value = False
+    failed_index = _ORDERED_SHUTDOWN_STEPS.index(failing_step)
+    completed_steps = _ORDERED_SHUTDOWN_STEPS[: failed_index + 1]
+    blocked_steps = _ORDERED_SHUTDOWN_STEPS[failed_index + 1 :]
 
     async def run_lifespan():
         """启动并关闭隔离后的应用生命周期。"""
@@ -520,6 +449,8 @@ def test_lifespan_safe_mode_skips_optional_runtime(monkeypatch):
         "stop_scheduler",
         "stop_plugin_monitor",
         "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
         "finalize_plugins",
     ):
         shutdown_steps[name].assert_not_called()
@@ -541,6 +472,19 @@ async def test_event_drain_does_not_materialize_manager(monkeypatch) -> None:
     assert await modules_initializer.drain_events() is True
     event_manager_type.get_existing_instance.assert_called_once_with()
     event_manager_type.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_settlement_keeps_tail_event_admission_open(monkeypatch) -> None:
+    """中间结算只等待在途 handler，不得提前封死旧 hook 的尾事件。"""
+    event_manager = MagicMock()
+    event_manager.drain_async = AsyncMock(return_value=True)
+    event_manager_type = MagicMock()
+    event_manager_type.get_existing_instance.return_value = event_manager
+    monkeypatch.setattr(modules_initializer, "EventManager", event_manager_type)
+
+    assert await modules_initializer.settle_events() is True
+    event_manager.drain_async.assert_awaited_once_with(seal=False)
 
 
 def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
@@ -591,8 +535,10 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "监控器",
         "定时器",
         "AI智能体会话",
-        "插件后台服务",
         "整理后台服务",
+        "插件事件入口",
+        "事件尾任务结算",
+        "插件后台服务",
         "事件投递屏障",
         "插件",
         "模块服务",
@@ -623,6 +569,8 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "定时器",
         "AI智能体会话",
         "整理后台服务",
+        "插件事件入口",
+        "事件尾任务结算",
         "插件后台服务",
         "事件投递屏障",
         "插件",
@@ -638,6 +586,8 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
             "定时器",
             "AI智能体会话",
             "整理后台服务",
+            "插件事件入口",
+            "事件尾任务结算",
             "插件后台服务",
             "事件投递屏障",
             "插件",
@@ -869,8 +819,10 @@ def test_lifespan_cleans_started_owners_after_late_startup_failure(monkeypatch):
         "stop_monitor",
         "stop_scheduler",
         "stop_agent",
-        "quiesce_plugins",
         "stop_transfer",
+        "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
         "drain_events",
         "finalize_plugins",
         "stop_modules",
@@ -905,11 +857,13 @@ def test_startup_failure_cleanup_honors_transfer_fail_fast(monkeypatch):
         "stop_monitor",
         "stop_scheduler",
         "stop_agent",
-        "quiesce_plugins",
         "stop_transfer",
     ):
         _assert_completed_once(shutdown_steps[name])
     for name in (
+        "quiesce_plugins",
+        "settle_events",
+        "quiesce_plugin_services",
         "drain_events",
         "finalize_plugins",
         "stop_modules",

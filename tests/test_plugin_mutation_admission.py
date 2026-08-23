@@ -1,6 +1,7 @@
 """插件可变事务停机准入的确定性测试。"""
 
 import asyncio
+import threading
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
@@ -18,6 +19,42 @@ from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import EventType
+
+
+class _GatedCondition:
+    """让指定测试线程在取得真实 Condition 前停住。"""
+
+    def __init__(self, blocked_thread_prefix: str) -> None:
+        """初始化内部 Condition 和可控的竞态闸门。"""
+        self._condition = threading.Condition()
+        self._blocked_thread_prefix = blocked_thread_prefix
+        self._blocked = False
+        self.attempted = threading.Event()
+        self.release = threading.Event()
+
+    def __enter__(self):
+        """在目标线程首次进入时等待测试放行。"""
+        if (
+            threading.current_thread().name.startswith(self._blocked_thread_prefix)
+            and not self._blocked
+        ):
+            self._blocked = True
+            self.attempted.set()
+            if not self.release.wait(timeout=1):
+                raise TimeoutError("测试未及时放行 Condition")
+        return self._condition.__enter__()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """把上下文退出委托给内部 Condition。"""
+        return self._condition.__exit__(exc_type, exc_value, traceback)
+
+    def wait(self) -> bool:
+        """等待 admission 活动计数变化。"""
+        return self._condition.wait()
+
+    def notify_all(self) -> None:
+        """唤醒全部等待 admission 空闲的线程。"""
+        self._condition.notify_all()
 
 
 @pytest.fixture
@@ -60,6 +97,46 @@ def test_seal_rejects_new_root_but_allows_propagated_nested_lease() -> None:
     assert admission.reopen() is True
 
 
+def test_stale_propagated_context_is_rechecked_atomically_after_seal() -> None:
+    """外层退出后才取得 Condition 的复制上下文不得冒充嵌套事务。"""
+    admission = PluginMutationAdmission()
+    calls: list[str] = []
+    outer = admission.hold("外层事务")
+    outer.__enter__()
+    propagated = copy_context()
+    condition = _GatedCondition("stale-admission")
+    admission._condition = condition
+    outer_closed = False
+
+    def mutate() -> None:
+        """使用复制上下文尝试执行延迟到封口后的写入。"""
+        with admission.hold("延迟嵌套事务"):
+            calls.append("mutated")
+
+    try:
+        with ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="stale-admission",
+        ) as executor:
+            future = executor.submit(propagated.run, mutate)
+            assert condition.attempted.wait(timeout=1)
+            outer.__exit__(None, None, None)
+            outer_closed = True
+            assert admission.seal() == 0
+            admission.wait_until_idle()
+
+            condition.release.set()
+            with pytest.raises(PluginMutationRejectedError):
+                future.result(timeout=1)
+    finally:
+        condition.release.set()
+        if not outer_closed:
+            outer.__exit__(None, None, None)
+
+    assert calls == []
+    assert admission.active_count == 0
+
+
 @pytest.mark.asyncio
 async def test_quiesce_timeout_retains_admitted_owner_and_nested_reload(
     plugin_manager: PluginManager,
@@ -72,7 +149,7 @@ async def test_quiesce_timeout_retains_admitted_owner_and_nested_reload(
     manager._plugin_lifecycle.reload = MagicMock(
         return_value=PluginRuntimeStatus.ACTIVE
     )
-    manager._plugin_lifecycle.quiesce = MagicMock(return_value=True)
+    manager._plugin_lifecycle.quiesce_handlers = MagicMock(return_value=True)
     manager._plugin_lifecycle.finalize = MagicMock(return_value=True)
 
     async def mutate() -> PluginRuntimeStatus:

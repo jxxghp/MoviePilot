@@ -100,8 +100,8 @@ def test_lifecycle_records_load_failure_when_loader_returns_no_class():
     assert statuses["DemoPlugin"] is PluginRuntimeStatus.LOAD_FAILED
 
 
-def test_quiesce_keeps_instance_and_events_until_finalize():
-    """第一阶段仅停止插件生产者，事件 handler 和实例留到屏障后释放。"""
+def test_phased_quiesce_disables_events_before_hooks_and_keeps_instance():
+    """宿主先停用 handler，再在事件结算后执行旧 hook 并保留实例。"""
     order: list[str] = []
 
     class DemoPlugin:
@@ -129,14 +129,19 @@ def test_quiesce_keeps_instance_and_events_until_finalize():
     lifecycle, classes, running, _statuses = _lifecycle(plugins=[DemoPlugin])
     lifecycle.start("DemoPlugin")
     lifecycle._disable_events.reset_mock()
+    lifecycle._disable_events.side_effect = (
+        lambda _plugin_type: order.append("disable_events")
+    )
     lifecycle._clear_modules.reset_mock()
     lifecycle._clear_tools.reset_mock()
 
-    assert lifecycle.quiesce() is True
-    assert order == ["close", "stop_service"]
+    assert lifecycle.quiesce_handlers() is True
+    assert order == ["disable_events"]
+    assert lifecycle.quiesce_services() is True
+    assert order == ["disable_events", "close", "stop_service"]
     assert classes["DemoPlugin"] is DemoPlugin
     assert isinstance(running["DemoPlugin"], DemoPlugin)
-    lifecycle._disable_events.assert_not_called()
+    lifecycle._disable_events.assert_called_once_with(DemoPlugin)
     lifecycle._clear_modules.assert_not_called()
     lifecycle._clear_tools.assert_not_called()
 
@@ -192,6 +197,44 @@ def test_quiesce_runs_stop_service_after_close_failure_and_retries_missing_hook(
     assert lifecycle.finalize() is True
     assert classes == {}
     assert running == {}
+
+
+def test_quiesce_does_not_close_resources_until_all_handlers_are_disabled():
+    """任一 handler 停用失败时不得调用可能破坏共享资源的旧停机 hook。"""
+    close = MagicMock()
+
+    class DemoPlugin:
+        """提供可观察 close hook 的测试插件。"""
+
+        plugin_name = "演示插件"
+        plugin_version = "1.0.0"
+
+        def init_plugin(self, _config):
+            """接受宿主初始化配置。"""
+
+        @staticmethod
+        def get_state():
+            """保持插件事件 handler 启用。"""
+            return True
+
+        def close(self):
+            """记录资源关闭调用。"""
+            close()
+
+    lifecycle, classes, running, _statuses = _lifecycle(plugins=[DemoPlugin])
+    lifecycle.start("DemoPlugin")
+    lifecycle._disable_events.side_effect = RuntimeError("disable failed")
+
+    assert lifecycle.quiesce() is False
+    close.assert_not_called()
+    assert lifecycle.finalize() is False
+    assert "DemoPlugin" in classes
+    assert "DemoPlugin" in running
+
+    lifecycle._disable_events.side_effect = None
+    assert lifecycle.quiesce() is True
+    close.assert_called_once_with()
+    assert lifecycle.finalize() is True
 
 
 def test_legacy_stop_entry_remains_idempotent():

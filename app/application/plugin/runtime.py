@@ -3,7 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import nullcontext
 from typing import Any, ContextManager, Protocol
+
+from app.schemas.types import SystemConfigKey
+
+
+PLUGIN_MUTATION_SYSTEM_CONFIG_KEYS = frozenset(
+    {
+        SystemConfigKey.UserInstalledPlugins,
+        SystemConfigKey.PluginInstances,
+        SystemConfigKey.PluginFolders,
+    }
+)
+
 
 class PluginRuntime(Protocol):
     """声明入口层消费的插件宿主能力。"""
@@ -36,3 +49,18 @@ def configure_plugin_runtime(provider: PluginRuntimeProvider) -> None:
 def get_plugin_manager() -> PluginRuntime:
     """返回当前组合根提供的插件运行时能力。"""
     return _runtime_provider()
+
+
+def plugin_system_config_mutation(
+    key: str | SystemConfigKey | None,
+) -> ContextManager[None]:
+    """仅为会改变插件运行态所有权的系统配置取得 mutation lease。"""
+    if key is None:
+        return nullcontext()
+    try:
+        normalized_key = key if isinstance(key, SystemConfigKey) else SystemConfigKey(key)
+    except ValueError:
+        return nullcontext()
+    if normalized_key not in PLUGIN_MUTATION_SYSTEM_CONFIG_KEYS:
+        return nullcontext()
+    return get_plugin_manager().mutation(f"更新插件系统配置 {normalized_key.value}")

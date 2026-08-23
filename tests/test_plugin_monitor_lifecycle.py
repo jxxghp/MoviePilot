@@ -582,11 +582,12 @@ def test_stop_plugin_monitor_returns_existing_manager_result(monkeypatch) -> Non
 
 
 @pytest.mark.asyncio
-async def test_two_phase_plugin_shutdown_does_not_materialize_manager() -> None:
-    """两阶段入口在插件管理器尚未创建时都直接视为已收敛。"""
+async def test_phased_plugin_shutdown_does_not_materialize_manager() -> None:
+    """三个停机入口在插件管理器尚未创建时都直接视为已收敛。"""
     _reset_plugin_manager()
 
     assert await plugins_initializer.quiesce_plugins(timeout=0) is True
+    assert await plugins_initializer.quiesce_plugin_services(timeout=0) is True
     assert plugins_initializer.finalize_plugins() is True
     assert PluginManager.get_existing_instance() is None
 
@@ -616,7 +617,10 @@ async def test_quiesce_timeout_retains_future_owner_until_worker_finishes(
         release.wait(timeout=2)
         return True
 
-    manager._plugin_lifecycle.quiesce = MagicMock(side_effect=blocking_quiesce)
+    manager._plugin_lifecycle.quiesce_handlers = MagicMock(return_value=True)
+    manager._plugin_lifecycle.quiesce_services = MagicMock(
+        side_effect=blocking_quiesce,
+    )
     manager._plugin_lifecycle.finalize = MagicMock(return_value=True)
 
     try:
@@ -627,9 +631,10 @@ async def test_quiesce_timeout_retains_future_owner_until_worker_finishes(
                 lambda: thread_helper,
             )
 
-            assert await manager.quiesce_plugins(timeout=0.01) is False
+            assert await manager.quiesce_plugins(timeout=1) is True
+            assert await manager.quiesce_plugin_services(timeout=0.01) is False
             assert started.is_set()
-            owner = manager._plugin_quiesce_future
+            owner = manager._plugin_service_quiesce_future
             assert owner is not None
             assert owner.done() is False
             assert manager.finalize_plugins() is False
@@ -659,7 +664,7 @@ async def test_quiesce_seals_runtime_until_new_lifespan_reopens(monkeypatch) -> 
         ),
     )
     manager = PluginManager()
-    manager._plugin_lifecycle.quiesce = MagicMock(return_value=True)
+    manager._plugin_lifecycle.quiesce_handlers = MagicMock(return_value=True)
     manager._plugin_lifecycle.start = MagicMock(
         return_value={"DemoPlugin": PluginRuntimeStatus.ACTIVE}
     )

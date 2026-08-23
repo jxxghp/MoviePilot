@@ -270,6 +270,7 @@ SCHEMA_EXPORTS = {
     'PluginMarketSyncData': ('app.schemas.system', 'PluginMarketSyncData'),
     'PluginMarketSyncRequest': ('app.schemas.system', 'PluginMarketSyncRequest'),
     'PluginMemoryInfo': ('app.schemas.plugin', 'PluginMemoryInfo'),
+    'PluginMutationRejectedError': ('app.schemas.exception', 'PluginMutationRejectedError'),
     'PluginRating': ('app.schemas.plugin', 'PluginRating'),
     'PluginRatingMap': ('app.schemas.plugin', 'PluginRatingMap'),
     'PluginRatingRequest': ('app.schemas.plugin', 'PluginRatingRequest'),
