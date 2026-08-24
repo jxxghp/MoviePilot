@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6562,
-  "edge_sha256": "08b6e0005a3c316a1de675193f7749ff8a93e8c1c052eb48339aa58b308ad6bf",
+  "edge_count": 6564,
+  "edge_sha256": "333de3c1ef3f7e49be96dda288a0f382bcd19a853817708453d67557d138aa80",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3495,6 +3495,7 @@
     "app.chain.workflow -> app.runtime",
     "app.chain.workflow -> app.runtime.config",
     "app.chain.workflow -> app.runtime.events",
+    "app.chain.workflow -> app.runtime.execution",
     "app.chain.workflow -> app.runtime.log",
     "app.chain.workflow -> app.schemas",
     "app.chain.workflow -> app.schemas.types",
@@ -6407,6 +6408,7 @@
     "app.workflow -> app.application",
     "app.workflow -> app.application.chain",
     "app.workflow -> app.application.chain.data",
+    "app.workflow -> app.application.workflow",
     "app.workflow -> app.foundation",
     "app.workflow -> app.foundation.reflection",
     "app.workflow -> app.foundation.singleton",

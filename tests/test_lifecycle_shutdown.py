@@ -127,7 +127,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     "failing_step",
     [
         "backup_plugins",
-        "stop_workflow",
         "stop_modules",
         "close_http",
     ],
@@ -275,6 +274,7 @@ _ORDERED_SHUTDOWN_STEPS = (
     "failing_step",
     (
         "stop_plugin_monitor",
+        "stop_workflow",
         "stop_monitor",
         "stop_scheduler",
         "stop_agent",
@@ -579,6 +579,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
     } == {
         "插件变更监控",
         "后台任务登记器",
+        "工作流",
         "监控器",
         "定时器",
         "AI智能体会话",
@@ -596,6 +597,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         not in {
             "插件变更监控",
             "后台任务登记器",
+            "工作流",
             "监控器",
             "定时器",
             "AI智能体会话",

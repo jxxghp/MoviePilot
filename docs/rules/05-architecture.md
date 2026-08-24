@@ -204,6 +204,9 @@ ModuleManager 与 startup 组合根继续关闭其余资源但必须向上返回
 `app.runtime.execution.OwnedThreadPoolExecutor` 是进程级同步执行器有界收敛的唯一事实源；新的专用
 线程池不得复制 Future 追踪、worker join 或重试关闭实现。DoH 查询线程池也必须复用该 owner：恢复系统
 DNS 后有限等待，超时保留原 executor 并向 startup 返回 `False`，真实收敛前不得创建替代线程池或回填缓存。
+工作流节点线程池同样复用该 executor；所有 `WorkflowExecutor` 必须在 concrete `WorkFlowManager` 登记，
+manager 停机先封口新执行并向活动 owner 发送本地取消，再有限等待执行线程和节点 worker。未收敛时必须
+保留动作注册表和执行 owner，并让工作流生命周期 fail-fast，禁止继续释放仍被动作使用的插件或模块依赖。
 协程环境文件日志属于有界 E1 观测能力，只允许单一队列 writer；队列满时不得再以无界 executor
 形成第二条异步写入路径。日志关闭必须有限等待 writer 与文件处理器，未收敛时 `LoggerManager`
 保留原 owner 并让 lifespan 以关闭失败结束，不得先清空引用或用无界 `join()` 掩盖失败。

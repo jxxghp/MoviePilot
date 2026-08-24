@@ -44,6 +44,26 @@ class WorkflowRuntime(Protocol):
         """按最新定义刷新工作流事件触发器。"""
         ...
 
+    def register_execution(self, owner: "WorkflowExecutionOwner") -> bool:
+        """登记活动工作流执行 owner；停机封口后返回 False。"""
+        ...
+
+    def unregister_execution(self, owner: "WorkflowExecutionOwner") -> None:
+        """在工作流执行真实终止后释放 owner。"""
+        ...
+
+
+class WorkflowExecutionOwner(Protocol):
+    """声明 concrete 工作流管理器需要持有的执行生命周期能力。"""
+
+    def request_stop(self) -> None:
+        """请求停止继续调度，并通知支持取消的活动动作。"""
+        ...
+
+    def wait_stopped(self, timeout: float) -> bool:
+        """有限等待执行及其节点线程池真实终止。"""
+        ...
+
 
 WorkflowRuntimeProvider = Callable[[], WorkflowRuntime]
 

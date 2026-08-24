@@ -4,6 +4,8 @@ import threading
 import time
 from types import SimpleNamespace
 
+import pytest
+
 from app.chain import workflow as workflow_module
 from app.runtime.correlation import correlation_scope, get_correlation_id
 from app.schemas.types import EventType
@@ -800,6 +802,190 @@ def test_workflow_executor_stop_is_not_success(monkeypatch):
     assert executor.stopped is True
     assert executor.success is False
     assert executor.errmsg == "工作流已停止"
+
+
+def test_workflow_manager_shutdown_retains_blocked_execution_for_retry(monkeypatch):
+    """阻塞动作超时时保留 manager owner，释放后同一执行可重试收敛。"""
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingAction:
+        """模拟不响应取消令牌的第三方同步工作流动作。"""
+
+        def __init__(self, action_id):
+            """保存动作标识。"""
+            self.action_id = action_id
+            self.success = True
+            self.message = ""
+
+        def execute_with_inputs(self, workflow_id, params, inputs, runtime, context):
+            """阻塞到测试显式释放，并返回原工作流上下文。"""
+            _ = workflow_id, params, inputs, runtime
+            entered.set()
+            release.wait()
+            return ActionResult(success=True, context=context)
+
+    manager = object.__new__(workflow_package.WorkFlowManager)
+    manager._lock = threading.RLock()
+    manager._actions = {"BlockingAction": BlockingAction}
+    manager._event_workflows = {}
+    manager._accepting_executions = True
+    manager._executions = {}
+    workflow = _build_workflow(
+        actions=[{
+            "id": "A",
+            "type": "BlockingAction",
+            "name": "阻塞动作",
+            "data": {},
+        }],
+        flows=[],
+    )
+    monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
+    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda _workflow_id: None)
+    monkeypatch.setattr(
+        workflow_module.global_vars,
+        "is_workflow_stopped",
+        lambda _workflow_id: False,
+    )
+
+    executor = workflow_module.WorkflowExecutor(workflow)
+    execution_thread = threading.Thread(target=executor.execute, daemon=True)
+    execution_thread.start()
+    try:
+        assert entered.wait(timeout=1)
+        started_at = time.monotonic()
+
+        assert manager.stop(timeout=0.01) is False
+
+        assert time.monotonic() - started_at < 1
+        assert executor.cancel_token.is_cancelled() is True
+        assert manager._actions == {"BlockingAction": BlockingAction}
+        assert manager._executions == {id(executor): executor}
+
+        rejected = workflow_module.WorkflowExecutor(workflow)
+        assert rejected.admit() is False
+        assert rejected.errmsg == "工作流服务正在停止"
+    finally:
+        release.set()
+        execution_thread.join(timeout=2)
+
+    assert not execution_thread.is_alive()
+    assert executor.wait_stopped(timeout=1) is True
+    assert manager.stop(timeout=1) is True
+    assert manager._executions == {}
+    assert manager._actions == {}
+
+
+def test_workflow_manager_shutdown_continues_across_owner_failures():
+    """单个执行 owner 抛错不得跳过其它活动工作流的停止和等待。"""
+
+    class ObservedOwner:
+        """记录 manager 对多个 owner 的关闭调用。"""
+
+        def __init__(self, manager, *, fail: bool = False):
+            """保存管理器、失败开关和调用计数。"""
+            self.manager = manager
+            self.fail = fail
+            self.stop_calls = 0
+            self.wait_calls = 0
+
+        def request_stop(self) -> None:
+            """记录停止请求，并按需模拟第三方 owner 异常。"""
+            self.stop_calls += 1
+            if self.fail:
+                raise RuntimeError("stop failed")
+
+        def wait_stopped(self, timeout: float) -> bool:
+            """记录等待；正常 owner 从 manager 注册表释放自身。"""
+            _ = timeout
+            self.wait_calls += 1
+            if self.fail:
+                raise RuntimeError("wait failed")
+            self.manager.unregister_execution(self)
+            return True
+
+    manager = object.__new__(workflow_package.WorkFlowManager)
+    manager._lock = threading.RLock()
+    action_marker = object()
+    manager._actions = {"FakeAction": action_marker}
+    manager._event_workflows = {}
+    manager._accepting_executions = True
+    manager._executions = {}
+    failing_owner = ObservedOwner(manager, fail=True)
+    healthy_owner = ObservedOwner(manager)
+    assert manager.register_execution(failing_owner) is True
+    assert manager.register_execution(healthy_owner) is True
+
+    assert manager.stop(timeout=0.01) is False
+
+    assert failing_owner.stop_calls == 1
+    assert failing_owner.wait_calls == 1
+    assert healthy_owner.stop_calls == 1
+    assert healthy_owner.wait_calls == 1
+    assert manager._executions == {id(failing_owner): failing_owner}
+    assert manager._actions == {"FakeAction": action_marker}
+
+
+def test_workflow_chain_rejects_execution_before_persisting_running_state(monkeypatch):
+    """停机封口后的新执行不得先把数据库状态写成运行中。"""
+
+    class RejectingWorkflowManager(_FakeWorkflowManager):
+        """模拟已经封口的 concrete 工作流运行时。"""
+
+        def register_execution(self, _owner) -> bool:
+            """拒绝停机后的新执行 owner。"""
+            return False
+
+    workflow = _build_workflow()
+    workflowoper = _FakeWorkflowOper(workflow)
+    manager = RejectingWorkflowManager([])
+    monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
+    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: workflowoper)
+
+    def unexpected_resume(_workflow_id: int) -> None:
+        """拒绝准入时若仍恢复停止标记则立即暴露回归。"""
+        raise AssertionError("拒绝准入时不得恢复工作流")
+
+    monkeypatch.setattr(
+        workflow_module.global_vars,
+        "workflow_resume",
+        unexpected_resume,
+    )
+
+    success, message = workflow_module.WorkflowChain.process(workflow_id=1)
+
+    assert success is False
+    assert message == "工作流服务正在停止"
+    assert workflowoper.started is False
+
+
+def test_workflow_chain_releases_admitted_owner_when_start_fails(monkeypatch):
+    """数据库启动状态写入异常时不得遗留尚未执行的 manager owner。"""
+
+    class FailingWorkflowOper(_FakeWorkflowOper):
+        """模拟执行状态 start 事务失败。"""
+
+        def start(self, wid):
+            """在 owner 已准入后抛出持久化异常。"""
+            _ = wid
+            raise RuntimeError("start failed")
+
+    manager = object.__new__(workflow_package.WorkFlowManager)
+    manager._lock = threading.RLock()
+    manager._actions = {"FakeAction": object()}
+    manager._event_workflows = {}
+    manager._accepting_executions = True
+    manager._executions = {}
+    workflowoper = FailingWorkflowOper(_build_workflow())
+    monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
+    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: workflowoper)
+    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda _workflow_id: None)
+
+    with pytest.raises(RuntimeError, match="start failed"):
+        workflow_module.WorkflowChain.process(workflow_id=1)
+
+    assert manager._executions == {}
+    assert manager._accepting_executions is True
 
 
 def test_workflow_context_merge_preserves_runtime_objects():

@@ -5,11 +5,10 @@ import inspect
 import pickle
 import threading
 from collections import defaultdict, deque
-from concurrent.futures import ThreadPoolExecutor
 from contextvars import Context, copy_context
 from datetime import date, datetime
 from functools import partial
-from time import sleep
+from time import monotonic, sleep
 from typing import Any, Callable, List, Optional, Tuple
 
 from pydantic import BaseModel
@@ -19,6 +18,7 @@ from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
 from app.application.workflow import get_workflow_manager
 from app.application.chain.data import get_chain_workflow_port
+from app.runtime.execution import OwnedThreadPoolExecutor
 from app.runtime.log import logger
 from app.schemas.workflow import ActionContext
 from app.schemas.workflow import ActionFlow
@@ -29,6 +29,7 @@ from app.schemas.types import EventType
 
 ARTIFACT_FIELDS = {"torrents", "medias", "fileitems", "downloads", "sites", "subscribes"}
 DEFAULT_WORKFLOW_MAX_WORKERS = 4
+WORKFLOW_EXECUTOR_STOP_TIMEOUT_SECONDS = 10.0
 CIRCULAR_REFERENCE_PLACEHOLDER = "[Circular]"
 Workflow = Any
 
@@ -93,18 +94,27 @@ class WorkflowCancelToken:
     工作流取消令牌。
     """
 
-    def __init__(self, workflow_id: int):
+    def __init__(
+            self,
+            workflow_id: int,
+            stop_event: Optional[threading.Event] = None,
+    ) -> None:
         """
         初始化取消令牌。
         :param workflow_id: 工作流ID
+        :param stop_event: 单次执行 owner 的本地停止信号
         """
         self.workflow_id = workflow_id
+        self.stop_event = stop_event
 
     def is_cancelled(self) -> bool:
         """
         判断工作流是否已被取消。
         """
-        return global_vars.is_workflow_stopped(self.workflow_id)
+        return bool(
+            (self.stop_event and self.stop_event.is_set())
+            or global_vars.is_workflow_stopped(self.workflow_id)
+        )
 
 
 class WorkflowExecutor:
@@ -163,6 +173,13 @@ class WorkflowExecutor:
 
         # 工作流管理器
         self.workflowmanager = get_workflow_manager()
+        # 具体管理器登记活动执行；旧自定义 provider 不实现 owner 接口时保持原调用兼容。
+        self._execution_lock = threading.RLock()
+        self._admission_state = "pending"
+        self._registered_execution = False
+        self._stop_event = threading.Event()
+        self._execute_returned = threading.Event()
+        self._stopped_event = threading.Event()
         # 线程安全队列
         self.queue = deque()
         self.queued_actions = set()
@@ -170,8 +187,8 @@ class WorkflowExecutor:
         # 锁用于保证线程安全
         self.lock = threading.Lock()
         # 线程池
-        self.executor = ThreadPoolExecutor(max_workers=self.get_workflow_max_workers())
-        self.cancel_token = WorkflowCancelToken(self.workflow.id)
+        self.executor = OwnedThreadPoolExecutor(max_workers=self.get_workflow_max_workers())
+        self.cancel_token = WorkflowCancelToken(self.workflow.id, self._stop_event)
         # 跟踪运行中的任务数
         self.running_tasks = 0
 
@@ -188,8 +205,6 @@ class WorkflowExecutor:
         self.context = self.restore_context()
         self.ensure_context_partitions()
 
-        # 恢复工作流
-        global_vars.workflow_resume(self.workflow.id)
         # 恢复时重新释放已终态节点的出边，使后继节点能继续执行或保持跳过传播。
         for action_id, state in self.node_states.items():
             if state == "success":
@@ -200,6 +215,78 @@ class WorkflowExecutor:
         for action_id in self.actions:
             if self.node_states.get(action_id) == "pending" and not self.incoming_flows.get(action_id):
                 self.enqueue_node(action_id)
+
+    def admit(self) -> bool:
+        """向 concrete manager 登记本次执行，并保持旧 provider 可直接运行。"""
+        with self._execution_lock:
+            if self._admission_state == "admitted":
+                return True
+            if self._admission_state == "rejected":
+                return False
+            register = getattr(self.workflowmanager, "register_execution", None)
+            if callable(register) and not register(self):
+                self._admission_state = "rejected"
+                self.success = False
+                self.stopped = True
+                self.errmsg = "工作流服务正在停止"
+                self.executor.shutdown_bounded(timeout=0.0)
+                self._execute_returned.set()
+                self._stopped_event.set()
+                return False
+            self._registered_execution = callable(register)
+            self._admission_state = "admitted"
+        # 只有获得执行准入后才能清除历史单工作流停止标记。
+        global_vars.workflow_resume(self.workflow.id)
+        return True
+
+    def request_stop(self) -> None:
+        """停止调度新节点，并通过本地令牌通知支持取消的活动动作。"""
+        self._stop_event.set()
+
+    def abort_before_execute(self) -> None:
+        """执行状态启动失败时释放尚未使用的节点池和 manager owner。"""
+        self.request_stop()
+        converged = self.executor.shutdown_bounded(timeout=0.0)
+        self._execute_returned.set()
+        if converged:
+            self._release_execution()
+
+    def wait_stopped(self, timeout: float) -> bool:
+        """有限等待 execute 返回，并在需要时重试节点线程池收敛。"""
+        deadline = monotonic() + max(0.0, timeout)
+        if self._stopped_event.is_set():
+            return True
+        if not self._execute_returned.wait(
+                timeout=max(0.0, deadline - monotonic()),
+        ):
+            return False
+        if self._stopped_event.is_set():
+            return True
+        if not self.executor.shutdown_bounded(
+                timeout=max(0.0, deadline - monotonic()),
+        ):
+            return False
+        self._release_execution()
+        return self._stopped_event.is_set()
+
+    def _release_execution(self) -> None:
+        """从 concrete manager 释放已真实终止的执行 owner。"""
+        with self._execution_lock:
+            if self._stopped_event.is_set():
+                return
+            if self._registered_execution:
+                unregister = getattr(self.workflowmanager, "unregister_execution", None)
+                if callable(unregister):
+                    unregister(self)
+                self._registered_execution = False
+            self._stopped_event.set()
+
+    def _stop_requested(self) -> bool:
+        """判断本次执行或全局工作流是否已收到停止请求。"""
+        return bool(
+            self._stop_event.is_set()
+            or global_vars.is_workflow_stopped(self.workflow.id)
+        )
 
     def get_workflow_max_workers(self) -> int:
         """
@@ -339,12 +426,14 @@ class WorkflowExecutor:
         """
         执行工作流
         """
+        if not self.admit():
+            return
         try:
             while True:
                 should_sleep = False
                 node_id = None
                 with self.lock:
-                    if global_vars.is_workflow_stopped(self.workflow.id):
+                    if self._stop_requested():
                         self.success = False
                         self.stopped = True
                         self.errmsg = "工作流已停止"
@@ -385,7 +474,12 @@ class WorkflowExecutor:
                 )
                 future.add_done_callback(partial(context.run, self.on_node_complete))
         finally:
-            self.executor.shutdown(wait=True, cancel_futures=True)
+            converged = self.executor.shutdown_bounded(
+                timeout=WORKFLOW_EXECUTOR_STOP_TIMEOUT_SECONDS,
+            )
+            self._execute_returned.set()
+            if converged:
+                self._release_execution()
 
     def pop_dispatchable_node(self) -> Optional[str]:
         """
@@ -432,7 +526,7 @@ class WorkflowExecutor:
         try:
             action, action_result = future.result()
             with self.lock:
-                if global_vars.is_workflow_stopped(self.workflow.id):
+                if self._stop_requested():
                     self.success = False
                     self.stopped = True
                     self.errmsg = "工作流已停止"
@@ -1238,10 +1332,16 @@ class WorkflowChain(ChainBase):
                 text=f"开始执行工作流 {workflow.name} ...",
                 data={"total": len(workflow.actions), "finished": 0},
             )
-        workflowoper.start(workflow_id)
-
         # 执行工作流
         executor = WorkflowExecutor(workflow, step_callback=save_step)
+        if not executor.admit():
+            logger.warning("工作流服务正在停止，拒绝执行 %s", workflow.name)
+            return False, executor.errmsg
+        try:
+            workflowoper.start(workflow_id)
+        except Exception:
+            executor.abort_before_execute()
+            raise
         executor.execute()
 
         if executor.stopped:

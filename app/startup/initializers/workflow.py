@@ -13,8 +13,8 @@ def init_workflow():
     WorkFlowManager()
 
 
-def stop_workflow():
+def stop_workflow() -> bool:
     """
-    停止工作流
+    停止工作流并返回全部活动执行是否收敛。
     """
-    WorkFlowManager().stop()
+    return WorkFlowManager().stop()

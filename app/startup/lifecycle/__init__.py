@@ -482,6 +482,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             stop_order=20,
             start_timeout_seconds=120,
             stop_timeout_seconds=120,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
         ),
         LifecycleComponent(
             name="插件备份",

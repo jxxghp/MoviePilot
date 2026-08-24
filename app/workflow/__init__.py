@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.runtime.config import global_vars
 from app.runtime.events import eventmanager, Event
 from app.application.chain.data import get_chain_workflow_port
+from app.application.workflow import WorkflowExecutionOwner
 from app.foundation.reflection import ModuleHelper
 from app.runtime.log import logger
 from app.schemas.workflow import ActionContext
@@ -16,17 +17,22 @@ from app.schemas.workflow import Workflow
 from app.schemas.types import EventType
 from app.foundation.singleton import Singleton
 
+_WORKFLOW_STOP_TIMEOUT_SECONDS = 10.0
+
 
 class WorkFlowManager(metaclass=Singleton):
     """
     工作流管理器
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """创建动作、事件触发器和活动执行 owner 注册表。"""
         # 所有动作定义
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._actions: Dict[str, Any] = {}
         self._event_workflows: Dict[str, List[int]] = {}
+        self._accepting_executions = True
+        self._executions: Dict[int, WorkflowExecutionOwner] = {}
         self.init()
 
     def init(self):
@@ -62,14 +68,61 @@ class WorkFlowManager(metaclass=Singleton):
         # 加载工作流事件触发器
         self.load_workflow_events()
 
-    def stop(self):
+    def register_execution(self, owner: WorkflowExecutionOwner) -> bool:
+        """登记活动执行；生命周期封口后拒绝新的工作流。"""
+        with self._lock:
+            if not self._accepting_executions:
+                return False
+            self._executions[id(owner)] = owner
+            return True
+
+    def unregister_execution(self, owner: WorkflowExecutionOwner) -> None:
+        """仅在执行及其节点线程池真实终止后释放 owner。"""
+        with self._lock:
+            self._executions.pop(id(owner), None)
+
+    def stop(
+            self,
+            timeout: float = _WORKFLOW_STOP_TIMEOUT_SECONDS,
+    ) -> bool:
         """
-        停止
+        封口工作流入口并有限等待全部活动执行。
+
+        :param timeout: 等待活动执行真实终止的最长秒数
+        :return: 全部执行终止并安全释放动作注册表时返回 True
         """
-        for event_type_str in list(self._event_workflows.keys()):
+        with self._lock:
+            self._accepting_executions = False
+            event_type_values = tuple(self._event_workflows)
+        for event_type_str in event_type_values:
             self.remove_workflow_event(event_type_str=event_type_str)
-        self._actions = {}
-        self._event_workflows = {}
+        with self._lock:
+            self._event_workflows = {}
+            executions = tuple(self._executions.values())
+
+        converged = True
+        for execution in executions:
+            try:
+                execution.request_stop()
+            except Exception as err:
+                converged = False
+                logger.error("请求停止工作流执行失败：%s", err)
+
+        deadline = monotonic() + max(0.0, timeout)
+        for execution in executions:
+            try:
+                if not execution.wait_stopped(
+                        timeout=max(0.0, deadline - monotonic()),
+                ):
+                    converged = False
+            except Exception as err:
+                converged = False
+                logger.error("等待工作流执行停止失败：%s", err)
+        with self._lock:
+            converged = converged and not self._executions
+            if converged:
+                self._actions = {}
+        return converged
 
     def execute(self, workflow_id: int, action: Action, context: ActionContext = None,
                 inputs: Optional[dict] = None, runtime: Optional[dict] = None,
