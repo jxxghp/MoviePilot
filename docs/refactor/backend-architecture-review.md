@@ -18,6 +18,31 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
 2. **迁移过半的全局状态**——注入通道已建好，存量未迁完；
 3. **收缩的质量门禁**——静态检查名义严格、实际覆盖面很小。
 
+## 优化点执行状态（2026-08-24）
+
+| 优化点 | 状态 | 说明 |
+|---|---|---|
+| 1.1 subscribe 洗版优先级算法下沉 | ✅ 已完成 | 迁入 `application/subscription/priority.py`，链上留兼容委托 |
+| 1.2 download 批量择优规则下沉 | ✅ 已完成 | 迁入 `application/download/selection.py` |
+| 1.3 media 音乐识别子域拆分 | ⏸ 后续任务 | 需大范围行为等价性验证 |
+| 1.4 transfer 三类职责拆分 | ⏸ 后续任务 | 线程池/队列/编排解耦需单独设计 |
+| 2. 死代码清理 | ✅ 已完成 | transfer 双重初始化、search 相同分支 |
+| 2. sync/async 孪生合并 | ⏸ 后续任务 | 新代码执行"只写 async"纪律 |
+| 3. media.py dispatch 绕过 | ✅ 已完成 | 改按 source 路由走统一调度 |
+| 3. scraping.py metadata_img 聚合 | ⏸ 需架构决策 | 须先新增"按键填充"聚合模式与 provider 排序策略 |
+| 3. Mixin Protocol 契约化 | ⏸ 后续任务 | 以 `InteractionChainMixin` 为样板渐进推广 |
+| 4. chain 层 eventmanager 迁移 | ✅ 已完成 | 17 处实例方法改注入；装饰器/staticmethod 按设计保留 |
+| 4. global_vars / settings 注入迁移 | ⏸ 后续任务 | 影响面大，单独推进 |
+| 5. lifespan 停止信号+插件收尾组件化 | ✅ 已完成 | 进入声明式清单，含快照测试 |
+| 5. lifespan 主循环/日志关闭组件化 | ⏸ 需架构决策 | 引擎 FAIL_FAST break 语义需先扩展 |
+| 6. mypy 错误数棘轮 | ✅ 已完成 | `scripts/architecture/mypy_ratchet.py` 接入 CI |
+| 6. ruff 引入 / 覆盖率阈值 | ⏸ 后续任务 | 依赖变更需走 uv.lock+审计治理流程 |
+| 8. 订阅循环链构造提升 | ✅ 已完成 | SearchChain 循环外复用 |
+| 8. 非单例链 getter 门面统一 | ⏸ 需架构决策 | 改变链生命周期语义 |
+
+> 测试隔离风险点（第七节）与 scheduler/orchestrator 拆分按 AGENTS.md
+> "机会性转换、最小改动"原则在后续触碰相关文件时渐进处理。
+
 ## 一、Chain 层上帝类：领域算法埋在编排类里（优先级最高）
 
 | 文件 | 行数 | 问题 |
@@ -54,6 +79,10 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
 * 死代码残留：`transfer.py` L2146-2173 变量初始化两次；`search.py` L2366-2378
   if/else 两分支提交完全相同的调用。
 
+> 处理进展（2026-08-24）：死代码两处已清理。sync/async 孪生合并与重复模式收敛
+> 涉及大量行为等价性验证（`media.py` 11 对、`search.py` 三份站点搜索实现），
+> 列为后续独立任务，优先在新代码中执行"只写 async 版本"的纪律。
+
 **建议**：统一封装"同步包装异步"的基础设施（复用 `app/runtime/execution.py` 的跨线程提交边界），
 新代码只写 async 版本；重复告警/解析模式收敛到共享 mixin 或 application 服务。
 
@@ -86,6 +115,13 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
 | `global_vars` 容器 | 47 个文件 147 处引用，workflow + chain 占近半，被当"停止信号总线"广泛直读 | 停止信号演进为 `runtime/state.py` 的显式契约 |
 | `RuntimeSettingsCompat` | 119 个文件 import（modules 占 60），形式上是端口、用法上仍是每模块全局对象 | modules 层逐步改为注入快照 |
 | Singleton 元类 | 41 处 class 使用，与 getter 门面双轨并存 | 维持双轨兼容，新增能力一律走 getter 门面 |
+
+> 处理进展（2026-08-24）：chain 层 17 处实例方法调用已改用注入的 `self.eventmanager`
+> （`transfer.py`、`media.py` 已完全脱离全局导入，其余文件因 `@eventmanager.register`
+> 装饰器注册与 staticmethod 调用点按设计保留全局引用）；`media.py` 的
+> `select_recognize_source`/`async_select_recognize_source` 由 staticmethod 转为
+> 实例方法以使用注入依赖。global_vars 停止信号总线化与 modules 层配置注入迁移
+> 影响面大，列为后续独立任务。
 
 ## 五、启动生命周期欠账（违反自家规则）
 
