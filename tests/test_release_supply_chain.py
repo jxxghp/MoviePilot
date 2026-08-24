@@ -103,6 +103,9 @@ def test_direct_url_audit_requirement_rejects_unlocked_source(tmp_path: Path) ->
 def test_release_scans_both_architectures_before_registry_login_and_publish() -> None:
     """两个 Python 变体的各架构扫描都必须在登录仓库和发布前完成。"""
     workflow = _load_workflow()
+    trivy_env = workflow["jobs"]["Docker-build"]["env"]
+    assert trivy_env["TRIVY_SKIP_DIRS"] == "/usr/share/java"
+    assert trivy_env["TRIVY_SKIP_JAVA_DB_UPDATE"] == "true"
     steps = workflow["jobs"]["Docker-build"]["steps"]
     names = [step.get("name") for step in steps]
     indexed = _steps_by_name(workflow)
@@ -227,6 +230,9 @@ def test_release_promotes_latest_only_after_both_versioned_images() -> None:
 def test_beta_applies_the_same_variant_scan_and_publish_contract() -> None:
     """Beta 也必须在发布两个变体前完成各架构漏洞扫描。"""
     workflow = _load_workflow(BETA_WORKFLOW)
+    trivy_env = workflow["jobs"]["Docker-build"]["env"]
+    assert trivy_env["TRIVY_SKIP_DIRS"] == "/usr/share/java"
+    assert trivy_env["TRIVY_SKIP_JAVA_DB_UPDATE"] == "true"
     steps = workflow["jobs"]["Docker-build"]["steps"]
     names = [step.get("name") for step in steps]
     indexed = _steps_by_name(workflow)

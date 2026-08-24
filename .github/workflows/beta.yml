@@ -10,6 +10,9 @@ jobs:
   Docker-build:
     runs-on: ubuntu-latest
     name: Build Docker Image
+    env:
+      TRIVY_SKIP_DIRS: /usr/share/java
+      TRIVY_SKIP_JAVA_DB_UPDATE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
