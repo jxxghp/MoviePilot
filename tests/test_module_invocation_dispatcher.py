@@ -172,6 +172,16 @@ def test_list_results_merge_in_plugin_then_priority_order() -> None:
     assert calls == ["plugin-1", "plugin-2", "system-10", "system-20"]
 
 
+def test_result_shape_diagnosis_does_not_break_system_dispatch() -> None:
+    """provider 结果形状异常时只记录诊断，不得击穿宿主模块调度。"""
+    module = _Module("异常结果模块", 10, lambda: "unexpected")
+    setattr(module, "search_medias", module.execute)
+    dispatcher, _, system_error, _ = _dispatcher(modules=[module])
+
+    assert dispatcher.dispatch("search_medias") == "unexpected"
+    system_error.assert_not_called()
+
+
 def test_system_signature_relay_passes_previous_result() -> None:
     """单参数宿主方法应接收上一模块的非列表结果。"""
     class FirstModule:

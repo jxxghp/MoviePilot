@@ -50,6 +50,11 @@ METRIC_SPECS = {
             frozenset({"method", "caller_type", "abi_source"}),
         ),
         MetricSpec(
+            "module.contract.result_mismatch",
+            MetricKind.COUNTER,
+            frozenset({"method", "provider_type", "problem"}),
+        ),
+        MetricSpec(
             "compat.facade.hit",
             MetricKind.COUNTER,
             frozenset({"facade", "operation", "visibility", "abi_source"}),
