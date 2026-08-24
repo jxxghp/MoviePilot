@@ -25,7 +25,6 @@ class _ThreadsafeSubmission:
     """持有跨线程提交从排队到真实 Task 发布之间的生命周期。"""
 
     coroutine: Coroutine[Any, Any, Any]
-    completion: concurrent.futures.Future[Any]
     task: asyncio.Task[Any] | None = None
 
 
@@ -93,10 +92,7 @@ class TaskRegistry:
     ) -> concurrent.futures.Future[Any]:
         """从宿主线程提交协程，并持有排队阶段直至发布真实 Task。"""
         completion: concurrent.futures.Future[Any] = concurrent.futures.Future()
-        submission = _ThreadsafeSubmission(
-            coroutine=coroutine,
-            completion=completion,
-        )
+        submission = _ThreadsafeSubmission(coroutine=coroutine)
 
         def mirror_completion(task: asyncio.Task[Any]) -> None:
             """把登记任务的真实终态镜像给跨线程调用方。"""
@@ -174,9 +170,9 @@ class TaskRegistry:
                 task = submission.task
                 if (
                     task is None
-                    and self._threadsafe_submissions.get(completion) is submission
+                    and self._threadsafe_submissions.get(submitted) is submission
                 ):
-                    self._threadsafe_submissions.pop(completion, None)
+                    self._threadsafe_submissions.pop(submitted, None)
                     close_coroutine = True
             if close_coroutine:
                 coroutine.close()
@@ -246,11 +242,11 @@ class TaskRegistry:
         """停止接收并有限等待存量任务，返回全部 owner 是否真实收敛。"""
         with self._state_lock:
             self._accepting = False
-            pending_submissions = tuple(self._threadsafe_submissions.values())
+            pending_submissions = tuple(self._threadsafe_submissions.items())
             self._threadsafe_submissions.clear()
-        for submission in pending_submissions:
+        for completion, submission in pending_submissions:
             submission.coroutine.close()
-            submission.completion.cancel()
+            completion.cancel()
         records = self.records
         tasks = [record.task for record in records]
         for record in records:

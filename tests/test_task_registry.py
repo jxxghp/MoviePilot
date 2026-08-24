@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import inspect
 import threading
+import weakref
 from collections.abc import Coroutine
 from typing import Any
 
@@ -271,6 +272,60 @@ def test_task_registry_shutdown_owns_close_before_loop_rejection() -> None:
             submission.result(timeout=1.0)
 
     assert coroutine.close_count == 1
+
+
+def test_task_registry_shutdown_rejects_late_successful_dispatch() -> None:
+    """shutdown 取走 pending 后，迟到的成功投递也不得发布真实 Task。"""
+    registry = TaskRegistry()
+    dispatch_entered = threading.Event()
+    release_dispatch = threading.Event()
+    callbacks = []
+    coroutine = _CloseCountingCoroutine()
+
+    class BlockingLoop:
+        """让 shutdown 稳定发生在 loop 接受 callback 之前。"""
+
+        @staticmethod
+        def call_soon_threadsafe(callback) -> None:
+            dispatch_entered.set()
+            release_dispatch.wait()
+            callbacks.append(callback)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        submission = executor.submit(
+            registry.submit_threadsafe,
+            coroutine,
+            loop=BlockingLoop(),
+            owner="test.threadsafe-shutdown-before-dispatch",
+        )
+        assert dispatch_entered.wait(1.0)
+        assert asyncio.run(registry.shutdown(timeout_seconds=0.01)) is True
+        release_dispatch.set()
+        completion = submission.result(timeout=1.0)
+
+    assert completion.cancelled()
+    callbacks[0]()
+    assert coroutine.close_count == 1
+    assert registry.records == ()
+
+
+def test_task_registry_completion_does_not_retain_itself_after_cancellation() -> None:
+    """终态回调不得让已取消 completion 依赖循环 GC 才能释放。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+    completion = registry.submit_threadsafe(
+        _CloseCountingCoroutine(),
+        loop=loop,
+        owner="test.threadsafe-completion-release",
+    )
+    completion_ref = weakref.ref(completion)
+
+    assert completion.cancel()
+    loop.run_until_complete(asyncio.sleep(0))
+    del completion
+
+    assert completion_ref() is None
+    loop.close()
 
 
 def test_task_registry_pending_non_cancellable_work_does_not_start_on_shutdown() -> None:
