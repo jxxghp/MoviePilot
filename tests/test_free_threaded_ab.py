@@ -195,8 +195,8 @@ def result_for_evaluation(harness, ft_multiplier: float = 1.0) -> dict:
         "workers": [1, 32],
         "thresholds": {
             "max_startup_ratio": 1.25,
-            "max_standard_rust_on_ratio": 1.10,
-            "max_ft_single_ratio": 1.25,
+            "max_v3_rust_over_python_ratio": 1.10,
+            "max_v3t_rust_over_v3_rust_ratio": 1.25,
             "min_ft_max_worker_throughput_ratio": 1.05,
             "max_idle_memory_ratio": 1.25,
             "max_api_p95_ratio": 1.25,
@@ -328,6 +328,13 @@ def test_evaluation_distinguishes_invalid_regression_and_pass() -> None:
 
     summary, invalid, regressions = harness.evaluate_samples(result_for_evaluation(harness))
     assert summary["ratios"]["ft_max_worker_throughput_over_v3"] == pytest.approx(1.2)
+    assert set(summary["application_seconds"]) == {
+        "v3_python",
+        "v3_rust",
+        "v3t_rust",
+    }
+    assert summary["ratios"]["v3_rust_over_python"] == pytest.approx(0.8)
+    assert summary["ratios"]["v3t_rust_over_v3_rust"] == pytest.approx(1.0)
     assert summary["installed_packages"]["v3"]["count"] == 1
     assert invalid == []
     assert regressions == []
@@ -336,6 +343,15 @@ def test_evaluation_distinguishes_invalid_regression_and_pass() -> None:
     _, invalid, regressions = harness.evaluate_samples(regression)
     assert invalid == []
     assert any("startup" in item for item in regressions)
+    assert any("V3t Rust" in item for item in regressions)
+
+    v3_rust_regression = result_for_evaluation(harness)
+    for item in v3_rust_regression["samples"]:
+        if item["variant"] == "v3":
+            item["hotspots"]["application"]["rust_on"]["seconds"] = 1.2
+    _, invalid, regressions = harness.evaluate_samples(v3_rust_regression)
+    assert invalid == []
+    assert any("标准镜像启用 Rust" in item for item in regressions)
 
     broken = result_for_evaluation(harness)
     broken["samples"][0]["postgresql"]["result"]["scheme"] = "postgresql+psycopg"
@@ -363,6 +379,21 @@ def test_markdown_and_exit_codes_preserve_machine_verdict(tmp_path: Path, monkey
     markdown = harness.build_markdown({**base, "verdict": "pass"})
     assert "moviepilot-v3t@sha256" in markdown
     assert harness.FIXTURE_SHA256 in markdown
+
+    evaluated = result_for_evaluation(harness)
+    summary, invalid, regressions = harness.evaluate_samples(evaluated)
+    report = harness.build_markdown(
+        {
+            **base,
+            "verdict": "pass",
+            "summary": summary,
+            "invalid_reasons": invalid,
+            "regressions": regressions,
+        }
+    )
+    assert "V3 + Python | V3 + Rust | V3t + Rust" in report
+    assert "Pure Python CPU probe" in report
+    assert "Direct Rust ABI probe" in report
 
     argv = [
         "--standard-image",

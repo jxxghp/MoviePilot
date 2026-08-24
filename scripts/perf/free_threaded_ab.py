@@ -1168,15 +1168,17 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
             }
             for mode in ("sync", "async")
         },
-        "application_rust_on_seconds": {
-            variant: median_metric(
-                samples, variant, ("hotspots", "application", "rust_on", "seconds")
-            )
-            for variant in ("v3", "v3t")
+        "application_seconds": {
+            "v3_python": median_metric(
+                samples, "v3", ("hotspots", "application", "rust_off", "seconds")
+            ),
+            "v3_rust": median_metric(
+                samples, "v3", ("hotspots", "application", "rust_on", "seconds")
+            ),
+            "v3t_rust": median_metric(
+                samples, "v3t", ("hotspots", "application", "rust_on", "seconds")
+            ),
         },
-        "standard_rust_off_seconds": median_metric(
-            samples, "v3", ("hotspots", "application", "rust_off", "seconds")
-        ),
         "max_worker": int(max_worker),
         "python_throughput_ops_s": {
             str(worker): {
@@ -1206,13 +1208,13 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
         summary["startup_ready_seconds"]["v3t"]
         / summary["startup_ready_seconds"]["v3"]
     )
-    standard_rust_ratio = (
-        summary["application_rust_on_seconds"]["v3"]
-        / summary["standard_rust_off_seconds"]
+    v3_rust_ratio = (
+        summary["application_seconds"]["v3_rust"]
+        / summary["application_seconds"]["v3_python"]
     )
-    ft_single_ratio = (
-        summary["application_rust_on_seconds"]["v3t"]
-        / summary["application_rust_on_seconds"]["v3"]
+    v3t_rust_ratio = (
+        summary["application_seconds"]["v3t_rust"]
+        / summary["application_seconds"]["v3_rust"]
     )
     ft_throughput_ratio = (
         summary["python_throughput_ops_s"][max_worker]["v3t"]
@@ -1227,18 +1229,18 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
     }
     summary["ratios"] = {
         "startup_ft_over_v3": startup_ratio,
-        "standard_rust_on_over_off": standard_rust_ratio,
-        "ft_single_over_v3": ft_single_ratio,
+        "v3_rust_over_python": v3_rust_ratio,
+        "v3t_rust_over_v3_rust": v3t_rust_ratio,
         "ft_max_worker_throughput_over_v3": ft_throughput_ratio,
         "idle_working_set_ft_over_v3": memory_ratio,
         "api_p95_ft_over_v3": api_p95_ratios,
     }
     if startup_ratio > thresholds["max_startup_ratio"]:
         regressions.append("free-threaded startup 超出允许比例")
-    if standard_rust_ratio > thresholds["max_standard_rust_on_ratio"]:
+    if v3_rust_ratio > thresholds["max_v3_rust_over_python_ratio"]:
         regressions.append("标准镜像启用 Rust 后热点变慢")
-    if ft_single_ratio > thresholds["max_ft_single_ratio"]:
-        regressions.append("free-threaded 单线程热点退化")
+    if v3t_rust_ratio > thresholds["max_v3t_rust_over_v3_rust_ratio"]:
+        regressions.append("V3t Rust 相对 V3 Rust 应用热点退化")
     if ft_throughput_ratio < thresholds["min_ft_max_worker_throughput_ratio"]:
         regressions.append("free-threaded 高并发热点未达到最低吞吐收益")
     if memory_ratio > thresholds["max_idle_memory_ratio"]:
@@ -1289,12 +1291,7 @@ def build_markdown(result: dict[str, Any]) -> str:
                     f"{summary['idle_process_totals']['pss_kib']['v3t'] / 1024:.1f} |"
                 ),
                 (
-                    "| Application Rust-on median (s) | "
-                    f"{summary['application_rust_on_seconds']['v3']:.6f} | "
-                    f"{summary['application_rust_on_seconds']['v3t']:.6f} |"
-                ),
-                (
-                    f"| {summary['max_worker']}-thread throughput (ops/s) | "
+                    f"| {summary['max_worker']}-thread pure Python probe (ops/s) | "
                     f"{summary['python_throughput_ops_s'][str(summary['max_worker'])]['v3']:.1f} | "
                     f"{summary['python_throughput_ops_s'][str(summary['max_worker'])]['v3t']:.1f} |"
                 ),
@@ -1308,6 +1305,15 @@ def build_markdown(result: dict[str, Any]) -> str:
         )
         lines.extend(
             [
+                "| Application fixture median (s) | V3 + Python | V3 + Rust | V3t + Rust |",
+                "| --- | ---: | ---: | ---: |",
+                (
+                    "| Media recognition | "
+                    f"{summary['application_seconds']['v3_python']:.6f} | "
+                    f"{summary['application_seconds']['v3_rust']:.6f} | "
+                    f"{summary['application_seconds']['v3t_rust']:.6f} |"
+                ),
+                "",
                 "| API p95 (ms) | v3 | v3t |",
                 "| --- | ---: | ---: |",
                 *(
@@ -1316,11 +1322,18 @@ def build_markdown(result: dict[str, Any]) -> str:
                     for endpoint, values in summary["api"].items()
                 ),
                 "",
-                "| Python CPU throughput (ops/s) | v3 | v3t |",
+                "| Pure Python CPU probe (ops/s) | v3 | v3t |",
                 "| --- | ---: | ---: |",
                 *(
                     f"| {workers} threads | {values['v3']:.1f} | {values['v3t']:.1f} |"
                     for workers, values in summary["python_throughput_ops_s"].items()
+                ),
+                "",
+                "| Direct Rust ABI probe (ops/s) | v3 | v3t |",
+                "| --- | ---: | ---: |",
+                *(
+                    f"| {workers} threads | {values['v3']:.1f} | {values['v3t']:.1f} |"
+                    for workers, values in summary["rust_throughput_ops_s"].items()
                 ),
                 "",
             ]
@@ -1378,8 +1391,8 @@ def execute_campaign(args: argparse.Namespace) -> dict[str, Any]:
         "sample_order": [f"{variant}-{index}" for variant, index in SAMPLE_ORDER],
         "thresholds": {
             "max_startup_ratio": args.max_startup_ratio,
-            "max_standard_rust_on_ratio": args.max_standard_rust_on_ratio,
-            "max_ft_single_ratio": args.max_ft_single_ratio,
+            "max_v3_rust_over_python_ratio": args.max_v3_rust_over_python_ratio,
+            "max_v3t_rust_over_v3_rust_ratio": args.max_v3t_rust_over_v3_rust_ratio,
             "min_ft_max_worker_throughput_ratio": args.min_ft_max_worker_throughput_ratio,
             "max_idle_memory_ratio": args.max_idle_memory_ratio,
             "max_api_p95_ratio": args.max_api_p95_ratio,
@@ -1469,8 +1482,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory", default="2g")
     parser.add_argument("--ready-timeout", type=int, default=300)
     parser.add_argument("--max-startup-ratio", type=float, default=1.25)
-    parser.add_argument("--max-standard-rust-on-ratio", type=float, default=1.10)
-    parser.add_argument("--max-ft-single-ratio", type=float, default=1.25)
+    parser.add_argument("--max-v3-rust-over-python-ratio", type=float, default=1.10)
+    parser.add_argument(
+        "--max-v3t-rust-over-v3-rust-ratio", type=float, default=1.25
+    )
     parser.add_argument(
         "--min-ft-max-worker-throughput-ratio", type=float, default=1.05
     )
@@ -1493,8 +1508,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         parser.error("iterations、api-iterations、cpus 与 ready-timeout 必须大于 0")
     thresholds = (
         args.max_startup_ratio,
-        args.max_standard_rust_on_ratio,
-        args.max_ft_single_ratio,
+        args.max_v3_rust_over_python_ratio,
+        args.max_v3t_rust_over_v3_rust_ratio,
         args.min_ft_max_worker_throughput_ratio,
         args.max_idle_memory_ratio,
         args.max_api_p95_ratio,

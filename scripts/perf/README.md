@@ -202,8 +202,9 @@ Before-1 → After-1 → After-2 → Before-2 → Before-3 → After-3
 preflight 会验证 Python 3.14、GIL 状态、`thread_inherit_context`、MoviePilot-Rust 0.3 的
 `jieba_cut`/中文转换入口，以及标准与 free-threaded 镜像互斥的原生依赖 profile。正式样本使用
 固定 seed 和 fixture hash，按 `v3-1 → v3t-1 → v3t-2 → v3-2 → v3-3 → v3t-3`
-交替执行真实 readiness 启动、标准镜像 Rust 关闭/开启识别热点、两种镜像的并发 Rust 与 Python 热点，
-并用不连接数据库的命令验证 PostgreSQL 驱动选择。
+交替执行真实 readiness 启动，并把应用识别热点明确分成 `V3 + Python`、`V3 + Rust`、
+`V3t + Rust` 三组。两种镜像的纯 Python 并发与直接 Rust 并发是解释器/ABI 探针，不代表产品 Rust
+开关的第三组结果；PostgreSQL 驱动选择使用不连接数据库的命令单独验证。
 
 ```bash
 ../.venv/bin/python scripts/perf/free_threaded_ab.py \
