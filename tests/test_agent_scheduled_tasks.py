@@ -352,6 +352,108 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
         scheduler._scheduler.shutdown(wait=False)
 
 
+def test_stale_agent_task_generation_cannot_remove_replacement_job() -> None:
+    """旧执行收尾不得删除配置刷新后注册的新 generation。"""
+    task = _add_agent_task("date", _future_time(), "generation-replace")
+    scheduler = _build_agent_task_scheduler()
+    scheduler.update_agent_task_job(task.id)
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    old_generation = scheduler._jobs[job_id]["_generation"]
+
+    scheduler.update_agent_task_job(task.id)
+    new_generation = scheduler._jobs[job_id]["_generation"]
+
+    assert new_generation > old_generation
+    assert scheduler._remove_agent_task_job_generation(
+        task.id,
+        old_generation,
+        "old-run",
+    ) is False
+    assert scheduler._jobs[job_id]["_generation"] == new_generation
+    assert scheduler._scheduler.get_job(job_id) is not None
+
+
+@pytest.mark.anyio
+async def test_date_task_reload_job_is_removed_after_run_finishes(
+        monkeypatch,
+) -> None:
+    """运行中重载生成的同一次任务副本必须随 date 终态一起移除。"""
+    task = _add_agent_task("date", _future_time(), "date-reload-active")
+    scheduler = _build_agent_task_scheduler()
+    scheduler.update_agent_task_job(task.id)
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    original_generation = scheduler._jobs[job_id]["_generation"]
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def process_message(**_kwargs) -> str:
+        started.set()
+        await release.wait()
+        return "执行完成"
+
+    manager = SimpleNamespace(
+        execute_scheduled_task=AgentManager.execute_scheduled_task,
+        process_message=process_message,
+        _accepting_tasks=True,
+    )
+    manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
+    monkeypatch.setattr(
+        "app.application.agent.get_running_agent_manager",
+        lambda: manager,
+    )
+
+    assert scheduler.start(job_id) is True
+    await asyncio.wait_for(started.wait(), timeout=1)
+    scheduler.update_agent_task_job(task.id)
+    replacement_generation = scheduler._jobs[job_id]["_generation"]
+    assert replacement_generation > original_generation
+    assert scheduler._jobs[job_id]["_agent_task_status"] == "running"
+
+    release.set()
+
+    async def wait_until_released() -> None:
+        while scheduler._handles:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_until_released(), timeout=1)
+    completed = AgentTaskOper().get(task.id)
+    assert completed.enabled is False
+    assert completed.last_status == "success"
+    assert job_id not in scheduler._jobs
+    assert scheduler._scheduler.get_job(job_id) is None
+
+
+def test_finished_date_task_cannot_remove_reenabled_job() -> None:
+    """date 收口后重新启用的任务不再属于旧执行的运行时清理范围。"""
+    task = _add_agent_task("date", _future_time(), "date-reenabled")
+    scheduler = _build_agent_task_scheduler()
+    scheduler.update_agent_task_job(task.id)
+    job_id = scheduler._get_agent_task_job_id(task.id)
+    original_generation = scheduler._jobs[job_id]["_generation"]
+    oper = AgentTaskOper()
+    run = oper.begin_run(task.id)
+    assert run is not None
+    outcome = oper.finish_run_outcome(run.run_id, success=True, result="完成")
+    assert outcome.date_task_disabled is True
+    assert oper.update(
+        task.id,
+        {"enabled": True, "last_status": "waiting"},
+    ) is True
+    scheduler.update_agent_task_job(task.id)
+    replacement_generation = scheduler._jobs[job_id]["_generation"]
+    assert replacement_generation > original_generation
+    assert scheduler._jobs[job_id]["_agent_task_run_id"] == run.run_id
+    assert scheduler._jobs[job_id]["_agent_task_status"] == "waiting"
+
+    assert scheduler._remove_agent_task_job_generation(
+        task.id,
+        original_generation,
+        run.run_id,
+    ) is False
+    assert scheduler._jobs[job_id]["_generation"] == replacement_generation
+    assert scheduler._scheduler.get_job(job_id) is not None
+
+
 @pytest.mark.parametrize(
     "run_time_factory",
     [_past_time, _future_time, _invalid_time],
@@ -401,6 +503,7 @@ async def test_interrupted_date_task_manual_run_disables_and_removes_job(
     manager = SimpleNamespace(
         execute_scheduled_task=AgentManager.execute_scheduled_task,
         process_message=process_message,
+        _accepting_tasks=True,
     )
     manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
     monkeypatch.setattr(
@@ -674,6 +777,7 @@ async def test_scheduler_config_reload_preserves_active_agent_task(
     manager = SimpleNamespace(
         execute_scheduled_task=AgentManager.execute_scheduled_task,
         process_message=process_message,
+        _accepting_tasks=True,
     )
     manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
     monkeypatch.setattr(

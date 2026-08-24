@@ -28,7 +28,7 @@ from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
 from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
-from app.db.oper.agenttask import AgentTaskOper
+from app.application.agentdata import get_agent_task_port
 from app.application.database import get_database_governance
 from app.application.outbox import dispatch_pending_outbox
 from app.application.plugin.runtime import get_plugin_manager
@@ -1274,6 +1274,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             func = job.get("func")
             if not func:
                 return
+            if func == self.execute_agent_task:
+                kwargs.setdefault("scheduler_generation", generation)
             if self.__supports_progress_callback(func) and "progress_callback" not in kwargs:
                 kwargs["progress_callback"] = self.__build_progress_callback(
                     job_id=job_id, job=job
@@ -1426,7 +1428,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         按数据库当前状态注册所有启用的 Agent 自主定时任务。
         """
-        for task in AgentTaskOper().list(enabled=True):
+        for task in get_agent_task_port().list(enabled=True):
             self.update_agent_task_job(task.id)
 
     def _reconcile_agent_task_interruptions(self) -> None:
@@ -1439,7 +1441,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         with self._lock:
             if self._agent_task_interruptions_reconciled:
                 return
-            oper = AgentTaskOper()
+            oper = get_agent_task_port()
             for task in oper.list():
                 if task.last_status == "running":
                     oper.mark_interrupted(
@@ -1460,7 +1462,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         config = get_scheduler_runtime_config()
         self.remove_agent_task_job(task_id)
-        task = AgentTaskOper().get(task_id)
+        task = get_agent_task_port().get(task_id)
         if (
                 not config.ai_agent_enable
                 or not task
@@ -1496,6 +1498,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 kwargs={"task_id": task_id},
             ).to_runtime_state()
             self._assign_job_generation(job_id, job)
+            job["_agent_task_run_id"] = task.last_run_id
+            job["_agent_task_status"] = task.last_status
             self._jobs[job_id] = job
             self._jobs[job_id]["provider_name"] = "[Agent]"
             # 已开始的一次任务在重启后结果未知，只保留显式执行入口，不能按
@@ -1531,6 +1535,31 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             except JobLookupError:
                 pass
 
+    def _remove_agent_task_job_generation(
+            self,
+            task_id: int,
+            generation: int,
+            run_id: str,
+    ) -> bool:
+        """移除本次执行或其运行中重载产生的 AgentTask 调度注册。"""
+        job_id = self._get_agent_task_job_id(task_id)
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return False
+            if job.get("_generation", 0) != generation and not (
+                job.get("_agent_task_run_id") == run_id
+                and job.get("_agent_task_status") == "running"
+            ):
+                return False
+            self._jobs.pop(job_id, None)
+            if self._scheduler:
+                try:
+                    self._scheduler.remove_job(job_id)
+                except JobLookupError:
+                    pass
+        return True
+
     def get_agent_task_next_run(self, task_id: int) -> Optional[str]:
         """
         查询 Agent 自主定时任务的下一次执行时间。
@@ -1546,7 +1575,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             if next_run_time:
                 return next_run_time.isoformat(timespec="seconds")
 
-        task = AgentTaskOper().get(task_id)
+        task = get_agent_task_port().get(task_id)
         if not task or not task.enabled:
             return None
         if task.trigger_type == "date" and task.last_status == "interrupted":
@@ -1572,6 +1601,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             self,
             task_id: int,
             trigger_source: str = "scheduled",
+            scheduler_generation: int | None = None,
     ) -> tuple[bool, str]:
         """
         唤醒 Agent 执行指定自主定时任务。
@@ -1582,19 +1612,23 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         from app.application.agent import get_running_agent_manager
 
-        try:
-            manager = get_running_agent_manager()
-            if manager is None:
-                logger.warning("智能助手服务未运行，跳过 Agent 定时任务")
-                return False, "智能助手服务未运行"
-            return await manager.execute_scheduled_task(
-                task_id,
-                trigger_source=trigger_source,
+        manager = get_running_agent_manager()
+        if manager is None:
+            logger.warning("智能助手服务未运行，跳过 Agent 定时任务")
+            return False, "智能助手服务未运行"
+        if scheduler_generation is None:
+            job_id = self._get_agent_task_job_id(task_id)
+            with self._lock:
+                job = self._jobs.get(job_id)
+                if job is not None:
+                    scheduler_generation = job.get("_generation", 0)
+        kwargs: dict[str, Any] = {"trigger_source": trigger_source}
+        if scheduler_generation is not None:
+            kwargs.update(
+                scheduler_generation=scheduler_generation,
+                remove_schedule=self._remove_agent_task_job_generation,
             )
-        finally:
-            task = await AgentTaskOper().async_get(task_id)
-            if task and task.trigger_type == "date" and not task.enabled:
-                self.remove_agent_task_job(task_id)
+        return await manager.execute_scheduled_task(task_id, **kwargs)
 
     def init_plugin_jobs(self):
         """
