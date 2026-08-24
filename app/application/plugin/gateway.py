@@ -18,6 +18,7 @@ from app.application.plugin.install import PluginInstallResult
 from app.application.plugin.inventory import PLUGIN_V3_GENERATIONS
 from app.application.plugin.lifecycle import PluginStartupLease, plugin_lifecycle
 from app.application.plugin.source import (
+    Candidate,
     CandidateInventory,
     PluginLocalCandidate,
     PluginMarketCandidate,
@@ -29,6 +30,7 @@ from app.application.plugin.source import (
 
 InventoryProvider = Callable[[bool], Awaitable[CandidateInventory]]
 IdentityReader = Callable[[str], Awaitable[PluginIdentity | None]]
+CandidateCompatibility = Callable[[Candidate], tuple[bool, str]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,12 +67,14 @@ class PluginInstallGateway:
         *,
         inventory: InventoryProvider,
         identity: IdentityReader,
+        candidate_compatibility: CandidateCompatibility,
         executor: PluginInstallExecutor,
         clock: Callable[[], datetime],
     ) -> None:
-        """保存候选事实、身份读取、事务执行和时间端口。"""
+        """保存候选事实、身份读取、兼容校验、事务执行和时间端口。"""
         self.__inventory = inventory
         self.__identity = identity
+        self.__candidate_compatibility = candidate_compatibility
         self.__executor = executor
         self.__clock = clock
 
@@ -106,6 +110,13 @@ class PluginInstallGateway:
                     identity=identity,
                     now=self.__clock(),
                 )
+                compatible, message = self.__candidate_compatibility(
+                    admission.candidate
+                )
+                if not compatible:
+                    raise PluginSourceAdmissionError(
+                        message or "插件候选与当前 MoviePilot 版本不兼容"
+                    )
                 return await self.__executor.execute(
                     admission=admission,
                     release_version=release_version,

@@ -818,13 +818,21 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             log=logger,
         ).clear_modules(plugin_id)
 
-    def sync(self, startup_token: object | None = None) -> List[str]:
+    def sync(
+        self,
+        startup_token: object | None = None,
+        *,
+        online_restore_plugins: set[str] | None = None,
+    ) -> List[str]:
         """
         安装本地不存在或需要更新的插件
         """
 
         with self.mutation("同步插件包"):
-            return self._plugin_sync.sync(startup_token)
+            return self._plugin_sync.sync(
+                startup_token,
+                online_restore_plugins=online_restore_plugins,
+            )
 
     @staticmethod
     def install_plugin_missing_dependencies() -> List[str]:

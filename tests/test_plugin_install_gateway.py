@@ -1,7 +1,7 @@
 """统一插件安装 Gateway 测试。"""
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -57,6 +57,7 @@ async def test_gateway_freezes_admission_before_executing_transaction() -> None:
     gateway = PluginInstallGateway(
         inventory=AsyncMock(return_value=_inventory()),
         identity=AsyncMock(return_value=None),
+        candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
     )
@@ -94,6 +95,7 @@ async def test_gateway_rejects_source_conflict_before_package_execution() -> Non
             ))
         ),
         identity=AsyncMock(return_value=None),
+        candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
     )
@@ -105,6 +107,75 @@ async def test_gateway_rejects_source_conflict_before_package_execution() -> Non
 
     assert result.success is False
     assert result.failure_stage == "source_admission"
+    executor.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_gateway_checks_compatibility_on_final_trusted_candidate() -> None:
+    """跨仓聚合不能替代最终可信候选的系统版本兼容门禁。"""
+    official = PluginMarketCandidate(
+        plugin_id="DemoPlugin",
+        source_key="github:jxxghp/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.OFFICIAL,
+        repo_url=REPO_URL,
+        package_generation="v3",
+        plugin_version="1.2.0",
+        dto={"v3": True, "system_version": ">=99"},
+    )
+    competing = PluginMarketCandidate(
+        plugin_id="DemoPlugin",
+        source_key="github:example/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.THIRD_PARTY,
+        repo_url="https://github.com/example/moviepilot-plugins",
+        package_generation="v3",
+        plugin_version="9.9.10",
+        dto={"v3": True},
+    )
+    identity = PluginIdentity(
+        plugin_id="DemoPlugin",
+        normalized_plugin_id="demoplugin",
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key="github:jxxghp/moviepilot-plugins",
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        payload_source_type=PluginPayloadSourceType.LOCAL,
+        payload_source_key=None,
+        declared_version="9.9.9",
+        package_generation="v3",
+        system_version=None,
+        supports_v3=True,
+        supports_v3t=None,
+        payload_receipt="sha256:" + "1" * 64,
+        revision=3,
+        created_at=NOW,
+        updated_at=NOW,
+        bound_at=NOW,
+        payload_applied_at=NOW,
+    )
+    compatibility = Mock(return_value=(False, "当前版本不满足插件要求"))
+    executor = AsyncMock()
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(
+            return_value=CandidateInventory((
+                MarketRead.present(REPO_URL, (official,)),
+                MarketRead.present(competing.repo_url, (competing,)),
+            ))
+        ),
+        identity=AsyncMock(return_value=identity),
+        candidate_compatibility=compatibility,
+        executor=executor,
+        clock=lambda: NOW,
+    )
+
+    result = await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url=None,
+        package_version="v3",
+    )
+
+    assert result.success is False
+    assert result.failure_stage == "source_admission"
+    assert result.message == "当前版本不满足插件要求"
+    compatibility.assert_called_once_with(official)
     executor.execute.assert_not_awaited()
 
 
@@ -153,6 +224,7 @@ async def test_gateway_source_inspection_preserves_sources_and_hides_local_path(
     gateway = PluginInstallGateway(
         inventory=AsyncMock(return_value=inventory),
         identity=AsyncMock(return_value=None),
+        candidate_compatibility=lambda _candidate: (True, ""),
         executor=AsyncMock(),
         clock=lambda: NOW,
     )
@@ -211,6 +283,7 @@ async def test_gateway_forwards_explicit_source_change_revision() -> None:
             return_value=CandidateInventory((MarketRead.present(REPO_URL, (candidate,)),))
         ),
         identity=AsyncMock(return_value=current),
+        candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
     )

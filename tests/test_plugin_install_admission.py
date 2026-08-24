@@ -1,7 +1,7 @@
 """插件来源准入与目标身份规划测试。"""
 
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -104,6 +104,32 @@ def test_same_source_update_preserves_binding_and_advances_payload() -> None:
     assert target.declared_version == "2.0.0"
 
 
+def test_first_online_binding_uses_payload_commit_time() -> None:
+    """首次在线绑定在载荷提交时生效，不能早于身份创建时间。"""
+    applied_at = NOW + timedelta(seconds=1)
+    admission = admit_plugin_install(
+        _inventory(_online_candidate()),
+        request=PluginInstallAdmissionRequest(
+            plugin_id="DemoPlugin",
+            generations=("v3", "v2", "v1"),
+            requested_repo_url="https://github.com/jxxghp/MoviePilot-Plugins",
+            explicit_source=True,
+        ),
+        identity=None,
+        now=NOW,
+    )
+
+    target = admission.build_identity(
+        payload_receipt="sha256:" + "6" * 64,
+        applied_at=applied_at,
+    )
+
+    assert target.created_at == applied_at
+    assert target.updated_at == applied_at
+    assert target.bound_at == applied_at
+    assert target.payload_applied_at == applied_at
+
+
 def test_force_semantics_cannot_authorize_source_change() -> None:
     """普通安装即使替换载荷，也不能选择不同于已绑定来源的仓库。"""
     with pytest.raises(PluginSourceAdmissionError, match="普通安装不能改变"):
@@ -170,14 +196,16 @@ def test_source_change_builds_explicit_transition() -> None:
         now=NOW,
     )
 
+    applied_at = NOW + timedelta(seconds=1)
     target = admission.build_identity(
         payload_receipt="sha256:" + "2" * 64,
-        applied_at=NOW,
+        applied_at=applied_at,
     )
 
     assert target.binding_basis is PluginBindingBasis.EXPLICIT_SOURCE_CHANGE
     assert target.trusted_source_key == THIRD_PARTY
     assert target.payload_source_key == THIRD_PARTY
+    assert target.bound_at == applied_at
 
 
 def test_local_payload_preserves_existing_online_trust() -> None:

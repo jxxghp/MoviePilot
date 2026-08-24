@@ -8,6 +8,11 @@ from app.application.plugin.gateway import (
     PluginInstallGateway,
     configure_plugin_install_service,
 )
+from app.application.plugin.identity import (
+    PluginPayloadSourceType,
+    TrustedPluginSourceType,
+    normalize_physical_plugin_id,
+)
 from app.application.plugin.identity_migration import (
     PluginIdentityMigrationService,
     configure_plugin_identity_migration,
@@ -22,7 +27,10 @@ from app.application.plugin.recovery import (
 )
 from app.application.plugin.routes import register_plugin_api
 from app.application.plugin.runtime import get_plugin_manager
-from app.application.plugin.transaction import get_plugin_persistence
+from app.application.plugin.transaction import (
+    PluginPersistenceService,
+    get_plugin_persistence,
+)
 from app.application.scheduling import update_plugin_job
 from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
@@ -165,6 +173,9 @@ def configure_plugin_services() -> None:
     gateway = PluginInstallGateway(
         inventory=load_inventory,
         identity=persistence.get_identity,
+        candidate_compatibility=lambda candidate: (
+            plugin_helper.check_plugin_system_version(candidate.dto)
+        ),
         executor=command,
         clock=lambda: datetime.now(timezone.utc),
     )
@@ -278,6 +289,31 @@ def _register_plugin_runtime(plugin_id: str) -> None:
     register_plugin_api(plugin_id)
 
 
+async def _collect_online_restore_plugins(
+    persistence: PluginPersistenceService,
+    installed_plugins: list[str],
+) -> set[str]:
+    """找出当前载荷为本地且仍保留可信在线来源的物理插件。"""
+    restore_plugins: set[str] = set()
+    seen: set[str] = set()
+    for plugin_id in installed_plugins:
+        try:
+            normalized_id = normalize_physical_plugin_id(plugin_id)
+        except ValueError:
+            continue
+        if normalized_id in seen:
+            continue
+        seen.add(normalized_id)
+        identity = await persistence.get_identity(normalized_id)
+        if (
+            identity is not None
+            and identity.trusted_source_type is not TrustedPluginSourceType.UNKNOWN
+            and identity.payload_source_type is PluginPayloadSourceType.LOCAL
+        ):
+            restore_plugins.add(normalized_id)
+    return restore_plugins
+
+
 async def _run_plugin_install_async(
     gateway: PluginInstallGateway,
     *,
@@ -382,11 +418,19 @@ async def sync_plugins(
         with plugin_manager.mutation("启动后同步插件"):
             configure_plugin_services()
             await get_plugin_identity_migration().migrate()
+            installed_plugins = get_configured_system_config().get(
+                SystemConfigKey.UserInstalledPlugins
+            ) or []
+            online_restore_plugins = await _collect_online_restore_plugins(
+                get_plugin_persistence(),
+                installed_plugins,
+            )
             plugin_manager.set_plugin_settling(True)
             return await _sync_plugins_admitted(
                 plugin_manager,
                 loop,
                 startup_token,
+                online_restore_plugins,
             )
     except PluginMutationRejectedError as error:
         logger.warning(str(error))
@@ -400,11 +444,15 @@ async def _sync_plugins_admitted(
     plugin_manager: PluginManager,
     loop,
     startup_token: PluginStartupLease | None,
+    online_restore_plugins: set[str],
 ) -> bool:
     """在一个 admission lease 内完成包、依赖、实例和动态路由同步。"""
     sync_result = await execute_task(
         loop,
-        lambda: plugin_manager.sync(startup_token),
+        lambda: plugin_manager.sync(
+            startup_token,
+            online_restore_plugins=online_restore_plugins,
+        ),
         "插件同步到本地",
     )
     dependency_result = await (

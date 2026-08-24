@@ -34,21 +34,36 @@ class PluginSyncService:
         self._install = install
         self._logger = log
 
-    def sync(self, startup_token: object | None = None) -> list[str]:
-        """并发安装本地缺失或需要更新的已安装插件。"""
+    def sync(
+        self,
+        startup_token: object | None = None,
+        *,
+        online_restore_plugins: set[str] | None = None,
+    ) -> list[str]:
+        """并发安装本地缺失、需要更新或应恢复在线载荷的插件。"""
         if self._frozen():
             return []
 
         installed = self._installed_plugins()
         online = self._online_plugins()
         local = self._local_plugins()
+        local_plugin_ids = {plugin.id.lower() for plugin in local}
+        restore_plugin_ids = {
+            plugin_id.lower()
+            for plugin_id in (online_restore_plugins or set())
+        } - local_plugin_ids
         candidates = self._merge_plugins(online + local, [], []) if online or local else []
         targets = [
             plugin
             for plugin in candidates
             if plugin.id in installed
-            and plugin.system_version_compatible is not False
-            and not self._plugin_exists(plugin.id, plugin.plugin_version)
+            and (
+                plugin.id.lower() in restore_plugin_ids
+                or (
+                    plugin.system_version_compatible is not False
+                    and not self._plugin_exists(plugin.id, plugin.plugin_version)
+                )
+            )
         ]
         if not targets:
             return []

@@ -389,6 +389,53 @@ async def test_migration_does_not_replace_existing_bound_or_local_identity() -> 
 
 
 @pytest.mark.asyncio
+async def test_collect_online_restore_plugins_requires_trust_and_local_payload() -> None:
+    """仅在线可信来源仍绑定的本地载荷需要进入启动恢复候选。"""
+    trusted_local = replace(
+        _legacy("TrustedLocal"),
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key=OFFICIAL_SOURCE,
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        payload_source_type=PluginPayloadSourceType.LOCAL,
+        declared_version="9.9.10",
+        package_generation="v3",
+        payload_receipt="sha256:" + "2" * 64,
+        bound_at=NOW,
+        payload_applied_at=NOW,
+    )
+    local_only = replace(
+        _legacy("LocalOnly"),
+        binding_basis=PluginBindingBasis.LOCAL_ONLY,
+        payload_source_type=PluginPayloadSourceType.LOCAL,
+        declared_version="1.0.0-dev",
+        package_generation="v3",
+        payload_receipt="sha256:" + "3" * 64,
+        payload_applied_at=NOW,
+    )
+    online = replace(
+        _legacy("OnlinePayload"),
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key=OFFICIAL_SOURCE,
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        payload_source_type=PluginPayloadSourceType.OFFICIAL,
+        payload_source_key=OFFICIAL_SOURCE,
+        declared_version="1.2.0",
+        package_generation="v3",
+        payload_receipt="sha256:" + "4" * 64,
+        bound_at=NOW,
+        payload_applied_at=NOW,
+    )
+    persistence = _Persistence((trusted_local, local_only, online))
+
+    result = await plugins_initializer._collect_online_restore_plugins(
+        persistence,
+        ["TrustedLocal", "TRUSTEDLOCAL", "LocalOnly", "OnlinePayload", "bad-id"],
+    )
+
+    assert result == {"trustedlocal"}
+
+
+@pytest.mark.asyncio
 async def test_sync_runs_identity_migration_before_automatic_install(
     monkeypatch,
 ) -> None:
@@ -396,7 +443,13 @@ async def test_sync_runs_identity_migration_before_automatic_install(
     order: list[str] = []
     manager = MagicMock()
     manager.mutation.return_value = nullcontext()
-    manager.sync.side_effect = lambda _token: order.append("sync") or []
+
+    def sync(_token, *, online_restore_plugins):
+        order.append("sync")
+        assert online_restore_plugins == {"demoplugin"}
+        return []
+
+    manager.sync.side_effect = sync
     manager.async_install_plugin_missing_dependencies_with_status = AsyncMock(
         return_value=PluginDependencyInstallResult(missing=[], success=True)
     )
@@ -409,6 +462,27 @@ async def test_sync_runs_identity_migration_before_automatic_install(
         order.append("migrate")
 
     migration.migrate = migrate
+    identity = replace(
+        _legacy(),
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key=OFFICIAL_SOURCE,
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        payload_source_type=PluginPayloadSourceType.LOCAL,
+        declared_version="9.9.10",
+        package_generation="v3",
+        payload_receipt="sha256:" + "5" * 64,
+        bound_at=NOW,
+        payload_applied_at=NOW,
+    )
+    persistence = MagicMock()
+
+    async def get_identity(_plugin_id: str) -> PluginIdentity:
+        order.append("identity")
+        return identity
+
+    persistence.get_identity = get_identity
+    config = MagicMock()
+    config.get.return_value = ["DemoPlugin"]
 
     async def execute(_loop, task, _name):
         return task()
@@ -429,10 +503,20 @@ async def test_sync_runs_identity_migration_before_automatic_install(
         "get_plugin_identity_migration",
         lambda: migration,
     )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_plugin_persistence",
+        lambda: persistence,
+    )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_configured_system_config",
+        lambda: config,
+    )
     monkeypatch.setattr(plugins_initializer, "execute_task", execute)
 
     assert await plugins_initializer.sync_plugins() is False
-    assert order == ["configure", "migrate", "sync"]
+    assert order == ["configure", "migrate", "identity", "sync"]
 
 
 @pytest.mark.asyncio

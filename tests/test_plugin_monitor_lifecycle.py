@@ -161,6 +161,23 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
         "get_plugin_identity_migration",
         lambda: migration,
     )
+    config = MagicMock()
+    config.get.return_value = []
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_configured_system_config",
+        lambda: config,
+    )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_plugin_persistence",
+        MagicMock,
+    )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "_collect_online_restore_plugins",
+        AsyncMock(return_value=set()),
+    )
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(plugins_initializer, "execute_task", execute)
     monkeypatch.setattr(plugins_initializer, "register_plugin_api", register)
@@ -360,6 +377,23 @@ async def test_sync_plugins_keeps_event_loop_responsive_during_activation(
         plugins_initializer,
         "get_plugin_identity_migration",
         lambda: migration,
+    )
+    config = MagicMock()
+    config.get.return_value = []
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_configured_system_config",
+        lambda: config,
+    )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_plugin_persistence",
+        MagicMock,
+    )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "_collect_online_restore_plugins",
+        AsyncMock(return_value=set()),
     )
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(plugins_initializer, "register_plugin_api", MagicMock())

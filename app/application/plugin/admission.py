@@ -68,6 +68,15 @@ class PluginInstallAdmission:
         system_version = metadata.get("system_version")
         supports_v3 = metadata.get("v3")
         supports_v3t = metadata.get("v3t")
+        source_binding_changed = (
+            self.trusted_source_type is not TrustedPluginSourceType.UNKNOWN
+            and (
+                current is None
+                or current.trusted_source_type is TrustedPluginSourceType.UNKNOWN
+                or current.trusted_source_type is not self.trusted_source_type
+                or current.trusted_source_key != self.trusted_source_key
+            )
+        )
         return PluginIdentity(
             plugin_id=plugin_id,
             normalized_plugin_id=plugin_id.lower(),
@@ -91,7 +100,7 @@ class PluginInstallAdmission:
             revision=(current.revision + 1) if current else 1,
             created_at=current.created_at if current else applied_at,
             updated_at=applied_at,
-            bound_at=self.bound_at,
+            bound_at=applied_at if source_binding_changed else self.bound_at,
             payload_applied_at=applied_at,
         )
 

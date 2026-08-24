@@ -53,6 +53,65 @@ def test_market_sync_keeps_install_rollback_enabled() -> None:
     install.assert_called_once_with(plugin.id, None, False, None)
 
 
+def test_market_sync_restores_trusted_online_payload_after_local_source_removed() -> None:
+    """本地高版本来源消失后，启动同步仍恢复已绑定的在线载荷。"""
+    plugin = SimpleNamespace(
+        id="DemoPlugin",
+        repo_url=REPO_URL,
+        plugin_name="Demo",
+        plugin_version="1.2.0",
+        system_version_compatible=False,
+    )
+    install = Mock(return_value=(True, ""))
+    service = PluginSyncService(
+        frozen=lambda: False,
+        installed_plugins=lambda: [plugin.id],
+        online_plugins=lambda: [plugin],
+        local_plugins=lambda: [],
+        merge_plugins=lambda items, *_args: items,
+        plugin_exists=lambda *_args: True,
+        install=install,
+        log=Mock(),
+    )
+
+    assert service.sync(
+        online_restore_plugins={"demoplugin"},
+    ) == [plugin.id]
+    install.assert_called_once_with(plugin.id, None, False, None)
+
+
+def test_market_sync_keeps_active_local_payload_when_candidate_still_exists() -> None:
+    """本地候选仍存在时，不应被启动在线恢复覆盖。"""
+    online = SimpleNamespace(
+        id="DemoPlugin",
+        repo_url=REPO_URL,
+        plugin_name="Demo",
+        plugin_version="1.2.0",
+        system_version_compatible=True,
+    )
+    local = SimpleNamespace(
+        id="DemoPlugin",
+        repo_url="local://DemoPlugin?package_version=v3",
+        plugin_name="Demo Local",
+        plugin_version="9.9.10",
+        system_version_compatible=True,
+    )
+    install = Mock(return_value=(True, ""))
+    service = PluginSyncService(
+        frozen=lambda: False,
+        installed_plugins=lambda: [online.id],
+        online_plugins=lambda: [online],
+        local_plugins=lambda: [local],
+        merge_plugins=lambda items, *_args: [online],
+        plugin_exists=lambda *_args: True,
+        install=install,
+        log=Mock(),
+    )
+
+    assert service.sync(online_restore_plugins={"demoplugin"}) == []
+    install.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_market_sync_reuses_startup_lease_through_real_gateway(
     monkeypatch,
@@ -102,25 +161,26 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
         trusted_source_type=TrustedPluginSourceType.OFFICIAL,
         trusted_source_key="github:jxxghp/moviepilot-plugins",
         binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
-        payload_source_type=PluginPayloadSourceType.UNKNOWN,
+        payload_source_type=PluginPayloadSourceType.LOCAL,
         payload_source_key=None,
-        declared_version=None,
-        package_generation=None,
+        declared_version="9.9.10",
+        package_generation="v3",
         system_version=None,
-        supports_v3=None,
+        supports_v3=True,
         supports_v3t=None,
-        payload_receipt=None,
+        payload_receipt="sha256:" + "0" * 64,
         revision=1,
         created_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
         updated_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
         bound_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
-        payload_applied_at=None,
+        payload_applied_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
     )
     executor = AsyncMock()
     executor.execute.return_value = PluginInstallResult(success=True)
     gateway = PluginInstallGateway(
         inventory=AsyncMock(return_value=inventory),
         identity=AsyncMock(return_value=identity),
+        candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
     )
@@ -155,14 +215,18 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
         online_plugins=lambda: [plugin],
         local_plugins=lambda: [],
         merge_plugins=lambda items, *_args: items,
-        plugin_exists=lambda *_args: False,
+        plugin_exists=lambda *_args: True,
         install=install,
         log=Mock(),
     )
 
     async with plugin_lifecycle.hold_startup() as startup_token:
         synced = await asyncio.wait_for(
-            asyncio.to_thread(service.sync, startup_token),
+            asyncio.to_thread(
+                service.sync,
+                startup_token,
+                online_restore_plugins={"demoplugin"},
+            ),
             timeout=2,
         )
 
