@@ -142,9 +142,9 @@ import json
 import sys
 from typing import get_args, get_type_hints
 
-from app.testing.bootstrap import ensure_sites_stub
+from app.testing.bootstrap import install_sites_stub
 
-ensure_sites_stub()
+install_sites_stub()
 from app.agent.runtime_loader import get_tool_factory
 
 factory = get_tool_factory()
