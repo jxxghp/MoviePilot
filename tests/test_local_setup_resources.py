@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 import uuid
 from pathlib import Path
 
@@ -19,14 +20,14 @@ def load_local_setup_module():
 
 
 @pytest.mark.parametrize(
-    ("gil_disabled", "expected"),
+    ("gil_disabled", "suffix"),
     [
-        (0, "cp314"),
-        (1, "cp314t"),
+        (0, ""),
+        (1, "t"),
     ],
 )
 def test_python_version_tag_distinguishes_free_threaded_abi(
-    monkeypatch, gil_disabled, expected
+    monkeypatch, gil_disabled, suffix
 ):
     module = load_local_setup_module()
     monkeypatch.setattr(
@@ -35,6 +36,7 @@ def test_python_version_tag_distinguishes_free_threaded_abi(
         lambda name: gil_disabled if name == "Py_GIL_DISABLED" else None,
     )
 
+    expected = f"cp{sys.version_info.major}{sys.version_info.minor}{suffix}"
     assert module._get_python_version_tag() == expected
 
 
