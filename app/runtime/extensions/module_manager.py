@@ -224,13 +224,17 @@ class ModuleManager(metaclass=Singleton):
             self._refresh_running_projection()
         logger.info("所有模块停止完成")
 
-    def shutdown(self) -> None:
-        """进程关闭时不可逆停止 Runtime，阻止并发能力重新发布。"""
+    def shutdown(self) -> bool:
+        """不可逆停止 Runtime，并返回所有模块 owner 是否收敛。"""
         logger.info("正在关闭模块运行时...")
         with self._lifecycle_lock:
-            self._runtime.shutdown(reason="application_shutdown")
+            converged = self._runtime.shutdown(reason="application_shutdown")
             self._refresh_running_projection()
-        logger.info("模块运行时关闭完成")
+        if converged:
+            logger.info("模块运行时关闭完成")
+        else:
+            logger.error("模块运行时关闭后仍有资源 owner 未收敛")
+        return converged
 
     def reload(self) -> None:
         """保留旧插件可观察的 stop、load、ModuleReload 同步顺序。"""

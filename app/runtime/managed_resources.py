@@ -48,8 +48,8 @@ class ManagedResourceRuntime(Protocol):
     async def stop_async(self, capability_id: str, *, reason: str) -> None:
         """通过异步 adapter 停止资源。"""
 
-    async def shutdown_async(self, *, reason: str) -> None:
-        """关闭混合同步和异步 adapter 的 Runtime。"""
+    async def shutdown_async(self, *, reason: str) -> bool:
+        """关闭混合 Runtime，并返回全部资源是否收敛。"""
 
 
 _runtime_lock = threading.RLock()
@@ -174,9 +174,9 @@ async def stop_managed_resource_async(capability_id: str, *, reason: str) -> Non
     raise RuntimeError(f"未知 Managed Resource kind：{kind}")
 
 
-async def shutdown_managed_resource_runtime(*, reason: str) -> None:
-    """关闭已配置 Runtime；未配置时直接返回，绝不因关闭而创建资源。"""
+async def shutdown_managed_resource_runtime(*, reason: str) -> bool:
+    """关闭已配置 Runtime，未配置时按已收敛处理。"""
     runtime = _runtime(required=False)
     if runtime is None:
-        return
-    await runtime.shutdown_async(reason=reason)
+        return True
+    return await runtime.shutdown_async(reason=reason)

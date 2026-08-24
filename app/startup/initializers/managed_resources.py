@@ -38,10 +38,10 @@ def init_managed_resources() -> CapabilityRuntime:
         return _managed_resource_runtime
 
 
-async def stop_managed_resources() -> None:
-    """关闭已经初始化的资源 Runtime；未初始化时不执行发现或激活。"""
+async def stop_managed_resources() -> bool:
+    """关闭已初始化的资源 Runtime，并返回 owner 是否收敛。"""
     with _runtime_lock:
         runtime = _managed_resource_runtime
     if runtime is None:
-        return
-    await runtime.shutdown_async(reason="application_shutdown")
+        return True
+    return await runtime.shutdown_async(reason="application_shutdown")

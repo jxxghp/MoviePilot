@@ -176,6 +176,7 @@ def test_telegram_stop_closes_sdk_and_waits_for_polling_thread():
     bot = Mock()
     client._bot = bot
     polling_thread = Mock()
+    polling_thread.is_alive.side_effect = [True, False]
     client._polling_thread = polling_thread
     client._typing_tasks = {}
     client._typing_stop_flags = {}
@@ -183,10 +184,51 @@ def test_telegram_stop_closes_sdk_and_waits_for_polling_thread():
     client._typing_lifecycle_lock = threading.RLock()
     client._typing_accepting = True
 
-    client.stop()
-    client.stop()
+    assert client.stop() is True
+    assert client.stop() is True
 
     bot.stop_bot.assert_called_once_with()
-    polling_thread.join.assert_called_once_with()
+    polling_thread.join.assert_called_once_with(
+        timeout=client._polling_join_timeout_seconds
+    )
     assert client._bot is None
     assert client._polling_thread is None
+
+
+def test_telegram_stop_keeps_polling_owner_when_thread_misses_deadline():
+    """polling 超过关闭预算时必须返回未收敛并保留原 owner。"""
+    client = Telegram.__new__(Telegram)
+    bot = Mock()
+    polling_thread = Mock()
+    polling_thread.is_alive.return_value = True
+    client._bot = bot
+    client._polling_thread = polling_thread
+    client._polling_join_timeout_seconds = 0.01
+    client._typing_tasks = {}
+    client._typing_stop_flags = {}
+    client._typing_lock = threading.RLock()
+    client._typing_lifecycle_lock = threading.RLock()
+    client._typing_accepting = True
+
+    assert client.stop() is False
+
+    polling_thread.join.assert_called_once_with(timeout=0.01)
+    assert client._bot is bot
+    assert client._polling_thread is polling_thread
+
+
+def test_telegram_module_reports_nonconverging_instance_after_stopping_peers():
+    """单实例未收敛时模块必须继续停止其余实例并返回 False。"""
+    module = TelegramModule()
+    blocked_client = Mock()
+    blocked_client.stop.return_value = False
+    healthy_client = Mock()
+    healthy_client.stop.return_value = True
+    module._instances = {
+        "blocked": blocked_client,
+        "healthy": healthy_client,
+    }
+
+    assert module.stop() is False
+    blocked_client.stop.assert_called_once_with()
+    healthy_client.stop.assert_called_once_with()

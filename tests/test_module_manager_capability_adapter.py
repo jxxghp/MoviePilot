@@ -16,7 +16,7 @@ import pytest
 from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.singleton import Singleton
 from app.runtime.capabilities.errors import CapabilityRuntimeClosedError
-from app.runtime.capabilities.model import SelectorSchema
+from app.runtime.capabilities.model import CapabilityLifecycleState, SelectorSchema
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.extensions import module_manager as module_manager_extension
@@ -475,6 +475,23 @@ def test_shutdown_is_irreversible(module_manager_harness) -> None:
     manager.load_modules()
     assert manager.get_running_module("SampleModule") is None
     assert type(running).instances == [running]
+
+
+def test_shutdown_reports_unreleased_module_owner(module_manager_harness) -> None:
+    """Host Module 返回 False 时 Runtime 必须保留 owner 并向组合根报告。"""
+    manager = module_manager_harness.manager
+    _enable_sample(module_manager_harness.config_values)
+    manager.load_modules()
+    running = manager.get_running_module("SampleModule")
+    running.stop = Mock(side_effect=[False, None])
+
+    assert manager.shutdown() is False
+    failed = manager._runtime.snapshot("SampleModule")
+    assert failed.lifecycle is CapabilityLifecycleState.FAILED
+    assert failed.visible is False
+
+    assert manager.shutdown() is True
+    assert running.stop.call_count == 2
 
 
 def test_all_real_host_modules_zero_arg_construct_without_starting_resources(

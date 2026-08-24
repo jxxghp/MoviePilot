@@ -190,6 +190,11 @@ mechanism remains in `app/adapters/system/resource.py`.
 应用级启动顺序使用 `app/startup/lifecycle/components.py` 的组件描述声明依赖、
 normal/safe-mode 范围、start/stop 顺序、超时预算和失败策略。新增进程级资源不得只在
 `lifespan()` 中追加过程代码，必须先进入可导出的生命周期清单并补顺序快照测试。
+Host Module 的 `stop()` 可以显式返回 `False` 表示资源 owner 尚未收敛；
+`HostModuleAdapter` 必须将它视为 stop 失败，Capability Runtime 保留原 owner 供后续重试，
+ModuleManager 与 startup 组合根继续关闭其余资源但必须向上返回未收敛，不得把记录日志等同于成功。
+同步和异步 Capability Runtime 的 `shutdown` 必须使用同一布尔收敛合同；Agent、Managed Resource
+等领域关闭入口必须直接传播 Runtime 的整体结果，不得以单个能力快照或无返回包装器覆盖失败。
 API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/tasks.py`；登记器先于其他
 运行资源启动，并在资源释放前停止接收、取消和有限等待。需要崩溃恢复的 E2/E3 副作用仍应
 进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。

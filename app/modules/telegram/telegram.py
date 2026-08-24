@@ -84,6 +84,7 @@ class Telegram:
     _typing_command_max_duration_seconds = 30
     _typing_callback_max_duration_seconds = 60
     _typing_join_timeout_seconds = 1
+    _polling_join_timeout_seconds = 10
 
     def __init__(
             self,
@@ -1742,21 +1743,32 @@ class Telegram:
         # 清理菜单命令
         self._bot.delete_my_commands()
 
-    def stop(self) -> None:
+    def stop(self) -> bool:
         """
-        停止Telegram消息接收服务
+        停止 Telegram 消息接收服务，并返回 polling/typing owner 是否收敛。
         """
+        converged = True
         with self._typing_lifecycle_lock:
             self._typing_accepting = False
             # 封口与 owner 快照处于同一临界区，停止后不会漏掉并发新增任务。
             for chat_id in list(self._typing_tasks.keys()):
-                self._stop_typing_task(chat_id)
-        if not self._bot:
-            return
+                if not self._stop_typing_task(chat_id):
+                    converged = False
 
-        self._bot.stop_bot()
-        if self._polling_thread:
-            self._polling_thread.join()
+        bot = self._bot
+        polling_thread = self._polling_thread
+        if bot:
+            bot.stop_bot()
+        if (
+            polling_thread
+            and polling_thread.is_alive()
+            and polling_thread is not threading.current_thread()
+        ):
+            polling_thread.join(timeout=self._polling_join_timeout_seconds)
+        if polling_thread and polling_thread.is_alive():
+            logger.error("Telegram polling 线程未在关闭预算内退出")
+            return False
         self._polling_thread = None
         self._bot = None
         logger.info("Telegram消息接收服务已停止")
+        return converged

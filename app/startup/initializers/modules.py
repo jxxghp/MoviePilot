@@ -601,23 +601,36 @@ async def settle_events() -> bool:
     return await event_manager.drain_async(seal=False)
 
 
-async def stop_modules():
+async def stop_modules() -> bool:
     """
-    服务关闭
+    关闭模块服务，并返回全部资源 owner 是否收敛。
     """
-    async def run_step(name: str, callback: Callable[[], object]) -> bool:
-        """单个模块资源关闭失败时继续执行后续阶段"""
+    all_converged = True
+
+    async def run_step(
+        name: str,
+        callback: Callable[[], object],
+        *,
+        record_failure: bool = True,
+    ) -> bool:
+        """执行单个关闭步骤，失败时继续收口并保留诚实结果。"""
+        nonlocal all_converged
         try:
             result = callback()
             if inspect.isawaitable(result):
-                await result
-            return True
+                result = await result
+            converged = result is not False
+            if not converged:
+                logger.error("关闭%s未收敛，继续执行后续资源收口", name)
         except asyncio.CancelledError:
             logger.warning("关闭%s时收到取消请求，继续执行资源收口", name)
-            return False
+            converged = False
         except Exception as err:
             logger.error(f"关闭{name}失败：{err}")
-            return True
+            converged = False
+        if not converged and record_failure:
+            all_converged = False
+        return converged
 
     await run_step("图片代理安全日志合并器", close_image_proxy_block_log_coalescer)
     await run_step("模块", lambda: ModuleManager().shutdown())
@@ -631,7 +644,9 @@ async def stop_modules():
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
     # Web Agent 的取消 finally 可能还要写入最终展示快照，必须先完成任务收尾，再关闭写入准入。
     web_agent_drained = await run_step(
-        "Web Agent后台任务", shutdown_web_agent_background_tasks
+        "Web Agent后台任务",
+        shutdown_web_agent_background_tasks,
+        record_failure=False,
     )
     if not web_agent_drained:
         web_agent_drained = await run_step(
@@ -648,15 +663,18 @@ async def stop_modules():
         )
     else:
         persistence_drained = False
+        all_converged = False
         logger.error("Web Agent任务未完成收尾，跳过持久化和数据库关闭以保护活动事务")
     if persistence_drained:
         await run_step("数据库任务", stop_database_worker)
         if _database_worker is None:
             await run_step("数据库连接", close_database)
         else:
+            all_converged = False
             logger.error("数据库任务未收敛，跳过数据库连接关闭以避免运行中事务使用已释放连接")
     await run_step("前端服务", stop_frontend)
     await run_step("临时文件", clear_temp)
+    return all_converged
 
 
 async def init_modules() -> HostRuntime:

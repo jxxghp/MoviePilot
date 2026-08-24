@@ -247,8 +247,9 @@ class HostModuleAdapter:
     @staticmethod
     def stop(spec: CapabilitySpec, instance: Any, generation: int) -> None:
         """停止实例拥有的资源；Runtime 会先撤销其运行态可见性。"""
-        del spec, generation
-        instance.stop()
+        del generation
+        if instance.stop() is False:
+            raise RuntimeError(f"Host Module {spec.id} 资源未完成收口")
 
     @staticmethod
     def cleanup(

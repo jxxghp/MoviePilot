@@ -91,6 +91,32 @@ async def test_shutdown_retains_nonconverged_agent_service_for_retry(
     assert manager.close_calls == 2
 
 
+@pytest.mark.anyio
+async def test_shutdown_propagates_runtime_wide_convergence(
+    runtime_loader,
+    monkeypatch,
+) -> None:
+    """Agent 关闭不得用单个 service 快照覆盖 Runtime 的整体结果。"""
+
+    class RuntimeWithIndependentShutdownResult:
+        """模拟其它 Agent 能力失败而 service 已停止的 Runtime。"""
+
+        async def shutdown_async(self, *, reason: str) -> bool:
+            """记录关闭原因并返回 Runtime 级未收敛。"""
+            assert reason == "application_shutdown"
+            return False
+
+        @staticmethod
+        def snapshot(_capability_id: str) -> types.SimpleNamespace:
+            """提供旧实现读取的已停止 service 快照。"""
+            return types.SimpleNamespace(lifecycle=CapabilityLifecycleState.STOPPED)
+
+    runtime = RuntimeWithIndependentShutdownResult()
+    monkeypatch.setattr(runtime_loader, "_ensure_runtime", lambda: runtime)
+
+    assert await runtime_loader.begin_agent_shutdown() is False
+
+
 def _fake_agent_modules(manager: object | None = None) -> dict[str, types.ModuleType]:
     orchestrator = types.ModuleType("app.agent.orchestrator")
     orchestrator.agent_manager = manager if manager is not None else object()

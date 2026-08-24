@@ -62,6 +62,7 @@ def _telegram_client(bot=None) -> Telegram:
     """构造不连接外部服务且持有独立运行状态的 Telegram client。"""
     telegram = Telegram.__new__(Telegram)
     telegram._bot = bot or _FakeTelegramBot()
+    telegram._polling_thread = None
     telegram._telegram_token = "token"
     telegram._telegram_chat_id = "default-chat"
     telegram._user_chat_mapping = {}

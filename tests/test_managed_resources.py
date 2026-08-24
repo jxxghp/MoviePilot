@@ -143,7 +143,10 @@ def test_sync_managed_resource_is_single_flight(
         if observation.operation == "activate"
     ] == ["started", "succeeded"]
 
-    asyncio.run(shutdown_managed_resource_runtime(reason="test_shutdown"))
+    assert (
+        asyncio.run(shutdown_managed_resource_runtime(reason="test_shutdown"))
+        is True
+    )
 
     assert SyncResource.instances[0].stopped == 1
     with pytest.raises(CapabilityRuntimeClosedError):
@@ -196,6 +199,55 @@ def test_async_managed_resource_uses_async_adapter(
 
     assert resource.events == ["start", "stop"]
     assert AsyncResource.instances == [resource]
+
+
+def test_shutdown_propagates_stop_failure_and_retains_owner_for_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """托管资源关闭失败必须向 startup 传播，并保留同一 owner 重试。"""
+    module_name = "fixture_retry_stop_managed_resource"
+    module = ModuleType(module_name)
+
+    class RetryStopResource:
+        """首次停止失败、第二次停止收敛的同步资源。"""
+
+        def __init__(self) -> None:
+            self.stop_calls = 0
+            self.fail_stop = True
+
+        def start(self) -> None:
+            """资源启动无需额外动作。"""
+
+        def stop(self) -> None:
+            """按测试开关模拟资源释放失败。"""
+            self.stop_calls += 1
+            if self.fail_stop:
+                raise RuntimeError("stop failed")
+
+    module.RetryStopResource = RetryStopResource
+    monkeypatch.setitem(sys.modules, module_name, module)
+    _write_manifest(
+        tmp_path,
+        capability_id="fixture.retry_stop",
+        kind=MANAGED_RESOURCE_SYNC_KIND,
+        entrypoint=f"{module_name}:RetryStopResource",
+    )
+    configure_managed_resource_runtime(_runtime(tmp_path))
+    resource = acquire_managed_resource("fixture.retry_stop", reason="test")
+
+    assert (
+        asyncio.run(shutdown_managed_resource_runtime(reason="test_shutdown"))
+        is False
+    )
+    assert resource.stop_calls == 1
+
+    resource.fail_stop = False
+    assert (
+        asyncio.run(shutdown_managed_resource_runtime(reason="shutdown_retry"))
+        is True
+    )
+    assert resource.stop_calls == 2
 
 
 def test_failed_start_is_cleaned_before_explicit_retry(
@@ -334,6 +386,6 @@ def test_startup_shutdown_without_init_does_not_build_registry(monkeypatch) -> N
         build_registry,
     )
 
-    asyncio.run(managed_resources_initializer.stop_managed_resources())
+    assert asyncio.run(managed_resources_initializer.stop_managed_resources()) is True
 
     build_registry.assert_not_called()

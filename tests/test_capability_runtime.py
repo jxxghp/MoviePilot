@@ -792,6 +792,29 @@ async def test_stop_async_failure_retains_ownership_for_explicit_retry(tmp_path:
 
 
 @pytest.mark.asyncio
+async def test_shutdown_async_reports_unreleased_owner_until_retry(tmp_path: Path) -> None:
+    """异步 shutdown 不得把 stop 失败伪装成整体成功。"""
+    adapter = _AsyncAdapter()
+    runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
+    activation = asyncio.create_task(
+        runtime.activate_async("sample.capability", reason="initial")
+    )
+    await adapter.start_entered.wait()
+    adapter.start_release.set()
+    instance = await activation
+    adapter.fail_stop = True
+
+    assert await runtime.shutdown_async(reason="application_shutdown") is False
+    assert runtime.snapshot(
+        "sample.capability"
+    ).lifecycle is CapabilityLifecycleState.FAILED
+
+    adapter.fail_stop = False
+    assert await runtime.shutdown_async(reason="shutdown_retry") is True
+    assert adapter.stop_instances == [instance, instance]
+
+
+@pytest.mark.asyncio
 async def test_async_reload_uses_reloading_state_and_hides_candidate(tmp_path: Path) -> None:
     """异步 reload 与同步入口遵守相同状态和发布边界。"""
     adapter = _AsyncAdapter()

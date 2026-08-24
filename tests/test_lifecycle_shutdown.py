@@ -938,8 +938,21 @@ def test_stop_modules_continues_after_internal_owner_failure(monkeypatch):
     dependencies = _patch_module_shutdown_dependencies(monkeypatch)
     dependencies["module"].side_effect = RuntimeError("module failed")
 
-    asyncio.run(modules_initializer.stop_modules())
+    converged = asyncio.run(modules_initializer.stop_modules())
 
+    assert converged is False
+    for dependency in dependencies.values():
+        _assert_completed_once(dependency)
+
+
+def test_stop_modules_propagates_false_without_skipping_later_cleanup(monkeypatch):
+    """关闭回调显式返回 False 时不得被转换为整体成功。"""
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    dependencies["module"].return_value = False
+
+    converged = asyncio.run(modules_initializer.stop_modules())
+
+    assert converged is False
     for dependency in dependencies.values():
         _assert_completed_once(dependency)
 
@@ -963,15 +976,22 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
         "get_configured_agent_chat_persistence",
         MagicMock(return_value=persistence),
     )
+
+    async def stop_database_worker() -> None:
+        """模拟生产 worker 关闭后释放组合根句柄。"""
+        order.append("database")
+        modules_initializer._database_worker = None
+
     monkeypatch.setattr(
         modules_initializer,
         "stop_database_worker",
-        AsyncMock(side_effect=lambda: order.append("database")),
+        AsyncMock(side_effect=stop_database_worker),
     )
     monkeypatch.setattr(modules_initializer, "_database_worker", object())
 
-    asyncio.run(modules_initializer.stop_modules())
+    converged = asyncio.run(modules_initializer.stop_modules())
 
+    assert converged is True
     assert order == ["web-agent", "persistence-admission", "persistence", "database"]
 
 
