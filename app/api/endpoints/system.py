@@ -71,7 +71,7 @@ from app.schemas.event import ConfigChangeEventData
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.types import SystemConfigKey, EventType
 from app.foundation.crypto import HashUtils
-from app.foundation.environment import is_gil_enabled
+from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.adapters.system import rust as rust_accel
 from app.application.security.url import SecurityUtils
@@ -803,6 +803,8 @@ async def get_user_global_setting(_: ApiPrincipal = Depends(get_current_active_u
             "USER_UNIQUE_ID": MoviePilotServerHelper.get_user_uuid(),
             "SUBSCRIBE_SHARE_MANAGE": share_admin,
             "WORKFLOW_SHARE_MANAGE": share_admin,
+            "PYTHON_FREE_THREADED": is_free_threaded_runtime(),
+            "PYTHON_GIL_ENABLED": is_gil_enabled(),
         }
     )
     return _SchemaResponse(success=True, data=info)
@@ -832,6 +834,7 @@ async def get_env_setting(
             "RUST_ACCEL_AVAILABLE": rust_accel.is_available(),
             "RUST_ACCEL_ENABLED": rust_accel.is_enabled(),
             "RUST_ACCEL_REQUIRED": rust_accel.is_required(),
+            "PYTHON_FREE_THREADED": is_free_threaded_runtime(),
             "PYTHON_GIL_ENABLED": is_gil_enabled(),
         }
     )

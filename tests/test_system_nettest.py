@@ -83,6 +83,8 @@ class NettestSecurityTest(unittest.TestCase):
         ), patch.object(
             system_endpoint.rust_accel, "is_required", return_value=True
         ), patch.object(
+            system_endpoint, "is_free_threaded_runtime", return_value=True
+        ), patch.object(
             system_endpoint, "is_gil_enabled", return_value=False
         ):
             resp = asyncio.run(system_endpoint.get_env_setting(_="token"))
@@ -91,6 +93,36 @@ class NettestSecurityTest(unittest.TestCase):
         self.assertTrue(resp.data["RUST_ACCEL_AVAILABLE"])
         self.assertFalse(resp.data["RUST_ACCEL_ENABLED"])
         self.assertTrue(resp.data["RUST_ACCEL_REQUIRED"])
+        self.assertTrue(resp.data["PYTHON_FREE_THREADED"])
+        self.assertFalse(resp.data["PYTHON_GIL_ENABLED"])
+
+    def test_get_user_global_setting_reports_runtime_variant(self):
+        """登录后的全局设置应提供导航所需的解释器类型。"""
+        runtime_config = SimpleNamespace(
+            snapshot=Mock(return_value={}),
+            get=Mock(return_value=False),
+        )
+        with patch.object(
+            system_endpoint, "get_runtime_settings", return_value=runtime_config
+        ), patch.object(
+            system_endpoint.MoviePilotServerHelper,
+            "async_is_admin_user",
+            new=AsyncMock(return_value=False),
+            create=True,
+        ), patch.object(
+            system_endpoint.MoviePilotServerHelper,
+            "get_user_uuid",
+            return_value="user-id",
+            create=True,
+        ), patch.object(
+            system_endpoint, "is_free_threaded_runtime", return_value=True
+        ), patch.object(
+            system_endpoint, "is_gil_enabled", return_value=False
+        ):
+            resp = asyncio.run(system_endpoint.get_user_global_setting(_="token"))
+
+        self.assertTrue(resp.success)
+        self.assertTrue(resp.data["PYTHON_FREE_THREADED"])
         self.assertFalse(resp.data["PYTHON_GIL_ENABLED"])
 
     def test_fetch_image_allows_signed_private_url(self):
