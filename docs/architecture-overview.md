@@ -685,11 +685,8 @@ flowchart LR
   物理文件仍是稳定入口的，不应为了目录规整新增“自己映射自己”的别名，也不应在 canonical 包中
   保留多余导出。
 
-详细的迁移批次、风险、验证命令和插件兼容矩阵见
-[`docs/refactor/backend-architecture-governance.md`](refactor/backend-architecture-governance.md) 与
-[`docs/refactor/backend-module-refactor-compatibility.md`](refactor/backend-module-refactor-compatibility.md)。
-第一阶段分层收口后的进程拓扑、事务所有权、类型化运行时契约、后台可靠性和可观测性路线见
-[`docs/refactor/backend-architecture-next-stage.md`](refactor/backend-architecture-next-stage.md)。
+当前架构现状差距、优化点与建议实施顺序见
+[`docs/refactor/backend-architecture-review.md`](refactor/backend-architecture-review.md)。
 
 ---
 
@@ -706,6 +703,5 @@ flowchart LR
 | [`docs/subscribe-lifecycle.md`](subscribe-lifecycle.md) | 订阅生命周期详解 |
 | [`docs/mcp-api.md`](mcp-api.md) | MCP 工具端点说明 |
 | [`docs/v3t-runtime-governance.md`](v3t-runtime-governance.md) | V3/V3t 运行依赖、故障恢复、GIL 可观测性与兼容退场门禁 |
-| [`docs/refactor/backend-architecture-governance.md`](refactor/backend-architecture-governance.md) | 分阶段架构治理、边界门禁与迁移验收 |
-| [`docs/refactor/backend-module-refactor-compatibility.md`](refactor/backend-module-refactor-compatibility.md) | 模块迁移与插件兼容层实施矩阵 |
-| [`docs/refactor/backend-architecture-next-stage.md`](refactor/backend-architecture-next-stage.md) | 对标优秀 Python 后端后的二阶段任务、验收与回滚方案 |
+| [`docs/refactor/backend-architecture-review.md`](refactor/backend-architecture-review.md) | 2026-08 架构评审：现状差距、优化点与实施顺序 |
+| [`docs/adr/0007-background-action-reliability.md`](adr/0007-background-action-reliability.md) | 后台动作 E0–E3 可靠性分级与完成语义决策 |
