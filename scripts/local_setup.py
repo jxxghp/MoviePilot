@@ -15,6 +15,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import sysconfig
 import tarfile
 import textwrap
 import urllib.parse
@@ -996,32 +997,76 @@ def install_frontend(
 
 
 def local_resource_status() -> bool:
-    return (
-        SITE_RESOURCE_DIR / f"user.sites.{RESOURCE_VERSION_FLAG}.bin"
-    ).exists() and bool(
-        list(SITE_RESOURCE_DIR.glob("sites*"))
+    platform_tag, machine = _get_platform_tag()
+    required_files = _get_runtime_resource_filenames(
+        platform_tag,
+        machine,
+        _get_python_version_tag(),
     )
+    return all((SITE_RESOURCE_DIR / filename).is_file() for filename in required_files)
 
 
 def copy_resource_files(source_dir: Path) -> list[str]:
     if not source_dir.is_dir():
         raise FileNotFoundError(f"资源目录不存在：{source_dir}")
 
-    copied: list[str] = []
-    for source in sorted(source_dir.iterdir()):
-        if source.is_dir():
-            continue
-        target = SITE_RESOURCE_DIR / source.name
-        shutil.copy2(source, target)
-        copied.append(source.name)
+    platform_tag, machine = _get_platform_tag()
+    python_version = _get_python_version_tag()
+    selected = _require_runtime_resource_files(
+        source_dir,
+        platform_tag,
+        machine,
+        python_version,
+    )
+    SITE_RESOURCE_DIR.mkdir(parents=True, exist_ok=True)
+    _replace_resource_files(selected)
 
-    if not copied:
-        raise RuntimeError(f"资源目录中未找到可复制文件：{source_dir}")
+    active_native_name = selected[-1].name
+    for target in SITE_RESOURCE_DIR.iterdir():
+        if (
+            target.is_file()
+            and target.name.startswith("sites.")
+            and target.suffix.lower() in {".so", ".pyd", ".dylib"}
+            and target.name != active_native_name
+        ):
+            target.unlink()
     print_step(f"已同步资源文件到 {SITE_RESOURCE_DIR}")
-    return copied
+    return [source.name for source in selected]
 
 
-def _get_platform_tag() -> str:
+def _replace_resource_files(selected: list[Path]) -> None:
+    """完整暂存运行资源，并在替换失败时恢复原目标文件。"""
+    with TemporaryDirectory(prefix=".sites-sync-", dir=SITE_RESOURCE_DIR) as temp_dir:
+        transaction_dir = Path(temp_dir)
+        staging_dir = transaction_dir / "staging"
+        backup_dir = transaction_dir / "backup"
+        staging_dir.mkdir()
+        backup_dir.mkdir()
+        for source in selected:
+            shutil.copy2(source, staging_dir / source.name)
+
+        installed: list[Path] = []
+        backups: dict[Path, Path] = {}
+        try:
+            for source in selected:
+                target = SITE_RESOURCE_DIR / source.name
+                backup = backup_dir / source.name
+                if target.exists():
+                    os.replace(target, backup)
+                    backups[target] = backup
+                os.replace(staging_dir / source.name, target)
+                installed.append(target)
+        except OSError:
+            for target in reversed(installed):
+                if target.exists():
+                    target.unlink()
+            for target, backup in backups.items():
+                if backup.exists():
+                    os.replace(backup, target)
+            raise
+
+
+def _get_platform_tag() -> tuple[str, str]:
     system = platform.system().lower()
     machine = platform.machine().lower()
     if system == "darwin":
@@ -1041,40 +1086,71 @@ def _get_platform_tag() -> str:
 
 def _get_python_version_tag() -> str:
     version = sys.version_info
-    return f"cp{version.major}{version.minor}"
+    free_threaded = "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""
+    return f"cp{version.major}{version.minor}{free_threaded}"
+
+
+def _get_runtime_resource_filenames(
+    platform_tag: str,
+    machine: str,
+    python_version: str,
+) -> tuple[str, str]:
+    """返回当前解释器、系统和架构唯一对应的 V3 资源文件名。"""
+    python_tag = python_version.removeprefix("cp")
+    data_filename = f"user.sites.{RESOURCE_VERSION_FLAG}.bin"
+    if platform_tag == "windows":
+        native_filename = f"sites.cp{python_tag}-win_amd64.pyd"
+    elif platform_tag == "darwin":
+        native_filename = f"sites.cpython-{python_tag}-darwin.so"
+    elif platform_tag == "linux":
+        native_filename = f"sites.cpython-{python_tag}-{machine}-linux-gnu.so"
+    else:
+        raise RuntimeError(f"不支持的平台标签：{platform_tag}")
+    return data_filename, native_filename
 
 
 def _filter_resources_files(
     source_dir: Path,
     platform_tag: str,
+    machine: str,
     python_version: str,
 ) -> list[Path]:
     """筛选 V3 资源中与当前 Python 平台匹配的运行文件。"""
-    matched_files: list[Path] = []
-    for file in source_dir.iterdir():
-        if not file.is_file():
-            continue
-        filename = file.name
-        if filename == f"user.sites.{RESOURCE_VERSION_FLAG}.bin":
-            matched_files.append(file)
-            continue
-        if not filename.startswith("sites."):
-            continue
-        if platform_tag == "windows":
-            if filename == f"sites.cp{python_version.replace('cp', '')}-win_amd64.pyd":
-                matched_files.append(file)
-        elif platform_tag == "darwin":
-            if (
-                filename
-                == f"sites.cpython-{python_version.replace('cp', '')}-darwin.so"
-            ):
-                matched_files.append(file)
-        elif platform_tag == "linux":
-            if (
-                f"cpython-{python_version.replace('cp', '')}" in filename
-                and "linux-gnu" in filename
-            ):
-                matched_files.append(file)
+    filenames = _get_runtime_resource_filenames(
+        platform_tag,
+        machine,
+        python_version,
+    )
+    return [
+        source_dir / filename
+        for filename in filenames
+        if (source_dir / filename).is_file()
+    ]
+
+
+def _require_runtime_resource_files(
+    source_dir: Path,
+    platform_tag: str,
+    machine: str,
+    python_version: str,
+) -> list[Path]:
+    """返回完整运行资源；缺少数据包或原生扩展时拒绝部分同步。"""
+    required_names = _get_runtime_resource_filenames(
+        platform_tag,
+        machine,
+        python_version,
+    )
+    matched_files = _filter_resources_files(
+        source_dir,
+        platform_tag,
+        machine,
+        python_version,
+    )
+    matched_names = {path.name for path in matched_files}
+    missing_names = [name for name in required_names if name not in matched_names]
+    if missing_names:
+        missing = "、".join(missing_names)
+        raise RuntimeError(f"资源目录缺少当前运行时文件：{missing}")
     return matched_files
 
 
@@ -1100,15 +1176,12 @@ def _download_resources_dir() -> Path:
             f"当前平台：{platform_name}-{machine}，Python 版本：{python_version}"
         )
 
-        matched_files = _filter_resources_files(
+        matched_files = _require_runtime_resource_files(
             source_dir,
             platform_name,
+            machine,
             python_version,
         )
-        if not matched_files:
-            raise RuntimeError(
-                f"未找到匹配的 sites 资源文件：{platform_name} / {python_version}"
-            )
 
         staging_dir = temp_path / "staging"
         staging_dir.mkdir(parents=True, exist_ok=True)
