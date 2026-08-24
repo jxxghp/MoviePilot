@@ -957,6 +957,18 @@ def test_stop_modules_propagates_false_without_skipping_later_cleanup(monkeypatc
         _assert_completed_once(dependency)
 
 
+def test_stop_modules_propagates_message_queue_nonconvergence(monkeypatch):
+    """消息队列线程未终止时必须由模块服务关闭结果向上暴露。"""
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    dependencies["stop_message"].return_value = False
+
+    converged = asyncio.run(modules_initializer.stop_modules())
+
+    assert converged is False
+    for dependency in dependencies.values():
+        _assert_completed_once(dependency)
+
+
 def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
     """关闭时先收口 Web Agent，再关闭持久化准入和数据库任务。"""
     order = []

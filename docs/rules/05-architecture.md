@@ -197,6 +197,8 @@ ModuleManager 与 startup 组合根继续关闭其余资源但必须向上返回
 等领域关闭入口必须直接传播 Runtime 的整体结果，不得以单个能力快照或无返回包装器覆盖失败。
 消息渠道模块必须通过 `_MessageChannelModuleBase._stop_service_instances()` 聚合多实例关闭结果；
 长连接、轮询或 Socket 服务只有在真实终止后才能返回成功，超时 owner 不得清空句柄。
+应用消息队列的监控线程遵守同一收敛语义：停止必须有限等待，回调阻塞导致线程仍存活时保留 owner
+并向 startup 返回 `False`，不得用无界 `join()` 阻塞生命周期或把日志当作成功。
 API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/tasks.py`；登记器先于其他
 运行资源启动，并在资源释放前停止接收、取消和有限等待。需要崩溃恢复的 E2/E3 副作用仍应
 进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。

@@ -36,6 +36,7 @@ from app.foundation.crypto import HashUtils
 _ALBUM_TRAILING_YEAR_RE = re.compile(
     r"(?:[\s\u3000]*[\(\[（【]\s*(?:19|20)\d{2}\s*[\)\]）】])+$"
 )
+_MESSAGE_QUEUE_STOP_TIMEOUT_SECONDS = 10.0
 
 
 class AsyncMessageQueryRepository(Protocol):
@@ -996,7 +997,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         while self._running:
             current_time = datetime.now()
             if self._is_in_scheduled_time(current_time):
-                while not self.queue.empty():
+                while self._running and not self.queue.empty():
                     if global_vars.is_system_stopped:
                         break
                     if not self._is_in_scheduled_time(datetime.now()):
@@ -1010,15 +1011,28 @@ class MessageQueueManager(metaclass=SingletonClass):
             if self._stop_event.wait(self.check_interval):
                 break
 
-    def stop(self) -> None:
+    def stop(
+            self,
+            timeout: float = _MESSAGE_QUEUE_STOP_TIMEOUT_SECONDS,
+    ) -> bool:
         """
-        停止队列管理器
+        在有限时间内停止队列管理器。
+
+        :param timeout: 等待监控线程退出的最长秒数
+        :return: 监控线程已经终止时返回 True，超时或线程自停时返回 False
         """
         self._running = False
         self._stop_event.set()
         logger.info("正在停止消息队列...")
-        self.thread.join()
+        if self.thread is threading.current_thread():
+            logger.error("消息队列不能在自身监控线程内等待退出")
+            return False
+        self.thread.join(timeout=max(0.0, timeout))
+        if self.thread.is_alive():
+            logger.error(f"消息队列在 {timeout:g} 秒内未停止")
+            return False
         logger.info("消息队列已停止")
+        return True
 
 
 class MessageHelper(metaclass=Singleton):
@@ -1095,12 +1109,28 @@ class MessageHelper(metaclass=Singleton):
         return None
 
 
-def stop_message():
+def stop_message(
+        timeout: float = _MESSAGE_QUEUE_STOP_TIMEOUT_SECONDS,
+) -> bool:
     """
-    停止消息服务
+    停止已启动的消息服务并返回全部资源是否收敛。
+
+    :param timeout: 等待消息队列监控线程退出的最长秒数
+    :return: 已启动资源均完成关闭时返回 True，否则返回 False
     """
+    all_converged = True
     # 只关闭已启动的服务，避免清理路径反向创建后台线程和缓存
     if queue_manager := MessageQueueManager.get_existing_instance():
-        queue_manager.stop()
+        try:
+            if queue_manager.stop(timeout=timeout) is False:
+                all_converged = False
+        except Exception as err:
+            logger.error(f"停止消息队列失败：{str(err)}")
+            all_converged = False
     if template_helper := TemplateHelper.get_existing_instance():
-        template_helper.close()
+        try:
+            template_helper.close()
+        except Exception as err:
+            logger.error(f"关闭消息模板缓存失败：{str(err)}")
+            all_converged = False
+    return all_converged
