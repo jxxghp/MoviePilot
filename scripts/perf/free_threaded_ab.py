@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - 保留无 Docker SDK 环境下的 --he
     docker = None
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EXIT_PASS = 0
 EXIT_REGRESSION = 1
 EXIT_INVALID = 2
@@ -238,6 +238,8 @@ def image_identity(client, reference: str, pull: bool) -> dict[str, Any]:
         "reference": reference,
         "runtime_reference": runtime_reference,
         "image_id": attrs.get("Id") or getattr(image, "id", ""),
+        "size_bytes": int(attrs.get("Size") or 0),
+        "rootfs_layers": list((attrs.get("RootFS") or {}).get("Layers") or []),
         "repo_digests": sorted(attrs.get("RepoDigests") or []),
         "source_revision": source_revision,
         "version": version,
@@ -245,8 +247,13 @@ def image_identity(client, reference: str, pull: bool) -> dict[str, Any]:
 
 
 PREFLIGHT_SCRIPT = r"""
+import hashlib
+import importlib
 import importlib.metadata
 import json
+import os
+import platform
+import subprocess
 import sys
 import sysconfig
 
@@ -256,43 +263,152 @@ def version(name):
     except importlib.metadata.PackageNotFoundError:
         return None
 
-import moviepilot_rust
-import lxml.etree
-import orjson
-native = {"lxml_imported": True, "orjson_imported": True}
+def canonical_name(distribution):
+    return (distribution.metadata.get("Name") or "").strip().lower().replace("_", "-")
+
+packages = sorted(
+    f"{canonical_name(distribution)}=={distribution.version}"
+    for distribution in importlib.metadata.distributions()
+)
+native_distributions = []
+for distribution in importlib.metadata.distributions():
+    native_files = sorted(
+        str(path)
+        for path in (distribution.files or ())
+        if str(path).lower().endswith((".so", ".pyd", ".dylib"))
+    )
+    if not native_files:
+        continue
+    wheel = distribution.read_text("WHEEL") or ""
+    native_distributions.append({
+        "name": canonical_name(distribution),
+        "version": distribution.version,
+        "files": native_files,
+        "wheel_tags": sorted(
+            line.split(":", 1)[1].strip()
+            for line in wheel.splitlines()
+            if line.startswith("Tag:")
+        ),
+    })
+native_distributions.sort(key=lambda item: (item["name"], item["version"]))
+
+imports = {}
+def probe(name, module_name):
+    before = sys._is_gil_enabled()
+    try:
+        module = importlib.import_module(module_name)
+    except Exception as error:
+        imports[name] = {
+            "module": module_name,
+            "imported": False,
+            "error": f"{type(error).__name__}: {error}",
+            "gil_before": before,
+            "gil_after": sys._is_gil_enabled(),
+        }
+        return None
+    imports[name] = {
+        "module": module_name,
+        "imported": True,
+        "gil_before": before,
+        "gil_after": sys._is_gil_enabled(),
+    }
+    return module
+
+moviepilot_rust = probe("moviepilot-rust", "moviepilot_rust")
+probe("site-resource", "app.application.site.sites")
+probe("lxml", "lxml.etree")
+probe("orjson", "orjson")
+probe("zstandard", "zstandard")
+probe("bcrypt", "bcrypt._bcrypt")
+probe("pydantic-core", "pydantic_core._pydantic_core")
+probe("pillow", "PIL._imaging")
+probe("pillow-avif-plugin", "pillow_avif")
+probe("cryptography", "cryptography.hazmat.bindings._rust")
+probe("greenlet", "greenlet._greenlet")
+probe("asyncpg", "asyncpg")
+probe("brotli", "brotli")
+probe("oss2", "oss2")
+
+native = {}
 if sysconfig.get_config_var("Py_GIL_DISABLED") == 1:
-    import brotli
-    import crcmod.crcmod
-    import oss2
-    import psycopg
+    crcmod = probe("crcmod-plus", "crcmod.crcmod")
+    psycopg = probe("psycopg", "psycopg")
     native.update({
-        "brotli_imported": True,
-        "crcmod_extension": bool(crcmod.crcmod._usingExtension),
-        "oss2_imported": True,
-        "psycopg_impl": psycopg.pq.__impl__,
+        "crcmod_extension": bool(crcmod and crcmod._usingExtension),
+        "psycopg_impl": psycopg.pq.__impl__ if psycopg else None,
     })
 else:
-    import psycopg2
-    native["psycopg2_imported"] = True
+    probe("crcmod", "crcmod.crcmod")
+    probe("psycopg2-binary", "psycopg2")
+    probe("zhconv-rs", "zhconv_rs")
+
+uv_check = subprocess.run(
+    ["/usr/local/bin/uv", "pip", "check", "--python", sys.executable],
+    text=True,
+    capture_output=True,
+    check=False,
+)
+runtime_group = (
+    "runtime-free-threaded"
+    if sysconfig.get_config_var("Py_GIL_DISABLED") == 1
+    else "runtime-standard"
+)
+sync_environment = os.environ.copy()
+sync_environment["UV_PROJECT_ENVIRONMENT"] = sys.prefix
+project_sync_check = subprocess.run(
+    [
+        "/usr/local/bin/uv", "sync", "--project", "/app", "--locked", "--offline",
+        "--inexact", "--no-dev", "--no-install-project", "--check",
+        "--python", sys.executable, "--no-default-groups", "--group", runtime_group,
+    ],
+    text=True,
+    capture_output=True,
+    check=False,
+    env=sync_environment,
+)
 
 print(json.dumps({
     "python_version": sys.version.split()[0],
+    "python_implementation": platform.python_implementation(),
+    "machine": platform.machine(),
+    "libc": platform.libc_ver(),
+    "soabi": sysconfig.get_config_var("SOABI"),
+    "multiarch": sysconfig.get_config_var("MULTIARCH"),
     "gil_disabled": sysconfig.get_config_var("Py_GIL_DISABLED") == 1,
     "gil_enabled": sys._is_gil_enabled(),
     "thread_inherit_context": sys.flags.thread_inherit_context,
     "moviepilot_rust_version": version("moviepilot-rust"),
-    "rust_available": moviepilot_rust.is_available(),
+    "rust_available": bool(moviepilot_rust and moviepilot_rust.is_available()),
     "has_jieba_cut": callable(getattr(moviepilot_rust, "jieba_cut", None)),
     "has_zhconv_fast": callable(getattr(moviepilot_rust, "zhconv_fast", None)),
     "packages": {
+        "bcrypt": version("bcrypt"),
+        "brotli": version("brotli"),
         "lxml": version("lxml"),
         "orjson": version("orjson"),
+        "zstandard": version("zstandard"),
+        "crcmod": version("crcmod"),
         "crcmod-plus": version("crcmod-plus"),
         "psycopg": version("psycopg"),
         "psycopg2-binary": version("psycopg2-binary"),
         "zhconv-rs": version("zhconv-rs"),
     },
+    "installed_packages": packages,
+    "installed_packages_sha256": hashlib.sha256("\n".join(packages).encode()).hexdigest(),
+    "native_distributions": native_distributions,
+    "imports": imports,
     "native": native,
+    "uv_pip_check": {
+        "returncode": uv_check.returncode,
+        "stdout": uv_check.stdout.strip(),
+        "stderr": uv_check.stderr.strip(),
+    },
+    "uv_project_sync_check": {
+        "runtime_group": runtime_group,
+        "returncode": project_sync_check.returncode,
+        "stdout": project_sync_check.stdout.strip(),
+        "stderr": project_sync_check.stderr.strip(),
+    },
     "gil_enabled_after_imports": sys._is_gil_enabled(),
 }, sort_keys=True))
 """
@@ -421,6 +537,130 @@ print(json.dumps({"driver": driver, "scheme": scheme}, sort_keys=True))
 """
 
 
+SQLITE_SCRIPT = r"""
+import asyncio
+import hashlib
+import json
+import os
+import sqlite3
+import tempfile
+import time
+
+import aiosqlite
+
+iterations = int(os.environ["MP_FT_ITERATIONS"])
+handle, path = tempfile.mkstemp(prefix="moviepilot-ft-sqlite-", suffix=".db")
+os.close(handle)
+
+connection = sqlite3.connect(path)
+connection.execute("PRAGMA journal_mode=WAL")
+connection.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY, title TEXT NOT NULL, score INTEGER NOT NULL)")
+rows = [(index, f"title-{index:04d}", index % 97) for index in range(512)]
+started = time.perf_counter()
+with connection:
+    connection.executemany("INSERT INTO sample VALUES (?, ?, ?)", rows)
+insert_seconds = time.perf_counter() - started
+
+started = time.perf_counter()
+sync_values = []
+for index in range(iterations):
+    sync_values.append(
+        connection.execute(
+            "SELECT title, score FROM sample WHERE id = ?", (index % len(rows),)
+        ).fetchone()
+    )
+sync_seconds = time.perf_counter() - started
+connection.close()
+
+async def run_async():
+    values = []
+    async with aiosqlite.connect(path) as database:
+        started_at = time.perf_counter()
+        for index in range(iterations):
+            async with database.execute(
+                "SELECT title, score FROM sample WHERE id = ?", (index % len(rows),)
+            ) as cursor:
+                values.append(await cursor.fetchone())
+        return values, time.perf_counter() - started_at
+
+async_values, async_seconds = asyncio.run(run_async())
+os.unlink(path)
+
+def checksum(values):
+    return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
+
+print(json.dumps({
+    "rows": len(rows),
+    "iterations": iterations,
+    "insert_seconds": insert_seconds,
+    "sync": {
+        "seconds": sync_seconds,
+        "throughput_ops_s": iterations / sync_seconds,
+        "checksum": checksum(sync_values),
+    },
+    "async": {
+        "seconds": async_seconds,
+        "throughput_ops_s": iterations / async_seconds,
+        "checksum": checksum(async_values),
+    },
+}, sort_keys=True))
+"""
+
+
+API_SCRIPT = r"""
+import hashlib
+import json
+import os
+import statistics
+import time
+import urllib.request
+
+iterations = int(os.environ["MP_FT_API_ITERATIONS"])
+token = os.environ["MP_FT_API_TOKEN"]
+endpoints = {
+    "health_ready": "/health/ready",
+    "dashboard_statistic": f"/api/v1/dashboard/statistic2?token={token}",
+    "subscribe_list": f"/api/v1/subscribe/list?token={token}",
+    "system_env": f"/api/v1/system/env?token={token}",
+}
+
+def percentile(values, fraction):
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, int(len(ordered) * fraction + 0.999999) - 1))
+    return ordered[index]
+
+results = {}
+for name, path in endpoints.items():
+    latencies = []
+    bodies = []
+    status = None
+    for _ in range(iterations):
+        started = time.perf_counter()
+        with urllib.request.urlopen(f"http://127.0.0.1:3001{path}", timeout=10) as response:
+            status = response.status
+            bodies.append(response.read())
+        latencies.append((time.perf_counter() - started) * 1000)
+    results[name] = {
+        "status": status,
+        "iterations": iterations,
+        "p50_ms": statistics.median(latencies),
+        "p95_ms": percentile(latencies, 0.95),
+        "max_ms": max(latencies),
+        "last_body_sha256": hashlib.sha256(bodies[-1]).hexdigest(),
+    }
+    if name == "system_env":
+        payload = json.loads(bodies[-1])
+        data = payload.get("data") or {}
+        results[name]["runtime"] = {
+            "rust_required": data.get("RUST_ACCEL_REQUIRED"),
+            "rust_enabled": data.get("RUST_ACCEL_ENABLED"),
+            "gil_enabled": data.get("PYTHON_GIL_ENABLED"),
+        }
+
+print(json.dumps(results, sort_keys=True))
+"""
+
+
 def run_json_command(
     client,
     image: str,
@@ -446,17 +686,138 @@ def run_json_command(
         raise HarnessInvalid(f"镜像探针执行失败：{error}") from error
 
 
+def exec_json_in_container(
+    container,
+    script: str,
+    *,
+    environment: Optional[dict[str, str]] = None,
+) -> dict[str, Any]:
+    """在已经启动的候选容器中执行 JSON 探针。"""
+    command = ["/usr/bin/env"]
+    command.extend(f"{key}={value}" for key, value in (environment or {}).items())
+    command.extend(["/opt/venv/bin/python", "-c", script])
+    result = container.exec_run(command)
+    output = result.output.decode("utf-8", errors="replace")
+    if result.exit_code != 0:
+        raise HarnessInvalid(f"运行态探针失败（exit={result.exit_code}）：{output[-2000:]}")
+    return json.loads(output.strip().splitlines()[-1])
+
+
+def capture_engine_stats(container) -> dict[str, int]:
+    """读取容器 cgroup 内存与网络累计值。"""
+    try:
+        stats = container.stats(stream=False, one_shot=True)
+    except TypeError:  # pragma: no cover - 旧 Docker SDK 兼容
+        stats = container.stats(stream=False)
+    memory = stats.get("memory_stats") or {}
+    detail = memory.get("stats") or {}
+    usage = int(memory.get("usage") or 0)
+    inactive = int(detail.get("inactive_file") or detail.get("total_inactive_file") or 0)
+    networks = stats.get("networks") or {}
+    return {
+        "memory_current_bytes": usage,
+        "inactive_file_bytes": inactive,
+        "working_set_bytes": max(0, usage - inactive),
+        "network_rx_bytes": sum(int(item.get("rx_bytes") or 0) for item in networks.values()),
+        "network_tx_bytes": sum(int(item.get("tx_bytes") or 0) for item in networks.values()),
+    }
+
+
+def capture_processes(container) -> dict[str, Any]:
+    """读取容器进程的 RSS、PSS、USS 与线程数。"""
+    result = container.exec_run(["/bin/bash", "/app/scripts/perf/instrument/collect_proc.sh"])
+    output = result.output.decode("utf-8", errors="replace")
+    if result.exit_code != 0:
+        raise HarnessInvalid(f"进程采样失败：{output[-2000:]}")
+    processes = []
+    for line in output.splitlines()[1:]:
+        fields = line.split("\t", 8)
+        if len(fields) != 9:
+            continue
+        pid, ppid, threads, rss, pss, uss, comm, executable, command_line = fields
+        processes.append({
+            "pid": int(pid),
+            "ppid": int(ppid),
+            "threads": int(threads),
+            "rss_kib": int(rss),
+            "pss_kib": int(pss),
+            "uss_kib": int(uss),
+            "comm": comm,
+            "executable": executable,
+            "cmdline": command_line,
+        })
+    if not processes:
+        raise HarnessInvalid("进程采样结果为空")
+    python_processes = [
+        process
+        for process in processes
+        if "python" in Path(process["executable"]).name.lower()
+    ]
+    return {
+        "items": sorted(processes, key=lambda item: item["pid"]),
+        "totals": {
+            "rss_kib": sum(item["rss_kib"] for item in processes),
+            "pss_kib": sum(item["pss_kib"] for item in processes),
+            "uss_kib": sum(item["uss_kib"] for item in processes),
+            "threads": sum(item["threads"] for item in processes),
+        },
+        "main_python": max(
+            python_processes, key=lambda item: item["pss_kib"], default=None
+        ),
+    }
+
+
+def capture_runtime_measurement(container) -> dict[str, Any]:
+    """采集同一时点的 cgroup 与进程内存。"""
+    return {
+        "captured_at": utc_now(),
+        "engine": capture_engine_stats(container),
+        "processes": capture_processes(container),
+    }
+
+
 def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
     """验证解释器、GIL、Rust 与互斥原生依赖合同。"""
     errors = []
     packages = payload.get("packages") or {}
     native = payload.get("native") or {}
+    imports = payload.get("imports") or {}
+    failed_imports = sorted(
+        name for name, result in imports.items() if not result.get("imported")
+    )
     if not str(payload.get("python_version") or "").startswith("3.14."):
         errors.append("Python 必须为 3.14.x")
+    if payload.get("python_implementation") != "CPython":
+        errors.append("运行时必须为 CPython")
     if not str(payload.get("moviepilot_rust_version") or "").startswith("0.3."):
         errors.append("moviepilot-rust 必须为 0.3.x")
     if not payload.get("rust_available") or not payload.get("has_jieba_cut"):
         errors.append("moviepilot-rust 必须可用并提供 jieba_cut")
+    if (payload.get("uv_project_sync_check") or {}).get("returncode") != 0:
+        errors.append("uv 项目 profile 一致性检查未通过")
+    pip_check = payload.get("uv_pip_check") or {}
+    pip_check_errors = [
+        line.strip()
+        for line in str(pip_check.get("stderr") or "").splitlines()
+        if line.strip().startswith("The package `")
+    ]
+    allowed_pip_check_errors = (
+        ["The package `oss2` requires `crcmod>=1.7`, but it's not installed"]
+        if variant == "v3t"
+        else []
+    )
+    if pip_check_errors and pip_check_errors != allowed_pip_check_errors:
+        errors.append("uv pip check 出现未声明的包元数据不兼容")
+    if not pip_check_errors and pip_check.get("returncode") != 0:
+        errors.append("uv pip check 未通过且未返回可识别的不兼容项")
+    if failed_imports:
+        errors.append(f"核心组件导入失败：{', '.join(failed_imports)}")
+    for package, version in {
+        "brotli": "1.2.0",
+        "orjson": "3.12.0",
+    }.items():
+        if packages.get(package) != version:
+            errors.append(f"{package} 必须为 {version}")
     if variant == "v3":
         expected = {
             "gil_disabled": False,
@@ -470,12 +831,12 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
                 errors.append(f"标准镜像 {key} 应为 {value!r}")
         if packages.get("lxml") != "6.1.2":
             errors.append("标准镜像必须使用 lxml 6.1.2")
+        if packages.get("bcrypt") != "4.3.0" or packages.get("crcmod") != "1.7":
+            errors.append("标准镜像必须使用 bcrypt 4.3.0 与 crcmod 1.7")
         if packages.get("zhconv-rs") is None or packages.get("psycopg2-binary") is None:
             errors.append("标准镜像必须保留 zhconv-rs 与 psycopg2-binary")
-        if packages.get("psycopg") is not None:
+        if packages.get("psycopg") is not None or packages.get("crcmod-plus") is not None:
             errors.append("标准镜像不得混入 psycopg profile")
-        if not native.get("psycopg2_imported"):
-            errors.append("标准镜像 psycopg2 原生入口不可导入")
     else:
         expected = {
             "gil_disabled": True,
@@ -488,6 +849,7 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
             if payload.get(key) != value:
                 errors.append(f"free-threaded 镜像 {key} 应为 {value!r}")
         required_versions = {
+            "bcrypt": "5.0.0",
             "lxml": "7.0.0b1",
             "orjson": "3.12.0",
             "crcmod-plus": "2.3.1",
@@ -496,18 +858,29 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
         for package, version in required_versions.items():
             if packages.get(package) != version:
                 errors.append(f"free-threaded 镜像 {package} 必须为 {version}")
-        if packages.get("zhconv-rs") is not None or packages.get("psycopg2-binary") is not None:
+        if (
+            packages.get("zhconv-rs") is not None
+            or packages.get("psycopg2-binary") is not None
+            or packages.get("crcmod") is not None
+        ):
             errors.append("free-threaded 镜像不得混入标准原生依赖 profile")
         if native.get("psycopg_impl") != "c" or not native.get("crcmod_extension"):
             errors.append("free-threaded 镜像必须使用 psycopg C 与 crcmod 原生实现")
-        for key in ("brotli_imported", "oss2_imported"):
-            if not native.get(key):
-                errors.append(f"free-threaded 镜像原生依赖 {key} 未就绪")
+        gil_enabling_imports = sorted(
+            name
+            for name, result in imports.items()
+            if result.get("imported") and result.get("gil_after") is not False
+        )
+        if gil_enabling_imports:
+            errors.append(
+                "free-threaded 核心组件导入后启用了 GIL："
+                + ", ".join(gil_enabling_imports)
+            )
     return errors
 
 
 def startup_sample(client, args: argparse.Namespace, image: str, variant: str, index: int) -> dict[str, Any]:
-    """用空白配置卷和无外网网络完成一次真实 readiness 启动。"""
+    """用空白配置卷完成 readiness、API 与资源采样。"""
     name = f"mpftab-{args.campaign}-{variant}-{index}"
     volume_name = f"{name}-config"
     labels = {"org.moviepilot.perf.campaign": args.campaign, "org.moviepilot.perf.role": "ft-ab"}
@@ -544,17 +917,31 @@ def startup_sample(client, args: argparse.Namespace, image: str, variant: str, i
             time.sleep(0.5)
         else:
             raise HarnessInvalid(f"{name} readiness 超时")
-        try:
-            stats = container.stats(stream=False, one_shot=True)
-        except TypeError:  # pragma: no cover - 旧 Docker SDK 兼容
-            stats = container.stats(stream=False)
-        memory = stats.get("memory_stats") or {}
-        detail = memory.get("stats") or {}
-        usage = int(memory.get("usage") or 0)
-        inactive = int(detail.get("inactive_file") or detail.get("total_inactive_file") or 0)
+        ready_seconds = time.monotonic() - started
+        time.sleep(args.settle_seconds)
+        idle = capture_runtime_measurement(container)
+        api = exec_json_in_container(
+            container,
+            API_SCRIPT,
+            environment={
+                "MP_FT_API_ITERATIONS": str(args.api_iterations),
+                "MP_FT_API_TOKEN": LAB_ENVIRONMENT["API_TOKEN"],
+            },
+        )
+        post_api = capture_runtime_measurement(container)
+        logs = container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace")
+        runtime_log_lines = [
+            line
+            for line in logs.splitlines()
+            if "GIL" in line or "free-threaded" in line or "Rust" in line
+        ]
         return {
-            "ready_seconds": time.monotonic() - started,
-            "working_set_bytes": max(0, usage - inactive),
+            "ready_seconds": ready_seconds,
+            "settle_seconds": args.settle_seconds,
+            "idle": idle,
+            "api": api,
+            "post_api": post_api,
+            "runtime_log_lines": runtime_log_lines,
         }
     except HarnessInvalid:
         raise
@@ -593,6 +980,12 @@ def execute_sample(client, args: argparse.Namespace, variant: str, index: int, i
         "hotspots": run_json_command(
             client, image, HOTSPOT_SCRIPT, environment=hotspot_environment
         ),
+        "sqlite": run_json_command(
+            client,
+            image,
+            SQLITE_SCRIPT,
+            environment={"MP_FT_ITERATIONS": str(args.iterations)},
+        ),
         "postgresql": {
             "probe": "app.db.engine._sync_postgresql_driver",
             "result": run_json_command(
@@ -630,6 +1023,8 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
     for sample in samples:
         variant = sample["variant"]
         hotspots = sample["hotspots"]
+        startup = sample["startup"]
+        expected_gil = variant == "v3"
         if hotspots.get("fixture_sha256") != FIXTURE_SHA256:
             invalid.append(f"{variant}-{sample['sample_index']} fixture hash 不一致")
         if not hotspots.get("jieba_cut", {}).get("available"):
@@ -649,6 +1044,25 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
             "scheme": expected_scheme,
         }:
             invalid.append(f"{variant}-{sample['sample_index']} PostgreSQL 驱动合同错误")
+        sqlite = sample.get("sqlite") or {}
+        if (sqlite.get("sync") or {}).get("checksum") != (sqlite.get("async") or {}).get(
+            "checksum"
+        ):
+            invalid.append(f"{variant}-{sample['sample_index']} SQLite 同步/异步结果不一致")
+        if not (startup.get("idle") or {}).get("processes", {}).get("main_python"):
+            invalid.append(f"{variant}-{sample['sample_index']} 未采集到主 Python 进程")
+        for endpoint, api_result in (startup.get("api") or {}).items():
+            if api_result.get("status") != 200:
+                invalid.append(
+                    f"{variant}-{sample['sample_index']} API {endpoint} 状态不是 200"
+                )
+        runtime = (startup.get("api") or {}).get("system_env", {}).get("runtime") or {}
+        if runtime.get("gil_enabled") is not expected_gil:
+            invalid.append(f"{variant}-{sample['sample_index']} API GIL 状态错误")
+        if runtime.get("rust_enabled") is not True:
+            invalid.append(f"{variant}-{sample['sample_index']} API Rust 状态未启用")
+        if runtime.get("rust_required") is not (variant == "v3t"):
+            invalid.append(f"{variant}-{sample['sample_index']} API Rust required 状态错误")
         for hotspot_name in ("rust_concurrency", "python_concurrency"):
             checksums = {
                 item["checksum"]
@@ -672,16 +1086,87 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
         }
         if len(cross_sample_checksums) != 1:
             invalid.append(f"两个镜像或重复样本的 {hotspot_name} 语义不一致")
+    sqlite_checksums = {
+        sample["sqlite"]["sync"]["checksum"]
+        for sample in samples
+    }
+    if len(sqlite_checksums) != 1:
+        invalid.append("两个镜像或重复样本的 SQLite 结果不一致")
 
     if invalid:
         return {}, invalid, regressions
 
     workers = result["workers"]
     max_worker = str(max(workers))
+    endpoints = tuple(samples[0]["startup"]["api"])
+    preflight = result["preflight"]
+    package_sets = {
+        variant: set(preflight[variant]["payload"]["installed_packages"])
+        for variant in ("v3", "v3t")
+    }
     summary = {
+        "image_size_bytes": {
+            variant: result["images"][variant]["size_bytes"]
+            for variant in ("v3", "v3t")
+        },
+        "installed_packages": {
+            variant: {
+                "count": len(package_sets[variant]),
+                "sha256": preflight[variant]["payload"]["installed_packages_sha256"],
+            }
+            for variant in ("v3", "v3t")
+        },
+        "package_profile_diff": {
+            "v3_only": sorted(package_sets["v3"] - package_sets["v3t"]),
+            "v3t_only": sorted(package_sets["v3t"] - package_sets["v3"]),
+        },
+        "native_distribution_count": {
+            variant: len(preflight[variant]["payload"]["native_distributions"])
+            for variant in ("v3", "v3t")
+        },
         "startup_ready_seconds": {
             variant: median_metric(samples, variant, ("startup", "ready_seconds"))
             for variant in ("v3", "v3t")
+        },
+        "idle_working_set_bytes": {
+            variant: median_metric(
+                samples, variant, ("startup", "idle", "engine", "working_set_bytes")
+            )
+            for variant in ("v3", "v3t")
+        },
+        "idle_process_totals": {
+            metric: {
+                variant: median_metric(
+                    samples,
+                    variant,
+                    ("startup", "idle", "processes", "totals", metric),
+                )
+                for variant in ("v3", "v3t")
+            }
+            for metric in ("rss_kib", "pss_kib", "uss_kib", "threads")
+        },
+        "api": {
+            endpoint: {
+                metric: {
+                    variant: median_metric(
+                        samples,
+                        variant,
+                        ("startup", "api", endpoint, metric),
+                    )
+                    for variant in ("v3", "v3t")
+                }
+                for metric in ("p50_ms", "p95_ms", "max_ms")
+            }
+            for endpoint in endpoints
+        },
+        "sqlite_throughput_ops_s": {
+            mode: {
+                variant: median_metric(
+                    samples, variant, ("sqlite", mode, "throughput_ops_s")
+                )
+                for variant in ("v3", "v3t")
+            }
+            for mode in ("sync", "async")
         },
         "application_rust_on_seconds": {
             variant: median_metric(
@@ -693,21 +1178,27 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
             samples, "v3", ("hotspots", "application", "rust_off", "seconds")
         ),
         "max_worker": int(max_worker),
-        "max_worker_python_throughput_ops_s": {
-            variant: median_metric(
-                samples,
-                variant,
-                ("hotspots", "python_concurrency", max_worker, "throughput_ops_s"),
-            )
-            for variant in ("v3", "v3t")
+        "python_throughput_ops_s": {
+            str(worker): {
+                variant: median_metric(
+                    samples,
+                    variant,
+                    ("hotspots", "python_concurrency", str(worker), "throughput_ops_s"),
+                )
+                for variant in ("v3", "v3t")
+            }
+            for worker in workers
         },
-        "max_worker_rust_throughput_ops_s": {
-            variant: median_metric(
-                samples,
-                variant,
-                ("hotspots", "rust_concurrency", max_worker, "throughput_ops_s"),
-            )
-            for variant in ("v3", "v3t")
+        "rust_throughput_ops_s": {
+            str(worker): {
+                variant: median_metric(
+                    samples,
+                    variant,
+                    ("hotspots", "rust_concurrency", str(worker), "throughput_ops_s"),
+                )
+                for variant in ("v3", "v3t")
+            }
+            for worker in workers
         },
     }
     thresholds = result["thresholds"]
@@ -724,14 +1215,23 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
         / summary["application_rust_on_seconds"]["v3"]
     )
     ft_throughput_ratio = (
-        summary["max_worker_python_throughput_ops_s"]["v3t"]
-        / summary["max_worker_python_throughput_ops_s"]["v3"]
+        summary["python_throughput_ops_s"][max_worker]["v3t"]
+        / summary["python_throughput_ops_s"][max_worker]["v3"]
     )
+    memory_ratio = summary["idle_working_set_bytes"]["v3t"] / summary[
+        "idle_working_set_bytes"
+    ]["v3"]
+    api_p95_ratios = {
+        endpoint: values["p95_ms"]["v3t"] / values["p95_ms"]["v3"]
+        for endpoint, values in summary["api"].items()
+    }
     summary["ratios"] = {
         "startup_ft_over_v3": startup_ratio,
         "standard_rust_on_over_off": standard_rust_ratio,
         "ft_single_over_v3": ft_single_ratio,
         "ft_max_worker_throughput_over_v3": ft_throughput_ratio,
+        "idle_working_set_ft_over_v3": memory_ratio,
+        "api_p95_ft_over_v3": api_p95_ratios,
     }
     if startup_ratio > thresholds["max_startup_ratio"]:
         regressions.append("free-threaded startup 超出允许比例")
@@ -741,6 +1241,11 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
         regressions.append("free-threaded 单线程热点退化")
     if ft_throughput_ratio < thresholds["min_ft_max_worker_throughput_ratio"]:
         regressions.append("free-threaded 高并发热点未达到最低吞吐收益")
+    if memory_ratio > thresholds["max_idle_memory_ratio"]:
+        regressions.append("free-threaded 空载 working set 超出允许比例")
+    for endpoint, ratio in api_p95_ratios.items():
+        if ratio > thresholds["max_api_p95_ratio"]:
+            regressions.append(f"free-threaded API {endpoint} p95 超出允许比例")
     return summary, invalid, regressions
 
 
@@ -769,14 +1274,53 @@ def build_markdown(result: dict[str, Any]) -> str:
                     f"{summary['startup_ready_seconds']['v3t']:.3f} |"
                 ),
                 (
+                    "| Image size (MiB) | "
+                    f"{summary['image_size_bytes']['v3'] / 1024 / 1024:.1f} | "
+                    f"{summary['image_size_bytes']['v3t'] / 1024 / 1024:.1f} |"
+                ),
+                (
+                    "| Idle working set (MiB) | "
+                    f"{summary['idle_working_set_bytes']['v3'] / 1024 / 1024:.1f} | "
+                    f"{summary['idle_working_set_bytes']['v3t'] / 1024 / 1024:.1f} |"
+                ),
+                (
+                    "| Main workload PSS (MiB) | "
+                    f"{summary['idle_process_totals']['pss_kib']['v3'] / 1024:.1f} | "
+                    f"{summary['idle_process_totals']['pss_kib']['v3t'] / 1024:.1f} |"
+                ),
+                (
                     "| Application Rust-on median (s) | "
                     f"{summary['application_rust_on_seconds']['v3']:.6f} | "
                     f"{summary['application_rust_on_seconds']['v3t']:.6f} |"
                 ),
                 (
                     f"| {summary['max_worker']}-thread throughput (ops/s) | "
-                    f"{summary['max_worker_python_throughput_ops_s']['v3']:.1f} | "
-                    f"{summary['max_worker_python_throughput_ops_s']['v3t']:.1f} |"
+                    f"{summary['python_throughput_ops_s'][str(summary['max_worker'])]['v3']:.1f} | "
+                    f"{summary['python_throughput_ops_s'][str(summary['max_worker'])]['v3t']:.1f} |"
+                ),
+                (
+                    "| SQLite sync throughput (ops/s) | "
+                    f"{summary['sqlite_throughput_ops_s']['sync']['v3']:.1f} | "
+                    f"{summary['sqlite_throughput_ops_s']['sync']['v3t']:.1f} |"
+                ),
+                "",
+            ]
+        )
+        lines.extend(
+            [
+                "| API p95 (ms) | v3 | v3t |",
+                "| --- | ---: | ---: |",
+                *(
+                    f"| {endpoint} | {values['p95_ms']['v3']:.3f} | "
+                    f"{values['p95_ms']['v3t']:.3f} |"
+                    for endpoint, values in summary["api"].items()
+                ),
+                "",
+                "| Python CPU throughput (ops/s) | v3 | v3t |",
+                "| --- | ---: | ---: |",
+                *(
+                    f"| {workers} threads | {values['v3']:.1f} | {values['v3t']:.1f} |"
+                    for workers, values in summary["python_throughput_ops_s"].items()
                 ),
                 "",
             ]
@@ -829,12 +1373,16 @@ def execute_campaign(args: argparse.Namespace) -> dict[str, Any]:
         },
         "workers": list(args.workers),
         "iterations": args.iterations,
+        "api_iterations": args.api_iterations,
+        "settle_seconds": args.settle_seconds,
         "sample_order": [f"{variant}-{index}" for variant, index in SAMPLE_ORDER],
         "thresholds": {
             "max_startup_ratio": args.max_startup_ratio,
             "max_standard_rust_on_ratio": args.max_standard_rust_on_ratio,
             "max_ft_single_ratio": args.max_ft_single_ratio,
             "min_ft_max_worker_throughput_ratio": args.min_ft_max_worker_throughput_ratio,
+            "max_idle_memory_ratio": args.max_idle_memory_ratio,
+            "max_api_p95_ratio": args.max_api_p95_ratio,
         },
         "preflight": {},
         "samples": [],
@@ -914,6 +1462,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--pull", action="store_true", help="按 digest 拉取两个镜像")
     parser.add_argument("--iterations", type=int, default=1024)
+    parser.add_argument("--api-iterations", type=int, default=100)
+    parser.add_argument("--settle-seconds", type=float, default=3.0)
     parser.add_argument("--workers", type=parse_workers, default=parse_workers("1,8,16,32"))
     parser.add_argument("--cpus", type=float, default=4.0)
     parser.add_argument("--memory", default="2g")
@@ -924,6 +1474,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--min-ft-max-worker-throughput-ratio", type=float, default=1.05
     )
+    parser.add_argument("--max-idle-memory-ratio", type=float, default=1.25)
+    parser.add_argument("--max-api-p95-ratio", type=float, default=1.25)
     return parser
 
 
@@ -931,13 +1483,21 @@ def main(argv: Optional[list[str]] = None) -> int:
     """执行 harness，并以 0/1/2 区分 pass/regression/invalid。"""
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.iterations <= 0 or args.cpus <= 0 or args.ready_timeout <= 0:
-        parser.error("iterations、cpus 与 ready-timeout 必须大于 0")
+    if (
+        args.iterations <= 0
+        or args.api_iterations <= 0
+        or args.settle_seconds < 0
+        or args.cpus <= 0
+        or args.ready_timeout <= 0
+    ):
+        parser.error("iterations、api-iterations、cpus 与 ready-timeout 必须大于 0")
     thresholds = (
         args.max_startup_ratio,
         args.max_standard_rust_on_ratio,
         args.max_ft_single_ratio,
         args.min_ft_max_worker_throughput_ratio,
+        args.max_idle_memory_ratio,
+        args.max_api_p95_ratio,
     )
     if any(value <= 0 for value in thresholds):
         parser.error("所有性能比例阈值必须大于 0")

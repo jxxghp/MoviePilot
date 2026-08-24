@@ -33,11 +33,17 @@ def valid_preflight(variant: str) -> dict:
     """构造满足目标镜像合同的 preflight。"""
     common = {
         "python_version": "3.14.7",
+        "python_implementation": "CPython",
         "moviepilot_rust_version": "0.3.0",
         "rust_available": True,
         "has_jieba_cut": True,
         "packages": {},
         "native": {},
+        "installed_packages": ["moviepilot-rust==0.3.0"],
+        "installed_packages_sha256": "package-hash",
+        "native_distributions": [],
+        "uv_pip_check": {"returncode": 0},
+        "uv_project_sync_check": {"returncode": 0},
     }
     if variant == "v3":
         common.update(
@@ -48,12 +54,19 @@ def valid_preflight(variant: str) -> dict:
                 "has_zhconv_fast": False,
                 "gil_enabled_after_imports": True,
                 "packages": {
+                    "bcrypt": "4.3.0",
+                    "brotli": "1.2.0",
+                    "crcmod": "1.7",
                     "lxml": "6.1.2",
+                    "orjson": "3.12.0",
                     "psycopg": None,
                     "psycopg2-binary": "2.9.12",
                     "zhconv-rs": "0.4.1",
                 },
-                "native": {"psycopg2_imported": True},
+                "imports": {
+                    "moviepilot-rust": {"imported": True, "gil_after": True},
+                    "psycopg2-binary": {"imported": True, "gil_after": True},
+                },
             }
         )
     else:
@@ -65,6 +78,9 @@ def valid_preflight(variant: str) -> dict:
                 "has_zhconv_fast": True,
                 "gil_enabled_after_imports": False,
                 "packages": {
+                    "bcrypt": "5.0.0",
+                    "brotli": "1.2.0",
+                    "crcmod": None,
                     "lxml": "7.0.0b1",
                     "orjson": "3.12.0",
                     "crcmod-plus": "2.3.1",
@@ -73,10 +89,12 @@ def valid_preflight(variant: str) -> dict:
                     "zhconv-rs": None,
                 },
                 "native": {
-                    "brotli_imported": True,
                     "crcmod_extension": True,
-                    "oss2_imported": True,
                     "psycopg_impl": "c",
+                },
+                "imports": {
+                    "moviepilot-rust": {"imported": True, "gil_after": False},
+                    "psycopg": {"imported": True, "gil_after": False},
                 },
             }
         )
@@ -98,7 +116,46 @@ def sample(harness, variant: str, index: int, multiplier: float = 1.0) -> dict:
     return {
         "variant": variant,
         "sample_index": index,
-        "startup": {"ready_seconds": 10.0 * multiplier},
+        "startup": {
+            "ready_seconds": 10.0 * multiplier,
+            "idle": {
+                "engine": {"working_set_bytes": 100_000_000},
+                "processes": {
+                    "totals": {
+                        "rss_kib": 100_000,
+                        "pss_kib": 90_000,
+                        "uss_kib": 80_000,
+                        "threads": 20,
+                    },
+                    "main_python": {"pid": 1},
+                },
+            },
+            "api": {
+                endpoint: {
+                    "status": 200,
+                    "p50_ms": 1.0,
+                    "p95_ms": 2.0,
+                    "max_ms": 3.0,
+                    **(
+                        {
+                            "runtime": {
+                                "gil_enabled": variant == "v3",
+                                "rust_enabled": True,
+                                "rust_required": variant == "v3t",
+                            }
+                        }
+                        if endpoint == "system_env"
+                        else {}
+                    ),
+                }
+                for endpoint in (
+                    "health_ready",
+                    "dashboard_statistic",
+                    "subscribe_list",
+                    "system_env",
+                )
+            },
+        },
         "hotspots": {
             "fixture_sha256": harness.FIXTURE_SHA256,
             "jieba_cut": {"available": True},
@@ -120,6 +177,10 @@ def sample(harness, variant: str, index: int, multiplier: float = 1.0) -> dict:
                 "scheme": "postgresql" if variant == "v3" else "postgresql+psycopg",
             },
         },
+        "sqlite": {
+            "sync": {"throughput_ops_s": 1000.0, "checksum": checksum},
+            "async": {"throughput_ops_s": 900.0, "checksum": checksum},
+        },
     }
 
 
@@ -137,6 +198,16 @@ def result_for_evaluation(harness, ft_multiplier: float = 1.0) -> dict:
             "max_standard_rust_on_ratio": 1.10,
             "max_ft_single_ratio": 1.25,
             "min_ft_max_worker_throughput_ratio": 1.05,
+            "max_idle_memory_ratio": 1.25,
+            "max_api_p95_ratio": 1.25,
+        },
+        "preflight": {
+            variant: {"payload": valid_preflight(variant)}
+            for variant in ("v3", "v3t")
+        },
+        "images": {
+            "v3": {"size_bytes": 600_000_000},
+            "v3t": {"size_bytes": 630_000_000},
         },
     }
 
@@ -257,6 +328,7 @@ def test_evaluation_distinguishes_invalid_regression_and_pass() -> None:
 
     summary, invalid, regressions = harness.evaluate_samples(result_for_evaluation(harness))
     assert summary["ratios"]["ft_max_worker_throughput_over_v3"] == pytest.approx(1.2)
+    assert summary["installed_packages"]["v3"]["count"] == 1
     assert invalid == []
     assert regressions == []
 
@@ -277,7 +349,7 @@ def test_markdown_and_exit_codes_preserve_machine_verdict(tmp_path: Path, monkey
     """JSON verdict、Markdown 摘要与 0/1/2 进程状态保持一致。"""
     harness = load_harness("free_threaded_ab_exit")
     base = {
-        "schema_version": 1,
+        "schema_version": harness.SCHEMA_VERSION,
         "fixture": {"sha256": harness.FIXTURE_SHA256, "count": 64},
         "source_revision": "abc123",
         "images": {
