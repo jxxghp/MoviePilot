@@ -493,6 +493,7 @@ def pytest_sessionfinish(session, exitstatus):
     try:
         from app.runtime.log import LoggerManager
 
-        LoggerManager.shutdown()
+        if LoggerManager.shutdown() is False:
+            raise RuntimeError("log writer did not converge")
     except Exception as err:
         _report_session_cleanup_error(session, "logger manager", err)

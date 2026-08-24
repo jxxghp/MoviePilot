@@ -2,13 +2,13 @@
 
 > 文档性质：当前架构复核、优秀 Python 后端实践对标、AI 可执行任务手册
 > 适用仓库：`MoviePilot`，分支 `v3`
-> 审计基线：`ad45bfac`（2026-08-24）
+> 审计基线：`88262191`（2026-08-24）
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner；阶段 28 已托管旧插件订阅统计线程；阶段 29 已统一 Emby 系条目转换并清零重复代码白名单；阶段 30 已收口插件市场请求级子任务；阶段 31 已托管搜索 AI 推荐任务；阶段 32 已清除事件调度器绕过生命周期 owner 的投递回退；阶段 33 已统一宿主 Agent 运行时的获取路径；阶段 34 已统一 durable-required 事件与 Outbox topic 事实源；阶段 35 已统一 LLM provider 管理 API 的运行时解析路径；阶段 36 已统一 WebAgent 音频能力访问边界；阶段 37 已统一插件输入事件发布路径；阶段 38 已统一 WebAgent 通知事件监听与队列边界；阶段 39 已补齐搜索 SSE 断线时的上游任务清理；阶段 40 已补齐异步防抖取消的终态所有权；阶段 41 已统一优雅重启兜底线程的唯一所有权；阶段 42 已补齐 Telegram typing 的多实例隔离和终态 owner；阶段 43 已统一 Discord typing 的异步 owner 和 shutdown 收尾；阶段 44 已清除 WebAgent 测试临时事件循环提前关闭产生的 CI 红注解；阶段 45 已统一影视与字幕搜索的请求级逐页任务编排；阶段 46 已收口启动性能门禁的托管 runner 假失败与诊断输出；阶段 47 已补齐 Agent 渠道流式刷新任务的重入 owner；阶段 48 已统一工件上传 action 的 Node 24 主版本；阶段 49 已统一插件安装的同步/异步代际解析事实源；阶段 50 已统一插件市场 GitHub 请求降级策略；阶段 51 已统一插件索引请求与响应三态策略；阶段 52 已统一插件 Release 分页策略；阶段 53 已统一远端插件安装模式决策；阶段 54 已补齐同步安装成功后的临时回滚备份清理；阶段 55～56 已收口官方插件观察基线与报告保留策略；阶段 57 已统一进程级运行时 Facade 门禁并补齐 ModuleManager 边界；阶段 58 已消除 AgentTask 关闭回归的跨线程零时长等待竞态；阶段 59 已统一 Feishu 多实例长连接的 SDK 循环路由；阶段 60 已清除命令服务虚假的关停 owner 声明；阶段 61 已统一 Capability Runtime 同步/异步关闭的诚实收敛结果；阶段 62 已统一消息渠道长连接的多实例关闭收敛合同；阶段 63 已补齐应用消息队列线程的关闭收敛合同；阶段 64 已统一共享线程池的有界关闭 owner。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner；阶段 28 已托管旧插件订阅统计线程；阶段 29 已统一 Emby 系条目转换并清零重复代码白名单；阶段 30 已收口插件市场请求级子任务；阶段 31 已托管搜索 AI 推荐任务；阶段 32 已清除事件调度器绕过生命周期 owner 的投递回退；阶段 33 已统一宿主 Agent 运行时的获取路径；阶段 34 已统一 durable-required 事件与 Outbox topic 事实源；阶段 35 已统一 LLM provider 管理 API 的运行时解析路径；阶段 36 已统一 WebAgent 音频能力访问边界；阶段 37 已统一插件输入事件发布路径；阶段 38 已统一 WebAgent 通知事件监听与队列边界；阶段 39 已补齐搜索 SSE 断线时的上游任务清理；阶段 40 已补齐异步防抖取消的终态所有权；阶段 41 已统一优雅重启兜底线程的唯一所有权；阶段 42 已补齐 Telegram typing 的多实例隔离和终态 owner；阶段 43 已统一 Discord typing 的异步 owner 和 shutdown 收尾；阶段 44 已清除 WebAgent 测试临时事件循环提前关闭产生的 CI 红注解；阶段 45 已统一影视与字幕搜索的请求级逐页任务编排；阶段 46 已收口启动性能门禁的托管 runner 假失败与诊断输出；阶段 47 已补齐 Agent 渠道流式刷新任务的重入 owner；阶段 48 已统一工件上传 action 的 Node 24 主版本；阶段 49 已统一插件安装的同步/异步代际解析事实源；阶段 50 已统一插件市场 GitHub 请求降级策略；阶段 51 已统一插件索引请求与响应三态策略；阶段 52 已统一插件 Release 分页策略；阶段 53 已统一远端插件安装模式决策；阶段 54 已补齐同步安装成功后的临时回滚备份清理；阶段 55～56 已收口官方插件观察基线与报告保留策略；阶段 57 已统一进程级运行时 Facade 门禁并补齐 ModuleManager 边界；阶段 58 已消除 AgentTask 关闭回归的跨线程零时长等待竞态；阶段 59 已统一 Feishu 多实例长连接的 SDK 循环路由；阶段 60 已清除命令服务虚假的关停 owner 声明；阶段 61 已统一 Capability Runtime 同步/异步关闭的诚实收敛结果；阶段 62 已统一消息渠道长连接的多实例关闭收敛合同；阶段 63 已补齐应用消息队列线程的关闭收敛合同；阶段 64 已统一共享线程池的有界关闭 owner；阶段 65 已统一异步文件日志的单一有界写入和关闭 owner。
 > 当前 canonical 状态：API/Application 公共复杂度基线已清零，组合根外 `SystemConfigOper()` 构造和 Model/Oper 隐式事务均为 0；命名 Chain/Agent 数据端口、TaskRegistry owner、Module Contract V2、typed Event、Outbox durable intent、请求关联和插件运行时 getter 已形成当前路径。插件仓适配、未知第三方 fallback 和其它 E1/E3 副作用仍按风险持续治理。
-> 最新阶段：阶段 64 已统一共享线程池的有界关闭 owner。
+> 最新阶段：阶段 65 已统一异步文件日志的单一有界写入和关闭 owner。
 
 ## 当前复核结论（2026-08-24）
 
@@ -687,6 +687,26 @@
   故障注入；线程池/生命周期专项 78 项、架构与兼容调用链 164 项、Pylint 10.00/10、strict mypy
   40 文件、宿主与质量 ratchet 及四分片全量 `5946 passed, 3 skipped` 均通过。
 
+### 长期整改阶段 65：异步文件日志单一有界写入与关闭 owner 统一（2026-08-24）
+
+- 协程环境的日志运行时原先同时保留批量队列 writer 和“队列满后提交独立 `ThreadPoolExecutor` 直写”两条路径；
+  配置的队列容量并不是真实上限，溢出任务会进入 executor 的无界队列，写入顺序、资源 owner 和关闭
+  语义也分裂。当前异步文件日志只由一个有界队列 writer 执行；达到容量时拒绝新增文件副本，既有
+  控制台输出保持不变；无事件循环的同步调用仍保留直接写入语义，不再以第二套线程池掩盖 E1 过载。
+- 原 `shutdown()` 会无界等待批量线程、executor 和文件处理器；任一文件系统写入或 `close()` 阻塞都会
+  卡住 lifespan 所在事件循环。当前默认使用 10 秒共享 deadline，先封口新日志并排空已接受队列，再有限
+  等待 writer 和一次性文件处理器关闭 owner；超时返回 `False`，阻塞 owner 与 handler 均保留，释放后
+  可由同一实例重试到真实终态。
+- `LoggerManager` 不再先清空 writer 引用再关闭；未收敛时保留原 writer，重新装配也拒绝覆盖活动 owner。
+  日志仍在全部宿主组件之后最后关闭，但 `False` 会让 lifespan 以关闭失败结束，测试会话收尾也会报告
+  同一结果，不再把记录清理动作当成资源已经终止。
+- `NonBlockingFileHandler`、`LoggerManager`、无参数 `shutdown()`、历史 `ASYNC_FILE_WORKERS` 配置解析、
+  `configure_log_writer()` 及 `app.log` 精确兼容映射均保留；新增 timeout 和布尔结果为向后兼容扩展，
+  未修改 SDK/Compat 清单、插件 Hook 或插件仓，V1/V2/V3 插件观察面不变。
+- writer/handler 阻塞、队列过载、重试终态、重新装配拒绝覆盖和 lifespan 失败传播均有故障注入；
+  日志/生命周期/旧导入专项 83 项、架构合同 94 项、兼容调用链 102 项、Pylint 10.00/10、strict mypy
+  41 文件、全部宿主与质量 ratchet 及四分片全量 `5952 passed, 3 skipped` 均通过。
+
 ### 总体判断
 
 当前架构总体合理，已经从跨层混合的遗留单体收敛为**边界清晰的模块化单体**：
@@ -757,7 +777,7 @@
 ### P2：中长期可演进性债务
 
 - **大型职责域仍偏重。** 代表性热点包括 `app/chain/subscribe.py`（约 `4141` 行）、`app/chain/transfer.py`（约 `2944` 行）、`app/agent/orchestrator.py`（约 `3540` 行）、`app/agent/llm/provider.py`（约 `3529` 行）、`app/adapters/external/market.py`（约 `3139` 行）和 `app/api/endpoints/agent.py`（约 `2489` 行）。复杂度 ratchet 只保证不超过当前基线，不代表这些文件已经易维护。只有在行为快照、调用命中和事务边界明确后，才值得按用例拆分。
-- **类型门禁覆盖面不足。** `mypy.ini` strict 文件清单目前为 `39` 个文件，Agent、Chain、Module、Adapter 大量代码仍依赖动态类型。应从模块契约、生命周期、Repository/Port 和关键 Chain 返回值开始扩展，而不是直接开启全仓 strict。
+- **类型门禁覆盖面不足。** `mypy.ini` strict 文件清单目前为 `41` 个文件，Agent、Chain、Module、Adapter 大量代码仍依赖动态类型。应从模块契约、生命周期、Repository/Port 和关键 Chain 返回值开始扩展，而不是直接开启全仓 strict。
 - **Pylint 仍是增量硬门禁。** `.github/workflows/pylint.yml` 对改动 Python 文件执行硬检查，但全仓报告使用 `|| true` 仅作 advisory。该策略适合存量迁移，却没有形成全仓质量趋势约束；应增加按目录和新增问题数的 ratchet。
 - **测试风格存在历史混用。** 当前有 `527` 个测试文件，仍有 `70` 个 `unittest.TestCase` 文件。它不是生产架构缺陷，但会增加 fixture、状态隔离和异步测试迁移成本，应在触碰相关模块时渐进迁移。
 - **跨仓治理链路尚未完全闭环。** 前端已有 lint、typecheck、分片 Vitest 和构建门禁；插件仓有 V1/V2/V3 索引及版本/依赖检查；资源和 Rust 仓有独立构建发布链路。但插件 CI 本地复核因插件仓环境缺少主仓依赖 `httpx2` 无法完成收集，说明“插件仓测试环境与主仓锁定依赖”的可复现性仍需加强。资源构建通过 PR 同步到 `MoviePilot-Resources`，Rust 发布后自动向主仓发依赖 bump PR，链路合理但仍是多仓异步发布，需保留版本 provenance 和回滚点。
@@ -810,7 +830,7 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 5. **模块与事件契约登记均已完成。**当前 212 个模块 spec 的宿主观察面已无 legacy aggregation，53 个事件全部绑定 typed payload，可见性、投递等级、错误行为和敏感字段均有基线，legacy event payload 为 `0`。六个 durable-required 事件的宿主正式生产者已通过业务同事务 Outbox 提供真实持久投递，事件与 topic 映射及恢复 handler 完整性已纳入 ratchet。后续重点是保持新增能力门禁和观察未知第三方 fallback 命中，不是重复创建契约、DTO 或 Outbox。
 6. **后台副作用已有统一可靠性分类，但其他 E1/E3 机制仍需逐项收口。** ADR-0007 已分类事件队列、APScheduler、进程内任务、Agent task 与 transfer pending 的完成点、恢复和失败表达；不能因六个关键事件已接 Outbox，就把仍需定时重建、持久任务表或人工恢复的其他 E1/E3 机制误报为全部完成。
 7. **核心关联与健康边界已落地，指标导出仍未收口。**HTTP/SSE correlation ID 已传播到线程池、事件、工作流、子进程、外部请求和日志；`/health/live`、`/health/ready` 已由部署入口消费，事件/数据库队列深度及模块/事件耗时使用低基数指标登记。当前缺口是稳定 exporter、运维查询面和跨进程聚合，而不是重新实现 request ID 或健康路由。
-8. **质量门禁已具备增量硬约束，但覆盖面仍需扩大。**push/PR 对变更 Python 文件执行 Pylint，CI 同时运行 host architecture、39 个 strict mypy 文件、复杂度、async 阻塞和 task owner ratchet；全仓 Pylint 仍是 advisory，strict 类型和复杂度拆分仍应随业务切片渐进扩展。
+8. **质量门禁已具备增量硬约束，但覆盖面仍需扩大。**push/PR 对变更 Python 文件执行 Pylint，CI 同时运行 host architecture、41 个 strict mypy 文件、复杂度、async 阻塞和 task owner ratchet；全仓 Pylint 仍是 advisory，strict 类型和复杂度拆分仍应随业务切片渐进扩展。
 
 建议保持**模块化单体**，按以下顺序治理：
 

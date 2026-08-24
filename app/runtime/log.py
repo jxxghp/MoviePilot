@@ -8,16 +8,17 @@ import sys
 import threading
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Protocol
+from types import FrameType
+from typing import Any, Callable, Dict, Optional, Protocol, Self
 
 import click
 from pydantic import BaseModel, ConfigDict
 
-class LogConfigModel(BaseModel):
+# strict mypy 跳过第三方实现导入，因此无法在本文件解析 Pydantic 元类类型。
+class LogConfigModel(BaseModel):  # type: ignore[misc]
     """描述日志级别、格式和文件写入策略。"""
 
     model_config = ConfigDict(extra="ignore")
@@ -34,6 +35,7 @@ class LogConfigModel(BaseModel):
         "【%(levelname)s】%(asctime)s [%(correlation_id)s] - %(message)s"
     )
     ASYNC_FILE_QUEUE_SIZE: int = 1000
+    # 保留历史配置解析兼容；协程环境文件日志已统一由单一有界队列 writer 执行。
     ASYNC_FILE_WORKERS: int = 2
     BATCH_WRITE_SIZE: int = 50
     WRITE_TIMEOUT: float = 3.0
@@ -72,12 +74,13 @@ class LogWriter(Protocol):
     def write_log(self, level: str, message: str, file_path: Path) -> None:
         """将一条日志写入指定文件。"""
 
-    def shutdown(self) -> None:
-        """排空待写日志并释放写入资源。"""
+    def shutdown(self) -> Optional[bool]:
+        """排空待写日志并释放写入资源，未收敛时返回 False。"""
 
 
 log_settings = LogSettings()
 _correlation_id_provider: Callable[[], str | None] = lambda: None
+_LOG_STOP_TIMEOUT_SECONDS = 10.0
 
 
 def configure_correlation_id_provider(provider: Callable[[], str | None]) -> None:
@@ -96,9 +99,9 @@ class NonBlockingFileHandler:
 
     _instance = None
     _lock = threading.Lock()
-    _stop_sentinel = object()
+    _stop_sentinel = None
 
-    def __new__(cls):
+    def __new__(cls) -> Self:
         """返回进程内唯一的文件写入器。"""
         if cls._instance is None:
             with cls._lock:
@@ -114,12 +117,14 @@ class NonBlockingFileHandler:
         self._state_lock = threading.RLock()
         self._handlers_lock = threading.Lock()
         self._rotating_handlers: dict[Path, RotatingFileHandler] = {}
-        self._write_queue = queue.Queue(maxsize=log_settings.ASYNC_FILE_QUEUE_SIZE)
-        self._executor = ThreadPoolExecutor(
-            max_workers=log_settings.ASYNC_FILE_WORKERS,
-            thread_name_prefix="LogWriter",
+        self._write_queue: queue.Queue[Optional[LogEntry]] = queue.Queue(
+            maxsize=log_settings.ASYNC_FILE_QUEUE_SIZE,
         )
+        self._stop_requested = threading.Event()
         self._running = True
+        self._closed = False
+        self._close_thread: Optional[threading.Thread] = None
+        self._close_error: Optional[BaseException] = None
         self._write_thread = threading.Thread(
             target=self._batch_writer,
             daemon=True,
@@ -170,7 +175,8 @@ class NonBlockingFileHandler:
             try:
                 self._write_queue.put_nowait(entry)
             except queue.Full:
-                self._executor.submit(self._write_sync, entry)
+                # 文件日志属于 E1 观测数据；队列达到显式上限时不能再创建无界线程池旁路。
+                return False
             return True
 
     def _write_sync(self, entry: LogEntry) -> None:
@@ -193,8 +199,10 @@ class NonBlockingFileHandler:
             msg=entry.message,
             args=(),
             exc_info=None,
-            created=entry.timestamp.timestamp(),
         )
+        created_at = entry.timestamp.timestamp()
+        record.created = created_at
+        record.msecs = (created_at - int(created_at)) * 1000
         record.correlation_id = entry.correlation_id
         return record
 
@@ -202,15 +210,21 @@ class NonBlockingFileHandler:
         """持续收集队列日志，并在停止哨兵后排空已有批次。"""
         while True:
             try:
-                batch = []
+                batch: list[LogEntry] = []
                 should_stop = False
-                end_time = time.time() + log_settings.WRITE_TIMEOUT
+                end_time = time.monotonic() + log_settings.WRITE_TIMEOUT
                 while (
                     len(batch) < log_settings.BATCH_WRITE_SIZE
-                    and time.time() < end_time
+                    and time.monotonic() < end_time
                 ):
                     try:
-                        remaining_time = max(0, end_time - time.time())
+                        if (
+                            self._stop_requested.is_set()
+                            and self._write_queue.empty()
+                        ):
+                            should_stop = True
+                            break
+                        remaining_time = max(0, end_time - time.monotonic())
                         entry = self._write_queue.get(timeout=remaining_time)
                         if entry is self._stop_sentinel:
                             should_stop = True
@@ -221,6 +235,8 @@ class NonBlockingFileHandler:
                 if batch:
                     self._write_batch(batch)
                 if should_stop:
+                    break
+                if self._stop_requested.is_set() and self._write_queue.empty():
                     break
             except Exception as err:
                 print(f"批量写入线程错误: {err}")
@@ -241,23 +257,86 @@ class NonBlockingFileHandler:
                 for entry in entries:
                     self._write_sync(entry)
 
-    def shutdown(self) -> None:
-        """停止接收新日志，排空队列并关闭线程池和文件处理器。"""
+    def _close_handlers(self) -> None:
+        """在独立 owner 中关闭文件处理器，保留失败项供后续重试。"""
+        first_error: Optional[BaseException] = None
+        with self._handlers_lock:
+            handlers = tuple(self._rotating_handlers.items())
+        for file_path, handler in handlers:
+            try:
+                handler.flush()
+                handler.close()
+            except BaseException as err:  # noqa: BLE001  需要保留关闭失败 owner
+                if first_error is None:
+                    first_error = err
+                print(f"日志处理器关闭失败 {file_path}: {err}")
+                continue
+            with self._handlers_lock:
+                if self._rotating_handlers.get(file_path) is handler:
+                    self._rotating_handlers.pop(file_path, None)
         with self._state_lock:
-            if not self._running:
-                return
-            self._running = False
-            if self._write_thread.is_alive():
-                self._write_queue.put(self._stop_sentinel)
-        if self._write_thread.is_alive():
-            self._write_thread.join()
-        self._executor.shutdown(wait=True)
-        for handler in self._rotating_handlers.values():
-            handler.flush()
-            handler.close()
-        self._rotating_handlers.clear()
+            self._close_error = first_error
 
-_LEVEL_NAME_COLORS = {
+    def _close_handlers_bounded(self, deadline: float) -> bool:
+        """复用关停总预算有限等待文件处理器关闭 owner。"""
+        with self._state_lock:
+            if self._closed:
+                return True
+            close_thread = self._close_thread
+            if close_thread is None:
+                self._close_error = None
+                close_thread = threading.Thread(
+                    target=self._close_handlers,
+                    daemon=True,
+                    name="LogHandlerCloser",
+                )
+                self._close_thread = close_thread
+                close_thread.start()
+        if close_thread is threading.current_thread():
+            return False
+        close_thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        if close_thread.is_alive():
+            return False
+        with self._state_lock:
+            if self._close_error is not None:
+                if self._close_thread is close_thread:
+                    self._close_thread = None
+                return False
+            self._closed = True
+            return True
+
+    def shutdown(
+        self,
+        timeout: float = _LOG_STOP_TIMEOUT_SECONDS,
+    ) -> bool:
+        """
+        停止接收新日志，并在总预算内排空队列和关闭文件处理器。
+
+        :param timeout: 等待写线程和文件处理器收敛的最长秒数
+        :return: 全部日志资源真实终止时返回 True，否则返回 False
+        """
+        deadline = time.monotonic() + max(0.0, timeout)
+        with self._state_lock:
+            if self._closed:
+                return True
+            if self._running:
+                self._running = False
+                self._stop_requested.set()
+                if self._write_thread.is_alive():
+                    try:
+                        self._write_queue.put_nowait(self._stop_sentinel)
+                    except queue.Full:
+                        # 队列非空会自然唤醒 writer；停止事件让其排空后退出。
+                        pass
+        if self._write_thread is threading.current_thread():
+            return False
+        self._write_thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        if self._write_thread.is_alive():
+            return False
+        return self._close_handlers_bounded(deadline)
+
+
+_LEVEL_NAME_COLORS: dict[int, Callable[[str], str]] = {
     logging.DEBUG: lambda level_name: click.style(str(level_name), fg="cyan"),
     logging.INFO: lambda level_name: click.style(str(level_name), fg="green"),
     logging.WARNING: lambda level_name: click.style(str(level_name), fg="yellow"),
@@ -310,6 +389,7 @@ class LoggerManager:
         """
         caller_name = None
         plugin_name = None
+        frame: Optional[FrameType]
         try:
             frame = sys._getframe(3)  # noqa: SLF001
         except (AttributeError, ValueError):
@@ -368,12 +448,16 @@ class LoggerManager:
         """装配文件写入器，并补写装配前暂存的启动日志。"""
         with cls._lock:
             previous_writer = cls._writer
+        if previous_writer and previous_writer is not writer:
+            if previous_writer.shutdown() is False:
+                raise RuntimeError("既有日志写入器未收敛，拒绝丢失其资源 owner")
+        with cls._lock:
+            if cls._writer is not previous_writer:
+                raise RuntimeError("日志写入器在装配期间被并发替换")
             cls._writer = writer
             cls._log_path = Path(log_path)
             pending = list(cls._pending_file_logs)
             cls._pending_file_logs.clear()
-        if previous_writer and previous_writer is not writer:
-            previous_writer.shutdown()
         for level, message, logfile in pending:
             writer.write_log(level, message, Path(log_path) / logfile)
 
@@ -456,14 +540,19 @@ class LoggerManager:
         self.logger("critical", msg, *args, **kwargs)
 
     @classmethod
-    def shutdown(cls) -> None:
-        """断开并关闭当前文件写入器。"""
+    def shutdown(cls) -> bool:
+        """关闭当前文件写入器，未收敛时保留 owner 供后续重试。"""
         with cls._lock:
             writer = cls._writer
-            cls._writer = None
-            cls._log_path = None
-        if writer:
-            writer.shutdown()
+        if writer is None:
+            return True
+        if writer.shutdown() is False:
+            return False
+        with cls._lock:
+            if cls._writer is writer:
+                cls._writer = None
+                cls._log_path = None
+        return True
 
 
 logger = LoggerManager()

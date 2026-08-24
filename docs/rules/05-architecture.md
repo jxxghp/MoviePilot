@@ -201,6 +201,9 @@ ModuleManager 与 startup 组合根继续关闭其余资源但必须向上返回
 并向 startup 返回 `False`，不得用无界 `join()` 阻塞生命周期或把日志当作成功。
 共享 `ThreadHelper` 必须追踪通过宿主 `submit()` 和旧兼容 `.pool.submit()` 接受的全部 Future；关闭时
 先封口新任务，再有限等待且保留未终止 owner，结果由 startup 聚合，不得恢复无界 executor shutdown。
+协程环境文件日志属于有界 E1 观测能力，只允许单一队列 writer；队列满时不得再以无界 executor
+形成第二条异步写入路径。日志关闭必须有限等待 writer 与文件处理器，未收敛时 `LoggerManager`
+保留原 owner 并让 lifespan 以关闭失败结束，不得先清空引用或用无界 `join()` 掩盖失败。
 API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/tasks.py`；登记器先于其他
 运行资源启动，并在资源释放前停止接收、取消和有限等待。需要崩溃恢复的 E2/E3 副作用仍应
 进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。

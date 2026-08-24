@@ -180,6 +180,26 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
         _assert_completed_once(step)
 
 
+def test_lifespan_propagates_logger_nonconvergence(monkeypatch):
+    """最后一个日志 owner 未收敛时 lifespan 必须以关闭失败结束。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    shutdown_steps["logger"].return_value = False
+
+    async def run_lifespan() -> None:
+        """运行完整生命周期并触发日志 writer 的诚实失败结果。"""
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    with pytest.raises(RuntimeError, match="日志写入资源未在关停预算内收敛"):
+        asyncio.run(run_lifespan())
+
+    for step in shutdown_steps.values():
+        _assert_completed_once(step)
+    lifecycle.global_vars.clear_loop.assert_called_once_with(
+        lifecycle.global_vars.set_loop.return_value
+    )
+
+
 def test_lifespan_validation_failure_does_not_clear_outer_loop_owner(monkeypatch):
     """当前生命周期尚未取得 owner 时，启动失败不得清理外层登记。"""
     _patch_lifespan(monkeypatch)
