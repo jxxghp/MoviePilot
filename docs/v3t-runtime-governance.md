@@ -122,6 +122,13 @@ profile，依赖名称、版本和 source 语义全部由 `pyproject.toml` 与 `
 | 32 线程直接 Rust ABI 探针 | 40,832.4 ops/s | 61,550.9 ops/s | V3t 约为 1.51 倍；两边都直接调用 Rust，仅验证原生 ABI 与并发。 |
 | 普通 API 最大 p95 比例 | 基线 | 1.10x | 四个本地 API 中最大退化来自订阅列表，仍低于 1.25x 门禁。 |
 
+同 revision 的 amd64 最终候选也已完成交叉架构验收。标准 V3 与 V3t 的本地镜像体积分别为
+680.6 MiB 和 714.0 MiB，V3t 增加 33.4 MiB、约 4.9%。两者均使用 Python 3.14.7，标准 V3
+保持 GIL 启用；V3t 使用 free-threaded 解释器，完整原生依赖、`psycopg` C 实现、Rust 文本能力及
+`sites.cpython-314t-x86_64-linux-gnu.so` 依次加载后 GIL 始终关闭。两个镜像均以空白配置启动到
+`/health/ready` 且 Docker health 为 healthy。该启动运行在 arm64 宿主的 amd64 模拟环境中，只作为
+发布候选功能与 ABI 验收，不纳入性能比例。
+
 该候选还通过了四分片全量回归（5,981 passed、3 skipped、14 subtests passed）、PostgreSQL 18.6
 迁移/提交/回滚、现代插件清单、历史 `requirements.txt`、插件源码与依赖恢复以及恢复后单实例加载。
 这些结果证明双 profile 方案可行；最终发布仍必须使用最新 revision 和正式不可变 digest 重跑。
