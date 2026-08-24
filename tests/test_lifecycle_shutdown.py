@@ -63,7 +63,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "backup_plugins": system_chain.backup_plugins,
         "stop_plugin_monitor": MagicMock(return_value=True),
         "stop_workflow": MagicMock(),
-        "stop_command": MagicMock(),
         "stop_monitor": MagicMock(),
         "stop_scheduler": MagicMock(),
         "stop_agent": AsyncMock(return_value=True),
@@ -78,7 +77,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     }
     for name in (
         "stop_workflow",
-        "stop_command",
         "stop_monitor",
         "stop_scheduler",
         "stop_plugin_monitor",
@@ -130,7 +128,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     [
         "backup_plugins",
         "stop_workflow",
-        "stop_command",
         "stop_modules",
         "close_http",
     ],
@@ -240,7 +237,6 @@ _ORDERED_SHUTDOWN_STEPS = (
     "stop_plugin_monitor",
     "backup_plugins",
     "stop_workflow",
-    "stop_command",
     "stop_monitor",
     "stop_scheduler",
     "stop_agent",
@@ -444,7 +440,6 @@ def test_lifespan_safe_mode_skips_optional_runtime(monkeypatch):
     for name in (
         "backup_plugins",
         "stop_workflow",
-        "stop_command",
         "stop_monitor",
         "stop_scheduler",
         "stop_plugin_monitor",
@@ -531,7 +526,6 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "插件变更监控",
         "插件备份",
         "工作流",
-        "命令服务",
         "监控器",
         "定时器",
         "AI智能体会话",
@@ -815,7 +809,6 @@ def test_lifespan_cleans_started_owners_after_late_startup_failure(monkeypatch):
     for name in (
         "stop_plugin_monitor",
         "backup_plugins",
-        "stop_command",
         "stop_monitor",
         "stop_scheduler",
         "stop_agent",
@@ -853,7 +846,6 @@ def test_startup_failure_cleanup_honors_transfer_fail_fast(monkeypatch):
     for name in (
         "stop_plugin_monitor",
         "backup_plugins",
-        "stop_command",
         "stop_monitor",
         "stop_scheduler",
         "stop_agent",
