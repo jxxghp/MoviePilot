@@ -129,6 +129,19 @@ adapters; it does not retain reusable repository implementations.
   and UoW to one request/operation Session. Legacy plugin-facing Oper methods may
   remain temporarily, but a new endpoint or startup workflow must call `stage_*`.
 
+### Durable post-commit side effects
+
+Business mutations that must survive process interruption stage their durable
+intent through `app/application/outbox.py` in the same Session/UoW as the
+business row. `app/db/adapters/outbox.py` is the SQLAlchemy implementation;
+startup composition supplies the repository, transaction scope and topic
+handlers.
+
+The dispatcher claims an intent with a lease, executes an idempotent handler,
+and records bounded retries or dead-letter state. The `app/runtime/tasks.py`
+TaskRegistry is only the owner for in-process work and bounded shutdown waiting;
+it is not a durable queue or a replacement for an Outbox/persistent task table.
+
 Run `./.venv/bin/python scripts/architecture/baseline.py --check-host` after
 persistence changes. A deliberate debt reduction may refresh the low-water mark
 with `--write-host`; never refresh it to accept newly introduced debt.
@@ -254,4 +267,4 @@ When `REDIS_HOST` is configured, `app/modules/redis/` provides a distributed cac
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-08-21*
+*Last Updated: 2026-08-24*

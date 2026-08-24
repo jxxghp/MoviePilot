@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *Last Updated: 2026-08-21*
+> *Last Updated: 2026-08-24*
 
 ---
 
@@ -110,10 +110,9 @@ flowchart TB
     PluginPkg --> Sdk
 
     Chain -->|run_module 分发| Modules
-    Chain --> App
-    Chain -->|经应用端口 / Oper 适配| Db
+    Chain -->|Application service / 命名数据端口| App
     App --> Modules
-    App -->|应用端口 / Oper 适配| Db
+    App -->|Protocol / 持久化端口| Db
 
     Modules --> Domain
     App --> Domain
@@ -124,7 +123,7 @@ flowchart TB
     Runtime --> Foundation
     Adapters --> Domain
     Adapters --> Foundation
-    App -->|允许的技术适配依赖；优先由 startup 装配| Adapters
+    Startup -->|构造并注入| Adapters
 
     Startup -.注入/装配.-> Runtime
     Startup -.注入/装配.-> App
@@ -137,20 +136,38 @@ flowchart TB
     Compat -.精确别名.-> Adapters
 ```
 
-图中的 `Chain → Db`、`Application → Db` 表示通过应用端口、Oper 或组合根注入的实现完成持久化，
-不是允许在用例代码中直接创建数据库引擎或拼接 SQL。`compat` 也不是只面向 SDK 的转发层，
+图中的 `Chain → Application` 与 `Application → Db` 表示通过应用端口和组合根注入的实现完成持久化，
+具体 DB Adapter 再使用 Oper；这不是允许在用例代码中直接创建数据库引擎或拼接 SQL。`compat` 也不是只面向 SDK 的转发层，
 它按 `app/runtime/compat/manifest.py` 的白名单把已经删除的旧模块/符号精确映射到各自的 canonical
 归属。`app/application/subscribe.py` 与 `app/application/plugins.py` 都是 V3 重构过程中新增、
 未形成插件 ABI 的宿主内部聚合文件，主题实现收口后直接删除，不在 manifest 中制造新的兼容债务。
+
+当前实际的持久化调用路径可概括为：
+
+```text
+入口（API / Agent / CLI / Scheduler / Workflow）
+        -> Chain 或 Application 用例
+        -> 命名 Port / Protocol
+        -> db/adapters 创建短生命周期 Session/UoW
+        -> db/oper 与 db/models
+```
+
+`app/application/chain/data.py`、`app/application/agentdata.py` 和
+`app/application/history.py` 的 `get_*_port()` 是宿主生产代码读取组合根能力的规范入口；
+兼容期保留的 `*PortProxy` 不能重新被别名为 Oper。需要跨进程恢复或 commit 后可靠执行的
+业务副作用进入 `app/application/outbox.py` 定义的 Outbox 端口，由
+`app/db/adapters/outbox.py` 实现；`app/runtime/tasks.py` 的 TaskRegistry 只负责进程内任务所有权、
+取消和有限等待，不承担 durable queue 语义。
 
 **依赖方向的核心约束**（由 `tests/test_architecture_dependencies.py` 强制检查）：
 
 | 方向 | 状态 |
 |---|---|
-| 入口层 → Chain / Application / Oper | 允许（按工作流复杂度选择） |
+| 入口层 → Chain / Application / 注入 Port | 允许（按工作流复杂度选择；不得直接构造 Oper） |
 | Chain → Module | 仅允许通过 `run_module` 方法名分发，禁止直接 import 模块内部 |
 | Chain → Agent 实现 | 禁止；只能经 `app/application/agent.py` 门面 |
-| Application → Domain / Runtime / Adapter / Oper | 允许 |
+| Application → Domain / Runtime / 注入的 Port | 允许；不得直接依赖具体 DB/Oper/Adapter |
+| DB Adapter → Application 持久化 Protocol / Oper / UoW | 允许；这是依赖倒置的实现方向 |
 | Module → Module / Chain | 禁止（跨模块编排一律进 Chain） |
 | Adapter → Application / runtime.extensions / sdk / compat | 禁止 |
 | Domain → Runtime / Adapter / Application / DB | 禁止 |
@@ -166,26 +183,29 @@ flowchart TB
 |---|---|---|
 | `app/foundation/` | 无状态、无配置、无 I/O 的底层原语：反射/动态导入、加密、DOM、单例、文本、URL、版本比较 | `reflection.py`、`crypto.py`、`singleton.py` |
 | `app/domain/` | 纯 MoviePilot 业务语义：媒体上下文、识别解析、站点状态解释、磁力语义、NFO 刮削 | `context.py`、`metainfo.py`、`meta/`、`scraper.py` |
-| `app/runtime/` | 进程级运行机制：配置、进程拓扑、事件、完整日志、缓存契约与内存后端、并发、调度、限流、本地化、GC、重启状态 | `config.py`、`topology.py`、`events.py`、`log.py`、`cache.py` |
+| `app/runtime/` | 进程级运行机制：配置、进程拓扑、事件、完整日志、缓存契约与内存后端、任务所有权、执行/关联上下文、并发、调度、限流、本地化、GC、重启状态 | `config.py`、`events.py`、`event/`、`tasks.py`、`execution.py`、`correlation.py`、`log.py`、`cache.py` |
 | `app/runtime/extensions/` | 模块 / 插件 / 配置化服务 / 托管资源的发现、注册与生命周期适配；旧管理器文件保留稳定 ABI 门面，具体实现拆在主题子包 | `module_manager.py`、`plugin_manager.py`、`plugin/` |
 | `app/runtime/compat/` | 仅标准库的精确旧模块、包与符号导入路由；不是业务实现，也不是通用 re-export 层 | `manifest.py`、`imports.py` |
 | `app/adapters/network/` | 通用 HTTP、浏览器、DNS、Cloudflare、IP 传输机制 | `http.py`、`browser.py` |
 | `app/adapters/cache/` | Redis 与文件缓存的具体实现 | `backends.py`、`redis.py` |
 | `app/adapters/system/` | OS/文件/进程/stdio/显示/包安装/Rust 加速适配 | `host.py`、`resource.py`、`fsproxy.py` |
 | `app/adapters/external/` | 命名外部生态：插件市场、CookieCloud、OCR、IP 归属、MP Server、微信加密 | `market.py`、`server.py`、`wechat_crypt.py` |
-| `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则等；同一主题拆成子包 | `recognition.py`、`rules.py`、`rss.py`、`site/`、`subscription/`、`plugin/` |
+| `app/adapters/web/` | Web 技术适配：动态插件路由注册、认证依赖和 OpenAPI 重建；不承载插件路由用例 | `plugin/routes.py` |
+| `app/adapters/observability/` | 可选观测技术适配；核心层只依赖 `runtime/observability` 定义的窄端口 | `otel.py` |
+| `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则、可靠副作用等；同一主题拆成子包 | `recognition.py`、`rules.py`、`rss.py`、`outbox.py`、`site/`、`subscription/`、`plugin/` |
+| `app/application/chain/` | Chain 运行时上下文、跨领域数据端口和 durable event 命令；将组合根注入的能力以命名 getter 暴露给 Chain | `context.py`、`data.py`、`durable_events.py` |
 | `app/application/subscription/` | 订阅新增、查询、变更、删除、媒体身份与搜索契约 | `write.py`、`contract.py`、`mutation.py`、`delete.py`、`identity.py`、`search.py` |
 | `app/application/plugin/` | 插件市场、安装、运行时端口、文件夹操作和动态路由用例；具体 FastAPI 路由适配器在 adapters 层 | `catalog.py`、`install.py`、`runtime.py`、`folders.py`、`routes.py` |
 | `app/application/messaging/` | 渠道回环入口、消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `ingress.py`、`message.py`、`router.py`、`agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、SSRF 与 URL/路径安全 | `auth.py`、`url.py`、`twofactor.py` |
 | `app/chain/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe.py`、`search.py`、`transfer.py` |
 | `app/modules/` | 可插拔后端：下载器、媒体服务器、元数据源、消息渠道、索引器、存储 | `qbittorrent/`、`emby/`、`telegram/`、`themoviedb/` |
-| `app/db/` | SQLAlchemy 模型（`models/`）与一一对应的数据访问类（`oper/`） | `models/subscribe.py` ↔ `oper/subscribe.py` |
+| `app/db/` | SQLAlchemy 模型、表级 Oper、会话/UoW 与 Application 持久化适配器；Model 只接受显式 Session，不拥有事务提交 | `models/`、`oper/`、`adapters/`、`uow.py` |
 | `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
 | `app/api/` | FastAPI 主端点、鉴权依赖、统一 `Response` 响应封装；动态插件端点不走此统一包装 | `apiv1.py`、`endpoints/`、`response.py` |
 | `app/adapters/web/plugin/` | FastAPI 动态插件路由的技术适配：注册/移除、认证依赖、OpenAPI 重建；保留插件原生响应结构 | `routes.py` |
 | `app/agent/` | AI Agent：编排器、运行时、工具、中间件、LLM、记忆、技能、策略 | `orchestrator.py`、`runtime_loader.py`、`tools/` |
-| `app/startup/` | 组合根：装配注入、初始化/关停排序、重启策略 | `lifecycle.py`、`modules_initializer.py` |
+| `app/startup/` | 唯一组合根：跨层装配、领域初始化、声明式生命周期排序与重启策略 | `composition/`、`initializers/`、`lifecycle/` |
 | `app/sdk/` | 面向新插件的稳定导入面（网络、缓存、日志、浏览器等）；`_legacy/` 只承载旧插件行为适配薄门面 | `network.py`、`browser.py`、`cache.py`、`_legacy/` |
 | `app/monitor/` | 源目录监控 → 触发整理 | `watcher.py`、`dispatcher.py` |
 | `app/workflow/` | 工作流引擎 | — |
@@ -219,7 +239,7 @@ sequenceDiagram
     Life->>Init: get_engine() / get_global_async_engine() 预热 + fail-fast
     Life->>Init: check_connection_budget() 连接预算核算
     Life->>Init: init_routers(app) 注册 API 路由
-    Life->>Init: init_modules() 发现并初始化模块，返回 HostRuntime
+    Life->>Init: init_modules()（app/startup/initializers/modules.py）发现并初始化模块，返回 HostRuntime
     Life->>FastAPI: app.state.host_runtime = HostRuntime
     Life->>Init: init_plugins() / init_scheduler() / init_monitor()
     Life->>Init: init_command() / init_workflow()
@@ -256,7 +276,7 @@ sequenceDiagram
 - **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
   到达当前 head 且生命周期完成后返回 200，启动失败或关停阶段返回 503。两者不公开路径、
   revision、插件和异常详情，深入诊断继续使用 Doctor。
-- **关停隔离**：每个关停步骤由 `run_shutdown_step` 独立捕获异常，保证后续资源仍有机会释放。
+- **关停隔离**：每个关停步骤由 `run_shutdown_step` 独立捕获异常，保证后续资源仍有机会释放；TaskRegistry、事件投递屏障、插件和模块资源按生命周期清单中的 owner 顺序收口。
 
 ---
 
@@ -384,6 +404,9 @@ flowchart LR
   创建、提交、回滚或关闭事务。无会话入口只存在于 Oper，由 `_execute_*` 经组合根事务执行器
   承接；内置插件必须调用 Oper，不得直接导入宿主 Model。AST 门禁同时约束装饰器、可选 Session
   和插件到 Model 的依赖，保证提交权不会被底层抢走。
+- **Outbox 可靠副作用**：业务行与 durable intent 在同一 Session/UoW 中提交；提交后由
+  Outbox dispatcher 依据 topic、claim/lease、有限重试和 dead-letter 执行。完成通知、事件和统计
+  的 post-commit 逻辑必须保持幂等，不能用普通线程或 TaskRegistry 代替持久 intent。
 - 站点、历史、工作流、Agent 会话删除和插件数据重置已经形成同构事务切片；对应 Application
   Command/Service 持有 UoW，Oper 的 `stage_*` 方法只修改当前会话。插件数据重置从
   `startup/initializers/plugins.py` 注入事务能力，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。
@@ -623,7 +646,23 @@ flowchart LR
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。
 
-### 10.1 2026-08-18 收口状态与后续边界
+### 10.1 2026-08-24 当前收口状态与后续边界
+
+当前宿主架构基线（排除 `app/plugins/**`）如下；数字来自
+`tests/fixtures/architecture/`，更新基线前必须先审查语义变化：
+
+| 指标 | 当前值 |
+|---|---:|
+| Python 模块 | 810 |
+| 内部导入边 | 6,560 |
+| 非平凡 SCC | 1（仅隔离的 TMDB 移植包） |
+| Module Contract V2 spec | 212（其中 211 个进入 `run_module` 观察面） |
+| Event Contract | 53 |
+| Model/Oper 自动事务与自建 Session | 0 |
+| 组合根外 `SystemConfigOper()` | 0 |
+
+架构专项验证：`tests/test_architecture_dependencies.py` 与
+`tests/test_architecture_contract_baseline.py` 共 68 passed；当前工作树未修改架构 fixture。
 
 本总览与本轮架构治理的关系如下：
 
@@ -638,6 +677,10 @@ flowchart LR
   文件夹操作归入 `app/application/plugin/routes.py`、`folders.py`。原
   `app/application/subscribe.py`、`app/application/plugins.py` 未形成插件 ABI，已经直接删除，
   宿主调用统一改为 canonical 路径。
+- 已完成的运行时可靠性收口：TaskRegistry 统一进程内后台任务 owner；durable-required 事件和
+  订阅关键副作用经 `app/application/outbox.py` 与 `app/db/adapters/outbox.py` 进入同事务 Outbox；
+  搜索逐页任务、Agent/消息事件和插件市场子任务均遵守请求或生命周期 owner，不再由入口模块维护
+  无法追踪的裸任务集合。
 - 判断是否需要新增 manifest 映射的标准：只有当旧物理模块被删除、改名或公开符号迁移时才登记；
   物理文件仍是稳定入口的，不应为了目录规整新增“自己映射自己”的别名，也不应在 canonical 包中
   保留多余导出。

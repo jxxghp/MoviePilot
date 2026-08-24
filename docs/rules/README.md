@@ -104,4 +104,4 @@ Those managing the application lifecycle post-development:
 
 ---
 
-*Last Updated: 2026-05-25*
+*Last Updated: 2026-08-24*

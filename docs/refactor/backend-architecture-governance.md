@@ -2,7 +2,7 @@
 
 > 文档性质：现状审计、目标约束、迁移路线和 AI 实施手册
 > 适用仓库：`MoviePilot`，分支 `v3`
-> 审计基线：2026-08-18 当前工作树
+> 审计基线：`7c97d1742`（2026-08-24）
 > 相关规范：`AGENTS.md`、`docs/rules/05-architecture.md`、`docs/architecture-overview.md`、`docs/refactor/backend-module-refactor-compatibility.md`
 
 ## 1. 文档目的
@@ -14,7 +14,7 @@
 3. 为其他 AI 提供可以直接执行的任务边界、兼容约束、验证命令和完成标准。
 4. 在不破坏 V3 插件生态的前提下，逐步收敛宿主内部结构，而不是用一次性改名制造新的兼容层。
 
-本文同时记录治理方案和当前工作树的实施状态。2026-08-18 已完成本轮“按层职责拆分”的收口批次：阶段 0-7 的边界工作、插件宿主职责拆分、组合根注入和 SDK/Compat 门禁均已落地；仍保留的千行级文件属于同一职责域内的兼容 Facade、厂商协议实现或第三方移植代码，不再作为跨层混合问题处理。每个阶段是否完成必须以本文件的机器基线、聚焦测试、插件兼容扫描和完整测试门禁为准，不能只凭目录已经创建判断。
+本文同时记录治理方案和当前工作树的实施状态。2026-08-24 的当前代码已经完成阶段 0-7 的跨层边界收口，并继续完成模块契约、生命周期 owner、命名数据端口、Outbox 和插件运行时治理切片；仍保留的千行级文件属于同一职责域内的兼容 Facade、厂商协议实现或第三方移植代码，不再作为跨层混合问题处理。每个阶段是否完成必须以本文件的机器基线、聚焦测试、插件兼容扫描和完整测试门禁为准，不能只凭目录已经创建判断。
 
 ### 2026-08-18 收口结论
 
@@ -25,10 +25,13 @@
 3. `PluginManager` 的加载、生命周期、注册表、投影、存储、目录、路径、同步、依赖、克隆和文件监控分别由 `app/runtime/extensions/plugin/` 下的单职责组件承担；旧管理器只保留 V3 ABI 门面和兼容调用顺序。
 4. 动态插件 API 使用专用 raw 路由；主程序统一响应信封不进入插件 `get_api()`。前端 `pluginApi` 对非 `Response` envelope 的 payload 原样交付调用方。
 5. 旧插件导入仅由 `app/runtime/compat/manifest.py` 精确映射；canonical 模块不复制旧 Manager/Helper/Oper 导出。`app/plugins/` 仍是运行时副本，继续排除在宿主架构扫描之外。
-6. 2026-08-24 当前机器基线为 805 个宿主 Python 模块、6,502 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
+6. 2026-08-24 当前机器基线为 810 个宿主 Python 模块、6,560 条内部导入边；数据库边界、Adapter→DB、Runtime→DB、Application→DB 及新增 API/Agent/Chain 目标边均为 0。架构门禁、插件兼容快照和基线脚本均已重新生成。
 7. 订阅写入统一归入 `app/application/subscription/write.py`；插件动态路由和文件夹操作统一归入 `app/application/plugin/routes.py`、`folders.py`。重构期间新增且未形成插件 ABI 的 `app/application/subscribe.py`、`app/application/plugins.py` 已直接删除，不进入 compat manifest。
 8. 2026-08-24 完成 Module Contract V2 宿主观察面收口：212 个 spec 均使用可执行的显式 aggregation，
    `legacy` 只保留为未知第三方自定义方法的开放 fallback；插件方法名、kwargs、优先级和异常隔离 ABI 不变。
+9. 订阅及其它关键业务副作用已通过 `app/application/outbox.py`、`app/db/adapters/outbox.py`
+   和启动组合根形成同事务 durable intent、claim/lease、有限重试与 dead-letter 边界；TaskRegistry
+   仍只负责进程内任务 owner 和关停，不被当作持久队列。
 
 ## 2. 范围与明确排除项
 
@@ -93,15 +96,17 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 ### 4.2 已验证结果
 
 ```text
-./.venv/bin/python -m pytest tests/test_architecture_dependencies.py -q
-28 passed
+./.venv/bin/python -m pytest \
+  tests/test_architecture_dependencies.py \
+  tests/test_architecture_contract_baseline.py -q
+68 passed
 ```
 
 这只能证明当前代码符合现有门禁，不能证明符合本文件提出的更完整目标。
 
 ### 4.3 模块规模
 
-排除 `app/plugins/` 后，2026-08-24 当前静态扫描得到 805 个 Python 模块、6,502 条内部导入边。下表保留 2026-08-18 收口时的一级目录规模快照（代码行数包含注释和空行，用于趋势比较而非质量评分）：
+排除 `app/plugins/` 后，2026-08-24 当前静态扫描得到 810 个 Python 模块、6,560 条内部导入边。下表保留 2026-08-18 收口时的一级目录规模快照（代码行数包含注释和空行，用于趋势比较而非质量评分）：
 
 | 一级目录 | 约代码行数 | Python 文件数 | 判断 |
 | --- | ---: | ---: | --- |
@@ -149,8 +154,8 @@ MoviePilot V3 已经完成一轮重要基础工作：原 `app/core`、`app/helpe
 
 | 指标 | 初始审计 | 当前基线 | 说明 |
 | --- | ---: | ---: | --- |
-| Python 模块数 | 约 654 | 805 | 增量来自单一职责的 Application、Runtime、Adapter、插件组件和维护用例模块 |
-| 内部导入边 | 约 5,623 | 6,502 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
+| Python 模块数 | 约 654 | 810 | 增量来自单一职责的 Application、Runtime、Adapter、插件组件和维护用例模块 |
+| 内部导入边 | 约 5,623 | 6,560 | 显式端口增加模块数但移除了反向边；边数不作为单独质量目标 |
 | SCC 数 | 14 | 1 | 自有代码 SCC 已归零，仅保留 TMDB 移植包内部隔离例外 |
 | `adapters -> db` | 存在 | 0 | `PluginHelper`、`MoviePilotServerHelper` 的本地数据读取已移到组合根/Application |
 | `runtime -> db` | 存在 | 0 | 插件存储、服务配置均改为启动注入 |
@@ -399,6 +404,9 @@ app/chain/transfer.py  # 保持 TransferChain 兼容门面
 - Application 用例拥有事务语义；API 只调用用例。
 - 复杂跨 Oper 事务可引入小型 `UnitOfWork` Protocol，但不要为单表查询套通用框架。
 - Event、Scheduler、Server 上报只在提交成功后触发；必要时用显式 after-commit 动作清单。
+- 需要跨进程恢复、重试或幂等交付的 after-commit 动作进入
+  `app/application/outbox.py`，由 `app/db/adapters/outbox.py` 持久化 intent 并负责 claim/lease；
+  `TaskRegistry` 只覆盖进程内任务的取消与关停等待。
 
 #### 迁移顺序
 

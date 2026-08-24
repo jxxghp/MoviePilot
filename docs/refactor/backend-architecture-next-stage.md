@@ -2,11 +2,12 @@
 
 > 文档性质：当前架构复核、优秀 Python 后端实践对标、AI 可执行任务手册
 > 适用仓库：`MoviePilot`，分支 `v3`
-> 审计基线：`6404a3aa583de03bf0770c37b106413461cec1f8`（2026-08-21）
+> 审计基线：`7c97d1742`（2026-08-24）
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
 > 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner；阶段 28 已托管旧插件订阅统计线程；阶段 29 已统一 Emby 系条目转换并清零重复代码白名单；阶段 30 已收口插件市场请求级子任务；阶段 31 已托管搜索 AI 推荐任务；阶段 32 已清除事件调度器绕过生命周期 owner 的投递回退；阶段 33 已统一宿主 Agent 运行时的获取路径；阶段 34 已统一 durable-required 事件与 Outbox topic 事实源；阶段 35 已统一 LLM provider 管理 API 的运行时解析路径；阶段 36 已统一 WebAgent 音频能力访问边界；阶段 37 已统一插件输入事件发布路径；阶段 38 已统一 WebAgent 通知事件监听与队列边界；阶段 39 已补齐搜索 SSE 断线时的上游任务清理；阶段 40 已补齐异步防抖取消的终态所有权；阶段 41 已统一优雅重启兜底线程的唯一所有权；阶段 42 已补齐 Telegram typing 的多实例隔离和终态 owner；阶段 43 已统一 Discord typing 的异步 owner 和 shutdown 收尾；阶段 44 已清除 WebAgent 测试临时事件循环提前关闭产生的 CI 红注解；阶段 45 已统一影视与字幕搜索的请求级逐页任务编排；阶段 46 已收口启动性能门禁的托管 runner 假失败与诊断输出；阶段 47 已补齐 Agent 渠道流式刷新任务的重入 owner；阶段 48 已统一工件上传 action 的 Node 24 主版本；阶段 49 已统一插件安装的同步/异步代际解析事实源；阶段 50 已统一插件市场 GitHub 请求降级策略；阶段 51 已统一插件索引请求与响应三态策略；阶段 52 已统一插件 Release 分页策略；阶段 53 已统一远端插件安装模式决策；阶段 54 已补齐同步安装成功后的临时回滚备份清理；阶段 55～56 已收口官方插件观察基线与报告保留策略；阶段 57 已统一进程级运行时 Facade 门禁并补齐 ModuleManager 边界；阶段 58 已消除 AgentTask 关闭回归的跨线程零时长等待竞态。
+> 当前 canonical 状态：API/Application 公共复杂度基线已清零，组合根外 `SystemConfigOper()` 构造和 Model/Oper 隐式事务均为 0；命名 Chain/Agent 数据端口、TaskRegistry owner、Module Contract V2、typed Event、Outbox durable intent、请求关联和插件运行时 getter 已形成当前路径。插件仓适配、未知第三方 fallback 和其它 E1/E3 副作用仍按风险持续治理。
 
 ## 当前复核结论（2026-08-24）
 
@@ -15,7 +16,7 @@
 
 ### 长期整改阶段 0：治理门禁恢复（2026-08-23）
 
-- 宿主依赖基线已审查 TaskRegistry、有界后台 owner 与插件变更准入接入后的语义差异：当前为 `806` 个模块、`6544` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
+- 宿主依赖基线已审查 TaskRegistry、有界后台 owner 与插件变更准入接入后的语义差异：当前为 `810` 个模块、`6560` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
 - 启动性能探针会在隔离生命周期中真实创建并释放 TaskRegistry；normal/safe 组件数分别为 `23`/`11`，CI 只读检查使用稳定的宿主模块集合和生命周期组件顺序，不再把 Python/平台模块数量当作硬合同。
 - 官方插件快照覆盖 `plugins.v3`、`plugins.v2` 以及 V3 实际会从 `package.json` 回退加载的 31 个默认实现；`app/plugins/**` 仍只是宿主运行副本，不进入扫描。
 - SDK 快照以各模块显式 `__all__` 为公开合同，能够记录赋值别名；`typing`、`__future__` 等实现期导入不再被误冻结，既有数据库备份门面已补精确导出清单。
@@ -615,7 +616,7 @@
 
 - 继续采用单进程控制面是正确选择，不建议现在拆成微服务；插件、调度器、工作流、事件和数据库共享进程内状态，拆分会放大部署、事务和兼容成本。
 - `foundation/domain/runtime/adapters/application/chain/api/startup` 的职责方向基本成立；宿主架构基线、复杂度 ratchet、异步阻塞 ratchet 当前均通过。
-- 依赖图当前为 `806` 个 Python 模块、`6546` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
+- 依赖图当前为 `810` 个 Python 模块、`6560` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
 - 当前主要风险已经从“目录和依赖失控”转移到运行时协议、后台副作用的可靠性和遗留兼容面。换言之，下一阶段重点应是**语义收口和可验证性**，而不是继续搬文件或机械拆大文件。
 
 综合评价：架构方向可持续，生产可用性较高；可演进性仍处于中等水平。现阶段没有静态审计发现必须立即推倒重来的 P0 架构问题，但存在需要按 P1/P2 计划治理的真实债务。
@@ -762,34 +763,25 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 
 | 指标 | 当前值 | 判断 |
 | --- | ---: | --- |
-| 宿主 Python 模块数 | 753 | 排除 `app/plugins/**` |
-| 宿主内部导入边 | 6,076 | 边数本身不是质量目标 |
+| 宿主 Python 模块数 | 810 | 排除 `app/plugins/**` |
+| 宿主内部导入边 | 6,560 | 边数本身不是质量目标 |
 | 非平凡 SCC | 1 | 仅 TMDB 移植包内部 |
 | 重点禁止边 | 0 | Adapter/Runtime/Application/API/Chain 等到 DB 的既有门禁均通过 |
-| 架构专项测试 | 39 passed | `test_architecture_dependencies` + `test_architecture_contract_baseline` |
+| 架构专项测试 | 68 passed | `test_architecture_dependencies` + `test_architecture_contract_baseline` |
 | 宿主 Python 代码行 | 约 241,227 | 含注释和空行，仅用于趋势 |
-| 已登记模块调用方法 | 211 | 260 个静态调用点，0 个动态方法名调用点 |
+| 已登记模块调用方法 | 211 | 212 个宿主 spec，其中 211 个进入 `run_module` 观察面 |
 | legacy 默认模块契约 | 0 个宿主观察方法；未知动态方法保留 fallback | 所有静态宿主方法已有显式 V2 spec；真实 fallback 命中由 `module.contract.legacy_hit` 观测 |
-| 事件枚举 | 53 | 66 个静态 producer、15 个静态 consumer |
+| 事件枚举 | 53 | 78 个 producer、15 个 consumer（含动态观察） |
 | 专用 EventData model | 53 | Event Contract Registry 已为全部事件登记 typed payload/fallback 原因 |
-| 直接读取 `settings` 的文件 | 105 | 仍按模块族迁移，动态协议和安全端口暂保留 |
+| 直接读取 `settings` 的文件 | 0 | 当前宿主基线已清零；部署配置通过组合根快照/窄端口提供 |
 | `SystemConfigOper()` | 1 个 | 仅组合根创建 `SystemConfigService` 时保留 |
 | Model/Base 上的 DB 装饰器 | 0 | 正式与 legacy 查询/写装饰器全部为 0；`db` 参数必须显式传入 |
-| 路由端点 | 335 | 11 个已装饰端点超过 80 行，最大 400 行 |
-| Chain 方法超过 150 行 | 18 | 最大 `TransferChain.do_transfer()` 885 行 |
-| Application 方法超过 150 行 | 8 | 最大 296 行 |
-| Agent 方法超过 150 行 | 13 | 最大 713 行 |
+| API/Application/Chain 公共复杂度超限 | 0 | 当前 `scripts/architecture/complexity.py` ratchet 无新增或增长债务 |
 | 公共函数缺少返回注解 | 约 1,592 / 7,442 | AST 近似值，适合做 ratchet，不适合直接作为失败阈值 |
 | 公共参数缺少注解 | 约 858 / 12,763 | 主要集中在 `app/modules` |
 
-代表性大方法：
-
-- `app/chain/transfer.py::TransferChain.do_transfer()`：约 885 行；
-- `app/chain/download.py::DownloadChain.batch_download()`：约 572 行；
-- `app/chain/subscribe.py::SubscribeChain.match()`：约 417 行；
-- `app/api/endpoints/agent.py::web_agent_stream()`：约 400 行；
-- `app/api/endpoints/transfer.py::manual_transfer()`：约 295 行；
-- `app/scheduler.py::Scheduler.init()`：约 383 行。
+当前复杂度门禁只对新增/增长负责；同一职责域中的大型兼容 Facade、厂商协议实现和第三方移植代码仍以
+行为快照、依赖边界和增量 ratchet 为主要治理尺度，不以机械拆文件代替所有权迁移。
 
 ### 2.3 本次检查暴露的基线问题
 

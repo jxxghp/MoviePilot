@@ -66,6 +66,8 @@ to make the directory tree look symmetrical.
 | `app/application/download/` | Download task querying/control and later submission use cases |
 | `app/application/music/` | Multi-source music catalog orchestration |
 | `app/application/chain/` | Injectable Chain runtime context and compatibility provider |
+| `app/application/agentdata.py` | Named Agent data ports; canonical Agent consumers use `get_agent_*_port()` and do not alias legacy proxies to Oper classes |
+| `app/application/outbox.py` | Durable intent and Outbox repository/dispatcher contracts for post-commit side effects |
 | `app/application/plugin/` | Plugin market catalog, installation command, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
@@ -87,11 +89,14 @@ directory categories.
 | `app/runtime/config.py` | Deployment configuration and resolved runtime settings |
 | `app/runtime/topology.py` | Process topology policy shared by startup and offline diagnostics |
 | `app/runtime/events.py` | Event contracts, dispatch and resolver registration |
+| `app/runtime/event/` | Event registry, explicit handler binding, dispatch barrier/concurrency and isolated error handling |
 | `app/runtime/observability/` | Low-cardinality metric contracts and no-op-capable observation facade |
 | `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
 | `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
 | `app/runtime/managed_resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
 | `app/runtime/tasks.py` | Lifespan-scoped ownership, cancellation and bounded shutdown waiting for in-process background tasks |
+| `app/runtime/execution.py` | Shared sync/async execution and cross-thread submission boundary with correlation propagation |
+| `app/runtime/correlation.py` | Request/cross-thread correlation context and safe propagation into logs and child work |
 | `app/runtime/state.py` | Process restart and update state |
 | `app/runtime/extensions/` | Module, plugin, configured-service and managed-resource discovery/registration/lifecycle adapters |
 | `app/runtime/compat/` | Standard-library-only exact legacy import routing, resource preflight scanning and DEBUG diagnostics |
@@ -157,6 +162,8 @@ not a second application-facing service directory.
 | `app/adapters/network/` | Generic HTTP, browser, DNS, Cloudflare and IP transport mechanisms |
 | `app/adapters/system/` | OS/filesystem/process facilities, stdio, display, packages, resources and optional Rust acceleration |
 | `app/adapters/external/` | CookieCloud, plugin market, OCR, IP-location providers and MoviePilot Server |
+| `app/adapters/web/` | FastAPI-specific technical adapters, including raw dynamic plugin routes |
+| `app/adapters/observability/` | Optional telemetry exporters; core code depends only on runtime observation ports |
 | `app/adapters/external/plugin/client.py` | Read-only plugin-market and local-repository client over the established `PluginHelper` implementation |
 | `app/adapters/system/plugin/` | Plugin package and dependency I/O (`package.py`, `dependency.py`) |
 | `app/db/adapters/` | SQLAlchemy implementations of Application-owned persistence Protocols |
@@ -290,8 +297,8 @@ architecture snapshot, not through incidental module globals.
 ### Chain layer
 
 `app/chain/` implements use cases shared by API, CLI, Agent, scheduler and other
-entrypoints. Chains may coordinate modules, application services, Oper classes,
-events and caches. New chain-to-chain dependencies are allowed only while the
+entrypoints. Chains may coordinate modules, application services, injected
+persistence Ports, events and caches. New chain-to-chain dependencies are allowed only while the
 static graph remains acyclic. Backend protocol details and HTTP request objects
 do not belong here. Chains interact with modules exclusively through
 `run_module` dispatch on method-name contracts; direct imports of module
@@ -389,9 +396,10 @@ SQLAlchemy models stay under `app/db/models/`; the data access classes live in
 `oper/subscribe.py`), so a filename carries only the entity and the package name
 carries the role. Two verified aggregation exceptions exist: the site family
 (`Passkey`, `SiteIcon`, `SiteStatistic`, `SiteUserData`) is consolidated in
-`oper/site.py`, and `AgentTaskRun` lives in `oper/agenttask.py`. Chains, modules,
-application services and endpoints use Oper
-classes instead of issuing SQLAlchemy queries directly. Every schema change
+`oper/site.py`, and `AgentTaskRun` lives in `oper/agenttask.py`. DB adapters use
+Oper classes instead of issuing SQLAlchemy queries directly. Application and
+Chain code reaches persistence through named Ports/Protocols; concrete DB adapters
+are the layer that adapts those Ports to Oper classes. Every schema change
 requires an Alembic migration under `database/versions/`.
 
 Oper classes take and return persistence values, not domain objects. Translating
@@ -408,6 +416,21 @@ path cannot forget them. Identity representation rules themselves
 (alias folding, trimming, rejecting zero) live in `app/schemas/media.py`
 alongside the two identity mixins; `app/domain/media.py` keeps only source
 policy. `app/db` therefore has no dependency on `app/domain`.
+
+Durable post-commit side effects have a separate boundary:
+
+- `app/application/outbox.py` owns the Outbox intent, repository and dispatcher
+  contracts. An Application command stages the business mutation and its durable
+  intent in the same transaction.
+- `app/db/adapters/outbox.py` implements the persistence port with SQLAlchemy;
+  `app/startup/composition/subscription.py` and the other composition modules
+  provide the concrete repository, UoW and handlers.
+- The dispatcher claims an intent with a lease, executes the topic handler, and
+  records retry/dead-letter state. Handlers must be idempotent and must not rely
+  on a live request object.
+- `app/runtime/tasks.py` is only the in-process TaskRegistry boundary. It owns
+  cancellation and bounded shutdown waiting, but it is not a durable queue and
+  must not replace an Outbox or persistent task table.
 
 ## Composition and Compatibility Boundaries
 
@@ -469,6 +492,8 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
+| `app/application/outbox.py` | Durable intent, topic handler and Outbox repository contracts |
+| `app/db/adapters/outbox.py` | SQLAlchemy Outbox persistence, claim/lease and retry state adapter |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
 | `app/application/workflow.py` | Workflow use cases plus the runtime port consumed by API and Chain; `WorkFlowManager` is registered by `app/startup/initializers/workflow.py` |
@@ -477,6 +502,9 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/startup/initializers/` | Domain-scoped initialization and shutdown hooks |
 | `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
+| `app/runtime/tasks.py` | TaskRegistry owner, cancellation and bounded shutdown waiting |
+| `app/runtime/execution.py` | Shared execution/thread-boundary helpers and context propagation |
+| `app/runtime/correlation.py` | Correlation ID context and propagation boundary |
 | `app/runtime/topology.py` | Single-worker full-runtime policy and safe-mode topology validation |
 | `app/runtime/events.py` | `EventManager`/`Event` compatibility facade and global `eventmanager` identity |
 | `app/runtime/event/registry.py` | Event subscriptions, enable/disable state and dispatch snapshots |
@@ -533,4 +561,4 @@ imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
 modules only through `run_module` dispatch), and downloader SDK
 (`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
 
-*Last Updated: 2026-08-18*
+*Last Updated: 2026-08-24*
