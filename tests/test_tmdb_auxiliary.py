@@ -1,8 +1,10 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from app.chain.media import MediaChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
+from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -13,19 +15,35 @@ class _FakeTmdbModule:
         """保存测试需要返回的 TMDB 媒体信息。"""
         self.result = result
 
-    def recognize_media(self, **_kwargs):
-        """同步返回固定 TMDB 媒体信息。"""
+    def get_name(self) -> str:
+        """返回模块展示名。"""
+        return "FakeTmdbModule"
+
+    def get_priority(self) -> int:
+        """返回模块调度优先级。"""
+        return 0
+
+    def recognize_media(self, **kwargs):
+        """与宿主识别模块一致：只应答 TMDB 来源的请求。"""
+        if kwargs.get("media_source") != MediaSource.TMDB:
+            return None
         return self.result
 
 
 def _make_chain(tmdb_media: MediaInfo) -> MediaChain:
-    """构造不加载真实模块的媒体处理链。"""
-    chain = object.__new__(MediaChain)
+    """构造经真实 dispatch 算法路由、但不加载真实模块的媒体处理链。"""
     module = _FakeTmdbModule(tmdb_media)
-    chain.modulemanager = SimpleNamespace(
-        get_running_module=lambda module_id: (
-            module if module_id == "TheMovieDbModule" else None
-        )
+    module_manager = Mock()
+    module_manager.get_running_modules.return_value = [module]
+    plugin_manager = Mock()
+    plugin_manager.get_plugin_modules.return_value = {}
+    chain = object.__new__(MediaChain)
+    chain._module_dispatcher = ModuleInvocationDispatcher(
+        module_catalog=module_manager,
+        plugin_catalog=plugin_manager,
+        plugin_error_handler=lambda *args, **kwargs: None,
+        system_error_handler=lambda *args, **kwargs: None,
+        rate_limit_handler=lambda *args, **kwargs: None,
     )
     return chain
 

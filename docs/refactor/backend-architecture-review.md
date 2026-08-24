@@ -62,6 +62,14 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
   * `scraping.py:584-598` 自行聚合 `metadata_img` 多模块结果
     （dispatcher 已有 aggregation contract 可表达）。
 
+> 处理进展（2026-08-24）：`media.py` 的 TMDB 补充已改为按 source 路由的
+> `run_module("recognize_media")` 统一调度（宿主识别模块对非自身来源快速返回 None，
+> 与 `_recognition.py` 既有模式一致）。`scraping.py` 的 `metadata_img` 合并经复核
+> **不能直接替换**：手写循环是"按键合并、宿主模块限定"，而 dispatcher 现有聚合只有
+> 整体短路或后值覆盖，且 dispatch 全局插件优先会让第三方插件图片覆盖内置源图片。
+> 如需收口，须先做显式架构决策：新增"按键填充"聚合模式并提供调用方可控的
+> provider 排序策略，否则维持现状是行为最安全的选择。
+
 ## 四、全局状态："通道已建、存量过半"
 
 | 全局点 | 现状 | 建议 |

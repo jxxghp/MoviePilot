@@ -623,12 +623,11 @@ class MediaChain(ChainBase, metaclass=Singleton):
         if mediainfo.tmdb_id and mediainfo.tmdb_info and mediainfo.genre_ids:
             return mediainfo
         tmdb_meta = self._build_tmdb_supplement_meta(mediainfo, metainfo)
-        tmdb_module = self.modulemanager.get_running_module("TheMovieDbModule")
-        if not tmdb_module:
-            logger.warn("TMDB 模块未启用，无法补充 TMDB 辅助信息")
-            return mediainfo
+        # 按 source 路由走统一 dispatch：宿主识别模块对非自身来源都会快速返回 None，
+        # 指定 TMDB 来源时只有 TheMovieDbModule 会应答，链层无需点名具体模块
         try:
-            tmdb_media = tmdb_module.recognize_media(
+            tmdb_media = self.run_module(
+                "recognize_media",
                 meta=tmdb_meta,
                 mtype=mediainfo.type,
                 media_source=MediaSource.TMDB,
