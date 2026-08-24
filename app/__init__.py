@@ -15,9 +15,8 @@ def _filter_third_party_startup_warnings() -> None:
     )
     warnings.filterwarnings(
         "ignore",
-        message=r".*invalid escape sequence.*",
+        message=r'"\\&" is an invalid escape sequence\..*',
         category=SyntaxWarning,
-        module=r"oss2\.api",
     )
 
 

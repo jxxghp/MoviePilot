@@ -11,7 +11,7 @@ def test_app_installs_known_oss2_invalid_escape_warning_filter():
         warnings.simplefilter("always")
         app._filter_third_party_startup_warnings()
         warnings.warn_explicit(
-            '"\\\\&" is an invalid escape sequence',
+            f'"{chr(92)}&" is an invalid escape sequence.',
             SyntaxWarning,
             filename="oss2/api.py",
             lineno=703,
@@ -21,13 +21,13 @@ def test_app_installs_known_oss2_invalid_escape_warning_filter():
     assert caught == []
 
 
-def test_app_does_not_hide_unrelated_invalid_escape_warnings():
-    """同类语法告警只允许对已确认的第三方模块静默。"""
+def test_app_does_not_hide_other_invalid_escape_warnings():
+    """其他无效转义仍应暴露，避免过滤器遮蔽新问题。"""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         app._filter_third_party_startup_warnings()
         warnings.warn_explicit(
-            '"\\\\&" is an invalid escape sequence',
+            f'"{chr(92)}q" is an invalid escape sequence.',
             SyntaxWarning,
             filename="app/example.py",
             lineno=1,
