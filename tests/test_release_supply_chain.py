@@ -223,6 +223,10 @@ def test_release_promotes_latest_only_after_both_versioned_images() -> None:
     )
     promote = indexed["Promote latest image pair"]["run"]
     assert "moviepilot-v3:latest" not in promote
+    assert 'ghcr_repository="${GITHUB_REPOSITORY,,}"' in promote
+    assert "ghcr.io/${GITHUB_REPOSITORY}" not in promote
+    assert "ghcr.io/${ghcr_repository}-v3" in promote
+    assert "ghcr.io/${ghcr_repository}-v3t" in promote
     assert '"${image}:latest"' in promote
     assert '"${image}:${app_version}"' in promote
 
@@ -263,11 +267,8 @@ def test_beta_applies_the_same_variant_scan_and_publish_contract() -> None:
     assert "MOVIEPILOT_PYTHON_VARIANT=free-threaded" in indexed[publish_names[1]]["with"]["build-args"]
     assert "scope=moviepilot-v3-standard-docker-amd64" in indexed[publish_names[0]]["with"]["cache-from"]
     assert "scope=moviepilot-v3t-docker-amd64" in indexed[publish_names[1]]["with"]["cache-from"]
-    assert "value=beta-${{ github.run_id }}-${{ github.run_attempt }}" in indexed["Docker Meta"]["with"]["tags"]
-    assert "value=beta-${{ github.run_id }}-${{ github.run_attempt }}" in indexed[
-        "Docker Meta free-threaded"
-    ]["with"]["tags"]
-    assert all(names.index(name) < names.index("Promote beta image pair") for name in publish_names)
-    promote = indexed["Promote beta image pair"]["run"]
-    assert '"${image}:beta"' in promote
-    assert '"${image}:${candidate}"' in promote
+    assert "value=beta" in indexed["Docker Meta"]["with"]["tags"]
+    assert "value=beta" in indexed["Docker Meta free-threaded"]["with"]["tags"]
+    assert "github.run_id" not in indexed["Docker Meta"]["with"]["tags"]
+    assert "github.run_id" not in indexed["Docker Meta free-threaded"]["with"]["tags"]
+    assert "Promote beta image pair" not in names
