@@ -181,7 +181,7 @@ def ensure_optional_stub(name: str, **attrs) -> None:
 
 
 def prepare_backend() -> None:
-    """隔离 CONFIG_DIR、补 sites 垫片、建表并加载配置快照。
+    """隔离 CONFIG_DIR、补 sites 垫片、建表并装配测试数据库能力。
 
     主程序中后端即当前包；插件仓由其 ``tests/_bootstrap.py`` shim 在 import 本模块前
     先把后端目录注入 ``sys.path``。顺序固定：先隔离 CONFIG_DIR，再补 ``app.application.site.sites`` 垫片，
@@ -192,9 +192,27 @@ def prepare_backend() -> None:
     ensure_sites_stub()
     from app.startup.initializers.database import init_db
     init_db()
+    from app.db.adapters.transaction import TransactionalWriteRunner
+    from app.db.session import SessionFactory, async_session_scope
+    from app.db.uow import configure_transaction_runners
+
+    transaction_runner = TransactionalWriteRunner(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+    configure_transaction_runners(
+        sync=transaction_runner.sync,
+        async_=transaction_runner.async_,
+    )
+    from app.application.service import configure_service_directory
+
+    # 共享引导不启动真实服务模块；需要具体服务实例的测试应在自身边界显式覆盖该目录。
+    configure_service_directory(
+        configs=lambda _config_key, _conf_type: [],
+        modules=lambda _module_type: [],
+    )
     from app.db.oper.systemconfig import SystemConfigOper
     from app.db.oper.userconfig import UserConfigOper
-    from app.db.session import SessionFactory
 
     with SessionFactory() as session:
         SystemConfigOper().load_snapshot(session)
