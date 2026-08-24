@@ -89,6 +89,14 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
 3. 停止标志设置；
 4. 日志关闭靠注释约定顺序。
 
+> 处理进展（2026-08-24）：第 2、3 项已组件化——"停止信号"（stop_order=4，先于一切
+> 资源释放发出停机通知，启动失败清理同样生效）与"插件同步与启动收尾"（start_order=150，
+> 依赖工作流，取消权仍归最前置 TaskRegistry owner）均已进入声明式清单并通过顺序快照测试。
+> 第 1、4 项经复核**不能直接进清单**：当前引擎的 FAIL_FAST break 会跳过更高 stop_order
+> 的组件，而主循环清除与日志关闭在现有嵌套 finally 中是无条件执行的"最外层保底"，
+> 直接搬移会让无关 owner 未收敛时跳过这两步（回归）。如需收口，须先做显式引擎决策：
+> 引入"最终保底 finalizer"概念或调整 FAIL_FAST 传播语义。
+
 另有两个组合根脆弱点：
 
 * `initializers/command.py`、`initializers/scheduler.py`、`initializers/agent.py`

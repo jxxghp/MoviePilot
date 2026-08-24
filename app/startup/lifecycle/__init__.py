@@ -309,6 +309,13 @@ def prepare_plugin_restore() -> None:
     SystemChain().restore_plugins()
 
 
+def schedule_plugin_settlement(app: FastAPI) -> None:
+    """调度插件同步与启动收尾任务，并把取消权交给最前置的 TaskRegistry owner。"""
+    task = asyncio.create_task(run_startup_step("插件同步与启动收尾", init_extra))
+    task_registry = app.state.task_registry
+    task_registry.register(task, owner="startup.plugin_settlement")
+
+
 def prepare_database_component(app: FastAPI) -> None:
     """完成数据库建表、迁移与 head 校验后发布数据库就绪状态。"""
     # Alembic 及全部 ORM 元数据只在 lifespan 真正启动时加载，create_app/import 阶段
@@ -531,6 +538,22 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             stop_order=10,
             stop_timeout_seconds=300,
         ),
+        # 停止信号必须先于一切资源释放发出，让工作流、整理等长任务尽早感知停机。
+        LifecycleComponent(
+            name="停止信号",
+            stop=global_vars.stop_system,
+            stop_order=4,
+            stop_timeout_seconds=10,
+        ),
+        # 插件同步与启动收尾是最后一个启动阶段；任务本身由 TaskRegistry 在关停预算内取消等待。
+        LifecycleComponent(
+            name="插件同步与启动收尾",
+            dependencies=("工作流",),
+            start=lambda: schedule_plugin_settlement(app),
+            start_order=150,
+            start_timeout_seconds=30,
+            start_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
     )
 
 
@@ -585,12 +608,6 @@ async def lifespan(app: FastAPI):
             active_start_component = None
         if settings.MOVIEPILOT_SAFE_MODE:
             print("MoviePilot safe mode enabled: skip plugins, scheduler, monitor, commands and workflow.")
-        # 插件同步到本地
-        sync_plugins_task = asyncio.create_task(
-            run_startup_step("插件同步与启动收尾", init_extra)
-        )
-        task_registry = app.state.task_registry
-        task_registry.register(sync_plugins_task, owner="startup.plugin_settlement")
         health.mark_ready()
     except BaseException:
         # Uvicorn 在 lifespan 抛错时不会开始接流量；状态仍需供嵌入式入口和测试诊断。
@@ -614,10 +631,10 @@ async def lifespan(app: FastAPI):
     finally:
         health.mark_stopping()
         print("Shutting down...")
-        global_vars.stop_system()
         try:
             # 插件 settlement 已登记到最前置 TaskRegistry。由该 FAIL_FAST owner
             # 在统一预算内取消/等待，不能在屏障之前无界 await 绕过停机预算。
+            # 停止信号与各资源 owner 的释放顺序由组件清单声明。
             await stop_lifecycle_components(enabled_components)
         finally:
             try:

@@ -553,8 +553,10 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "待处理整理回放",
         "命令服务",
         "工作流",
+        "插件同步与启动收尾",
     ]
     assert normal_stop == [
+        "停止信号",
         "后台任务登记器",
         "插件变更监控",
         "插件备份",
@@ -583,6 +585,8 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "AI智能体会话",
         "整理后台服务",
         "事件投递屏障",
+        "停止信号",
+        "插件同步与启动收尾",
     }
     assert all(item["start_failure"] == "fail_fast" for item in normal)
     assert {
@@ -840,7 +844,9 @@ def test_lifespan_cleans_started_owners_after_late_startup_failure(monkeypatch):
         asyncio.run(run_lifespan())
 
     assert raised.value is startup_error
-    lifecycle.global_vars.stop_system.assert_not_called()
+    # 停止信号是无依赖的 stop-only owner：启动失败清理同样要先发出停机通知，
+    # 让仍在运行的后台任务尽早感知进程即将退出。
+    lifecycle.global_vars.stop_system.assert_called_once_with()
     for name in (
         "stop_plugin_monitor",
         "backup_plugins",
