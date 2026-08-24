@@ -129,10 +129,18 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             errmsg="未识别到媒体信息",
         )
 
-        def _close_pending_coro(coro, *args, **kwargs):
-            """关闭被调度的协程：测试中事件循环未运行，不关闭会残留 never-awaited 警告。"""
-            coro.close()
+        async_messages = []
 
+        def _run_pending_coro(coro, *args, **kwargs):
+            asyncio.run(coro)
+
+        async def _capture_message(message):
+            async_messages.append(message)
+
+        async def _finish_immediately(**kwargs):
+            kwargs["output_callback"]("ok")
+
+        manager = SimpleNamespace(run_background_prompt=_finish_immediately)
         loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
         with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
             settings, "AI_AGENT_ENABLE", True
@@ -142,12 +150,14 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             ) as history_oper_cls, patch(
                 "app.chain._transfer.build_manual_redo_prompt",
                 return_value="retry transfer prompt",
+            ), patch(
+                "app.chain._transfer.get_running_agent_manager", return_value=manager
             ), patch("app.chain._transfer.get_task_registry") as get_registry:
                 get_registry.return_value.submit_threadsafe.side_effect = (
-                    _close_pending_coro
+                    _run_pending_coro
                 )
                 history_oper_cls.return_value.get.return_value = history
-                with patch.object(chain, "post_message") as post_message:
+                with patch.object(chain, "async_post_message", side_effect=_capture_message):
                     chain.handle_failed_transfer_callback(
                         callback_data="transfer_ai_retry_34",
                         channel=NotificationChannel.Telegram,
@@ -161,11 +171,12 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             get_registry.return_value.submit_threadsafe.call_args.kwargs["owner"],
             "chain.transfer.ai_takeover",
         )
-        self.assertEqual(post_message.call_count, 1)
+        self.assertEqual(len(async_messages), 2)
         self.assertEqual(
-            post_message.call_args_list[0].args[0].title,
+            async_messages[0].title,
             "已将整理记录 #34 交给智能助手处理",
         )
+        self.assertEqual(async_messages[1].title, "智能助手整理完成")
 
     def test_transfer_ai_retry_callback_reports_closed_task_registry(self):
         """宿主停止接收任务时，不得向用户报告智能助手已接管。"""

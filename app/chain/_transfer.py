@@ -1412,6 +1412,18 @@ class FailedRetryMixin:
                 final_output = text_output or ""
 
             try:
+                await self.async_post_message(
+                    Message(
+                        channel=channel,
+                        source=source,
+                        userid=userid,
+                        username=username,
+                        title=f"已将整理记录 #{history_id} 交给智能助手处理",
+                        text="处理完成后会在这里回复结果。",
+                        link=self.runtime_config.history_url,
+                        save_history=False,
+                    )
+                )
                 manager = get_running_agent_manager()
                 if manager is None:
                     raise RuntimeError("智能助手服务未运行")
@@ -1472,19 +1484,6 @@ class FailedRetryMixin:
                 )
             )
             return
-
-        self.post_message(
-            Message(
-                channel=channel,
-                source=source,
-                userid=userid,
-                username=username,
-                title=f"已将整理记录 #{history_id} 交给智能助手处理",
-                text="处理完成后会在这里回复结果。",
-                link=self.runtime_config.history_url,
-                save_history=False,
-            )
-        )
 
     def _re_transfer(
             self,
