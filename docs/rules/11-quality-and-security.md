@@ -136,7 +136,7 @@ Before marking any task as complete:
 
 - [ ] Related pytest tests pass
 - [ ] No new pylint error-level issues in `pylint app/`
-- [ ] If dependencies changed: the package is in the correct `pyproject.toml` group, `uv.lock` is current, locked sync and `uv pip check` pass, and the locked runtime dependency audit passes
+- [ ] If dependencies changed: the package is in the correct `pyproject.toml` group, `uv.lock` is current, the locked project consistency check and runtime dependency audit pass
 - [ ] If CLI behavior changed: `docs/cli.md` and related tests are updated
 - [ ] If MCP/API behavior changed: `docs/mcp-api.md` and related skill files are updated
 - [ ] If database schema changed: a new Alembic migration exists under `database/versions/`

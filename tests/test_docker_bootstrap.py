@@ -125,12 +125,15 @@ runtime-free-threaded = ["free-threaded"]
     assert "--no-default-groups --group runtime-free-threaded" in command
 
 
-def test_build_probes_call_required_rust_apis() -> None:
-    """两套镜像构建必须验证各自正式运行路径依赖的 Rust 0.3 API。"""
+def test_build_profiles_use_full_runtime_capability_probe() -> None:
+    """两套依赖 profile 必须经过统一的完整运行能力验证。"""
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
 
-    assert dockerfile.count('moviepilot_rust.jieba_cut("中文分词")') == 2
-    assert 'moviepilot_rust.zhconv_fast("后台", "zh-hant")' in dockerfile
+    assert dockerfile.count(
+        'RUN "${VENV_PATH}/bin/python" /tmp/moviepilot-runtime-dependencies.py --full'
+    ) == 2
+    assert "moviepilot_rust.jieba_cut" not in dockerfile
+    assert "moviepilot_rust.zhconv_fast" not in dockerfile
 
 
 def _run_launcher(

@@ -11,7 +11,7 @@
 
 ## Python Version and Typing
 
-- Target: **Python 3.12+**. Python 3.12 is the primary CI version; compatibility CI also verifies newer interpreters.
+- Target: **Python 3.14+**. Python 3.14 is the primary CI version; dependency CI also verifies supported platforms and both Linux runtime profiles.
 - **Type annotations are required** on all public methods and function signatures.
 - Use `Optional[X]` for nullable types (do not use `X | None` — keep consistency with the existing codebase style).
 - Use `Union[X, Y]` for multi-type parameters.

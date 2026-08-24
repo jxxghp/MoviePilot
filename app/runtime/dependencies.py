@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import tomllib
-import sysconfig
 from collections.abc import Iterable
 from pathlib import Path
+
+from app.foundation.environment import is_free_threaded_runtime
 
 
 RUNTIME_STANDARD_GROUP = "runtime-standard"
 RUNTIME_FREE_THREADED_GROUP = "runtime-free-threaded"
-
-
-def is_free_threaded_runtime() -> bool:
-    """返回当前解释器是否为 CPython free-threaded 构建。"""
-    return sysconfig.get_config_var("Py_GIL_DISABLED") == 1
 
 
 def runtime_dependency_group() -> str:

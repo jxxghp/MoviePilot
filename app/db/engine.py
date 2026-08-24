@@ -12,8 +12,8 @@ from sqlalchemy.engine import Engine as SyncEngine
 from sqlalchemy.ext.asyncio import AsyncEngine as SaAsyncEngine, create_async_engine
 from sqlalchemy.pool import Pool
 
+from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.config import settings
-from app.runtime.dependencies import is_free_threaded_runtime
 from app.db.diagnostics import _register_database_error_logging
 from app.db.worker import DATABASE_WORKER_MAX_WORKERS
 from app.runtime.log import logger

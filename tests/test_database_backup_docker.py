@@ -11,10 +11,11 @@ def test_runtime_image_installs_postgresql_18_client_from_pgdg() -> None:
     ).read_text(encoding="utf-8")
 
     assert re.search(
-        r"^FROM python:3\.14\.7-slim-trixie AS base$",
+        r'^ARG MOVIEPILOT_PYTHON_VERSION="3\.14\.7"$',
         dockerfile,
         re.MULTILINE,
     )
+    assert "FROM python:${MOVIEPILOT_PYTHON_VERSION}-slim-trixie AS base" in dockerfile
     assert "https://www.postgresql.org/media/keys/ACCC4CF8.asc" in dockerfile
     for curl_option in (
         "--connect-timeout 10",

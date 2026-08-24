@@ -687,12 +687,6 @@ wheels = [
 ]
 
 [[package]]
-name = "crcmod"
-version = "1.7"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6b/b0/e595ce2a2527e169c3bcd6c33d2473c1918e0b7f6826a043ca1245dd4e5b/crcmod-1.7.tar.gz", hash = "sha256:dc7051a0db5f2bd48665a990d3ec1cc305a466a77358ca4492826f41f283601e", size = 89670, upload-time = "2010-06-27T14:35:29.538Z" }
-
-[[package]]
 name = "crcmod-plus"
 version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1668,6 +1662,7 @@ dependencies = [
     { name = "click" },
     { name = "cloakbrowser" },
     { name = "cn2an" },
+    { name = "crcmod-plus" },
     { name = "cryptography" },
     { name = "dateparser" },
     { name = "ddgs" },
@@ -1758,14 +1753,12 @@ dev = [
 runtime-free-threaded = [
     { name = "bcrypt", version = "5.0.0", source = { registry = "https://pypi.org/simple" } },
     { name = "brotli", version = "1.2.0", source = { url = "https://github.com/google/brotli/archive/51be27dbd9782f9fe27bc6e06cee6ff18311702d.tar.gz" } },
-    { name = "crcmod-plus" },
     { name = "lxml", version = "7.0.0b1", source = { registry = "https://pypi.org/simple" } },
     { name = "psycopg", extra = ["c"], marker = "extra == 'group-10-moviepilot-runtime-free-threaded'" },
 ]
 runtime-standard = [
     { name = "bcrypt", version = "4.3.0", source = { registry = "https://pypi.org/simple" } },
     { name = "brotli", version = "1.2.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "crcmod" },
     { name = "lxml", version = "6.1.2", source = { registry = "https://pypi.org/simple" } },
     { name = "psycopg2-binary" },
     { name = "zhconv-rs" },
@@ -1789,6 +1782,7 @@ requires-dist = [
     { name = "click", specifier = "~=8.4.1" },
     { name = "cloakbrowser", specifier = "~=0.5.3" },
     { name = "cn2an", specifier = "~=0.5.24" },
+    { name = "crcmod-plus", specifier = "==2.3.1" },
     { name = "cryptography", specifier = "~=50.0.0" },
     { name = "dateparser", specifier = "~=1.4.0" },
     { name = "ddgs", specifier = "~=9.14.4" },
@@ -1879,14 +1873,12 @@ dev = [
 runtime-free-threaded = [
     { name = "bcrypt", specifier = "~=5.0.0" },
     { name = "brotli", url = "https://github.com/google/brotli/archive/51be27dbd9782f9fe27bc6e06cee6ff18311702d.tar.gz" },
-    { name = "crcmod-plus", specifier = "==2.3.1" },
     { name = "lxml", specifier = "==7.0.0b1" },
     { name = "psycopg", extras = ["c"], specifier = "==3.3.4" },
 ]
 runtime-standard = [
     { name = "bcrypt", specifier = "~=4.3.0" },
     { name = "brotli", specifier = "==1.2.0" },
-    { name = "crcmod", specifier = "==1.7" },
     { name = "lxml", specifier = "~=6.1.2" },
     { name = "psycopg2-binary", specifier = "~=2.9.12" },
     { name = "zhconv-rs", specifier = "~=0.4.1" },

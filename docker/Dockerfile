@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ARG MOVIEPILOT_PYTHON_VARIANT="standard"
+ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"
 
 FROM ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv
 
@@ -11,7 +12,7 @@ FROM rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac
 FROM mwader/static-ffmpeg:8.1.1@sha256:735f84b905e00d5c618b667f0b053f83b1096f5fc404c607e6134bf2275a0e0a AS ffmpeg
 
 
-FROM python:3.14.7-slim-trixie AS base
+FROM python:${MOVIEPILOT_PYTHON_VERSION}-slim-trixie AS base
 
 
 FROM rust:slim-trixie AS rust_toolchain
@@ -121,7 +122,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY --from=uv /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
-COPY app/runtime/dependencies.py /tmp/runtime_dependencies.py
 
 
 # 准备标准 Python 运行环境
@@ -132,14 +132,14 @@ RUN mkdir -p /opt/python \
     && UV_PROJECT_ENVIRONMENT=${VENV_PATH} uv sync \
         --locked \
         --no-default-groups \
-        --group "$(python3 /tmp/runtime_dependencies.py)" \
-        --no-install-project \
-    && "${VENV_PATH}/bin/python" -c \
-        'import moviepilot_rust; assert moviepilot_rust.is_available(); assert moviepilot_rust.jieba_cut("中文分词")'
+        --group runtime-standard \
+        --no-install-project
 
 
 # free-threaded 原生依赖需要 Rust 和 C 构建工具链。
 FROM prepare_venv_common AS prepare_venv_free-threaded
+
+ARG MOVIEPILOT_PYTHON_VERSION
 
 ENV CARGO_HOME="/usr/local/cargo" \
     RUSTUP_HOME="/usr/local/rustup" \
@@ -153,21 +153,31 @@ COPY --from=rust_toolchain /usr/local/rustup /usr/local/rustup
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && uv python install --no-bin 3.14t \
-    && python_bin="$(uv python find --managed-python 3.14t)" \
+    && uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t" \
+    && python_bin="$(uv python find --managed-python "${MOVIEPILOT_PYTHON_VERSION}t")" \
     && "${python_bin}" -m venv --without-pip ${VENV_PATH} \
     && UV_PROJECT_ENVIRONMENT=${VENV_PATH} uv sync \
         --locked \
         --no-default-groups \
-        --group "$("${python_bin}" /tmp/runtime_dependencies.py)" \
+        --group runtime-free-threaded \
         --no-install-project \
-        --python "${python_bin}" \
-    && "${VENV_PATH}/bin/python" -c \
-        'import importlib.metadata, sys, sysconfig; import brotli, crcmod, lxml.etree, moviepilot_rust, orjson, oss2, psycopg; assert sysconfig.get_config_var("Py_GIL_DISABLED") == 1; assert not sys._is_gil_enabled(); assert importlib.metadata.version("crcmod-plus") == "2.3.1"; assert crcmod.crcmod._usingExtension; assert importlib.metadata.version("lxml") == "7.0.0b1"; assert importlib.metadata.version("orjson") == "3.12.0"; assert psycopg.pq.__impl__ == "c"; assert moviepilot_rust.is_available(); assert moviepilot_rust.jieba_cut("中文分词"); assert moviepilot_rust.zhconv_fast("后台", "zh-hant"); assert not sys._is_gil_enabled()'
+        --python "${python_bin}"
+
+
+FROM prepare_venv_standard AS verify_venv_standard
+
+COPY app/doctor/dependencies.py /tmp/moviepilot-runtime-dependencies.py
+RUN "${VENV_PATH}/bin/python" /tmp/moviepilot-runtime-dependencies.py --full
+
+
+FROM prepare_venv_free-threaded AS verify_venv_free-threaded
+
+COPY app/doctor/dependencies.py /tmp/moviepilot-runtime-dependencies.py
+RUN "${VENV_PATH}/bin/python" /tmp/moviepilot-runtime-dependencies.py --full
 
 
 ARG MOVIEPILOT_PYTHON_VARIANT
-FROM prepare_venv_${MOVIEPILOT_PYTHON_VARIANT} AS prepare_venv
+FROM verify_venv_${MOVIEPILOT_PYTHON_VARIANT} AS prepare_venv
 
 # 准备后端源码
 FROM base AS prepare_backend

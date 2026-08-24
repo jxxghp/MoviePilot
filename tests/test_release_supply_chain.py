@@ -35,8 +35,15 @@ def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> 
     """基础镜像允许获得上游更新，构建阶段不得无边界升级整套 Debian。"""
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
 
-    assert "FROM python:3.14.7-slim-trixie AS base" in dockerfile
-    assert "python:3.14.7-slim-trixie@sha256:" not in dockerfile
+    assert 'ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"' in dockerfile
+    assert "FROM python:${MOVIEPILOT_PYTHON_VERSION}-slim-trixie AS base" in dockerfile
+    assert "python:${MOVIEPILOT_PYTHON_VERSION}-slim-trixie@sha256:" not in dockerfile
+    free_threaded_stage = dockerfile.split(
+        "FROM prepare_venv_common AS prepare_venv_free-threaded",
+        maxsplit=1,
+    )[1]
+    assert "ARG MOVIEPILOT_PYTHON_VERSION" in free_threaded_stage
+    assert 'uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t"' in free_threaded_stage
     assert "apt-get upgrade" not in dockerfile
     assert "\n    util-linux \\\n" in dockerfile
 

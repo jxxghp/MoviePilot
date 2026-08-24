@@ -315,11 +315,15 @@ def test_browser_install_is_centralized_in_startup() -> None:
     browser = (ROOT / "docker" / "browser.sh").read_text(encoding="utf-8")
     updater = (ROOT / "docker" / "update.sh").read_text(encoding="utf-8")
     startup = entrypoint.split("# 使用env配置", 1)[1]
+    updater_source = 'source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"'
 
     assert "-m cloakbrowser install" not in entrypoint
     assert browser.count("-m cloakbrowser install") == 2
     assert "-m cloakbrowser install" not in updater
-    assert startup.index('source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"') < startup.index(
+    assert startup.count(updater_source) == 1
+    assert startup.index(updater_source) < startup.index(
+        'if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ]'
+    ) < startup.index(
         'source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/browser.sh"'
     ) < startup.index("resolve_browser_cache_dir") < startup.index("ensure_browser_kernel")
 

@@ -1,6 +1,10 @@
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+
+from app.doctor import dependencies as dependency_doctor
 from app.foundation import environment
 from app.runtime import dependencies
 
@@ -57,15 +61,46 @@ runtime-free-threaded = ["free-threaded==3"]
     ]
 
 
-def test_runtime_profiles_select_gil_safe_crcmod_distribution():
+def test_runtime_profiles_share_gil_safe_crcmod_distribution():
     project_file = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with project_file.open("rb") as file:
         document = tomllib.load(file)
 
+    assert "crcmod-plus==2.3.1" in document["project"]["dependencies"]
     groups = document["dependency-groups"]
-    assert "crcmod==1.7" in groups["runtime-standard"]
-    assert "crcmod-plus==2.3.1" in groups["runtime-free-threaded"]
+    assert all(
+        not requirement.lower().startswith("crcmod")
+        for group in ("runtime-standard", "runtime-free-threaded")
+        for requirement in groups[group]
+    )
     assert {
         "package": {"name": "oss2"},
         "dependencies": ["crcmod"],
     } in document["tool"]["uv"]["exclude-dependencies"]
+
+
+def test_full_dependency_probe_rejects_psycopg_python_fallback(monkeypatch):
+    """V3t 构建不得把 psycopg 纯 Python 实现误认为可发布能力。"""
+    modules = {
+        "moviepilot_rust": SimpleNamespace(
+            is_available=lambda: True,
+            jieba_cut=lambda _value: ["中文", "分词"],
+            zhconv_fast=lambda value, _target: value,
+        ),
+        "crcmod.crcmod": SimpleNamespace(_usingExtension=True),
+        "psycopg": SimpleNamespace(pq=SimpleNamespace(__impl__="python")),
+    }
+    monkeypatch.setattr(
+        dependency_doctor,
+        "import_module",
+        lambda name: modules.get(name, SimpleNamespace()),
+    )
+    monkeypatch.setattr(
+        dependency_doctor.sysconfig,
+        "get_config_var",
+        lambda name: 1 if name == "Py_GIL_DISABLED" else None,
+    )
+    monkeypatch.setattr(dependency_doctor.sys, "_is_gil_enabled", lambda: False)
+
+    with pytest.raises(RuntimeError, match="psycopg C 实现不可用"):
+        dependency_doctor.main(full=True)

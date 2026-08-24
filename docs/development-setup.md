@@ -99,8 +99,12 @@ chmod +x scripts/start-local.sh
 uv lock
 uv lock --check
 uv sync --locked
-uv pip check
+uv sync --locked --offline --inexact --no-dev --check
 ```
+
+`uv pip check` 可用于查看第三方包元数据诊断，但不作为项目依赖合同：`oss2` 已停止维护，其元数据仍
+声明旧 `crcmod`，而主程序统一使用保持相同导入接口的 `crcmod-plus`。项目一致性以锁文件和上述
+`uv sync --check` 结果为准。
 
 `uv.lock` 同时覆盖 Linux x86_64/arm64、macOS x86_64/arm64 和 Windows x64。统一锁文件只
 固定解析结果，不能替代这些平台的真实安装门禁；平台条件依赖变更必须通过对应 CI 环境验证。

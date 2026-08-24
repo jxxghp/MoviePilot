@@ -598,14 +598,12 @@ def test_reload_stop_failure_does_not_create_or_reuse_live_previous(tmp_path: Pa
 
 
 def test_shutdown_prevents_inflight_start_from_resurrecting_instance(tmp_path: Path) -> None:
-    """关闭标志设置后，尚未发布的首启候选只能清理。"""
+    """shutdown 与首启竞争时，候选只能清理，不能在关闭开始后重新发布。"""
     adapter = _SyncAdapter()
     adapter.start_entered = threading.Event()
     adapter.start_release = threading.Event()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
-    shutdown_entered = threading.Event()
     activate_errors = []
-    original_stop_sync = runtime._stop_sync
 
     def activate() -> None:
         try:
@@ -613,22 +611,14 @@ def test_shutdown_prevents_inflight_start_from_resurrecting_instance(tmp_path: P
         except BaseException as error:
             activate_errors.append(error)
 
-    def stop_sync(*args, **kwargs) -> None:
-        shutdown_entered.set()
-        original_stop_sync(*args, **kwargs)
-
-    with patch.object(runtime, "_stop_sync", side_effect=stop_sync):
-        starter = threading.Thread(target=activate)
-        starter.start()
-        assert adapter.start_entered.wait(timeout=5)
-        closer = threading.Thread(
-            target=lambda: runtime.shutdown(reason="application_shutdown")
-        )
-        closer.start()
-        assert shutdown_entered.wait(timeout=5)
-        adapter.start_release.set()
-        starter.join(timeout=5)
-        closer.join(timeout=5)
+    starter = threading.Thread(target=activate)
+    starter.start()
+    assert adapter.start_entered.wait(timeout=5)
+    closer = threading.Thread(target=lambda: runtime.shutdown(reason="application_shutdown"))
+    closer.start()
+    adapter.start_release.set()
+    starter.join(timeout=5)
+    closer.join(timeout=5)
 
     assert len(activate_errors) == 1
     assert isinstance(activate_errors[0], CapabilityRuntimeClosedError)

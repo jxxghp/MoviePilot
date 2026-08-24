@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import importlib
 import io
 import json
-import os
 import re
 import shutil
 import site
@@ -35,7 +34,6 @@ from app.runtime.cache import cached, is_fresh
 from app.runtime.dependencies import (
     iter_runtime_profile_requirement_strings,
     iter_runtime_requirement_strings,
-    runtime_sync_arguments,
 )
 from app.runtime.settings import RuntimeSettingsCompat
 from app.adapters.system.package import (
@@ -211,10 +209,7 @@ class PluginHelper(metaclass=WeakSingleton):
         "starlette",
         "uvicorn",
     })
-    _runtime_import_probe = (
-        "import alembic, fastapi, pydantic, pydantic_core, pydantic_settings, "
-        "sqlalchemy, starlette, uvicorn; from pydantic import BaseModel, Field"
-    )
+    _runtime_import_probe = "app.doctor.dependencies"
 
     @staticmethod
     def is_local_repo_url(repo_url: Optional[str]) -> bool:
@@ -1323,32 +1318,11 @@ class PluginHelper(metaclass=WeakSingleton):
 
     @staticmethod
     def __build_runtime_uv_check_command() -> List[str]:
-        """构造当前解释器 profile 的离线项目一致性检查。"""
+        """构造绑定当前解释器环境的 uv 依赖诊断命令。"""
         uv_bin = find_uv(Path(sys.executable))
         if not uv_bin:
             return []
-        return [
-            str(uv_bin),
-            "sync",
-            "--project",
-            str(settings.ROOT_PATH),
-            "--locked",
-            "--offline",
-            "--inexact",
-            "--no-dev",
-            "--no-install-project",
-            "--check",
-            "--python",
-            sys.executable,
-            *runtime_sync_arguments(),
-        ]
-
-    @staticmethod
-    def __runtime_uv_environment() -> Dict[str, str]:
-        """让 uv 项目检查绑定当前共享虚拟环境。"""
-        environment = os.environ.copy()
-        environment["UV_PROJECT_ENVIRONMENT"] = sys.prefix
-        return environment
+        return [str(uv_bin), "pip", "check", "--python", sys.executable]
 
     @staticmethod
     def __format_package_name(name: str) -> str:
@@ -1746,19 +1720,28 @@ class PluginHelper(metaclass=WeakSingleton):
         else:
             health_snapshot["uv check"] = (False, "未找到 uv 可执行文件")
             checks = []
-        checks.append(("核心依赖导入检查", [sys.executable, "-c", cls._runtime_import_probe]))
+        checks.append(("核心依赖导入检查", [
+            sys.executable,
+            "-m",
+            cls._runtime_import_probe,
+            "--full",
+        ]))
         for check_name, command in checks:
-            environment = (
-                cls.__runtime_uv_environment()
-                if check_name == "uv check"
-                else None
-            )
-            success, message = SystemUtils.execute_with_subprocess(
-                command,
-                env=environment,
-            )
+            success, message = SystemUtils.execute_with_subprocess(command)
             health_snapshot[check_name] = (success, message)
         return health_snapshot
+
+    @staticmethod
+    def __runtime_health_error_lines(check_name: str, message: str) -> set[str]:
+        """提取稳定诊断项，忽略执行器附加的命令摘要。"""
+        lines = {line.strip() for line in message.splitlines() if line.strip()}
+        if check_name != "uv check":
+            return lines
+        package_errors = set(re.findall(
+            r"The package `[^`]+` requires `[^`]+`, but [^\r\n;]+",
+            message,
+        ))
+        return package_errors or lines
 
     @staticmethod
     def __runtime_health_regression_message(
@@ -1766,13 +1749,25 @@ class PluginHelper(metaclass=WeakSingleton):
             current_health: Dict[str, Tuple[bool, str]]
     ) -> str:
         """
-        汇总相对基线从正常变为异常的检查项，不解析第三方工具的错误文本。
+        汇总相对基线新增的异常；已有诊断失败不能遮蔽后续新增错误。
         """
         regressions = []
         for check_name, (success, message) in current_health.items():
-            baseline_success = baseline_health.get(check_name, (True, ""))[0]
+            baseline_success, baseline_message = baseline_health.get(check_name, (True, ""))
             if baseline_success and not success:
                 regressions.append(f"{check_name}失败：{message}")
+            elif not baseline_success and not success:
+                baseline_lines = PluginHelper.__runtime_health_error_lines(
+                    check_name,
+                    baseline_message,
+                )
+                current_lines = PluginHelper.__runtime_health_error_lines(
+                    check_name,
+                    message,
+                )
+                added_lines = sorted(current_lines - baseline_lines)
+                if added_lines:
+                    regressions.append(f"{check_name}新增错误：{' | '.join(added_lines)}")
         return "；".join(regressions)
 
     @classmethod
@@ -2632,18 +2627,14 @@ class PluginHelper(metaclass=WeakSingleton):
             checks = []
         checks.append(("核心依赖导入检查", [
             sys.executable,
-            "-c",
+            "-m",
             cls._runtime_import_probe,
+            "--full",
         ]))
         for check_name, command in checks:
             health_snapshot[check_name] = (
                 await SystemUtils.execute_with_subprocess_async(
                     command,
-                    env=(
-                        cls.__runtime_uv_environment()
-                        if check_name == "uv check"
-                        else None
-                    ),
                     timeout=30,
                 )
             )

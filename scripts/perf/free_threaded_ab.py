@@ -37,6 +37,33 @@ SAMPLE_ORDER = (
     ("v3", 3),
     ("v3t", 3),
 )
+COMMON_PREFLIGHT_IMPORTS = frozenset({
+    "asyncpg",
+    "bcrypt",
+    "brotli",
+    "crcmod-plus",
+    "cryptography",
+    "greenlet",
+    "lxml",
+    "moviepilot-rust",
+    "orjson",
+    "oss2",
+    "pillow",
+    "pillow-avif-plugin",
+    "pydantic-core",
+    "site-resource",
+    "zstandard",
+})
+PROFILE_PREFLIGHT_IMPORTS = {
+    "v3": frozenset({"psycopg2-binary", "zhconv-rs"}),
+    "v3t": frozenset({"psycopg"}),
+}
+REQUIRED_API_ENDPOINTS = (
+    "health_ready",
+    "dashboard_statistic",
+    "subscribe_list",
+    "system_env",
+)
 LAB_ENVIRONMENT = {
     "TZ": "Asia/Shanghai",
     "PUID": "0",
@@ -329,16 +356,16 @@ probe("asyncpg", "asyncpg")
 probe("brotli", "brotli")
 probe("oss2", "oss2")
 
-native = {}
+crcmod = probe("crcmod-plus", "crcmod.crcmod")
+native = {
+    "crcmod_extension": bool(crcmod and crcmod._usingExtension),
+}
 if sysconfig.get_config_var("Py_GIL_DISABLED") == 1:
-    crcmod = probe("crcmod-plus", "crcmod.crcmod")
     psycopg = probe("psycopg", "psycopg")
     native.update({
-        "crcmod_extension": bool(crcmod and crcmod._usingExtension),
         "psycopg_impl": psycopg.pq.__impl__ if psycopg else None,
     })
 else:
-    probe("crcmod", "crcmod.crcmod")
     probe("psycopg2-binary", "psycopg2")
     probe("zhconv-rs", "zhconv_rs")
 
@@ -782,8 +809,10 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
     packages = payload.get("packages") or {}
     native = payload.get("native") or {}
     imports = payload.get("imports") or {}
+    required_imports = COMMON_PREFLIGHT_IMPORTS | PROFILE_PREFLIGHT_IMPORTS[variant]
+    missing_imports = sorted(required_imports - imports.keys())
     failed_imports = sorted(
-        name for name, result in imports.items() if not result.get("imported")
+        name for name in required_imports if not (imports.get(name) or {}).get("imported")
     )
     if not str(payload.get("python_version") or "").startswith("3.14."):
         errors.append("Python 必须为 3.14.x")
@@ -801,16 +830,16 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
         for line in str(pip_check.get("stderr") or "").splitlines()
         if line.strip().startswith("The package `")
     ]
-    allowed_pip_check_errors = (
-        ["The package `oss2` requires `crcmod>=1.7`, but it's not installed"]
-        if variant == "v3t"
-        else []
-    )
+    allowed_pip_check_errors = [
+        "The package `oss2` requires `crcmod>=1.7`, but it's not installed"
+    ]
     if pip_check_errors and pip_check_errors != allowed_pip_check_errors:
         errors.append("uv pip check 出现未声明的包元数据不兼容")
     if not pip_check_errors and pip_check.get("returncode") != 0:
         errors.append("uv pip check 未通过且未返回可识别的不兼容项")
-    if failed_imports:
+    if missing_imports:
+        errors.append(f"缺少核心组件导入结果：{', '.join(missing_imports)}")
+    elif failed_imports:
         errors.append(f"核心组件导入失败：{', '.join(failed_imports)}")
     for package, version in {
         "brotli": "1.2.0",
@@ -831,12 +860,16 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
                 errors.append(f"标准镜像 {key} 应为 {value!r}")
         if packages.get("lxml") != "6.1.2":
             errors.append("标准镜像必须使用 lxml 6.1.2")
-        if packages.get("bcrypt") != "4.3.0" or packages.get("crcmod") != "1.7":
-            errors.append("标准镜像必须使用 bcrypt 4.3.0 与 crcmod 1.7")
+        if packages.get("bcrypt") != "4.3.0":
+            errors.append("标准镜像必须使用 bcrypt 4.3.0")
+        if packages.get("crcmod-plus") != "2.3.1" or packages.get("crcmod") is not None:
+            errors.append("标准镜像必须使用 crcmod-plus 2.3.1")
         if packages.get("zhconv-rs") is None or packages.get("psycopg2-binary") is None:
             errors.append("标准镜像必须保留 zhconv-rs 与 psycopg2-binary")
-        if packages.get("psycopg") is not None or packages.get("crcmod-plus") is not None:
+        if packages.get("psycopg") is not None:
             errors.append("标准镜像不得混入 psycopg profile")
+        if not native.get("crcmod_extension"):
+            errors.append("标准镜像必须使用 crcmod-plus 原生实现")
     else:
         expected = {
             "gil_disabled": True,
@@ -1051,12 +1084,19 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
             invalid.append(f"{variant}-{sample['sample_index']} SQLite 同步/异步结果不一致")
         if not (startup.get("idle") or {}).get("processes", {}).get("main_python"):
             invalid.append(f"{variant}-{sample['sample_index']} 未采集到主 Python 进程")
-        for endpoint, api_result in (startup.get("api") or {}).items():
+        api_results = startup.get("api") or {}
+        missing_endpoints = sorted(set(REQUIRED_API_ENDPOINTS) - api_results.keys())
+        if missing_endpoints:
+            invalid.append(
+                f"{variant}-{sample['sample_index']} 缺少 API 样本：{', '.join(missing_endpoints)}"
+            )
+        for endpoint in REQUIRED_API_ENDPOINTS:
+            api_result = api_results.get(endpoint) or {}
             if api_result.get("status") != 200:
                 invalid.append(
                     f"{variant}-{sample['sample_index']} API {endpoint} 状态不是 200"
                 )
-        runtime = (startup.get("api") or {}).get("system_env", {}).get("runtime") or {}
+        runtime = api_results.get("system_env", {}).get("runtime") or {}
         if runtime.get("gil_enabled") is not expected_gil:
             invalid.append(f"{variant}-{sample['sample_index']} API GIL 状态错误")
         if runtime.get("rust_enabled") is not True:
@@ -1098,7 +1138,7 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
 
     workers = result["workers"]
     max_worker = str(max(workers))
-    endpoints = tuple(samples[0]["startup"]["api"])
+    endpoints = REQUIRED_API_ENDPOINTS
     preflight = result["preflight"]
     package_sets = {
         variant: set(preflight[variant]["payload"]["installed_packages"])

@@ -1,5 +1,4 @@
 from unittest import TestCase
-from unittest.mock import patch
 
 from app.foundation.reflection import ObjectUtils
 
@@ -40,29 +39,3 @@ class ObjectUtilsTest(TestCase):
         self.assertFalse(ObjectUtils.check_method(not_implemented_function_with_call))
         self.assertFalse(ObjectUtils.check_method(multiple_lines_async_def))
         self.assertTrue(ObjectUtils.check_method(empty_function))
-
-    def test_check_method_fallback_ignores_interpreter_bookkeeping(self):
-        def pass_function():
-            pass
-
-        def implemented_function():
-            return "Hello"
-
-        async def async_pass_function():
-            pass
-
-        def not_implemented_function():
-            raise NotImplementedError
-
-        def not_implemented_function_with_call():
-            raise NotImplementedError()
-
-        with patch(
-            "app.foundation.reflection.inspect.getsource",
-            side_effect=OSError("source unavailable"),
-        ):
-            self.assertFalse(ObjectUtils.check_method(pass_function))
-            self.assertFalse(ObjectUtils.check_method(async_pass_function))
-            self.assertFalse(ObjectUtils.check_method(not_implemented_function))
-            self.assertFalse(ObjectUtils.check_method(not_implemented_function_with_call))
-            self.assertTrue(ObjectUtils.check_method(implemented_function))

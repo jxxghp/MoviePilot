@@ -42,7 +42,10 @@ def valid_preflight(variant: str) -> dict:
         "installed_packages": ["moviepilot-rust==0.3.0"],
         "installed_packages_sha256": "package-hash",
         "native_distributions": [],
-        "uv_pip_check": {"returncode": 0},
+        "uv_pip_check": {
+            "returncode": 1,
+            "stderr": "The package `oss2` requires `crcmod>=1.7`, but it's not installed",
+        },
         "uv_project_sync_check": {"returncode": 0},
     }
     if variant == "v3":
@@ -56,12 +59,16 @@ def valid_preflight(variant: str) -> dict:
                 "packages": {
                     "bcrypt": "4.3.0",
                     "brotli": "1.2.0",
-                    "crcmod": "1.7",
+                    "crcmod": None,
+                    "crcmod-plus": "2.3.1",
                     "lxml": "6.1.2",
                     "orjson": "3.12.0",
                     "psycopg": None,
                     "psycopg2-binary": "2.9.12",
                     "zhconv-rs": "0.4.1",
+                },
+                "native": {
+                    "crcmod_extension": True,
                 },
                 "imports": {
                     "moviepilot-rust": {"imported": True, "gil_after": True},
@@ -98,6 +105,30 @@ def valid_preflight(variant: str) -> dict:
                 },
             }
         )
+    expected_imports = {
+        "asyncpg",
+        "bcrypt",
+        "brotli",
+        "crcmod-plus",
+        "cryptography",
+        "greenlet",
+        "lxml",
+        "moviepilot-rust",
+        "orjson",
+        "oss2",
+        "pillow",
+        "pillow-avif-plugin",
+        "pydantic-core",
+        "site-resource",
+        "zstandard",
+    }
+    expected_imports.update(
+        {"psycopg2-binary", "zhconv-rs"} if variant == "v3" else {"psycopg"}
+    )
+    common["imports"] = {
+        name: {"imported": True, "gil_after": variant == "v3"}
+        for name in expected_imports
+    }
     return common
 
 
@@ -321,6 +352,11 @@ def test_preflight_enforces_runtime_and_native_profiles() -> None:
     assert any("GIL" in item or "gil_enabled_after_imports" in item for item in errors)
     assert any("标准原生依赖" in item for item in errors)
 
+    incomplete = valid_preflight("v3t")
+    incomplete["imports"].pop("lxml")
+    errors = harness.validate_preflight("v3t", incomplete)
+    assert any("缺少核心组件导入结果" in item and "lxml" in item for item in errors)
+
 
 def test_evaluation_distinguishes_invalid_regression_and_pass() -> None:
     """合同错误优先 invalid，有效性能失败才归为 regression。"""
@@ -358,6 +394,13 @@ def test_evaluation_distinguishes_invalid_regression_and_pass() -> None:
     summary, invalid, regressions = harness.evaluate_samples(broken)
     assert summary == {}
     assert any("PostgreSQL" in item for item in invalid)
+    assert regressions == []
+
+    incomplete_api = result_for_evaluation(harness)
+    incomplete_api["samples"][0]["startup"]["api"].pop("subscribe_list")
+    summary, invalid, regressions = harness.evaluate_samples(incomplete_api)
+    assert summary == {}
+    assert any("缺少 API 样本" in item and "subscribe_list" in item for item in invalid)
     assert regressions == []
 
 

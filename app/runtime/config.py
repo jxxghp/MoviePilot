@@ -16,7 +16,7 @@ from dotenv import set_key, unset_key
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.runtime.dependencies import is_free_threaded_runtime
+from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.log import (
     LogConfigModel,
     configure_log_settings,

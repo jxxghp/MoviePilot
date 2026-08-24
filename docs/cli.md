@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 脚本会自动：
 
 - 检测操作系统
-- 自动检查并尽量安装 `git`、`curl`、`uv 0.12.5` 和 `Python 3.12+`
+- 自动检查并尽量安装 `git`、`curl`、`uv 0.12.5` 和 `Python 3.14+`
 - 克隆 `MoviePilot`
 - 安装后端依赖
 - 按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载对应前端 release 的 `dist.zip`
@@ -24,8 +24,8 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 
 说明：
 
-- 如果系统里已经有可用的 `Python 3.12+`，脚本会优先直接复用本地解释器
-- 如果系统里没有可用解释器，脚本会通过固定版本的 uv 安装 Python 3.12
+- 如果系统里已经有可用的 `Python 3.14+`，脚本会优先直接复用本地解释器
+- 如果系统里没有可用解释器，脚本会通过固定版本的 uv 安装 Python 3.14
 - Linux 下安装系统依赖时通常需要 `sudo`
 - 复用已有仓库时，脚本现在只会因为已跟踪源码改动而阻止自动更新，不会再被 `.DS_Store` 之类未跟踪文件卡住
 
@@ -156,7 +156,7 @@ moviepilot commands
 
 ```shell
 moviepilot install deps
-moviepilot install deps --python python3.12
+moviepilot install deps --python python3.14
 moviepilot install deps --venv /path/to/venv
 moviepilot install deps --recreate
 moviepilot install deps --config-dir /path/to/moviepilot-config
@@ -164,7 +164,7 @@ moviepilot install deps --config-dir /path/to/moviepilot-config
 
 说明：
 
-- 默认会自动选择本地已安装的 `Python 3.12+` 解释器
+- 默认会自动选择本地已安装的 `Python 3.14+` 解释器
 - 安装器要求 `uv 0.12.5`，并按仓库提交的 `uv.lock` 同步依赖；不会在本地重新解析一套未锁定结果
 - `moviepilot_rust` 加速扩展通过 `moviepilot-rust` PyPI 依赖安装，主项目本地安装不需要 Rust toolchain
 - 安装完成后可在前端“高级设置 - 实验室”中关闭或重新开启 Rust 加速；如果后端未加载扩展，该开关会保持关闭且不可操作

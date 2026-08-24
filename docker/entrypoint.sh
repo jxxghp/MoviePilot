@@ -337,10 +337,10 @@ function diagnostic_keepalive() {
 # 插件依赖和主程序共用同一套 venv 时，历史安装记录可能已经污染环境，
 # 这里优先在真正拉起后端前做一次自愈，避免容器反复起不来。
 function ensure_backend_runtime_dependencies() {
-    local probe_code="import alembic, cloakbrowser, fastapi, pydantic, pydantic_core, pydantic_settings, sqlalchemy, starlette, uvicorn; from pydantic import BaseModel, Field"
+    local probe_module="app.doctor.dependencies"
 
     INFO "→ 启动前检查后端核心依赖..."
-    if "${VENV_PATH}/bin/python3" -c "${probe_code}" >/dev/null 2>&1; then
+    if "${VENV_PATH}/bin/python3" -m "${probe_module}" >/dev/null 2>&1; then
         INFO "→ 后端核心依赖检查通过。"
         return 0
     fi
@@ -357,7 +357,7 @@ function ensure_backend_runtime_dependencies() {
         diagnostic_keepalive 1
     fi
 
-    if ! "${VENV_PATH}/bin/python3" -c "${probe_code}" >/dev/null 2>&1; then
+    if ! "${VENV_PATH}/bin/python3" -m "${probe_module}" >/dev/null 2>&1; then
         ERROR "→ 主程序依赖恢复后仍然异常，后端无法启动。"
         diagnostic_keepalive 1
     fi
@@ -568,8 +568,8 @@ render_nginx_config
 
 # 自动更新，控制脚本由 launcher 固化到同一代运行目录，源码替换不会改变本轮执行内容。
 cd /
+source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"
 if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ]; then
-    source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"
     if ! recover_pending_update; then
         ERROR "→ 上一次容器更新未能恢复，容器将保持运行以便执行 moviepilot doctor。"
         diagnostic_keepalive 1

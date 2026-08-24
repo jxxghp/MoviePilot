@@ -2,7 +2,7 @@ import logging
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
-from app.runtime.dependencies import is_free_threaded_runtime
+from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.log import logger, log_settings
 from app.runtime.settings import get_runtime_setting
 
