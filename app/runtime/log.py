@@ -384,6 +384,8 @@ class LoggerManager:
         """
         识别日志调用文件和插件来源。
 
+        虚拟实例共享物理源码，因此优先使用实例专属模块命名空间路由日志；
+        无模块身份的旧插件仍按调用文件路径识别。
         插件调用宿主公共方法时，调用栈中仍保留插件帧，因此日志继续进入该插件
         的独立文件，而不是混入主程序日志。
         """
@@ -400,6 +402,16 @@ class LoggerManager:
             parts = filepath.parts
             if not caller_name:
                 caller_name = parts[-2] if parts[-1] == "__init__.py" and len(parts) >= 2 else parts[-1]
+            module_name = frame.f_globals.get("__name__")
+            if isinstance(module_name, str):
+                module_parts = module_name.split(".")
+                if (
+                    len(module_parts) >= 3
+                    and module_parts[:2] == ["app", "plugins"]
+                    and module_parts[2]
+                ):
+                    plugin_name = module_parts[2]
+                    break
             if "app" in parts:
                 if not plugin_name and "plugins" in parts:
                     try:
