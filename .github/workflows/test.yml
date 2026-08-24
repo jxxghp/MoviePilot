@@ -134,7 +134,7 @@ jobs:
           uv run --locked --no-sync python -m coverage xml
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |

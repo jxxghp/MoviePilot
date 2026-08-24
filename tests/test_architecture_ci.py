@@ -71,3 +71,25 @@ def test_pylint_workflow_runs_for_v3_pull_requests_and_pushes():
         if step.get("name") == "Generate full advisory report"
     )
     assert "|| true" in full_report_step["run"]
+
+
+def test_upload_artifact_actions_share_node24_major():
+    """所有工件上传入口必须共用 Node 24 的 v7 主版本，避免 CI 告警与版本分叉。"""
+    actions_by_workflow: dict[str, list[str]] = {}
+    for workflow_path in WORKFLOW_ROOT.glob("*.yml"):
+        workflow = _load_workflow(workflow_path.name)
+        upload_actions = [
+            step["uses"]
+            for job in workflow.get("jobs", {}).values()
+            for step in job.get("steps", [])
+            if step.get("uses", "").startswith("actions/upload-artifact@")
+        ]
+        if upload_actions:
+            actions_by_workflow[workflow_path.name] = upload_actions
+
+    assert actions_by_workflow == {
+        "architecture-observe.yml": ["actions/upload-artifact@v7"],
+        "pylint.yml": ["actions/upload-artifact@v7"],
+        "site-adapter-collector.yml": ["actions/upload-artifact@v7"],
+        "test.yml": ["actions/upload-artifact@v7"],
+    }
