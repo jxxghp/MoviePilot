@@ -1,5 +1,10 @@
+import asyncio
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -926,6 +931,144 @@ async def test_plugin_routes_ignore_included_router_wrappers():
         removed_response = await client.get(registered_path)
 
     assert removed_response.status_code == 404
+
+
+async def test_plugin_route_updates_run_on_application_event_loop() -> None:
+    """线程侧插件变更必须回投主 loop 后再修改 FastAPI 路由表。"""
+    app = FastAPI()
+    main_thread = threading.get_ident()
+    mutation_threads: list[int] = []
+    original_add_api_route = app.router.add_api_route
+    original_setup = app.setup
+
+    def record_add_api_route(*args, **kwargs):
+        mutation_threads.append(threading.get_ident())
+        return original_add_api_route(*args, **kwargs)
+
+    def record_setup() -> None:
+        mutation_threads.append(threading.get_ident())
+        original_setup()
+
+    app.router.add_api_route = record_add_api_route
+    app.setup = record_setup
+    loop = asyncio.get_running_loop()
+    registry = FastAPIDynamicRouteRegistry(
+        app=app,
+        plugin_ids=lambda: ["DemoPlugin"],
+        plugin_apis=lambda _plugin_id: [{
+            "path": "/DemoPlugin/health",
+            "endpoint": lambda: {"ok": True},
+            "methods": ["GET"],
+            "allow_anonymous": True,
+        }],
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        event_loop=lambda: loop,
+    )
+
+    await asyncio.to_thread(registry.update, "DemoPlugin", "add")
+
+    assert mutation_threads
+    assert set(mutation_threads) == {main_thread}
+    assert any(
+        getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health"
+        for route in app.routes
+    )
+
+
+def test_plugin_route_update_rejects_stopped_application_loop() -> None:
+    """生产 loop 已释放时不得退回调用线程修改路由。"""
+    registry = FastAPIDynamicRouteRegistry(
+        app=FastAPI(),
+        plugin_ids=lambda: [],
+        plugin_apis=lambda _plugin_id: [],
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        event_loop=lambda: None,
+    )
+
+    with pytest.raises(RuntimeError, match="主事件循环未运行"):
+        registry.update("DemoPlugin", "remove")
+
+
+async def test_plugin_route_update_abandons_late_application_loop_callback() -> None:
+    """超时前未开始的回调可以迟到执行，但不得再写入路由或污染事件循环。"""
+    app = FastAPI()
+    loop = asyncio.get_running_loop()
+    plugin_apis = MagicMock(return_value=[])
+    loop_errors: list[dict] = []
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+    registry = FastAPIDynamicRouteRegistry(
+        app=app,
+        plugin_ids=lambda: [],
+        plugin_apis=plugin_apis,
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        event_loop=lambda: loop,
+    )
+    registry._dispatch_admission_timeout = 0.01
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            update = executor.submit(registry.update, "DemoPlugin", "add")
+            time.sleep(0.05)
+            with pytest.raises(RuntimeError, match="未及时接收"):
+                update.result()
+        await asyncio.sleep(0)
+    finally:
+        loop.set_exception_handler(previous_handler)
+
+    plugin_apis.assert_not_called()
+    assert not any(
+        getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health"
+        for route in app.routes
+    )
+    assert loop_errors == []
+
+
+async def test_started_plugin_route_update_waits_for_terminal_result() -> None:
+    """回调开始后即使超过 admission 预算，也不得先报失败再迟到写入。"""
+    app = FastAPI()
+    loop = asyncio.get_running_loop()
+
+    def delayed_plugin_apis(_plugin_id: str) -> list[dict]:
+        time.sleep(0.05)
+        return [{
+            "path": "/DemoPlugin/health",
+            "endpoint": lambda: {"ok": True},
+            "methods": ["GET"],
+            "allow_anonymous": True,
+        }]
+
+    registry = FastAPIDynamicRouteRegistry(
+        app=app,
+        plugin_ids=lambda: ["DemoPlugin"],
+        plugin_apis=delayed_plugin_apis,
+        verify_token=lambda: None,
+        verify_apikey=lambda: None,
+        prefix="/api/v1/plugin",
+        protected_routes=set(),
+        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        event_loop=lambda: loop,
+    )
+    registry._dispatch_admission_timeout = 0.01
+
+    await asyncio.to_thread(registry.update, "DemoPlugin", "add")
+
+    assert sum(
+        getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health"
+        for route in app.routes
+    ) == 1
 
 
 def test_response_router_uses_response_route_class():

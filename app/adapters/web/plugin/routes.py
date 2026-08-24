@@ -1,5 +1,8 @@
 """FastAPI 动态插件路由适配器。"""
 
+import asyncio
+from concurrent.futures import Future, TimeoutError as FutureTimeoutError
+from threading import Lock
 from typing import Any, Callable, Optional
 
 from fastapi import Depends, FastAPI
@@ -8,6 +11,8 @@ from fastapi.routing import APIRoute
 
 class FastAPIDynamicRouteRegistry:
     """在 FastAPI 上注册插件自由响应路由，并维护 OpenAPI 缓存。"""
+
+    _dispatch_admission_timeout = 5.0
 
     def __init__(
         self,
@@ -19,6 +24,7 @@ class FastAPIDynamicRouteRegistry:
         prefix: str,
         protected_routes: set[str],
         log: Any,
+        event_loop: Callable[[], asyncio.AbstractEventLoop | None] | None = None,
     ) -> None:
         """注入应用、插件投影、认证依赖和日志端口。"""
         self._app = app
@@ -29,9 +35,62 @@ class FastAPIDynamicRouteRegistry:
         self._prefix = prefix
         self._protected_routes = protected_routes
         self._logger = log
+        self._event_loop = event_loop
 
     def update(self, plugin_id: Optional[str], action: str) -> None:
-        """按插件生命周期新增或移除动态路由。"""
+        """在主事件循环中按插件生命周期新增或移除动态路由。"""
+        if self._event_loop is None:
+            self._update(plugin_id, action)
+            return
+        target_loop = self._event_loop()
+        if (
+            target_loop is None
+            or not target_loop.is_running()
+            or target_loop.is_closed()
+        ):
+            raise RuntimeError("主事件循环未运行，无法更新插件动态路由")
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        if current_loop is target_loop:
+            self._update(plugin_id, action)
+            return
+
+        completed: Future[None] = Future()
+        dispatch_lock = Lock()
+        dispatch_started = False
+        dispatch_abandoned = False
+
+        def apply_update() -> None:
+            """在目标 loop 的单个回调中完成路由表与 OpenAPI 投影切换。"""
+            nonlocal dispatch_started
+            with dispatch_lock:
+                if dispatch_abandoned:
+                    return
+                dispatch_started = True
+            try:
+                self._update(plugin_id, action)
+            except BaseException as error:
+                completed.set_exception(error)
+            else:
+                completed.set_result(None)
+
+        target_loop.call_soon_threadsafe(apply_update)
+        try:
+            completed.result(timeout=self._dispatch_admission_timeout)
+        except FutureTimeoutError as error:
+            with dispatch_lock:
+                if not dispatch_started:
+                    dispatch_abandoned = True
+                    raise RuntimeError(
+                        "主事件循环未及时接收插件动态路由更新"
+                    ) from error
+            # 回调一旦开始便不可撤销，等待确定终态以免失败回滚后发生迟到写入。
+            completed.result()
+
+    def _update(self, plugin_id: Optional[str], action: str) -> None:
+        """执行不可中断的路由表与 OpenAPI 投影更新。"""
         if action not in {"add", "remove"}:
             raise ValueError("Action must be 'add' or 'remove'")
 

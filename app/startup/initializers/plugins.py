@@ -15,6 +15,7 @@ from app.runtime.extensions.plugin_manager import (
     configure_plugin_catalog_factory,
     configure_plugin_install_reporter,
     configure_plugin_legacy_import_services,
+    configure_plugin_route_refresher,
     configure_plugin_resource_import_preparer,
     configure_site_auth_level_provider,
 )
@@ -95,6 +96,7 @@ def configure_plugin_services() -> None:
         lambda: get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or []
     )
     configure_plugin_catalog_factory(_build_plugin_catalog)
+    configure_plugin_route_refresher(register_plugin_api)
     configure_plugin_system(PluginSystemServices(
         market=market_client,
         package=PluginPackageManager(plugin_helper),

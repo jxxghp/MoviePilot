@@ -32,6 +32,7 @@ from app.application.agentdata import get_agent_task_port
 from app.application.database import get_database_governance
 from app.application.outbox import dispatch_pending_outbox
 from app.application.plugin.runtime import get_plugin_manager
+from app.application.plugin.routes import register_plugin_api
 from app.application.configuration import (
     SchedulerRuntimeConfig,
     get_configured_system_config,
@@ -152,6 +153,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         self._auth_count = 0
         # 用户认证失败消息发送
         self._auth_message = False
+        # 插件已按认证结果重建，但动态路由尚未完成投影时保留重试状态。
+        self._auth_plugin_routes_pending = False
 
     async def on_config_changed(self) -> None:
         """
@@ -2054,6 +2057,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         config = get_scheduler_runtime_config()
         if SitesHelper().auth_level >= 2:
+            if self._auth_plugin_routes_pending:
+                register_plugin_api()
+                self._auth_plugin_routes_pending = False
             return
         # 最大重试次数
         __max_try__ = 30
@@ -2088,6 +2094,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             # 认证通过后重新初始化插件
             get_plugin_manager().init_config()
             self.init_plugin_jobs()
+            self._auth_plugin_routes_pending = True
+            register_plugin_api()
+            self._auth_plugin_routes_pending = False
 
         else:
             self._auth_count += 1
