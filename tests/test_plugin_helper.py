@@ -1547,6 +1547,7 @@ demo = { index = "private" }
                         side_effect=health_snapshots,
                     ), \
                     patch.object(PluginHelper, "_PluginHelper__repair_main_runtime_dependencies") as repair_mock, \
+                    patch("app.adapters.external.market.logger.warning") as warning_mock, \
                     patch(
                         "app.adapters.external.market.SystemUtils.execute_with_subprocess",
                         return_value=(True, "installed"),
@@ -1556,6 +1557,10 @@ demo = { index = "private" }
         assert success
         assert message == "installed"
         repair_mock.assert_not_called()
+        assert not any(
+            "安装前运行环境已存在异常" in str(call.args[0])
+            for call in warning_mock.call_args_list
+        )
 
     def test_preexisting_healthcheck_failure_does_not_hide_new_core_failure(self):
         """
@@ -1615,13 +1620,33 @@ demo = { index = "private" }
         existing_error = "The package `oss2` requires `crcmod>=1.7`, but it's not installed"
         added_error = "The package `demo` requires `missing>=1`, but it's not installed"
 
-        message = PluginHelper._PluginHelper__runtime_health_regression_message(
-            {"uv check": (False, existing_error)},
-            {"uv check": (False, f"{existing_error}\n{added_error}")},
-        )
+        with patch(
+            "app.adapters.external.market.runtime_excluded_dependency_pairs",
+            return_value={("oss2", "crcmod")},
+        ):
+            message = PluginHelper._PluginHelper__runtime_health_regression_message(
+                {"uv check": (False, existing_error)},
+                {"uv check": (False, f"{existing_error}\n{added_error}")},
+            )
 
         assert added_error in message
         assert existing_error not in message
+
+    def test_expected_uv_diagnostic_does_not_create_baseline_warning(self):
+        """项目明确排除的传递依赖不得形成插件安装前告警。"""
+        from app.adapters.external.market import PluginHelper
+
+        expected_error = "The package `oss2` requires `crcmod>=1.7`, but it's not installed"
+        with patch(
+            "app.adapters.external.market.runtime_excluded_dependency_pairs",
+            return_value={("oss2", "crcmod")},
+        ):
+            message = PluginHelper._PluginHelper__runtime_health_regression_message(
+                {},
+                {"uv check": (False, expected_error)},
+            )
+
+        assert message == ""
 
     def test_uv_diagnostic_parser_handles_executor_prefix(self):
         """执行器把首条错误拼在命令摘要后时仍应识别完整诊断项。"""
@@ -1801,8 +1826,9 @@ demo = { index = "private" }
                     find_links_dirs,
                 )
 
+            expected_error = "The package `oss2` requires `crcmod>=1.7`, but it's not installed"
             health = {
-                "uv check": (True, "ok"),
+                "uv check": (False, expected_error),
                 "核心依赖导入检查": (True, "ok"),
             }
             strategy = Mock(
@@ -1835,6 +1861,11 @@ demo = { index = "private" }
                     PluginHelper,
                     "_PluginHelper__refresh_import_system",
             ), patch(
+                    "app.adapters.external.market.logger.warning",
+            ) as warning_mock, patch(
+                    "app.adapters.external.market.runtime_excluded_dependency_pairs",
+                    return_value={("oss2", "crcmod")},
+            ), patch(
                     "app.adapters.external.market.SystemUtils.execute_with_subprocess_async",
                     new=AsyncMock(return_value=(True, "ok")),
             ) as execute_mock:
@@ -1845,6 +1876,10 @@ demo = { index = "private" }
         execute_mock.assert_awaited_once()
         assert execute_mock.await_args.kwargs["timeout"] == (
             PluginHelper.PLUGIN_DEPENDENCY_INSTALL_TIMEOUT
+        )
+        assert not any(
+            "安装前运行环境已存在异常" in str(call.args[0])
+            for call in warning_mock.call_args_list
         )
 
     def test_async_package_install_cancellation_closes_full_lifecycle(self, tmp_path):
