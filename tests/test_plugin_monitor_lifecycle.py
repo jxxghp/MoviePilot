@@ -19,6 +19,7 @@ from app.runtime.extensions.plugin.monitor import (
 )
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.system import reset_plugin_system
+from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 from app.startup.initializers import plugins as plugins_initializer
@@ -747,6 +748,35 @@ def test_plugin_monitor_skips_installing_plugin_until_package_write_finishes(tmp
     monitor._process_changes({("modified", str(tmp_path / "demo" / "plugin.py"))})
 
     reload_plugin.assert_not_called()
+
+
+def test_monitor_reload_refreshes_source_and_instance_routes(monkeypatch) -> None:
+    """源码热重载后必须刷新源插件及其虚拟实例的动态路由投影。"""
+    admission = PluginMutationAdmission()
+    manager = SimpleNamespace(
+        mutation=admission.hold,
+        get_plugin_reload_targets=MagicMock(
+            return_value=["DemoPlugin", "DemoPlugin_1"]
+        ),
+        reload_plugin_tree=MagicMock(return_value=PluginRuntimeStatus.ACTIVE),
+    )
+    refresh_holds: list[bool] = []
+    refresh = MagicMock(
+        side_effect=lambda _plugin_id: refresh_holds.append(admission.is_held())
+    )
+    monkeypatch.setattr(plugin_manager_module, "_plugin_route_refresher", refresh)
+
+    status = PluginManager._reload_plugin_tree_from_monitor(manager, "DemoPlugin")
+
+    assert status is PluginRuntimeStatus.ACTIVE
+    assert admission.active_count == 0
+    assert refresh_holds == [True, True]
+    manager.get_plugin_reload_targets.assert_called_once_with("DemoPlugin")
+    manager.reload_plugin_tree.assert_called_once_with("DemoPlugin")
+    assert [item.args for item in refresh.call_args_list] == [
+        ("DemoPlugin",),
+        ("DemoPlugin_1",),
+    ]
 
 
 def test_plugin_monitor_suppression_is_reference_counted(monkeypatch) -> None:

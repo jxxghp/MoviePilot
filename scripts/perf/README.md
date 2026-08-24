@@ -240,6 +240,21 @@ preflight 会验证 Python 3.14、GIL 状态、`thread_inherit_context`、MovieP
 用于判断事件循环是否被同步 owner 占用，所有样本在关闭完成前执行心跳属于正确性门禁。探针不启动真实
 模块、线程池、数据库、配置或网络。
 
+## TaskRegistry 跨线程提交 A/B
+
+`task_registry_ab.py` 验证目标事件循环尚未分发 callback 时执行 shutdown，pending completion 与原始
+coroutine 是否取得明确终态，同时采集跨线程提交最小协程的提交和完成耗时。分别在 Before/After revision
+运行相同参数并保留两份 JSON，即可比较正确性与固定负载开销：
+
+```bash
+../.venv-test/bin/python scripts/perf/task_registry_ab.py \
+  --iterations 2000 \
+  --samples 7
+```
+
+该探针不访问数据库、配置或网络。吞吐结果用于识别可重复回退，不作为跨机器性能阈值；pending completion
+取消且 coroutine 关闭属于正确性门禁。
+
 ### PostgreSQL 同步驱动三方案
 
 `postgresql_driver_ab.py` 在同一 PostgreSQL 容器中比较标准 V3/psycopg2、标准

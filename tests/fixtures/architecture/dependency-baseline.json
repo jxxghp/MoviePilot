@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6601,
-  "edge_sha256": "b2db2372dad5ff58f00ce1173a699daf73f0ddde62bde15f9dff75c6965162eb",
+  "edge_count": 6603,
+  "edge_sha256": "70ed941e5ae3893b29167aa191357df42847de4547ce4a0b8d29acf38bbf924d",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3937,6 +3937,7 @@
     "app.factory -> app.application.security",
     "app.factory -> app.application.security.token",
     "app.factory -> app.runtime",
+    "app.factory -> app.runtime.config",
     "app.factory -> app.runtime.correlation",
     "app.factory -> app.runtime.localization",
     "app.factory -> app.runtime.log",
@@ -5857,6 +5858,7 @@
     "app.scheduler -> app.application.messaging.message",
     "app.scheduler -> app.application.outbox",
     "app.scheduler -> app.application.plugin",
+    "app.scheduler -> app.application.plugin.routes",
     "app.scheduler -> app.application.plugin.runtime",
     "app.scheduler -> app.application.scheduling",
     "app.scheduler -> app.application.site",

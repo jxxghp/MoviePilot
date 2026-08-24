@@ -16,6 +16,7 @@ from app.chain.message import MessageChain
 from app.chain.transfer import TransferChain
 from app.application.messaging.interaction import InteractionContext
 from app.runtime.config import global_vars, settings
+from app.runtime.tasks import TaskRegistry
 from app.schemas.types import NotificationChannel
 
 
@@ -128,10 +129,18 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             errmsg="未识别到媒体信息",
         )
 
-        def _close_pending_coro(coro, *args, **kwargs):
-            """关闭被调度的协程：测试中事件循环未运行，不关闭会残留 never-awaited 警告。"""
-            coro.close()
+        async_messages = []
 
+        def _run_pending_coro(coro, *args, **kwargs):
+            asyncio.run(coro)
+
+        async def _capture_message(message):
+            async_messages.append(message)
+
+        async def _finish_immediately(**kwargs):
+            kwargs["output_callback"]("ok")
+
+        manager = SimpleNamespace(run_background_prompt=_finish_immediately)
         loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
         with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
             settings, "AI_AGENT_ENABLE", True
@@ -141,12 +150,14 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             ) as history_oper_cls, patch(
                 "app.chain._transfer.build_manual_redo_prompt",
                 return_value="retry transfer prompt",
+            ), patch(
+                "app.chain._transfer.get_running_agent_manager", return_value=manager
             ), patch("app.chain._transfer.get_task_registry") as get_registry:
                 get_registry.return_value.submit_threadsafe.side_effect = (
-                    _close_pending_coro
+                    _run_pending_coro
                 )
                 history_oper_cls.return_value.get.return_value = history
-                with patch.object(chain, "post_message") as post_message:
+                with patch.object(chain, "async_post_message", side_effect=_capture_message):
                     chain.handle_failed_transfer_callback(
                         callback_data="transfer_ai_retry_34",
                         channel=NotificationChannel.Telegram,
@@ -160,10 +171,90 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             get_registry.return_value.submit_threadsafe.call_args.kwargs["owner"],
             "chain.transfer.ai_takeover",
         )
+        self.assertEqual(len(async_messages), 2)
+        self.assertEqual(
+            async_messages[0].title,
+            "已将整理记录 #34 交给智能助手处理",
+        )
+        self.assertEqual(async_messages[1].title, "智能助手整理完成")
+
+    def test_transfer_ai_retry_callback_reports_closed_task_registry(self):
+        """宿主停止接收任务时，不得向用户报告智能助手已接管。"""
+        chain = TransferChain()
+        chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
+        history = SimpleNamespace(id=34)
+        registry = TaskRegistry()
+        asyncio.run(registry.shutdown(timeout_seconds=0.01))
+        loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
+
+        with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+            settings, "AI_AGENT_ENABLE", True
+        ), patch(
+            "app.chain._transfer.get_chain_transfer_history_port"
+        ) as history_port, patch(
+            "app.chain._transfer.build_manual_redo_prompt",
+            return_value="retry transfer prompt",
+        ), patch(
+            "app.chain._transfer.get_task_registry", return_value=registry
+        ), patch(
+            "app.chain._transfer.logger"
+        ) as logger, patch.object(
+            chain, "post_message"
+        ) as post_message:
+            history_port.return_value.get.return_value = history
+
+            chain.handle_failed_transfer_callback(
+                callback_data="transfer_ai_retry_34",
+                channel=NotificationChannel.Telegram,
+                source="telegram-test",
+                userid="10001",
+                username="tester",
+            )
+
+        logger.warning.assert_called_once()
         self.assertEqual(post_message.call_count, 1)
         self.assertEqual(
-            post_message.call_args_list[0].args[0].title,
-            "已将整理记录 #34 交给智能助手处理",
+            post_message.call_args.args[0].title,
+            "智能助手整理失败",
+        )
+        self.assertNotIn("已将", post_message.call_args.args[0].title)
+
+    def test_transfer_ai_retry_callback_reports_unavailable_event_loop(self):
+        """主循环不可用时，应在创建后台协程前返回明确失败提示。"""
+        chain = TransferChain()
+        chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
+        history = SimpleNamespace(id=34)
+
+        with patch.object(global_vars, "CURRENT_EVENT_LOOP", None), patch.object(
+            settings, "AI_AGENT_ENABLE", True
+        ), patch(
+            "app.chain._transfer.get_chain_transfer_history_port"
+        ) as history_port, patch(
+            "app.chain._transfer.build_manual_redo_prompt",
+            return_value="retry transfer prompt",
+        ), patch(
+            "app.chain._transfer.get_task_registry"
+        ) as get_registry, patch(
+            "app.chain._transfer.logger"
+        ) as logger, patch.object(
+            chain, "post_message"
+        ) as post_message:
+            history_port.return_value.get.return_value = history
+
+            chain.handle_failed_transfer_callback(
+                callback_data="transfer_ai_retry_34",
+                channel=NotificationChannel.Telegram,
+                source="telegram-test",
+                userid="10001",
+                username="tester",
+            )
+
+        get_registry.return_value.submit_threadsafe.assert_not_called()
+        logger.warning.assert_called_once()
+        self.assertEqual(post_message.call_count, 1)
+        self.assertEqual(
+            post_message.call_args.args[0].title,
+            "智能助手整理失败",
         )
 
     def test_transfer_ai_retry_callback_uses_successful_move_dest_as_source(self):

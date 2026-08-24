@@ -1,11 +1,37 @@
 """进程内后台任务登记与关停语义测试。"""
 
 import asyncio
+import concurrent.futures
+import inspect
 import threading
+import weakref
+from collections.abc import Coroutine
+from typing import Any
 
 import pytest
 
 from app.runtime.tasks import TaskRegistry
+
+
+class _CloseCountingCoroutine(Coroutine[Any, Any, None]):
+    """记录 pending submission 的协程关闭所有权。"""
+
+    def __init__(self) -> None:
+        self.close_count = 0
+
+    def __await__(self):
+        return self
+
+    def send(self, _value):
+        raise StopIteration
+
+    def throw(self, typ, val=None, tb=None):
+        if val is None:
+            raise typ
+        raise val.with_traceback(tb)
+
+    def close(self) -> None:
+        self.close_count += 1
 
 
 def test_task_registry_removes_completed_task() -> None:
@@ -124,35 +150,207 @@ def test_task_registry_owns_threadsafe_submission_until_shutdown() -> None:
 
 
 def test_task_registry_rejects_threadsafe_submission_after_shutdown() -> None:
-    """关停先赢得竞态时应关闭协程并通过 completion 报告拒绝原因。"""
+    """关停先赢得竞态时应关闭协程并同步拒绝提交。"""
 
     async def scenario() -> None:
         registry = TaskRegistry()
         loop = asyncio.get_running_loop()
-        reports: list[dict[str, object]] = []
-        previous_handler = loop.get_exception_handler()
-        loop.set_exception_handler(lambda _, context: reports.append(context))
 
         async def late_worker() -> None:
             """模拟关停完成后从宿主线程到达的晚任务。"""
 
-        try:
-            assert await registry.shutdown(timeout_seconds=1.0) is True
-            completion = await asyncio.to_thread(
+        assert await registry.shutdown(timeout_seconds=1.0) is True
+        coroutine = late_worker()
+        with pytest.raises(RuntimeError, match="正在关闭"):
+            await asyncio.to_thread(
                 registry.submit_threadsafe,
-                late_worker(),
+                coroutine,
                 loop=loop,
                 owner="test.threadsafe-late",
             )
-            with pytest.raises(RuntimeError, match="正在关闭"):
-                await asyncio.wrap_future(completion)
 
-            assert registry.records == ()
-            assert reports[-1]["owner"] == "test.threadsafe-late"
-        finally:
-            loop.set_exception_handler(previous_handler)
+        assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+        assert registry.records == ()
 
     asyncio.run(scenario())
+
+
+def test_task_registry_shutdown_closes_submission_before_loop_dispatch() -> None:
+    """回调尚未执行时关停也必须关闭协程并结束 completion。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+
+    async def worker() -> None:
+        """不应被迟到的 loop callback 启动。"""
+
+    coroutine = worker()
+    completion = registry.submit_threadsafe(
+        coroutine,
+        loop=loop,
+        owner="test.threadsafe-pending",
+    )
+
+    assert asyncio.run(registry.shutdown(timeout_seconds=0.01)) is True
+    assert completion.cancelled()
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+
+    loop.run_until_complete(asyncio.sleep(0))
+    assert registry.records == ()
+    loop.close()
+
+
+def test_task_registry_caller_cancels_before_loop_dispatch() -> None:
+    """调用方在 callback 前取消时应关闭协程，迟到 callback 不得创建 Task。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+
+    async def worker() -> None:
+        """不应在 completion 取消后启动。"""
+
+    coroutine = worker()
+    completion = registry.submit_threadsafe(
+        coroutine,
+        loop=loop,
+        owner="test.threadsafe-cancel-before-dispatch",
+    )
+
+    assert completion.cancel()
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert registry.records == ()
+    loop.close()
+
+
+def test_task_registry_closes_submission_when_loop_rejects_callback() -> None:
+    """目标 loop 已关闭时同步失败，并且不遗留未等待协程。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+    loop.close()
+
+    async def worker() -> None:
+        """模拟无法进入目标 loop 的提交。"""
+
+    coroutine = worker()
+    with pytest.raises(RuntimeError, match="closed"):
+        registry.submit_threadsafe(
+            coroutine,
+            loop=loop,
+            owner="test.threadsafe-closed-loop",
+        )
+
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+
+
+def test_task_registry_shutdown_owns_close_before_loop_rejection() -> None:
+    """shutdown 已取走 pending 后，迟到的投递失败不得再次关闭同一协程。"""
+    registry = TaskRegistry()
+    dispatch_entered = threading.Event()
+    release_dispatch = threading.Event()
+    coroutine = _CloseCountingCoroutine()
+
+    class BlockingClosedLoop:
+        """让 shutdown 稳定发生在投递抛错之前。"""
+
+        @staticmethod
+        def call_soon_threadsafe(_callback) -> None:
+            dispatch_entered.set()
+            release_dispatch.wait()
+            raise RuntimeError("loop closed")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        submission = executor.submit(
+            registry.submit_threadsafe,
+            coroutine,
+            loop=BlockingClosedLoop(),
+            owner="test.threadsafe-shutdown-before-rejection",
+        )
+        assert dispatch_entered.wait(1.0)
+        assert asyncio.run(registry.shutdown(timeout_seconds=0.01)) is True
+        release_dispatch.set()
+        with pytest.raises(RuntimeError, match="loop closed"):
+            submission.result(timeout=1.0)
+
+    assert coroutine.close_count == 1
+
+
+def test_task_registry_shutdown_rejects_late_successful_dispatch() -> None:
+    """shutdown 取走 pending 后，迟到的成功投递也不得发布真实 Task。"""
+    registry = TaskRegistry()
+    dispatch_entered = threading.Event()
+    release_dispatch = threading.Event()
+    callbacks = []
+    coroutine = _CloseCountingCoroutine()
+
+    class BlockingLoop:
+        """让 shutdown 稳定发生在 loop 接受 callback 之前。"""
+
+        @staticmethod
+        def call_soon_threadsafe(callback) -> None:
+            dispatch_entered.set()
+            release_dispatch.wait()
+            callbacks.append(callback)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        submission = executor.submit(
+            registry.submit_threadsafe,
+            coroutine,
+            loop=BlockingLoop(),
+            owner="test.threadsafe-shutdown-before-dispatch",
+        )
+        assert dispatch_entered.wait(1.0)
+        assert asyncio.run(registry.shutdown(timeout_seconds=0.01)) is True
+        release_dispatch.set()
+        completion = submission.result(timeout=1.0)
+
+    assert completion.cancelled()
+    callbacks[0]()
+    assert coroutine.close_count == 1
+    assert registry.records == ()
+
+
+def test_task_registry_completion_does_not_retain_itself_after_cancellation() -> None:
+    """终态回调不得让已取消 completion 依赖循环 GC 才能释放。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+    completion = registry.submit_threadsafe(
+        _CloseCountingCoroutine(),
+        loop=loop,
+        owner="test.threadsafe-completion-release",
+    )
+    completion_ref = weakref.ref(completion)
+
+    assert completion.cancel()
+    loop.run_until_complete(asyncio.sleep(0))
+    del completion
+
+    assert completion_ref() is None
+    loop.close()
+
+
+def test_task_registry_pending_non_cancellable_work_does_not_start_on_shutdown() -> None:
+    """尚未发布成 Task 的 non-cancellable 工作仍应在关停时直接关闭。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+
+    async def worker() -> None:
+        """未开始的同步兼容工作不应拖延关停。"""
+
+    coroutine = worker()
+    completion = registry.submit_threadsafe(
+        coroutine,
+        loop=loop,
+        owner="test.threadsafe-pending-non-cancellable",
+        cancel_on_shutdown=False,
+    )
+
+    assert asyncio.run(registry.shutdown(timeout_seconds=0.01)) is True
+    assert completion.cancelled()
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+
+    loop.run_until_complete(asyncio.sleep(0))
+    assert registry.records == ()
+    loop.close()
 
 
 def test_task_registry_keeps_timed_out_sync_owner_until_real_completion() -> None:
