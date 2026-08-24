@@ -58,6 +58,7 @@ class StreamingHandler:
         # 流式输出相关状态
         self._streaming_enabled = False
         self._flush_task: Optional[asyncio.Task] = None
+        self._streaming_lifecycle_lock = asyncio.Lock()
         # 当前消息的发送信息（用于编辑消息）
         self._message_response: Optional[MessageResponse] = None
         # 已发送给用户的文本（用于追踪增量）
@@ -163,6 +164,28 @@ class StreamingHandler:
         original_chat_id: Optional[str] = None,
         title: str = "",
     ):
+        """串行启动流式输出，禁止新一轮覆盖尚未结束的刷新 owner。"""
+        async with self._streaming_lifecycle_lock:
+            await self._start_streaming(
+                channel=channel,
+                source=source,
+                user_id=user_id,
+                username=username,
+                original_message_id=original_message_id,
+                original_chat_id=original_chat_id,
+                title=title,
+            )
+
+    async def _start_streaming(
+        self,
+        channel: Optional[str] = None,
+        source: Optional[str] = None,
+        user_id: Optional[str] = None,
+        username: Optional[str] = None,
+        original_message_id: Optional[str] = None,
+        original_chat_id: Optional[str] = None,
+        title: str = "",
+    ):
         """
         启动流式输出。
         始终标记为流式状态（用于 buffer 收集 token），
@@ -175,6 +198,10 @@ class StreamingHandler:
         :param original_message_id: 原始消息ID（如果是回复消息）
         :param original_chat_id: 原始聊天ID（如果是回复消息）
         """
+        if self._flush_task is not None:
+            self._streaming_enabled = False
+            await self._cancel_flush_task()
+
         self._channel = channel
         self._source = source
         self._user_id = user_id
@@ -208,6 +235,11 @@ class StreamingHandler:
         logger.debug("流式输出已启动")
 
     async def stop_streaming(self) -> Tuple[bool, str]:
+        """串行停止流式输出，并等待本轮刷新与最终消息收口。"""
+        async with self._streaming_lifecycle_lock:
+            return await self._stop_streaming()
+
+    async def _stop_streaming(self) -> Tuple[bool, str]:
         """
         停止流式输出。执行最后一次刷新确保所有内容都已发送。
         :return: (all_sent, final_text)
