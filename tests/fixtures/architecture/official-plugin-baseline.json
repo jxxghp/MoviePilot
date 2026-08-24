@@ -2558,6 +2558,63 @@
         "response_model": null
       }
     ],
+    "plugins.v3/courseorganizer/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "get_review_route",
+        "endpoint_return": "Any",
+        "methods": [
+          "GET"
+        ],
+        "path": "/review",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "save_review_route",
+        "endpoint_return": "Any",
+        "methods": [
+          "POST"
+        ],
+        "path": "/review",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "refresh_review_route",
+        "endpoint_return": "Any",
+        "methods": [
+          "POST"
+        ],
+        "path": "/review/refresh",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "associate_tmdb_route",
+        "endpoint_return": "Any",
+        "methods": [
+          "POST"
+        ],
+        "path": "/review/tmdb/associate",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "search_tmdb_route",
+        "endpoint_return": "Any",
+        "methods": [
+          "POST"
+        ],
+        "path": "/review/tmdb/search",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
     "plugins.v3/doubanrank/__init__.py": [
       {
         "auth": null,
@@ -2654,6 +2711,107 @@
         "response_model": "schemas.Response[List[schemas.MediaInfo]]"
       }
     ],
+    "plugins.v3/lunatvsource/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "api_discover",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/discover",
+        "response_class": null,
+        "response_model": "_schemas.Response[List[_schemas.MediaInfo]] if _schemas is not None and hasattr(_schemas, 'Response') and hasattr(_schemas, 'MediaInfo') else None"
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_download",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/download",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_search",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/search",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_sources",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/sources",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_status",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/status",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_sync",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/sync",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_tasks",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/tasks",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_retry",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tasks/{task_id}/retry",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_tmdb_search",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/tmdb/search",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
     "plugins.v3/rsssubscribe/__init__.py": [
       {
         "auth": null,
@@ -2734,7 +2892,7 @@
       ]
     },
     "get_api": {
-      "file_count": 115,
+      "file_count": 117,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2806,6 +2964,7 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -2813,6 +2972,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -2858,7 +3018,7 @@
       "files": []
     },
     "get_command": {
-      "file_count": 113,
+      "file_count": 115,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2928,6 +3088,7 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -2935,6 +3096,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -2994,7 +3156,7 @@
       ]
     },
     "get_form": {
-      "file_count": 115,
+      "file_count": 117,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3066,6 +3228,7 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3073,6 +3236,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -3114,17 +3278,18 @@
       ]
     },
     "get_module": {
-      "file_count": 5,
+      "file_count": 6,
       "files": [
         "plugins.v2/blurayremux/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/notifyimage/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
-        "plugins.v3/imdbsource/__init__.py"
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "get_page": {
-      "file_count": 115,
+      "file_count": 117,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3196,6 +3361,7 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3203,6 +3369,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -3244,7 +3411,7 @@
       ]
     },
     "get_render_mode": {
-      "file_count": 12,
+      "file_count": 14,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3257,11 +3424,13 @@
         "plugins.v2/oidcauth/__init__.py",
         "plugins.v2/storagecleanup/__init__.py",
         "plugins.v3/agentresourceofficer/__init__.py",
-        "plugins.v3/brushflow/__init__.py"
+        "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "get_service": {
-      "file_count": 55,
+      "file_count": 57,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/autoauction/__init__.py",
@@ -3303,11 +3472,13 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
@@ -3325,7 +3496,7 @@
       "files": []
     },
     "get_state": {
-      "file_count": 117,
+      "file_count": 119,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3399,6 +3570,7 @@
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/chatgpt/openai.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3406,6 +3578,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -3447,7 +3620,7 @@
       ]
     },
     "init_plugin": {
-      "file_count": 115,
+      "file_count": 117,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3519,6 +3692,7 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3526,6 +3700,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -3567,7 +3742,7 @@
       ]
     },
     "stop_service": {
-      "file_count": 115,
+      "file_count": 117,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3639,6 +3814,7 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -3646,6 +3822,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -3695,12 +3872,14 @@
       ]
     },
     "app.agent.llm": {
-      "file_count": 4,
+      "file_count": 6,
       "files": [
         "plugins.v2/airecognizerenhancer/__init__.py",
         "plugins.v2/courseorganizer/providers.py",
         "plugins.v2/qbuploadlimiter/__init__.py",
-        "plugins.v3/chatgpt/openai.py"
+        "plugins.v3/chatgpt/openai.py",
+        "plugins.v3/courseorganizer/providers.py",
+        "plugins.v3/lunatvsource/ai.py"
       ]
     },
     "app.agent.llm.helper": {
@@ -3724,6 +3903,12 @@
         "plugins.v3/agentresourceofficer/__init__.py"
       ]
     },
+    "app.api.deps": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/courseorganizer/__init__.py"
+      ]
+    },
     "app.api.endpoints.plugin": {
       "file_count": 4,
       "files": [
@@ -3731,6 +3916,12 @@
         "plugins.v2/brushflow/__init__.py",
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.application.directory": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.chain": {
@@ -3764,7 +3955,7 @@
       ]
     },
     "app.chain.media": {
-      "file_count": 11,
+      "file_count": 13,
       "files": [
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
@@ -3774,15 +3965,18 @@
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
+        "plugins.v3/courseorganizer/providers.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins/downloadingmsg/__init__.py"
       ]
     },
     "app.chain.mediaserver": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
         "plugins.v2/personmeta/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/personmeta/__init__.py"
       ]
     },
@@ -3807,11 +4001,12 @@
       ]
     },
     "app.chain.search": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v2/doubansync/__init__.py",
         "plugins.v2/hrblocker/__init__.py",
-        "plugins.v3/doubansync/__init__.py"
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.chain.site": {
@@ -3822,10 +4017,12 @@
       ]
     },
     "app.chain.storage": {
-      "file_count": 2,
+      "file_count": 4,
       "files": [
         "plugins.v2/autoclean/__init__.py",
-        "plugins.v3/autoclean/__init__.py"
+        "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.chain.subscribe": {
@@ -3866,6 +4063,13 @@
         "plugins.v2/promotiontag/__init__.py",
         "plugins.v2/tobypasstrackers/__init__.py",
         "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.chain.transfer": {
+      "file_count": 2,
+      "files": [
+        "plugins.v3/courseorganizer/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.command": {
@@ -4198,10 +4402,11 @@
       ]
     },
     "app.db.oper.downloadhistory": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
         "plugins.v3/autoclean/__init__.py",
-        "plugins.v3/downloadsitetag/__init__.py"
+        "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.db.oper.site": {
@@ -4212,11 +4417,18 @@
       ]
     },
     "app.db.oper.subscribe": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
-        "plugins.v3/doubansync/__init__.py"
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py"
+      ]
+    },
+    "app.db.oper.systemconfig": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/courseorganizer/__init__.py"
       ]
     },
     "app.db.oper.transferhistory": {
@@ -4650,7 +4862,7 @@
       ]
     },
     "app.plugins": {
-      "file_count": 115,
+      "file_count": 117,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4722,6 +4934,7 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -4729,6 +4942,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -4949,7 +5163,7 @@
       ]
     },
     "app.schemas.types": {
-      "file_count": 89,
+      "file_count": 92,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -5006,12 +5220,15 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
+        "plugins.v3/courseorganizer/providers.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
@@ -5060,7 +5277,7 @@
       ]
     },
     "app.sdk.config": {
-      "file_count": 21,
+      "file_count": 23,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
@@ -5069,6 +5286,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/courseorganizer/providers.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -5077,6 +5295,7 @@
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/ai.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
@@ -5086,15 +5305,17 @@
       ]
     },
     "app.sdk.events": {
-      "file_count": 12,
+      "file_count": 14,
       "files": [
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
@@ -5103,7 +5324,7 @@
       ]
     },
     "app.sdk.logging": {
-      "file_count": 24,
+      "file_count": 25,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
@@ -5113,6 +5334,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
+        "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -5132,7 +5354,7 @@
       ]
     },
     "app.sdk.media": {
-      "file_count": 15,
+      "file_count": 16,
       "files": [
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
@@ -5144,6 +5366,7 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/libraryscraper/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
@@ -5394,9 +5617,9 @@
     }
   },
   "provenance": {
-    "head": "7d2d676d6f5139227050e9e71bd579943f45c0e8",
-    "python_file_count": 274,
-    "source_sha256": "b1e3a6d7bfdd78eec1377a7b42f7482b9720324a3403b21ad6767788b054b727"
+    "head": "8af03a0ff0af05d64ba748833bb87ba68a6bffad",
+    "python_file_count": 283,
+    "source_sha256": "5a08a3bde3f00793f64b7b4bb6d40d18bf523d8202bae1711ea1807959eb2f58"
   },
   "schema_version": 3,
   "scope": {
