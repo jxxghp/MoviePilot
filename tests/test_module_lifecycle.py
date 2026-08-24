@@ -8,13 +8,13 @@ from app.modules.discord import DiscordModule
 from app.modules.feishu import FeishuModule
 from app.modules.filter import FilterModule
 from app.modules.plex import PlexModule
-from app.modules.qqbot import QQBotModule
+from app.modules.qqbot.module import QQBotModule
 from app.modules.slack import SlackModule
-from app.modules.telegram import TelegramModule
+from app.modules.telegram.module import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.modules.themoviedb import TheMovieDbModule
-from app.modules.trimemedia import TrimeMediaModule
-from app.modules.ugreen import UgreenModule
+from app.modules.trimemedia.module import TrimeMediaModule
+from app.modules.ugreen.module import UgreenModule
 from app.modules.wechat import WechatModule
 from app.modules.wechatclawbot import WechatClawBotModule
 
@@ -177,6 +177,11 @@ def test_telegram_stop_closes_sdk_and_waits_for_polling_thread():
     client._bot = bot
     polling_thread = Mock()
     client._polling_thread = polling_thread
+    client._typing_tasks = {}
+    client._typing_stop_flags = {}
+    client._typing_lock = threading.RLock()
+    client._typing_lifecycle_lock = threading.RLock()
+    client._typing_accepting = True
 
     client.stop()
     client.stop()
