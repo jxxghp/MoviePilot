@@ -346,20 +346,13 @@ function ensure_backend_runtime_dependencies() {
     fi
 
     WARN "→ 检测到后端核心依赖异常，开始尝试恢复主程序依赖..."
-    local -a uv_cmd=(
-        "${UV_BIN}" sync
-        --project /app
-        --locked
-        --no-dev
-        --no-install-project
-        --inexact
-    )
-    if [ -n "${PIP_PROXY}" ]; then
-        uv_cmd+=(--default-index "${PIP_PROXY}")
+    if ! configure_package_route; then
+        ERROR "→ 无法选择可用的主程序依赖源，后端无法启动。"
+        diagnostic_keepalive 1
     fi
-
-    if ! run_package_command env "UV_PROJECT_ENVIRONMENT=${VENV_PATH}" \
-        "${uv_cmd[@]}" > /dev/stdout 2> /dev/stderr; then
+    PACKAGE_ROUTE_READY="true"
+    INFO "依赖源：${PACKAGE_LOG}"
+    if ! sync_project_dependencies_for "/app" > /dev/stdout 2> /dev/stderr; then
         ERROR "→ 自动恢复主程序依赖失败，后端无法启动。"
         diagnostic_keepalive 1
     fi

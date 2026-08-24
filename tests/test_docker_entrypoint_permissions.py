@@ -589,6 +589,46 @@ def test_backend_ready_timeout_accepts_leading_zero_decimal(tmp_path: Path) -> N
     assert "MoviePilot Web 已可访问" in output
 
 
+def test_backend_dependency_recovery_uses_runtime_profile_sync(tmp_path: Path) -> None:
+    """启动自愈必须复用按当前解释器选择依赖组的同步入口。"""
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    python_bin = venv_bin / "python3"
+    python_bin.write_text(
+        "#!/bin/bash\n[ -f \"${RECOVERY_MARKER}\" ]\n",
+        encoding="utf-8",
+    )
+    python_bin.chmod(0o755)
+    marker = tmp_path / "recovered"
+
+    output = _run_entrypoint_case(
+        tmp_path,
+        """
+        INFO() { printf '[INFO] %s\\n' "$1"; }
+        WARN() { printf '[WARN] %s\\n' "$1"; }
+        configure_package_route() {
+          PACKAGE_LOG="test-route"
+          printf 'configured\\n'
+        }
+        sync_project_dependencies_for() {
+          printf 'sync:%s\\n' "$1"
+          touch "${RECOVERY_MARKER}"
+        }
+        ensure_backend_runtime_dependencies
+        printf 'route-ready:%s\\n' "${PACKAGE_ROUTE_READY}"
+        """,
+        env={
+            "VENV_PATH": str(tmp_path / "venv"),
+            "RECOVERY_MARKER": str(marker),
+        },
+    )
+
+    assert "configured" in output
+    assert "sync:/app" in output
+    assert "route-ready:true" in output
+    assert marker.exists()
+
+
 def test_backend_failure_keepalive_contract_is_explicit() -> None:
     """后端异常默认保活诊断，显式关闭后才退出容器。"""
     content = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
