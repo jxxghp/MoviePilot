@@ -101,17 +101,22 @@ def test_music_weekly_uses_music_chart():
     chain = RecommendChain()
     with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
         source_chain.return_value.music_chart.return_value = [
-            MusicInfo(media_source="musicbrainz", media_id="recording-1", title="晴天")
+            MusicInfo(
+                media_source="musicbrainz",
+                media_id="album-1",
+                music_type="album",
+                title="叶惠美",
+            )
         ]
 
         result = chain.music_weekly(page=2, count=10)
 
-    assert result[0]["media_id"] == "recording-1"
+    assert result[0]["media_id"] == "album-1"
     source_chain.return_value.music_chart.assert_called_once_with(
         range_name="this_week",
         page=2,
         count=10,
-        entity="recording",
+        entity="album",
     )
 
 
@@ -121,7 +126,12 @@ def test_async_music_weekly_uses_music_chart():
     with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
         source_chain.return_value.async_music_chart = AsyncMock(
             return_value=[
-                MusicInfo(media_source="musicbrainz", media_id="recording-1", title="晴天")
+                MusicInfo(
+                    media_source="musicbrainz",
+                    media_id="album-1",
+                    music_type="album",
+                    title="叶惠美",
+                )
             ]
         )
 
@@ -132,7 +142,7 @@ def test_async_music_weekly_uses_music_chart():
         range_name="this_week",
         page=1,
         count=30,
-        entity="recording",
+        entity="album",
     )
 
 

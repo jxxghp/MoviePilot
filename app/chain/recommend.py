@@ -332,6 +332,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             range_name="this_week",
             page=page or 1,
             count=count or 30,
+            entity=MUSIC_ENTITY_ALBUM,
         )
         return [media.to_dict() for media in medias]
 
@@ -577,6 +578,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             range_name="this_week",
             page=page or 1,
             count=count or 30,
+            entity=MUSIC_ENTITY_ALBUM,
         )
         return [media.to_dict() for media in medias]
 
