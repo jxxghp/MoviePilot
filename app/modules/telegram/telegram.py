@@ -84,7 +84,7 @@ class Telegram:
     _typing_command_max_duration_seconds = 30
     _typing_callback_max_duration_seconds = 60
     _typing_join_timeout_seconds = 1
-    _polling_join_timeout_seconds = 10
+    _shutdown_timeout_seconds = 10
 
     def __init__(
             self,
@@ -1743,9 +1743,25 @@ class Telegram:
         # 清理菜单命令
         self._bot.delete_my_commands()
 
+    @staticmethod
+    def _stop_bot_with_deadline(bot: TeleBot, deadline: float) -> bool:
+        """停止 SDK polling，并在共享 deadline 内等待 worker 收敛。"""
+        bot.stop_polling()
+        if not bot.threaded or not bot.worker_pool:
+            return True
+
+        workers = tuple(bot.worker_pool.workers)
+        for worker in workers:
+            worker.stop()
+        for worker in workers:
+            if worker is threading.current_thread():
+                continue
+            worker.join(timeout=max(0.0, deadline - time.monotonic()))
+        return all(not worker.is_alive() for worker in workers)
+
     def stop(self) -> bool:
         """
-        停止 Telegram 消息接收服务，并返回 polling/typing owner 是否收敛。
+        停止 Telegram 消息接收服务，并返回 SDK/polling/typing owner 是否收敛。
         """
         converged = True
         with self._typing_lifecycle_lock:
@@ -1757,16 +1773,24 @@ class Telegram:
 
         bot = self._bot
         polling_thread = self._polling_thread
+        deadline = time.monotonic() + self._shutdown_timeout_seconds
+        transport_converged = True
         if bot:
-            bot.stop_bot()
+            if not self._stop_bot_with_deadline(bot, deadline):
+                converged = False
+                transport_converged = False
+                logger.error("Telegram SDK worker 未在关闭预算内退出")
         if (
             polling_thread
             and polling_thread.is_alive()
             and polling_thread is not threading.current_thread()
         ):
-            polling_thread.join(timeout=self._polling_join_timeout_seconds)
+            polling_thread.join(timeout=max(0.0, deadline - time.monotonic()))
         if polling_thread and polling_thread.is_alive():
             logger.error("Telegram polling 线程未在关闭预算内退出")
+            converged = False
+            transport_converged = False
+        if not transport_converged:
             return False
         self._polling_thread = None
         self._bot = None

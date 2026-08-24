@@ -224,6 +224,22 @@ preflight 会验证 Python 3.14、GIL 状态、`thread_inherit_context`、MovieP
 依赖、语义、驱动、启动或样本完整性不成立。该工具只用于隔离的本地长 A/B，不接真实凭据、用户数据库、
 媒体目录或外网，也不加入常规 CI。
 
+## 模块关闭事件循环 A/B
+
+`module_shutdown_ab.py` 使用隔离资源 owner，分别测量 `stop_modules()` 内部同步关闭和生命周期总入口的
+同步关闭。默认制造 50ms 同步等待，并观察 10ms 心跳是否在关闭完成前执行：
+
+```bash
+../.venv-test/bin/python scripts/perf/module_shutdown_ab.py \
+  --block-ms 50 \
+  --heartbeat-ms 10 \
+  --samples 7
+```
+
+分别在 Before/After revision 运行相同参数并保存 JSON。总关闭耗时应保持接近固定等待时间；心跳中位延迟
+用于判断事件循环是否被同步 owner 占用，所有样本在关闭完成前执行心跳属于正确性门禁。探针不启动真实
+模块、线程池、数据库、配置或网络。
+
 ## TaskRegistry 跨线程提交 A/B
 
 `task_registry_ab.py` 验证目标事件循环尚未分发 callback 时执行 shutdown，pending completion 与原始

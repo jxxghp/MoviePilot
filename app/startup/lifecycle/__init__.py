@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import time
 from contextlib import asynccontextmanager
-from typing import Callable
+from typing import Awaitable, Callable
 
 from fastapi import FastAPI
 
@@ -33,6 +33,7 @@ from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 
 settings = RuntimeSettingsCompat()
 from app.runtime.health import get_application_health
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.topology import validate_process_topology
 from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.adapters.external.server import MoviePilotServerHelper
@@ -135,32 +136,38 @@ async def run_shutdown_step(
     timeout_seconds: float | None = None,
 ) -> bool:
     """在有限预算内执行关闭阶段，并返回资源 owner 是否已经收敛。"""
-    try:
+
+    async def invoke() -> object:
+        """在主循环调用 owner，并等待其可能返回的异步结果。"""
         result = callback()
         if inspect.isawaitable(result):
-            task = asyncio.ensure_future(result)
+            return await result
+        return result
 
-            def _consume_shutdown_result(done: asyncio.Future) -> None:
-                """消费延迟收敛任务的最终异常，避免事件循环产生未取回异常。"""
-                try:
-                    done.result()
-                except asyncio.CancelledError:
-                    pass
-                except Exception as err:
-                    logger.error(f"关闭{name}最终收尾失败：{err}")
+    try:
+        task = asyncio.create_task(invoke(), name=f"shutdown.{name}")
 
-            task.add_done_callback(_consume_shutdown_result)
-            if timeout_seconds:
-                try:
-                    result = await asyncio.wait_for(
-                        asyncio.shield(task), timeout=timeout_seconds
-                    )
-                except asyncio.TimeoutError:
-                    logger.error("关闭%s超时，已请求取消并保留未收敛任务", name)
-                    task.cancel()
-                    return False
-            else:
-                result = await task
+        def _consume_shutdown_result(done: asyncio.Future) -> None:
+            """消费延迟收敛任务的最终异常，避免事件循环产生未取回异常。"""
+            try:
+                done.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as err:
+                logger.error(f"关闭{name}最终收尾失败：{err}")
+
+        task.add_done_callback(_consume_shutdown_result)
+        if timeout_seconds:
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                logger.error("关闭%s超时，已请求取消并保留未收敛任务", name)
+                task.cancel()
+                return False
+        else:
+            result = await task
         if result is False:
             logger.error("关闭%s未收敛，资源所有权保持不变", name)
             return False
@@ -168,6 +175,17 @@ async def run_shutdown_step(
     except Exception as err:
         logger.error(f"关闭{name}失败：{err}")
         return False
+
+
+def offload_shutdown_callback(
+    callback: Callable[[], object],
+) -> Callable[[], Awaitable[object]]:
+    """把明确会阻塞的同步关闭 owner 包装为异步生命周期回调。"""
+
+    async def invoke() -> object:
+        return await run_in_threadpool_to_completion(callback)
+
+    return invoke
 
 
 async def run_startup_step(
@@ -384,7 +402,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("插件备份恢复",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_plugins,
-            stop=finalize_plugins,
+            stop=offload_shutdown_callback(finalize_plugins),
             start_order=90,
             stop_order=60,
             start_timeout_seconds=300,
@@ -395,7 +413,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="插件变更监控",
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
-            stop=stop_plugin_monitor,
+            stop=offload_shutdown_callback(stop_plugin_monitor),
             stop_order=8,
             stop_timeout_seconds=10,
             stop_failure=LifecycleFailurePolicy.FAIL_FAST,
@@ -405,7 +423,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_scheduler,
-            stop=stop_scheduler,
+            stop=offload_shutdown_callback(stop_scheduler),
             start_order=100,
             stop_order=50,
             start_timeout_seconds=120,
@@ -496,7 +514,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("命令服务",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_workflow,
-            stop=stop_workflow,
+            stop=offload_shutdown_callback(stop_workflow),
             start_order=140,
             stop_order=20,
             start_timeout_seconds=120,
@@ -507,7 +525,9 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="插件备份",
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
-            stop=lambda: SystemChain().backup_plugins(),
+            stop=offload_shutdown_callback(
+                lambda: SystemChain().backup_plugins()
+            ),
             stop_order=10,
             stop_timeout_seconds=300,
         ),

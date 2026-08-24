@@ -1054,6 +1054,26 @@ def test_stop_modules_propagates_doh_nonconvergence(monkeypatch):
         _assert_completed_once(dependency)
 
 
+@pytest.mark.asyncio
+async def test_stop_modules_keeps_event_loop_responsive_during_sync_owner_wait(
+    monkeypatch,
+):
+    """同步 owner 的有界等待不得占用主事件循环。"""
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    release = threading.Event()
+    timer = threading.Timer(0.05, release.set)
+    dependencies["module"].side_effect = lambda: release.wait(timeout=1.0)
+
+    heartbeat = asyncio.create_task(asyncio.sleep(0.01))
+    timer.start()
+    try:
+        await modules_initializer.stop_modules()
+    finally:
+        timer.join(timeout=1.0)
+
+    assert heartbeat.done()
+
+
 def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
     """关闭时先收口 Web Agent，再关闭持久化准入和数据库任务。"""
     order = []
@@ -1120,7 +1140,8 @@ async def test_shutdown_timeout_does_not_skip_database_worker_cleanup(monkeypatc
         "get_configured_agent_chat_persistence",
         MagicMock(return_value=persistence),
     )
-    stop_database_worker = AsyncMock()
+    database_worker_stopped = asyncio.Event()
+    stop_database_worker = AsyncMock(side_effect=database_worker_stopped.set)
     monkeypatch.setattr(modules_initializer, "stop_database_worker", stop_database_worker)
     monkeypatch.setattr(modules_initializer, "_database_worker", object())
 
@@ -1135,6 +1156,7 @@ async def test_shutdown_timeout_does_not_skip_database_worker_cleanup(monkeypatc
     completed = await shutdown
 
     assert completed is False
+    await asyncio.wait_for(database_worker_stopped.wait(), timeout=1.0)
     stop_database_worker.assert_awaited_once_with()
 
 
@@ -1175,6 +1197,54 @@ async def test_shutdown_timeout_has_hard_bound_for_nonconverging_cleanup() -> No
 
     release.set()
     await asyncio.wait_for(settled.wait(), timeout=0.2)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_step_bounds_sync_owner_without_blocking_event_loop() -> None:
+    """同步 owner 超时后应及时返回，并继续持有 worker 直至真实终态。"""
+    started = threading.Event()
+    release = threading.Event()
+    settled = threading.Event()
+
+    def blocking_shutdown() -> None:
+        started.set()
+        release.wait(timeout=1.0)
+        settled.set()
+
+    heartbeat = asyncio.create_task(asyncio.sleep(0.01))
+    shutdown = asyncio.create_task(
+        lifecycle.run_shutdown_step(
+            "同步阻塞 owner",
+            lifecycle.offload_shutdown_callback(blocking_shutdown),
+            timeout_seconds=0.02,
+        )
+    )
+    assert await asyncio.to_thread(started.wait, 0.2)
+    started_at = asyncio.get_running_loop().time()
+    completed = await shutdown
+
+    assert completed is False
+    assert asyncio.get_running_loop().time() - started_at < 0.2
+    assert heartbeat.done()
+    assert not settled.is_set()
+
+    release.set()
+    assert await asyncio.to_thread(settled.wait, 0.2)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_step_calls_awaitable_wrapper_on_event_loop() -> None:
+    """普通 callable 可在主循环构造并返回需要等待的异步结果。"""
+    loop = asyncio.get_running_loop()
+
+    def shutdown_wrapper() -> asyncio.Task[None]:
+        assert asyncio.get_running_loop() is loop
+        return loop.create_task(asyncio.sleep(0))
+
+    assert await lifecycle.run_shutdown_step(
+        "异步包装 owner",
+        shutdown_wrapper,
+    ) is True
 
 
 @pytest.mark.asyncio
