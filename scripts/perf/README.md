@@ -223,3 +223,24 @@ preflight 会验证 Python 3.14、GIL 状态、`thread_inherit_context`、MovieP
 退出码 `0` 表示合同与性能阈值通过，`1` 表示样本有效但出现性能回退，`2` 表示 digest、ABI、
 依赖、语义、驱动、启动或样本完整性不成立。该工具只用于隔离的本地长 A/B，不接真实凭据、用户数据库、
 媒体目录或外网，也不加入常规 CI。
+
+### PostgreSQL 同步驱动三方案
+
+`postgresql_driver_ab.py` 在同一 PostgreSQL 容器中比较标准 V3/psycopg2、标准
+V3/psycopg3 binary 和 V3t/psycopg3 C。三个输入镜像必须来自相同源码 revision 和产品版本；
+标准 V3/psycopg3 镜像是只增加该驱动的本地验证衍生镜像，不是发布制品。
+
+```bash
+../.venv/bin/python scripts/perf/postgresql_driver_ab.py \
+  --campaign v3-ft-pg-001 \
+  --postgres-container moviepilot-pg-ab \
+  --dsn 'postgresql://moviepilot:<benchmark-password>@127.0.0.1:5432/moviepilot' \
+  --standard-image 'moviepilot-v3@sha256:<64-hex-digest>' \
+  --standard-psycopg3-image 'moviepilot-v3-pg3@sha256:<64-hex-digest>' \
+  --free-threaded-image 'moviepilot-v3t@sha256:<64-hex-digest>'
+```
+
+脚本按三方案的六个全排列执行固定 SQL，默认把每个采样容器限制为 2 CPU/1 GiB，保存单连接查询、
+16 线程查询、批量事务、长事务行锁并行、驱动/libpq/SOABI 和 GIL 状态。每个 campaign 使用独立
+测试表并在成功或失败后清理；DSN 只传入隔离容器，不写入结果。性能数据用于解释驱动选择，不作为
+跨机器发布阈值；驱动实现、GIL、查询结果、长事务并行和样本完整性属于硬门禁。
