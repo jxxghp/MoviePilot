@@ -697,3 +697,209 @@ async def test_background_prompt_is_owned_and_cancelled_by_manager_close(
     assert manager._session_queues == {}
     assert manager._session_workers == {}
     assert manager.active_agents == {}
+
+
+@pytest.mark.anyio
+async def test_stop_current_task_handles_worker_cancelled_before_first_run() -> None:
+    """worker 尚未首次运行时停止也必须完成收口。"""
+    manager = AgentManager()
+    session_id = "stop-before-worker-start"
+    worker = None
+    await manager.initialize()
+
+    try:
+        await manager.process_message(session_id, "1", "message")
+        worker = manager._session_workers[session_id]
+        assert worker.done() is False
+
+        assert await manager.stop_current_task(session_id) is True
+        assert worker.done() is True
+        assert session_id not in manager._session_workers
+        assert session_id not in manager._session_queues
+    finally:
+        if worker is not None:
+            if not worker.done():
+                worker.cancel()
+            try:
+                await worker
+            except BaseException:
+                pass
+            if manager._session_workers.get(session_id) is worker:
+                manager._session_workers.pop(session_id, None)
+        if manager._accepting_tasks:
+            await manager.close()
+
+
+@pytest.mark.anyio
+async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
+        monkeypatch,
+) -> None:
+    """clear_session 被调用方取消后必须能重试或已转交延迟清理。"""
+    manager = AgentManager()
+    memory_manager = MemoryManager()
+    memory_manager.clear_memory = MagicMock()
+    monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
+    session_id = "clear-caller-cancelled"
+    started = asyncio.Event()
+    cancellation_seen = asyncio.Event()
+    release = asyncio.Event()
+    execution = None
+    clear_request = None
+
+    class BlockingAgent:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        async def process(self, _message, **_kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancellation_seen.set()
+                await release.wait()
+                raise
+
+        async def cleanup(self):
+            return True
+
+        def get_session_status(self):
+            return {}
+
+    await manager.initialize()
+    try:
+        execution = asyncio.create_task(
+            manager.process_message(
+                session_id,
+                "1",
+                "message",
+                agent_factory=BlockingAgent,
+                wait_for_completion=True,
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+        clear_request = asyncio.create_task(
+            manager.clear_session(session_id, "1")
+        )
+        await asyncio.wait_for(cancellation_seen.wait(), timeout=1)
+        assert clear_request.done() is False
+        clear_request.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await clear_request
+
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await execution
+
+        # 取消安全的延迟清理可能异步完成；若未发生转交，重试仍必须完成清理。
+        await asyncio.wait_for(
+            manager.clear_session(session_id, "1"),
+            timeout=1,
+        )
+        for _ in range(100):
+            if (
+                session_id not in manager._session_cleanup_pending
+                and session_id not in manager.active_agents
+            ):
+                break
+            await asyncio.sleep(0)
+
+        assert session_id not in manager._session_cleanup_pending
+        assert session_id not in manager._session_shutdown_pending
+        assert session_id not in manager._session_deferred_cleanup_tasks
+        assert session_id not in manager._session_workers
+        assert session_id not in manager._session_queues
+        assert session_id not in manager.active_agents
+        assert memory_manager.clear_memory.call_count == 1
+    finally:
+        release.set()
+        if clear_request is not None and not clear_request.done():
+            clear_request.cancel()
+            try:
+                await clear_request
+            except BaseException:
+                pass
+        if execution is not None and not execution.done():
+            execution.cancel()
+            try:
+                await execution
+            except BaseException:
+                pass
+        for deferred in list(manager._session_deferred_cleanup_tasks.values()):
+            if not deferred.done():
+                deferred.cancel()
+            try:
+                await deferred
+            except BaseException:
+                pass
+        if manager._accepting_tasks:
+            await manager.close()
+
+
+@pytest.mark.anyio
+async def test_session_worker_restarts_after_idle_timeout_races_with_full_enqueue(
+        monkeypatch,
+) -> None:
+    """空闲退出与满队列入队交错时必须保留会话消费者。"""
+    manager = AgentManager()
+    memory_manager = MemoryManager()
+    monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
+    session_id = "idle-timeout-full-queue"
+    processed = []
+    first_processed = asyncio.Event()
+    idle_waiting = asyncio.Event()
+    release_timeout = asyncio.Event()
+    timeout_intercepted = False
+    real_wait_for = asyncio.wait_for
+
+    async def process(task):
+        processed.append(task.message)
+        if task.message == "initial":
+            first_processed.set()
+        return task.message
+
+    async def controlled_wait_for(awaitable, timeout):
+        nonlocal timeout_intercepted
+        if timeout == 60.0 and processed and not timeout_intercepted:
+            timeout_intercepted = True
+            idle_waiting.set()
+            await release_timeout.wait()
+            awaitable.close()
+            raise asyncio.TimeoutError
+        return await real_wait_for(awaitable, timeout)
+
+    monkeypatch.setattr(agent_module.asyncio, "wait_for", controlled_wait_for)
+    await manager.initialize()
+    try:
+        manager._process_message_internal = process
+        await manager.process_message(session_id, "1", "initial")
+        await real_wait_for(first_processed.wait(), timeout=1)
+        await real_wait_for(idle_waiting.wait(), timeout=1)
+
+        for index in range(AGENT_SESSION_QUEUE_MAX_SIZE):
+            await manager.process_message(
+                session_id,
+                "1",
+                f"queued-{index}",
+            )
+
+        assert manager._session_queues[session_id].full()
+        release_timeout.set()
+
+        async def all_messages_processed() -> None:
+            while len(processed) < AGENT_SESSION_QUEUE_MAX_SIZE + 1:
+                await asyncio.sleep(0)
+
+        await real_wait_for(all_messages_processed(), timeout=1)
+        assert processed == [
+            "initial",
+            *[f"queued-{index}" for index in range(AGENT_SESSION_QUEUE_MAX_SIZE)],
+        ]
+        worker = manager._session_workers.get(session_id)
+        assert worker is not None
+        assert worker.done() is False
+    finally:
+        release_timeout.set()
+        if manager._accepting_tasks:
+            await manager.clear_session(session_id, "1")
+            await manager.close()

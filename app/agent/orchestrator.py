@@ -3034,6 +3034,10 @@ class AgentManager:
                     # 等待消息，超时后自动退出worker
                     task = await asyncio.wait_for(queue.get(), timeout=60.0)
                 except asyncio.TimeoutError:
+                    # 超时回调与入队可能在同一轮事件循环就绪；已有消息时继续消费，
+                    # 避免旧 worker 退出后留下没有消费者的非空队列。
+                    if not queue.empty():
+                        continue
                     # 队列空闲超时，退出worker
                     logger.debug(f"会话 {session_id} 的消息队列空闲，worker退出")
                     break
@@ -3306,22 +3310,17 @@ class AgentManager:
             self._session_cleanup_pending.add(session_id)
             self._session_cancel_requested.add(session_id)
             worker.cancel()
-            stopped_cleanly = await self._wait_for_worker_shutdown(
-                session_id,
-                worker,
-                reason="clear_session",
-            )
-            if not stopped_cleanly:
-                queue = self._session_queues.pop(session_id, None)
-                if queue:
-                    self._discard_queued_messages(queue)
-                worker.add_done_callback(
-                    lambda done: self._schedule_deferred_session_cleanup(
-                        session_id,
-                        user_id,
-                        worker,
-                    )
+            try:
+                stopped_cleanly = await self._wait_for_worker_shutdown(
+                    session_id,
+                    worker,
+                    reason="clear_session",
                 )
+            except asyncio.CancelledError:
+                self._defer_session_cleanup(session_id, user_id, worker)
+                raise
+            if not stopped_cleanly:
+                self._defer_session_cleanup(session_id, user_id, worker)
                 return
             if self._session_workers.get(session_id) is worker:
                 self._session_workers.pop(session_id, None)  # noqa
@@ -3346,14 +3345,36 @@ class AgentManager:
             memory_manager.clear_memory(session_id, user_id)
             logger.info(f"会话 {session_id} 的记忆已清空")
 
+    def _defer_session_cleanup(
+            self,
+            session_id: str,
+            user_id: str,
+            worker: asyncio.Task,
+    ) -> None:
+        """把中断或超时的清理转交给 worker 终态回调。"""
+        queue = self._session_queues.pop(session_id, None)
+        if queue:
+            self._discard_queued_messages(queue)
+        self._session_shutdown_pending[session_id] = worker
+        worker.add_done_callback(
+            lambda done: self._schedule_deferred_session_cleanup(
+                session_id,
+                user_id,
+                done,
+            )
+        )
+
     def _schedule_deferred_session_cleanup(
             self,
             session_id: str,
             user_id: str,
             worker: asyncio.Task,
     ) -> None:
-        """worker 超时后延迟释放会话资源，避免与仍在运行的 Agent 竞态。"""
-        if session_id in self._session_shutdown_pending:
+        """worker 取得终态后释放会话资源，避免与仍在运行的 Agent 竞态。"""
+        if self._session_shutdown_pending.get(session_id) is worker:
+            existing = self._session_deferred_cleanup_tasks.get(session_id)
+            if existing is not None and not existing.done():
+                return
             cleanup_task = asyncio.create_task(
                 self._finish_deferred_session_cleanup(
                     session_id=session_id,
@@ -3438,6 +3459,9 @@ class AgentManager:
             )
             return True
         except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if worker.cancelled() and (current is None or not current.cancelling()):
+                return True
             raise
         except asyncio.TimeoutError:
             self._session_shutdown_pending[session_id] = worker

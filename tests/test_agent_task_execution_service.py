@@ -8,11 +8,15 @@ from uuid import uuid4
 import pytest
 
 from app.application.agenttask import AgentTaskExecutionService
+from app.application.database import AsyncDatabaseExecutor
 from app.db.adapters.transaction import TransactionalWriteRunner
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.session import SessionFactory, async_session_scope
 from app.db.worker import DatabaseWorker
-from app.schemas.exception import DatabaseWorkerClosedError
+from app.schemas.exception import (
+    DatabaseWorkerClosedError,
+    DatabaseWorkerOverloadedError,
+)
 
 
 def _add_task(prefix: str, *, trigger_type: str = "cron"):
@@ -34,7 +38,7 @@ def _add_task(prefix: str, *, trigger_type: str = "cron"):
 
 
 def _build_service(
-    worker: DatabaseWorker,
+    worker: AsyncDatabaseExecutor,
     repository: Callable[[object], object] | None = None,
 ) -> AgentTaskExecutionService:
     """按生产事务和 worker 边界构造独立服务。"""
@@ -89,6 +93,41 @@ async def test_cancelled_queued_claim_does_not_create_run() -> None:
     assert current.last_run_id is None
     assert AgentTaskOper().list_runs(task.id) == []
     await worker.shutdown()
+
+
+@pytest.mark.anyio
+async def test_cancelled_overloaded_claim_does_not_start_compensation() -> None:
+    """认领尚未获得 admission 时取消，不得启动不存在运行的补偿收口。"""
+
+    class OverloadedExecutor:
+        """在认领取得 worker admission 前稳定制造取消窗口。"""
+
+        def __init__(self) -> None:
+            self.calls = 0
+            self.first_call = asyncio.Event()
+
+        async def run(self, _operation):
+            self.calls += 1
+            self.first_call.set()
+            if self.calls > 1:
+                raise AssertionError("未获 admission 的认领不应启动终态补偿")
+            raise DatabaseWorkerOverloadedError("worker full")
+
+    executor = OverloadedExecutor()
+    task = _add_task("overload-cancel")
+    service = _build_service(executor)
+    claim = asyncio.create_task(service.claim(task.id))
+    await executor.first_call.wait()
+    claim.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await claim
+
+    assert executor.calls == 1
+    current = AgentTaskOper().get(task.id)
+    assert current.last_status == "waiting"
+    assert current.last_run_id is None
+    assert AgentTaskOper().list_runs(task.id) == []
 
 
 @pytest.mark.anyio
