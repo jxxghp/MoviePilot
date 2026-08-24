@@ -122,7 +122,7 @@ profile，依赖名称、版本和 source 语义全部由 `pyproject.toml` 与 `
 | 32 线程直接 Rust ABI 探针 | 40,832.4 ops/s | 61,550.9 ops/s | V3t 约为 1.51 倍；两边都直接调用 Rust，仅验证原生 ABI 与并发。 |
 | 普通 API 最大 p95 比例 | 基线 | 1.10x | 四个本地 API 中最大退化来自订阅列表，仍低于 1.25x 门禁。 |
 
-该候选还通过了四分片全量回归（5,957 passed、3 skipped、14 subtests passed）、PostgreSQL 18
+该候选还通过了四分片全量回归（5,981 passed、3 skipped、14 subtests passed）、PostgreSQL 18.6
 迁移/提交/回滚、现代插件清单、历史 `requirements.txt`、插件源码与依赖恢复以及恢复后单实例加载。
 这些结果证明双 profile 方案可行；最终发布仍必须使用最新 revision 和正式不可变 digest 重跑。
 
@@ -172,10 +172,12 @@ GIL、working set、RSS/PSS/USS、API p50/p95、SQLite 同步/异步结果和 1/
 空白配置卷首次启动需要下载 CloakBrowser 内核。该场景可能接近用户报告的“两分钟启动”，主要瓶颈
 是持久浏览器缓存未命中和下载网络，不是插件初始化；缓存命中后的普通重启不重复下载。
 
-现代 `pyproject.toml` 插件与历史 `requirements.txt` 插件均能在 V3t 安装并进入 `active`，且没有
-启用 GIL。模拟镜像重建时，插件源码先从快照恢复，Web 先就绪；依赖未就绪的插件随后从持久 uv 缓存
-恢复依赖并各加载一次。该结果证明插件源码恢复不应被依赖下载阻塞，依赖未就绪的插件可以在 Web 可用
-后渐进加载。
+现代 `pyproject.toml` 插件（`boltons==25.0.0`）与历史 `requirements.txt` 插件
+（`humanize==4.15.0`）均已在 V3t 真实容器中验收。首次运行从快照恢复两个源码目录耗时 1.60ms，
+联网安装依赖及激活耗时 4.64s；优雅关停后使用同一不可变镜像和持久 `/config` 断网重建，源码恢复
+耗时 1.95ms，仅从持久 uv 缓存恢复依赖及激活耗时 1.56s。两轮各插件都只产生一条实例初始化记录，
+最终 API 状态均为 `active`、无 pending/failed，且没有启用 GIL。该结果证明插件源码恢复不应被依赖
+下载阻塞，依赖未就绪的插件可以在 Web 可用后渐进加载。
 
 删除一个主程序核心依赖后重启，启动前探针能触发锁定自愈，`--inexact` 保留插件额外依赖；恢复后
 插件仍为单实例 `active`，V3t GIL 仍关闭。该路径的价值是让受污染共享环境能够恢复启动，不是性能
