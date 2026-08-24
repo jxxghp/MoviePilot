@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -9,7 +10,7 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
-from app.modules.feishu.feishu import Feishu
+from app.modules.feishu.feishu import Feishu, lark_ws_client_module
 
 
 def _build_feishu_client() -> Feishu:
@@ -28,6 +29,66 @@ def _build_feishu_client() -> Feishu:
 async def _wait_forever() -> None:
     """模拟飞书 SDK 创建的长生命周期后台任务。"""
     await asyncio.Future()
+
+
+def test_parallel_ws_clients_keep_independent_sdk_event_loops() -> None:
+    """多个飞书配置并发启动时不得覆盖彼此的 SDK 事件循环。"""
+    clients = [_build_feishu_client(), _build_feishu_client()]
+    barrier = threading.Barrier(2)
+    constructed = threading.Event()
+    construction_lock = threading.Lock()
+    fake_clients = []
+
+    class _ConcurrentWsClient:
+        """模拟真实 SDK 通过模块级 loop 与 _select 驱动长连接。"""
+
+        def __init__(self, *_args, **_kwargs):
+            """登记实例并准备关停路径需要的 SDK 私有状态。"""
+            self._auto_reconnect = True
+            self._conn = None
+            self._conn_url = ""
+            self._conn_id = ""
+            self._service_id = ""
+            self._lock = asyncio.Lock()
+            self.started = threading.Event()
+            self.observed_loop = None
+            with construction_lock:
+                fake_clients.append(self)
+                if len(fake_clients) == 2:
+                    constructed.set()
+
+        def start(self) -> None:
+            """强制两个线程同时解析 SDK 全局，再等待各自停止信号。"""
+            barrier.wait(timeout=2)
+
+            async def run_until_stopped() -> None:
+                """记录真实运行循环，并调用 SDK 的模块级阻塞选择。"""
+                self.observed_loop = asyncio.get_running_loop()
+                self.started.set()
+                await lark_ws_client_module._select()
+
+            lark_ws_client_module.loop.run_until_complete(run_until_stopped())
+
+    with patch(
+        "app.modules.feishu.feishu.lark.ws.Client",
+        _ConcurrentWsClient,
+    ):
+        try:
+            for client in clients:
+                client._start_ws_client()
+            assert constructed.wait(timeout=2)
+            assert all(fake.started.wait(timeout=2) for fake in fake_clients)
+            observed_loops = [fake.observed_loop for fake in fake_clients]
+            assert len(set(observed_loops)) == 2
+            assert all(loop is not None for loop in observed_loops)
+        finally:
+            for client in clients:
+                client.stop()
+
+    assert all(
+        client._ws_thread is None or not client._ws_thread.is_alive()
+        for client in clients
+    )
 
 
 def test_shutdown_ws_client_cancels_sdk_tasks_before_quiet_disconnect():

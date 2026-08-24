@@ -65,6 +65,57 @@ from app.adapters.network.http import RequestUtils
 from app.runtime.thread import ThreadHelper
 
 
+class _ThreadLocalEventLoopProxy:
+    """为使用模块级 loop 的飞书 SDK 路由当前实例线程的事件循环。"""
+
+    def __init__(self, fallback: asyncio.AbstractEventLoop) -> None:
+        """保存 SDK 原始循环，并初始化互不共享的线程绑定。"""
+        self._fallback = fallback
+        self._state = threading.local()
+
+    def bind(
+            self,
+            loop: asyncio.AbstractEventLoop,
+            stop_event: threading.Event,
+    ) -> None:
+        """为当前飞书实例线程绑定循环和停止信号。"""
+        self._state.loop = loop
+        self._state.stop_event = stop_event
+
+    def unbind(self) -> None:
+        """清除当前线程绑定，防止复用线程时误取已关闭循环。"""
+        self._state.__dict__.clear()
+
+    def stop_event(self) -> Optional[threading.Event]:
+        """返回当前实例线程的停止信号，未绑定时返回空。"""
+        return getattr(self._state, "stop_event", None)
+
+    def __getattr__(self, name: str) -> Any:
+        """把 SDK loop 操作转发给当前线程循环或原始兼容循环。"""
+        loop = getattr(self._state, "loop", self._fallback)
+        return getattr(loop, name)
+
+
+_LARK_WS_ORIGINAL_SELECT = lark_ws_client_module._select
+_lark_ws_loop_proxy = _ThreadLocalEventLoopProxy(lark_ws_client_module.loop)
+
+
+async def _select_bound_ws_client() -> None:
+    """按当前实例的停止信号结束 SDK 阻塞选择；未绑定时保持 SDK 原行为。"""
+    stop_event = _lark_ws_loop_proxy.stop_event()
+    if stop_event is None:
+        await _LARK_WS_ORIGINAL_SELECT()
+        return
+    while not stop_event.is_set():
+        await asyncio.sleep(1)
+
+
+# lark_oapi 以模块全局 loop 驱动所有 Client；静态安装线程路由后，多配置实例
+# 不再在启动/退出时反复覆盖同一全局对象。
+lark_ws_client_module.loop = _lark_ws_loop_proxy
+lark_ws_client_module._select = _select_bound_ws_client
+
+
 class UserOper:
     """兼容飞书模块存量测试的渠道用户查询门面。"""
 
@@ -176,18 +227,11 @@ class Feishu:
 
     def _run_ws_client(self) -> None:
         """在后台线程中运行飞书长连接客户端。"""
-        original_select = lark_ws_client_module._select
-        original_loop = lark_ws_client_module.loop
         loop = asyncio.new_event_loop()
         original_create_task = loop.create_task
         self._ws_loop = loop
         asyncio.set_event_loop(loop)
-        lark_ws_client_module.loop = loop
-
-        async def _wait_for_stop() -> None:
-            """等待停止信号，让 SDK 的阻塞 select 可被本地生命周期控制。"""
-            while not self._stop_event.is_set():
-                await asyncio.sleep(1)
+        _lark_ws_loop_proxy.bind(loop, self._stop_event)
 
         def _create_tracked_task(coro, *args, **kwargs) -> asyncio.Task:
             """跟踪 SDK 后台任务，避免关闭时产生未取回的任务异常。"""
@@ -202,7 +246,6 @@ class Feishu:
                 task.add_done_callback(self._consume_ws_task_result)
             return task
 
-        lark_ws_client_module._select = _wait_for_stop
         loop.create_task = _create_tracked_task
         try:
             self._ws_client = lark.ws.Client(
@@ -223,8 +266,6 @@ class Feishu:
         finally:
             if not loop.is_closed():
                 loop.run_until_complete(self._shutdown_ws_client())
-            lark_ws_client_module._select = original_select
-            lark_ws_client_module.loop = original_loop
             loop.create_task = original_create_task
             pending_tasks = [
                 task
@@ -240,6 +281,7 @@ class Feishu:
             loop.close()
             asyncio.set_event_loop(None)
             self._ws_loop = None
+            _lark_ws_loop_proxy.unbind()
 
     def _consume_ws_task_result(self, task: asyncio.Task) -> None:
         """取回飞书 SDK 后台任务结果，防止 asyncio 在关机时输出未消费异常。"""
