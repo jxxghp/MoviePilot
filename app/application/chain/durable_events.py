@@ -55,12 +55,9 @@ class TransferHistoryRef:
     src_fileitem: dict[str, Any] | None
 
 
-def download_added_event_key(payload: dict[str, Any]) -> str:
-    """由下载器与任务 hash 构造重试期间稳定的 DownloadAdded 幂等键。"""
-    return (
-        f"download.added:{payload.get('downloader') or 'unknown'}:"
-        f"{payload.get('hash') or 'unknown'}:v1"
-    )
+def download_added_event_key(history_id: int) -> str:
+    """由下载历史 ID 构造本次下载事实稳定的 DownloadAdded 幂等键。"""
+    return f"download.added:{history_id}:v1"
 
 
 def transfer_result_event_key(topic: str, history_id: int) -> str:

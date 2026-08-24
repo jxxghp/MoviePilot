@@ -4,7 +4,6 @@ import json
 
 import pytest
 from sqlalchemy import create_engine, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.application.chain.durable_events import (
@@ -145,32 +144,43 @@ def test_download_history_and_event_intent_share_one_transaction():
     assert history.download_hash == "hash-2"
     assert download_file.fullpath == "/downloads/Demo.mkv"
     assert outbox.status == "completed"
-    assert outbox.event_key == "download.added:qb:hash-2:v1"
+    assert outbox.event_key == f"download.added:{history.id}:v1"
     assert [call if isinstance(call, str) else call[0] for call in calls] == [
         "after_commit",
         "event",
     ]
 
-    with pytest.raises(IntegrityError):
-        writer.download_added(
-            history_payload={
-                "path": "/downloads/duplicate.mkv",
-                "type": MediaType.MOVIE.value,
-                "title": "Duplicate",
-                "download_hash": "hash-2",
-            },
-            file_payloads=[],
-            event_payload={
-                "hash": "hash-2",
-                "context": context,
-                "downloader": "qb",
-                "episodes": [],
-            },
-            after_commit=lambda: None,
-            publish=lambda _payload: None,
-        )
+    writer.download_added(
+        history_payload={
+            "path": "/downloads/duplicate.mkv",
+            "type": MediaType.MOVIE.value,
+            "title": "Duplicate",
+            "download_hash": "hash-2",
+        },
+        file_payloads=[],
+        event_payload={
+            "hash": "hash-2",
+            "context": context,
+            "downloader": "qb",
+            "episodes": [],
+        },
+        after_commit=lambda: None,
+        publish=lambda _payload: None,
+    )
     with factory() as session:
-        assert len(session.execute(select(DownloadHistory)).scalars().all()) == 1
+        histories = session.execute(
+            select(DownloadHistory).order_by(DownloadHistory.id)
+        ).scalars().all()
+        outboxes = session.execute(
+            select(OutboxMessage).order_by(OutboxMessage.id)
+        ).scalars().all()
+    assert len(histories) == 2
+    assert len(outboxes) == 2
+    assert all(message.status == "completed" for message in outboxes)
+    assert [message.event_key for message in outboxes] == [
+        f"download.added:{history.id}:v1" for history in histories
+    ]
+    assert outboxes[0].event_key != outboxes[1].event_key
 
 
 def test_transfer_event_failure_leaves_committed_intent_pending():

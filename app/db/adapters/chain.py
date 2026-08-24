@@ -80,21 +80,25 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                 unit_of_work=SqlAlchemyUnitOfWork(session),
                 outbox=outbox,
             )
-            event_key = download_added_event_key(event_payload)
-            event_payload["idempotency_key"] = event_key
-
-            def stage_business() -> None:
+            def stage_business() -> int:
                 """在同一事务暂存下载历史和可选文件清单。"""
-                repository.stage_add(history_payload)
+                history = repository.stage_add(history_payload)
                 if file_payloads:
                     repository.stage_add_files(file_payloads)
+                return int(history.id)
 
-            command.execute(
-                intent=OutboxIntent(
+            def build_intent(history_id: int) -> OutboxIntent:
+                """历史 ID 确定后构造本次下载事实的稳定事件键。"""
+                event_key = download_added_event_key(history_id)
+                event_payload["idempotency_key"] = event_key
+                return OutboxIntent(
                     event_key=event_key,
                     topic=DOWNLOAD_ADDED_TOPIC,
                     payload=snapshot_download_added(event_payload),
-                ),
+                )
+
+            command.execute(
+                intent=build_intent,
                 stage_business=stage_business,
                 after_commit=after_commit,
                 publish=lambda: publish(event_payload),
