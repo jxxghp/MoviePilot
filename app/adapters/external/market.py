@@ -15,7 +15,7 @@ import traceback
 import uuid
 import zipfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Dict, List, Optional, Tuple, Set, Callable, Awaitable, Sequence
+from typing import Dict, List, Optional, Tuple, Set, Callable, Awaitable, Iterator, Sequence
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlsplit
 
 import aiofiles
@@ -739,6 +739,53 @@ class PluginHelper(metaclass=WeakSingleton):
             if isinstance(release_info, dict)
         ]
 
+    @classmethod
+    def _iter_plugin_release_page_requests(
+            cls,
+            repo_url: str,
+    ) -> Iterator[Tuple[str, dict]]:
+        """按需生成仓库 Release 分页请求，统一仓库解析、请求头和页数上限。"""
+        if not repo_url:
+            return
+
+        user, repo = cls.get_repo_info(repo_url)
+        if not user or not repo:
+            return
+
+        user_repo = f"{user}/{repo}"
+        headers = settings.REPO_GITHUB_HEADERS(repo=user_repo)
+        for page in range(1, 11):
+            release_api = (
+                f"https://api.github.com/repos/{user_repo}/releases"
+                f"?per_page=100&page={page}"
+            )
+            yield cls.__append_cache_buster(release_api), headers
+
+    @classmethod
+    def _merge_plugin_release_page(
+            cls,
+            repo_url: str,
+            response,
+            releases: List[dict],
+    ) -> Optional[bool]:
+        """合并一页 Release 响应；返回真继续、假结束，None 表示整次读取失败。"""
+        if response is None or response.status_code != 200:
+            return None
+
+        try:
+            payload = response.json()
+        except Exception as error:
+            logger.error(f"解析插件仓库 {repo_url} Release 列表失败：{error}")
+            return None
+
+        if not payload:
+            return False
+        if not isinstance(payload, list):
+            return None
+
+        releases.extend(cls.__normalize_plugin_release_response(payload))
+        return len(payload) >= 100
+
     @cached(maxsize=128, ttl=1800)
     def get_plugins(self, repo_url: str,
                     package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
@@ -761,39 +808,25 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         按仓库获取 GitHub Release 原始分页数据，供仓库内所有插件共享。
         """
-        if not repo_url:
-            return []
-
-        user, repo = self.get_repo_info(repo_url)
-        if not user or not repo:
-            return []
-
-        user_repo = f"{user}/{repo}"
         releases = []
-        for page in range(1, 11):
-            release_api = f"https://api.github.com/repos/{user_repo}/releases?per_page=100&page={page}"
-            release_api = self.__append_cache_buster(release_api)
+        for release_api, headers in self._iter_plugin_release_page_requests(
+                repo_url
+        ):
             res = self.__request_with_fallback(
                 release_api,
-                headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+                headers=headers,
                 timeout=30,
                 is_api=True,
             )
-            if res is None or res.status_code != 200:
+            should_continue = self._merge_plugin_release_page(
+                repo_url,
+                res,
+                releases,
+            )
+            if should_continue is None:
                 return None
-
-            try:
-                payload = res.json()
-                if not payload:
-                    break
-                if not isinstance(payload, list):
-                    return None
-                releases.extend(self.__normalize_plugin_release_response(payload))
-                if len(payload) < 100:
-                    break
-            except Exception as e:
-                logger.error(f"解析插件仓库 {repo_url} Release 列表失败：{e}")
-                return None
+            if not should_continue:
+                break
         return releases
 
     def get_plugin_release_versions(self, pid: str, repo_url: str) -> List[dict]:
@@ -2295,39 +2328,25 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         异步按仓库获取 GitHub Release 原始分页数据。
         """
-        if not repo_url:
-            return []
-
-        user, repo = self.get_repo_info(repo_url)
-        if not user or not repo:
-            return []
-
-        user_repo = f"{user}/{repo}"
         releases = []
-        for page in range(1, 11):
-            release_api = f"https://api.github.com/repos/{user_repo}/releases?per_page=100&page={page}"
-            release_api = self.__append_cache_buster(release_api)
+        for release_api, headers in self._iter_plugin_release_page_requests(
+                repo_url
+        ):
             res = await self.__async_request_with_fallback(
                 release_api,
-                headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+                headers=headers,
                 timeout=30,
                 is_api=True,
             )
-            if res is None or res.status_code != 200:
+            should_continue = self._merge_plugin_release_page(
+                repo_url,
+                res,
+                releases,
+            )
+            if should_continue is None:
                 return None
-
-            try:
-                payload = res.json()
-                if not payload:
-                    break
-                if not isinstance(payload, list):
-                    return None
-                releases.extend(self.__normalize_plugin_release_response(payload))
-                if len(payload) < 100:
-                    break
-            except Exception as e:
-                logger.error(f"解析插件仓库 {repo_url} Release 列表失败：{e}")
-                return None
+            if not should_continue:
+                break
         return releases
 
     async def async_get_plugin_release_versions(self, pid: str, repo_url: str) -> List[dict]:
