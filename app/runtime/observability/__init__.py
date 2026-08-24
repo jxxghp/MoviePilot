@@ -117,6 +117,20 @@ def observe_compat_facade(facade: str) -> Callable[[_FacadeClass], _FacadeClass]
     return decorate
 
 
+def _enforce_deprecation(facade: str, operation: str) -> None:
+    """对一次旧 Facade 命中执行其当前的废弃阶段处置。
+
+    观测回答「谁还在用」，废弃阶段回答「什么时候不再让用」，两者共用同一组标签。
+    未登记废弃通告的 Facade 在此完全不受影响。
+
+    :param facade: Facade 标识，与 compat.facade.hit 指标的 facade 标签一致
+    :param operation: 被调用的方法名
+    """
+    from app.runtime.deprecation.policy import enforce_facade
+
+    enforce_facade(facade, operation)
+
+
 def _wrap_compat_method(
     method: Callable[..., Any],
     facade: str,
@@ -135,6 +149,7 @@ def _wrap_compat_method(
                 visibility=visibility,
                 abi_source="legacy_facade",
             )
+            _enforce_deprecation(facade, operation)
             return await method(*args, **kwargs)
 
         return cast(Callable[..., Any], async_wrapper)
@@ -148,6 +163,7 @@ def _wrap_compat_method(
             visibility=visibility,
             abi_source="legacy_facade",
         )
+        _enforce_deprecation(facade, operation)
         return method(*args, **kwargs)
 
     return cast(Callable[..., Any], wrapper)

@@ -553,6 +553,8 @@ class ConfigModel(BaseModel):
     USAGE_STATISTIC_SHARE: bool = True
     # 是否开启插件热加载
     PLUGIN_AUTO_RELOAD: bool = False
+    # 临时放行的废弃标识，多个用,分隔；仅对已进入停用阶段的接口有效，用于观察真实依赖方
+    DEPRECATION_ENABLED: Optional[str] = None
     # 本地插件仓库目录，多个地址使用,分隔
     PLUGIN_LOCAL_REPO_PATHS: Optional[str] = None
 
