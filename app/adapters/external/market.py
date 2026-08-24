@@ -1813,6 +1813,39 @@ class PluginHelper(metaclass=WeakSingleton):
         return False, "[UV] 所有策略均安装依赖失败，请检查网络连接、包源配置或插件依赖约束"
 
     @staticmethod
+    def _build_github_request_strategies(
+            url: str,
+            headers: Optional[dict] = None,
+            timeout: Optional[int] = 60,
+            is_api: bool = False,
+    ) -> List[Tuple[str, str, dict]]:
+        """构造同步与异步 GitHub 请求共用的镜像、代理和直连顺序。"""
+        strategies: List[Tuple[str, str, dict]] = []
+        if not is_api and settings.GITHUB_PROXY:
+            proxy_url = (
+                f"{UrlUtils.standardize_base_url(settings.GITHUB_PROXY)}{url}"
+            )
+            strategies.append(
+                ("镜像站", proxy_url, {"headers": headers, "timeout": timeout})
+            )
+        if settings.PROXY_HOST:
+            strategies.append(
+                (
+                    "代理",
+                    url,
+                    {
+                        "headers": headers,
+                        "proxies": settings.PROXY,
+                        "timeout": timeout,
+                    },
+                )
+            )
+        strategies.append(
+            ("直连", url, {"headers": headers, "timeout": timeout})
+        )
+        return strategies
+
+    @staticmethod
     def __request_with_fallback(url: str,
                                 headers: Optional[dict] = None,
                                 timeout: Optional[int] = 60,
@@ -1825,19 +1858,12 @@ class PluginHelper(metaclass=WeakSingleton):
         :param is_api: 是否为GitHub API请求，API请求不走镜像站
         :return: 请求成功则返回 Response，失败返回 None
         """
-        strategies = []
-
-        # 1. 尝试使用镜像站，镜像站一般不支持API请求，因此API请求直接跳过镜像站
-        if not is_api and settings.GITHUB_PROXY:
-            proxy_url = f"{UrlUtils.standardize_base_url(settings.GITHUB_PROXY)}{url}"
-            strategies.append(("镜像站", proxy_url, {"headers": headers, "timeout": timeout}))
-
-        # 2. 尝试使用代理
-        if settings.PROXY_HOST:
-            strategies.append(("代理", url, {"headers": headers, "proxies": settings.PROXY, "timeout": timeout}))
-
-        # 3. 最后尝试直连
-        strategies.append(("直连", url, {"headers": headers, "timeout": timeout}))
+        strategies = PluginHelper._build_github_request_strategies(
+            url=url,
+            headers=headers,
+            timeout=timeout,
+            is_api=is_api,
+        )
 
         # 遍历策略并尝试请求
         for strategy_name, target_url, request_params in strategies:
@@ -2197,19 +2223,12 @@ class PluginHelper(metaclass=WeakSingleton):
         :param is_api: 是否为GitHub API请求，API请求不走镜像站
         :return: 请求成功则返回 Response，失败返回 None
         """
-        strategies = []
-
-        # 1. 尝试使用镜像站，镜像站一般不支持API请求，因此API请求直接跳过镜像站
-        if not is_api and settings.GITHUB_PROXY:
-            proxy_url = f"{UrlUtils.standardize_base_url(settings.GITHUB_PROXY)}{url}"
-            strategies.append(("镜像站", proxy_url, {"headers": headers, "timeout": timeout}))
-
-        # 2. 尝试使用代理
-        if settings.PROXY_HOST:
-            strategies.append(("代理", url, {"headers": headers, "proxies": settings.PROXY, "timeout": timeout}))
-
-        # 3. 最后尝试直连
-        strategies.append(("直连", url, {"headers": headers, "timeout": timeout}))
+        strategies = PluginHelper._build_github_request_strategies(
+            url=url,
+            headers=headers,
+            timeout=timeout,
+            is_api=is_api,
+        )
 
         # 遍历策略并尝试请求
         for strategy_name, target_url, request_params in strategies:
