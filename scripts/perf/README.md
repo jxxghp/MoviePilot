@@ -224,6 +224,21 @@ preflight 会验证 Python 3.14、GIL 状态、`thread_inherit_context`、MovieP
 依赖、语义、驱动、启动或样本完整性不成立。该工具只用于隔离的本地长 A/B，不接真实凭据、用户数据库、
 媒体目录或外网，也不加入常规 CI。
 
+## TaskRegistry 跨线程提交 A/B
+
+`task_registry_ab.py` 验证目标事件循环尚未分发 callback 时执行 shutdown，pending completion 与原始
+coroutine 是否取得明确终态，同时采集跨线程提交最小协程的提交和完成耗时。分别在 Before/After revision
+运行相同参数并保留两份 JSON，即可比较正确性与固定负载开销：
+
+```bash
+../.venv-test/bin/python scripts/perf/task_registry_ab.py \
+  --iterations 2000 \
+  --samples 7
+```
+
+该探针不访问数据库、配置或网络。吞吐结果用于识别可重复回退，不作为跨机器性能阈值；pending completion
+取消且 coroutine 关闭属于正确性门禁。
+
 ### PostgreSQL 同步驱动三方案
 
 `postgresql_driver_ab.py` 在同一 PostgreSQL 容器中比较标准 V3/psycopg2、标准

@@ -1404,19 +1404,6 @@ class FailedRetryMixin:
 
         redo_prompt = build_manual_redo_prompt(history)
 
-        self.post_message(
-            Message(
-                channel=channel,
-                source=source,
-                userid=userid,
-                username=username,
-                title=f"已将整理记录 #{history_id} 交给智能助手处理",
-                text="处理完成后会在这里回复结果。",
-                link=self.runtime_config.history_url,
-                save_history=False,
-            )
-        )
-
         async def _run_ai_takeover():
             final_output = ""
 
@@ -1425,6 +1412,18 @@ class FailedRetryMixin:
                 final_output = text_output or ""
 
             try:
+                await self.async_post_message(
+                    Message(
+                        channel=channel,
+                        source=source,
+                        userid=userid,
+                        username=username,
+                        title=f"已将整理记录 #{history_id} 交给智能助手处理",
+                        text="处理完成后会在这里回复结果。",
+                        link=self.runtime_config.history_url,
+                        save_history=False,
+                    )
+                )
                 manager = get_running_agent_manager()
                 if manager is None:
                     raise RuntimeError("智能助手服务未运行")
@@ -1462,11 +1461,29 @@ class FailedRetryMixin:
                     )
                 )
 
-        get_task_registry().submit_threadsafe(
-            _run_ai_takeover(),
-            loop=global_vars.loop,
-            owner="chain.transfer.ai_takeover",
-        )
+        try:
+            registry = get_task_registry()
+            loop = global_vars.loop
+            registry.submit_threadsafe(
+                _run_ai_takeover(),
+                loop=loop,
+                owner="chain.transfer.ai_takeover",
+            )
+        except RuntimeError as error:
+            logger.warning("智能助手整理任务提交失败：%s", error)
+            self.post_message(
+                Message(
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    title="智能助手整理失败",
+                    text="系统正在关闭，无法提交处理任务，请稍后重试。",
+                    link=self.runtime_config.history_url,
+                    save_history=False,
+                )
+            )
+            return
 
     def _re_transfer(
             self,
