@@ -48,6 +48,7 @@ from app.application.messaging.message import MessageTemplateHelper
 from app.application.mediaserver import MediaServerHelper
 from app.application.subscription.write import add_subscribe, async_add_subscribe
 from app.application.subscription.complete import get_subscription_completion_scope
+from app.application.subscription import priority as _priority
 from app.application.subscription.delete import (
     SubscribeDeletionActor,
     get_sync_delete_subscribe_scope,
@@ -197,105 +198,36 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     # 避免莫名原因导致长时间持有锁
     _LOCK_TIMOUT = 3600 * 2
 
+    # 洗版优先级与缺失集算法已下沉至 app/application/subscription/priority.py；
+    # 链上仅保留兼容委托，编排逻辑不得内联复制领域规则。
+
     @staticmethod
     def __normalize_episode_priority(episode_priority: Optional[dict]) -> Dict[str, int]:
-        """
-        归一化按集洗版优先级状态。
-        """
-        if not isinstance(episode_priority, dict):
-            return {}
-
-        normalized = {}
-        for episode, priority in episode_priority.items():
-            if episode is None or priority is None:
-                continue
-            try:
-                normalized[str(int(episode))] = int(priority)
-            except (TypeError, ValueError):
-                continue
-        return normalized
+        """归一化按集洗版优先级状态。"""
+        return _priority.normalize_episode_priority(episode_priority)
 
     @classmethod
     def __get_episode_priority(cls, subscribe: Subscribe,
                                total_episode: Optional[int] = None) -> Dict[str, int]:
-        """
-        获取订阅按集洗版优先级状态。
-        """
-        episode_priority = cls.__normalize_episode_priority(subscribe.episode_priority)
-        if episode_priority:
-            return episode_priority
-
-        if (
-                subscribe.best_version
-                and not cls.__is_full_best_version_enabled(subscribe)
-                and subscribe.type == MediaType.TV.value
-                and subscribe.current_priority is not None
-        ):
-            target_episodes = cls.__get_best_version_target_episodes(subscribe, total_episode=total_episode)
-            return {
-                str(episode): int(subscribe.current_priority)
-                for episode in target_episodes
-            }
-        return {}
+        """获取订阅按集洗版优先级状态。"""
+        return _priority.get_episode_priority(subscribe, total_episode=total_episode)
 
     @classmethod
     def get_episode_priority(cls, subscribe: Subscribe) -> Dict[str, int]:
-        """
-        对外暴露按集洗版优先级状态。
-        """
-        return cls.__get_episode_priority(subscribe)
+        """对外暴露按集洗版优先级状态。"""
+        return _priority.get_episode_priority(subscribe)
 
     @classmethod
     def __get_best_version_target_episodes(cls, subscribe: Subscribe,
                                            total_episode: Optional[int] = None) -> List[int]:
-        """
-        获取洗版订阅目标剧集范围。
-        """
-        if subscribe.type != MediaType.TV.value:
-            return []
-
-        start_episode = subscribe.start_episode or 1
-        total_episode = total_episode or subscribe.total_episode or 0
-        if total_episode < start_episode:
-            return []
-        return list(range(start_episode, total_episode + 1))
+        """获取洗版订阅目标剧集范围。"""
+        return _priority.get_best_version_target_episodes(subscribe, total_episode=total_episode)
 
     @classmethod
     def __get_downloaded_best_version_episodes(cls, subscribe: Subscribe,
                                                total_episode: Optional[int] = None) -> List[int]:
-        """
-        获取洗版订阅目标范围内已下载到任意版本的剧集。
-
-        分集洗版的完成态要求 priority==100，但订阅目标满足查询有时只需要确认
-        目标集是否已下载过任意版本，因此这里按 note 与 episode_priority>0 统计。
-        """
-        if subscribe.type != MediaType.TV.value:
-            return []
-
-        start_episode = subscribe.start_episode or 1
-        total_episode = total_episode or subscribe.total_episode or 0
-        if total_episode < start_episode:
-            return []
-        target_episodes = set(range(start_episode, total_episode + 1))
-        downloaded = set()
-        for episode in subscribe.note or []:
-            try:
-                episode_number = int(episode)
-            except (TypeError, ValueError):
-                continue
-            if episode_number in target_episodes:
-                downloaded.add(episode_number)
-        for episode, priority in cls.__get_episode_priority(subscribe, total_episode=total_episode).items():
-            if not str(episode).isdigit():
-                continue
-            try:
-                if float(priority) > 0:
-                    episode_number = int(episode)
-                    if episode_number in target_episodes:
-                        downloaded.add(episode_number)
-            except (TypeError, ValueError):
-                continue
-        return sorted(downloaded)
+        """获取洗版订阅目标范围内已下载到任意版本的剧集。"""
+        return _priority.get_downloaded_best_version_episodes(subscribe, total_episode=total_episode)
 
     @classmethod
     def __get_pending_best_version_episodes_with_priority(
@@ -304,26 +236,18 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             episode_priority: Optional[dict] = None,
             total_episode: Optional[int] = None,
     ) -> List[int]:
-        """
-        使用指定按集优先级状态获取当前仍需继续洗版的剧集。
-        """
-        target_episodes = cls.__get_best_version_target_episodes(subscribe, total_episode=total_episode)
-        if not target_episodes:
-            return []
-
-        if episode_priority is None:
-            normalized = cls.__get_episode_priority(subscribe, total_episode=total_episode)
-        else:
-            normalized = cls.__normalize_episode_priority(episode_priority)
-        return [episode for episode in target_episodes if normalized.get(str(episode)) != 100]
+        """使用指定按集优先级状态获取当前仍需继续洗版的剧集。"""
+        return _priority.get_pending_best_version_episodes_with_priority(
+            subscribe,
+            episode_priority=episode_priority,
+            total_episode=total_episode,
+        )
 
     @classmethod
     def _get_pending_best_version_episodes(cls, subscribe: Subscribe,
                                            total_episode: Optional[int] = None) -> List[int]:
-        """
-        获取当前仍需继续洗版的剧集。
-        """
-        return cls.__get_pending_best_version_episodes_with_priority(subscribe, total_episode=total_episode)
+        """获取当前仍需继续洗版的剧集。"""
+        return _priority.get_pending_best_version_episodes(subscribe, total_episode=total_episode)
 
     @classmethod
     def compute_lack_episode(
@@ -331,61 +255,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             subscribe: Subscribe,
             no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
     ) -> int:
-        """
-        计算订阅范围内尚未下载到任何版本的集数。
-
-        普通电视剧订阅以媒体库缺失结果为准；调用方没有缺失结果时按空缺失处理，
-        避免入口级刷新失败把未知状态写成异常。洗版电视剧订阅按 note 与
-        episode_priority>0 判断是否已有任意版本落点，priority<100 仍表示已下载过任意版本。
-        """
-        if subscribe.type != MediaType.TV.value:
-            return 0
-
-        if not subscribe.best_version:
-            no_exists = no_exists or {}
-            left_seasons = next(
-                (
-                    no_exists.get(media_key)
-                    for media_key in _subscribe_media_keys(subscribe)
-                    if no_exists.get(media_key) is not None
-                ),
-                {},
-            )
-            for season_info in left_seasons.values():
-                if season_info.season != subscribe.season:
-                    continue
-                left_episodes = season_info.episodes
-                if not left_episodes:
-                    return season_info.total_episode or 0
-                return len(left_episodes)
-            return 0
-
-        total_episode = subscribe.total_episode or 0
-        if not total_episode:
-            return 0
-        start_episode = subscribe.start_episode or 1
-        if total_episode < start_episode:
-            return 0
-
-        target_episodes = set(range(start_episode, total_episode + 1))
-        downloaded: set = set()
-        for episode in subscribe.note or []:
-            try:
-                episode_number = int(episode)
-            except (TypeError, ValueError):
-                continue
-            if episode_number in target_episodes:
-                downloaded.add(episode_number)
-        for episode, priority in cls.__get_episode_priority(subscribe).items():
-            try:
-                if float(priority) <= 0:
-                    continue
-                episode_number = int(episode)
-            except (TypeError, ValueError):
-                continue
-            if episode_number in target_episodes:
-                downloaded.add(episode_number)
-        return len(target_episodes - downloaded)
+        """计算订阅范围内尚未下载到任何版本的集数。"""
+        return _priority.compute_lack_episode(subscribe, no_exists=no_exists)
 
     @classmethod
     def get_best_version_current_priority(
@@ -393,26 +264,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             subscribe: Subscribe,
             episode_priority: Optional[dict] = None,
     ) -> int:
-        """
-        获取洗版订阅当前优先级状态。
-        """
-        if not subscribe.best_version or subscribe.type != MediaType.TV.value:
-            return subscribe.current_priority or 0
-        if cls.__is_full_best_version_enabled(subscribe):
-            return subscribe.current_priority or 0
-
-        target_episodes = cls.__get_best_version_target_episodes(subscribe)
-        if not target_episodes:
-            return subscribe.current_priority or 0
-
-        if episode_priority is None:
-            normalized = cls.__get_episode_priority(subscribe)
-        else:
-            normalized = cls.__normalize_episode_priority(episode_priority)
-        return min(
-            (normalized.get(str(episode), 0) for episode in target_episodes),
-            default=0,
-        )
+        """获取洗版订阅当前优先级状态。"""
+        return _priority.get_best_version_current_priority(subscribe, episode_priority=episode_priority)
 
     @classmethod
     def __prepare_best_version_total_expansion_fields(
@@ -420,41 +273,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             subscribe: Subscribe,
             total_episode: int,
     ) -> Dict[str, Any]:
-        """
-        准备洗版电视剧总集数扩展后需要写库的字段。
-
-        该方法会同步传入对象上的 total_episode / episode_priority，方便同一链路后续
-        按最终快照继续计算进度；实际数据库写入由调用方统一执行。
-        """
-        update_data: Dict[str, Any] = {"total_episode": total_episode}
-        old_total_episode = subscribe.total_episode or 0
-        subscribe.total_episode = total_episode
-
-        if subscribe.best_version and subscribe.type == MediaType.TV.value:
-            episode_priority = cls.__get_episode_priority(
-                subscribe,
-                total_episode=old_total_episode,
-            )
-            if (
-                    not cls.__is_full_best_version_enabled(subscribe)
-                    and not episode_priority
-                    and subscribe.current_priority is not None
-            ):
-                episode_priority = {
-                    str(episode): int(subscribe.current_priority)
-                    for episode in cls.__get_best_version_target_episodes(
-                        subscribe,
-                        total_episode=old_total_episode,
-                    )
-                }
-            subscribe.episode_priority = episode_priority
-            update_data["episode_priority"] = episode_priority
-            if cls.__is_full_best_version_enabled(subscribe):
-                subscribe.current_priority = 0
-                update_data["current_priority"] = 0
-
-        update_data.update(cls.__prepare_subscribe_progress_fields(subscribe=subscribe, no_exists={}))
-        return update_data
+        """准备洗版电视剧总集数扩展后需要写库的字段。"""
+        return _priority.prepare_best_version_total_expansion_fields(subscribe, total_episode)
 
     @classmethod
     def __prepare_best_version_total_change_fields(
@@ -463,40 +283,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             total_episode: int,
             old_total_episode: int,
     ) -> Dict[str, Any]:
-        """
-        准备洗版电视剧总集数变化后需要写库的字段。
-
-        总集数变化会改变目标范围，按集优先级只保留新范围内的目标集，避免范围外
-        旧状态继续参与完成集、缺失集和当前优先级计算。
-        """
-        update_data: Dict[str, Any] = {"total_episode": total_episode}
-        target_episodes = set(cls.__get_best_version_target_episodes(
-            subscribe,
-            total_episode=total_episode,
-        ))
-        episode_priority = cls.__get_episode_priority(
-            subscribe,
-            total_episode=old_total_episode,
+        """准备洗版电视剧总集数变化后需要写库的字段。"""
+        return _priority.prepare_best_version_total_change_fields(
+            subscribe, total_episode, old_total_episode,
         )
-        filtered_priority = {
-            str(episode): priority
-            for episode, priority in episode_priority.items()
-            if int(episode) in target_episodes
-        }
-        subscribe.total_episode = total_episode
-        subscribe.episode_priority = filtered_priority
-        if cls.__is_full_best_version_enabled(subscribe):
-            current_priority = 0 if total_episode > old_total_episode else subscribe.current_priority
-        else:
-            current_priority = 0 if not target_episodes else cls.get_best_version_current_priority(
-                subscribe,
-                episode_priority=filtered_priority,
-            )
-        subscribe.current_priority = current_priority
-        update_data["episode_priority"] = filtered_priority
-        update_data["current_priority"] = current_priority
-        update_data.update(cls.__prepare_subscribe_progress_fields(subscribe=subscribe, no_exists={}))
-        return update_data
 
     @classmethod
     def __prepare_total_episode_change_fields(
@@ -505,50 +295,20 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             total_episode: int,
             old_total_episode: int,
     ) -> Dict[str, Any]:
-        """
-        准备已有订阅总集数持久化字段，并同步内存对象上的总集数快照。
-        """
-        if subscribe.best_version and subscribe.type == MediaType.TV.value:
-            return cls.__prepare_best_version_total_change_fields(
-                subscribe=subscribe,
-                total_episode=total_episode,
-                old_total_episode=old_total_episode,
-            )
-
-        subscribe.total_episode = total_episode
-        return {
-            "total_episode": total_episode,
-            "lack_episode": max(
-                (subscribe.lack_episode or 0) + (total_episode - old_total_episode),
-                0,
-            ),
-        }
+        """准备已有订阅总集数持久化字段，并同步内存对象上的总集数快照。"""
+        return _priority.prepare_total_episode_change_fields(
+            subscribe, total_episode, old_total_episode,
+        )
 
     @classmethod
     def __is_best_version_complete(cls, subscribe: Subscribe) -> bool:
-        """
-        判断洗版订阅是否已完成。
-        """
-        if not subscribe.best_version:
-            return False
-        if subscribe.type != MediaType.TV.value:
-            return subscribe.current_priority == 100
-        if cls.__is_full_best_version_enabled(subscribe):
-            return subscribe.current_priority == 100
-
-        target_episodes = cls.__get_best_version_target_episodes(subscribe)
-        if not target_episodes:
-            return subscribe.current_priority == 100
-
-        episode_priority = cls.__get_episode_priority(subscribe)
-        return all(episode_priority.get(str(episode)) == 100 for episode in target_episodes)
+        """判断洗版订阅是否已完成。"""
+        return _priority.is_best_version_complete(subscribe)
 
     @classmethod
     def is_best_version_complete(cls, subscribe: Subscribe) -> bool:
-        """
-        对外暴露洗版完成判断。
-        """
-        return cls.__is_best_version_complete(subscribe)
+        """对外暴露洗版完成判断。"""
+        return _priority.is_best_version_complete(subscribe)
 
     @classmethod
     def __is_best_version_complete_with_priority(
@@ -556,53 +316,20 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             subscribe: Subscribe,
             episode_priority: Optional[dict] = None,
     ) -> bool:
-        """
-        使用指定按集优先级状态判断洗版是否已完成。
-        """
-        if not subscribe.best_version:
-            return False
-        if subscribe.type != MediaType.TV.value:
-            return subscribe.current_priority == 100
-        if cls.__is_full_best_version_enabled(subscribe):
-            return subscribe.current_priority == 100
-
-        target_episodes = cls.__get_best_version_target_episodes(subscribe)
-        if not target_episodes:
-            return subscribe.current_priority == 100
-
-        return not cls.__get_pending_best_version_episodes_with_priority(subscribe, episode_priority)
+        """使用指定按集优先级状态判断洗版是否已完成。"""
+        return _priority.is_best_version_complete_with_priority(
+            subscribe, episode_priority=episode_priority,
+        )
 
     @staticmethod
     def __get_downloaded_episodes(downloads: Optional[List[Context]]) -> List[int]:
-        """
-        获取本次下载实际涉及的剧集。
-        """
-        if not downloads:
-            return []
-
-        downloaded_episodes = set()
-        for context in downloads:
-            selected_episodes = getattr(context, "selected_episodes", None)
-            if selected_episodes is None:
-                selected_episodes = context.meta_info.episode_list if context.meta_info else []
-            for episode in selected_episodes or []:
-                try:
-                    downloaded_episodes.add(int(episode))
-                except (TypeError, ValueError):
-                    continue
-        return sorted(downloaded_episodes)
+        """获取本次下载实际涉及的剧集。"""
+        return _priority.get_downloaded_episodes(downloads)
 
     @classmethod
     def __get_best_version_completed_episodes(cls, subscribe: Subscribe) -> List[int]:
-        """
-        获取已完成洗版的剧集。
-        """
-        episode_priority = cls.__get_episode_priority(subscribe)
-        target_episodes = set(cls.__get_best_version_target_episodes(subscribe))
-        return sorted(
-            int(episode) for episode, priority in episode_priority.items()
-            if str(episode).isdigit() and int(episode) in target_episodes and priority == 100
-        )
+        """获取已完成洗版的剧集。"""
+        return _priority.get_best_version_completed_episodes(subscribe)
 
     @classmethod
     def __get_best_version_interested_episodes(
@@ -611,39 +338,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             context: Context,
             priority: int,
     ) -> List[int]:
-        """
-        获取当前资源中仍值得继续洗版的剧集。
-        """
-        if subscribe.type != MediaType.TV.value:
-            return []
-
-        target_episodes = set(cls.__get_best_version_target_episodes(subscribe))
-        if not target_episodes:
-            return []
-
-        selected_episodes = getattr(context, "selected_episodes", None)
-        if selected_episodes is None:
-            selected_episodes = context.meta_info.episode_list if context.meta_info else []
-        if not selected_episodes:
-            episode_priority = cls.__get_episode_priority(subscribe)
-            return sorted([
-                episode for episode in target_episodes
-                if episode_priority.get(str(episode)) is None or priority > episode_priority.get(str(episode))
-            ])
-
-        episode_priority = cls.__get_episode_priority(subscribe)
-        interested = []
-        for episode in selected_episodes:
-            try:
-                episode_num = int(episode)
-            except (TypeError, ValueError):
-                continue
-            if episode_num not in target_episodes:
-                continue
-            current_priority = episode_priority.get(str(episode_num))
-            if current_priority is None or priority > current_priority:
-                interested.append(episode_num)
-        return sorted(set(interested))
+        """获取当前资源中仍值得继续洗版的剧集。"""
+        return _priority.get_best_version_interested_episodes(
+            subscribe, context, priority,
+        )
 
     @classmethod
     def __prepare_best_version_tv_candidate(
@@ -652,68 +350,23 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             context: Context,
             priority: int,
     ) -> bool:
-        """
-        校验电视剧洗版候选，并为分集模式设置允许下载的剧集范围。
-
-        全集模式按当前准入基线筛选；分集模式设置能严格提升质量的目标集范围。
-        """
-        if cls.__is_full_best_version_enabled(subscribe):
-            try:
-                return int(priority or 0) > int(subscribe.current_priority or 0)
-            except (TypeError, ValueError):
-                return False
-
-        interested_episodes = cls.__get_best_version_interested_episodes(
-            subscribe=subscribe,
-            context=context,
-            priority=priority,
-        )
-        if not interested_episodes:
-            return False
-        context.allowed_episodes = set(interested_episodes)
-        return True
+        """校验电视剧洗版候选，并为分集模式设置允许下载的剧集范围。"""
+        return _priority.prepare_best_version_tv_candidate(subscribe, context, priority)
 
     @classmethod
     def __is_full_best_version_enabled(cls, subscribe: Subscribe) -> bool:
-        """
-        判断当前订阅是否启用了电视剧全集洗版。
-        """
-        return (
-                bool(subscribe.best_version_full)
-                and bool(subscribe.best_version)
-                and subscribe.type == MediaType.TV.value
-        )
+        """判断当前订阅是否启用了电视剧全集洗版。"""
+        return _priority.is_full_best_version_enabled(subscribe)
 
     @classmethod
     def __is_full_season_resource(cls, meta: MetaBase, subscribe: Subscribe) -> bool:
-        """
-        判断候选资源是否覆盖订阅目标全集范围。
-        """
-        season_list = meta.season_list or [1]
-        if len(season_list) != 1:
-            return False
-        if subscribe.season is not None and season_list[0] != subscribe.season:
-            return False
-
-        episodes = meta.episode_list
-        if not episodes:
-            # 资源未标出单集时按整季包处理，后续下载前仍会解析种子文件确认完整性。
-            return True
-
-        target_episodes = set(cls.__get_best_version_target_episodes(subscribe))
-        if not target_episodes:
-            return False
-        return target_episodes.issubset(set(episodes))
+        """判断候选资源是否覆盖订阅目标全集范围。"""
+        return _priority.is_full_season_resource(meta, subscribe)
 
     @classmethod
     def __is_full_season_best_version_resource(cls, meta: MetaBase, subscribe: Subscribe) -> bool:
-        """
-        判断候选资源是否符合全集洗版资源约束。
-        """
-        if not cls.__is_full_best_version_enabled(subscribe):
-            return True
-
-        return cls.__is_full_season_resource(meta=meta, subscribe=subscribe)
+        """判断候选资源是否符合全集洗版资源约束。"""
+        return _priority.is_full_season_best_version_resource(meta, subscribe)
 
     @classmethod
     def __should_prefer_full_pack_for_episode_best_version(
@@ -721,31 +374,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             subscribe: Subscribe,
             priority: int,
     ) -> bool:
-        """
-        判断分集洗版是否应优先下载整包。
-
-        整包优先级必须严格高于每个目标集；否则交回按集路径，只下载能提升质量的集。
-        """
-        if (
-                subscribe.type != MediaType.TV.value
-                or cls.__is_full_best_version_enabled(subscribe)
-        ):
-            return False
-
-        target_episodes = cls.__get_best_version_target_episodes(subscribe)
-        if not target_episodes:
-            return False
-
-        try:
-            resource_priority = int(priority or 0)
-        except (TypeError, ValueError):
-            resource_priority = 0
-
-        episode_priority = cls.__get_episode_priority(subscribe)
-        return all(
-            resource_priority > episode_priority.get(str(episode), 0)
-            for episode in target_episodes
-        )
+        """判断分集洗版是否应优先下载整包。"""
+        return _priority.should_prefer_full_pack_for_episode_best_version(subscribe, priority)
 
     @classmethod
     def __build_full_pack_first_no_exists(
@@ -753,31 +383,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             subscribe: Subscribe,
             mediakey: Union[int, str],
     ) -> Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
-        """
-        构造分集洗版优先全集时使用的整季缺失范围。
-        """
-        if (
-                not subscribe.best_version
-                or cls.__is_full_best_version_enabled(subscribe)
-                or subscribe.type != MediaType.TV.value
-        ):
-            return None
-
-        target_episodes = cls.__get_best_version_target_episodes(subscribe)
-        if not target_episodes:
-            return None
-
-        return {
-            mediakey: {
-                subscribe.season: _SchemaNotExistMediaInfo(
-                    season=subscribe.season,
-                    episodes=[],
-                    total_episode=subscribe.total_episode,
-                    start_episode=subscribe.start_episode or 1,
-                    require_complete_coverage=True,
-                )
-            }
-        }
+        """构造分集洗版优先全集时使用的整季缺失范围。"""
+        return _priority.build_full_pack_first_no_exists(subscribe, mediakey)
 
     def __download_best_version_with_full_pack_first(
             self,
@@ -2812,22 +2419,12 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
             touch_last_update: Optional[bool] = False,
     ) -> Dict[str, Any]:
-        """
-        准备订阅进度持久化字段。
-
-        该方法只返回待写字段，不主动写库。普通电视剧的 no_exists 为空时表示当前缺失结果为空；
-        洗版电视剧按 note 与 episode_priority 计算未下载过任何版本的目标集数量。
-        """
-        update_data: Dict[str, Any] = {}
-        if subscribe.type == MediaType.TV.value:
-            if no_exists is None and not subscribe.best_version:
-                no_exists = {}
-            update_data["lack_episode"] = cls.compute_lack_episode(subscribe, no_exists=no_exists)
-            if subscribe.best_version and not cls.__is_full_best_version_enabled(subscribe):
-                update_data["current_priority"] = cls.get_best_version_current_priority(subscribe)
-        if update_data and touch_last_update:
-            update_data["last_update"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return update_data
+        """准备订阅进度持久化字段；算法见 application.subscription.priority。"""
+        return _priority.prepare_subscribe_progress_fields(
+            subscribe=subscribe,
+            no_exists=no_exists,
+            touch_last_update=touch_last_update,
+        )
 
     @staticmethod
     def __apply_subscribe_update(subscribe: Subscribe, update_data: Dict[str, Any]) -> None:
