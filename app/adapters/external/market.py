@@ -1,5 +1,6 @@
 import asyncio
 from collections import deque
+from dataclasses import dataclass
 import importlib
 import io
 import json
@@ -77,6 +78,14 @@ VERSION_BACKWARD_COMPATIBLE_FLAGS: Dict[str, List[str]] = {
 }
 
 InstalledPluginsProvider = Callable[[], List[str]]
+
+
+@dataclass(frozen=True)
+class _RemotePluginInstallPlan:
+    """描述远端插件内容准备模式，不持有同步或异步 I/O 实现。"""
+
+    release_tag: Optional[str]
+    fallback_to_filelist: bool
 
 
 def _empty_installed_plugins() -> List[str]:
@@ -840,11 +849,60 @@ class PluginHelper(metaclass=WeakSingleton):
         return self.__parse_plugin_release_response(pid, self._get_plugin_repo_releases(repo_url.rstrip("/")))
 
     @staticmethod
-    def __has_installable_release_version(release_items: List[dict], release_version: str) -> bool:
+    def __has_installable_release_version(
+            release_items: Sequence[dict],
+            release_version: str,
+    ) -> bool:
         """
         指定版本必须来自已解析出的可安装 Release 列表，避免直接拼接任意 tag。
         """
         return any(item.get("version") == release_version for item in release_items)
+
+    @classmethod
+    def _build_remote_plugin_install_plan(
+            cls,
+            pid: str,
+            meta: dict,
+            release_version: Optional[str] = None,
+            release_items: Sequence[dict] = (),
+    ) -> Tuple[Optional[_RemotePluginInstallPlan], str]:
+        """统一选择指定 Release、可回退当前 Release 或文件列表安装模式。"""
+        is_release = meta.get("release")
+        plugin_version = meta.get("version")
+
+        if release_version:
+            if not is_release:
+                return None, f"{pid} 未声明 Release 安装，无法安装指定版本"
+            if not cls.__has_installable_release_version(
+                    release_items, release_version
+            ):
+                return None, f"{pid} 未找到可安装的 Release 版本：{release_version}"
+            if release_version == plugin_version:
+                compatible, message = cls.check_plugin_system_version(meta)
+                if not compatible:
+                    logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
+                    return None, message
+            return _RemotePluginInstallPlan(
+                release_tag=f"{pid}_v{release_version}",
+                fallback_to_filelist=False,
+            ), ""
+
+        compatible, message = cls.check_plugin_system_version(meta)
+        if not compatible:
+            logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
+            return None, message
+
+        if not is_release:
+            return _RemotePluginInstallPlan(
+                release_tag=None,
+                fallback_to_filelist=False,
+            ), ""
+        if not plugin_version:
+            return None, f"未在插件清单中找到 {pid} 的版本号，无法进行 Release 安装"
+        return _RemotePluginInstallPlan(
+            release_tag=f"{pid}_v{plugin_version}",
+            fallback_to_filelist=True,
+        ), ""
 
     def get_plugin_package_version(self, pid: str, repo_url: str,
                                    package_version: Optional[str] = None) -> Optional[str]:
@@ -937,44 +995,39 @@ class PluginHelper(metaclass=WeakSingleton):
 
         # 2. 决定安装方式（release 或文件列表）并执行统一安装流程。
         meta = self.__get_plugin_meta(pid, repo_url, package_version)
-        # 是否使用 Release 打包。Release 缺失或资产不可用时仍保留文件列表兜底，
-        # 避免索引先发布、Actions 打包滞后导致插件短时间无法安装。
-        is_release = meta.get("release")
-        # 插件版本号
-        plugin_version = meta.get("version")
-        if release_version:
-            if not is_release:
-                return False, f"{pid} 未声明 Release 安装，无法安装指定版本"
-            if not self.__has_installable_release_version(
-                    self.get_plugin_release_versions(pid, repo_url), release_version
-            ):
-                return False, f"{pid} 未找到可安装的 Release 版本：{release_version}"
-            if release_version == plugin_version:
-                compatible, message = self.check_plugin_system_version(meta)
-                if not compatible:
-                    logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
-                    return False, message
-            release_tag = f"{pid}_v{release_version}"
+        release_items = (
+            self.get_plugin_release_versions(pid, repo_url)
+            if release_version
+            else []
+        )
+        plan, message = self._build_remote_plugin_install_plan(
+            pid=pid,
+            meta=meta,
+            release_version=release_version,
+            release_items=release_items,
+        )
+        if plan is None:
+            return False, message
 
+        release_tag = plan.release_tag
+        if release_tag and not plan.fallback_to_filelist:
             def prepare_selected_release() -> Tuple[bool, str]:
-                return self.__install_from_release(pid, user_repo, release_tag)
+                return self.__install_from_release(
+                    pid,
+                    user_repo,
+                    release_tag,
+                )
 
             return self.__install_flow_sync(pid, force_install, prepare_selected_release, repo_url)
 
-        compatible, message = self.check_plugin_system_version(meta)
-        if not compatible:
-            logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
-            return False, message
-        if is_release:
-            # 使用 插件ID_插件版本号 作为 Release tag
-            if not plugin_version:
-                return False, f"未在插件清单中找到 {pid} 的版本号，无法进行 Release 安装"
-            # 拼接 release_tag
-            release_tag = f"{pid}_v{plugin_version}"
-
-            # 使用 release 进行安装
+        if release_tag:
+            # 当前索引 Release 失败时回退文件列表，避免发布产物短暂滞后阻断安装。
             def prepare_release() -> Tuple[bool, str]:
-                ok, msg = self.__install_from_release(pid, user_repo, release_tag)
+                ok, msg = self.__install_from_release(
+                    pid,
+                    user_repo,
+                    release_tag,
+                )
                 if ok:
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
@@ -982,12 +1035,11 @@ class PluginHelper(metaclass=WeakSingleton):
                 return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
 
             return self.__install_flow_sync(pid, force_install, prepare_release, repo_url)
-        else:
-            # 未声明 release 打包的插件继续使用文件列表方式安装。
-            def prepare_filelist() -> Tuple[bool, str]:
-                return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
+        # 未声明 release 打包的插件继续使用文件列表方式安装。
+        def prepare_filelist() -> Tuple[bool, str]:
+            return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
 
-            return self.__install_flow_sync(pid, force_install, prepare_filelist, repo_url)
+        return self.__install_flow_sync(pid, force_install, prepare_filelist, repo_url)
 
     def install_local(self, pid: str, repo_url: str = "", force_install: bool = False) -> Tuple[bool, str]:
         """
@@ -2959,42 +3011,39 @@ class PluginHelper(metaclass=WeakSingleton):
 
         # 2. 统一异步安装流程（release 或文件列表）。
         meta = await self.__async_get_plugin_meta(pid, repo_url, package_version)
-        # 是否使用 Release 打包；失败时兜底文件列表，保持同步/异步安装语义一致。
-        is_release = meta.get("release")
-        # 插件版本号
-        plugin_version = meta.get("version")
-        if release_version:
-            if not is_release:
-                return False, f"{pid} 未声明 Release 安装，无法安装指定版本"
-            release_items = await self.async_get_plugin_release_versions(pid, repo_url)
-            if not self.__has_installable_release_version(release_items, release_version):
-                return False, f"{pid} 未找到可安装的 Release 版本：{release_version}"
-            if release_version == plugin_version:
-                compatible, message = self.check_plugin_system_version(meta)
-                if not compatible:
-                    logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
-                    return False, message
-            release_tag = f"{pid}_v{release_version}"
+        release_items = (
+            await self.async_get_plugin_release_versions(pid, repo_url)
+            if release_version
+            else []
+        )
+        plan, message = self._build_remote_plugin_install_plan(
+            pid=pid,
+            meta=meta,
+            release_version=release_version,
+            release_items=release_items,
+        )
+        if plan is None:
+            return False, message
 
+        release_tag = plan.release_tag
+        if release_tag and not plan.fallback_to_filelist:
             async def prepare_selected_release() -> Tuple[bool, str]:
-                return await self.__async_install_from_release(pid, user_repo, release_tag)
+                return await self.__async_install_from_release(
+                    pid,
+                    user_repo,
+                    release_tag,
+                )
 
             return await self.__install_flow_async(pid, force_install, prepare_selected_release, repo_url)
 
-        compatible, message = self.check_plugin_system_version(meta)
-        if not compatible:
-            logger.debug(f"{pid} 插件系统版本兼容性检查失败：{message}")
-            return False, message
-        if is_release:
-            # 使用 插件ID_插件版本号 作为 Release tag
-            if not plugin_version:
-                return False, f"未在插件清单中找到 {pid} 的版本号，无法进行 Release 安装"
-            # 拼接 release_tag
-            release_tag = f"{pid}_v{plugin_version}"
-
-            # 使用 release 进行安装
+        if release_tag:
+            # 当前索引 Release 失败时回退文件列表，保持同步与异步安装一致。
             async def prepare_release() -> Tuple[bool, str]:
-                ok, msg = await self.__async_install_from_release(pid, user_repo, release_tag)
+                ok, msg = await self.__async_install_from_release(
+                    pid,
+                    user_repo,
+                    release_tag,
+                )
                 if ok:
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
@@ -3002,12 +3051,11 @@ class PluginHelper(metaclass=WeakSingleton):
                 return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
 
             return await self.__install_flow_async(pid, force_install, prepare_release, repo_url)
-        else:
-            # 未声明 release 打包的插件继续使用文件列表方式安装。
-            async def prepare_filelist() -> Tuple[bool, str]:
-                return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
+        # 未声明 release 打包的插件继续使用文件列表方式安装。
+        async def prepare_filelist() -> Tuple[bool, str]:
+            return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
 
-            return await self.__install_flow_async(pid, force_install, prepare_filelist, repo_url)
+        return await self.__install_flow_async(pid, force_install, prepare_filelist, repo_url)
 
     async def __async_get_plugin_meta(self, pid: str, repo_url: str,
                                       package_version: Optional[str]) -> dict:
