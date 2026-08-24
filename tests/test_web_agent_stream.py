@@ -43,6 +43,7 @@ from app.application.messaging.agent import (
     detach_web_agent_message_queue,
     dispatch_web_agent_message_event,
     extract_web_agent_message_from_event_data,
+    wait_web_agent_background_tasks,
 )
 from app.application.messaging.skill import skill_interaction_manager
 from app.chain.message import MessageChain
@@ -1385,10 +1386,15 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
 
     async def scenario():
         response = await web_agent_stream(payload, request, user)
-        body = "".join(await _collect_streaming_response(response))
+        body = "".join(
+            await _collect_streaming_response(
+                response,
+                wait_for_background=False,
+            )
+        )
         release_agent.set()
         await asyncio.wait_for(agent_completed.wait(), timeout=1)
-        await asyncio.sleep(0)
+        await wait_web_agent_background_tasks()
         return body
 
     try:
@@ -1509,6 +1515,7 @@ def test_web_agent_stop_finishes_stream_without_error():
         while '"type": "done"' not in "".join(received):
             received.append(await asyncio.wait_for(anext(iterator), timeout=1))
         await iterator.aclose()
+        await wait_web_agent_background_tasks()
         return "".join(received)
 
     try:
@@ -1623,6 +1630,7 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
         assert not snapshot_finished.is_set()
         snapshot_release.set()
         await asyncio.to_thread(snapshot_finished.wait, 1)
+        await wait_web_agent_background_tasks()
         return "".join(received)
 
     try:
@@ -1759,6 +1767,7 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
         assert not snapshot_finished.is_set()
         snapshot_release.set()
         await asyncio.to_thread(snapshot_finished.wait, 1)
+        await wait_web_agent_background_tasks()
         return "".join(received)
 
     try:
@@ -1795,11 +1804,19 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
     assert snapshot_finished.wait(timeout=1)
 
 
-async def _collect_streaming_response(response):
-    """读取 StreamingResponse，便于断言 SSE 内容。"""
+async def _collect_streaming_response(
+    response,
+    *,
+    wait_for_background: bool = True,
+):
+    """读取 StreamingResponse，并按用例语义等待生产 owner 完成收尾。"""
     chunks = []
-    async for chunk in response.body_iterator:
-        chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
+    try:
+        async for chunk in response.body_iterator:
+            chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
+    finally:
+        if wait_for_background:
+            await wait_web_agent_background_tasks()
     return chunks
 
 
