@@ -3,7 +3,7 @@ from concurrent.futures import Future
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.agent import MoviePilotAgent
+from app.agent.orchestrator import MoviePilotAgent
 from app.agent.orchestrator import AgentManagerQueueFullError
 from app.agent.tools.impl.ask_user_choice import (
     AskUserChoiceTool,
@@ -12,7 +12,7 @@ from app.agent.tools.impl.ask_user_choice import (
 from app.agent.tools.impl.send_message import SendMessageTool
 from app.chain.message import MessageChain
 from app.runtime.config import global_vars, settings
-from app.db import SessionFactory
+from app.db.session import SessionFactory
 from app.db.oper.message import MessageOper
 from app.db.models.message import Message
 from app.application.messaging.agent import AgentInteractionOption, agent_interaction_manager
