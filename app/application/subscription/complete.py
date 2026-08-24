@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
-from app.application.outbox import OutboxIntent, SyncOutboxTransaction, SyncUnitOfWork
+from app.application.outbox import (
+    OUTBOX_LEASE_SECONDS,
+    OutboxIntent,
+    SyncOutboxTransaction,
+    SyncUnitOfWork,
+)
 
 
 class SubscriptionCompletionRepository(Protocol):
@@ -101,19 +106,35 @@ class CompleteSubscriptionCommand:
             self._unit_of_work.rollback()
             raise
 
-        notify()
-        if self._outbox and notification:
-            self._outbox.complete_by_event_key(
-                notification_key,
-                datetime.now(timezone.utc),
-            )
-        self._publish(event_payload)
+        if notification:
+            if self._claim_sync_delivery(notification_key):
+                notify()
+                self._complete_sync_delivery(notification_key)
+        else:
+            notify()
+        if self._claim_sync_delivery(event_key):
+            self._publish(event_payload)
+            self._complete_sync_delivery(event_key)
+        if self._claim_sync_delivery(report_key):
+            if report(report_payload["subscribe_info"]) is False:
+                raise RuntimeError("订阅完成统计上报未确认")
+            self._complete_sync_delivery(report_key)
+
+    def _claim_sync_delivery(self, event_key: str) -> bool:
+        """在同步副作用前取得 lease，已由恢复投递接管时跳过直投。"""
+        if self._outbox is None:
+            return True
+        now = datetime.now(timezone.utc)
+        return self._outbox.claim_by_event_key(
+            event_key,
+            now,
+            now + timedelta(seconds=OUTBOX_LEASE_SECONDS),
+        )
+
+    def _complete_sync_delivery(self, event_key: str) -> None:
+        """收口当前同步投递持有的 durable intent。"""
         if self._outbox:
             self._outbox.complete_by_event_key(event_key, datetime.now(timezone.utc))
-        if report(report_payload["subscribe_info"]) is False:
-            raise RuntimeError("订阅完成统计上报未确认")
-        if self._outbox:
-            self._outbox.complete_by_event_key(report_key, datetime.now(timezone.utc))
 
 
 def completion_event_key(subscribe_id: int, subscribe_info: Mapping[str, Any]) -> str:

@@ -91,6 +91,52 @@ class SqlAlchemyOutboxRepository:
             attempt=next_attempt,
         )
 
+    def claim_by_event_key(
+        self,
+        event_key: str,
+        now: datetime,
+        lease_until: datetime,
+    ) -> bool:
+        """按事件键原子认领同步投递，避免与 dispatcher 并发重复发送。"""
+        now_text = _iso(now)
+        candidate = self._session.execute(
+            select(OutboxMessage)
+            .where(
+                OutboxMessage.event_key == event_key,
+                OutboxMessage.status.in_(("pending", "processing")),
+                OutboxMessage.next_retry_at <= now_text,
+                or_(
+                    OutboxMessage.lease_until.is_(None),
+                    OutboxMessage.lease_until <= now_text,
+                ),
+            )
+            .limit(1)
+        ).scalars().first()
+        if candidate is None:
+            return False
+        claimed = execute_dml(
+            self._session,
+            update(OutboxMessage)
+            .where(
+                OutboxMessage.id == candidate.id,
+                OutboxMessage.attempt == candidate.attempt,
+                OutboxMessage.event_key == event_key,
+                OutboxMessage.status.in_(("pending", "processing")),
+                OutboxMessage.next_retry_at <= now_text,
+                or_(
+                    OutboxMessage.lease_until.is_(None),
+                    OutboxMessage.lease_until <= now_text,
+                ),
+            )
+            .values(
+                status="processing",
+                attempt=OutboxMessage.attempt + 1,
+                lease_until=_iso(lease_until),
+            ),
+        )
+        self._session.commit()
+        return bool(claimed)
+
     def complete(self, message_id: int, completed_at: datetime) -> None:
         """持久化完成终态并释放 lease。"""
         self._session.execute(

@@ -1,12 +1,17 @@
 """durable side-effect outbox 原子性、认领、重试与幂等测试。"""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
-from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher
+from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher, OutboxIntent
 from app.application.subscription.write import CreateSubscriptionCommand
+from app.db.adapters.outbox import SqlAlchemyOutboxRepository
+from app.db.base import Base
+from app.db.models.outbox import OutboxMessage
 
 
 class _Staged:
@@ -134,3 +139,35 @@ def test_dispatcher_marks_success_and_closes_owned_resource() -> None:
     repository.complete.assert_called_once_with(7, now)
     dispatcher.close()
     close.assert_called_once_with()
+
+
+def test_sync_outbox_claim_is_exclusive_for_event_key() -> None:
+    """同步投递与恢复投递竞争同一 intent 时只允许一个取得 lease。"""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    lease_until = now + timedelta(seconds=60)
+    event_key = "subscribe.complete:7:tmdb:123:v1"
+
+    with factory() as session:
+        repository = SqlAlchemyOutboxRepository(session)
+        repository.stage(
+            OutboxIntent(event_key=event_key, topic="subscribe.complete", payload={}),
+            now,
+        )
+        session.commit()
+
+    with factory() as owner, factory() as competitor:
+        assert SqlAlchemyOutboxRepository(owner).claim_by_event_key(
+            event_key, now, lease_until
+        ) is True
+        assert SqlAlchemyOutboxRepository(competitor).claim_by_event_key(
+            event_key, now, lease_until
+        ) is False
+
+    with factory() as session:
+        message = session.execute(select(OutboxMessage)).scalar_one()
+    assert message.status == "processing"
+    assert message.attempt == 1
+    assert message.lease_until == lease_until.isoformat()

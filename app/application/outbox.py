@@ -20,6 +20,7 @@ SUBSCRIBE_DELETED_TOPIC = "subscribe.deleted"
 DOWNLOAD_ADDED_TOPIC = "download.added"
 TRANSFER_COMPLETED_TOPIC = "transfer.completed"
 TRANSFER_FAILED_TOPIC = "transfer.failed"
+OUTBOX_LEASE_SECONDS = 60
 
 DURABLE_EVENT_TOPICS: Mapping[EventType, str] = MappingProxyType({
     EventType.SubscribeAdded: SUBSCRIBE_ADDED_TOPIC,
@@ -126,6 +127,14 @@ class SyncOutboxTransaction(Protocol):
     def stage(self, intent: OutboxIntent, now: datetime) -> None:
         """把 intent 加入调用方事务，但不自行提交。"""
 
+    def claim_by_event_key(
+        self,
+        event_key: str,
+        now: datetime,
+        lease_until: datetime,
+    ) -> bool:
+        """在同步副作用前原子认领 intent，已被其他投递者持有时返回 False。"""
+
     def complete_by_event_key(
         self,
         event_key: str,
@@ -183,7 +192,7 @@ class OutboxDispatcher:
         handlers: dict[str, Callable[[ClaimedOutboxMessage], None]],
         *,
         max_attempts: int = 5,
-        lease_seconds: int = 60,
+        lease_seconds: int = OUTBOX_LEASE_SECONDS,
         clock: Callable[[], datetime] | None = None,
         close: Callable[[], None] | None = None,
         failure_observer: Callable[[bool], None] | None = None,
