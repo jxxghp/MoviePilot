@@ -628,7 +628,9 @@ def test_performance_check_is_read_only(tmp_path: Path, monkeypatch, capsys):
     ) == 0
 
     assert output.read_bytes() == content_before
-    assert "检查通过" in capsys.readouterr().out
+    output_text = capsys.readouterr().out
+    assert "启动性能采样：app.factory 中位数 90.0ms / 预算 690.0ms" in output_text
+    assert "检查通过" in output_text
 
 
 def test_performance_write_requires_explicit_action(tmp_path: Path, monkeypatch):
@@ -664,17 +666,17 @@ def test_performance_check_ignores_environment_provenance_drift():
     assert startup_performance.check_baseline(expected, actual) == []
 
 
-def test_performance_check_keeps_small_cross_platform_jitter_margin():
-    """跨平台 runner 可使用 5% 抖动带，但超过最终预算仍必须失败。"""
+def test_performance_check_keeps_hosted_runner_jitter_margin():
+    """跨平台托管 runner 可使用 15% 抖动带，但超过最终预算仍必须失败。"""
     expected = _performance_sample()
     within_margin = _performance_sample()
-    within_margin["targets"]["app.factory"]["median_ms"] = 630.0
+    within_margin["targets"]["app.factory"]["median_ms"] = 690.0
     above_margin = _performance_sample()
-    above_margin["targets"]["app.factory"]["median_ms"] = 630.001
+    above_margin["targets"]["app.factory"]["median_ms"] = 690.001
 
     assert startup_performance.check_baseline(expected, within_margin) == []
     assert startup_performance.check_baseline(expected, above_margin) == [
-        "app.factory 冷导入中位数 630.001ms 超过预算 630.0ms"
+        "app.factory 冷导入中位数 690.001ms 超过预算 690.0ms"
     ]
 
 

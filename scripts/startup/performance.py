@@ -30,8 +30,9 @@ RESULT_PREFIX = "MOVIEPILOT_IMPORT_BASELINE="
 LIFECYCLE_RESULT_PREFIX = "MOVIEPILOT_LIFECYCLE_BASELINE="
 PERFORMANCE_FACTOR = 2.0
 PERFORMANCE_SLACK_MS = 500.0
-# 基线由维护者平台生成、CI 在 Linux runner 检查；给跨平台宽松预算保留小幅调度抖动带。
-PERFORMANCE_JITTER_FACTOR = 1.05
+# 基线由维护者平台生成、CI 在 Linux 托管 runner 检查；在既有 2 倍/500ms
+# 硬预算之外保留 15% 的跨平台与持续调度抖动带，结构契约仍保持精确比较。
+PERFORMANCE_JITTER_FACTOR = 1.15
 
 
 def measure_import(target: str) -> dict[str, Any]:
@@ -310,10 +311,7 @@ def check_baseline(
                 f"{expected_target.get('loaded_app_module_count')} -> "
                 f"{actual_target.get('loaded_app_module_count')}"
             )
-        budget_ms = max(
-            expected_target["max_ms"] * PERFORMANCE_FACTOR,
-            expected_target["max_ms"] + PERFORMANCE_SLACK_MS,
-        ) * PERFORMANCE_JITTER_FACTOR
+        budget_ms = import_budget_ms(expected_target)
         if actual_target["median_ms"] > budget_ms:
             errors.append(
                 f"{target} 冷导入中位数 {actual_target['median_ms']}ms "
@@ -347,6 +345,31 @@ def check_baseline(
             if sample["database_connections_started"] != 0:
                 errors.append(f"{mode_name} 模式隔离采样建立了数据库连接")
     return errors
+
+
+def import_budget_ms(expected_target: dict[str, Any]) -> float:
+    """根据已提交样本计算跨平台冷导入中位数预算。"""
+    return max(
+        expected_target["max_ms"] * PERFORMANCE_FACTOR,
+        expected_target["max_ms"] + PERFORMANCE_SLACK_MS,
+    ) * PERFORMANCE_JITTER_FACTOR
+
+
+def describe_import_measurements(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> list[str]:
+    """输出每个公共冷导入目标的实测中位数与预算，便于诊断 CI 波动。"""
+    expected_targets = expected.get("targets", {})
+    actual_targets = actual.get("targets", {})
+    return [
+        (
+            f"启动性能采样：{target} 中位数 "
+            f"{actual_targets[target]['median_ms']}ms / 预算 "
+            f"{round(import_budget_ms(expected_targets[target]), 3)}ms"
+        )
+        for target in sorted(set(expected_targets) & set(actual_targets))
+    ]
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -402,6 +425,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not output.is_file():
             raise SystemExit(f"性能基线不存在：{output}")
         expected = json.loads(output.read_text(encoding="utf-8"))
+        for line in describe_import_measurements(expected, baseline):
+            print(line)
         errors = check_baseline(expected, baseline)
         if errors:
             for error in errors:
