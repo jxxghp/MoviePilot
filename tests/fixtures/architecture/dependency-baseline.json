@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6575,
-  "edge_sha256": "bb823540757169c4653eee284de2ffb71fa35c9e285a87aa1987220b908fb8b3",
+  "edge_count": 6579,
+  "edge_sha256": "87982f9e351a23cb949bcb8a978b9c1eced6260d6c19761fccc9557b79ac90d3",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
