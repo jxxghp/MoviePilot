@@ -210,11 +210,17 @@ uvx --from pip-audit==2.10.1 pip-audit \
      --check-plugins --plugin-repo ../MoviePilot-Plugins \
      --report official-plugin-architecture-report.json
    uv run --locked --no-sync pylint app/
+   uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
    ```
 
    GitHub Actions 会在 `v3` 的 PR/push 中独立执行宿主架构门禁，并对本次改动的 Python
    文件执行 Pylint 硬门禁；`app/` 全量结果作为建议性报告上传。最新官方插件仓通过每周
    或手工观察工作流检查，只上传语义差异报告，不会自动更新已提交基线。
+
+   mypy 类型错误基线（`tests/fixtures/architecture/mypy-baseline.json`）只降不增：
+   新增文件、错误码或既有计数增长都会被 `scripts/architecture/mypy_ratchet.py` 拒绝；
+   修复存量错误后用同脚本 `--write` 收紧基线，禁止为绕过门禁放宽基线。受治文件清单
+   仍由 `mypy.ini` 的 `files=` 维护并保持零错误。
 
 ### 7. 参考资源
 

@@ -1,0 +1,943 @@
+{
+  "app/adapters/cache/backends.py": {
+    "import-untyped": 1
+  },
+  "app/adapters/external/cookiecloud.py": {
+    "unknown": 9
+  },
+  "app/adapters/external/location.py": {
+    "unknown": 3
+  },
+  "app/adapters/external/market.py": {
+    "import-untyped": 1
+  },
+  "app/adapters/external/ocr.py": {
+    "unknown": 2
+  },
+  "app/adapters/external/wechat_crypt.py": {
+    "unknown": 29
+  },
+  "app/adapters/network/browser.py": {
+    "unknown": 24
+  },
+  "app/adapters/network/cloudflare.py": {
+    "unknown": 1
+  },
+  "app/adapters/network/http.py": {
+    "unknown": 142
+  },
+  "app/adapters/network/ip.py": {
+    "unknown": 10
+  },
+  "app/adapters/system/backup/database.py": {
+    "unknown": 2
+  },
+  "app/adapters/system/fsproxy.py": {
+    "unknown": 33
+  },
+  "app/adapters/system/fsworker.py": {
+    "unknown": 13
+  },
+  "app/adapters/system/host.py": {
+    "misc": 1,
+    "operator": 1,
+    "unknown": 23
+  },
+  "app/adapters/system/resource.py": {
+    "unknown": 4
+  },
+  "app/adapters/system/rust.py": {
+    "unknown": 28
+  },
+  "app/adapters/system/stdio.py": {
+    "unknown": 1
+  },
+  "app/adapters/system/update.py": {
+    "unknown": 6
+  },
+  "app/adapters/web/correlation.py": {
+    "unknown": 2
+  },
+  "app/adapters/web/plugin/routes.py": {
+    "unknown": 2
+  },
+  "app/adapters/web/security/access.py": {
+    "unknown": 3
+  },
+  "app/agent/contracts.py": {
+    "unknown": 1
+  },
+  "app/agent/llm/capability.py": {
+    "unknown": 12
+  },
+  "app/agent/llm/helper.py": {
+    "unknown": 32
+  },
+  "app/agent/llm/provider.py": {
+    "import-untyped": 1
+  },
+  "app/agent/middleware/activity_log.py": {
+    "unknown": 9
+  },
+  "app/agent/middleware/jobs.py": {
+    "unknown": 4
+  },
+  "app/agent/middleware/memory.py": {
+    "unknown": 4
+  },
+  "app/agent/middleware/patch_tool_calls.py": {
+    "unknown": 1
+  },
+  "app/agent/middleware/skills.py": {
+    "unknown": 5
+  },
+  "app/agent/middleware/summarization.py": {
+    "unknown": 10
+  },
+  "app/agent/middleware/tool_selection.py": {
+    "unknown": 4
+  },
+  "app/agent/middleware/usage.py": {
+    "unknown": 3
+  },
+  "app/agent/policy/orchestrator.py": {
+    "unknown": 1
+  },
+  "app/agent/policy/sanitizer.py": {
+    "unknown": 1
+  },
+  "app/agent/prompt/__init__.py": {
+    "import-untyped": 1
+  },
+  "app/agent/runtime.py": {
+    "import-untyped": 1
+  },
+  "app/agent/skills/metadata.py": {
+    "unknown": 1
+  },
+  "app/agent/skills/registry.py": {
+    "unknown": 44
+  },
+  "app/agent/tools/catalog.py": {
+    "unknown": 1
+  },
+  "app/agent/tools/impl/_terminal_session.py": {
+    "unknown": 5
+  },
+  "app/agent/tools/impl/_torrent_search_utils.py": {
+    "unknown": 10
+  },
+  "app/agent/tools/impl/create_agent_task.py": {
+    "import-untyped": 1
+  },
+  "app/agent/tools/impl/update_agent_task.py": {
+    "import-untyped": 1
+  },
+  "app/api/endpoints/agent.py": {
+    "import-untyped": 1
+  },
+  "app/api/endpoints/plugin.py": {
+    "import-untyped": 1
+  },
+  "app/api/endpoints/system.py": {
+    "import-untyped": 1
+  },
+  "app/api/response.py": {
+    "unknown": 4
+  },
+  "app/api/servcookie.py": {
+    "import-untyped": 1
+  },
+  "app/application/agent.py": {
+    "unknown": 4
+  },
+  "app/application/agentdata.py": {
+    "unknown": 10
+  },
+  "app/application/agenttask.py": {
+    "unknown": 1
+  },
+  "app/application/commands.py": {
+    "unknown": 1
+  },
+  "app/application/configuration.py": {
+    "unknown": 1
+  },
+  "app/application/dashboard.py": {
+    "unknown": 5
+  },
+  "app/application/directory.py": {
+    "unknown": 13
+  },
+  "app/application/download/tasks.py": {
+    "unknown": 2
+  },
+  "app/application/downloader.py": {
+    "unknown": 2
+  },
+  "app/application/formatting.py": {
+    "unknown": 26
+  },
+  "app/application/history.py": {
+    "unknown": 9
+  },
+  "app/application/maintenance.py": {
+    "unknown": 1
+  },
+  "app/application/mediaserver.py": {
+    "unknown": 3
+  },
+  "app/application/messaging/agent.py": {
+    "unknown": 20
+  },
+  "app/application/messaging/ingress.py": {
+    "unknown": 2
+  },
+  "app/application/messaging/interaction.py": {
+    "unknown": 6
+  },
+  "app/application/messaging/media.py": {
+    "unknown": 2
+  },
+  "app/application/messaging/message.py": {
+    "arg-type": 5,
+    "assignment": 3,
+    "dict-item": 1,
+    "misc": 1,
+    "no-any-return": 4,
+    "no-untyped-call": 2,
+    "no-untyped-def": 11,
+    "type-arg": 18,
+    "union-attr": 2,
+    "var-annotated": 1
+  },
+  "app/application/messaging/plugin.py": {
+    "unknown": 9
+  },
+  "app/application/messaging/site.py": {
+    "unknown": 7
+  },
+  "app/application/messaging/skill.py": {
+    "unknown": 14
+  },
+  "app/application/messaging/subscribe.py": {
+    "unknown": 6
+  },
+  "app/application/module.py": {
+    "unknown": 1
+  },
+  "app/application/music/catalog.py": {
+    "unknown": 2
+  },
+  "app/application/notification.py": {
+    "unknown": 3
+  },
+  "app/application/plugin/catalog.py": {
+    "unknown": 11
+  },
+  "app/application/plugin/config.py": {
+    "unknown": 3
+  },
+  "app/application/plugin/install.py": {
+    "unknown": 2
+  },
+  "app/application/plugin/lifecycle.py": {
+    "unknown": 2
+  },
+  "app/application/rss.py": {
+    "unknown": 21
+  },
+  "app/application/rules.py": {
+    "unknown": 10
+  },
+  "app/application/security/cookie.py": {
+    "unknown": 25
+  },
+  "app/application/security/otp.py": {
+    "unknown": 3
+  },
+  "app/application/security/passkeys.py": {
+    "unknown": 2
+  },
+  "app/application/security/token.py": {
+    "unknown": 4
+  },
+  "app/application/security/twofactor.py": {
+    "unknown": 4
+  },
+  "app/application/security/url.py": {
+    "unknown": 15
+  },
+  "app/application/servarr.py": {
+    "unknown": 2
+  },
+  "app/application/server/report.py": {
+    "unknown": 5
+  },
+  "app/application/server/share.py": {
+    "unknown": 7
+  },
+  "app/application/service.py": {
+    "unknown": 6
+  },
+  "app/application/site/mutation.py": {
+    "unknown": 4
+  },
+  "app/application/site/query.py": {
+    "unknown": 7
+  },
+  "app/application/site/sites.pyi": {
+    "unknown": 7
+  },
+  "app/application/storage.py": {
+    "unknown": 6
+  },
+  "app/application/subscription/complete.py": {
+    "unknown": 3
+  },
+  "app/application/subscription/contract.py": {
+    "unknown": 5
+  },
+  "app/application/subscription/query.py": {
+    "unknown": 2
+  },
+  "app/application/subscription/write.py": {
+    "unknown": 22
+  },
+  "app/application/torrent.py": {
+    "unknown": 39
+  },
+  "app/application/torrent_cache.py": {
+    "unknown": 1
+  },
+  "app/application/transfer.py": {
+    "unknown": 104
+  },
+  "app/chain/_interaction.py": {
+    "unknown": 12
+  },
+  "app/db/models/agentchat.py": {
+    "unknown": 2
+  },
+  "app/db/models/agenttask.py": {
+    "unknown": 5
+  },
+  "app/db/models/downloadfailure.py": {
+    "unknown": 1
+  },
+  "app/db/models/downloadhistory.py": {
+    "unknown": 19
+  },
+  "app/db/models/mediaserver.py": {
+    "unknown": 10
+  },
+  "app/db/models/message.py": {
+    "unknown": 1
+  },
+  "app/db/models/passkey.py": {
+    "unknown": 12
+  },
+  "app/db/models/plugindata.py": {
+    "unknown": 8
+  },
+  "app/db/models/site.py": {
+    "unknown": 10
+  },
+  "app/db/models/siteicon.py": {
+    "unknown": 2
+  },
+  "app/db/models/sitestatistic.py": {
+    "unknown": 3
+  },
+  "app/db/models/siteuserdata.py": {
+    "unknown": 5
+  },
+  "app/db/models/subscribe.py": {
+    "unknown": 26
+  },
+  "app/db/models/subscribehistory.py": {
+    "unknown": 6
+  },
+  "app/db/models/systemconfig.py": {
+    "unknown": 3
+  },
+  "app/db/models/transferhistory.py": {
+    "unknown": 24
+  },
+  "app/db/models/transferpending.py": {
+    "unknown": 1
+  },
+  "app/db/models/user.py": {
+    "unknown": 10
+  },
+  "app/db/models/userconfig.py": {
+    "unknown": 2
+  },
+  "app/db/models/workflow.py": {
+    "unknown": 31
+  },
+  "app/doctor/checks.py": {
+    "unknown": 7
+  },
+  "app/doctor/runner.py": {
+    "unknown": 1
+  },
+  "app/domain/context.py": {
+    "unknown": 225
+  },
+  "app/domain/meta/customization.py": {
+    "unknown": 8
+  },
+  "app/domain/meta/metaanime.py": {
+    "unknown": 11
+  },
+  "app/domain/meta/metabase.py": {
+    "unknown": 19
+  },
+  "app/domain/meta/metamusic.py": {
+    "unknown": 16
+  },
+  "app/domain/meta/metavideo.py": {
+    "unknown": 33
+  },
+  "app/domain/meta/releasegroup.py": {
+    "unknown": 7
+  },
+  "app/domain/meta/runtime.py": {
+    "unknown": 6
+  },
+  "app/domain/meta/streamingplatform.py": {
+    "unknown": 2
+  },
+  "app/domain/meta/words.py": {
+    "unknown": 6
+  },
+  "app/domain/metainfo.py": {
+    "unknown": 24
+  },
+  "app/domain/scraper.py": {
+    "unknown": 5
+  },
+  "app/domain/title.py": {
+    "unknown": 1
+  },
+  "app/domain/tokens.py": {
+    "unknown": 9
+  },
+  "app/foundation/crypto.py": {
+    "unknown": 4
+  },
+  "app/foundation/dom.py": {
+    "unknown": 7
+  },
+  "app/foundation/environment.py": {
+    "unknown": 1
+  },
+  "app/foundation/reflection.py": {
+    "unknown": 12
+  },
+  "app/foundation/singleton.py": {
+    "unknown": 14
+  },
+  "app/foundation/temporal.py": {
+    "unknown": 6
+  },
+  "app/foundation/text.py": {
+    "unknown": 13
+  },
+  "app/foundation/url.py": {
+    "unknown": 1
+  },
+  "app/modules/anilist/anilist.py": {
+    "unknown": 60
+  },
+  "app/modules/bangumi/bangumi.py": {
+    "unknown": 26
+  },
+  "app/modules/dingtalk/dingtalk.py": {
+    "unknown": 1
+  },
+  "app/modules/discord/discord.py": {
+    "unknown": 48
+  },
+  "app/modules/douban/apiv2.py": {
+    "unknown": 170
+  },
+  "app/modules/douban/scraper.py": {
+    "unknown": 7
+  },
+  "app/modules/emby/emby.py": {
+    "unknown": 37
+  },
+  "app/modules/feishu/feishu.py": {
+    "unknown": 47
+  },
+  "app/modules/imdb/api.py": {
+    "unknown": 27
+  },
+  "app/modules/indexer/parser/__init__.py": {
+    "unknown": 53
+  },
+  "app/modules/indexer/parser/bitpt.py": {
+    "unknown": 45
+  },
+  "app/modules/indexer/parser/discuz.py": {
+    "unknown": 10
+  },
+  "app/modules/indexer/parser/file_list.py": {
+    "unknown": 14
+  },
+  "app/modules/indexer/parser/gazelle.py": {
+    "unknown": 13
+  },
+  "app/modules/indexer/parser/ipt_project.py": {
+    "unknown": 13
+  },
+  "app/modules/indexer/parser/mtorrent.py": {
+    "unknown": 21
+  },
+  "app/modules/indexer/parser/nexus_php.py": {
+    "unknown": 31
+  },
+  "app/modules/indexer/parser/nexus_rabbit.py": {
+    "unknown": 19
+  },
+  "app/modules/indexer/parser/rousi.py": {
+    "unknown": 23
+  },
+  "app/modules/indexer/parser/small_horse.py": {
+    "unknown": 16
+  },
+  "app/modules/indexer/parser/sunnypt.py": {
+    "unknown": 18
+  },
+  "app/modules/indexer/parser/tnode.py": {
+    "unknown": 12
+  },
+  "app/modules/indexer/parser/torrent_leech.py": {
+    "unknown": 11
+  },
+  "app/modules/indexer/parser/unit3d.py": {
+    "unknown": 12
+  },
+  "app/modules/indexer/parser/yema.py": {
+    "unknown": 18
+  },
+  "app/modules/indexer/parser/zhixing.py": {
+    "unknown": 47
+  },
+  "app/modules/indexer/spider/__init__.py": {
+    "unknown": 93
+  },
+  "app/modules/indexer/spider/haidan.py": {
+    "unknown": 19
+  },
+  "app/modules/indexer/spider/hddolby.py": {
+    "unknown": 21
+  },
+  "app/modules/indexer/spider/mtorrent.py": {
+    "unknown": 20
+  },
+  "app/modules/indexer/spider/rousi.py": {
+    "unknown": 24
+  },
+  "app/modules/indexer/spider/sunnypt.py": {
+    "unknown": 31
+  },
+  "app/modules/indexer/spider/tnode.py": {
+    "unknown": 23
+  },
+  "app/modules/indexer/spider/torrentleech.py": {
+    "unknown": 31
+  },
+  "app/modules/indexer/spider/yema.py": {
+    "unknown": 21
+  },
+  "app/modules/jellyfin/jellyfin.py": {
+    "return": 1,
+    "unknown": 47
+  },
+  "app/modules/musicbrainz/music_cache.py": {
+    "unknown": 10
+  },
+  "app/modules/navidrome/navidrome.py": {
+    "unknown": 12
+  },
+  "app/modules/plex/plex.py": {
+    "unknown": 34
+  },
+  "app/modules/qbittorrent/qbittorrent.py": {
+    "unknown": 42
+  },
+  "app/modules/qqbot/api.py": {
+    "unknown": 17
+  },
+  "app/modules/qqbot/gateway.py": {
+    "unknown": 6
+  },
+  "app/modules/qqbot/qqbot.py": {
+    "unknown": 16
+  },
+  "app/modules/rtorrent/rtorrent.py": {
+    "unknown": 182
+  },
+  "app/modules/slack/slack.py": {
+    "unknown": 31
+  },
+  "app/modules/synologychat/synologychat.py": {
+    "unknown": 14
+  },
+  "app/modules/themoviedb/category.py": {
+    "unknown": 13
+  },
+  "app/modules/themoviedb/tmdb_cache.py": {
+    "unknown": 19
+  },
+  "app/modules/themoviedb/tmdbv3api/as_obj.py": {
+    "unknown": 41
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/account.py": {
+    "unknown": 59
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/auth.py": {
+    "unknown": 13
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/certification.py": {
+    "unknown": 8
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/change.py": {
+    "unknown": 16
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/collection.py": {
+    "unknown": 12
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/company.py": {
+    "unknown": 16
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/configuration.py": {
+    "unknown": 26
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/credit.py": {
+    "unknown": 4
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/discover.py": {
+    "unknown": 9
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/episode.py": {
+    "unknown": 40
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/find.py": {
+    "unknown": 36
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/genre.py": {
+    "unknown": 8
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/group.py": {
+    "unknown": 4
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/keyword.py": {
+    "unknown": 8
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/list.py": {
+    "unknown": 28
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/movie.py": {
+    "unknown": 92
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/network.py": {
+    "unknown": 12
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/person.py": {
+    "unknown": 44
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/provider.py": {
+    "unknown": 12
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/review.py": {
+    "unknown": 4
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/search.py": {
+    "unknown": 29
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/season.py": {
+    "unknown": 36
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/trending.py": {
+    "unknown": 36
+  },
+  "app/modules/themoviedb/tmdbv3api/objs/tv.py": {
+    "unknown": 104
+  },
+  "app/modules/themoviedb/tmdbv3api/tmdb.py": {
+    "unknown": 87
+  },
+  "app/modules/thetvdb/tvdb_v4_official.py": {
+    "unknown": 274
+  },
+  "app/modules/transmission/transmission.py": {
+    "unknown": 41
+  },
+  "app/modules/trimemedia/api.py": {
+    "unknown": 21
+  },
+  "app/modules/ugreen/api.py": {
+    "unknown": 31
+  },
+  "app/modules/ugreen/crypto.py": {
+    "unknown": 1
+  },
+  "app/modules/ugreen/ugreen.py": {
+    "unknown": 45
+  },
+  "app/modules/vocechat/vocechat.py": {
+    "unknown": 8
+  },
+  "app/modules/wechat/wechat.py": {
+    "unknown": 26
+  },
+  "app/modules/wechat/wechatbot.py": {
+    "unknown": 22
+  },
+  "app/modules/wechatclawbot/wechatclawbot.py": {
+    "unknown": 15
+  },
+  "app/modules/zspace/zspace.py": {
+    "unknown": 44
+  },
+  "app/monitor/snapshot.py": {
+    "unknown": 7
+  },
+  "app/monitor/syslimits.py": {
+    "unknown": 1
+  },
+  "app/monitor/watcher.py": {
+    "unknown": 18
+  },
+  "app/runtime/cache.py": {
+    "unknown": 89
+  },
+  "app/runtime/capabilities/runtime.py": {
+    "unknown": 10
+  },
+  "app/runtime/compat/imports.py": {
+    "unknown": 20
+  },
+  "app/runtime/config.py": {
+    "unknown": 52
+  },
+  "app/runtime/debounce.py": {
+    "unknown": 37
+  },
+  "app/runtime/deprecation/policy.py": {
+    "unknown": 2
+  },
+  "app/runtime/event/binding.py": {
+    "unknown": 7
+  },
+  "app/runtime/event/contracts.py": {
+    "unknown": 2
+  },
+  "app/runtime/event/dispatch.py": {
+    "unknown": 5
+  },
+  "app/runtime/event/registry.py": {
+    "unknown": 14
+  },
+  "app/runtime/execution.py": {
+    "unknown": 9
+  },
+  "app/runtime/extensions/host_module_adapter.py": {
+    "unknown": 3
+  },
+  "app/runtime/extensions/module/dispatcher.py": {
+    "unknown": 1
+  },
+  "app/runtime/extensions/plugin/access.py": {
+    "unknown": 1
+  },
+  "app/runtime/extensions/plugin/admission.py": {
+    "unknown": 3
+  },
+  "app/runtime/extensions/plugin/catalog.py": {
+    "unknown": 5
+  },
+  "app/runtime/extensions/plugin/clone.py": {
+    "unknown": 2
+  },
+  "app/runtime/extensions/plugin/lifecycle.py": {
+    "unknown": 2
+  },
+  "app/runtime/extensions/plugin/metadata.py": {
+    "unknown": 4
+  },
+  "app/runtime/extensions/plugin/monitor.py": {
+    "unknown": 4
+  },
+  "app/runtime/extensions/plugin/paths.py": {
+    "unknown": 3
+  },
+  "app/runtime/extensions/plugin/projection.py": {
+    "unknown": 10
+  },
+  "app/runtime/extensions/plugin/storage.py": {
+    "unknown": 3
+  },
+  "app/runtime/extensions/plugin/sync.py": {
+    "unknown": 3
+  },
+  "app/runtime/extensions/plugin/system.py": {
+    "unknown": 10
+  },
+  "app/runtime/extensions/service_config.py": {
+    "unknown": 2
+  },
+  "app/runtime/gc.py": {
+    "unknown": 7
+  },
+  "app/runtime/localization.py": {
+    "unknown": 1
+  },
+  "app/runtime/managed_resources.py": {
+    "unknown": 5
+  },
+  "app/runtime/progress.py": {
+    "unknown": 10
+  },
+  "app/runtime/rate.py": {
+    "unknown": 29
+  },
+  "app/runtime/scheduling.py": {
+    "unknown": 6
+  },
+  "app/runtime/settings.py": {
+    "unknown": 6
+  },
+  "app/runtime/thread.py": {
+    "unused-ignore": 1
+  },
+  "app/scheduler.py": {
+    "import-untyped": 1
+  },
+  "app/schemas/agent.py": {
+    "unknown": 26
+  },
+  "app/schemas/cache.py": {
+    "unknown": 3
+  },
+  "app/schemas/category.py": {
+    "unknown": 3
+  },
+  "app/schemas/common.py": {
+    "unknown": 13
+  },
+  "app/schemas/context.py": {
+    "unknown": 18
+  },
+  "app/schemas/dashboard.py": {
+    "unknown": 10
+  },
+  "app/schemas/download.py": {
+    "unknown": 4
+  },
+  "app/schemas/event.py": {
+    "unknown": 17
+  },
+  "app/schemas/file.py": {
+    "unknown": 4
+  },
+  "app/schemas/history.py": {
+    "unknown": 4
+  },
+  "app/schemas/llm.py": {
+    "unknown": 9
+  },
+  "app/schemas/mcp.py": {
+    "misc": 1,
+    "unknown": 22
+  },
+  "app/schemas/media.py": {
+    "unknown": 9
+  },
+  "app/schemas/mediaserver.py": {
+    "unknown": 14
+  },
+  "app/schemas/message.py": {
+    "unknown": 21
+  },
+  "app/schemas/mfa.py": {
+    "misc": 1,
+    "unknown": 4
+  },
+  "app/schemas/monitoring.py": {
+    "unknown": 6
+  },
+  "app/schemas/music.py": {
+    "unknown": 10
+  },
+  "app/schemas/notification.py": {
+    "unknown": 2
+  },
+  "app/schemas/openai.py": {
+    "unknown": 23
+  },
+  "app/schemas/plugin.py": {
+    "unknown": 18
+  },
+  "app/schemas/response.py": {
+    "unknown": 3
+  },
+  "app/schemas/rule.py": {
+    "unknown": 2
+  },
+  "app/schemas/search.py": {
+    "unknown": 2
+  },
+  "app/schemas/servarr.py": {
+    "unknown": 18
+  },
+  "app/schemas/servcookie.py": {
+    "unknown": 5
+  },
+  "app/schemas/site.py": {
+    "unknown": 8
+  },
+  "app/schemas/storage.py": {
+    "unknown": 3
+  },
+  "app/schemas/subscribe.py": {
+    "unknown": 11
+  },
+  "app/schemas/system.py": {
+    "unknown": 22
+  },
+  "app/schemas/tmdb.py": {
+    "unknown": 5
+  },
+  "app/schemas/token.py": {
+    "unknown": 3
+  },
+  "app/schemas/transfer.py": {
+    "unknown": 21
+  },
+  "app/schemas/types.py": {
+    "unknown": 6
+  },
+  "app/schemas/user.py": {
+    "unknown": 3
+  },
+  "app/schemas/workflow.py": {
+    "unknown": 19
+  },
+  "app/sdk/_legacy/transfer.py": {
+    "unknown": 1
+  },
+  "app/sdk/string.py": {
+    "unknown": 3
+  },
+  "app/testing/network_guard.py": {
+    "unknown": 6
+  },
+  "app/testing/stub.py": {
+    "unknown": 2
+  }
+}
