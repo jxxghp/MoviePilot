@@ -10,9 +10,31 @@ def test_app_installs_known_oss2_invalid_escape_warning_filter():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         app._filter_third_party_startup_warnings()
-        warnings.warn("invalid escape sequence '\\&'", SyntaxWarning)
+        warnings.warn_explicit(
+            '"\\\\&" is an invalid escape sequence',
+            SyntaxWarning,
+            filename="oss2/api.py",
+            lineno=703,
+            module="oss2.api",
+        )
 
     assert caught == []
+
+
+def test_app_does_not_hide_unrelated_invalid_escape_warnings():
+    """同类语法告警只允许对已确认的第三方模块静默。"""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        app._filter_third_party_startup_warnings()
+        warnings.warn_explicit(
+            '"\\\\&" is an invalid escape sequence',
+            SyntaxWarning,
+            filename="app/example.py",
+            lineno=1,
+            module="app.example",
+        )
+
+    assert len(caught) == 1
 
 
 def test_app_installs_google_genai_python314_warning_filter():

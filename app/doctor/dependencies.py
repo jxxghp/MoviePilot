@@ -53,8 +53,9 @@ def _verify_native_profile(*, free_threaded: bool) -> None:
     """验证 ABI 敏感依赖提供预期的原生能力。"""
     warnings.filterwarnings(
         "ignore",
-        message=r"invalid escape sequence '\\&'",
+        message=r".*invalid escape sequence.*",
         category=SyntaxWarning,
+        module=r"oss2\.api",
     )
     imported = {}
     profile_modules = (
