@@ -24,6 +24,7 @@ from app.adapters.web.security.access import (
     verify_token,
 )
 from app.application.security.token import create_access_token, decode_access_token
+from app.runtime.config import global_vars
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
@@ -393,6 +394,7 @@ def create_app() -> FastAPI:
             "/redoc",
         },
         log=logger,
+        event_loop=lambda: global_vars.CURRENT_EVENT_LOOP,
     ))
 
     return _app

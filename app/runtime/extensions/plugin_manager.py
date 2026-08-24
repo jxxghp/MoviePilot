@@ -71,6 +71,7 @@ LegacyPluginImportPreparer = Callable[..., None]
 PluginInstallReporter = Callable[..., None]
 SiteAuthLevelProvider = Callable[[], int]
 PluginCatalogFactory = Callable[["PluginManager"], Any]
+PluginRouteRefresher = Callable[[str], None]
 
 
 def _ignore_legacy_diagnostics(**_kwargs) -> None:
@@ -109,6 +110,11 @@ def _warn_if_plugin_enabled_gil(
     )
 
 
+def _unavailable_plugin_route_refresher(_plugin_id: str) -> None:
+    """在 HTTP 组合尚未装配时拒绝发布不完整的热重载投影。"""
+    raise RuntimeError("插件动态路由刷新器尚未由启动组合根装配")
+
+
 _legacy_diagnostics_configurator: LegacyDiagnosticsConfigurator = (
     _ignore_legacy_diagnostics
 )
@@ -119,6 +125,7 @@ _legacy_plugin_import_preparer: LegacyPluginImportPreparer = (
 _plugin_install_reporter: PluginInstallReporter = _ignore_legacy_diagnostics
 _site_auth_level_provider: SiteAuthLevelProvider = _unavailable_site_auth_level
 _plugin_catalog_factory: PluginCatalogFactory = _unavailable_plugin_catalog_factory
+_plugin_route_refresher: PluginRouteRefresher = _unavailable_plugin_route_refresher
 
 
 def configure_plugin_legacy_import_services(
@@ -156,6 +163,12 @@ def configure_plugin_catalog_factory(factory: PluginCatalogFactory) -> None:
     """由启动组合根注入插件目录应用服务工厂，消除 Runtime 反向依赖。"""
     global _plugin_catalog_factory
     _plugin_catalog_factory = factory
+
+
+def configure_plugin_route_refresher(refresher: PluginRouteRefresher) -> None:
+    """由启动组合根注入热重载后的动态路由投影刷新器。"""
+    global _plugin_route_refresher
+    _plugin_route_refresher = refresher
 
 
 @observe_compat_facade("PluginManager")
@@ -656,13 +669,25 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             monitor_suppressed=self.is_plugin_monitor_suppressed,
             local_candidate=self._get_local_plugin_candidate_from_path,
             sync_local=self._sync_local_plugin_if_installed,
-            reload_plugin=self.reload_plugin_tree,
+            reload_plugin=self._reload_plugin_tree_from_monitor,
             dependency_manifest_status=(
                 get_plugin_system().dependency_manifest_status
             ),
             watch=watch,
             log=logger,
         ).run()
+
+    def _reload_plugin_tree_from_monitor(
+        self,
+        plugin_id: str,
+    ) -> PluginRuntimeStatus:
+        """重载源码树，并发布源插件及虚拟实例的动态路由投影。"""
+        with self.mutation("热重载插件路由"):
+            status = self.reload_plugin_tree(plugin_id)
+            reload_targets = self.get_plugin_reload_targets(plugin_id)
+            for reload_target in reload_targets:
+                _plugin_route_refresher(reload_target)
+            return status
 
     def _get_federated_plugin_change(
         self,
