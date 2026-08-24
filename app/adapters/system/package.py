@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from app.runtime.dependencies import runtime_sync_arguments
+
 
 @dataclass(frozen=True)
 class PackageInstallRequest:
@@ -132,6 +134,7 @@ def _build_uv_sync_command(uv_bin: Path, request: PackageInstallRequest, use_ind
         "--no-dev",
         "--no-install-project",
         "--inexact",
+        *runtime_sync_arguments(),
     ]
     if use_index and request.package_index_url:
         command.extend(["--default-index", request.package_index_url])

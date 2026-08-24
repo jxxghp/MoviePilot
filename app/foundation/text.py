@@ -4,19 +4,25 @@ import random
 import re
 from typing import Generator, List, Optional, Union
 
-from jieba_next import cut as jieba_next_cut
-from zhconv_rs import zhconv as _zhconv  # pylint: disable=no-name-in-module
+import moviepilot_rust
+
+from app.foundation.environment import is_free_threaded_runtime
+
+if is_free_threaded_runtime():
+    _zhconv = moviepilot_rust.zhconv_fast
+else:
+    import zhconv_rs
+
+    _zhconv = zhconv_rs.zhconv
 
 
 def cut(text: str, HMM: bool = True, cut_all: bool = False) -> list[str]:
-    """
-    使用 jieba-next 执行中文分词，并兼容 jieba.cut 的常用参数名。
-    """
-    return list(jieba_next_cut(text, HMM=HMM, cut_all=cut_all))
+    """通过统一原生入口执行中文分词。"""
+    return moviepilot_rust.jieba_cut(text, hmm=HMM, cut_all=cut_all)
 
 
 def convert(text: str, target: str) -> str:
-    """使用 zhconv-rs 执行中文简繁转换，并隔离第三方包的函数名差异。"""
+    """通过统一入口执行 MediaWiki 中文简繁转换。"""
     return _zhconv(text, target)
 
 

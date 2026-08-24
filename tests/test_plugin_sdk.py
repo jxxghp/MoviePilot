@@ -13,7 +13,7 @@ from app.sdk.network import RequestUtils, RssHelper, SitesHelper
 from app.sdk.plugins import ModuleManager, PluginManager
 from app.sdk.services import NotificationHelper
 from app.sdk.utilities import StringUtils as UtilityStringUtils
-from app.sdk.utilities import decrypt, encrypt
+from app.sdk.utilities import convert, decrypt, encrypt
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
@@ -30,6 +30,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
         "app.domain.string"
     ).StringUtils
     from app.foundation.crypto import CryptoJsUtils
+    from app.foundation.text import convert as canonical_convert
     from app.runtime.extensions.module_manager import ModuleManager as CanonicalModuleManager
     from app.runtime.extensions.plugin_manager import PluginManager as CanonicalPluginManager
     from app.adapters.network.http import RequestUtils as CanonicalRequestUtils
@@ -61,6 +62,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
     assert UtilityStringUtils is LegacyDomainStringUtils
     assert decrypt is CryptoJsUtils.decrypt
     assert encrypt is CryptoJsUtils.encrypt
+    assert convert is canonical_convert
     assert ModuleManager is CanonicalModuleManager
     assert PluginManager is CanonicalPluginManager
     assert CanonicalPluginManager.__module__ == "app.runtime.extensions.plugin_manager"

@@ -1302,6 +1302,39 @@ demo = { index = "private" }
         assert "主程序核心依赖" in message
         assert "fastapi" in message
 
+    @pytest.mark.parametrize(
+        ("runtime_group", "installed_package", "installed_version", "requirement"),
+        [
+            ("runtime-standard", "lxml", "6.1.2", "lxml>=7.1"),
+            ("runtime-free-threaded", "psycopg", "3.3.4", "psycopg>=3.4"),
+        ],
+    )
+    def test_uv_install_rejects_runtime_profile_root_upgrade(
+            self,
+            runtime_group,
+            installed_package,
+            installed_version,
+            requirement,
+    ):
+        """插件不得升级当前解释器 profile 中经过 ABI/GIL 验证的根包。"""
+        from app.adapters.external.market import PluginHelper
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "requirements.txt"
+            requirements_file.write_text(f"{requirement}\n", encoding="utf-8")
+            with patch(
+                    "app.runtime.dependencies.runtime_dependency_group",
+                    return_value=runtime_group,
+            ):
+                success, message = PluginHelper._PluginHelper__validate_runtime_dependency_conflicts(
+                    requirements_file,
+                    {installed_package: Version(installed_version)},
+                )
+
+        assert not success
+        assert "主程序核心依赖" in message
+        assert installed_package in message
+
     def test_uv_install_allows_changing_non_runtime_dependency(self):
         """
         验证非主程序依赖即便已安装，插件后续仍可调整其版本约束。

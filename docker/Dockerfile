@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 
+ARG MOVIEPILOT_PYTHON_VARIANT="standard"
+
 FROM ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv
 
 
@@ -10,6 +12,9 @@ FROM mwader/static-ffmpeg:8.1.1@sha256:735f84b905e00d5c618b667f0b053f83b1096f5fc
 
 
 FROM python:3.14.7-slim-trixie AS base
+
+
+FROM rust:slim-trixie AS rust_toolchain
 
 
 # 准备外部制品所需的最小工具集
@@ -33,6 +38,7 @@ ENV LANG="C.UTF-8" \
     PUID=0 \
     PGID=0 \
     UMASK=000 \
+    PYTHON_THREAD_INHERIT_CONTEXT=0 \
     VENV_PATH="/opt/venv"
 
 ENV PATH="${VENV_PATH}/bin:${PATH}"
@@ -94,8 +100,8 @@ RUN apt-get update \
     /var/tmp/*
 
 
-# 准备 python 环境
-FROM base AS prepare_venv
+# 准备 Python 环境的公共输入
+FROM base AS prepare_venv_common
 
 # 设置环境变量
 ENV LANG="C.UTF-8" \
@@ -112,15 +118,56 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     wget
 
-# 按锁文件创建主程序虚拟环境
 WORKDIR /app
 COPY --from=uv /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
-RUN python3 -m venv --without-pip ${VENV_PATH} \
+COPY app/runtime/dependencies.py /tmp/runtime_dependencies.py
+
+
+# 准备标准 Python 运行环境
+FROM prepare_venv_common AS prepare_venv_standard
+
+RUN mkdir -p /opt/python \
+    && python3 -m venv --without-pip ${VENV_PATH} \
     && UV_PROJECT_ENVIRONMENT=${VENV_PATH} uv sync \
-    --locked \
-    --no-dev \
-    --no-install-project
+        --locked \
+        --no-default-groups \
+        --group "$(python3 /tmp/runtime_dependencies.py)" \
+        --no-install-project \
+    && "${VENV_PATH}/bin/python" -c \
+        'import moviepilot_rust; assert moviepilot_rust.is_available(); assert moviepilot_rust.jieba_cut("中文分词")'
+
+
+# free-threaded 原生依赖需要 Rust 和 C 构建工具链。
+FROM prepare_venv_common AS prepare_venv_free-threaded
+
+ENV CARGO_HOME="/usr/local/cargo" \
+    RUSTUP_HOME="/usr/local/rustup" \
+    UV_PYTHON_INSTALL_DIR="/opt/python"
+
+ENV PATH="${CARGO_HOME}/bin:${VENV_PATH}/bin:${PATH}"
+
+COPY --from=rust_toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust_toolchain /usr/local/rustup /usr/local/rustup
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && uv python install --no-bin 3.14t \
+    && python_bin="$(uv python find --managed-python 3.14t)" \
+    && "${python_bin}" -m venv --without-pip ${VENV_PATH} \
+    && UV_PROJECT_ENVIRONMENT=${VENV_PATH} uv sync \
+        --locked \
+        --no-default-groups \
+        --group "$("${python_bin}" /tmp/runtime_dependencies.py)" \
+        --no-install-project \
+        --python "${python_bin}" \
+    && "${VENV_PATH}/bin/python" -c \
+        'import importlib.metadata, sys, sysconfig; import brotli, crcmod, lxml.etree, moviepilot_rust, orjson, oss2, psycopg; assert sysconfig.get_config_var("Py_GIL_DISABLED") == 1; assert not sys._is_gil_enabled(); assert importlib.metadata.version("crcmod-plus") == "2.3.1"; assert crcmod.crcmod._usingExtension; assert importlib.metadata.version("lxml") == "7.0.0b1"; assert importlib.metadata.version("orjson") == "3.12.0"; assert psycopg.pq.__impl__ == "c"; assert moviepilot_rust.is_available(); assert moviepilot_rust.jieba_cut("中文分词"); assert moviepilot_rust.zhconv_fast("后台", "zh-hant"); assert not sys._is_gil_enabled()'
+
+
+ARG MOVIEPILOT_PYTHON_VARIANT
+FROM prepare_venv_${MOVIEPILOT_PYTHON_VARIANT} AS prepare_venv
 
 # 准备后端源码
 FROM base AS prepare_backend
@@ -184,10 +231,15 @@ FROM prepare_payload AS prepare_resources
 
 ARG TARGETARCH
 ARG MOVIEPILOT_RESOURCES_REF="main"
+ARG MOVIEPILOT_PYTHON_VARIANT="standard"
 
 RUN set -eu; \
     test -n "${MOVIEPILOT_RESOURCES_REF}"; \
-    python_ver="$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')"; \
+    case "${MOVIEPILOT_PYTHON_VARIANT}" in \
+        standard) python_ver="$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')" ;; \
+        free-threaded) python_ver="cpython-314t" ;; \
+        *) printf 'Unsupported Python variant: %s\n' "${MOVIEPILOT_PYTHON_VARIANT}" >&2; exit 1 ;; \
+    esac; \
     target_arch="${TARGETARCH:-$(uname -m)}"; \
     case "${target_arch}" in \
         arm64|aarch64) suffix="aarch64-linux-gnu" ;; \
@@ -230,6 +282,7 @@ COPY --from=rclone /usr/local/bin/rclone /usr/bin/rclone
 
 # python 环境
 COPY --from=prepare_venv --chmod=777 ${VENV_PATH} ${VENV_PATH}
+COPY --from=prepare_venv /opt/python /opt/python
 COPY --from=uv /uv /usr/local/bin/uv
 
 # 浏览器运行依赖
@@ -252,8 +305,8 @@ COPY --from=prepare_control /bundle/bin/moviepilot /usr/local/bin/moviepilot
 RUN mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 918 \
     && useradd -r moviepilot -g moviepilot -d ${HOME} -s /bin/bash -u 918 \
-    && python_ver=$(python3 -V | awk '{print $2}') \
-    && echo "/app/" > ${VENV_PATH}/lib/python${python_ver%.*}/site-packages/app.pth \
+    && site_packages="$(${VENV_PATH}/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
+    && echo "/app/" > "${site_packages}/app.pth" \
     && echo 'fs.inotify.max_user_watches=5242880' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen \

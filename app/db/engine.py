@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine as SaAsyncEngine, create_async_en
 from sqlalchemy.pool import Pool
 
 from app.runtime.config import settings
+from app.runtime.dependencies import is_free_threaded_runtime
 from app.db.diagnostics import _register_database_error_logging
 from app.db.worker import DATABASE_WORKER_MAX_WORKERS
 from app.runtime.log import logger
@@ -22,6 +23,11 @@ from app.runtime.observability import record_metric
 def _database_backend_label() -> str:
     """把数据库类型收敛为有限的观测标签。"""
     return "postgresql" if settings.DB_TYPE.lower() == "postgresql" else "sqlite"
+
+
+def _sync_postgresql_driver() -> Optional[str]:
+    """free-threaded 解释器使用不会重新启用 GIL 的 psycopg 驱动。"""
+    return "psycopg" if is_free_threaded_runtime() else None
 
 
 def _register_database_pool_metrics(engine: SyncEngine) -> None:
@@ -156,7 +162,7 @@ def _get_postgresql_engine(is_async: bool = False, pooled: bool = False):
     """
     获取PostgreSQL数据库引擎
     """
-    db_url = settings.DB_POSTGRESQL_URL()
+    db_url = settings.DB_POSTGRESQL_URL(_sync_postgresql_driver())
 
     # PostgreSQL连接参数。允许部署侧注入驱动级参数，
     # 例如经 PgBouncer 事务模式接入时 asyncpg 需要 statement_cache_size=0

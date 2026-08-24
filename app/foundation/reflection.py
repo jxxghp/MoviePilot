@@ -183,18 +183,42 @@ class ObjectUtils:
         except Exception:
             # 源代码分析失败时，进行字节码分析
             code_obj = func.__code__  # type: ignore[attr-defined]
-            instructions = list(dis.get_instructions(code_obj))
-            # 检查是否为仅返回None的简单结构
-            if len(instructions) == 2:
-                first, second = instructions
-                if (first.opname == 'LOAD_CONST' and
-                        second.opname == 'RETURN_VALUE'):
-                    # 验证加载的常量是否为None
-                    const_index = first.arg
-                    if (const_index < len(code_obj.co_consts) and
-                            code_obj.co_consts[const_index] is None):
-                        # 未实现的空函数
-                        return False
+            instructions = [
+                instruction
+                for instruction in dis.get_instructions(code_obj)
+                if instruction.opname not in {"CACHE", "COPY_FREE_VARS", "NOP", "RESUME"}
+            ]
+            if (
+                len(instructions) >= 2
+                and instructions[0].opname == "RETURN_GENERATOR"
+                and instructions[1].opname == "POP_TOP"
+            ):
+                instructions = instructions[2:]
+            if (
+                len(instructions) >= 2
+                and instructions[-2].opname == "CALL_INTRINSIC_1"
+                and instructions[-2].argrepr == "INTRINSIC_STOPITERATION_ERROR"
+                and instructions[-1].opname == "RERAISE"
+            ):
+                instructions = instructions[:-2]
+            if (
+                len(instructions) == 2
+                and instructions[0].opname == "LOAD_CONST"
+                and instructions[0].argval is None
+                and instructions[1].opname == "RETURN_VALUE"
+            ):
+                return False
+            if (
+                len(instructions) in {2, 3}
+                and instructions[0].opname == "LOAD_GLOBAL"
+                and instructions[0].argval == "NotImplementedError"
+                and instructions[-1].opname == "RAISE_VARARGS"
+                and (
+                    len(instructions) == 2
+                    or instructions[1].opname == "CALL"
+                )
+            ):
+                return False
             # 其他情况认为已实现
             return True
 

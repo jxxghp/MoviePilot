@@ -3,6 +3,7 @@
 import os
 import platform
 import sys
+import sysconfig
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +16,11 @@ def is_docker() -> bool:
 def is_frozen() -> bool:
     """判断当前 Python 进程是否为冻结二进制。"""
     return bool(getattr(sys, "frozen", False))
+
+
+def is_free_threaded_runtime() -> bool:
+    """判断当前解释器是否为 CPython free-threaded 构建。"""
+    return sysconfig.get_config_var("Py_GIL_DISABLED") == 1
 
 
 def is_windows() -> bool:

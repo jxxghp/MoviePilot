@@ -31,6 +31,10 @@ from importlib.metadata import distributions
 from requests import Response
 
 from app.runtime.cache import cached, is_fresh
+from app.runtime.dependencies import (
+    iter_runtime_profile_requirement_strings,
+    iter_runtime_requirement_strings,
+)
 from app.runtime.settings import RuntimeSettingsCompat
 from app.adapters.system.package import (
     PackageInstallRequest,
@@ -1355,8 +1359,8 @@ class PluginHelper(metaclass=WeakSingleton):
             return roots
 
         try:
-            manifest = load_dependency_file(project_file)
-            for requirement in manifest.dependencies:
+            for raw_requirement in iter_runtime_requirement_strings(project_file):
+                requirement = Requirement(raw_requirement)
                 if not cls.__marker_matches(requirement.marker):
                     continue
                 package_name = cls.__standardize_pkg_name(requirement.name)
@@ -1469,6 +1473,20 @@ class PluginHelper(metaclass=WeakSingleton):
 
         return protected_packages
 
+    @classmethod
+    def __get_strict_runtime_packages(cls) -> Set[str]:
+        """返回核心包及当前 ABI profile 中不得被插件改写的根包。"""
+        packages = set(cls._protected_runtime_packages)
+        project_file = settings.ROOT_PATH / "pyproject.toml"
+        try:
+            for raw_requirement in iter_runtime_profile_requirement_strings(project_file):
+                requirement = Requirement(raw_requirement)
+                if cls.__marker_matches(requirement.marker):
+                    packages.add(cls.__standardize_pkg_name(requirement.name))
+        except Exception as error:
+            logger.error(f"解析运行依赖 profile 失败：{project_file} - {error}")
+        return packages
+
     @staticmethod
     def __is_upgrade_only_conflict(specifier_set: SpecifierSet, installed_version: Version) -> bool:
         """
@@ -1516,6 +1534,7 @@ class PluginHelper(metaclass=WeakSingleton):
         允许后续安装继续调整版本。
         """
         conflicts = []
+        strict_packages = cls.__get_strict_runtime_packages()
         try:
             manifest = load_dependency_file(dependency_file)
             for requirement in manifest.dependencies:
@@ -1532,7 +1551,7 @@ class PluginHelper(metaclass=WeakSingleton):
                         package_name,
                         str(installed_version),
                         f"来自 {requirement.url} 的同名包",
-                        package_name in cls._protected_runtime_packages,
+                        package_name in strict_packages,
                     ))
                     continue
 
@@ -1540,7 +1559,7 @@ class PluginHelper(metaclass=WeakSingleton):
                         installed_version,
                         prereleases=True
                 ):
-                    is_core = package_name in cls._protected_runtime_packages
+                    is_core = package_name in strict_packages
                     # 非核心包的纯升级冲突允许放行，由安装约束控制实际版本。
                     if is_core or not cls.__is_upgrade_only_conflict(
                             requirement.specifier, installed_version):
@@ -1590,9 +1609,10 @@ class PluginHelper(metaclass=WeakSingleton):
                 suffix=".txt",
                 delete=False
         ) as temp_file:
+            strict_packages = cls.__get_strict_runtime_packages()
             for package_name, version in sorted(protected_packages.items()):
-                if package_name in cls._protected_runtime_packages:
-                    # 核心包严格锁定，插件不得改写
+                if package_name in strict_packages:
+                    # 核心与 ABI profile 根包严格锁定，插件不得改写
                     temp_file.write(f"{cls.__format_package_name(package_name)}=={version}\n")
                 else:
                     # 非核心主程序依赖：允许升级，但禁止降级

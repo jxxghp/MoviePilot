@@ -131,6 +131,8 @@ function update_pending_state() {
 
 function sync_project_dependencies_for() {
     local project_dir="$1"
+    local runtime_group
+    local runtime_selector
     local -a uv_cmd=(
         "${UV_BIN}" sync
         --project "${project_dir}"
@@ -140,6 +142,16 @@ function sync_project_dependencies_for() {
         --no-install-project
         --python "${VENV_PATH}/bin/python3"
     )
+    runtime_group=""
+    if grep -Eq '^runtime-(standard|free-threaded)[[:space:]]*=' "${project_dir}/pyproject.toml"; then
+        runtime_selector="${project_dir}/app/runtime/dependencies.py"
+        [ -f "${runtime_selector}" ] || return 1
+        runtime_group="$("${VENV_PATH}/bin/python3" "${runtime_selector}")" || return 1
+        [ -n "${runtime_group}" ] || return 1
+    fi
+    if [ -n "${runtime_group}" ]; then
+        uv_cmd+=(--no-default-groups --group "${runtime_group}")
+    fi
     uv_cmd+=("${UV_OPTIONS[@]}")
     env "${PACKAGE_ENV[@]}" \
         "UV_PROJECT_ENVIRONMENT=${VENV_PATH}" \
@@ -304,7 +316,7 @@ function stage_runtime_payload() {
         cp -a "${resource_file}" "${stage_resource_dir}/" || return 1
     done
 
-    python_version="$(python3 -c 'import sys; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}")')" || return 1
+    python_version="$("${VENV_PATH}/bin/python3" -c 'import sys, sysconfig; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}{"t" if sysconfig.get_config_var("Py_GIL_DISABLED") == 1 else ""}")')" || return 1
     arch="$(uname -m)"
     if [ "${arch}" = "aarch64" ]; then
         arch_suffix="aarch64-linux-gnu"

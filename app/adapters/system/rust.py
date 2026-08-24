@@ -2,6 +2,7 @@ import logging
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
+from app.runtime.dependencies import is_free_threaded_runtime
 from app.runtime.log import logger, log_settings
 from app.runtime.settings import get_runtime_setting
 
@@ -19,6 +20,11 @@ def _rust_accel_enabled() -> bool:
     return bool(get_runtime_setting("RUST_ACCEL"))
 
 
+def is_required() -> bool:
+    """free-threaded 运行时必须使用不会重新启用 GIL 的 Rust 快路径。"""
+    return is_free_threaded_runtime()
+
+
 def is_available() -> bool:
     """
     判断 Rust 扩展是否可用。
@@ -30,7 +36,7 @@ def is_config_enabled() -> bool:
     """
     判断系统配置是否允许使用 Rust 加速。
     """
-    return _rust_accel_enabled()
+    return is_required() or _rust_accel_enabled()
 
 
 def is_enabled() -> bool:
@@ -47,6 +53,7 @@ def status() -> dict:
     return {
         "available": is_available(),
         "enabled": is_enabled(),
+        "required": is_required(),
         "import_error": str(_import_error) if _import_error else "",
     }
 

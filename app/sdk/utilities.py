@@ -2,7 +2,7 @@
 
 from app.foundation.crypto import CryptoJsUtils
 from app.foundation.dom import DomUtils
-from app.foundation.text import cut
+from app.foundation.text import convert, cut
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
 from app.adapters.system.host import SystemUtils
@@ -28,6 +28,7 @@ __all__ = [
     "SystemUtils",
     "TimerUtils",
     "cut",
+    "convert",
     "decrypt",
     "encrypt",
     "log_execution_time",

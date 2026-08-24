@@ -223,6 +223,19 @@ def test_pg_sync_engine_applies_pool_settings(monkeypatch):
     assert captured["url"].startswith("postgresql")
 
 
+def test_pg_sync_engine_uses_psycopg_on_free_threaded_python(monkeypatch):
+    """free-threaded 运行时不能加载会重新启用 GIL 的 psycopg2 扩展。"""
+    monkeypatch.setattr(engine_module, "is_free_threaded_runtime", lambda: True)
+    captured = {}
+    monkeypatch.setattr(engine_module, "create_engine",
+                        lambda **kw: captured.update(kw) or MagicMock())
+    monkeypatch.setattr(engine_module, "_register_database_error_logging", lambda *_a: None)
+
+    engine_module._get_postgresql_engine(is_async=False)
+
+    assert captured["url"].startswith("postgresql+psycopg://")
+
+
 def test_pg_async_engine_pooled_omits_poolclass(monkeypatch):
     """
     池化的异步引擎不得指定 poolclass：SQLAlchemy 需自行选用异步适配的

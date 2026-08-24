@@ -2,12 +2,19 @@ import importlib
 import os
 import uuid
 
-import psycopg2
-from psycopg2 import sql
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+
+try:
+    import psycopg2 as postgres_driver
+    from psycopg2 import sql
+    POSTGRESQL_SQLALCHEMY_DRIVER = "postgresql+psycopg2"
+except ModuleNotFoundError:
+    import psycopg as postgres_driver
+    from psycopg import sql
+    POSTGRESQL_SQLALCHEMY_DRIVER = "postgresql+psycopg"
 
 
 E6_MIGRATION = "database.versions.e6a1c4b8d2f0_2_2_13"
@@ -636,7 +643,7 @@ def test_e6_f7_round_trip_on_postgresql(monkeypatch) -> None:
     port = os.getenv(f"{prefix}PORT", "5432")
     password = os.getenv(f"{prefix}PASSWORD", "")
     schema = f"p1_db1_roundtrip_{uuid.uuid4().hex}"
-    with psycopg2.connect(
+    with postgres_driver.connect(
         host=host,
         port=port,
         dbname=database,
@@ -654,7 +661,7 @@ def test_e6_f7_round_trip_on_postgresql(monkeypatch) -> None:
     try:
         engine = sa.create_engine(
             sa.URL.create(
-                "postgresql+psycopg2",
+                POSTGRESQL_SQLALCHEMY_DRIVER,
                 username=username,
                 password=password,
                 host=host,
@@ -667,7 +674,7 @@ def test_e6_f7_round_trip_on_postgresql(monkeypatch) -> None:
     finally:
         if engine is not None:
             engine.dispose()
-        with psycopg2.connect(
+        with postgres_driver.connect(
             host=host,
             port=port,
             dbname=database,

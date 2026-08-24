@@ -16,7 +16,6 @@ dependencies = [
     "anyio~=4.14.2",
     "apscheduler~=3.11.2",
     "asyncpg~=0.31.0",
-    "bcrypt~=4.3.0",
     "beautifulsoup4~=4.15.0",
     "boto3~=1.42.42",
     "cachetools~=7.1.4",
@@ -34,7 +33,6 @@ dependencies = [
     "google-genai~=2.8.0",
     "httpx[http2,socks]~=0.28.1",
     "httpx2[http2,socks]~=2.12.0",
-    "jieba-next~=1.0.0rc1",
     "jinja2~=3.1.6",
     "langchain~=1.3.15",
     "langchain-anthropic~=1.4.6",
@@ -47,10 +45,10 @@ dependencies = [
     "langgraph~=1.2.11",
     "langgraph-checkpoint~=4.2.0",
     "lark-oapi~=1.6.8",
-    "lxml~=6.1.2",
     "moviepilot-rust~=0.2.9",
     "mutagen~=1.47.0",
     "openai~=2.41.1",
+    "orjson==3.12.0",
     "oss2~=2.19.1",
     "packaging~=26.3",
     "parse~=1.22.1",
@@ -59,7 +57,6 @@ dependencies = [
     "pinyin2hanzi~=0.1.1",
     "plexapi~=4.18.1",
     "psutil~=7.2.2",
-    "psycopg2-binary~=2.9.12",
     "pycryptodome~=3.23.0",
     "pydantic>=2.13.4,<3.0.0",
     "pydantic-settings>=2.14.2,<3.0.0",
@@ -101,7 +98,6 @@ dependencies = [
     "watchfiles~=1.2.0",
     "webauthn~=2.8.0",
     "websocket-client~=1.9.0",
-    "zhconv-rs~=0.4.1",
 ]
 
 [dependency-groups]
@@ -114,10 +110,35 @@ dev = [
     "pytest-cov~=7.1.0",
     "pytest-timeout~=2.4.0",
 ]
+runtime-standard = [
+    "Brotli==1.2.0",
+    "bcrypt~=4.3.0",
+    "crcmod==1.7",
+    "lxml~=6.1.2",
+    "psycopg2-binary~=2.9.12",
+    "zhconv-rs~=0.4.1",
+]
+runtime-free-threaded = [
+    "Brotli==1.2.0",
+    "bcrypt~=5.0.0",
+    "crcmod-plus==2.3.1",
+    "lxml==7.0.0b1",
+    "psycopg[c]==3.3.4",
+]
 
 [tool.uv]
 package = false
 required-version = "==0.12.5"
+default-groups = ["dev", "runtime-standard"]
+conflicts = [
+    [
+        { group = "runtime-standard" },
+        { group = "runtime-free-threaded" },
+    ],
+]
+exclude-dependencies = [
+    { package = { name = "oss2" }, dependencies = ["crcmod"] },
+]
 environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
     "sys_platform == 'linux' and platform_machine == 'aarch64'",
@@ -132,6 +153,12 @@ required-environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
     "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
+
+[tool.uv.extra-build-variables]
+orjson = { ORJSON_BUILD_FREETHREADED = "1" }
+
+[tool.uv.sources]
+brotli = { url = "https://github.com/google/brotli/archive/51be27dbd9782f9fe27bc6e06cee6ff18311702d.tar.gz", group = "runtime-free-threaded" }
 
 [tool.setuptools]
 py-modules = ["version"]

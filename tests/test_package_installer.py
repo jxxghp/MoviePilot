@@ -7,6 +7,7 @@ from app.adapters.system.package import (
     PackageInstallRequest,
     build_package_install_env,
     build_package_install_strategies,
+    build_project_sync_strategies,
     redact_url,
 )
 
@@ -127,6 +128,31 @@ def test_build_strategies_passes_all_manifests_to_one_uv_process(tmp_path):
     assert command.count("-r") == 2
     assert command[first_requirement + 1] == str(modern)
     assert command[second_requirement + 1] == str(legacy)
+
+
+def test_project_sync_selects_current_runtime_group(tmp_path, monkeypatch):
+    """主项目恢复必须显式选择当前解释器对应的互斥运行依赖组。"""
+    project = tmp_path / "project"
+    project.mkdir()
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text("[project]\nname='moviepilot'\nversion='0'\n", encoding="utf-8")
+    uv_bin = tmp_path / "venv" / "bin" / "uv"
+    uv_bin.parent.mkdir(parents=True)
+    uv_bin.write_text("", encoding="utf-8")
+    request = PackageInstallRequest(
+        dependency_files=(pyproject,),
+        python_bin=tmp_path / "venv" / "bin" / "python",
+    )
+    monkeypatch.setattr(
+        "app.adapters.system.package.runtime_sync_arguments",
+        lambda: ("--no-default-groups", "--group", "runtime-free-threaded"),
+    )
+
+    command = build_project_sync_strategies(request)[0].command
+
+    assert command.count("--group") == 1
+    assert command[command.index("--group") + 1] == "runtime-free-threaded"
+    assert "--no-default-groups" in command
 
 
 def test_redact_url_removes_userinfo():
