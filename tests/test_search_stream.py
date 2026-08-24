@@ -69,6 +69,45 @@ def test_batched_search_events_emit_heartbeat_while_source_is_idle(monkeypatch):
     assert asyncio.run(_read_heartbeat()) == {"type": "heartbeat"}
 
 
+def test_search_stream_disconnect_closes_upstream_before_return():
+    """客户端断开时应在流返回前关闭上游，立即触发搜索任务清理。"""
+
+    async def _consume_disconnected_stream():
+        """消费一个会立即断开的搜索流，并返回上游关闭状态。"""
+        source_closed = asyncio.Event()
+
+        async def _source():
+            """输出首个事件后等待包装器显式关闭。"""
+            try:
+                yield {"type": "progress", "stage": "searching", "items": []}
+            finally:
+                source_closed.set()
+
+        async def _disconnected():
+            """模拟客户端在首个业务事件到达时已经断开。"""
+            return True
+
+        request = SimpleNamespace(
+            url=SimpleNamespace(path="/api/v1/search/title/stream"),
+            headers={},
+            query_params={},
+            is_disconnected=_disconnected,
+        )
+        payloads = [
+            payload
+            async for payload in search_endpoint._stream_search_events(
+                request,
+                _source(),
+            )
+        ]
+        return payloads, source_closed.is_set()
+
+    payloads, source_closed = asyncio.run(_consume_disconnected_stream())
+
+    assert payloads == []
+    assert source_closed is True
+
+
 def test_search_stream_response_disables_proxy_buffering(monkeypatch):
     """搜索 SSE 响应应显式禁用缓存和 Nginx 代理缓冲。"""
 

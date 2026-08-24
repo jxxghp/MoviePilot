@@ -256,6 +256,9 @@ async def _iter_batched_search_events(
         if next_event_task and not next_event_task.done():
             next_event_task.cancel()
             await asyncio.gather(next_event_task, return_exceptions=True)
+        close_iterator = getattr(iterator, "aclose", None)
+        if close_iterator is not None:
+            await close_iterator()
 
     if pending_append_event:
         yield pending_append_event
@@ -274,10 +277,11 @@ async def _stream_search_events(request: Request, event_source: AsyncIterator[di
     last_event_type = "none"
     last_stage = "none"
     termination_reason = "source_exhausted"
+    batched_events = _iter_batched_search_events(event_source)
     logger.info(f"渐进式搜索流已建立，搜索ID：{search_id}，路径：{request_path}")
     try:
         has_sent_final_replace = False
-        async for event in _iter_batched_search_events(event_source):
+        async for event in batched_events:
             last_event_type = event.get("type") or "unknown"
             last_stage = event.get("stage") or last_stage
             if await request.is_disconnected():
@@ -321,6 +325,7 @@ async def _stream_search_events(request: Request, event_source: AsyncIterator[di
         transmitted_bytes += len(payload.encode("utf-8"))
         yield payload
     finally:
+        await batched_events.aclose()
         elapsed = time.monotonic() - started_at
         logger.info(
             f"渐进式搜索流结束，搜索ID：{search_id}，路径：{request_path}，"
