@@ -9,7 +9,10 @@ from app.chain.download import DownloadChain
 from app.runtime.config import settings
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
-from app.schemas import DownloaderTorrent, FileItem, NotExistMediaInfo, TransferDirectoryConf
+from app.schemas.file import FileItem
+from app.schemas.mediaserver import NotExistMediaInfo
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaSource, MediaType
 
 
