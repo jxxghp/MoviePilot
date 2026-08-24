@@ -93,10 +93,10 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def stop(self) -> None:
+    def stop(self) -> Optional[bool]:
         """
         如果关闭时模块有服务需要停止，需要实现此方法
-        :return: None，该方法可被多个模块同时处理
+        :return: False 表示资源尚未收敛；None/True 表示本次停止完成
         """
         pass
 

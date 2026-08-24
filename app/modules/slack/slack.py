@@ -117,13 +117,16 @@ class Slack:
             timeout=timeout,
         )
 
-    def stop(self):
+    def stop(self) -> bool:
+        """关闭 Socket Mode 服务，并返回资源是否成功释放。"""
         if self._service:
             try:
                 self._service.close()
                 logger.info("Slack消息接收服务已停止")
             except Exception as err:
                 logger.error("Slack消息接收服务停止失败: %s" % str(err))
+                return False
+        return True
 
     def get_state(self) -> bool:
         """

@@ -38,6 +38,8 @@ _MAX_IMAGE_SIZE: Tuple[int, int] = (512, 512)
 class QQBot:
     """QQ Bot 通知客户端"""
 
+    _gateway_join_timeout_seconds = 20
+
     def __init__(
             self,
             QQ_APP_ID: Optional[str] = None,
@@ -161,8 +163,8 @@ class QQBot:
         except Exception as e:
             logger.error(f"QQ Bot Gateway 启动失败: {e}")
 
-    def stop(self) -> None:
-        """停止 Gateway 连接"""
+    def stop(self) -> bool:
+        """停止 Gateway 连接，并返回后台线程是否已经终止。"""
         if self._gateway_stop is not None:
             self._gateway_stop.set()
         try:
@@ -170,12 +172,19 @@ class QQBot:
                 self._gateway_ws_holder[0].close()
         except Exception as e:
             logger.debug(f"QQ Bot Gateway WebSocket close: {e}")
-        if self._gateway_thread is not None and self._gateway_thread.is_alive():
-            self._gateway_thread.join(timeout=20)
-            if self._gateway_thread.is_alive():
-                logger.warning(
-                    "QQ Bot Gateway 线程在 stop 后仍未退出，可能存在重复收消息，请重启进程"
-                )
+        gateway_thread = self._gateway_thread
+        if (
+            gateway_thread is not None
+            and gateway_thread.is_alive()
+            and gateway_thread is not threading.current_thread()
+        ):
+            gateway_thread.join(timeout=self._gateway_join_timeout_seconds)
+        if gateway_thread is not None and gateway_thread.is_alive():
+            logger.warning(
+                "QQ Bot Gateway 线程在 stop 后仍未退出，可能存在重复收消息，请重启进程"
+            )
+            return False
+        return True
 
     def get_state(self) -> bool:
         """获取就绪状态"""

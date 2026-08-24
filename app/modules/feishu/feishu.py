@@ -129,6 +129,8 @@ class Feishu:
     """飞书通知客户端，负责长连接收消息与主动发送通知。"""
 
     PROCESSING_REACTION_EMOJI = "GLANCE"
+    _ws_shutdown_timeout_seconds = 5
+    _ws_join_timeout_seconds = 5
     STREAM_CARD_TITLE_ELEMENT_ID = "mp_stream_title"
     STREAM_CARD_BODY_ELEMENT_ID = "mp_stream_body"
     IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tiff", ".heic"}
@@ -678,12 +680,13 @@ class Feishu:
         """返回飞书客户端是否已就绪。"""
         return self._ready.is_set() and self._api_client is not None
 
-    def stop(self) -> None:
-        """停止飞书客户端并结束长连接线程。"""
+    def stop(self) -> bool:
+        """停止飞书客户端，并返回长连接线程是否已经终止。"""
         self._stop_event.set()
         self._ready.clear()
         ws_client = self._ws_client
         ws_loop = self._ws_loop
+        ws_thread = self._ws_thread
         if ws_client:
             try:
                 ws_client._auto_reconnect = False
@@ -692,11 +695,19 @@ class Feishu:
                         self._shutdown_ws_client(),
                         ws_loop,
                     )
-                    shutdown_future.result(timeout=5)
+                    shutdown_future.result(timeout=self._ws_shutdown_timeout_seconds)
             except Exception as err:
                 logger.debug(f"停止飞书客户端失败：{err}")
-        if self._ws_thread and self._ws_thread.is_alive():
-            self._ws_thread.join(timeout=5)
+        if (
+            ws_thread
+            and ws_thread.is_alive()
+            and ws_thread is not threading.current_thread()
+        ):
+            ws_thread.join(timeout=self._ws_join_timeout_seconds)
+        if ws_thread and ws_thread.is_alive():
+            logger.error("飞书长连接线程未在关闭预算内退出")
+            return False
+        return True
 
     def parse_message(self, body: Any) -> Optional[IncomingMessage]:
         """解析飞书转发到消息入口的 JSON 报文。"""

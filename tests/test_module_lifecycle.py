@@ -5,18 +5,24 @@ import pytest
 
 from app.modules import _MessageBase
 from app.modules.discord import DiscordModule
+from app.modules.discord.discord import Discord
 from app.modules.feishu import FeishuModule
+from app.modules.feishu.feishu import Feishu
 from app.modules.filter import FilterModule
 from app.modules.plex import PlexModule
 from app.modules.qqbot.module import QQBotModule
+from app.modules.qqbot.qqbot import QQBot
 from app.modules.slack import SlackModule
+from app.modules.slack.slack import Slack
 from app.modules.telegram.module import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.trimemedia.module import TrimeMediaModule
 from app.modules.ugreen.module import UgreenModule
 from app.modules.wechat import WechatModule
+from app.modules.wechat.wechatbot import WeChatBot
 from app.modules.wechatclawbot import WechatClawBotModule
+from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
 
 
 def test_config_reload_stops_before_initializing_latest_generation():
@@ -217,9 +223,23 @@ def test_telegram_stop_keeps_polling_owner_when_thread_misses_deadline():
     assert client._polling_thread is polling_thread
 
 
-def test_telegram_module_reports_nonconverging_instance_after_stopping_peers():
-    """单实例未收敛时模块必须继续停止其余实例并返回 False。"""
-    module = TelegramModule()
+@pytest.mark.parametrize(
+    "module_type",
+    [
+        DiscordModule,
+        FeishuModule,
+        QQBotModule,
+        SlackModule,
+        TelegramModule,
+        WechatModule,
+        WechatClawBotModule,
+    ],
+)
+def test_message_channel_module_reports_nonconverging_instance_after_peers(
+    module_type,
+):
+    """渠道单实例未收敛时必须继续停止其余实例并返回 False。"""
+    module = module_type()
     blocked_client = Mock()
     blocked_client.stop.return_value = False
     healthy_client = Mock()
@@ -232,3 +252,114 @@ def test_telegram_module_reports_nonconverging_instance_after_stopping_peers():
     assert module.stop() is False
     blocked_client.stop.assert_called_once_with()
     healthy_client.stop.assert_called_once_with()
+
+
+def test_qqbot_stop_retains_gateway_thread_until_retry() -> None:
+    """QQ Gateway 超时后不得把活线程伪装成已收敛。"""
+    client = QQBot.__new__(QQBot)
+    client._gateway_stop = threading.Event()
+    client._gateway_ws_holder = []
+    gateway_thread = Mock()
+    gateway_thread.is_alive.return_value = True
+    client._gateway_thread = gateway_thread
+    client._gateway_join_timeout_seconds = 0.01
+
+    assert client.stop() is False
+    assert client._gateway_thread is gateway_thread
+
+    gateway_thread.is_alive.return_value = False
+    assert client.stop() is True
+
+
+def test_wechat_bot_stop_reports_each_live_thread_until_retry() -> None:
+    """企业微信网关或心跳任一存活时都必须返回未收敛。"""
+    client = WeChatBot.__new__(WeChatBot)
+    client._stop_event = threading.Event()
+    client._authenticated = threading.Event()
+    client._ws_app = None
+    ws_thread = Mock()
+    heartbeat_thread = Mock()
+    ws_thread.is_alive.return_value = True
+    heartbeat_thread.is_alive.return_value = True
+    client._ws_thread = ws_thread
+    client._heartbeat_thread = heartbeat_thread
+    client._gateway_join_timeout_seconds = 0.01
+    client._heartbeat_join_timeout_seconds = 0.01
+
+    assert client.stop() is False
+    assert client._ws_thread is ws_thread
+    assert client._heartbeat_thread is heartbeat_thread
+
+    ws_thread.is_alive.return_value = False
+    heartbeat_thread.is_alive.return_value = False
+    assert client.stop() is True
+
+
+def test_wechat_clawbot_stop_keeps_poll_owner_until_retry() -> None:
+    """ClawBot 轮询超时后必须保留线程句柄供后续关闭重试。"""
+    client = WechatClawBot.__new__(WechatClawBot)
+    client._stop_event = threading.Event()
+    poll_thread = Mock()
+    poll_thread.is_alive.return_value = True
+    client._poll_thread = poll_thread
+    client._poll_join_timeout_seconds = 0.01
+
+    assert client.stop() is False
+    assert client._poll_thread is poll_thread
+
+    poll_thread.is_alive.return_value = False
+    assert client.stop() is True
+    assert client._poll_thread is None
+
+
+def test_feishu_stop_reports_live_ws_thread_until_retry() -> None:
+    """飞书 SDK 清理后线程仍存活时不得报告关闭完成。"""
+    client = Feishu.__new__(Feishu)
+    client._stop_event = threading.Event()
+    client._ready = threading.Event()
+    client._ws_client = None
+    client._ws_loop = None
+    ws_thread = Mock()
+    ws_thread.is_alive.return_value = True
+    client._ws_thread = ws_thread
+    client._ws_join_timeout_seconds = 0.01
+
+    assert client.stop() is False
+    assert client._ws_thread is ws_thread
+
+    ws_thread.is_alive.return_value = False
+    assert client.stop() is True
+
+
+def test_discord_stop_reports_live_event_loop_thread_until_retry() -> None:
+    """Discord 强制停止循环后线程仍存活时必须返回未收敛。"""
+    client = Discord.__new__(Discord)
+    client._client = Mock()
+    client._loop = Mock()
+    client._loop.is_running.return_value = False
+    event_loop_thread = Mock()
+    event_loop_thread.is_alive.return_value = True
+    client._thread = event_loop_thread
+    client._stop_requested = threading.Event()
+    client._ready_event = threading.Event()
+    client._thread_join_timeout_seconds = 0.01
+
+    assert client.stop() is False
+    assert client._thread is event_loop_thread
+
+    event_loop_thread.is_alive.return_value = False
+    assert client.stop() is True
+
+
+def test_slack_stop_propagates_socket_close_failure() -> None:
+    """Slack Socket Mode close 失败必须保留给 Runtime 重试。"""
+    client = Slack.__new__(Slack)
+    service = Mock()
+    service.close.side_effect = RuntimeError("close failed")
+    client._service = service
+
+    assert client.stop() is False
+    assert client._service is service
+
+    service.close.side_effect = None
+    assert client.stop() is True

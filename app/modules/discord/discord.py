@@ -39,6 +39,8 @@ class Discord:
     """
 
     _MAX_SLASH_COMMANDS = 100
+    _client_close_timeout_seconds = 10
+    _thread_join_timeout_seconds = 5
 
     def __init__(
         self,
@@ -247,10 +249,10 @@ class Discord:
         self._thread = threading.Thread(target=runner, daemon=True)
         self._thread.start()
 
-    def stop(self):
-        """停止 Discord 客户端，并在关闭事件循环前收口 typing owner。"""
+    def stop(self) -> bool:
+        """停止 Discord 客户端，并返回事件循环线程是否已经终止。"""
         if not self._client or not self._loop or not self._thread:
-            return
+            return True
         self._stop_requested.set()
         loop = self._loop
         thread = self._thread
@@ -264,19 +266,23 @@ class Discord:
             try:
                 asyncio.run_coroutine_threadsafe(
                     self._client.close(), loop
-                ).result(timeout=10)
+                ).result(timeout=self._client_close_timeout_seconds)
             except Exception as err:
                 logger.error(f"关闭 Discord Bot 失败：{err}")
         self._ready_event.clear()
-        thread.join(timeout=5)
+        if thread is not threading.current_thread():
+            thread.join(timeout=self._thread_join_timeout_seconds)
         if thread.is_alive():
             try:
                 loop.call_soon_threadsafe(loop.stop)
             except Exception as err:
                 logger.error(f"停止 Discord 事件循环失败：{err}")
-            thread.join(timeout=5)
+            if thread is not threading.current_thread():
+                thread.join(timeout=self._thread_join_timeout_seconds)
         if thread.is_alive():
             logger.error("Discord Bot 线程未在超时内停止")
+            return False
+        return True
 
     def get_state(self) -> bool:
         return self._ready_event.is_set() and self._client is not None

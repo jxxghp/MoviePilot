@@ -48,13 +48,9 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         """
         return False
 
-    def stop(self) -> None:
-        """停止模块"""
-        for client in self.get_instances().values():
-            try:
-                client.stop()
-            except Exception as err:
-                logger.error(f"停止飞书模块实例失败：{err}")
+    def stop(self) -> bool:
+        """停止全部飞书实例，并返回资源是否全部收敛。"""
+        return self._stop_service_instances()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """通知模块通过系统通知配置控制实例化，这里不额外设置环境开关。"""

@@ -38,6 +38,8 @@ class WeChatBot:
     _default_ws_url = "wss://openws.work.weixin.qq.com"
     _heartbeat_interval = 30
     _ack_timeout = 10
+    _gateway_join_timeout_seconds = 5
+    _heartbeat_join_timeout_seconds = 2
 
     def __init__(self,
                  WECHAT_BOT_ID: Optional[str] = None,
@@ -126,7 +128,8 @@ class WeChatBot:
         self._heartbeat_thread.start()
         logger.info(f"企业微信智能机器人长连接已启动：{self._config_name}")
 
-    def stop(self) -> None:
+    def stop(self) -> bool:
+        """停止网关与心跳线程，并返回两个 owner 是否均已终止。"""
         self._stop_event.set()
         self._authenticated.clear()
         if self._ws_app:
@@ -134,10 +137,27 @@ class WeChatBot:
                 self._ws_app.close()
             except Exception as err:
                 logger.debug(f"关闭企业微信智能机器人连接失败：{err}")
-        if self._ws_thread and self._ws_thread.is_alive():
-            self._ws_thread.join(timeout=5)
-        if self._heartbeat_thread and self._heartbeat_thread.is_alive():
-            self._heartbeat_thread.join(timeout=2)
+        ws_thread = self._ws_thread
+        heartbeat_thread = self._heartbeat_thread
+        if (
+            ws_thread
+            and ws_thread.is_alive()
+            and ws_thread is not threading.current_thread()
+        ):
+            ws_thread.join(timeout=self._gateway_join_timeout_seconds)
+        if (
+            heartbeat_thread
+            and heartbeat_thread.is_alive()
+            and heartbeat_thread is not threading.current_thread()
+        ):
+            heartbeat_thread.join(timeout=self._heartbeat_join_timeout_seconds)
+        converged = not any(
+            thread and thread.is_alive()
+            for thread in (ws_thread, heartbeat_thread)
+        )
+        if not converged:
+            logger.error("企业微信智能机器人线程未在关闭预算内退出")
+        return converged
 
     def get_state(self) -> bool:
         return self._ready and self._authenticated.is_set()

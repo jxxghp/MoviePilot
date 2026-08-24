@@ -195,6 +195,8 @@ Host Module 的 `stop()` 可以显式返回 `False` 表示资源 owner 尚未收
 ModuleManager 与 startup 组合根继续关闭其余资源但必须向上返回未收敛，不得把记录日志等同于成功。
 同步和异步 Capability Runtime 的 `shutdown` 必须使用同一布尔收敛合同；Agent、Managed Resource
 等领域关闭入口必须直接传播 Runtime 的整体结果，不得以单个能力快照或无返回包装器覆盖失败。
+消息渠道模块必须通过 `_MessageChannelModuleBase._stop_service_instances()` 聚合多实例关闭结果；
+长连接、轮询或 Socket 服务只有在真实终止后才能返回成功，超时 owner 不得清空句柄。
 API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/tasks.py`；登记器先于其他
 运行资源启动，并在资源释放前停止接收、取消和有限等待。需要崩溃恢复的 E2/E3 副作用仍应
 进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。

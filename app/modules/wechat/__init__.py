@@ -73,14 +73,9 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         """
         return 1
 
-    def stop(self) -> None:
-        """停止模块"""
-        for client in self.get_instances().values():
-            try:
-                if hasattr(client, "stop"):
-                    client.stop()
-            except Exception as err:
-                logger.error(f"停止微信模块实例失败：{err}")
+    def stop(self) -> bool:
+        """停止全部微信实例，并返回长连接资源是否全部收敛。"""
+        return self._stop_service_instances()
 
     @staticmethod
     def _is_bot_mode(config: dict) -> bool:

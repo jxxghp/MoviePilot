@@ -74,15 +74,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
 
     def stop(self) -> bool:
         """停止全部 Telegram 实例，并返回资源是否全部收敛。"""
-        converged = True
-        for client in self.get_instances().values():
-            try:
-                if client.stop() is False:
-                    converged = False
-            except Exception as err:
-                logger.error(f"停止Telegram模块实例失败：{err}")
-                converged = False
-        return converged
+        return self._stop_service_instances()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """

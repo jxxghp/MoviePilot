@@ -1441,6 +1441,7 @@ class WechatClawBot:
     _default_base_url = "https://ilinkai.weixin.qq.com"
     _qrcode_ttl_seconds = 240
     _active_target_ttl_seconds = 24 * 60 * 60
+    _poll_join_timeout_seconds = 5
 
     @classmethod
     def _build_cache_key(cls, config_name: str) -> str:
@@ -1706,12 +1707,21 @@ class WechatClawBot:
         """获取当前登录状态。"""
         return bool(self._state.get("bot_token"))
 
-    def stop(self) -> None:
-        """停止消息轮询。"""
+    def stop(self) -> bool:
+        """停止消息轮询，并保留超时线程 owner 供后续重试。"""
         self._stop_event.set()
-        if self._poll_thread and self._poll_thread.is_alive():
-            self._poll_thread.join(timeout=5)
+        poll_thread = self._poll_thread
+        if (
+            poll_thread
+            and poll_thread.is_alive()
+            and poll_thread is not threading.current_thread()
+        ):
+            poll_thread.join(timeout=self._poll_join_timeout_seconds)
+        if poll_thread and poll_thread.is_alive():
+            logger.error("微信 ClawBot 消息轮询线程未在关闭预算内退出")
+            return False
         self._poll_thread = None
+        return True
 
     def _start_polling(self) -> None:
         """启动消息轮询线程。"""

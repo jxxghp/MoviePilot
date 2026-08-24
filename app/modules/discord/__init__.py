@@ -96,13 +96,9 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         """
         return 4
 
-    def stop(self) -> None:
-        """停止模块"""
-        for client in self.get_instances().values():
-            try:
-                client.stop()
-            except Exception as err:
-                logger.error(f"停止Discord模块实例失败：{err}")
+    def stop(self) -> bool:
+        """停止全部 Discord 实例，并返回资源是否全部收敛。"""
+        return self._stop_service_instances()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass

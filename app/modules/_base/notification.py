@@ -73,6 +73,21 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
         """
         return bool(client.get_state()), ""
 
+    def _stop_service_instances(self) -> bool:
+        """停止全部渠道实例，并聚合客户端返回的资源收敛结果。"""
+        converged = True
+        for client in self.get_instances().values():
+            stop = getattr(client, "stop", None)
+            if not callable(stop):
+                continue
+            try:
+                if stop() is False:
+                    converged = False
+            except Exception as err:
+                logger.error("停止%s模块实例失败：%s", self.get_name(), err)
+                converged = False
+        return converged
+
     def register_commands(self, commands: Dict[str, dict]) -> None:
         """
         注册命令，实现这个函数接收系统可用的命令菜单
