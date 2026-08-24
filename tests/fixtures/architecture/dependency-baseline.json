@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6620,
-  "edge_sha256": "da3e1ea903ff03ab300e43cd517e141365c65bf0304c091c22ff989ec8b9e1ae",
+  "edge_count": 6619,
+  "edge_sha256": "a34b465919d64596fbb37e319f996bc22939a3e009bbdb4e74ae6afde8906b43",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -6447,7 +6447,6 @@
     "app.testing -> app.testing.stub",
     "app.testing.bootstrap -> app.application",
     "app.testing.bootstrap -> app.application.service",
-    "app.testing.bootstrap -> app.application.site",
     "app.testing.bootstrap -> app.db",
     "app.testing.bootstrap -> app.db.adapters",
     "app.testing.bootstrap -> app.db.adapters.transaction",

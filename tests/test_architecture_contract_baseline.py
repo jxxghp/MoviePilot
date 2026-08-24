@@ -302,10 +302,9 @@ import app.monitor
 assert not any(name.startswith('app.doctor.') for name in sys.modules)
 assert not any(name.startswith('app.monitor.') for name in sys.modules)
 
-# CI 无 app.application.site.sites 资源模块，触发实现加载前先补 conftest 同源垫片；
-# 独立子进程不经过 pytest 引导，必须在此显式安装，否则链式 import 会因缺模块失败。
-from app.testing.bootstrap import ensure_sites_stub
-ensure_sites_stub()
+# 独立子进程不经过 pytest 引导，触发实现加载前必须隔离站点原生制品。
+from app.testing.bootstrap import install_sites_stub
+install_sites_stub()
 
 from app.doctor import DoctorRunner, run_doctor
 from app.doctor.runner import DoctorRunner as DirectDoctorRunner
