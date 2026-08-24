@@ -36,6 +36,7 @@ from app.application.chain.data import (
 )
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.application.download.tasks import DownloadTaskService
+from app.application.download import selection as _selection
 from app.runtime.thread import ThreadHelper
 from app.application.torrent import TorrentHelper
 from app.runtime.log import logger
@@ -1558,114 +1559,43 @@ class DownloadChain(ChainBase):
         downloaded_list: List[Context] = []
         custom_word_list = custom_words.splitlines() if custom_words else None
 
+        # 缺集记账与覆盖判定规则已下沉至 app/application/download/selection.py；
+        # 此处仅保留闭包委托，让编排循环保持原调用形态。
         def __update_seasons(_mid: str, _need: list, _current: list) -> list:
-            """
-            更新need_tvs季数，返回剩余季数
-            :param _mid: 统一媒体身份键
-            :param _need: 需要下载的季数
-            :param _current: 已经下载的季数
-            """
-            # 剩余季数
-            need = list(set(_need).difference(set(_current)))
-            # 清除已下载的季信息
-            seas = copy.deepcopy(no_exists.get(_mid))
-            if seas:
-                for _sea in list(seas):
-                    if _sea not in need:
-                        no_exists[_mid].pop(_sea)
-                    if not no_exists.get(_mid) and no_exists.get(_mid) is not None:
-                        no_exists.pop(_mid)
-                        break
-            return need
+            """更新need_tvs季数，返回剩余季数。"""
+            return _selection.update_no_exists_seasons(no_exists, _mid, _need, _current)
 
         def __update_episodes(_mid: str, _sea: int, _need: list, _current: set) -> list:
-            """
-            更新need_tvs集数，返回剩余集数
-            :param _mid: 统一媒体身份键
-            :param _sea: 季数
-            :param _need: 需要下载的集数
-            :param _current: 已经下载的集数
-            """
-            # 剩余集数
-            need = list(set(_need).difference(set(_current)))
-            if need:
-                not_exist = no_exists[_mid][_sea]
-                no_exists[_mid][_sea] = NotExistMediaInfo(
-                    season=not_exist.season,
-                    episodes=need,
-                    total_episode=not_exist.total_episode,
-                    start_episode=not_exist.start_episode,
-                    require_complete_coverage=not_exist.require_complete_coverage
-                )
-            else:
-                no_exists[_mid].pop(_sea)
-                if not no_exists.get(_mid) and no_exists.get(_mid) is not None:
-                    no_exists.pop(_mid)
-            return need
+            """更新need_tvs集数，返回剩余集数。"""
+            return _selection.update_no_exists_episodes(no_exists, _mid, _sea, _need, _current)
 
         def __get_season_episodes(_mid: str, season: int) -> int:
-            """
-            获取需要的季的集数
-            """
-            if not no_exists.get(_mid):
-                return 9999
-            no_exist = no_exists.get(_mid)
-            if not no_exist.get(season):
-                return 9999
-            return no_exist[season].total_episode
+            """获取需要的季的集数。"""
+            return _selection.get_season_episodes(no_exists, _mid, season)
 
         def __get_no_exist_media(_mid: str, season: int) -> Optional[NotExistMediaInfo]:
-            """
-            获取指定媒体和季的缺失信息。
-            """
-            if not no_exists or not no_exists.get(_mid):
-                return None
-            return no_exists.get(_mid).get(season)
+            """获取指定媒体和季的缺失信息。"""
+            return _selection.get_no_exist_media(no_exists, _mid, season)
 
         def __get_required_episodes(_mid: str, season: int) -> Set[int]:
-            """
-            获取整季候选必须覆盖的目标集范围。
-            """
-            tv = __get_no_exist_media(_mid, season)
-            if not tv:
-                return set()
-            if not tv.total_episode:
-                return set()
-            start = tv.start_episode or 1
-            return set(range(start, tv.total_episode + 1))
+            """获取整季候选必须覆盖的目标集范围。"""
+            return _selection.get_required_episodes(no_exists, _mid, season)
 
         def __requires_complete_coverage(_tv: Optional[NotExistMediaInfo]) -> bool:
-            """
-            判断当前缺失范围是否要求候选资源完整覆盖目标范围。
-            """
-            if not _tv:
-                return False
-            return bool(_tv.require_complete_coverage)
+            """判断当前缺失范围是否要求候选资源完整覆盖目标范围。"""
+            return _selection.requires_complete_coverage(_tv)
 
         def __apply_allowed_episodes(_need_episodes, _context: Context) -> Set[int]:
-            """
-            根据候选携带的允许集裁剪 need_episodes，返回真正可下载的剧集集合。
-
-            语义：allowed_episodes 为 None 表示调用方未约束，沿用 need_episodes；
-            非空集合则与 need_episodes 取交集；空集合（显式拒绝）会被交集自然消解为空。
-            调用方根据返回集合是否为空决定是否跳过当前候选。
-            """
-            effective = set(_need_episodes)
-            allowed = _context.allowed_episodes
-            if allowed is not None:
-                effective &= set(allowed)
-            return effective
+            """根据候选允许集裁剪 need_episodes，返回真正可下载的剧集集合。"""
+            return _selection.apply_allowed_episodes(_need_episodes, _context)
 
         def __get_movie_download_key(_context: Context) -> str:
-            """
-            获取电影下载去重键，确保失败候选不会阻断后续同名资源尝试。
-            """
-            return _context.media_info.title_year
+            """获取电影下载去重键。"""
+            return _selection.get_movie_download_key(_context)
 
         def __get_music_download_key(_context: Context) -> str:
-            """获取音乐下载去重键，同一订阅目标失败后仍可尝试后续候选。"""
-            media_source, media_id = resolve_media_identity(media=_context.media_info)
-            return build_media_key(media_source, media_id) or _context.media_info.title_year
+            """获取音乐下载去重键。"""
+            return _selection.get_music_download_key(_context)
 
         # 仅排序，不提前按媒体控重；下载失败时需要继续尝试同组后续候选。
         contexts, active_failure_records = self._prepare_batch_download_contexts(
