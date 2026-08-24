@@ -653,8 +653,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 810 |
-| 内部导入边 | 6,560 |
+| Python 模块 | 811 |
+| 内部导入边 | 6,572 |
 | 非平凡 SCC | 1（仅隔离的 TMDB 移植包） |
 | Module Contract V2 spec | 212（其中 211 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
