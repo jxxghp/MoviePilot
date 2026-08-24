@@ -79,6 +79,24 @@ def test_runtime_profiles_share_gil_safe_crcmod_distribution():
     } in document["tool"]["uv"]["exclude-dependencies"]
 
 
+def test_runtime_excluded_dependency_pairs_reads_uv_policy(tmp_path: Path):
+    """运行时诊断应复用 uv 排除配置，不维护第二份包名特判。"""
+    project_file = tmp_path / "pyproject.toml"
+    project_file.write_text(
+        """
+[tool.uv]
+exclude-dependencies = [
+    { package = { name = "Demo_Package" }, dependencies = ["Legacy-Dep>=1"] },
+]
+""",
+        encoding="utf-8",
+    )
+
+    assert dependencies.runtime_excluded_dependency_pairs(project_file) == {
+        ("demo-package", "legacy-dep")
+    }
+
+
 def test_full_dependency_probe_rejects_psycopg_python_fallback(monkeypatch):
     """V3t 构建不得把 psycopg 纯 Python 实现误认为可发布能力。"""
     modules = {

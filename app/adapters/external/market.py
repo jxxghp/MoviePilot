@@ -24,8 +24,9 @@ import aioshutil
 import httpx2
 from anyio import Path as AsyncPath
 from packaging.markers import default_environment
-from packaging.requirements import Requirement
+from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import SpecifierSet, InvalidSpecifier
+from packaging.utils import canonicalize_name
 from packaging.version import Version, InvalidVersion
 from importlib.metadata import distributions
 from requests import Response
@@ -34,6 +35,7 @@ from app.runtime.cache import cached, is_fresh
 from app.runtime.dependencies import (
     iter_runtime_profile_requirement_strings,
     iter_runtime_requirement_strings,
+    runtime_excluded_dependency_pairs,
 )
 from app.runtime.settings import RuntimeSettingsCompat
 from app.adapters.system.package import (
@@ -1733,15 +1735,36 @@ class PluginHelper(metaclass=WeakSingleton):
 
     @staticmethod
     def __runtime_health_error_lines(check_name: str, message: str) -> set[str]:
-        """提取稳定诊断项，忽略执行器附加的命令摘要。"""
+        """提取未被项目依赖策略排除的稳定诊断项。"""
         lines = {line.strip() for line in message.splitlines() if line.strip()}
         if check_name != "uv check":
             return lines
-        package_errors = set(re.findall(
-            r"The package `[^`]+` requires `[^`]+`, but [^\r\n;]+",
+
+        matches = list(re.finditer(
+            r"The package `(?P<package>[^`]+)` requires `(?P<requirement>[^`]+)`, "
+            r"but [^\r\n;]+",
             message,
         ))
-        return package_errors or lines
+        if not matches:
+            return lines
+
+        excluded_pairs = runtime_excluded_dependency_pairs(
+            Path(settings.ROOT_PATH) / "pyproject.toml"
+        )
+        package_errors = set()
+        for match in matches:
+            try:
+                dependency_name = Requirement(match.group("requirement")).name
+            except InvalidRequirement:
+                package_errors.add(match.group(0))
+                continue
+            pair = (
+                canonicalize_name(match.group("package")),
+                canonicalize_name(dependency_name),
+            )
+            if pair not in excluded_pairs:
+                package_errors.add(match.group(0))
+        return package_errors
 
     @staticmethod
     def __runtime_health_regression_message(
@@ -1755,7 +1778,14 @@ class PluginHelper(metaclass=WeakSingleton):
         for check_name, (success, message) in current_health.items():
             baseline_success, baseline_message = baseline_health.get(check_name, (True, ""))
             if baseline_success and not success:
-                regressions.append(f"{check_name}失败：{message}")
+                current_lines = PluginHelper.__runtime_health_error_lines(
+                    check_name,
+                    message,
+                )
+                if current_lines:
+                    regressions.append(
+                        f"{check_name}失败：{' | '.join(sorted(current_lines))}"
+                    )
             elif not baseline_success and not success:
                 baseline_lines = PluginHelper.__runtime_health_error_lines(
                     check_name,
