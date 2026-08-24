@@ -1,6 +1,7 @@
 """进程内后台任务登记与关停语义测试。"""
 
 import asyncio
+import inspect
 import threading
 
 import pytest
@@ -124,35 +125,121 @@ def test_task_registry_owns_threadsafe_submission_until_shutdown() -> None:
 
 
 def test_task_registry_rejects_threadsafe_submission_after_shutdown() -> None:
-    """关停先赢得竞态时应关闭协程并通过 completion 报告拒绝原因。"""
+    """关停先赢得竞态时应关闭协程并同步拒绝提交。"""
 
     async def scenario() -> None:
         registry = TaskRegistry()
         loop = asyncio.get_running_loop()
-        reports: list[dict[str, object]] = []
-        previous_handler = loop.get_exception_handler()
-        loop.set_exception_handler(lambda _, context: reports.append(context))
 
         async def late_worker() -> None:
             """模拟关停完成后从宿主线程到达的晚任务。"""
 
-        try:
-            assert await registry.shutdown(timeout_seconds=1.0) is True
-            completion = await asyncio.to_thread(
+        assert await registry.shutdown(timeout_seconds=1.0) is True
+        coroutine = late_worker()
+        with pytest.raises(RuntimeError, match="正在关闭"):
+            await asyncio.to_thread(
                 registry.submit_threadsafe,
-                late_worker(),
+                coroutine,
                 loop=loop,
                 owner="test.threadsafe-late",
             )
-            with pytest.raises(RuntimeError, match="正在关闭"):
-                await asyncio.wrap_future(completion)
 
-            assert registry.records == ()
-            assert reports[-1]["owner"] == "test.threadsafe-late"
-        finally:
-            loop.set_exception_handler(previous_handler)
+        assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+        assert registry.records == ()
 
     asyncio.run(scenario())
+
+
+def test_task_registry_shutdown_closes_submission_before_loop_dispatch() -> None:
+    """回调尚未执行时关停也必须关闭协程并结束 completion。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+
+    async def worker() -> None:
+        """不应被迟到的 loop callback 启动。"""
+
+    coroutine = worker()
+    completion = registry.submit_threadsafe(
+        coroutine,
+        loop=loop,
+        owner="test.threadsafe-pending",
+    )
+
+    assert asyncio.run(registry.shutdown(timeout_seconds=0.01)) is True
+    assert completion.cancelled()
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+
+    loop.run_until_complete(asyncio.sleep(0))
+    assert registry.records == ()
+    loop.close()
+
+
+def test_task_registry_caller_cancels_before_loop_dispatch() -> None:
+    """调用方在 callback 前取消时应关闭协程，迟到 callback 不得创建 Task。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+
+    async def worker() -> None:
+        """不应在 completion 取消后启动。"""
+
+    coroutine = worker()
+    completion = registry.submit_threadsafe(
+        coroutine,
+        loop=loop,
+        owner="test.threadsafe-cancel-before-dispatch",
+    )
+
+    assert completion.cancel()
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert registry.records == ()
+    loop.close()
+
+
+def test_task_registry_closes_submission_when_loop_rejects_callback() -> None:
+    """目标 loop 已关闭时同步失败，并且不遗留未等待协程。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+    loop.close()
+
+    async def worker() -> None:
+        """模拟无法进入目标 loop 的提交。"""
+
+    coroutine = worker()
+    with pytest.raises(RuntimeError, match="closed"):
+        registry.submit_threadsafe(
+            coroutine,
+            loop=loop,
+            owner="test.threadsafe-closed-loop",
+        )
+
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+
+
+def test_task_registry_pending_non_cancellable_work_does_not_start_on_shutdown() -> None:
+    """尚未发布成 Task 的 non-cancellable 工作仍应在关停时直接关闭。"""
+    registry = TaskRegistry()
+    loop = asyncio.new_event_loop()
+
+    async def worker() -> None:
+        """未开始的同步兼容工作不应拖延关停。"""
+
+    coroutine = worker()
+    completion = registry.submit_threadsafe(
+        coroutine,
+        loop=loop,
+        owner="test.threadsafe-pending-non-cancellable",
+        cancel_on_shutdown=False,
+    )
+
+    assert asyncio.run(registry.shutdown(timeout_seconds=0.01)) is True
+    assert completion.cancelled()
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+
+    loop.run_until_complete(asyncio.sleep(0))
+    assert registry.records == ()
+    loop.close()
 
 
 def test_task_registry_keeps_timed_out_sync_owner_until_real_completion() -> None:
