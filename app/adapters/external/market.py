@@ -632,6 +632,43 @@ class PluginHelper(metaclass=WeakSingleton):
 
         return payload
 
+    @classmethod
+    def _build_plugin_index_request(
+            cls,
+            repo_url: str,
+            package_version: Optional[str] = None,
+    ) -> Optional[Tuple[str, dict]]:
+        """构造插件索引请求，统一仓库解析、代际文件名和鉴权请求头。"""
+        if not repo_url:
+            return None
+
+        user, repo = cls.get_repo_info(repo_url)
+        if not user or not repo:
+            return None
+
+        raw_url = cls._base_url.format(user=user, repo=repo)
+        package_file = (
+            f"package.{package_version}.json"
+            if package_version
+            else "package.json"
+        )
+        package_url = cls.__append_cache_buster(f"{raw_url}{package_file}")
+        headers = settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}")
+        return package_url, headers
+
+    @classmethod
+    def _resolve_plugin_index_response(
+            cls,
+            status_code: int,
+            content: str,
+    ) -> Optional[Dict[str, dict]]:
+        """统一解释插件索引 HTTP 响应，保留不存在、失败和有效索引三态。"""
+        if status_code == 404:
+            return {}
+        if status_code != 200:
+            return None
+        return cls.__parse_plugin_index_response(content)
+
     @staticmethod
     def __build_plugin_release_item(pid: str, release_info: dict) -> Optional[dict]:
         """
@@ -710,25 +747,14 @@ class PluginHelper(metaclass=WeakSingleton):
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
-        if not repo_url:
+        request = self._build_plugin_index_request(repo_url, package_version)
+        if request is None:
             return None
-
-        user, repo = self.get_repo_info(repo_url)
-        if not user or not repo:
-            return None
-
-        raw_url = self._base_url.format(user=user, repo=repo)
-        package_url = f"{raw_url}package.{package_version}.json" if package_version else f"{raw_url}package.json"
-        package_url = self.__append_cache_buster(package_url)
-
-        res = self.__request_with_fallback(package_url, headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
+        package_url, headers = request
+        res = self.__request_with_fallback(package_url, headers=headers)
         if res is None:
             return None
-        if res.status_code == 404:
-            return {}
-        if res.status_code != 200:
-            return None
-        return self.__parse_plugin_index_response(res.text)
+        return self._resolve_plugin_index_response(res.status_code, res.text)
 
     @cached(maxsize=32, ttl=1800, shared_key="get_plugin_repo_releases")
     def _get_plugin_repo_releases(self, repo_url: str) -> Optional[List[dict]]:
@@ -2252,26 +2278,17 @@ class PluginHelper(metaclass=WeakSingleton):
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
-        if not repo_url:
+        request = self._build_plugin_index_request(repo_url, package_version)
+        if request is None:
             return None
-
-        user, repo = self.get_repo_info(repo_url)
-        if not user or not repo:
-            return None
-
-        raw_url = self._base_url.format(user=user, repo=repo)
-        package_url = f"{raw_url}package.{package_version}.json" if package_version else f"{raw_url}package.json"
-        package_url = self.__append_cache_buster(package_url)
-
-        res = await self.__async_request_with_fallback(package_url,
-                                                       headers=settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}"))
+        package_url, headers = request
+        res = await self.__async_request_with_fallback(
+            package_url,
+            headers=headers,
+        )
         if res is None:
             return None
-        if res.status_code == 404:
-            return {}
-        if res.status_code != 200:
-            return None
-        return self.__parse_plugin_index_response(res.text)
+        return self._resolve_plugin_index_response(res.status_code, res.text)
 
     @cached(maxsize=32, ttl=1800, shared_key="get_plugin_repo_releases")
     async def _async_get_plugin_repo_releases(self, repo_url: str) -> Optional[List[dict]]:
