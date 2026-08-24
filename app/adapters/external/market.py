@@ -345,6 +345,32 @@ class PluginHelper(metaclass=WeakSingleton):
             return cls.is_plugin_info_compatible(plugin_info)
         return False
 
+    @staticmethod
+    def _package_version_candidates(
+            package_version: Optional[str],
+    ) -> Tuple[str, ...]:
+        """返回插件安装唯一的代际候选顺序，并去除重复的基础索引。"""
+        preferred_version = package_version or settings.VERSION_FLAG
+        candidates = [preferred_version]
+        candidates.extend(
+            VERSION_BACKWARD_COMPATIBLE_FLAGS.get(preferred_version, [])
+        )
+        candidates.append("")
+        return tuple(dict.fromkeys(candidates))
+
+    @classmethod
+    def _select_compatible_package_version(
+            cls,
+            pid: str,
+            package_version: str,
+            plugins: Optional[Dict[str, dict]],
+    ) -> Optional[str]:
+        """从一个索引结果选择目标插件，并复用统一的代际兼容判定。"""
+        plugin = (plugins or {}).get(pid)
+        if plugin and cls.is_package_plugin_compatible(plugin, package_version):
+            return package_version
+        return None
+
     @classmethod
     def check_plugin_system_version(cls, plugin_info: Optional[dict]) -> Tuple[bool, str]:
         """
@@ -775,29 +801,14 @@ class PluginHelper(metaclass=WeakSingleton):
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
         :return: 返回可用的插件版本号 (如 "v2"，如果指定版本不可用则返回空字符串表示 v1)，如果插件不可用则返回 None
         """
-        # 如果没有指定版本，则使用当前系统配置的版本（如 "v3"）
-        if not package_version:
-            package_version = settings.VERSION_FLAG
-
-        # 优先检查指定索引；即使显式指定 V2，也必须尊重 v3:false 排除标志。
-        plugin = (self.get_plugins(repo_url, package_version) or {}).get(pid)
-        if plugin and self.is_package_plugin_compatible(
-                plugin, package_version
-        ):
-            return package_version
-
-        # V3 临时默认接纳 V2 专用索引，v3:false 的 V3 专用副本旧条目除外。
-        for backward_flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(package_version, []):
-            plugin = (self.get_plugins(repo_url, backward_flag) or {}).get(pid)
-            if plugin and self.is_package_plugin_compatible(
-                    plugin, backward_flag
-            ):
-                return backward_flag
-
-        # 默认索引只接纳声明 v2:true 或当前版本兼容的共享实现。
-        plugin = (self.get_plugins(repo_url) or {}).get(pid, None)
-        if plugin and self.is_package_plugin_compatible(plugin, ""):
-            return ""
+        for candidate in self._package_version_candidates(package_version):
+            selected = self._select_compatible_package_version(
+                pid=pid,
+                package_version=candidate,
+                plugins=self.get_plugins(repo_url, candidate or None),
+            )
+            if selected is not None:
+                return selected
 
         # 如果所有版本都不存在或插件不兼容，返回 None，表示插件不可用
         return None
@@ -2159,30 +2170,17 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         异步版本的获取插件版本方法，功能同 get_plugin_package_version
         """
-        if not package_version:
-            package_version = settings.VERSION_FLAG
-
-        plugin = (
-            await self.async_get_plugins(repo_url, package_version) or {}
-        ).get(pid)
-        if plugin and self.is_package_plugin_compatible(
-                plugin, package_version
-        ):
-            return package_version
-
-        # 异步安装链路与同步链路使用相同的 V2 默认兼容规则。
-        for backward_flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(package_version, []):
-            plugin = (
-                await self.async_get_plugins(repo_url, backward_flag) or {}
-            ).get(pid)
-            if plugin and self.is_package_plugin_compatible(
-                    plugin, backward_flag
-            ):
-                return backward_flag
-
-        plugin = (await self.async_get_plugins(repo_url) or {}).get(pid, None)
-        if plugin and self.is_package_plugin_compatible(plugin, ""):
-            return ""
+        for candidate in self._package_version_candidates(package_version):
+            selected = self._select_compatible_package_version(
+                pid=pid,
+                package_version=candidate,
+                plugins=await self.async_get_plugins(
+                    repo_url,
+                    candidate or None,
+                ),
+            )
+            if selected is not None:
+                return selected
 
         return None
 
