@@ -26,11 +26,7 @@ class _ThreadsafeSubmission:
 
     coroutine: Coroutine[Any, Any, Any]
     completion: concurrent.futures.Future[Any]
-    loop: asyncio.AbstractEventLoop
-    owner: str
-    cancel_on_shutdown: bool
     task: asyncio.Task[Any] | None = None
-    coroutine_closed: bool = False
 
 
 class TaskRegistry:
@@ -100,9 +96,6 @@ class TaskRegistry:
         submission = _ThreadsafeSubmission(
             coroutine=coroutine,
             completion=completion,
-            loop=loop,
-            owner=owner,
-            cancel_on_shutdown=cancel_on_shutdown,
         )
 
         def mirror_completion(task: asyncio.Task[Any]) -> None:
@@ -133,7 +126,6 @@ class TaskRegistry:
                     return
                 if completion.cancelled():
                     self._threadsafe_submissions.pop(completion, None)
-                    submission.coroutine_closed = True
                     close_coroutine = True
                 else:
                     try:
@@ -144,7 +136,6 @@ class TaskRegistry:
                         )
                     except Exception as caught:
                         error = caught
-                        submission.coroutine_closed = True
                         close_coroutine = True
                     else:
                         submission.task = task
@@ -183,11 +174,9 @@ class TaskRegistry:
                 task = submission.task
                 if (
                     task is None
-                    and not submission.coroutine_closed
                     and self._threadsafe_submissions.get(completion) is submission
                 ):
                     self._threadsafe_submissions.pop(completion, None)
-                    submission.coroutine_closed = True
                     close_coroutine = True
             if close_coroutine:
                 coroutine.close()
@@ -207,9 +196,10 @@ class TaskRegistry:
             loop.call_soon_threadsafe(submit_on_loop)
         except RuntimeError:
             with self._state_lock:
-                if self._threadsafe_submissions.pop(completion, None) is submission:
-                    submission.coroutine_closed = True
-            if submission.coroutine_closed:
+                close_coroutine = (
+                    self._threadsafe_submissions.pop(completion, None) is submission
+                )
+            if close_coroutine:
                 coroutine.close()
             raise
         return completion
@@ -258,8 +248,6 @@ class TaskRegistry:
             self._accepting = False
             pending_submissions = tuple(self._threadsafe_submissions.values())
             self._threadsafe_submissions.clear()
-            for submission in pending_submissions:
-                submission.coroutine_closed = True
         for submission in pending_submissions:
             submission.coroutine.close()
             submission.completion.cancel()

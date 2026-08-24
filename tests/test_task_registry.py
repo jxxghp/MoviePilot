@@ -1,12 +1,36 @@
 """进程内后台任务登记与关停语义测试。"""
 
 import asyncio
+import concurrent.futures
 import inspect
 import threading
+from collections.abc import Coroutine
+from typing import Any
 
 import pytest
 
 from app.runtime.tasks import TaskRegistry
+
+
+class _CloseCountingCoroutine(Coroutine[Any, Any, None]):
+    """记录 pending submission 的协程关闭所有权。"""
+
+    def __init__(self) -> None:
+        self.close_count = 0
+
+    def __await__(self):
+        return self
+
+    def send(self, _value):
+        raise StopIteration
+
+    def throw(self, typ, val=None, tb=None):
+        if val is None:
+            raise typ
+        raise val.with_traceback(tb)
+
+    def close(self) -> None:
+        self.close_count += 1
 
 
 def test_task_registry_removes_completed_task() -> None:
@@ -215,6 +239,38 @@ def test_task_registry_closes_submission_when_loop_rejects_callback() -> None:
         )
 
     assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
+
+
+def test_task_registry_shutdown_owns_close_before_loop_rejection() -> None:
+    """shutdown 已取走 pending 后，迟到的投递失败不得再次关闭同一协程。"""
+    registry = TaskRegistry()
+    dispatch_entered = threading.Event()
+    release_dispatch = threading.Event()
+    coroutine = _CloseCountingCoroutine()
+
+    class BlockingClosedLoop:
+        """让 shutdown 稳定发生在投递抛错之前。"""
+
+        @staticmethod
+        def call_soon_threadsafe(_callback) -> None:
+            dispatch_entered.set()
+            release_dispatch.wait()
+            raise RuntimeError("loop closed")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        submission = executor.submit(
+            registry.submit_threadsafe,
+            coroutine,
+            loop=BlockingClosedLoop(),
+            owner="test.threadsafe-shutdown-before-rejection",
+        )
+        assert dispatch_entered.wait(1.0)
+        assert asyncio.run(registry.shutdown(timeout_seconds=0.01)) is True
+        release_dispatch.set()
+        with pytest.raises(RuntimeError, match="loop closed"):
+            submission.result(timeout=1.0)
+
+    assert coroutine.close_count == 1
 
 
 def test_task_registry_pending_non_cancellable_work_does_not_start_on_shutdown() -> None:

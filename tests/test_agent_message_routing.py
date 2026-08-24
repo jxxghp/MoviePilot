@@ -19,6 +19,7 @@ from app.application.messaging.agent import AgentInteractionOption, agent_intera
 from app.application.messaging.interaction import InteractionContext
 from app.application.messaging.media import media_interaction_manager
 from app.schemas.types import NotificationChannel, MessageType
+from app.runtime.tasks import TaskRegistry
 
 
 def _clear_messages() -> None:
@@ -59,6 +60,23 @@ def test_agent_session_clear_uses_owned_threadsafe_submission():
         "loop": loop,
         "owner": "chain.message.agent_session_clear",
     }
+
+
+def test_agent_session_clear_handles_closed_task_registry():
+    """宿主已停止接收任务时，同步消息清理链应记录拒绝而不是泄漏协程。"""
+    registry = TaskRegistry()
+    asyncio.run(registry.shutdown(timeout_seconds=0.01))
+    manager = Mock(clear_session=AsyncMock())
+
+    with patch.object(global_vars, "CURRENT_EVENT_LOOP", _running_loop_stub()), patch(
+        "app.chain.message.get_running_agent_manager", return_value=manager
+    ), patch("app.chain.message.get_task_registry", return_value=registry), patch(
+        "app.chain.message.logger"
+    ) as logger:
+        MessageChain._schedule_agent_session_clear("session-1", "10001")
+
+    logger.warning.assert_called_once()
+    assert "正在关闭" in logger.warning.call_args.args[0]
 
 
 def test_remote_session_clear_reuses_owned_clear_scheduler():
