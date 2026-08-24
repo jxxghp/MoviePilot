@@ -199,6 +199,8 @@ ModuleManager 与 startup 组合根继续关闭其余资源但必须向上返回
 长连接、轮询或 Socket 服务只有在真实终止后才能返回成功，超时 owner 不得清空句柄。
 应用消息队列的监控线程遵守同一收敛语义：停止必须有限等待，回调阻塞导致线程仍存活时保留 owner
 并向 startup 返回 `False`，不得用无界 `join()` 阻塞生命周期或把日志当作成功。
+共享 `ThreadHelper` 必须追踪通过宿主 `submit()` 和旧兼容 `.pool.submit()` 接受的全部 Future；关闭时
+先封口新任务，再有限等待且保留未终止 owner，结果由 startup 聚合，不得恢复无界 executor shutdown。
 API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/tasks.py`；登记器先于其他
 运行资源启动，并在资源释放前停止接收、取消和有限等待。需要崩溃恢复的 E2/E3 副作用仍应
 进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。

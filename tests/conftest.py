@@ -478,8 +478,8 @@ def pytest_sessionfinish(session, exitstatus):
         from app.runtime.thread import ThreadHelper
 
         helper = ThreadHelper.get_existing_instance()
-        if helper:
-            helper.shutdown()
+        if helper and helper.shutdown() is False:
+            raise RuntimeError("shared thread pool did not converge")
     except Exception as err:
         _report_session_cleanup_error(session, "thread helper", err)
 
