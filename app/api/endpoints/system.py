@@ -71,6 +71,7 @@ from app.schemas.event import ConfigChangeEventData
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.types import SystemConfigKey, EventType
 from app.foundation.crypto import HashUtils
+from app.foundation.environment import is_gil_enabled
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.adapters.system import rust as rust_accel
 from app.application.security.url import SecurityUtils
@@ -831,6 +832,7 @@ async def get_env_setting(
             "RUST_ACCEL_AVAILABLE": rust_accel.is_available(),
             "RUST_ACCEL_ENABLED": rust_accel.is_enabled(),
             "RUST_ACCEL_REQUIRED": rust_accel.is_required(),
+            "PYTHON_GIL_ENABLED": is_gil_enabled(),
         }
     )
     return _SchemaResponse(success=True, data=info)

@@ -23,6 +23,11 @@ def is_free_threaded_runtime() -> bool:
     return sysconfig.get_config_var("Py_GIL_DISABLED") == 1
 
 
+def is_gil_enabled() -> bool:
+    """返回当前 CPython 进程是否实际启用了 GIL。"""
+    return sys._is_gil_enabled()
+
+
 def is_windows() -> bool:
     """判断当前操作系统是否为 Windows。"""
     return os.name == "nt"

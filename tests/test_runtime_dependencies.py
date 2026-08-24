@@ -15,6 +15,12 @@ def test_free_threaded_runtime_tracks_interpreter_build(monkeypatch):
     assert environment.is_free_threaded_runtime() is True
 
 
+def test_gil_status_tracks_current_interpreter_state(monkeypatch):
+    monkeypatch.setattr(environment.sys, "_is_gil_enabled", lambda: False)
+
+    assert environment.is_gil_enabled() is False
+
+
 def test_runtime_dependency_group_tracks_interpreter_abi(monkeypatch):
     monkeypatch.setattr(dependencies, "is_free_threaded_runtime", lambda: False)
     assert dependencies.runtime_dependency_group() == "runtime-standard"

@@ -82,6 +82,8 @@ class NettestSecurityTest(unittest.TestCase):
             system_endpoint.rust_accel, "is_enabled", return_value=False
         ), patch.object(
             system_endpoint.rust_accel, "is_required", return_value=True
+        ), patch.object(
+            system_endpoint, "is_gil_enabled", return_value=False
         ):
             resp = asyncio.run(system_endpoint.get_env_setting(_="token"))
 
@@ -89,6 +91,7 @@ class NettestSecurityTest(unittest.TestCase):
         self.assertTrue(resp.data["RUST_ACCEL_AVAILABLE"])
         self.assertFalse(resp.data["RUST_ACCEL_ENABLED"])
         self.assertTrue(resp.data["RUST_ACCEL_REQUIRED"])
+        self.assertFalse(resp.data["PYTHON_GIL_ENABLED"])
 
     def test_fetch_image_allows_signed_private_url(self):
         """
