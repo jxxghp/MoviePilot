@@ -119,7 +119,7 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3
             ghcr.io/${{ github.repository }}-v3
           tags: |
-            type=raw,value=beta-${{ github.run_id }}-${{ github.run_attempt }}
+            type=raw,value=beta
 
       - name: Docker Meta free-threaded
         id: meta_ft
@@ -129,7 +129,7 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3t
             ghcr.io/${{ github.repository }}-v3t
           tags: |
-            type=raw,value=beta-${{ github.run_id }}-${{ github.run_attempt }}
+            type=raw,value=beta
 
       - name: Set Up QEMU
         uses: docker/setup-qemu-action@v3
@@ -338,18 +338,3 @@ jobs:
           cache-from: |
             type=gha,scope=moviepilot-v3t-docker-amd64,version=2
             type=gha,scope=moviepilot-v3t-docker-arm64,version=2
-
-      - name: Promote beta image pair
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-        run: |
-          candidate="beta-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          for image in \
-            "${DOCKER_USERNAME}/moviepilot-v3" \
-            "ghcr.io/${GITHUB_REPOSITORY}-v3" \
-            "${DOCKER_USERNAME}/moviepilot-v3t" \
-            "ghcr.io/${GITHUB_REPOSITORY}-v3t"; do
-            docker buildx imagetools create \
-              --tag "${image}:beta" \
-              "${image}:${candidate}"
-          done
