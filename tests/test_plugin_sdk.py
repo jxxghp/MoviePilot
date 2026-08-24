@@ -35,7 +35,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
     from app.runtime.extensions.plugin_manager import PluginManager as CanonicalPluginManager
     from app.adapters.network.http import RequestUtils as CanonicalRequestUtils
     from app.application.rss import RssHelper as CanonicalRssHelper
-    from app.application.site.sites import SitesHelper as CanonicalSitesHelper  # pylint: disable=no-name-in-module
+    from app.application.site.sites import SitesHelper as CanonicalSitesHelper  # pylint: disable=import-error,no-name-in-module
     from app.runtime.cache import Cache as CanonicalCache
     from app.runtime.cache import cached as canonical_cached
     from app.runtime.config import settings as canonical_settings
