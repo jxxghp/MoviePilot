@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import stat
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 
 import pytest
 
-from app.application.backup import BackupPolicy, DatabaseBackupService
+from app.application.backup import (
+    BackupPolicy,
+    DatabaseBackupInProgressError,
+    DatabaseBackupService,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +39,21 @@ class _Backend:
 
     def restore(self, artifact: Path) -> None:
         self.restored = artifact
+
+
+class _BlockingBackend(_Backend):
+    """让首个创建停在后端写入阶段，以验证共享服务的并发约束。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = Event()
+        self.release = Event()
+
+    def create(self, destination: Path) -> None:
+        self.started.set()
+        if not self.release.wait(timeout=2):
+            raise TimeoutError("测试未释放数据库备份")
+        super().create(destination)
 
 
 def _service(
@@ -61,10 +82,29 @@ def test_create_publishes_one_readable_private_file(tmp_path: Path) -> None:
 
 
 def test_failed_verification_does_not_publish_artifact(tmp_path: Path) -> None:
+    backend = _Backend(valid=False)
+    service = _service(tmp_path, backend=backend)
     with pytest.raises(RuntimeError, match="数据库备份校验失败"):
-        _service(tmp_path, backend=_Backend(valid=False)).create()
+        service.create()
 
     assert list(tmp_path.iterdir()) == []
+    backend.valid = True
+    assert service.create().path.is_file()
+
+
+def test_concurrent_create_is_rejected_without_waiting(tmp_path: Path) -> None:
+    backend = _BlockingBackend()
+    service = _service(tmp_path, backend=backend)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        first = executor.submit(service.create)
+        assert backend.started.wait(timeout=1)
+        with pytest.raises(DatabaseBackupInProgressError, match="正在执行"):
+            service.create()
+        backend.release.set()
+        artifact = first.result(timeout=2)
+
+    assert artifact.path.is_file()
 
 
 def test_same_second_backups_receive_short_sequence_suffix(tmp_path: Path) -> None:

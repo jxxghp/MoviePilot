@@ -23,6 +23,8 @@ from app.schemas.common import TimeData as _SchemaTimeData
 from app.schemas.common import ValueData as _SchemaValueData
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.system import NetTestTarget as _SchemaNetTestTarget
+from app.schemas.system import DatabaseBackupArtifactData as _SchemaDatabaseBackupArtifactData
+from app.schemas.system import DatabaseBackupVerificationData as _SchemaDatabaseBackupVerificationData
 from app.schemas.system import PluginMarketSyncData as _SchemaPluginMarketSyncData
 from app.schemas.system import PluginMarketSyncRequest as _SchemaPluginMarketSyncRequest
 from app.schemas.system import RuleTestData as _SchemaRuleTestData
@@ -46,6 +48,8 @@ from app.application.configuration import (
     get_configured_system_config,
     get_runtime_settings,
 )
+from app.application.backup import DatabaseBackupInProgressError
+from app.application.database import get_database_governance
 from app.application.plugin.runtime import plugin_system_config_mutation
 from app.api.dependencies.auth import (
     get_current_active_superuser,
@@ -67,6 +71,7 @@ from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.application.scheduling import get_scheduler
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.exception import PluginMutationRejectedError
@@ -108,6 +113,16 @@ _DATABASE_BACKUP_SETTING_KEYS = {
     "DB_BACKUP_RETENTION_DAYS",
     "DB_BACKUP_MAX_COUNT",
 }
+
+
+def _database_backup_artifact_data(artifact: Any) -> _SchemaDatabaseBackupArtifactData:
+    """将内部备份制品映射为不含宿主路径的 Web DTO。"""
+    return _SchemaDatabaseBackupArtifactData(
+        name=artifact.name,
+        db_type=artifact.db_type,
+        created_at=artifact.created_at,
+        size=artifact.size,
+    )
 
 
 def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
@@ -810,6 +825,74 @@ async def get_user_global_setting(_: ApiPrincipal = Depends(get_current_active_u
         }
     )
     return _SchemaResponse(success=True, data=info)
+
+
+@router.get(
+    "/database/backups",
+    summary="查询受管数据库备份",
+    response_model=list[_SchemaDatabaseBackupArtifactData],
+)
+async def list_database_backups(
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> list[_SchemaDatabaseBackupArtifactData]:
+    """列出当前备份目录中的正式制品，不触发内容校验。"""
+    try:
+        artifacts = await run_in_threadpool_to_completion(
+            get_database_governance().list_backups
+        )
+    except Exception as error:
+        logger.exception("读取数据库备份列表失败")
+        raise HTTPException(status_code=500, detail="读取数据库备份列表失败，请查看日志") from error
+    return [_database_backup_artifact_data(artifact) for artifact in artifacts]
+
+
+@router.post(
+    "/database/backups",
+    summary="立即创建数据库备份",
+    response_model=_SchemaDatabaseBackupArtifactData,
+)
+async def create_database_backup(
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> _SchemaDatabaseBackupArtifactData:
+    """创建、校验并原子发布当前活动数据库的一致快照。"""
+    try:
+        artifact = await run_in_threadpool_to_completion(
+            get_database_governance().create_backup
+        )
+    except DatabaseBackupInProgressError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("创建数据库备份失败")
+        raise HTTPException(status_code=500, detail="创建数据库备份失败，请查看日志") from error
+    return _database_backup_artifact_data(artifact)
+
+
+@router.post(
+    "/database/backups/{name}/verify",
+    summary="校验受管数据库备份",
+    response_model=_SchemaDatabaseBackupVerificationData,
+)
+async def verify_database_backup(
+    name: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> _SchemaDatabaseBackupVerificationData:
+    """校验一个受管制品，响应不包含宿主路径或适配器错误明细。"""
+    try:
+        verification = await run_in_threadpool_to_completion(
+            get_database_governance().verify_backup,
+            name,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="数据库备份文件名无效") from error
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="数据库备份不存在") from error
+    except Exception as error:
+        logger.exception("校验数据库备份失败：%s", name)
+        raise HTTPException(status_code=500, detail="校验数据库备份失败，请查看日志") from error
+    return _SchemaDatabaseBackupVerificationData(
+        valid=verification.valid,
+        method=verification.method,
+    )
 
 
 @router.get(

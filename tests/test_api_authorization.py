@@ -52,6 +52,9 @@ def test_system_sensitive_read_endpoints_require_superuser():
     """系统敏感读取接口必须只允许管理员访问。"""
     assert _dependency_of(system_endpoint.get_env_setting, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.get_setting, "_") is get_current_active_superuser_async
+    assert _dependency_of(system_endpoint.list_database_backups, "_") is get_current_active_superuser_async
+    assert _dependency_of(system_endpoint.create_database_backup, "_") is get_current_active_superuser_async
+    assert _dependency_of(system_endpoint.verify_database_backup, "_") is get_current_active_superuser_async
 
 
 def test_system_public_read_endpoints_require_active_user():
