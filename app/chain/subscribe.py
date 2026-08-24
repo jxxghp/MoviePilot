@@ -1167,6 +1167,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 subscribes = subscribeoper.list(self.get_states_for_search(state))
             total_num = len(subscribes)
             processed_subscribes = []
+            # 搜索链在整个订阅循环内复用，避免每轮订阅重复执行链初始化
+            searchchain = SearchChain()
             if progress_callback:
                 progress_callback(
                     value=0,
@@ -1255,7 +1257,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                                           or _system_config().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
 
                         # 搜索，同时电视剧会过滤掉不需要的剧集
-                        contexts = SearchChain().process(mediainfo=mediainfo,
+                        contexts = searchchain.process(mediainfo=mediainfo,
                                                          keyword=subscribe.keyword,
                                                          no_exists=no_exists,
                                                          sites=sites,

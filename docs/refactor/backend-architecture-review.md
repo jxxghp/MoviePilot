@@ -35,6 +35,14 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
 * 音乐识别 → 并入既有 `application/music/` 目录；
 * 链本身只保留编排职责。
 
+> 处理进展（2026-08-24）：
+> * 洗版优先级/缺集计算的 25 个纯函数已迁入 `app/application/subscription/priority.py`
+>   （含 `prepare_subscribe_progress_fields`），链上保留单行兼容委托，新模块 mypy 零错误；
+> * 批量择优的缺集记账与覆盖判定规则（9 个纯函数）已迁入
+>   `app/application/download/selection.py`，`_execute_batch_download` 内嵌套闭包改为委托；
+> * 音乐识别子域与 media.py 的 sync/async 孪生合并、transfer.py 的三类职责拆分
+>   涉及大范围行为等价性验证，列为后续独立任务。
+
 ## 二、sync/async 手工双写造成系统性重复
 
 * `chain/media.py` 有 **11 对**同步/异步孪生方法；
@@ -127,6 +135,10 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
 
 * **非单例链反复实例化**：`MediaChain()` 全仓构造 54 处，`DownloadChain().batch_download()`
   在订阅循环内反复构造重跑 init；建议统一走 getter 门面。
+  > 处理进展（2026-08-24）：订阅搜索循环内的 `SearchChain()` 已提升到循环外复用；
+  > `MediaChain`/`TransferChain` 本身是 Singleton 元类（构造为缓存命中，代价低）。
+  > 把 `DownloadChain`/`SearchChain`/`SubscribeChain` 统一改为进程级 getter 门面
+  > 会改变链实例的生命周期与状态共享语义，需显式架构决策后另行推进。
 * `app/scheduler.py`（2096 行）：入边已收敛到组合根，但调度器 + GC + 壁纸 + 媒体库同步等
   job 实现混在一个文件，建议按 job 域拆分。
 * `app/agent/orchestrator.py`（3655 行）：`MoviePilotAgent` 与 `AgentManager` 同居，
