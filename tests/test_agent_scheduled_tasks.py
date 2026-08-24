@@ -1242,8 +1242,17 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
     started = asyncio.Event()
 
     async def block_current_task(_task):
+        """阻塞当前会话 worker，保留另一任务的排队状态。"""
         started.set()
         await asyncio.Event().wait()
+
+    async def wait_until_all_tasks_running() -> None:
+        """按真实时间等待异步数据库 worker 完成两个任务的认领。"""
+        while not all(
+            AgentTaskOper().get(task.id).last_status == "running"
+            for task in tasks
+        ):
+            await asyncio.sleep(0.01)
 
     manager._process_message_internal = block_current_task
     executions = [
@@ -1251,10 +1260,7 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
         for task in tasks
     ]
     await asyncio.wait_for(started.wait(), timeout=1)
-    for _ in range(50):
-        if all(AgentTaskOper().get(task.id).last_status == "running" for task in tasks):
-            break
-        await asyncio.sleep(0)
+    await asyncio.wait_for(wait_until_all_tasks_running(), timeout=2)
     assert all(AgentTaskOper().get(task.id).last_status == "running" for task in tasks)
 
     await manager.close()
