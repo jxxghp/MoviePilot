@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app.runtime.config import settings as runtime_settings
 from app.testing import stub_modules
+from app.testing.stub import restore_modules, snapshot_modules
 
 
 def _stub(name: str, **attrs) -> tuple:
@@ -30,7 +31,7 @@ class _DummyError(Exception):
         self.duration_ms = duration_ms
 
 
-# 在 import 期用占位模块替换重依赖/外部模块，import 完由 stub_modules 精确还原，避免污染其它用例
+# 被测模块会绑定 import 期的桩对象，退出后需同时还原这期间加载的 app 模块图。
 _STUB_MODULES = dict([
     _stub("pillow_avif"),
     _stub("aiofiles"),
@@ -64,8 +65,12 @@ _STUB_MODULES = dict([
     _stub("version", APP_VERSION="test", FRONTEND_VERSION="frontend-test"),
 ])
 
-with stub_modules(_STUB_MODULES):
-    from app.api.endpoints import system as system_endpoint
+_APP_MODULES = snapshot_modules("app")
+try:
+    with stub_modules(_STUB_MODULES):
+        from app.api.endpoints import system as system_endpoint
+finally:
+    restore_modules(_APP_MODULES, "app")
 
 
 class NettestSecurityTest(unittest.TestCase):
