@@ -62,7 +62,7 @@ jobs:
           name: official-plugin-architecture-report
           path: MoviePilot/official-plugin-architecture-report.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
 
       - name: Fail when plugin contracts changed
         if: steps.compare.outcome == 'failure'
