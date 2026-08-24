@@ -1001,6 +1001,18 @@ def test_stop_modules_propagates_shared_thread_pool_nonconvergence(monkeypatch):
         _assert_completed_once(dependency)
 
 
+def test_stop_modules_propagates_doh_nonconvergence(monkeypatch):
+    """DoH 查询线程未终止时必须由模块服务关闭结果向上暴露。"""
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    dependencies["doh"].return_value = False
+
+    converged = asyncio.run(modules_initializer.stop_modules())
+
+    assert converged is False
+    for dependency in dependencies.values():
+        _assert_completed_once(dependency)
+
+
 def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
     """关闭时先收口 Web Agent，再关闭持久化准入和数据库任务。"""
     order = []

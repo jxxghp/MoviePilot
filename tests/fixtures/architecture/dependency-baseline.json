@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6560,
-  "edge_sha256": "bdd34affb7c42a4cbcdc85e713d9b4ac591c3343559dd5032b4518e77eba721e",
+  "edge_count": 6562,
+  "edge_sha256": "08b6e0005a3c316a1de675193f7749ff8a93e8c1c052eb48339aa58b308ad6bf",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -109,6 +109,7 @@
     "app.adapters.network.doh -> app.foundation",
     "app.adapters.network.doh -> app.foundation.singleton",
     "app.adapters.network.doh -> app.runtime",
+    "app.adapters.network.doh -> app.runtime.execution",
     "app.adapters.network.doh -> app.runtime.log",
     "app.adapters.network.doh -> app.runtime.reload",
     "app.adapters.network.doh -> app.runtime.settings",
@@ -5810,6 +5811,7 @@
     "app.runtime.thread -> app.foundation",
     "app.runtime.thread -> app.foundation.singleton",
     "app.runtime.thread -> app.runtime",
+    "app.runtime.thread -> app.runtime.execution",
     "app.runtime.thread -> app.runtime.settings",
     "app.scheduler -> app.adapters",
     "app.scheduler -> app.adapters.external",

@@ -3,25 +3,26 @@ doh函数的实现。
 author: https://github.com/C5H12O5/syno-videoinfo-plugin
 """
 import base64
-import concurrent
-import concurrent.futures
 import json
 import socket
 import struct
 import urllib
 import urllib.request
+from concurrent.futures import as_completed
 from threading import Lock
 from typing import Dict, Optional
 
+from app.foundation.singleton import Singleton
+from app.runtime.execution import OwnedThreadPoolExecutor
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.settings import get_runtime_setting
-from app.foundation.singleton import Singleton
 
 # DoH 关闭时需要释放线程池；保持惰性创建可避免未启用 DoH 时占用进程级资源
-_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_executor: Optional[OwnedThreadPoolExecutor] = None
 _executor_lock = Lock()
 _doh_enabled = False
+_DOH_EXECUTOR_STOP_TIMEOUT_SECONDS = 10.0
 
 # 定义默认的DoH配置
 _doh_timeout = 5
@@ -36,20 +37,23 @@ def _doh_setting(key: str):
     return get_runtime_setting(key)
 
 
-def _get_executor_locked() -> concurrent.futures.ThreadPoolExecutor:
-    """在持有执行器锁时按需获取 DoH 查询线程池"""
+def _get_executor_locked() -> OwnedThreadPoolExecutor:
+    """在持有执行器锁时按需获取 DoH 查询线程池。"""
     global _executor
     if _executor is None:
-        _executor = concurrent.futures.ThreadPoolExecutor()
+        _executor = OwnedThreadPoolExecutor()
     return _executor
 
 
-def enable_doh(enable: bool) -> None:
+def enable_doh(enable: bool) -> bool:
     """
-    对 socket.getaddrinfo 进行补丁
+    对 socket.getaddrinfo 进行补丁。
+
+    :param enable: 是否启用 DoH 解析
+    :return: 状态切换成功时返回 True；旧 executor 未收敛时返回 False
     """
 
-    global _doh_enabled
+    global _doh_enabled, _executor
 
     def _patched_getaddrinfo(host: str, *args, **kwargs):
         """
@@ -73,19 +77,31 @@ def enable_doh(enable: bool) -> None:
                 executor.submit(_doh_query, resolver, host)
                 for resolver in _doh_setting("DOH_RESOLVERS").split(",")
             ]
-        for future in concurrent.futures.as_completed(futures):
+        for future in as_completed(futures):
             ip = future.result()
             if ip is not None:
                 logger.info(f"已解析 [{host}] 为 [{ip}]")
-                with _doh_lock:
-                    _doh_cache[host] = ip
+                # 关闭可能在查询等待期间恢复系统 DNS；关闭后的结果不得回填到下一轮配置。
+                with _executor_lock:
+                    cache_allowed = _doh_enabled
+                if cache_allowed:
+                    with _doh_lock:
+                        _doh_cache[host] = ip
                 host = ip
                 break
         return _orig_getaddrinfo(host, *args, **kwargs)
 
     with _executor_lock:
+        if enable and _executor is not None and not _executor.accepting:
+            # 上一轮 shutdown 超时后必须继续持有原 owner；只有真实收敛才能替换执行器。
+            if not _executor.shutdown_bounded(timeout=0.0):
+                _doh_enabled = False
+                socket.getaddrinfo = _orig_getaddrinfo
+                return False
+            _executor = None
         _doh_enabled = enable
         socket.getaddrinfo = _patched_getaddrinfo if enable else _orig_getaddrinfo
+        return True
 
 
 class DohHelper(ConfigReloadMixin, metaclass=Singleton):
@@ -101,29 +117,40 @@ class DohHelper(ConfigReloadMixin, metaclass=Singleton):
     def on_config_changed(self) -> None:
         """配置变化时清理缓存并重新应用 DoH 状态。"""
         if not _doh_setting("DOH_ENABLE"):
-            self.shutdown()
+            if not self.shutdown():
+                logger.error("DoH配置关闭后查询线程池未在预算内收敛")
             return
         with _doh_lock:
             # DOH配置有变动的情况下，清空缓存
             _doh_cache.clear()
-        enable_doh(True)
+        if not enable_doh(True):
+            logger.error("DoH查询线程池尚未收敛，暂不重新启用")
 
     def get_reload_name(self) -> str:
         """返回 DoH 配置重载名称。"""
         return 'DoH'
 
-    def shutdown(self) -> None:
-        """恢复系统 DNS 并释放 DoH 查询线程池"""
+    def shutdown(
+            self,
+            timeout: float = _DOH_EXECUTOR_STOP_TIMEOUT_SECONDS,
+    ) -> bool:
+        """
+        恢复系统 DNS 并有限等待 DoH 查询线程池。
+
+        :param timeout: 等待已接受查询和 worker 终止的最长秒数
+        :return: 查询线程池真实终止时返回 True，否则返回 False
+        """
         global _executor, _doh_enabled
         with _executor_lock:
             _doh_enabled = False
             socket.getaddrinfo = _orig_getaddrinfo
             executor = _executor
-            _executor = None
+            converged = executor is None or executor.shutdown_bounded(timeout=timeout)
+            if converged and _executor is executor:
+                _executor = None
         with _doh_lock:
             _doh_cache.clear()
-        if executor:
-            executor.shutdown(wait=True)
+        return converged
 
 
 def _doh_query(resolver: str, host: str) -> Optional[str]:

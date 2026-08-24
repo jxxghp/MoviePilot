@@ -101,3 +101,14 @@ def test_thread_helper_shutdown_waits_for_worker_after_future_completion():
         callback_release.set()
 
     assert executor.shutdown_bounded(timeout=1) is True
+
+
+def test_owned_executor_preserves_standard_shutdown_contract():
+    """旧调用方直接使用 pool.shutdown(wait=True) 时不得与 owner 回调互锁。"""
+    executor = thread_module._OwnedThreadPoolExecutor(max_workers=1)
+    future = executor.submit(lambda: "done")
+
+    executor.shutdown(wait=True)
+
+    assert future.result(timeout=1) == "done"
+    assert executor.accepting is False

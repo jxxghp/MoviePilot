@@ -1,6 +1,9 @@
 import socket
+import threading
+import time
 
 from app.adapters.network import doh
+from app.runtime.execution import OwnedThreadPoolExecutor
 
 
 def test_doh_executor_is_lazy_and_shutdown_restores_socket(monkeypatch):
@@ -13,21 +16,67 @@ def test_doh_executor_is_lazy_and_shutdown_restores_socket(monkeypatch):
     monkeypatch.setattr(doh, "_orig_getaddrinfo", lambda host, *args, **kwargs: [])
 
     try:
-        helper.shutdown()
+        assert helper.shutdown() is True
         assert doh._executor is None
 
-        doh.enable_doh(True)
+        assert doh.enable_doh(True) is True
         socket.getaddrinfo("example.com", None)
         executor = doh._executor
-        assert executor is not None
+        assert isinstance(executor, OwnedThreadPoolExecutor)
 
-        helper.shutdown()
+        assert helper.shutdown() is True
 
         assert doh._executor is None
         assert socket.getaddrinfo is doh._orig_getaddrinfo
         assert getattr(executor, "_shutdown", False)
     finally:
         helper.shutdown()
+        socket.getaddrinfo = original_getaddrinfo
+
+
+def test_doh_shutdown_is_bounded_and_retryable(monkeypatch):
+    """阻塞查询超时时保留同一 owner，释放后可重试并安全重新启用。"""
+    original_getaddrinfo = socket.getaddrinfo
+    helper = object.__new__(doh.DohHelper)
+    entered = threading.Event()
+    release = threading.Event()
+    future = None
+    monkeypatch.setattr(doh, "_orig_getaddrinfo", lambda host, *args, **kwargs: [])
+
+    def blocked_query() -> None:
+        """模拟底层网络栈未按 DoH 请求超时返回的同步查询。"""
+        entered.set()
+        release.wait()
+
+    try:
+        assert helper.shutdown(timeout=1) is True
+        assert doh.enable_doh(True) is True
+        with doh._executor_lock:
+            executor = doh._get_executor_locked()
+        future = executor.submit(blocked_query)
+        assert entered.wait(timeout=1)
+
+        started_at = time.monotonic()
+        assert helper.shutdown(timeout=0.01) is False
+        assert time.monotonic() - started_at < 1
+        assert doh._executor is executor
+        assert socket.getaddrinfo is doh._orig_getaddrinfo
+        assert executor.accepting is False
+
+        # 未收敛 owner 不得被新 executor 覆盖，否则旧查询会脱离生命周期追踪。
+        assert doh.enable_doh(True) is False
+        assert doh._executor is executor
+
+        release.set()
+        future.result(timeout=1)
+        assert helper.shutdown(timeout=1) is True
+        assert doh._executor is None
+        assert doh.enable_doh(True) is True
+    finally:
+        release.set()
+        if future is not None:
+            future.result(timeout=1)
+        helper.shutdown(timeout=1)
         socket.getaddrinfo = original_getaddrinfo
 
 
@@ -41,8 +90,8 @@ def test_doh_config_reload_disables_and_closes_executor(monkeypatch):
     monkeypatch.setattr(doh, "_orig_getaddrinfo", lambda host, *args, **kwargs: [])
 
     try:
-        helper.shutdown()
-        doh.enable_doh(True)
+        assert helper.shutdown() is True
+        assert doh.enable_doh(True) is True
         socket.getaddrinfo("example.com", None)
         executor = doh._executor
         assert executor is not None
@@ -83,7 +132,7 @@ def test_enable_doh_reuses_cached_host_resolution(monkeypatch):
         doh._doh_cache.clear()
 
     try:
-        doh.enable_doh(True)
+        assert doh.enable_doh(True) is True
 
         socket.getaddrinfo("example.com", None)
         socket.getaddrinfo("example.com", None)
