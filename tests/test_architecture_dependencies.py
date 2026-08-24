@@ -1295,68 +1295,6 @@ def test_agent_tools_do_not_import_entrypoint_internals():
     assert violations == {}
 
 
-def test_runtime_consumers_use_scheduler_application_facade():
-    """非组合根消费者必须经 application Facade 访问进程级 Scheduler。"""
-    allowed = {
-        "app.scheduler",
-        "app.startup.initializers.modules",
-        "app.startup.initializers.scheduler",
-    }
-    violations = {
-        module_name: dependencies & {"app.scheduler"}
-        for module_name, dependencies in _build_module_graph().items()
-        if module_name not in allowed and "app.scheduler" in dependencies
-    }
-
-    assert violations == {}
-
-
-def test_runtime_consumers_use_plugin_application_facade():
-    """插件 concrete 管理器只允许组合根和兼容 SDK 直接依赖。"""
-    allowed = {
-        "app.sdk.plugins",
-        "app.startup.initializers.modules",
-        "app.startup.initializers.plugins",
-    }
-    violations = {
-        module_name: dependencies & {"app.runtime.extensions.plugin_manager"}
-        for module_name, dependencies in _build_module_graph().items()
-        if module_name not in allowed
-        and "app.runtime.extensions.plugin_manager" in dependencies
-    }
-
-    assert violations == {}
-
-
-def test_runtime_consumers_use_command_application_facade():
-    """Command concrete 实现只允许 startup 组合根直接依赖。"""
-    allowed = {
-        "app.startup.initializers.command",
-        "app.startup.initializers.modules",
-    }
-    violations = {
-        module_name: dependencies & {"app.command"}
-        for module_name, dependencies in _build_module_graph().items()
-        if module_name not in allowed and "app.command" in dependencies
-    }
-
-    assert violations == {}
-
-
-def test_runtime_consumers_use_workflow_application_facade():
-    """WorkFlowManager concrete 实现只允许 startup 组合根直接依赖。"""
-    allowed = {"app.startup.initializers.workflow"}
-    violations = {
-        module_name: dependencies & {"app.workflow"}
-        for module_name, dependencies in _build_module_graph().items()
-        if not module_name.startswith("app.workflow")
-        and module_name not in allowed
-        and "app.workflow" in dependencies
-    }
-
-    assert violations == {}
-
-
 def test_modules_read_deployment_settings_through_runtime_port():
     """宿主 Module 不得绕过 runtime 配置端口直接依赖 Settings 实例。"""
     violations: list[str] = []

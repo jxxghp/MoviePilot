@@ -62,6 +62,9 @@ jobs:
       - name: Check background task ownership
         run: uv run --locked --no-sync python scripts/architecture/task_ownership.py
 
+      - name: Check process runtime service locators
+        run: uv run --locked --no-sync python scripts/architecture/service_locator.py
+
       - name: Check startup performance contract
         run: >-
           uv run --locked --no-sync python
