@@ -21,6 +21,7 @@ def test_build_context_excludes_runtime_state_and_keeps_release_inputs() -> None
     for pattern in (
         ".venv/",
         ".worktrees/",
+        ".artifacts/",
         ".build/",
         ".agent-work/",
         ".runtime/",
@@ -141,5 +142,6 @@ def test_custom_frontend_directory_is_stable_but_artifacts_remain_untracked() ->
     assert (ROOT / "frontend-dist" / ".gitkeep").is_file()
     assert "frontend-dist/*" in gitignore
     assert "!frontend-dist/.gitkeep" in gitignore
+    assert ".artifacts/" in gitignore
     assert "COPY frontend-dist/ /tmp/frontend-dist/" in dockerfile
     assert "! -name '.gitkeep'" in dockerfile
