@@ -2363,19 +2363,12 @@ class SearchChain(ChainBase):
                 提交单个站点页搜索任务，并记录该任务对应的站点和页码位置。
                 """
                 search_page = search_pages[page_index]
+                # 关键字已按 area 统一解析（imdbid 场景使用 imdb 标识），站点调用无需再分支
                 search_keyword = mediainfo.imdb_id if area == "imdbid" and mediainfo else keyword
-                if area == "imdbid":
-                    # 搜索IMDBID
-                    task = executor.submit(self.search_site_torrents, site=site,
-                                           keyword=search_keyword,
-                                           mtype=mediainfo.type if mediainfo else mtype,
-                                           page=search_page)
-                else:
-                    # 搜索标题
-                    task = executor.submit(self.search_site_torrents, site=site,
-                                           keyword=search_keyword,
-                                           mtype=mediainfo.type if mediainfo else mtype,
-                                           page=search_page)
+                task = executor.submit(self.search_site_torrents, site=site,
+                                       keyword=search_keyword,
+                                       mtype=mediainfo.type if mediainfo else mtype,
+                                       page=search_page)
                 pending_tasks[task] = (site, page_index, search_page, search_keyword)
 
             for site in indexer_sites:

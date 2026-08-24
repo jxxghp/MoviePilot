@@ -2160,17 +2160,6 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         transfer_exclude_words = get_configured_system_config().get(
             SystemConfigKey.TransferExcludeWords
         )
-        has_episode_format_template = bool(epformat and epformat.format)
-        formaterHandler = (
-            FormatParser(
-                eformat=epformat.format,
-                details=epformat.detail,
-                part=epformat.part,
-                offset=epformat.offset,
-            )
-            if epformat
-            else None
-        )
 
         def _build_file_meta(
                 source_path: Path,
