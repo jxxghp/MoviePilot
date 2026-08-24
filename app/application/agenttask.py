@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
@@ -155,6 +156,7 @@ class AgentTaskExecutionService:
         """认领一次执行；取消发生在提交后时先补偿收口再传播取消。"""
 
         run_id = uuid4().hex
+        run_created = threading.Event()
 
         def transaction(session: object) -> AgentTaskClaim:
             repository = self._repository(session)
@@ -173,6 +175,7 @@ class AgentTaskExecutionService:
                         else "Agent 定时任务当前不可执行"
                     ),
                 )
+            run_created.set()
             return AgentTaskClaim(run=self._snapshot(run))
 
         async def claim_to_terminal() -> AgentTaskClaim:
@@ -189,6 +192,9 @@ class AgentTaskExecutionService:
         try:
             return await claim_task
         except asyncio.CancelledError as cancellation:
+            # 纯容量拒绝尚未进入事务，不存在需要等待数据库容量的补偿对象。
+            if not run_created.is_set():
+                raise cancellation
             finalize_task = asyncio.create_task(self._finalize(
                 run_id=run_id,
                 task_id=task_id,
