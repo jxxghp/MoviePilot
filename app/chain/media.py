@@ -19,7 +19,7 @@ from app.domain.context import (
     MusicArtistInfo,
     MusicInfo,
 )
-from app.runtime.events import eventmanager, Event
+from app.runtime.events import Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
@@ -450,8 +450,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
 
 
 
-    @staticmethod
     def select_recognize_source(
+            self,
             log_name: str, log_context: str, native_fn, plugin_fn,
             is_recognized=None,
             plugin_event: ChainEventType = ChainEventType.NameRecognize,
@@ -470,7 +470,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
         if is_recognized is None:
             is_recognized = lambda result: bool(result)
         mediainfo = None
-        plugin_available = eventmanager.check(plugin_event)
+        # 插件可用性检查走注入的事件管理器，避免链实例直连全局单例
+        plugin_available = self.eventmanager.check(plugin_event)
         if get_chain_runtime_config_snapshot().recognize_plugin_first and plugin_available:
             # 插件优先
             logger.info(f"插件识别优先模式已开启。请求辅助识别，标题：{log_name} ...")
@@ -758,7 +759,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 music_type=music_type,
             )
         # 发送请求事件，等待结果
-        result: Event = eventmanager.send_event(
+        result: Event = self.eventmanager.send_event(
             ChainEventType.NameRecognize,
             {
                 "title": title,
@@ -820,7 +821,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         :param music_type: 音乐实体类型
         """
         # 发送音乐名称识别事件，等待插件返回标题要素
-        result: Event = eventmanager.send_event(
+        result: Event = self.eventmanager.send_event(
             ChainEventType.MusicNameRecognize,
             {
                 "title": title,
@@ -1507,14 +1508,14 @@ class MediaChain(ChainBase, metaclass=Singleton):
             media_id=media_id,
             target_media_source=target_source,
         )
-        event = eventmanager.send_event(
+        event = self.eventmanager.send_event(
             ChainEventType.MediaRecognizeConvert, event_data,
         )
         return event_data.media_dict if event and event_data.media_dict else None
 
 
-    @staticmethod
     async def async_select_recognize_source(
+            self,
             log_name: str, log_context: str, native_fn, plugin_fn,
             is_recognized=None,
             plugin_event: ChainEventType = ChainEventType.NameRecognize,
@@ -1532,7 +1533,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
         if is_recognized is None:
             is_recognized = lambda result: bool(result)
         mediainfo = None
-        plugin_available = eventmanager.check(plugin_event)
+        # 插件可用性检查走注入的事件管理器，避免链实例直连全局单例
+        plugin_available = self.eventmanager.check(plugin_event)
         if get_chain_runtime_config_snapshot().recognize_plugin_first and plugin_available:
             # 插件优先
             logger.info(f"插件优先模式已开启。请求辅助识别，标题：{log_name} ...")
@@ -1696,7 +1698,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 music_type=music_type,
             )
         # 发送请求事件，等待结果
-        result: Event = await eventmanager.async_send_event(
+        result: Event = await self.eventmanager.async_send_event(
             ChainEventType.NameRecognize,
             {
                 "title": title,
@@ -1758,7 +1760,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
         :param music_type: 音乐实体类型
         """
         # 发送音乐名称识别事件，等待插件返回标题要素
-        result: Event = await eventmanager.async_send_event(
+        result: Event = await self.eventmanager.async_send_event(
             ChainEventType.MusicNameRecognize,
             {
                 "title": title,
@@ -2053,7 +2055,7 @@ class MediaChain(ChainBase, metaclass=Singleton):
             media_id=media_id,
             target_media_source=target_source,
         )
-        event = await eventmanager.async_send_event(
+        event = await self.eventmanager.async_send_event(
             ChainEventType.MediaRecognizeConvert, event_data,
         )
         return event_data.media_dict if event and event_data.media_dict else None

@@ -961,7 +961,7 @@ class DownloadChain(ChainBase):
             downloader=downloader,
             origin=source,
         )
-        event = eventmanager.send_event(ChainEventType.ResourceSelection, event_data)
+        event = self.eventmanager.send_event(ChainEventType.ResourceSelection, event_data)
         if event and event.event_data:
             event_data = event.event_data
             if event_data.updated and event_data.updated_contexts is not None:

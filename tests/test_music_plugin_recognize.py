@@ -4,7 +4,7 @@
 与 ChainBase 媒体识别插件补充（MediaRecognize / MusicMediaRecognize 链式事件）。
 """
 import asyncio
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from app.chain import ChainBase
 from app.chain.media import MediaChain
@@ -66,10 +66,12 @@ def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
         "album": "叶惠美",
         "year": "2003",
     })
-    with patch("app.chain.media.eventmanager") as em:
-        em.check.return_value = True
-        em.send_event.return_value = event
-        result = chain.recognize_by_meta(meta, media_source="musicbrainz")
+    # 事件经注入的 eventmanager 发送，直接替换实例依赖并保留断言能力
+    em = MagicMock()
+    em.check.return_value = True
+    em.send_event.return_value = event
+    monkeypatch.setattr(chain, "eventmanager", em)
+    result = chain.recognize_by_meta(meta, media_source="musicbrainz")
 
     assert result is remote
     assert em.check.call_args.args[0] == ChainEventType.MusicNameRecognize
@@ -101,9 +103,10 @@ def test_music_recognize_keeps_fallback_without_plugin(monkeypatch):
     fallback = _fallback_music(title="未知曲目")
     monkeypatch.setattr(chain, "recognize_media", Mock(return_value=fallback))
 
-    with patch("app.chain.media.eventmanager") as em:
-        em.check.return_value = False
-        result = chain.recognize_by_meta(meta)
+    em = MagicMock()
+    em.check.return_value = False
+    monkeypatch.setattr(chain, "eventmanager", em)
+    result = chain.recognize_by_meta(meta)
 
     assert result is fallback
     em.send_event.assert_not_called()
@@ -122,10 +125,11 @@ def test_music_recognize_help_same_elements_keeps_fallback(monkeypatch):
         "name": "晴天",
         "artist": "周杰伦",
     })
-    with patch("app.chain.media.eventmanager") as em:
-        em.check.return_value = True
-        em.send_event.return_value = event
-        result = chain.recognize_by_meta(meta)
+    em = MagicMock()
+    em.check.return_value = True
+    em.send_event.return_value = event
+    monkeypatch.setattr(chain, "eventmanager", em)
+    result = chain.recognize_by_meta(meta)
 
     assert result is fallback
     assert recognize_mock.call_count == 1
@@ -143,10 +147,11 @@ def test_music_recognize_help_keeps_fallback_when_rematch_fails(monkeypatch):
         "name": "另一个晴天",
         "artist": "未知艺术家",
     })
-    with patch("app.chain.media.eventmanager") as em:
-        em.check.return_value = True
-        em.send_event.return_value = event
-        result = chain.recognize_by_meta(meta)
+    em = MagicMock()
+    em.check.return_value = True
+    em.send_event.return_value = event
+    monkeypatch.setattr(chain, "eventmanager", em)
+    result = chain.recognize_by_meta(meta)
 
     assert result is fallback
 
@@ -169,10 +174,12 @@ def test_async_music_recognize_help(monkeypatch):
         "name": "晴天",
         "artist": "周杰伦",
     })
-    with patch("app.chain.media.eventmanager") as em:
-        em.check.return_value = True
-        em.async_send_event = AsyncMock(return_value=event)
-        result = asyncio.run(chain.async_recognize_by_meta(meta))
+    # 事件经注入的 eventmanager 发送，直接替换实例依赖并保留断言能力
+    em = MagicMock()
+    em.check.return_value = True
+    em.async_send_event = AsyncMock(return_value=event)
+    monkeypatch.setattr(chain, "eventmanager", em)
+    result = asyncio.run(chain.async_recognize_by_meta(meta))
 
     assert result is remote
     assert recognize_calls[-1].title == "晴天"
@@ -193,10 +200,11 @@ def test_plugin_first_keeps_fallback_when_help_unidentified(monkeypatch):
         "title": "晴天",
         "name": "另一个晴天",
     })
-    with patch("app.chain.media.eventmanager") as em, \
-            patch("app.runtime.config.settings.RECOGNIZE_PLUGIN_FIRST", True):
-        em.check.return_value = True
-        em.send_event.return_value = event
+    em = MagicMock()
+    em.check.return_value = True
+    em.send_event.return_value = event
+    monkeypatch.setattr(chain, "eventmanager", em)
+    with patch("app.runtime.config.settings.RECOGNIZE_PLUGIN_FIRST", True):
         result = chain.recognize_by_meta(meta)
 
     assert result is fallback

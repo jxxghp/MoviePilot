@@ -108,13 +108,14 @@ def test_media_identity_conversion_rejects_invalid_pair_without_plugin_handler()
         media_source=MediaSource.Bangumi,
         media_id="0",
     ) is None
-    with patch("app.chain.media.eventmanager.send_event", return_value=None):
-        assert MediaChain.convert_media_identity(
-            chain,
-            target_source=MediaSource.TheAudioDB,
-            media_source=MediaSource.Bangumi,
-            media_id="1",
-        ) is None
+    # 无插件处理器：注入返回空的 eventmanager 桩
+    chain.eventmanager = Mock(send_event=Mock(return_value=None))
+    assert MediaChain.convert_media_identity(
+        chain,
+        target_source=MediaSource.TheAudioDB,
+        media_source=MediaSource.Bangumi,
+        media_id="1",
+    ) is None
     assert chain.tmdb_mtype is None
     assert chain.douban_mtype is None
 
@@ -129,13 +130,14 @@ def test_media_identity_conversion_dispatches_plugin_source() -> None:
         event_data.media_dict.update(result)
         return Mock(event_data=event_data)
 
-    with patch("app.chain.media.eventmanager.send_event", side_effect=handle_event):
-        converted = MediaChain.convert_media_identity(
-            chain,
-            target_source=MediaSource.TMDB,
-            media_source=MediaSource("acme.video"),
-            media_id="custom-1",
-        )
+    # 事件经注入的 eventmanager 发送，测试桩直接提供实例依赖
+    chain.eventmanager = Mock(send_event=Mock(side_effect=handle_event))
+    converted = MediaChain.convert_media_identity(
+        chain,
+        target_source=MediaSource.TMDB,
+        media_source=MediaSource("acme.video"),
+        media_id="custom-1",
+    )
 
     assert converted == result
 
@@ -211,15 +213,13 @@ def test_async_media_identity_conversion_dispatches_plugin_source() -> None:
         event_data.media_dict.update(result)
         return Mock(event_data=event_data)
 
-    with patch(
-        "app.chain.media.eventmanager.async_send_event",
-        new=AsyncMock(side_effect=handle_event),
-    ):
-        converted = asyncio.run(MediaChain.async_convert_media_identity(
-            chain,
-            target_source=MediaSource.Douban,
-            media_source=MediaSource("acme.video"),
-            media_id="custom-1",
-        ))
+    # 事件经注入的 eventmanager 发送，测试桩直接提供实例依赖
+    chain.eventmanager = Mock(async_send_event=AsyncMock(side_effect=handle_event))
+    converted = asyncio.run(MediaChain.async_convert_media_identity(
+        chain,
+        target_source=MediaSource.Douban,
+        media_source=MediaSource("acme.video"),
+        media_id="custom-1",
+    ))
 
     assert converted == result

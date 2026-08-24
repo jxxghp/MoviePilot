@@ -74,7 +74,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 payload=userdata.model_dump(),
             )
             # 发送事件
-            eventmanager.send_event(EventType.SiteRefreshed, {
+            self.eventmanager.send_event(EventType.SiteRefreshed, {
                 "site_id": site.get("id")
             })
             self._post_site_messages(site=site, userdata=userdata)
@@ -163,7 +163,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     data={"total": total_num, "finished": index},
                 )
         if any_site_updated:
-            eventmanager.send_event(EventType.SiteRefreshed, {
+            self.eventmanager.send_event(EventType.SiteRefreshed, {
                 "site_id": "*"
             })
         if progress_callback:
@@ -461,7 +461,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
             # 通知站点更新
             if indexer:
-                eventmanager.send_event(EventType.SiteUpdated, {
+                self.eventmanager.send_event(EventType.SiteUpdated, {
                     "domain": domain,
                 })
             if progress_callback:

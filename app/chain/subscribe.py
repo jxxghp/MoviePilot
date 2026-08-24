@@ -934,7 +934,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """同步执行提交后消息、事件和统计，异常不再触碰数据库事务。"""
         if context.notification:
             self.post_message(_SchemaMessage.model_validate(context.notification))
-        eventmanager.send_event(EventType.SubscribeAdded, {
+        self.eventmanager.send_event(EventType.SubscribeAdded, {
             "subscribe_id": subscribe_id,
             "idempotency_key": (
                 f"subscribe.added:{subscribe_id}:"
@@ -958,7 +958,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             await self.async_post_message(
                 _SchemaMessage.model_validate(context.notification)
             )
-        await eventmanager.async_send_event(EventType.SubscribeAdded, {
+        await self.eventmanager.async_send_event(EventType.SubscribeAdded, {
             "subscribe_id": subscribe_id,
             "idempotency_key": (
                 f"subscribe.added:{subscribe_id}:"
@@ -3112,7 +3112,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if subscribe.state == "P":
             return
         # 发送订阅完成判定事件，在写入 DB 前，允许外部据完结策略否决本次自动完成
-        completion_event = eventmanager.send_event(
+        completion_event = self.eventmanager.send_event(
             ChainEventType.SubscribeCompletionCheck,
             SubscribeCompletionCheckEventData(subscribe=subscribe, mediainfo=mediainfo, meta=meta))
         if completion_event and completion_event.event_data:

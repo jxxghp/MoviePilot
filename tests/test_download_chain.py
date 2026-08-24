@@ -558,6 +558,8 @@ def test_batch_download_rejects_complete_coverage_when_files_do_not_cover_target
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
     chain.download_single = MagicMock(return_value="hash")
 
@@ -588,6 +590,8 @@ def test_batch_download_preserves_special_season_zero(monkeypatch):
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
     chain.download_single = MagicMock(return_value="hash")
 
@@ -623,6 +627,8 @@ def test_batch_download_rejects_complete_coverage_when_only_missing_episodes_mat
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
     chain.download_single = MagicMock(return_value="hash")
 
@@ -655,6 +661,8 @@ def test_batch_download_tries_next_episode_candidate_when_first_download_fails(m
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_single = MagicMock(side_effect=[None, "hash"])
 
     first_context = _build_tv_context(episode_list=[1])
@@ -692,6 +700,8 @@ def test_batch_download_does_not_download_duplicate_movie_after_success(monkeypa
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_single = MagicMock(return_value="hash")
 
     first_context = SimpleNamespace(
@@ -720,6 +730,8 @@ def test_batch_download_threads_custom_words_to_download_single(monkeypatch):
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_single = MagicMock(return_value="hash")
 
     context = SimpleNamespace(
@@ -744,6 +756,8 @@ def test_batch_download_applies_custom_words_to_torrent_file_episodes(monkeypatc
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock(
         return_value=(b"torrent-content", "", ["A.Will.Eternal.S04E05.mkv"]),
     )
@@ -807,6 +821,8 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     error_msg = "添加种子任务失败：无法读取种子文件"
     chain.download = MagicMock(return_value=("qb", None, "Original", error_msg))
     chain.post_message = MagicMock()
@@ -943,6 +959,8 @@ def test_batch_download_skips_failed_subscription_resource_and_tries_next(monkey
     )
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_single = MagicMock(return_value="hash")
 
     downloads, lefts = chain.batch_download(
@@ -965,6 +983,8 @@ def test_batch_download_accepts_complete_coverage_when_files_cover_target_range(
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
     chain.download_single = MagicMock(return_value="hash")
 
@@ -997,6 +1017,8 @@ def test_batch_download_rejects_complete_coverage_when_files_have_same_count_but
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
     chain.download_single = MagicMock(return_value="hash")
 
@@ -1029,6 +1051,8 @@ def test_batch_download_accepts_complete_coverage_when_title_episodes_cover_targ
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock()
     chain.download_single = MagicMock(return_value="hash")
 
@@ -1062,6 +1086,8 @@ def test_batch_download_rejects_complete_coverage_when_title_episodes_are_partia
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock()
     chain.download_single = MagicMock(return_value="hash")
 
@@ -1095,6 +1121,8 @@ def test_batch_download_complete_coverage_ignores_allowed_episode_narrowing(monk
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock()
     chain.download_single = MagicMock(return_value="hash")
 
@@ -1129,6 +1157,8 @@ def test_batch_download_keeps_count_check_without_complete_coverage(monkeypatch)
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
     chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
     chain.download_single = MagicMock(return_value="hash")
 

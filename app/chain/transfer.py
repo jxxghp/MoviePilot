@@ -18,7 +18,6 @@ from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain
 from app.runtime.config import global_vars
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
-from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
@@ -1487,7 +1486,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             source_event_data = StorageOperSelectionEventData(
                 storage=task.fileitem.storage,
             )
-            source_event = eventmanager.send_event(
+            source_event = self.eventmanager.send_event(
                 ChainEventType.StorageOperSelection, source_event_data
             )
             # 使用事件返回的上下文数据
@@ -1503,7 +1502,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             target_event_data = StorageOperSelectionEventData(
                 storage=task.target_storage,
             )
-            target_event = eventmanager.send_event(
+            target_event = self.eventmanager.send_event(
                 ChainEventType.StorageOperSelection, target_event_data
             )
             # 使用事件返回的上下文数据
