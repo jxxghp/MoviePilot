@@ -6423,7 +6423,7 @@
     }
   },
   "run_module": {
-    "call_count": 260,
+    "call_count": 261,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
     "method_count": 211,
@@ -7648,6 +7648,11 @@
         },
         {
           "caller": "app.chain.douban",
+          "count": 1,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.media",
           "count": 1,
           "mode": "sync"
         },
