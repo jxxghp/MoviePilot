@@ -97,7 +97,8 @@ profile，依赖名称、版本和 source 语义全部由 `pyproject.toml` 与 `
 运行阶段还必须保留动态观测，因为构建探针无法穷举插件延迟导入的第三方扩展：
 
 - 启动收尾日志记录解释器类型和实际 GIL 状态；
-- 系统环境 API 返回 `PYTHON_GIL_ENABLED` 和 `RUST_ACCEL_REQUIRED`；
+- 登录后全局设置与系统环境 API 返回 `PYTHON_FREE_THREADED` 和 `PYTHON_GIL_ENABLED`，系统环境 API
+  同时返回 `RUST_ACCEL_REQUIRED`；
 - 插件安装或重载导致 GIL 从关闭变为开启时，日志记录对应插件归因；
 - 前端在 V3t 实际启用 GIL 时显示兼容告警，正常状态不误报。
 
