@@ -78,6 +78,8 @@ class StreamingHandler:
         self._allow_dispatch_without_context = False
         # 非啰嗦模式下的待输出工具统计，等下一段文本到来时再统一补一句摘要
         self._pending_tool_stats: dict[str, dict[str, Any]] = {}
+        # 本轮已写入缓冲区的工具摘要行，供 Telegram 富文本渲染时做区分样式
+        self._tool_summaries: set[str] = set()
 
     def set_dispatch_policy(
         self, allow_dispatch_without_context: bool = False
@@ -139,6 +141,7 @@ class StreamingHandler:
             self._message_response = None
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
+            self._tool_summaries = set()
 
     def reset(self):
         """
@@ -153,6 +156,7 @@ class StreamingHandler:
             self._sent_text = ""
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
+            self._tool_summaries = set()
 
     async def start_streaming(
         self,
@@ -215,6 +219,7 @@ class StreamingHandler:
         self._message_response = None
         self._msg_start_offset = 0
         self._pending_tool_stats = {}
+        self._tool_summaries = set()
 
         # 检查渠道是否支持消息编辑，不支持则仅收集 token 到 buffer，不实时推送
         if not self._can_stream():
@@ -284,6 +289,7 @@ class StreamingHandler:
             self._message_response = None
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
+            self._tool_summaries = set()
             if all_sent:
                 # 所有内容已通过流式发送，清空缓冲区
                 self._buffer = ""
@@ -461,11 +467,14 @@ class StreamingHandler:
             return ""
 
         summary = f"（{'，'.join(parts)}）"
+        self._tool_summaries.add(summary)
+        # 摘要前始终保证一个空行，让工具执行信息与正文分属不同段落，
+        # 避免 Markdown 富文本把单个换行折叠成同一段落内的软换行
         visible_buffer = self._buffer.rstrip(" \t")
-        last_char = visible_buffer[-1:] if visible_buffer.strip() else ""
+        trailing_newlines = len(visible_buffer) - len(visible_buffer.rstrip("\n"))
         prefix = ""
-        if self._buffer and last_char != "\n":
-            prefix = "\n\n"
+        if visible_buffer.strip():
+            prefix = "\n" * max(2 - trailing_newlines, 0)
         return f"{prefix}{summary}\n\n"
 
     @staticmethod
@@ -517,9 +526,23 @@ class StreamingHandler:
         """
         为 Telegram 流式消息返回 Rich Markdown，其他渠道继续使用原有格式。
         """
-        if self._channel == NotificationChannel.Telegram.value:
+        if self._channel != NotificationChannel.Telegram.value:
+            return None
+        return self._quote_tool_summary_lines(text)
+
+    def _quote_tool_summary_lines(self, text: str) -> str:
+        """
+        将缓冲区中的工具摘要整行转换为 Markdown 引用块。
+
+        富文本会把普通段落间的空行折叠成紧凑排版，引用块作为独立 block 类型
+        渲染，保证工具执行信息在 Telegram 上始终与正文有可辨识的视觉分隔。
+        """
+        if not self._tool_summaries or not text:
             return text
-        return None
+        return "\n".join(
+            f"> {line}" if line in self._tool_summaries else line
+            for line in text.split("\n")
+        )
 
     async def _flush_loop(self):
         """

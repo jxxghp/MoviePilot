@@ -179,12 +179,19 @@ class TestAgentToolStreaming:
 
         assert buffered_message == "好的，我来帮您执行\n抱歉，您没有执行此工具的权限"
 
-    def test_non_verbose_tool_call_reuses_existing_newline_before_summary(self):
-        """校验非详细模式复用已有换行追加工具摘要。"""
+    def test_non_verbose_tool_call_completes_blank_line_before_summary(self):
+        """校验非详细模式在摘要前补足空行，保证工具摘要独立成段。"""
         result, buffered_message = asyncio.run(self._run_tool("prefix\n"))
 
         assert result == "ok"
-        assert buffered_message == "prefix\n（调用了 1 次工具）\n\n"
+        assert buffered_message == "prefix\n\n（调用了 1 次工具）\n\n"
+
+    def test_non_verbose_tool_call_keeps_existing_blank_line_before_summary(self):
+        """校验缓冲区已有空行时摘要不再追加多余换行。"""
+        result, buffered_message = asyncio.run(self._run_tool("prefix\n\n"))
+
+        assert result == "ok"
+        assert buffered_message == "prefix\n\n（调用了 1 次工具）\n\n"
 
     def test_non_verbose_tool_call_emits_summary_even_when_buffer_was_empty(self):
         """校验空缓冲区仍会输出工具调用摘要。"""
@@ -395,6 +402,55 @@ class TestAgentToolStreaming:
         assert notification.text == "hello"
         assert notification.rich_message == "hello"
         assert handler.has_sent_message
+
+    def test_rich_message_quotes_tool_summary_lines_for_telegram(self):
+        """校验 Telegram 富文本将工具摘要行转换为引用块，与正文视觉分隔。"""
+        handler = StreamingHandler()
+        handler._channel = NotificationChannel.Telegram.value
+        handler._source = "telegram"
+        handler.record_tool_call(
+            tool_name="list_directory",
+            tool_message="查看目录",
+            tool_kwargs={"path": "/tmp"},
+        )
+        handler.flush_pending_tool_summary()
+        text = handler._buffer
+
+        rich_message = handler._get_rich_message(text)
+
+        assert text == "（查看了 1 个目录）\n\n"
+        assert rich_message == "> （查看了 1 个目录）\n\n"
+
+    def test_rich_message_keeps_body_text_unquoted_for_telegram(self):
+        """校验 Telegram 富文本只转换工具摘要行，正文保持原样。"""
+        handler = StreamingHandler()
+        handler._channel = NotificationChannel.Telegram.value
+        handler.emit("正文内容\n\n")
+        handler.record_tool_call(
+            tool_name="execute_command",
+            tool_message="执行命令",
+            tool_kwargs={},
+        )
+        handler.emit("后续结论")
+
+        rich_message = handler._get_rich_message(handler._buffer)
+
+        assert rich_message == "正文内容\n\n> （执行了 1 条命令）\n\n后续结论"
+
+    def test_rich_message_returns_none_for_non_telegram_channels(self):
+        """校验非 Telegram 渠道不启用富文本，摘要保持原有纯文本格式。"""
+        handler = StreamingHandler()
+        handler._channel = NotificationChannel.Feishu.value
+        handler._source = "feishu-main"
+        handler.record_tool_call(
+            tool_name="execute_command",
+            tool_message="执行命令",
+            tool_kwargs={},
+        )
+        handler.flush_pending_tool_summary()
+
+        assert handler._get_rich_message(handler._buffer) is None
+        assert handler._buffer == "（执行了 1 条命令）\n\n"
 
     def test_flush_edits_message_via_threadpool(self):
         """校验刷新时通过线程池编辑已有消息。"""
