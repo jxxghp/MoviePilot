@@ -33,6 +33,7 @@ from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 
 settings = RuntimeSettingsCompat()
 from app.runtime.health import get_application_health
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.topology import validate_process_topology
 from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.adapters.external.server import MoviePilotServerHelper
@@ -135,32 +136,40 @@ async def run_shutdown_step(
     timeout_seconds: float | None = None,
 ) -> bool:
     """在有限预算内执行关闭阶段，并返回资源 owner 是否已经收敛。"""
-    try:
-        result = callback()
+
+    async def invoke() -> object:
+        """在主循环执行异步 owner，在受控 worker 执行同步 owner。"""
+        if inspect.iscoroutinefunction(callback):
+            return await callback()
+        result = await run_in_threadpool_to_completion(callback)
         if inspect.isawaitable(result):
-            task = asyncio.ensure_future(result)
+            return await result
+        return result
 
-            def _consume_shutdown_result(done: asyncio.Future) -> None:
-                """消费延迟收敛任务的最终异常，避免事件循环产生未取回异常。"""
-                try:
-                    done.result()
-                except asyncio.CancelledError:
-                    pass
-                except Exception as err:
-                    logger.error(f"关闭{name}最终收尾失败：{err}")
+    try:
+        task = asyncio.create_task(invoke(), name=f"shutdown.{name}")
 
-            task.add_done_callback(_consume_shutdown_result)
-            if timeout_seconds:
-                try:
-                    result = await asyncio.wait_for(
-                        asyncio.shield(task), timeout=timeout_seconds
-                    )
-                except asyncio.TimeoutError:
-                    logger.error("关闭%s超时，已请求取消并保留未收敛任务", name)
-                    task.cancel()
-                    return False
-            else:
-                result = await task
+        def _consume_shutdown_result(done: asyncio.Future) -> None:
+            """消费延迟收敛任务的最终异常，避免事件循环产生未取回异常。"""
+            try:
+                done.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as err:
+                logger.error(f"关闭{name}最终收尾失败：{err}")
+
+        task.add_done_callback(_consume_shutdown_result)
+        if timeout_seconds:
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                logger.error("关闭%s超时，已请求取消并保留未收敛任务", name)
+                task.cancel()
+                return False
+        else:
+            result = await task
         if result is False:
             logger.error("关闭%s未收敛，资源所有权保持不变", name)
             return False

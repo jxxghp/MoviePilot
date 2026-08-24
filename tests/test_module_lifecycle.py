@@ -1,7 +1,10 @@
+import asyncio
 import threading
+import time
 from unittest.mock import Mock, patch
 
 import pytest
+from telebot import TeleBot
 
 from app.modules import _MessageBase
 from app.modules.discord import DiscordModule
@@ -23,6 +26,7 @@ from app.modules.wechat import WechatModule
 from app.modules.wechat.wechatbot import WeChatBot
 from app.modules.wechatclawbot import WechatClawBotModule
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
+from app.runtime.execution import run_in_threadpool_to_completion
 
 
 def test_config_reload_stops_before_initializing_latest_generation():
@@ -180,6 +184,8 @@ def test_telegram_stop_closes_sdk_and_waits_for_polling_thread():
     """客户端停止完成后不得保留 SDK worker 或 polling 线程句柄。"""
     client = Telegram.__new__(Telegram)
     bot = Mock()
+    bot.threaded = False
+    bot.worker_pool = None
     client._bot = bot
     polling_thread = Mock()
     polling_thread.is_alive.side_effect = [True, False]
@@ -193,9 +199,9 @@ def test_telegram_stop_closes_sdk_and_waits_for_polling_thread():
     assert client.stop() is True
     assert client.stop() is True
 
-    bot.stop_bot.assert_called_once_with()
+    bot.stop_polling.assert_called_once_with()
     polling_thread.join.assert_called_once_with(
-        timeout=client._polling_join_timeout_seconds
+        timeout=pytest.approx(client._shutdown_timeout_seconds, abs=0.1)
     )
     assert client._bot is None
     assert client._polling_thread is None
@@ -205,11 +211,13 @@ def test_telegram_stop_keeps_polling_owner_when_thread_misses_deadline():
     """polling 超过关闭预算时必须返回未收敛并保留原 owner。"""
     client = Telegram.__new__(Telegram)
     bot = Mock()
+    bot.threaded = False
+    bot.worker_pool = None
     polling_thread = Mock()
     polling_thread.is_alive.return_value = True
     client._bot = bot
     client._polling_thread = polling_thread
-    client._polling_join_timeout_seconds = 0.01
+    client._shutdown_timeout_seconds = 0.01
     client._typing_tasks = {}
     client._typing_stop_flags = {}
     client._typing_lock = threading.RLock()
@@ -218,9 +226,58 @@ def test_telegram_stop_keeps_polling_owner_when_thread_misses_deadline():
 
     assert client.stop() is False
 
-    polling_thread.join.assert_called_once_with(timeout=0.01)
+    polling_thread.join.assert_called_once()
+    remaining_timeout = polling_thread.join.call_args.kwargs["timeout"]
+    assert 0 <= remaining_timeout <= client._shutdown_timeout_seconds
     assert client._bot is bot
     assert client._polling_thread is polling_thread
+
+
+@pytest.mark.asyncio
+async def test_telegram_stop_bounds_real_sdk_worker_and_retries_after_release():
+    """真实 SDK worker 阻塞时应保留 owner，释放后重试可以完整收敛。"""
+    bot = TeleBot("123:test", threaded=True, num_threads=1)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_callback() -> None:
+        entered.set()
+        release.wait(timeout=1.0)
+
+    bot.worker_pool.put(blocking_callback)
+    assert await asyncio.to_thread(entered.wait, 0.2)
+
+    client = Telegram.__new__(Telegram)
+    client._bot = bot
+    client._polling_thread = None
+    client._shutdown_timeout_seconds = 0.02
+    client._typing_tasks = {}
+    client._typing_stop_flags = {}
+    client._typing_lock = threading.RLock()
+    client._typing_lifecycle_lock = threading.RLock()
+    client._typing_accepting = True
+
+    heartbeat = asyncio.create_task(asyncio.sleep(0.005))
+    started_at = time.monotonic()
+    try:
+        assert await run_in_threadpool_to_completion(client.stop) is False
+        assert time.monotonic() - started_at < 0.2
+        assert heartbeat.done()
+        assert client._bot is bot
+        assert any(worker.is_alive() for worker in bot.worker_pool.workers)
+
+        release.set()
+        for worker in bot.worker_pool.workers:
+            await asyncio.to_thread(worker.join, 0.2)
+
+        assert await run_in_threadpool_to_completion(client.stop) is True
+        assert client._bot is None
+        assert client._polling_thread is None
+    finally:
+        release.set()
+        for worker in bot.worker_pool.workers:
+            worker.stop()
+            await asyncio.to_thread(worker.join, 0.2)
 
 
 @pytest.mark.parametrize(

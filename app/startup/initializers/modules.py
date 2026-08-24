@@ -27,6 +27,7 @@ from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.events import EventHandlerBinding, EventManager
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.observability import record_metric
 from app.runtime.state import SystemHelper
 from app.runtime.settings import configure_runtime_setting_provider
@@ -616,7 +617,10 @@ async def stop_modules() -> bool:
         """执行单个关闭步骤，失败时继续收口并保留诚实结果。"""
         nonlocal all_converged
         try:
-            result = callback()
+            if inspect.iscoroutinefunction(callback):
+                result = callback()
+            else:
+                result = await run_in_threadpool_to_completion(callback)
             if inspect.isawaitable(result):
                 result = await result
             converged = result is not False
