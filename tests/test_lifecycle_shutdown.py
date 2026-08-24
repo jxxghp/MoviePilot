@@ -1215,7 +1215,7 @@ async def test_shutdown_step_bounds_sync_owner_without_blocking_event_loop() -> 
     shutdown = asyncio.create_task(
         lifecycle.run_shutdown_step(
             "同步阻塞 owner",
-            blocking_shutdown,
+            lifecycle.offload_shutdown_callback(blocking_shutdown),
             timeout_seconds=0.02,
         )
     )
@@ -1230,6 +1230,21 @@ async def test_shutdown_step_bounds_sync_owner_without_blocking_event_loop() -> 
 
     release.set()
     assert await asyncio.to_thread(settled.wait, 0.2)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_step_calls_awaitable_wrapper_on_event_loop() -> None:
+    """普通 callable 可在主循环构造并返回需要等待的异步结果。"""
+    loop = asyncio.get_running_loop()
+
+    def shutdown_wrapper() -> asyncio.Task[None]:
+        assert asyncio.get_running_loop() is loop
+        return loop.create_task(asyncio.sleep(0))
+
+    assert await lifecycle.run_shutdown_step(
+        "异步包装 owner",
+        shutdown_wrapper,
+    ) is True
 
 
 @pytest.mark.asyncio

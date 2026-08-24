@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6599,
-  "edge_sha256": "33b44ea7d1f05a4c76fd22c4c1b798689ac8e580099c50141fbd91345a625714",
+  "edge_count": 6601,
+  "edge_sha256": "b2db2372dad5ff58f00ce1173a699daf73f0ddde62bde15f9dff75c6965162eb",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -6300,6 +6300,7 @@
     "app.startup.initializers.modules -> app.runtime.cache",
     "app.startup.initializers.modules -> app.runtime.config",
     "app.startup.initializers.modules -> app.runtime.events",
+    "app.startup.initializers.modules -> app.runtime.execution",
     "app.startup.initializers.modules -> app.runtime.extensions",
     "app.startup.initializers.modules -> app.runtime.extensions.module",
     "app.startup.initializers.modules -> app.runtime.extensions.module.dispatcher",
@@ -6402,6 +6403,7 @@
     "app.startup.lifecycle -> app.foundation.environment",
     "app.startup.lifecycle -> app.runtime",
     "app.startup.lifecycle -> app.runtime.config",
+    "app.startup.lifecycle -> app.runtime.execution",
     "app.startup.lifecycle -> app.runtime.health",
     "app.startup.lifecycle -> app.runtime.log",
     "app.startup.lifecycle -> app.runtime.settings",

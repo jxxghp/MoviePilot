@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import time
 from contextlib import asynccontextmanager
-from typing import Callable
+from typing import Awaitable, Callable
 
 from fastapi import FastAPI
 
@@ -138,10 +138,8 @@ async def run_shutdown_step(
     """在有限预算内执行关闭阶段，并返回资源 owner 是否已经收敛。"""
 
     async def invoke() -> object:
-        """在主循环执行异步 owner，在受控 worker 执行同步 owner。"""
-        if inspect.iscoroutinefunction(callback):
-            return await callback()
-        result = await run_in_threadpool_to_completion(callback)
+        """在主循环调用 owner，并等待其可能返回的异步结果。"""
+        result = callback()
         if inspect.isawaitable(result):
             return await result
         return result
@@ -177,6 +175,17 @@ async def run_shutdown_step(
     except Exception as err:
         logger.error(f"关闭{name}失败：{err}")
         return False
+
+
+def offload_shutdown_callback(
+    callback: Callable[[], object],
+) -> Callable[[], Awaitable[object]]:
+    """把明确会阻塞的同步关闭 owner 包装为异步生命周期回调。"""
+
+    async def invoke() -> object:
+        return await run_in_threadpool_to_completion(callback)
+
+    return invoke
 
 
 async def run_startup_step(
@@ -393,7 +402,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("插件备份恢复",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_plugins,
-            stop=finalize_plugins,
+            stop=offload_shutdown_callback(finalize_plugins),
             start_order=90,
             stop_order=60,
             start_timeout_seconds=300,
@@ -404,7 +413,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="插件变更监控",
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
-            stop=stop_plugin_monitor,
+            stop=offload_shutdown_callback(stop_plugin_monitor),
             stop_order=8,
             stop_timeout_seconds=10,
             stop_failure=LifecycleFailurePolicy.FAIL_FAST,
@@ -414,7 +423,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_scheduler,
-            stop=stop_scheduler,
+            stop=offload_shutdown_callback(stop_scheduler),
             start_order=100,
             stop_order=50,
             start_timeout_seconds=120,
@@ -505,7 +514,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("命令服务",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_workflow,
-            stop=stop_workflow,
+            stop=offload_shutdown_callback(stop_workflow),
             start_order=140,
             stop_order=20,
             start_timeout_seconds=120,
@@ -516,7 +525,9 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="插件备份",
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
-            stop=lambda: SystemChain().backup_plugins(),
+            stop=offload_shutdown_callback(
+                lambda: SystemChain().backup_plugins()
+            ),
             stop_order=10,
             stop_timeout_seconds=300,
         ),

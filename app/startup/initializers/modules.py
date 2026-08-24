@@ -612,15 +612,16 @@ async def stop_modules() -> bool:
         name: str,
         callback: Callable[[], object],
         *,
+        offload: bool = False,
         record_failure: bool = True,
     ) -> bool:
         """执行单个关闭步骤，失败时继续收口并保留诚实结果。"""
         nonlocal all_converged
         try:
-            if inspect.iscoroutinefunction(callback):
-                result = callback()
-            else:
+            if offload:
                 result = await run_in_threadpool_to_completion(callback)
+            else:
+                result = callback()
             if inspect.isawaitable(result):
                 result = await result
             converged = result is not False
@@ -637,14 +638,14 @@ async def stop_modules() -> bool:
         return converged
 
     await run_step("图片代理安全日志合并器", close_image_proxy_block_log_coalescer)
-    await run_step("模块", lambda: ModuleManager().shutdown())
+    await run_step("模块", lambda: ModuleManager().shutdown(), offload=True)
     await run_step("事件消费", lambda: EventManager().stop_async())
-    await run_step("浏览器会话", close_browser_sessions)
+    await run_step("浏览器会话", close_browser_sessions, offload=True)
     await run_step("托管资源", stop_managed_resources)
-    await run_step("DoH服务", lambda: DohHelper().shutdown())
-    await run_step("线程池", lambda: ThreadHelper().shutdown())
-    await run_step("消息服务", stop_message)
-    await run_step("Redis缓存连接", lambda: RedisHelper().close())
+    await run_step("DoH服务", lambda: DohHelper().shutdown(), offload=True)
+    await run_step("线程池", lambda: ThreadHelper().shutdown(), offload=True)
+    await run_step("消息服务", stop_message, offload=True)
+    await run_step("Redis缓存连接", lambda: RedisHelper().close(), offload=True)
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
     # Web Agent 的取消 finally 可能还要写入最终展示快照，必须先完成任务收尾，再关闭写入准入。
     web_agent_drained = await run_step(
@@ -676,8 +677,8 @@ async def stop_modules() -> bool:
         else:
             all_converged = False
             logger.error("数据库任务未收敛，跳过数据库连接关闭以避免运行中事务使用已释放连接")
-    await run_step("前端服务", stop_frontend)
-    await run_step("临时文件", clear_temp)
+    await run_step("前端服务", stop_frontend, offload=True)
+    await run_step("临时文件", clear_temp, offload=True)
     return all_converged
 
 

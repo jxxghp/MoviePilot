@@ -118,7 +118,9 @@ async def run_samples(
         await sample(
             lambda: lifecycle.run_shutdown_step(
                 "probe.sync_owner",
-                lambda: time.sleep(block_seconds),
+                lifecycle.offload_shutdown_callback(
+                    lambda: time.sleep(block_seconds)
+                ),
                 timeout_seconds=max(1.0, block_seconds * 4),
             ),
             heartbeat_seconds=heartbeat_seconds,
