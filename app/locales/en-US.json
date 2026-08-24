@@ -196,6 +196,7 @@
     "测试目标重定向次数过多": "Test target redirected too many times",
     "当前运行环境不支持重启操作！": "The current runtime environment does not support restart!",
     "当前运行环境不支持升级操作！": "The current runtime environment does not support upgrade!",
+    "Release 更新请使用 /system/update/check、download 和 install 接口": "Use the /system/update/check, download, and install endpoints for Release updates",
     "命令不能为空！": "Command cannot be empty!",
     "未找到指定的种子": "Specified torrent not found",
     "种子删除成功": "Torrent deleted successfully",

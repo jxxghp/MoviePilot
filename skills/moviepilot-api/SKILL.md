@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 13
+version: 14
 description: >-
   Use this skill when you need to call MoviePilot REST API endpoints directly
   with the bundled Python client. Covers MoviePilot HTTP endpoints across media
