@@ -17,6 +17,56 @@ SUPPORTED_WORKFLOW_TRIGGERS = {
 }
 
 
+class WorkflowRuntime(Protocol):
+    """声明宿主入口与 Chain 消费的工作流运行时能力。"""
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        """执行单个工作流动作，参数与 concrete 管理器保持一致。"""
+        ...
+
+    def list_actions(self) -> list[dict[str, Any]]:
+        """返回当前运行时登记的工作流动作定义。"""
+        ...
+
+    def load_workflow_events(self, workflow_id: Optional[int] = None) -> None:
+        """加载全部或指定工作流的事件触发器。"""
+        ...
+
+    def remove_workflow_event(
+            self,
+            workflow_id: Optional[int] = None,
+            event_type_str: Optional[str] = None,
+    ) -> None:
+        """移除全部或指定工作流的事件触发器。"""
+        ...
+
+    def update_workflow_event(self, workflow: Any) -> None:
+        """按最新定义刷新工作流事件触发器。"""
+        ...
+
+
+WorkflowRuntimeProvider = Callable[[], WorkflowRuntime]
+
+
+def _unconfigured_workflow_runtime() -> WorkflowRuntime:
+    """拒绝在启动组合根装配前隐式创建工作流管理器。"""
+    raise RuntimeError("工作流运行时尚未由启动组合根装配")
+
+
+_workflow_runtime_provider: WorkflowRuntimeProvider = _unconfigured_workflow_runtime
+
+
+def configure_workflow_runtime(provider: WorkflowRuntimeProvider) -> None:
+    """由启动组合根登记工作流运行时实例提供器。"""
+    global _workflow_runtime_provider
+    _workflow_runtime_provider = provider
+
+
+def get_workflow_manager() -> WorkflowRuntime:
+    """返回组合根提供的工作流运行时，避免消费者直接定位 Singleton。"""
+    return _workflow_runtime_provider()
+
+
 class AsyncWorkflowQueryRepository(Protocol):
     """工作流查询用例需要的异步读取端口。"""
 

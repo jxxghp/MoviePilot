@@ -2,13 +2,41 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import MappingProxyType
 from typing import Any, Protocol, TypeVar
+
+from app.schemas.types import EventType
 
 
 T = TypeVar("T")
+
+
+SUBSCRIBE_ADDED_TOPIC = "subscribe.added"
+SUBSCRIBE_MODIFIED_TOPIC = "subscribe.modified"
+SUBSCRIBE_DELETED_TOPIC = "subscribe.deleted"
+DOWNLOAD_ADDED_TOPIC = "download.added"
+TRANSFER_COMPLETED_TOPIC = "transfer.completed"
+TRANSFER_FAILED_TOPIC = "transfer.failed"
+
+DURABLE_EVENT_TOPICS: Mapping[EventType, str] = MappingProxyType({
+    EventType.SubscribeAdded: SUBSCRIBE_ADDED_TOPIC,
+    EventType.SubscribeModified: SUBSCRIBE_MODIFIED_TOPIC,
+    EventType.SubscribeDeleted: SUBSCRIBE_DELETED_TOPIC,
+    EventType.DownloadAdded: DOWNLOAD_ADDED_TOPIC,
+    EventType.TransferComplete: TRANSFER_COMPLETED_TOPIC,
+    EventType.TransferFailed: TRANSFER_FAILED_TOPIC,
+})
+
+
+def durable_event_topic(event_type: EventType) -> str:
+    """返回 durable-required 事件唯一登记的 outbox topic。"""
+    try:
+        return DURABLE_EVENT_TOPICS[event_type]
+    except KeyError as error:
+        raise ValueError(f"事件 {event_type.name} 未登记 durable topic") from error
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +59,18 @@ class ClaimedOutboxMessage:
     payload: dict[str, Any]
     payload_version: int
     attempt: int
+
+
+def validate_durable_event_handlers(
+    handlers: Mapping[str, Callable[[ClaimedOutboxMessage], None]],
+) -> None:
+    """拒绝缺少任一 durable-required 事件恢复 handler 的 dispatcher。"""
+    missing = set(DURABLE_EVENT_TOPICS.values()) - set(handlers)
+    if missing:
+        raise RuntimeError(
+            "Outbox dispatcher 缺少 durable 事件 handler: "
+            + ", ".join(sorted(missing))
+        )
 
 
 class OutboxRepository(Protocol):

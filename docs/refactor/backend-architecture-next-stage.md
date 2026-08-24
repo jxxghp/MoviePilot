@@ -6,7 +6,7 @@
 > 审计范围：宿主后端；排除 `app/plugins/**` 运行时插件副本
 > 规范优先级：`AGENTS.md` 与 `docs/rules/` 高于本文
 > 相关文档：`docs/architecture-overview.md`、`docs/refactor/backend-architecture-governance.md`、`docs/refactor/backend-module-refactor-compatibility.md`
-> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界。
+> 实施进度：阶段 0～6 的宿主架构能力已完成收口；API/Application 公共复杂度基线已清零，启动组合根的 SystemConfigOper 构造点已由 14 降至 1；API 进程内后台任务已完成首批统一登记，插件仓适配和 Outbox 外围扩展仍按风险切片推进。Model/Base 查询与写装饰器、legacy 隐式会话外壳均已清零，插件 SDK 也不再导出宿主 Model。2026-08-23 的长期整改阶段 0 已恢复宿主、启动性能、官方插件和 SDK 契约门禁的可信基线；阶段 1a 已补齐 TaskRegistry owner 零债务门禁和诚实的关停超时语义；阶段 1b1 已收口整理 worker、pending 回放、失败通知、进程内 AI 重试、插件监控与事件投递的生命周期所有权；2026-08-24 的阶段 2 已将 212 个已观察宿主模块方法的 legacy aggregation 清零，并补齐可执行 fanout 与下载器文件 DTO 边界；阶段 3 已将消息交互和远程命令的订阅删除统一到 Application/UoW/outbox，宿主不再调用裸线程统计入口；阶段 4 已统一七种消息渠道的宿主回环与后台执行边界；阶段 5 已补齐事件窗口聚合任务的生命周期所有权；阶段 6 已统一插件文件操作的取消完成语义；阶段 7 已统一插件协程补偿的终态等待；阶段 8 已统一宿主同步函数的异步线程池入口；阶段 9 已统一工作流运行时的宿主获取路径；阶段 10 已统一模块、插件与调度运行时的显式 getter 调用；阶段 11 已清除系统配置 getter 的 Oper 形别名；阶段 12 已完成工作流域的显式 Chain 数据端口迁移；阶段 13 已收口用户、交互与消息链的数据端口；阶段 14 已收口音乐订阅数据端口；阶段 15 已收口站点数据端口；阶段 16 已收口媒体服务器数据端口；阶段 17 已收口下载数据端口；阶段 18 已收口主订阅数据端口；阶段 19 已收口整理数据端口；阶段 20 已收口 Agent 数据端口；阶段 21 已收口监控历史端口；阶段 22 已统一服务配置应用边界；阶段 23 已补齐媒体服务器 API 遗留的类形配置读取路径；阶段 24 已清除 Scheduler 内部无 owner 的协程提交双轨；阶段 25 已补齐 TaskRegistry 跨线程 owner 并迁移整理 AI 接管；阶段 26 已统一 Agent 会话清理提交；阶段 27 已统一历史 AI 进度 owner；阶段 28 已托管旧插件订阅统计线程；阶段 29 已统一 Emby 系条目转换并清零重复代码白名单；阶段 30 已收口插件市场请求级子任务；阶段 31 已托管搜索 AI 推荐任务；阶段 32 已清除事件调度器绕过生命周期 owner 的投递回退；阶段 33 已统一宿主 Agent 运行时的获取路径；阶段 34 已统一 durable-required 事件与 Outbox topic 事实源；阶段 35 已统一 LLM provider 管理 API 的运行时解析路径；阶段 36 已统一 WebAgent 音频能力访问边界；阶段 37 已统一插件输入事件发布路径；阶段 38 已统一 WebAgent 通知事件监听与队列边界；阶段 39 已补齐搜索 SSE 断线时的上游任务清理；阶段 40 已补齐异步防抖取消的终态所有权；阶段 41 已统一优雅重启兜底线程的唯一所有权；阶段 42 已补齐 Telegram typing 的多实例隔离和终态 owner；阶段 43 已统一 Discord typing 的异步 owner 和 shutdown 收尾；阶段 44 已清除 WebAgent 测试临时事件循环提前关闭产生的 CI 红注解。
 
 ## 当前复核结论（2026-08-24）
 
@@ -15,7 +15,7 @@
 
 ### 长期整改阶段 0：治理门禁恢复（2026-08-23）
 
-- 宿主依赖基线已审查 TaskRegistry、有界后台 owner 与插件变更准入接入后的语义差异：当前为 `805` 个模块、`6502` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
+- 宿主依赖基线已审查 TaskRegistry、有界后台 owner 与插件变更准入接入后的语义差异：当前为 `806` 个模块、`6544` 条内部导入边，12 组重点禁止边继续全部为 `0`，唯一非平凡 SCC 仍是隔离的 TMDB 移植包。
 - 启动性能探针会在隔离生命周期中真实创建并释放 TaskRegistry；normal/safe 组件数分别为 `23`/`11`，CI 只读检查使用稳定的宿主模块集合和生命周期组件顺序，不再把 Python/平台模块数量当作硬合同。
 - 官方插件快照覆盖 `plugins.v3`、`plugins.v2` 以及 V3 实际会从 `package.json` 回退加载的 31 个默认实现；`app/plugins/**` 仍只是宿主运行副本，不进入扫描。
 - SDK 快照以各模块显式 `__all__` 为公开合同，能够记录赋值别名；`typing`、`__future__` 等实现期导入不再被误冻结，既有数据库备份门面已补精确导出清单。
@@ -80,13 +80,405 @@
 - 兼容边界不变：未知第三方自定义方法继续走开放 legacy fallback；旧插件签名和结果不匹配仍只诊断、
   不拒绝加载。已登记方法的名称、kwargs、插件优先级、同步/异步入口和异常隔离 ABI 均保留。
 
+### 长期整改阶段 3：订阅删除生产路径统一（2026-08-24）
+
+- `/subscribes` 交互删除与 `/subscribe_delete` 远程命令不再直接调用 `SubscribeOper.delete` 后启动
+  `sub_done_async` 裸线程；两个同步入口统一委托 `app.application.subscription.delete` 的权限、事务、
+  事件、统计与 outbox 协议，和 API、Agent 的异步删除路径共享候选快照、授权规则及 durable intent。
+- 启动组合根为同步消息入口提供独占 Session、UoW 和 outbox；订阅行与 `subscribe.deleted`、
+  `subscribe.deleted.report` 在同一事务提交，暂存或提交失败都会回滚，成功后仍按事件、统计顺序收口。
+- 消息交互层只保留 ID 解析、名称展示和结果提示，不再拥有写库或统计实现；事务内目标已消失时按既有
+  “未找到”语义返回，避免读取与删除竞态被误报为成功。
+- 插件兼容边界保持不变：`MoviePilotServerHelper.sub_reg_async` 与 `sub_done_async` 的类方法、签名和返回值
+  继续保留给旧插件；仅宿主生产调用清零，因此没有改动插件仓、SDK/Compat 映射或事件 payload。
+
+### 长期整改阶段 4：消息渠道回环与线程所有权统一（2026-08-24）
+
+- Slack、Telegram、Discord、飞书、QQBot、企业微信与 WeChatClawBot 原先分别拼接本地消息 API URL、
+  执行 HTTP 并判断响应；其中飞书、QQBot、企业微信还为每条入站消息创建不可追踪的 daemon 线程。现在七者统一复用
+  `app.application.messaging.ingress` 的 URL 编码、请求、状态确认、异常日志和响应释放语义。
+- SDK 回调需要同步确认的 Slack/Telegram/WeChatClawBot 保留同步调用，Discord 保留自有事件循环内的
+  异步调用；飞书、QQBot、企业微信继续立即返回，但任务改由现有 `ThreadHelper` 共享执行器承载，应用
+  关闭时由既有线程池生命周期等待，不再产生逐消息游离线程。HTTP 到达后仍由 `/api/v1/message` 的
+  TaskRegistry owner 执行消息主链。
+- 新门禁扫描全部宿主 `app/modules/**/*.py`，禁止渠道再次硬编码 `/api/v1/message`；新增渠道必须使用统一
+  ingress。source、token 统一通过 query encoder 处理，修复配置名含 `&` 等字符时被拆成额外参数的问题。
+- 兼容边界不变：七个渠道类、模块方法、配置字段、消息 payload、同步/异步 SDK 回调方式和
+  `/api/v1/message` HTTP 合同均未改；没有修改插件仓或向 SDK/Compat 新增宿主内部入口。
+
+### 长期整改阶段 9：工作流运行时获取路径统一（2026-08-24）
+
+- API 列表端点、请求级工作流写用例装配和 `WorkflowChain` 原先分别直接构造
+  `app.workflow.WorkFlowManager` Singleton；现在统一通过 `app.application.workflow` 的 typed runtime
+  provider 获取启动组合根登记的同一实例，不再由消费者自行定位 concrete 管理器。
+- 架构门禁禁止 `app.workflow/**` 实现包和 `app.startup/initializers/workflow.py` 以外的宿主模块直接依赖
+  `app.workflow`。依赖图总边数保持 `6544`：移除 3 条 API/Chain concrete 边，同时新增 Chain 的
+  Application 端口边和 startup 的两条装配边；重点禁止边与自有 SCC 均未增长。
+- 兼容边界不变：`app.workflow.WorkFlowManager` 的类路径、Singleton identity、公开方法、事件监听和
+  action 加载保持原样，旧插件仍可直接使用 concrete 类；本阶段只收口 canonical 宿主消费者。
+
+### 长期整改阶段 10：运行时 Facade 获取方式统一（2026-08-24）
+
+- API、CLI、Scheduler 和工作流动作原先同时存在显式 `get_*` 调用、Application 兼容类构造，以及
+  `get_plugin_manager as PluginManager` 的类形别名。canonical 宿主消费者现统一显式调用
+  `get_module_manager()`、`get_plugin_manager()` 和 `get_scheduler()`，不再把 Service Locator 伪装成
+  concrete 类构造。
+- 架构门禁扫描全部宿主 Python 源码，禁止重新导入 `app.application.module.ModuleManager`、
+  `app.application.scheduling.Scheduler`，或为插件 getter 建立别名。startup 仍负责创建 concrete
+  管理器并注册 provider，运行时实例身份、初始化顺序和依赖图边均不改变。
+- 兼容边界不变：Application 的 `ModuleManager`、`Scheduler` 类形 Facade 和 concrete 插件管理器类路径
+  继续保留，旧插件、V1/V2/V3 索引加载及 SDK/Compat 映射无需迁移；本阶段仅统一宿主生产路径。
+
+### 长期整改阶段 11：系统配置端口命名统一（2026-08-24）
+
+- Agent、Chain、Module 和 Workflow 的 17 个 canonical 文件原先把
+  `get_configured_system_config()` 别名或赋值为 `SystemConfigOper`，使 Application 配置端口在调用处
+  看起来仍像数据库 Oper。宿主生产路径现统一显式调用 getter，测试也改为替换真实组合根接缝。
+- 架构门禁禁止为 `get_configured_system_config` 建立别名，也禁止把它赋给本地
+  `SystemConfigOper`；真正的 `app.db.oper.systemconfig.SystemConfigOper` 只留在 DB 实现、startup 装配和
+  testing bootstrap，不再形成第二种 canonical 获取方式。
+- 兼容边界不变：DB Oper 类、`app.db.oper` 懒导出、SDK/Compat 旧路径和 V1/V2/V3 插件加载均未改动；
+  已注入 `SystemConfigReader/SystemConfigService` 的 Agent 工具构造合同保持原样。
+
+### 长期整改阶段 12：工作流域 Chain 数据端口收口（2026-08-24）
+
+- `app.application.chain.data` 已提供命名 `get_chain_*_port()`，但 `WorkFlowManager`、`WorkflowChain`、
+  添加订阅和整理文件动作仍把 `*PortProxy` 别名为数据库 Oper，形成 getter 与代理双轨。四个工作流消费者
+  现统一使用显式 getter，测试替换同一个组合根接缝。
+- 架构门禁禁止 `app/workflow/**` 和 `app/chain/workflow.py` 重新导入任何 `*PortProxy`。其它 Chain 域仍按
+  独立风险切片迁移，不能因本阶段通过而宣称全部 Chain 数据代理已清零。
+- 兼容边界不变：全部 `*PortProxy` 类、`WorkFlowManager` 类路径/Singleton identity、动作类型与参数、
+  工作流事件和数据库 `WorkflowOper/SubscribeOper/TransferHistoryOper` 均保留，插件无需迁移。
+
+### 长期整改阶段 13：用户与消息 Chain 数据端口收口（2026-08-24）
+
+- `UserChain`、`InteractionChain` 和消息发送 mixin 原先都把 `UserPortProxy` 别名为 `UserOper`；现在统一
+  通过 `get_chain_user_port()` 获取组合根登记的数据端口，登录、用户绑定查询和通知收件人解析不再存在
+  第二种伪 Oper 获取路径。
+- 架构门禁覆盖这三个用户身份消费者，禁止重新导入 `UserPortProxy`。站点、媒体服务器、音乐、订阅、
+  下载和整理 Chain 仍保留独立迁移清单，继续按行为风险分阶段推进。
+- 兼容边界不变：数据库 `UserOper`、`UserPortProxy`、User/Interaction/Message Chain 公开方法、消息渠道
+  payload 和插件调用方式均未改动。
+
+### 长期整改阶段 14：音乐订阅 Chain 数据端口收口（2026-08-24）
+
+- 音乐订阅辅助链原先通过 `SubscribePortProxy as SubscribeOper` 更新音乐元数据、质量和当前订阅；现在
+  统一调用 `get_chain_subscribe_port()`，测试改为替换同一个命名 getter。
+- 架构门禁单独覆盖 `_music.py`，禁止重新引入 `SubscribePortProxy`。主订阅 Chain 仍有更多数据端口和
+  事务/副作用耦合，继续作为独立高风险阶段处理。
+- 兼容边界不变：音乐订阅公开方法、数据库 `SubscribeOper`、`SubscribePortProxy`、字段写入与插件调用
+  合同均未修改。
+
+### 长期整改阶段 15：站点 Chain 数据端口收口（2026-08-24）
+
+- `SiteChain` 与 `TorrentsChain` 原先把 `SitePortProxy` 别名为 `SiteOper`，覆盖 CookieCloud、用户数据、
+  站点增删改、认证后刷新和 RSS 地址更新。现在全部统一通过 `get_chain_site_port()` 获取同一组合根端口。
+- `/sites` 交互测试不再修改 Proxy 类属性，而是替换 getter 返回的 repository；架构门禁同时覆盖两个
+  消费者，禁止站点域重新引入 `SitePortProxy`。
+- 兼容边界不变：数据库 `SiteOper`、`SitePortProxy`、`SiteChain/TorrentsChain` 公开方法、站点事件、
+  CookieCloud/RSS 语义和插件调用方式均未改动。
+
+### 长期整改阶段 16：媒体服务器 Chain 数据端口收口（2026-08-24）
+
+- `MediaServerChain` 原先通过 `MediaServerPortProxy as MediaServerOper` 清理已移除服务器、写入媒体项并
+  清理陈旧记录；现在统一调用 `get_chain_media_server_port()`，同步阶段继续共享同一个端口实例。
+- 五个增量同步测试接缝改为替换命名 getter，架构门禁禁止媒体服务器 Chain 重新导入
+  `MediaServerPortProxy`。
+- 兼容边界不变：数据库 `MediaServerOper`、Proxy 类、媒体库同步公开方法、进度合同、停止语义和插件调用
+  方式均未修改。
+
+### 长期整改阶段 17：下载 Chain 数据端口收口（2026-08-24）
+
+- `DownloadChain` 原先把下载失败、下载历史和媒体服务器三个 `*PortProxy` 别名为数据库 Oper，用于失败
+  抑制、重复下载查询、下载结果结算和媒体库判重；现在全部统一调用对应 `get_chain_*_port()`。
+- 五个下载/音乐测试接缝改为替换命名 getter，架构门禁禁止下载 Chain 重新导入这三个 Proxy。
+- 兼容边界不变：三个 DB Oper、Proxy 类、下载公开入口、失败指纹、历史 hash 查询、媒体库判重和插件
+  调用合同均未修改。
+
+### 长期整改阶段 18：主订阅 Chain 数据端口收口（2026-08-24）
+
+- `SubscribeChain` 原先把订阅、站点和下载历史三个 `*PortProxy` 别名为数据库 Oper，查询、搜索、匹配、
+  完成检查与订阅文件视图因此和命名数据端口形成双轨；现在统一调用对应 `get_chain_*_port()`。
+- 订阅、音乐与交互测试改为替换命名 getter，架构门禁禁止主订阅 Chain 重新导入这三个 Proxy。
+- 兼容边界不变：三个 DB Oper、Proxy 类、订阅 Chain 公开方法、订阅字段和事件合同、V2/V3 插件调用
+  方式均未修改。
+
+### 长期整改阶段 19：整理 Chain 数据端口收口（2026-08-24）
+
+- `TransferChain` 与 `_transfer` mixin 原先把 pending、下载历史和整理历史三个 `*PortProxy` 别名为
+  数据库 Oper；现在 worker 回放、查重、历史解析、手动重整和失败重试统一调用对应 `get_chain_*_port()`。
+- 整理主流程、同步附属文件、音乐整理和手动历史测试改为替换命名 getter；架构门禁同时覆盖主链和
+  mixin，禁止重新引入三个 Proxy。
+- 兼容边界不变：三个 DB Oper、Proxy 类、整理公开入口、队列和生命周期、历史字段、事件 payload 以及
+  V2/V3 插件调用方式均未修改。
+
+### 长期整改阶段 20：Agent 数据端口收口（2026-08-24）
+
+- Agent 编排、会话记忆和 22 个工具实现原先把十种 `AgentDataPort` 代理重新别名为数据库 Oper，形成与
+  Chain 命名 getter 不同的第二套数据端口用法；现在统一调用 `get_agent_*_port()`。
+- Agent 测试接缝改为替换 getter 返回的端口实例，架构门禁遍历 `app/agent/**`，禁止生产模块重新导入
+  十个兼容 Port 代理。
+- 兼容边界不变：`AgentDataPorts` 注册表、十个旧 Port 代理类、DB Oper、Agent/工具公开参数和返回值、
+  权限判断以及 V2/V3 插件调用方式均未修改。
+
+### 长期整改阶段 21：监控历史端口收口（2026-08-24）
+
+- `TransferDispatcher` 原先把应用层兼容 `TransferHistoryPort` 再别名为 `TransferHistoryOper`；现在通过
+  `get_transfer_history_port()` 直接取得组合根登记的整理历史端口。
+- 监控历史与文件事件测试改为替换命名 getter，架构门禁禁止监控分发器重新导入兼容 Facade。
+- 兼容边界不变：`TransferHistoryPort`、DB Oper、监控候选判定、历史查重、失败重试和整理触发语义均
+  未修改。
+
+### 长期整改阶段 22：服务配置应用边界统一（2026-08-24）
+
+- 启动组合根已注入应用层服务目录，但 Chain、消息 API、Scheduler 和 Agent 仍直接读取 runtime
+  `ServiceConfigHelper`，形成两个应用入口；现在统一通过通知与媒体服务器应用模块的命名函数读取。
+- 命名函数显式区分仅启用配置和包含禁用配置，保持定向同步、定时注册、企业微信模式和渠道管理员判断
+  的原语义；架构门禁覆盖七个生产消费者。
+- 依赖基线经语义诊断后从 `6544` 条边降为 `6539`：七个消费者移除 runtime service-config 边并改为
+  Application 边，12 组禁止边和唯一隔离 TMDB SCC 均未变化。
+- `ServiceConfigHelper` 继续保留在 startup、runtime module adapter、模块实例初始化和 `app.sdk.services`
+  插件兼容出口；V2/V3 插件导入、配置 Schema 和热更新读取器均未修改。
+
+### 长期整改阶段 23：媒体服务器 API 配置路径收口（2026-08-24）
+
+- 在线播放端点是阶段 22 后唯一仍以 `MediaServerHelper().get_configs()` 读取配置的 canonical API；现统一
+  调用 `get_mediaserver_configs()`，配置过滤、遍历顺序和播放地址响应保持不变。
+- 架构门禁覆盖该遗留点，拒绝端点重新导入类形 Helper；测试也替换命名 Application 接缝，不再伪造
+  Helper 实例。
+- `MediaServerHelper` 继续服务于运行实例发现和插件 SDK 兼容，类路径、方法、配置 Schema、路由及响应
+  均未修改，V2/V3 插件无需迁移。
+
+### 长期整改阶段 24：Scheduler 内部协程所有权收口（2026-08-24）
+
+- `_submit_to_loop()` 的三个生产调用点都已携带 job owner，但私有签名仍允许省略 `job_id`，并为当前循环
+  与跨线程主循环各保留一条不登记句柄的 fire-and-forget 分支；现将 owner 收紧为必填并删除双轨。
+- 进度更新、同步作业收尾和协程作业继续按 generation 登记同一 Scheduler 句柄表；停止接收后拒绝提交，
+  shutdown 取消并等待真实终态，跨线程代理不被误认作完成。
+- `Scheduler.start()`、同步 `stop()`、作业定义、插件调度方法、进度 payload 和 SDK/Compat 均未修改，
+  V2/V3 插件行为保持兼容。
+
+### 长期整改阶段 25：跨线程 TaskRegistry owner 收口（2026-08-24）
+
+- TaskRegistry 原先只有事件循环内 `create()`，同步 Chain 无法原子登记异步后台动作；新增
+  `submit_threadsafe()`，在目标循环内完成 accepting 检查、任务创建和 owner 登记，再镜像真实终态。
+- shutdown 与跨线程提交竞态时，先登记的任务进入既有取消/等待；后到任务被拒绝并关闭协程，立即投递
+  失败向调用方抛出。owner 静态门禁同步覆盖新入口。
+- 整理失败按钮的 AI 接管从裸 `run_coroutine_threadsafe` 迁为 `chain.transfer.ai_takeover`，消息文案、Agent
+  prompt/参数、回调返回和 V2/V3 插件 ABI 保持不变；该动作仍为 E0，不宣称跨进程恢复。
+
+### 长期整改阶段 26：Agent 会话清理提交路径统一（2026-08-24）
+
+- 过期会话回收与远程清理命令原先各自构造 `clear_session()` 协程并裸提交主循环，形成同一目标的两套
+  实现；远程命令现在复用 `_schedule_agent_session_clear()` 唯一入口。
+- 唯一入口通过 TaskRegistry 以 `chain.message.agent_session_clear` owner 跨线程提交，目标循环先登记再执行，
+  shutdown 可取消并等待；调度失败仍关闭协程并记录告警，不泄漏 Agent 资源清理对象。
+- `/clear_session` 命令、会话映射、成功/空会话提示、Agent manager 合同及 V2/V3 插件 ABI 均未修改；实时
+  Agent 消息和停止命令仍保留各自的 Future 结果观察，不被机械改成 fire-and-forget。
+- 依赖基线仅新增 `app.chain.message -> app.runtime.tasks`，模块数保持 `806`，内部边为 `6541`；12 组禁止
+  边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 27：历史 AI 进度任务所有权统一（2026-08-24）
+
+- 整理历史 AI 重做的外层 runner 已进入 TaskRegistry，但单条与批量输出回调仍各复制一套裸
+  `run_coroutine_threadsafe`，进度缓存写入绕过了同一 shutdown owner 边界。
+- 两条路径现在复用唯一进度回调工厂和外层同一个 registry，分别登记
+  `api.history.ai_redo.progress` 与 `api.history.ai_redo_batch.progress`；停止接收、取消和有限等待语义统一。
+- API 路由、权限、进度 key/payload、Agent prompt 与完成/失败文案均未修改；该进度仍按 E0 允许进程崩溃
+  丢失，不把 UI 进度误报为 durable 完成。既有 `app.api.endpoints.history -> app.runtime.tasks` 依赖边不变，
+  V2/V3 插件 SDK/Compat 无改动。
+
+### 长期整改阶段 28：插件兼容统计线程托管（2026-08-24）
+
+- canonical 订阅新增/删除/完成统计已由事务 Outbox 驱动，但 `MoviePilotServerHelper.sub_reg_async()` 与
+  `sub_done_async()` 仍各自创建裸线程；V3 官方插件仍通过旧 `app.helper.server` 映射调用后者，不能删除 ABI。
+- 两个旧同步入口保留类、方法、参数与立即布尔返回，内部改经 TaskRegistry 跨线程提交 `asyncio.to_thread`，
+  分别登记 `compat.server.subscribe_added_report` / `compat.server.subscribe_done_report`；同步网络工作开始后
+  不在 shutdown 时取消，宿主会等待真实完成，生命周期不可用时拒绝并关闭未执行协程。
+- 插件仓没有改动，V1/V2/V3 旧导入映射保持不变；主链也不回退兼容入口。依赖基线仅新增
+  `app.adapters.external.server -> app.runtime.config/tasks` 两条允许边，模块保持 `806`、内部边为 `6543`，
+  12 组禁止边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 29：Emby 系条目转换协议统一（2026-08-24）
+
+- Emby、Jellyfin 与极影视原先各自维护一套用户播放状态、Provider ID、音乐备注和媒体服务器条目投影；
+  Jellyfin/极影视的同构函数还占用了重复代码门禁中最后一组“待后续 Phase 清理”白名单。
+- 转换规则现统一由 `app.application.mediaserver.format_emby_family_item()` 所有，三个服务类只保留带各自
+  `server` 标识的薄适配器；Emby 独有的 `ServerId` 投影继续显式开启，Jellyfin/极影视仍保持不投影该字段。
+- 三个私有静态入口的名称、参数与返回类型均保留，服务查询、统一媒体身份和音乐匹配行为不变；插件仓、
+  SDK/Compat 映射和 V1/V2/V3 插件公开合同均未修改。重复代码白名单因此清零，后续新增同构实现会直接失败。
+- 依赖基线只新增 `app.application.mediaserver -> app.runtime.log` 及父包边，用于保持原有转换异常日志；模块
+  保持 `806`、内部边为 `6545`，12 组禁止边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 30：插件市场请求级子任务收口（2026-08-24）
+
+- 插件目录异步聚合原先用 `asyncio.create_task()` 并发读取多个市场和 V1/V2/V3 代际，正常路径会逐个
+  等待，但父请求取消或进度回调抛错时会直接退出，尚未完成的 loader 继续在事件循环中运行。
+- 这些任务只服务当前 API/Agent 请求，不进入 lifespan TaskRegistry；`async_collect()` 现在通过
+  `try/finally` 持有完整任务集合，异常退出时取消未完成 loader，并用 `gather(return_exceptions=True)`
+  观察所有终态。单 loader 失败隔离、完成顺序进度和稳定市场/代际合并顺序均保持不变。
+- 回归测试覆盖父任务取消和进度消费者失败，均证明阻塞 loader 收到取消后才允许父调用结束；插件管理器
+  方法、目录 DTO、市场参数、缓存、V1/V2/V3 索引与插件 SDK/Compat 均未修改。依赖图仍为 `806/6545`。
+
+### 长期整改阶段 31：搜索 AI 推荐生命周期托管（2026-08-24）
+
+- 搜索 AI 推荐原先用类级 `_ai_recommend_task` 持有裸 `asyncio.create_task()`：新搜索和手工取消能停止
+  旧任务，但 lifespan shutdown 不知道该任务存在，可能在 Agent/LLM 调用尚未结束时越过关停预算。
+- 同步 `start_recommend_task()` 入口现在通过 TaskRegistry 创建 `chain.search.ai_recommend` owner，仍把同一个
+  Task 保存到原类状态供轮询、强制重启和取消入口使用；任务结果、错误、缓存索引和旧请求丢弃逻辑不变。
+- 回归测试使用真实 Registry 阻塞推荐调用，证明 shutdown 会取消并等待任务终态，随后 running/task 状态
+  正常复位。API 参数与响应、SearchChain 方法签名、Agent 调用协议和插件 SDK/Compat 均未修改。
+- 依赖基线仅新增 `app.chain.search -> app.runtime.tasks`，模块保持 `806`、内部边为 `6546`，12 组禁止边
+  与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 32：事件投递所有权单路径（2026-08-24）
+
+- `EventManager` 的正式组合早已向 `EventDispatcher` 注入同步和异步 handle sink，但调度器仍
+  允许不注入 sink，并直接调用线程池或 `run_coroutine_threadsafe()`；该回退无法进入事件总线
+  的 owner 句柄表，因而绕过 stop/drain 的取消、等待和超时诊断。
+- 调度器现在把两类 sink 收紧为必需的生命周期依赖，并删除自行提交的第二套实现；所有广播
+  handler 都必须先被 `EventManager` 登记，停止状态下由同一个 sink 拒绝并关闭协程。
+- 事件类型、payload、优先级、同步/异步 handler 签名、插件监听注册和 SDK/Compat 映射均未修改；
+  `EventDispatcher` 仍是不对外公开的宿主内部算法类。
+
+### 长期整改阶段 33：宿主 Agent 运行时获取单路径（2026-08-24）
+
+- Chain 早已通过 `app.application.agent` 获取 Agent 服务，但 WebAgent、OpenAI、Anthropic、整理
+  历史 API 和 Scheduler 仍直接调用 `app.agent.runtime_loader`，对同一运行实例形成两条
+  宿主服务定位路径。
+- 五个宿主消费模块现在统一经已有 running manager provider 获取实例；门面在 lifespan
+  尚未装配时保持旧的 `None` 查询语义，API 仍返回 503，也不会提前物化 Agent、LLM 或工具树。
+- 架构 ratchet 精确禁止 `app.agent/**` 和 `app.startup/**` 之外的宿主模块直接导入两个 manager
+  getter。WebAgent/OpenAI 构造具体 Agent 的类型入口仍留在 Agent 展示实现边界；loader 原函数、
+  内部工具工厂、启动/热更新/关停语义、API 参数与插件 SDK/Compat 均未修改。
+- 依赖边集合按新门面路径刷新，模块数仍为 `806`、内部边仍为 `6546`；12 组禁止边
+  与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 34：durable-required 事件事实源收口（2026-08-24）
+
+- 当前 Event Contract 将订阅新增/修改/删除、下载添加、整理成功/失败六个事件标为
+  `durable_required`；它们的宿主正式生产者早已与业务写入同事务暂存 Outbox intent，但 topic
+  字符串在订阅、Chain adapter 和 startup dispatcher 中分散重复，当前复核结论仍误写成六个事件待实现。
+- `DURABLE_EVENT_TOPICS` 现在是六个 EventType 与版本化 topic 的单一映射；订阅命令、下载/整理
+  writer 和恢复 dispatcher 共用该映射，不再各自维护同义字符串。启动恢复器也会拒绝缺失任一
+  durable topic handler 的配置。
+- 事件契约测试保证全部 `durable_required` 事件与 topic 键集合一致、topic 不重复，并冻结恢复
+  handler 完整性。原 topic、payload、幂等键、at-least-once 语义、无 writer 的测试/嵌入式兼容分支
+  以及插件 SDK/Compat 均未修改；第三方插件自行写库或发事件仍不在宿主事务边界内。
+- 单一映射新增 `app.application.outbox -> app.schemas.types` 与 `app.chain.transfer -> app.application.outbox`
+  语义边，模块仍为 `806`、内部边为 `6549`；12 组禁止边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 35：LLM provider 管理运行时收口（2026-08-24）
+
+- 启动组合根早已把唯一 `LLMProviderManager` 工厂注册到 `app.agent.llm.gateway`，LLM helper 也从该端口
+  获取同一运行时；但 `/llm/manage` 与 OAuth 回调仍在端点内再次惰性导入并实例化 concrete manager，
+  同一目标形成 gateway 与 Singleton 两条解析路径。
+- 管理 API 现在与 helper 共用 `resolve_llm_provider_runtime()`；gateway 合同补齐统一管理与 OAuth 回调
+  能力，架构测试拒绝 startup/agent 之外的宿主代码直接导入 `LLMProviderManager`。原 API 路径、请求与响应
+  数据、OAuth HTML、manager Singleton identity 及 `app.agent.llm` 兼容导出均保持不变。
+- API 的运行时依赖由 concrete provider 边替换为 gateway 边，模块仍为 `806`、内部边仍为 `6549`；
+  12 组禁止边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 36：WebAgent 音频能力边界收口（2026-08-24）
+
+- startup 已把唯一 `AgentCapabilityManager` 注册到 `app.application.agent`，Chain 和其他宿主消费者也已
+  使用该门面；WebAgent 音频转写却仍直接静态调用 concrete manager，形成两条能力访问路径。
+- WebAgent 现在调用 application 层的 `is_audio_input_available()` 与 `transcribe_audio()`；文件解析与读取、
+  AnyIO 线程边界、provider 选择和返回语义均未变化。架构测试拒绝 startup/agent 之外的宿主代码重新
+  导入 `AgentCapabilityManager`，但保留 `app.agent.llm` 的公开惰性导出供 Agent 内部与既有消费者使用。
+- 宿主依赖图模块仍为 `806`，内部边由 `6549` 降至 `6547`；12 组禁止边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 37：插件输入事件发布边界收口（2026-08-24）
+
+- `PluginInputInteractionHandler` 原先位于 Application 层，却在超时、取消和正常输入三条分支重新构造
+  `EventManager`；两个生产调用方所在的 MessageChain 已持有同一事件管理器，形成注入端口与全局定位双轨。
+- handler 现在必须接收显式事件发布端口，MessageChain 统一注入自身 `eventmanager`。事件类型、
+  payload、`__mp_target_plugin_id` 定向字段、消息提示及消费返回值均未变化；架构门禁把 Application 到
+  `app.runtime.events` 的直接依赖锁为零，插件公开事件合同和 V1/V2/V3 加载路径保持不变。
+- 宿主依赖图模块仍为 `806`，内部边由 `6547` 降至 `6545`；事件 producer 合同仍为 `78`，12 组禁止边
+  与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 38：WebAgent 通知事件监听边界收口（2026-08-24）
+
+- WebAgent 原消息编辑队列已经属于 `app.application.messaging.agent`，但 NoticeMessage 的解析、通知队列
+  和进程级监听仍位于 HTTP endpoint，并由首个请求惰性注册，形成同一请求的两套队列归属和注册时机。
+- 通知解析、按用户路由及队列挂载/释放现与编辑队列统一归入 messaging Application；startup 组合根在
+  事件消费启动前登记唯一 NoticeMessage listener。API 只持有当前请求队列，不再构造 EventManager 或
+  注册进程监听；通知 schema、用户广播语义、SSE 事件顺序和传统命令等待窗口均未变化。
+- 架构门禁拒绝 HTTP endpoint 新增 `register`/`add_event_listener`，V1/V2/V3 插件事件类型和 payload
+  保持不变；事件合同仍跟踪同一个 NoticeMessage consumer，只把 owner 从 API 更正为 startup。
+- 宿主依赖图模块仍为 `806`，内部边由 `6545` 调整为 `6546`：删除 API 到事件总线的隐式边，并由
+  Application 显式持有消息 schema 与诊断日志依赖；12 组禁止边与唯一隔离 TMDB SCC 均未变化。
+
+### 长期整改阶段 39：搜索 SSE 断线清理收口（2026-08-24）
+
+- 搜索链的站点并发任务已由各异步生成器在 `finally` 中取消并等待，但 API 批处理和传输包装器在
+  客户端断开时只退出循环，上游关闭依赖异步生成器回收时机；现在两层包装器都显式关闭可关闭的
+  上游迭代器，断线返回前即可触发站点任务清理。
+- 回归测试锁定客户端在首个事件到达时断开后，上游 `finally` 已在流函数返回前执行；心跳、批量
+  append/replace、字幕签名、SSE payload 与缓存头均未修改，V1/V2/V3 插件合同不受影响。
+
+### 长期整改阶段 40：异步防抖取消终态收口（2026-08-24）
+
+- `AsyncDebouncer` 在后续调用替换旧任务时只发出取消并覆盖句柄，公开 `cancel()` 也在任务真正退出前
+  清空引用；现在被替换的任务保留为 retired owner，`cancel()` 会取消并等待活动任务和 retired 任务
+  全部进入终态后再返回。
+- 回归测试覆盖旧任务在取消清理中阻塞、后续任务同时存在的场景。`debounce()` 装饰器、leading/trailing
+  触发规则、同步 `Debouncer`、`app.utils.debounce` 兼容映射和 V1/V2/V3 插件导入路径均未修改。
+
+### 长期整改阶段 41：优雅重启兜底线程所有权收口（2026-08-24）
+
+- API、命令链、升级和启动期资源更新都可能调用 `SystemHelper.restart()`；Docker 优雅退出路径原先每次
+  请求都会创建一个独立 daemon monitor，连续请求会在 180 秒后并行触发多次强制容器重启。现在 monitor
+  由 `SystemHelper` 以锁和唯一句柄持有，存活期间的重复请求复用同一 owner，线程启动失败或执行结束都会
+  释放句柄，后续真实重启仍可创建新的兜底监控。
+- 回归测试用事件屏障验证首线程存活期间不会重复创建，并验证强制重启只调用一次、终态 owner 被释放；
+  同时将触发说明从过期的 30 秒更正为实际的 180 秒。SIGTERM 优雅退出、Docker API 回退、意图标记、
+  本地 CLI 与一次性升级语义均未改变。
+- 该 daemon monitor 故意跨越正常 shutdown drain，以便进程卡死时仍能请求 Docker 重启，因此不纳入
+  `TaskRegistry` 或普通线程池等待。`SystemHelper` 公开方法、SDK/Compat 映射和 V1/V2/V3 插件 ABI 均未修改。
+
+### 长期整改阶段 42：Telegram typing 多实例与终态所有权收口（2026-08-24）
+
+- `TelegramModule` 支持多个通知配置实例，但用户到 chat 的映射、typing 线程、停止信号和锁原先都在
+  `Telegram` 类级共享；两个配置遇到相同 chat ID 时会相互停止或覆盖 owner。生产 client 现在各自持有
+  完整运行状态，同一配置内则由 lifecycle 锁串行替换，保留一个 chat 一个 typing owner。
+- 停止等待超过预算时不再提前删除仍存活的线程句柄，新请求会拒绝覆盖阻塞中的旧 owner；线程启动失败会
+  回滚 owner 和停止信号，client 停止时先封住新增任务再取得完整快照。SDK 请求恢复后，线程仍由自己的
+  `finally` 在真实终态释放登记。
+- `Telegram` 类路径、构造参数、`start_typing()`/`stop_typing()` 布尔合同、消息格式、模块方法及配置字段
+  均保持不变；私有类级可变状态已清除，正常 V1/V2/V3 模块实例不再共享运行状态。本阶段未修改插件仓、
+  SDK 或 Compat 映射。
+
+### 长期整改阶段 43：Discord typing 异步 owner 与 shutdown 收口（2026-08-24）
+
+- Discord typing 原先在等待旧 task 进入终态前就删除字典 owner；`trigger_typing()` 阻塞超过一秒时，
+  新请求会覆盖仍运行的 task，模块停止也无法再取得它。现在同一实例通过异步 lifecycle 锁串行替换，
+  超时后保留 owner 并拒绝并行启动，task 只在自己的 `finally` 或已确认终态后释放登记。
+- client shutdown 先封住新增 typing，再按统一预算通知全部 owner；未自然结束的 task 会被取消并再次等待，
+  已完成 task 的异常也会被读取。Discord 长连接意外退出时，线程 runner 同样执行这条收尾路径，事件循环
+  不再直接关闭仍登记的 typing task。
+- `Discord` 类路径、构造参数、同步 `start_typing()`/`stop_typing()` 布尔合同、模块方法、消息格式和配置
+  字段均保持不变；V1/V2/V3 插件仍通过原模块能力调用。本阶段未修改插件仓、SDK 或 Compat 映射。
+
+### 长期整改阶段 44：WebAgent 测试后台 owner 与 CI 红注解收口（2026-08-24）
+
+- GitHub 单测作业虽然成功，WebAgent SSE 用例却会在临时 `asyncio.run()` 关闭事件循环时取消仍登记的快照
+  owner；Linux 下 `aiosqlite` worker 随后回送结果会触发 `PytestUnhandledThreadExceptionWarning`，Actions 将
+  traceback 中两处 `Event loop is closed` 各自显示为错误级 annotation，形成“绿作业带红错误”。
+- WebAgent 流测试现在复用生产 `wait_web_agent_background_tasks()` 合同，在关闭临时循环前等待正常 owner；
+  断线和慢快照用例仍先证明后台执行与 `done` 发送不受落库阻塞，再释放并等待真实终态，不把生产异步语义
+  改成同步等待。`wait_web_agent_background_tasks()` 的文档也改为反映其同时服务正常与取消收尾。
+- `pytest.ini` 将未处理线程异常提升为测试失败，后续不会再以绿色结果掩盖后台线程越过事件循环生命周期。
+  本阶段不改变 WebAgent API/SSE、Agent 模块、SDK/Compat 或 V1/V2/V3 插件合同，也未修改插件仓。
+
 ### 总体判断
 
 当前架构总体合理，已经从跨层混合的遗留单体收敛为**边界清晰的模块化单体**：
 
 - 继续采用单进程控制面是正确选择，不建议现在拆成微服务；插件、调度器、工作流、事件和数据库共享进程内状态，拆分会放大部署、事务和兼容成本。
 - `foundation/domain/runtime/adapters/application/chain/api/startup` 的职责方向基本成立；宿主架构基线、复杂度 ratchet、异步阻塞 ratchet 当前均通过。
-- 依赖图当前为 `805` 个 Python 模块、`6502` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
+- 依赖图当前为 `806` 个 Python 模块、`6546` 条内部导入边；唯一非平凡 SCC 位于隔离的 TMDB 第三方移植包内部，不应为了指标归零重写。
 - 当前主要风险已经从“目录和依赖失控”转移到运行时协议、后台副作用的可靠性和遗留兼容面。换言之，下一阶段重点应是**语义收口和可验证性**，而不是继续搬文件或机械拆大文件。
 
 综合评价：架构方向可持续，生产可用性较高；可演进性仍处于中等水平。现阶段没有静态审计发现必须立即推倒重来的 P0 架构问题，但存在需要按 P1/P2 计划治理的真实债务。
@@ -104,6 +496,22 @@
    `shield` 不再让网络请求逃逸生命周期预算，仓库级并发合并、缓存键和 V1/V2/V3 返回兼容保持不变。
    请求作用域的结构化并发不进入全局登记器：传统 WebAgent SSE 的 collection 子任务改由生成器
    `finally` 取消并等待清理，断线和 ASGI 取消均不会留下请求级 task。
+   插件市场目录并发也采用同一责任边界：API/Agent 父请求取消或进度回调失败时，聚合服务会取消并等待
+   全部市场/代际 loader；正常单源失败仍隔离，不把请求级读取错误登记成 lifespan 后台任务。
+   搜索结果 AI 推荐则属于跨请求轮询任务，继续由 SearchChain 状态暴露进度，但任务创建已登记
+   `chain.search.ai_recommend` owner；新搜索、手工取消和 lifespan shutdown 现在共享同一个 Task 终态。
+   订阅删除的宿主生产者也已完成 durable 分级：消息交互和远程删除不再调用裸线程统计入口，而是
+   与业务删除原子暂存事件和统计 intent；旧类方法只作为插件 ABI 保留，不纳入宿主可靠性证明。
+   消息渠道回环也不再各自拥有 URL、HTTP 判定和逐消息线程：七种宿主渠道共享 ingress，三种立即返回
+   渠道交给生命周期持有的共享线程池；这仍是 E0 投递，不宣称跨进程恢复。
+   图片代理安全日志的窗口聚合也已补齐内部任务所有权：timer 到期创建的 flush task 由 coalescer 持有，
+   `stop_modules()` 会刷新未到期摘要并等待已启动回调；它属于 E1 观测，不扩大 TaskRegistry 或 Outbox 范围。
+   插件市场与插件包适配器原有两套线程取消 wrapper 也已统一到 `runtime.execution`：连续取消必须等同步
+   文件 worker 到达终态后再传播，避免提前释放 mutation owner；旧模块内私有名称保留为 canonical 别名。
+   插件安装快照、取消补偿与市场临时文件清理原有两套协程终态循环也已合并为
+   `await_task_to_terminal`；数据库 worker 的 interruptible 等待属于队列 owner，未被机械合并。
+   canonical 宿主原有 11 处 FastAPI `run_in_threadpool` 导入也已统一到 `runtime.execution`，AST 门禁
+   防止再次出现框架直连；模块局部符号及调用参数不变，不改变插件运行和 monkeypatch 接缝。
 2. **Model/Base 的数据库装饰器和隐式会话 ABI 已全部清零。** 查询、写事务和 `legacy_*` 装饰器均为 `0`；所有 Model `db` 参数要求显式 Session，Base CRUD 仅在调用方事务内查询或 stage。可无会话构造的入口统一留在 Oper，经组合根事务执行器运行；插件 SDK 不再导出宿主 Model。后续重点转为减少 ORM 对象跨层流转，并保持 Model 隐式事务零回退。
 
    Oper 内部的执行入口也已统一：最后一处 `AgentTaskOper` 直接 transaction runner 调用已迁入
@@ -124,13 +532,16 @@
    配置治理基线进一步区分债务与批准边界：canonical 未批准 Settings 直连和非组合根
    `SystemConfigOper()` 构造均为 `0`；`app/db/base.py`、`engine.py`、`session.py` 的启动前数据库基础设施
    读取及 startup 唯一 Oper 构造点以带理由的固定边界登记。四个集合都只能减少，不能新增或换位置。
+   工作流运行时也已按相同模式收口：API、请求依赖与 Chain 只依赖
+   `app.application.workflow.get_workflow_manager()`；只有工作流实现包和 startup 组合根可直接依赖
+   concrete `WorkFlowManager`，架构测试拒绝宿主重新引入第二条实例获取路径。
 
 ### P2：中长期可演进性债务
 
 - **大型职责域仍偏重。** 代表性热点包括 `app/chain/subscribe.py`（约 `4141` 行）、`app/chain/transfer.py`（约 `2944` 行）、`app/agent/orchestrator.py`（约 `3540` 行）、`app/agent/llm/provider.py`（约 `3529` 行）、`app/adapters/external/market.py`（约 `3139` 行）和 `app/api/endpoints/agent.py`（约 `2489` 行）。复杂度 ratchet 只保证不超过当前基线，不代表这些文件已经易维护。只有在行为快照、调用命中和事务边界明确后，才值得按用例拆分。
-- **类型门禁覆盖面不足。** `mypy.ini` strict 文件清单目前约 `37` 个文件，Agent、Chain、Module、Adapter 大量代码仍依赖动态类型。应从模块契约、生命周期、Repository/Port 和关键 Chain 返回值开始扩展，而不是直接开启全仓 strict。
+- **类型门禁覆盖面不足。** `mypy.ini` strict 文件清单目前为 `39` 个文件，Agent、Chain、Module、Adapter 大量代码仍依赖动态类型。应从模块契约、生命周期、Repository/Port 和关键 Chain 返回值开始扩展，而不是直接开启全仓 strict。
 - **Pylint 仍是增量硬门禁。** `.github/workflows/pylint.yml` 对改动 Python 文件执行硬检查，但全仓报告使用 `|| true` 仅作 advisory。该策略适合存量迁移，却没有形成全仓质量趋势约束；应增加按目录和新增问题数的 ratchet。
-- **测试风格存在历史混用。** 当前约 `499` 个测试文件，仍有约 `70` 个 `unittest.TestCase` 文件。它不是生产架构缺陷，但会增加 fixture、状态隔离和异步测试迁移成本，应在触碰相关模块时渐进迁移。
+- **测试风格存在历史混用。** 当前有 `527` 个测试文件，仍有 `70` 个 `unittest.TestCase` 文件。它不是生产架构缺陷，但会增加 fixture、状态隔离和异步测试迁移成本，应在触碰相关模块时渐进迁移。
 - **跨仓治理链路尚未完全闭环。** 前端已有 lint、typecheck、分片 Vitest 和构建门禁；插件仓有 V1/V2/V3 索引及版本/依赖检查；资源和 Rust 仓有独立构建发布链路。但插件 CI 本地复核因插件仓环境缺少主仓依赖 `httpx2` 无法完成收集，说明“插件仓测试环境与主仓锁定依赖”的可复现性仍需加强。资源构建通过 PR 同步到 `MoviePilot-Resources`，Rust 发布后自动向主仓发依赖 bump PR，链路合理但仍是多仓异步发布，需保留版本 provenance 和回滚点。
 
 ### 已解决、不应重复治理的问题
@@ -178,10 +589,10 @@ MoviePilot V3 当前不是“目录混乱、必须推倒重来”的状态。第
 2. **V3 部署拓扑边界已完成。**全功能模式在 startup、launcher 和 Doctor 共同拒绝 `API_WORKERS > 1`，生产入口固定单 worker；开发 reload/监督模式使用 `app.factory:create_app` import-string factory，不再把 app 实例交给多进程 supervisor。旧配置键继续可解析，未来只有拆出 control role 后才重新评估全功能多 worker。
 3. **事务所有权已完成装饰器层收口，但 ORM 对象跨层流转仍需治理。**正式 Model 查询/写装饰器均已清零，宿主 Oper 查询统一接收显式 Session；调用方仍需继续明确 ORM 对象生命周期、懒加载和业务提交后副作用边界。
 4. **组合根之后仍存在全局服务定位，但配置和 API 数据主路径已收口。**canonical 未批准 Settings 导入与非组合根 `SystemConfigOper()` 构造均为 `0`；数据库基础设施 3 处和 startup 唯一构造点作为不可扩张边界登记。正式 FastAPI 依赖只读取 AppState `HostRuntime` 的命名领域，字符串 API 数据注册表仅允许 startup 注入和旧 Facade 转发；后续对象是 Singleton 与模块级 `configure/get` provider，不应再迁移已类型化 API 依赖。
-5. **模块与事件契约登记均已完成。**当前 212 个模块 spec 的宿主观察面已无 legacy aggregation，53 个事件全部绑定 typed payload，可见性、投递等级、错误行为和敏感字段均有基线，legacy event payload 为 `0`。后续重点是保持新增能力 ratchet、观察未知第三方 fallback 命中，以及 6 个 durable-required 事件的真实持久投递，不是重复创建契约或事件 DTO。
-6. **后台副作用缺少统一可靠性定义。**事件队列、APScheduler、FastAPI BackgroundTasks 和线程池任务的丢失、重试、幂等、关停语义各不相同；数据库提交与事件/上报之间仍有进程崩溃窗口。
+5. **模块与事件契约登记均已完成。**当前 212 个模块 spec 的宿主观察面已无 legacy aggregation，53 个事件全部绑定 typed payload，可见性、投递等级、错误行为和敏感字段均有基线，legacy event payload 为 `0`。六个 durable-required 事件的宿主正式生产者已通过业务同事务 Outbox 提供真实持久投递，事件与 topic 映射及恢复 handler 完整性已纳入 ratchet。后续重点是保持新增能力门禁和观察未知第三方 fallback 命中，不是重复创建契约、DTO 或 Outbox。
+6. **后台副作用已有统一可靠性分类，但其他 E1/E3 机制仍需逐项收口。** ADR-0007 已分类事件队列、APScheduler、进程内任务、Agent task 与 transfer pending 的完成点、恢复和失败表达；不能因六个关键事件已接 Outbox，就把仍需定时重建、持久任务表或人工恢复的其他 E1/E3 机制误报为全部完成。
 7. **核心关联与健康边界已落地，指标导出仍未收口。**HTTP/SSE correlation ID 已传播到线程池、事件、工作流、子进程、外部请求和日志；`/health/live`、`/health/ready` 已由部署入口消费，事件/数据库队列深度及模块/事件耗时使用低基数指标登记。当前缺口是稳定 exporter、运维查询面和跨进程聚合，而不是重新实现 request ID 或健康路由。
-8. **质量门禁已具备增量硬约束，但覆盖面仍需扩大。**push/PR 对变更 Python 文件执行 Pylint，CI 同时运行 host architecture、37 个 strict mypy 文件、复杂度、async 阻塞和 task owner ratchet；全仓 Pylint 仍是 advisory，strict 类型和复杂度拆分仍应随业务切片渐进扩展。
+8. **质量门禁已具备增量硬约束，但覆盖面仍需扩大。**push/PR 对变更 Python 文件执行 Pylint，CI 同时运行 host architecture、39 个 strict mypy 文件、复杂度、async 阻塞和 task owner ratchet；全仓 Pylint 仍是 advisory，strict 类型和复杂度拆分仍应随业务切片渐进扩展。
 
 建议保持**模块化单体**，按以下顺序治理：
 

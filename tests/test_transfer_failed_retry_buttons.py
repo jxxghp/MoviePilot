@@ -137,14 +137,14 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             settings, "AI_AGENT_ENABLE", True
         ):
             with patch(
-                "app.chain._transfer.TransferHistoryOper"
+                "app.chain._transfer.get_chain_transfer_history_port"
             ) as history_oper_cls, patch(
                 "app.chain._transfer.build_manual_redo_prompt",
                 return_value="retry transfer prompt",
-            ), patch(
-                "app.chain._transfer.asyncio.run_coroutine_threadsafe",
-                side_effect=_close_pending_coro,
-            ) as run_task:
+            ), patch("app.chain._transfer.get_task_registry") as get_registry:
+                get_registry.return_value.submit_threadsafe.side_effect = (
+                    _close_pending_coro
+                )
                 history_oper_cls.return_value.get.return_value = history
                 with patch.object(chain, "post_message") as post_message:
                     chain.handle_failed_transfer_callback(
@@ -155,7 +155,11 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
                         username="tester",
                     )
 
-        run_task.assert_called_once()
+        get_registry.return_value.submit_threadsafe.assert_called_once()
+        self.assertEqual(
+            get_registry.return_value.submit_threadsafe.call_args.kwargs["owner"],
+            "chain.transfer.ai_takeover",
+        )
         self.assertEqual(post_message.call_count, 1)
         self.assertEqual(
             post_message.call_args_list[0].args[0].title,
@@ -217,17 +221,17 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             settings, "AI_AGENT_ENABLE", True
         ):
             with patch(
-                "app.chain._transfer.TransferHistoryOper"
+                "app.chain._transfer.get_chain_transfer_history_port"
             ) as history_oper_cls, patch(
                 "app.chain._transfer.build_manual_redo_prompt",
                 side_effect=build_manual_redo_prompt,
             ), patch(
                 "app.chain._transfer.get_running_agent_manager",
                 return_value=manager,
-            ), patch(
-                "app.chain._transfer.asyncio.run_coroutine_threadsafe",
-                side_effect=_run_pending_coro,
-            ):
+            ), patch("app.chain._transfer.get_task_registry") as get_registry:
+                get_registry.return_value.submit_threadsafe.side_effect = (
+                    _run_pending_coro
+                )
                 history_oper_cls.return_value.get.return_value = history
                 with patch.object(chain, "post_message"), patch.object(
                     chain, "async_post_message", side_effect=fake_async_post_message

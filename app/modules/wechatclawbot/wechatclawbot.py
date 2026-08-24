@@ -20,6 +20,7 @@ from app.runtime.cache import FileCache
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
+from app.application.messaging.ingress import forward_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
@@ -1477,9 +1478,6 @@ class WechatClawBot:
         self._stop_event = threading.Event()
         self._poll_thread: Optional[threading.Thread] = None
         self._state = self._load_state()
-        self._message_endpoint = (
-            f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}&source={quote(self._config_name, safe='')}"
-        )
         if self._state.get("bot_token") and self._auto_start_polling:
             self._start_polling()
 
@@ -1751,33 +1749,18 @@ class WechatClawBot:
                         username=message.username,
                         context_token=message.context_token,
                     )
-                    response = None
                     try:
-                        response = RequestUtils(timeout=15).post_res(
-                            self._message_endpoint,
-                            json=message.to_message_payload(),
-                        )
-                        if response is None:
-                            logger.error(
-                                f"转发微信 ClawBot 消息失败：message_id={message.message_id}, "
-                                "本地消息入口无响应"
-                            )
-                        elif response.status_code != 200:
+                        if not self._forward_to_message_chain(
+                            message.to_message_payload()
+                        ):
                             logger.error(
                                 "转发微信 ClawBot 消息失败："
-                                f"message_id={message.message_id}, status={response.status_code}, "
-                                f"body={self._short_text(response.text)}"
+                                f"message_id={message.message_id}"
                             )
                     except Exception as err:
                         logger.error(
                             f"转发微信 ClawBot 消息失败：message_id={message.message_id}, error={err}"
                         )
-                    finally:
-                        if response is not None:
-                            try:
-                                response.close()
-                            except Exception:
-                                pass
                 consecutive_failures = 0
             except Exception as err:
                 consecutive_failures += 1
@@ -1788,6 +1771,10 @@ class WechatClawBot:
                     self._clear_login_state()
                     break
                 self._stop_event.wait(delay)
+
+    def _forward_to_message_chain(self, payload: dict) -> bool:
+        """把 WeChatClawBot 轮询消息同步转交统一消息入口。"""
+        return forward_message_to_host(payload, self._config_name)
 
     def _build_known_targets(self) -> List[Dict[str, Any]]:
         known_targets = self._state.get("known_targets") or {}

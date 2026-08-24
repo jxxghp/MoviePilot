@@ -22,7 +22,7 @@ from app.api.endpoints.plugin import register_plugin_api
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
 from app.application.commands import init_commands
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.adapters.web.security.access import verify_token
 from app.api.principal import ApiPrincipal
 from app.application.configuration import get_configured_system_config
@@ -39,7 +39,7 @@ from app.api.dependencies.site import (
 )
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
-from app.application.scheduling import Scheduler
+from app.application.scheduling import get_scheduler
 from app.schemas.types import SystemConfigKey, MediaType
 from app.domain import site as site_rules
 from app.api.context import get_background_task_registry, resolve_background_task_registry
@@ -178,7 +178,7 @@ async def cookie_cloud_sync(
     运行CookieCloud同步站点信息
     """
     resolve_background_task_registry(task_registry).create_sync(
-        Scheduler().start, job_id="cookiecloud", owner="api.site.cookiecloud_sync"
+        get_scheduler().start, job_id="cookiecloud", owner="api.site.cookiecloud_sync"
     )
     return _SchemaResponse(success=True, message="CookieCloud同步任务已启动！")
 
@@ -196,7 +196,7 @@ async def reset(
     await get_configured_system_config().async_set(SystemConfigKey.IndexerSites, [])
     await get_configured_system_config().async_set(SystemConfigKey.RssSites, [])
     resolve_background_task_registry(task_registry).create_sync(
-        Scheduler().start,
+        get_scheduler().start,
         job_id="cookiecloud",
         owner="api.site.reset",
         manual=True,
@@ -567,8 +567,8 @@ def auth_site(
     status, msg = SitesHelper().check_user(auth_info.site, auth_info.params)
     get_configured_system_config().set(SystemConfigKey.UserSiteAuthParams, auth_info.model_dump())
     # 认证成功后，重新初始化插件
-    PluginManager().init_config()
-    Scheduler().init_plugin_jobs()
+    get_plugin_manager().init_config()
+    get_scheduler().init_plugin_jobs()
     init_commands()
     register_plugin_api()
     return _SchemaResponse(success=status, message=msg)

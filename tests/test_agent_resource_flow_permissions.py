@@ -1,5 +1,7 @@
 """Agent 资源流程工具权限测试。"""
 
+# pylint: disable=no-name-in-module
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -113,7 +115,7 @@ def test_query_sites_hides_only_sensitive_fields_for_non_admin_user():
     )
 
     with patch(
-        "app.agent.tools.impl.query_sites.SiteOper"
+        "app.agent.tools.impl.query_sites.get_agent_site_port"
     ) as site_oper:
         site_oper.return_value.async_list = AsyncMock(return_value=[site])
         result = asyncio.run(tool.run())
@@ -175,7 +177,7 @@ def test_query_sites_keeps_full_fields_for_admin_context():
     )
 
     with patch(
-        "app.agent.tools.impl.query_sites.SiteOper"
+        "app.agent.tools.impl.query_sites.get_agent_site_port"
     ) as site_oper:
         site_oper.return_value.async_list = AsyncMock(return_value=[site])
         result = asyncio.run(tool.run())
@@ -308,7 +310,7 @@ def test_query_downloaders_hides_sensitive_fields_for_non_admin_user():
     ]
 
     with patch(
-        "app.agent.tools.impl.query_downloaders.SystemConfigOper"
+        "app.agent.tools.impl.query_downloaders.get_configured_system_config"
     ) as system_config_oper:
         system_config_oper.return_value.get.return_value = downloaders
         result = asyncio.run(tool.run())
@@ -345,7 +347,7 @@ def test_query_downloaders_keeps_full_fields_for_admin_context():
     ]
 
     with patch(
-        "app.agent.tools.impl.query_downloaders.SystemConfigOper"
+        "app.agent.tools.impl.query_downloaders.get_configured_system_config"
     ) as system_config_oper:
         system_config_oper.return_value.get.return_value = downloaders
         result = asyncio.run(tool.run())
@@ -367,7 +369,7 @@ def test_channel_agent_admin_user_id_does_not_bypass_user_lookup():
         username="normal-user",
     )
 
-    with patch("app.agent.orchestrator.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
         user_oper.return_value.async_get_by_name.return_value = SimpleNamespace(
             is_superuser=False
         )
@@ -389,7 +391,7 @@ def test_channel_agent_rejects_local_admin_username_without_trusted_principal():
     )
     agent.is_channel_admin = False
 
-    with patch("app.agent.orchestrator.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
         user_oper.return_value.async_get_by_name = AsyncMock(
             return_value=SimpleNamespace(is_superuser=True)
         )
@@ -412,7 +414,7 @@ def test_channel_agent_accepts_trusted_admin_principal_without_local_user():
     )
     agent.is_channel_admin = True
 
-    with patch("app.agent.orchestrator.UserOper") as user_oper:
+    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
         context = asyncio.run(
             agent._build_tool_context(should_dispatch_reply=True)
         )
@@ -452,7 +454,7 @@ def test_channel_primary_id_defaults_to_admin_without_admin_list():
     )
 
     with patch(
-        "app.agent.tools.base.ServiceConfigHelper.get_notification_configs",
+        "app.agent.tools.base.get_notification_configs",
         return_value=[
             SimpleNamespace(
                 name="telegram-main",
@@ -475,7 +477,7 @@ def test_channel_primary_id_mismatch_remains_non_admin():
     )
 
     with patch(
-        "app.agent.tools.base.ServiceConfigHelper.get_notification_configs",
+        "app.agent.tools.base.get_notification_configs",
         return_value=[
             SimpleNamespace(
                 name="telegram-main",
@@ -498,7 +500,7 @@ def test_feishu_primary_open_id_defaults_to_admin():
     )
 
     with patch(
-        "app.agent.tools.base.ServiceConfigHelper.get_notification_configs",
+        "app.agent.tools.base.get_notification_configs",
         return_value=[
             SimpleNamespace(
                 name="feishu-main",
@@ -521,7 +523,7 @@ def test_channel_primary_id_still_prefers_admin_list():
     )
 
     with patch(
-        "app.agent.tools.base.ServiceConfigHelper.get_notification_configs",
+        "app.agent.tools.base.get_notification_configs",
         return_value=[
             SimpleNamespace(
                 name="telegram-main",

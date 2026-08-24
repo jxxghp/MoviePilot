@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.mediaserver import MediaServerChain
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.application.mediaserver import get_mediaserver_configs
 from app.runtime.log import logger
 
 PAGE_SIZE = 20
@@ -61,8 +61,7 @@ class QueryLibraryLatestTool(MoviePilotTool):
     @staticmethod
     def _get_enabled_servers() -> list[str]:
         """同步读取启用的媒体服务器列表。"""
-        mediaservers = ServiceConfigHelper.get_mediaserver_configs()
-        return [ms.name for ms in mediaservers if ms.enabled]
+        return [config.name for config in get_mediaserver_configs()]
 
     @staticmethod
     def _load_latest_items(

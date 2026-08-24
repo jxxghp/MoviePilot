@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
 from langchain_core.messages import (  # noqa: F401
     HumanMessage,
@@ -21,6 +20,7 @@ from langchain_core.messages import (  # noqa: F401
 
 from langgraph.checkpoint.memory import InMemorySaver
 
+from app.runtime.execution import run_in_threadpool
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.helper import LLMHelper
@@ -79,8 +79,8 @@ from app.application.plugin.runtime import get_plugin_manager
 def _get_plugin_tools_revision() -> int:
     """读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。"""
     return get_plugin_manager().get_plugin_agent_tools_revision()
-from app.application.agentdata import AgentTaskPort as AgentTaskOper
-from app.application.agentdata import UserPort as UserOper
+from app.application.agentdata import get_agent_task_port
+from app.application.agentdata import get_agent_user_port
 from app.application.messaging.chat import (
     get_configured_agent_chat_service,
     get_configured_agent_chat_persistence,
@@ -977,7 +977,7 @@ class MoviePilotAgent:
         if not self.username:
             return False
         try:
-            user = await UserOper().async_get_by_name(self.username)
+            user = await get_agent_user_port().async_get_by_name(self.username)
         except Exception as e:
             logger.error(f"检查 Agent 用户管理员身份失败: {e}")
             return False
@@ -3514,7 +3514,7 @@ class AgentManager:
         """
         if not settings.AI_AGENT_ENABLE:
             return False, "AI Agent 未启用"
-        oper = AgentTaskOper()
+        oper = get_agent_task_port()
         task = oper.get(task_id)
         if not task or not task.enabled:
             return False, "Agent 定时任务不存在或已停用"

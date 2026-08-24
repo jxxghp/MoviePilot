@@ -507,7 +507,7 @@ def test_subscribe_chain_exists_forwards_episode_group():
 
     media = _media("eg-1")
     meta = SimpleNamespace(begin_season=1)
-    with patch("app.chain.subscribe.SubscribeOper") as subscribe_oper_cls:
+    with patch("app.chain.subscribe.get_chain_subscribe_port") as subscribe_oper_cls:
         subscribe_oper_cls.return_value.exists.return_value = True
 
         assert SubscribeChain.exists(media, meta) is True

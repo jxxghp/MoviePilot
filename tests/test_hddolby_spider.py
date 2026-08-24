@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# pylint: disable=no-name-in-module
+
 import pytest
 
 from app.modules.indexer.spider import hddolby as hddolby_module
@@ -21,7 +23,7 @@ def _build_indexer() -> dict:
 @pytest.fixture()
 def hddolby_spider(monkeypatch):
     """构造不依赖真实数据库配置的 HddolbySpider。"""
-    monkeypatch.setattr(hddolby_module, "SystemConfigOper", lambda: None)
+    monkeypatch.setattr(hddolby_module, "get_configured_system_config", lambda: None)
     return HddolbySpider(_build_indexer())
 
 

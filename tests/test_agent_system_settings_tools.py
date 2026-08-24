@@ -35,7 +35,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
 
         with patch(
-            "app.agent.tools.impl.query_system_settings.SystemConfigOper"
+            "app.agent.tools.impl.query_system_settings.get_configured_system_config"
         ) as system_config_oper:
             system_config_oper.return_value.get.return_value = [{"name": "qb", "enabled": True}]
             result = asyncio.run(tool.run(setting_key="Downloaders"))
@@ -54,7 +54,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
 
         with patch(
-            "app.agent.tools.impl.query_system_settings.SystemConfigOper"
+            "app.agent.tools.impl.query_system_settings.get_configured_system_config"
         ) as system_config_oper:
             system_config_oper.return_value.get.return_value = [
                 {
@@ -84,7 +84,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         tool.set_agent_context({"is_admin": True})
 
         with patch(
-            "app.agent.tools.impl.query_system_settings.SystemConfigOper"
+            "app.agent.tools.impl.query_system_settings.get_configured_system_config"
         ) as system_config_oper:
             system_config_oper.return_value.get.return_value = [
                 {"name": "site-a", "apikey": "site-api-key"}
@@ -156,7 +156,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         tool = QuerySystemSettingsTool(session_id="session-1", user_id="10001")
 
         with patch(
-            "app.agent.tools.impl.query_system_settings.SystemConfigOper"
+            "app.agent.tools.impl.query_system_settings.get_configured_system_config"
         ) as system_config_oper:
             system_config_oper.return_value.get.return_value = []
             result = asyncio.run(tool.run(group="systemconfig"))
@@ -231,7 +231,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         config_oper.async_set = AsyncMock(return_value=True)
 
         with patch(
-            "app.agent.tools.impl.update_system_settings.SystemConfigOper",
+            "app.agent.tools.impl.update_system_settings.get_configured_system_config",
             return_value=config_oper,
         ), patch(
             "app.agent.tools.impl.update_system_settings.eventmanager.async_send_event",
@@ -264,7 +264,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         config_oper.async_set = AsyncMock(return_value=True)
 
         with patch(
-            "app.agent.tools.impl.update_system_settings.SystemConfigOper",
+            "app.agent.tools.impl.update_system_settings.get_configured_system_config",
             return_value=config_oper,
         ), patch(
             "app.agent.tools.impl.update_system_settings.eventmanager.async_send_event",
@@ -297,7 +297,7 @@ class TestAgentSystemSettingsTools(unittest.TestCase):
         config_oper.async_set = AsyncMock(return_value=True)
 
         with patch(
-            "app.agent.tools.impl.update_system_settings.SystemConfigOper",
+            "app.agent.tools.impl.update_system_settings.get_configured_system_config",
             return_value=config_oper,
         ), patch(
             "app.agent.tools.impl.update_system_settings.eventmanager.async_send_event",

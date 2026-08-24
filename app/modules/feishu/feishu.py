@@ -53,6 +53,7 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
+from app.application.messaging.ingress import submit_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.application.security.user import get_configured_user_channel_lookup
 from app.application.messaging.agent import matches_channel_admin
@@ -61,6 +62,7 @@ from app.schemas.message import IncomingMessage
 from app.schemas.message import Message
 from app.schemas.types import NotificationChannel, MessageType
 from app.adapters.network.http import RequestUtils
+from app.runtime.thread import ThreadHelper
 
 
 class UserOper:
@@ -295,19 +297,13 @@ class Feishu:
             ws_client._service_id = ""
             ws_client._lock.release()
 
-    def _forward_to_message_chain(self, payload: dict) -> None:
+    def _forward_to_message_chain(self, payload: dict) -> bool:
         """将飞书入站消息转发到统一消息入口，复用现有交互主链。"""
-
-        def _run() -> None:
-            try:
-                RequestUtils(timeout=15).post_res(
-                    f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}&source={self._name}",
-                    json=payload,
-                )
-            except Exception as err:
-                logger.error(f"飞书转发消息失败：{err}")
-
-        threading.Thread(target=_run, daemon=True).start()
+        return submit_message_to_host(
+            payload,
+            self._name,
+            submit=ThreadHelper().submit,
+        )
 
     @staticmethod
     def _parse_message_content(message) -> Tuple[

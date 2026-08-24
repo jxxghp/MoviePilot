@@ -153,7 +153,7 @@ def test_default_callback_skips_history_and_notification_when_overwrite_declined
     )
 
     with patch(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         return_value=transfer_history_oper,
     ), patch(
         "app.chain.transfer.add_transfer_fail",
@@ -199,7 +199,7 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
     )
 
     with patch(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         return_value=transfer_history_oper,
     ), patch(
         "app.chain.transfer.add_transfer_fail",
@@ -251,7 +251,7 @@ def test_default_callback_delegates_primary_failure_to_durable_writer():
 
     chain.durable_event_writer.transfer_result.side_effect = durable_transfer_result
     with patch(
-        "app.chain.transfer.TransferHistoryOper",
+        "app.chain.transfer.get_chain_transfer_history_port",
         return_value=transfer_history_oper,
     ), patch(
         "app.chain.transfer.add_transfer_fail",

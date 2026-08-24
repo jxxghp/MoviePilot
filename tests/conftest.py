@@ -145,7 +145,13 @@ def configure_plugin_system_services():
     configure_module_runtime(lambda: ModuleManager())
     from app.application.site.query import SiteQueryService, configure_site_query_service
     from app.application.site.health import SiteHealthService, configure_site_health_service
-    from app.application.workflow import WorkflowQueryService, configure_workflow_query
+    from app.application.workflow import (
+        WorkflowQueryService,
+        configure_workflow_query,
+        configure_workflow_runtime,
+    )
+    from app.workflow import WorkFlowManager
+    configure_workflow_runtime(lambda: WorkFlowManager())
     from app.application.agentdata import configure_agent_data_ports
     from app.db.oper.agentchat import AgentChatOper
     from app.db.oper.downloadfailure import DownloadFailureOper

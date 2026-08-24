@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.events import eventmanager
-from app.application.agentdata import SitePort as SiteOper
+from app.application.agentdata import get_agent_site_port
 from app.runtime.log import logger
 from app.schemas.types import EventType
 from app.foundation import url as url_tools
@@ -124,7 +124,7 @@ class UpdateSiteTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: site_id={site_id}")
 
         try:
-            site_oper = SiteOper()
+            site_oper = get_agent_site_port()
             site = await site_oper.async_get(site_id)
             if not site:
                 return json.dumps(

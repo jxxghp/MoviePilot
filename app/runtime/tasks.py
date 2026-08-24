@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 from collections.abc import Coroutine
 from dataclasses import dataclass
 from functools import partial
@@ -67,6 +68,79 @@ class TaskRegistry:
             owner=owner,
             cancel_on_shutdown=False,
         )
+
+    def submit_threadsafe(
+        self,
+        coroutine: Coroutine[Any, Any, Any],
+        *,
+        loop: asyncio.AbstractEventLoop,
+        owner: str,
+        cancel_on_shutdown: bool = True,
+    ) -> concurrent.futures.Future[Any]:
+        """从宿主线程提交协程，并在目标循环内原子登记 owner 后执行。"""
+        completion: concurrent.futures.Future[Any] = concurrent.futures.Future()
+        task_holder: dict[str, asyncio.Task[Any]] = {}
+
+        def mirror_completion(task: asyncio.Task[Any]) -> None:
+            """把登记任务的真实终态镜像给跨线程调用方。"""
+            if completion.done():
+                return
+            if task.cancelled():
+                completion.cancel()
+                return
+            exception = task.exception()
+            if exception is not None:
+                completion.set_exception(exception)
+            else:
+                completion.set_result(task.result())
+
+        def submit_on_loop() -> None:
+            """在目标循环内完成 accepting 检查、任务创建和 owner 登记。"""
+            if completion.cancelled():
+                coroutine.close()
+                return
+            try:
+                task = self.create(
+                    coroutine,
+                    owner=owner,
+                    cancel_on_shutdown=cancel_on_shutdown,
+                )
+            except Exception as error:
+                if not completion.done():
+                    completion.set_exception(error)
+                loop.call_exception_handler(
+                    {
+                        "message": "MoviePilot 跨线程后台任务提交失败",
+                        "exception": error,
+                        "owner": owner,
+                    }
+                )
+                return
+            task_holder["task"] = task
+            task.add_done_callback(mirror_completion)
+            if completion.cancelled() and not task.done():
+                task.cancel()
+
+        def cancel_registered_task(
+            submitted: concurrent.futures.Future[Any],
+        ) -> None:
+            """调用方取消 completion 时，把取消请求转交目标循环中的真实任务。"""
+            if not submitted.cancelled():
+                return
+            task = task_holder.get("task")
+            if task is not None and not task.done():
+                try:
+                    loop.call_soon_threadsafe(task.cancel)
+                except RuntimeError:
+                    pass
+
+        completion.add_done_callback(cancel_registered_task)
+        try:
+            loop.call_soon_threadsafe(submit_on_loop)
+        except RuntimeError:
+            coroutine.close()
+            raise
+        return completion
 
     def register(
         self,

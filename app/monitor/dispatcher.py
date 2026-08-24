@@ -9,9 +9,9 @@ from app.runtime.cache import TTLCache
 from app.application.directory import DirectoryHelper
 from app.application.history import (
     HistoryGateAction,
-    TransferHistoryPort as TransferHistoryOper,
     describe_history_gate,
     evaluate_history_gate,
+    get_transfer_history_port,
     is_skip_action,
     max_failed_retries,
     resolve_history,
@@ -111,7 +111,7 @@ class TransferDispatcher:
         """
         try:
             history = resolve_history(src_path, storage=storage,
-                                      transfer_history_oper=TransferHistoryOper())
+                                      transfer_history_oper=get_transfer_history_port())
         except Exception as err:
             logger.error(f"查询整理历史失败: {src_path} - {err}")
             return None

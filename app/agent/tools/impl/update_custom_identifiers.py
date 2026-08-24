@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.domain.metainfo import clear_rust_parse_options_cache
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
@@ -80,7 +80,7 @@ class UpdateCustomIdentifiersTool(MoviePilotTool):
             # 过滤空字符串
             identifiers = [i for i in identifiers if i is not None]
 
-            system_config_oper = SystemConfigOper()
+            system_config_oper = get_configured_system_config()
 
             # 保存
             value = identifiers if identifiers else None

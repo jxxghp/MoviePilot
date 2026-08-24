@@ -428,8 +428,10 @@ def test_add_download_preserves_album_context_and_full_coverage_marker():
         "_async_resolve_cached_context",
         new=AsyncMock(return_value=cached_context),
     ), patch(
-        "app.agent.tools.impl.add_download_tasks.SiteOper.async_get_by_name",
-        new=AsyncMock(return_value=site),
+        "app.agent.tools.impl.add_download_tasks.get_agent_site_port",
+        return_value=SimpleNamespace(
+            async_get_by_name=AsyncMock(return_value=site)
+        ),
     ), patch.object(
         AddDownloadTasksTool,
         "_download_single_sync",
@@ -479,7 +481,7 @@ def test_query_subscribe_history_uses_database_media_values_and_music_fields(mon
             return [record] if mtype == MediaType.MUSIC.value else []
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.query_subscribe_history.SubscribeHistoryOper",
+        "app.agent.tools.impl.query_subscribe_history.get_agent_subscribe_history_port",
         FakeHistoryOper,
     )
     tool = QuerySubscribeHistoryTool(session_id="session-1", user_id="10001")
@@ -513,7 +515,7 @@ def test_music_history_filter_excludes_video_records(monkeypatch):
             return [movie_record] if mtype == MediaType.MOVIE.value else []
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.query_subscribe_history.SubscribeHistoryOper",
+        "app.agent.tools.impl.query_subscribe_history.get_agent_subscribe_history_port",
         FakeHistoryOper,
     )
     tool = QuerySubscribeHistoryTool(session_id="session-1", user_id="10001")

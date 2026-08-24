@@ -1,6 +1,6 @@
-import asyncio
 import time
-from typing import List, Any, Optional
+from collections.abc import Coroutine
+from typing import List, Any, Callable, Optional
 
 from fastapi import Depends
 
@@ -14,7 +14,7 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
 from app.api.response import ResponseAPIRouter
 from app.agent.contracts import ReplyMode
-from app.agent.runtime_loader import get_running_agent_manager
+from app.application.agent import get_running_agent_manager
 from app.agent.prompt.transfer_redo import (
     build_batch_manual_redo_prompt,
     build_manual_redo_prompt,
@@ -58,6 +58,21 @@ def normalize_history_ids(history_ids: list[int]) -> list[int]:
     return normalized_ids
 
 
+def _build_progress_output_callback(
+    progress: AsyncProgressHelper,
+    data: dict[str, Any],
+    *,
+    submit: Callable[[Coroutine[Any, Any, Any]], object],
+) -> Callable[[str], None]:
+    """构造同步 Agent 输出回调，并把异步进度更新登记到宿主任务生命周期。"""
+
+    def update_output(text: str) -> None:
+        """非阻塞提交一条进度更新，避免同步回调等待缓存 I/O。"""
+        submit(progress.update(text=text, data=data))
+
+    return update_output
+
+
 def _start_ai_redo_task(
     history_id: int,
     prompt: str,
@@ -65,15 +80,17 @@ def _start_ai_redo_task(
     task_registry: TaskRegistry | None = None,
 ) -> None:
     """在后台任务中启动单条 AI 重新整理任务，并通过异步进度辅助类实时更新进度。"""
+    registry = resolve_background_task_registry(task_registry)
     progress = AsyncProgressHelper(progress_key)
-
-    def update_output(text: str):
-        # 输出回调由 agent 在事件循环上同步调用，不能直接 await；
-        # 提交到全局事件循环非阻塞执行，避免同步缓存后端阻塞事件循环。
-        asyncio.run_coroutine_threadsafe(
-            progress.update(text=text, data={"history_id": history_id}),
-            global_vars.loop,
-        )
+    update_output = _build_progress_output_callback(
+        progress,
+        {"history_id": history_id},
+        submit=lambda coroutine: registry.submit_threadsafe(
+            coroutine,
+            loop=global_vars.loop,
+            owner="api.history.ai_redo.progress",
+        ),
+    )
 
     async def runner():
         try:
@@ -110,7 +127,6 @@ def _start_ai_redo_task(
         finally:
             await progress.end()
 
-    registry = resolve_background_task_registry(task_registry)
     registry.create(runner(), owner="api.history.ai_redo")
 
 
@@ -121,15 +137,17 @@ def _start_batch_ai_redo_task(
     task_registry: TaskRegistry | None = None,
 ) -> None:
     """在后台任务中启动批量 AI 重新整理任务，并通过异步进度辅助类实时更新进度。"""
+    registry = resolve_background_task_registry(task_registry)
     progress = AsyncProgressHelper(progress_key)
-
-    def update_output(text: str):
-        # 输出回调由 agent 在事件循环上同步调用，不能直接 await；
-        # 提交到全局事件循环非阻塞执行，避免同步缓存后端阻塞事件循环。
-        asyncio.run_coroutine_threadsafe(
-            progress.update(text=text, data={"history_ids": history_ids}),
-            global_vars.loop,
-        )
+    update_output = _build_progress_output_callback(
+        progress,
+        {"history_ids": history_ids},
+        submit=lambda coroutine: registry.submit_threadsafe(
+            coroutine,
+            loop=global_vars.loop,
+            owner="api.history.ai_redo_batch.progress",
+        ),
+    )
 
     async def runner():
         try:
@@ -166,7 +184,6 @@ def _start_batch_ai_redo_task(
         finally:
             await progress.end()
 
-    registry = resolve_background_task_registry(task_registry)
     registry.create(runner(), owner="api.history.ai_redo_batch")
 
 

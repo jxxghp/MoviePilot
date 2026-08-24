@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import time
 from collections.abc import Callable
@@ -25,20 +24,17 @@ class EventDispatcher:
         *,
         registry: EventRegistry,
         binding_resolver: EventBindingResolver,
-        executor: Callable[[], Any],
-        event_loop: Callable[[], Any],
         event_factory: Callable[..., Any],
         error_handler: Callable[..., None],
-        async_handle_sink: Callable[[Any], bool] | None = None,
-        sync_handle_sink: (
-            Callable[[Callable[..., Any], tuple[Any, ...]], bool] | None
-        ) = None,
+        async_handle_sink: Callable[[Any], bool],
+        sync_handle_sink: Callable[
+            [Callable[..., Any], tuple[Any, ...]],
+            bool,
+        ],
     ) -> None:
-        """注入注册表、绑定器、执行器和错误策略回调。"""
+        """注入注册表、绑定器、生命周期提交器和错误策略回调。"""
         self._registry = registry
         self._binding_resolver = binding_resolver
-        self._executor = executor
-        self._event_loop = event_loop
         self._event_factory = event_factory
         self._error_handler = error_handler
         self._async_handle_sink = async_handle_sink
@@ -126,28 +122,11 @@ class EventDispatcher:
             )
             if inspect.iscoroutinefunction(handler):
                 coroutine = self.safe_invoke_async(handler, isolated)
-                if self._async_handle_sink:
-                    self._async_handle_sink(coroutine)
-                    continue
-                try:
-                    asyncio.run_coroutine_threadsafe(coroutine, self._event_loop())
-                except RuntimeError:
-                    coroutine.close()
-                    logger.warning(
-                        "事件 %s 的异步处理器无法投递，事件循环已停止",
-                        event.event_type,
-                    )
+                self._async_handle_sink(coroutine)
             else:
-                if self._sync_handle_sink:
-                    self._sync_handle_sink(
-                        self.safe_invoke_sync,
-                        (handler, isolated),
-                    )
-                    continue
-                self._executor().submit(
+                self._sync_handle_sink(
                     self.safe_invoke_sync,
-                    handler,
-                    isolated,
+                    (handler, isolated),
                 )
 
     def safe_invoke_sync(self, handler: Callable, event: Any) -> None:

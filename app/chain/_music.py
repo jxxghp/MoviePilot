@@ -9,7 +9,7 @@ from app.application.subscription.contract import (
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.application.chain.data import SubscribePortProxy as SubscribeOper
+from app.application.chain.data import get_chain_subscribe_port
 from app.application.configuration import get_configured_system_config
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
@@ -197,7 +197,7 @@ class MusicSubscribeMixin:
             update_data["total_tracks"] = total_tracks
         if not update_data:
             return
-        SubscribeOper().update(subscribe.id, update_data)
+        get_chain_subscribe_port().update(subscribe.id, update_data)
         for key, value in update_data.items():
             setattr(subscribe, key, value)
 
@@ -348,10 +348,10 @@ class MusicSubscribeMixin:
                 "current_bit_depth": best_meta.bit_depth,
                 "current_sample_rate": best_meta.sample_rate,
             }
-            SubscribeOper().update(subscribe.id, quality_data)
+            get_chain_subscribe_port().update(subscribe.id, quality_data)
             for key, value in quality_data.items():
                 setattr(subscribe, key, value)
-        current_subscribe = SubscribeOper().get(subscribe.id)
+        current_subscribe = get_chain_subscribe_port().get(subscribe.id)
         if current_subscribe:
             self.finish_subscribe_or_not(
                 subscribe=current_subscribe,

@@ -6,7 +6,7 @@ from pydantic import Field
 
 from app.workflow.actions import BaseAction
 from app.runtime.config import global_vars
-from app.application.chain.data import TransferHistoryPortProxy as TransferHistoryOper
+from app.application.chain.data import get_chain_transfer_history_port
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionContext
 from app.chain.storage import StorageChain
@@ -67,7 +67,7 @@ class TransferFileAction(BaseAction):
         _failed_count = 0
         storagechain = StorageChain()
         transferchain = TransferChain()
-        transferhis = TransferHistoryOper()
+        transferhis = get_chain_transfer_history_port()
         if params.source == "downloads":
             # 从下载任务中整理文件
             for download in context.downloads:

@@ -23,8 +23,8 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.subscribe import SubscribeChain
 from app.application.chain.data import (
-    DownloadHistoryPortProxy as DownloadHistoryOper,
-    TransferHistoryPortProxy as TransferHistoryOper,
+    get_chain_download_history_port,
+    get_chain_transfer_history_port,
 )
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
@@ -37,6 +37,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.config import global_vars
 from app.runtime.log import logger
+from app.runtime.tasks import get_task_registry
 from app.schemas.workflow import FileItem
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
@@ -417,7 +418,7 @@ class FileFilterMixin:
 
     @staticmethod
     def _is_overwrite_declined(task: TransferTask, transferinfo: TransferInfo,
-                               transferhis: TransferHistoryOper) -> bool:
+                               transferhis: Any) -> bool:
         """
         判断本次未入库是否为「同路径已有成功记录 + 覆盖模式裁定不覆盖」。
 
@@ -859,7 +860,7 @@ class HistoryMatchMixin:
 
     def _resolve_history_from_download_files(
             self,
-            downloadhis: DownloadHistoryOper,
+            downloadhis: Any,
             download_files: List[DownloadFiles],
             file_path: Optional[Path] = None,
             save_path: Optional[Path] = None,
@@ -889,7 +890,7 @@ class HistoryMatchMixin:
 
     def _resolve_download_history(
             self,
-            downloadhis: DownloadHistoryOper,
+            downloadhis: Any,
             file_path: Path,
             bluray_dir: bool = False,
             download_hash: Optional[str] = None,
@@ -1148,7 +1149,7 @@ class ManualHistoryMixin:
     def _get_manual_transfer_history(
             self,
             fileitem: FileItem,
-            transfer_history_oper: TransferHistoryOper,
+            transfer_history_oper: Any,
             include_move_dest: bool = False,
     ) -> Optional[TransferHistory]:
         """查询文件源路径历史，并兼容从成功移动后的目标现址重新整理。"""
@@ -1178,7 +1179,7 @@ class ManualHistoryMixin:
         :param fileitems: 待查询的文件或目录项
         :return: 去重后的成功整理记录
         """
-        transfer_history_oper = TransferHistoryOper()
+        transfer_history_oper = get_chain_transfer_history_port()
         histories: Dict[int, TransferHistory] = {}
         for fileitem in fileitems or []:
             if not fileitem or not fileitem.path:
@@ -1212,7 +1213,7 @@ class ManualHistoryMixin:
     @staticmethod
     def _delete_manual_transfer_history(
             history: TransferHistory,
-            transfer_history_oper: TransferHistoryOper,
+            transfer_history_oper: Any,
     ) -> Tuple[bool, str]:
         """删除手动重整历史；非成功移动记录同时清理可能存在的旧目标。"""
         if (
@@ -1385,7 +1386,7 @@ class FailedRetryMixin:
             )
             return
 
-        history = TransferHistoryOper().get(history_id)
+        history = get_chain_transfer_history_port().get(history_id)
         if not history:
             self.post_message(
                 Message(
@@ -1461,7 +1462,11 @@ class FailedRetryMixin:
                     )
                 )
 
-        asyncio.run_coroutine_threadsafe(_run_ai_takeover(), global_vars.loop)
+        get_task_registry().submit_threadsafe(
+            _run_ai_takeover(),
+            loop=global_vars.loop,
+            owner="chain.transfer.ai_takeover",
+        )
 
     def _re_transfer(
             self,
@@ -1478,7 +1483,7 @@ class FailedRetryMixin:
         :param media_id: 数据源原生 ID，必须与 media_source 成对提供
         """
         # 查询历史记录
-        history: TransferHistory = TransferHistoryOper().get(logid)
+        history: TransferHistory = get_chain_transfer_history_port().get(logid)
         if not history:
             logger.error(f"整理记录不存在，ID：{logid}")
             return False, "整理记录不存在"

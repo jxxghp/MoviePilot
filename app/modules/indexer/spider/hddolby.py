@@ -3,7 +3,7 @@ from typing import Tuple, List, Optional
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
@@ -69,7 +69,7 @@ class HddolbySpider:
         return cls._size
 
     def __init__(self, indexer: dict):
-        self.systemconfig = SystemConfigOper()
+        self.systemconfig = get_configured_system_config()
         if indexer:
             self._indexerid = indexer.get('id')
             self._domain = indexer.get('domain')

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# pylint: disable=no-name-in-module
+
 import pytest
 
 from app.modules.indexer.spider import haidan as haidan_module
@@ -21,7 +23,7 @@ def _build_indexer() -> dict:
 @pytest.fixture()
 def haidan_spider(monkeypatch):
     """构造不依赖真实数据库配置的 HaiDanSpider。"""
-    monkeypatch.setattr(haidan_module, "SystemConfigOper", lambda: None)
+    monkeypatch.setattr(haidan_module, "get_configured_system_config", lambda: None)
     return HaiDanSpider(_build_indexer())
 
 

@@ -825,7 +825,7 @@ class SubscribeEndpointTest(TestCase):
 
         for endpoint in [refresh_subscribes, check_subscribes]:
             with self.subTest(endpoint=endpoint.__name__), patch(
-                "app.api.endpoints.subscribe.Scheduler"
+                "app.api.endpoints.subscribe.get_scheduler"
             ) as scheduler:
                 response = endpoint(current_user=regular_user)
 
@@ -838,7 +838,7 @@ class SubscribeEndpointTest(TestCase):
             (check_subscribes, "subscribe_tmdb"),
         ]:
             with self.subTest(endpoint=endpoint.__name__), patch(
-                "app.api.endpoints.subscribe.Scheduler"
+                "app.api.endpoints.subscribe.get_scheduler"
             ) as scheduler:
                 response = endpoint(current_user=superuser)
 

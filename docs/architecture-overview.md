@@ -176,7 +176,7 @@ flowchart TB
 | `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则等；同一主题拆成子包 | `recognition.py`、`rules.py`、`rss.py`、`site/`、`subscription/`、`plugin/` |
 | `app/application/subscription/` | 订阅新增、查询、变更、删除、媒体身份与搜索契约 | `write.py`、`contract.py`、`mutation.py`、`delete.py`、`identity.py`、`search.py` |
 | `app/application/plugin/` | 插件市场、安装、运行时端口、文件夹操作和动态路由用例；具体 FastAPI 路由适配器在 adapters 层 | `catalog.py`、`install.py`、`runtime.py`、`folders.py`、`routes.py` |
-| `app/application/messaging/` | 消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `message.py`、`router.py`、`agent.py` |
+| `app/application/messaging/` | 渠道回环入口、消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `ingress.py`、`message.py`、`router.py`、`agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、SSRF 与 URL/路径安全 | `auth.py`、`url.py`、`twofactor.py` |
 | `app/chain/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe.py`、`search.py`、`transfer.py` |
 | `app/modules/` | 可插拔后端：下载器、媒体服务器、元数据源、消息渠道、索引器、存储 | `qbittorrent/`、`emby/`、`telegram/`、`themoviedb/` |
@@ -478,7 +478,7 @@ flowchart LR
     IT --> Chain
 ```
 
-- `app/application/messaging/` 负责消息渲染、模板、队列（`message.py`）、交互会话与视图；
+- `app/application/messaging/` 负责渠道回环入口（`ingress.py`）、消息渲染、模板、队列（`message.py`）、交互会话与视图；
   业务工作流仍由对应 Chain 执行（如媒体交互的业务部分在 `MediaInteractionChain`）。
 - 该包不作为推荐给插件直接使用的公开 SDK。
 

@@ -7,7 +7,7 @@ from app.schemas.token import Token as _SchemaToken
 from app.schemas.user import AuthProviderInfo as _SchemaAuthProviderInfo
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.application.security.auth import AuthService, consume_plugin_auth_ticket
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.api.dependencies.auth import get_auth_service
 
 router = ResponseAPIRouter()
@@ -52,7 +52,7 @@ def auth_providers(service: AuthService = Depends(get_auth_service)) -> list[dic
     :return: 认证提供方摘要列表
     """
     providers = _system_auth_providers(service)
-    providers.extend(PluginManager().get_plugin_auth_providers())
+    providers.extend(get_plugin_manager().get_plugin_auth_providers())
     return [provider for provider in providers if provider.get("enabled", True)]
 
 

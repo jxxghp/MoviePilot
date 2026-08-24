@@ -35,6 +35,55 @@ def _running_loop_stub() -> Mock:
     )
 
 
+def test_agent_session_clear_uses_owned_threadsafe_submission():
+    """Agent 会话清理应登记稳定 owner，纳入宿主关停收口。"""
+    loop = _running_loop_stub()
+    manager = Mock(clear_session=AsyncMock())
+
+    def submit(coroutine, **_kwargs):
+        """关闭测试协程，避免替身提交留下未等待警告。"""
+        coroutine.close()
+        return Future()
+
+    with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch(
+        "app.chain.message.get_running_agent_manager", return_value=manager
+    ), patch("app.chain.message.get_task_registry") as get_registry:
+        get_registry.return_value.submit_threadsafe.side_effect = submit
+        MessageChain._schedule_agent_session_clear("session-1", "10001")
+
+    manager.clear_session.assert_called_once_with(
+        session_id="session-1", user_id="10001"
+    )
+    get_registry.return_value.submit_threadsafe.assert_called_once()
+    assert get_registry.return_value.submit_threadsafe.call_args.kwargs == {
+        "loop": loop,
+        "owner": "chain.message.agent_session_clear",
+    }
+
+
+def test_remote_session_clear_reuses_owned_clear_scheduler():
+    """远程清理命令应复用唯一 Agent 会话清理入口。"""
+    chain = MessageChain()
+    session_service = Mock()
+    session_service.clear.return_value = "session-1"
+
+    with patch.object(
+        chain, "_message_session_service", return_value=session_service
+    ), patch.object(
+        chain, "_schedule_agent_session_clear"
+    ) as schedule_clear, patch.object(chain, "post_message") as post_message:
+        chain.remote_clear_session(
+            channel=NotificationChannel.Telegram,
+            userid="10001",
+            source="telegram-test",
+        )
+
+    schedule_clear.assert_called_once_with("session-1", "10001")
+    notification = post_message.call_args.args[0]
+    assert notification.title == "智能体会话已清除，下次将创建新的会话"
+    assert notification.save_history is False
+
+
 def test_explicit_ai_message_bypasses_pending_media_interaction():
     """显式 /ai 消息应绕过误触发的媒体交互状态并回到 Agent 会话。"""
     chain = MessageChain()

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app import schemas
+from app.agent.llm.gateway import register_llm_provider_runtime
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.provider import LLMProviderManager
 from app.runtime.config import settings
@@ -279,6 +280,87 @@ def test_llm_manage_endpoint_accepts_empty_target(monkeypatch):
     assert resp.success is True
     assert captured["provider"] == ""
     assert "callback_url" not in captured["params"]
+
+
+def test_llm_manage_endpoint_uses_registered_provider_runtime():
+    """管理端点必须使用组合根登记的 runtime，不得自行构造 provider Singleton。"""
+    captured = {}
+
+    class ProviderRuntime:
+        """记录端点调用的最小 provider runtime。"""
+
+        async def provider_manage(self, provider, action, **params):
+            """记录统一管理参数并返回可识别结果。"""
+            captured.update(provider=provider, action=action, params=params)
+            return {"success": True, "message": "", "data": {"runtime": "registered"}}
+
+    from app.api.endpoints import llm as llm_endpoint
+
+    previous = register_llm_provider_runtime(ProviderRuntime)
+    try:
+        request = SimpleNamespace(url_for=lambda *_args, **_kwargs: "unused")
+        payload = schemas.ManageRequest(target="", action="list_providers")
+
+        response = asyncio.run(llm_endpoint.manage_provider(request, payload, _="token"))
+    finally:
+        register_llm_provider_runtime(previous)
+
+    assert response.data == {"runtime": "registered"}
+    assert captured == {
+        "provider": "",
+        "action": "list_providers",
+        "params": {},
+    }
+
+
+def test_llm_oauth_callback_uses_registered_provider_runtime():
+    """OAuth 回调必须与管理端点复用组合根登记的 provider runtime。"""
+    captured = {}
+
+    class ProviderRuntime:
+        """记录 OAuth 回调参数的最小 provider runtime。"""
+
+        async def handle_chatgpt_callback(
+            self,
+            provider_id,
+            code,
+            state,
+            error,
+            error_description,
+        ):
+            """记录回调并返回可渲染的成功结果。"""
+            captured.update(
+                provider_id=provider_id,
+                code=code,
+                state=state,
+                error=error,
+                error_description=error_description,
+            )
+            return True, "registered runtime"
+
+    from app.api.endpoints import llm as llm_endpoint
+
+    previous = register_llm_provider_runtime(ProviderRuntime)
+    try:
+        response = asyncio.run(
+            llm_endpoint.llm_provider_auth_callback(
+                provider_id="chatgpt",
+                code="oauth-code",
+                state="oauth-state",
+            )
+        )
+    finally:
+        register_llm_provider_runtime(previous)
+
+    assert response.status_code == 200
+    assert b"registered runtime" in response.body
+    assert captured == {
+        "provider_id": "chatgpt",
+        "code": "oauth-code",
+        "state": "oauth-state",
+        "error": None,
+        "error_description": None,
+    }
 
 
 def test_llm_manage_endpoint_response_model_accepts_list_data():

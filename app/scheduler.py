@@ -31,17 +31,17 @@ from app.runtime.events import Event, eventmanager
 from app.db.oper.agenttask import AgentTaskOper
 from app.application.database import get_database_governance
 from app.application.outbox import dispatch_pending_outbox
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.application.configuration import (
     SchedulerRuntimeConfig,
     get_configured_system_config,
     get_scheduler_runtime_config,
 )
 from app.application.image import WallpaperHelper
+from app.application.mediaserver import get_mediaserver_configs
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.adapters.external.server import MoviePilotServerHelper
-from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -551,7 +551,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 JobSpec("random_wallpager", "壁纸缓存", WallpaperHelper().get_wallpapers, "image"),
                 JobSpec("sitedata_refresh", "站点数据刷新", SiteChain().refresh_userdatas, "site"),
                 JobSpec("recommend_refresh", "推荐缓存", RecommendChain().refresh_recommend, "recommend"),
-                JobSpec("plugin_market_refresh", "插件市场缓存", PluginManager().async_get_online_plugins, "plugin", kwargs={"force": True}),
+                JobSpec("plugin_market_refresh", "插件市场缓存", get_plugin_manager().async_get_online_plugins, "plugin", kwargs={"force": True}),
                 JobSpec("subscribe_calendar_cache", "订阅日历缓存", SubscribeChain().cache_calendar, "subscription"),
                 JobSpec("full_gc", "主动内存回收", self.full_gc, "runtime"),
                 JobSpec("agent_heartbeat", "智能体定时任务", self.agent_heartbeat, "agent"),
@@ -603,7 +603,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
 
             # 按媒体服务器分别注册自动同步任务
             mediaserver_schedules = self._build_mediaserver_sync_schedules(
-                mediaservers=ServiceConfigHelper.get_mediaserver_configs(),
+                mediaservers=get_mediaserver_configs(include_disabled=True),
                 default_interval=config.mediaserver_sync_interval,
             )
             for mediaserver_schedule in mediaserver_schedules:
@@ -1333,7 +1333,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             self,
             coro: Any,
             *,
-            job_id: Optional[str] = None,
+            job_id: str,
             generation: int = 0,
             on_unstarted_cancel: Optional[Callable[[], None]] = None,
     ) -> bool:
@@ -1343,7 +1343,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         - 仅调用方循环可用：在当前循环排队为独立任务
         - 无运行中循环（测试/CLI）：新建循环同步执行，确保进度不丢失
 
-        带有 job 标识的句柄由 Scheduler 自己持有，关闭时可以取消并等待。
+        job 标识是所有权键；所有句柄都由 Scheduler 持有，关闭时可以取消并等待。
         """
         try:
             running_loop = asyncio.get_running_loop()
@@ -1356,42 +1356,34 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             and not target_loop.is_closed()
         )
         if running_loop and (not target_loop_available or running_loop is target_loop):
-            if job_id is not None:
-                with self._lock:
-                    if not self._accepts_handle(job_id, generation):
-                        coro.close()
-                        return False
-                    handle = running_loop.create_task(coro)
-                    registered = self._register_handle(
-                        job_id=job_id,
-                        generation=generation,
-                        loop=running_loop,
-                        handle=handle,
-                    )
-                    if on_unstarted_cancel:
-                        handle.add_done_callback(
-                            lambda submitted: (
-                                on_unstarted_cancel()
-                                if submitted.cancelled()
-                                else None
-                            )
-                        )
-                    return registered
-            else:
-                running_loop.create_task(coro)
-                return True
-        elif target_loop_available:
-            if job_id is not None:
-                return self._submit_cross_thread(
-                    coro,
-                    target_loop=target_loop,
+            with self._lock:
+                if not self._accepts_handle(job_id, generation):
+                    coro.close()
+                    return False
+                handle = running_loop.create_task(coro)
+                registered = self._register_handle(
                     job_id=job_id,
                     generation=generation,
-                    on_unstarted_cancel=on_unstarted_cancel,
+                    loop=running_loop,
+                    handle=handle,
                 )
-            else:
-                asyncio.run_coroutine_threadsafe(coro, target_loop)
-                return True
+                if on_unstarted_cancel:
+                    handle.add_done_callback(
+                        lambda submitted: (
+                            on_unstarted_cancel()
+                            if submitted.cancelled()
+                            else None
+                        )
+                    )
+                return registered
+        elif target_loop_available:
+            return self._submit_cross_thread(
+                coro,
+                target_loop=target_loop,
+                job_id=job_id,
+                generation=generation,
+                on_unstarted_cancel=on_unstarted_cancel,
+            )
         elif self._lifecycle_state in {"stopping", "stopped"}:
             coro.close()
             return False
@@ -1588,7 +1580,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         :param trigger_source: 触发入口，scheduled-自动调度，manual-显式立即执行
         :return: 执行是否成功及结果摘要
         """
-        from app.agent.runtime_loader import get_running_agent_manager
+        from app.application.agent import get_running_agent_manager
 
         try:
             manager = get_running_agent_manager()
@@ -1608,7 +1600,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         初始化插件定时服务
         """
-        for pid in PluginManager().get_running_plugin_ids():
+        for pid in get_plugin_manager().get_running_plugin_ids():
             self.update_plugin_job(pid)
 
     @eventmanager.register(EventType.PluginReload)
@@ -1684,7 +1676,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     self._jobs.pop(job_id, None)
             if not jobs_to_remove:
                 return
-            plugin_name = PluginManager().get_plugin_attr(pid, "plugin_name")
+            plugin_name = get_plugin_manager().get_plugin_attr(pid, "plugin_name")
             # 遍历移除任务
             for job_id, service in jobs_to_remove:
                 try:
@@ -1758,7 +1750,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         self.remove_plugin_job(pid)
         # 获取插件服务列表
         with self._lock:
-            plugin_manager = PluginManager()
+            plugin_manager = get_plugin_manager()
             try:
                 plugin_services = plugin_manager.get_plugin_services(pid=pid)
             except Exception as e:
@@ -2001,7 +1993,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         智能体心跳唤醒：检查并执行待处理的定时任务
         """
-        from app.agent.runtime_loader import get_running_agent_manager
+        from app.application.agent import get_running_agent_manager
 
         manager = get_running_agent_manager()
         if manager is None:
@@ -2047,7 +2039,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 )
             )
             # 认证通过后重新初始化插件
-            PluginManager().init_config()
+            get_plugin_manager().init_config()
             self.init_plugin_jobs()
 
         else:

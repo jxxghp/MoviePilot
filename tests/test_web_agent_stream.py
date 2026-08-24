@@ -13,7 +13,6 @@ from app.agent.orchestrator import agent_manager
 from app.api.endpoints.agent import (
     _WebAgentEventPublisher,
     _WEB_AGENT_FILE_REGISTRY,
-    _WEB_AGENT_MESSAGE_QUEUES,
     _apply_web_agent_display_event,
     _build_web_agent_input_attachments,
     _build_web_agent_message_events,
@@ -23,8 +22,6 @@ from app.api.endpoints.agent import (
     _build_web_agent_traditional_callback_payload,
     _build_web_agent_display_message_from_events,
     _collect_web_agent_traditional_events,
-    _dispatch_web_agent_message_event,
-    _extract_web_agent_message_from_event_data,
     _get_web_agent_type,
     _has_web_agent_traditional_interaction,
     _prepare_web_agent_audio_attachment_path_async,
@@ -38,8 +35,16 @@ from app.runtime.events import Event
 from app.db.oper.agentchat import AgentChatOper
 from app.db.models.agentchat import AgentChat
 from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
-from app.application.messaging.agent import build_web_agent_message_update_event
-from app.application.messaging.agent import AgentInteractionOption, agent_interaction_manager
+from app.application.messaging.agent import (
+    AgentInteractionOption,
+    agent_interaction_manager,
+    attach_web_agent_message_queue,
+    build_web_agent_message_update_event,
+    detach_web_agent_message_queue,
+    dispatch_web_agent_message_event,
+    extract_web_agent_message_from_event_data,
+    wait_web_agent_background_tasks,
+)
 from app.application.messaging.skill import skill_interaction_manager
 from app.chain.message import MessageChain
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
@@ -561,7 +566,7 @@ def test_extract_web_agent_message_supports_wrapped_message_event():
         userid="1",
     )
 
-    extracted = _extract_web_agent_message_from_event_data(
+    extracted = extract_web_agent_message_from_event_data(
         {"message": message, "current_time": "2026-06-26 09:18:38"}
     )
 
@@ -571,7 +576,7 @@ def test_extract_web_agent_message_supports_wrapped_message_event():
 def test_dispatch_web_agent_message_event_accepts_wrapped_message_event():
     """WebAgent 等待队列应接收 message 包装格式的 NoticeMessage 事件。"""
     notice_queue = Queue()
-    _WEB_AGENT_MESSAGE_QUEUES["1"] = [notice_queue]
+    attach_web_agent_message_queue("1", notice_queue)
     message = schemas.Message(
         channel=NotificationChannel.WebAgent,
         source="web-agent",
@@ -580,14 +585,14 @@ def test_dispatch_web_agent_message_event_accepts_wrapped_message_event():
     )
 
     try:
-        _dispatch_web_agent_message_event(
+        dispatch_web_agent_message_event(
             Event(
                 EventType.NoticeMessage,
                 {"message": message, "current_time": "2026-06-26 09:18:38"},
             )
         )
     finally:
-        _WEB_AGENT_MESSAGE_QUEUES.pop("1", None)
+        detach_web_agent_message_queue("1", notice_queue)
 
     assert notice_queue.get_nowait() == message
 
@@ -942,10 +947,10 @@ def test_transcribe_web_agent_audio_files_reads_registered_upload(tmp_path):
 
     try:
         with patch(
-            "app.api.endpoints.agent.AgentCapabilityManager.is_audio_input_available",
+            "app.api.endpoints.agent.is_audio_input_available",
             return_value=True,
         ), patch(
-            "app.api.endpoints.agent.AgentCapabilityManager.transcribe_audio",
+            "app.api.endpoints.agent.transcribe_audio",
             return_value="帮我推荐一部电影",
         ) as transcribe_audio:
             audio_files = _resolve_web_agent_audio_refs(
@@ -1381,10 +1386,15 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
 
     async def scenario():
         response = await web_agent_stream(payload, request, user)
-        body = "".join(await _collect_streaming_response(response))
+        body = "".join(
+            await _collect_streaming_response(
+                response,
+                wait_for_background=False,
+            )
+        )
         release_agent.set()
         await asyncio.wait_for(agent_completed.wait(), timeout=1)
-        await asyncio.sleep(0)
+        await wait_web_agent_background_tasks()
         return body
 
     try:
@@ -1505,6 +1515,7 @@ def test_web_agent_stop_finishes_stream_without_error():
         while '"type": "done"' not in "".join(received):
             received.append(await asyncio.wait_for(anext(iterator), timeout=1))
         await iterator.aclose()
+        await wait_web_agent_background_tasks()
         return "".join(received)
 
     try:
@@ -1619,6 +1630,7 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
         assert not snapshot_finished.is_set()
         snapshot_release.set()
         await asyncio.to_thread(snapshot_finished.wait, 1)
+        await wait_web_agent_background_tasks()
         return "".join(received)
 
     try:
@@ -1755,6 +1767,7 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
         assert not snapshot_finished.is_set()
         snapshot_release.set()
         await asyncio.to_thread(snapshot_finished.wait, 1)
+        await wait_web_agent_background_tasks()
         return "".join(received)
 
     try:
@@ -1791,11 +1804,19 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
     assert snapshot_finished.wait(timeout=1)
 
 
-async def _collect_streaming_response(response):
-    """读取 StreamingResponse，便于断言 SSE 内容。"""
+async def _collect_streaming_response(
+    response,
+    *,
+    wait_for_background: bool = True,
+):
+    """读取 StreamingResponse，并按用例语义等待生产 owner 完成收尾。"""
     chunks = []
-    async for chunk in response.body_iterator:
-        chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
+    try:
+        async for chunk in response.body_iterator:
+            chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
+    finally:
+        if wait_for_background:
+            await wait_web_agent_background_tasks()
     return chunks
 
 

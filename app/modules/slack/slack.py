@@ -3,9 +3,7 @@ import re
 from threading import Lock
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote
 
-import requests
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
@@ -13,6 +11,7 @@ from slack_sdk import WebClient
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
+from app.application.messaging.ingress import forward_message_to_host
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
@@ -27,7 +26,6 @@ class Slack:
 
     _client: WebClient = None
     _service: SocketModeHandler = None
-    _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
     _channel = ""
     _oauth_token = ""
     _MAX_SLASH_COMMANDS = 50
@@ -65,6 +63,7 @@ class Slack:
         self._client = slack_app.client
         self._channel = SLACK_CHANNEL
         self._oauth_token = SLACK_OAUTH_TOKEN
+        self._config_name = kwargs.get("name")
         self._app_id = (SLACK_APP_ID or "").strip()
         self._command_request_url = (SLACK_COMMAND_REQUEST_URL or "").strip()
         self._manifest_client = (
@@ -74,41 +73,30 @@ class Slack:
         )
         self._registered_command_names: set[str] = set()
 
-        # 标记消息来源
-        if kwargs.get("name"):
-            # URL encode the source name to handle special characters
-            encoded_name = quote(kwargs.get('name'), safe='')
-            self._ds_url = f"{self._ds_url}&source={encoded_name}"
-
         # 注册消息响应
         @slack_app.event("message")
         def slack_message(message):
-            with requests.post(self._ds_url, json=message, timeout=10) as local_res:
-                logger.debug("message: %s processed, response is: %s" % (message, local_res.text))
+            self._forward_to_message_chain(message, timeout=10)
 
         @slack_app.action(re.compile(r"actionId-.*"))
         def slack_action(ack, body):
             ack()
-            with requests.post(self._ds_url, json=body, timeout=60) as local_res:
-                logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+            self._forward_to_message_chain(body, timeout=60)
 
         @slack_app.event("app_mention")
         def slack_mention(say, body):
             say(f"收到，请稍等... <@{body.get('event', {}).get('user')}>")
-            with requests.post(self._ds_url, json=body, timeout=10) as local_res:
-                logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+            self._forward_to_message_chain(body, timeout=10)
 
         @slack_app.shortcut(re.compile(r"/*"))
         def slack_shortcut(ack, body):
             ack()
-            with requests.post(self._ds_url, json=body, timeout=10) as local_res:
-                logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+            self._forward_to_message_chain(body, timeout=10)
 
         @slack_app.command(re.compile(r"/*"))
         def slack_command(ack, body):
             ack()
-            with requests.post(self._ds_url, json=body, timeout=10) as local_res:
-                logger.debug("message: %s processed, response is: %s" % (body, local_res.text))
+            self._forward_to_message_chain(body, timeout=10)
 
         # 启动服务
         try:
@@ -120,6 +108,14 @@ class Slack:
             logger.info("Slack消息接收服务启动")
         except Exception as err:
             logger.error("Slack消息接收服务启动失败: %s" % str(err))
+
+    def _forward_to_message_chain(self, payload: dict, *, timeout: float) -> bool:
+        """把 Slack SDK 回调同步转交统一消息入口。"""
+        return forward_message_to_host(
+            payload,
+            self._config_name,
+            timeout=timeout,
+        )
 
     def stop(self):
         if self._service:

@@ -15,10 +15,12 @@ from app.runtime.cache import FileCache
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
+from app.application.messaging.ingress import submit_message_to_host
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.application.messaging.agent import matches_channel_admin
 from app.runtime.log import logger
+from app.runtime.thread import ThreadHelper
 from app.schemas.message import IncomingMessage
 from app.schemas.types import NotificationChannel
 from app.adapters.network.http import RequestUtils
@@ -34,7 +36,6 @@ class WeChatBot:
     """
 
     _default_ws_url = "wss://openws.work.weixin.qq.com"
-    _ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
     _heartbeat_interval = 30
     _ack_timeout = 10
 
@@ -512,18 +513,13 @@ class WeChatBot:
         )
         self._forward_to_message_chain(payload)
 
-    def _forward_to_message_chain(self, payload: dict) -> None:
-        def _run():
-            try:
-                # 回调
-                RequestUtils(timeout=15).post_res(
-                    f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}&source={self._config_name}",
-                    json=payload
-                )
-            except Exception as err:
-                logger.error(f"企业微信智能机器人转发消息失败：{err}")
-
-        threading.Thread(target=_run, daemon=True).start()
+    def _forward_to_message_chain(self, payload: dict) -> bool:
+        """通过受管线程池把企业微信 payload 转交统一消息入口。"""
+        return submit_message_to_host(
+            payload,
+            self._config_name,
+            submit=ThreadHelper().submit,
+        )
 
     @staticmethod
     def _normalize_target(userid: Optional[str], default_chat_id: Optional[str]) -> Tuple[Optional[str], int]:

@@ -1,20 +1,18 @@
 import json
 import posixpath
-from datetime import datetime
 from typing import List, Union, Optional, Dict, Generator, Tuple, Any
 
 from requests import Response
 
 from app.schemas.dashboard import Statistic as _SchemaStatistic
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
-from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
-from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
+from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.schemas.types import MediaSource
@@ -889,49 +887,8 @@ class Jellyfin:
 
     @staticmethod
     def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
-        """
-        格式化item
-        """
-        try:
-            user_data = item.get("UserData", {})
-            if not user_data:
-                user_state = None
-            else:
-                resume = item.get("UserData", {}).get("PlaybackPositionTicks") and item.get("UserData", {}).get(
-                    "PlaybackPositionTicks") > 0
-                last_played_date = item.get("UserData", {}).get("LastPlayedDate")
-                if last_played_date is not None and "." in last_played_date:
-                    last_played_date = last_played_date.split(".")[0]
-                user_state = _SchemaMediaServerItemUserState(
-                    played=item.get("UserData", {}).get("Played"),
-                    resume=resume,
-                    last_played_date=datetime.strptime(last_played_date, "%Y-%m-%dT%H:%M:%S").strftime(
-                        "%Y-%m-%d %H:%M:%S") if last_played_date else None,
-                    play_count=item.get("UserData", {}).get("PlayCount"),
-                    percentage=item.get("UserData", {}).get("PlayedPercentage"),
-                )
-            media_source, media_id = MediaServerIdentityHelper.from_provider_ids(
-                item.get("ProviderIds")
-            )
-            return _SchemaMediaServerItem(
-                server="jellyfin",
-                library=item.get("ParentId"),
-                item_id=item.get("Id"),
-                item_type=item.get("Type"),
-                title=item.get("Name"),
-                original_title=item.get("OriginalTitle"),
-                year=item.get("ProductionYear"),
-                media_source=media_source,
-                media_id=media_id,
-                path=item.get("Path"),
-                note=MusicMediaServerHelper.build_note(item)
-                if item.get("Type") in {"MusicAlbum", "Audio"} else None,
-                user_state=user_state
-
-            )
-        except Exception as e:
-            logger.error(e)
-        return None
+        """通过统一 Emby 系转换契约生成 Jellyfin 条目。"""
+        return format_emby_family_item(item, server="jellyfin")
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """

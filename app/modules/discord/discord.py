@@ -3,16 +3,15 @@ import re
 import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple, Union
-from urllib.parse import quote
 
 import discord
 from discord import app_commands
-import httpx
-from fastapi.concurrency import run_in_threadpool
 
+from app.runtime.execution import run_in_threadpool
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
+from app.application.messaging.ingress import async_forward_message_to_host
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
@@ -48,6 +47,7 @@ class Discord:
         DISCORD_CHANNEL_ID: Optional[Union[str, int]] = None,
         **kwargs,
     ):
+        """初始化 Discord 客户端及其专用事件循环生命周期状态。"""
         logger.debug(
             f"[Discord] 初始化 Discord 实例: name={kwargs.get('name')}, "
             f"GUILD_ID={DISCORD_GUILD_ID}, CHANNEL_ID={DISCORD_CHANNEL_ID}, "
@@ -60,17 +60,10 @@ class Discord:
         self._token = DISCORD_BOT_TOKEN
         self._guild_id = self._to_int(DISCORD_GUILD_ID)
         self._channel_id = self._to_int(DISCORD_CHANNEL_ID)
+        self._config_name = kwargs.get("name")
         logger.debug(
             f"[Discord] 解析后的 ID: _guild_id={self._guild_id}, _channel_id={self._channel_id}"
         )
-        base_ds_url = f"http://127.0.0.1:{settings.PORT}/api/v1/message/"
-        self._ds_url = f"{base_ds_url}?token={settings.API_TOKEN}"
-        if kwargs.get("name"):
-            # URL encode the source name to handle special characters in config names
-            encoded_name = quote(kwargs.get("name"), safe="")
-            self._ds_url = f"{self._ds_url}&source={encoded_name}"
-        logger.debug(f"[Discord] 消息回调 URL: {self._ds_url}")
-
         intents = discord.Intents.default()
         intents.message_content = True
         intents.messages = True
@@ -92,9 +85,12 @@ class Discord:
         self._bot_user_id: Optional[int] = None
         self._typing_tasks: Dict[str, asyncio.Task] = {}
         self._typing_stop_events: Dict[str, asyncio.Event] = {}
+        self._typing_lifecycle_lock = asyncio.Lock()
+        self._typing_accepting = True
         self._typing_interval_seconds = 5
         self._typing_initial_delay_seconds = 1
         self._typing_max_duration_seconds = 10 * 60
+        self._typing_stop_timeout_seconds = 1
         self._registered_commands: Optional[Dict[str, dict]] = None
 
         self._register_events()
@@ -208,10 +204,12 @@ class Discord:
                 await self._post_to_ds(payload)
 
     def _start(self):
+        """启动并持有 Discord 客户端专用事件循环线程。"""
         if self._thread:
             return
 
         def runner():
+            """在线程内运行客户端，并在退出前回收本实例拥有的异步任务。"""
             loop = self._loop
             client = self._client
             asyncio.set_event_loop(loop)
@@ -235,6 +233,10 @@ class Discord:
                     except asyncio.CancelledError:
                         pass
                 try:
+                    loop.run_until_complete(self._stop_all_typing_tasks())
+                except Exception as err:
+                    logger.debug(f"Discord typing 任务收尾失败：{err}")
+                try:
                     loop.run_until_complete(client.close())
                 except Exception as err:
                     logger.debug(f"Discord Bot 关闭失败：{err}")
@@ -246,6 +248,7 @@ class Discord:
         self._thread.start()
 
     def stop(self):
+        """停止 Discord 客户端，并在关闭事件循环前收口 typing owner。"""
         if not self._client or not self._loop or not self._thread:
             return
         self._stop_requested.set()
@@ -652,75 +655,172 @@ class Discord:
         max_duration_seconds: Optional[float] = None,
         initial_delay_seconds: Optional[float] = None,
     ) -> bool:
-        await self._stop_typing_task(typing_key)
+        """
+        为会话启动唯一的 Discord typing 续发任务。
+
+        :return: 是否取得该会话的唯一 typing owner
+        """
+        if not self._typing_accepting:
+            logger.debug("Discord client 已停止，拒绝启动 typing 任务")
+            return False
         channel = await self._resolve_channel(userid=userid, chat_id=chat_id)
         if not channel:
             return False
-        stop_event = asyncio.Event()
-        max_duration = max_duration_seconds or self._typing_max_duration_seconds
-        initial_delay = (
-            self._typing_initial_delay_seconds
-            if initial_delay_seconds is None
-            else max(initial_delay_seconds, 0)
-        )
+        async with self._typing_lifecycle_lock:
+            if not self._typing_accepting:
+                logger.debug("Discord client 已停止，拒绝启动 typing 任务")
+                return False
+            found, terminal = await self._stop_typing_task_locked(typing_key)
+            if found and not terminal:
+                logger.warning(
+                    f"Discord typing 旧任务尚未结束，拒绝并行启动: key={typing_key}"
+                )
+                return False
 
-        async def _typing_worker() -> None:
-            started_at = self._loop.time()
-            try:
-                # Discord typing 触发后也会在客户端自然保留一段时间，
-                # 先给短响应一个取消窗口，避免回复后残留输入状态。
-                if initial_delay:
-                    try:
-                        await asyncio.wait_for(
-                            stop_event.wait(),
-                            timeout=initial_delay,
-                        )
-                        return
-                    except asyncio.TimeoutError:
-                        pass
-                while not stop_event.is_set():
-                    if self._loop.time() - started_at >= max_duration:
-                        logger.warning(
-                            "Discord typing状态超过最大续期，自动停止: key=%s",
-                            typing_key,
-                        )
-                        break
-                    try:
-                        await channel.trigger_typing()
-                    except Exception as err:
-                        logger.debug(f"触发 Discord typing 状态失败：{err}")
-                    try:
-                        await asyncio.wait_for(
-                            stop_event.wait(),
-                            timeout=self._typing_interval_seconds,
-                        )
-                    except asyncio.TimeoutError:
-                        pass
-            finally:
-                current_task = asyncio.current_task()
-                if self._typing_tasks.get(typing_key) is current_task:
-                    self._typing_tasks.pop(typing_key, None)
-                    self._typing_stop_events.pop(typing_key, None)
+            stop_event = asyncio.Event()
+            max_duration = max_duration_seconds or self._typing_max_duration_seconds
+            initial_delay = (
+                self._typing_initial_delay_seconds
+                if initial_delay_seconds is None
+                else max(initial_delay_seconds, 0)
+            )
 
-        self._typing_stop_events[typing_key] = stop_event
-        self._typing_tasks[typing_key] = asyncio.create_task(_typing_worker())
-        return True
+            async def _typing_worker() -> None:
+                """延迟首发并定期续发当前会话的 typing 状态。"""
+                started_at = self._loop.time()
+                try:
+                    # Discord typing 触发后也会在客户端自然保留一段时间，
+                    # 先给短响应一个取消窗口，避免回复后残留输入状态。
+                    if initial_delay:
+                        try:
+                            await asyncio.wait_for(
+                                stop_event.wait(),
+                                timeout=initial_delay,
+                            )
+                            return
+                        except asyncio.TimeoutError:
+                            pass
+                    while not stop_event.is_set():
+                        if self._loop.time() - started_at >= max_duration:
+                            logger.warning(
+                                f"Discord typing状态超过最大续期，自动停止: key={typing_key}"
+                            )
+                            break
+                        try:
+                            await channel.trigger_typing()
+                        except Exception as err:
+                            logger.debug(f"触发 Discord typing 状态失败：{err}")
+                        try:
+                            await asyncio.wait_for(
+                                stop_event.wait(),
+                                timeout=self._typing_interval_seconds,
+                            )
+                        except asyncio.TimeoutError:
+                            pass
+                finally:
+                    current_task = asyncio.current_task()
+                    if self._typing_tasks.get(typing_key) is current_task:
+                        self._typing_tasks.pop(typing_key, None)
+                        self._typing_stop_events.pop(typing_key, None)
+
+            task = asyncio.create_task(
+                _typing_worker(),
+                name=f"discord.typing.{typing_key}",
+            )
+            self._typing_stop_events[typing_key] = stop_event
+            self._typing_tasks[typing_key] = task
+            return True
 
     async def _stop_typing_task(self, typing_key: str) -> bool:
-        stop_event = self._typing_stop_events.pop(typing_key, None)
-        task = self._typing_tasks.pop(typing_key, None)
+        """
+        请求停止会话 typing 任务，并保留尚未进入终态的 owner。
+
+        :return: 是否找到并请求停止了既有 owner
+        """
+        async with self._typing_lifecycle_lock:
+            found, _ = await self._stop_typing_task_locked(typing_key)
+            return found
+
+    async def _stop_typing_task_locked(self, typing_key: str) -> tuple[bool, bool]:
+        """
+        在 lifecycle 锁内停止单个 owner。
+
+        :return: 是否找到 owner，以及 owner 是否已进入终态
+        """
+        stop_event = self._typing_stop_events.get(typing_key)
+        task = self._typing_tasks.get(typing_key)
+        found = bool(stop_event or task)
         if stop_event:
             stop_event.set()
         if task and task is not asyncio.current_task() and not task.done():
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=1)
+                await asyncio.wait_for(
+                    asyncio.shield(task),
+                    timeout=self._typing_stop_timeout_seconds,
+                )
             except asyncio.TimeoutError:
-                pass
-        return bool(stop_event or task)
+                return found, False
+            except asyncio.CancelledError:
+                if not task.cancelled():
+                    raise
+            except Exception as err:
+                logger.debug(f"Discord typing 任务异常结束：{err}")
+        terminal = task is None or task.done()
+        if terminal:
+            if self._typing_tasks.get(typing_key) is task:
+                self._typing_tasks.pop(typing_key, None)
+            if self._typing_stop_events.get(typing_key) is stop_event:
+                self._typing_stop_events.pop(typing_key, None)
+        return found, terminal
 
     async def _stop_all_typing_tasks(self) -> None:
-        for typing_key in list(self._typing_tasks.keys()):
-            await self._stop_typing_task(typing_key)
+        """封住新增 typing，并在统一预算内停止、取消和回收现有 owner。"""
+        async with self._typing_lifecycle_lock:
+            self._typing_accepting = False
+            typing_keys = set(self._typing_tasks) | set(self._typing_stop_events)
+            owners = {
+                typing_key: self._typing_tasks.get(typing_key)
+                for typing_key in typing_keys
+            }
+            for typing_key in typing_keys:
+                stop_event = self._typing_stop_events.get(typing_key)
+                if stop_event:
+                    stop_event.set()
+
+            current_task = asyncio.current_task()
+            active_tasks = {
+                task
+                for task in owners.values()
+                if task and task is not current_task and not task.done()
+            }
+            settled_tasks = {task for task in owners.values() if task and task.done()}
+            if active_tasks:
+                done, pending = await asyncio.wait(
+                    active_tasks,
+                    timeout=self._typing_stop_timeout_seconds,
+                )
+                settled_tasks.update(done)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    done, _ = await asyncio.wait(
+                        pending,
+                        timeout=self._typing_stop_timeout_seconds,
+                    )
+                    settled_tasks.update(done)
+
+            for task in settled_tasks:
+                if task.cancelled():
+                    continue
+                error = task.exception()
+                if error:
+                    logger.debug(f"Discord typing 任务异常结束：{error}")
+
+            for typing_key, task in owners.items():
+                if task is None or task.done():
+                    if self._typing_tasks.get(typing_key) is task:
+                        self._typing_tasks.pop(typing_key, None)
+                    self._typing_stop_events.pop(typing_key, None)
 
     def delete_msg(
         self, message_id: Union[str, int], chat_id: Optional[str] = None
@@ -1313,13 +1413,10 @@ class Discord:
         return content
 
     async def _post_to_ds(self, payload: Dict[str, Any]) -> None:
-        try:
-            proxy = None
-            if settings.PROXY:
-                proxy = settings.PROXY.get("https") or settings.PROXY.get("http")
-            async with httpx.AsyncClient(
-                timeout=10, verify=False, proxy=proxy
-            ) as client:
-                await client.post(self._ds_url, json=payload)
-        except Exception as err:
-            logger.error(f"转发 Discord 消息失败：{err}")
+        """把 Discord 事件异步转交统一消息入口。"""
+        if not await async_forward_message_to_host(
+            payload,
+            self._config_name,
+            timeout=10,
+        ):
+            logger.error("转发 Discord 消息失败")

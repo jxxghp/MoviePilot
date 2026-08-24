@@ -20,7 +20,10 @@ from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.adapters.web.security.access import verify_token
 from app.application.configuration import get_configured_system_config
-from app.application.mediaserver import MediaServerHelper, MediaServerQueryService
+from app.application.mediaserver import (
+    MediaServerQueryService,
+    get_mediaserver_configs,
+)
 from app.api.dependencies.history import get_mediaserver_query_service
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
@@ -54,11 +57,12 @@ def play_item(
     """
     if not itemid:
         return _SchemaResponse(success=False, message="参数错误")
-    configs = MediaServerHelper().get_configs()
+    configs = get_mediaserver_configs()
     if not configs:
         return _SchemaResponse(success=False, message="未配置媒体服务器")
     media_chain = MediaServerChain()
-    for name in configs.keys():
+    for config in configs:
+        name = config.name
         item = media_chain.iteminfo(server=name, item_id=itemid)
         if item:
             play_url = media_chain.get_play_url(server=name, item_id=itemid)

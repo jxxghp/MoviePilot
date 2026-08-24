@@ -15,7 +15,7 @@ from app.application.messaging.plugin import (
     PluginInputInteractionHandler,
     plugin_input_interaction_manager,
 )
-from app.schemas import IncomingMessage, TransferDirectoryConf
+from app.schemas import IncomingMessage, TransferDirectoryConf  # pylint: disable=no-name-in-module
 from app.schemas.types import EventType, MediaSource, MediaType, NotificationChannel
 
 
@@ -531,7 +531,10 @@ def test_plugin_input_session_ignores_none_text_messages():
     )
     image = IncomingMessage.MessageImage(ref="https://example.invalid/image.jpg")
 
-    handled = PluginInputInteractionHandler(messenger=chain).handle_text(
+    handled = PluginInputInteractionHandler(
+        messenger=chain,
+        event_publisher=chain.eventmanager,
+    ).handle_text(
         context=InteractionContext(
             channel=NotificationChannel.Telegram,
             source="telegram-test",

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from app.application.notification import get_notification_configs
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
@@ -801,9 +802,7 @@ class AgentCapabilityManager:
         if not source:
             return False
 
-        from app.runtime.extensions.service_config import ServiceConfigHelper
-
-        for config in ServiceConfigHelper.get_notification_configs():
+        for config in get_notification_configs(include_disabled=True):
             if config.name != source:
                 continue
             return (config.config or {}).get("WECHAT_MODE", "app") != "bot"

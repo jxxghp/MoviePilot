@@ -38,6 +38,8 @@ class SystemHelper(ConfigReloadMixin):
     __local_restart_log_file = settings.LOG_PATH / "moviepilot.restart.stdout.log"
     __one_shot_update_flag_file = settings.TEMP_PATH / "moviepilot.pending_update"
     __docker_restart_intent_file = settings.TEMP_PATH / "moviepilot.intentional_restart"
+    __graceful_shutdown_monitor_lock = threading.Lock()
+    __graceful_shutdown_monitor: Optional[threading.Thread] = None
 
     def on_config_changed(self):
         """配置变化后重新应用日志设置。"""
@@ -360,21 +362,44 @@ class SystemHelper(ConfigReloadMixin):
     @staticmethod
     def _start_graceful_shutdown_monitor():
         """
-        启动优雅退出超时监控
-        如果30秒内进程没有退出，则使用Docker API强制重启
+        启动唯一的优雅退出超时监控。
+
+        如果 180 秒内进程没有退出，则使用 Docker API 强制重启；重复重启请求
+        复用当前 monitor，避免并行触发多次容器重启。
         """
 
         def monitor_thread():
-            time.sleep(180)  # 等待180秒
-            logger.warning("优雅退出超时180秒，使用Docker API强制重启...")
             try:
-                SystemHelper._docker_api_restart()
-            except Exception as e:
-                logger.error(f"强制重启失败: {str(e)}")
+                time.sleep(180)
+                logger.warning("优雅退出超时180秒，使用Docker API强制重启...")
+                try:
+                    SystemHelper._docker_api_restart()
+                except Exception as e:
+                    logger.error(f"强制重启失败: {str(e)}")
+            finally:
+                with SystemHelper.__graceful_shutdown_monitor_lock:
+                    if (
+                        SystemHelper.__graceful_shutdown_monitor
+                        is threading.current_thread()
+                    ):
+                        SystemHelper.__graceful_shutdown_monitor = None
 
-        # 在后台线程中启动监控
-        thread = threading.Thread(target=monitor_thread, daemon=True)
-        thread.start()
+        with SystemHelper.__graceful_shutdown_monitor_lock:
+            running = SystemHelper.__graceful_shutdown_monitor
+            if running is not None and running.is_alive():
+                logger.debug("优雅退出超时监控已在运行，跳过重复启动")
+                return
+            thread = threading.Thread(
+                target=monitor_thread,
+                name="MoviePilot-GracefulRestartFallback",
+                daemon=True,
+            )
+            SystemHelper.__graceful_shutdown_monitor = thread
+            try:
+                thread.start()
+            except BaseException:
+                SystemHelper.__graceful_shutdown_monitor = None
+                raise
 
     @staticmethod
     def _docker_api_restart() -> Tuple[bool, str]:

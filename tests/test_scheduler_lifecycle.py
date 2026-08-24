@@ -2,6 +2,7 @@
 
 import asyncio
 import gc
+import inspect
 import threading
 import warnings
 
@@ -67,6 +68,14 @@ def _scheduler(job_id: str, func) -> Scheduler:
     scheduler._active_job_generations = {}
     scheduler._agent_task_reservations = {}
     return scheduler
+
+
+def test_internal_loop_submission_requires_job_owner() -> None:
+    """Scheduler 内部协程桥接不得再提供省略 job owner 的游离提交分支。"""
+    parameter = inspect.signature(Scheduler._submit_to_loop).parameters["job_id"]
+
+    assert parameter.default is inspect.Parameter.empty
+    assert parameter.annotation is str
 
 
 @pytest.mark.anyio

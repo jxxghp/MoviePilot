@@ -14,7 +14,7 @@ from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.adapters.web.health import install_health_routes
 from app.application.plugin.routes import configure_plugin_routes
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.schemas.exception import (
     PersistenceUnavailableError,
 )
@@ -381,8 +381,8 @@ def create_app() -> FastAPI:
     # 统一经服务完成，避免 api.endpoints 反向依赖本模块。
     configure_plugin_routes(FastAPIDynamicRouteRegistry(
         app=_app,
-        plugin_ids=lambda: PluginManager().get_running_plugin_ids(),
-        plugin_apis=lambda plugin_id: PluginManager().get_plugin_apis(plugin_id),
+        plugin_ids=lambda: get_plugin_manager().get_running_plugin_ids(),
+        plugin_apis=lambda plugin_id: get_plugin_manager().get_plugin_apis(plugin_id),
         verify_token=verify_token,
         verify_apikey=verify_apikey,
         prefix=f"{settings.API_V1_STR}/plugin",

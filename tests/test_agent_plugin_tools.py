@@ -303,7 +303,7 @@ def test_install_plugin_runtime_reloads_in_threadpool() -> None:
 
     with (
         patch(
-            "app.agent.tools.impl._plugin_tool_utils.SystemConfigOper",
+            "app.agent.tools.impl._plugin_tool_utils.get_configured_system_config",
             return_value=config_oper,
         ),
         patch(
@@ -394,7 +394,7 @@ def test_sealed_agent_uninstall_rejects_before_persistence() -> None:
             return_value=plugin_manager,
         ),
         patch(
-            "app.agent.tools.impl._plugin_tool_utils.SystemConfigOper",
+            "app.agent.tools.impl._plugin_tool_utils.get_configured_system_config",
             return_value=config_oper,
         ) as config_provider,
         pytest.raises(PluginMutationRejectedError),
@@ -422,7 +422,7 @@ def test_query_plugin_data_truncates_large_payload() -> None:
             return_value=_plugin_snapshot(),
         ),
         patch(
-            "app.agent.tools.impl.query_plugin_data.PluginDataOper",
+            "app.agent.tools.impl.query_plugin_data.get_agent_plugin_data_port",
             return_value=plugin_data_oper,
         ),
     ):

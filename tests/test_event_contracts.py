@@ -2,6 +2,12 @@
 
 from unittest.mock import patch
 
+import pytest
+
+from app.application.outbox import (
+    DURABLE_EVENT_TOPICS,
+    validate_durable_event_handlers,
+)
 from app.runtime.event.contracts import (
     EVENT_CONTRACTS,
     EventDelivery,
@@ -69,16 +75,28 @@ def test_invalid_typed_payload_is_diagnostic_only() -> None:
 
 
 def test_selected_user_side_effects_are_marked_durable_required() -> None:
-    """订阅、下载和整理完成事件必须明确暴露后续 durable pilot 要求。"""
-    for event_type in (
-        EventType.SubscribeAdded,
-        EventType.SubscribeModified,
-        EventType.SubscribeDeleted,
-        EventType.DownloadAdded,
-        EventType.TransferComplete,
-        EventType.TransferFailed,
-    ):
-        assert get_event_contract(event_type).delivery is EventDelivery.DURABLE_REQUIRED
+    """所有 durable-required 事件必须一一登记唯一的恢复 topic。"""
+    durable_events = {
+        event_type
+        for event_type, contract in EVENT_CONTRACTS.items()
+        if contract.delivery is EventDelivery.DURABLE_REQUIRED
+    }
+
+    assert set(DURABLE_EVENT_TOPICS) == durable_events
+    assert len(set(DURABLE_EVENT_TOPICS.values())) == len(durable_events)
+
+
+def test_durable_event_dispatcher_requires_every_recovery_handler() -> None:
+    """恢复 dispatcher 缺少任一登记 topic 时必须在构造边界失败。"""
+    handlers = {
+        topic: lambda _message: None
+        for topic in DURABLE_EVENT_TOPICS.values()
+    }
+    validate_durable_event_handlers(handlers)
+
+    handlers.pop(next(iter(DURABLE_EVENT_TOPICS.values())))
+    with pytest.raises(RuntimeError, match="缺少 durable 事件 handler"):
+        validate_durable_event_handlers(handlers)
 
 
 def test_download_and_transfer_typed_contracts_accept_legacy_runtime_objects() -> None:

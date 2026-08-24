@@ -5,6 +5,7 @@
 调用点不动。
 """
 import functools
+import inspect
 import threading
 from typing import Any, Callable, FrozenSet, Optional, Set, Tuple
 
@@ -177,6 +178,17 @@ def deprecated(key: str) -> Callable:
     """
 
     def decorator(func: Callable) -> Callable:
+        if inspect.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                context = getattr(func, "__qualname__", None)
+                guard(key, context=context)
+                warn(key, context=context)
+                return await func(*args, **kwargs)
+
+            return async_wrapper
+
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             context = getattr(func, "__qualname__", None)

@@ -41,7 +41,7 @@ def test_delete_transfer_history_tool_removes_old_dest_file_before_history(monke
             return True
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.TransferHistoryOper",
+        "app.agent.tools.impl.delete_transfer_history.get_agent_transfer_history_port",
         FakeTransferHistoryOper,
     )
     monkeypatch.setattr(
@@ -96,7 +96,7 @@ def test_delete_transfer_history_tool_keeps_history_when_old_dest_delete_fails(m
             return False
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.TransferHistoryOper",
+        "app.agent.tools.impl.delete_transfer_history.get_agent_transfer_history_port",
         FakeTransferHistoryOper,
     )
     monkeypatch.setattr(
@@ -150,7 +150,7 @@ def test_delete_transfer_history_tool_deletes_history_when_old_dest_is_missing(m
             return False
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.TransferHistoryOper",
+        "app.agent.tools.impl.delete_transfer_history.get_agent_transfer_history_port",
         FakeTransferHistoryOper,
     )
     monkeypatch.setattr(
@@ -205,7 +205,7 @@ def test_delete_transfer_history_tool_keeps_successful_move_dest_as_reorganize_s
             return True
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.TransferHistoryOper",
+        "app.agent.tools.impl.delete_transfer_history.get_agent_transfer_history_port",
         FakeTransferHistoryOper,
     )
     monkeypatch.setattr(
@@ -258,7 +258,7 @@ def test_delete_transfer_history_tool_only_treats_exact_move_as_reorganize_sourc
             return True
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.TransferHistoryOper",
+        "app.agent.tools.impl.delete_transfer_history.get_agent_transfer_history_port",
         FakeTransferHistoryOper,
     )
     monkeypatch.setattr(
@@ -313,7 +313,7 @@ def test_delete_transfer_history_storage_work_runs_outside_event_loop(monkeypatc
             return True
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.TransferHistoryOper",
+        "app.agent.tools.impl.delete_transfer_history.get_agent_transfer_history_port",
         FakeTransferHistoryOper,
     )
     monkeypatch.setattr(
@@ -371,7 +371,7 @@ def test_delete_transfer_history_cancellation_keeps_history_record(monkeypatch):
             return True
 
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.TransferHistoryOper",
+        "app.agent.tools.impl.delete_transfer_history.get_agent_transfer_history_port",
         FakeTransferHistoryOper,
     )
     monkeypatch.setattr(

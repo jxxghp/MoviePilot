@@ -3,7 +3,7 @@ from app.chain.subscribe import SubscribeChain
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.runtime.config import global_vars
 from app.domain.context import MediaInfo
-from app.application.chain.data import SubscribePortProxy as SubscribeOper
+from app.application.chain.data import get_chain_subscribe_port
 from app.runtime.log import logger
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionContext
@@ -75,7 +75,7 @@ class AddSubscribeAction(BaseAction):
         if self._added_subscribes:
             logger.info(f"已添加 {len(self._added_subscribes)} 个订阅")
             for sid in self._added_subscribes:
-                context.subscribes.append(SubscribeOper().get(sid))
+                context.subscribes.append(get_chain_subscribe_port().get(sid))
         elif _started:
             self._has_error = True
 

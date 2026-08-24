@@ -17,11 +17,7 @@ MIN_FINGERPRINT_SIZE = 1000
 # 参与告警的最小函数体节点数：过滤 setter/getter 等小函数。
 MIN_FUNCTION_SIZE = 40
 # 存量白名单：(模块名, 函数名) 集合，各 Phase 清理后同步移除。
-KNOWN_DUPLICATES = {
-    # 服务实现类（非模块类）的条目信息格式化样板（待后续 Phase 清理）。
-    ("app.modules.jellyfin.jellyfin", "__format_item_info"),
-    ("app.modules.zspace.zspace", "__format_item_info"),
-}
+KNOWN_DUPLICATES: set[tuple[str, str]] = set()
 
 
 def _normalize(node: ast.AST) -> str:

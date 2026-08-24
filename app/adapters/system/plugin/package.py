@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 import shutil
 import uuid
@@ -11,26 +10,15 @@ from pathlib import Path
 from typing import Optional
 
 from app.adapters.external.market import PluginHelper as _PluginHelper
+from app.runtime.execution import (
+    run_in_threadpool_to_completion as _await_thread_operation,
+)
 from app.runtime.log import logger
 from app.runtime.settings import RuntimeSettingsCompat
 
 
 # 保留旧模块级入口，插件本地同步测试和旧扩展仍可能覆盖这些设置。
 settings = RuntimeSettingsCompat()
-
-
-async def _await_thread_operation(func, *args, **kwargs):
-    """取消请求到达时先等待文件操作收口，避免后台线程继续写运行目录。"""
-    task = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        try:
-            await asyncio.shield(task)
-        except BaseException:
-            pass
-        raise
-
 
 @dataclass(frozen=True, slots=True)
 class PluginPackageCheckpoint:

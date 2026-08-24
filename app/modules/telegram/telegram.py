@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
-from urllib.parse import urljoin, quote
+from urllib.parse import urljoin
 
 from app.modules.telegram.compat import ensure_urllib3_header_param_compat
 
@@ -42,6 +42,7 @@ settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, Context  # noqa: E402
 from app.domain.metainfo import MetaInfo  # noqa: E402
 from app.application.image import ImageHelper  # noqa: E402
+from app.application.messaging.ingress import forward_message_to_host  # noqa: E402
 from app.runtime.thread import ThreadHelper  # noqa: E402
 from app.runtime.log import logger  # noqa: E402
 from app.runtime.execution import retry  # noqa: E402
@@ -74,23 +75,15 @@ class Telegram:
     Telegram 消息客户端，负责发送、编辑、接收和转发 Telegram 消息。
     """
 
-    _ds_url = (
-        f"http://127.0.0.1:{settings.PORT}/api/v1/message?token={settings.API_TOKEN}"
-    )
     _bot: TeleBot = None
     _callback_handlers: Dict[str, Callable] = {}  # 存储回调处理器
-    _user_chat_mapping: Dict[
-        str, str
-    ] = {}  # userid -> chat_id mapping for reply targeting
     _bot_username: Optional[str] = None  # Bot username for mention detection
-    _typing_tasks: Dict[str, threading.Thread] = {}  # chat_id -> typing任务
-    _typing_stop_flags: Dict[str, threading.Event] = {}  # chat_id -> 停止信号
-    _typing_lock = threading.RLock()
     _typing_interval_seconds = 5
     _typing_initial_delay_seconds = 1
     _typing_max_duration_seconds = 10 * 60
     _typing_command_max_duration_seconds = 30
     _typing_callback_max_duration_seconds = 60
+    _typing_join_timeout_seconds = 1
 
     def __init__(
             self,
@@ -105,6 +98,13 @@ class Telegram:
         self._telegram_token = TELEGRAM_TOKEN
         self._telegram_chat_id = TELEGRAM_CHAT_ID
         self._polling_thread = None
+        # 一个 Telegram 配置对应一个 SDK client，运行状态不能被其他配置共享。
+        self._user_chat_mapping: Dict[str, str] = {}
+        self._typing_tasks: Dict[str, threading.Thread] = {}
+        self._typing_stop_flags: Dict[str, threading.Event] = {}
+        self._typing_lock = threading.RLock()
+        self._typing_lifecycle_lock = threading.RLock()
+        self._typing_accepting = True
         if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
             logger.error("Telegram配置不完整！")
             return
@@ -137,11 +137,7 @@ class Telegram:
                 logger.error(f"获取bot信息失败: {e}")
                 self._bot_username = None
 
-            # 标记渠道来源
-            if kwargs.get("name"):
-                # URL encode the source name to handle special characters
-                encoded_name = quote(kwargs.get("name"), safe="")
-                self._ds_url = f"{self._ds_url}&source={encoded_name}"
+            self._config_name = kwargs.get("name")
 
             @_bot.message_handler(commands=["start", "help"])
             def send_welcome(message):
@@ -164,10 +160,7 @@ class Telegram:
                     if not payload:
                         logger.warn("Telegram消息序列化失败，跳过转发")
                         return
-                    response = RequestUtils(timeout=15).post_res(
-                        self._ds_url, json=payload
-                    )
-                    if not response or response.status_code >= 400:
+                    if not self._forward_to_message_chain(payload):
                         logger.warn("Telegram消息转发失败")
 
             @_bot.callback_query_handler(func=lambda call: True)
@@ -208,10 +201,7 @@ class Telegram:
                     _bot.answer_callback_query(call.id)
 
                     # 发送给主程序处理
-                    response = RequestUtils(timeout=15).post_res(
-                        self._ds_url, json=callback_json
-                    )
-                    if not response or response.status_code >= 400:
+                    if not self._forward_to_message_chain(callback_json):
                         logger.warn("Telegram按钮回调转发失败")
 
                 except Exception as err:
@@ -231,6 +221,10 @@ class Telegram:
             self._polling_thread = threading.Thread(target=run_polling, daemon=True)
             self._polling_thread.start()
             logger.info("Telegram消息接收服务启动")
+
+    def _forward_to_message_chain(self, payload: dict) -> bool:
+        """把 Telegram SDK 回调同步转交统一消息入口。"""
+        return forward_message_to_host(payload, self._config_name)
 
     @property
     def bot(self):
@@ -490,70 +484,101 @@ class Telegram:
             chat_id: Union[str, int],
             max_duration_seconds: Optional[float] = None,
             initial_delay_seconds: Optional[float] = None,
-    ) -> None:
+    ) -> bool:
         """
-        启动持续发送正在输入状态的任务
+        启动持续发送正在输入状态的任务。
+
+        :return: 是否取得该会话的唯一 typing owner
         """
         chat_id_str = str(chat_id)
-        # 如果已有任务在运行，先停止
-        self._stop_typing_task(chat_id_str)
+        with self._typing_lifecycle_lock:
+            if not self._typing_accepting:
+                logger.debug("Telegram client已停止，拒绝启动typing任务")
+                return False
+            # 如果已有任务在运行，先停止；阻塞的旧 SDK 请求不能被新 owner 覆盖。
+            if not self._stop_typing_task(chat_id_str):
+                logger.warning(
+                    "Telegram typing旧任务尚未结束，拒绝并行启动: chat_id=%s",
+                    chat_id_str,
+                )
+                return False
 
-        # 使用独立 Event 避免同一 chat 新旧 typing 线程互相误改停止标记。
-        stop_event = threading.Event()
-        max_duration = max_duration_seconds or self._typing_max_duration_seconds
-        initial_delay = (
-            self._typing_initial_delay_seconds
-            if initial_delay_seconds is None
-            else max(initial_delay_seconds, 0)
-        )
+            # 使用独立 Event 避免同一 chat 新旧 typing 线程互相误改停止标记。
+            stop_event = threading.Event()
+            max_duration = max_duration_seconds or self._typing_max_duration_seconds
+            initial_delay = (
+                self._typing_initial_delay_seconds
+                if initial_delay_seconds is None
+                else max(initial_delay_seconds, 0)
+            )
 
-        def typing_worker():
-            """延迟首发并定期发送 typing 状态的后台线程。"""
-            started_at = time.monotonic()
-            try:
-                # Telegram 没有撤销 typing 的接口，短响应先等待一小段时间，
-                # 避免回复已经发出后客户端仍残留几秒“正在输入”。
-                if initial_delay and stop_event.wait(initial_delay):
-                    return
-                while not stop_event.is_set():
-                    if time.monotonic() - started_at >= max_duration:
-                        logger.warning(
-                            "Telegram typing状态超过最大续期，自动停止: chat_id=%s",
-                            chat_id_str,
-                        )
-                        break
-                    try:
-                        if self._bot:
-                            self._bot.send_chat_action(chat_id, "typing")
-                    except Exception as e:
-                        logger.debug(f"发送typing状态失败: {e}")
-                    # Telegram 客户端约 5-6 秒后会隐藏 typing，需要周期性续发。
-                    stop_event.wait(self._typing_interval_seconds)
-            finally:
+            def typing_worker():
+                """延迟首发并定期发送 typing 状态的后台线程。"""
+                started_at = time.monotonic()
+                try:
+                    # Telegram 没有撤销 typing 的接口，短响应先等待一小段时间，
+                    # 避免回复已经发出后客户端仍残留几秒“正在输入”。
+                    if initial_delay and stop_event.wait(initial_delay):
+                        return
+                    while not stop_event.is_set():
+                        if time.monotonic() - started_at >= max_duration:
+                            logger.warning(
+                                "Telegram typing状态超过最大续期，自动停止: chat_id=%s",
+                                chat_id_str,
+                            )
+                            break
+                        try:
+                            if self._bot:
+                                self._bot.send_chat_action(chat_id, "typing")
+                        except Exception as e:
+                            logger.debug(f"发送typing状态失败: {e}")
+                        # Telegram 客户端约 5-6 秒后会隐藏 typing，需要周期性续发。
+                        stop_event.wait(self._typing_interval_seconds)
+                finally:
+                    with self._typing_lock:
+                        current = self._typing_tasks.get(chat_id_str)
+                        if current is threading.current_thread():
+                            self._typing_tasks.pop(chat_id_str, None)
+                            self._typing_stop_flags.pop(chat_id_str, None)
+
+            thread = threading.Thread(
+                target=typing_worker,
+                name=f"MoviePilot-TelegramTyping-{chat_id_str}"[:120],
+                daemon=True,
+            )
+            with self._typing_lock:
+                self._typing_stop_flags[chat_id_str] = stop_event
+                self._typing_tasks[chat_id_str] = thread
+                try:
+                    thread.start()
+                except BaseException:
+                    self._typing_stop_flags.pop(chat_id_str, None)
+                    self._typing_tasks.pop(chat_id_str, None)
+                    raise
+            return True
+
+    def _stop_typing_task(self, chat_id: Union[str, int]) -> bool:
+        """
+        停止正在输入状态的任务，并保留尚未结束的 owner。
+
+        :return: 任务是否已经进入终态
+        """
+        chat_id_str = str(chat_id)
+        with self._typing_lifecycle_lock:
+            with self._typing_lock:
+                stop_event = self._typing_stop_flags.get(chat_id_str)
+                task = self._typing_tasks.get(chat_id_str)
+            if stop_event:
+                stop_event.set()
+            if task and task.is_alive() and task is not threading.current_thread():
+                task.join(timeout=self._typing_join_timeout_seconds)
+            task_finished = task is None or not task.is_alive()
+            if task_finished:
                 with self._typing_lock:
-                    current = self._typing_tasks.get(chat_id_str)
-                    if current is threading.current_thread():
+                    if self._typing_tasks.get(chat_id_str) is task:
                         self._typing_tasks.pop(chat_id_str, None)
                         self._typing_stop_flags.pop(chat_id_str, None)
-
-        thread = threading.Thread(target=typing_worker, daemon=True)
-        with self._typing_lock:
-            self._typing_stop_flags[chat_id_str] = stop_event
-            self._typing_tasks[chat_id_str] = thread
-        thread.start()
-
-    def _stop_typing_task(self, chat_id: Union[str, int]) -> None:
-        """
-        停止正在输入状态的任务
-        """
-        chat_id_str = str(chat_id)
-        with self._typing_lock:
-            stop_event = self._typing_stop_flags.pop(chat_id_str, None)
-            task = self._typing_tasks.pop(chat_id_str, None)
-        if stop_event:
-            stop_event.set()
-        if task and task.is_alive() and task is not threading.current_thread():
-            task.join(timeout=1)
+            return task_finished
 
     def _stop_typing_if_needed(
             self, chat_id: Union[str, int], stop_typing: bool
@@ -582,8 +607,7 @@ class Telegram:
         target_chat_id = target_chat_id or (str(userid) if userid else None)
         if not target_chat_id:
             return False
-        self._start_typing_task(target_chat_id)
-        return True
+        return self._start_typing_task(target_chat_id)
 
     def stop_typing(
             self,
@@ -1722,9 +1746,11 @@ class Telegram:
         """
         停止Telegram消息接收服务
         """
-        # 停止所有typing任务
-        for chat_id in list(self._typing_tasks.keys()):
-            self._stop_typing_task(chat_id)
+        with self._typing_lifecycle_lock:
+            self._typing_accepting = False
+            # 封口与 owner 快照处于同一临界区，停止后不会漏掉并发新增任务。
+            for chat_id in list(self._typing_tasks.keys()):
+                self._stop_typing_task(chat_id)
         if not self._bot:
             return
 

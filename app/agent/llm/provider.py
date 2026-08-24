@@ -23,7 +23,7 @@ import jwt
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import LlmProviderAction, SystemConfigKey
 from app.foundation.singleton import Singleton
@@ -1510,7 +1510,7 @@ class LLMProviderManager(metaclass=Singleton):
     @staticmethod
     def _read_agent_config() -> dict[str, Any]:
         """读取 AI Agent 配置信息。"""
-        config = SystemConfigOper().get(SystemConfigKey.AIAgentConfig)
+        config = get_configured_system_config().get(SystemConfigKey.AIAgentConfig)
         if isinstance(config, dict):
             return config
         return {}
@@ -1520,10 +1520,10 @@ class LLMProviderManager(metaclass=Singleton):
         """
         使用异步持久化写回 provider 鉴权配置。
 
-        `SystemConfigOper().get()` 读取的是内存缓存，这里保留同步调用；
+        `get_configured_system_config().get()` 读取的是内存缓存，这里保留同步调用；
         但写入需要落库，因此统一走 `async_set()`。
         """
-        await SystemConfigOper().async_set(
+        await get_configured_system_config().async_set(
             SystemConfigKey.AIAgentConfig,
             copy.deepcopy(value) or None,
         )

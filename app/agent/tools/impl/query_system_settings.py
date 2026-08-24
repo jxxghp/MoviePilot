@@ -17,7 +17,7 @@ from app.agent.tools.impl._system_setting_utils import (
 )
 from app.application.configuration import (
     SystemConfigReader,
-    get_configured_system_config as SystemConfigOper,
+    get_configured_system_config,
     get_runtime_settings,
 )
 from app.runtime.log import logger
@@ -103,7 +103,7 @@ class QuerySystemSettingsTool(MoviePilotTool):
 
     def _get_system_config(self) -> SystemConfigReader:
         """返回显式注入端口，旧构造形态则延迟读取组合根服务。"""
-        return self._system_config or SystemConfigOper()
+        return self._system_config or get_configured_system_config()
 
     async def _run_confirmed(self, **kwargs) -> str:
         """仅供宿主在消费有效确认后执行一次未脱敏读取。"""

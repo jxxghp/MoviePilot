@@ -3,8 +3,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
-from fastapi.concurrency import run_in_threadpool
-
+from app.runtime.execution import run_in_threadpool
 from app.schemas.event import MediaRecognizeConvertEventData as _SchemaMediaRecognizeConvertEventData
 from app.chain import ChainBase
 from app.chain.acoustid import AcoustIdChain

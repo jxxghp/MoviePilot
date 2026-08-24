@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# pylint: disable=no-name-in-module
+
 import pytest
 
 from app.modules.indexer.spider import rousi as rousi_module
@@ -21,7 +23,7 @@ def _build_indexer() -> dict:
 @pytest.fixture()
 def rousi_spider(monkeypatch):
     """构造不依赖真实数据库配置的 RousiSpider。"""
-    monkeypatch.setattr(rousi_module, "SystemConfigOper", lambda: None)
+    monkeypatch.setattr(rousi_module, "get_configured_system_config", lambda: None)
     return RousiSpider(_build_indexer())
 
 

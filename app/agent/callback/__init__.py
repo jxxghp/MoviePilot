@@ -3,8 +3,7 @@ import re
 import threading
 from typing import Any, Optional, Tuple
 
-from fastapi.concurrency import run_in_threadpool
-
+from app.runtime.execution import run_in_threadpool
 from app.agent.policy.sanitizer import sanitize_for_host
 from app.chain import ChainBase
 from app.runtime.log import logger

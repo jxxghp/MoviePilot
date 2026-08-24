@@ -12,7 +12,7 @@ from app.domain.context import TorrentInfo, Context, MediaInfo
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.application.chain.data import SitePortProxy as SiteOper
+from app.application.chain.data import get_chain_site_port
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
 from app.application.torrent import TorrentHelper
@@ -804,7 +804,7 @@ class TorrentsChain(ChainBase):
                     # 获取过期rss除去passkey部分
                     new_rss = re.sub(r'&passkey=([a-zA-Z0-9]+)', f'&passkey={new_passkey}', site.get("rss"))
                     logger.info(f"更新站点 {domain} RSS地址 ...")
-                    SiteOper().update_rss(domain=domain, rss=new_rss)
+                    get_chain_site_port().update_rss(domain=domain, rss=new_rss)
                 else:
                     # 发送消息
                     self.post_message(

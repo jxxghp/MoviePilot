@@ -75,7 +75,7 @@ def test_new_subscribe_search_keeps_state_when_recently_created(monkeypatch) -> 
     """
     _SubscribeOper.subscribe = _new_subscribe(datetime.now())
     _SubscribeOper.updates = []
-    monkeypatch.setattr(subscribe_module, "SubscribeOper", _SubscribeOper)
+    monkeypatch.setattr(subscribe_module, "get_chain_subscribe_port", _SubscribeOper)
 
     media_chain_class = Mock()
     with patch.object(subscribe_module, "MediaChain", media_chain_class):
@@ -92,7 +92,7 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
     """
     _SubscribeOper.subscribe = _new_subscribe(datetime.now() - timedelta(minutes=2))
     _SubscribeOper.updates = []
-    monkeypatch.setattr(subscribe_module, "SubscribeOper", _SubscribeOper)
+    monkeypatch.setattr(subscribe_module, "get_chain_subscribe_port", _SubscribeOper)
 
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
@@ -117,7 +117,7 @@ def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None
     subscribe_oper.get.side_effect = subscribes.get
     monkeypatch.setattr(
         subscribe_module,
-        "SubscribeOper",
+        "get_chain_subscribe_port",
         lambda: subscribe_oper,
     )
     media_chain = Mock()
@@ -136,7 +136,7 @@ def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
     """订阅搜索锁超时后必须中止，不能在无锁状态下继续访问订阅。"""
     monkeypatch.setattr(SubscribeChain, "_rlock", _TimedOutLock())
     subscribe_oper = Mock()
-    monkeypatch.setattr(subscribe_module, "SubscribeOper", subscribe_oper)
+    monkeypatch.setattr(subscribe_module, "get_chain_subscribe_port", subscribe_oper)
     progress = Mock()
 
     chain = object.__new__(SubscribeChain)

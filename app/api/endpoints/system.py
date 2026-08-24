@@ -38,7 +38,7 @@ from app.chain.system import SystemChain
 from app.runtime.config import global_vars
 from app.runtime.events import eventmanager
 from app.domain.metainfo import MetaInfo
-from app.application.module import ModuleManager
+from app.application.module import get_module_manager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
 from app.api.principal import ApiPrincipal
 from app.application.configuration import (
@@ -66,7 +66,7 @@ from app.application.rules import RuleHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.runtime.state import SystemHelper
 from app.runtime.log import logger
-from app.application.scheduling import Scheduler
+from app.application.scheduling import get_scheduler
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.types import SystemConfigKey, EventType
@@ -1449,7 +1449,7 @@ def modulelist(_: _SchemaTokenPayload = Depends(verify_token)):
     查询已加载的模块ID列表
     """
     modules = []
-    for spec in ModuleManager().list_specs():
+    for spec in get_module_manager().list_specs():
         module_id = spec.id
         name = str(spec.metadata["name"])
         modules.append(
@@ -1473,7 +1473,7 @@ def moduletest(moduleid: str, _: _SchemaTokenPayload = Depends(verify_token)):
     """
     模块可用性测试接口
     """
-    state, errmsg = ModuleManager().test(moduleid)
+    state, errmsg = get_module_manager().test(moduleid)
     return _SchemaResponse(success=state, message=errmsg)
 
 
@@ -1514,9 +1514,9 @@ def run_scheduler(jobid: str, _: ApiPrincipal = Depends(get_current_active_super
     if not jobid:
         return _SchemaResponse(success=False, message="命令不能为空！")
     if jobid in {"recommend_refresh", "cookiecloud"}:
-        Scheduler().start(jobid, manual=True)
+        get_scheduler().start(jobid, manual=True)
     else:
-        Scheduler().start(jobid)
+        get_scheduler().start(jobid)
     return _SchemaResponse(success=True)
 
 
@@ -1531,7 +1531,7 @@ def run_scheduler2(jobid: str, _: Annotated[str, Depends(verify_apitoken)]):
         return _SchemaResponse(success=False, message="命令不能为空！")
 
     if jobid in {"recommend_refresh", "cookiecloud"}:
-        Scheduler().start(jobid, manual=True)
+        get_scheduler().start(jobid, manual=True)
     else:
-        Scheduler().start(jobid)
+        get_scheduler().start(jobid)
     return _SchemaResponse(success=True)

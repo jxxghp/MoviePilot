@@ -3,7 +3,11 @@
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol
 
-from app.application.outbox import AsyncOutboxTransaction, OutboxIntent
+from app.application.outbox import (
+    AsyncOutboxTransaction,
+    OutboxIntent,
+    SUBSCRIBE_DELETED_TOPIC,
+)
 from app.application.subscription.delete import (
     AsyncUnitOfWork,
     SubscribeDeletedPublisher,
@@ -89,7 +93,7 @@ class DeleteSubscriptionsByIdentityCommand:
                     await self._outbox.stage(
                         OutboxIntent(
                             event_key=event_payload["idempotency_key"],
-                            topic="subscribe.deleted",
+                            topic=SUBSCRIBE_DELETED_TOPIC,
                             payload=event_payload,
                         ),
                         now,

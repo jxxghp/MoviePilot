@@ -209,7 +209,10 @@ class TestSlashCommandInteractions(unittest.TestCase):
             )
         ]
 
-        with patch("app.chain.site.SiteOper.list", return_value=fake_sites), patch.object(
+        with patch(
+            "app.chain.site.get_chain_site_port",
+            return_value=SimpleNamespace(list=lambda: fake_sites),
+        ), patch.object(
             chain, "post_message"
         ) as post_message:
             chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
@@ -233,8 +236,10 @@ class TestSlashCommandInteractions(unittest.TestCase):
             )
         ]
 
+        subscribe_port = SimpleNamespace(list=lambda: fake_subscribes)
         with patch(
-            "app.chain.subscribe.SubscribeOper.list", return_value=fake_subscribes
+            "app.chain.subscribe.get_chain_subscribe_port",
+            return_value=subscribe_port,
         ), patch.object(chain, "post_message") as post_message:
             chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
 

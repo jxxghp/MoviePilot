@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.download import DownloadChain
-from app.application.agentdata import DownloadHistoryPort as DownloadHistoryOper
+from app.application.agentdata import get_agent_download_history_port
 from app.runtime.log import logger
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MUSIC_ENTITY_RECORDING, TorrentQueryStatus, media_type_to_agent
@@ -143,7 +143,7 @@ class QueryDownloadTasksTool(MoviePilotTool):
         hashes = [torrent.hash for torrent in torrents if getattr(torrent, "hash", None)]
         if not hashes:
             return {}
-        return DownloadHistoryOper().get_by_hashes(hashes)
+        return get_agent_download_history_port().get_by_hashes(hashes)
 
     @classmethod
     def _query_downloads_sync(

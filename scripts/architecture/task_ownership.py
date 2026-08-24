@@ -8,7 +8,9 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-TASK_METHODS = frozenset({"create", "create_sync", "register"})
+TASK_METHODS = frozenset(
+    {"create", "create_sync", "register", "submit_threadsafe"}
+)
 TASK_MODULE = "app.runtime.tasks"
 CONTEXT_MODULE = "app.api.context"
 TASK_FACTORIES = frozenset(

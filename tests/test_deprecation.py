@@ -1,6 +1,7 @@
 """渐进式废弃登记的阶段行为，以及与旧 Facade 命中观测的联动测试。"""
 
 import asyncio
+import inspect
 from dataclasses import dataclass, field
 from typing import Dict, List, Mapping, Tuple
 
@@ -209,6 +210,20 @@ def test_deprecated_decorator_blocks_disabled_stage(registry, monkeypatch) -> No
         legacy_call()
 
     assert calls == []
+
+
+def test_deprecated_decorator_keeps_async_call_shape(registry, warnings_log) -> None:
+    """异步函数经装饰后仍可被调度器识别为协程函数。"""
+    registry(DeprecationStage.WARN)
+
+    @deprecated("demo.legacy")
+    async def legacy_call(value: int) -> int:
+        """返回入参本身。"""
+        return value
+
+    assert inspect.iscoroutinefunction(legacy_call) is True
+    assert asyncio.run(legacy_call(3)) == 3
+    assert len(warnings_log.messages) == 1
 
 
 def test_compat_facade_hit_is_recorded_before_stage_is_applied(

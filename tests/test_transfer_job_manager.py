@@ -426,7 +426,7 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+            "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
         ), patch(
             "app.chain.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),
@@ -472,8 +472,8 @@ class TransferJobManagerTest(unittest.TestCase):
         )
         system_config_oper = SimpleNamespace(get=lambda key: None)
 
-        with patch("app.chain.transfer.TransferHistoryOper", return_value=transfer_history_oper), \
-                patch("app.chain.transfer.DownloadHistoryOper", return_value=download_history_oper), \
+        with patch("app.chain.transfer.get_chain_transfer_history_port", return_value=transfer_history_oper), \
+                patch("app.chain.transfer.get_chain_download_history_port", return_value=download_history_oper), \
                 patch("app.chain.transfer.get_configured_system_config", return_value=system_config_oper), \
                 patch("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: FakeMeta(14)):
             state, errmsg = chain.do_transfer(
@@ -647,7 +647,7 @@ class TransferJobManagerTest(unittest.TestCase):
         system_config_oper = SimpleNamespace(get=lambda key: None)
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.chain.transfer.get_chain_transfer_history_port",
             return_value=transfer_history_oper,
         ), patch(
             "app.chain.transfer.get_configured_system_config",
@@ -715,10 +715,10 @@ class TransferJobManagerTest(unittest.TestCase):
         _reset_failed_retries(fileitem.path, fileitem.storage)
         try:
             with patch(
-                "app.chain.transfer.TransferHistoryOper",
+                "app.chain.transfer.get_chain_transfer_history_port",
                 return_value=transfer_history_oper,
             ), patch(
-                "app.chain.transfer.DownloadHistoryOper",
+                "app.chain.transfer.get_chain_download_history_port",
                 return_value=download_history_oper,
             ), patch(
                 "app.chain.transfer.get_configured_system_config",
@@ -794,10 +794,10 @@ class TransferJobManagerTest(unittest.TestCase):
             ):
                 record_transfer_failure(fileitem.path, fileitem.storage)
                 with patch(
-                    "app.chain.transfer.TransferHistoryOper",
+                    "app.chain.transfer.get_chain_transfer_history_port",
                     return_value=transfer_history_oper,
                 ), patch(
-                    "app.chain.transfer.DownloadHistoryOper",
+                    "app.chain.transfer.get_chain_download_history_port",
                     return_value=download_history_oper,
                 ), patch(
                     "app.chain.transfer.get_configured_system_config",
@@ -850,7 +850,7 @@ class TransferJobManagerTest(unittest.TestCase):
             )
             failed_history_oper = SimpleNamespace()
             with patch(
-                "app.chain.transfer.TransferHistoryOper",
+                "app.chain.transfer.get_chain_transfer_history_port",
                 return_value=failed_history_oper,
             ), patch(
                 "app.chain.transfer.add_transfer_fail",
@@ -890,7 +890,7 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_notify=False,
             )
             with patch(
-                "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+                "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
             ), patch(
                 "app.chain.transfer.add_transfer_success",
                 lambda **kwargs: SimpleNamespace(id=2),
@@ -920,7 +920,7 @@ class TransferJobManagerTest(unittest.TestCase):
         transfer_history_oper = SimpleNamespace()
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.chain.transfer.get_chain_transfer_history_port",
             return_value=transfer_history_oper,
         ), patch(
             "app.chain.transfer.add_transfer_fail",
@@ -962,7 +962,7 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertTrue(chain.jobview.add_task(task))
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.chain.transfer.get_chain_transfer_history_port",
             return_value=SimpleNamespace(),
         ), patch(
             "app.chain.transfer.add_transfer_fail",
@@ -1005,7 +1005,7 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertTrue(chain.jobview.add_task(task))
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.chain.transfer.get_chain_transfer_history_port",
             return_value=SimpleNamespace(),
         ), patch(
             "app.chain.transfer.add_transfer_fail",
@@ -1081,10 +1081,10 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.chain.transfer.get_chain_transfer_history_port",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.DownloadHistoryOper",
+            "app.chain.transfer.get_chain_download_history_port",
             return_value=download_history_oper,
         ), patch(
             "app.chain.transfer.get_configured_system_config",
@@ -1180,10 +1180,10 @@ class TransferJobManagerTest(unittest.TestCase):
         storage_chain = SimpleNamespace(get_item=lambda fileitem: subtitle_fileitem)
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.chain.transfer.get_chain_transfer_history_port",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.DownloadHistoryOper",
+            "app.chain.transfer.get_chain_download_history_port",
             return_value=download_history_oper,
         ), patch(
             "app.chain.transfer.get_configured_system_config",
@@ -1261,10 +1261,10 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.chain.transfer.get_chain_transfer_history_port",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.DownloadHistoryOper",
+            "app.chain.transfer.get_chain_download_history_port",
             return_value=download_history_oper,
         ), patch(
             "app.chain.transfer.get_configured_system_config",
@@ -1366,10 +1366,10 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper",
+            "app.chain.transfer.get_chain_transfer_history_port",
             return_value=transfer_history_oper,
         ), patch(
-            "app.chain.transfer.DownloadHistoryOper",
+            "app.chain.transfer.get_chain_download_history_port",
             return_value=download_history_oper,
         ), patch(
             "app.chain.transfer.get_configured_system_config",
@@ -1464,7 +1464,7 @@ class TransferJobManagerTest(unittest.TestCase):
         ]
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+            "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
         ), patch(
             "app.chain.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),
@@ -1530,7 +1530,7 @@ class TransferJobManagerTest(unittest.TestCase):
         )
 
         with patch(
-            "app.chain.transfer.TransferHistoryOper", return_value=SimpleNamespace()
+            "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
         ), patch(
             "app.chain.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),

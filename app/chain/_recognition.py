@@ -7,8 +7,7 @@
 import copy
 from typing import Optional
 
-from fastapi.concurrency import run_in_threadpool
-
+from app.runtime.execution import run_in_threadpool
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.configuration import get_configured_system_config
 from app.domain.context import MediaInfo, MusicInfo

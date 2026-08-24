@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import DownloadHistoryPort as DownloadHistoryOper
+from app.application.agentdata import get_agent_download_history_port
 from app.runtime.log import logger
 
 
@@ -37,7 +37,7 @@ class DeleteDownloadHistoryTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: history_id={history_id}")
 
         try:
-            await DownloadHistoryOper().async_delete_history(history_id)
+            await get_agent_download_history_port().async_delete_history(history_id)
             return f"下载历史记录 ID: {history_id} 已成功删除"
         except Exception as e:
             logger.error(f"删除下载历史记录失败: {e}", exc_info=True)

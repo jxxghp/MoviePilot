@@ -44,6 +44,10 @@ from app.adapters.system.plugin.manifest import (
 )
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
+from app.runtime.execution import (
+    await_task_to_terminal,
+    run_in_threadpool_to_completion as _await_thread_operation,
+)
 from app.runtime.tasks import get_task_registry
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import WeakSingleton
@@ -81,20 +85,6 @@ def _empty_installed_plugins() -> List[str]:
 
 
 _installed_plugins_provider: InstalledPluginsProvider = _empty_installed_plugins
-
-
-async def _await_thread_operation(func, *args, **kwargs):
-    """取消请求到达时先等待同步插件操作收口，避免目录写入继续进行。"""
-    task = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        try:
-            await asyncio.shield(task)
-        except BaseException:
-            pass
-        raise
-
 
 def configure_installed_plugins_provider(
     provider: InstalledPluginsProvider,
@@ -1510,15 +1500,8 @@ class PluginHelper(metaclass=WeakSingleton):
                 await asyncio.to_thread(created_file.unlink, missing_ok=True)
 
             cleanup_task = asyncio.create_task(cleanup_created_file())
-            while not cleanup_task.done():
-                try:
-                    await asyncio.shield(cleanup_task)
-                except asyncio.CancelledError:
-                    continue
-                except Exception:
-                    break
             try:
-                await cleanup_task
+                await await_task_to_terminal(cleanup_task)
             except Exception as err:
                 logger.warning(f"[UV] 取消后清理运行环境约束文件失败：{err}")
             raise

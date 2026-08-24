@@ -35,9 +35,9 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.words import WordsMatcher
 from app.domain.metainfo import MetaInfo
 from app.application.chain.data import (
-    DownloadHistoryPortProxy as DownloadHistoryOper,
-    SitePortProxy as SiteOper,
-    SubscribePortProxy as SubscribeOper,
+    get_chain_download_history_port,
+    get_chain_site_port,
+    get_chain_subscribe_port,
 )
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
@@ -48,6 +48,10 @@ from app.application.messaging.message import MessageTemplateHelper
 from app.application.mediaserver import MediaServerHelper
 from app.application.subscription.write import add_subscribe, async_add_subscribe
 from app.application.subscription.complete import get_subscription_completion_scope
+from app.application.subscription.delete import (
+    SubscribeDeletionActor,
+    get_sync_delete_subscribe_scope,
+)
 from app.application.subscription.contract import (
     build_subscribe_meta as _build_subscribe_meta,
     subscribe_media_key,
@@ -87,12 +91,6 @@ else:
         def to_dict(self) -> dict:
             """返回快照字段，兼容整理链的响应转换。"""
             return dict(self.__dict__)
-
-# 旧测试与第三方扩展可能替换该名字；它现在只是应用配置端口的本地别名，
-# 不再指向数据库 Oper。
-SystemConfigOper = get_configured_system_config
-_DEFAULT_SYSTEM_CONFIG_PROVIDER = get_configured_system_config
-
 
 @dataclass(frozen=True, slots=True)
 class _SubscribePostCommitContext:
@@ -138,9 +136,7 @@ class _SubscribeCreateContext:
 
 
 def _system_config():
-    """返回配置端口，并兼容旧测试对本地别名的替换。"""
-    if SystemConfigOper is not _DEFAULT_SYSTEM_CONFIG_PROVIDER:
-        return SystemConfigOper()
+    """返回启动组合根登记的配置端口。"""
     return get_configured_system_config()
 
 
@@ -1475,7 +1471,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     @staticmethod
     def _subscription_query() -> SubscriptionQueryService:
         """构造绑定订阅 Oper 的查询应用服务。"""
-        return SubscriptionQueryService(SubscribeOper())
+        return SubscriptionQueryService(get_chain_subscribe_port())
 
     @classmethod
     def exists(cls, mediainfo: MediaInfo, meta: MetaBase = None):
@@ -1550,7 +1546,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             if not lock_acquired:
                 return
 
-            subscribeoper = SubscribeOper()
+            subscribeoper = get_chain_subscribe_port()
             if sid:
                 subscribe = subscribeoper.get(sid)
                 subscribes = [subscribe] if subscribe else []
@@ -1808,7 +1804,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if subscribe.type != MediaType.MOVIE.value:
             return
 
-        SubscribeOper().update(subscribe.id, {
+        get_chain_subscribe_port().update(subscribe.id, {
             "current_priority": priority,
             "last_update": now
         })
@@ -1959,7 +1955,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         :return: 返回[]代表所有站点命中，返回None代表没有订阅
         """
         ret_sites = []
-        subscribes = SubscribeOper().list()
+        subscribes = get_chain_subscribe_port().list()
         if not subscribes:
             # 没有订阅
             return None
@@ -2084,7 +2080,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             processed_torrents = self._prepare_match_torrents(torrents)
 
             # 所有订阅
-            subscribes = SubscribeOper().list(self.get_states_for_search('R'))
+            subscribes = get_chain_subscribe_port().list(self.get_states_for_search('R'))
             total_num = len(subscribes)
             if progress_callback:
                 progress_callback(
@@ -2129,7 +2125,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     # 订阅的站点域名列表
                     domains = []
                     if subscribe.sites:
-                        domains = SiteOper().get_domains_by_ids(subscribe.sites)
+                        domains = get_chain_site_port().get_domains_by_ids(subscribe.sites)
                     # 识别媒体信息
                     mediainfo: MediaInfo = MediaChain().recognize_media(
                         meta=meta,
@@ -2401,7 +2397,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     )
 
                     # 同步外部修改，更新订阅信息
-                    subscribe = SubscribeOper().get(subscribe.id)
+                    subscribe = get_chain_subscribe_port().get(subscribe.id)
 
                     # 判断是否要完成订阅
                     if subscribe:
@@ -2430,7 +2426,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         :param progress_callback: 定时服务进度更新回调
         """
         # 查询所有订阅
-        subscribeoper = SubscribeOper()
+        subscribeoper = get_chain_subscribe_port()
         subscribes = subscribeoper.list()
         total_num = len(subscribes)
         if progress_callback:
@@ -2571,7 +2567,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             return
         logger.info(f'开始刷新follow用户分享订阅 ...')
         success_count = 0
-        subscribeoper = SubscribeOper()
+        subscribeoper = get_chain_subscribe_port()
         share_subscribes = MoviePilotServerHelper.get_subscribe_shares() or []
         total_num = len(share_subscribes)
         if progress_callback:
@@ -2672,7 +2668,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         :param progress_callback: 定时服务进度更新回调
         """
         logger.info(f'开始预缓存订阅日历 ...')
-        subscribes = await SubscribeOper().async_list()
+        subscribes = await get_chain_subscribe_port().async_list()
         total_num = len(subscribes)
         if progress_callback:
             progress_callback(
@@ -2776,7 +2772,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             note = list(set(note).union(set(items)))
         # 更新订阅
         if note:
-            SubscribeOper().update(subscribe.id, {
+            get_chain_subscribe_port().update(subscribe.id, {
                 "note": note
             })
 
@@ -2840,7 +2836,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         if not update_data:
             return
-        SubscribeOper().update(subscribe.id, update_data)
+        get_chain_subscribe_port().update(subscribe.id, update_data)
         for key, value in update_data.items():
             setattr(subscribe, key, value)
 
@@ -3170,9 +3166,18 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         return SubscribeInteractionHandler(
             messenger=self,
             actions=self,
-            repository=SubscribeOper(),
-            report_deleted=MoviePilotServerHelper.sub_done_async,
+            repository=get_chain_subscribe_port(),
+            delete_subscription=self._delete_subscription,
         )
+
+    @staticmethod
+    def _delete_subscription(subscribe_id: int) -> bool:
+        """通过统一同步命令删除订阅，保留消息入口原有的全局管理权限。"""
+        with get_sync_delete_subscribe_scope() as command:
+            return command.execute(
+                subscribe_id,
+                SubscribeDeletionActor(username="", is_superuser=True),
+            )
 
     def remote_delete(self, arg_str: str, channel: NotificationChannel,
                       userid: Union[str, int] = None, source: Optional[str] = None):
@@ -3189,28 +3194,18 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 save_history=False))
             return
         arg_strs = str(arg_str).split()
-        subscribeoper = SubscribeOper()
         for arg_str in arg_strs:
             arg_str = arg_str.strip()
             if not arg_str.isdigit():
                 continue
             subscribe_id = int(arg_str)
-            subscribe = subscribeoper.get(subscribe_id)
-            if not subscribe:
+            if not self._delete_subscription(subscribe_id):
                 self.post_message(_SchemaMessage(
                     channel=channel, source=source,
                     title=f"订阅编号 {subscribe_id} 不存在！",
                     userid=userid,
                     save_history=False))
                 return
-            # 删除订阅
-            subscribeoper.delete(subscribe_id)
-            # 统计订阅
-            MoviePilotServerHelper.sub_done_async({
-                "media_source": subscribe.media_source,
-                "media_id": subscribe.media_id,
-                "season": subscribe.season,
-            })
         # 重新发送消息
         self.remote_list(channel=channel, userid=userid, source=source)
 
@@ -3346,7 +3341,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         site_id = event_data.get("site_id")
         if not site_id:
             return
-        subscribeoper = SubscribeOper()
+        subscribeoper = get_chain_subscribe_port()
         if site_id == "*":
             # 站点被重置
             _system_config().set(SystemConfigKey.RssSites, [])
@@ -3466,7 +3461,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             episodes[0] = info
 
         # 所有下载记录
-        downloadhis = DownloadHistoryOper()
+        downloadhis = get_chain_download_history_port()
         download_his = downloadhis.get_by_media_identity(
             media_source=subscribe.media_source,
             media_id=subscribe.media_id,
@@ -3950,7 +3945,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             old_total_episode=old_total_episode,
         )
         update_data["last_update"] = now
-        SubscribeOper().update(subscribe.id, update_data)
+        get_chain_subscribe_port().update(subscribe.id, update_data)
         for key, value in update_data.items():
             setattr(subscribe, key, value)
         subscribe.last_update = now

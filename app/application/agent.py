@@ -78,6 +78,8 @@ def get_agent_manager() -> Any:
 
 def get_running_agent_manager() -> Any | None:
     """返回已进入 RUNNING 的 AgentManager，不触发实现物化。"""
+    if _running_agent_manager_provider is None:
+        return None
     return _resolve(_running_agent_manager_provider, "running_agent_manager")
 
 

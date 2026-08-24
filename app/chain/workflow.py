@@ -17,7 +17,8 @@ from pydantic import BaseModel
 from app.chain import ChainBase
 from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
-from app.application.chain.data import WorkflowPortProxy as WorkflowOper
+from app.application.workflow import get_workflow_manager
+from app.application.chain.data import get_chain_workflow_port
 from app.runtime.log import logger
 from app.schemas.workflow import ActionContext
 from app.schemas.workflow import ActionFlow
@@ -25,7 +26,6 @@ from app.schemas.workflow import Action
 from app.schemas.workflow import ActionExecution
 from app.schemas.workflow import ActionResult
 from app.schemas.types import EventType
-from app.workflow import WorkFlowManager
 
 ARTIFACT_FIELDS = {"torrents", "medias", "fileitems", "downloads", "sites", "subscribes"}
 DEFAULT_WORKFLOW_MAX_WORKERS = 4
@@ -162,7 +162,7 @@ class WorkflowExecutor:
         self.flow_failed = set()
 
         # 工作流管理器
-        self.workflowmanager = WorkFlowManager()
+        self.workflowmanager = get_workflow_manager()
         # 线程安全队列
         self.queue = deque()
         self.queued_actions = set()
@@ -1185,13 +1185,13 @@ class WorkflowChain(ChainBase):
         :param from_begin: 是否从头开始，默认为True
         :param progress_callback: 定时服务进度更新回调
         """
-        workflowoper = WorkflowOper()
+        workflowoper = get_chain_workflow_port()
 
         def save_step(action: Action, context: ActionContext, execution_state: dict, completed: bool):
             """
             保存上下文到数据库
             """
-            WorkflowOper().step(
+            get_chain_workflow_port().step(
                 workflow_id,
                 action_id=action.id if completed else "",
                 context=_serialize_workflow_context(context),
@@ -1263,18 +1263,18 @@ class WorkflowChain(ChainBase):
         """
         获取工作流列表
         """
-        return WorkflowOper().list_enabled()
+        return get_chain_workflow_port().list_enabled()
 
     @staticmethod
     def get_timer_workflows() -> List[Workflow]:
         """
         获取定时触发的工作流列表
         """
-        return WorkflowOper().get_timer_triggered_workflows()
+        return get_chain_workflow_port().get_timer_triggered_workflows()
 
     @staticmethod
     def get_event_workflows() -> List[Workflow]:
         """
         获取事件触发的工作流列表
         """
-        return WorkflowOper().get_event_triggered_workflows()
+        return get_chain_workflow_port().get_event_triggered_workflows()

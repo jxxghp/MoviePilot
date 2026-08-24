@@ -12,10 +12,10 @@ from app.chain.subscribe import SubscribeChain
 from app.chain.system import SystemChain
 from app.chain.transfer import TransferChain
 from app.runtime.events import Event as ManagerEvent, eventmanager, Event
-from app.application.plugin.runtime import get_plugin_manager as PluginManager
+from app.application.plugin.runtime import get_plugin_manager
 from app.application.messaging.message import MessageHelper
 from app.application.messaging.skill import SkillInteractionHandler
-from app.application.scheduling import Scheduler
+from app.application.scheduling import get_scheduler
 from app.runtime.thread import ThreadHelper
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -147,9 +147,9 @@ class Command(metaclass=Singleton):
         # 初始化锁
         self._rlock = threading.RLock()
         # 插件管理
-        self.pluginmanager = PluginManager()
+        self.pluginmanager = get_plugin_manager()
         # 定时服务管理
-        self.scheduler = Scheduler()
+        self.scheduler = get_scheduler()
         # 消息管理器
         self.messagehelper = MessageHelper()
         # 初始化命令

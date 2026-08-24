@@ -30,7 +30,7 @@ async def test_reset_submits_cookiecloud_after_site_transaction(monkeypatch):
     system_config = Mock()
     system_config.async_set = AsyncMock()
 
-    monkeypatch.setattr(site_endpoint, "Scheduler", Mock(return_value=scheduler))
+    monkeypatch.setattr(site_endpoint, "get_scheduler", Mock(return_value=scheduler))
     monkeypatch.setattr(
         site_endpoint,
         "get_configured_system_config",

@@ -52,7 +52,8 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 
 - `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted`：订阅业务行 commit 是业务完成点；事件、
   通知和服务端上报必须由同事务 durable intent 驱动。ARCH-251 首选 `SubscribeAdded` pilot。
-- `DownloadAdded`：下载提交成功后，历史/通知不得仅依赖进程内回调；后续独立 pilot。
+- `DownloadAdded`：下载器确认接收后，下载历史与事件 intent 已在返回前原子提交；通知和模块后处理只在
+  commit 后启动，事件由 Outbox 恢复投递。
 - `TransferComplete`、`TransferFailed`：整理步骤本身属于 E3，但向事件消费者发布结果属于 E2。
 
 ## 非 Event 后台机制映射
@@ -63,8 +64,19 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   调度，不表示执行完成。
 - Webhook E0 广播、消息入口和 Seerr 订阅入口均已迁入 lifespan TaskRegistry，具备 owner、停止接收和
   有限等待语义；进程崩溃时仍允许丢失，不因此提升为 durable。
+- TaskRegistry 提供跨宿主线程的 `submit_threadsafe()`；提交回目标循环后先原子登记 owner 再执行，关停
+  竞态中要么纳入取消/等待，要么拒绝并关闭协程。整理失败按钮的 AI 接管使用
+  `chain.transfer.ai_takeover` owner，不再绕过登记器直接投递主循环。
+- Slack、Telegram、Discord、飞书、QQBot、企业微信与 WeChatClawBot 的渠道回环统一经
+  `application.messaging.ingress` 进入同一个 API/TaskRegistry 主链；需要立即返回 SDK 回调的渠道把同步
+  HTTP 交给宿主共享线程池，模块关闭后由线程池生命周期等待，不再创建逐消息 daemon 线程。
+- 图片代理安全日志的窗口聚合属于 E1 观测；`EventCoalescer` 持有到期 flush task，模块关闭会取消未到期
+  timer、刷新剩余摘要并等待已启动回调，不再把 `create_task` 留给事件循环隐式回收。
 - 主仓不再新增或保留裸 FastAPI `BackgroundTasks`；若任务源于已提交的用户数据且不可从数据库重建，
   必须提升为 E2，进入 Outbox 或持久任务表。
+- 旧插件可调用的 `MoviePilotServerHelper.sub_reg_async()` / `sub_done_async()` 保留同步 ABI，但内部不再创建
+  裸上报线程；任务分别登记为 `compat.server.subscribe_added_report` / `subscribe_done_report`，已开始的
+  同步网络工作在 shutdown 时不取消并等待完成。canonical 订阅主链继续使用 durable outbox，不回退旧入口。
 
 ### Scheduler jobs
 
@@ -76,9 +88,13 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 ### Agent tasks
 
 - 流式 token、工具进度和临时展示：E0。
+- 整理历史 AI 重做的 runner 与同步输出回调共用 lifespan TaskRegistry；单条/批量进度分别登记
+  `api.history.ai_redo.progress` / `api.history.ai_redo_batch.progress`，不再把缓存进度更新裸投递主循环。
 - 已登记的周期 Agent task：E1，重启时通过任务定义重建；单次执行要有 execution 记录。
 - Agent 创建/修改订阅、删除数据等工具：业务事务按 E2/E3；聊天输出不能替代业务完成证据。
 - 会话 stop/cancel：E0 控制信号；被取消工具的底层阻塞 I/O 可能继续，资源所有者必须最终回收。
+- 过期会话与远程清理命令统一经 `chain.message.agent_session_clear` owner 提交 Agent 资源释放；两条入口
+  不再各自维护裸跨线程任务，宿主关停会取消并等待已登记清理。该清理仍是 E0 资源回收，不跨重启恢复。
 - OpenAI/Anthropic 协议流的请求级 Agent worker 由 `api.openai.stream` /
   `api.anthropic.stream` 登记并在 lifespan shutdown 时取消；它们仍是 E0 请求交付，不提供跨重启恢复。
 - stdio MCP 的 stderr reader 属于会话资源内部任务；会话退出时先取消并等待 reader 收口，再终止子进程，避免
@@ -87,7 +103,20 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   `module.imdb.cache_clear`；同步调用方式和无运行事件循环时的立即清理行为保持不变，宿主关停后不再
   接受新的清理任务。
 - Scheduler 的协程作业与异步进度收尾由 Scheduler 自有句柄表持有；同步 `start()` / `stop()` ABI 保持，
-  生命周期关闭入口等待目标事件循环确认真实收尾，跨线程取消代理不作为任务完成凭据。
+  生命周期关闭入口等待目标事件循环确认真实收尾，跨线程取消代理不作为任务完成凭据。内部事件循环提交
+  必须携带 `job_id` owner，当前循环和跨线程路径均登记句柄，不保留 fire-and-forget 分支。
+
+### Plugin package mutations
+
+- 插件快照、安装、回滚和持久备份刷新中的同步文件操作属于 E3 步骤；取消只能延迟传播到同步 worker
+  到达终态后，不能让文件仍在写入时释放插件 mutation owner。
+- 市场适配器和插件包适配器统一复用 `runtime.execution.run_in_threadpool_to_completion`；两个模块内的
+  `_await_thread_operation` 私有接缝保留为同一函数别名，不改变 `PluginHelper` 或 `PluginPackageManager`
+  的同步/异步调用合同。
+- 插件安装快照、取消补偿和临时约束文件清理统一复用 `runtime.execution.await_task_to_terminal`，连续取消
+  不再由 Application 与 Adapter 各自维护近似循环；数据库 worker 的可中断队列等待仍保留独立职责。
+- canonical 宿主的同步函数异步桥接统一从 `runtime.execution.run_in_threadpool` 进入 AnyIO 线程池并传播
+  context；FastAPI/Starlette 同名 helper 不再作为第二个导入入口，插件和精确兼容目录不受此门禁约束。
 
 ### Transfer pending / 文件整理
 

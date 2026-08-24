@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 from uuid import uuid4
 
-from app.application.outbox import AsyncOutboxTransaction, OutboxIntent
+from app.application.outbox import (
+    AsyncOutboxTransaction,
+    OutboxIntent,
+    SUBSCRIBE_MODIFIED_TOPIC,
+)
 from app.schemas.event import SubscribeModifiedEventData
 
 
@@ -143,7 +147,7 @@ class SubscriptionMutationService:
             await self._outbox.stage(
                 OutboxIntent(
                     event_key=event_key,
-                    topic="subscribe.modified",
+                    topic=SUBSCRIBE_MODIFIED_TOPIC,
                     payload=event_payload,
                 ),
                 datetime.now(timezone.utc),

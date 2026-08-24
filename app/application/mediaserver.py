@@ -1,9 +1,12 @@
 import re
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from typing import Any, Optional, Protocol
 
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.domain.context import MusicInfo
+from app.runtime.log import logger
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.application.service import ServiceBaseHelper
 from app.schemas.system import MediaServerConf
@@ -284,6 +287,61 @@ class MusicMediaServerHelper:
         )
 
 
+def format_emby_family_item(
+    item: Mapping[str, Any],
+    *,
+    server: str,
+    include_server_id: bool = False,
+) -> Optional[_SchemaMediaServerItem]:
+    """把 Emby 系服务条目转换为统一媒体服务器模型，并保留各服务既有字段差异。"""
+    try:
+        user_data = item.get("UserData") or {}
+        if not user_data:
+            user_state = None
+        else:
+            resume = (
+                user_data.get("PlaybackPositionTicks")
+                and user_data.get("PlaybackPositionTicks") > 0
+            )
+            last_played_date = user_data.get("LastPlayedDate")
+            if last_played_date is not None and "." in last_played_date:
+                last_played_date = last_played_date.split(".")[0]
+            user_state = _SchemaMediaServerItemUserState(
+                played=user_data.get("Played"),
+                resume=resume,
+                last_played_date=datetime.strptime(
+                    last_played_date,
+                    "%Y-%m-%dT%H:%M:%S",
+                ).strftime("%Y-%m-%d %H:%M:%S") if last_played_date else None,
+                play_count=user_data.get("PlayCount"),
+                percentage=user_data.get("PlayedPercentage"),
+            )
+        media_source, media_id = MediaServerIdentityHelper.from_provider_ids(
+            item.get("ProviderIds")
+        )
+        fields = {
+            "server": server,
+            "library": item.get("ParentId"),
+            "item_id": item.get("Id"),
+            "item_type": item.get("Type"),
+            "title": item.get("Name"),
+            "original_title": item.get("OriginalTitle"),
+            "year": item.get("ProductionYear"),
+            "media_source": media_source,
+            "media_id": media_id,
+            "path": item.get("Path"),
+            "note": MusicMediaServerHelper.build_note(item)
+            if item.get("Type") in {"MusicAlbum", "Audio"} else None,
+            "user_state": user_state,
+        }
+        if include_server_id:
+            fields["server_id"] = item.get("ServerId")
+        return _SchemaMediaServerItem(**fields)
+    except Exception as error:
+        logger.error(error)
+        return None
+
+
 class MediaServerHelper(ServiceBaseHelper[MediaServerConf]):
     """管理媒体服务器配置，并按类型发现已启用的服务实例。"""
 
@@ -304,3 +362,12 @@ class MediaServerHelper(ServiceBaseHelper[MediaServerConf]):
         """判断给定服务或服务名称是否属于指定媒体服务器类型。"""
         service = service or self.get_service(name=name)
         return bool(service and service.type == service_type)
+
+
+def get_mediaserver_configs(
+    include_disabled: bool = False,
+) -> list[MediaServerConf]:
+    """返回媒体服务器配置列表，并按调用方需要决定是否包含禁用项。"""
+    return list(
+        MediaServerHelper().get_configs(include_disabled=include_disabled).values()
+    )

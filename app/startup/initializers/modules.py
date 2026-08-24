@@ -71,18 +71,25 @@ from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
 )
 from app.application.messaging.agent import (
+    dispatch_web_agent_message_event,
     shutdown_web_agent_background_tasks,
     wait_web_agent_background_tasks,
 )
 from app.application.security.user import configure_user_lookups
 from app.application.security.auth import AuthService, configure_auth_service
 from app.application.security.passkeys import PasskeyService, configure_passkey_service
+from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.security.userconfig import (
     UserConfigurationService,
     configure_user_configuration,
 )
 from app.application.history import configure_transfer_history_provider
-from app.application.outbox import OutboxDispatcher, configure_outbox_dispatcher
+from app.application.outbox import (
+    OutboxDispatcher,
+    configure_outbox_dispatcher,
+    durable_event_topic,
+    validate_durable_event_handlers,
+)
 from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.site.health import SiteHealthService, configure_site_health_service
@@ -334,44 +341,58 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
             raise RuntimeError("订阅新增通知快照格式无效")
         CommandChain().post_message(Message.model_validate(snapshot))
 
+    handlers = {
+        durable_event_topic(
+            EventType.SubscribeAdded
+        ): lambda message: EventManager().send_event(
+            EventType.SubscribeAdded,
+            message.payload,
+        ),
+        "subscribe.added.report": dispatch_subscribe_added_report,
+        "subscribe.added.notification": dispatch_subscribe_added_notification,
+        durable_event_topic(
+            EventType.SubscribeModified
+        ): lambda message: EventManager().send_event(
+            EventType.SubscribeModified,
+            message.payload,
+        ),
+        durable_event_topic(
+            EventType.SubscribeDeleted
+        ): lambda message: EventManager().send_event(
+            EventType.SubscribeDeleted,
+            message.payload,
+        ),
+        "subscribe.deleted.report": dispatch_subscribe_deleted_report,
+        "subscribe.complete": lambda message: EventManager().send_event(
+            EventType.SubscribeComplete,
+            message.payload,
+        ),
+        "subscribe.complete.report": dispatch_subscribe_complete_report,
+        "subscribe.complete.notification": dispatch_subscribe_notification,
+        durable_event_topic(
+            EventType.DownloadAdded
+        ): lambda message: EventManager().send_event(
+            EventType.DownloadAdded,
+            restore_download_added(message.payload),
+        ),
+        durable_event_topic(
+            EventType.TransferComplete
+        ): lambda message: EventManager().send_event(
+            EventType.TransferComplete,
+            restore_transfer_result(message.payload),
+        ),
+        durable_event_topic(
+            EventType.TransferFailed
+        ): lambda message: EventManager().send_event(
+            EventType.TransferFailed,
+            restore_transfer_result(message.payload),
+        ),
+    }
+    validate_durable_event_handlers(handlers)
     session = SessionFactory()
     return OutboxDispatcher(
         repository=SqlAlchemyOutboxRepository(session),
-        handlers={
-            "subscribe.added": lambda message: EventManager().send_event(
-                EventType.SubscribeAdded,
-                message.payload,
-            ),
-            "subscribe.added.report": dispatch_subscribe_added_report,
-            "subscribe.added.notification": dispatch_subscribe_added_notification,
-            "subscribe.modified": lambda message: EventManager().send_event(
-                EventType.SubscribeModified,
-                message.payload,
-            ),
-            "subscribe.deleted": lambda message: EventManager().send_event(
-                EventType.SubscribeDeleted,
-                message.payload,
-            ),
-            "subscribe.deleted.report": dispatch_subscribe_deleted_report,
-            "subscribe.complete": lambda message: EventManager().send_event(
-                EventType.SubscribeComplete,
-                message.payload,
-            ),
-            "subscribe.complete.report": dispatch_subscribe_complete_report,
-            "subscribe.complete.notification": dispatch_subscribe_notification,
-            "download.added": lambda message: EventManager().send_event(
-                EventType.DownloadAdded,
-                restore_download_added(message.payload),
-            ),
-            "transfer.completed": lambda message: EventManager().send_event(
-                EventType.TransferComplete,
-                restore_transfer_result(message.payload),
-            ),
-            "transfer.failed": lambda message: EventManager().send_event(
-                EventType.TransferFailed,
-                restore_transfer_result(message.payload),
-            ),
-        },
+        handlers=handlers,
         close=session.close,
         failure_observer=lambda dead: record_metric(
             "scheduler.job.dead_letter" if dead else "scheduler.job.retry",
@@ -594,6 +615,7 @@ async def stop_modules():
             logger.error(f"关闭{name}失败：{err}")
             return True
 
+    await run_step("图片代理安全日志合并器", close_image_proxy_block_log_coalescer)
     await run_step("模块", lambda: ModuleManager().shutdown())
     await run_step("事件消费", lambda: EventManager().stop_async())
     await run_step("浏览器会话", close_browser_sessions)
@@ -834,6 +856,11 @@ async def init_modules() -> HostRuntime:
     user_auth()
     # 事件错误通知由启动组合层接入消息服务。
     EventManager().set_error_notifier(notify_event_error)
+    # WebAgent 事件监听由组合根统一装配，HTTP 请求只管理自己的队列。
+    EventManager().add_event_listener(
+        EventType.NoticeMessage,
+        dispatch_web_agent_message_event,
+    )
     # 宿主类处理器在启动层显式登记，事件总线不再兜底 owner_class()。
     configure_host_event_handler_resolver()
     # 加载模块

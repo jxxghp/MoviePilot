@@ -34,6 +34,7 @@ def test_owner_gate_tracks_known_registry_without_matching_same_named_methods(
             task_registry.create(work())
             resolve_registry(task_registry).create_sync(work, owner=dynamic_owner)
             get_task_registry().register(task, owner="   ")
+            task_registry.submit_threadsafe(work(), loop=loop)
         """,
     )
 
@@ -41,11 +42,13 @@ def test_owner_gate_tracks_known_registry_without_matching_same_named_methods(
         "create",
         "create_sync",
         "register",
+        "submit_threadsafe",
     ]
     assert [violation.reason for violation in violations] == [
         "缺少显式 owner",
         "的 owner 必须是非空字符串字面量",
         "的 owner 必须是非空字符串字面量",
+        "缺少显式 owner",
     ]
 
 
@@ -64,6 +67,11 @@ def test_owner_gate_accepts_aliases_and_stable_literal_owners(tmp_path: Path) ->
             runtime_tasks.get_task_registry().register(
                 task,
                 owner="api.example.existing",
+            )
+            task_registry.submit_threadsafe(
+                work(),
+                loop=loop,
+                owner="api.example.threadsafe",
             )
         """,
     )

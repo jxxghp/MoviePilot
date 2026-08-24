@@ -5,8 +5,8 @@ import re
 from typing import Any, Dict, Iterable, Optional
 
 from app.runtime.events import eventmanager
-from app.application.agentdata import SubscribePort as SubscribeOper
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.agentdata import get_agent_subscribe_port
+from app.application.configuration import get_configured_system_config
 from app.application.rules import RuleHelper
 from app.application.rules import RuleParser
 from app.application.rules import BUILTIN_RULE_SET
@@ -252,13 +252,13 @@ async def collect_rule_group_usages(
     """收集规则组在全局配置和订阅上的引用情况。"""
     target_names = set(group_names or [])
     search_groups = set(
-        SystemConfigOper().get(SystemConfigKey.SearchFilterRuleGroups) or []
+        get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or []
     )
     subscribe_groups = set(
-        SystemConfigOper().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
+        get_configured_system_config().get(SystemConfigKey.SubscribeFilterRuleGroups) or []
     )
     best_version_groups = set(
-        SystemConfigOper().get(SystemConfigKey.BestVersionFilterRuleGroups) or []
+        get_configured_system_config().get(SystemConfigKey.BestVersionFilterRuleGroups) or []
     )
 
     usage_map = {
@@ -284,7 +284,7 @@ async def collect_rule_group_usages(
             continue
         ensure_usage(name)["used_in_global_best_version"] = True
 
-    subscribes = await SubscribeOper().async_list()
+    subscribes = await get_agent_subscribe_port().async_list()
     for subscribe in subscribes:
         filter_groups = subscribe.filter_groups or []
         for name in filter_groups:
@@ -428,7 +428,7 @@ async def save_system_config(
         ]
         normalized_value = normalized_value or None
 
-    success = await SystemConfigOper().async_set(key, normalized_value)
+    success = await get_configured_system_config().async_set(key, normalized_value)
     if success:
         await eventmanager.async_send_event(
             etype=EventType.ConfigChanged,
@@ -475,13 +475,13 @@ async def rename_rule_group_references(old_name: str, new_name: str) -> dict:
         SystemConfigKey.SubscribeFilterRuleGroups,
         SystemConfigKey.BestVersionFilterRuleGroups,
     ):
-        original = SystemConfigOper().get(config_key) or []
+        original = get_configured_system_config().get(config_key) or []
         updated = replace_group_name_in_list(original, old_name, new_name)
         if updated != original:
             await save_system_config(config_key, updated)
             changed["global_settings"][config_key.value] = updated
 
-    subscribe_oper = SubscribeOper()
+    subscribe_oper = get_agent_subscribe_port()
     subscribes = await subscribe_oper.async_list()
     for subscribe in subscribes:
         original = subscribe.filter_groups or []
@@ -513,13 +513,13 @@ async def remove_rule_group_references(group_name: str) -> dict:
         SystemConfigKey.SubscribeFilterRuleGroups,
         SystemConfigKey.BestVersionFilterRuleGroups,
     ):
-        original = SystemConfigOper().get(config_key) or []
+        original = get_configured_system_config().get(config_key) or []
         updated = [value for value in original if value != group_name]
         if updated != original:
             await save_system_config(config_key, updated)
             changed["global_settings"][config_key.value] = updated
 
-    subscribe_oper = SubscribeOper()
+    subscribe_oper = get_agent_subscribe_port()
     subscribes = await subscribe_oper.async_list()
     for subscribe in subscribes:
         original = subscribe.filter_groups or []

@@ -23,9 +23,9 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
 from app.application.chain.data import (
-    DownloadHistoryPortProxy as DownloadHistoryOper,
-    TransferPendingPortProxy as TransferPendingOper,
-    TransferHistoryPortProxy as TransferHistoryOper,
+    get_chain_download_history_port,
+    get_chain_transfer_history_port,
+    get_chain_transfer_pending_port,
 )
 DownloadHistory = Any
 from app.application.configuration import get_configured_system_config
@@ -36,6 +36,7 @@ from app.application.history import (add_transfer_fail, add_transfer_success,
                                      clear_transfer_failures, describe_history_gate,
                                      evaluate_history_gate, is_skip_action,
                                      record_transfer_failure)
+from app.application.outbox import TRANSFER_COMPLETED_TOPIC, TRANSFER_FAILED_TOPIC
 from app.runtime.log import logger
 from app.schemas.event import StorageOperSelectionEventData
 from app.schemas.transfer import TransferInfo
@@ -142,7 +143,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         # 整理失败通知聚合器
         self.failure_notification_aggregator = TransferFailureNotificationAggregator()
         # 待整理文件落盘登记，用于进程重启后回放内存队列里未完成的任务
-        self._pendingoper = TransferPendingOper()
+        self._pendingoper = get_chain_transfer_pending_port()
         # 转移成功的文件清单
         self._success_target_files: Dict[Tuple, List[str]] = {}
         # 批次级刮削缓冲，避免同一批多文件入库重复触发目录刮削
@@ -419,7 +420,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     username=task.username,
                 )
 
-        transferhis = TransferHistoryOper()
+        transferhis = get_chain_transfer_history_port()
         target_dir_path = self.__get_transfer_target_dir_path(transferinfo)
         job_id = self.jobview.get_job_id(task)
 
@@ -456,7 +457,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 if durable_transfer_failed:
                     event_payload = self._transfer_result_payload(task, transferinfo)
                     history = self.durable_event_writer.transfer_result(
-                        topic="transfer.failed",
+                        topic=TRANSFER_FAILED_TOPIC,
                         stage_history=lambda writer: add_transfer_fail(
                             fileitem=task.fileitem,
                             mode=transferinfo.transfer_type if transferinfo else "",
@@ -569,7 +570,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             if durable_transfer_complete:
                 event_payload = self._transfer_result_payload(task, transferinfo)
                 history = self.durable_event_writer.transfer_result(
-                    topic="transfer.completed",
+                    topic=TRANSFER_COMPLETED_TOPIC,
                     stage_history=lambda writer: add_transfer_success(
                         fileitem=task.fileitem,
                         mode=transferinfo.transfer_type if transferinfo else "",
@@ -1265,7 +1266,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """
         try:
             # 识别
-            transferhis = TransferHistoryOper()
+            transferhis = get_chain_transfer_history_port()
             # 显式标注联合：下面既会赋回音乐识别结果（MusicInfo），也会赋回影视识别
             # 结果（MediaInfo），不标注时会被推断成其中一种，另一种就成了假错误
             mediainfo: Optional[Union[MediaInfo, MusicInfo]] = task.mediainfo
@@ -1647,7 +1648,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         continue
 
                     # 查询下载记录识别情况
-                    downloadhis: DownloadHistory = DownloadHistoryOper().get_by_hash(
+                    downloadhis: DownloadHistory = get_chain_download_history_port().get_by_hash(
                         torrent.hash
                     )
                     # 下载记录中的媒体类型作为整理类型来源，无下载记录时留空由文件后缀兜底
@@ -2265,7 +2266,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         def _build_main_meta(
                 main_fileitem: FileItem,
                 main_bluray_dir: bool,
-                download_history_oper: DownloadHistoryOper,
+                download_history_oper: Any,
         ) -> Optional[MetaBase]:
             """
             构建主视频元数据。
@@ -2357,7 +2358,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             if not items:
                 return [], {}
 
-            download_history_oper = DownloadHistoryOper()
+            download_history_oper = get_chain_download_history_port()
             inherited_map: Dict[Tuple[str, str], MetaBase] = {}
             main_items_by_dir, extra_items_by_dir = _build_directory_index(items)
             main_items = [
@@ -2557,7 +2558,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 # 成功但源文件已变化放行交 overwrite_mode 决断）；手动整理可清理失败记录，
                 # 或按用户确认清理成功记录。
                 if (not force or reorganize) and not preview:
-                    transfer_history_oper = TransferHistoryOper()
+                    transfer_history_oper = get_chain_transfer_history_port()
                     transferd = self._get_manual_transfer_history(
                         fileitem=file_item,
                         transfer_history_oper=transfer_history_oper,
@@ -2627,7 +2628,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             continue
 
                 # 提前获取下载历史，以便获取自定义识别词
-                downloadhis = DownloadHistoryOper()
+                downloadhis = get_chain_download_history_port()
                 download_history = self._resolve_download_history(
                     downloadhis=downloadhis,
                     file_path=file_path,

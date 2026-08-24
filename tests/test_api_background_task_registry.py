@@ -2,10 +2,12 @@
 
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from app.api.endpoints import anthropic, history, message, openai, site, subscribe, webhook
 from app.api.dependencies import subscription as subscription_dependencies
 from app.application.subscription.search import SubscribeSearchActor
+from app.runtime.config import global_vars
 from app.runtime.tasks import TaskRegistry
 
 
@@ -16,6 +18,7 @@ class _TaskRegistry(TaskRegistry):
         """初始化调用记录。"""
         super().__init__()
         self.calls: list[tuple] = []
+        self.threadsafe_calls: list[tuple] = []
 
     def create_sync(self, function, *args, owner: str, **kwargs) -> None:
         """保存函数、参数和 owner。"""
@@ -31,6 +34,18 @@ class _TaskRegistry(TaskRegistry):
         """保存异步任务登记参数，并关闭未执行的 coroutine。"""
         coroutine.close()
         self.calls.append((None, (), {"cancel_on_shutdown": cancel_on_shutdown}, owner))
+
+    def submit_threadsafe(
+        self,
+        coroutine,
+        *,
+        loop,
+        owner: str,
+        cancel_on_shutdown: bool = True,
+    ) -> None:
+        """保存跨线程任务参数，并关闭未执行的 coroutine。"""
+        coroutine.close()
+        self.threadsafe_calls.append((loop, owner, cancel_on_shutdown))
 
 
 class _RunningTaskRegistry(TaskRegistry):
@@ -134,7 +149,7 @@ def test_cookiecloud_sync_uses_task_registry(monkeypatch) -> None:
     """CookieCloud 手工同步应登记 Scheduler E1 任务而非 Starlette 后台回调。"""
     registry = _TaskRegistry()
     scheduler = SimpleNamespace(start=lambda **_kwargs: None)
-    monkeypatch.setattr(site, "Scheduler", lambda: scheduler)
+    monkeypatch.setattr(site, "get_scheduler", lambda: scheduler)
 
     response = asyncio.run(site.cookie_cloud_sync(registry, SimpleNamespace()))
 
@@ -216,32 +231,79 @@ def test_manual_subscription_search_uses_task_registry() -> None:
 def test_history_ai_redo_uses_task_registry() -> None:
     """单条历史 AI 重做应登记宿主任务并使用稳定 owner。"""
     registry = _TaskRegistry()
+    loop = SimpleNamespace(is_running=lambda: True, is_closed=lambda: False)
 
-    history._start_ai_redo_task(
-        history_id=7,
-        prompt="整理记录",
-        progress_key="progress-7",
-        task_registry=registry,
-    )
+    with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+        history,
+        "_build_progress_output_callback",
+        return_value=lambda _text: None,
+    ) as build_callback:
+        history._start_ai_redo_task(
+            history_id=7,
+            prompt="整理记录",
+            progress_key="progress-7",
+            task_registry=registry,
+        )
+        build_callback.call_args.kwargs["submit"](asyncio.sleep(0))
 
     assert registry.calls == [
         (None, (), {"cancel_on_shutdown": True}, "api.history.ai_redo")
+    ]
+    assert build_callback.call_args.args[1] == {"history_id": 7}
+    assert registry.threadsafe_calls == [
+        (loop, "api.history.ai_redo.progress", True)
+    ]
+
+
+def test_history_progress_callback_uses_owned_threadsafe_submission() -> None:
+    """历史 AI 输出进度应进入同一宿主登记器并保留 payload。"""
+    registry = _TaskRegistry()
+    progress = SimpleNamespace(update=AsyncMock())
+    loop = SimpleNamespace(is_running=lambda: True, is_closed=lambda: False)
+
+    callback = history._build_progress_output_callback(
+        progress,
+        {"history_id": 7},
+        submit=lambda coroutine: registry.submit_threadsafe(
+            coroutine,
+            loop=loop,
+            owner="api.history.ai_redo.progress",
+        ),
+    )
+    callback("正在分析")
+
+    progress.update.assert_called_once_with(
+        text="正在分析", data={"history_id": 7}
+    )
+    assert registry.threadsafe_calls == [
+        (loop, "api.history.ai_redo.progress", True)
     ]
 
 
 def test_history_batch_ai_redo_uses_task_registry() -> None:
     """批量历史 AI 重做应登记宿主任务并区分批量 owner。"""
     registry = _TaskRegistry()
+    loop = SimpleNamespace(is_running=lambda: True, is_closed=lambda: False)
 
-    history._start_batch_ai_redo_task(
-        history_ids=[7, 8],
-        prompt="批量整理",
-        progress_key="progress-batch",
-        task_registry=registry,
-    )
+    with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+        history,
+        "_build_progress_output_callback",
+        return_value=lambda _text: None,
+    ) as build_callback:
+        history._start_batch_ai_redo_task(
+            history_ids=[7, 8],
+            prompt="批量整理",
+            progress_key="progress-batch",
+            task_registry=registry,
+        )
+        build_callback.call_args.kwargs["submit"](asyncio.sleep(0))
 
     assert registry.calls == [
         (None, (), {"cancel_on_shutdown": True}, "api.history.ai_redo_batch")
+    ]
+    assert build_callback.call_args.args[1] == {"history_ids": [7, 8]}
+    assert registry.threadsafe_calls == [
+        (loop, "api.history.ai_redo_batch.progress", True)
     ]
 
 

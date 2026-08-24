@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Union
 
 from app.chain import ChainBase
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.schemas.workflow import ActionContext
 from app.schemas.workflow import ActionParams
 from app.schemas.workflow import ActionResult
@@ -37,7 +37,7 @@ class BaseAction(ABC):
         self._action_id = action_id
         self._done_flag = False
         self._message = ""
-        self.systemconfigoper = SystemConfigOper()
+        self.systemconfigoper = get_configured_system_config()
 
     @classmethod
     def get_contract(cls) -> dict:

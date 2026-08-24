@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.search import SearchChain
-from app.application.configuration import get_configured_system_config as SystemConfigOper
+from app.application.configuration import get_configured_system_config
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
@@ -63,7 +63,7 @@ class SearchTorrentsTool(MoviePilotTool):
     @staticmethod
     def _load_configured_sites() -> List[int]:
         """同步读取默认搜索站点列表。"""
-        return SystemConfigOper().get(SystemConfigKey.IndexerSites) or []
+        return get_configured_system_config().get(SystemConfigKey.IndexerSites) or []
 
     async def run(self, media_source: MediaSource, media_id: str,
                   media_type: Optional[str] = None, area: Optional[str] = None,

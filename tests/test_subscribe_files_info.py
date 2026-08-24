@@ -93,7 +93,7 @@ def test_subscribe_files_info_merges_multiple_mediaservers():
     media_chain.recognize_media.return_value = mediainfo
 
     chain = SubscribeChain()
-    with patch("app.chain.subscribe.DownloadHistoryOper") as download_oper, \
+    with patch("app.chain.subscribe.get_chain_download_history_port") as download_oper, \
             patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
             patch.object(chain, "media_files", return_value=None), \
             patch.object(chain, "media_exists", side_effect=_media_exists_side_effect), \
@@ -139,7 +139,7 @@ def test_subscribe_files_info_uses_season_zero_for_tv():
     media_chain.recognize_media.return_value = mediainfo
 
     chain = SubscribeChain()
-    with patch("app.chain.subscribe.DownloadHistoryOper") as download_oper, \
+    with patch("app.chain.subscribe.get_chain_download_history_port") as download_oper, \
             patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
             patch.object(chain, "media_files", return_value=None), \
             patch.object(chain, "media_exists", side_effect=_media_exists_side_effect), \

@@ -184,8 +184,18 @@ class AsyncDebouncer(BaseDebouncer):
         """
         super().__init__(*args, **kwargs)
         self.task: Optional[asyncio.Task] = None
+        self._retired_tasks: set[asyncio.Task[Any]] = set()
         self.lock = asyncio.Lock()
         self.is_cooling_down = False
+
+    def _cancel_active_task(self) -> None:
+        """取消当前任务并保留 owner，直到任务进入真实终态。"""
+        task = self.task
+        if task is None or task.done():
+            return
+        task.cancel()
+        self._retired_tasks.add(task)
+        task.add_done_callback(self._retired_tasks.discard)
 
     async def __call__(self, *args, **kwargs) -> None:
         """
@@ -205,8 +215,7 @@ class AsyncDebouncer(BaseDebouncer):
             self.log_info("前沿模式 (async): 立即执行协程。")
             await self.func(*args, **kwargs)
 
-        if self.task and not self.task.done():
-            self.task.cancel()
+        self._cancel_active_task()
 
         self.is_cooling_down = True
         self.task = asyncio.create_task(self._end_cool_down())
@@ -226,7 +235,7 @@ class AsyncDebouncer(BaseDebouncer):
         后沿模式的逻辑。
         """
         if self.task and not self.task.done():
-            self.task.cancel()
+            self._cancel_active_task()
             self.log_debug("后沿模式 (async): 检测到新的调用，已取消旧任务。")
 
         self.task = asyncio.create_task(self._delayed_execute(*args, **kwargs))
@@ -246,12 +255,23 @@ class AsyncDebouncer(BaseDebouncer):
 
     async def cancel(self) -> None:
         """
-        取消任何挂起的调用，并重置状态。
+        取消并等待所有挂起调用进入终态，再重置状态。
         """
         async with self.lock:
-            if self.task and not self.task.done():
-                self.task.cancel()
-                self.task = None
+            current_task = asyncio.current_task()
+            tasks = {
+                task
+                for task in (*self._retired_tasks, self.task)
+                if task is not None and task is not current_task
+            }
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self._retired_tasks.difference_update(tasks)
+            self.task = None
+            if tasks:
                 self.log_info("异步防抖器被手动取消。")
             self.is_cooling_down = False
 

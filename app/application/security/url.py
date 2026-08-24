@@ -950,6 +950,11 @@ _image_proxy_block_log_coalescer = EventCoalescer(
 )
 
 
+async def close_image_proxy_block_log_coalescer() -> None:
+    """刷新图片代理阻断摘要，并等待已经启动的窗口 flush 任务。"""
+    await _image_proxy_block_log_coalescer.close()
+
+
 async def _emit_image_proxy_block_warning(
     *,
     url: str,

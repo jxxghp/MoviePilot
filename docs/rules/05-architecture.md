@@ -69,7 +69,7 @@ to make the directory tree look symmetrical.
 | `app/application/plugin/` | Plugin market catalog, installation command, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
-| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
+| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
 Application services may use domain rules and runtime contracts. They own the
@@ -107,6 +107,13 @@ API dependencies must narrow that object to a domain runtime (for example,
 `AgentChatRuntime`) instead of adding a string key to a global service map.
 Legacy registries may delegate the same object while domains migrate, but they
 must not construct a second set of service instances.
+Canonical host consumers of the process-wide module, plugin, scheduler and
+system-configuration runtimes must call `get_module_manager()`,
+`get_plugin_manager()`, `get_scheduler()` and `get_configured_system_config()`
+explicitly. The class-shaped `ModuleManager` and `Scheduler` application facades,
+the concrete plugin manager class paths and DB `SystemConfigOper` remain
+compatibility or composition boundaries; host code must not import those facades
+or alias a getter back to a manager/Oper class name.
 API, Scheduler and Chain deployment values are exposed as frozen snapshots from
 `HostRuntime.configuration`; canonical callers must not add a fresh direct
 `settings` import when the required field belongs to an existing snapshot.
@@ -124,6 +131,23 @@ Session. `app/db/adapters/` is the concrete persistence-adapter layer: it may
 depend on Application-owned Protocols, UoW/Session and Oper implementations.
 This deliberate dependency inversion is the only `DB implementation ->
 Application contract` direction; Application must remain free of DB imports.
+Migrated workflow, user, interaction, messaging, music, site, media-server, download, subscribe and transfer
+Chain consumers use the named `get_chain_*_port()` functions from
+`app/application/chain/data.py`; they must not alias migration-time `*PortProxy`
+classes back to database Oper names. Those proxy classes remain compatibility
+boundaries while the other established Chain domains migrate independently.
+Agent orchestration, memory and tool implementations follow the same rule via
+the named `get_agent_*_port()` functions from `app/application/agentdata.py`.
+The legacy Agent `*Port` proxy classes remain import-compatible boundaries and
+must not be reintroduced as Oper aliases in canonical Agent modules.
+Monitor history checks use `get_transfer_history_port()` from
+`app/application/history.py`; the constructible `TransferHistoryPort` facade is
+retained only for compatibility and is not a canonical Oper substitute.
+Canonical Chain, API, Scheduler and Agent consumers read notification and media
+server configuration through the named helpers in `app/application/notification.py`
+and `app/application/mediaserver.py`. `ServiceConfigHelper` remains the parser at
+the startup/runtime module boundary and a plugin SDK compatibility export; it is
+not a second application-facing service directory.
 
 ### Adapter boundaries
 
@@ -425,6 +449,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/initializers/agent.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
 | `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugin/routes.py`, `plugin/folders.py`, `scheduling.py` and `commands.py` application services |
 | `api -> factory` | Forbidden; the FastAPI route adapter is injected into `app/application/plugin/routes.py` by the composition root after creation |
+| `api / chain -> app.workflow` | Forbidden; workflow consumers use `app/application/workflow.py`, while only `app/workflow/**` and `app/startup/initializers/workflow.py` access the concrete runtime |
 | `application -> domain / runtime contract` | Allowed |
 | `application -> DB / Oper / concrete adapter` | Forbidden; define a Protocol in Application and inject an implementation |
 | `db.adapters -> application persistence Protocol / db.oper / UoW` | Allowed; this is dependency inversion, not an upper-layer use-case call |
@@ -446,6 +471,7 @@ policy. `app/db` therefore has no dependency on `app/domain`.
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
+| `app/application/workflow.py` | Workflow use cases plus the runtime port consumed by API and Chain; `WorkFlowManager` is registered by `app/startup/initializers/workflow.py` |
 | `app/db/adapters/` | SQLAlchemy repository/UoW implementations for Application-owned persistence Protocols |
 | `app/startup/composition/` | HostRuntime, configuration snapshots and cross-layer adapter wiring |
 | `app/startup/initializers/` | Domain-scoped initialization and shutdown hooks |

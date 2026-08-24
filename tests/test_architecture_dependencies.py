@@ -352,6 +352,304 @@ def test_host_code_does_not_import_legacy_roots():
     assert violations == {}
 
 
+def test_host_code_uses_explicit_runtime_facade_getters():
+    """宿主消费者必须显式调用 getter，不得把兼容 Facade 当作新代码入口。"""
+    forbidden_imports = {
+        "app.application.module": {"ModuleManager"},
+        "app.application.scheduling": {"Scheduler"},
+    }
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(APP_ROOT)
+        if relative.parts[0] == "plugins" or relative.parts[:2] == (
+            "runtime",
+            "compat",
+        ):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+                target_names = {
+                    target.id for target in node.targets if isinstance(target, ast.Name)
+                }
+                if (
+                    "SystemConfigOper" in target_names
+                    and node.value.id == "get_configured_system_config"
+                ):
+                    violations.append(
+                        f"{relative.as_posix()}:{node.lineno}:SystemConfigOper"
+                    )
+                continue
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            forbidden_names = forbidden_imports.get(node.module, set())
+            for alias in node.names:
+                class_shaped_plugin_getter = (
+                    node.module == "app.application.plugin.runtime"
+                    and alias.name == "get_plugin_manager"
+                    and alias.asname is not None
+                )
+                class_shaped_config_getter = (
+                    node.module == "app.application.configuration"
+                    and alias.name == "get_configured_system_config"
+                    and alias.asname is not None
+                )
+                if (
+                    alias.name in forbidden_names
+                    or class_shaped_plugin_getter
+                    or class_shaped_config_getter
+                ):
+                    imported_name = alias.asname or alias.name
+                    violations.append(
+                        f"{relative.as_posix()}:{node.lineno}:{imported_name}"
+                    )
+
+    assert violations == []
+
+
+def test_workflow_domain_uses_explicit_chain_data_port_getters():
+    """工作流域不得重新使用迁移期 PortProxy 冒充数据库 Oper。"""
+    paths = [APP_ROOT / "chain" / "workflow.py"]
+    paths.extend((APP_ROOT / "workflow").rglob("*.py"))
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.application.chain.data":
+                continue
+            for alias in node.names:
+                if alias.name.endswith("PortProxy"):
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
+                    )
+
+    assert violations == []
+
+
+def test_user_and_messaging_chains_use_explicit_data_port_getters():
+    """用户、交互和消息链不得把迁移期 UserPortProxy 伪装成 UserOper。"""
+    paths = [
+        APP_ROOT / "chain" / "user.py",
+        APP_ROOT / "chain" / "interaction.py",
+        APP_ROOT / "chain" / "_messaging.py",
+    ]
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.application.chain.data":
+                continue
+            for alias in node.names:
+                if alias.name == "UserPortProxy":
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                    )
+
+    assert violations == []
+
+
+def test_music_chain_uses_explicit_subscribe_data_port_getter():
+    """音乐订阅链不得把 SubscribePortProxy 伪装成 SubscribeOper。"""
+    path = APP_ROOT / "chain" / "_music.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.chain.data"
+        and any(alias.name == "SubscribePortProxy" for alias in node.names)
+    ]
+
+    assert violations == []
+
+
+def test_site_chains_use_explicit_site_data_port_getter():
+    """站点与种子链不得把 SitePortProxy 伪装成 SiteOper。"""
+    paths = [APP_ROOT / "chain" / "site.py", APP_ROOT / "chain" / "torrents.py"]
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.application.chain.data":
+                continue
+            if any(alias.name == "SitePortProxy" for alias in node.names):
+                violations.append(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                )
+
+    assert violations == []
+
+
+def test_mediaserver_chain_uses_explicit_data_port_getter():
+    """媒体服务器链不得把 MediaServerPortProxy 伪装成 MediaServerOper。"""
+    path = APP_ROOT / "chain" / "mediaserver.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.chain.data"
+        and any(alias.name == "MediaServerPortProxy" for alias in node.names)
+    ]
+
+    assert violations == []
+
+
+def test_download_chain_uses_explicit_data_port_getters():
+    """下载链不得把三个迁移期 PortProxy 伪装成数据库 Oper。"""
+    path = APP_ROOT / "chain" / "download.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    forbidden = {
+        "DownloadFailurePortProxy",
+        "DownloadHistoryPortProxy",
+        "MediaServerPortProxy",
+    }
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.chain.data"
+        for alias in node.names
+        if alias.name in forbidden
+    ]
+
+    assert violations == []
+
+
+def test_subscribe_chain_uses_explicit_data_port_getters():
+    """订阅链不得把三个迁移期 PortProxy 伪装成数据库 Oper。"""
+    path = APP_ROOT / "chain" / "subscribe.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    forbidden = {
+        "DownloadHistoryPortProxy",
+        "SitePortProxy",
+        "SubscribePortProxy",
+    }
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.chain.data"
+        for alias in node.names
+        if alias.name in forbidden
+    ]
+
+    assert violations == []
+
+
+def test_transfer_chains_use_explicit_data_port_getters():
+    """整理主链与 mixin 不得把迁移期 PortProxy 伪装成数据库 Oper。"""
+    paths = [APP_ROOT / "chain" / "transfer.py", APP_ROOT / "chain" / "_transfer.py"]
+    forbidden = {
+        "DownloadHistoryPortProxy",
+        "TransferHistoryPortProxy",
+        "TransferPendingPortProxy",
+    }
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.application.chain.data":
+                continue
+            for alias in node.names:
+                if alias.name in forbidden:
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
+                    )
+
+    assert violations == []
+
+
+def test_agent_consumers_use_explicit_data_port_getters():
+    """Agent 生产模块不得把兼容数据端口代理重新伪装成数据库 Oper。"""
+    forbidden = {
+        "AgentChatPort",
+        "AgentTaskPort",
+        "DownloadHistoryPort",
+        "PluginDataPort",
+        "SitePort",
+        "SubscribeHistoryPort",
+        "SubscribePort",
+        "TransferHistoryPort",
+        "UserPort",
+        "WorkflowPort",
+    }
+    violations: list[str] = []
+    for path in (APP_ROOT / "agent").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.application.agentdata":
+                continue
+            for alias in node.names:
+                if alias.name in forbidden:
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
+                    )
+
+    assert violations == []
+
+
+def test_monitor_dispatcher_uses_explicit_history_port_getter():
+    """监控分发器不得把兼容 TransferHistoryPort 伪装成数据库 Oper。"""
+    path = APP_ROOT / "monitor" / "dispatcher.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    violations = [
+        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "app.application.history"
+        and any(alias.name == "TransferHistoryPort" for alias in node.names)
+    ]
+
+    assert violations == []
+
+
+def test_canonical_service_config_consumers_use_application_directory():
+    """Chain、API、Scheduler 与 Agent 不得绕过命名应用目录读取服务配置。"""
+    paths = [
+        APP_ROOT / "chain" / "_messaging.py",
+        APP_ROOT / "chain" / "mediaserver.py",
+        APP_ROOT / "api" / "endpoints" / "message.py",
+        APP_ROOT / "scheduler.py",
+        APP_ROOT / "agent" / "llm" / "capability.py",
+        APP_ROOT / "agent" / "tools" / "base.py",
+        APP_ROOT / "agent" / "tools" / "impl" / "query_library_latest.py",
+        APP_ROOT / "api" / "endpoints" / "mediaserver.py",
+    ]
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "app.runtime.extensions.service_config"
+            ):
+                violations.append(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                )
+            if (
+                path.name == "mediaserver.py"
+                and isinstance(node, ast.ImportFrom)
+                and node.module == "app.application.mediaserver"
+                and any(alias.name == "MediaServerHelper" for alias in node.names)
+            ):
+                violations.append(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:MediaServerHelper"
+                )
+
+    assert violations == []
+
+
 def test_plugin_components_do_not_reexport_legacy_abi_names():
     """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
     violations: list[str] = []
@@ -858,6 +1156,101 @@ def test_agent_application_facade_does_not_import_agent_implementation():
     } == set()
 
 
+def test_host_consumers_get_agent_manager_through_application_facade():
+    """宿主消费者不得绕过 Application 门面直接定位 Agent manager。"""
+    forbidden = {"get_agent_manager", "get_running_agent_manager"}
+    violations: dict[str, set[str]] = {}
+    for module_name, path in _discover_modules().items():
+        if module_name.startswith(("app.agent", "app.startup")):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "app.agent.runtime_loader"
+            for alias in node.names
+            if alias.name in forbidden
+        }
+        if imported:
+            violations[module_name] = imported
+    assert violations == {}
+
+
+def test_host_consumers_resolve_llm_provider_runtime_through_gateway():
+    """宿主不得绕过 gateway 或 LLM 公共导出穿透 provider 实现。"""
+    violations: dict[str, set[str]] = {}
+    graph = _build_module_graph()
+    for module_name, path in _discover_modules().items():
+        if module_name.startswith(("app.agent", "app.startup")):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module in {"app.agent.llm", "app.agent.llm.provider"}
+            for alias in node.names
+            if alias.name == "LLMProviderManager"
+        }
+        forbidden = set(imported)
+        if "app.agent.llm.provider" in graph[module_name]:
+            forbidden.add("app.agent.llm.provider")
+        if forbidden:
+            violations[module_name] = forbidden
+    assert violations == {}
+
+
+def test_host_consumers_use_agent_audio_capability_application_port():
+    """宿主消费者不得绕过 Application 门面直连 Agent 音频实现。"""
+    violations: dict[str, set[str]] = {}
+    for module_name, path in _discover_modules().items():
+        if module_name.startswith(("app.agent", "app.startup")):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module in {"app.agent.llm", "app.agent.llm.capability"}
+            for alias in node.names
+            if alias.name == "AgentCapabilityManager"
+        }
+        if imported:
+            violations[module_name] = imported
+    assert violations == {}
+
+
+def test_application_services_do_not_resolve_event_manager_singleton():
+    """Application 服务必须接收事件端口，不得自行定位进程级事件单例。"""
+    violations = {
+        module_name: dependencies & {"app.runtime.events"}
+        for module_name, dependencies in _build_module_graph().items()
+        if module_name.startswith("app.application")
+        and "app.runtime.events" in dependencies
+    }
+    assert violations == {}
+
+
+def test_http_endpoints_do_not_register_process_event_listeners():
+    """HTTP 端点不得拥有进程级事件监听器，监听装配必须留在 startup。"""
+    violations: dict[str, set[str]] = {}
+    for module_name, path in _discover_modules().items():
+        if not module_name.startswith("app.api"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        calls = {
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"register", "add_event_listener"}
+        }
+        if calls:
+            violations[module_name] = calls
+    assert violations == {}
+
+
 def test_agent_tools_do_not_import_entrypoint_internals():
     """Agent 工具不得穿透导入 HTTP 端点、调度器与命令注册表内部实现。
 
@@ -921,6 +1314,20 @@ def test_runtime_consumers_use_command_application_facade():
         module_name: dependencies & {"app.command"}
         for module_name, dependencies in _build_module_graph().items()
         if module_name not in allowed and "app.command" in dependencies
+    }
+
+    assert violations == {}
+
+
+def test_runtime_consumers_use_workflow_application_facade():
+    """WorkFlowManager concrete 实现只允许 startup 组合根直接依赖。"""
+    allowed = {"app.startup.initializers.workflow"}
+    violations = {
+        module_name: dependencies & {"app.workflow"}
+        for module_name, dependencies in _build_module_graph().items()
+        if not module_name.startswith("app.workflow")
+        and module_name not in allowed
+        and "app.workflow" in dependencies
     }
 
     assert violations == {}
