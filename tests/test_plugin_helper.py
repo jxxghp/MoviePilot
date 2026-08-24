@@ -1335,6 +1335,38 @@ demo = { index = "private" }
         assert "主程序核心依赖" in message
         assert installed_package in message
 
+    def test_runtime_healthcheck_uses_locked_offline_runtime_profile(self, tmp_path):
+        """运行环境检查必须按当前 profile 校验项目锁，且允许插件额外包共存。"""
+        from app.adapters.external import market
+        from app.adapters.external.market import PluginHelper
+
+        uv_bin = tmp_path / "uv"
+        with patch("app.adapters.external.market.find_uv", return_value=uv_bin), patch(
+            "app.adapters.external.market.runtime_sync_arguments",
+            return_value=("--no-default-groups", "--group", "runtime-free-threaded"),
+        ):
+            command = PluginHelper._PluginHelper__build_runtime_uv_check_command()
+            environment = PluginHelper._PluginHelper__runtime_uv_environment()
+
+        assert command == [
+            str(uv_bin),
+            "sync",
+            "--project",
+            str(market.settings.ROOT_PATH),
+            "--locked",
+            "--offline",
+            "--inexact",
+            "--no-dev",
+            "--no-install-project",
+            "--check",
+            "--python",
+            sys.executable,
+            "--no-default-groups",
+            "--group",
+            "runtime-free-threaded",
+        ]
+        assert environment["UV_PROJECT_ENVIRONMENT"] == sys.prefix
+
     def test_uv_install_allows_changing_non_runtime_dependency(self):
         """
         验证非主程序依赖即便已安装，插件后续仍可调整其版本约束。
@@ -1443,7 +1475,7 @@ demo = { index = "private" }
                         repair_commands.append(cmd)
                         return True, "repaired"
                     return True, "installed"
-                if cmd[1:3] == ["pip", "check"]:
+                if cmd[1] == "sync" and "--check" in cmd:
                     uv_check_count += 1
                     if uv_check_count == 2:
                         return False, "broken"
@@ -1458,7 +1490,9 @@ demo = { index = "private" }
                     return_value={"fastapi": Version("0.115.14")}
             ):
                 with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    with patch("app.adapters.system.package.find_uv", return_value=uv_bin):
+                    with patch("app.adapters.external.market.find_uv", return_value=uv_bin), patch(
+                        "app.adapters.system.package.find_uv", return_value=uv_bin
+                    ):
                         success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
         assert not success

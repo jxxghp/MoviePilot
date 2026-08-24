@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import importlib
 import io
 import json
+import os
 import re
 import shutil
 import site
@@ -34,6 +35,7 @@ from app.runtime.cache import cached, is_fresh
 from app.runtime.dependencies import (
     iter_runtime_profile_requirement_strings,
     iter_runtime_requirement_strings,
+    runtime_sync_arguments,
 )
 from app.runtime.settings import RuntimeSettingsCompat
 from app.adapters.system.package import (
@@ -1320,12 +1322,33 @@ class PluginHelper(metaclass=WeakSingleton):
         return list(dict.fromkeys(wheels_dirs))
 
     @staticmethod
-    def __build_runtime_uv_command(*args: str) -> List[str]:
-        """构造绑定当前解释器环境的 uv pip 命令。"""
+    def __build_runtime_uv_check_command() -> List[str]:
+        """构造当前解释器 profile 的离线项目一致性检查。"""
         uv_bin = find_uv(Path(sys.executable))
         if not uv_bin:
             return []
-        return [str(uv_bin), "pip", *args, "--python", sys.executable]
+        return [
+            str(uv_bin),
+            "sync",
+            "--project",
+            str(settings.ROOT_PATH),
+            "--locked",
+            "--offline",
+            "--inexact",
+            "--no-dev",
+            "--no-install-project",
+            "--check",
+            "--python",
+            sys.executable,
+            *runtime_sync_arguments(),
+        ]
+
+    @staticmethod
+    def __runtime_uv_environment() -> Dict[str, str]:
+        """让 uv 项目检查绑定当前共享虚拟环境。"""
+        environment = os.environ.copy()
+        environment["UV_PROJECT_ENVIRONMENT"] = sys.prefix
+        return environment
 
     @staticmethod
     def __format_package_name(name: str) -> str:
@@ -1717,7 +1740,7 @@ class PluginHelper(metaclass=WeakSingleton):
         执行全部运行环境自检并返回逐项结果，避免前一项失败遮蔽后续异常。
         """
         health_snapshot = {}
-        uv_check = cls.__build_runtime_uv_command("check")
+        uv_check = cls.__build_runtime_uv_check_command()
         if uv_check:
             checks = [("uv check", uv_check)]
         else:
@@ -1725,7 +1748,15 @@ class PluginHelper(metaclass=WeakSingleton):
             checks = []
         checks.append(("核心依赖导入检查", [sys.executable, "-c", cls._runtime_import_probe]))
         for check_name, command in checks:
-            success, message = SystemUtils.execute_with_subprocess(command)
+            environment = (
+                cls.__runtime_uv_environment()
+                if check_name == "uv check"
+                else None
+            )
+            success, message = SystemUtils.execute_with_subprocess(
+                command,
+                env=environment,
+            )
             health_snapshot[check_name] = (success, message)
         return health_snapshot
 
@@ -2593,7 +2624,7 @@ class PluginHelper(metaclass=WeakSingleton):
     async def __async_run_runtime_healthcheck(cls) -> Dict[str, Tuple[bool, str]]:
         """异步执行插件安装后的运行环境检查。"""
         health_snapshot: Dict[str, Tuple[bool, str]] = {}
-        uv_check = cls.__build_runtime_uv_command("check")
+        uv_check = cls.__build_runtime_uv_check_command()
         if uv_check:
             checks = [("uv check", uv_check)]
         else:
@@ -2608,6 +2639,11 @@ class PluginHelper(metaclass=WeakSingleton):
             health_snapshot[check_name] = (
                 await SystemUtils.execute_with_subprocess_async(
                     command,
+                    env=(
+                        cls.__runtime_uv_environment()
+                        if check_name == "uv check"
+                        else None
+                    ),
                     timeout=30,
                 )
             )
