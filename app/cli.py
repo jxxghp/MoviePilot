@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, get_args, get_origin
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import ProxyHandler, Request, build_opener, urlopen
+from urllib.request import Request, urlopen
 
 import click
 import psutil
@@ -35,10 +36,8 @@ FRONTEND_VERSION_FILE = FRONTEND_DIR / "version.txt"
 HEALTH_PATH = "/api/v1/system/global"
 HEALTH_TOKEN = "moviepilot"
 FRONTEND_HEALTH_PATH = "/version.txt"
-BACKEND_RELEASES_API = "https://api.github.com/repos/jxxghp/MoviePilot/releases"
 LOCAL_HOSTS = {"0.0.0.0", "::", "::1", "", "localhost"}
 MANAGED_ACTIVE_STATES = {"running", "starting"}
-AUTO_UPDATE_ENABLED_VALUES = {"true", "release", "dev"}
 MASKED_FIELDS = {
     "API_TOKEN",
     "DB_POSTGRESQL_PASSWORD",
@@ -48,6 +47,9 @@ MASKED_FIELDS = {
 }
 MASKED_SUFFIXES = ("_TOKEN", "_PASSWORD", "_SECRET", "_API_KEY")
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
+PREPARED_UPDATE_ROOT = settings.TEMP_PATH / "moviepilot-update"
+PREPARED_UPDATE_MANIFEST = PREPARED_UPDATE_ROOT / "install.json"
+PREPARED_UPDATE_STATE = PREPARED_UPDATE_ROOT / "state.json"
 
 
 def _repo_root() -> Path:
@@ -221,49 +223,6 @@ def _release_prefix(version: Optional[str]) -> str:
     return matched.group(1) if matched else "v2"
 
 
-def _release_sort_key(tag: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in re.findall(r"\d+", tag))
-
-
-def _github_api_json(url: str, *, repo: str) -> Any:
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": settings.USER_AGENT,
-    }
-    headers.update(settings.REPO_GITHUB_HEADERS(repo))
-    opener = build_opener(ProxyHandler(settings.PROXY or {}))
-    request = Request(url=url, headers=headers, method="GET")
-
-    try:
-        with opener.open(request, timeout=10.0) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"访问 GitHub API 失败（HTTP {exc.code}）: {detail or url}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"访问 GitHub API 失败：{exc.reason}") from exc
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"GitHub API 返回了无法解析的响应：{url}") from exc
-
-
-def _latest_release_tag(url: str, *, repo: str, prefix: str) -> Optional[str]:
-    payload = _github_api_json(url, repo=repo)
-    if not isinstance(payload, list):
-        raise RuntimeError(f"GitHub API 返回格式异常：{url}")
-
-    matched_tags = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        tag_name = str(item.get("tag_name") or "").strip()
-        if tag_name.startswith(f"{prefix}."):
-            matched_tags.append(tag_name)
-
-    if not matched_tags:
-        return None
-    return sorted(matched_tags, key=_release_sort_key)[-1]
-
-
 def _git_current_branch() -> Optional[str]:
     try:
         branch = subprocess.check_output(
@@ -277,33 +236,120 @@ def _git_current_branch() -> Optional[str]:
 
 
 def _auto_update_mode() -> str:
-    one_shot_mode = SystemHelper.consume_one_shot_update_mode()
-    if one_shot_mode:
-        return one_shot_mode
-    return SystemHelper.get_auto_update_mode()
+    if SystemHelper.consume_one_shot_dev_update():
+        return "dev"
+    return str(settings.MOVIEPILOT_AUTO_UPDATE or "").strip().lower()
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file_handle:
+        for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _mark_prepared_update_failed(message: str) -> None:
+    state = _read_json_file(PREPARED_UPDATE_STATE) or {}
+    state.update(
+        {
+            "state": "failed",
+            "error": message,
+            "can_update": True,
+            "can_install": False,
+        }
+    )
+    _write_json_file(PREPARED_UPDATE_STATE, state)
+    _clear_json_file(PREPARED_UPDATE_MANIFEST)
+
+
+def _apply_prepared_release_update() -> bool:
+    """本地 CLI 重启时离线安装已校验的 Release；返回是否发现安装意图。"""
+    manifest = _read_json_file(PREPARED_UPDATE_MANIFEST)
+    if not manifest:
+        return False
+
+    try:
+        version = str(manifest.get("version") or "").strip()
+        frontend_version = str(manifest.get("frontend_version") or "").strip()
+        backend_archive = Path(str(manifest.get("backend_archive") or ""))
+        frontend_archive = Path(str(manifest.get("frontend_archive") or ""))
+        if not version or not frontend_version:
+            raise RuntimeError("更新包清单缺少版本信息")
+        if (
+            not backend_archive.is_file()
+            or _file_sha256(backend_archive) != manifest.get("backend_sha256")
+        ):
+            raise RuntimeError("后端更新包校验失败")
+        if (
+            not frontend_archive.is_file()
+            or _file_sha256(frontend_archive) != manifest.get("frontend_sha256")
+        ):
+            raise RuntimeError("前端更新包校验失败")
+
+        update_command = [
+            sys.executable,
+            str(_repo_root() / "scripts" / "local_setup.py"),
+            "update",
+            "all",
+            "--ref",
+            version,
+            "--offline-backend",
+            "--frontend-version",
+            frontend_version,
+            "--frontend-archive",
+            str(frontend_archive),
+            "--skip-resources",
+            "--venv",
+            str(_repo_root() / "venv"),
+            "--config-dir",
+            str(settings.CONFIG_PATH),
+        ]
+        click.echo(f"安装已下载并校验的 MoviePilot {version} 更新包")
+        result = subprocess.run(
+            update_command,
+            cwd=str(_repo_root()),
+            env=os.environ.copy(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        if result.returncode != 0:
+            lines = [line for line in (result.stdout or "").splitlines() if line.strip()]
+            detail = lines[-1] if lines else "未知错误"
+            raise RuntimeError(detail)
+
+        _clear_json_file(PREPARED_UPDATE_MANIFEST)
+        click.echo("已下载的 Release 更新安装完成")
+    except (OSError, RuntimeError, ValueError) as error:
+        message = f"本地 Release 更新安装失败：{error}"
+        _mark_prepared_update_failed(message)
+        _warn(f"{message}，继续使用当前版本启动")
+    return True
 
 
 def _resolve_auto_update_targets(mode: str) -> Optional[str]:
+    if mode != "dev":
+        return None
     backend_prefix = _release_prefix(APP_VERSION)
-
-    if mode == "dev":
-        current_branch = _git_current_branch()
-        backend_ref = "latest"
-        if not current_branch or current_branch == "HEAD":
-            # 从 release 模式切回 dev 时，detached HEAD 需要一个明确分支。
-            backend_ref = backend_prefix
-    else:
-        backend_ref = _latest_release_tag(
-            BACKEND_RELEASES_API,
-            repo="jxxghp/MoviePilot",
-            prefix=backend_prefix,
-        )
+    current_branch = _git_current_branch()
+    backend_ref = "latest"
+    if not current_branch or current_branch == "HEAD":
+        # 从 release 模式切回 dev 时，detached HEAD 需要一个明确分支。
+        backend_ref = backend_prefix
     return backend_ref
 
 
 def _best_effort_auto_update() -> None:
+    if _apply_prepared_release_update():
+        return
+
     mode = _auto_update_mode()
-    if mode not in AUTO_UPDATE_ENABLED_VALUES:
+    # Release 更新先在后台下载并经用户确认；这里只保留开发版分支跟踪。
+    if mode != "dev":
         return
 
     try:

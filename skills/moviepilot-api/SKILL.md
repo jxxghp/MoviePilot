@@ -434,7 +434,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | POST | `/api/v1/workflow/fork` | Fork shared workflow. Body: WorkflowShare JSON |
 | GET | `/api/v1/workflow/shares` | List shared workflows. Params: `name`, `page`, `count` |
 
-### System (24 endpoints)
+### System (28 endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -448,7 +448,11 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | GET | `/api/v1/system/global` | Non-sensitive settings. Params: `token` (required) |
 | GET | `/api/v1/system/global/user` | User-related settings |
 | GET | `/api/v1/system/restart` | Restart system |
-| POST | `/api/v1/system/upgrade` | Upgrade and restart system. Body: `"release"` or `"dev"` |
+| POST | `/api/v1/system/upgrade` | Retained Dev update and restart. Body: `"dev"` |
+| GET | `/api/v1/system/update/status` | Get Release check, download, or install state |
+| POST | `/api/v1/system/update/check` | Check the latest stable v3 GitHub Release |
+| POST | `/api/v1/system/update/download` | Start verified Release packages downloading in the background |
+| POST | `/api/v1/system/update/install` | Confirm restart and install the prepared Release packages |
 | GET | `/api/v1/system/runscheduler` | Run scheduled service. Params: `jobid` (required) |
 | GET | `/api/v1/system/runscheduler2` | Run scheduler (API_TOKEN, use `--token-param`). Params: `jobid` |
 | GET | `/api/v1/system/modulelist` | List loaded modules |

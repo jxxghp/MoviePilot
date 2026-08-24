@@ -916,7 +916,7 @@ def test_uvicorn_preserves_stop_requested_before_serve(monkeypatch):
     asyncio.run(server.serve())
 
 
-@pytest.mark.parametrize("endpoint_name", ["restart_system", "upgrade_system"])
+@pytest.mark.parametrize("endpoint_name", ["restart_system", "install_system_update"])
 @pytest.mark.parametrize(
     "initially_stopped",
     [False, True],
@@ -927,7 +927,7 @@ def test_restart_endpoint_failure_preserves_stop_state(
     endpoint_name,
     initially_stopped,
 ):
-    """重启或升级失败不能发布或撤销停止请求"""
+    """重启或更新安装失败不能发布或撤销停止请求"""
     from app.api.endpoints import system
 
     stop_event = threading.Event()
@@ -935,19 +935,45 @@ def test_restart_endpoint_failure_preserves_stop_state(
         stop_event.set()
     monkeypatch.setattr(system.global_vars, "STOP_EVENT", stop_event)
     monkeypatch.setattr(system.SystemHelper, "can_restart", MagicMock(return_value=True))
+    monkeypatch.setattr(system.SystemHelper, "restart", MagicMock(return_value=(False, "restart failed")))
     monkeypatch.setattr(
-        system.SystemHelper,
-        "restart" if endpoint_name == "restart_system" else "upgrade",
-        MagicMock(return_value=(False, "restart failed")),
+        system.system_update_manager,
+        "request_install",
+        MagicMock(return_value=(True, "prepared")),
     )
+    cancel_install = MagicMock()
+    monkeypatch.setattr(system.system_update_manager, "cancel_install", cancel_install)
 
     if endpoint_name == "restart_system":
         response = system.restart_system(None)
     else:
-        response = system.upgrade_system(None, None)
+        response = system.install_system_update(None)
 
     assert not response.success
     assert stop_event.is_set() is initially_stopped
+    if endpoint_name == "install_system_update":
+        cancel_install.assert_called_once_with("restart failed")
+    else:
+        cancel_install.assert_not_called()
+
+
+def test_upgrade_endpoint_retains_dev_mode_only(monkeypatch):
+    """旧升级入口只保留 Dev，Release 必须迁移到后台下载流程。"""
+    from app.api.endpoints import system
+
+    monkeypatch.setattr(system.SystemHelper, "can_restart", MagicMock(return_value=True))
+    upgrade_dev = MagicMock(return_value=(True, "dev queued"))
+    monkeypatch.setattr(system.SystemHelper, "upgrade_dev", upgrade_dev)
+
+    dev_response = system.upgrade_system("dev", None)
+    release_response = system.upgrade_system("release", None)
+    legacy_default_response = system.upgrade_system(None, None)
+
+    assert dev_response.success
+    assert not release_response.success
+    assert not legacy_default_response.success
+    assert "update/check" in release_response.message
+    upgrade_dev.assert_called_once_with()
 
 
 def test_command_restart_failure_does_not_publish_stop_request(monkeypatch):

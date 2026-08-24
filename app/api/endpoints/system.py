@@ -28,6 +28,7 @@ from app.schemas.system import PluginMarketSyncRequest as _SchemaPluginMarketSyn
 from app.schemas.system import RuleTestData as _SchemaRuleTestData
 from app.schemas.system import SystemEnvironmentUpdateData as _SchemaSystemEnvironmentUpdateData
 from app.schemas.system import SystemModuleListData as _SchemaSystemModuleListData
+from app.schemas.system import SystemUpdateStatus as _SchemaSystemUpdateStatus
 from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.api.response import ResponseAPIRouter
@@ -74,6 +75,7 @@ from app.foundation.crypto import HashUtils
 from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.adapters.system import rust as rust_accel
+from app.adapters.system.update import system_update_manager
 from app.application.security.url import SecurityUtils
 from app.application.network import NetworkTestService
 from app.foundation.url import UrlUtils
@@ -1495,22 +1497,81 @@ def restart_system(_: ApiPrincipal = Depends(get_current_active_superuser)):
     return _SchemaResponse(success=ret, message=msg)
 
 
-@router.post("/upgrade", summary="升级并重启系统", response_model=_SchemaResponse[None])
+@router.post("/upgrade", summary="Dev 更新并重启系统", response_model=_SchemaResponse[None])
 def upgrade_system(
     mode: Annotated[str | None, Body()] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser),
 ):
-    """
-    触发系统升级并重启（仅管理员）
-
-    - 当前已开启自动升级时：直接重启，由启动流程完成升级。
-    - 当前未开启自动升级时：写入一次性升级标记，本次重启后仅执行一次升级。
-    """
+    """保留 Dev 更新入口；Release 更新必须使用后台下载与确认安装流程。"""
+    if str(mode or "").strip().lower() != "dev":
+        return _SchemaResponse(
+            success=False,
+            message="Release 更新请使用 /system/update/check、download 和 install 接口",
+        )
     if not SystemHelper.can_restart():
         return _SchemaResponse(success=False, message="当前运行环境不支持升级操作！")
+    success, message = SystemHelper.upgrade_dev()
+    return _SchemaResponse(success=success, message=message)
 
-    ret, msg = SystemHelper.upgrade(mode=mode or "release")
-    return _SchemaResponse(success=ret, message=msg)
+
+@router.get(
+    "/update/status",
+    summary="查询系统更新状态",
+    response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
+)
+def system_update_status(
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+):
+    """返回后台检查、下载或待安装状态（仅管理员）。"""
+    return _SchemaResponse(success=True, data=system_update_manager.get_status())
+
+
+@router.post(
+    "/update/check",
+    summary="立即检查系统更新",
+    response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
+)
+def check_system_update(
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+):
+    """立即查询 GitHub Release（仅管理员）。"""
+    return _SchemaResponse(success=True, data=system_update_manager.check())
+
+
+@router.post(
+    "/update/download",
+    summary="后台下载系统更新",
+    response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
+)
+def download_system_update(
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+):
+    """启动后台下载并立即返回当前状态（仅管理员）。"""
+    if not SystemHelper.can_restart():
+        return _SchemaResponse(success=False, message="当前运行环境不支持升级操作！")
+    status = system_update_manager.start_download()
+    return _SchemaResponse(success=status.state != "failed", data=status, message=status.error)
+
+
+@router.post(
+    "/update/install",
+    summary="确认重启安装系统更新",
+    response_model=_SchemaResponse[None],
+)
+def install_system_update(
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+):
+    """确认消费已校验更新包，并重启进入安装阶段（仅管理员）。"""
+    if not SystemHelper.can_restart():
+        return _SchemaResponse(success=False, message="当前运行环境不支持升级操作！")
+    prepared, message = system_update_manager.request_install()
+    if not prepared:
+        return _SchemaResponse(success=False, message=message)
+    ret, msg = SystemHelper.restart()
+    if not ret:
+        system_update_manager.cancel_install(msg)
+        return _SchemaResponse(success=False, message=msg)
+    return _SchemaResponse(success=True, message=message)
 
 
 @router.get("/runscheduler", summary="运行服务", response_model=_SchemaResponse[None])

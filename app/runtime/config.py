@@ -317,8 +317,8 @@ class ConfigModel(BaseModel):
     ALIPAN_APP_ID: str = "ac1bf04dc9fd4d9aaabb65b4a668d403"
 
     # ==================== 系统升级配置 ====================
-    # 重启自动升级
-    MOVIEPILOT_AUTO_UPDATE: str = "release"
+    # 开发版仍可在启动时跟踪 v3 分支；Release 更新由后台更新服务管理。
+    MOVIEPILOT_AUTO_UPDATE: str = "false"
     # 自动检查和更新站点资源包（站点索引、认证等）
     AUTO_UPDATE_RESOURCE: bool = True
 
@@ -898,6 +898,22 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         if not isinstance(data, dict):
             return data
+
+        # Release 已迁移到后台状态机，历史 release/true 不能继续启用启动时更新。
+        if "MOVIEPILOT_AUTO_UPDATE" in data:
+            original_update_mode = data["MOVIEPILOT_AUTO_UPDATE"]
+            normalized_update_mode = (
+                "dev"
+                if str(original_update_mode or "").strip().lower() == "dev"
+                else "false"
+            )
+            if normalized_update_mode != str(original_update_mode):
+                cls.update_env_config(
+                    "MOVIEPILOT_AUTO_UPDATE",
+                    original_update_mode,
+                    normalized_update_mode,
+                )
+                data["MOVIEPILOT_AUTO_UPDATE"] = normalized_update_mode
 
         # 处理 API_TOKEN 特殊验证
         if "API_TOKEN" in data:

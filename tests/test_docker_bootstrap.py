@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import shlex
 import subprocess
@@ -761,7 +763,64 @@ def test_updater_exposes_explicit_result(
     assert result.stdout == f"{expected}\n"
 
 
-def test_release_noop_preserves_prerelease_selection_without_probing_package_index(
+def test_prepared_release_is_verified_and_installed_without_release_lookup(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config"
+    update_root = config_dir / "temp" / "moviepilot-update"
+    update_root.mkdir(parents=True)
+    backend = update_root / "backend.zip"
+    frontend = update_root / "frontend.zip"
+    backend.write_bytes(b"backend-package")
+    frontend.write_bytes(b"frontend-package")
+    backend_sha256 = hashlib.sha256(backend.read_bytes()).hexdigest()
+    frontend_sha256 = hashlib.sha256(frontend.read_bytes()).hexdigest()
+    (update_root / "install.json").write_text(
+        json.dumps(
+            {
+                "version": "v3.1.0",
+                "frontend_version": "v3.1.0",
+                "backend_archive": str(backend),
+                "frontend_archive": str(frontend),
+                "backend_sha256": backend_sha256,
+                "frontend_sha256": frontend_sha256,
+            }
+        ),
+        encoding="utf-8",
+    )
+    release_probe = tmp_path / "release-probe"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        MOVIEPILOT_AUTO_UPDATE=release
+        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
+        RELEASE_PROBE="$2"
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        test_connectivity_github() {{ touch "${{RELEASE_PROBE}}"; return 1; }}
+        install_backend_and_download_resources() {{
+            test "${{MOVIEPILOT_PREPARED_UPDATE}}" = true
+            test "$1" = tags/v3.1.0.zip
+            MOVIEPILOT_UPDATE_RESULT=updated
+        }}
+        run_moviepilot_update
+        printf '%s\n' "${{MOVIEPILOT_UPDATE_RESULT}}"
+        """
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", script, "prepared-update-test", str(config_dir), str(release_probe)],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "updated\n"
+    assert not release_probe.exists()
+    assert not (update_root / "install.json").exists()
+
+
+def test_release_mode_no_longer_checks_or_installs_during_restart(
     tmp_path: Path,
 ) -> None:
     package_probe = tmp_path / "package-probe"
@@ -823,14 +882,8 @@ def test_release_noop_preserves_prerelease_selection_without_probing_package_ind
 
     assert result.stdout == "noop\n"
     assert not package_probe.exists()
-    curl_args = curl_log.read_text(encoding="utf-8")
-    assert "/releases" in curl_args
-    assert "/releases/latest" not in curl_args
-    assert "--compressed" in curl_args
-    assert "--fail" in curl_args
-    assert "--connect-timeout 5" in curl_args
-    assert "--max-time 15" in curl_args
-    assert comparison_log.read_text(encoding="utf-8") == "v3.0.0|v3.1.0-rc\n"
+    assert not curl_log.exists()
+    assert not comparison_log.exists()
 
 
 @pytest.mark.parametrize(

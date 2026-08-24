@@ -15,7 +15,7 @@ import psutil
 import pytest
 
 from app.runtime.state import SystemHelper
-from app.runtime.config import ConfigModel, settings
+from app.runtime.config import ConfigModel, Settings, settings
 from app.adapters.system.host import SystemUtils
 
 
@@ -521,6 +521,26 @@ def test_get_btrfs_fsid_is_disabled_on_unsupported_linux_architecture():
 def test_btrfs_fsid_dedup_setting_is_opt_in():
     assert ConfigModel().BTRFS_FSID_DEDUP is False
     assert ConfigModel(BTRFS_FSID_DEDUP="true").BTRFS_FSID_DEDUP is True
+
+
+def test_legacy_release_auto_update_mode_is_disabled(monkeypatch):
+    """历史 Release 启动更新值迁移为关闭，Dev 值继续保留。"""
+    updates = []
+    monkeypatch.setattr(
+        Settings,
+        "update_env_config",
+        lambda field, original, converted: updates.append(
+            (field, original, converted)
+        ),
+    )
+
+    assert Settings(MOVIEPILOT_AUTO_UPDATE="release").MOVIEPILOT_AUTO_UPDATE == "false"
+    assert Settings(MOVIEPILOT_AUTO_UPDATE="true").MOVIEPILOT_AUTO_UPDATE == "false"
+    assert Settings(MOVIEPILOT_AUTO_UPDATE="dev").MOVIEPILOT_AUTO_UPDATE == "dev"
+    assert updates == [
+        ("MOVIEPILOT_AUTO_UPDATE", "release", "false"),
+        ("MOVIEPILOT_AUTO_UPDATE", "true", "false"),
+    ]
 
 
 def test_space_usage_default_path_does_not_read_fsid():

@@ -111,7 +111,7 @@ function load_config_from_app_env() {
         ["GITHUB_PROXY"]=""
         ["PROXY_HOST"]=""
         ["GITHUB_TOKEN"]=""
-        ["MOVIEPILOT_AUTO_UPDATE"]="release"
+        ["MOVIEPILOT_AUTO_UPDATE"]="false"
         ["MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE"]="true"
         ["MOVIEPILOT_FORCE_CHOWN"]="false"
         ["MOVIEPILOT_SAFE_MODE"]="false"
@@ -544,23 +544,15 @@ function correct_file_permissions() {
 load_config_from_app_env
 apply_package_cache_env
 
-# 一次性升级标记仅影响本次启动，避免把临时升级模式带入运行中的 Python 进程
-ONE_SHOT_UPDATE_FLAG="${CONFIG_DIR}/temp/moviepilot.pending_update"
-ONE_SHOT_UPDATE_APPLIED="false"
+# Dev 手动更新仍沿用一次性标记；Release 安装只消费已下载并校验的清单。
+ONE_SHOT_DEV_UPDATE_FLAG="${CONFIG_DIR}/temp/moviepilot.pending_dev_update"
+ONE_SHOT_DEV_UPDATE="false"
 MOVIEPILOT_AUTO_UPDATE_ORIGINAL="${MOVIEPILOT_AUTO_UPDATE}"
-if [ -f "${ONE_SHOT_UPDATE_FLAG}" ]; then
-    ONE_SHOT_UPDATE_MODE="$(tr -d '\r\n' < "${ONE_SHOT_UPDATE_FLAG}" | tr '[:upper:]' '[:lower:]')"
-    rm -f "${ONE_SHOT_UPDATE_FLAG}"
-    if [ "${ONE_SHOT_UPDATE_MODE}" = "true" ]; then
-        ONE_SHOT_UPDATE_MODE="release"
-    fi
-    if [ "${ONE_SHOT_UPDATE_MODE}" = "release" ] || [ "${ONE_SHOT_UPDATE_MODE}" = "dev" ]; then
-        INFO "检测到一次性升级标记，本次启动将执行 ${ONE_SHOT_UPDATE_MODE} 升级..."
-        MOVIEPILOT_AUTO_UPDATE="${ONE_SHOT_UPDATE_MODE}"
-        ONE_SHOT_UPDATE_APPLIED="true"
-    elif [ -n "${ONE_SHOT_UPDATE_MODE}" ]; then
-        WARN "检测到无效的一次性升级模式：${ONE_SHOT_UPDATE_MODE}，已忽略"
-    fi
+if [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ]; then
+    rm -f "${ONE_SHOT_DEV_UPDATE_FLAG}"
+    MOVIEPILOT_AUTO_UPDATE="dev"
+    ONE_SHOT_DEV_UPDATE="true"
+    INFO "检测到一次性 Dev 更新标记，本次启动将更新开发分支"
 fi
 
 # 使用env配置渲染 nginx 配置
@@ -583,10 +575,9 @@ if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ]; then
 else
     MOVIEPILOT_UPDATE_RESULT="noop"
 fi
-if [ "${ONE_SHOT_UPDATE_APPLIED}" = "true" ]; then
+if [ "${ONE_SHOT_DEV_UPDATE}" = "true" ]; then
     MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
 fi
-
 if [ "${UPDATE_RECOVERY_REQUIRED:-false}" = "true" ]; then
     ERROR "→ 容器更新回滚未完成，容器将保持运行以便执行 moviepilot doctor。"
     diagnostic_keepalive 1

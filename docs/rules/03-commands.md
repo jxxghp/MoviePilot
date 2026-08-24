@@ -177,6 +177,8 @@ moviepilot update all --ref latest --frontend-version latest
 moviepilot update all --skip-resources
 ```
 
+`MOVIEPILOT_AUTO_UPDATE` defaults to `false`. Setting it to `dev` retains branch-tracking updates during `start/restart`; stable Release updates use the authenticated background check/download/install API flow and do not use this setting.
+
 ---
 
 ## Local CLI — Startup on Boot

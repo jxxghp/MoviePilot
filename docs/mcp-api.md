@@ -130,6 +130,18 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 交互式接口文档 `/docs` 读取 `/api/v1/openapi.json`，页面版本号直接使用 `version.py` 中的后端 `APP_VERSION`。
 
+#### 系统更新
+
+系统 Release 更新采用“检查、后台下载、确认安装”三阶段流程，以下接口均要求超级管理员登录态。后台每 6 小时自动检查一次稳定版 v3 GitHub Release；下载完成前不重启服务，安装接口只消费已下载并校验的后端与前端包。原 Dev 更新入口继续保留，但 `/system/upgrade` 只接受请求体 `"dev"`，不再处理 Release 更新。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/system/update/status` | 查询 `idle`、`available`、`downloading`、`ready`、`installing` 或 `failed` 状态，以及版本、字节数和进度 |
+| POST | `/api/v1/system/update/check` | 立即检查最新稳定版 v3 Release |
+| POST | `/api/v1/system/update/download` | 后台下载并校验后端源码包与对应前端 `dist.zip`，立即返回当前状态 |
+| POST | `/api/v1/system/update/install` | 对已准备完成的包再次校验后写入安装意图，并重启完成更新 |
+| POST | `/api/v1/system/upgrade` | 保留 Dev 更新并重启，请求体只能为 `"dev"` |
+
 #### 媒体识别 / 整理
 
 媒体识别、搜索和手动整理统一使用 `media_source` + `media_id` 表示媒体主身份。内置来源通过 `MediaSource` 提供 `themoviedb`、`douban`、`bangumi`、`anilist`、`imdb`、`tvdb`、`musicbrainz`、`theaudiodb`、`doubanmusic`、`bilibili`、`mangguodiscover`、`migu` 和 `tencentvideodiscover` 等常量；该列表不是插件来源白名单，插件可以注册符合 OpenAPI 格式约束的稳定扩展标识。`media_id` 是该来源的原生 ID，不添加 `tmdb:` 等前缀。需要精确身份时两个字段必须同时提供，不能只传其中一个。

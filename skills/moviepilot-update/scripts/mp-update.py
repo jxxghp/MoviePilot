@@ -23,8 +23,12 @@ def print_usage() -> None:
     print(
         "Usage:\n"
         f"  python {Path(sys.argv[0]).name} versions\n"
+        f"  python {Path(sys.argv[0]).name} status\n"
+        f"  python {Path(sys.argv[0]).name} check\n"
+        f"  python {Path(sys.argv[0]).name} download\n"
+        f"  python {Path(sys.argv[0]).name} install\n"
         f"  python {Path(sys.argv[0]).name} restart\n"
-        f"  python {Path(sys.argv[0]).name} upgrade [release|dev]"
+        f"  python {Path(sys.argv[0]).name} upgrade dev"
     )
 
 
@@ -42,12 +46,20 @@ def main() -> int:
     if command == "restart":
         return run_api_call(["GET", "/api/v1/system/restart"])
 
+    update_commands = {
+        "status": ("GET", "/api/v1/system/update/status"),
+        "check": ("POST", "/api/v1/system/update/check"),
+        "download": ("POST", "/api/v1/system/update/download"),
+        "install": ("POST", "/api/v1/system/update/install"),
+    }
+    if command in update_commands:
+        method, path = update_commands[command]
+        return run_api_call([method, path])
+
     if command == "upgrade":
-        mode = (argv[1] if len(argv) > 1 else "release").strip().lower()
-        if mode == "true":
-            mode = "release"
-        if mode not in {"release", "dev"}:
-            print("Error: mode must be release or dev", file=sys.stderr)
+        mode = (argv[1] if len(argv) > 1 else "").strip().lower()
+        if mode != "dev":
+            print("Error: only Dev uses upgrade; use check/download/install for Release", file=sys.stderr)
             return 1
         return run_api_call([
             "POST",

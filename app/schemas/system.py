@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -140,6 +140,32 @@ class SystemEnvironmentUpdateData(BaseModel):
 
     success_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict)
     failed_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict)
+
+
+class SystemUpdateStatus(BaseModel):
+    """主程序后台更新的可恢复状态快照。"""
+
+    state: Literal[
+        "idle",
+        "available",
+        "downloading",
+        "ready",
+        "installing",
+        "failed",
+    ] = "idle"
+    current_version: str
+    version: Optional[str] = None
+    frontend_version: Optional[str] = None
+    release_name: Optional[str] = None
+    release_notes: Optional[str] = None
+    published_at: Optional[str] = None
+    checked_at: Optional[str] = None
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
+    progress: int = 0
+    error: Optional[str] = None
+    can_update: bool = False
+    can_install: bool = False
 
 
 class PluginMarketSyncData(BaseModel):

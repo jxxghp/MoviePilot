@@ -921,8 +921,20 @@ def install_node_runtime(node_version: str) -> Path:
     return node_bin
 
 
-def install_frontend(frontend_version: str, node_version: str) -> dict[str, str]:
-    version_tag, download_url = _resolve_frontend_release(frontend_version)
+def install_frontend(
+    frontend_version: str,
+    node_version: str,
+    archive: Optional[Path] = None,
+) -> dict[str, str]:
+    if archive:
+        version_tag = (frontend_version or "").strip()
+        if not version_tag:
+            raise RuntimeError("使用本地前端更新包时必须指定版本")
+        if not archive.is_file():
+            raise RuntimeError(f"前端更新包不存在：{archive}")
+        download_url = ""
+    else:
+        version_tag, download_url = _resolve_frontend_release(frontend_version)
     node_bin = install_node_runtime(node_version)
 
     if _frontend_runtime_ready(version_tag):
@@ -930,16 +942,29 @@ def install_frontend(frontend_version: str, node_version: str) -> dict[str, str]
         print_step(f"前端发布包已是最新版本：{version_tag}")
         return {"version": version_tag, "node": str(node_bin)}
 
-    print_step(f"下载前端发布包：{version_tag}")
+    print_step(
+        f"使用已下载的前端发布包：{version_tag}"
+        if archive
+        else f"下载前端发布包：{version_tag}"
+    )
     with TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         archive_path = temp_path / "dist.zip"
         extract_dir = temp_path / "extract"
-        download_file(download_url, archive_path)
+        if archive:
+            shutil.copy2(archive, archive_path)
+        else:
+            download_file(download_url, archive_path)
         extract_archive(archive_path, extract_dir)
         dist_dir = extract_dir / "dist"
         if not dist_dir.exists():
             raise RuntimeError("前端发布包中未找到 dist 目录")
+        packaged_version = (dist_dir / "version.txt")
+        if (
+            not packaged_version.is_file()
+            or packaged_version.read_text(encoding="utf-8").strip() != version_tag
+        ):
+            raise RuntimeError("前端更新包版本与目标版本不一致")
         _remove_path(PUBLIC_DIR)
         shutil.move(str(dist_dir), str(PUBLIC_DIR))
 
@@ -3613,13 +3638,20 @@ def _ensure_git_clean() -> None:
     )
 
 
-def _update_backend_ref(ref: str) -> str:
+def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
     if not (ROOT / ".git").exists():
         raise RuntimeError("当前目录不是 Git 仓库，无法更新后端代码。")
 
     _ensure_git_clean()
-    print_step("获取远端更新")
-    run(["git", "fetch", "--tags", "origin"], cwd=ROOT)
+    if fetch:
+        print_step("获取远端更新")
+        run(["git", "fetch", "--tags", "origin"], cwd=ROOT)
+    else:
+        # Release 下载阶段已获取并验证标签，重启安装不得再次依赖网络。
+        run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+            cwd=ROOT,
+        )
 
     current_branch = _git_output("rev-parse", "--abbrev-ref", "HEAD")
     if ref == "latest":
@@ -3637,10 +3669,15 @@ def _update_backend_ref(ref: str) -> str:
 
 
 def update_backend(
-    *, ref: str, python_bin: str, venv_dir: Path, recreate: bool
+    *,
+    ref: str,
+    python_bin: str,
+    venv_dir: Path,
+    recreate: bool,
+    fetch: bool = True,
 ) -> Path:
     ensure_services_stopped()
-    resolved_ref = _update_backend_ref(ref=ref)
+    resolved_ref = _update_backend_ref(ref=ref, fetch=fetch)
     venv_python = install_deps(
         python_bin=python_bin, venv_dir=venv_dir, recreate=recreate
     )
@@ -3861,6 +3898,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--frontend-version", help="前端版本，默认使用 version.py 中的 FRONTEND_VERSION"
     )
     update_parser.add_argument(
+        "--frontend-archive",
+        help="使用已经下载的前端 dist.zip，避免重启安装阶段再次联网",
+    )
+    update_parser.add_argument(
+        "--offline-backend",
+        action="store_true",
+        help="不拉取远端，直接使用下载阶段准备好的本地 Git 标签",
+    )
+    update_parser.add_argument(
         "--node-version", default=DEFAULT_NODE_VERSION, help="本地 Node 运行时版本"
     )
     update_parser.add_argument(
@@ -4066,11 +4112,13 @@ def main() -> int:
                     python_bin=args.python,
                     venv_dir=Path(args.venv),
                     recreate=args.recreate,
+                    fetch=not args.offline_backend,
                 )
             if args.target in {"frontend", "all"}:
                 frontend_result = install_frontend(
                     frontend_version=args.frontend_version,
                     node_version=args.node_version,
+                    archive=Path(args.frontend_archive) if args.frontend_archive else None,
                 )
                 print_step(f"前端更新完成，版本：{frontend_result['version']}")
             if args.target == "all" and not args.skip_resources:

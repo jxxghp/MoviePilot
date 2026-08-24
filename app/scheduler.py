@@ -42,6 +42,7 @@ from app.application.mediaserver import get_mediaserver_configs
 from app.application.messaging.message import MessageHelper
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.system.update import system_update_manager
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -556,6 +557,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 JobSpec("full_gc", "主动内存回收", self.full_gc, "runtime"),
                 JobSpec("agent_heartbeat", "智能体定时任务", self.agent_heartbeat, "agent"),
                 JobSpec("usage_report", "安装版本统计上报", MoviePilotServerHelper.report_usage, "server"),
+                JobSpec("system_update_check", "检查系统更新", system_update_manager.check, "system"),
             ]).runtime_states()
             for job_id, job in self._jobs.items():
                 self._assign_job_generation(job_id, job)
@@ -775,6 +777,17 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 name="插件市场缓存",
                 minutes=30,
                 kwargs={"job_id": "plugin_market_refresh"},
+            )
+
+            # 更新检查只缓存 Release 元数据，不会在未授权时下载或重启。
+            self._scheduler.add_job(
+                self.start,
+                "interval",
+                id="system_update_check",
+                name="检查系统更新",
+                hours=6,
+                next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(minutes=1),
+                kwargs={"job_id": "system_update_check"},
             )
 
             # 订阅日历缓存
