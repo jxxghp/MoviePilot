@@ -7,6 +7,9 @@ on:
     paths:
       - 'pyproject.toml'
       - 'uv.lock'
+      - 'app/doctor/dependencies.py'
+      - 'app/foundation/environment.py'
+      - 'app/runtime/dependencies.py'
       - 'docker/Dockerfile'
       - 'docker/**'
       - '.github/workflows/dependency-compat.yml'
@@ -16,6 +19,9 @@ on:
     paths:
       - 'pyproject.toml'
       - 'uv.lock'
+      - 'app/doctor/dependencies.py'
+      - 'app/foundation/environment.py'
+      - 'app/runtime/dependencies.py'
       - 'docker/Dockerfile'
       - 'docker/**'
       - '.github/workflows/dependency-compat.yml'
@@ -91,8 +97,8 @@ jobs:
           assert platform.machine() == os.environ['EXPECTED_MACHINE'], (platform.machine(), os.environ['EXPECTED_MACHINE']);
           import alembic, fastapi, pydantic, pydantic_settings, sqlalchemy, starlette, uvicorn"
 
-      - name: Verify installed dependency consistency
-        run: uv pip check
+      - name: Verify locked project consistency
+        run: uv sync --locked --offline --inexact --no-dev --check --python ${{ matrix.python-version }}
 
   docker-dependencies:
     name: Docker dependencies / ${{ matrix.platform }}
@@ -104,13 +110,27 @@ jobs:
         include:
           - runner: ubuntu-24.04
             platform: linux/amd64
-            cache-scope: linux-amd64
-            image-tag: moviepilot-dependency-gate:linux-amd64
+            python-variant: standard
+            cache-scope: linux-amd64-standard
+            image-tag: moviepilot-dependency-gate:linux-amd64-standard
             expected-machine: x86_64
           - runner: ubuntu-24.04-arm
             platform: linux/arm64
-            cache-scope: linux-arm64
-            image-tag: moviepilot-dependency-gate:linux-arm64
+            python-variant: standard
+            cache-scope: linux-arm64-standard
+            image-tag: moviepilot-dependency-gate:linux-arm64-standard
+            expected-machine: aarch64
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+            python-variant: free-threaded
+            cache-scope: linux-amd64-free-threaded
+            image-tag: moviepilot-dependency-gate:linux-amd64-free-threaded
+            expected-machine: x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            python-variant: free-threaded
+            cache-scope: linux-arm64-free-threaded
+            image-tag: moviepilot-dependency-gate:linux-arm64-free-threaded
             expected-machine: aarch64
 
     steps:
@@ -127,6 +147,8 @@ jobs:
           file: docker/Dockerfile
           target: prepare_venv
           platforms: ${{ matrix.platform }}
+          build-args: |
+            MOVIEPILOT_PYTHON_VARIANT=${{ matrix.python-variant }}
           load: true
           push: false
           tags: ${{ matrix.image-tag }}
@@ -137,14 +159,23 @@ jobs:
         env:
           IMAGE_TAG: ${{ matrix.image-tag }}
           EXPECTED_MACHINE: ${{ matrix.expected-machine }}
+          EXPECTED_VARIANT: ${{ matrix.python-variant }}
         run: >-
           docker run --rm
           -e EXPECTED_MACHINE
+          -e EXPECTED_VARIANT
           "${IMAGE_TAG}"
           /opt/venv/bin/python -c
-          "import os, platform;
+          "import os, platform, sys, sysconfig;
           assert platform.machine() == os.environ['EXPECTED_MACHINE'], (platform.machine(), os.environ['EXPECTED_MACHINE']);
-          import alembic, fastapi, pydantic, pydantic_settings, sqlalchemy, starlette, uvicorn"
+          expected_free_threaded = os.environ['EXPECTED_VARIANT'] == 'free-threaded';
+          assert (sysconfig.get_config_var('Py_GIL_DISABLED') == 1) is expected_free_threaded;
+          assert sys._is_gil_enabled() == (not expected_free_threaded);
+          import alembic, fastapi, moviepilot_rust, pydantic, pydantic_settings, sqlalchemy, starlette, uvicorn;
+          assert moviepilot_rust.is_available();
+          assert moviepilot_rust.jieba_cut('中文分词');
+          assert not expected_free_threaded or callable(moviepilot_rust.zhconv_fast);
+          assert sys._is_gil_enabled() == (not expected_free_threaded)"
 
       - name: Verify pinned uv version
         env:

@@ -5,12 +5,17 @@ import subprocess
 import sys
 import uuid
 
-import psycopg2
-from psycopg2 import sql
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+
+try:
+    import psycopg2 as postgres_driver
+    from psycopg2 import sql
+except ModuleNotFoundError:
+    import psycopg as postgres_driver
+    from psycopg import sql
 
 
 MIGRATION_MODULE = "database.versions.93f8cb6a4d1e_2_2_4"
@@ -370,7 +375,7 @@ def test_current_schema_reaches_current_alembic_head_on_postgresql(
     port = os.getenv(f"{prefix}PORT", "5432")
     password = os.getenv(f"{prefix}PASSWORD", "")
     schema = f"p1_db1_{uuid.uuid4().hex}"
-    with psycopg2.connect(
+    with postgres_driver.connect(
         host=host,
         port=port,
         dbname=database,
@@ -400,7 +405,7 @@ def test_current_schema_reaches_current_alembic_head_on_postgresql(
     try:
         _run_current_schema_chain(repository, environment)
     finally:
-        with psycopg2.connect(
+        with postgres_driver.connect(
             host=host,
             port=port,
             dbname=database,

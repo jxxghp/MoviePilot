@@ -15,6 +15,9 @@ jobs:
   Docker-build:
     runs-on: ubuntu-latest
     name: Build Docker Image
+    env:
+      TRIVY_SKIP_DIRS: /usr/share/java
+      TRIVY_SKIP_JAVA_DB_UPDATE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,14 +35,22 @@ jobs:
 
       - name: Audit locked Python dependencies
         run: |
-          uv export --quiet --locked --no-dev --no-emit-project \
-            --output-file /tmp/moviepilot-audit-requirements.txt
+          uv export --quiet --locked --no-default-groups --group runtime-standard \
+            --no-emit-project --output-file /tmp/moviepilot-audit-standard.txt
           uvx --from pip-audit==2.10.1 pip-audit \
-            --require-hashes \
-            --disable-pip \
-            --strict \
-            --progress-spinner off \
-            --requirement /tmp/moviepilot-audit-requirements.txt
+            --require-hashes --disable-pip --strict --progress-spinner off \
+            --requirement /tmp/moviepilot-audit-standard.txt
+
+          uv export --quiet --locked --no-default-groups --group runtime-free-threaded \
+            --no-emit-project --no-hashes \
+            --output-file /tmp/moviepilot-audit-free-threaded.txt
+          python3 scripts/normalize_audit_requirements.py \
+            --lock uv.lock \
+            --input /tmp/moviepilot-audit-free-threaded.txt \
+            --output /tmp/moviepilot-audit-free-threaded-normalized.txt
+          uvx --from pip-audit==2.10.1 pip-audit \
+            --no-deps --disable-pip --strict --progress-spinner off \
+            --requirement /tmp/moviepilot-audit-free-threaded-normalized.txt
 
       - name: Release version
         id: release_version
@@ -130,7 +141,16 @@ jobs:
             ghcr.io/${{ github.repository }}-v3
           tags: |
             type=raw,value=${{ env.app_version }}
-            type=raw,value=latest
+
+      - name: Docker Meta free-threaded
+        id: meta_ft
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3t
+            ghcr.io/${{ github.repository }}-v3t
+          tags: |
+            type=raw,value=${{ env.app_version }}
 
       - name: Set Up QEMU
         uses: docker/setup-qemu-action@v3
@@ -153,8 +173,9 @@ jobs:
             MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
-          cache-from: type=gha,scope=moviepilot-v3-docker-amd64,version=2
-          cache-to: type=gha,scope=moviepilot-v3-docker-amd64,mode=max,version=2
+            MOVIEPILOT_PYTHON_VARIANT=standard
+          cache-from: type=gha,scope=moviepilot-v3-standard-docker-amd64,version=2
+          cache-to: type=gha,scope=moviepilot-v3-standard-docker-amd64,mode=max,version=2
 
       - name: Scan amd64 candidate vulnerabilities
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
@@ -184,13 +205,78 @@ jobs:
             MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
-          cache-from: type=gha,scope=moviepilot-v3-docker-arm64,version=2
-          cache-to: type=gha,scope=moviepilot-v3-docker-arm64,mode=max,version=2
+            MOVIEPILOT_PYTHON_VARIANT=standard
+          cache-from: type=gha,scope=moviepilot-v3-standard-docker-arm64,version=2
+          cache-to: type=gha,scope=moviepilot-v3-standard-docker-arm64,mode=max,version=2
 
       - name: Scan arm64 candidate vulnerabilities
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: moviepilot-v3-candidate:linux-arm64
+          version: v0.70.0
+          cache-dir: ${{ runner.temp }}/trivy
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
+          exit-code: 1
+
+      - name: Build free-threaded amd64 candidate
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          pull: true
+          tags: moviepilot-v3t-candidate:linux-amd64
+          build-args: |
+            MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
+            MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
+            MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
+            MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
+            MOVIEPILOT_PYTHON_VARIANT=free-threaded
+          cache-from: type=gha,scope=moviepilot-v3t-docker-amd64,version=2
+          cache-to: type=gha,scope=moviepilot-v3t-docker-amd64,mode=max,version=2
+
+      - name: Scan free-threaded amd64 candidate vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: moviepilot-v3t-candidate:linux-amd64
+          version: v0.70.0
+          cache-dir: ${{ runner.temp }}/trivy
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
+          exit-code: 1
+
+      - name: Build free-threaded arm64 candidate
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/arm64/v8
+          load: true
+          push: false
+          pull: true
+          tags: moviepilot-v3t-candidate:linux-arm64
+          build-args: |
+            MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
+            MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
+            MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
+            MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
+            MOVIEPILOT_PYTHON_VARIANT=free-threaded
+          cache-from: type=gha,scope=moviepilot-v3t-docker-arm64,version=2
+          cache-to: type=gha,scope=moviepilot-v3t-docker-arm64,mode=max,version=2
+
+      - name: Scan free-threaded arm64 candidate vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: moviepilot-v3t-candidate:linux-arm64
           version: v0.70.0
           cache-dir: ${{ runner.temp }}/trivy
           scanners: vuln
@@ -229,6 +315,7 @@ jobs:
             MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
+            MOVIEPILOT_PYTHON_VARIANT=standard
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.revision=${{ steps.release_snapshot.outputs.release_commit }}
@@ -241,8 +328,59 @@ jobs:
             org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
             org.moviepilot.models-catalog-digest=${{ steps.models_catalog.outputs.digest }}
           cache-from: |
-            type=gha,scope=moviepilot-v3-docker-amd64,version=2
-            type=gha,scope=moviepilot-v3-docker-arm64,version=2
+            type=gha,scope=moviepilot-v3-standard-docker-amd64,version=2
+            type=gha,scope=moviepilot-v3-standard-docker-arm64,version=2
+
+      - name: Publish free-threaded multi-architecture image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: |
+            linux/amd64
+            linux/arm64/v8
+          push: true
+          pull: false
+          tags: ${{ steps.meta_ft.outputs.tags }}
+          build-args: |
+            MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
+            MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
+            MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
+            MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
+            MOVIEPILOT_PYTHON_VARIANT=free-threaded
+          labels: |
+            ${{ steps.meta_ft.outputs.labels }}
+            org.opencontainers.image.revision=${{ steps.release_snapshot.outputs.release_commit }}
+            org.moviepilot.source-revision=${{ env.SOURCE_COMMIT }}
+            org.moviepilot.release-snapshot-revision=${{ steps.release_snapshot.outputs.release_commit }}
+            org.moviepilot.frontend-version=${{ steps.release_version.outputs.frontend_version }}
+            org.moviepilot.frontend-digest=${{ steps.payloads.outputs.frontend_digest }}
+            org.moviepilot.plugins-revision=${{ steps.payloads.outputs.plugins_revision }}
+            org.moviepilot.resources-revision=${{ steps.payloads.outputs.resources_revision }}
+            org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
+            org.moviepilot.models-catalog-digest=${{ steps.models_catalog.outputs.digest }}
+          cache-from: |
+            type=gha,scope=moviepilot-v3t-docker-amd64,version=2
+            type=gha,scope=moviepilot-v3t-docker-arm64,version=2
+
+      - name: Promote latest image pair
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        run: |
+          for image in \
+            "${DOCKER_USERNAME}/moviepilot-v3" \
+            "ghcr.io/${GITHUB_REPOSITORY}-v3"; do
+            docker buildx imagetools create \
+              --tag "${image}:latest" \
+              "${image}:${app_version}"
+          done
+          for image in \
+            "${DOCKER_USERNAME}/moviepilot-v3t" \
+            "ghcr.io/${GITHUB_REPOSITORY}-v3t"; do
+            docker buildx imagetools create \
+              --tag "${image}:latest" \
+              "${image}:${app_version}"
+          done
 
       - name: Generate Changelog
         id: changelog

@@ -92,6 +92,7 @@ test_*
 *_test.py
 
 # Build artifacts
+.artifacts/
 build/
 .build/
 dist/

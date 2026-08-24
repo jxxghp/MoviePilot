@@ -29,6 +29,7 @@ config/.cache/
 # 运行期设置持久化目录（settings 写回 app.env 的落点）与本地验证产物
 app/config/
 .verify_tmp/
+.artifacts/
 .runtime/
 public/
 .moviepilot.env

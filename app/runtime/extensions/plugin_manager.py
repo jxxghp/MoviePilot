@@ -23,6 +23,7 @@ from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.foundation.crypto import RSAUtils
+from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
 from app.runtime.execution import run_in_threadpool_to_completion
@@ -88,6 +89,24 @@ def _unavailable_site_auth_level() -> int:
 def _unavailable_plugin_catalog_factory(_manager: "PluginManager") -> Any:
     """在启动组合根尚未装配目录用例时拒绝隐式跨层构造。"""
     raise RuntimeError("插件目录应用服务尚未由启动组合根装配")
+
+
+def _warn_if_plugin_enabled_gil(
+        *,
+        gil_enabled_before: bool,
+        plugin_id: Optional[str],
+) -> None:
+    """记录插件加载使 free-threaded 进程重新启用 GIL 的真实转换。"""
+    if (
+        not is_free_threaded_runtime()
+        or gil_enabled_before
+        or not is_gil_enabled()
+    ):
+        return
+    logger.warning(
+        "加载插件%s后 free-threaded 运行时已启用 GIL，请检查原生扩展兼容性",
+        plugin_id or "集合",
+    )
 
 
 _legacy_diagnostics_configurator: LegacyDiagnosticsConfigurator = (
@@ -363,7 +382,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         enabled=settings.DEBUG,
                         emitter=logger.warning,
                     )
-                    return self._plugin_lifecycle.start(pid)
+                    gil_enabled_before = is_gil_enabled()
+                    try:
+                        return self._plugin_lifecycle.start(pid)
+                    finally:
+                        _warn_if_plugin_enabled_gil(
+                            gil_enabled_before=gil_enabled_before,
+                            plugin_id=pid,
+                        )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             if pid:
@@ -719,10 +745,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         try:
             with self.mutation("重新加载插件"):
                 with self._plugin_quiesce_lock:
-                    return self._plugin_lifecycle.reload(
-                        plugin_id,
-                        EventType.PluginReload,
-                    )
+                    gil_enabled_before = is_gil_enabled()
+                    try:
+                        return self._plugin_lifecycle.reload(
+                            plugin_id,
+                            EventType.PluginReload,
+                        )
+                    finally:
+                        _warn_if_plugin_enabled_gil(
+                            gil_enabled_before=gil_enabled_before,
+                            plugin_id=plugin_id,
+                        )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return PluginRuntimeStatus.LOAD_FAILED

@@ -199,6 +199,19 @@ def test_lifespan_propagates_logger_nonconvergence(monkeypatch):
     )
 
 
+def test_runtime_gil_status_warns_when_free_threaded_runtime_enables_gil(monkeypatch):
+    """free-threaded 运行时退化为 GIL 模式时必须留下明确诊断。"""
+    monkeypatch.setattr(lifecycle, "is_free_threaded_runtime", lambda: True)
+    monkeypatch.setattr(lifecycle, "is_gil_enabled", lambda: True)
+    warning = MagicMock()
+    monkeypatch.setattr(lifecycle.logger, "warning", warning)
+
+    lifecycle._log_runtime_gil_status()
+
+    warning.assert_called_once()
+    assert "已启用 GIL" in warning.call_args.args[0]
+
+
 def test_lifespan_validation_failure_does_not_clear_outer_loop_owner(monkeypatch):
     """当前生命周期尚未取得 owner 时，启动失败不得清理外层登记。"""
     _patch_lifespan(monkeypatch)

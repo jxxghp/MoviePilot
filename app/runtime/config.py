@@ -16,6 +16,7 @@ from dotenv import set_key, unset_key
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.log import (
     LogConfigModel,
     configure_log_settings,
@@ -596,7 +597,7 @@ class ConfigModel(BaseModel):
     # ==================== 性能配置 ====================
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
-    # Rust 加速总开关，关闭时所有 Rust 快路径回退到 Python 实现
+    # Rust 加速总开关，free-threaded 运行时固定启用
     RUST_ACCEL: bool = True
     # 是否启用编码探测的性能模式
     ENCODING_DETECTION_PERFORMANCE_MODE: bool = True
@@ -996,6 +997,12 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 converted_value, needs_update = self.generic_type_converter(
                     value, original_value, field.annotation, field.default, key
                 )
+            if (
+                key == "RUST_ACCEL"
+                and is_free_threaded_runtime()
+                and converted_value is not True
+            ):
+                return False, "free-threaded 运行时必须启用 Rust 加速"
             # 如果没有抛出异常，则统一使用 converted_value 进行更新
             if needs_update or str(value) != str(converted_value):
                 success, message = self.update_env_config(key, value, converted_value)

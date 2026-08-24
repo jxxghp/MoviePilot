@@ -29,7 +29,7 @@ chmod +x moviepilot-site-collector-linux
 
 当前自动构建产物尚未接入 Windows 或 Apple 代码签名。Windows SmartScreen 或 macOS Gatekeeper 可能因此显示安全提示。仅在文件来自 MoviePilot 官方 GitHub Release，且校验摘要一致时运行；不要从聊天、网盘或第三方站点接收采集器。
 
-如果系统阻止运行，可改用随 MoviePilot 源码提供的本地采集脚本；该方式需要 Python 3.12+ 及完整后端依赖，不适合作为普通用户的首选路径。
+如果系统阻止运行，可改用随 MoviePilot 源码提供的本地采集脚本；该方式需要 Python 3.14+ 及完整后端依赖，不适合作为普通用户的首选路径。
 
 ## 维护者发布流程
 

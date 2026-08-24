@@ -1,6 +1,7 @@
 import json
 import platform
 import sys
+import sysconfig
 from pathlib import Path
 from typing import Callable
 
@@ -63,7 +64,8 @@ class ResourceHelper:
     def _get_python_version_tag() -> str:
         """返回资源文件名使用的 CPython ABI 标签。"""
         version = sys.version_info
-        return f"cp{version.major}{version.minor}"
+        free_threaded = "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""
+        return f"cp{version.major}{version.minor}{free_threaded}"
 
     @staticmethod
     def _get_machine_tag() -> str:

@@ -25,15 +25,16 @@ uv lock --check
 # Update the lock after editing pyproject.toml
 uv lock
 
-# Verify installed dependency consistency
-uv pip check
+# Verify the installed environment against the locked project
+uv sync --locked --offline --inexact --no-dev --check
 ```
 
 **Rules:**
 - Runtime dependencies belong in `[project].dependencies` in `pyproject.toml`.
 - Test, coverage, lint, and explicit build tooling belong in `[dependency-groups].dev`.
 - Commit the updated `uv.lock`; do not maintain or generate main-program requirements files.
-- Use uv 0.12.5 and Python 3.12+.
+- `uv pip check` is diagnostic only because unmaintained third-party metadata may name a compatible superseded distribution.
+- Use uv 0.12.5 and Python 3.14+.
 
 ---
 

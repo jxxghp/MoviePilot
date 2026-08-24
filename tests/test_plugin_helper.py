@@ -1302,6 +1302,79 @@ demo = { index = "private" }
         assert "主程序核心依赖" in message
         assert "fastapi" in message
 
+    @pytest.mark.parametrize(
+        ("runtime_group", "installed_package", "installed_version", "requirement"),
+        [
+            ("runtime-standard", "lxml", "6.1.2", "lxml>=7.1"),
+            ("runtime-free-threaded", "psycopg", "3.3.4", "psycopg>=3.4"),
+        ],
+    )
+    def test_uv_install_rejects_runtime_profile_root_upgrade(
+            self,
+            runtime_group,
+            installed_package,
+            installed_version,
+            requirement,
+    ):
+        """插件不得升级当前解释器 profile 中经过 ABI/GIL 验证的根包。"""
+        from app.adapters.external.market import PluginHelper
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_file = Path(temp_dir) / "requirements.txt"
+            requirements_file.write_text(f"{requirement}\n", encoding="utf-8")
+            with patch(
+                    "app.runtime.dependencies.runtime_dependency_group",
+                    return_value=runtime_group,
+            ):
+                success, message = PluginHelper._PluginHelper__validate_runtime_dependency_conflicts(
+                    requirements_file,
+                    {installed_package: Version(installed_version)},
+                )
+
+        assert not success
+        assert "主程序核心依赖" in message
+        assert installed_package in message
+
+    def test_runtime_healthcheck_preserves_plugin_upgrade_semantics(self, tmp_path):
+        """运行环境诊断不应把允许的插件依赖升级强制还原到宿主锁版本。"""
+        from app.adapters.external.market import PluginHelper
+
+        uv_bin = tmp_path / "uv"
+        with patch("app.adapters.external.market.find_uv", return_value=uv_bin):
+            command = PluginHelper._PluginHelper__build_runtime_uv_check_command()
+
+        assert command == [
+            str(uv_bin),
+            "pip",
+            "check",
+            "--python",
+            sys.executable,
+        ]
+
+    def test_plugin_runtime_healthcheck_uses_full_capability_probe(self, tmp_path):
+        """共享 venv 发生变更时必须验证 ABI 敏感原生能力。"""
+        from app.adapters.external.market import PluginHelper
+
+        uv_bin = tmp_path / "uv"
+        commands = []
+
+        def execute(command):
+            commands.append(command)
+            return True, "ok"
+
+        with patch("app.adapters.external.market.find_uv", return_value=uv_bin), patch(
+            "app.adapters.external.market.SystemUtils.execute_with_subprocess",
+            side_effect=execute,
+        ):
+            PluginHelper._PluginHelper__run_runtime_healthcheck()
+
+        assert [
+            sys.executable,
+            "-m",
+            "app.doctor.dependencies",
+            "--full",
+        ] in commands
+
     def test_uv_install_allows_changing_non_runtime_dependency(self):
         """
         验证非主程序依赖即便已安装，插件后续仍可调整其版本约束。
@@ -1415,7 +1488,7 @@ demo = { index = "private" }
                     if uv_check_count == 2:
                         return False, "broken"
                     return True, "healthy"
-                if len(cmd) >= 3 and cmd[1] == "-c":
+                if len(cmd) >= 3 and cmd[1:3] == ["-m", "app.doctor.dependencies"]:
                     return True, "probe ok"
                 raise AssertionError(f"unexpected command: {cmd}")
 
@@ -1425,7 +1498,9 @@ demo = { index = "private" }
                     return_value={"fastapi": Version("0.115.14")}
             ):
                 with patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
-                    with patch("app.adapters.system.package.find_uv", return_value=uv_bin):
+                    with patch("app.adapters.external.market.find_uv", return_value=uv_bin), patch(
+                        "app.adapters.system.package.find_uv", return_value=uv_bin
+                    ):
                         success, message = PluginHelper.install_packages_with_fallback(requirements_file)
 
         assert not success
@@ -1444,11 +1519,17 @@ demo = { index = "private" }
 
         health_snapshots = [
             {
-                "uv check": (False, "existing issue before install"),
+                "uv check": (
+                    False,
+                    "before summary\nThe package `oss2` requires `crcmod>=1.7`, but it's not installed",
+                ),
                 "核心依赖导入检查": (True, "ok"),
             },
             {
-                "uv check": (False, "same issue with different command summary"),
+                "uv check": (
+                    False,
+                    "after summary\nThe package `oss2` requires `crcmod>=1.7`, but it's not installed",
+                ),
                 "核心依赖导入检查": (True, "ok"),
             },
         ]
@@ -1526,6 +1607,35 @@ demo = { index = "private" }
         assert not success
         assert "核心依赖导入检查失败" in message
         repair_mock.assert_called_once()
+
+    def test_preexisting_uv_diagnostic_does_not_hide_new_package_error(self):
+        """既有第三方元数据告警不能遮蔽插件安装新增的依赖错误。"""
+        from app.adapters.external.market import PluginHelper
+
+        existing_error = "The package `oss2` requires `crcmod>=1.7`, but it's not installed"
+        added_error = "The package `demo` requires `missing>=1`, but it's not installed"
+
+        message = PluginHelper._PluginHelper__runtime_health_regression_message(
+            {"uv check": (False, existing_error)},
+            {"uv check": (False, f"{existing_error}\n{added_error}")},
+        )
+
+        assert added_error in message
+        assert existing_error not in message
+
+    def test_uv_diagnostic_parser_handles_executor_prefix(self):
+        """执行器把首条错误拼在命令摘要后时仍应识别完整诊断项。"""
+        from app.adapters.external.market import PluginHelper
+
+        package_error = "The package `demo` requires `missing>=1`, but it's not installed"
+        message = f"命令：uv pip check，执行失败，返回码：1，错误输出：{package_error}"
+
+        issues = PluginHelper._PluginHelper__runtime_health_error_lines(
+            "uv check",
+            message,
+        )
+
+        assert issues == {package_error}
 
     def test_failed_install_repairs_runtime_before_returning_error(self):
         """

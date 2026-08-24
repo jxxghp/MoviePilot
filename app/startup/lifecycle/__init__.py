@@ -29,6 +29,7 @@ from app.application.plugin.lifecycle import plugin_lifecycle
 from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.config import global_vars
 from app.runtime.settings import RuntimeSettingsCompat
+from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 
 settings = RuntimeSettingsCompat()
 from app.runtime.health import get_application_health
@@ -88,6 +89,7 @@ async def init_extra():
     if settings.MOVIEPILOT_SAFE_MODE:
         SystemHelper().set_system_modified()
         SystemChain().restart_finish()
+        _log_runtime_gil_status()
         return
     plugin_manager = get_plugin_manager()
     try:
@@ -102,12 +104,29 @@ async def init_extra():
     finally:
         plugin_manager.set_plugin_settling(False)
         plugin_manager.start_monitor()
+        _log_runtime_gil_status()
     # 设置系统已修改标志
     SystemHelper().set_system_modified()
     # 重启完成
     SystemChain().restart_finish()
     # 上报当前安装版本
     await MoviePilotServerHelper.async_report_usage()
+
+
+def _log_runtime_gil_status() -> None:
+    """在核心模块和插件完成导入后记录解释器的实际并发模式。"""
+    free_threaded = is_free_threaded_runtime()
+    gil_enabled = is_gil_enabled()
+    if free_threaded and gil_enabled:
+        logger.warning(
+            "Python free-threaded 运行时已启用 GIL，请检查此前的原生扩展兼容告警"
+        )
+        return
+    logger.info(
+        "Python运行时：%s，GIL=%s",
+        "free-threaded" if free_threaded else "standard",
+        "enabled" if gil_enabled else "disabled",
+    )
 
 
 async def run_shutdown_step(

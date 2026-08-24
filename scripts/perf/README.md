@@ -191,3 +191,56 @@ Before-1 → After-1 → After-2 → Before-2 → Before-3 → After-3
 ```
 
 本地 JSON、Markdown 和日志不会被 `cleanup` 删除。
+
+## Python 3.14 free-threaded 镜像 A/B
+
+`free_threaded_ab.py` 用于正式发布前在同一 Docker daemon、相同 CPU/内存限制下比较
+`moviepilot-v3` 与 `moviepilot-v3t`。它不构建镜像，只接受两份
+`repository@sha256:<digest>` 不可变引用，并要求镜像标签证明两者来自相同源码 revision 和版本。
+未使用 `--pull` 时，digest 也可以是本机 Docker image ID，供依赖尚未发布前验收本地候选。
+
+preflight 会验证 Python 3.14、GIL 状态、`thread_inherit_context`、MoviePilot-Rust 0.3 的
+`jieba_cut`/中文转换入口，以及标准与 free-threaded 镜像互斥的原生依赖 profile。正式样本使用
+固定 seed 和 fixture hash，按 `v3-1 → v3t-1 → v3t-2 → v3-2 → v3-3 → v3t-3`
+交替执行真实 readiness 启动，并把应用识别热点明确分成 `V3 + Python`、`V3 + Rust`、
+`V3t + Rust` 三组。两种镜像的纯 Python 并发与直接 Rust 并发是解释器/ABI 探针，不代表产品 Rust
+开关的第三组结果；PostgreSQL 驱动选择使用不连接数据库的命令单独验证。
+
+```bash
+../.venv/bin/python scripts/perf/free_threaded_ab.py \
+  --campaign v3-ft-001 \
+  --standard-image 'jxxghp/moviepilot-v3@sha256:<64-hex-digest>' \
+  --free-threaded-image 'jxxghp/moviepilot-v3t@sha256:<64-hex-digest>' \
+  --pull
+```
+
+结果默认写入系统临时目录的 `moviepilot-free-threaded-ab/<campaign>/`：
+
+- `results.json` 使用 `schema_version` 保存镜像身份、preflight、阈值、原始样本与中位数；
+- `report.md` 提供维护者可读摘要；
+- `samples/` 保存六个交替样本，便于排查离群值。
+
+退出码 `0` 表示合同与性能阈值通过，`1` 表示样本有效但出现性能回退，`2` 表示 digest、ABI、
+依赖、语义、驱动、启动或样本完整性不成立。该工具只用于隔离的本地长 A/B，不接真实凭据、用户数据库、
+媒体目录或外网，也不加入常规 CI。
+
+### PostgreSQL 同步驱动三方案
+
+`postgresql_driver_ab.py` 在同一 PostgreSQL 容器中比较标准 V3/psycopg2、标准
+V3/psycopg3 binary 和 V3t/psycopg3 C。三个输入镜像必须来自相同源码 revision 和产品版本；
+标准 V3/psycopg3 镜像是只增加该驱动的本地验证衍生镜像，不是发布制品。
+
+```bash
+../.venv/bin/python scripts/perf/postgresql_driver_ab.py \
+  --campaign v3-ft-pg-001 \
+  --postgres-container moviepilot-pg-ab \
+  --dsn 'postgresql://moviepilot:<benchmark-password>@127.0.0.1:5432/moviepilot' \
+  --standard-image 'moviepilot-v3@sha256:<64-hex-digest>' \
+  --standard-psycopg3-image 'moviepilot-v3-pg3@sha256:<64-hex-digest>' \
+  --free-threaded-image 'moviepilot-v3t@sha256:<64-hex-digest>'
+```
+
+脚本按三方案的六个全排列执行固定 SQL，默认把每个采样容器限制为 2 CPU/1 GiB，保存单连接查询、
+16 线程查询、批量事务、长事务行锁并行、驱动/libpq/SOABI 和 GIL 状态。每个 campaign 使用独立
+测试表并在成功或失败后清理；DSN 只传入隔离容器，不写入结果。性能数据用于解释驱动选择，不作为
+跨机器发布阈值；驱动实现、GIL、查询结果、长事务并行和样本完整性属于硬门禁。

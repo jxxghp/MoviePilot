@@ -4,9 +4,9 @@
 
 | Item | Detail |
 |---|---|
-| Language | Python 3.12+ |
-| Primary CI Python version | Python 3.12 |
-| Dependency compatibility CI | Supported platform matrix on Python 3.12, plus newer interpreter coverage on Linux x86_64 |
+| Language | Python 3.14+ |
+| Primary CI Python version | Python 3.14 |
+| Dependency compatibility CI | Python 3.14 supported-platform matrix plus Linux amd64/arm64 standard and free-threaded Docker profiles |
 | Async runtime | asyncio (native), integrated with FastAPI/Uvicorn |
 
 ---
@@ -106,7 +106,7 @@
 | Item | Detail |
 |---|---|
 | Project metadata | `pyproject.toml` — runtime dependencies in `[project].dependencies`, development tooling in `[dependency-groups].dev` |
-| Lock | `uv.lock` — committed resolution for Python 3.12+ and supported platforms |
+| Lock | `uv.lock` — committed resolution for Python 3.14+ and supported platforms |
 | Package manager | uv 0.12.5 |
 | Runtime install | `uv sync --locked --no-dev --no-install-project` |
 | Dev/test/lint/build install | `uv sync --locked` |
@@ -131,7 +131,7 @@
 |---|---|---|
 | pytest | Test runner | `uv run --locked --no-sync pytest tests/test_xxx.py` |
 | pylint | Static analysis | `uv run --locked --no-sync pylint app/` |
-| uv | Lock and environment consistency | `uv lock --check && uv pip check` |
+| uv | Lock and environment consistency | `uv lock --check && uv sync --locked --offline --inexact --no-dev --check` |
 | pip-audit | Locked dependency vulnerability scan | `uv export --quiet --locked --no-dev --no-emit-project -o /tmp/moviepilot-audit-requirements.txt && uvx --from pip-audit==2.10.1 pip-audit --require-hashes --disable-pip --strict --progress-spinner off -r /tmp/moviepilot-audit-requirements.txt` |
 
 ---

@@ -31,6 +31,10 @@ from importlib.metadata import distributions
 from requests import Response
 
 from app.runtime.cache import cached, is_fresh
+from app.runtime.dependencies import (
+    iter_runtime_profile_requirement_strings,
+    iter_runtime_requirement_strings,
+)
 from app.runtime.settings import RuntimeSettingsCompat
 from app.adapters.system.package import (
     PackageInstallRequest,
@@ -205,10 +209,7 @@ class PluginHelper(metaclass=WeakSingleton):
         "starlette",
         "uvicorn",
     })
-    _runtime_import_probe = (
-        "import alembic, fastapi, pydantic, pydantic_core, pydantic_settings, "
-        "sqlalchemy, starlette, uvicorn; from pydantic import BaseModel, Field"
-    )
+    _runtime_import_probe = "app.doctor.dependencies"
 
     @staticmethod
     def is_local_repo_url(repo_url: Optional[str]) -> bool:
@@ -1316,12 +1317,12 @@ class PluginHelper(metaclass=WeakSingleton):
         return list(dict.fromkeys(wheels_dirs))
 
     @staticmethod
-    def __build_runtime_uv_command(*args: str) -> List[str]:
-        """构造绑定当前解释器环境的 uv pip 命令。"""
+    def __build_runtime_uv_check_command() -> List[str]:
+        """构造绑定当前解释器环境的 uv 依赖诊断命令。"""
         uv_bin = find_uv(Path(sys.executable))
         if not uv_bin:
             return []
-        return [str(uv_bin), "pip", *args, "--python", sys.executable]
+        return [str(uv_bin), "pip", "check", "--python", sys.executable]
 
     @staticmethod
     def __format_package_name(name: str) -> str:
@@ -1355,8 +1356,8 @@ class PluginHelper(metaclass=WeakSingleton):
             return roots
 
         try:
-            manifest = load_dependency_file(project_file)
-            for requirement in manifest.dependencies:
+            for raw_requirement in iter_runtime_requirement_strings(project_file):
+                requirement = Requirement(raw_requirement)
                 if not cls.__marker_matches(requirement.marker):
                     continue
                 package_name = cls.__standardize_pkg_name(requirement.name)
@@ -1469,6 +1470,20 @@ class PluginHelper(metaclass=WeakSingleton):
 
         return protected_packages
 
+    @classmethod
+    def __get_strict_runtime_packages(cls) -> Set[str]:
+        """返回核心包及当前 ABI profile 中不得被插件改写的根包。"""
+        packages = set(cls._protected_runtime_packages)
+        project_file = settings.ROOT_PATH / "pyproject.toml"
+        try:
+            for raw_requirement in iter_runtime_profile_requirement_strings(project_file):
+                requirement = Requirement(raw_requirement)
+                if cls.__marker_matches(requirement.marker):
+                    packages.add(cls.__standardize_pkg_name(requirement.name))
+        except Exception as error:
+            logger.error(f"解析运行依赖 profile 失败：{project_file} - {error}")
+        return packages
+
     @staticmethod
     def __is_upgrade_only_conflict(specifier_set: SpecifierSet, installed_version: Version) -> bool:
         """
@@ -1516,6 +1531,7 @@ class PluginHelper(metaclass=WeakSingleton):
         允许后续安装继续调整版本。
         """
         conflicts = []
+        strict_packages = cls.__get_strict_runtime_packages()
         try:
             manifest = load_dependency_file(dependency_file)
             for requirement in manifest.dependencies:
@@ -1532,7 +1548,7 @@ class PluginHelper(metaclass=WeakSingleton):
                         package_name,
                         str(installed_version),
                         f"来自 {requirement.url} 的同名包",
-                        package_name in cls._protected_runtime_packages,
+                        package_name in strict_packages,
                     ))
                     continue
 
@@ -1540,7 +1556,7 @@ class PluginHelper(metaclass=WeakSingleton):
                         installed_version,
                         prereleases=True
                 ):
-                    is_core = package_name in cls._protected_runtime_packages
+                    is_core = package_name in strict_packages
                     # 非核心包的纯升级冲突允许放行，由安装约束控制实际版本。
                     if is_core or not cls.__is_upgrade_only_conflict(
                             requirement.specifier, installed_version):
@@ -1590,9 +1606,10 @@ class PluginHelper(metaclass=WeakSingleton):
                 suffix=".txt",
                 delete=False
         ) as temp_file:
+            strict_packages = cls.__get_strict_runtime_packages()
             for package_name, version in sorted(protected_packages.items()):
-                if package_name in cls._protected_runtime_packages:
-                    # 核心包严格锁定，插件不得改写
+                if package_name in strict_packages:
+                    # 核心与 ABI profile 根包严格锁定，插件不得改写
                     temp_file.write(f"{cls.__format_package_name(package_name)}=={version}\n")
                 else:
                     # 非核心主程序依赖：允许升级，但禁止降级
@@ -1697,17 +1714,34 @@ class PluginHelper(metaclass=WeakSingleton):
         执行全部运行环境自检并返回逐项结果，避免前一项失败遮蔽后续异常。
         """
         health_snapshot = {}
-        uv_check = cls.__build_runtime_uv_command("check")
+        uv_check = cls.__build_runtime_uv_check_command()
         if uv_check:
             checks = [("uv check", uv_check)]
         else:
             health_snapshot["uv check"] = (False, "未找到 uv 可执行文件")
             checks = []
-        checks.append(("核心依赖导入检查", [sys.executable, "-c", cls._runtime_import_probe]))
+        checks.append(("核心依赖导入检查", [
+            sys.executable,
+            "-m",
+            cls._runtime_import_probe,
+            "--full",
+        ]))
         for check_name, command in checks:
             success, message = SystemUtils.execute_with_subprocess(command)
             health_snapshot[check_name] = (success, message)
         return health_snapshot
+
+    @staticmethod
+    def __runtime_health_error_lines(check_name: str, message: str) -> set[str]:
+        """提取稳定诊断项，忽略执行器附加的命令摘要。"""
+        lines = {line.strip() for line in message.splitlines() if line.strip()}
+        if check_name != "uv check":
+            return lines
+        package_errors = set(re.findall(
+            r"The package `[^`]+` requires `[^`]+`, but [^\r\n;]+",
+            message,
+        ))
+        return package_errors or lines
 
     @staticmethod
     def __runtime_health_regression_message(
@@ -1715,13 +1749,25 @@ class PluginHelper(metaclass=WeakSingleton):
             current_health: Dict[str, Tuple[bool, str]]
     ) -> str:
         """
-        汇总相对基线从正常变为异常的检查项，不解析第三方工具的错误文本。
+        汇总相对基线新增的异常；已有诊断失败不能遮蔽后续新增错误。
         """
         regressions = []
         for check_name, (success, message) in current_health.items():
-            baseline_success = baseline_health.get(check_name, (True, ""))[0]
+            baseline_success, baseline_message = baseline_health.get(check_name, (True, ""))
             if baseline_success and not success:
                 regressions.append(f"{check_name}失败：{message}")
+            elif not baseline_success and not success:
+                baseline_lines = PluginHelper.__runtime_health_error_lines(
+                    check_name,
+                    baseline_message,
+                )
+                current_lines = PluginHelper.__runtime_health_error_lines(
+                    check_name,
+                    message,
+                )
+                added_lines = sorted(current_lines - baseline_lines)
+                if added_lines:
+                    regressions.append(f"{check_name}新增错误：{' | '.join(added_lines)}")
         return "；".join(regressions)
 
     @classmethod
@@ -2573,7 +2619,7 @@ class PluginHelper(metaclass=WeakSingleton):
     async def __async_run_runtime_healthcheck(cls) -> Dict[str, Tuple[bool, str]]:
         """异步执行插件安装后的运行环境检查。"""
         health_snapshot: Dict[str, Tuple[bool, str]] = {}
-        uv_check = cls.__build_runtime_uv_command("check")
+        uv_check = cls.__build_runtime_uv_check_command()
         if uv_check:
             checks = [("uv check", uv_check)]
         else:
@@ -2581,8 +2627,9 @@ class PluginHelper(metaclass=WeakSingleton):
             checks = []
         checks.append(("核心依赖导入检查", [
             sys.executable,
-            "-c",
+            "-m",
             cls._runtime_import_probe,
+            "--full",
         ]))
         for check_name, command in checks:
             health_snapshot[check_name] = (

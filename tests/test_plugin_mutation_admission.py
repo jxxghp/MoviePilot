@@ -189,6 +189,35 @@ async def test_quiesce_timeout_retains_admitted_owner_and_nested_reload(
     assert manager.finalize_plugins() is True
 
 
+def test_reload_attributes_gil_transition_to_plugin(
+    plugin_manager: PluginManager,
+    monkeypatch,
+) -> None:
+    """运行期插件加载导致 GIL 退化时应记录插件归因。"""
+    states = iter((False, True))
+    plugin_manager._plugin_lifecycle.reload = MagicMock(
+        return_value=PluginRuntimeStatus.ACTIVE
+    )
+    warning = MagicMock()
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.is_free_threaded_runtime",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.is_gil_enabled",
+        lambda: next(states),
+    )
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.logger.warning",
+        warning,
+    )
+
+    assert plugin_manager.reload_plugin("DemoPlugin") is PluginRuntimeStatus.ACTIVE
+
+    warning.assert_called_once()
+    assert warning.call_args.args[1] == "DemoPlugin"
+
+
 @pytest.mark.asyncio
 async def test_quiesce_inside_mutation_fails_without_sealing(
     plugin_manager: PluginManager,

@@ -8702,6 +8702,11 @@
       },
       {
         "kind": "import",
+        "name": "convert",
+        "target": "app.foundation.text.convert"
+      },
+      {
+        "kind": "import",
         "name": "cut",
         "target": "app.foundation.text.cut"
       },

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app.runtime.config import settings as runtime_settings
 from app.testing import stub_modules
+from app.testing.stub import restore_modules, snapshot_modules
 
 
 def _stub(name: str, **attrs) -> tuple:
@@ -30,7 +31,7 @@ class _DummyError(Exception):
         self.duration_ms = duration_ms
 
 
-# 在 import 期用占位模块替换重依赖/外部模块，import 完由 stub_modules 精确还原，避免污染其它用例
+# 被测模块会绑定 import 期的桩对象，退出后需同时还原这期间加载的 app 模块图。
 _STUB_MODULES = dict([
     _stub("pillow_avif"),
     _stub("aiofiles"),
@@ -64,8 +65,12 @@ _STUB_MODULES = dict([
     _stub("version", APP_VERSION="test", FRONTEND_VERSION="frontend-test"),
 ])
 
-with stub_modules(_STUB_MODULES):
-    from app.api.endpoints import system as system_endpoint
+_APP_MODULES = snapshot_modules("app")
+try:
+    with stub_modules(_STUB_MODULES):
+        from app.api.endpoints import system as system_endpoint
+finally:
+    restore_modules(_APP_MODULES, "app")
 
 
 class NettestSecurityTest(unittest.TestCase):
@@ -75,12 +80,50 @@ class NettestSecurityTest(unittest.TestCase):
         """
         with patch.object(system_endpoint.rust_accel, "is_available", return_value=True), patch.object(
             system_endpoint.rust_accel, "is_enabled", return_value=False
+        ), patch.object(
+            system_endpoint.rust_accel, "is_required", return_value=True
+        ), patch.object(
+            system_endpoint, "is_free_threaded_runtime", return_value=True
+        ), patch.object(
+            system_endpoint, "is_gil_enabled", return_value=False
         ):
             resp = asyncio.run(system_endpoint.get_env_setting(_="token"))
 
         self.assertTrue(resp.success)
         self.assertTrue(resp.data["RUST_ACCEL_AVAILABLE"])
         self.assertFalse(resp.data["RUST_ACCEL_ENABLED"])
+        self.assertTrue(resp.data["RUST_ACCEL_REQUIRED"])
+        self.assertTrue(resp.data["PYTHON_FREE_THREADED"])
+        self.assertFalse(resp.data["PYTHON_GIL_ENABLED"])
+
+    def test_get_user_global_setting_reports_runtime_variant(self):
+        """登录后的全局设置应提供导航所需的解释器类型。"""
+        runtime_config = SimpleNamespace(
+            snapshot=Mock(return_value={}),
+            get=Mock(return_value=False),
+        )
+        with patch.object(
+            system_endpoint, "get_runtime_settings", return_value=runtime_config
+        ), patch.object(
+            system_endpoint.MoviePilotServerHelper,
+            "async_is_admin_user",
+            new=AsyncMock(return_value=False),
+            create=True,
+        ), patch.object(
+            system_endpoint.MoviePilotServerHelper,
+            "get_user_uuid",
+            return_value="user-id",
+            create=True,
+        ), patch.object(
+            system_endpoint, "is_free_threaded_runtime", return_value=True
+        ), patch.object(
+            system_endpoint, "is_gil_enabled", return_value=False
+        ):
+            resp = asyncio.run(system_endpoint.get_user_global_setting(_="token"))
+
+        self.assertTrue(resp.success)
+        self.assertTrue(resp.data["PYTHON_FREE_THREADED"])
+        self.assertFalse(resp.data["PYTHON_GIL_ENABLED"])
 
     def test_fetch_image_allows_signed_private_url(self):
         """

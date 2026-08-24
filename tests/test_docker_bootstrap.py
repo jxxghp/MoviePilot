@@ -1,6 +1,7 @@
 import os
 import shlex
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -35,8 +36,10 @@ def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
     assert "COPY --from=uv /uv /usr/local/bin/uv" in dockerfile
     assert "COPY pyproject.toml uv.lock ./" in dockerfile
     assert "python3 -m venv --without-pip ${VENV_PATH}" in dockerfile
+    assert 'sysconfig.get_path("purelib")' in dockerfile
     assert "UV_PROJECT_ENVIRONMENT=${VENV_PATH} uv sync" in dockerfile
-    for option in ("--locked", "--no-dev", "--no-install-project"):
+    assert "PYTHON_THREAD_INHERIT_CONTEXT=0" in dockerfile
+    for option in ("--locked", "--no-default-groups", "--group", "--no-install-project"):
         assert option in dockerfile
     assert "uv-pip-compat" not in dockerfile
     assert "requirements.in" not in dockerfile
@@ -56,6 +59,81 @@ def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
         'for control_script in /bundle/control/*.sh; do bash -n "${control_script}" || exit 1; done'
         in dockerfile
     )
+
+
+def test_update_sync_selects_target_interpreter_runtime_group(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        """
+[project]
+name = "moviepilot"
+version = "0"
+
+[dependency-groups]
+runtime-standard = ["standard"]
+runtime-free-threaded = ["free-threaded"]
+""",
+        encoding="utf-8",
+    )
+    (project / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    runtime_selector = project / "app" / "runtime" / "dependencies.py"
+    runtime_selector.parent.mkdir(parents=True)
+    runtime_selector.write_text("print('runtime-free-threaded')\n", encoding="utf-8")
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    python_bin = venv_bin / "python3"
+    python_bin.write_text(
+        "#!/bin/bash\ncat >/dev/null\nprintf '%s\\n' runtime-free-threaded\n",
+        encoding="utf-8",
+    )
+    python_bin.chmod(0o755)
+    uv_bin = tmp_path / "uv"
+    uv_log = tmp_path / "uv.log"
+    uv_bin.write_text(
+        f"#!/bin/bash\nprintf '%s\\n' \"$*\" > {shlex.quote(str(uv_log))}\n",
+        encoding="utf-8",
+    )
+    uv_bin.chmod(0o755)
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        VENV_PATH="$2"
+        UV_BIN="$3"
+        source {UPDATER!s}
+        PACKAGE_ENV=()
+        UV_OPTIONS=()
+        sync_project_dependencies_for "$4"
+        """
+    )
+
+    subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "runtime-profile-test",
+            str(tmp_path / "config"),
+            str(tmp_path / "venv"),
+            str(uv_bin),
+            str(project),
+        ],
+        check=True,
+    )
+
+    command = uv_log.read_text(encoding="utf-8")
+    assert "--no-default-groups --group runtime-free-threaded" in command
+
+
+def test_build_profiles_use_full_runtime_capability_probe() -> None:
+    """两套依赖 profile 必须经过统一的完整运行能力验证。"""
+    dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert dockerfile.count(
+        'RUN "${VENV_PATH}/bin/python" /tmp/moviepilot-runtime-dependencies.py --full'
+    ) == 2
+    assert "moviepilot_rust.jieba_cut" not in dockerfile
+    assert "moviepilot_rust.zhconv_fast" not in dockerfile
 
 
 def _run_launcher(
@@ -915,6 +993,9 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
         encoding="utf-8",
     )
     uv_bin.chmod(0o755)
+    python_bin = tmp_path / "venv" / "bin" / "python3"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.symlink_to(Path(sys.executable))
     live_app = tmp_path / "app"
     live_public = tmp_path / "public"
     (live_app / "app" / "plugins").mkdir(parents=True)
