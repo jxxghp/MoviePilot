@@ -37,6 +37,21 @@ class EventErrorBehavior(StrEnum):
     NOTIFY = "notify"
 
 
+class EventPayloadMode(StrEnum):
+    """描述事件 payload 是运行时对象还是稳定快照。"""
+
+    RUNTIME = "runtime"
+    SNAPSHOT = "snapshot"
+    EXTENSION = "extension"
+
+
+class EventValidationMode(StrEnum):
+    """描述契约校验失败后的兼容策略。"""
+
+    DIAGNOSTIC = "diagnostic"
+    STRICT = "strict"
+
+
 @dataclass(frozen=True, slots=True)
 class EventContract:
     """冻结一个事件的 payload 与运行语义。"""
@@ -49,6 +64,11 @@ class EventContract:
     delivery: EventDelivery
     error_behavior: EventErrorBehavior
     ordering: str
+    input_model: type[BaseModel] | None = None
+    output_model: type[BaseModel] | None = None
+    schema_version: int = 1
+    payload_mode: EventPayloadMode = EventPayloadMode.RUNTIME
+    validation_mode: EventValidationMode = EventValidationMode.DIAGNOSTIC
     sensitive_fields: tuple[str, ...] = ()
     legacy_reason: str | None = None
 
@@ -66,13 +86,13 @@ _PAYLOAD_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     EventType.SubscribeAdded: event_schemas.SubscribeAddedEventData,
     EventType.SubscribeDeleted: event_schemas.SubscribeDeletedEventData,
     EventType.SubscribeModified: event_schemas.SubscribeModifiedEventData,
-    EventType.DownloadAdded: event_schemas.DownloadAddedEventData,
-    EventType.TransferComplete: event_schemas.TransferResultEventData,
-    EventType.TransferFailed: event_schemas.TransferResultEventData,
-    EventType.SubtitleTransferComplete: event_schemas.TransferResultEventData,
-    EventType.SubtitleTransferFailed: event_schemas.TransferResultEventData,
-    EventType.AudioTransferComplete: event_schemas.TransferResultEventData,
-    EventType.AudioTransferFailed: event_schemas.TransferResultEventData,
+    EventType.DownloadAdded: event_schemas.DownloadAddedContractData,
+    EventType.TransferComplete: event_schemas.TransferResultContractData,
+    EventType.TransferFailed: event_schemas.TransferResultContractData,
+    EventType.SubtitleTransferComplete: event_schemas.TransferResultContractData,
+    EventType.SubtitleTransferFailed: event_schemas.TransferResultContractData,
+    EventType.AudioTransferComplete: event_schemas.TransferResultContractData,
+    EventType.AudioTransferFailed: event_schemas.TransferResultContractData,
     EventType.HistoryDeleted: event_schemas.HistoryDeletedEventData,
     EventType.DownloadFileDeleted: event_schemas.DownloadFileDeletedEventData,
     EventType.DownloadDeleted: event_schemas.DownloadDeletedEventData,
@@ -81,7 +101,7 @@ _PAYLOAD_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     EventType.NoticeMessage: event_schemas.NoticeMessageEventData,
     EventType.SubscribeComplete: event_schemas.SubscribeCompleteEventData,
     EventType.SystemError: event_schemas.SystemErrorEventData,
-    EventType.MetadataScrape: event_schemas.MetadataScrapeEventData,
+    EventType.MetadataScrape: event_schemas.MetadataScrapeContractData,
     EventType.ModuleReload: event_schemas.EmptyEventData,
     EventType.MessageAction: event_schemas.MessageActionEventData,
     EventType.WorkflowExecute: event_schemas.WorkflowExecuteEventData,
@@ -93,20 +113,46 @@ _PAYLOAD_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     ChainEventType.TransferRenameBuild: event_schemas.TransferRenameBuildEventData,
     ChainEventType.TransferIntercept: event_schemas.TransferInterceptEventData,
     ChainEventType.TransferOverwriteCheck: event_schemas.TransferOverwriteCheckEventData,
-    ChainEventType.ResourceSelection: event_schemas.ResourceSelectionEventData,
-    ChainEventType.ResourceDownload: event_schemas.ResourceDownloadEventData,
+    ChainEventType.ResourceSelection: event_schemas.ResourceSelectionContractData,
+    ChainEventType.ResourceDownload: event_schemas.ResourceDownloadContractData,
     ChainEventType.DiscoverSource: event_schemas.DiscoverSourceEventData,
     ChainEventType.MediaRecognizeConvert: event_schemas.MediaRecognizeConvertEventData,
     ChainEventType.RecommendSource: event_schemas.RecommendSourceEventData,
     ChainEventType.StorageOperSelection: event_schemas.StorageOperSelectionEventData,
     ChainEventType.AgentLLMProvider: event_schemas.AgentLLMProviderEventData,
     ChainEventType.SubscribeEpisodesRefresh: event_schemas.SubscribeEpisodesRefreshEventData,
-    ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckEventData,
+    ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckContractData,
     ChainEventType.NameRecognize: event_schemas.NameRecognizeEventData,
     ChainEventType.MusicNameRecognize: event_schemas.MusicNameRecognizeEventData,
     ChainEventType.MediaRecognize: event_schemas.MediaRecognizeEventData,
     ChainEventType.MusicMediaRecognize: event_schemas.MusicMediaRecognizeEventData,
     ChainEventType.WorkflowExecution: ActionContext,
+}
+
+_SNAPSHOT_EVENTS = {
+    EventType.DownloadAdded,
+    EventType.TransferComplete,
+    EventType.TransferFailed,
+    EventType.SubtitleTransferComplete,
+    EventType.SubtitleTransferFailed,
+    EventType.AudioTransferComplete,
+    EventType.AudioTransferFailed,
+    EventType.MetadataScrape,
+    ChainEventType.ResourceSelection,
+    ChainEventType.ResourceDownload,
+    ChainEventType.SubscribeCompletionCheck,
+}
+
+_INPUT_MODELS = {
+    ChainEventType.ResourceSelection: event_schemas.ResourceSelectionInputContractData,
+    ChainEventType.ResourceDownload: event_schemas.ResourceDownloadInputContractData,
+    ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckInputContractData,
+}
+
+_OUTPUT_MODELS = {
+    ChainEventType.ResourceSelection: event_schemas.ResourceSelectionOutputContractData,
+    ChainEventType.ResourceDownload: event_schemas.ResourceDownloadOutputContractData,
+    ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckOutputContractData,
 }
 
 _DURABLE_REQUIRED = {
@@ -150,6 +196,14 @@ def _build_contract(event_type: EventType | ChainEventType) -> EventContract:
             EventErrorBehavior.STOP_CHAIN if is_chain else EventErrorBehavior.NOTIFY
         ),
         ordering="priority_serial" if is_chain else "priority_queue",
+        input_model=_INPUT_MODELS.get(event_type, payload_model),
+        output_model=_OUTPUT_MODELS.get(event_type),
+        payload_mode=(
+            EventPayloadMode.SNAPSHOT
+            if event_type in _SNAPSHOT_EVENTS
+            else EventPayloadMode.RUNTIME
+        ),
+        validation_mode=EventValidationMode.DIAGNOSTIC,
         sensitive_fields=_SENSITIVE_FIELDS.get(event_type, ()),
         legacy_reason=(
             None
@@ -195,16 +249,23 @@ def validate_event_payload(
 ) -> tuple[str, ...]:
     """在发送边界诊断首批 typed payload，保持原对象和插件 dict 形状不变。"""
     try:
-        model = get_event_contract(event_type).payload_model
+        contract = get_event_contract(event_type)
+        models = tuple(
+            model
+            for model in (contract.input_model, contract.output_model)
+            if model is not None
+        )
     except KeyError:
         # 动态插件在旧 ABI 下可能使用宿主枚举之外的字符串事件。
         return ()
-    if model is None or payload is None:
+    if not models or payload is None:
         return ()
-    if isinstance(payload, model):
-        return ()
-    try:
-        model.model_validate(payload)
-    except (ValidationError, TypeError, ValueError) as error:
-        return (str(error),)
-    return ()
+    problems: list[str] = []
+    for model in models:
+        if isinstance(payload, model):
+            continue
+        try:
+            model.model_validate(payload)
+        except (ValidationError, TypeError, ValueError) as error:
+            problems.append(f"{model.__name__}: {error}")
+    return tuple(problems)

@@ -13,7 +13,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Optional
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = PROJECT_ROOT / "app"
 BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
@@ -988,6 +987,15 @@ def collect_event_specs() -> dict[str, Any]:
     return {
         contract.event_name: {
             "payload_contract": contract.payload_contract,
+            "input_contract": (
+                contract.input_model.__name__ if contract.input_model else None
+            ),
+            "output_contract": (
+                contract.output_model.__name__ if contract.output_model else None
+            ),
+            "schema_version": contract.schema_version,
+            "payload_mode": contract.payload_mode.value,
+            "validation_mode": contract.validation_mode.value,
             "mode": contract.mode,
             "visibility": contract.visibility.value,
             "delivery": contract.delivery.value,

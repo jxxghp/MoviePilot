@@ -351,6 +351,19 @@ flowchart TB
 
 宿主内建 `EventType` / `ChainEventType` 均在事件注册表中绑定 typed payload。开放插件事件允许
 额外字段，校验只生成诊断；分发给既有插件的仍是原始 dict/model 对象，不改变事件 ABI。
+插件可通过 `app.sdk.events` 调用 `event.snapshot()` 或
+`snapshot_event_data(event_type, event_data)` 获取独立的类型化快照。返回结果中的 `raw` 保留
+原始对象，`payload` 是组合契约，链式事件还提供 `input` / `output` 快照；`known`、`valid` 和
+`errors` 分别用于处理未知自定义事件和兼容期校验失败。快照修改不会回写原事件，如需拦截、取消
+或替换链式结果，插件仍应修改原始 `event.event_data`。
+
+```python
+from app.sdk.events import snapshot_event_data
+
+snapshot = snapshot_event_data(event.event_type, event.event_data)
+if snapshot.valid and snapshot.payload.context.media_info.type == "音乐":
+    music_type = snapshot.payload.context.media_info.music_type
+```
 
 ```mermaid
 sequenceDiagram

@@ -8,6 +8,8 @@ from app.application.outbox import (
     DURABLE_EVENT_TOPICS,
     validate_durable_event_handlers,
 )
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.runtime.event.contracts import (
     EVENT_CONTRACTS,
     EventDelivery,
@@ -15,9 +17,13 @@ from app.runtime.event.contracts import (
     validate_event_payload,
 )
 from app.runtime.events import Event
-from app.domain.context import Context, MediaInfo
-from app.domain.metainfo import MetaInfo
-from app.schemas.event import ConfigChangeEventData
+from app.schemas.event import (
+    ConfigChangeEventData,
+    ResourceDownloadInputContractData,
+    ResourceDownloadOutputContractData,
+    ResourceSelectionInputContractData,
+    ResourceSelectionOutputContractData,
+)
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import ChainEventType, EventType, MediaType
@@ -127,6 +133,37 @@ def test_download_and_transfer_typed_contracts_accept_legacy_runtime_objects() -
                 "transfer_history_id": 1,
             },
         ) == ()
+
+
+def test_music_runtime_objects_are_checked_as_typed_snapshots() -> None:
+    """音乐运行时对象保留给插件，同时通过快照契约明确 type/music_type。"""
+    from app.domain.context import MusicInfo
+
+    media = MusicInfo(title="Song", artists=["Artist"], album="Album")
+    context = Context(media_info=media)
+
+    assert validate_event_payload(
+        EventType.DownloadAdded,
+        {"hash": "music-hash", "context": context},
+    ) == ()
+    assert validate_event_payload(
+        EventType.TransferComplete,
+        {"mediainfo": media},
+    ) == ()
+
+
+def test_snapshot_contract_metadata_declares_mutable_chain_boundaries() -> None:
+    """核心链式事件公开快照输入输出模型，但仍处于兼容诊断模式。"""
+    selection = get_event_contract(ChainEventType.ResourceSelection)
+    download = get_event_contract(ChainEventType.ResourceDownload)
+
+    assert selection.schema_version == 1
+    assert selection.payload_mode.value == "snapshot"
+    assert selection.input_model is ResourceSelectionInputContractData
+    assert selection.output_model is ResourceSelectionOutputContractData
+    assert download.input_model is ResourceDownloadInputContractData
+    assert download.output_model is ResourceDownloadOutputContractData
+    assert selection.validation_mode.value == "diagnostic"
 
 
 def test_model_instance_remains_mutable_chain_payload() -> None:

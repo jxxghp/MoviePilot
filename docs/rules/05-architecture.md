@@ -536,6 +536,7 @@ Durable post-commit side effects have a separate boundary:
 | `app/runtime/event/binding.py` | Explicit module/plugin/host handler resolvers; unresolved classes are diagnosed and skipped, never implicitly constructed by the bus |
 | `app/runtime/event/dispatch.py` | Chain/broadcast ordering, concurrency, target-plugin filtering and isolated delivery |
 | `app/runtime/event/errors.py` | Handler failure notification and non-recursive `SystemError` downgrade policy |
+| `app/runtime/event/snapshot.py` | Read-only typed payload snapshots for the plugin SDK; never mutates or replaces the event ABI |
 | `app/runtime/extensions/module/dispatcher.py` | Plugin-first invocation, short-circuit, list merge, signature relay and sync/async execution |
 | `app/runtime/extensions/module/contracts.py` | High-frequency method families and frozen legacy fallback contract |
 | `app/application/chain/context.py` | Injectable Chain dependencies and no-argument compatibility provider |

@@ -7,26 +7,29 @@ import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
 from queue import Empty, PriorityQueue
-from typing import Callable, Dict, List, Optional, Tuple, Union, Any, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from app.runtime.config import global_vars
-from app.runtime.thread import ThreadHelper
-from app.runtime.log import logger
-from app.schemas.event import ChainEventData
-from app.schemas.types import ChainEventType, EventType
-from app.runtime.rate import ExponentialBackoffRateLimiter
 from app.foundation.singleton import Singleton
+from app.runtime.config import global_vars
+from app.runtime.correlation import get_correlation_id
 from app.runtime.event.binding import (
     EventBindingResolver,
     EventHandlerBinding,
     HandlerInstanceResolver,
 )
+from app.runtime.event.contracts import normalize_event_type, validate_event_payload
 from app.runtime.event.dispatch import EventDispatcher
 from app.runtime.event.errors import EventErrorNotifier, EventErrorPolicy
 from app.runtime.event.registry import EventRegistry
-from app.runtime.event.contracts import normalize_event_type, validate_event_payload
-from app.runtime.correlation import get_correlation_id
+from app.runtime.log import logger
 from app.runtime.observability import record_metric
+from app.runtime.rate import ExponentialBackoffRateLimiter
+from app.runtime.thread import ThreadHelper
+from app.schemas.event import ChainEventData
+from app.schemas.types import ChainEventType, EventType
+
+if TYPE_CHECKING:
+    from app.runtime.event.snapshot import EventPayloadSnapshot
 
 DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
 MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
@@ -83,6 +86,12 @@ class Event:
         event_kind = Event.get_event_kind(self.event_type)
         event_name = getattr(self.event_type, "value", self.event_type)
         return f"<{event_kind}: {event_name}, ID: {self.event_id}, Priority: {self.priority}>"
+
+    def snapshot(self) -> "EventPayloadSnapshot":
+        """返回插件可安全读取的类型化 payload 快照，原始 event_data 保持不变。"""
+        from app.runtime.event.snapshot import snapshot_event_data
+
+        return snapshot_event_data(self.event_type, self.event_data)
 
     def __lt__(self, other):
         """

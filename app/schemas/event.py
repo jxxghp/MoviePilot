@@ -1,14 +1,89 @@
+from collections.abc import Mapping as _Mapping
+from enum import Enum as _Enum
 from pathlib import Path
-from typing import Iterable, Optional, Dict, Any, List, Set, Callable
+from typing import Annotated as _Annotated
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
+from typing import Union as _Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BeforeValidator as _BeforeValidator
 
 from app.schemas.common import JsonData
-from app.schemas.types import MediaType, NotificationChannel
+from app.schemas.context import Context as _ContextSnapshotBase
+from app.schemas.context import MediaInfo as _MediaInfoSnapshot
+from app.schemas.context import MetaInfo as _MetaInfoSnapshot
 from app.schemas.file import FileItem
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
+from app.schemas.music import MusicInfo as _MusicInfoSnapshot
+from app.schemas.music import MusicMeta as _MusicMetaSnapshot
+from app.schemas.subscribe import Subscribe as _SubscribeSnapshot
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import MediaSource
+from app.schemas.types import MediaSource, MediaType, NotificationChannel
+
+JsonValue = JsonData
+"""事件扩展字段允许的 JSON 值类型。"""
+
+
+def _coerce_event_snapshot(value: Any) -> Any:
+    """把旧运行时对象转换为只用于契约校验的可读取快照。"""
+    if isinstance(value, BaseModel):
+        value = value.model_dump(mode="python")
+    elif hasattr(value, "to_dict") and callable(value.to_dict):
+        value = value.to_dict()
+    elif isinstance(value, _Enum):
+        return value.value
+    elif isinstance(value, Path):
+        return value.as_posix()
+    if isinstance(value, _Mapping):
+        return {str(key): _coerce_event_snapshot(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_coerce_event_snapshot(item) for item in value]
+    return value
+
+
+EventJsonValue = _Annotated[JsonValue, _BeforeValidator(_coerce_event_snapshot)]
+MediaSnapshot = _Annotated[
+    _Union[_MusicInfoSnapshot, _MediaInfoSnapshot],
+    _BeforeValidator(_coerce_event_snapshot),
+]
+MetaSnapshot = _Annotated[
+    _Union[_MusicMetaSnapshot, _MetaInfoSnapshot],
+    _BeforeValidator(_coerce_event_snapshot),
+]
+
+
+class ContextSnapshot(_ContextSnapshotBase):
+    """资源上下文的稳定事件快照，不替换链路中的运行时 Context。"""
+
+    allowed_episodes: Optional[Set[int]] = None
+
+    model_config = ConfigDict(
+        extra="allow",
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_runtime_context(cls, value: Any) -> Any:
+        """允许旧 Context/dataclass 进入校验，同时保持原对象继续投递。"""
+        return _coerce_event_snapshot(value)
+
+
+class FileContextSnapshot(BaseModel):
+    """音乐批次中单个文件的元数据上下文快照。"""
+
+    path: str
+    meta: Optional[MetaSnapshot] = None
+    mediainfo: Optional[MediaSnapshot] = None
+
+    model_config = ConfigDict(extra="allow", from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_runtime_context(cls, value: Any) -> Any:
+        """把旧文件上下文对象转换成可验证的字典。"""
+        return _coerce_event_snapshot(value)
 
 
 class Event(BaseModel):
@@ -26,7 +101,7 @@ class BaseEventData(BaseModel):
     事件数据的基类，所有具体事件数据类应继承自此类
     """
 
-    pass
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
 class ExtensibleEventData(BaseEventData):
@@ -249,7 +324,130 @@ class ChainEventData(BaseEventData):
     链式事件数据的基类，所有具体事件数据类应继承自此类
     """
 
-    pass
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+
+
+class ResourceSelectionContractData(ChainEventData):
+    """ResourceSelection 的稳定输入/输出契约。"""
+
+    contexts: List[ContextSnapshot] = Field(default_factory=list)
+    downloader: Optional[str] = None
+    origin: Optional[str] = None
+    updated: bool = False
+    updated_contexts: Optional[List[ContextSnapshot]] = None
+    source: Optional[str] = "未知拦截源"
+
+
+class ResourceSelectionInputContractData(ChainEventData):
+    """ResourceSelection 事件输入字段。"""
+
+    contexts: List[ContextSnapshot] = Field(default_factory=list)
+    downloader: Optional[str] = None
+    origin: Optional[str] = None
+
+
+class ResourceSelectionOutputContractData(ChainEventData):
+    """ResourceSelection 事件插件回写字段。"""
+
+    updated: bool = False
+    updated_contexts: Optional[List[ContextSnapshot]] = None
+    source: Optional[str] = "未知拦截源"
+
+
+class ResourceDownloadContractData(ChainEventData):
+    """ResourceDownload 的稳定输入/输出契约。"""
+
+    context: Optional[ContextSnapshot] = None
+    episodes: Optional[Set[int]] = None
+    channel: Optional[NotificationChannel] = None
+    origin: Optional[str] = None
+    downloader: Optional[str] = None
+    options: Optional[Dict[str, EventJsonValue]] = None
+    cancel: bool = False
+    source: str = "未知拦截源"
+    reason: str = ""
+
+
+class ResourceDownloadInputContractData(ChainEventData):
+    """ResourceDownload 事件输入字段。"""
+
+    context: Optional[ContextSnapshot] = None
+    episodes: Optional[Set[int]] = None
+    channel: Optional[NotificationChannel] = None
+    origin: Optional[str] = None
+    downloader: Optional[str] = None
+    options: Optional[Dict[str, EventJsonValue]] = None
+
+
+class ResourceDownloadOutputContractData(ChainEventData):
+    """ResourceDownload 事件插件回写字段。"""
+
+    cancel: bool = False
+    source: str = "未知拦截源"
+    reason: str = ""
+
+
+class DownloadAddedContractData(BaseEventData):
+    """DownloadAdded 的稳定下载上下文契约。"""
+
+    hash: str
+    context: ContextSnapshot
+    username: Optional[str] = None
+    downloader: Optional[str] = None
+    episodes: List[int] = Field(default_factory=list)
+    source: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+class TransferResultContractData(BaseEventData):
+    """整理结果事件的稳定媒体与元数据契约。"""
+
+    fileitem: Optional[FileItem] = None
+    meta: Optional[MetaSnapshot] = None
+    mediainfo: Optional[MediaSnapshot] = None
+    transferinfo: Optional[TransferInfo] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    transfer_history_id: Optional[int] = None
+    idempotency_key: Optional[str] = None
+
+
+class MetadataScrapeContractData(ExtensibleEventData):
+    """MetadataScrape 的稳定媒体刮削契约。"""
+
+    fileitem: FileItem
+    file_list: List[str] = Field(default_factory=list)
+    meta: Optional[MetaSnapshot] = None
+    mediainfo: Optional[MediaSnapshot] = None
+    overwrite: bool = False
+    file_contexts: List[FileContextSnapshot] = Field(default_factory=list)
+
+
+class SubscribeCompletionCheckContractData(ChainEventData):
+    """订阅完成判定的稳定订阅、媒体和元数据契约。"""
+
+    subscribe: Optional[_SubscribeSnapshot] = None
+    mediainfo: Optional[MediaSnapshot] = None
+    meta: Optional[MetaSnapshot] = None
+    cancel: bool = False
+    source: str = "未知来源"
+    reason: str = ""
+
+
+class SubscribeCompletionCheckInputContractData(ChainEventData):
+    """SubscribeCompletionCheck 事件输入字段。"""
+
+    subscribe: Optional[_SubscribeSnapshot] = None
+    mediainfo: Optional[MediaSnapshot] = None
+    meta: Optional[MetaSnapshot] = None
+
+
+class SubscribeCompletionCheckOutputContractData(ChainEventData):
+    """SubscribeCompletionCheck 事件插件回写字段。"""
+
+    cancel: bool = False
+    source: str = "未知来源"
+    reason: str = ""
 
 
 class PluginDataResetEventData(ChainEventData):
