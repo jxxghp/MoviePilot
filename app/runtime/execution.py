@@ -2,8 +2,8 @@ import asyncio
 import inspect
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, wait
-from contextvars import copy_context
+from concurrent.futures import Executor, Future, ThreadPoolExecutor, wait
+from contextvars import Context, copy_context
 from functools import partial, wraps
 from typing import Any, Callable, TypeVar, cast
 
@@ -13,6 +13,24 @@ from anyio.to_thread import run_sync
 
 TaskResult = TypeVar("TaskResult")
 ExecutorResult = TypeVar("ExecutorResult")
+
+
+def submit_with_context(
+        executor: Executor,
+        func: Callable[..., ExecutorResult],
+        /,
+        *args: Any,
+        **kwargs: Any,
+) -> Future[ExecutorResult]:
+    """从空线程上下文提交任务，并在执行时恢复调用方的独立上下文快照。"""
+    context = copy_context()
+    return Context().run(
+        executor.submit,
+        context.run,
+        func,
+        *args,
+        **kwargs,
+    )
 
 
 class OwnedThreadPoolExecutor(ThreadPoolExecutor):

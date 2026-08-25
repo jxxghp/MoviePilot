@@ -2,9 +2,11 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.adapters.network.http import RequestUtils
 from app.chain.search import SearchChain
 from app.modules.indexer import IndexerModule
 from app.runtime.config import settings
+from app.runtime.correlation import CORRELATION_ID_HEADER, correlation_scope
 
 
 def make_chain() -> SearchChain:
@@ -65,6 +67,46 @@ def test_search_invokes_plugin_once_with_multiple_indexers():
     assert len(plugin_calls) == 1
     assert sorted(call["site"]["id"] for call in site_calls) == [1, 2]
     assert len(results) == 3
+
+
+def test_sync_site_search_propagates_request_context():
+    """同步站点 worker 的出站请求头应保留触发搜索的关联 ID。"""
+    chain = make_chain()
+    observed_headers = []
+    chain.search_plugin_torrents = lambda **_kwargs: []
+
+    def search_site_torrents(**_kwargs):
+        RequestUtils().get_res("https://indexer.example/search")
+        return []
+
+    def request(_method, _url, **kwargs):
+        observed_headers.append(kwargs["headers"])
+        return object()
+
+    chain.search_site_torrents = search_site_torrents
+
+    with (
+        patch.object(settings, "SEARCH_RESOURCE_PAGES", 1, create=True),
+        patch("app.adapters.network.http.requests.request", side_effect=request),
+        patch("app.chain.search.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.SitesHelper") as sites_helper,
+        patch("app.chain.search.ProgressHelper") as progress_helper,
+    ):
+        system_config_oper.return_value.get.return_value = [1, 2]
+        sites_helper.return_value.get_indexers.return_value = [
+            {"id": 1, "name": "站点一"},
+            {"id": 2, "name": "站点二"},
+        ]
+        progress_helper.return_value = SimpleNamespace(
+            start=lambda: None, update=lambda **_kwargs: None, end=lambda: None
+        )
+        with correlation_scope("search-request"):
+            chain._SearchChain__search_all_sites(keyword="keyword")
+
+    assert [headers[CORRELATION_ID_HEADER] for headers in observed_headers] == [
+        "search-request",
+        "search-request",
+    ]
 
 
 def test_async_search_returns_plugin_results_without_indexers():

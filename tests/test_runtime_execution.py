@@ -2,6 +2,9 @@
 
 import asyncio
 import ast
+import json
+import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -39,6 +42,42 @@ def test_host_uses_canonical_threadpool_boundary() -> None:
                 violations.append(f"{relative_path}:{node.lineno}")
 
     assert violations == []
+
+
+@pytest.mark.parametrize("inherit_context", [0, 1])
+def test_submit_with_context_is_independent_of_thread_inheritance(
+    inherit_context: int,
+) -> None:
+    """线程继承开关不得改变逐任务快照，worker 也不得保留首个请求状态。"""
+    script = """
+import json
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
+
+from app.runtime.execution import submit_with_context
+
+request_id = ContextVar("request_id", default=None)
+executor = ThreadPoolExecutor(max_workers=1)
+observed = []
+for value in ("first", "second"):
+    token = request_id.set(value)
+    try:
+        observed.append(submit_with_context(executor, request_id.get).result())
+    finally:
+        request_id.reset(token)
+observed.append(executor.submit(request_id.get).result())
+executor.shutdown()
+print(json.dumps(observed))
+"""
+
+    completed = subprocess.run(
+        [sys.executable, "-X", f"thread_inherit_context={inherit_context}", "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(completed.stdout) == ["first", "second", None]
 
 
 def test_plugin_file_adapters_share_runtime_completion_contract() -> None:

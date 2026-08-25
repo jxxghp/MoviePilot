@@ -11,7 +11,7 @@ from typing import AsyncIterator, Any, Awaitable, Callable, Dict, Iterable, Tupl
 from typing import List, Optional
 from unicodedata import normalize
 
-from app.runtime.execution import run_in_threadpool
+from app.runtime.execution import run_in_threadpool, submit_with_context
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.runtime.config import global_vars
@@ -1291,7 +1291,11 @@ class SearchChain(ChainBase):
             )
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 all_tasks = {
-                    executor.submit(__do_site_filter, site_torrent_list): site_key
+                    submit_with_context(
+                        executor,
+                        __do_site_filter,
+                        site_torrent_list,
+                    ): site_key
                     for site_key, site_torrent_list in site_torrents.items()
                 }
                 for future in as_completed(all_tasks):
@@ -2365,10 +2369,14 @@ class SearchChain(ChainBase):
                 search_page = search_pages[page_index]
                 # 关键字已按 area 统一解析（imdbid 场景使用 imdb 标识），站点调用无需再分支
                 search_keyword = mediainfo.imdb_id if area == "imdbid" and mediainfo else keyword
-                task = executor.submit(self.search_site_torrents, site=site,
-                                       keyword=search_keyword,
-                                       mtype=mediainfo.type if mediainfo else mtype,
-                                       page=search_page)
+                task = submit_with_context(
+                    executor,
+                    self.search_site_torrents,
+                    site=site,
+                    keyword=search_keyword,
+                    mtype=mediainfo.type if mediainfo else mtype,
+                    page=search_page,
+                )
                 pending_tasks[task] = (site, page_index, search_page, search_keyword)
 
             for site in indexer_sites:

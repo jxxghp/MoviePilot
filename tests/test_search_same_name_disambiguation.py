@@ -4,6 +4,7 @@ from app.chain import search as search_module
 from app.chain.search import SearchChain
 from app.domain.context import MediaInfo, TorrentInfo
 from app.schemas.types import MediaSource, MediaType
+from app.runtime.correlation import correlation_scope, get_correlation_id
 
 
 def test_exact_search_rejects_no_year_alias_recognized_as_different_work(monkeypatch):
@@ -102,3 +103,52 @@ def test_exact_search_reuses_disambiguation_for_same_parsed_title(monkeypatch):
 
     assert len(contexts) == 2
     media_chain.recognize_by_meta.assert_called_once()
+
+
+def test_parallel_filter_propagates_request_context(monkeypatch):
+    """按站点并行过滤时，每个 worker 都应保留触发解析的关联 ID。"""
+    target = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="1",
+        title="测试电影",
+        type=MediaType.MOVIE,
+        year="2024",
+    )
+    torrents = [
+        TorrentInfo(
+            site=index,
+            site_name=f"测试站点{index}",
+            title=f"测试电影 2024 1080p GROUP-{index}",
+            category=MediaType.MOVIE.value,
+        )
+        for index in (1, 2)
+    ]
+    observed = []
+
+    def filter_torrent(_self, _torrent, _filter_params):
+        observed.append(get_correlation_id())
+        return True
+
+    monkeypatch.setattr(search_module.TorrentHelper, "filter_torrent", filter_torrent)
+    monkeypatch.setattr(
+        search_module.TorrentHelper,
+        "match_torrent",
+        staticmethod(lambda **_kwargs: True),
+    )
+    monkeypatch.setattr(
+        search_module.TorrentHelper,
+        "sort_torrents",
+        staticmethod(lambda contexts: contexts),
+    )
+    chain = object.__new__(SearchChain)
+
+    with correlation_scope("filter-request"):
+        contexts = chain._SearchChain__parse_result(
+            torrents=torrents,
+            mediainfo=target,
+            rule_groups=[],
+            filter_params={"free": "true"},
+        )
+
+    assert len(contexts) == 2
+    assert observed == ["filter-request", "filter-request"]
