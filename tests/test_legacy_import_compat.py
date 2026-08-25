@@ -168,8 +168,8 @@ def test_manifest_aliases_reuse_real_canonical_modules():
 import importlib
 from app.runtime.compat.manifest import MODULE_ALIASES
 # 独立探针不经过 pytest 引导，先隔离站点原生制品再校验兼容映射。
-from app.testing.bootstrap import install_sites_stub
-install_sites_stub()
+from app.testing.bootstrap import ensure_sites_stub
+ensure_sites_stub()
 
 for legacy_name, alias in MODULE_ALIASES.items():
     try:

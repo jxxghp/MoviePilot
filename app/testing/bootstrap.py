@@ -122,7 +122,7 @@ def _expose_plugin_source(path: Path) -> None:
         plugins_package.__path__.insert(0, value)
 
 
-def install_sites_stub() -> None:
+def ensure_sites_stub() -> None:
     """安装确定性的站点资源垫片，隔离本机动态资源及其平台 ABI 差异。
 
     站点扩展由独立资源仓按平台下发，不属于普通单测的输入。主程序与各代插件测试必须在导入
@@ -172,7 +172,7 @@ def prepare_backend() -> None:
     ``init_db`` 仅 import models + create_all，无 alembic/网络、幂等、毫秒级。
     """
     isolate_config_dir()
-    install_sites_stub()
+    ensure_sites_stub()
     from app.startup.initializers.database import init_db
     init_db()
     from app.db.adapters.transaction import TransactionalWriteRunner

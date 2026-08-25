@@ -15,8 +15,8 @@ def test_main_script_does_not_shadow_stdlib_platform(tmp_path):
             "import runpy",
             "import sys",
             # 独立探针不经过 pytest 引导，先隔离站点原生制品，再改变模块搜索路径。
-            "from app.testing.bootstrap import install_sites_stub",
-            "install_sites_stub()",
+            "from app.testing.bootstrap import ensure_sites_stub",
+            "ensure_sites_stub()",
             f"sys.path.insert(0, {str(MAIN_PATH.parent)!r})",
             "sys.modules.pop('platform', None)",
             f"runpy.run_path({str(MAIN_PATH)!r}, run_name='pycharm_main_probe')",

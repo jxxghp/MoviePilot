@@ -303,8 +303,8 @@ assert not any(name.startswith('app.doctor.') for name in sys.modules)
 assert not any(name.startswith('app.monitor.') for name in sys.modules)
 
 # 独立子进程不经过 pytest 引导，触发实现加载前必须隔离站点原生制品。
-from app.testing.bootstrap import install_sites_stub
-install_sites_stub()
+from app.testing.bootstrap import ensure_sites_stub
+ensure_sites_stub()
 
 from app.doctor import DoctorRunner, run_doctor
 from app.doctor.runner import DoctorRunner as DirectDoctorRunner

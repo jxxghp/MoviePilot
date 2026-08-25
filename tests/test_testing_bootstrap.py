@@ -9,13 +9,13 @@ from pathlib import Path
 from app.testing import bootstrap
 
 
-def test_install_sites_stub_replaces_loaded_dynamic_resource(monkeypatch):
+def test_ensure_sites_stub_replaces_loaded_dynamic_resource(monkeypatch):
     """隔离探针必须覆盖本机资源模块，保证 source-only CI 与开发机前提一致。"""
     real_module = types.ModuleType("app.application.site.sites")
     real_module.SitesHelper = object
     monkeypatch.setitem(sys.modules, "app.application.site.sites", real_module)
 
-    bootstrap.install_sites_stub()
+    bootstrap.ensure_sites_stub()
 
     installed = sys.modules["app.application.site.sites"]
     assert installed is not real_module

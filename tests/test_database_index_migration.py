@@ -69,10 +69,10 @@ IDENTITY_INDEX_SIGNATURES = {
 
 
 CURRENT_SCHEMA_CHAIN_SCRIPT = """
-from app.testing.bootstrap import install_sites_stub
+from app.testing.bootstrap import ensure_sites_stub
 
 # Alembic 会导入引用业务链的旧 revision，迁移验证不应加载本机站点原生制品。
-install_sites_stub()
+ensure_sites_stub()
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
