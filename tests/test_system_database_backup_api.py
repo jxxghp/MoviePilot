@@ -9,9 +9,12 @@ from threading import Event
 from types import SimpleNamespace
 
 import pytest
+import httpx
+from fastapi import FastAPI
 from fastapi import HTTPException
 
 from app.api.endpoints import system as system_endpoint
+from app.api.dependencies.auth import get_current_active_superuser_async
 from app.application.backup import (
     BackupVerification,
     DatabaseBackupInProgressError,
@@ -23,10 +26,10 @@ class _Governance:
 
     def __init__(self) -> None:
         self.artifact = SimpleNamespace(
-            name="sqlite_20260825_120000.db",
+            name="moviepilot_v3.0.0_sqlite_20260825_120000.db",
             db_type="sqlite",
             created_at=datetime(2026, 8, 25, 12, 0, 0),
-            path=Path("/private/database_backup/sqlite_20260825_120000.db"),
+            path=Path("/private/database_backup/moviepilot_v3.0.0_sqlite_20260825_120000.db"),
             size=4096,
         )
 
@@ -41,6 +44,12 @@ class _Governance:
             raise ValueError("数据库备份文件名不能包含路径")
         return BackupVerification(True, "PRAGMA integrity_check", "private detail")
 
+    def delete_backup(self, name: str):
+        if "/" in name:
+            raise ValueError("数据库备份文件名不能包含路径")
+        if name == "missing.db":
+            raise FileNotFoundError(name)
+
 
 @pytest.mark.asyncio
 async def test_list_database_backups_maps_public_fields(monkeypatch) -> None:
@@ -51,7 +60,7 @@ async def test_list_database_backups_maps_public_fields(monkeypatch) -> None:
 
     assert [item.model_dump() for item in result] == [
         {
-            "name": "sqlite_20260825_120000.db",
+            "name": "moviepilot_v3.0.0_sqlite_20260825_120000.db",
             "db_type": "sqlite",
             "created_at": datetime(2026, 8, 25, 12, 0, 0),
             "size": 4096,
@@ -89,6 +98,45 @@ async def test_verify_database_backup_rejects_path_input(monkeypatch) -> None:
 
     assert error.value.status_code == 400
     assert error.value.detail == "数据库备份文件名无效"
+
+
+@pytest.mark.asyncio
+async def test_delete_database_backup_accepts_only_managed_name(monkeypatch) -> None:
+    governance = _Governance()
+    monkeypatch.setattr(system_endpoint, "get_database_governance", lambda: governance)
+
+    response = await system_endpoint.delete_database_backup(
+        governance.artifact.name,
+        _=object(),
+    )
+
+    assert response.success is True
+
+    with pytest.raises(HTTPException) as invalid:
+        await system_endpoint.delete_database_backup("../user.db", _=object())
+    assert invalid.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_delete_database_backup_uses_host_response_envelope(monkeypatch) -> None:
+    """Web 客户端必须收到统一响应，不能把成功删除误判为空响应错误。"""
+    governance = _Governance()
+    monkeypatch.setattr(system_endpoint, "get_database_governance", lambda: governance)
+    app = FastAPI()
+    app.include_router(system_endpoint.router, prefix="/api/v1/system")
+    app.dependency_overrides[get_current_active_superuser_async] = lambda: object()
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.delete(
+            f"/api/v1/system/database/backups/{governance.artifact.name}"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True, "message": "", "data": None}
 
 
 @pytest.mark.asyncio

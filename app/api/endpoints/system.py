@@ -84,7 +84,7 @@ from app.adapters.system.update import system_update_manager
 from app.application.security.url import SecurityUtils
 from app.application.network import NetworkTestService
 from app.foundation.url import UrlUtils
-from version import APP_VERSION
+from app.runtime.version import get_app_version, get_frontend_version
 
 router = ResponseAPIRouter()
 
@@ -774,8 +774,8 @@ def get_global_setting(token: str):
     # 追加版本信息（用于版本检查）
     info.update(
         {
-            "FRONTEND_VERSION": SystemChain.get_frontend_version(),
-            "BACKEND_VERSION": APP_VERSION,
+            "FRONTEND_VERSION": get_frontend_version(),
+            "BACKEND_VERSION": get_app_version(),
         }
     )
     # 仅在后端开发模式下返回该标记，避免生产环境暴露无意义运行态信息
@@ -895,6 +895,31 @@ async def verify_database_backup(
     )
 
 
+@router.delete(
+    "/database/backups/{name}",
+    summary="删除受管数据库备份",
+    response_model=_SchemaResponse[None],
+)
+async def delete_database_backup(
+    name: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> _SchemaResponse[None]:
+    """删除一个受管制品，只接受备份目录内的合法文件名。"""
+    try:
+        await run_in_threadpool_to_completion(
+            get_database_governance().delete_backup,
+            name,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="数据库备份文件名无效") from error
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="数据库备份不存在") from error
+    except Exception as error:
+        logger.exception("删除数据库备份失败：%s", name)
+        raise HTTPException(status_code=500, detail="删除数据库备份失败，请查看日志") from error
+    return _SchemaResponse(success=True)
+
+
 @router.get(
     "/env",
     summary="查询系统配置",
@@ -911,10 +936,10 @@ async def get_env_setting(
     )
     info.update(
         {
-            "VERSION": APP_VERSION,
+            "VERSION": get_app_version(),
             "AUTH_VERSION": SitesHelper().auth_version,
             "INDEXER_VERSION": SitesHelper().indexer_version,
-            "FRONTEND_VERSION": SystemChain().get_frontend_version(),
+            "FRONTEND_VERSION": get_frontend_version(),
             "RUST_ACCEL": rust_accel.is_config_enabled(),
             "RUST_ACCEL_AVAILABLE": rust_accel.is_available(),
             "RUST_ACCEL_ENABLED": rust_accel.is_enabled(),

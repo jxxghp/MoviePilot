@@ -43,10 +43,10 @@ def test_doctor_reports_valid_backup_when_sqlite_database_is_corrupt(
     (tmp_path / "user.db").write_bytes(b"not a sqlite database")
     backup_dir = settings.DATABASE_BACKUP_PATH
     backup_dir.mkdir(parents=True)
-    backup = backup_dir / "sqlite_20260822_030000.db"
+    backup = backup_dir / "moviepilot_v3.0.0_sqlite_20260822_030000.db"
     with sqlite3.connect(backup) as connection:
         connection.execute("CREATE TABLE entries (value TEXT NOT NULL)")
-    (backup_dir / "sqlite_20260822_040000.db").write_bytes(b"invalid newer backup")
+    (backup_dir / "moviepilot_v3.0.0_sqlite_20260822_040000.db").write_bytes(b"invalid newer backup")
 
     runner = DoctorRunner()
     checks._check_database(runner)
@@ -58,7 +58,7 @@ def test_doctor_reports_valid_backup_when_sqlite_database_is_corrupt(
     assert finding.context["backups"][0]["valid"] is False
     assert finding.context["backups"][1]["valid"] is True
     assert finding.context["restore_command"] == (
-        "moviepilot database restore sqlite_20260822_030000.db --confirm"
+        "moviepilot database restore moviepilot_v3.0.0_sqlite_20260822_030000.db --confirm"
     )
     assert finding.context["restore_command"] in finding.recommendation
 
@@ -74,13 +74,13 @@ def test_doctor_distinguishes_missing_and_mismatched_backups(tmp_path, monkeypat
 
     backup_dir = settings.DATABASE_BACKUP_PATH
     backup_dir.mkdir(parents=True)
-    (backup_dir / "postgresql_20260822_030000.dump").write_bytes(b"PGDMP")
+    (backup_dir / "moviepilot_v3.0.0_postgresql_20260822_030000.dump").write_bytes(b"PGDMP")
     runner = DoctorRunner()
     checks._check_database_backups(runner)
     mismatched = runner.report.find("database.backup_recovery")
     assert mismatched is not None
     assert mismatched.status == DoctorFindingStatus.Degraded
-    assert mismatched.context["mismatched"] == ["postgresql_20260822_030000.dump"]
+    assert mismatched.context["mismatched"] == ["moviepilot_v3.0.0_postgresql_20260822_030000.dump"]
 
 
 def test_doctor_reports_invalid_backup_without_modifying_it(tmp_path, monkeypatch):
@@ -88,7 +88,7 @@ def test_doctor_reports_invalid_backup_without_modifying_it(tmp_path, monkeypatc
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     backup_dir = settings.DATABASE_BACKUP_PATH
     backup_dir.mkdir(parents=True)
-    backup = backup_dir / "sqlite_20260822_030000.db"
+    backup = backup_dir / "moviepilot_v3.0.0_sqlite_20260822_030000.db"
     original = b"invalid sqlite backup"
     backup.write_bytes(original)
 
@@ -113,7 +113,7 @@ def test_doctor_exposes_missing_pg_restore_in_text_finding(tmp_path, monkeypatch
     monkeypatch.setattr(settings, "DB_TYPE", "postgresql")
     backup_dir = settings.DATABASE_BACKUP_PATH
     backup_dir.mkdir(parents=True)
-    (backup_dir / "postgresql_20260822_030000.dump").write_bytes(b"PGDMP")
+    (backup_dir / "moviepilot_v3.0.0_postgresql_20260822_030000.dump").write_bytes(b"PGDMP")
     monkeypatch.setattr(checks, "verify_database_backup", missing_pg_restore)
 
     runner = DoctorRunner()

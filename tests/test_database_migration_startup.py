@@ -437,7 +437,7 @@ def downgrade():
 
     db_init.prepare_database()
 
-    artifacts = sorted((tmp_path / "backups").glob("sqlite_*.db"))
+    artifacts = sorted((tmp_path / "backups").glob("moviepilot_*_sqlite_*.db"))
     assert len(artifacts) == 1
     with create_engine(f"sqlite:///{artifacts[0]}").connect() as connection:
         backup_revision = connection.execute(

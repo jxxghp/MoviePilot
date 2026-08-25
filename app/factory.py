@@ -41,7 +41,7 @@ from app.schemas.openai import (
 from app.schemas.mcp import McpJsonRpcError, McpJsonRpcErrorDetail
 from app.schemas.response import Response as ApiResponse, ValidationIssue
 from app.startup.lifecycle import lifespan
-from version import APP_VERSION
+from app.runtime.version import get_app_version
 
 
 def _get_http_exception_message(detail: Any) -> str:
@@ -328,7 +328,7 @@ def create_app() -> FastAPI:
     configure_observation(build_observation_port())
     _app = FastAPI(
         title=settings.PROJECT_NAME,
-        version=APP_VERSION,
+        version=get_app_version(),
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         lifespan=lifespan
     )

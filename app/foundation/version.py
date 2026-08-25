@@ -1,5 +1,9 @@
+"""历史版本比较规则。"""
+
 import re
 from typing import Optional, Tuple
+
+__all__ = ["compare_version"]
 
 
 _VERSION_LABELS = {"stable": -1, "rc": -2, "beta": -3, "alpha": -4}

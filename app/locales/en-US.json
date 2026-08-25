@@ -130,6 +130,7 @@
     "数据库备份文件名无效": "The database backup file name is invalid",
     "数据库备份不存在": "The database backup does not exist",
     "校验数据库备份失败，请查看日志": "Failed to verify the database backup. Check the logs for details",
+    "删除数据库备份失败，请查看日志": "Failed to delete the database backup. Check the logs for details",
     "记录不存在": "Record does not exist",
     "MoviePilot智能助手未启用": "MoviePilot Assistant is not enabled",
     "整理记录不存在": "Organization record does not exist",

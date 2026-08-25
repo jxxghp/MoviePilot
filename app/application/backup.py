@@ -137,6 +137,10 @@ class DatabaseBackupService:
         result = self._backend.verify(path)
         return BackupVerification(result.valid, result.method, result.detail)
 
+    def delete(self, name: str) -> None:
+        """删除一个受管数据库备份文件。"""
+        BackupFiles(self._policy_reader().root).delete(name)
+
     def restore(self, name: str) -> BackupArtifact:
         """校验后将受管制品还原到当前 CLI 解析出的离线数据库目标。"""
         path = BackupFiles(self._policy_reader().root).resolve(name)

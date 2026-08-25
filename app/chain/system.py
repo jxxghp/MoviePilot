@@ -14,7 +14,7 @@ from app.schemas.message import Message
 from app.schemas.notification import NotificationChannel
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
-from version import FRONTEND_VERSION, APP_VERSION
+from app.runtime import version as runtime_version
 
 
 class SystemChain(ChainBase):
@@ -313,8 +313,8 @@ class SystemChain(ChainBase):
         """
         server_release_version = self.__get_server_release_version()
         front_release_version = self.__get_front_release_version()
-        server_local_version = self.get_server_local_version()
-        front_local_version = self.get_frontend_version()
+        server_local_version = runtime_version.get_app_version()
+        front_local_version = runtime_version.get_frontend_version()
         if server_release_version == server_local_version:
             title = f"当前后端版本：{server_local_version}，已是最新版本\n"
         else:
@@ -417,26 +417,10 @@ class SystemChain(ChainBase):
 
     @staticmethod
     def get_server_local_version():
-        """
-        查看当前版本
-        """
-        return APP_VERSION
+        """返回当前后端构建版本。"""
+        return runtime_version.get_app_version()
 
     @staticmethod
     def get_frontend_version():
-        """
-        获取前端版本
-        """
-        if SystemUtils.is_frozen() and SystemUtils.is_windows():
-            config = get_chain_runtime_config_snapshot()
-            version_file = config.config_path.parent / "nginx" / "html" / "version.txt"
-        else:
-            version_file = get_chain_runtime_config_snapshot().frontend_path / "version.txt"
-        if version_file.exists():
-            try:
-                with open(version_file, 'r', encoding='utf-8', errors='replace') as f:
-                    version = str(f.read()).strip()
-                return version
-            except Exception as err:
-                logger.debug(f"加载版本文件 {version_file} 出错：{str(err)}")
-        return FRONTEND_VERSION
+        """返回当前部署的前端资源版本。"""
+        return runtime_version.get_frontend_version()

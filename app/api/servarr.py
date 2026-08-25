@@ -23,7 +23,7 @@ from app.api.dependencies.subscription import get_servarr_subscription_service
 from app.schemas.servarr import RadarrMovie
 from app.schemas.servarr import SonarrSeries
 from app.schemas.types import MediaSource, MediaType
-from version import APP_VERSION
+from app.runtime.version import get_app_version
 
 arr_router = APIRouter(tags=["servarr"], responses=ERROR_RESPONSES)
 
@@ -74,7 +74,7 @@ async def arr_system_status(
     return _SchemaServarrSystemStatus.model_validate({
         "appName": "MoviePilot",
         "instanceName": "moviepilot",
-        "version": APP_VERSION,
+        "version": get_app_version(),
         "buildTime": "",
         "isDebug": False,
         "isProduction": True,

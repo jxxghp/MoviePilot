@@ -55,6 +55,7 @@ def test_system_sensitive_read_endpoints_require_superuser():
     assert _dependency_of(system_endpoint.list_database_backups, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.create_database_backup, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.verify_database_backup, "_") is get_current_active_superuser_async
+    assert _dependency_of(system_endpoint.delete_database_backup, "_") is get_current_active_superuser_async
 
 
 def test_system_public_read_endpoints_require_active_user():

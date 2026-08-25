@@ -17,7 +17,7 @@ from app.doctor.models import (
     DoctorSeverity,
 )
 from app.adapters.system.host import SystemUtils
-from version import APP_VERSION
+from app.runtime.version import get_app_version
 
 
 class DoctorRunner:
@@ -36,7 +36,7 @@ class DoctorRunner:
         self.deep = deep
         self.report = DoctorReport(
             generated_at=datetime.now(),
-            version=APP_VERSION,
+            version=get_app_version(),
             environment=self._environment(),
         )
 
