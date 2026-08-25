@@ -1,4 +1,6 @@
 import re
+from dataclasses import dataclass, field
+from enum import Enum, auto
 from typing import Optional
 
 from Pinyin2Hanzi import is_pinyin
@@ -51,19 +53,69 @@ SOURCE_NAMES = {
 }
 
 
+class _VideoTokenKind(Enum):
+    """记录会影响后续词元判断的识别类型。"""
+
+    ENGLISH_NAME = auto()
+    CHINESE_NAME = auto()
+    NAME_SEASON_WORD = auto()
+    PART = auto()
+    YEAR = auto()
+    PIX = auto()
+    SEASON = auto()
+    SEASON_MARKER = auto()
+    EPISODE = auto()
+    EPISODE_MARKER = auto()
+    SOURCE = auto()
+    EFFECT = auto()
+    VIDEO_ENCODE = auto()
+    VIDEO_BIT = auto()
+    AUDIO_ENCODE = auto()
+    FPS = auto()
+
+
+@dataclass(slots=True)
+class _VideoParseState:
+    """保存一次视频标题解析中跨词元延续的状态。"""
+
+    token_index: int = 0
+    last_token: str = ""
+    last_kind: Optional[_VideoTokenKind] = None
+    stop_name: bool = False
+    stop_cn_name: bool = False
+    pending_name: str = ""
+    sources: list[str] = field(default_factory=list)
+    effects: list[str] = field(default_factory=list)
+
+    def advance(self) -> None:
+        """进入下一个由解析管线处理的词元。"""
+        self.token_index += 1
+
+    def remember(self, kind: _VideoTokenKind, token: Optional[str] = None) -> None:
+        """原子更新后续规则依赖的上一词元类型和值。"""
+        self.last_kind = kind
+        if token is not None:
+            self.last_token = token
+
+    def append_source(self, source: str) -> None:
+        """按出现顺序追加规范化资源类型并忽略重复项。"""
+        source_name = SOURCE_NAMES.get(source.upper(), source)
+        if source_name.casefold() not in {
+            item.casefold() for item in self.sources
+        }:
+            self.sources.append(source_name)
+
+    def replace_last_source(self, source: str, replacement: str) -> None:
+        """将拆分的资源类型前缀替换为完整规范名称。"""
+        if self.sources and self.sources[-1].casefold() == source.casefold():
+            self.sources.pop()
+        self.append_source(replacement)
+
+
 class MetaVideo(MetaBase):
     """
     识别电影、电视剧
     """
-    # 控制标位区
-    _stop_name_flag = False
-    _stop_cnname_flag = False
-    _last_token = ""
-    _last_token_type = ""
-    _continue_flag = True
-    _unknown_name_str = ""
-    _sources = []
-    _effect = []
     # 正则式区
     _season_re = r"S(\d{3})|^S(\d{1,3})$|S(\d{1,3})E"
     _episode_re = r"EP?(\d{2,4})$|^EP?(\d{1,4})$|^S\d{1,2}EP?(\d{1,4})$|S\d{2}EP?(\d{2,4})"
@@ -119,9 +171,7 @@ class MetaVideo(MetaBase):
         if not title:
             return
         original_title = title
-        self._sources = []
-        self._effect = []
-        self._index = 0
+        state = _VideoParseState()
         # 判断是否纯数字命名
         if isfile \
                 and title.isdigit() \
@@ -163,51 +213,14 @@ class MetaVideo(MetaBase):
         # 解析名称、年份、季、集、资源类型、分辨率等
         token = tokens.get_next()
         while token:
-            self._index += 1  # 更新当前处理的token索引
-            # Part
-            self.__init_part(token, tokens)
-            # 标题
-            if self._continue_flag:
-                self.__init_name(token, media_exts)
-            # 年份
-            if self._continue_flag:
-                self.__init_year(token)
-            # 分辨率
-            if self._continue_flag:
-                self.__init_resource_pix(token)
-            # 季
-            if self._continue_flag:
-                self.__init_season(token)
-            # 集
-            if self._continue_flag:
-                self.__init_episode(token)
-            # 资源类型
-            if self._continue_flag:
-                self.__init_resource_type(token)
-            # 流媒体平台
-            if self._continue_flag:
-                self.__init_web_source(token, tokens, streaming_platforms)
-            # 视频编码
-            if self._continue_flag:
-                self.__init_video_encode(token)
-            # 视频位深
-            if self._continue_flag:
-                self.__init_video_bit(token)
-            # 音频编码
-            if self._continue_flag:
-                self.__init_audio_encode(token)
-            # 帧率
-            if self._continue_flag:
-                self.__init_fps(token)
-            # 取下一个，直到没有为卡
+            state.advance()
+            self.__parse_token(token, tokens, streaming_platforms, media_exts, state)
             token = tokens.get_next()
-            self._continue_flag = True
         # 合成质量
-        if self._effect:
-            self._effect.reverse()
-            self.resource_effect = " ".join(self._effect)
-        if self._sources:
-            self.resource_type = " ".join(self._sources)
+        if state.effects:
+            self.resource_effect = " ".join(reversed(state.effects))
+        if state.sources:
+            self.resource_type = " ".join(state.sources)
         # 提取原盘DIY
         if self.resource_type and "BluRay" in self.resource_type:
             if (self.subtitle and DIY_RE.search(self.subtitle)) \
@@ -237,6 +250,39 @@ class MetaVideo(MetaBase):
         self.customization = CustomizationMatcher().match(title=original_title) or None
         if not self.video_bit:
             self.video_bit = self.extract_video_bit(self.video_encode)
+
+    def __parse_token(
+        self,
+        token: str,
+        tokens: Tokens,
+        streaming_platforms: StreamingPlatforms,
+        media_exts: list,
+        state: _VideoParseState,
+    ) -> None:
+        """按固定优先级处理单个词元，首个命中的阶段终止后续识别。"""
+        if self.__init_part(token, tokens, state):
+            return
+        if self.__init_name(token, media_exts, state):
+            return
+        if self.__init_year(token, state):
+            return
+        if self.__init_resource_pix(token, state):
+            return
+        if self.__init_season(token, state):
+            return
+        if self.__init_episode(token, state):
+            return
+        if self.__init_resource_type(token, state):
+            return
+        if self.__init_web_source(token, tokens, streaming_platforms, state):
+            return
+        if self.__init_video_encode(token, state):
+            return
+        if self.__init_video_bit(token, state):
+            return
+        if self.__init_audio_encode(token, state):
+            return
+        self.__init_fps(token, state)
 
     @staticmethod
     def __get_title_from_description(description: str) -> Optional[str]:
@@ -285,114 +331,119 @@ class MetaVideo(MetaBase):
                 name = None
         return name
 
-    def __init_name(self, token: Optional[str], media_exts: list):
+    def __init_name(
+        self,
+        token: Optional[str],
+        media_exts: list,
+        state: _VideoParseState,
+    ) -> bool:
         """
         识别名称
         """
         if not token:
-            return
+            return False
         # 回收标题
-        if self._unknown_name_str:
+        if state.pending_name:
             if not self.cn_name:
                 if not self.en_name:
-                    self.en_name = self._unknown_name_str
-                elif self._unknown_name_str != self.year:
-                    self.en_name = "%s %s" % (self.en_name, self._unknown_name_str)
-                self._last_token_type = "enname"
-            self._unknown_name_str = ""
-        if self._stop_name_flag:
-            return
+                    self.en_name = state.pending_name
+                elif state.pending_name != self.year:
+                    self.en_name = "%s %s" % (self.en_name, state.pending_name)
+                state.remember(_VideoTokenKind.ENGLISH_NAME)
+            state.pending_name = ""
+        if state.stop_name:
+            return False
         if token.upper() == "AKA":
-            self._continue_flag = False
-            self._stop_name_flag = True
-            return
+            state.stop_name = True
+            return True
         if token in self._name_se_words:
-            self._last_token_type = 'name_se_words'
-            return
+            state.remember(_VideoTokenKind.NAME_SEASON_WORD)
+            return False
         if text_tools.contains_chinese(token):
             # 含有中文，直接做为标题（连着的数字或者英文会保留），且不再取用后面出现的中文
-            self._last_token_type = "cnname"
+            state.remember(_VideoTokenKind.CHINESE_NAME)
             if not self.cn_name:
                 self.cn_name = token
-            elif not self._stop_cnname_flag:
+            elif not state.stop_cn_name:
                 if self._name_movie_words_pattern.search(token) \
                         or (not self._name_no_chinese_pattern.search(token)
                             and not any(w in token for w in self._name_se_words)):
                     self.cn_name = "%s %s" % (self.cn_name, token)
-                self._stop_cnname_flag = True
+                state.stop_cn_name = True
         else:
             is_roman_digit = self._roman_numerals_pattern.search(token)
             # 阿拉伯数字或者罗马数字
             if token.isdigit() or is_roman_digit:
                 # 第季集后面的不要
-                if self._last_token_type == 'name_se_words':
-                    return
+                if state.last_kind == _VideoTokenKind.NAME_SEASON_WORD:
+                    return False
                 if self.name:
                     # 名字后面以 0 开头的不要，极有可能是集
                     if token.startswith('0'):
-                        return
+                        return False
                     # 检查是否真正的数字
                     if token.isdigit():
                         try:
                             int(token)
                         except ValueError:
-                            return
+                            return False
                     # 中文名后面跟的数字不是年份的极有可能是集
                     if not is_roman_digit \
-                            and self._last_token_type == "cnname" \
+                            and state.last_kind == _VideoTokenKind.CHINESE_NAME \
                             and int(token) < 1900:
-                        return
+                        return False
                     if (token.isdigit() and len(token) < 4) or is_roman_digit:
                         # 4位以下的数字或者罗马数字，拼装到已有标题中
-                        if self._last_token_type == "cnname":
+                        if state.last_kind == _VideoTokenKind.CHINESE_NAME:
                             self.cn_name = "%s %s" % (self.cn_name, token)
-                        elif self._last_token_type == "enname":
+                        elif state.last_kind == _VideoTokenKind.ENGLISH_NAME:
                             self.en_name = "%s %s" % (self.en_name, token)
-                        self._continue_flag = False
+                        return True
                     elif token.isdigit() and len(token) == 4:
                         # 4位数字，可能是年份，也可能真的是标题的一部分，也有可能是集
-                        if not self._unknown_name_str:
-                            self._unknown_name_str = token
+                        if not state.pending_name:
+                            state.pending_name = token
                 else:
                     # 名字未出现前的第一个数字，记下来
-                    if not self._unknown_name_str:
-                        self._unknown_name_str = token
+                    if not state.pending_name:
+                        state.pending_name = token
             elif self._season_pattern.search(token):
                 # 季的处理
                 if self.en_name and SEASON_SUFFIX_RE.search(self.en_name):
                     # 如果匹配到季，英文名结尾为Season，说明Season属于标题，不应在后续作为干扰词去除
                     self.en_name += ' '
-                self._stop_name_flag = True
-                return
+                state.stop_name = True
+                return False
             elif self._episode_pattern.search(token) \
                     or self._resources_type_pattern.search(token) \
                     or self._resources_pix_pattern.search(token):
                 # 集、来源、版本等不要
-                self._stop_name_flag = True
-                return
+                state.stop_name = True
+                return False
             else:
                 # 后缀名不要
                 if ".%s".lower() % token in media_exts:
-                    return
+                    return False
                 # 英文或者英文+数字，拼装起来
                 if self.en_name:
                     self.en_name = "%s %s" % (self.en_name, token)
                 else:
                     self.en_name = token
-                self._last_token_type = "enname"
+                state.remember(_VideoTokenKind.ENGLISH_NAME)
+        return False
 
-    def __init_part(self, token: str, tokens: Tokens):
+    def __init_part(self, token: str, tokens: Tokens, state: _VideoParseState) -> bool:
         """
         识别Part
         """
         if not self.name:
-            return
+            return False
         if not self.year \
                 and self.begin_season is None \
                 and not self.begin_episode \
                 and not self.resource_pix \
                 and not self.resource_type:
-            return
+            return False
         re_res = self._part_pattern.search(token)
         if re_res:
             if not self.part:
@@ -403,22 +454,22 @@ class MetaVideo(MetaBase):
                          or nextv.upper() in ['A', 'B', 'C', 'I', 'II', 'III']):
                 self.part = "%s%s" % (self.part, nextv)
                 tokens.get_next()
-            self._last_token_type = "part"
-            self._continue_flag = False
-            # self._stop_name_flag = False
+            state.remember(_VideoTokenKind.PART)
+            return True
+        return False
 
-    def __init_year(self, token: str):
+    def __init_year(self, token: str, state: _VideoParseState) -> bool:
         """
         识别年份
         """
         if not self.name:
-            return
+            return False
         if not token.isdigit():
-            return
+            return False
         if len(token) != 4:
-            return
+            return False
         if not 1900 < int(token) < 2050:
-            return
+            return False
         if self.year:
             if self.en_name:
                 self.en_name = "%s %s" % (self.en_name.strip(), self.year)
@@ -428,21 +479,20 @@ class MetaVideo(MetaBase):
             # 如果匹配到年，且英文名结尾为Season，说明Season属于标题，不应在后续作为干扰词去除
             self.en_name += ' '
         self.year = token
-        self._last_token_type = "year"
-        self._continue_flag = False
-        self._stop_name_flag = True
+        state.remember(_VideoTokenKind.YEAR)
+        state.stop_name = True
+        return True
 
-    def __init_resource_pix(self, token: str):
+    def __init_resource_pix(self, token: str, state: _VideoParseState) -> bool:
         """
         识别分辨率
         """
         if not self.name:
-            return
+            return False
         re_res = self._resources_pix_pattern.findall(token)
         if re_res:
-            self._last_token_type = "pix"
-            self._continue_flag = False
-            self._stop_name_flag = True
+            state.remember(_VideoTokenKind.PIX)
+            state.stop_name = True
             resource_pix = None
             for pixs in re_res:
                 if isinstance(pixs, tuple):
@@ -462,25 +512,25 @@ class MetaVideo(MetaBase):
                     and self.resource_pix.isdigit() \
                     and self.resource_pix[-1] not in 'kpi':
                 self.resource_pix = "%sp" % self.resource_pix
-        else:
-            re_res = self._resources_pix_pattern2.search(token)
-            if re_res:
-                self._last_token_type = "pix"
-                self._continue_flag = False
-                self._stop_name_flag = True
-                if not self.resource_pix:
-                    self.resource_pix = re_res.group(1).lower()
+            return True
+        re_res = self._resources_pix_pattern2.search(token)
+        if re_res:
+            state.remember(_VideoTokenKind.PIX)
+            state.stop_name = True
+            if not self.resource_pix:
+                self.resource_pix = re_res.group(1).lower()
+            return True
+        return False
 
-    def __init_season(self, token: str):
+    def __init_season(self, token: str, state: _VideoParseState) -> bool:
         """
         识别季
         """
         re_res = self._season_pattern.findall(token)
         if re_res:
-            self._last_token_type = "season"
+            state.remember(_VideoTokenKind.SEASON)
             self.type = MediaType.TV
-            self._stop_name_flag = True
-            self._continue_flag = True
+            state.stop_name = True
             for se in re_res:
                 if isinstance(se, tuple):
                     se_t = None
@@ -504,34 +554,35 @@ class MetaVideo(MetaBase):
                         if self.isfile and self.total_season > 1:
                             self.end_season = None
                             self.total_season = 1
+            return False
         elif token.isdigit():
             try:
                 int(token)
             except ValueError:
-                return
-            if self._last_token_type == "SEASON" \
+                return False
+            if state.last_kind == _VideoTokenKind.SEASON_MARKER \
                     and self.begin_season is None \
                     and len(token) < 3:
                 self.begin_season = int(token)
                 self.total_season = 1
-                self._last_token_type = "season"
-                self._stop_name_flag = True
-                self._continue_flag = False
+                state.remember(_VideoTokenKind.SEASON)
+                state.stop_name = True
                 self.type = MediaType.TV
+                return True
         elif token.upper() == "SEASON" and self.begin_season is None:
-            self._last_token_type = "SEASON"
+            state.remember(_VideoTokenKind.SEASON_MARKER)
         elif self.type == MediaType.TV and self.begin_season is None:
             self.begin_season = 1
+        return False
 
-    def __init_episode(self, token: str):
+    def __init_episode(self, token: str, state: _VideoParseState) -> bool:
         """
         识别集
         """
         re_res = self._episode_pattern.findall(token)
         if re_res:
-            self._last_token_type = "episode"
-            self._continue_flag = False
-            self._stop_name_flag = True
+            state.remember(_VideoTokenKind.EPISODE)
+            state.stop_name = True
             self.type = MediaType.TV
             for se in re_res:
                 if isinstance(se, tuple):
@@ -556,122 +607,102 @@ class MetaVideo(MetaBase):
                         if self.isfile and self.total_episode > 2:
                             self.end_episode = None
                             self.total_episode = 1
+            return True
         elif token.isdigit():
             try:
                 int(token)
             except ValueError:
-                return
+                return False
             if self.begin_episode is not None \
                     and self.end_episode is None \
                     and len(token) < 5 \
                     and int(token) > self.begin_episode \
-                    and self._last_token_type == "episode":
+                    and state.last_kind == _VideoTokenKind.EPISODE:
                 self.end_episode = int(token)
                 self.total_episode = (self.end_episode - self.begin_episode) + 1
                 if self.isfile and self.total_episode > 2:
                     self.end_episode = None
                     self.total_episode = 1
-                self._continue_flag = False
                 self.type = MediaType.TV
+                return True
             elif self.begin_episode is None \
                     and 1 < len(token) < 4 \
-                    and self._last_token_type != "year" \
-                    and self._last_token_type != "videoencode" \
-                    and token != self._unknown_name_str:
+                    and state.last_kind != _VideoTokenKind.YEAR \
+                    and state.last_kind != _VideoTokenKind.VIDEO_ENCODE \
+                    and token != state.pending_name:
                 self.begin_episode = int(token)
                 self.total_episode = 1
-                self._last_token_type = "episode"
-                self._continue_flag = False
-                self._stop_name_flag = True
+                state.remember(_VideoTokenKind.EPISODE)
+                state.stop_name = True
                 self.type = MediaType.TV
-            elif self._last_token_type == "EPISODE" \
+                return True
+            elif state.last_kind == _VideoTokenKind.EPISODE_MARKER \
                     and self.begin_episode is None \
                     and len(token) < 5:
                 self.begin_episode = int(token)
                 self.total_episode = 1
-                self._last_token_type = "episode"
-                self._continue_flag = False
-                self._stop_name_flag = True
+                state.remember(_VideoTokenKind.EPISODE)
+                state.stop_name = True
                 self.type = MediaType.TV
+                return True
         elif token.upper() == "EPISODE":
-            self._last_token_type = "EPISODE"
+            state.remember(_VideoTokenKind.EPISODE_MARKER)
+        return False
 
-    def __append_resource_source(self, source: str) -> None:
-        """
-        按出现顺序追加资源类型并忽略重复项。
-
-        :param source: 原始资源类型标记
-        """
-        source_name = SOURCE_NAMES.get(source.upper(), source)
-        if source_name.casefold() not in {
-            item.casefold() for item in self._sources
-        }:
-            self._sources.append(source_name)
-
-    def __replace_last_resource_source(self, source: str, replacement: str) -> None:
-        """
-        将拆分的资源类型前缀替换为完整规范名称。
-
-        :param source: 待替换的末尾资源类型
-        :param replacement: 完整资源类型
-        """
-        if self._sources and self._sources[-1].casefold() == source.casefold():
-            self._sources.pop()
-        self.__append_resource_source(replacement)
-
-    def __init_resource_type(self, token):
+    def __init_resource_type(self, token: str, state: _VideoParseState) -> bool:
         """
         识别资源类型
         """
         if not self.name:
-            return
+            return False
         if token.upper() == "DL" \
-                and self._last_token_type == "source" \
-                and self._last_token == "WEB":
-            self.__replace_last_resource_source("WEB", "WEB-DL")
-            self._continue_flag = False
-            return
+                and state.last_kind == _VideoTokenKind.SOURCE \
+                and state.last_token == "WEB":
+            state.replace_last_source("WEB", "WEB-DL")
+            return True
         elif token.upper() == "RAY" \
-                and self._last_token_type == "source" \
-                and self._last_token == "BLU":
-            self.__replace_last_resource_source("BLU", "BluRay")
-            self._continue_flag = False
-            return
+                and state.last_kind == _VideoTokenKind.SOURCE \
+                and state.last_token == "BLU":
+            state.replace_last_source("BLU", "BluRay")
+            return True
         elif token.upper() == "WEBDL":
-            self.__append_resource_source("WEB-DL")
-            self._continue_flag = False
-            return
+            state.append_source("WEB-DL")
+            return True
         source_res = self._source_pattern.search(token)
         if source_res:
-            self._last_token_type = "source"
-            self._continue_flag = False
-            self._stop_name_flag = True
+            state.stop_name = True
             source = source_res.group(1)
-            self.__append_resource_source(source)
-            self._last_token = source.upper()
-            return
+            state.append_source(source)
+            state.remember(_VideoTokenKind.SOURCE, source.upper())
+            return True
         effect_res = self._effect_pattern.search(token)
         if effect_res:
-            self._last_token_type = "effect"
-            self._continue_flag = False
-            self._stop_name_flag = True
+            state.stop_name = True
             effect = effect_res.group(1)
-            if effect not in self._effect:
-                self._effect.append(effect)
-            self._last_token = effect.upper()
+            if effect not in state.effects:
+                state.effects.append(effect)
+            state.remember(_VideoTokenKind.EFFECT, effect.upper())
+            return True
+        return False
 
-    def __init_web_source(self, token: str, tokens: Tokens, streaming_platforms: StreamingPlatforms):
+    def __init_web_source(
+        self,
+        token: str,
+        tokens: Tokens,
+        streaming_platforms: StreamingPlatforms,
+        state: _VideoParseState,
+    ) -> bool:
         """
         识别流媒体平台
         """
         if not self.name:
-            return
+            return False
 
         platform_name = None
         query_range = 1
 
         prev_token = None
-        prev_idx = self._index - 2
+        prev_idx = state.token_index - 2
         if 0 <= prev_idx < len(tokens.tokens):
             prev_token = tokens.tokens[prev_idx]
 
@@ -698,36 +729,35 @@ class MetaVideo(MetaBase):
                         break
 
         if not platform_name:
-            return
+            return False
 
         web_tokens = ["WEB", "DL", "WEBDL", "WEBRIP"]
-        match_start_idx = self._index - query_range
-        match_end_idx = self._index - 1
+        match_start_idx = state.token_index - query_range
+        match_end_idx = state.token_index - 1
         start_index = max(0, match_start_idx - query_range)
         end_index = min(len(tokens.tokens), match_end_idx + 1 + query_range)
         tokens_to_check = tokens.tokens[start_index:end_index]
 
         if any(tok and tok.upper() in web_tokens for tok in tokens_to_check):
             self.web_source = platform_name
-            self._continue_flag = False
+            return True
+        return False
 
-    def __init_video_encode(self, token: str):
+    def __init_video_encode(self, token: str, state: _VideoParseState) -> bool:
         """
         识别视频编码
         """
         if not self.name:
-            return
+            return False
         if not self.year \
                 and not self.resource_pix \
                 and not self.resource_type \
                 and self.begin_season is None \
                 and not self.begin_episode:
-            return
+            return False
         re_res = self._video_encode_pattern.search(token)
         if re_res:
-            self._continue_flag = False
-            self._stop_name_flag = True
-            self._last_token_type = "videoencode"
+            state.stop_name = True
             if not self.video_encode:
                 if re_res.group(2):
                     self.video_encode = re_res.group(2).upper()
@@ -735,69 +765,71 @@ class MetaVideo(MetaBase):
                     self.video_encode = re_res.group(3).lower()
                 else:
                     self.video_encode = re_res.group(1).upper()
-                self._last_token = self.video_encode
+                state.remember(_VideoTokenKind.VIDEO_ENCODE, self.video_encode)
             elif self.video_encode == "10bit":
                 self.video_encode = f"{re_res.group(1).upper()} 10bit"
-                self._last_token = re_res.group(1).upper()
+                state.remember(_VideoTokenKind.VIDEO_ENCODE, re_res.group(1).upper())
+            else:
+                state.remember(_VideoTokenKind.VIDEO_ENCODE)
+            return True
         elif token.upper() in ['H', 'X']:
-            self._continue_flag = False
-            self._stop_name_flag = True
-            self._last_token_type = "videoencode"
-            self._last_token = token.upper() if token.upper() == "H" else token.lower()
+            state.stop_name = True
+            last_token = token.upper() if token.upper() == "H" else token.lower()
+            state.remember(_VideoTokenKind.VIDEO_ENCODE, last_token)
+            return True
         elif token in ["264", "265"] \
-                and self._last_token_type == "videoencode" \
-                and self._last_token in ['H', 'X']:
-            self.video_encode = "%s%s" % (self._last_token, token)
+                and state.last_kind == _VideoTokenKind.VIDEO_ENCODE \
+                and state.last_token in ['H', 'X']:
+            self.video_encode = "%s%s" % (state.last_token, token)
         elif token.isdigit() \
-                and self._last_token_type == "videoencode" \
-                and self._last_token in ['VC', 'MPEG']:
-            self.video_encode = "%s%s" % (self._last_token, token)
+                and state.last_kind == _VideoTokenKind.VIDEO_ENCODE \
+                and state.last_token in ['VC', 'MPEG']:
+            self.video_encode = "%s%s" % (state.last_token, token)
         elif token.upper() == "10BIT":
-            self._last_token_type = "videoencode"
+            state.remember(_VideoTokenKind.VIDEO_ENCODE)
             if not self.video_encode:
                 self.video_encode = "10bit"
             else:
                 self.video_encode = f"{self.video_encode} 10bit"
+        return False
 
-    def __init_video_bit(self, token: str):
+    def __init_video_bit(self, token: str, state: _VideoParseState) -> bool:
         """
         识别视频位深。
         """
         if not self.name:
-            return
+            return False
         if not self.year \
                 and not self.resource_pix \
                 and not self.resource_type \
                 and self.begin_season is None \
                 and not self.begin_episode:
-            return
+            return False
         video_bit = self.extract_video_bit(token)
         if not video_bit:
-            return
-        self._continue_flag = False
-        self._stop_name_flag = True
-        self._last_token_type = "videobit"
+            return False
+        state.stop_name = True
+        state.remember(_VideoTokenKind.VIDEO_BIT)
         if not self.video_bit:
             self.video_bit = video_bit
+        return True
 
-    def __init_audio_encode(self, token: str):
+    def __init_audio_encode(self, token: str, state: _VideoParseState) -> bool:
         """
         识别音频编码
         """
         if not self.name:
-            return
+            return False
         if not self.year \
                 and not self.resource_pix \
                 and not self.resource_type \
                 and self.begin_season is None \
                 and not self.begin_episode:
-            return
+            return False
         re_res = self._audio_encode_pattern.search(token)
         if re_res:
-            self._continue_flag = False
-            self._stop_name_flag = True
-            self._last_token_type = "audioencode"
-            self._last_token = re_res.group(1).upper()
+            state.stop_name = True
+            state.remember(_VideoTokenKind.AUDIO_ENCODE, re_res.group(1).upper())
             if not self.audio_encode:
                 self.audio_encode = re_res.group(1)
             else:
@@ -805,29 +837,30 @@ class MetaVideo(MetaBase):
                     self.audio_encode = "%s-%s" % (self.audio_encode, re_res.group(1))
                 else:
                     self.audio_encode = "%s %s" % (self.audio_encode, re_res.group(1))
+            return True
         elif token.isdigit() \
-                and self._last_token_type == "audioencode":
+                and state.last_kind == _VideoTokenKind.AUDIO_ENCODE:
             if self.audio_encode:
-                if self._last_token.isdigit():
+                if state.last_token.isdigit():
                     self.audio_encode = "%s.%s" % (self.audio_encode, token)
                 elif self.audio_encode[-1].isdigit() and self.audio_encode.upper() not in {"AC3", "EAC3"}:
                     self.audio_encode = "%s %s.%s" % (self.audio_encode[:-1], self.audio_encode[-1], token)
                 else:
                     self.audio_encode = "%s %s" % (self.audio_encode, token)
-            self._last_token = token
+            state.last_token = token
+        return False
 
-    def __init_fps(self, token: str):
+    def __init_fps(self, token: str, state: _VideoParseState) -> bool:
         """
         识别帧率
         """
         if not self.name:
-            return
+            return False
 
         re_res = self._fps_pattern.search(token)
         if re_res:
-            self._continue_flag = False
-            self._stop_name_flag = True
-            self._last_token_type = "fps"
+            state.stop_name = True
+            state.remember(_VideoTokenKind.FPS)
             # 提取帧率数值
             fps_value = None
             if re_res.group(1):  # FPS格式
@@ -836,4 +869,6 @@ class MetaVideo(MetaBase):
             if fps_value and fps_value.isdigit():
                 # 只存储纯数值
                 self.fps = int(fps_value)
-                self._last_token = f"{self.fps}FPS"
+                state.last_token = f"{self.fps}FPS"
+            return True
+        return False
