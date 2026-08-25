@@ -5,6 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from app.adapters.external.market import PluginHelper
+from app.adapters.external.plugin.client import PluginMarketClient
+from app.application.plugin.inventory import (
+    PluginIndexLoadResult,
+    PluginIndexLoadStatus,
+)
 
 
 @pytest.mark.asyncio
@@ -78,3 +83,97 @@ def test_plugin_index_response_preserves_status_contract(
     result = PluginHelper._resolve_plugin_index_response(status_code, content)
 
     assert result == expected
+
+
+@pytest.mark.parametrize(
+    ("status_code", "content", "expected_status"),
+    [
+        (200, '{"DemoPlugin": {"version": "1.2.3"}}', PluginIndexLoadStatus.PRESENT),
+        (404, "404: Not Found", PluginIndexLoadStatus.ABSENT),
+        (500, "upstream failed", PluginIndexLoadStatus.FAILED),
+        (200, "not-json", PluginIndexLoadStatus.FAILED),
+    ],
+)
+def test_plugin_index_result_preserves_read_state(
+    monkeypatch,
+    status_code: int,
+    content: str,
+    expected_status: PluginIndexLoadStatus,
+) -> None:
+    """新只读入口必须区分真实索引、404 和不可判定响应。"""
+    helper = PluginHelper()
+    repo_url = f"https://github.com/policy-owner/policy-repository-{status_code}"
+
+    def request(_url: str, *, headers: dict):
+        return SimpleNamespace(status_code=status_code, text=content)
+
+    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    helper.get_plugin_index_result.cache_clear()
+
+    result = helper.get_plugin_index_result(repo_url, "v3")
+
+    assert result.status is expected_status
+    if expected_status is PluginIndexLoadStatus.PRESENT:
+        assert result.payload == {"DemoPlugin": {"version": "1.2.3"}}
+        assert result.error is None
+    elif expected_status is PluginIndexLoadStatus.FAILED:
+        assert result.payload is None
+        assert result.error
+
+
+@pytest.mark.asyncio
+async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> None:
+    """异步只读入口也必须保留 404 不存在事实。"""
+    helper = PluginHelper()
+
+    async def request(_url: str, *, headers: dict):
+        return SimpleNamespace(status_code=404, text="404: Not Found")
+
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_request_with_fallback",
+        request,
+    )
+    await helper.async_get_plugin_index_result.cache_clear()
+
+    result = await helper.async_get_plugin_index_result(
+        "https://github.com/policy-owner/policy-repository-async",
+        "v3",
+    )
+
+    assert result.status is PluginIndexLoadStatus.ABSENT
+    assert result.payload is None
+    assert result.error is None
+
+
+def test_plugin_index_result_converts_adapter_exception_to_failed(monkeypatch) -> None:
+    """请求端口抛异常时只读状态入口仍返回失败事实。"""
+    helper = PluginHelper()
+
+    def request(_url: str, *, headers: dict):
+        raise OSError("socket closed")
+
+    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    helper.get_plugin_index_result.cache_clear()
+
+    result = helper.get_plugin_index_result(
+        "https://github.com/policy-owner/policy-repository-exception",
+        "v3",
+    )
+
+    assert result.status is PluginIndexLoadStatus.FAILED
+    assert result.payload is None
+    assert result.error == "插件索引读取失败：socket closed"
+
+
+def test_plugin_market_client_exposes_index_result_port() -> None:
+    """市场客户端应原样转发三态读取结果并保留只读边界。"""
+    expected = PluginIndexLoadResult.absent()
+
+    class FakeHelper:
+        def get_plugin_index_result(self, repo_url: str, package_version: str | None):
+            return expected
+
+    client = PluginMarketClient(FakeHelper())
+
+    assert client.get_plugin_index_result("https://github.com/example/repo", "v3") is expected

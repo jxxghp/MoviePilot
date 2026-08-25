@@ -3,7 +3,12 @@
 import pytest
 
 from app.application.plugin.identity import TrustedPluginSourceType
-from app.application.plugin.inventory import PluginCandidateInventoryReader
+from app.application.plugin.inventory import (
+    LocalCandidateLoadResult,
+    PluginCandidateInventoryReader,
+    PluginIndexLoadResult,
+)
+from app.application.plugin.source import LocalCandidateReadStatus, MarketReadStatus
 
 OFFICIAL_MARKET = "https://github.com/jxxghp/MoviePilot-Plugins"
 THIRD_PARTY_MARKET = "https://github.com/example/moviepilot-plugins"
@@ -116,6 +121,86 @@ def test_partial_generation_failure_blocks_tofu_but_keeps_successful_candidates(
     assert not inventory.can_use_for_tofu
     assert inventory.read_for(THIRD_PARTY_MARKET, "v2") is not None
     assert inventory.read_for(THIRD_PARTY_MARKET, "v2").error
+
+
+def test_absent_generation_is_complete_without_creating_candidates() -> None:
+    """确定不存在的代际索引属于完整库存，不应被误判为网络失败。"""
+
+    def loader(_market: str, package_version: str | None, _force: bool):
+        if package_version == "v2":
+            return PluginIndexLoadResult.absent()
+        return {"DemoPlugin": {"version": "3.0.0", "v3": True}}
+
+    inventory = PluginCandidateInventoryReader(market_loader=loader).load(
+        [THIRD_PARTY_MARKET]
+    )
+    absent = inventory.read_for(THIRD_PARTY_MARKET, "v2")
+
+    assert absent is not None
+    assert absent.status is MarketReadStatus.ABSENT
+    assert absent.candidates == ()
+    assert inventory.complete
+    assert inventory.can_use_for_tofu
+    assert len(inventory.candidates_for("DemoPlugin")) == 2
+
+
+def test_empty_index_is_present_and_complete() -> None:
+    """真实存在但为空的索引与 absent 保持可观察差异。"""
+    inventory = PluginCandidateInventoryReader(
+        market_loader=lambda *_args: PluginIndexLoadResult.present({}),
+    ).load([THIRD_PARTY_MARKET])
+
+    assert inventory.complete
+    assert all(
+        read.status is MarketReadStatus.PRESENT
+        for read in inventory.market_reads
+    )
+    assert inventory.online_candidates == ()
+
+
+def test_explicit_failed_result_blocks_tofu() -> None:
+    """Adapter 明确报告失败时必须阻止唯一第三方来源 TOFU。"""
+
+    def loader(_market: str, package_version: str | None, _force: bool):
+        if package_version == "v2":
+            return PluginIndexLoadResult.failed("timeout")
+        return {"DemoPlugin": {"version": "3.0.0", "v3": True}}
+
+    inventory = PluginCandidateInventoryReader(market_loader=loader).load(
+        [THIRD_PARTY_MARKET]
+    )
+
+    assert not inventory.complete
+    assert not inventory.can_use_for_tofu
+    assert inventory.read_for(THIRD_PARTY_MARKET, "v2").status is MarketReadStatus.FAILED
+
+
+def test_local_scan_preserves_absent_present_and_failed_states() -> None:
+    """本地仓库扫描不能把未配置、空扫描和异常读取混为一谈。"""
+    def market_loader(*_args):
+        return {}
+
+    absent = PluginCandidateInventoryReader(market_loader=market_loader).load(
+        [THIRD_PARTY_MARKET]
+    )
+    present = PluginCandidateInventoryReader(
+        market_loader=market_loader,
+        local_candidate_loader=lambda: LocalCandidateLoadResult.present({}),
+    ).load([THIRD_PARTY_MARKET])
+
+    def failed_loader():
+        raise OSError("local repository unavailable")
+
+    failed = PluginCandidateInventoryReader(
+        market_loader=market_loader,
+        local_candidate_loader=failed_loader,
+    ).load([THIRD_PARTY_MARKET])
+
+    assert absent.local_read.status is LocalCandidateReadStatus.ABSENT
+    assert present.local_read.status is LocalCandidateReadStatus.PRESENT
+    assert present.local_read.candidates == ()
+    assert failed.local_read.status is LocalCandidateReadStatus.FAILED
+    assert failed.local_read.error == "local repository unavailable"
 
 
 def test_local_candidates_never_expose_path_in_inventory_projection() -> None:

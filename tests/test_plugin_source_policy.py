@@ -8,6 +8,7 @@ from app.application.plugin.identity import (
 )
 from app.application.plugin.source import (
     CandidateInventory,
+    LocalCandidateRead,
     MarketRead,
     PluginLocalCandidate,
     PluginMarketCandidate,
@@ -78,7 +79,7 @@ def _identity(source_type: TrustedPluginSourceType, source_key: str) -> PluginId
 def test_cross_source_high_version_does_not_win() -> None:
     """已绑定来源过滤必须先于版本比较，跨源高版本不能覆盖允许来源。"""
     inventory = _inventory(
-        MarketRead.success(
+        MarketRead.present(
             "market-a",
             (
                 _online(THIRD_PARTY_SOURCE, version="1.0.0"),
@@ -103,7 +104,7 @@ def test_cross_source_high_version_does_not_win() -> None:
 def test_same_source_prefers_generation_then_version() -> None:
     """同源候选先按运行代际，再在同代内按声明版本选择。"""
     inventory = _inventory(
-        MarketRead.success(
+        MarketRead.present(
             "market-a",
             (
                 _online(THIRD_PARTY_SOURCE, generation="v2", version="9.0.0"),
@@ -129,7 +130,7 @@ def test_same_source_prefers_generation_then_version() -> None:
 def test_partial_market_failure_blocks_unique_third_party_tofu() -> None:
     """部分市场失败时即使当前可见一个第三方，也不能证明其唯一。"""
     inventory = _inventory(
-        MarketRead.success("market-a", (_online(THIRD_PARTY_SOURCE),)),
+        MarketRead.present("market-a", (_online(THIRD_PARTY_SOURCE),)),
         MarketRead.failure("market-b", "timeout"),
     )
 
@@ -144,16 +145,47 @@ def test_partial_market_failure_blocks_unique_third_party_tofu() -> None:
     assert result.status is PluginSelectionStatus.INCOMPLETE
 
 
+def test_local_scan_failure_blocks_automatic_selection_but_explicit_source_continues() -> None:
+    """本地扫描失败时自动路径闭锁，管理员明确选在线来源仍可继续。"""
+    inventory = CandidateInventory(
+        (
+            MarketRead.present(
+                "market-a",
+                (_online(THIRD_PARTY_SOURCE),),
+            ),
+        ),
+        local_read=LocalCandidateRead.failure("local repository unavailable"),
+    )
+
+    automatic = select_plugin_candidate(
+        inventory,
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+    )
+    explicit = select_plugin_candidate(
+        inventory,
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        requested_source_key=THIRD_PARTY_SOURCE,
+        explicit_source=True,
+    )
+
+    assert automatic.status is PluginSelectionStatus.INCOMPLETE
+    assert explicit.status is PluginSelectionStatus.SELECTED
+    assert explicit.candidate is not None
+    assert explicit.candidate.source_key == THIRD_PARTY_SOURCE
+
+
 def test_uninstalled_unique_and_multiple_sources_are_distinct() -> None:
     """未安装插件允许完整快照中的唯一来源，多来源必须返回冲突。"""
     unique = select_plugin_candidate(
-        _inventory(MarketRead.success("market-a", (_online(THIRD_PARTY_SOURCE),))),
+        _inventory(MarketRead.present("market-a", (_online(THIRD_PARTY_SOURCE),))),
         plugin_id="DemoPlugin",
         generations=("v3", "v2", "v1"),
     )
     conflict = select_plugin_candidate(
         _inventory(
-            MarketRead.success(
+            MarketRead.present(
                 "market-a",
                 (_online(THIRD_PARTY_SOURCE), _online(OTHER_SOURCE)),
             ),
@@ -171,7 +203,7 @@ def test_official_candidate_is_selectable_and_local_projection_hides_path() -> N
     """官方来源可正常选择，本地公共投影不能泄漏仓库路径或 metadata。"""
     official = select_plugin_candidate(
         _inventory(
-            MarketRead.success(
+            MarketRead.present(
                 "official-market",
                 (_online(
                     OFFICIAL_SOURCE,
@@ -192,7 +224,7 @@ def test_official_candidate_is_selectable_and_local_projection_hides_path() -> N
     )
 
     local_result = select_plugin_candidate(
-        _inventory(MarketRead.success("official-market", ()), local=(local,)),
+        _inventory(MarketRead.present("official-market", ()), local=(local,)),
         plugin_id="DemoPlugin",
         generations=("v3", "v2", "v1"),
     )

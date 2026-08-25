@@ -63,6 +63,9 @@ from app.foundation.version import compare_version
 from app.adapters.system.host import SystemUtils
 from app.foundation.url import UrlUtils
 from app.runtime.version import get_app_version
+from app.application.plugin.inventory import (
+    PluginIndexLoadResult,
+)
 
 # 保留模块级可替换入口，代理默认读取组合根的最新 runtime 配置。
 settings = RuntimeSettingsCompat()
@@ -799,10 +802,39 @@ class PluginHelper(metaclass=WeakSingleton):
         return len(payload) >= 100
 
     @cached(maxsize=128, ttl=1800)
+    def get_plugin_index_result(
+            self,
+            repo_url: str,
+            package_version: Optional[str] = None,
+    ) -> PluginIndexLoadResult:
+        """读取插件索引并保留存在、不存在与失败三态。"""
+        try:
+            request = self._build_plugin_index_request(repo_url, package_version)
+            if request is None:
+                return PluginIndexLoadResult.failed("插件仓库地址无效")
+            package_url, headers = request
+            res = self.__request_with_fallback(package_url, headers=headers)
+            if res is None:
+                return PluginIndexLoadResult.failed("插件索引请求失败：连接失败")
+            if res.status_code == 404:
+                return PluginIndexLoadResult.absent()
+            if res.status_code != 200:
+                return PluginIndexLoadResult.failed(
+                    f"插件索引请求失败：HTTP {res.status_code}"
+                )
+            payload = self.__parse_plugin_index_response(res.text)
+            if payload is None:
+                return PluginIndexLoadResult.failed("插件索引响应格式无效")
+            return PluginIndexLoadResult.present(payload)
+        except Exception as error:  # noqa: BLE001 - 读取端口统一返回失败事实
+            message = str(error).strip() or error.__class__.__name__
+            return PluginIndexLoadResult.failed(f"插件索引读取失败：{message}")
+
+    @cached(maxsize=128, ttl=1800)
     def get_plugins(self, repo_url: str,
                     package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
-        获取Github所有最新插件列表
+        获取 Github 插件列表，保留旧的 dict/{}/None 兼容返回。
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
@@ -2434,10 +2466,42 @@ class PluginHelper(metaclass=WeakSingleton):
         return None
 
     @cached(maxsize=128, ttl=1800)
+    async def async_get_plugin_index_result(
+            self,
+            repo_url: str,
+            package_version: Optional[str] = None,
+    ) -> PluginIndexLoadResult:
+        """异步读取插件索引并保留存在、不存在与失败三态。"""
+        try:
+            request = self._build_plugin_index_request(repo_url, package_version)
+            if request is None:
+                return PluginIndexLoadResult.failed("插件仓库地址无效")
+            package_url, headers = request
+            res = await self.__async_request_with_fallback(
+                package_url,
+                headers=headers,
+            )
+            if res is None:
+                return PluginIndexLoadResult.failed("插件索引请求失败：连接失败")
+            if res.status_code == 404:
+                return PluginIndexLoadResult.absent()
+            if res.status_code != 200:
+                return PluginIndexLoadResult.failed(
+                    f"插件索引请求失败：HTTP {res.status_code}"
+                )
+            payload = self.__parse_plugin_index_response(res.text)
+            if payload is None:
+                return PluginIndexLoadResult.failed("插件索引响应格式无效")
+            return PluginIndexLoadResult.present(payload)
+        except Exception as error:  # noqa: BLE001 - 读取端口统一返回失败事实
+            message = str(error).strip() or error.__class__.__name__
+            return PluginIndexLoadResult.failed(f"插件索引读取失败：{message}")
+
+    @cached(maxsize=128, ttl=1800)
     async def async_get_plugins(self, repo_url: str,
                                 package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
-        异步获取Github所有最新插件列表
+        异步获取 Github 插件列表，保留旧的 dict/{}/None 兼容返回。
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """

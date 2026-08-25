@@ -25,7 +25,8 @@ PLUGIN_GENERATIONS = ("v1", "v2", "v3")
 class MarketReadStatus(StrEnum):
     """一次市场索引读取的最终状态。"""
 
-    SUCCEEDED = "succeeded"
+    PRESENT = "present"
+    ABSENT = "absent"
     FAILED = "failed"
 
 class PluginSelectionStatus(StrEnum):
@@ -154,8 +155,11 @@ class MarketRead:
                 raise ValueError("失败的插件市场读取不能携带候选")
             if not self.error or not self.error.strip():
                 raise ValueError("失败的插件市场读取必须保留错误说明")
-        elif self.error:
-            raise ValueError("成功的插件市场读取不能携带错误说明")
+        else:
+            if self.error:
+                raise ValueError("已判定的插件市场读取不能携带错误说明")
+            if status is MarketReadStatus.ABSENT and candidates:
+                raise ValueError("不存在的插件市场索引不能携带候选")
         if any(not isinstance(candidate, PluginMarketCandidate) for candidate in candidates):
             raise TypeError("市场读取候选必须是在线插件候选")
         object.__setattr__(self, "market", market)
@@ -165,18 +169,32 @@ class MarketRead:
         object.__setattr__(self, "package_generation", package_generation)
 
     @classmethod
-    def success(
+    def present(
         cls,
         market: str,
         candidates: Iterable[PluginMarketCandidate] = (),
         *,
         package_generation: str = "v1",
     ) -> "MarketRead":
-        """构造成功读取，包括成功但没有条目的市场。"""
+        """构造存在的索引读取；真实空索引可以没有候选。"""
         return cls(
             market=market,
-            status=MarketReadStatus.SUCCEEDED,
+            status=MarketReadStatus.PRESENT,
             candidates=tuple(candidates),
+            package_generation=package_generation,
+        )
+
+    @classmethod
+    def absent(
+        cls,
+        market: str,
+        *,
+        package_generation: str = "v1",
+    ) -> "MarketRead":
+        """构造已确认不存在的代际索引。"""
+        return cls(
+            market=market,
+            status=MarketReadStatus.ABSENT,
             package_generation=package_generation,
         )
 
@@ -198,8 +216,13 @@ class MarketRead:
 
     @property
     def succeeded(self) -> bool:
-        """判断该市场是否已确定读取成功。"""
-        return self.status is MarketReadStatus.SUCCEEDED
+        """判断该索引是否得到存在或不存在的确定结论。"""
+        return self.status is not MarketReadStatus.FAILED
+
+    @property
+    def present_index(self) -> bool:
+        """判断该代际索引是否真实存在。"""
+        return self.status is MarketReadStatus.PRESENT
 
     def public_dict(self) -> dict[str, Any]:
         """生成市场读取的脱敏投影，保留状态、代际和候选事实。"""
@@ -211,6 +234,73 @@ class MarketRead:
             "candidates": [candidate.public_dict() for candidate in self.candidates],
         }
 
+
+class LocalCandidateReadStatus(StrEnum):
+    """一次本地插件仓库扫描的可观察终态。"""
+
+    PRESENT = "present"
+    ABSENT = "absent"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class LocalCandidateRead:
+    """记录本地候选扫描状态，避免扫描失败伪装成空仓库。"""
+
+    status: LocalCandidateReadStatus
+    candidates: tuple[PluginLocalCandidate, ...] = ()
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        """保证本地扫描状态、候选和错误说明相互一致。"""
+        status = LocalCandidateReadStatus(self.status)
+        candidates = tuple(self.candidates)
+        if any(not isinstance(candidate, PluginLocalCandidate) for candidate in candidates):
+            raise TypeError("本地扫描候选必须是 PluginLocalCandidate")
+        if status is LocalCandidateReadStatus.FAILED:
+            if candidates:
+                raise ValueError("失败的本地扫描不能携带候选")
+            if not self.error or not self.error.strip():
+                raise ValueError("失败的本地扫描必须保留错误说明")
+        else:
+            if self.error:
+                raise ValueError("已判定的本地扫描不能携带错误说明")
+            if status is LocalCandidateReadStatus.ABSENT and candidates:
+                raise ValueError("不存在的本地扫描不能携带候选")
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "candidates", candidates)
+        object.__setattr__(self, "error", self.error.strip() if self.error else None)
+
+    @classmethod
+    def present(
+        cls,
+        candidates: Iterable[PluginLocalCandidate] = (),
+    ) -> "LocalCandidateRead":
+        """构造扫描成功的本地候选快照，空结果仍表示扫描成功。"""
+        return cls(
+            status=LocalCandidateReadStatus.PRESENT,
+            candidates=tuple(candidates),
+        )
+
+    @classmethod
+    def absent(cls) -> "LocalCandidateRead":
+        """构造没有配置本地仓库的结果。"""
+        return cls(status=LocalCandidateReadStatus.ABSENT)
+
+    @classmethod
+    def failure(cls, error: str) -> "LocalCandidateRead":
+        """构造无法完成本地扫描的结果。"""
+        return cls(status=LocalCandidateReadStatus.FAILED, error=error)
+
+    def public_dict(self) -> dict[str, Any]:
+        """生成不泄漏本地路径的扫描投影。"""
+        return {
+            "status": self.status.value,
+            "error": self.error,
+            "candidates": [candidate.public_dict() for candidate in self.candidates],
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class CandidateInventory:
     """一次短生命周期市场快照，保留配置市场状态和全部候选。"""
@@ -219,6 +309,7 @@ class CandidateInventory:
     local_candidates: tuple[PluginLocalCandidate, ...] = ()
     expected_markets: tuple[str, ...] | None = None
     expected_generations: tuple[str, ...] | None = None
+    local_read: LocalCandidateRead | None = None
 
     def __post_init__(self) -> None:
         """冻结快照输入，避免后续市场刷新改变选择依据。"""
@@ -234,6 +325,17 @@ class CandidateInventory:
             if self.expected_generations is not None
             else None
         )
+        local_read = self.local_read
+        if local_read is None:
+            local_read = (
+                LocalCandidateRead.present(local_candidates)
+                if local_candidates
+                else LocalCandidateRead.absent()
+            )
+        if not isinstance(local_read, LocalCandidateRead):
+            raise TypeError("候选清单的本地读取必须由 LocalCandidateRead 组成")
+        if local_read.candidates != local_candidates:
+            raise ValueError("候选清单的本地读取与本地候选必须一致")
         if any(not isinstance(read, MarketRead) for read in market_reads):
             raise TypeError("候选清单必须由 MarketRead 组成")
         if any(not isinstance(candidate, PluginLocalCandidate) for candidate in local_candidates):
@@ -250,6 +352,7 @@ class CandidateInventory:
         object.__setattr__(self, "local_candidates", local_candidates)
         object.__setattr__(self, "expected_markets", expected_markets)
         object.__setattr__(self, "expected_generations", expected_generations)
+        object.__setattr__(self, "local_read", local_read)
 
     @property
     def configured_markets(self) -> tuple[str, ...]:
@@ -293,7 +396,7 @@ class CandidateInventory:
     @property
     def can_use_for_tofu(self) -> bool:
         """判断快照是否足以证明唯一第三方来源。"""
-        return self.complete
+        return self.complete and self.local_read.status is not LocalCandidateReadStatus.FAILED
 
     @property
     def online_candidates(self) -> tuple[PluginMarketCandidate, ...]:
@@ -301,7 +404,7 @@ class CandidateInventory:
         return tuple(
             candidate
             for read in self.market_reads
-            if read.succeeded
+            if read.present_index
             for candidate in read.candidates
         )
 
@@ -328,6 +431,7 @@ class CandidateInventory:
         return {
             "markets": [read.public_dict() for read in self.market_reads],
             "local_candidates": [candidate.public_dict() for candidate in self.local_candidates],
+            "local_read": self.local_read.public_dict(),
             "complete": self.complete,
         }
 
@@ -388,6 +492,9 @@ def select_plugin_candidate(
     generations: Sequence[str],
     identity: PluginIdentity | None = None,
     local_candidates: Iterable[PluginLocalCandidate] | None = None,
+    requested_source_key: str | None = None,
+    explicit_source: bool = False,
+    allow_source_change: bool = False,
 ) -> PluginSelection:
     """
     按允许来源、运行代际和同源版本选择一个插件载荷。
@@ -397,15 +504,40 @@ def select_plugin_candidate(
     :param generations: 调用方按优先级传入的代际顺序
     :param identity: 已安装插件来源身份；为空表示未安装
     :param local_candidates: 可选的本地载荷候选，优先于在线候选
+    :param requested_source_key: 调用方明确选择的规范在线来源
+    :param explicit_source: 本次调用是否代表管理员明确选源
+    :param allow_source_change: 是否是带 revision 的显式换源命令
     :return: 带明确冲突或不完整状态的选择结果
     """
     normalized_id = normalize_physical_plugin_id(plugin_id)
     generation_order = _normalize_generation_order(generations)
-    local = tuple(local_candidates) if local_candidates is not None else inventory.local_candidates_for(plugin_id)
+    requested_source = (
+        validate_online_source_key(requested_source_key)
+        if requested_source_key is not None
+        else None
+    )
+    local = (
+        ()
+        if requested_source is not None
+        else (
+            tuple(local_candidates)
+            if local_candidates is not None
+            else inventory.local_candidates_for(plugin_id)
+        )
+    )
     if any(not isinstance(candidate, PluginLocalCandidate) for candidate in local):
         raise TypeError("本地候选必须是 PluginLocalCandidate")
     if any(candidate.normalized_plugin_id != normalized_id for candidate in local):
         raise ValueError("本地候选的插件 ID 必须与选择目标一致")
+    if (
+        requested_source is None
+        and not local
+        and inventory.local_read.status is LocalCandidateReadStatus.FAILED
+    ):
+        return PluginSelection(
+            status=PluginSelectionStatus.INCOMPLETE,
+            reason="本地插件仓库读取失败，不能自动选择在线载荷",
+        )
     if local:
         selected_local = _select_best(local, generation_order)
         if selected_local is None:
@@ -427,6 +559,41 @@ def select_plugin_candidate(
         )
 
     allowed_source = _allowed_source(identity, normalized_id)
+    if requested_source is not None:
+        requested_online = tuple(
+            candidate
+            for candidate in online
+            if candidate.source_key == requested_source
+        )
+        if not requested_online:
+            return PluginSelection(
+                status=PluginSelectionStatus.UNAVAILABLE,
+                reason="明确选择的在线来源没有当前插件候选",
+            )
+        if allowed_source is not None:
+            _source_type, allowed_key = allowed_source
+            if requested_source != allowed_key and not allow_source_change:
+                return PluginSelection(
+                    status=PluginSelectionStatus.CONFLICT,
+                    conflict_source_keys=(allowed_key, requested_source),
+                    reason="普通安装不能改变已绑定的在线来源",
+                )
+        if explicit_source or allow_source_change:
+            selected_requested = _select_best(requested_online, generation_order)
+            if selected_requested is None:
+                return PluginSelection(
+                    status=PluginSelectionStatus.UNAVAILABLE,
+                    reason="明确选择的来源没有符合当前运行代际的版本",
+                )
+            return PluginSelection(
+                status=PluginSelectionStatus.SELECTED,
+                candidate=selected_requested,
+                reason=(
+                    "按显式换源目标选择在线载荷"
+                    if allow_source_change
+                    else "按管理员明确选择的来源安装在线载荷"
+                ),
+            )
     if allowed_source is not None:
         source_type, source_key = allowed_source
         online = tuple(

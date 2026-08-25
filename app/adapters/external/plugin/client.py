@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.adapters.external.market import PluginHelper as _PluginHelper
+from app.application.plugin.inventory import PluginIndexLoadResult
 from app.runtime.cache import async_fresh, fresh
 
 
@@ -35,6 +36,29 @@ class PluginMarketClient:
         """异步读取指定仓库和代际的插件索引。"""
         async with async_fresh(force):
             return await self._helper.async_get_plugins(repo_url, package_version)
+
+    def get_plugin_index_result(
+        self,
+        repo_url: str,
+        package_version: Optional[str] = None,
+        force: bool = False,
+    ) -> PluginIndexLoadResult:
+        """读取插件索引的三态结果，供库存读取保留失败事实。"""
+        with fresh(force):
+            return self._helper.get_plugin_index_result(repo_url, package_version)
+
+    async def async_get_plugin_index_result(
+        self,
+        repo_url: str,
+        package_version: Optional[str] = None,
+        force: bool = False,
+    ) -> PluginIndexLoadResult:
+        """异步读取插件索引的三态结果，供库存读取保留失败事实。"""
+        async with async_fresh(force):
+            return await self._helper.async_get_plugin_index_result(
+                repo_url,
+                package_version,
+            )
 
     def get_local_candidates(self) -> dict[str, dict]:
         """返回全部本地插件仓库候选。"""
