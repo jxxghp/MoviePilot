@@ -21,12 +21,14 @@ from app.application.plugin.identity import (
     TrustedPluginSourceType,
 )
 from app.application.plugin.install import PluginInstallCommand
+from app.application.plugin.recovery import PluginInstallationRecoveryService
 from app.application.plugin.source import (
     CandidateInventory,
     MarketRead,
     PluginMarketCandidate,
 )
 from app.application.plugin.transaction import (
+    PluginInstallationConflictError,
     PluginInstallationPhase,
     PluginInstallationRecord,
 )
@@ -35,7 +37,6 @@ from app.schemas.exception import (
     PersistenceUnavailableError,
     PluginMutationRejectedError,
 )
-
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
@@ -115,6 +116,7 @@ class _PersistenceSpy:
         target_error: Exception | None = None,
         commit_error: Exception | None = None,
         delete_error: Exception | None = None,
+        identity: PluginIdentity | None = None,
     ) -> None:
         self.calls = calls
         self.records: dict[str, PluginInstallationRecord] = {}
@@ -122,6 +124,7 @@ class _PersistenceSpy:
         self.target_error = target_error
         self.commit_error = commit_error
         self.delete_error = delete_error
+        self.identity = identity
 
     async def create_installation(
         self,
@@ -131,6 +134,18 @@ class _PersistenceSpy:
         self.calls.append("journal_create")
         if self.create_error:
             raise self.create_error
+        if any(
+            existing.plugin_id.lower() == record.plugin_id.lower()
+            and existing.phase
+            in {
+                PluginInstallationPhase.PREPARED,
+                PluginInstallationPhase.COMMITTED,
+            }
+            for existing in self.records.values()
+        ):
+            raise PluginInstallationConflictError(
+                f"插件 {record.plugin_id} 存在未收尾安装事务"
+            )
         self.records[record.transaction_id] = record
         return record
 
@@ -141,6 +156,14 @@ class _PersistenceSpy:
         """返回 journal 创建结果，模拟超时后的确认读取。"""
         self.calls.append("journal_get")
         return self.records.get(transaction_id)
+
+    async def list_installations(self) -> list[PluginInstallationRecord]:
+        """返回当前未收尾 journal，供连续事务恢复测试复用。"""
+        return list(self.records.values())
+
+    async def get_identity(self, _plugin_id: str) -> PluginIdentity | None:
+        """返回恢复核验使用的当前身份事实。"""
+        return self.identity
 
     async def set_installation_target(
         self,
@@ -283,6 +306,28 @@ def _command(
     return command, persistence, calls
 
 
+def _journal_record(
+    phase: PluginInstallationPhase,
+    *,
+    transaction_id: str,
+) -> PluginInstallationRecord:
+    """构造占用同一物理插件槽位的旧安装 journal。"""
+    committed = phase is PluginInstallationPhase.COMMITTED
+    return PluginInstallationRecord(
+        transaction_id=transaction_id,
+        plugin_id="DemoPlugin",
+        phase=phase,
+        membership_before=True,
+        membership_target=True if committed else None,
+        identity_before_revision=1,
+        identity_target_revision=2 if committed else None,
+        package_existed=True,
+        persistent_backup_existed=True,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+
+
 async def _execute(
     command: PluginInstallCommand,
     admission=None,
@@ -362,6 +407,68 @@ async def test_success_commits_journal_before_report_and_cleans_package_snapshot
         "report",
     ]
     assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "phase",
+    [PluginInstallationPhase.PREPARED, PluginInstallationPhase.COMMITTED],
+)
+async def test_unfinished_journal_blocks_follow_up_before_payload_write(
+    phase: PluginInstallationPhase,
+) -> None:
+    """旧 journal 未收尾时，新安装不得写载荷或推进身份 revision。"""
+    persistence = _PersistenceSpy([])
+    old_record = _journal_record(phase, transaction_id=f"old-{phase.value}")
+    persistence.records[old_record.transaction_id] = old_record
+    package_install = AsyncMock()
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+    command, _, _ = _command(
+        persistence=persistence,
+        installer=package_install,
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
+    )
+
+    admission = (
+        _admission(identity=_identity(revision=2))
+        if phase is PluginInstallationPhase.COMMITTED
+        else _admission()
+    )
+    result = await _execute(command, admission=admission, force=True)
+
+    assert result.success is False
+    assert result.failure_stage == "journal_prepare_conflict"
+    assert "未收尾安装事务" in result.message
+    package_install.assert_not_awaited()
+    package_restore.assert_awaited_once()
+    package_cleanup.assert_awaited_once()
+    assert persistence.records == {old_record.transaction_id: old_record}
+
+    if phase is PluginInstallationPhase.COMMITTED:
+        checkpoint = SimpleNamespace(
+            plugin_existed=True,
+            persistent_backup_existed=True,
+        )
+        recovery_packages = SimpleNamespace(
+            restore_checkpoint=Mock(return_value=checkpoint),
+            async_restore=AsyncMock(),
+            async_cleanup=AsyncMock(),
+            async_committed_payload_receipt=AsyncMock(return_value=RECEIPT),
+            async_finalize_persistent_backup=AsyncMock(),
+            async_commit=AsyncMock(),
+        )
+        persistence.identity = _identity(revision=2)
+        recovery = PluginInstallationRecoveryService(
+            persistence=persistence,
+            packages=recovery_packages,
+        )
+
+        recovery_result = await recovery.replay()
+
+        assert recovery_result.finalized == 1
+        assert persistence.records == {}
 
 
 @pytest.mark.asyncio

@@ -313,6 +313,42 @@ def test_store_round_trips_plugin_level_journal(installation_store) -> None:
     assert restored == record
 
 
+@pytest.mark.parametrize(
+    "phase",
+    [PluginInstallationPhase.PREPARED, PluginInstallationPhase.COMMITTED],
+)
+def test_store_blocks_new_journal_until_previous_phase_is_closed(
+    installation_store,
+    phase: PluginInstallationPhase,
+) -> None:
+    """同一物理插件的未收尾 journal 不得被后续事务覆盖。"""
+    _, _, store = installation_store
+    existing = _store_record(transaction_id=f"install-{phase.value}")
+    if phase is PluginInstallationPhase.COMMITTED:
+        existing = replace(existing, phase=phase, membership_target=True)
+    store.create(existing)
+
+    with pytest.raises(PluginInstallationConflictError, match="未收尾安装事务"):
+        store.create(
+            _store_record(
+                transaction_id="install-follow-up",
+                plugin_id="demoplugin",
+            )
+        )
+
+    assert store.get(existing.transaction_id).phase is phase
+    assert store.delete(
+        existing.transaction_id,
+        expected_phase=phase,
+    ) is True
+    assert store.create(
+        _store_record(
+            transaction_id="install-follow-up",
+            plugin_id="demoplugin",
+        )
+    ).transaction_id == "install-follow-up"
+
+
 def test_store_commits_membership_identity_and_phase_atomically(installation_store) -> None:
     """membership、身份和 journal phase 必须在一个配置原子事务中提交。"""
     _, factory, store = installation_store

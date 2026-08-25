@@ -12,6 +12,7 @@ from app.application.plugin.admission import PluginInstallAdmission
 from app.application.plugin.identity import PluginIdentity, PluginPayloadSourceType
 from app.application.plugin.source import PluginLocalCandidate
 from app.application.plugin.transaction import (
+    PluginInstallationConflictError,
     PluginInstallationPhase,
     PluginInstallationRecord,
     PluginPersistenceService,
@@ -22,7 +23,6 @@ from app.schemas.exception import (
     PersistenceUnavailableError,
     PluginMutationRejectedError,
 )
-
 
 InstalledPluginsReader = Callable[[], list[str]]
 PluginIdsProvider = Callable[[], list[str]]
@@ -284,6 +284,14 @@ class PluginInstallCommand:
             if not state.journal_created:
                 await self.__resolve_journal_created(state)
             raise
+        except PluginInstallationConflictError as error:
+            rollback = await self.__rollback_without_journal(state.checkpoint)
+            return PluginInstallResult(
+                success=False,
+                message=str(error),
+                failure_stage="journal_prepare_conflict",
+                rollback=rollback,
+            )
         except Exception as error:
             journal_created = await self.__resolve_journal_created(state)
             if journal_created is None:

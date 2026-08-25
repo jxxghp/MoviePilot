@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.application.plugin.gateway import PluginInstallGateway
-from app.application.plugin.identity import TrustedPluginSourceType
+from app.application.plugin.identity import (
+    PluginBindingBasis,
+    PluginIdentity,
+    PluginPayloadSourceType,
+    TrustedPluginSourceType,
+)
 from app.application.plugin.install import PluginInstallResult
 from app.application.plugin.lifecycle import plugin_lifecycle
 from app.application.plugin.source import (
@@ -45,7 +50,7 @@ def test_market_sync_keeps_install_rollback_enabled() -> None:
     )
 
     assert service.sync() == [plugin.id]
-    install.assert_called_once_with(plugin.id, plugin.repo_url, False, None)
+    install.assert_called_once_with(plugin.id, None, False, None)
 
 
 @pytest.mark.asyncio
@@ -53,35 +58,69 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
     monkeypatch,
 ) -> None:
     """启动自动安装跨线程进入 Gateway 时必须复用同一个 startup lease。"""
+    competing_repo_url = "https://github.com/example/MoviePilot-Plugins"
     plugin = SimpleNamespace(
         id="DemoPlugin",
-        repo_url=REPO_URL,
+        repo_url=competing_repo_url,
         plugin_name="Demo",
-        plugin_version="1.0.0",
+        plugin_version="9.0.0",
         system_version_compatible=True,
+    )
+    official_candidate = PluginMarketCandidate(
+        plugin_id=plugin.id,
+        source_key="github:jxxghp/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.OFFICIAL,
+        repo_url=REPO_URL,
+        package_generation="v3",
+        plugin_version="1.1.0",
+        dto={"v3": True},
+    )
+    competing_candidate = PluginMarketCandidate(
+        plugin_id=plugin.id,
+        source_key="github:example/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.THIRD_PARTY,
+        repo_url=competing_repo_url,
+        package_generation="v3",
+        plugin_version=plugin.plugin_version,
+        dto={"v3": True},
     )
     inventory = CandidateInventory((
         MarketRead.present(
             REPO_URL,
-            (
-                PluginMarketCandidate(
-                    plugin_id=plugin.id,
-                    source_key="github:jxxghp/moviepilot-plugins",
-                    source_type=TrustedPluginSourceType.OFFICIAL,
-                    repo_url=REPO_URL,
-                    package_generation="v3",
-                    plugin_version=plugin.plugin_version,
-                    dto={"v3": True},
-                ),
-            ),
+            (official_candidate,),
+            package_generation="v3",
+        ),
+        MarketRead.present(
+            competing_repo_url,
+            (competing_candidate,),
             package_generation="v3",
         ),
     ))
+    identity = PluginIdentity(
+        plugin_id=plugin.id,
+        normalized_plugin_id="demoplugin",
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key="github:jxxghp/moviepilot-plugins",
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        payload_source_type=PluginPayloadSourceType.UNKNOWN,
+        payload_source_key=None,
+        declared_version=None,
+        package_generation=None,
+        system_version=None,
+        supports_v3=None,
+        supports_v3t=None,
+        payload_receipt=None,
+        revision=1,
+        created_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        bound_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        payload_applied_at=None,
+    )
     executor = AsyncMock()
     executor.execute.return_value = PluginInstallResult(success=True)
     gateway = PluginInstallGateway(
         inventory=AsyncMock(return_value=inventory),
-        identity=AsyncMock(return_value=None),
+        identity=AsyncMock(return_value=identity),
         executor=executor,
         clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
     )
@@ -93,7 +132,7 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
 
     def install(
         plugin_id: str,
-        repo_url: str,
+        repo_url: str | None,
         force: bool,
         startup_token: object | None,
     ) -> tuple[bool, str]:
@@ -106,7 +145,7 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
             release_version=None,
             force=force,
             local_sync=False,
-            explicit_source=True,
+            explicit_source=False,
             startup_token=startup_token,
         )
 
@@ -129,3 +168,5 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
 
     assert synced == [plugin.id]
     executor.execute.assert_awaited_once()
+    admission = executor.execute.await_args.kwargs["admission"]
+    assert admission.candidate.repo_url == REPO_URL

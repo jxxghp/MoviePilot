@@ -62,7 +62,7 @@ class PluginSyncService:
             started = time.time()
             state, message = self._install(
                 plugin.id,
-                plugin.repo_url,
+                None,
                 False,
                 startup_token,
             )

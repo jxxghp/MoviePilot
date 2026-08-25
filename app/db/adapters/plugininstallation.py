@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,7 @@ AtomicMembershipUpdater = Callable[
         str,
         Callable[
             [Session, object],
-            tuple[PluginInstallationRecord, list[str]],
+            tuple[PluginInstallationRecord, object],
         ],
     ],
     PluginInstallationRecord,
@@ -311,34 +311,56 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
             )
 
     def create(self, record: PluginInstallationRecord) -> PluginInstallationRecord:
-        """创建一条事务记录并立即 flush 唯一键竞争。"""
-        session = self.__session()
-        try:
-            with session.begin():
-                session.add(
-                    PluginInstallation(
-                        transaction_id=record.transaction_id,
-                        plugin_id=record.plugin_id,
-                        phase=record.phase.value,
-                        membership_before=record.membership_before,
-                        membership_target=record.membership_target,
-                        identity_before_revision=record.identity_before_revision,
-                        identity_target_revision=record.identity_target_revision,
-                        package_existed=record.package_existed,
-                        persistent_backup_existed=record.persistent_backup_existed,
-                        created_at=record.created_at.isoformat(),
-                        updated_at=record.updated_at.isoformat(),
-                        schema_version=record.schema_version,
-                    )
+        """原子预留单插件 journal 槽位并立即 flush 唯一键竞争。"""
+        def reserve(
+            session: Session,
+            current_membership: object,
+        ) -> tuple[PluginInstallationRecord, object]:
+            """在配置写事务内阻断同一物理插件的未收尾 journal。"""
+            existing = session.execute(
+                select(PluginInstallation)
+                .where(
+                    func.lower(PluginInstallation.plugin_id)
+                    == record.plugin_id.lower()
                 )
-                session.flush()
-                return record
+                .with_for_update()
+            ).scalars().first()
+            if existing is not None:
+                raise PluginInstallationConflictError(
+                    f"插件 {record.plugin_id} 存在未收尾安装事务: "
+                    f"{existing.transaction_id} ({existing.phase})"
+                )
+            session.add(
+                PluginInstallation(
+                    transaction_id=record.transaction_id,
+                    plugin_id=record.plugin_id,
+                    phase=record.phase.value,
+                    membership_before=record.membership_before,
+                    membership_target=record.membership_target,
+                    identity_before_revision=record.identity_before_revision,
+                    identity_target_revision=record.identity_target_revision,
+                    package_existed=record.package_existed,
+                    persistent_backup_existed=record.persistent_backup_existed,
+                    created_at=record.created_at.isoformat(),
+                    updated_at=record.updated_at.isoformat(),
+                    schema_version=record.schema_version,
+                )
+            )
+            session.flush()
+            return record, current_membership
+
+        try:
+            return cast(
+                PluginInstallationRecord,
+                self.__update_membership_atomically(
+                    _INSTALLED_PLUGINS_KEY,
+                    reserve,
+                ),
+            )
         except IntegrityError as error:
             raise PluginInstallationConflictError(
-                f"插件安装事务已存在: {record.transaction_id}"
+                f"插件安装事务创建发生并发竞争: {record.transaction_id}"
             ) from error
-        finally:
-            session.close()
 
     def get(self, transaction_id: str) -> PluginInstallationRecord | None:
         """按事务 ID 读取记录。"""
