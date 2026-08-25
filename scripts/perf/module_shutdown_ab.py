@@ -16,10 +16,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.testing.bootstrap import install_sites_stub, isolate_config_dir
+from app.testing.bootstrap import ensure_sites_stub, isolate_config_dir
 
 isolate_config_dir()
-install_sites_stub()
+ensure_sites_stub()
 
 from app.startup import lifecycle
 from app.startup.initializers import modules as modules_initializer

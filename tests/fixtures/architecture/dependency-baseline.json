@@ -6471,7 +6471,6 @@
     "app.testing -> app.testing.stub",
     "app.testing.bootstrap -> app.application",
     "app.testing.bootstrap -> app.application.service",
-    "app.testing.bootstrap -> app.application.site",
     "app.testing.bootstrap -> app.db",
     "app.testing.bootstrap -> app.db.adapters",
     "app.testing.bootstrap -> app.db.adapters.transaction",

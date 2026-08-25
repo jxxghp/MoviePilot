@@ -123,27 +123,10 @@ def _expose_plugin_source(path: Path) -> None:
 
 
 def ensure_sites_stub() -> None:
-    """为 ``app.application.site.sites`` 补最小垫片（仅在缺失时）。
+    """安装确定性的站点资源垫片，隔离本机动态资源及其平台 ABI 差异。
 
-    ``app.application.site.sites`` 由独立仓库动态拉取，CI / 全新环境无该模块，而众多 ``app.chain.*`` /
-    ``app.modules.*`` 在 import 期依赖它。统一补一个最小垫片，省去各测试文件各自打桩；若真实模块
-    已存在（本地已拉取）则用真实模块、不覆盖，不影响真实行为。须在隔离 CONFIG_DIR 之后调用，
-    以免试探性 ``import app.application.site.sites`` 牵入 ``app.runtime.config``、
-    把配置路径定型到真实目录。
-    """
-    if "app.application.site.sites" in sys.modules:
-        return
-    try:
-        import app.application.site.sites  # noqa: F401  本地已拉取时用真实模块
-    except (ModuleNotFoundError, ImportError):
-        install_sites_stub()
-
-
-def install_sites_stub() -> None:
-    """强制安装确定性的站点资源垫片，供隔离探针排除本机动态资源差异。
-
-    与 :func:`ensure_sites_stub` 的“真实资源优先”语义不同，性能与架构探针需要在开发机和
-    source-only CI 中使用完全相同的 import 前提，因此必须在导入被测宿主模块前覆盖资源模块。
+    站点扩展由独立资源仓按平台下发，不属于普通单测的输入。主程序与各代插件测试必须在导入
+    业务模块前覆盖该模块；真实扩展的加载、ABI 与能力由资源专项验收负责。
     """
     from importlib.util import spec_from_loader
     from types import ModuleType
