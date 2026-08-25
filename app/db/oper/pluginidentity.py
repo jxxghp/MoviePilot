@@ -1,5 +1,7 @@
 """插件来源身份的数据访问原语。"""
 
+from typing import cast
+
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -13,11 +15,14 @@ class PluginIdentityOper(DbOper):
     def get_by_plugin_id(self, plugin_id: str) -> PluginIdentity | None:
         """按规范化物理插件 ID 查询唯一身份。"""
         return self._execute_sync_query(
-            lambda session: session.execute(
-                select(PluginIdentity).where(
-                    PluginIdentity.normalized_plugin_id == plugin_id
-                )
-            ).scalar_one_or_none()
+            lambda session: cast(
+                PluginIdentity | None,
+                session.execute(
+                    select(PluginIdentity).where(
+                        PluginIdentity.normalized_plugin_id == plugin_id
+                    )
+                ).scalar_one_or_none(),
+            )
         )
 
     def stage_create(self, identity: PluginIdentity) -> None:
