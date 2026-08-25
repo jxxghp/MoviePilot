@@ -24,13 +24,11 @@ def submit_with_context(
 ) -> Future[ExecutorResult]:
     """从空线程上下文提交任务，并在执行时恢复调用方的独立上下文快照。"""
     context = copy_context()
-    return Context().run(
-        executor.submit,
-        context.run,
-        func,
-        *args,
-        **kwargs,
-    )
+
+    def submit() -> Future[ExecutorResult]:
+        return executor.submit(context.run, func, *args, **kwargs)
+
+    return Context().run(submit)
 
 
 class OwnedThreadPoolExecutor(ThreadPoolExecutor):
