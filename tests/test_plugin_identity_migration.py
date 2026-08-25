@@ -22,7 +22,6 @@ except ModuleNotFoundError:
 
 from app.db.models.pluginidentity import PluginIdentity
 
-
 MIGRATION = "database.versions.d2e4f6a8b0c1_3_0_9"
 
 
