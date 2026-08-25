@@ -1,7 +1,7 @@
 import logging
 import traceback
-from dataclasses import dataclass
-from typing import Union, Optional, List, Self
+from dataclasses import asdict, dataclass
+from typing import Any, Union, Optional, List, Self
 
 import cn2an
 import regex as re
@@ -39,6 +39,100 @@ VIDEO_BIT_RE = re.compile(
     r"(?<![A-Za-z0-9])(?P<bit>8|10|12|16)[\s._-]*bits?(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
+
+_META_OPTIONAL_MERGE_FIELDS = (
+    "resource_type",
+    "resource_pix",
+    "resource_team",
+    "customization",
+    "resource_effect",
+    "web_source",
+    "video_encode",
+    "video_bit",
+    "audio_encode",
+    "part",
+    "episode_group",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class MetaInfoSnapshot:
+    """MetaInfo 解析器的不可变稳定输出，用于跨实现等价校验和安全缓存。"""
+
+    kind: str
+    isfile: bool
+    title: str
+    org_string: Optional[str]
+    subtitle: Optional[str]
+    type: str
+    cn_name: Optional[str]
+    en_name: Optional[str]
+    original_name: Optional[str]
+    year: Optional[str]
+    total_season: int
+    begin_season: Optional[int]
+    end_season: Optional[int]
+    total_episode: int
+    begin_episode: Optional[int]
+    end_episode: Optional[int]
+    part: Optional[str]
+    resource_type: Optional[str]
+    resource_effect: Optional[str]
+    resource_pix: Optional[str]
+    resource_team: Optional[str]
+    customization: Optional[str]
+    web_source: Optional[str]
+    video_encode: Optional[str]
+    video_bit: Optional[str]
+    audio_encode: Optional[str]
+    apply_words: tuple[str, ...]
+    media_source: Optional[str]
+    media_id: Optional[str]
+    episode_group: Optional[str]
+    fps: Optional[int]
+
+    @classmethod
+    def from_meta(cls, meta: "MetaBase") -> "MetaInfoSnapshot":
+        """从兼容的可变 MetaBase 对象提取不包含临时状态的完整契约。"""
+        media_type = getattr(meta.type, "value", meta.type)
+        media_source = getattr(meta.media_source, "value", meta.media_source)
+        return cls(
+            kind="anime" if type(meta).__name__ == "MetaAnime" else "video",
+            isfile=bool(meta.isfile),
+            title=meta.title or "",
+            org_string=meta.org_string,
+            subtitle=meta.subtitle,
+            type=media_type,
+            cn_name=meta.cn_name,
+            en_name=meta.en_name,
+            original_name=meta.original_name,
+            year=meta.year,
+            total_season=meta.total_season,
+            begin_season=meta.begin_season,
+            end_season=meta.end_season,
+            total_episode=meta.total_episode,
+            begin_episode=meta.begin_episode,
+            end_episode=meta.end_episode,
+            part=meta.part,
+            resource_type=meta.resource_type,
+            resource_effect=meta.resource_effect,
+            resource_pix=meta.resource_pix,
+            resource_team=meta.resource_team,
+            customization=meta.customization,
+            web_source=meta.web_source,
+            video_encode=meta.video_encode,
+            video_bit=meta.video_bit,
+            audio_encode=meta.audio_encode,
+            apply_words=tuple(meta.apply_words or ()),
+            media_source=media_source,
+            media_id=meta.media_id,
+            episode_group=meta.episode_group,
+            fps=meta.fps,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """返回便于差异报告和序列化的独立字典。"""
+        return asdict(self)
 
 
 @dataclass
@@ -652,45 +746,19 @@ class MetaBase(object):
             self.begin_episode = meta.begin_episode
             self.end_episode = meta.end_episode
             self.total_episode = meta.total_episode
-        # 版本
-        if not self.resource_type:
-            self.resource_type = meta.resource_type
-        # 分辨率
-        if not self.resource_pix:
-            self.resource_pix = meta.resource_pix
-        # 制作组/字幕组
-        if not self.resource_team:
-            self.resource_team = meta.resource_team
-        # 自定义占位符
-        if not self.customization:
-            self.customization = meta.customization
-        # 特效
-        if not self.resource_effect:
-            self.resource_effect = meta.resource_effect
-        # 视频编码
-        if not self.video_encode:
-            self.video_encode = meta.video_encode
-        # 视频位深
-        if not self.video_bit:
-            self.video_bit = meta.video_bit
-        # 音频编码
-        if not self.audio_encode:
-            self.audio_encode = meta.audio_encode
+        # 普通可选字段统一遵循文件优先、父目录补空，新增字段只维护一份策略。
+        for field_name in _META_OPTIONAL_MERGE_FIELDS:
+            if not getattr(self, field_name):
+                setattr(self, field_name, getattr(meta, field_name))
         # 帧率信息
         if not self.fps:
             self.fps = meta.fps
-        # Part
-        if not self.part:
-            self.part = meta.part
         # 媒体身份必须原子合并，不能将不同目录层级的来源和ID拼成一对
         current_source, current_id = resolve_media_identity(media=self)
         if current_source and current_id:
             self.media_source, self.media_id = current_source, current_id
         else:
             self.media_source, self.media_id = resolve_media_identity(media=meta)
-        # 剧集组
-        if not self.episode_group and meta.episode_group:
-            self.episode_group = meta.episode_group
 
     def to_dict(self):
         """

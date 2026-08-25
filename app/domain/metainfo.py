@@ -1,8 +1,9 @@
 import hashlib
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from functools import lru_cache
-from typing import Tuple, List, Optional
+from typing import Mapping, Tuple, List, Optional
 
 import regex as re
 
@@ -86,6 +87,18 @@ _LEGACY_ID_KEYS = (
     (MediaSource.Bangumi, "bangumiid"),
     (MediaSource.AniList, "anilistid"),
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedMetaInput:
+    """Python 回退解析的阶段输入，保留原文与预处理结果之间的明确边界。"""
+
+    original_title: str
+    parsed_title: str
+    subtitle: Optional[str]
+    isfile: bool
+    apply_words: tuple[str, ...]
+    explicit_metainfo: Mapping[str, object]
 
 
 def _empty_metainfo() -> dict:
@@ -263,37 +276,38 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
     return title, _normalize_metainfo_identity(metainfo)
 
 
-def _build_meta_info(
+def _prepare_meta_input(
         title: str,
         subtitle: Optional[str] = None,
         custom_words: List[str] = None,
-) -> MetaBase:
+) -> _PreparedMetaInput:
     """
-    根据标题构造元数据
+    应用识别词、显式标签和文件后缀规则，生成稳定的解析阶段输入。
     """
-    # 原标题
-    org_title = title
-    # 预处理标题
-    title, apply_words = WordsMatcher().prepare(title, custom_words=custom_words)
-    # 获取标题中媒体信息
-    title, metainfo = find_metainfo(title)
-    # 判断是否处理文件
+    original_title = title
+    parsed_title, apply_words = WordsMatcher().prepare(title, custom_words=custom_words)
+    # 完整 Rust 入口已经失败或被禁用，参考实现不得再次跨边界调用部分 Rust 解析器。
+    parsed_title, explicit_metainfo = _find_metainfo_python(parsed_title)
     media_exts = get_media_extensions()
-    title_path = Path(title) if title else None
+    title_path = Path(parsed_title) if parsed_title else None
     if title_path and title_path.suffix.lower() in media_exts:
         isfile = True
-        # 去掉后缀
-        title = title_path.stem
+        parsed_title = title_path.stem
     else:
         isfile = False
-    # 识别
-    meta = MetaAnime(title, subtitle, isfile) if is_anime(title) else MetaVideo(title, subtitle, isfile)
-    # 记录原标题
-    meta.title = org_title
-    # 记录使用的识别词
-    meta.apply_words = apply_words or []
-    # 修正媒体信息
-    media_source, media_id = resolve_media_identity(media=metainfo)
+    return _PreparedMetaInput(
+        original_title=original_title,
+        parsed_title=parsed_title,
+        subtitle=subtitle,
+        isfile=isfile,
+        apply_words=tuple(apply_words or ()),
+        explicit_metainfo=explicit_metainfo,
+    )
+
+
+def _apply_explicit_metainfo(meta: MetaBase, metainfo: Mapping[str, object]) -> None:
+    """以显式标签覆盖推断字段，保持用户声明拥有最高优先级。"""
+    media_source, media_id = resolve_media_identity(media=dict(metainfo))
     if media_source and media_id:
         meta.media_source = media_source
         meta.media_id = media_id
@@ -313,6 +327,42 @@ def _build_meta_info(
         meta.end_episode = metainfo['end_episode']
     if metainfo.get('total_episode') is not None:
         meta.total_episode = metainfo['total_episode']
+
+
+def _build_meta_info(
+        title: str,
+        subtitle: Optional[str] = None,
+        custom_words: List[str] = None,
+) -> MetaBase:
+    """按准备、分类解析、显式覆盖三个阶段构造 Python MetaInfo。"""
+    prepared = _prepare_meta_input(title, subtitle, custom_words)
+    meta = MetaAnime(
+        prepared.parsed_title,
+        prepared.subtitle,
+        prepared.isfile,
+    ) if is_anime(prepared.parsed_title) else MetaVideo(
+        prepared.parsed_title,
+        prepared.subtitle,
+        prepared.isfile,
+    )
+    meta.title = prepared.original_title
+    meta.apply_words = list(prepared.apply_words)
+    _apply_explicit_metainfo(meta, prepared.explicit_metainfo)
+    return meta
+
+
+def _build_python_meta_info(
+        title: str,
+        subtitle: Optional[str] = None,
+        custom_words: List[str] = None,
+) -> MetaBase:
+    """构造并完成 original_name 的纯 Python 参考解析结果。"""
+    meta = _build_meta_info(title=title, subtitle=subtitle, custom_words=custom_words)
+    if meta.apply_words:
+        original_meta = _build_meta_info(title=title, subtitle=subtitle)
+        meta.original_name = original_meta.name or meta.name
+    else:
+        meta.original_name = meta.name or None
     return meta
 
 
@@ -473,13 +523,11 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
         )
     if rust_meta:
         return rust_meta
-    meta = _build_meta_info(title=title, subtitle=subtitle, custom_words=custom_words)
-    if meta.apply_words:
-        original_meta = _build_meta_info(title=title, subtitle=subtitle)
-        meta.original_name = original_meta.name or meta.name
-    else:
-        meta.original_name = meta.name
-    return meta
+    return _build_python_meta_info(
+        title=title,
+        subtitle=subtitle,
+        custom_words=custom_words,
+    )
 
 
 def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool = False) -> MetaBase:
@@ -512,16 +560,16 @@ def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool =
     if rust_meta:
         return rust_meta
     # 文件元数据，不包含后缀
-    file_meta = MetaInfo(title=path.name, custom_words=custom_words)
+    file_meta = _build_python_meta_info(title=path.name, custom_words=custom_words)
     if should_use_parent_title_for_file_stem(path.stem, path.parent.name, file_meta):
         clear_parsed_title_for_parent_merge(file_meta)
     # 上级目录元数据
-    dir_meta = MetaInfo(title=path.parent.name, custom_words=custom_words)
+    dir_meta = _build_python_meta_info(title=path.parent.name, custom_words=custom_words)
     if file_meta.type == MediaType.TV or dir_meta.type != MediaType.TV:
         # 合并元数据
         file_meta.merge(dir_meta)
     # 上上级目录元数据
-    root_meta = MetaInfo(title=path.parent.parent.name, custom_words=custom_words)
+    root_meta = _build_python_meta_info(title=path.parent.parent.name, custom_words=custom_words)
     if file_meta.type == MediaType.TV or root_meta.type != MediaType.TV:
         # 合并元数据
         file_meta.merge(root_meta)

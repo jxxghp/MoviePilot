@@ -11,10 +11,16 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.domain import metainfo as metainfo_module
 from app.domain.meta.metaanime import MetaAnime
+from app.domain.meta.metabase import MetaInfoSnapshot
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.meta.runtime import get_audio_extensions
+from app.domain.meta.runtime import (
+    configure_recognition_runtime,
+    get_audio_extensions,
+    get_metainfo_accelerator,
+)
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.adapters.system import rust as rust_accel
+from app.runtime.settings import RuntimeSettingsCompat
 from tests.cases.meta import meta_cases
 
 
@@ -54,6 +60,20 @@ _MUSIC_CASES: tuple[BenchmarkInput, ...] = (
         None,
     ),
 )
+
+
+def configure_benchmark_runtime() -> None:
+    """注入独立基准所需的文件类型和 Rust 适配器，避免静默测量 Python 回退。"""
+    settings = RuntimeSettingsCompat()
+    configure_recognition_runtime(
+        media_extensions_provider=lambda: (
+            *settings.RMT_MEDIAEXT,
+            *settings.RMT_SUBEXT,
+            *settings.RMT_AUDIOEXT,
+        ),
+        audio_extensions_provider=lambda: settings.RMT_AUDIOEXT,
+        accelerator=rust_accel,
+    )
 
 
 def build_video_inputs(repeat: int) -> list[BenchmarkInput]:
@@ -124,24 +144,10 @@ def _enum_value(value: Any) -> Any:
 
 
 def project_video_result(meta: Any) -> dict[str, Any]:
-    """提取影视识别对外契约字段，排除 Python 解析器的临时内部状态。"""
-    return {
-        "kind": "anime" if isinstance(meta, MetaAnime) else "video",
-        "type": _enum_value(meta.type),
-        "cn_name": meta.cn_name or "",
-        "en_name": meta.en_name or "",
-        "year": meta.year or "",
-        "part": meta.part or "",
-        "season": meta.season,
-        "episode": meta.episode,
-        "resource_type": meta.edition,
-        "resource_pix": meta.resource_pix or "",
-        "video_encode": meta.video_encode or "",
-        "audio_encode": meta.audio_encode or "",
-        "fps": meta.fps or None,
-        "media_source": _enum_value(meta.media_source),
-        "media_id": meta.media_id,
-    }
+    """提取影视识别完整稳定契约，排除解析器的临时内部状态和派生展示字段。"""
+    result = MetaInfoSnapshot.from_meta(meta).to_dict()
+    result["apply_words"] = list(result["apply_words"])
+    return result
 
 
 def project_music_result(meta: Any) -> dict[str, Any]:
@@ -252,9 +258,17 @@ def benchmark_suite(
 
 
 def validate_rust_runtime() -> None:
-    """确认 Rust 总开关和音乐扩展入口可用，拒绝静默回退形成伪基准。"""
+    """确认领域入口已注入可工作的 Rust 影视与音乐解析器，拒绝伪基准。"""
     if not rust_accel.is_enabled():
         raise RuntimeError("Rust 加速未启用或 moviepilot-rust 扩展不可用")
+    if get_metainfo_accelerator() is not rust_accel:
+        raise RuntimeError("MetaInfo 领域入口未注入 Rust 加速器")
+    video_probe = rust_accel.parse_metainfo(
+        "Benchmark Movie 2026 1080p WEB-DL H265",
+        options={"media_exts": [".mkv"]},
+    )
+    if not isinstance(video_probe, dict) or video_probe.get("en_name") != "Benchmark Movie":
+        raise RuntimeError("Rust 影视解析探针未返回有效结果，拒绝测量 Python 回退")
     if not callable(getattr(rust_accel, "parse_metamusic", None)):
         raise RuntimeError("MoviePilot 后端缺少 rust_accel.parse_metamusic 适配器")
     extension = getattr(rust_accel, "_moviepilot_rust", None)
@@ -316,6 +330,7 @@ def main() -> int:
     """运行影视与音乐 Rust/Python 生产入口基准测试。"""
     args = parse_args()
     try:
+        configure_benchmark_runtime()
         validate_rust_runtime()
         video_inputs = build_video_inputs(args.repeat_inputs)
         music_inputs = build_music_inputs(args.repeat_inputs)

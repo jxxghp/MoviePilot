@@ -127,6 +127,7 @@ class MetaVideo(MetaBase):
                 and title.isdigit() \
                 and len(title) < 5:
             self.begin_episode = int(title)
+            self.total_episode = 1
             self.type = MediaType.TV
             return
         # 全名为Season xx 及 Sxx 直接返回

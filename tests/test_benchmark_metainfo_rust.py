@@ -23,6 +23,19 @@ def test_build_inputs_separates_video_and_music_domains():
                for kind, value, _subtitle in music_once if kind == "music_query")
 
 
+def test_configure_benchmark_runtime_injects_extensions_and_accelerator(monkeypatch):
+    """独立基准必须显式注入文件类型和 Rust 适配器，不能依赖应用启动副作用。"""
+    configure_runtime = Mock()
+    monkeypatch.setattr(benchmark, "configure_recognition_runtime", configure_runtime)
+
+    benchmark.configure_benchmark_runtime()
+
+    kwargs = configure_runtime.call_args.kwargs
+    assert kwargs["accelerator"] is benchmark.rust_accel
+    assert ".mkv" in kwargs["media_extensions_provider"]()
+    assert ".flac" in kwargs["audio_extensions_provider"]()
+
+
 def test_parse_input_uses_public_production_entries(monkeypatch):
     """输入分发应调用 MetaInfo、MetaInfoPath 和 MetaMusic.parse_query 公开入口。"""
     title_result = object()
@@ -140,6 +153,24 @@ def test_video_projection_ignores_python_parser_internal_state():
     )
 
 
+def test_video_projection_covers_stable_path_merge_fields():
+    """差异投影必须覆盖路径合并容易遗漏的平台、效果、位深和范围字段。"""
+    result = benchmark.MetaInfo("Show S01E01 2026 2160p AMZN WEB-DL HDR H265 10bit")
+    result.web_source = "Amazon"
+    result.resource_team = "GROUP"
+    result.customization = "CUSTOM"
+
+    projected = benchmark.project_video_result(result)
+
+    assert projected["web_source"] == "Amazon"
+    assert projected["resource_effect"] == "HDR"
+    assert projected["video_bit"] == "10bit"
+    assert projected["begin_season"] == 1
+    assert projected["begin_episode"] == 1
+    assert projected["resource_team"] == "GROUP"
+    assert projected["customization"] == "CUSTOM"
+
+
 def test_validate_rust_runtime_rejects_disabled_and_old_extensions(monkeypatch):
     """运行前检查应拒绝关闭的 Rust 和缺少音乐入口的旧扩展。"""
     rust_accel = benchmark.rust_accel
@@ -149,6 +180,12 @@ def test_validate_rust_runtime_rejects_disabled_and_old_extensions(monkeypatch):
         benchmark.validate_rust_runtime()
 
     monkeypatch.setattr(rust_accel, "is_enabled", Mock(return_value=True))
+    monkeypatch.setattr(benchmark, "get_metainfo_accelerator", Mock(return_value=rust_accel))
+    monkeypatch.setattr(
+        rust_accel,
+        "parse_metainfo",
+        Mock(return_value={"en_name": "Benchmark Movie"}),
+    )
     monkeypatch.setattr(rust_accel, "parse_metamusic", Mock(return_value={}), raising=False)
     monkeypatch.setattr(rust_accel, "_moviepilot_rust", SimpleNamespace())
 
@@ -161,6 +198,12 @@ def test_validate_rust_runtime_requires_successful_music_probe(monkeypatch):
     rust_accel = benchmark.rust_accel
     extension = SimpleNamespace(parse_metamusic_fast=Mock())
     monkeypatch.setattr(rust_accel, "is_enabled", Mock(return_value=True))
+    monkeypatch.setattr(benchmark, "get_metainfo_accelerator", Mock(return_value=rust_accel))
+    monkeypatch.setattr(
+        rust_accel,
+        "parse_metainfo",
+        Mock(return_value={"en_name": "Benchmark Movie"}),
+    )
     monkeypatch.setattr(rust_accel, "_moviepilot_rust", extension)
     monkeypatch.setattr(rust_accel, "parse_metamusic", Mock(return_value=None), raising=False)
 
@@ -170,6 +213,7 @@ def test_validate_rust_runtime_requires_successful_music_probe(monkeypatch):
 
 def test_main_outputs_independent_video_and_music_metrics(monkeypatch, capsys):
     """主程序应分别输出影视和音乐等价状态、耗时及性能提升。"""
+    monkeypatch.setattr(benchmark, "configure_benchmark_runtime", Mock())
     monkeypatch.setattr(benchmark, "validate_rust_runtime", Mock())
     monkeypatch.setattr(benchmark, "build_video_inputs", Mock(return_value=[("title", "V", None)]))
     monkeypatch.setattr(
@@ -212,6 +256,7 @@ def test_main_outputs_independent_video_and_music_metrics(monkeypatch, capsys):
 
 def test_main_reports_runtime_failure_with_nonzero_exit(monkeypatch, capsys):
     """Rust 未就绪时主程序应明确报错并返回非零状态。"""
+    monkeypatch.setattr(benchmark, "configure_benchmark_runtime", Mock())
     monkeypatch.setattr(
         benchmark,
         "validate_rust_runtime",
