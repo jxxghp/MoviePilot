@@ -19,14 +19,16 @@ class PluginSystemServices:
         dependency_manifest_status: Callable[[Path], Optional[bool]],
         compatible_flags: Callable[[Optional[str]], list[str]],
         frozen: Callable[[], bool],
+        install: Callable[..., tuple[bool, str]],
     ) -> None:
-        """记录市场、包、依赖和代际兼容计算端口。"""
+        """记录市场、包、安装 Gateway、依赖和代际兼容计算端口。"""
         self.market = market
         self.package = package
         self.dependency = dependency
         self.dependency_manifest_status = dependency_manifest_status
         self.compatible_flags = compatible_flags
         self.frozen = frozen
+        self.install = install
 
     def local_repo_paths(self) -> list[Path]:
         """返回可监测的本地插件仓库路径。"""
@@ -64,6 +66,30 @@ class PluginSystemServices:
     def is_frozen(self) -> bool:
         """判断当前宿主是否为不可写的冻结运行模式。"""
         return self.frozen()
+
+    def install_plugin(
+        self,
+        *,
+        plugin_id: str,
+        repo_url: str | None,
+        package_version: str | None = None,
+        release_version: str | None = None,
+        force: bool = False,
+        local_sync: bool = False,
+        explicit_source: bool = False,
+        startup_token: object | None = None,
+    ) -> tuple[bool, str]:
+        """从同步运行时线程进入宿主唯一安装 Gateway。"""
+        return self.install(
+            plugin_id=plugin_id,
+            repo_url=repo_url,
+            package_version=package_version,
+            release_version=release_version,
+            force=force,
+            local_sync=local_sync,
+            explicit_source=explicit_source,
+            startup_token=startup_token,
+        )
 
 
 _services: Optional[PluginSystemServices] = None

@@ -128,6 +128,118 @@ class PluginCloneRequest(BaseModel):
     )
 
 
+class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
+    """显式换源确认所需的插件来源身份投影。"""
+
+    plugin_id: str = Field(description="物理插件 ID")
+    trusted_source_type: str = Field(description="当前可信在线来源类型")
+    trusted_source_key: Optional[str] = Field(
+        default=None,
+        description="规范化的可信在线来源键；未绑定时为空",
+    )
+    binding_basis: str = Field(description="当前可信来源的建立依据")
+    payload_source_type: str = Field(description="最近一次已提交载荷的来源类型")
+    payload_source_key: Optional[str] = Field(
+        default=None,
+        description="最近一次在线载荷的来源键；本地或未知载荷为空",
+    )
+    revision: int = Field(ge=1, description="显式换源使用的身份 CAS revision")
+
+
+class PluginSourceCandidate(BaseModel):  # type: ignore[misc]
+    """一个可供管理员识别的脱敏插件来源候选。"""
+
+    source_type: Literal["official", "third_party", "local"] = Field(
+        description="来源类型；本地候选不公开路径"
+    )
+    source_key: Optional[str] = Field(
+        default=None,
+        description="规范化在线来源键；本地候选为空",
+    )
+    repo_url: Optional[str] = Field(
+        default=None,
+        description="可明确选择的在线仓库地址；本地候选为空",
+    )
+    package_generation: Literal["v1", "v2", "v3"] = Field(
+        description="当前运行时会采用的插件包代际"
+    )
+    plugin_version: Optional[str] = Field(
+        default=None,
+        description="该来源当前可安装的插件版本",
+    )
+
+
+class PluginSourceOptions(BaseModel):  # type: ignore[misc]
+    """来源选择界面所需的当前身份、候选和准入状态。"""
+
+    plugin_id: str = Field(description="物理插件 ID")
+    inventory_complete: bool = Field(
+        description="本轮配置市场是否全部得到确定读取结果"
+    )
+    selection_status: Literal[
+        "selected", "unavailable", "conflict", "incomplete"
+    ] = Field(description="未指定新来源时的当前准入状态")
+    selection_reason: str = Field(description="当前准入状态的人类可读原因")
+    identity: Optional[PluginSourceIdentity] = Field(
+        default=None,
+        description="已安装插件的来源身份；未建立身份时为空",
+    )
+    candidates: List[PluginSourceCandidate] = Field(
+        default_factory=list,
+        description="按来源归并后的在线候选及可选本地候选",
+    )
+
+
+class PluginSourceInstallRequest(BaseModel):  # type: ignore[misc]
+    """管理员为未绑定插件明确选择初始在线来源的请求参数。"""
+
+    repo_url: str = Field(min_length=1, description="明确选择的目标插件仓库地址")
+    release_version: Optional[str] = Field(
+        default=None,
+        description="指定安装的 Release 资产版本；为空时使用当前索引版本",
+    )
+    force: bool = Field(
+        default=False,
+        description="是否强制重新下载并安装所选来源载荷",
+    )
+
+    @field_validator("repo_url")  # type: ignore[misc]
+    @classmethod
+    def normalize_repo_url(cls, value: str) -> str:
+        """拒绝只含空白或本地路径标识的来源选择。"""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("显式安装必须指定目标在线来源")
+        if normalized.startswith("local://"):
+            raise ValueError("显式来源安装只接受在线插件仓库")
+        return normalized
+
+
+class PluginSourceChangeRequest(BaseModel):  # type: ignore[misc]
+    """管理员显式切换插件在线来源的请求参数。"""
+
+    repo_url: str = Field(min_length=1, description="明确选择的目标插件仓库地址")
+    expected_revision: int = Field(
+        ge=1,
+        description="提交换源时必须匹配的当前身份 revision",
+    )
+    release_version: Optional[str] = Field(
+        default=None,
+        description="指定安装的 Release 资产版本；为空时使用当前索引版本",
+    )
+
+    @field_validator("repo_url")  # type: ignore[misc]
+    @classmethod
+    def normalize_repo_url(cls, value: str) -> str:
+        """拒绝只含空白或本地路径标识的换源目标。"""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("显式换源必须指定目标在线来源")
+        if normalized.startswith("local://"):
+            raise ValueError("显式换源只接受在线插件仓库")
+        return normalized
+
+
 class PluginDashboard(Plugin):
     """
     插件仪表盘

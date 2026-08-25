@@ -45,6 +45,13 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     ):
         monkeypatch.setattr(lifecycle, name, MagicMock())
     monkeypatch.setattr(lifecycle, "configure_plugin_services", MagicMock())
+    plugin_recovery = MagicMock()
+    plugin_recovery.replay = AsyncMock()
+    monkeypatch.setattr(
+        lifecycle,
+        "get_plugin_installation_recovery",
+        MagicMock(return_value=plugin_recovery),
+    )
     monkeypatch.setattr(lifecycle, "init_modules", AsyncMock())
 
     # 启动期的引擎预热与额度核算也要打桩。不打的话这些用例会走真实的引擎创建，在测试
@@ -442,6 +449,9 @@ def test_lifespan_configures_plugin_services_before_restore(monkeypatch):
     shutdown_steps = _patch_lifespan(monkeypatch)
     order = []
     lifecycle.configure_plugin_services.side_effect = lambda: order.append("configure")
+    lifecycle.get_plugin_installation_recovery.return_value.replay.side_effect = (
+        lambda: order.append("replay")
+    )
     lifecycle.SystemChain.return_value.restore_plugins.side_effect = (
         lambda: order.append("restore")
     )
@@ -452,7 +462,7 @@ def test_lifespan_configures_plugin_services_before_restore(monkeypatch):
 
     asyncio.run(run_lifespan())
 
-    assert order == ["configure", "restore"]
+    assert order == ["configure", "replay", "restore"]
     _assert_completed_once(shutdown_steps["close_http"])
 
 

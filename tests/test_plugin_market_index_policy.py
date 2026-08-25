@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.adapters.external.market import PluginHelper
+from app.adapters.external.plugin.client import PluginMarketClient
 
 
 @pytest.mark.asyncio
@@ -78,3 +79,113 @@ def test_plugin_index_response_preserves_status_contract(
     result = PluginHelper._resolve_plugin_index_response(status_code, content)
 
     assert result == expected
+
+
+@pytest.mark.parametrize(
+    ("status_code", "content", "expected"),
+    [
+        (200, '{"DemoPlugin": {"version": "1.2.3"}}', {"DemoPlugin": {"version": "1.2.3"}}),
+        (404, "404: Not Found", None),
+    ],
+)
+def test_plugin_index_result_preserves_read_state(
+    monkeypatch,
+    status_code: int,
+    content: str,
+    expected: dict | None,
+) -> None:
+    """只读入口以值和 None 区分真实索引与确定不存在。"""
+    helper = PluginHelper()
+    repo_url = f"https://github.com/policy-owner/policy-repository-{status_code}"
+
+    def request(_url: str, *, headers: dict):
+        return SimpleNamespace(status_code=status_code, text=content)
+
+    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    helper.get_plugin_index_result.cache_clear()
+
+    result = helper.get_plugin_index_result(repo_url, "v3")
+
+    assert result == expected
+
+
+@pytest.mark.parametrize(
+    ("status_code", "content", "message"),
+    [
+        (500, "upstream failed", "插件索引请求失败：HTTP 500"),
+        (200, "not-json", "插件索引响应格式无效"),
+    ],
+)
+def test_plugin_index_result_raises_for_unusable_reads(
+    monkeypatch,
+    status_code: int,
+    content: str,
+    message: str,
+) -> None:
+    """不可判定读取必须抛错，由应用库存统一记录失败事实。"""
+    helper = PluginHelper()
+
+    def request(_url: str, *, headers: dict):
+        return SimpleNamespace(status_code=status_code, text=content)
+
+    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    helper.get_plugin_index_result.cache_clear()
+
+    with pytest.raises(RuntimeError, match=message):
+        helper.get_plugin_index_result(
+            f"https://github.com/policy-owner/policy-failed-{status_code}",
+            "v3",
+        )
+
+
+@pytest.mark.asyncio
+async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> None:
+    """异步只读入口也必须保留 404 不存在事实。"""
+    helper = PluginHelper()
+
+    async def request(_url: str, *, headers: dict):
+        return SimpleNamespace(status_code=404, text="404: Not Found")
+
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_request_with_fallback",
+        request,
+    )
+    await helper.async_get_plugin_index_result.cache_clear()
+
+    result = await helper.async_get_plugin_index_result(
+        "https://github.com/policy-owner/policy-repository-async",
+        "v3",
+    )
+
+    assert result is None
+
+
+def test_plugin_index_result_propagates_adapter_exception(monkeypatch) -> None:
+    """请求异常必须传播给应用库存统一转换为失败事实。"""
+    helper = PluginHelper()
+
+    def request(_url: str, *, headers: dict):
+        raise OSError("socket closed")
+
+    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    helper.get_plugin_index_result.cache_clear()
+
+    with pytest.raises(OSError, match="socket closed"):
+        helper.get_plugin_index_result(
+            "https://github.com/policy-owner/policy-repository-exception",
+            "v3",
+        )
+
+
+def test_plugin_market_client_exposes_index_result_port() -> None:
+    """市场客户端应原样转发索引读取结果并保留只读边界。"""
+    expected = {"DemoPlugin": {"version": "1.2.3"}}
+
+    class FakeHelper:
+        def get_plugin_index_result(self, repo_url: str, package_version: str | None):
+            return expected
+
+    client = PluginMarketClient(FakeHelper())
+
+    assert client.get_plugin_index_result("https://github.com/example/repo", "v3") is expected

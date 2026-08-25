@@ -1,13 +1,17 @@
 import copy
 import threading
-from typing import Any, Optional, Union
+from collections.abc import Callable
+from typing import Any, Optional, TypeVar, Union
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.systemconfig import SystemConfig
 from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton
+
+T = TypeVar("T")
 
 
 class SystemConfigOper(DbOper, metaclass=Singleton):
@@ -78,6 +82,37 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             result = self._execute_sync_write(write)
             # 数据库操作返回时事务已经提交，读取方不会看到尚未持久化的配置。
             self._publish_value(key, value)
+            return result
+
+    def update_atomically(
+        self,
+        key: Union[str, SystemConfigKey],
+        mutation: Callable[[Session, Any], tuple[T, Any]],
+    ) -> T:
+        """在配置写锁内提交关联记录，并在事务成功后发布最终配置值。"""
+        if isinstance(key, SystemConfigKey):
+            key = key.value
+        self._require_loaded()
+        with self._write_lock:
+
+            def write(db: Session) -> tuple[T, Any]:
+                """锁定配置行，把关联写入与最终配置值放入同一事务。"""
+                conf = db.execute(
+                    select(SystemConfig)
+                    .where(SystemConfig.key == key)
+                    .with_for_update()
+                ).scalar_one_or_none()
+                current = copy.deepcopy(conf.value if conf else None)
+                result, value = mutation(db, current)
+                committed_value = copy.deepcopy(value)
+                if conf:
+                    conf.value = committed_value
+                else:
+                    db.add(SystemConfig(key=key, value=committed_value))
+                return result, committed_value
+
+            result, committed_value = self._execute_sync_write(write)
+            self._publish_value(key, committed_value)
             return result
 
     def get(self, key: Optional[Union[str, SystemConfigKey]] = None) -> Any:

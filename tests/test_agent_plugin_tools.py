@@ -10,7 +10,7 @@ from app.agent.tools.impl._plugin_tool_utils import (
     install_plugin_runtime,
     uninstall_plugin_runtime,
 )
-from app.agent.tools.impl.install_plugin import InstallPluginTool
+from app.agent.tools.impl.install_plugin import InstallPluginInput, InstallPluginTool
 from app.agent.tools.impl.query_installed_plugins import QueryInstalledPluginsTool
 from app.agent.tools.impl.query_market_plugins import QueryMarketPluginsTool
 from app.agent.tools.impl.query_plugin_config import QueryPluginConfigTool
@@ -282,49 +282,84 @@ def test_install_plugin_installs_market_candidate() -> None:
     assert payload["success"]
     assert payload["plugin"]["id"] == "DemoPlugin"
     install_runtime.assert_awaited_once_with(
-        "DemoPlugin", "https://example.com/market", force=False
+        "DemoPlugin",
+        None,
+        force=False,
+        explicit_source=False,
     )
 
 
-def test_install_plugin_runtime_reloads_in_threadpool() -> None:
-    """
-    已存在插件刷新加载时会通过插件线程池执行重载。
-    """
-    plugin_manager = MagicMock()
-    plugin_manager.get_plugin_ids.return_value = ["DemoPlugin"]
-    plugin_helper = MagicMock()
-    config_oper = MagicMock()
-    config_oper.get.return_value = ["DemoPlugin"]
-    calls = []
-
-    async def fake_run_agent_blocking(bucket, func, *args, **kwargs) -> None:
-        calls.append((bucket, func, args, kwargs))
-        return None
+def test_install_plugin_reports_source_conflict_before_retry() -> None:
+    """Agent 普通安装遇到多来源时返回候选，等待管理员明确选择。"""
+    tool = InstallPluginTool(session_id="session-1", user_id="10001")
+    candidate = _market_plugin("DemoPlugin", "Demo Plugin")
+    source_candidates = [
+        {
+            "plugin_id": "DemoPlugin",
+            "source_type": "official",
+            "source_key": "github:jxxghp/moviepilot-plugins",
+            "repo_url": "https://github.com/jxxghp/MoviePilot-Plugins",
+            "package_generation": "v3",
+            "plugin_version": "1.0.0",
+        },
+        {
+            "plugin_id": "DemoPlugin",
+            "source_type": "third_party",
+            "source_key": "github:example/plugins",
+            "repo_url": "https://github.com/example/plugins",
+            "package_generation": "v3",
+            "plugin_version": "2.0.0",
+        },
+    ]
 
     with (
         patch(
-            "app.agent.tools.impl._plugin_tool_utils.get_configured_system_config",
-            return_value=config_oper,
+            "app.agent.tools.impl.install_plugin.load_market_plugins",
+            new=AsyncMock(return_value=[candidate]),
         ),
         patch(
-            "app.agent.tools.impl._plugin_tool_utils.get_plugin_manager",
-            return_value=plugin_manager,
+            "app.agent.tools.impl.install_plugin.install_plugin_runtime",
+            new=AsyncMock(return_value=(False, "未安装插件存在多个在线来源", False)),
         ),
         patch(
-            "app.agent.tools.impl._plugin_tool_utils.PluginHelper",
-            return_value=plugin_helper,
+            "app.agent.tools.impl.install_plugin.inspect_plugin_sources",
+            new=AsyncMock(return_value={
+                "selection_status": "conflict",
+                "selection_reason": "未安装插件存在多个在线来源，不能静默选择",
+                "inventory_complete": True,
+                "candidates": source_candidates,
+            }),
         ),
-        patch(
-            "app.agent.tools.impl._plugin_tool_utils.refresh_plugin_registrations",
-        ) as refresh_registrations,
-        patch(
-            "app.agent.tools.impl._plugin_tool_utils.MoviePilotServerHelper.async_install_plugin_reg",
-            AsyncMock(return_value=True),
-        ) as install_reg,
-        patch(
-            "app.agent.tools.base.run_agent_blocking",
-            side_effect=fake_run_agent_blocking,
-        ),
+    ):
+        result = asyncio.run(tool.run(plugin_id="DemoPlugin"))
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert payload["requires_explicit_source"] is True
+    assert payload["source_candidates"] == source_candidates
+
+
+@pytest.mark.parametrize("repo_url", ["", "   ", "local://DemoPlugin"])
+def test_install_plugin_rejects_invalid_explicit_source(repo_url: str) -> None:
+    """Agent 不能用空值或本地标识伪造管理员在线选源。"""
+    with pytest.raises(ValueError):
+        InstallPluginInput(plugin_id="DemoPlugin", repo_url=repo_url)
+
+
+def test_install_plugin_runtime_uses_application_gateway() -> None:
+    """Agent 安装入口只能转发到统一的应用层安装 Gateway。"""
+    gateway = MagicMock()
+    gateway.install = AsyncMock(
+        return_value=SimpleNamespace(
+            success=True,
+            message="插件已存在，已刷新加载",
+            refreshed_only=True,
+        )
+    )
+
+    with patch(
+        "app.agent.tools.impl._plugin_tool_utils.get_plugin_install_service",
+        return_value=gateway,
     ):
         success, message, refreshed_only = asyncio.run(
             install_plugin_runtime(
@@ -337,18 +372,12 @@ def test_install_plugin_runtime_reloads_in_threadpool() -> None:
     assert success
     assert message == "插件已存在，已刷新加载"
     assert refreshed_only
-    install_reg.assert_awaited_once_with(
+    gateway.install.assert_awaited_once_with(
         plugin_id="DemoPlugin",
         repo_url="https://example.com/market",
+        force=False,
+        explicit_source=False,
     )
-    assert len(calls) == 2
-    assert calls[0][0] == "plugin"
-    assert calls[0][2] == (plugin_manager.reload_plugin_tree, "DemoPlugin")
-    assert calls[0][3] == {}
-    assert calls[1][0] == "plugin"
-    assert calls[1][1] == refresh_registrations
-    assert calls[1][2] == ("DemoPlugin",)
-    assert calls[1][3] == {}
 
 
 def test_uninstall_plugin_uninstalls_installed_candidate() -> None:

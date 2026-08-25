@@ -141,7 +141,6 @@ def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
     monkeypatch.setattr(helper, "_PluginHelper__backup_plugin", lambda _pid: None)
     monkeypatch.setattr(helper, "_PluginHelper__remove_old_plugin", lambda _pid: calls.append("remove"))
     monkeypatch.setattr(helper, "_PluginHelper__install_dependencies_if_required", lambda _pid: (False, True, ""))
-    monkeypatch.setattr(helper, "refresh_persistent_plugin_backup", lambda _pid: calls.append("refresh"))
 
     def fake_release(_pid, _user_repo, _release_tag):
         calls.append("release")
@@ -2080,11 +2079,11 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert success
         assert "" == message
-        assert ["remove", "release", "refresh"] == calls
+        assert ["remove", "release"] == calls
 
     def test_install_falls_back_to_filelist_when_release_is_missing(self, monkeypatch):
         """
@@ -2104,11 +2103,11 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert success
         assert "" == message
-        assert ["remove", "release", "remove", "filelist", "refresh"] == calls
+        assert ["remove", "release", "remove", "filelist"] == calls
 
     def test_install_reports_filelist_error_after_release_fallback_fails(self, monkeypatch):
         """
@@ -2128,7 +2127,7 @@ demo = { index = "private" }
             (False, "获取文件列表失败"),
         )
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert not success
         assert "获取文件列表失败" == message
@@ -2152,11 +2151,11 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert success
         assert "" == message
-        assert ["remove", "filelist", "refresh"] == calls
+        assert ["remove", "filelist"] == calls
 
     def test_install_rejects_release_without_version(self, monkeypatch):
         """
@@ -2175,7 +2174,7 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert not success
         assert f"未在插件清单中找到 {PLUGIN_ID} 的版本号" in message
@@ -2199,7 +2198,7 @@ demo = { index = "private" }
         )
         monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.0.0"))
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert not success
         assert "MoviePilot 版本 >=9.0.0" in message
@@ -2228,7 +2227,7 @@ demo = { index = "private" }
             lambda *_args: [{"version": "1.2.3", "tag_name": "DemoPlugin_v1.2.3"}],
         )
 
-        success, message = helper.install(
+        success, message = helper._PluginHelper__install_package(
             PLUGIN_ID, REPO_URL, package_version="v2", release_version="1.2.3", force_install=True
         )
 
@@ -2260,7 +2259,7 @@ demo = { index = "private" }
             lambda *_args: [{"version": "1.2.0", "tag_name": "DemoPlugin_v1.2.0"}],
         )
 
-        success, message = helper.install(
+        success, message = helper._PluginHelper__install_package(
             PLUGIN_ID, REPO_URL, package_version="v2", release_version="1.2.0", force_install=True
         )
 
@@ -2290,7 +2289,7 @@ demo = { index = "private" }
             lambda *_args: [{"version": "1.2.3", "tag_name": "DemoPlugin_v1.2.3"}],
         )
 
-        success, message = helper.install(
+        success, message = helper._PluginHelper__install_package(
             PLUGIN_ID, REPO_URL, package_version="v2", release_version="1.2.0", force_install=True
         )
 
@@ -2307,7 +2306,7 @@ demo = { index = "private" }
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
-        success, message = PluginHelper().install("", REPO_URL)
+        success, message = PluginHelper()._PluginHelper__install_package("", REPO_URL)
 
         assert not success
         assert "参数错误" == message
@@ -2321,7 +2320,7 @@ demo = { index = "private" }
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
-        success, message = PluginHelper().install(PLUGIN_ID, "not-a-repo-url")
+        success, message = PluginHelper()._PluginHelper__install_package(PLUGIN_ID, "not-a-repo-url")
 
         assert not success
         assert "不支持的插件仓库地址格式" == message
@@ -2338,7 +2337,7 @@ demo = { index = "private" }
         helper = PluginHelper()
         monkeypatch.setattr(helper, "get_plugin_package_version", lambda *_args: None)
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL)
 
         assert not success
         assert f"{PLUGIN_ID} 没有找到适用于当前版本的插件" == message
@@ -2359,10 +2358,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginHelper__backup_plugin", lambda _pid: None)
         monkeypatch.setattr(helper, "_PluginHelper__remove_old_plugin", lambda _pid: None)
         monkeypatch.setattr(helper, "_PluginHelper__install_dependencies_if_required", lambda _pid: (False, True, ""))
-        monkeypatch.setattr(helper, "refresh_persistent_plugin_backup", lambda _pid: None)
         monkeypatch.setattr(helper, "_PluginHelper__prepare_content_via_filelist_sync", lambda *_args: (True, ""))
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL, force_install=True)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, force_install=True)
 
         assert success
         assert "" == message
@@ -2399,9 +2397,8 @@ demo = { index = "private" }
             },
         )
         monkeypatch.setattr("app.adapters.external.market.PLUGIN_DIR", runtime_root)
-        monkeypatch.setattr(helper, "refresh_persistent_plugin_backup", lambda _pid: True)
 
-        success, message = helper.install(
+        success, message = helper._PluginHelper__install_package(
             PLUGIN_ID,
             helper.make_local_repo_url(PLUGIN_ID, repo_path, "v2"),
             force_install=True,
@@ -2431,11 +2428,11 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        success, message = helper.install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+        success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert success
         assert "" == message
-        assert ["remove", "release", "remove", "filelist", "refresh"] == calls
+        assert ["remove", "release", "remove", "filelist"] == calls
 
     def test_async_install_uses_release_package_when_asset_is_available(self, monkeypatch):
         """
@@ -2455,13 +2452,12 @@ demo = { index = "private" }
         )
 
         success, message = asyncio.run(
-            helper.async_install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+            helper._PluginHelper__async_install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
         )
 
         assert success
         assert "" == message
-        assert calls[:2] == ["remove", "release"]
-        assert calls[2][0] == "to_thread"
+        assert calls == ["remove", "release"]
 
     def test_async_install_falls_back_to_filelist_when_release_is_missing(self, monkeypatch):
         """
@@ -2482,13 +2478,12 @@ demo = { index = "private" }
         )
 
         success, message = asyncio.run(
-            helper.async_install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+            helper._PluginHelper__async_install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
         )
 
         assert success
         assert "" == message
-        assert calls[:4] == ["remove", "release", "remove", "filelist"]
-        assert calls[4][0] == "to_thread"
+        assert calls == ["remove", "release", "remove", "filelist"]
 
     def test_async_install_old_release_version_uses_release_asset_without_filelist_fallback(self, monkeypatch):
         """
@@ -2515,7 +2510,7 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "async_get_plugin_release_versions", fake_releases)
 
         success, message = asyncio.run(
-            helper.async_install(
+            helper._PluginHelper__async_install_package(
                 PLUGIN_ID, REPO_URL, package_version="v2", release_version="1.2.0", force_install=True
             )
         )
@@ -2547,7 +2542,7 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "async_get_plugin_release_versions", fake_releases)
 
         success, message = asyncio.run(
-            helper.async_install(
+            helper._PluginHelper__async_install_package(
                 PLUGIN_ID, REPO_URL, package_version="v2", release_version="1.2.0", force_install=True
             )
         )
@@ -2575,7 +2570,7 @@ demo = { index = "private" }
         )
 
         success, message = asyncio.run(
-            helper.async_install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+            helper._PluginHelper__async_install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
         )
 
         assert not success
@@ -2608,7 +2603,7 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginHelper__prepare_content_via_filelist_async", fake_filelist)
 
         success, message = asyncio.run(
-            helper.async_install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+            helper._PluginHelper__async_install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
         )
 
         assert success
@@ -2641,7 +2636,7 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginHelper__prepare_content_via_filelist_async", fake_filelist)
 
         success, message = asyncio.run(
-            helper.async_install(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
+            helper._PluginHelper__async_install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
         )
 
         assert success
@@ -3521,7 +3516,7 @@ demo = { index = "private" }
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
-        success, message = PluginHelper().install("DemoPlugin", "local://OtherPlugin?path=/tmp/plugins")
+        success, message = PluginHelper()._PluginHelper__install_package("DemoPlugin", "local://OtherPlugin?path=/tmp/plugins")
 
         assert not success
         assert "本地插件来源与插件ID不匹配" == message

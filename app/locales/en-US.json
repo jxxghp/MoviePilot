@@ -359,6 +359,7 @@
     "文件列表为空": "File list is empty",
     "requirements.txt 文件下载失败": "Failed to download requirements.txt",
     "插件在仓库中不存在或返回数据格式不正确": "The plugin does not exist in the repository or the returned data format is invalid",
+    "插件来源身份不存在": "Plugin source identity does not exist",
     "插件数据解析失败": "Failed to parse plugin data",
     "没有传入需要安装的依赖项": "No dependencies to install were provided",
     "资产缺少ID信息": "Asset is missing ID information",

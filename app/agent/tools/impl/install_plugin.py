@@ -3,12 +3,13 @@
 import json
 from typing import Optional, Type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.agent.tools.impl._plugin_tool_utils import (
     get_plugin_snapshot,
+    inspect_plugin_sources,
     install_plugin_runtime,
     load_market_plugins,
     summarize_plugin,
@@ -31,6 +32,26 @@ class InstallPluginInput(BaseModel):
         False,
         description="Whether to refresh plugin market caches before reading the market list.",
     )
+    repo_url: Optional[str] = Field(
+        None,
+        description=(
+            "Exact repository URL explicitly selected by the administrator. "
+            "Only set it after a source conflict is shown to the user."
+        ),
+    )
+
+    @field_validator("repo_url")
+    @classmethod
+    def normalize_repo_url(cls, value: Optional[str]) -> Optional[str]:
+        """显式来源必须是非空在线仓库地址。"""
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Explicit source repository URL cannot be empty.")
+        if normalized.startswith("local://"):
+            raise ValueError("Explicit source selection only accepts online repositories.")
+        return normalized
 
 
 class InstallPluginTool(MoviePilotTool):
@@ -56,6 +77,7 @@ class InstallPluginTool(MoviePilotTool):
         plugin_id: str,
         force: bool = False,
         force_refresh_market: bool = False,
+        repo_url: Optional[str] = None,
         **kwargs,
     ) -> str:
         logger.info(
@@ -82,10 +104,33 @@ class InstallPluginTool(MoviePilotTool):
 
             success, message, refreshed_only = await install_plugin_runtime(
                 candidate.id,
-                getattr(candidate, "repo_url", None),
+                repo_url,
                 force=force,
+                explicit_source=repo_url is not None,
             )
             if not success:
+                source_options = await inspect_plugin_sources(
+                    candidate.id,
+                    force=False,
+                )
+                if (
+                    repo_url is None
+                    and source_options["selection_status"] in {
+                        "conflict",
+                        "incomplete",
+                    }
+                ):
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "plugin": summarize_plugin(candidate),
+                            "message": source_options["selection_reason"],
+                            "requires_explicit_source": True,
+                            "source_candidates": source_options["candidates"],
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
                 return json.dumps(
                     {
                         "success": False,

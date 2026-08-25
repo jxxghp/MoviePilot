@@ -7,6 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.application.plugin.identity import (
+    BindLocalPluginIdentityCommand,
+    BindOnlinePluginIdentityCommand,
+    ChangePluginIdentitySourceCommand,
     PluginBindingBasis,
     PluginIdentity,
     PluginIdentityConflictError,
@@ -138,6 +141,54 @@ class TransactionalPluginIdentityStore:
         session = self._session_factory()
         try:
             return WritePluginIdentityCommand(
+                repository=_SqlAlchemyIdentityRepository(session),
+                unit_of_work=SqlAlchemyUnitOfWork(session),
+            ).execute(identity, expected_revision=expected_revision)
+        finally:
+            session.close()
+
+    def change_source(
+        self,
+        identity: PluginIdentity,
+        *,
+        expected_revision: int,
+    ) -> PluginIdentity:
+        """在独占事务内提交明确的在线来源转换。"""
+        session = self._session_factory()
+        try:
+            return ChangePluginIdentitySourceCommand(
+                repository=_SqlAlchemyIdentityRepository(session),
+                unit_of_work=SqlAlchemyUnitOfWork(session),
+            ).execute(identity, expected_revision=expected_revision)
+        finally:
+            session.close()
+
+    def bind_local(
+        self,
+        identity: PluginIdentity,
+        *,
+        expected_revision: int,
+    ) -> PluginIdentity:
+        """在独占事务内提交 legacy_unbound 到 local_only 的转换。"""
+        session = self._session_factory()
+        try:
+            return BindLocalPluginIdentityCommand(
+                repository=_SqlAlchemyIdentityRepository(session),
+                unit_of_work=SqlAlchemyUnitOfWork(session),
+            ).execute(identity, expected_revision=expected_revision)
+        finally:
+            session.close()
+
+    def bind_online(
+        self,
+        identity: PluginIdentity,
+        *,
+        expected_revision: int,
+    ) -> PluginIdentity:
+        """在独占事务内提交未绑定身份的首次在线来源绑定。"""
+        session = self._session_factory()
+        try:
+            return BindOnlinePluginIdentityCommand(
                 repository=_SqlAlchemyIdentityRepository(session),
                 unit_of_work=SqlAlchemyUnitOfWork(session),
             ).execute(identity, expected_revision=expected_revision)
