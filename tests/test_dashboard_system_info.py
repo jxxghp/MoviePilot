@@ -1,4 +1,4 @@
-from app.db import SessionFactory
+from app.db.session import SessionFactory
 from app.db.models.transferhistory import TransferHistory
 from app.schemas.types import MediaSource, MediaType
 from app.adapters.system import host as system_module
@@ -20,7 +20,7 @@ def test_dashboard_system_info_returns_runtime_environment(monkeypatch):
     monkeypatch.setattr(system_module.time, "time", lambda: 1000.0)
     monkeypatch.setattr(system_module.psutil, "Process", FakeProcess)
     monkeypatch.setattr(SystemUtils, "_operating_system_name", staticmethod(lambda: "Ubuntu 24.04.4 LTS"))
-    monkeypatch.setattr(system_module, "APP_VERSION", "v2.13.16")
+    monkeypatch.setattr(system_module, "get_app_version", lambda: "v2.13.16")
 
     result = SystemUtils.dashboard_system_info()
 

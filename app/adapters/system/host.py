@@ -26,7 +26,7 @@ import psutil
 from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
 from app.schemas.dashboard import ProcessInfo as _SchemaProcessInfo
-from version import APP_VERSION
+from app.runtime.version import get_app_version
 from app.foundation.environment import (
     is_aarch,
     is_aarch64,
@@ -948,7 +948,7 @@ class SystemUtils:
             hostname=socket.gethostname(),
             operating_system=SystemUtils._operating_system_name(),
             runtime=max(0, int(time.time() - psutil.Process().create_time())),
-            version=APP_VERSION,
+            version=get_app_version(),
         )
 
     @staticmethod

@@ -62,7 +62,7 @@ from app.foundation.singleton import WeakSingleton
 from app.foundation.version import compare_version
 from app.adapters.system.host import SystemUtils
 from app.foundation.url import UrlUtils
-from version import APP_VERSION
+from app.runtime.version import get_app_version
 
 # 保留模块级可替换入口，代理默认读取组合根的最新 runtime 配置。
 settings = RuntimeSettingsCompat()
@@ -289,9 +289,9 @@ class PluginHelper(metaclass=WeakSingleton):
         解析当前主程序版本，供插件 package 中的系统版本范围匹配使用。
         """
         try:
-            return Version(str(APP_VERSION))
+            return Version(get_app_version())
         except InvalidVersion:
-            logger.error(f"当前主程序版本号无法解析：{APP_VERSION}")
+            logger.error(f"当前主程序版本号无法解析：{get_app_version()}")
             return None
 
     @classmethod
@@ -402,7 +402,7 @@ class PluginHelper(metaclass=WeakSingleton):
 
         system_version = cls.get_current_system_version()
         if system_version is None:
-            return False, f"当前 MoviePilot 版本 {APP_VERSION} 无法解析，已拒绝安装带版本限制的插件"
+            return False, f"当前 MoviePilot 版本 {get_app_version()} 无法解析，已拒绝安装带版本限制的插件"
 
         try:
             specifier_set = SpecifierSet(raw_specifier)
@@ -416,7 +416,7 @@ class PluginHelper(metaclass=WeakSingleton):
             return True, ""
 
         return False, (
-            f"插件要求 MoviePilot 版本 {raw_specifier}，当前版本 {APP_VERSION} 不满足，已拒绝安装"
+            f"插件要求 MoviePilot 版本 {raw_specifier}，当前版本 {get_app_version()} 不满足，已拒绝安装"
         )
 
     @classmethod

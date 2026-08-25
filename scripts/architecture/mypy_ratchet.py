@@ -29,7 +29,14 @@ _ERROR_LINE = re.compile(r"^(?P<path>.+?):\d+(?::\d+)?: error: .+?(?:\s+\[(?P<co
 
 def run_mypy() -> str:
     """以当前解释器运行全量 mypy 并返回 stdout（非零退出码属于预期结果）。"""
-    command = [sys.executable, "-m", "mypy", *MYPY_TARGETS]
+    command = [
+        sys.executable,
+        "-m",
+        "mypy",
+        "--no-incremental",
+        "--no-pretty",
+        *MYPY_TARGETS,
+    ]
     for pattern in MYPY_EXCLUDES:
         command += ["--exclude", pattern]
     result = subprocess.run(

@@ -23,7 +23,7 @@ settings = RuntimeSettingsCompat()
 from app.runtime.state import SystemHelper
 from app.application.backup import BackupArtifact
 from app.startup.composition.database import build_database_governance
-from version import APP_VERSION
+from app.runtime.version import get_app_version, get_frontend_version
 
 BACKEND_RUNTIME_FILE = settings.TEMP_PATH / "moviepilot.runtime.json"
 BACKEND_STDIO_LOG_FILE = settings.LOG_PATH / "moviepilot.stdout.log"
@@ -334,7 +334,7 @@ def _apply_prepared_release_update() -> bool:
 def _resolve_auto_update_targets(mode: str) -> Optional[str]:
     if mode != "dev":
         return None
-    backend_prefix = _release_prefix(APP_VERSION)
+    backend_prefix = _release_prefix(get_app_version())
     current_branch = _git_current_branch()
     backend_ref = "latest"
     if not current_branch or current_branch == "HEAD":
@@ -876,12 +876,7 @@ def _stop_frontend_service(timeout: int, force: bool) -> Dict[str, Any]:
 
 
 def _installed_frontend_version() -> Optional[str]:
-    if not FRONTEND_VERSION_FILE.exists():
-        return None
-    try:
-        return FRONTEND_VERSION_FILE.read_text(encoding="utf-8", errors="replace").strip() or None
-    except OSError:
-        return None
+    return get_frontend_version(fallback_to_declared=False)
 
 
 @click.group(context_settings=CONTEXT_SETTINGS)
@@ -991,7 +986,9 @@ def start(timeout: int, safe: bool) -> None:
         raise
 
     backend_health = backend_result.get("health") or {}
-    backend_version = ((backend_health.get("data") or {}) if isinstance(backend_health, dict) else {}).get("BACKEND_VERSION", APP_VERSION)
+    backend_version = ((backend_health.get("data") or {}) if isinstance(backend_health, dict) else {}).get(
+        "BACKEND_VERSION", get_app_version()
+    )
     frontend_version = ((frontend_result.get("health") or {}) if isinstance(frontend_result.get("health"), dict) else {}).get("version") or _installed_frontend_version() or "unknown"
 
     click.echo("MoviePilot 已启动" if backend_result.get("started") or frontend_result.get("started") else "MoviePilot 已在运行")
@@ -1058,13 +1055,13 @@ def status() -> None:
         data = (backend_health or {}).get("data") or {}
         click.echo("  running (unmanaged)")
         click.echo(f"  URL: {_backend_base_url()}")
-        click.echo(f"  Version: {data.get('BACKEND_VERSION', APP_VERSION)}")
+        click.echo(f"  Version: {data.get('BACKEND_VERSION', get_app_version())}")
     else:
         data = (backend_health or {}).get("data") or {}
         click.echo(f"  {'running' if backend_state == 'running' else 'starting'}")
         click.echo(f"  PID: {backend_process.pid}")
         click.echo(f"  URL: {_backend_base_url(backend_runtime)}")
-        click.echo(f"  Version: {data.get('BACKEND_VERSION', APP_VERSION)}")
+        click.echo(f"  Version: {data.get('BACKEND_VERSION', get_app_version())}")
         click.echo(f"  App Log: {BACKEND_APP_LOG_FILE}")
         click.echo(f"  Stdout Log: {BACKEND_STDIO_LOG_FILE}")
 
@@ -1305,12 +1302,14 @@ def scheduler_run(job_id: str) -> None:
 @cli.command(context_settings=CONTEXT_SETTINGS)
 def version() -> None:
     """显示版本信息"""
-    click.echo(f"MoviePilot CLI: {APP_VERSION}")
+    click.echo(f"MoviePilot CLI: {get_app_version()}")
 
     healthy_backend, payload = _backend_health(runtime=_backend_runtime())
     if healthy_backend:
         data = (payload or {}).get("data") or {}
-        click.echo(f"Backend Service: {data.get('BACKEND_VERSION', APP_VERSION)}")
+        click.echo(
+            f"Backend Service: {data.get('BACKEND_VERSION', get_app_version())}"
+        )
     else:
         click.echo("Backend Service: not running")
 

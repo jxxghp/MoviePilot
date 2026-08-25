@@ -11,7 +11,7 @@ from app.cli import cli
 from app.sdk import database as database_sdk
 
 
-NAME = "sqlite_20260819_030000.db"
+NAME = "moviepilot_v3.0.0_sqlite_20260819_030000.db"
 
 
 def _artifact(tmp_path: Path) -> BackupArtifact:

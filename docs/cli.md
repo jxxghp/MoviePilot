@@ -493,12 +493,21 @@ MoviePilot 停止运行后，可通过明确确认执行离线还原：
 moviepilot database restore <filename> --confirm
 ```
 
+Docker Compose 部署应复用原服务的环境变量和 `/config` 挂载，在服务停止后运行一次性 CLI：
+
+```shell
+docker compose stop <service>
+docker compose run --rm --no-deps --entrypoint moviepilot <service> database restore <filename> --confirm
+docker compose start <service>
+```
+
+`<service>` 是 Compose 文件中的 MoviePilot 服务名，不是容器名。
+
 说明：
 
 - SQLite 使用在线备份 API，PostgreSQL 使用镜像内置的 `pg_dump` custom format
 - 源码部署使用 PostgreSQL 时，宿主机需安装 `pg_dump` 和 `pg_restore` 并加入 `PATH`；Docker 镜像已内置
 - 默认目录为配置目录下的 `database_backup/`，可通过 `DB_BACKUP_PATH` 调整
-- 文件名包含数据库类型和创建时间，例如 `sqlite_20260819_030000.db`
 - 备份、列举和校验可独立通过 CLI 执行
 - 还原会覆盖当前数据库，执行前必须停止 MoviePilot；运行中的 Web API 和插件 SDK 不提供还原入口
 

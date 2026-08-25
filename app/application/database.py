@@ -79,6 +79,10 @@ class DatabaseGovernance:
         """校验一个受管数据库备份文件。"""
         return self._backup.verify(name)
 
+    def delete_backup(self, name: str) -> None:
+        """删除一个受管数据库备份文件。"""
+        self._backup.delete(name)
+
     def restore_backup(self, name: str) -> BackupArtifact:
         """在离线 CLI 进程中还原一个受管数据库备份。"""
         return self._backup.restore(name)

@@ -81,6 +81,8 @@ SCHEMA_EXPORTS = {
     'DashboardMemoryInfo': ('app.schemas.dashboard', 'DashboardMemoryInfo'),
     'DashboardSystemInfo': ('app.schemas.dashboard', 'DashboardSystemInfo'),
     'DataT': ('app.schemas.response', 'DataT'),
+    'DatabaseBackupArtifactData': ('app.schemas.system', 'DatabaseBackupArtifactData'),
+    'DatabaseBackupVerificationData': ('app.schemas.system', 'DatabaseBackupVerificationData'),
     'Dict': ('app.schemas.mcp', 'Dict'),
     'DiscoverMediaSource': ('app.schemas.event', 'DiscoverMediaSource'),
     'DiscoverSourceEventData': ('app.schemas.event', 'DiscoverSourceEventData'),

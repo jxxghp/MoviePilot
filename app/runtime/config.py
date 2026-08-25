@@ -33,7 +33,7 @@ from app.foundation.environment import (
     is_frozen,
 )
 from app.foundation.url import UrlUtils
-from version import APP_VERSION
+from app.runtime.version import get_app_version
 
 
 class SystemConfModel(BaseModel):
@@ -1061,7 +1061,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         全局用户代理字符串
         """
         return (
-            f"{self.PROJECT_NAME}/{APP_VERSION[1:]} "
+            f"{self.PROJECT_NAME}/{get_app_version()[1:]} "
             f"({platform.system()} {platform.release()}; {cpu_arch()})"
         )
 

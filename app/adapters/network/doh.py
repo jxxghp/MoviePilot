@@ -13,7 +13,7 @@ from threading import Lock
 from typing import Dict, Optional
 
 from app.foundation.singleton import Singleton
-from app.runtime.execution import OwnedThreadPoolExecutor
+from app.runtime.execution import OwnedThreadPoolExecutor, submit_with_context
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.settings import get_runtime_setting
@@ -74,7 +74,7 @@ def enable_doh(enable: bool) -> bool:
             executor = _get_executor_locked()
             # 一次解析的任务必须在同一临界区提交完，避免关闭过程中部分任务落入新线程池
             futures = [
-                executor.submit(_doh_query, resolver, host)
+                submit_with_context(executor, _doh_query, resolver, host)
                 for resolver in _doh_setting("DOH_RESOLVERS").split(",")
             ]
         for future in as_completed(futures):
