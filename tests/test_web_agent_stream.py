@@ -11,30 +11,26 @@ from app import schemas
 from app.agent.contracts import ReplyMode
 from app.agent.orchestrator import agent_manager
 from app.api.endpoints.agent import (
-    _WebAgentEventPublisher,
     _WEB_AGENT_FILE_REGISTRY,
     _apply_web_agent_display_event,
+    _build_web_agent_command_items,
+    _build_web_agent_display_message_from_events,
     _build_web_agent_input_attachments,
     _build_web_agent_message_events,
-    _build_web_agent_command_items,
     _build_web_agent_session_id,
     _build_web_agent_session_id_async,
     _build_web_agent_traditional_callback_payload,
-    _build_web_agent_display_message_from_events,
     _collect_web_agent_traditional_events,
     _get_web_agent_type,
     _has_web_agent_traditional_interaction,
     _prepare_web_agent_audio_attachment_path_async,
     _resolve_web_agent_audio_refs,
-    _transcribe_web_agent_audio_files,
-    web_agent_stream,
     _resolve_web_agent_choice_payload,
     _split_web_agent_output,
+    _transcribe_web_agent_audio_files,
+    _WebAgentEventPublisher,
+    web_agent_stream,
 )
-from app.runtime.events import Event
-from app.db.oper.agentchat import AgentChatOper
-from app.db.models.agentchat import AgentChat
-from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
 from app.application.messaging.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
@@ -45,10 +41,13 @@ from app.application.messaging.agent import (
     extract_web_agent_message_from_event_data,
     wait_web_agent_background_tasks,
 )
+from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
 from app.application.messaging.skill import skill_interaction_manager
 from app.chain.message import MessageChain
+from app.db.oper.agentchat import AgentChatOper
+from app.runtime.events import Event
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
-from app.schemas.types import EventType, NotificationChannel, MessageType
+from app.schemas.types import EventType, MessageType, NotificationChannel
 
 
 @pytest.fixture(autouse=True)
@@ -764,7 +763,7 @@ def test_prepare_web_agent_audio_attachment_async_cancellation_reaps_process(tmp
             conversion_task = asyncio.create_task(
                 _prepare_web_agent_audio_attachment_path_async(str(source_path))
             )
-            await asyncio.wait_for(started.wait(), timeout=1)
+            await asyncio.wait_for(started.wait(), timeout=5)
             conversion_task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await conversion_task

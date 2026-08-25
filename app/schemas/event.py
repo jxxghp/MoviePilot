@@ -63,14 +63,14 @@ class ContextSnapshot(_ContextSnapshotBase):
         arbitrary_types_allowed=True,
     )
 
-    @model_validator(mode="before")
+    @model_validator(mode="before")  # type: ignore[misc]
     @classmethod
     def coerce_runtime_context(cls, value: Any) -> Any:
         """允许旧 Context/dataclass 进入校验，同时保持原对象继续投递。"""
         return _coerce_event_snapshot(value)
 
 
-class FileContextSnapshot(BaseModel):
+class FileContextSnapshot(BaseModel):  # type: ignore[misc]
     """音乐批次中单个文件的元数据上下文快照。"""
 
     path: str
@@ -79,7 +79,7 @@ class FileContextSnapshot(BaseModel):
 
     model_config = ConfigDict(extra="allow", from_attributes=True)
 
-    @model_validator(mode="before")
+    @model_validator(mode="before")  # type: ignore[misc]
     @classmethod
     def coerce_runtime_context(cls, value: Any) -> Any:
         """把旧文件上下文对象转换成可验证的字典。"""

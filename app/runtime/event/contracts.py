@@ -143,13 +143,13 @@ _SNAPSHOT_EVENTS = {
     ChainEventType.SubscribeCompletionCheck,
 }
 
-_INPUT_MODELS = {
+_INPUT_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     ChainEventType.ResourceSelection: event_schemas.ResourceSelectionInputContractData,
     ChainEventType.ResourceDownload: event_schemas.ResourceDownloadInputContractData,
     ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckInputContractData,
 }
 
-_OUTPUT_MODELS = {
+_OUTPUT_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     ChainEventType.ResourceSelection: event_schemas.ResourceSelectionOutputContractData,
     ChainEventType.ResourceDownload: event_schemas.ResourceDownloadOutputContractData,
     ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckOutputContractData,
@@ -213,9 +213,14 @@ def _build_contract(event_type: EventType | ChainEventType) -> EventContract:
     )
 
 
-EVENT_CONTRACTS = {
+_ALL_EVENT_TYPES: tuple[EventType | ChainEventType, ...] = (
+    *tuple(EventType),
+    *tuple(ChainEventType),
+)
+
+EVENT_CONTRACTS: dict[EventType | ChainEventType, EventContract] = {
     event_type: _build_contract(event_type)
-    for event_type in (*tuple(EventType), *tuple(ChainEventType))
+    for event_type in _ALL_EVENT_TYPES
 }
 
 

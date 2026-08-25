@@ -357,6 +357,8 @@ class EventManager(metaclass=Singleton):
                 return False
             try:
                 owner = object()
+                completion: concurrent.futures.Future[Any] = concurrent.futures.Future()
+                self.__sync_handles[owner] = completion
 
                 def _tracked_sync() -> Any:
                     """在同步 handler 调用栈中发布当前事件 owner。"""
@@ -368,14 +370,25 @@ class EventManager(metaclass=Singleton):
 
                 handle = self.__executor.submit(_tracked_sync)
             except RuntimeError:
+                self.__sync_handles.pop(owner, None)
                 logger.warning("同步事件处理器无法投递，线程池已停止")
                 return False
-            self.__sync_handles[owner] = handle
-            handle.add_done_callback(
-                lambda _completed, current_owner=owner: (
-                    self.__remove_sync_handle(current_owner)
-                )
-            )
+
+            def _complete_sync_handle(
+                    completed: concurrent.futures.Future[Any],
+            ) -> None:
+                """把真实线程句柄的结果转移到已登记的结算句柄。"""
+                if completed.cancelled():
+                    completion.cancel()
+                else:
+                    error = completed.exception()
+                    if error is not None:
+                        completion.set_exception(error)
+                    else:
+                        completion.set_result(completed.result())
+                self.__remove_sync_handle(owner)
+
+            handle.add_done_callback(_complete_sync_handle)
         return True
 
     def __remove_sync_handle(self, owner: object) -> None:
