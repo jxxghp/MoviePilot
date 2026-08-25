@@ -3,7 +3,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from app.domain.context import TorrentInfo
-from app.schemas import ActionContext
+from app.schemas.workflow import ActionContext
 from app.workflow.actions.fetch_rss import FetchRssAction
 
 

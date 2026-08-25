@@ -1,16 +1,17 @@
 from types import SimpleNamespace
 
-from app.schemas import ActionContext, DownloadTask, FileItem
-from app.schemas.workflow import ActionResult
+from app.schemas.download import DownloadTask
+from app.schemas.file import FileItem
+from app.schemas.workflow import ActionContext, ActionResult
+from app.workflow import WorkFlowManager
 from app.workflow.actions import BaseAction
 from app.workflow.actions import fetch_downloads as fetch_downloads_module
 from app.workflow.actions import fetch_torrents as fetch_torrents_module
 from app.workflow.actions import scrape_file as scrape_file_module
 from app.workflow.actions.fetch_downloads import FetchDownloadsAction
+from app.workflow.actions.fetch_rss import FetchRssAction
 from app.workflow.actions.fetch_torrents import FetchTorrentsAction
 from app.workflow.actions.scrape_file import ScrapeFileAction
-from app.workflow.actions.fetch_rss import FetchRssAction
-from app.workflow import WorkFlowManager
 
 
 def test_fetch_downloads_updates_context_downloads(monkeypatch):
