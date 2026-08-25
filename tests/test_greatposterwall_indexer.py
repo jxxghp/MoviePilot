@@ -1,7 +1,6 @@
 from app.modules.indexer.parser.gazelle import GazelleSiteUserInfo
 from app.modules.indexer.spider import SiteSpider
 
-
 GPW_HTML = """
 <html><body>
 <table class="TableTorrent Table" id="torrent_table"><tbody>

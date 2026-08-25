@@ -4,11 +4,11 @@ from typing import Optional
 
 from lxml import etree
 
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 
 
 class GazelleSiteUserInfo(SiteParserBase):
