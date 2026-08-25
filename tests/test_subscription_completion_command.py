@@ -71,6 +71,7 @@ def _command(
     report_result=True,
     notify_error=None,
     claim_result=True,
+    report_error=None,
 ):
     """构造可注入失败的完成命令。"""
     def notify() -> None:
@@ -88,6 +89,8 @@ def _command(
     def report(payload) -> bool:
         """记录完成统计。"""
         calls.append(("report", payload))
+        if report_error:
+            raise report_error
         return report_result
 
     return CompleteSubscriptionCommand(
@@ -98,14 +101,13 @@ def _command(
     ), notify, report
 
 
-@pytest.mark.parametrize("failure", ["event", "report", "notify"])
+@pytest.mark.parametrize("failure", ["event", "notify"])
 def test_completion_stages_business_and_independent_intents_before_commit(failure):
     """完成事务先提交业务和两个 intent，提交后按通知、事件、统计顺序执行。"""
     calls = []
     command, notify, report = _command(
         calls,
         publish_error=RuntimeError("event failed") if failure == "event" else None,
-        report_result=False if failure == "report" else True,
         notify_error=RuntimeError("notify failed") if failure == "notify" else None,
     )
 
@@ -127,10 +129,47 @@ def test_completion_stages_business_and_independent_intents_before_commit(failur
         assert [call[0] for call in calls[5:]] == ["notify"]
     elif failure == "event":
         assert [call[0] for call in calls[5:]] == ["notify", "claim", "event"]
-    else:
-        assert [call[0] for call in calls[5:]] == [
-            "notify", "claim", "event", "complete", "claim", "report",
-        ]
+
+
+def test_completion_report_failure_returns_success_and_keeps_intent_pending():
+    """统计未确认不得误报完成失败，且 report intent 必须留待重试。"""
+    calls = []
+    command, notify, report = _command(calls, report_result=False)
+
+    command.execute(
+        7,
+        {"id": 7, "media_source": "tmdb", "media_id": "123", "season": 2},
+        {"title": "Test"},
+        notify=notify,
+        report=report,
+    )
+
+    assert [call[0] for call in calls] == [
+        "history", "delete", "stage", "stage", "commit",
+        "notify", "claim", "event", "complete", "claim", "report",
+    ]
+
+
+def test_completion_report_error_returns_success_and_keeps_intent_pending():
+    """统计上报抛出异常也不得覆盖已经成功提交的完成结果。"""
+    calls = []
+    command, notify, report = _command(
+        calls,
+        report_error=RuntimeError("remote failed"),
+    )
+
+    command.execute(
+        7,
+        {"id": 7, "media_source": "tmdb", "media_id": "123", "season": 2},
+        {"title": "Test"},
+        notify=notify,
+        report=report,
+    )
+
+    assert [call[0] for call in calls] == [
+        "history", "delete", "stage", "stage", "commit",
+        "notify", "claim", "event", "complete", "claim", "report",
+    ]
 
 
 def test_completion_success_closes_event_then_report_intent():

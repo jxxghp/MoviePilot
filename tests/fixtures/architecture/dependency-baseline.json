@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6702,
-  "edge_sha256": "a6d5e5b0ccca6f84fe5d8aa5acb0402e7253958913da8d9624a23bd80ceab748",
+  "edge_count": 6706,
+  "edge_sha256": "dc1249bc5f0ae05ec11c680236cf4dd389258cf883fbed66ed57b53875f9ef0e",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2863,6 +2863,8 @@
     "app.application.storage -> app.schemas.types",
     "app.application.subscription.complete -> app.application",
     "app.application.subscription.complete -> app.application.outbox",
+    "app.application.subscription.complete -> app.runtime",
+    "app.application.subscription.complete -> app.runtime.log",
     "app.application.subscription.contract -> app.domain",
     "app.application.subscription.contract -> app.domain.meta",
     "app.application.subscription.contract -> app.domain.meta.metabase",
@@ -2873,6 +2875,8 @@
     "app.application.subscription.contract -> app.schemas.types",
     "app.application.subscription.delete -> app.application",
     "app.application.subscription.delete -> app.application.outbox",
+    "app.application.subscription.delete -> app.runtime",
+    "app.application.subscription.delete -> app.runtime.log",
     "app.application.subscription.delete -> app.schemas",
     "app.application.subscription.delete -> app.schemas.event",
     "app.application.subscription.identity -> app.application",

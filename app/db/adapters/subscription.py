@@ -58,9 +58,9 @@ class TransactionalSubscribeWriter:
             )
 
             def delivered(subscribe_id: int) -> None:
-                """执行旧 post-commit 编排，全部成功后收口 durable intent。"""
+                """执行提交后编排，分别收口已确认的 durable intent。"""
                 if after_commit:
-                    after_commit(subscribe_id)
+                    report_delivered = after_commit(subscribe_id)
                     outbox.complete_by_event_key(
                         subscription_added_event_key(subscribe_id, payload),
                         datetime.now(timezone.utc),
@@ -70,10 +70,11 @@ class TransactionalSubscribeWriter:
                             subscription_added_notification_key(subscribe_id, payload),
                             datetime.now(timezone.utc),
                         )
-                    outbox.complete_by_event_key(
-                        subscription_added_report_key(subscribe_id, payload),
-                        datetime.now(timezone.utc),
-                    )
+                    if report_delivered is not False:
+                        outbox.complete_by_event_key(
+                            subscription_added_report_key(subscribe_id, payload),
+                            datetime.now(timezone.utc),
+                        )
 
             return command.execute(
                 identity,
@@ -103,9 +104,9 @@ class TransactionalSubscribeWriter:
             )
 
             async def delivered(subscribe_id: int) -> None:
-                """异步执行旧编排，全部成功后收口 durable intent。"""
+                """异步执行提交后编排，分别收口已确认的 durable intent。"""
                 if after_commit:
-                    await after_commit(subscribe_id)
+                    report_delivered = await after_commit(subscribe_id)
                     await outbox.complete_by_event_key(
                         subscription_added_event_key(subscribe_id, payload),
                         datetime.now(timezone.utc),
@@ -115,10 +116,11 @@ class TransactionalSubscribeWriter:
                             subscription_added_notification_key(subscribe_id, payload),
                             datetime.now(timezone.utc),
                         )
-                    await outbox.complete_by_event_key(
-                        subscription_added_report_key(subscribe_id, payload),
-                        datetime.now(timezone.utc),
-                    )
+                    if report_delivered is not False:
+                        await outbox.complete_by_event_key(
+                            subscription_added_report_key(subscribe_id, payload),
+                            datetime.now(timezone.utc),
+                        )
 
             return await command.execute(
                 identity,

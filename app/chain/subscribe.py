@@ -569,8 +569,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         self,
         subscribe_id: int,
         context: _SubscribePostCommitContext,
-    ) -> None:
-        """同步执行提交后消息、事件和统计，异常不再触碰数据库事务。"""
+    ) -> bool:
+        """同步执行提交后消息和事件；统计失败留给 outbox 重试。"""
         if context.notification:
             self.post_message(_SchemaMessage.model_validate(context.notification))
         self.eventmanager.send_event(EventType.SubscribeAdded, {
@@ -582,17 +582,23 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             "username": context.username,
             "mediainfo": context.mediainfo.to_dict(),
         })
-        if not MoviePilotServerHelper.sub_reg_durable(
-            self.__subscribe_report_payload(context)
-        ):
-            raise RuntimeError("订阅新增统计上报未确认")
+        try:
+            report_delivered = MoviePilotServerHelper.sub_reg_durable(
+                self.__subscribe_report_payload(context)
+            )
+        except Exception as error:
+            logger.warning(f"订阅新增统计上报失败，将由后台重试：{error}")
+            return False
+        if not report_delivered:
+            logger.warning("订阅新增统计上报未确认，将由后台重试")
+        return report_delivered
 
     async def __async_post_subscribe_added(
         self,
         subscribe_id: int,
         context: _SubscribePostCommitContext,
-    ) -> None:
-        """异步执行提交后消息、事件和统计，保持与同步入口相同顺序。"""
+    ) -> bool:
+        """异步执行提交后消息和事件；统计失败留给 outbox 重试。"""
         if context.notification:
             await self.async_post_message(
                 _SchemaMessage.model_validate(context.notification)
@@ -606,10 +612,16 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             "username": context.username,
             "mediainfo": context.mediainfo.to_dict(),
         })
-        if not await MoviePilotServerHelper.async_sub_reg_durable(
-            self.__subscribe_report_payload(context)
-        ):
-            raise RuntimeError("订阅新增统计上报未确认")
+        try:
+            report_delivered = await MoviePilotServerHelper.async_sub_reg_durable(
+                self.__subscribe_report_payload(context)
+            )
+        except Exception as error:
+            logger.warning(f"订阅新增统计上报失败，将由后台重试：{error}")
+            return False
+        if not report_delivered:
+            logger.warning("订阅新增统计上报未确认，将由后台重试")
+        return report_delivered
 
     @staticmethod
     def __build_subscribe_create_context(
@@ -958,9 +970,9 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             self.__build_subscribe_notification(context),
         )
 
-        def _after_commit(subscribe_id: int) -> None:
+        def _after_commit(subscribe_id: int) -> bool:
             """把同步提交后的副作用委托给单一顺序实现。"""
-            self.__post_subscribe_added(subscribe_id, post_commit_context)
+            return self.__post_subscribe_added(subscribe_id, post_commit_context)
 
         sid, err_msg = add_subscribe(
             mediainfo=context.mediainfo,
@@ -985,9 +997,12 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             self.__build_subscribe_notification(context),
         )
 
-        async def _after_commit(subscribe_id: int) -> None:
+        async def _after_commit(subscribe_id: int) -> bool:
             """把异步提交后的副作用委托给单一顺序实现。"""
-            await self.__async_post_subscribe_added(subscribe_id, post_commit_context)
+            return await self.__async_post_subscribe_added(
+                subscribe_id,
+                post_commit_context,
+            )
 
         sid, err_msg = await async_add_subscribe(
             mediainfo=context.mediainfo,

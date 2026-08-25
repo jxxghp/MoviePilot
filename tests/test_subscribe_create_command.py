@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from sqlalchemy import select
 
 from app.application.subscription.write import (
     AsyncCreateSubscriptionCommand,
@@ -11,6 +12,7 @@ from app.application.subscription.write import (
     add_subscribe,
     async_add_subscribe,
 )
+from app.db.models.outbox import OutboxMessage
 from app.db.models.subscribe import Subscribe
 from app.db.oper.subscribe import SubscribeOper, SubscribeStageResult
 from app.domain.context import MediaInfo
@@ -187,6 +189,55 @@ def test_default_sync_writer_persists_once_and_reuses_duplicate(db) -> None:
     assert after_commit.call_args_list == [
         ((first[0],), {}),
         ((first[0],), {}),
+    ]
+
+
+def test_default_sync_writer_keeps_failed_report_pending_without_raising(db) -> None:
+    """新增统计未确认时接口仍成功，事件 intent 收口而统计 intent 等待重试。"""
+    db.watermark(Subscribe, OutboxMessage)
+    media = _media("arch-221-report-pending")
+
+    subscribe_id, message = add_subscribe(
+        mediainfo=media,
+        after_commit=lambda _subscribe_id: False,
+    )
+
+    assert subscribe_id > 0
+    assert message == "新增订阅成功"
+    intents = db.session.execute(
+        select(OutboxMessage)
+        .where(OutboxMessage.event_key.contains(media.media_id))
+        .order_by(OutboxMessage.id)
+    ).scalars().all()
+    assert [(intent.topic, intent.status) for intent in intents] == [
+        ("subscribe.added", "completed"),
+        ("subscribe.added.report", "pending"),
+    ]
+
+
+def test_default_async_writer_keeps_failed_report_pending_without_raising(db) -> None:
+    """异步新增入口同样返回成功，并只留下统计 intent 等待重试。"""
+    db.watermark(Subscribe, OutboxMessage)
+    media = _media("arch-221-async-report-pending")
+
+    async def report_failed(_subscribe_id: int) -> bool:
+        """模拟异步统计接口未确认。"""
+        return False
+
+    subscribe_id, message = asyncio.run(
+        async_add_subscribe(mediainfo=media, after_commit=report_failed)
+    )
+
+    assert subscribe_id > 0
+    assert message == "新增订阅成功"
+    intents = db.session.execute(
+        select(OutboxMessage)
+        .where(OutboxMessage.event_key.contains(media.media_id))
+        .order_by(OutboxMessage.id)
+    ).scalars().all()
+    assert [(intent.topic, intent.status) for intent in intents] == [
+        ("subscribe.added", "completed"),
+        ("subscribe.added.report", "pending"),
     ]
 
 

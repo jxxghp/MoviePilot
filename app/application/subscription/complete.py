@@ -13,6 +13,7 @@ from app.application.outbox import (
     SyncOutboxTransaction,
     SyncUnitOfWork,
 )
+from app.runtime.log import logger
 
 
 class SubscriptionCompletionRepository(Protocol):
@@ -116,9 +117,15 @@ class CompleteSubscriptionCommand:
             self._publish(event_payload)
             self._complete_sync_delivery(event_key)
         if self._claim_sync_delivery(report_key):
-            if report(report_payload["subscribe_info"]) is False:
-                raise RuntimeError("订阅完成统计上报未确认")
-            self._complete_sync_delivery(report_key)
+            try:
+                report_delivered = report(report_payload["subscribe_info"])
+            except Exception as error:
+                logger.warning(f"订阅完成统计上报失败，将由后台重试：{error}")
+            else:
+                if report_delivered is False:
+                    logger.warning("订阅完成统计上报未确认，将由后台重试")
+                else:
+                    self._complete_sync_delivery(report_key)
 
     def _claim_sync_delivery(self, event_key: str) -> bool:
         """在同步副作用前取得 lease，已由恢复投递接管时跳过直投。"""

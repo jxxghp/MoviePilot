@@ -14,6 +14,7 @@ from app.application.outbox import (
     SyncUnitOfWork,
     SUBSCRIBE_DELETED_TOPIC,
 )
+from app.runtime.log import logger
 from app.schemas.event import SubscribeDeletedEventData
 
 
@@ -153,16 +154,20 @@ class DeleteSubscribeCommand:
             )
         # 上报适配器会自行白名单过滤公开字段；传完整删除前快照可保留音乐实体维度，
         # 避免 Agent 与 API 入口收敛后丢失 music_type / total_tracks。
-        report_result = self._report_deleted(effects.report_payload)
-        if inspect.isawaitable(report_result):
-            report_result = await report_result
-        if report_result is False:
-            raise RuntimeError("订阅删除统计上报未确认")
-        if self._outbox:
-            await self._outbox.complete_by_event_key(
-                effects.report_intent.event_key,
-                datetime.now(timezone.utc),
-            )
+        try:
+            report_result = self._report_deleted(effects.report_payload)
+            if inspect.isawaitable(report_result):
+                report_result = await report_result
+        except Exception as error:
+            logger.warning(f"订阅删除统计上报失败，将由后台重试：{error}")
+        else:
+            if report_result is False:
+                logger.warning("订阅删除统计上报未确认，将由后台重试")
+            elif self._outbox:
+                await self._outbox.complete_by_event_key(
+                    effects.report_intent.event_key,
+                    datetime.now(timezone.utc),
+                )
         return True
 
 
@@ -216,13 +221,18 @@ class SyncDeleteSubscribeCommand:
                 effects.event_intent.event_key,
                 datetime.now(timezone.utc),
             )
-        if self._report_deleted(effects.report_payload) is False:
-            raise RuntimeError("订阅删除统计上报未确认")
-        if self._outbox:
-            self._outbox.complete_by_event_key(
-                effects.report_intent.event_key,
-                datetime.now(timezone.utc),
-            )
+        try:
+            report_result = self._report_deleted(effects.report_payload)
+        except Exception as error:
+            logger.warning(f"订阅删除统计上报失败，将由后台重试：{error}")
+        else:
+            if report_result is False:
+                logger.warning("订阅删除统计上报未确认，将由后台重试")
+            elif self._outbox:
+                self._outbox.complete_by_event_key(
+                    effects.report_intent.event_key,
+                    datetime.now(timezone.utc),
+                )
         return True
 
 

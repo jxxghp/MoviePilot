@@ -200,7 +200,14 @@ def _async_report_command(candidate, calls, result=True, error=None, outbox=None
     )
 
 
-def _sync_command(candidate, calls, commit_error=None, delete_error=None, outbox=None):
+def _sync_command(
+    candidate,
+    calls,
+    commit_error=None,
+    delete_error=None,
+    outbox=None,
+    report_result=True,
+):
     """构造可观察事务和副作用顺序的同步订阅删除命令。"""
     def publish(payload):
         """记录同步删除事件。"""
@@ -209,7 +216,7 @@ def _sync_command(candidate, calls, commit_error=None, delete_error=None, outbox
     def report(payload):
         """记录同步删除统计。"""
         calls.append(("report", payload))
-        return True
+        return report_result
 
     return SyncDeleteSubscribeCommand(
         repository=_SyncRepository(candidate, calls, delete_error),
@@ -321,15 +328,14 @@ async def test_event_failure_happens_after_commit_and_stops_report():
 
 @pytest.mark.asyncio
 async def test_report_failure_happens_after_commit_and_event():
-    """上报失败保持原有传播语义，且不得改变已经提交和发出的事件。"""
+    """上报异常不得把已经提交的删除误报为失败。"""
     calls = []
     command = _command(_candidate(), calls, report_error=RuntimeError("report failed"))
 
-    with pytest.raises(RuntimeError, match="report failed"):
-        await command.execute(
-            7,
-            SubscribeDeletionActor(username="alice", is_superuser=False),
-        )
+    assert await command.execute(
+        7,
+        SubscribeDeletionActor(username="alice", is_superuser=False),
+    ) is True
 
     assert [call[0] for call in calls] == ["get", "delete", "commit", "event", "report"]
 
@@ -408,15 +414,14 @@ async def test_async_reporter_completes_report_intent_only_after_confirmation():
 
 @pytest.mark.asyncio
 async def test_async_reporter_false_keeps_report_intent_pending():
-    """异步 reporter 未确认时必须保留待重试统计 intent。"""
+    """异步 reporter 未确认时返回成功并保留待重试统计 intent。"""
     calls = []
     command = _async_report_command(_candidate(), calls, result=False, outbox=_Outbox(calls))
 
-    with pytest.raises(RuntimeError, match="未确认"):
-        await command.execute(
-            7,
-            SubscribeDeletionActor(username="alice", is_superuser=False),
-        )
+    assert await command.execute(
+        7,
+        SubscribeDeletionActor(username="alice", is_superuser=False),
+    ) is True
 
     assert [call[0] for call in calls] == [
         "get", "delete", "outbox_stage", "outbox_stage", "commit",
@@ -426,7 +431,7 @@ async def test_async_reporter_false_keeps_report_intent_pending():
 
 @pytest.mark.asyncio
 async def test_async_reporter_error_keeps_report_intent_pending():
-    """异步 reporter 异常时必须保留待重试统计 intent。"""
+    """异步 reporter 异常时返回成功并保留待重试统计 intent。"""
     calls = []
     command = _async_report_command(
         _candidate(),
@@ -435,11 +440,10 @@ async def test_async_reporter_error_keeps_report_intent_pending():
         outbox=_Outbox(calls),
     )
 
-    with pytest.raises(RuntimeError, match="remote failed"):
-        await command.execute(
-            7,
-            SubscribeDeletionActor(username="alice", is_superuser=False),
-        )
+    assert await command.execute(
+        7,
+        SubscribeDeletionActor(username="alice", is_superuser=False),
+    ) is True
 
     assert [call[0] for call in calls] == [
         "get", "delete", "outbox_stage", "outbox_stage", "commit",
@@ -505,6 +509,26 @@ def test_sync_delete_uses_same_durable_effect_order():
     ]
     assert calls[2][1].topic == "subscribe.deleted"
     assert calls[3][1].topic == "subscribe.deleted.report"
+
+
+def test_sync_delete_report_failure_returns_success_and_keeps_intent_pending():
+    """同步删除统计未确认时仍返回成功，且不收口 report intent。"""
+    calls = []
+    command = _sync_command(
+        _candidate(),
+        calls,
+        outbox=_SyncOutbox(calls),
+        report_result=False,
+    )
+
+    assert command.execute(
+        7,
+        SubscribeDeletionActor(username="alice", is_superuser=False),
+    ) is True
+    assert [call[0] for call in calls] == [
+        "get", "delete", "outbox_stage", "outbox_stage", "commit",
+        "event", "outbox_complete", "report",
+    ]
     assert calls[7][1] == _candidate().event_payload
 
 

@@ -28,8 +28,8 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
 # 而后续按身份去重也会失效，所以必须在查询与建模之前短路
 INCOMPLETE_IDENTITY = (0, "媒体身份不完整")
 
-AfterCommitEffect = Callable[[int], None]
-AsyncAfterCommitEffect = Callable[[int], Awaitable[None]]
+AfterCommitEffect = Callable[[int], bool | None]
+AsyncAfterCommitEffect = Callable[[int], Awaitable[bool | None]]
 
 
 class SubscriptionOutboxStager(Protocol):
@@ -57,7 +57,7 @@ class SubscribeWriter(Protocol):
         after_commit: Optional[AfterCommitEffect] = None,
         notification: Mapping[str, object] | None = None,
     ) -> Tuple[int, str]:
-        """同步新增订阅，并在事务成功后执行外部副作用。"""
+        """同步新增订阅；提交后回调返回 False 时保留统计 intent 待重试。"""
 
     async def async_add(
         self,
@@ -67,7 +67,7 @@ class SubscribeWriter(Protocol):
         after_commit: Optional[AsyncAfterCommitEffect] = None,
         notification: Mapping[str, object] | None = None,
     ) -> Tuple[int, str]:
-        """异步新增订阅，并在事务成功后执行外部副作用。"""
+        """异步新增订阅；提交后回调返回 False 时保留统计 intent 待重试。"""
 
 
 class StagedSubscription(Protocol):
@@ -382,7 +382,7 @@ def add_subscribe(
 
     :param mediainfo: 识别结果
     :param subscribe_oper: 复用的订阅操作对象，未传时由启动组合根提供
-    :param after_commit: 数据提交后执行的消息、事件或上报编排
+        :param after_commit: 提交后副作用编排；返回 False 表示统计 intent 等待重试
     :param kwargs: 订阅设置；owner_scope 为真时按用户名限定查重范围
     :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
     """
@@ -420,7 +420,7 @@ async def async_add_subscribe(
 
     :param mediainfo: 识别结果
     :param subscribe_oper: 复用的订阅操作对象，未传时由启动组合根提供
-    :param after_commit: 数据提交后执行的异步消息、事件或上报编排
+        :param after_commit: 异步提交后副作用编排；返回 False 表示统计 intent 等待重试
     :param kwargs: 订阅设置；owner_scope 为真时按用户名限定查重范围
     :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
     """
