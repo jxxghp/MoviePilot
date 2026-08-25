@@ -63,6 +63,45 @@ def test_subscription_query_service_filters_source_and_music_state() -> None:
     repository.list.assert_called_once_with("R,P")
 
 
+def test_get_by_source_upgrades_legacy_tmdbid_identity() -> None:
+    """v2 下载记录只有 tmdbid 时，应补成 themoviedb + media_id 再查订阅。"""
+    repository = Mock()
+    expected = SimpleNamespace(id=22)
+    repository.get_by.return_value = expected
+    service = SubscriptionQueryService(repository)
+
+    result = service.get_by_source({
+        "id": 22,
+        "name": "阿滋漫画大王",
+        "type": MediaType.TV.value,
+        "season": 1,
+        "tmdbid": 12143,
+        "imdbid": "tt0339955",
+        "tvdbid": 79077,
+    })
+
+    assert result is expected
+    repository.get_by.assert_called_once_with(
+        type=MediaType.TV.value,
+        season=1,
+        media_source=MediaSource.TMDB,
+        media_id="12143",
+    )
+
+
+def test_get_by_source_skips_incomplete_legacy_identity() -> None:
+    """来源既无 media_id 也无旧 tmdbid 时，不得把半对身份传给仓储。"""
+    repository = Mock()
+    service = SubscriptionQueryService(repository)
+
+    assert service.get_by_source({
+        "type": MediaType.TV.value,
+        "season": 1,
+        "name": "Demo",
+    }) is None
+    repository.get_by.assert_not_called()
+
+
 def test_subscribe_chain_facade_delegates_three_query_slices() -> None:
     """SubscribeChain 保持三个公开方法签名并仅负责来源解析和结果转发。"""
     service = Mock()
