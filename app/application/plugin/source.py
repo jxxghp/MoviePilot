@@ -494,6 +494,49 @@ def normalize_package_generation(package_generation: str) -> str:
     return value
 
 
+def _select_local_candidate(
+    inventory: CandidateInventory,
+    *,
+    plugin_id: str,
+    normalized_id: str,
+    generation_order: tuple[str, ...],
+    local_candidates: Iterable[PluginLocalCandidate] | None,
+) -> PluginSelection | None:
+    """优先选择本地载荷；读取失败时阻止自动降级到在线来源。"""
+    local = (
+        tuple(local_candidates)
+        if local_candidates is not None
+        else inventory.local_candidates_for(plugin_id)
+    )
+    if any(not isinstance(candidate, PluginLocalCandidate) for candidate in local):
+        raise TypeError("本地候选必须是 PluginLocalCandidate")
+    if any(candidate.normalized_plugin_id != normalized_id for candidate in local):
+        raise ValueError("本地候选的插件 ID 必须与选择目标一致")
+    local_read = inventory.local_read
+    if (
+        not local
+        and local_read is not None
+        and local_read.status is LocalCandidateReadStatus.FAILED
+    ):
+        return PluginSelection(
+            status=PluginSelectionStatus.INCOMPLETE,
+            reason="本地插件仓库读取失败，不能自动选择在线载荷",
+        )
+    if not local:
+        return None
+    selected_local = _select_best(local, generation_order)
+    if selected_local is None:
+        return PluginSelection(
+            status=PluginSelectionStatus.UNAVAILABLE,
+            reason="本地候选没有符合当前运行代际的版本",
+        )
+    return PluginSelection(
+        status=PluginSelectionStatus.SELECTED,
+        candidate=selected_local,
+        reason="优先使用本地载荷",
+    )
+
+
 def select_plugin_candidate(
     inventory: CandidateInventory,
     *,
@@ -525,42 +568,16 @@ def select_plugin_candidate(
         if requested_source_key is not None
         else None
     )
-    local = (
-        ()
-        if requested_source is not None
-        else (
-            tuple(local_candidates)
-            if local_candidates is not None
-            else inventory.local_candidates_for(plugin_id)
+    if requested_source is None:
+        local_selection = _select_local_candidate(
+            inventory,
+            plugin_id=plugin_id,
+            normalized_id=normalized_id,
+            generation_order=generation_order,
+            local_candidates=local_candidates,
         )
-    )
-    if any(not isinstance(candidate, PluginLocalCandidate) for candidate in local):
-        raise TypeError("本地候选必须是 PluginLocalCandidate")
-    if any(candidate.normalized_plugin_id != normalized_id for candidate in local):
-        raise ValueError("本地候选的插件 ID 必须与选择目标一致")
-    local_read = inventory.local_read
-    if (
-        requested_source is None
-        and not local
-        and local_read is not None
-        and local_read.status is LocalCandidateReadStatus.FAILED
-    ):
-        return PluginSelection(
-            status=PluginSelectionStatus.INCOMPLETE,
-            reason="本地插件仓库读取失败，不能自动选择在线载荷",
-        )
-    if local:
-        selected_local = _select_best(local, generation_order)
-        if selected_local is None:
-            return PluginSelection(
-                status=PluginSelectionStatus.UNAVAILABLE,
-                reason="本地候选没有符合当前运行代际的版本",
-            )
-        return PluginSelection(
-            status=PluginSelectionStatus.SELECTED,
-            candidate=selected_local,
-            reason="优先使用本地载荷",
-        )
+        if local_selection is not None:
+            return local_selection
 
     online = inventory.candidates_for(plugin_id)
     if not online:

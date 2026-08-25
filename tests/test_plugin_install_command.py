@@ -1,7 +1,7 @@
 """插件安装事务用例的端到端副作用顺序与补偿测试。"""
 
 import asyncio
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -757,11 +757,7 @@ async def test_mutation_rejection_happens_before_package_write_guard():
     """运行时封口后拒绝安装，不能进入包写入抑制或文件快照。"""
     checkpointer = AsyncMock()
     package_guard = Mock(return_value=nullcontext())
-
-    @contextmanager
-    def rejected(_operation):
-        raise PluginMutationRejectedError("安装插件 DemoPlugin")
-        yield
+    rejected = Mock(side_effect=PluginMutationRejectedError("安装插件 DemoPlugin"))
 
     command, _, _ = _command(
         checkpointer=checkpointer,
