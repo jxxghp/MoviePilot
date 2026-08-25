@@ -19,6 +19,7 @@ Models are SQLAlchemy declarative classes. Each model maps to one database table
 | `Site` / `SiteIcon` / `SiteStatistic` / `SiteUserData` | Torrent site records and statistics |
 | `Message` | Message log |
 | `PluginData` | Plugin-persisted data |
+| `PluginIdentity` | Installed physical-plugin source binding and payload provenance |
 | `PassKey` | Passkey authentication records |
 | `Workflow` | Workflow definitions |
 
@@ -61,6 +62,7 @@ directly in chain, module, or endpoint code.
 | `MediaServerOper` | `oper/mediaserver.py` |
 | `MessageOper` | `oper/message.py` |
 | `PluginDataOper` | `oper/plugindata.py` |
+| `PluginIdentityOper` | `oper/pluginidentity.py` |
 | `SiteOper` | `oper/site.py` |
 | `SubscribeHistoryOper` | `oper/subscribehistory.py` |
 | `SubscribeOper` | `oper/subscribe.py` |

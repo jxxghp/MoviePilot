@@ -18,6 +18,10 @@ _MODEL_EXPORTS = {
     "OutboxMessage": ("app.db.models.outbox", "OutboxMessage"),
     "PassKey": ("app.db.models.passkey", "PassKey"),
     "PluginData": ("app.db.models.plugindata", "PluginData"),
+    "PluginIdentity": (
+        "app.db.models.pluginidentity",
+        "PluginIdentity",
+    ),
     "Site": ("app.db.models.site", "Site"),
     "SiteIcon": ("app.db.models.siteicon", "SiteIcon"),
     "SiteStatistic": ("app.db.models.sitestatistic", "SiteStatistic"),
