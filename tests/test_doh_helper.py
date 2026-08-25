@@ -3,6 +3,7 @@ import threading
 import time
 
 from app.adapters.network import doh
+from app.runtime.correlation import correlation_scope, get_correlation_id
 from app.runtime.execution import OwnedThreadPoolExecutor
 
 
@@ -144,3 +145,34 @@ def test_enable_doh_reuses_cached_host_resolution(monkeypatch):
 
     assert query_calls == [("resolver.test", "example.com")]
     assert resolved_hosts == ["203.0.113.7", "203.0.113.7"]
+
+
+def test_doh_queries_use_each_request_context(monkeypatch):
+    """复用的 DoH worker 应按查询恢复关联 ID，不能丢失或粘住首个请求。"""
+    original_getaddrinfo = socket.getaddrinfo
+    observed = []
+    helper = object.__new__(doh.DohHelper)
+    monkeypatch.setattr(
+        "app.runtime.config.settings.DOH_DOMAINS",
+        "first.example,second.example",
+    )
+    monkeypatch.setattr("app.runtime.config.settings.DOH_RESOLVERS", "resolver.test")
+    monkeypatch.setattr(
+        doh,
+        "_doh_query",
+        lambda _resolver, _host: observed.append(get_correlation_id()) or "203.0.113.7",
+    )
+    monkeypatch.setattr(doh, "_orig_getaddrinfo", lambda _host, *_args, **_kwargs: [])
+
+    try:
+        assert helper.shutdown() is True
+        assert doh.enable_doh(True) is True
+        with correlation_scope("doh-first"):
+            socket.getaddrinfo("first.example", None)
+        with correlation_scope("doh-second"):
+            socket.getaddrinfo("second.example", None)
+    finally:
+        helper.shutdown()
+        socket.getaddrinfo = original_getaddrinfo
+
+    assert observed == ["doh-first", "doh-second"]
