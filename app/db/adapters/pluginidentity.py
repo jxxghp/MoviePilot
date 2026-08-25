@@ -3,14 +3,14 @@
 from collections.abc import Callable
 from datetime import datetime
 
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.application.plugin.identity import (
     PluginBindingBasis,
-    PluginPayloadSourceType,
     PluginIdentity,
     PluginIdentityConflictError,
+    PluginPayloadSourceType,
     TrustedPluginSourceType,
     WritePluginIdentityCommand,
     normalize_physical_plugin_id,

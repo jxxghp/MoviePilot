@@ -6,12 +6,9 @@ from app.api.endpoints.transfer import (
     match_manual_transfer_target_path,
     recommend_episode_format,
 )
-from app.schemas import (
-    EpisodeFormatRecommendItem,
-    FileItem,
-    ManualTransferItem,
-    TransferDirectoryConf,
-)
+from app.schemas.file import FileItem
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.transfer import EpisodeFormatRecommendItem, ManualTransferItem
 
 
 def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):

@@ -8,7 +8,6 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
-
 _PLUGIN_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,127}$")
 _ONLINE_SOURCE_KEY_PATTERN = re.compile(
     r"^github:[a-z0-9](?:[a-z0-9-]{0,38})/"

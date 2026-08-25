@@ -1,9 +1,9 @@
 """插件身份事实、条件写和存量迁移决策测试。"""
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-import threading
 
 import pytest
 import sqlalchemy as sa
@@ -22,7 +22,6 @@ from app.application.plugin.identity import (
 from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
 from app.db.models import load_all_models
 from app.db.models.pluginidentity import PluginIdentity as PluginIdentityModel
-
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 OFFICIAL_SOURCE = "github:jxxghp/moviepilot-plugins"
