@@ -381,15 +381,19 @@ class CandidateInventory:
 
     @property
     def complete(self) -> bool:
-        """只有至少一个市场且全部读取成功时才算完整。"""
+        """只有预期市场与代际均可证明已成功读取时才算完整。"""
         if not self.market_reads or not all(read.succeeded for read in self.market_reads):
             return False
-        if self.expected_markets is None or self.expected_generations is None:
+        expected_markets = self.expected_markets
+        expected_generations = self.expected_generations
+        if (expected_markets is None) != (expected_generations is None):
+            return False
+        if expected_markets is None or expected_generations is None:
             return True
         expected = {
             (market, generation)
-            for market in self.expected_markets
-            for generation in self.expected_generations
+            for market in expected_markets
+            for generation in expected_generations
         }
         actual = {(read.market, read.package_generation) for read in self.market_reads}
         return expected <= actual
@@ -556,7 +560,7 @@ def select_plugin_candidate(
     :param generations: 调用方按优先级传入的代际顺序
     :param identity: 已安装插件来源身份；为空表示未安装
     :param local_candidates: 可选的本地载荷候选，优先于在线候选
-    :param requested_source_key: 调用方明确选择的规范在线来源
+    :param requested_source_key: 调用方提供的规范在线来源；非显式调用不能绕过本地载荷
     :param explicit_source: 本次调用是否代表管理员明确选源
     :param allow_source_change: 是否是带 revision 的显式换源命令
     :return: 带明确冲突或不完整状态的选择结果
@@ -568,7 +572,7 @@ def select_plugin_candidate(
         if requested_source_key is not None
         else None
     )
-    if requested_source is None:
+    if requested_source is None or not (explicit_source or allow_source_change):
         local_selection = _select_local_candidate(
             inventory,
             plugin_id=plugin_id,

@@ -145,6 +145,24 @@ def test_partial_market_failure_blocks_unique_third_party_tofu() -> None:
     assert result.status is PluginSelectionStatus.INCOMPLETE
 
 
+def test_partial_inventory_expectations_never_authorize_tofu() -> None:
+    """缺少任一预期维度时，快照不能证明第三方来源唯一。"""
+    reads = (MarketRead.present("market-a", (_online(THIRD_PARTY_SOURCE),)),)
+    markets_only = CandidateInventory(
+        reads,
+        expected_markets=("market-a", "market-b"),
+    )
+    generations_only = CandidateInventory(
+        reads,
+        expected_generations=("v3",),
+    )
+
+    assert markets_only.complete is False
+    assert markets_only.can_use_for_tofu is False
+    assert generations_only.complete is False
+    assert generations_only.can_use_for_tofu is False
+
+
 def test_local_scan_failure_blocks_automatic_selection_but_explicit_source_continues() -> None:
     """本地扫描失败时自动路径闭锁，管理员明确选在线来源仍可继续。"""
     inventory = CandidateInventory(
@@ -174,6 +192,46 @@ def test_local_scan_failure_blocks_automatic_selection_but_explicit_source_conti
     assert explicit.status is PluginSelectionStatus.SELECTED
     assert explicit.candidate is not None
     assert explicit.candidate.source_key == THIRD_PARTY_SOURCE
+
+
+def test_non_explicit_source_hint_cannot_bypass_local_state() -> None:
+    """兼容来源参数不能替换本地载荷，也不能绕过本地读取失败闭锁。"""
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?path=/private/plugins",
+        package_generation="v3",
+        plugin_version="2.0.0-dev",
+    )
+    identity = _identity(
+        TrustedPluginSourceType.THIRD_PARTY,
+        THIRD_PARTY_SOURCE,
+    )
+    with_local = select_plugin_candidate(
+        _inventory(
+            MarketRead.present("market-a", (_online(THIRD_PARTY_SOURCE),)),
+            local=(local,),
+        ),
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=identity,
+        requested_source_key=THIRD_PARTY_SOURCE,
+        explicit_source=False,
+    )
+    failed_local_read = select_plugin_candidate(
+        CandidateInventory(
+            (MarketRead.present("market-a", (_online(THIRD_PARTY_SOURCE),)),),
+            local_read=LocalCandidateRead.failure("local repository unavailable"),
+        ),
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=identity,
+        requested_source_key=THIRD_PARTY_SOURCE,
+        explicit_source=False,
+    )
+
+    assert with_local.status is PluginSelectionStatus.SELECTED
+    assert with_local.candidate is local
+    assert failed_local_read.status is PluginSelectionStatus.INCOMPLETE
 
 
 def test_uninstalled_unique_and_multiple_sources_are_distinct() -> None:
