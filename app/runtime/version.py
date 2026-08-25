@@ -11,7 +11,7 @@ from version import FRONTEND_VERSION as _FRONTEND_VERSION
 
 def get_app_version() -> str:
     """返回当前后端构建的发布版本。"""
-    return _APP_VERSION
+    return str(_APP_VERSION)
 
 
 def _read_version_file(path: Path) -> str | None:
@@ -39,4 +39,4 @@ def get_frontend_version(*, fallback_to_declared: bool = True) -> str | None:
     installed_version = _read_version_file(version_file)
     if installed_version or not fallback_to_declared:
         return installed_version
-    return _FRONTEND_VERSION
+    return str(_FRONTEND_VERSION)

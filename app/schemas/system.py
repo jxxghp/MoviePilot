@@ -217,7 +217,7 @@ class SystemModuleListData(BaseModel):
     modules: list[SystemModuleInfo] = Field(default_factory=list)
 
 
-class DatabaseBackupArtifactData(BaseModel):
+class DatabaseBackupArtifactData(BaseModel):  # type: ignore[misc]
     """Web 管理端可见的受管数据库备份摘要。"""
 
     name: str  # 受管文件名，不包含宿主目录
@@ -226,7 +226,7 @@ class DatabaseBackupArtifactData(BaseModel):
     size: int  # 备份文件字节数
 
 
-class DatabaseBackupVerificationData(BaseModel):
+class DatabaseBackupVerificationData(BaseModel):  # type: ignore[misc]
     """受管数据库备份的脱敏校验结果。"""
 
     valid: bool  # 是否通过当前数据库类型的内容校验

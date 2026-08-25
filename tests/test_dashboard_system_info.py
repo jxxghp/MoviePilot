@@ -1,4 +1,4 @@
-from app.db import SessionFactory
+from app.db.session import SessionFactory
 from app.db.models.transferhistory import TransferHistory
 from app.schemas.types import MediaSource, MediaType
 from app.adapters.system import host as system_module

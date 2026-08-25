@@ -3,129 +3,242 @@
     "import-untyped": 1
   },
   "app/adapters/external/cookiecloud.py": {
-    "unknown": 9
+    "arg-type": 1,
+    "no-any-return": 1,
+    "no-untyped-call": 2,
+    "no-untyped-def": 2,
+    "type-arg": 2,
+    "var-annotated": 1
   },
   "app/adapters/external/location.py": {
-    "unknown": 3
+    "no-untyped-def": 3
   },
   "app/adapters/external/market.py": {
-    "import-untyped": 1
+    "arg-type": 3,
+    "assignment": 3,
+    "attr-defined": 4,
+    "import-untyped": 1,
+    "misc": 4,
+    "no-any-return": 8,
+    "no-untyped-call": 6,
+    "no-untyped-def": 10,
+    "operator": 1,
+    "return-value": 6,
+    "type-arg": 41,
+    "union-attr": 2,
+    "var-annotated": 5
   },
   "app/adapters/external/ocr.py": {
-    "unknown": 2
+    "arg-type": 2
+  },
+  "app/adapters/external/plugin/client.py": {
+    "arg-type": 1,
+    "no-any-return": 2,
+    "type-arg": 6
+  },
+  "app/adapters/external/server.py": {
+    "arg-type": 7,
+    "assignment": 1,
+    "misc": 9,
+    "no-any-return": 23,
+    "no-untyped-call": 6,
+    "no-untyped-def": 59,
+    "type-arg": 40
   },
   "app/adapters/external/wechat_crypt.py": {
-    "unknown": 29
+    "no-untyped-call": 14,
+    "no-untyped-def": 14,
+    "union-attr": 1
   },
   "app/adapters/network/browser.py": {
-    "unknown": 24
+    "arg-type": 4,
+    "no-any-return": 2,
+    "no-untyped-def": 1,
+    "operator": 2,
+    "type-arg": 8,
+    "union-attr": 5,
+    "var-annotated": 2
   },
   "app/adapters/network/cloudflare.py": {
-    "unknown": 1
+    "no-untyped-def": 1
   },
   "app/adapters/network/http.py": {
-    "unknown": 142
+    "assignment": 43,
+    "misc": 1,
+    "no-any-return": 15,
+    "no-untyped-call": 7,
+    "no-untyped-def": 35,
+    "type-arg": 41
   },
   "app/adapters/network/ip.py": {
-    "unknown": 10
+    "no-untyped-call": 4,
+    "no-untyped-def": 6
   },
   "app/adapters/system/backup/database.py": {
-    "unknown": 2
+    "assignment": 2
   },
   "app/adapters/system/fsproxy.py": {
-    "unknown": 33
+    "arg-type": 1,
+    "assignment": 1,
+    "no-any-return": 7,
+    "no-untyped-call": 8,
+    "no-untyped-def": 4,
+    "type-arg": 1,
+    "union-attr": 11
   },
   "app/adapters/system/fsworker.py": {
-    "unknown": 13
+    "no-untyped-call": 3,
+    "no-untyped-def": 10
   },
   "app/adapters/system/host.py": {
+    "assignment": 4,
     "misc": 1,
+    "no-any-return": 2,
+    "no-untyped-call": 3,
+    "no-untyped-def": 8,
     "operator": 1,
-    "unknown": 23
+    "type-arg": 5,
+    "var-annotated": 1
+  },
+  "app/adapters/system/plugin/dependency.py": {
+    "no-any-return": 3
+  },
+  "app/adapters/system/plugin/package.py": {
+    "no-any-return": 1
   },
   "app/adapters/system/resource.py": {
-    "unknown": 4
+    "no-untyped-call": 1,
+    "no-untyped-def": 2,
+    "type-arg": 1
   },
   "app/adapters/system/rust.py": {
-    "unknown": 28
+    "assignment": 1,
+    "no-any-return": 7,
+    "no-untyped-def": 1,
+    "type-arg": 19
   },
   "app/adapters/system/stdio.py": {
-    "unknown": 1
+    "override": 1
   },
   "app/adapters/system/update.py": {
-    "unknown": 6
+    "no-any-return": 6
   },
   "app/adapters/web/correlation.py": {
-    "unknown": 2
+    "type-arg": 2
+  },
+  "app/adapters/web/metrics.py": {
+    "no-any-return": 1,
+    "type-arg": 3,
+    "union-attr": 1
   },
   "app/adapters/web/plugin/routes.py": {
-    "unknown": 2
+    "type-arg": 2
   },
   "app/adapters/web/security/access.py": {
-    "unknown": 3
+    "misc": 1,
+    "no-any-return": 2
   },
   "app/agent/contracts.py": {
-    "unknown": 1
+    "type-arg": 1
   },
   "app/agent/llm/capability.py": {
-    "unknown": 12
+    "no-any-return": 4,
+    "no-untyped-def": 6,
+    "type-arg": 1,
+    "var-annotated": 1
   },
   "app/agent/llm/helper.py": {
-    "unknown": 32
+    "arg-type": 7,
+    "assignment": 1,
+    "misc": 1,
+    "no-any-return": 2,
+    "no-untyped-call": 5,
+    "no-untyped-def": 13,
+    "type-arg": 1,
+    "union-attr": 2
   },
   "app/agent/llm/provider.py": {
     "import-untyped": 1
   },
   "app/agent/middleware/activity_log.py": {
-    "unknown": 9
+    "misc": 3,
+    "type-arg": 5,
+    "valid-type": 1
   },
   "app/agent/middleware/jobs.py": {
-    "unknown": 4
+    "import-untyped": 1,
+    "misc": 2,
+    "valid-type": 1
   },
   "app/agent/middleware/memory.py": {
-    "unknown": 4
+    "misc": 2,
+    "valid-type": 2
   },
   "app/agent/middleware/patch_tool_calls.py": {
-    "unknown": 1
+    "misc": 1
   },
   "app/agent/middleware/skills.py": {
-    "unknown": 5
+    "import-untyped": 1,
+    "misc": 3,
+    "valid-type": 1
   },
   "app/agent/middleware/summarization.py": {
-    "unknown": 10
+    "misc": 2,
+    "no-any-return": 6,
+    "union-attr": 2
   },
   "app/agent/middleware/tool_selection.py": {
-    "unknown": 4
+    "misc": 2,
+    "no-any-return": 1,
+    "valid-type": 1
   },
   "app/agent/middleware/usage.py": {
-    "unknown": 3
+    "misc": 1,
+    "no-any-return": 2
   },
   "app/agent/policy/orchestrator.py": {
-    "unknown": 1
+    "no-any-return": 1
   },
   "app/agent/policy/sanitizer.py": {
-    "unknown": 1
+    "var-annotated": 1
   },
   "app/agent/prompt/__init__.py": {
-    "import-untyped": 1
+    "arg-type": 2,
+    "assignment": 4,
+    "attr-defined": 1,
+    "has-type": 3,
+    "import-untyped": 1,
+    "no-untyped-def": 1
   },
   "app/agent/runtime.py": {
     "import-untyped": 1
   },
   "app/agent/skills/metadata.py": {
-    "unknown": 1
+    "import-untyped": 1
   },
   "app/agent/skills/registry.py": {
-    "unknown": 44
+    "arg-type": 1,
+    "attr-defined": 1,
+    "misc": 3,
+    "no-any-return": 7,
+    "no-untyped-def": 5,
+    "type-arg": 14,
+    "union-attr": 13
   },
   "app/agent/tools/catalog.py": {
-    "unknown": 1
+    "attr-defined": 1
   },
   "app/agent/tools/impl/_terminal_session.py": {
-    "unknown": 5
+    "assignment": 2,
+    "attr-defined": 1,
+    "type-arg": 2
   },
   "app/agent/tools/impl/_torrent_search_utils.py": {
-    "unknown": 10
+    "arg-type": 2,
+    "misc": 1,
+    "operator": 4,
+    "type-arg": 2,
+    "var-annotated": 1
   },
   "app/agent/tools/impl/create_agent_task.py": {
     "import-untyped": 1
@@ -143,61 +256,85 @@
     "import-untyped": 1
   },
   "app/api/response.py": {
-    "unknown": 4
+    "arg-type": 1,
+    "misc": 2,
+    "valid-type": 1
   },
   "app/api/servcookie.py": {
     "import-untyped": 1
   },
   "app/application/agent.py": {
-    "unknown": 4
+    "no-any-return": 4
   },
   "app/application/agentdata.py": {
-    "unknown": 10
+    "attr-defined": 10
   },
   "app/application/agenttask.py": {
-    "unknown": 1
+    "type-arg": 1
   },
   "app/application/commands.py": {
-    "unknown": 1
+    "no-any-return": 1
   },
   "app/application/configuration.py": {
-    "unknown": 1
+    "redundant-cast": 1
   },
   "app/application/dashboard.py": {
-    "unknown": 5
+    "operator": 5
   },
   "app/application/directory.py": {
-    "unknown": 13
+    "arg-type": 6,
+    "assignment": 2,
+    "return-value": 2,
+    "type-arg": 1,
+    "union-attr": 2
   },
   "app/application/download/tasks.py": {
-    "unknown": 2
+    "assignment": 1,
+    "type-arg": 1
   },
   "app/application/downloader.py": {
-    "unknown": 2
+    "arg-type": 1,
+    "no-untyped-def": 1
   },
   "app/application/formatting.py": {
-    "unknown": 26
+    "arg-type": 4,
+    "assignment": 9,
+    "attr-defined": 1,
+    "no-untyped-def": 7,
+    "operator": 3,
+    "type-arg": 2
   },
   "app/application/history.py": {
-    "unknown": 9
+    "assignment": 2,
+    "attr-defined": 1,
+    "no-any-return": 1,
+    "type-arg": 5
   },
   "app/application/maintenance.py": {
-    "unknown": 1
+    "assignment": 1
   },
   "app/application/mediaserver.py": {
-    "unknown": 3
+    "arg-type": 2,
+    "operator": 1
   },
   "app/application/messaging/agent.py": {
-    "unknown": 20
+    "arg-type": 1,
+    "attr-defined": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 1,
+    "type-arg": 15,
+    "var-annotated": 1
   },
   "app/application/messaging/ingress.py": {
-    "unknown": 2
+    "arg-type": 2
   },
   "app/application/messaging/interaction.py": {
-    "unknown": 6
+    "no-untyped-def": 4,
+    "type-arg": 2
   },
   "app/application/messaging/media.py": {
-    "unknown": 2
+    "no-untyped-call": 1,
+    "no-untyped-def": 1
   },
   "app/application/messaging/message.py": {
     "arg-type": 5,
@@ -212,605 +349,1245 @@
     "var-annotated": 1
   },
   "app/application/messaging/plugin.py": {
-    "unknown": 9
+    "arg-type": 5,
+    "no-untyped-call": 1,
+    "no-untyped-def": 2,
+    "type-arg": 1
   },
   "app/application/messaging/site.py": {
-    "unknown": 7
+    "arg-type": 1,
+    "assignment": 2,
+    "no-untyped-call": 1,
+    "no-untyped-def": 2,
+    "type-arg": 1
   },
   "app/application/messaging/skill.py": {
-    "unknown": 14
+    "no-untyped-call": 4,
+    "no-untyped-def": 4,
+    "type-arg": 6
   },
   "app/application/messaging/subscribe.py": {
-    "unknown": 6
+    "arg-type": 1,
+    "assignment": 2,
+    "no-untyped-call": 1,
+    "no-untyped-def": 2
   },
   "app/application/module.py": {
-    "unknown": 1
+    "misc": 1
   },
   "app/application/music/catalog.py": {
-    "unknown": 2
+    "assignment": 1,
+    "no-any-return": 1
   },
   "app/application/notification.py": {
-    "unknown": 3
+    "arg-type": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 1
   },
   "app/application/plugin/catalog.py": {
-    "unknown": 11
+    "type-arg": 5,
+    "var-annotated": 6
   },
   "app/application/plugin/config.py": {
-    "unknown": 3
+    "type-arg": 3
   },
   "app/application/plugin/install.py": {
-    "unknown": 2
+    "arg-type": 1,
+    "var-annotated": 1
   },
   "app/application/plugin/lifecycle.py": {
-    "unknown": 2
+    "no-untyped-def": 2
   },
   "app/application/rss.py": {
-    "unknown": 21
+    "arg-type": 2,
+    "assignment": 5,
+    "attr-defined": 4,
+    "import-untyped": 2,
+    "no-untyped-def": 3,
+    "type-arg": 5
   },
   "app/application/rules.py": {
-    "unknown": 10
+    "attr-defined": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 1,
+    "type-arg": 7
   },
   "app/application/security/cookie.py": {
-    "unknown": 25
+    "arg-type": 3,
+    "assignment": 2,
+    "attr-defined": 3,
+    "no-any-return": 1,
+    "type-arg": 3,
+    "union-attr": 13
   },
   "app/application/security/otp.py": {
-    "unknown": 3
+    "no-any-return": 3
   },
   "app/application/security/passkeys.py": {
-    "unknown": 2
+    "valid-type": 2
   },
   "app/application/security/token.py": {
-    "unknown": 4
+    "no-any-return": 3,
+    "operator": 1
   },
   "app/application/security/twofactor.py": {
-    "unknown": 4
+    "assignment": 2,
+    "return-value": 1,
+    "str-bytes-safe": 1
   },
   "app/application/security/url.py": {
-    "unknown": 15
+    "attr-defined": 2,
+    "has-type": 2,
+    "misc": 1,
+    "no-any-return": 1,
+    "return-value": 1,
+    "type-arg": 8
   },
   "app/application/servarr.py": {
-    "unknown": 2
+    "valid-type": 2
   },
   "app/application/server/report.py": {
-    "unknown": 5
+    "type-arg": 5
   },
   "app/application/server/share.py": {
-    "unknown": 7
+    "no-any-return": 1,
+    "type-arg": 6
   },
   "app/application/service.py": {
-    "unknown": 6
+    "attr-defined": 5,
+    "misc": 1
   },
   "app/application/site/mutation.py": {
-    "unknown": 4
+    "type-arg": 4
   },
   "app/application/site/query.py": {
-    "unknown": 7
+    "attr-defined": 2,
+    "valid-type": 5
   },
   "app/application/site/sites.pyi": {
-    "unknown": 7
+    "type-arg": 7
   },
   "app/application/storage.py": {
-    "unknown": 6
+    "no-untyped-def": 3,
+    "type-arg": 3
   },
   "app/application/subscription/complete.py": {
-    "unknown": 3
+    "arg-type": 3
   },
   "app/application/subscription/contract.py": {
-    "unknown": 5
+    "arg-type": 2,
+    "assignment": 2,
+    "misc": 1
   },
   "app/application/subscription/query.py": {
-    "unknown": 2
+    "attr-defined": 1,
+    "type-arg": 1
   },
   "app/application/subscription/write.py": {
-    "unknown": 22
+    "arg-type": 2,
+    "no-untyped-def": 2,
+    "type-arg": 18
   },
   "app/application/torrent.py": {
-    "unknown": 39
+    "arg-type": 14,
+    "assignment": 3,
+    "attr-defined": 2,
+    "no-untyped-call": 1,
+    "no-untyped-def": 3,
+    "operator": 2,
+    "return-value": 1,
+    "type-arg": 4,
+    "union-attr": 8,
+    "var-annotated": 1
   },
   "app/application/torrent_cache.py": {
-    "unknown": 1
+    "type-arg": 1
   },
   "app/application/transfer.py": {
-    "unknown": 104
+    "arg-type": 16,
+    "assignment": 3,
+    "attr-defined": 4,
+    "misc": 6,
+    "no-any-return": 1,
+    "no-untyped-call": 2,
+    "no-untyped-def": 10,
+    "return-value": 1,
+    "type-arg": 14,
+    "union-attr": 47
   },
   "app/chain/_interaction.py": {
-    "unknown": 12
+    "assignment": 3,
+    "attr-defined": 1,
+    "no-any-return": 3,
+    "no-untyped-call": 3,
+    "no-untyped-def": 2
+  },
+  "app/chain/_recognition.py": {
+    "arg-type": 6,
+    "assignment": 7,
+    "attr-defined": 12,
+    "no-any-return": 4,
+    "no-untyped-def": 5,
+    "type-arg": 4
+  },
+  "app/db/engine.py": {
+    "no-untyped-def": 3,
+    "type-arg": 1
   },
   "app/db/models/agentchat.py": {
-    "unknown": 2
+    "no-any-return": 2
   },
   "app/db/models/agenttask.py": {
-    "unknown": 5
+    "no-any-return": 2,
+    "no-untyped-def": 2,
+    "type-arg": 1
+  },
+  "app/db/models/agenttaskrun.py": {
+    "no-any-return": 1
   },
   "app/db/models/downloadfailure.py": {
-    "unknown": 1
+    "no-any-return": 1
   },
   "app/db/models/downloadhistory.py": {
-    "unknown": 19
+    "no-untyped-def": 19
   },
   "app/db/models/mediaserver.py": {
-    "unknown": 10
+    "no-untyped-def": 10
   },
   "app/db/models/message.py": {
-    "unknown": 1
+    "type-arg": 1
   },
   "app/db/models/passkey.py": {
-    "unknown": 12
+    "no-untyped-def": 12
   },
   "app/db/models/plugindata.py": {
-    "unknown": 8
+    "no-untyped-def": 8
   },
   "app/db/models/site.py": {
-    "unknown": 10
+    "no-untyped-def": 10
   },
   "app/db/models/siteicon.py": {
-    "unknown": 2
+    "no-untyped-def": 2
   },
   "app/db/models/sitestatistic.py": {
-    "unknown": 3
+    "no-untyped-def": 3
   },
   "app/db/models/siteuserdata.py": {
-    "unknown": 5
+    "no-untyped-def": 5
   },
   "app/db/models/subscribe.py": {
-    "unknown": 26
+    "arg-type": 8,
+    "no-untyped-def": 18
   },
   "app/db/models/subscribehistory.py": {
-    "unknown": 6
+    "no-untyped-def": 6
   },
   "app/db/models/systemconfig.py": {
-    "unknown": 3
+    "no-untyped-def": 3
   },
   "app/db/models/transferhistory.py": {
-    "unknown": 24
+    "no-any-return": 3,
+    "no-untyped-def": 20,
+    "type-arg": 1
   },
   "app/db/models/transferpending.py": {
-    "unknown": 1
+    "no-any-return": 1
   },
   "app/db/models/user.py": {
-    "unknown": 10
+    "no-untyped-def": 10
   },
   "app/db/models/userconfig.py": {
-    "unknown": 2
+    "no-untyped-def": 2
   },
   "app/db/models/workflow.py": {
-    "unknown": 31
+    "no-untyped-def": 27,
+    "type-arg": 4
+  },
+  "app/db/oper/agentchat.py": {
+    "type-arg": 6
+  },
+  "app/db/oper/downloadhistory.py": {
+    "no-any-return": 3,
+    "no-untyped-def": 9,
+    "type-arg": 3,
+    "union-attr": 2
+  },
+  "app/db/oper/mediaserver.py": {
+    "arg-type": 12,
+    "no-any-return": 4,
+    "no-untyped-def": 7,
+    "type-arg": 1
+  },
+  "app/db/oper/message.py": {
+    "attr-defined": 2,
+    "no-untyped-def": 2,
+    "type-arg": 5
+  },
+  "app/db/oper/passkey.py": {
+    "no-any-return": 1,
+    "override": 1
+  },
+  "app/db/oper/plugindata.py": {
+    "no-untyped-def": 2
+  },
+  "app/db/oper/site.py": {
+    "arg-type": 1,
+    "no-any-return": 4,
+    "no-untyped-def": 6,
+    "type-arg": 4,
+    "union-attr": 3
+  },
+  "app/db/oper/subscribe.py": {
+    "arg-type": 4,
+    "no-any-return": 3,
+    "no-untyped-def": 3,
+    "type-arg": 13,
+    "union-attr": 1
+  },
+  "app/db/oper/subscribehistory.py": {
+    "no-any-return": 1
+  },
+  "app/db/oper/systemconfig.py": {
+    "no-any-return": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 4
+  },
+  "app/db/oper/transferhistory.py": {
+    "arg-type": 1,
+    "no-any-return": 2,
+    "no-untyped-def": 7,
+    "union-attr": 2
+  },
+  "app/db/oper/user.py": {
+    "no-any-return": 6,
+    "no-untyped-def": 2,
+    "type-arg": 4
+  },
+  "app/db/oper/userconfig.py": {
+    "no-untyped-def": 4
+  },
+  "app/db/oper/workflow.py": {
+    "arg-type": 1,
+    "no-any-return": 6,
+    "no-untyped-call": 3,
+    "no-untyped-def": 1,
+    "union-attr": 3
+  },
+  "app/db/session.py": {
+    "no-untyped-call": 1,
+    "no-untyped-def": 2,
+    "type-arg": 1
   },
   "app/doctor/checks.py": {
-    "unknown": 7
+    "no-any-return": 7
   },
   "app/doctor/runner.py": {
-    "unknown": 1
+    "arg-type": 1
   },
   "app/domain/context.py": {
-    "unknown": 225
+    "arg-type": 7,
+    "assignment": 133,
+    "call-overload": 1,
+    "index": 3,
+    "no-any-return": 2,
+    "no-untyped-call": 5,
+    "no-untyped-def": 27,
+    "operator": 1,
+    "type-arg": 37,
+    "union-attr": 7,
+    "var-annotated": 2
   },
   "app/domain/meta/customization.py": {
-    "unknown": 8
+    "assignment": 1,
+    "no-untyped-call": 2,
+    "no-untyped-def": 4,
+    "var-annotated": 1
   },
   "app/domain/meta/metaanime.py": {
-    "unknown": 11
+    "arg-type": 1,
+    "assignment": 1,
+    "no-untyped-call": 5,
+    "no-untyped-def": 3,
+    "type-arg": 1
   },
   "app/domain/meta/metabase.py": {
-    "unknown": 19
+    "arg-type": 2,
+    "assignment": 1,
+    "list-item": 1,
+    "no-untyped-def": 8,
+    "operator": 2,
+    "return-value": 1,
+    "type-arg": 4
   },
   "app/domain/meta/metamusic.py": {
-    "unknown": 16
+    "arg-type": 4,
+    "assignment": 7,
+    "list-item": 1,
+    "override": 4
   },
   "app/domain/meta/metavideo.py": {
-    "unknown": 33
+    "arg-type": 2,
+    "assignment": 2,
+    "attr-defined": 1,
+    "no-untyped-call": 11,
+    "no-untyped-def": 1,
+    "type-arg": 2
   },
   "app/domain/meta/releasegroup.py": {
-    "unknown": 7
+    "arg-type": 1,
+    "assignment": 2,
+    "no-untyped-def": 3,
+    "type-arg": 1
   },
   "app/domain/meta/runtime.py": {
-    "unknown": 6
+    "type-arg": 6
   },
   "app/domain/meta/streamingplatform.py": {
-    "unknown": 2
+    "no-untyped-def": 1,
+    "type-arg": 1
   },
   "app/domain/meta/words.py": {
-    "unknown": 6
+    "assignment": 2,
+    "no-any-return": 1,
+    "no-untyped-def": 2,
+    "operator": 1
   },
   "app/domain/metainfo.py": {
-    "unknown": 24
+    "arg-type": 6,
+    "assignment": 4,
+    "no-untyped-call": 3,
+    "no-untyped-def": 1,
+    "type-arg": 10
   },
   "app/domain/scraper.py": {
-    "unknown": 5
+    "arg-type": 1,
+    "no-untyped-def": 2,
+    "return-value": 1,
+    "type-arg": 1
   },
   "app/domain/title.py": {
-    "unknown": 1
+    "assignment": 1
   },
   "app/domain/tokens.py": {
-    "unknown": 9
+    "no-untyped-call": 2,
+    "no-untyped-def": 6,
+    "type-arg": 1
   },
   "app/foundation/crypto.py": {
-    "unknown": 4
+    "no-any-return": 1,
+    "no-untyped-def": 1,
+    "union-attr": 2
   },
   "app/foundation/dom.py": {
-    "unknown": 7
+    "assignment": 2,
+    "no-untyped-def": 5
   },
   "app/foundation/environment.py": {
-    "unknown": 1
+    "no-any-return": 1
   },
   "app/foundation/reflection.py": {
-    "unknown": 12
+    "index": 1,
+    "no-untyped-call": 2,
+    "no-untyped-def": 5,
+    "operator": 1,
+    "type-arg": 2,
+    "unused-ignore": 1
   },
   "app/foundation/singleton.py": {
-    "unknown": 14
+    "arg-type": 2,
+    "misc": 2,
+    "no-untyped-def": 5,
+    "type-arg": 3,
+    "var-annotated": 2
   },
   "app/foundation/temporal.py": {
-    "unknown": 6
+    "import-untyped": 3,
+    "no-any-return": 1,
+    "operator": 2
   },
   "app/foundation/text.py": {
-    "unknown": 13
+    "arg-type": 1,
+    "no-any-return": 2,
+    "no-untyped-def": 3,
+    "return-value": 1,
+    "type-arg": 5,
+    "union-attr": 1
   },
   "app/foundation/url.py": {
-    "unknown": 1
+    "type-arg": 1
   },
   "app/modules/anilist/anilist.py": {
-    "unknown": 60
+    "arg-type": 1,
+    "misc": 15,
+    "no-any-return": 8,
+    "no-untyped-def": 5,
+    "type-arg": 31
   },
   "app/modules/bangumi/bangumi.py": {
-    "unknown": 26
+    "misc": 2,
+    "no-untyped-def": 22,
+    "var-annotated": 2
   },
   "app/modules/dingtalk/dingtalk.py": {
-    "unknown": 1
+    "no-untyped-def": 1
   },
   "app/modules/discord/discord.py": {
-    "unknown": 48
+    "assignment": 1,
+    "dict-item": 1,
+    "misc": 2,
+    "no-untyped-call": 2,
+    "no-untyped-def": 8,
+    "return-value": 2,
+    "type-arg": 14,
+    "union-attr": 18
   },
   "app/modules/douban/apiv2.py": {
-    "unknown": 170
+    "misc": 6,
+    "no-any-return": 4,
+    "no-untyped-def": 132,
+    "return-value": 1,
+    "type-arg": 26,
+    "var-annotated": 1
   },
   "app/modules/douban/scraper.py": {
-    "unknown": 7
+    "arg-type": 2,
+    "no-any-return": 2,
+    "no-untyped-def": 1,
+    "return-value": 1,
+    "type-arg": 1
   },
   "app/modules/emby/emby.py": {
-    "unknown": 37
+    "arg-type": 9,
+    "assignment": 2,
+    "dict-item": 1,
+    "no-any-return": 9,
+    "no-untyped-call": 2,
+    "no-untyped-def": 4,
+    "type-arg": 6,
+    "union-attr": 1,
+    "var-annotated": 3
   },
   "app/modules/feishu/feishu.py": {
-    "unknown": 47
+    "arg-type": 5,
+    "assignment": 1,
+    "call-overload": 1,
+    "method-assign": 2,
+    "no-untyped-def": 4,
+    "return-value": 1,
+    "type-arg": 25,
+    "union-attr": 8
   },
   "app/modules/imdb/api.py": {
-    "unknown": 27
+    "arg-type": 2,
+    "misc": 5,
+    "no-any-return": 2,
+    "type-arg": 18
   },
   "app/modules/indexer/parser/__init__.py": {
-    "unknown": 53
+    "arg-type": 20,
+    "assignment": 5,
+    "comparison-overlap": 1,
+    "no-untyped-call": 5,
+    "no-untyped-def": 15,
+    "return-value": 1,
+    "type-arg": 3,
+    "var-annotated": 3
   },
   "app/modules/indexer/parser/bitpt.py": {
-    "unknown": 45
+    "arg-type": 4,
+    "assignment": 25,
+    "attr-defined": 1,
+    "empty-body": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 9,
+    "override": 1,
+    "type-arg": 1,
+    "union-attr": 2
   },
   "app/modules/indexer/parser/discuz.py": {
-    "unknown": 10
+    "assignment": 3,
+    "no-untyped-call": 1,
+    "no-untyped-def": 5,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/file_list.py": {
-    "unknown": 14
+    "assignment": 5,
+    "no-untyped-call": 3,
+    "no-untyped-def": 5,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/gazelle.py": {
-    "unknown": 13
+    "assignment": 6,
+    "no-untyped-call": 1,
+    "no-untyped-def": 5,
+    "type-arg": 1
+  },
+  "app/modules/indexer/parser/hddolby.py": {
+    "assignment": 14,
+    "no-untyped-call": 1,
+    "no-untyped-def": 7,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/ipt_project.py": {
-    "unknown": 13
+    "assignment": 5,
+    "no-untyped-call": 1,
+    "no-untyped-def": 5,
+    "return": 1,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/mtorrent.py": {
-    "unknown": 21
+    "assignment": 11,
+    "empty-body": 1,
+    "index": 2,
+    "no-untyped-def": 6,
+    "type-arg": 1
+  },
+  "app/modules/indexer/parser/nexus_audiences.py": {
+    "arg-type": 6,
+    "assignment": 7,
+    "no-any-return": 1,
+    "no-untyped-call": 8,
+    "no-untyped-def": 34,
+    "return-value": 1,
+    "type-arg": 6,
+    "var-annotated": 1
+  },
+  "app/modules/indexer/parser/nexus_hhanclub.py": {
+    "assignment": 2,
+    "no-untyped-call": 3,
+    "no-untyped-def": 3
   },
   "app/modules/indexer/parser/nexus_php.py": {
-    "unknown": 31
+    "assignment": 12,
+    "no-untyped-call": 8,
+    "no-untyped-def": 10,
+    "type-arg": 1
+  },
+  "app/modules/indexer/parser/nexus_project.py": {
+    "assignment": 4,
+    "no-untyped-call": 2,
+    "no-untyped-def": 2
   },
   "app/modules/indexer/parser/nexus_rabbit.py": {
-    "unknown": 19
+    "assignment": 10,
+    "call-overload": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 5,
+    "return": 1,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/rousi.py": {
-    "unknown": 23
+    "arg-type": 2,
+    "assignment": 12,
+    "no-untyped-def": 8,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/small_horse.py": {
-    "unknown": 16
+    "assignment": 7,
+    "no-untyped-call": 3,
+    "no-untyped-def": 5,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/sunnypt.py": {
-    "unknown": 18
+    "arg-type": 2,
+    "assignment": 14,
+    "type-arg": 2
   },
   "app/modules/indexer/parser/tnode.py": {
-    "unknown": 12
+    "assignment": 4,
+    "no-untyped-call": 1,
+    "no-untyped-def": 6,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/torrent_leech.py": {
-    "unknown": 11
+    "assignment": 8,
+    "no-untyped-call": 2,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/unit3d.py": {
-    "unknown": 12
+    "assignment": 4,
+    "no-untyped-call": 2,
+    "no-untyped-def": 5,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/yema.py": {
-    "unknown": 18
+    "assignment": 17,
+    "type-arg": 1
   },
   "app/modules/indexer/parser/zhixing.py": {
-    "unknown": 47
+    "arg-type": 7,
+    "assignment": 28,
+    "empty-body": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 9,
+    "type-arg": 1
   },
   "app/modules/indexer/spider/__init__.py": {
-    "unknown": 93
+    "arg-type": 16,
+    "assignment": 3,
+    "dict-item": 3,
+    "misc": 1,
+    "no-any-return": 7,
+    "no-untyped-call": 3,
+    "no-untyped-def": 26,
+    "operator": 6,
+    "override": 1,
+    "return-value": 1,
+    "type-arg": 19,
+    "union-attr": 5,
+    "var-annotated": 2
   },
   "app/modules/indexer/spider/haidan.py": {
-    "unknown": 19
+    "arg-type": 5,
+    "assignment": 5,
+    "no-any-return": 1,
+    "no-untyped-def": 2,
+    "type-arg": 6
   },
   "app/modules/indexer/spider/hddolby.py": {
-    "unknown": 21
+    "arg-type": 11,
+    "assignment": 4,
+    "operator": 1,
+    "type-arg": 5
   },
   "app/modules/indexer/spider/mtorrent.py": {
-    "unknown": 20
+    "arg-type": 9,
+    "assignment": 4,
+    "no-untyped-def": 1,
+    "type-arg": 5,
+    "var-annotated": 1
   },
   "app/modules/indexer/spider/rousi.py": {
-    "unknown": 24
+    "arg-type": 6,
+    "assignment": 8,
+    "no-untyped-def": 1,
+    "type-arg": 7,
+    "var-annotated": 2
   },
   "app/modules/indexer/spider/sunnypt.py": {
-    "unknown": 31
+    "arg-type": 7,
+    "assignment": 2,
+    "no-any-return": 1,
+    "no-untyped-def": 3,
+    "type-arg": 15,
+    "var-annotated": 3
   },
   "app/modules/indexer/spider/tnode.py": {
-    "unknown": 23
+    "arg-type": 12,
+    "assignment": 1,
+    "misc": 2,
+    "return-value": 2,
+    "type-arg": 5,
+    "var-annotated": 1
   },
   "app/modules/indexer/spider/torrentleech.py": {
-    "unknown": 31
+    "arg-type": 7,
+    "assignment": 5,
+    "type-arg": 4,
+    "union-attr": 14,
+    "var-annotated": 1
   },
   "app/modules/indexer/spider/yema.py": {
-    "unknown": 21
+    "arg-type": 7,
+    "assignment": 5,
+    "no-untyped-def": 1,
+    "type-arg": 8
   },
   "app/modules/jellyfin/jellyfin.py": {
+    "arg-type": 7,
+    "assignment": 4,
+    "dict-item": 1,
+    "no-any-return": 11,
+    "no-untyped-call": 2,
+    "no-untyped-def": 5,
+    "operator": 4,
     "return": 1,
-    "unknown": 47
+    "type-arg": 9,
+    "union-attr": 1,
+    "var-annotated": 3
   },
   "app/modules/musicbrainz/music_cache.py": {
-    "unknown": 10
+    "no-any-return": 1,
+    "no-untyped-call": 2,
+    "no-untyped-def": 3,
+    "type-arg": 3,
+    "union-attr": 1
   },
   "app/modules/navidrome/navidrome.py": {
-    "unknown": 12
+    "no-any-return": 1,
+    "type-arg": 11
   },
   "app/modules/plex/plex.py": {
-    "unknown": 34
+    "arg-type": 2,
+    "assignment": 3,
+    "misc": 1,
+    "no-any-return": 1,
+    "no-untyped-def": 10,
+    "operator": 5,
+    "return-value": 1,
+    "type-arg": 4,
+    "union-attr": 4,
+    "var-annotated": 3
   },
   "app/modules/qbittorrent/qbittorrent.py": {
-    "unknown": 42
+    "assignment": 10,
+    "no-any-return": 3,
+    "no-untyped-def": 6,
+    "return-value": 1,
+    "type-arg": 22
   },
   "app/modules/qqbot/api.py": {
-    "unknown": 17
+    "no-any-return": 4,
+    "type-arg": 13
   },
   "app/modules/qqbot/gateway.py": {
-    "unknown": 6
+    "no-untyped-def": 4,
+    "type-arg": 2
   },
   "app/modules/qqbot/qqbot.py": {
-    "unknown": 16
+    "assignment": 1,
+    "attr-defined": 1,
+    "no-untyped-def": 4,
+    "type-arg": 10
   },
   "app/modules/rtorrent/rtorrent.py": {
-    "unknown": 182
+    "arg-type": 15,
+    "assignment": 6,
+    "index": 28,
+    "misc": 1,
+    "no-untyped-def": 6,
+    "operator": 62,
+    "type-arg": 16,
+    "union-attr": 48
   },
   "app/modules/slack/slack.py": {
-    "unknown": 31
+    "assignment": 1,
+    "dict-item": 2,
+    "list-item": 2,
+    "no-untyped-call": 5,
+    "no-untyped-def": 9,
+    "type-arg": 7,
+    "union-attr": 2,
+    "var-annotated": 3
   },
   "app/modules/synologychat/synologychat.py": {
-    "unknown": 14
+    "assignment": 1,
+    "no-any-return": 3,
+    "no-untyped-call": 7,
+    "no-untyped-def": 3
   },
   "app/modules/themoviedb/category.py": {
-    "unknown": 13
+    "assignment": 2,
+    "no-any-return": 2,
+    "no-untyped-call": 2,
+    "no-untyped-def": 4,
+    "type-arg": 3
+  },
+  "app/modules/themoviedb/scraper.py": {
+    "arg-type": 4,
+    "index": 2,
+    "no-any-return": 4,
+    "no-untyped-def": 3,
+    "return-value": 1,
+    "type-arg": 6
   },
   "app/modules/themoviedb/tmdb_cache.py": {
-    "unknown": 19
+    "no-any-return": 3,
+    "no-untyped-call": 2,
+    "no-untyped-def": 4,
+    "type-arg": 5,
+    "union-attr": 5
+  },
+  "app/modules/themoviedb/tmdbapi.py": {
+    "arg-type": 13,
+    "assignment": 6,
+    "attr-defined": 11,
+    "no-any-return": 24,
+    "no-untyped-call": 74,
+    "no-untyped-def": 11,
+    "operator": 24,
+    "return-value": 2,
+    "type-arg": 80,
+    "union-attr": 4,
+    "var-annotated": 2
   },
   "app/modules/themoviedb/tmdbv3api/as_obj.py": {
-    "unknown": 41
+    "assignment": 1,
+    "no-untyped-call": 17,
+    "no-untyped-def": 23
   },
   "app/modules/themoviedb/tmdbv3api/objs/account.py": {
-    "unknown": 59
+    "attr-defined": 1,
+    "no-untyped-call": 29,
+    "no-untyped-def": 29
   },
   "app/modules/themoviedb/tmdbv3api/objs/auth.py": {
-    "unknown": 13
+    "no-untyped-call": 8,
+    "no-untyped-def": 5
   },
   "app/modules/themoviedb/tmdbv3api/objs/certification.py": {
-    "unknown": 8
+    "no-untyped-call": 4,
+    "no-untyped-def": 4
   },
   "app/modules/themoviedb/tmdbv3api/objs/change.py": {
-    "unknown": 16
+    "no-untyped-call": 8,
+    "no-untyped-def": 8
   },
   "app/modules/themoviedb/tmdbv3api/objs/collection.py": {
-    "unknown": 12
+    "no-untyped-call": 6,
+    "no-untyped-def": 6
   },
   "app/modules/themoviedb/tmdbv3api/objs/company.py": {
-    "unknown": 16
+    "no-untyped-call": 8,
+    "no-untyped-def": 8
   },
   "app/modules/themoviedb/tmdbv3api/objs/configuration.py": {
-    "unknown": 26
+    "no-untyped-call": 13,
+    "no-untyped-def": 13
   },
   "app/modules/themoviedb/tmdbv3api/objs/credit.py": {
-    "unknown": 4
+    "no-untyped-call": 2,
+    "no-untyped-def": 2
   },
   "app/modules/themoviedb/tmdbv3api/objs/discover.py": {
-    "unknown": 9
+    "attr-defined": 1,
+    "no-untyped-call": 4,
+    "no-untyped-def": 4
   },
   "app/modules/themoviedb/tmdbv3api/objs/episode.py": {
-    "unknown": 40
+    "no-untyped-call": 20,
+    "no-untyped-def": 20
   },
   "app/modules/themoviedb/tmdbv3api/objs/find.py": {
-    "unknown": 36
+    "no-untyped-call": 18,
+    "no-untyped-def": 18
   },
   "app/modules/themoviedb/tmdbv3api/objs/genre.py": {
-    "unknown": 8
+    "no-untyped-call": 4,
+    "no-untyped-def": 4
   },
   "app/modules/themoviedb/tmdbv3api/objs/group.py": {
-    "unknown": 4
+    "no-untyped-call": 2,
+    "no-untyped-def": 2
   },
   "app/modules/themoviedb/tmdbv3api/objs/keyword.py": {
-    "unknown": 8
+    "no-untyped-call": 4,
+    "no-untyped-def": 4
   },
   "app/modules/themoviedb/tmdbv3api/objs/list.py": {
-    "unknown": 28
+    "no-untyped-call": 14,
+    "no-untyped-def": 14
   },
   "app/modules/themoviedb/tmdbv3api/objs/movie.py": {
-    "unknown": 92
+    "no-untyped-call": 46,
+    "no-untyped-def": 46
   },
   "app/modules/themoviedb/tmdbv3api/objs/network.py": {
-    "unknown": 12
+    "no-untyped-call": 6,
+    "no-untyped-def": 6
   },
   "app/modules/themoviedb/tmdbv3api/objs/person.py": {
-    "unknown": 44
+    "no-untyped-call": 22,
+    "no-untyped-def": 22
   },
   "app/modules/themoviedb/tmdbv3api/objs/provider.py": {
-    "unknown": 12
+    "no-untyped-call": 6,
+    "no-untyped-def": 6
   },
   "app/modules/themoviedb/tmdbv3api/objs/review.py": {
-    "unknown": 4
+    "no-untyped-call": 2,
+    "no-untyped-def": 2
   },
   "app/modules/themoviedb/tmdbv3api/objs/search.py": {
-    "unknown": 29
+    "attr-defined": 1,
+    "no-untyped-call": 14,
+    "no-untyped-def": 14
   },
   "app/modules/themoviedb/tmdbv3api/objs/season.py": {
-    "unknown": 36
+    "no-untyped-call": 18,
+    "no-untyped-def": 18
   },
   "app/modules/themoviedb/tmdbv3api/objs/trending.py": {
-    "unknown": 36
+    "no-untyped-call": 18,
+    "no-untyped-def": 18
   },
   "app/modules/themoviedb/tmdbv3api/objs/tv.py": {
-    "unknown": 104
+    "no-untyped-call": 52,
+    "no-untyped-def": 52
   },
   "app/modules/themoviedb/tmdbv3api/tmdb.py": {
-    "unknown": 87
+    "assignment": 1,
+    "attr-defined": 3,
+    "no-redef": 2,
+    "no-untyped-call": 36,
+    "no-untyped-def": 44,
+    "operator": 1
   },
   "app/modules/thetvdb/tvdb_v4_official.py": {
-    "unknown": 274
+    "arg-type": 4,
+    "assignment": 118,
+    "misc": 1,
+    "no-any-return": 64,
+    "no-untyped-call": 2,
+    "no-untyped-def": 16,
+    "return-value": 1,
+    "type-arg": 68
   },
   "app/modules/transmission/transmission.py": {
-    "unknown": 41
+    "assignment": 19,
+    "misc": 1,
+    "no-any-return": 2,
+    "no-untyped-def": 4,
+    "type-arg": 14,
+    "union-attr": 1
   },
   "app/modules/trimemedia/api.py": {
-    "unknown": 21
+    "attr-defined": 1,
+    "misc": 2,
+    "no-any-return": 1,
+    "no-untyped-def": 11,
+    "type-arg": 6
   },
   "app/modules/ugreen/api.py": {
-    "unknown": 31
+    "arg-type": 1,
+    "no-any-return": 2,
+    "return-value": 7,
+    "type-arg": 21
   },
   "app/modules/ugreen/crypto.py": {
-    "unknown": 1
+    "no-any-return": 1
   },
   "app/modules/ugreen/ugreen.py": {
-    "unknown": 45
+    "arg-type": 4,
+    "no-any-return": 1,
+    "no-untyped-call": 7,
+    "no-untyped-def": 9,
+    "operator": 2,
+    "type-arg": 12,
+    "type-var": 1,
+    "union-attr": 7,
+    "var-annotated": 2
   },
   "app/modules/vocechat/vocechat.py": {
-    "unknown": 8
+    "misc": 1,
+    "no-any-return": 3,
+    "no-untyped-call": 1,
+    "no-untyped-def": 3
   },
   "app/modules/wechat/wechat.py": {
-    "unknown": 26
+    "arg-type": 1,
+    "assignment": 9,
+    "misc": 1,
+    "no-any-return": 6,
+    "no-untyped-def": 5,
+    "type-arg": 2,
+    "union-attr": 1,
+    "var-annotated": 1
   },
   "app/modules/wechat/wechatbot.py": {
-    "unknown": 22
+    "no-untyped-def": 7,
+    "type-arg": 11,
+    "union-attr": 3,
+    "var-annotated": 1
   },
   "app/modules/wechatclawbot/wechatclawbot.py": {
-    "unknown": 15
+    "arg-type": 2,
+    "assignment": 1,
+    "comparison-overlap": 3,
+    "no-any-return": 3,
+    "no-untyped-def": 4,
+    "type-arg": 1,
+    "union-attr": 1
   },
   "app/modules/zspace/zspace.py": {
-    "unknown": 44
+    "arg-type": 10,
+    "assignment": 3,
+    "no-any-return": 12,
+    "no-untyped-call": 2,
+    "no-untyped-def": 3,
+    "operator": 1,
+    "type-arg": 8,
+    "union-attr": 1,
+    "var-annotated": 4
   },
   "app/monitor/snapshot.py": {
-    "unknown": 7
+    "type-arg": 5,
+    "valid-type": 1,
+    "var-annotated": 1
   },
   "app/monitor/syslimits.py": {
-    "unknown": 1
+    "attr-defined": 1
   },
   "app/monitor/watcher.py": {
-    "unknown": 18
+    "no-untyped-call": 6,
+    "no-untyped-def": 11,
+    "type-arg": 1
   },
   "app/runtime/cache.py": {
-    "unknown": 89
+    "arg-type": 8,
+    "assignment": 1,
+    "attr-defined": 12,
+    "misc": 2,
+    "no-any-return": 1,
+    "no-untyped-def": 54,
+    "override": 17,
+    "type-arg": 3,
+    "unused-coroutine": 3
   },
   "app/runtime/capabilities/runtime.py": {
-    "unknown": 10
+    "arg-type": 2,
+    "misc": 6,
+    "no-untyped-def": 2
   },
   "app/runtime/compat/imports.py": {
-    "unknown": 20
+    "assignment": 1,
+    "attr-defined": 2,
+    "method-assign": 4,
+    "no-untyped-call": 1,
+    "no-untyped-def": 12
   },
   "app/runtime/config.py": {
-    "unknown": 52
+    "assignment": 7,
+    "comparison-overlap": 1,
+    "misc": 4,
+    "no-any-return": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 24,
+    "type-arg": 14
   },
   "app/runtime/debounce.py": {
-    "unknown": 37
+    "assignment": 1,
+    "attr-defined": 2,
+    "no-untyped-call": 8,
+    "no-untyped-def": 21,
+    "override": 2,
+    "type-arg": 4,
+    "unused-coroutine": 1
   },
   "app/runtime/deprecation/policy.py": {
-    "unknown": 2
+    "type-arg": 2
   },
   "app/runtime/event/binding.py": {
-    "unknown": 7
+    "assignment": 1,
+    "no-redef": 1,
+    "type-arg": 5
   },
   "app/runtime/event/contracts.py": {
-    "unknown": 2
+    "arg-type": 2
   },
   "app/runtime/event/dispatch.py": {
-    "unknown": 5
+    "type-arg": 5
   },
   "app/runtime/event/registry.py": {
-    "unknown": 14
+    "type-arg": 14
+  },
+  "app/runtime/events.py": {
+    "list-item": 1,
+    "misc": 2,
+    "no-any-return": 2,
+    "no-untyped-call": 3,
+    "no-untyped-def": 19,
+    "type-arg": 23,
+    "var-annotated": 3
   },
   "app/runtime/execution.py": {
-    "unknown": 9
+    "no-untyped-def": 8,
+    "type-arg": 1
   },
   "app/runtime/extensions/host_module_adapter.py": {
-    "unknown": 3
+    "arg-type": 1,
+    "union-attr": 1,
+    "var-annotated": 1
   },
   "app/runtime/extensions/module/dispatcher.py": {
-    "unknown": 1
+    "arg-type": 1
+  },
+  "app/runtime/extensions/module_manager.py": {
+    "attr-defined": 1,
+    "type-arg": 4
   },
   "app/runtime/extensions/plugin/access.py": {
-    "unknown": 1
+    "no-any-return": 1
   },
   "app/runtime/extensions/plugin/admission.py": {
-    "unknown": 3
+    "union-attr": 3
   },
   "app/runtime/extensions/plugin/catalog.py": {
-    "unknown": 5
+    "no-any-return": 5
   },
   "app/runtime/extensions/plugin/clone.py": {
-    "unknown": 2
+    "type-arg": 2
   },
   "app/runtime/extensions/plugin/lifecycle.py": {
-    "unknown": 2
+    "type-arg": 2
   },
   "app/runtime/extensions/plugin/metadata.py": {
-    "unknown": 4
+    "type-arg": 4
   },
   "app/runtime/extensions/plugin/monitor.py": {
-    "unknown": 4
+    "index": 1,
+    "type-arg": 3
   },
   "app/runtime/extensions/plugin/paths.py": {
-    "unknown": 3
+    "arg-type": 1,
+    "type-arg": 2
   },
   "app/runtime/extensions/plugin/projection.py": {
-    "unknown": 10
+    "assignment": 1,
+    "type-arg": 8,
+    "var-annotated": 1
   },
   "app/runtime/extensions/plugin/storage.py": {
-    "unknown": 3
+    "type-arg": 3
   },
   "app/runtime/extensions/plugin/sync.py": {
-    "unknown": 3
+    "arg-type": 1,
+    "type-arg": 2
   },
   "app/runtime/extensions/plugin/system.py": {
-    "unknown": 10
+    "no-any-return": 6,
+    "type-arg": 4
   },
   "app/runtime/extensions/service_config.py": {
-    "unknown": 2
+    "type-arg": 2
   },
   "app/runtime/gc.py": {
-    "unknown": 7
+    "no-any-return": 1,
+    "no-untyped-def": 2,
+    "type-arg": 4
   },
   "app/runtime/localization.py": {
-    "unknown": 1
+    "no-any-return": 1
   },
   "app/runtime/managed_resources.py": {
-    "unknown": 5
+    "arg-type": 2,
+    "union-attr": 3
   },
   "app/runtime/progress.py": {
-    "unknown": 10
+    "no-any-return": 4,
+    "type-arg": 6
   },
   "app/runtime/rate.py": {
-    "unknown": 29
+    "assignment": 1,
+    "no-untyped-call": 8,
+    "no-untyped-def": 14,
+    "type-arg": 5,
+    "var-annotated": 1
+  },
+  "app/runtime/reload.py": {
+    "misc": 1,
+    "no-untyped-call": 5,
+    "no-untyped-def": 6
   },
   "app/runtime/scheduling.py": {
-    "unknown": 6
+    "import-untyped": 1,
+    "no-any-return": 1,
+    "operator": 1,
+    "type-arg": 1,
+    "valid-type": 2
   },
   "app/runtime/settings.py": {
-    "unknown": 6
+    "no-any-return": 6
   },
   "app/runtime/thread.py": {
     "unused-ignore": 1
@@ -819,125 +1596,155 @@
     "import-untyped": 1
   },
   "app/schemas/agent.py": {
-    "unknown": 26
+    "misc": 26
   },
   "app/schemas/cache.py": {
-    "unknown": 3
+    "misc": 3
   },
   "app/schemas/category.py": {
-    "unknown": 3
+    "misc": 3
   },
   "app/schemas/common.py": {
-    "unknown": 13
+    "misc": 13
   },
   "app/schemas/context.py": {
-    "unknown": 18
+    "misc": 18
   },
   "app/schemas/dashboard.py": {
-    "unknown": 10
+    "misc": 10
   },
   "app/schemas/download.py": {
-    "unknown": 4
+    "misc": 4
   },
   "app/schemas/event.py": {
-    "unknown": 17
+    "misc": 7,
+    "no-untyped-def": 3,
+    "type-arg": 7
   },
   "app/schemas/file.py": {
-    "unknown": 4
+    "misc": 3,
+    "return-value": 1
   },
   "app/schemas/history.py": {
-    "unknown": 4
+    "misc": 4
   },
   "app/schemas/llm.py": {
-    "unknown": 9
+    "misc": 9
   },
   "app/schemas/mcp.py": {
-    "misc": 1,
-    "unknown": 22
+    "misc": 23
   },
   "app/schemas/media.py": {
-    "unknown": 9
+    "attr-defined": 5,
+    "has-type": 1,
+    "misc": 1,
+    "no-untyped-def": 2
   },
   "app/schemas/mediaserver.py": {
-    "unknown": 14
+    "misc": 14
   },
   "app/schemas/message.py": {
-    "unknown": 21
+    "misc": 15,
+    "no-redef": 1,
+    "no-untyped-def": 2,
+    "type-arg": 3
   },
   "app/schemas/mfa.py": {
-    "misc": 1,
-    "unknown": 4
+    "misc": 5
   },
   "app/schemas/monitoring.py": {
-    "unknown": 6
+    "misc": 6
   },
   "app/schemas/music.py": {
-    "unknown": 10
+    "misc": 10
   },
   "app/schemas/notification.py": {
-    "unknown": 2
+    "misc": 2
   },
   "app/schemas/openai.py": {
-    "unknown": 23
+    "misc": 23
   },
   "app/schemas/plugin.py": {
-    "unknown": 18
+    "assignment": 2,
+    "misc": 16
   },
   "app/schemas/response.py": {
-    "unknown": 3
+    "misc": 3
   },
   "app/schemas/rule.py": {
-    "unknown": 2
+    "misc": 2
   },
   "app/schemas/search.py": {
-    "unknown": 2
+    "misc": 2
   },
   "app/schemas/servarr.py": {
-    "unknown": 18
+    "misc": 18
   },
   "app/schemas/servcookie.py": {
-    "unknown": 5
+    "misc": 5
   },
   "app/schemas/site.py": {
-    "unknown": 8
+    "misc": 8
   },
   "app/schemas/storage.py": {
-    "unknown": 3
+    "misc": 3
   },
   "app/schemas/subscribe.py": {
-    "unknown": 11
+    "misc": 10,
+    "no-any-return": 1
   },
   "app/schemas/system.py": {
-    "unknown": 22
+    "assignment": 1,
+    "misc": 15,
+    "type-arg": 6
   },
   "app/schemas/tmdb.py": {
-    "unknown": 5
+    "misc": 5
   },
   "app/schemas/token.py": {
-    "unknown": 3
+    "misc": 3
   },
   "app/schemas/transfer.py": {
-    "unknown": 21
+    "assignment": 1,
+    "misc": 16,
+    "no-untyped-def": 1,
+    "type-arg": 3
   },
   "app/schemas/types.py": {
-    "unknown": 6
+    "no-any-return": 1,
+    "no-untyped-def": 2,
+    "return-value": 2,
+    "type-arg": 1
   },
   "app/schemas/user.py": {
-    "unknown": 3
+    "misc": 3
   },
   "app/schemas/workflow.py": {
-    "unknown": 19
+    "misc": 19
   },
   "app/sdk/_legacy/transfer.py": {
-    "unknown": 1
+    "no-untyped-def": 1
   },
   "app/sdk/string.py": {
-    "unknown": 3
+    "attr-defined": 1,
+    "no-untyped-def": 2,
+    "type-arg": 1
   },
   "app/testing/network_guard.py": {
-    "unknown": 6
+    "no-untyped-def": 6
   },
   "app/testing/stub.py": {
-    "unknown": 2
+    "no-untyped-call": 2
+  },
+  "app/workflow/__init__.py": {
+    "arg-type": 2,
+    "assignment": 2,
+    "index": 1,
+    "no-any-return": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 9,
+    "type-arg": 9,
+    "union-attr": 2,
+    "valid-type": 1
   }
 }
