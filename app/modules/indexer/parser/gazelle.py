@@ -140,17 +140,41 @@ class GazelleSiteUserInfo(SiteParserBase):
             page_seeding = 0
             page_seeding_size = 0
             page_seeding_info = []
-            seeding_sizes = html.xpath(f'//table[contains(@id, "torrent")]//tr[position()>1]/td[{size_col}]')
-            seeding_seeders = html.xpath(f'//table[contains(@id, "torrent")]//tr[position()>1]/td[{seeders_col}]/text()')
-            if seeding_sizes and seeding_seeders:
-                page_seeding = len(seeding_sizes)
-
-                for i in range(0, len(seeding_sizes)):
-                    size = size_tools.parse_size(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = int(seeding_seeders[i])
-
+            semantic_rows = html.xpath(
+                '//table[contains(@id, "torrent")]//tr['
+                'contains(concat(" ", normalize-space(@class), " "), " TableTorrent-rowTitle ")]'
+            )
+            if semantic_rows:
+                # GPW 等现代 Gazelle 页面以语义 class 标记列，且标题单元格带 colspan，
+                # 固定列序号无法反映视觉列位置，必须逐行按 class 配对读取。
+                for row in semantic_rows:
+                    size_cells = row.xpath(
+                        './td[contains(concat(" ", normalize-space(@class), " "), '
+                        '" TableTorrent-cellStatSize ")]'
+                    )
+                    seeder_cells = row.xpath(
+                        './td[contains(concat(" ", normalize-space(@class), " "), '
+                        '" TableTorrent-cellStatSeeders ")]'
+                    )
+                    if not size_cells or not seeder_cells:
+                        continue
+                    size = size_tools.parse_size(size_cells[0].xpath("string(.)").strip())
+                    seeders = text_tools.parse_int(seeder_cells[0].xpath("string(.)").strip())
+                    page_seeding += 1
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])
+            else:
+                seeding_sizes = html.xpath(f'//table[contains(@id, "torrent")]//tr[position()>1]/td[{size_col}]')
+                seeding_seeders = html.xpath(f'//table[contains(@id, "torrent")]//tr[position()>1]/td[{seeders_col}]/text()')
+                if seeding_sizes and seeding_seeders:
+                    page_seeding = len(seeding_sizes)
+
+                    for i in range(0, len(seeding_sizes)):
+                        size = size_tools.parse_size(seeding_sizes[i].xpath("string(.)").strip())
+                        seeders = text_tools.parse_int(seeding_seeders[i])
+
+                        page_seeding_size += size
+                        page_seeding_info.append([seeders, size])
 
             if multi_page:
                 self.seeding += page_seeding
