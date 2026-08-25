@@ -7,7 +7,7 @@ from typing import Any, Optional, Protocol
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.media import resolve_media_identity
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from app.schemas.workflow import Subscribe as SubscribeView
 
 
@@ -85,6 +85,14 @@ class SubscriptionQueryService:
         "media_id",
         "music_type",
     }
+    _LEGACY_ID_FIELDS: tuple[tuple[str, MediaSource], ...] = (
+        ("tmdbid", MediaSource.TMDB),
+        ("doubanid", MediaSource.Douban),
+        ("bangumiid", MediaSource.Bangumi),
+        ("anilistid", MediaSource.AniList),
+        ("imdbid", MediaSource.IMDb),
+        ("tvdbid", MediaSource.TVDB),
+    )
 
     def __init__(
         self,
@@ -199,6 +207,30 @@ class SubscriptionQueryService:
             episode_group=mediainfo.episode_group,
         ))
 
+    @classmethod
+    def _has_media_identity(cls, identity: dict[str, Any]) -> bool:
+        """判断来源关键字是否已带成对的媒体身份。"""
+        media_id = identity.get("media_id")
+        return bool(identity.get("media_source")) and media_id not in (
+            None,
+            "",
+            0,
+            "0",
+        )
+
+    @classmethod
+    def _legacy_media_identity(cls, source_keyword: dict[str, Any]) -> dict[str, Any]:
+        """把 v2 订阅来源里的 tmdbid/doubanid 等补成 media_source + media_id。"""
+        for field, source in cls._LEGACY_ID_FIELDS:
+            raw = source_keyword.get(field)
+            if raw in (None, "", 0, "0"):
+                continue
+            return {
+                "media_source": source,
+                "media_id": str(raw),
+            }
+        return {}
+
     def get_by_source(self, source_keyword: Optional[dict]) -> Optional[Any]:
         """从已解析来源关键字筛出稳定身份字段并读取订阅。"""
         if not source_keyword:
@@ -208,6 +240,10 @@ class SubscriptionQueryService:
             for key, value in source_keyword.items()
             if key in self._SOURCE_FIELDS
         }
+        if not self._has_media_identity(identity):
+            identity.update(self._legacy_media_identity(source_keyword))
+        if not identity.get("type") or not self._has_media_identity(identity):
+            return None
         return self._repository.get_by(**identity)
 
     def has_music(self, searchable_states: str) -> bool:
