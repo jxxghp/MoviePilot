@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -431,3 +432,263 @@ class WritePluginIdentityCommand:
         except Exception:
             self._unit_of_work.rollback()
             raise
+
+
+class ChangePluginIdentitySourceCommand:
+    """以独立 CAS 合同提交一次明确的在线插件来源转换。"""
+
+    def __init__(
+        self,
+        repository: PluginIdentityRepository,
+        unit_of_work: PluginIdentityUnitOfWork,
+    ) -> None:
+        """保存仓储与事务所有者。"""
+        self._repository = repository
+        self._unit_of_work = unit_of_work
+
+    def execute(
+        self,
+        identity: PluginIdentity,
+        *,
+        expected_revision: int,
+    ) -> PluginIdentity:
+        """只允许已有身份按精确 revision 切换到不同在线来源。"""
+        return _execute_identity_transition(
+            self._repository,
+            self._unit_of_work,
+            identity,
+            expected_revision=expected_revision,
+            validate=_validate_identity_source_change,
+        )
+
+
+class BindOnlinePluginIdentityCommand:
+    """以独立 CAS 合同为未绑定身份建立在线可信来源。"""
+
+    def __init__(
+        self,
+        repository: PluginIdentityRepository,
+        unit_of_work: PluginIdentityUnitOfWork,
+    ) -> None:
+        """保存仓储与事务所有者。"""
+        self._repository = repository
+        self._unit_of_work = unit_of_work
+
+    def execute(
+        self,
+        identity: PluginIdentity,
+        *,
+        expected_revision: int,
+    ) -> PluginIdentity:
+        """只允许未绑定身份按精确 revision 首次绑定在线来源。"""
+        return _execute_identity_transition(
+            self._repository,
+            self._unit_of_work,
+            identity,
+            expected_revision=expected_revision,
+            validate=_validate_online_binding,
+        )
+
+
+class BindLocalPluginIdentityCommand:
+    """以独立 CAS 合同把存量未绑定身份转换为本地专属身份。"""
+
+    def __init__(
+        self,
+        repository: PluginIdentityRepository,
+        unit_of_work: PluginIdentityUnitOfWork,
+    ) -> None:
+        """保存仓储与事务所有者。"""
+        self._repository = repository
+        self._unit_of_work = unit_of_work
+
+    def execute(
+        self,
+        identity: PluginIdentity,
+        *,
+        expected_revision: int,
+    ) -> PluginIdentity:
+        """只允许 legacy_unbound 身份按精确 revision 绑定本地载荷。"""
+        return _execute_identity_transition(
+            self._repository,
+            self._unit_of_work,
+            identity,
+            expected_revision=expected_revision,
+            validate=_validate_local_binding,
+        )
+
+
+def _execute_identity_transition(
+    repository: PluginIdentityRepository,
+    unit_of_work: PluginIdentityUnitOfWork,
+    identity: PluginIdentity,
+    *,
+    expected_revision: int,
+    validate: Callable[[PluginIdentity, PluginIdentity], None],
+) -> PluginIdentity:
+    """在一个数据库事务中校验并提交专用身份转换。"""
+    try:
+        current = _prepare_identity_transition(
+            repository,
+            identity,
+            expected_revision=expected_revision,
+        )
+        validate(current, identity)
+        candidate = replace(
+            identity,
+            normalized_plugin_id=current.normalized_plugin_id,
+            revision=current.revision + 1,
+            created_at=current.created_at,
+        )
+        _stage_identity_transition(
+            repository,
+            unit_of_work,
+            candidate,
+            expected_revision=expected_revision,
+        )
+        return candidate
+    except Exception:
+        unit_of_work.rollback()
+        raise
+
+
+def _prepare_identity_transition(
+    repository: PluginIdentityRepository,
+    identity: PluginIdentity,
+    *,
+    expected_revision: int,
+) -> PluginIdentity:
+    """读取转换基线并保证目标使用同一物理插件和精确 revision。"""
+    if expected_revision < 1:
+        raise PluginIdentityConflictError("插件来源身份 expected_revision 必须从 1 开始")
+    normalized_plugin_id = normalize_physical_plugin_id(identity.plugin_id)
+    current = repository.get(normalized_plugin_id)
+    if current is None or current.revision != expected_revision:
+        raise PluginIdentityConflictError(
+            f"插件 {identity.plugin_id} 的来源身份 revision 已被其他任务更新"
+        )
+    if (
+        identity.plugin_id != current.plugin_id
+        or identity.normalized_plugin_id != current.normalized_plugin_id
+    ):
+        raise PluginIdentityConflictError(
+            "插件来源转换不能改变物理插件 ID"
+        )
+    if identity.created_at != current.created_at:
+        raise PluginIdentityConflictError(
+            "插件来源转换必须保留身份创建时间"
+        )
+    if identity.updated_at < current.updated_at:
+        raise PluginIdentityConflictError(
+            "插件身份更新时间不能早于已提交记录"
+        )
+    return current
+
+
+def _validate_identity_source_change(
+    current: PluginIdentity,
+    candidate: PluginIdentity,
+) -> None:
+    """校验显式换源的来源、载荷和实际变化边界。"""
+    if candidate.binding_basis is not PluginBindingBasis.EXPLICIT_SOURCE_CHANGE:
+        raise PluginIdentityConflictError(
+            "显式换源目标必须使用 explicit_source_change 依据"
+        )
+    if candidate.trusted_source_type is TrustedPluginSourceType.UNKNOWN:
+        raise PluginIdentityConflictError("显式换源目标必须是在线可信来源")
+    if candidate.payload_source_type not in {
+        PluginPayloadSourceType.OFFICIAL,
+        PluginPayloadSourceType.THIRD_PARTY,
+    }:
+        raise PluginIdentityConflictError("显式换源目标必须携带在线载荷")
+    if (
+        candidate.trusted_source_type.value != candidate.payload_source_type.value
+        or candidate.trusted_source_key != candidate.payload_source_key
+    ):
+        raise PluginIdentityConflictError(
+            "显式换源目标的 trusted 与 payload 来源必须一致"
+        )
+    if (
+        current.trusted_source_type is candidate.trusted_source_type
+        and current.trusted_source_key == candidate.trusted_source_key
+    ):
+        raise PluginIdentityConflictError("显式换源的实际来源必须变化")
+
+
+def _validate_online_binding(
+    current: PluginIdentity,
+    candidate: PluginIdentity,
+) -> None:
+    """校验未绑定身份首次建立在线可信来源的转换边界。"""
+    if (
+        current.trusted_source_type is not TrustedPluginSourceType.UNKNOWN
+        or current.binding_basis not in {
+            PluginBindingBasis.LEGACY_UNBOUND,
+            PluginBindingBasis.LOCAL_ONLY,
+        }
+    ):
+        raise PluginIdentityConflictError(
+            "在线绑定只允许当前未绑定的存量或本地身份"
+        )
+    if candidate.binding_basis not in {
+        PluginBindingBasis.OFFICIAL_DEFAULT,
+        PluginBindingBasis.TOFU,
+        PluginBindingBasis.EXPLICIT_INSTALL,
+    }:
+        raise PluginIdentityConflictError(
+            "在线绑定目标必须说明官方、TOFU 或显式安装依据"
+        )
+    if candidate.trusted_source_type is TrustedPluginSourceType.UNKNOWN:
+        raise PluginIdentityConflictError("在线绑定目标必须携带可信来源")
+    if candidate.payload_source_type not in {
+        PluginPayloadSourceType.OFFICIAL,
+        PluginPayloadSourceType.THIRD_PARTY,
+    }:
+        raise PluginIdentityConflictError("在线绑定目标必须携带在线载荷")
+    if (
+        candidate.trusted_source_type.value != candidate.payload_source_type.value
+        or candidate.trusted_source_key != candidate.payload_source_key
+    ):
+        raise PluginIdentityConflictError(
+            "在线绑定目标的 trusted 与 payload 来源必须一致"
+        )
+
+
+def _validate_local_binding(
+    current: PluginIdentity,
+    candidate: PluginIdentity,
+) -> None:
+    """校验存量未绑定身份到本地身份的唯一转换方向。"""
+    if (
+        current.trusted_source_type is not TrustedPluginSourceType.UNKNOWN
+        or current.binding_basis is not PluginBindingBasis.LEGACY_UNBOUND
+    ):
+        raise PluginIdentityConflictError(
+            "本地绑定只允许当前 unknown + legacy_unbound 身份"
+        )
+    if (
+        candidate.trusted_source_type is not TrustedPluginSourceType.UNKNOWN
+        or candidate.binding_basis is not PluginBindingBasis.LOCAL_ONLY
+        or candidate.payload_source_type is not PluginPayloadSourceType.LOCAL
+    ):
+        raise PluginIdentityConflictError(
+            "本地绑定目标必须是 unknown + local_only 且携带本地载荷"
+        )
+
+
+def _stage_identity_transition(
+    repository: PluginIdentityRepository,
+    unit_of_work: PluginIdentityUnitOfWork,
+    candidate: PluginIdentity,
+    *,
+    expected_revision: int,
+) -> None:
+    """按数据库 revision 条件暂存转换并提交事务。"""
+    if not repository.stage_replace(
+        candidate,
+        expected_revision=expected_revision,
+    ):
+        raise PluginIdentityConflictError(
+            f"插件 {candidate.plugin_id} 的来源身份 revision 已被其他任务更新"
+        )
+    unit_of_work.commit()
