@@ -6,7 +6,6 @@ from typing import Optional, Type
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
-from app.agent.tools.tags import ToolTag
 from app.agent.tools.impl._filter_rule_utils import (
     build_custom_rule_map,
     collect_rule_group_usages,
@@ -17,6 +16,7 @@ from app.agent.tools.impl._filter_rule_utils import (
     save_system_config,
     serialize_rule_group,
 )
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
@@ -35,7 +35,7 @@ class AddRuleGroupInput(BaseModel):
     )
     media_type: Optional[str] = Field(
         None,
-        description="Optional media type scope: '电影', '电视剧', 'movie', or 'tv'.",
+        description="Optional media type scope: '电影', '电视剧', '音乐', 'movie', 'tv', or 'music'.",
     )
     category: Optional[str] = Field(
         None,

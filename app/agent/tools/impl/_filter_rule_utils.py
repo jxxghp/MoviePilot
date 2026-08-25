@@ -4,15 +4,13 @@ import copy
 import re
 from typing import Any, Dict, Iterable, Optional
 
-from app.runtime.events import eventmanager
 from app.application.agentdata import get_agent_subscribe_port
 from app.application.configuration import get_configured_system_config
-from app.application.rules import RuleHelper
-from app.application.rules import RuleParser
-from app.application.rules import BUILTIN_RULE_SET
+from app.application.rules import BUILTIN_RULE_SET, RuleHelper, RuleParser
+from app.runtime.events import eventmanager
+from app.schemas.event import ConfigChangeEventData
 from app.schemas.rule import CustomRule
 from app.schemas.system import FilterRuleGroup
-from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType, SystemConfigKey
 
 RULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9]+$")
@@ -27,8 +25,10 @@ MEDIA_TYPE_ALIASES = {
     "tv": "电视剧",
     "series": "电视剧",
     "show": "电视剧",
+    "music": "音乐",
     "电影": "电影",
     "电视剧": "电视剧",
+    "音乐": "音乐",
 }
 
 RULE_STRING_SYNTAX = {
@@ -76,9 +76,9 @@ def normalize_media_type(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
     normalized = MEDIA_TYPE_ALIASES.get(value.lower(), value)
-    if normalized not in {"电影", "电视剧"}:
+    if normalized not in {"电影", "电视剧", "音乐"}:
         raise ValueError(
-            "media_type 仅支持 '电影'、'电视剧'、'movie' 或 'tv'"
+            "media_type 仅支持 '电影'、'电视剧'、'音乐'、'movie'、'tv' 或 'music'"
         )
     return normalized
 

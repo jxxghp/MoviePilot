@@ -6,7 +6,18 @@
 import threading
 from typing import Dict, List, Optional
 
-from pyparsing import Forward, Literal, Word, alphas, infix_notation, opAssoc, alphanums, Combine, nums, ParseResults
+from pyparsing import (
+    Combine,
+    Forward,
+    Literal,
+    ParseResults,
+    Word,
+    alphanums,
+    alphas,
+    infix_notation,
+    nums,
+    opAssoc,
+)
 
 from app.adapters.system import rust as rust_accel
 from app.application.configuration import get_configured_system_config
@@ -53,10 +64,8 @@ class RuleHelper:
             if not group.media_type
             or (
                 media
-                and (
-                    (not group.category and group.media_type == media.type.value)
-                    or group.category == media.category
-                )
+                and group.media_type == media.type.value
+                and (not group.category or group.category == media.category)
             )
         ]
 
