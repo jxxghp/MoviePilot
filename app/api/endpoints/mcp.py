@@ -14,13 +14,8 @@ from app.schemas.response import Response as _SchemaResponse
 from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
 from app.agent.tools.manager import moviepilot_tool_manager
 from app.adapters.web.security.access import verify_apikey
+from app.runtime.version import get_app_version
 from app.runtime.log import logger
-
-# 导入版本号
-try:
-    from version import APP_VERSION
-except ImportError:
-    APP_VERSION = "unknown"
 
 router = ResponseAPIRouter()
 
@@ -213,7 +208,7 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
         },
         "serverInfo": {
             "name": "MoviePilot",
-            "version": APP_VERSION,
+            "version": get_app_version(),
             "description": "MoviePilot MCP Server - 电影自动化管理工具",
         },
         "instructions": "MoviePilot MCP 服务器，提供媒体管理、订阅、下载等工具。",

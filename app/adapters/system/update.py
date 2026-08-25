@@ -16,12 +16,12 @@ from typing import Any, Optional
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import SingletonClass
 from app.foundation.version import compare_version
+from app.runtime.version import get_app_version
 from app.foundation.environment import is_docker
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
 from app.schemas.system import SystemUpdateStatus
-from version import APP_VERSION
 
 
 class SystemUpdateManager(metaclass=SingletonClass):
@@ -66,13 +66,17 @@ class SystemUpdateManager(metaclass=SingletonClass):
         return datetime.now(timezone.utc).isoformat()
 
     def _default_state(self) -> dict[str, Any]:
-        return SystemUpdateStatus(current_version=APP_VERSION).model_dump()
+        return SystemUpdateStatus(current_version=get_app_version()).model_dump()
 
     def _read_state(self) -> dict[str, Any]:
         try:
             payload = json.loads(self._state_file.read_text(encoding="utf-8"))
             if isinstance(payload, dict):
-                return {**self._default_state(), **payload, "current_version": APP_VERSION}
+                return {
+                    **self._default_state(),
+                    **payload,
+                    "current_version": get_app_version(),
+                }
         except (OSError, json.JSONDecodeError):
             pass
         return self._default_state()
@@ -81,7 +85,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
         with self._lock:
             state = self._read_state()
             state.update(changes)
-            state["current_version"] = APP_VERSION
+            state["current_version"] = get_app_version()
             state["progress"] = self._progress(
                 state.get("downloaded_bytes", 0), state.get("total_bytes", 0)
             )
@@ -117,7 +121,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
                     can_update=True,
                     can_install=False,
                 )
-            if state.get("state") == "installing" and target == APP_VERSION:
+            if state.get("state") == "installing" and target == get_app_version():
                 self._install_file.unlink(missing_ok=True)
                 state = self._write_state(
                     state="idle",
@@ -161,7 +165,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
             if not release:
                 raise RuntimeError("未找到可用的 v3 稳定版本")
             version = str(release["tag_name"])
-            has_update = compare_version(version, "gt", APP_VERSION) is True
+            has_update = compare_version(version, "gt", get_app_version()) is True
             return SystemUpdateStatus.model_validate(
                 self._write_state(
                     state="available" if has_update else "idle",

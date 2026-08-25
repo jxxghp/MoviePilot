@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime as _DateTime
 from typing import Optional, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -214,6 +215,22 @@ class SystemModuleListData(BaseModel):
     """已加载系统模块列表。"""
 
     modules: list[SystemModuleInfo] = Field(default_factory=list)
+
+
+class DatabaseBackupArtifactData(BaseModel):  # type: ignore[misc]
+    """Web 管理端可见的受管数据库备份摘要。"""
+
+    name: str  # 受管文件名，不包含宿主目录
+    db_type: str  # 创建制品的数据库类型
+    created_at: _DateTime  # 从受管文件名解析出的创建时间
+    size: int  # 备份文件字节数
+
+
+class DatabaseBackupVerificationData(BaseModel):  # type: ignore[misc]
+    """受管数据库备份的脱敏校验结果。"""
+
+    valid: bool  # 是否通过当前数据库类型的内容校验
+    method: str  # SQLite integrity_check 或 PostgreSQL 归档目录校验
 
 
 class TransferDirectoryConf(BaseModel):

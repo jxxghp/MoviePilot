@@ -236,6 +236,63 @@ def test_locale_helper_translates_common_backend_response_messages():
         assert LocaleHelper.translate_text(message, locale="en-US") == expected
 
 
+def test_database_backup_messages_have_english_and_traditional_chinese() -> None:
+    """数据库备份 API 与配置校验文案应覆盖所有受支持的非默认语言。"""
+    samples = {
+        "读取数据库备份列表失败，请查看日志": (
+            "Failed to load database backups. Check the logs for details",
+            "讀取資料庫備份清單失敗，請查看日誌",
+        ),
+        "创建数据库备份失败，请查看日志": (
+            "Failed to create the database backup. Check the logs for details",
+            "建立資料庫備份失敗，請查看日誌",
+        ),
+        "已有数据库备份任务正在执行": (
+            "A database backup task is already in progress",
+            "已有資料庫備份任務正在執行",
+        ),
+        "数据库备份文件名无效": (
+            "The database backup file name is invalid",
+            "資料庫備份檔名無效",
+        ),
+        "数据库备份不存在": (
+            "The database backup does not exist",
+            "資料庫備份不存在",
+        ),
+        "校验数据库备份失败，请查看日志": (
+            "Failed to verify the database backup. Check the logs for details",
+            "驗證資料庫備份失敗，請查看日誌",
+        ),
+        "删除数据库备份失败，请查看日志": (
+            "Failed to delete the database backup. Check the logs for details",
+            "刪除資料庫備份失敗，請查看日誌",
+        ),
+        "数据库备份周期格式不正确": (
+            "The database backup schedule format is invalid",
+            "資料庫備份週期格式不正確",
+        ),
+        "数据库备份目录必须是路径字符串": (
+            "The database backup directory must be a path string",
+            "資料庫備份目錄必須是路徑字串",
+        ),
+        "数据库备份过期天数必须是大于等于 0 的整数": (
+            "Database backup retention days must be an integer greater than or equal to 0",
+            "資料庫備份過期天數必須是大於等於 0 的整數",
+        ),
+        "数据库备份最大保留份数必须是大于等于 0 的整数": (
+            "The maximum number of database backups must be an integer greater than or equal to 0",
+            "資料庫備份最大保留份數必須是大於等於 0 的整數",
+        ),
+    }
+
+    for message, (english, traditional_chinese) in samples.items():
+        assert LocaleHelper.translate_text(message, locale="en-US") == english
+        assert (
+            LocaleHelper.translate_text(message, locale="zh-TW")
+            == traditional_chinese
+        )
+
+
 def test_response_localizes_message_from_locale_context():
     """通用 Response 应根据请求语言上下文直接翻译消息。"""
     token = LocaleHelper.set_current_locale("en-US")

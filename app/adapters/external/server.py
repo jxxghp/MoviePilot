@@ -2,7 +2,6 @@ import asyncio
 import json
 import platform
 from collections.abc import Coroutine
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
@@ -24,7 +23,7 @@ from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.media import normalize_music_type
 from app.schemas.media import resolve_media_identity
 from app.adapters.system.host import SystemUtils
-from version import APP_VERSION, FRONTEND_VERSION
+from app.runtime.version import get_app_version, get_frontend_version
 
 
 # 保留旧插件可覆盖的模块级入口，默认通过 runtime 代理动态读取配置。
@@ -270,24 +269,6 @@ class MoviePilotServerHelper:
             or permissions.get("workflow_share_manage")
         )
 
-    @staticmethod
-    def get_frontend_version() -> str:
-        """
-        获取当前前端版本。
-        """
-        if SystemUtils.is_frozen() and SystemUtils.is_windows():
-            version_file = settings.CONFIG_PATH.parent / "nginx" / "html" / "version.txt"
-        else:
-            version_file = Path(settings.FRONTEND_PATH) / "version.txt"
-        if version_file.exists():
-            try:
-                with open(version_file, "r", encoding="utf-8", errors="replace") as file:
-                    version = str(file.read()).strip()
-                return version or FRONTEND_VERSION
-            except Exception as err:
-                logger.debug(f"加载版本文件 {version_file} 出错：{str(err)}")
-        return FRONTEND_VERSION
-
     @classmethod
     def build_usage_payload(cls) -> Dict[str, Any]:
         """
@@ -295,8 +276,8 @@ class MoviePilotServerHelper:
         """
         return {
             "user_uid": cls.get_user_uid(),
-            "backend_version": APP_VERSION,
-            "frontend_version": cls.get_frontend_version(),
+            "backend_version": get_app_version(),
+            "frontend_version": get_frontend_version(),
             "version_flag": settings.VERSION_FLAG,
             "platform": f"{platform.system()} {platform.release()}".strip(),
             "arch": SystemUtils.cpu_arch(),

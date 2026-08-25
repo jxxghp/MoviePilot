@@ -1,6 +1,8 @@
-"""mypy 错误数只降不增 ratchet 的解析与对比逻辑测试。"""
+"""mypy 错误数只降不增 ratchet 的执行、解析与对比逻辑测试。"""
 
-from scripts.architecture.mypy_ratchet import compare_counts, parse_errors
+from unittest.mock import patch
+
+from scripts.architecture.mypy_ratchet import compare_counts, parse_errors, run_mypy
 
 
 MYPY_SAMPLE = """
@@ -11,6 +13,18 @@ app/application/a.py:15: error: Function is missing a type annotation [no-untype
 app/application/a.py:20: error: Missing type parameters for generic type "dict"  [type-arg]
 Found 3 errors in 1 file (checked 500 source files)
 """
+
+
+def test_run_mypy_uses_stable_full_analysis() -> None:
+    """全量门禁不得复用前序检查缓存，也不得输出换行错误码。"""
+    with patch("scripts.architecture.mypy_ratchet.subprocess.run") as run:
+        run.return_value.stdout = ""
+
+        run_mypy()
+
+    command = run.call_args.args[0]
+    assert "--no-incremental" in command
+    assert "--no-pretty" in command
 
 
 def test_parse_errors_aggregates_per_file_and_code() -> None:

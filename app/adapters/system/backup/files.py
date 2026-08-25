@@ -8,13 +8,16 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+from app.runtime.version import get_app_version
 
 _BACKUP_NAME = re.compile(
-    r"^(?P<db_type>sqlite|postgresql)_"
+    r"^(?:moviepilot_(?P<version>v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)_)?"
+    r"(?P<db_type>sqlite|postgresql)_"
     r"(?P<timestamp>\d{8}_\d{6})"
     r"(?:_(?P<sequence>\d+))?"
     r"(?P<suffix>\.db|\.dump)$"
 )
+_RELEASE_VERSION = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 class BackupFiles:
@@ -68,10 +71,19 @@ class BackupFiles:
         """删除一个已通过名称约束的备份文件。"""
         self.resolve(name).unlink()
 
-    def available_name(self, *, db_type: str, created_at: datetime, suffix: str) -> str:
+    def available_name(
+        self,
+        *,
+        db_type: str,
+        created_at: datetime,
+        suffix: str,
+    ) -> str:
         """生成包含数据库类型和秒级时间的简短可读文件名。"""
         timestamp = created_at.strftime("%Y%m%d_%H%M%S")
-        base = f"{db_type}_{timestamp}"
+        version = get_app_version().strip()
+        if _RELEASE_VERSION.fullmatch(version) is None:
+            raise ValueError("程序版本号无法用于数据库备份命名")
+        base = f"moviepilot_{version}_{db_type}_{timestamp}"
         candidate = f"{base}{suffix}"
         sequence = 1
         while (self.root / candidate).exists():

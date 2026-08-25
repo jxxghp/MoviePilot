@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Lock
 from typing import Callable, Protocol
 
 from app.adapters.system.backup.files import BackupFiles
@@ -44,6 +45,10 @@ class BackupVerification:
     detail: str | None = None
 
 
+class DatabaseBackupInProgressError(RuntimeError):
+    """同一宿主进程已有数据库备份正在创建。"""
+
+
 class BackupCheck(Protocol):
     """数据库适配器校验结果的结构合同。"""
 
@@ -81,38 +86,44 @@ class DatabaseBackupService:
         self._backend = backend
         self._policy_reader = policy_reader
         self._clock = clock
+        self._create_lock = Lock()
 
     def create(self) -> BackupArtifact:
         """创建、校验并发布一个在线一致快照。"""
-        policy = self._policy_reader()
-        files = BackupFiles(policy.root)
-        created_at = self._clock()
-        name = files.available_name(
-            db_type=self._backend.db_type,
-            created_at=created_at,
-            suffix=self._backend.suffix,
-        )
-        temporary = files.create_temporary(self._backend.suffix)
+        if not self._create_lock.acquire(blocking=False):
+            raise DatabaseBackupInProgressError("已有数据库备份任务正在执行")
         try:
-            self._backend.create(temporary)
-            verification = self._backend.verify(temporary)
-            if not verification.valid:
-                detail = f"：{verification.detail}" if verification.detail else ""
-                raise RuntimeError(
-                    f"数据库备份校验失败（{verification.method}）{detail}"
-                )
-            path = files.publish(temporary, name)
-        except Exception:
-            files.discard(temporary)
-            raise
+            policy = self._policy_reader()
+            files = BackupFiles(policy.root)
+            created_at = self._clock()
+            name = files.available_name(
+                db_type=self._backend.db_type,
+                created_at=created_at,
+                suffix=self._backend.suffix,
+            )
+            temporary = files.create_temporary(self._backend.suffix)
+            try:
+                self._backend.create(temporary)
+                verification = self._backend.verify(temporary)
+                if not verification.valid:
+                    detail = f"：{verification.detail}" if verification.detail else ""
+                    raise RuntimeError(
+                        f"数据库备份校验失败（{verification.method}）{detail}"
+                    )
+                path = files.publish(temporary, name)
+            except Exception:
+                files.discard(temporary)
+                raise
 
-        artifact = self._artifact(path, created_at=created_at)
-        self._prune(files, policy, keep=artifact.name)
-        logger.info(
-            f"数据库备份完成：文件={artifact.name}，类型={artifact.db_type}，"
-            f"大小={artifact.size} bytes"
-        )
-        return artifact
+            artifact = self._artifact(path, created_at=created_at)
+            self._prune(files, policy, keep=artifact.name)
+            logger.info(
+                f"数据库备份完成：文件={artifact.name}，类型={artifact.db_type}，"
+                f"大小={artifact.size} bytes"
+            )
+            return artifact
+        finally:
+            self._create_lock.release()
 
     def list(self) -> tuple[BackupArtifact, ...]:
         """按创建时间倒序列出受管数据库备份文件。"""
@@ -125,6 +136,10 @@ class DatabaseBackupService:
         self._require_matching_type(path)
         result = self._backend.verify(path)
         return BackupVerification(result.valid, result.method, result.detail)
+
+    def delete(self, name: str) -> None:
+        """删除一个受管数据库备份文件。"""
+        BackupFiles(self._policy_reader().root).delete(name)
 
     def restore(self, name: str) -> BackupArtifact:
         """校验后将受管制品还原到当前 CLI 解析出的离线数据库目标。"""

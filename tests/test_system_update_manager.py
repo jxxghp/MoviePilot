@@ -39,7 +39,7 @@ def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
         },
     ]
     monkeypatch.setattr(manager, "_request", lambda: SimpleNamespace(get_res=lambda _url: _response(releases)))
-    monkeypatch.setattr(update_module, "APP_VERSION", "v3.0.0")
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.0")
 
     status = manager.check()
 
