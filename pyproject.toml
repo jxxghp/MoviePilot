@@ -46,7 +46,7 @@ dependencies = [
     "langgraph~=1.2.11",
     "langgraph-checkpoint~=4.2.0",
     "lark-oapi~=1.6.8",
-    "moviepilot-rust~=0.3.0",
+    "moviepilot-rust~=0.3.1",
     "mutagen~=1.47.0",
     "openai~=2.41.1",
     "orjson==3.12.0",
