@@ -6,6 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, TypeAlias
+from urllib.parse import unquote, urlsplit
 
 from app.application.plugin.identity import (
     PluginIdentity,
@@ -659,6 +660,58 @@ def select_plugin_candidate(
         candidate=selected_online,
         reason="唯一在线来源候选",
     )
+
+
+def list_effective_online_candidates(
+    inventory: CandidateInventory,
+    *,
+    plugin_id: str,
+    generations: Sequence[str],
+) -> tuple[PluginMarketCandidate, ...]:
+    """按来源列出当前运行代际实际可安装的最高版本候选。"""
+    generation_order = _normalize_generation_order(generations)
+    grouped: dict[
+        tuple[TrustedPluginSourceType, str],
+        list[PluginMarketCandidate],
+    ] = {}
+    for candidate in inventory.candidates_for(plugin_id):
+        grouped.setdefault(
+            (candidate.source_type, candidate.source_key),
+            [],
+        ).append(candidate)
+
+    selected: list[PluginMarketCandidate] = []
+    for candidates in grouped.values():
+        selected_candidate = _select_best(candidates, generation_order)
+        if isinstance(selected_candidate, PluginMarketCandidate):
+            selected.append(selected_candidate)
+    return tuple(selected)
+
+
+def get_effective_local_candidate(
+    inventory: CandidateInventory,
+    *,
+    plugin_id: str,
+    generations: Sequence[str],
+) -> PluginLocalCandidate | None:
+    """返回本地插件目录中当前运行代际优先级最高的安全候选。"""
+    candidate = _select_best(
+        inventory.local_candidates_for(plugin_id),
+        _normalize_generation_order(generations),
+    )
+    return candidate if isinstance(candidate, PluginLocalCandidate) else None
+
+
+def parse_local_plugin_reference(repo_url: str) -> str | None:
+    """从不透明本地来源标识中提取插件 ID，不读取或暴露宿主路径。"""
+    if not str(repo_url).startswith("local://"):
+        return None
+    try:
+        parsed = urlsplit(repo_url)
+        plugin_id = unquote(parsed.netloc or parsed.path.strip("/"))
+    except (TypeError, ValueError):
+        return None
+    return plugin_id or None
 
 
 def _coerce_online_source_type(source_type: TrustedPluginSourceType) -> TrustedPluginSourceType:

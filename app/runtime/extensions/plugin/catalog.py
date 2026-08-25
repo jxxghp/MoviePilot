@@ -153,7 +153,7 @@ class PluginCatalogFacade:
                 plugin_info=info,
                 market=self._system().local_repo_url(
                     plugin_id,
-                    info.get("repo_path"),
+                    None,
                     package_version,
                 ),
                 installed_apps=installed,

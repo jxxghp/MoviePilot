@@ -311,7 +311,11 @@ def summarize_candidates(matches: list[dict[str, Any]], limit: int = DEFAULT_PLU
 
 
 async def install_plugin_runtime(
-    plugin_id: str, repo_url: Optional[str], force: bool = False
+    plugin_id: str,
+    repo_url: Optional[str],
+    force: bool = False,
+    *,
+    explicit_source: bool = False,
 ) -> tuple[bool, str, bool]:
     """
     按现有插件接口的行为安装插件，并刷新运行态注册信息。
@@ -320,9 +324,33 @@ async def install_plugin_runtime(
         plugin_id=plugin_id,
         repo_url=repo_url or None,
         force=force,
-        explicit_source=bool(repo_url),
+        explicit_source=explicit_source,
     )
     return result.success, result.message, result.refreshed_only
+
+
+async def inspect_plugin_sources(
+    plugin_id: str,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    """返回 Agent 可展示的脱敏来源候选与当前准入状态。"""
+    inspection = await get_plugin_install_service().inspect_source(
+        plugin_id=plugin_id,
+        force=force,
+    )
+    candidates = [
+        candidate.public_dict()
+        for candidate in inspection.online_candidates
+    ]
+    if inspection.local_candidate is not None:
+        candidates.append(inspection.local_candidate.public_dict())
+    return {
+        "selection_status": inspection.selection.status.value,
+        "selection_reason": inspection.selection.reason,
+        "inventory_complete": inspection.inventory_complete,
+        "candidates": candidates,
+    }
 
 
 async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:

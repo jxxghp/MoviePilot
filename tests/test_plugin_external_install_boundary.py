@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 from fastapi import FastAPI
@@ -14,7 +14,12 @@ from app.adapters.system.plugin.package import PluginPackageManager
 from app.agent.tools.impl import _plugin_tool_utils
 from app.api.endpoints import plugin as plugin_endpoint
 from app.runtime.config import global_vars
-from app.schemas.plugin import PluginSourceChangeRequest, PluginSourceIdentity
+from app.schemas.plugin import (
+    PluginSourceChangeRequest,
+    PluginSourceIdentity,
+    PluginSourceInstallRequest,
+    PluginSourceOptions,
+)
 from app.startup.initializers import plugins as plugins_initializer
 
 REPO_URL = "https://github.com/example/moviepilot-plugins"
@@ -209,10 +214,10 @@ async def test_external_async_helper_preserves_failure_tuple_on_gateway_error(
 
 
 @pytest.mark.asyncio
-async def test_http_install_uses_application_gateway(
+async def test_http_install_does_not_treat_repo_url_as_explicit_source(
     monkeypatch,
 ) -> None:
-    """HTTP 安装入口只能转发到唯一 Application Gateway。"""
+    """旧 GET 安装入口不能把兼容参数误当成管理员明确选源。"""
     gateway = Mock()
     gateway.install = AsyncMock(
         return_value=SimpleNamespace(success=True, message="")
@@ -234,9 +239,44 @@ async def test_http_install_uses_application_gateway(
     assert result.success is True
     gateway.install.assert_awaited_once_with(
         plugin_id="DemoPlugin",
-        repo_url=REPO_URL,
+        repo_url=None,
         release_version="1.2.3",
         force=False,
+        explicit_source=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_http_explicit_source_install_uses_explicit_gateway_mode(
+    monkeypatch,
+) -> None:
+    """专用来源安装入口必须把管理员选择传给统一 Gateway。"""
+    gateway = Mock()
+    gateway.install = AsyncMock(
+        return_value=SimpleNamespace(success=True, message="")
+    )
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_plugin_install_service",
+        lambda: gateway,
+    )
+
+    result = await plugin_endpoint.install_plugin_from_source(
+        "DemoPlugin",
+        PluginSourceInstallRequest(
+            repo_url=REPO_URL,
+            release_version="1.2.3",
+            force=True,
+        ),
+        None,
+    )
+
+    assert result.success is True
+    gateway.install.assert_awaited_once_with(
+        plugin_id="DemoPlugin",
+        repo_url=REPO_URL,
+        release_version="1.2.3",
+        force=True,
         explicit_source=True,
     )
 
@@ -319,17 +359,96 @@ def test_source_change_schema_rejects_invalid_revision_and_blank_repo() -> None:
         PluginSourceChangeRequest(repo_url="  ", expected_revision=1)
     with pytest.raises(ValidationError):
         PluginSourceChangeRequest(repo_url=REPO_URL, expected_revision=0)
+    with pytest.raises(ValidationError):
+        PluginSourceChangeRequest(
+            repo_url="local://DemoPlugin",
+            expected_revision=1,
+        )
 
 
-def test_source_change_openapi_uses_structured_request_body() -> None:
-    """换源 API 必须公开稳定的 Pydantic 请求与响应模型。"""
+@pytest.mark.asyncio
+async def test_http_source_options_return_sanitized_candidates(monkeypatch) -> None:
+    """来源候选接口保留在线选择信息，但本地候选不公开路径。"""
+    identity = SimpleNamespace(
+        plugin_id="DemoPlugin",
+        trusted_source_type=SimpleNamespace(value="official"),
+        trusted_source_key="github:jxxghp/moviepilot-plugins",
+        binding_basis=SimpleNamespace(value="official_default"),
+        payload_source_type=SimpleNamespace(value="local"),
+        payload_source_key=None,
+        revision=7,
+    )
+    inspection = SimpleNamespace(
+        plugin_id="DemoPlugin",
+        inventory_complete=True,
+        identity=identity,
+        selection=SimpleNamespace(
+            status=SimpleNamespace(value="conflict"),
+            reason="未安装插件存在多个在线来源，不能静默选择",
+        ),
+        online_candidates=(
+            SimpleNamespace(
+                public_dict=lambda: {
+                    "plugin_id": "DemoPlugin",
+                    "source_type": "official",
+                    "source_key": "github:jxxghp/moviepilot-plugins",
+                    "repo_url": "https://github.com/jxxghp/MoviePilot-Plugins",
+                    "package_generation": "v3",
+                    "plugin_version": "1.0.0",
+                }
+            ),
+        ),
+        local_candidate=SimpleNamespace(
+            public_dict=lambda: {
+                "plugin_id": "DemoPlugin",
+                "source_type": "local",
+                "package_generation": "v3",
+                "plugin_version": "2.0.0-dev",
+            }
+        ),
+    )
+    gateway = Mock()
+    gateway.inspect_source = AsyncMock(return_value=inspection)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_plugin_install_service",
+        lambda: gateway,
+    )
+
+    result = await plugin_endpoint.get_plugin_source_options(
+        "DemoPlugin",
+        None,
+    )
+
+    assert result.success is True
+    assert isinstance(result.data, PluginSourceOptions)
+    assert result.data.identity is not None
+    assert result.data.identity.revision == 7
+    assert [candidate.source_type for candidate in result.data.candidates] == [
+        "official",
+        "local",
+    ]
+    assert result.data.candidates[1].repo_url is None
+    assert "/private/" not in result.model_dump_json()
+
+
+def test_source_api_openapi_uses_structured_contracts() -> None:
+    """来源查询、初始选源和换源 API 必须公开稳定结构模型。"""
     app = FastAPI()
     app.include_router(plugin_endpoint.router, prefix="/api/v1/plugin")
 
-    operation = app.openapi()["paths"]["/api/v1/plugin/source/{plugin_id}"]["post"]
-    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    paths = app.openapi()["paths"]
+    change_operation = paths["/api/v1/plugin/source/{plugin_id}"]["post"]
+    install_operation = paths["/api/v1/plugin/source/{plugin_id}/install"]["post"]
+    options_operation = paths["/api/v1/plugin/source/{plugin_id}/options"]["get"]
 
-    assert request_schema["$ref"].endswith("/PluginSourceChangeRequest")
+    change_schema = change_operation["requestBody"]["content"]["application/json"]["schema"]
+    install_schema = install_operation["requestBody"]["content"]["application/json"]["schema"]
+    options_schema = options_operation["responses"]["200"]["content"]["application/json"]["schema"]
+
+    assert change_schema["$ref"].endswith("/PluginSourceChangeRequest")
+    assert install_schema["$ref"].endswith("/PluginSourceInstallRequest")
+    assert options_schema["$ref"].endswith("/Response_PluginSourceOptions_")
 
 
 @pytest.mark.asyncio
@@ -362,7 +481,7 @@ async def test_agent_install_uses_application_gateway(
         plugin_id="DemoPlugin",
         repo_url=REPO_URL,
         force=False,
-        explicit_source=True,
+        explicit_source=False,
     )
 
 
@@ -489,14 +608,46 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
             False,
         )
     ) == (True, "installed")
-    expected = {
+    local_repo_url = "local://DemoPlugin?path=/private/plugins&version=v3"
+    assert gateway_calls[0]["install"](
+        "DemoPlugin",
+        local_repo_url,
+        "v3",
+        None,
+        True,
+    ) == (True, "installed")
+    assert asyncio.run(
+        gateway_calls[0]["async_install"](
+            "DemoPlugin",
+            local_repo_url,
+            "v3",
+            None,
+            True,
+        )
+    ) == (True, "installed")
+    online_expected = {
         "plugin_id": "DemoPlugin",
-        "repo_url": REPO_URL,
+        "repo_url": "",
         "package_version": "v3",
         "release_version": "1.2.3",
         "force": False,
         "local_sync": False,
+        "explicit_source": False,
+    }
+    local_expected = {
+        "plugin_id": "DemoPlugin",
+        "repo_url": local_repo_url,
+        "package_version": "v3",
+        "release_version": None,
+        "force": True,
+        "local_sync": True,
         "explicit_source": True,
     }
-    sync_runner.assert_called_once_with(gateway, **expected)
-    async_runner.assert_awaited_once_with(gateway, **expected)
+    assert sync_runner.call_args_list == [
+        call(gateway, **online_expected),
+        call(gateway, **local_expected),
+    ]
+    assert async_runner.await_args_list == [
+        call(gateway, **online_expected),
+        call(gateway, **local_expected),
+    ]

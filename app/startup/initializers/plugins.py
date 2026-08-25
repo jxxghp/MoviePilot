@@ -34,6 +34,7 @@ from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
 from app.adapters.external.market import (
+    LOCAL_REPO_PREFIX,
     VERSION_BACKWARD_COMPATIBLE_FLAGS,
     PluginHelper,
     configure_installed_plugins_provider,
@@ -187,31 +188,50 @@ def configure_plugin_services() -> None:
             clock=lambda: datetime.now(timezone.utc),
         )
     )
+
+    def install_from_compat_helper(
+        plugin_id: str,
+        repo_url: str,
+        package_version: str | None,
+        release_version: str | None,
+        force: bool,
+    ) -> tuple[bool, str]:
+        """保留本地来源定位；在线兼容参数不得升级为选源授权。"""
+        local_sync = bool(repo_url and repo_url.startswith(LOCAL_REPO_PREFIX))
+        return _run_plugin_install_sync(
+            gateway,
+            plugin_id=plugin_id,
+            repo_url=repo_url if local_sync else "",
+            package_version=package_version,
+            release_version=release_version,
+            force=force,
+            local_sync=local_sync,
+            explicit_source=local_sync,
+        )
+
+    async def async_install_from_compat_helper(
+        plugin_id: str,
+        repo_url: str,
+        package_version: str | None,
+        release_version: str | None,
+        force: bool,
+    ) -> tuple[bool, str]:
+        """异步保留本地来源定位；在线兼容参数不得升级为选源授权。"""
+        local_sync = bool(repo_url and repo_url.startswith(LOCAL_REPO_PREFIX))
+        return await _run_plugin_install_async(
+            gateway,
+            plugin_id=plugin_id,
+            repo_url=repo_url if local_sync else "",
+            package_version=package_version,
+            release_version=release_version,
+            force=force,
+            local_sync=local_sync,
+            explicit_source=local_sync,
+        )
+
     configure_plugin_install_gateway(
-        install=lambda plugin_id, repo_url, package_version, release_version, force: (
-            _run_plugin_install_sync(
-                gateway,
-                plugin_id=plugin_id,
-                repo_url=repo_url,
-                package_version=package_version,
-                release_version=release_version,
-                force=force,
-                local_sync=False,
-                explicit_source=bool(repo_url),
-            )
-        ),
-        async_install=lambda plugin_id, repo_url, package_version, release_version, force: (
-            _run_plugin_install_async(
-                gateway,
-                plugin_id=plugin_id,
-                repo_url=repo_url,
-                package_version=package_version,
-                release_version=release_version,
-                force=force,
-                local_sync=False,
-                explicit_source=bool(repo_url),
-            )
-        ),
+        install=install_from_compat_helper,
+        async_install=async_install_from_compat_helper,
     )
     configure_plugin_legacy_import_services(
         diagnostics_configurator=configure_legacy_import_diagnostics,

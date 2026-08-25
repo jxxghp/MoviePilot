@@ -17,6 +17,7 @@ from app.application.plugin.source import (
     CandidateInventory,
     PluginLocalCandidate,
     PluginSelectionStatus,
+    parse_local_plugin_reference,
     select_plugin_candidate,
 )
 
@@ -111,6 +112,8 @@ def admit_plugin_install(
     if request.source_change:
         if not request.explicit_source or not request.requested_repo_url:
             raise PluginSourceAdmissionError("显式换源必须指定目标在线来源")
+        if request.requested_repo_url.startswith("local://"):
+            raise PluginSourceAdmissionError("显式换源只接受在线插件仓库")
         if identity is None or identity.trusted_source_type is TrustedPluginSourceType.UNKNOWN:
             raise PluginSourceAdmissionError("显式换源要求插件已经绑定在线来源")
         if request.expected_revision != identity.revision:
@@ -122,11 +125,25 @@ def admit_plugin_install(
     local_candidates = None
     if request.requested_repo_url:
         if request.requested_repo_url.startswith("local://"):
-            local_candidates = tuple(
+            referenced_plugin_id = parse_local_plugin_reference(
+                request.requested_repo_url
+            )
+            if (
+                referenced_plugin_id is None
+                or referenced_plugin_id.lower() != request.plugin_id.lower()
+            ):
+                raise PluginSourceAdmissionError(
+                    "明确选择的本地来源与目标插件不一致"
+                )
+            available_local_candidates = inventory.local_candidates_for(
+                request.plugin_id
+            )
+            exact_candidates = tuple(
                 candidate
-                for candidate in inventory.local_candidates_for(request.plugin_id)
+                for candidate in available_local_candidates
                 if candidate.repo_url == request.requested_repo_url
             )
+            local_candidates = exact_candidates or available_local_candidates
             if not local_candidates:
                 raise PluginSourceAdmissionError("明确选择的本地来源没有当前插件候选")
         else:

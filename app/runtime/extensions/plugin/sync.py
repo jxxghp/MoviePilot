@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 from typing import Any, Callable, Optional
 
 from app.runtime.extensions.plugin.system import PluginSystemServices
@@ -130,7 +129,6 @@ class LocalPluginSyncService:
                     f"{candidate.get('skip_reason')}"
                 )
             return False
-        source_dir = Path(candidate.get("path"))
         repo_url = candidate.get("repo_url")
         if not isinstance(repo_url, str) or not repo_url.startswith("local://"):
             self._logger.error(f"本地插件 {plugin_id} 缺少可验证的本地来源标识")
@@ -148,7 +146,7 @@ class LocalPluginSyncService:
                 self._logger.error(f"同步本地插件 {plugin_id} 失败：{message}")
                 return False
             self._recent_sync[plugin_id] = time.time()
-            self._logger.info(f"已同步本地插件 {plugin_id}：{source_dir}")
+            self._logger.info(f"已同步本地插件 {plugin_id}")
             return True
         except Exception as error:
             self._logger.error(f"同步本地插件 {plugin_id} 失败：{error}")

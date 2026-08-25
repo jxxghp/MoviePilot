@@ -60,14 +60,30 @@ from app.schemas.plugin import PluginRemoteInfo as _SchemaPluginRemoteInfo
 from app.schemas.plugin import PluginRuntimeStatus as _SchemaPluginRuntimeStatus
 from app.schemas.plugin import PluginRuntimeSummary as _SchemaPluginRuntimeSummary
 from app.schemas.plugin import PluginSidebarNavItem as _SchemaPluginSidebarNavItem
+from app.schemas.plugin import PluginSourceCandidate as _SchemaPluginSourceCandidate
 from app.schemas.plugin import PluginSourceChangeRequest as _SchemaPluginSourceChangeRequest
 from app.schemas.plugin import PluginSourceIdentity as _SchemaPluginSourceIdentity
+from app.schemas.plugin import PluginSourceInstallRequest as _SchemaPluginSourceInstallRequest
+from app.schemas.plugin import PluginSourceOptions as _SchemaPluginSourceOptions
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import SystemConfigKey
 
 router = ResponseAPIRouter()
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()
+
+
+def _plugin_source_identity_schema(identity: Any) -> _SchemaPluginSourceIdentity:
+    """把持久化身份映射为公共来源确认 DTO。"""
+    return _SchemaPluginSourceIdentity(
+        plugin_id=identity.plugin_id,
+        trusted_source_type=identity.trusted_source_type.value,
+        trusted_source_key=identity.trusted_source_key,
+        binding_basis=identity.binding_basis.value,
+        payload_source_type=identity.payload_source_type.value,
+        payload_source_key=identity.payload_source_key,
+        revision=identity.revision,
+    )
 
 
 async def _get_market_plugin_from_repo(
@@ -557,10 +573,10 @@ async def install(
     """
     result = await get_plugin_install_service().install(
         plugin_id=plugin_id,
-        repo_url=repo_url or None,
+        repo_url=None,
         release_version=release_version,
         force=bool(force),
-        explicit_source=bool(repo_url),
+        explicit_source=False,
     )
     if not result.success:
         return _SchemaResponse(success=False, message=result.message)
@@ -582,16 +598,73 @@ async def get_plugin_source_identity(
         return _SchemaResponse(success=False, message="插件来源身份不存在")
     return _SchemaResponse(
         success=True,
-        data=_SchemaPluginSourceIdentity(
-            plugin_id=identity.plugin_id,
-            trusted_source_type=identity.trusted_source_type.value,
-            trusted_source_key=identity.trusted_source_key,
-            binding_basis=identity.binding_basis.value,
-            payload_source_type=identity.payload_source_type.value,
-            payload_source_key=identity.payload_source_key,
-            revision=identity.revision,
+        data=_plugin_source_identity_schema(identity),
+    )
+
+
+@router.get(
+    "/source/{plugin_id}/options",
+    summary="获取插件来源候选",
+    response_model=_SchemaResponse[_SchemaPluginSourceOptions],
+)
+async def get_plugin_source_options(
+    plugin_id: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    force: bool = False,
+) -> Any:
+    """返回与真实安装相同库存中的脱敏候选和当前准入状态。"""
+    inspection = await get_plugin_install_service().inspect_source(
+        plugin_id=plugin_id,
+        force=force,
+    )
+    candidates = [
+        _SchemaPluginSourceCandidate.model_validate(candidate.public_dict())
+        for candidate in inspection.online_candidates
+    ]
+    if inspection.local_candidate is not None:
+        candidates.append(
+            _SchemaPluginSourceCandidate.model_validate(
+                inspection.local_candidate.public_dict()
+            )
+        )
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaPluginSourceOptions(
+            plugin_id=inspection.plugin_id,
+            inventory_complete=inspection.inventory_complete,
+            selection_status=inspection.selection.status.value,
+            selection_reason=inspection.selection.reason,
+            identity=(
+                _plugin_source_identity_schema(inspection.identity)
+                if inspection.identity is not None
+                else None
+            ),
+            candidates=candidates,
         ),
     )
+
+
+@router.post(
+    "/source/{plugin_id}/install",
+    summary="按明确来源安装插件",
+    response_model=_SchemaResponse[None],
+)
+async def install_plugin_from_source(
+    plugin_id: str,
+    request: _SchemaPluginSourceInstallRequest,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> Any:
+    """安装管理员明确选择的初始在线来源，不承担已绑定插件换源。"""
+    result = await get_plugin_install_service().install(
+        plugin_id=plugin_id,
+        repo_url=request.repo_url,
+        release_version=request.release_version,
+        force=request.force,
+        explicit_source=True,
+    )
+    if not result.success:
+        return _SchemaResponse(success=False, message=result.message)
+    return _SchemaResponse(success=True)
 
 
 @router.post(

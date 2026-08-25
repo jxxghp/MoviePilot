@@ -242,6 +242,40 @@ def test_first_local_payload_creates_local_only_identity() -> None:
     assert target.trusted_source_type is TrustedPluginSourceType.UNKNOWN
 
 
+def test_sanitized_local_reference_selects_configured_candidate_without_path() -> None:
+    """脱敏本地来源标识仍能选择配置内候选，但公共投影不暴露路径。"""
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url=(
+            "local://DemoPlugin?path=/private/secret/plugins&version=v3"
+        ),
+        package_generation="v3",
+        plugin_version="2.0.0-dev",
+        dto={"v3": True, "path": "/private/secret/plugins"},
+    )
+
+    admission = admit_plugin_install(
+        _inventory(local_candidates=(local,)),
+        request=PluginInstallAdmissionRequest(
+            plugin_id="DemoPlugin",
+            generations=("v3", "v2", "v1"),
+            requested_repo_url="local://DemoPlugin?version=v3",
+        ),
+        identity=None,
+        now=NOW,
+    )
+
+    assert admission.candidate is local
+    public = admission.candidate.public_dict()
+    assert public == {
+        "plugin_id": "DemoPlugin",
+        "source_type": "local",
+        "package_generation": "v3",
+        "plugin_version": "2.0.0-dev",
+    }
+    assert "/private/secret/plugins" not in str(public)
+
+
 def test_legacy_identity_can_bind_explicit_online_source() -> None:
     """存量未绑定身份可在管理员明确选源后建立在线可信来源。"""
     legacy = replace(
@@ -282,3 +316,32 @@ def test_legacy_identity_can_bind_explicit_online_source() -> None:
     assert target.binding_basis is PluginBindingBasis.EXPLICIT_INSTALL
     assert target.trusted_source_key == THIRD_PARTY
     assert target.revision == 4
+
+
+def test_source_change_rejects_local_payload_reference() -> None:
+    """带 revision 的显式换源只能切换在线可信来源。"""
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
+        package_generation="v3",
+        plugin_version="2.0.0-dev",
+    )
+    current = _identity()
+
+    with pytest.raises(
+        PluginSourceAdmissionError,
+        match="显式换源只接受在线插件仓库",
+    ):
+        admit_plugin_install(
+            _inventory(local_candidates=(local,)),
+            request=PluginInstallAdmissionRequest(
+                plugin_id="DemoPlugin",
+                generations=("v3", "v2", "v1"),
+                requested_repo_url="local://DemoPlugin?version=v3",
+                explicit_source=True,
+                source_change=True,
+                expected_revision=current.revision,
+            ),
+            identity=current,
+            now=NOW,
+        )

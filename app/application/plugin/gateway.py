@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
@@ -16,10 +17,30 @@ from app.application.plugin.identity import PluginIdentity
 from app.application.plugin.install import PluginInstallResult
 from app.application.plugin.inventory import PLUGIN_V3_GENERATIONS
 from app.application.plugin.lifecycle import PluginStartupLease, plugin_lifecycle
-from app.application.plugin.source import CandidateInventory
+from app.application.plugin.source import (
+    CandidateInventory,
+    PluginLocalCandidate,
+    PluginMarketCandidate,
+    PluginSelection,
+    get_effective_local_candidate,
+    list_effective_online_candidates,
+    select_plugin_candidate,
+)
 
 InventoryProvider = Callable[[bool], Awaitable[CandidateInventory]]
 IdentityReader = Callable[[str], Awaitable[PluginIdentity | None]]
+
+
+@dataclass(frozen=True, slots=True)
+class PluginSourceInspection:
+    """前端与 Agent 选择来源所需的只读候选和当前身份快照。"""
+
+    plugin_id: str
+    inventory_complete: bool
+    identity: PluginIdentity | None
+    selection: PluginSelection
+    online_candidates: tuple[PluginMarketCandidate, ...]
+    local_candidate: PluginLocalCandidate | None
 
 
 class PluginInstallExecutor(Protocol):
@@ -97,6 +118,40 @@ class PluginInstallGateway:
                 message=str(error),
                 failure_stage="source_admission",
             )
+
+    async def inspect_source(
+        self,
+        *,
+        plugin_id: str,
+        package_version: str | None = None,
+        force: bool = False,
+    ) -> PluginSourceInspection:
+        """读取与真实安装相同的库存和身份，返回脱敏来源选择快照。"""
+        inventory = await self.__inventory(force)
+        identity = await self.__identity(plugin_id)
+        generations = _generation_order(package_version)
+        selection = select_plugin_candidate(
+            inventory,
+            plugin_id=plugin_id,
+            generations=generations,
+            identity=identity,
+        )
+        return PluginSourceInspection(
+            plugin_id=plugin_id,
+            inventory_complete=inventory.complete,
+            identity=identity,
+            selection=selection,
+            online_candidates=list_effective_online_candidates(
+                inventory,
+                plugin_id=plugin_id,
+                generations=generations,
+            ),
+            local_candidate=get_effective_local_candidate(
+                inventory,
+                plugin_id=plugin_id,
+                generations=generations,
+            ),
+        )
 
 
 _plugin_install_gateway: PluginInstallGateway | None = None

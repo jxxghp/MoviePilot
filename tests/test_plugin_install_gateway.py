@@ -14,7 +14,9 @@ from app.application.plugin.identity import (
 )
 from app.application.plugin.source import (
     CandidateInventory,
+    LocalCandidateRead,
     MarketRead,
+    PluginLocalCandidate,
     PluginMarketCandidate,
 )
 
@@ -104,6 +106,66 @@ async def test_gateway_rejects_source_conflict_before_package_execution() -> Non
     assert result.success is False
     assert result.failure_stage == "source_admission"
     executor.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_gateway_source_inspection_preserves_sources_and_hides_local_path() -> None:
+    """来源查询按在线仓归并版本，本地候选只保留类型与版本。"""
+    official_v3 = _inventory().online_candidates[0]
+    official_v2 = PluginMarketCandidate(
+        plugin_id="DemoPlugin",
+        source_key="github:jxxghp/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.OFFICIAL,
+        repo_url=REPO_URL,
+        package_generation="v2",
+        plugin_version="9.0.0",
+        dto={"v2": True},
+    )
+    third_party = PluginMarketCandidate(
+        plugin_id="DemoPlugin",
+        source_key="github:example/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.THIRD_PARTY,
+        repo_url="https://github.com/example/moviepilot-plugins",
+        package_generation="v3",
+        plugin_version="2.0.0",
+        dto={"v3": True},
+    )
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
+        package_generation="v3",
+        plugin_version="3.0.0-dev",
+        dto={"path": "/private/plugins", "v3": True},
+    )
+    inventory = CandidateInventory(
+        (
+            MarketRead.present(REPO_URL, (official_v3,), package_generation="v3"),
+            MarketRead.present(REPO_URL, (official_v2,), package_generation="v2"),
+            MarketRead.present(
+                third_party.repo_url,
+                (third_party,),
+                package_generation="v3",
+            ),
+        ),
+        (local,),
+        local_read=LocalCandidateRead.present((local,)),
+    )
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(return_value=inventory),
+        identity=AsyncMock(return_value=None),
+        executor=AsyncMock(),
+        clock=lambda: NOW,
+    )
+
+    inspection = await gateway.inspect_source(plugin_id="DemoPlugin")
+
+    assert [candidate.source_key for candidate in inspection.online_candidates] == [
+        "github:jxxghp/moviepilot-plugins",
+        "github:example/moviepilot-plugins",
+    ]
+    assert inspection.online_candidates[0].package_generation == "v3"
+    assert inspection.local_candidate is local
+    assert "/private/plugins" not in str(inspection.local_candidate.public_dict())
 
 
 @pytest.mark.asyncio
