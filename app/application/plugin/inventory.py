@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any, TypeAlias
 from urllib.parse import unquote, urlsplit
 
@@ -25,121 +23,11 @@ from app.application.plugin.source import (
 
 PLUGIN_V3_GENERATIONS = ("v3", "v2", "v1")
 PluginIndex: TypeAlias = Mapping[str, Mapping[str, Any]]
-PluginIndexLoadPayload: TypeAlias = PluginIndex | None
-
-
-class PluginIndexLoadStatus(StrEnum):
-    """市场 Adapter 对单个代际索引给出的确定读取结论。"""
-
-    PRESENT = "present"
-    ABSENT = "absent"
-    FAILED = "failed"
-
-
-@dataclass(frozen=True, slots=True)
-class PluginIndexLoadResult:
-    """区分真实索引、确定不存在和无法判定的 Adapter 返回值。"""
-
-    status: PluginIndexLoadStatus
-    payload: PluginIndexLoadPayload = None
-    error: str | None = None
-
-    def __post_init__(self) -> None:
-        """保证三态结果不会携带相互矛盾的数据。"""
-        status = PluginIndexLoadStatus(self.status)
-        if status is PluginIndexLoadStatus.PRESENT:
-            if not isinstance(self.payload, Mapping):
-                raise TypeError("present 插件索引必须携带对象载荷")
-            if self.error:
-                raise ValueError("present 插件索引不能携带错误")
-        elif status is PluginIndexLoadStatus.ABSENT:
-            if self.payload is not None or self.error:
-                raise ValueError("absent 插件索引不能携带载荷或错误")
-        else:
-            if self.payload is not None:
-                raise ValueError("failed 插件索引不能携带载荷")
-            if not self.error or not self.error.strip():
-                raise ValueError("failed 插件索引必须携带错误说明")
-        object.__setattr__(self, "status", status)
-        object.__setattr__(self, "error", self.error.strip() if self.error else None)
-
-    @classmethod
-    def present(cls, payload: PluginIndex) -> "PluginIndexLoadResult":
-        """表示索引存在；空对象仍是有效索引。"""
-        return cls(status=PluginIndexLoadStatus.PRESENT, payload=payload)
-
-    @classmethod
-    def absent(cls) -> "PluginIndexLoadResult":
-        """表示目标仓库确定没有该代际索引。"""
-        return cls(status=PluginIndexLoadStatus.ABSENT)
-
-    @classmethod
-    def failed(cls, error: str) -> "PluginIndexLoadResult":
-        """表示网络、解析或其他错误使索引状态无法判定。"""
-        return cls(status=PluginIndexLoadStatus.FAILED, error=error)
-
-
-PluginIndexLoaderResult: TypeAlias = PluginIndex | PluginIndexLoadResult | None
+PluginIndexLoaderResult: TypeAlias = PluginIndex | None
 LocalCandidateLoadPayload: TypeAlias = (
     Mapping[str, Mapping[str, Any]]
     | Iterable[Mapping[str, Any]]
     | None
-)
-
-
-class LocalCandidateLoadStatus(StrEnum):
-    """本地仓库 Adapter 对扫描请求给出的读取结论。"""
-
-    PRESENT = "present"
-    ABSENT = "absent"
-    FAILED = "failed"
-
-
-@dataclass(frozen=True, slots=True)
-class LocalCandidateLoadResult:
-    """区分本地候选扫描成功、没有配置和无法读取。"""
-
-    status: LocalCandidateLoadStatus
-    payload: LocalCandidateLoadPayload = None
-    error: str | None = None
-
-    def __post_init__(self) -> None:
-        """保证本地扫描 Adapter 结果不会携带矛盾状态。"""
-        status = LocalCandidateLoadStatus(self.status)
-        if status is LocalCandidateLoadStatus.PRESENT:
-            if self.payload is None:
-                raise TypeError("present 本地扫描必须携带载荷")
-            if self.error:
-                raise ValueError("present 本地扫描不能携带错误")
-        elif status is LocalCandidateLoadStatus.ABSENT:
-            if self.payload is not None or self.error:
-                raise ValueError("absent 本地扫描不能携带载荷或错误")
-        else:
-            if self.payload is not None:
-                raise ValueError("failed 本地扫描不能携带载荷")
-            if not self.error or not self.error.strip():
-                raise ValueError("failed 本地扫描必须携带错误说明")
-        object.__setattr__(self, "status", status)
-        object.__setattr__(self, "error", self.error.strip() if self.error else None)
-
-    @classmethod
-    def present(cls, payload: LocalCandidateLoadPayload) -> "LocalCandidateLoadResult":
-        """表示本地扫描完成；空映射仍是有效扫描结果。"""
-        return cls(status=LocalCandidateLoadStatus.PRESENT, payload=payload)
-
-    @classmethod
-    def absent(cls) -> "LocalCandidateLoadResult":
-        """表示没有配置可扫描的本地插件仓库。"""
-        return cls(status=LocalCandidateLoadStatus.ABSENT)
-
-    @classmethod
-    def failed(cls, error: str) -> "LocalCandidateLoadResult":
-        """表示本地仓库读取失败，不能据此推断没有候选。"""
-        return cls(status=LocalCandidateLoadStatus.FAILED, error=error)
-
-
-LocalCandidateLoaderResult: TypeAlias = (
-    LocalCandidateLoadPayload | LocalCandidateLoadResult
 )
 MarketLoader: TypeAlias = Callable[
     [str, str | None, bool],
@@ -151,7 +39,7 @@ AsyncMarketLoader: TypeAlias = Callable[
 ]
 LocalCandidateLoader: TypeAlias = Callable[
     [],
-    LocalCandidateLoaderResult,
+    LocalCandidateLoadPayload,
 ]
 
 
@@ -321,14 +209,6 @@ class PluginCandidateInventoryReader:
             return LocalCandidateRead.absent()
         try:
             raw_candidates = self._local_candidate_loader()
-            if isinstance(raw_candidates, LocalCandidateLoadResult):
-                if raw_candidates.status is LocalCandidateLoadStatus.ABSENT:
-                    return LocalCandidateRead.absent()
-                if raw_candidates.status is LocalCandidateLoadStatus.FAILED:
-                    return LocalCandidateRead.failure(
-                        raw_candidates.error or "本地插件仓库读取失败"
-                    )
-                raw_candidates = raw_candidates.payload
             if raw_candidates is None:
                 return LocalCandidateRead.failure(
                     "本地插件仓库读取未返回可判定结果"
@@ -436,21 +316,11 @@ def _successful_read(
     repo_url: str,
 ) -> MarketRead:
     """把 Adapter 读取结果映射为一个市场代际的三态事实。"""
-    if isinstance(payload, PluginIndexLoadResult):
-        if payload.status is PluginIndexLoadStatus.ABSENT:
-            return MarketRead.absent(
-                market,
-                package_generation=generation,
-            )
-        if payload.status is PluginIndexLoadStatus.FAILED:
-            return MarketRead.failure(
-                market,
-                payload.error or "市场索引读取失败",
-                package_generation=generation,
-            )
-        payload = payload.payload
     if payload is None:
-        raise RuntimeError("市场索引读取未返回可判定结果")
+        return MarketRead.absent(
+            market,
+            package_generation=generation,
+        )
     if not isinstance(payload, Mapping):
         raise TypeError("插件市场索引必须是对象")
     return MarketRead.present(

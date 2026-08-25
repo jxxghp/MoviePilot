@@ -6,10 +6,6 @@ import pytest
 
 from app.adapters.external.market import PluginHelper
 from app.adapters.external.plugin.client import PluginMarketClient
-from app.application.plugin.inventory import (
-    PluginIndexLoadResult,
-    PluginIndexLoadStatus,
-)
 
 
 @pytest.mark.asyncio
@@ -86,21 +82,19 @@ def test_plugin_index_response_preserves_status_contract(
 
 
 @pytest.mark.parametrize(
-    ("status_code", "content", "expected_status"),
+    ("status_code", "content", "expected"),
     [
-        (200, '{"DemoPlugin": {"version": "1.2.3"}}', PluginIndexLoadStatus.PRESENT),
-        (404, "404: Not Found", PluginIndexLoadStatus.ABSENT),
-        (500, "upstream failed", PluginIndexLoadStatus.FAILED),
-        (200, "not-json", PluginIndexLoadStatus.FAILED),
+        (200, '{"DemoPlugin": {"version": "1.2.3"}}', {"DemoPlugin": {"version": "1.2.3"}}),
+        (404, "404: Not Found", None),
     ],
 )
 def test_plugin_index_result_preserves_read_state(
     monkeypatch,
     status_code: int,
     content: str,
-    expected_status: PluginIndexLoadStatus,
+    expected: dict | None,
 ) -> None:
-    """新只读入口必须区分真实索引、404 和不可判定响应。"""
+    """只读入口以值和 None 区分真实索引与确定不存在。"""
     helper = PluginHelper()
     repo_url = f"https://github.com/policy-owner/policy-repository-{status_code}"
 
@@ -112,13 +106,36 @@ def test_plugin_index_result_preserves_read_state(
 
     result = helper.get_plugin_index_result(repo_url, "v3")
 
-    assert result.status is expected_status
-    if expected_status is PluginIndexLoadStatus.PRESENT:
-        assert result.payload == {"DemoPlugin": {"version": "1.2.3"}}
-        assert result.error is None
-    elif expected_status is PluginIndexLoadStatus.FAILED:
-        assert result.payload is None
-        assert result.error
+    assert result == expected
+
+
+@pytest.mark.parametrize(
+    ("status_code", "content", "message"),
+    [
+        (500, "upstream failed", "插件索引请求失败：HTTP 500"),
+        (200, "not-json", "插件索引响应格式无效"),
+    ],
+)
+def test_plugin_index_result_raises_for_unusable_reads(
+    monkeypatch,
+    status_code: int,
+    content: str,
+    message: str,
+) -> None:
+    """不可判定读取必须抛错，由应用库存统一记录失败事实。"""
+    helper = PluginHelper()
+
+    def request(_url: str, *, headers: dict):
+        return SimpleNamespace(status_code=status_code, text=content)
+
+    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    helper.get_plugin_index_result.cache_clear()
+
+    with pytest.raises(RuntimeError, match=message):
+        helper.get_plugin_index_result(
+            f"https://github.com/policy-owner/policy-failed-{status_code}",
+            "v3",
+        )
 
 
 @pytest.mark.asyncio
@@ -141,13 +158,11 @@ async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> 
         "v3",
     )
 
-    assert result.status is PluginIndexLoadStatus.ABSENT
-    assert result.payload is None
-    assert result.error is None
+    assert result is None
 
 
-def test_plugin_index_result_converts_adapter_exception_to_failed(monkeypatch) -> None:
-    """请求端口抛异常时只读状态入口仍返回失败事实。"""
+def test_plugin_index_result_propagates_adapter_exception(monkeypatch) -> None:
+    """请求异常必须传播给应用库存统一转换为失败事实。"""
     helper = PluginHelper()
 
     def request(_url: str, *, headers: dict):
@@ -156,19 +171,16 @@ def test_plugin_index_result_converts_adapter_exception_to_failed(monkeypatch) -
     monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
     helper.get_plugin_index_result.cache_clear()
 
-    result = helper.get_plugin_index_result(
-        "https://github.com/policy-owner/policy-repository-exception",
-        "v3",
-    )
-
-    assert result.status is PluginIndexLoadStatus.FAILED
-    assert result.payload is None
-    assert result.error == "插件索引读取失败：socket closed"
+    with pytest.raises(OSError, match="socket closed"):
+        helper.get_plugin_index_result(
+            "https://github.com/policy-owner/policy-repository-exception",
+            "v3",
+        )
 
 
 def test_plugin_market_client_exposes_index_result_port() -> None:
-    """市场客户端应原样转发三态读取结果并保留只读边界。"""
-    expected = PluginIndexLoadResult.absent()
+    """市场客户端应原样转发索引读取结果并保留只读边界。"""
+    expected = {"DemoPlugin": {"version": "1.2.3"}}
 
     class FakeHelper:
         def get_plugin_index_result(self, repo_url: str, package_version: str | None):

@@ -314,6 +314,7 @@ def configure_plugin_system_services():
             if flag else []
         ),
         frozen=lambda: False,
+        install=lambda **_kwargs: (False, "测试环境未装配插件安装 Gateway"),
     ))
     from app.agent.skills.registry import SkillHelper
     from app.agent.llm.gateway import register_llm_provider_runtime

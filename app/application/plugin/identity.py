@@ -296,7 +296,7 @@ def plan_legacy_plugin_identity(
     trusted_key = None
     basis = PluginBindingBasis.LEGACY_UNBOUND
     bound_at = None
-    if market_availability is PluginMarketAvailability.AVAILABLE and official:
+    if official:
         trusted_type = TrustedPluginSourceType.OFFICIAL
         trusted_key = official[0].source_key
         basis = PluginBindingBasis.OFFICIAL_DEFAULT
@@ -348,6 +348,21 @@ class PluginIdentityRepository(Protocol):
         expected_revision: int,
     ) -> bool:
         """按 revision 条件暂存替换，并返回是否赢得竞争。"""
+
+
+class PluginIdentityStore(Protocol):
+    """组合根注入的独立来源身份读取与存量迁移端口。"""
+
+    def get(self, plugin_id: str) -> PluginIdentity | None:
+        """读取一个物理插件的来源身份。"""
+
+    def compare_and_set(
+        self,
+        identity: PluginIdentity,
+        *,
+        expected_revision: int | None,
+    ) -> PluginIdentity:
+        """首次创建或按 revision 更新身份。"""
 
 
 class PluginIdentityUnitOfWork(Protocol):
@@ -640,6 +655,18 @@ def _validate_online_binding(
         )
     if candidate.trusted_source_type is TrustedPluginSourceType.UNKNOWN:
         raise PluginIdentityConflictError("在线绑定目标必须携带可信来源")
+    if candidate.payload_source_type is PluginPayloadSourceType.UNKNOWN:
+        if (
+            current.binding_basis is not PluginBindingBasis.LEGACY_UNBOUND
+            or candidate.binding_basis not in {
+                PluginBindingBasis.OFFICIAL_DEFAULT,
+                PluginBindingBasis.TOFU,
+            }
+        ):
+            raise PluginIdentityConflictError(
+                "仅存量未知来源身份可在不声明载荷来源时建立默认在线绑定"
+            )
+        return
     if candidate.payload_source_type not in {
         PluginPayloadSourceType.OFFICIAL,
         PluginPayloadSourceType.THIRD_PARTY,

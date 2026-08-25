@@ -286,45 +286,20 @@ def test_install_plugin_installs_market_candidate() -> None:
     )
 
 
-def test_install_plugin_runtime_reloads_in_threadpool() -> None:
-    """
-    已存在插件刷新加载时会通过插件线程池执行重载。
-    """
-    plugin_manager = MagicMock()
-    plugin_manager.get_plugin_ids.return_value = ["DemoPlugin"]
-    plugin_helper = MagicMock()
-    config_oper = MagicMock()
-    config_oper.get.return_value = ["DemoPlugin"]
-    calls = []
+def test_install_plugin_runtime_uses_application_gateway() -> None:
+    """Agent 安装入口只能转发到统一的应用层安装 Gateway。"""
+    gateway = MagicMock()
+    gateway.install = AsyncMock(
+        return_value=SimpleNamespace(
+            success=True,
+            message="插件已存在，已刷新加载",
+            refreshed_only=True,
+        )
+    )
 
-    async def fake_run_agent_blocking(bucket, func, *args, **kwargs) -> None:
-        calls.append((bucket, func, args, kwargs))
-        return None
-
-    with (
-        patch(
-            "app.agent.tools.impl._plugin_tool_utils.get_configured_system_config",
-            return_value=config_oper,
-        ),
-        patch(
-            "app.agent.tools.impl._plugin_tool_utils.get_plugin_manager",
-            return_value=plugin_manager,
-        ),
-        patch(
-            "app.agent.tools.impl._plugin_tool_utils.PluginHelper",
-            return_value=plugin_helper,
-        ),
-        patch(
-            "app.agent.tools.impl._plugin_tool_utils.refresh_plugin_registrations",
-        ) as refresh_registrations,
-        patch(
-            "app.agent.tools.impl._plugin_tool_utils.MoviePilotServerHelper.async_install_plugin_reg",
-            AsyncMock(return_value=True),
-        ) as install_reg,
-        patch(
-            "app.agent.tools.base.run_agent_blocking",
-            side_effect=fake_run_agent_blocking,
-        ),
+    with patch(
+        "app.agent.tools.impl._plugin_tool_utils.get_plugin_install_service",
+        return_value=gateway,
     ):
         success, message, refreshed_only = asyncio.run(
             install_plugin_runtime(
@@ -337,18 +312,12 @@ def test_install_plugin_runtime_reloads_in_threadpool() -> None:
     assert success
     assert message == "插件已存在，已刷新加载"
     assert refreshed_only
-    install_reg.assert_awaited_once_with(
+    gateway.install.assert_awaited_once_with(
         plugin_id="DemoPlugin",
         repo_url="https://example.com/market",
+        force=False,
+        explicit_source=True,
     )
-    assert len(calls) == 2
-    assert calls[0][0] == "plugin"
-    assert calls[0][2] == (plugin_manager.reload_plugin_tree, "DemoPlugin")
-    assert calls[0][3] == {}
-    assert calls[1][0] == "plugin"
-    assert calls[1][1] == refresh_registrations
-    assert calls[1][2] == ("DemoPlugin",)
-    assert calls[1][3] == {}
 
 
 def test_uninstall_plugin_uninstalls_installed_candidate() -> None:

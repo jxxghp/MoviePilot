@@ -2,21 +2,18 @@
 
 import json
 import shutil
-from contextvars import copy_context
 from pathlib import Path
 from typing import Any, Optional
 
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
-from app.application.plugin.runtime import get_plugin_manager
-from app.application.plugin.install import PluginInstallCommand
-from app.application.configuration import get_configured_system_config
-from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.external.market import PluginHelper
-from app.adapters.system.plugin.package import PluginPackageManager
+from app.application.configuration import get_configured_system_config
+from app.application.plugin.gateway import get_plugin_install_service
+from app.application.plugin.runtime import get_plugin_manager
+from app.runtime.settings import RuntimeSettingsCompat
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
+
+settings = RuntimeSettingsCompat()
 
 # 默认只向智能体返回一个可读预览，避免超大插件数据挤爆上下文窗口。
 DEFAULT_PLUGIN_DATA_PREVIEW_CHARS = 12_000
@@ -319,88 +316,11 @@ async def install_plugin_runtime(
     """
     按现有插件接口的行为安装插件，并刷新运行态注册信息。
     """
-    plugin_manager = get_plugin_manager()
-    plugin_helper = PluginHelper()
-    package_manager = PluginPackageManager(plugin_helper)
-
-    from app.agent.tools.base import run_agent_blocking
-
-    async def save_installed_plugins(plugin_ids: list[str]) -> object:
-        """保存智能体安装用例确认后的插件列表。"""
-        return await get_configured_system_config().async_set(
-            SystemConfigKey.UserInstalledPlugins,
-            plugin_ids,
-        )
-
-    async def install_package(
-        target_id: str,
-        target_repo: str,
-        _release_version: Optional[str],
-        force_install: bool,
-    ) -> tuple[bool, str]:
-        """调用插件包适配器执行异步安装。"""
-        return await package_manager.async_install(
-            plugin_id=target_id,
-            repo_url=target_repo,
-            force_install=force_install,
-        )
-
-    async def skip_compatibility_check(
-        _target_id: str,
-        _target_repo: str,
-    ) -> None:
-        """保持 Agent 旧安装入口不额外执行系统版本预检查。"""
-        return None
-
-    async def reload_runtime(target_id: str) -> object:
-        """通过 Agent 阻塞任务适配器重载源插件及其虚拟实例。"""
-        mutation_context = copy_context()
-        return await run_agent_blocking(
-            "plugin",
-            mutation_context.run,
-            plugin_manager.reload_plugin_tree,
-            target_id,
-        )
-
-    async def refresh_registrations(target_id: str) -> object:
-        """通过 Agent 阻塞任务适配器刷新源插件及其虚拟实例注册。"""
-        result = None
-        reload_targets = list(
-            plugin_manager.get_plugin_reload_targets(target_id)
-        ) or [target_id]
-        for reload_target in reload_targets:
-            result = await run_agent_blocking(
-                "plugin",
-                refresh_plugin_registrations,
-                reload_target,
-            )
-        return result
-
-    result = await PluginInstallCommand(
-        installed_plugins_reader=lambda: get_configured_system_config().get(
-            SystemConfigKey.UserInstalledPlugins
-        ) or [],
-        installed_plugins_writer=save_installed_plugins,
-        plugin_ids_provider=plugin_manager.get_plugin_ids,
-        compatibility_checker=skip_compatibility_check,
-        package_installer=install_package,
-        package_checkpointer=package_manager.async_checkpoint,
-        package_committer=package_manager.async_commit,
-        package_rollback=package_manager.async_rollback,
-        install_reporter=lambda target_id, target_repo: (
-            MoviePilotServerHelper.async_install_plugin_reg(
-                plugin_id=target_id,
-                repo_url=target_repo,
-            )
-        ),
-        plugin_reloader=reload_runtime,
-        registration_refresher=refresh_registrations,
-        mutation=plugin_manager.mutation,
-        package_write_guard=plugin_manager.suppress_plugin_monitor,
-    ).execute(
+    result = await get_plugin_install_service().install(
         plugin_id=plugin_id,
-        repo_url=repo_url,
+        repo_url=repo_url or None,
         force=force,
+        explicit_source=bool(repo_url),
     )
     return result.success, result.message, result.refreshed_only
 

@@ -16,7 +16,7 @@ import traceback
 import uuid
 import zipfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Dict, List, Optional, Tuple, Set, Callable, Awaitable, Iterator, Sequence
+from typing import Any, Dict, List, Optional, Tuple, Set, Callable, Awaitable, Iterator, Sequence
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlsplit
 
 import aiofiles
@@ -63,9 +63,6 @@ from app.foundation.version import compare_version
 from app.adapters.system.host import SystemUtils
 from app.foundation.url import UrlUtils
 from app.runtime.version import get_app_version
-from app.application.plugin.inventory import (
-    PluginIndexLoadResult,
-)
 
 # 保留模块级可替换入口，代理默认读取组合根的最新 runtime 配置。
 settings = RuntimeSettingsCompat()
@@ -87,6 +84,14 @@ VERSION_BACKWARD_COMPATIBLE_FLAGS: Dict[str, List[str]] = {
 }
 
 InstalledPluginsProvider = Callable[[], List[str]]
+PluginInstallGateway = Callable[
+    [str, str, Optional[str], Optional[str], bool],
+    Tuple[bool, str],
+]
+AsyncPluginInstallGateway = Callable[
+    [str, str, Optional[str], Optional[str], bool],
+    Awaitable[Tuple[bool, str]],
+]
 
 
 @dataclass(frozen=True)
@@ -104,12 +109,58 @@ def _empty_installed_plugins() -> List[str]:
 
 _installed_plugins_provider: InstalledPluginsProvider = _empty_installed_plugins
 
+
+def _unconfigured_plugin_install_gateway(
+    _pid: str,
+    _repo_url: str,
+    _package_version: Optional[str],
+    _release_version: Optional[str],
+    _force_install: bool,
+) -> Tuple[bool, str]:
+    """在组合根尚未装配来源门禁时拒绝插件包写入。"""
+    return False, "插件安装服务尚未完成初始化"
+
+
+async def _unconfigured_async_plugin_install_gateway(
+    _pid: str,
+    _repo_url: str,
+    _package_version: Optional[str],
+    _release_version: Optional[str],
+    _force_install: bool,
+) -> Tuple[bool, str]:
+    """在组合根尚未装配来源门禁时拒绝异步插件包写入。"""
+    return False, "插件安装服务尚未完成初始化"
+
+
+_plugin_install_gateway: PluginInstallGateway = _unconfigured_plugin_install_gateway
+_async_plugin_install_gateway: AsyncPluginInstallGateway = (
+    _unconfigured_async_plugin_install_gateway
+)
+
 def configure_installed_plugins_provider(
     provider: InstalledPluginsProvider,
 ) -> None:
     """由启动组合层注入已安装插件读取器，避免市场适配器访问数据库。"""
     global _installed_plugins_provider
     _installed_plugins_provider = provider
+
+
+def configure_plugin_install_gateway(
+    *,
+    install: PluginInstallGateway,
+    async_install: AsyncPluginInstallGateway,
+) -> None:
+    """由启动组合根装配公开兼容安装入口的来源门禁。"""
+    global _plugin_install_gateway, _async_plugin_install_gateway
+    _plugin_install_gateway = install
+    _async_plugin_install_gateway = async_install
+
+
+def reset_plugin_install_gateway() -> None:
+    """恢复未装配状态，供隔离测试清理进程级安装入口。"""
+    global _plugin_install_gateway, _async_plugin_install_gateway
+    _plugin_install_gateway = _unconfigured_plugin_install_gateway
+    _async_plugin_install_gateway = _unconfigured_async_plugin_install_gateway
 
 
 def normalize_plugin_market_repo_url(repo_url: str) -> Optional[str]:
@@ -521,6 +572,11 @@ class PluginHelper(metaclass=WeakSingleton):
                     candidate["repo_order"] = repo_order
                     candidate["repo_path"] = repo_path
                     candidate["path"] = plugin_dir
+                    candidate["repo_url"] = self.make_local_repo_url(
+                        pid,
+                        repo_path,
+                        package_version or None,
+                    )
                     self.annotate_plugin_system_version(candidate)
                     candidate_version = str(candidate.get("version") or "0")
 
@@ -586,6 +642,11 @@ class PluginHelper(metaclass=WeakSingleton):
                         candidate["repo_order"] = repo_order
                         candidate["repo_path"] = local_repo_path
                         candidate["path"] = plugin_dir
+                        candidate["repo_url"] = self.make_local_repo_url(
+                            candidate_pid,
+                            local_repo_path,
+                            current_package_version or None,
+                        )
                         if not is_compatible:
                             candidate["compatible"] = False
                             candidate["skip_reason"] = (
@@ -801,34 +862,28 @@ class PluginHelper(metaclass=WeakSingleton):
         releases.extend(cls.__normalize_plugin_release_response(payload))
         return len(payload) >= 100
 
-    @cached(maxsize=128, ttl=1800)
+    @cached(maxsize=128, ttl=1800)  # type: ignore[misc]  # 缓存装饰器暂未提供泛型签名
     def get_plugin_index_result(
             self,
             repo_url: str,
             package_version: Optional[str] = None,
-    ) -> PluginIndexLoadResult:
-        """读取插件索引并保留存在、不存在与失败三态。"""
-        try:
-            request = self._build_plugin_index_request(repo_url, package_version)
-            if request is None:
-                return PluginIndexLoadResult.failed("插件仓库地址无效")
-            package_url, headers = request
-            res = self.__request_with_fallback(package_url, headers=headers)
-            if res is None:
-                return PluginIndexLoadResult.failed("插件索引请求失败：连接失败")
-            if res.status_code == 404:
-                return PluginIndexLoadResult.absent()
-            if res.status_code != 200:
-                return PluginIndexLoadResult.failed(
-                    f"插件索引请求失败：HTTP {res.status_code}"
-                )
-            payload = self.__parse_plugin_index_response(res.text)
-            if payload is None:
-                return PluginIndexLoadResult.failed("插件索引响应格式无效")
-            return PluginIndexLoadResult.present(payload)
-        except Exception as error:  # noqa: BLE001 - 读取端口统一返回失败事实
-            message = str(error).strip() or error.__class__.__name__
-            return PluginIndexLoadResult.failed(f"插件索引读取失败：{message}")
+    ) -> Optional[Dict[str, Dict[str, Any]]]:
+        """读取插件索引；404 返回 None，读取失败由调用方记录。"""
+        request = self._build_plugin_index_request(repo_url, package_version)
+        if request is None:
+            raise ValueError("插件仓库地址无效")
+        package_url, headers = request
+        res = self.__request_with_fallback(package_url, headers=headers)
+        if res is None:
+            raise RuntimeError("插件索引请求失败：连接失败")
+        if res.status_code == 404:
+            return None
+        if res.status_code != 200:
+            raise RuntimeError(f"插件索引请求失败：HTTP {res.status_code}")
+        payload = self.__parse_plugin_index_response(res.text)
+        if payload is None:
+            raise RuntimeError("插件索引响应格式无效")
+        return payload
 
     @cached(maxsize=128, ttl=1800)
     def get_plugins(self, repo_url: str,
@@ -987,16 +1042,32 @@ class PluginHelper(metaclass=WeakSingleton):
                 release_version: Optional[str] = None, force_install: bool = False) \
             -> Tuple[bool, str]:
         """
-        安装插件，包括版本检查、内容准备、生效清单依赖安装和失败恢复。
+        通过宿主统一 Gateway 安装插件，保留第三方插件使用的同步兼容 API。
         :param pid: 插件 ID
         :param repo_url: 插件仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
         :param release_version: 指定安装的 release 资产版本；未指定时安装当前索引版本
-        :param force_install: 是否强制安装插件，默认不启用，启用时不进行备份和恢复操作
+        :param force_install: 是否替换已存在的插件载荷
         :return: (是否成功, 错误信息)
         """
+        return _plugin_install_gateway(
+            pid,
+            repo_url,
+            package_version,
+            release_version,
+            force_install,
+        )
+
+    def __install_package(self, pid: str, repo_url: str, package_version: Optional[str] = None,
+                          release_version: Optional[str] = None, force_install: bool = False) \
+            -> Tuple[bool, str]:
+        """执行已通过来源准入的同步包安装，不负责身份或运行态提交。"""
         if self.is_local_repo_url(repo_url):
-            return self.install_local(pid=pid, repo_url=repo_url, force_install=force_install)
+            return self.__install_local_package(
+                pid=pid,
+                repo_url=repo_url,
+                force_install=force_install,
+            )
 
         if SystemUtils.is_frozen():
             return False, "可执行文件模式下，只能安装本地插件"
@@ -1077,8 +1148,24 @@ class PluginHelper(metaclass=WeakSingleton):
         return self.__install_flow_sync(pid, force_install, prepare_filelist, repo_url)
 
     def install_local(self, pid: str, repo_url: str = "", force_install: bool = False) -> Tuple[bool, str]:
+        """通过宿主统一 Gateway 安装本地插件。"""
+        target_repo = repo_url or self.make_local_repo_url(pid)
+        return _plugin_install_gateway(
+            pid,
+            target_repo,
+            self.parse_local_repo_package_version(target_repo),
+            None,
+            force_install,
+        )
+
+    def __install_local_package(
+        self,
+        pid: str,
+        repo_url: str = "",
+        force_install: bool = False,
+    ) -> Tuple[bool, str]:
         """
-        从本地插件仓库目录安装插件
+        执行已通过来源准入的本地插件包安装。
         """
         local_pid = self.parse_local_repo_url(repo_url) if repo_url else pid
         if not local_pid or local_pid.lower() != pid.lower():
@@ -2190,7 +2277,6 @@ class PluginHelper(metaclass=WeakSingleton):
                 logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return False, dep_msg
 
-        self.refresh_persistent_plugin_backup(pid)
         if backup_dir:
             shutil.rmtree(backup_dir, ignore_errors=True)
         return True, ""
@@ -2465,37 +2551,31 @@ class PluginHelper(metaclass=WeakSingleton):
         logger.error(f"[GitHub] 所有策略均请求失败，URL: {url}，请检查网络连接或 GitHub 配置")
         return None
 
-    @cached(maxsize=128, ttl=1800)
+    @cached(maxsize=128, ttl=1800)  # type: ignore[misc]  # 缓存装饰器暂未提供泛型签名
     async def async_get_plugin_index_result(
             self,
             repo_url: str,
             package_version: Optional[str] = None,
-    ) -> PluginIndexLoadResult:
-        """异步读取插件索引并保留存在、不存在与失败三态。"""
-        try:
-            request = self._build_plugin_index_request(repo_url, package_version)
-            if request is None:
-                return PluginIndexLoadResult.failed("插件仓库地址无效")
-            package_url, headers = request
-            res = await self.__async_request_with_fallback(
-                package_url,
-                headers=headers,
-            )
-            if res is None:
-                return PluginIndexLoadResult.failed("插件索引请求失败：连接失败")
-            if res.status_code == 404:
-                return PluginIndexLoadResult.absent()
-            if res.status_code != 200:
-                return PluginIndexLoadResult.failed(
-                    f"插件索引请求失败：HTTP {res.status_code}"
-                )
-            payload = self.__parse_plugin_index_response(res.text)
-            if payload is None:
-                return PluginIndexLoadResult.failed("插件索引响应格式无效")
-            return PluginIndexLoadResult.present(payload)
-        except Exception as error:  # noqa: BLE001 - 读取端口统一返回失败事实
-            message = str(error).strip() or error.__class__.__name__
-            return PluginIndexLoadResult.failed(f"插件索引读取失败：{message}")
+    ) -> Optional[Dict[str, Dict[str, Any]]]:
+        """异步读取插件索引；404 返回 None，读取失败由调用方记录。"""
+        request = self._build_plugin_index_request(repo_url, package_version)
+        if request is None:
+            raise ValueError("插件仓库地址无效")
+        package_url, headers = request
+        res = await self.__async_request_with_fallback(
+            package_url,
+            headers=headers,
+        )
+        if res is None:
+            raise RuntimeError("插件索引请求失败：连接失败")
+        if res.status_code == 404:
+            return None
+        if res.status_code != 200:
+            raise RuntimeError(f"插件索引请求失败：HTTP {res.status_code}")
+        payload = self.__parse_plugin_index_response(res.text)
+        if payload is None:
+            raise RuntimeError("插件索引响应格式无效")
+        return payload
 
     @cached(maxsize=128, ttl=1800)
     async def async_get_plugins(self, repo_url: str,
@@ -3106,17 +3186,34 @@ class PluginHelper(metaclass=WeakSingleton):
                             release_version: Optional[str] = None,
                             force_install: bool = False) -> Tuple[bool, str]:
         """
-        异步安装插件，包括版本检查、内容准备、生效清单依赖安装和失败恢复。
+        通过宿主统一 Gateway 安装插件，保留第三方插件使用的异步兼容 API。
         :param pid: 插件 ID
         :param repo_url: 插件仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
         :param release_version: 指定安装的 release 资产版本；未指定时安装当前索引版本
-        :param force_install: 是否强制安装插件，默认不启用，启用时不进行备份和恢复操作
+        :param force_install: 是否替换已存在的插件载荷
         :return: (是否成功, 错误信息)
         """
+        return await _async_plugin_install_gateway(
+            pid,
+            repo_url,
+            package_version,
+            release_version,
+            force_install,
+        )
+
+    async def __async_install_package(
+            self,
+            pid: str,
+            repo_url: str,
+            package_version: Optional[str] = None,
+            release_version: Optional[str] = None,
+            force_install: bool = False,
+    ) -> Tuple[bool, str]:
+        """执行已通过来源准入的异步包安装，不负责身份或运行态提交。"""
         if self.is_local_repo_url(repo_url):
             return await _await_thread_operation(
-                self.install_local,
+                self.__install_local_package,
                 pid,
                 repo_url,
                 force_install,
@@ -3251,7 +3348,6 @@ class PluginHelper(metaclass=WeakSingleton):
                     logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
                 return False, dep_msg
 
-            await _await_thread_operation(self.refresh_persistent_plugin_backup, pid)
             return True, ""
         except asyncio.CancelledError:
             logger.warning(

@@ -8,6 +8,7 @@ from typing import Awaitable, Callable
 
 from fastapi import FastAPI
 
+from app.application.plugin.recovery import get_plugin_installation_recovery
 from app.startup.initializers.cache import configure_cache_dependencies
 
 # 缓存装饰器会在业务模块导入时创建后端，必须先完成适配器装配。
@@ -96,8 +97,8 @@ async def init_extra():
         return
     plugin_manager = get_plugin_manager()
     try:
-        async with plugin_lifecycle.hold_startup():
-            if await sync_plugins():
+        async with plugin_lifecycle.hold_startup() as startup_token:
+            if await sync_plugins(startup_token):
                 await execute_task(
                     global_vars.loop,
                     init_plugin_scheduler,
@@ -305,10 +306,11 @@ async def stop_task_registry(app: FastAPI) -> bool:
     return await task_registry.shutdown(timeout_seconds=30.0)
 
 
-def prepare_plugin_restore() -> None:
-    """先装配插件外部系统服务，再恢复插件及其依赖。"""
+async def prepare_plugin_restore() -> None:
+    """先恢复未完成安装事务，再加载持久插件备份及其依赖。"""
     configure_plugin_services()
-    SystemChain().restore_plugins()
+    await get_plugin_installation_recovery().replay()
+    await run_in_threadpool_to_completion(SystemChain().restore_plugins)
 
 
 def schedule_plugin_settlement(app: FastAPI) -> None:

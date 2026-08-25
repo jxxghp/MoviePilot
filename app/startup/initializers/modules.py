@@ -4,8 +4,14 @@ import sys
 from typing import Callable
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
+from app.application.plugin.transaction import (
+    PluginPersistenceService,
+    configure_plugin_persistence,
+)
 from app.chain.mediaserver import MediaServerChain
 from app.chain.tmdb import TmdbChain
+from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
+from app.db.adapters.plugininstallation import TransactionalPluginInstallationStore
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
@@ -198,7 +204,7 @@ async def stop_database_worker() -> None:
 
 async def _initialize_configuration_services(
     database_worker: DatabaseWorker,
-) -> None:
+) -> SystemConfigOper:
     """加载完整配置快照后发布系统与用户配置服务。"""
     system_config = SystemConfigOper()
     user_config = UserConfigOper()
@@ -216,6 +222,7 @@ async def _initialize_configuration_services(
             async_executor=database_worker,
         )
     )
+    return system_config
 
 
 def _build_runtime_settings_service() -> RuntimeSettingsService:
@@ -699,13 +706,23 @@ async def init_modules() -> HostRuntime:
     await database_worker.start()
     _database_worker = database_worker
     try:
-        await _initialize_configuration_services(database_worker)
+        system_config = await _initialize_configuration_services(database_worker)
     except BaseException:
         try:
             await stop_database_worker()
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
+    configure_plugin_persistence(
+        PluginPersistenceService(
+            executor=database_worker,
+            identities=TransactionalPluginIdentityStore(SessionFactory),
+            installations=TransactionalPluginInstallationStore(
+                SessionFactory,
+                system_config.update_atomically,
+            ),
+        )
+    )
     # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
     api_data = ApiDataPorts(
         sync_session=get_db,

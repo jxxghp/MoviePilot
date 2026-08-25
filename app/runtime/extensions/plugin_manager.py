@@ -68,7 +68,6 @@ from app.schemas.types import EventType, SystemConfigKey
 LegacyDiagnosticsConfigurator = Callable[..., None]
 LegacyImportScanner = Callable[..., None]
 LegacyPluginImportPreparer = Callable[..., None]
-PluginInstallReporter = Callable[..., None]
 SiteAuthLevelProvider = Callable[[], int]
 PluginCatalogFactory = Callable[["PluginManager"], Any]
 PluginRouteRefresher = Callable[[str], None]
@@ -122,7 +121,6 @@ _legacy_import_scanner: LegacyImportScanner = _ignore_legacy_diagnostics
 _legacy_plugin_import_preparer: LegacyPluginImportPreparer = (
     _ignore_plugin_resource_imports
 )
-_plugin_install_reporter: PluginInstallReporter = _ignore_legacy_diagnostics
 _site_auth_level_provider: SiteAuthLevelProvider = _unavailable_site_auth_level
 _plugin_catalog_factory: PluginCatalogFactory = _unavailable_plugin_catalog_factory
 _plugin_route_refresher: PluginRouteRefresher = _unavailable_plugin_route_refresher
@@ -145,12 +143,6 @@ def configure_plugin_resource_import_preparer(
     """注入旧插件导入前的宿主资源准备器。"""
     global _legacy_plugin_import_preparer
     _legacy_plugin_import_preparer = preparer
-
-
-def configure_plugin_install_reporter(reporter: PluginInstallReporter) -> None:
-    """由启动组合根注入插件安装上报器，避免扩展层依赖远程服务。"""
-    global _plugin_install_reporter
-    _plugin_install_reporter = reporter
 
 
 def configure_site_auth_level_provider(provider: SiteAuthLevelProvider) -> None:
@@ -317,12 +309,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 plugin_id,
                 version,
             ),
-            install=lambda plugin_id, repo_url, force: get_plugin_system().package.install(
+            install=lambda plugin_id, repo_url, force, startup_token: get_plugin_system().install_plugin(
                 plugin_id=plugin_id,
                 repo_url=repo_url,
-                force_install=force,
+                force=force,
+                startup_token=startup_token,
             ),
-            report=lambda **kwargs: _plugin_install_reporter(**kwargs),
             log=logger,
         )
         self._plugin_clone = PluginCloneService(
@@ -826,13 +818,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             log=logger,
         ).clear_modules(plugin_id)
 
-    def sync(self) -> List[str]:
+    def sync(self, startup_token: object | None = None) -> List[str]:
         """
         安装本地不存在或需要更新的插件
         """
 
         with self.mutation("同步插件包"):
-            return self._plugin_sync.sync()
+            return self._plugin_sync.sync(startup_token)
 
     @staticmethod
     def install_plugin_missing_dependencies() -> List[str]:

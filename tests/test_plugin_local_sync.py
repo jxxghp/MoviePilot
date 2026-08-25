@@ -8,17 +8,40 @@ import pytest
 from packaging.version import Version
 from watchfiles import Change
 
+from app.adapters.external.market import PluginHelper
+from app.foundation.singleton import Singleton
 from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager
-from app.adapters.external.market import PluginHelper
+from app.runtime.extensions.plugin.system import get_plugin_system
 from app.scheduler import Scheduler
 from app.schemas.types import EventType, SystemConfigKey
-from app.foundation.singleton import Singleton
 
 
 @pytest.fixture
-def plugin_manager() -> Iterator[PluginManager]:
+def plugin_manager(monkeypatch) -> Iterator[PluginManager]:
     """构造隔离的插件管理器实例，避免单例状态污染其它用例。"""
+    system = get_plugin_system()
+
+    def install_local(**kwargs) -> tuple[bool, str]:
+        """用测试包适配器模拟已通过来源准入的本地 Gateway。"""
+        repo_url = kwargs["repo_url"]
+        candidate = system.local_candidate(
+            kwargs["plugin_id"],
+            package_version=kwargs.get("package_version"),
+            repo_path=PluginHelper.parse_local_repo_path(repo_url),
+            strict_system_version=False,
+        )
+        if not candidate:
+            return False, "本地候选不存在"
+        return (
+            system.package.sync_local(
+                kwargs["plugin_id"],
+                Path(candidate["path"]),
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(system, "install", install_local)
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
     manager = PluginManager()
     yield manager
@@ -65,6 +88,7 @@ def _configure_local_watcher(
         PLUGIN_LOCAL_REPO_PATHS=str(repo_path),
         ROOT_PATH=tmp_path,
         TEMP_PATH=tmp_path / "temp",
+        CONFIG_PATH=tmp_path / "config",
         VERSION_FLAG="v2",
     )
     monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
@@ -143,6 +167,7 @@ def test_dev_local_plugin_candidate_keeps_hot_sync_allowed_when_system_version_l
         DEV=True,
         ROOT_PATH=tmp_path,
         TEMP_PATH=tmp_path / "temp",
+        CONFIG_PATH=tmp_path / "config",
     )
     monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
     monkeypatch.setattr("app.adapters.system.plugin.package.settings", settings_stub)

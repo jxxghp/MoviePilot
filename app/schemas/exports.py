@@ -292,6 +292,8 @@ SCHEMA_EXPORTS = {
     'PluginRuntimeStatus': ('app.schemas.plugin', 'PluginRuntimeStatus'),
     'PluginRuntimeSummary': ('app.schemas.plugin', 'PluginRuntimeSummary'),
     'PluginSidebarNavItem': ('app.schemas.plugin', 'PluginSidebarNavItem'),
+    'PluginSourceChangeRequest': ('app.schemas.plugin', 'PluginSourceChangeRequest'),
+    'PluginSourceIdentity': ('app.schemas.plugin', 'PluginSourceIdentity'),
     'PluginTriggeredEventData': ('app.schemas.event', 'PluginTriggeredEventData'),
     'PluginWorkflowActionGroup': ('app.schemas.workflow', 'PluginWorkflowActionGroup'),
     'ProcessInfo': ('app.schemas.dashboard', 'ProcessInfo'),

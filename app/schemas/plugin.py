@@ -128,6 +128,47 @@ class PluginCloneRequest(BaseModel):
     )
 
 
+class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
+    """显式换源确认所需的插件来源身份投影。"""
+
+    plugin_id: str = Field(description="物理插件 ID")
+    trusted_source_type: str = Field(description="当前可信在线来源类型")
+    trusted_source_key: Optional[str] = Field(
+        default=None,
+        description="规范化的可信在线来源键；未绑定时为空",
+    )
+    binding_basis: str = Field(description="当前可信来源的建立依据")
+    payload_source_type: str = Field(description="最近一次已提交载荷的来源类型")
+    payload_source_key: Optional[str] = Field(
+        default=None,
+        description="最近一次在线载荷的来源键；本地或未知载荷为空",
+    )
+    revision: int = Field(ge=1, description="显式换源使用的身份 CAS revision")
+
+
+class PluginSourceChangeRequest(BaseModel):  # type: ignore[misc]
+    """管理员显式切换插件在线来源的请求参数。"""
+
+    repo_url: str = Field(min_length=1, description="明确选择的目标插件仓库地址")
+    expected_revision: int = Field(
+        ge=1,
+        description="提交换源时必须匹配的当前身份 revision",
+    )
+    release_version: Optional[str] = Field(
+        default=None,
+        description="指定安装的 Release 资产版本；为空时使用当前索引版本",
+    )
+
+    @field_validator("repo_url")  # type: ignore[misc]
+    @classmethod
+    def normalize_repo_url(cls, value: str) -> str:
+        """拒绝只含空白的仓库地址，并移除首尾空白。"""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("显式换源必须指定目标在线来源")
+        return normalized
+
+
 class PluginDashboard(Plugin):
     """
     插件仪表盘

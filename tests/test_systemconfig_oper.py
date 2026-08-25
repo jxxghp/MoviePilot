@@ -117,6 +117,42 @@ def test_failed_write_keeps_committed_snapshot(monkeypatch):
     assert oper.get(key) == "old"
 
 
+def test_update_atomically_commits_related_records_and_snapshot() -> None:
+    """关联记录与最终配置值必须在同一事务成功后一起可见。"""
+    key = _unique_key()
+    related_key = _unique_key()
+    oper = _fresh_oper()
+    oper.set(key, ["ExistingPlugin"])
+
+    def mutation(session, current):
+        session.add(SystemConfig(key=related_key, value={"phase": "committed"}))
+        return "done", [*current, "DemoPlugin"]
+
+    assert oper.update_atomically(key, mutation) == "done"
+    assert oper.get(key) == ["ExistingPlugin", "DemoPlugin"]
+    assert _stored_config(key).value == ["ExistingPlugin", "DemoPlugin"]
+    assert _stored_config(related_key).value == {"phase": "committed"}
+
+
+def test_update_atomically_keeps_snapshot_when_related_write_fails() -> None:
+    """关联写失败时配置数据库值和内存快照都保持最近提交状态。"""
+    key = _unique_key()
+    related_key = _unique_key()
+    oper = _fresh_oper()
+    oper.set(key, ["ExistingPlugin"])
+
+    def mutation(session, _current):
+        session.add(SystemConfig(key=related_key, value=True))
+        raise RuntimeError("related write failed")
+
+    with pytest.raises(RuntimeError, match="related write failed"):
+        oper.update_atomically(key, mutation)
+
+    assert oper.get(key) == ["ExistingPlugin"]
+    assert _stored_config(key).value == ["ExistingPlugin"]
+    assert _stored_config(related_key) is None
+
+
 def test_increment_serializes_concurrent_counter_updates(monkeypatch):
     """并发递增系统计数时不应丢失更新。"""
     oper = object.__new__(SystemConfigOper)

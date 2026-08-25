@@ -12,7 +12,11 @@ def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:
     """构造使用隔离运行目录和事务目录的插件包管理器。"""
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.settings",
-        SimpleNamespace(ROOT_PATH=tmp_path, TEMP_PATH=tmp_path / "temp"),
+        SimpleNamespace(
+            ROOT_PATH=tmp_path,
+            TEMP_PATH=tmp_path / "temp",
+            CONFIG_PATH=tmp_path / "config",
+        ),
     )
     return PluginPackageManager(helper=Mock())
 
@@ -64,6 +68,145 @@ def test_rollback_does_not_delete_package_when_snapshot_is_missing(monkeypatch, 
         manager.rollback(checkpoint)
 
     assert (plugin_dir / "__init__.py").read_text(encoding="utf-8") == "new"
+
+
+def test_durable_checkpoint_stages_backup_without_overwriting_current_backup(
+    monkeypatch,
+    tmp_path,
+):
+    """数据库提交前只准备新备份，现有容器恢复材料保持可用。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.SystemUtils.is_docker",
+        lambda: True,
+    )
+    plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
+    backup_dir = tmp_path / "config" / "plugins_backup" / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    backup_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("new", encoding="utf-8")
+    (backup_dir / "__init__.py").write_text("old", encoding="utf-8")
+
+    checkpoint = manager.checkpoint("DemoPlugin", "txn-1")
+    manager.stage_persistent_backup(checkpoint)
+
+    assert checkpoint.transaction_dir.parent == tmp_path / "config" / "plugin_transactions"
+    assert (backup_dir / "__init__.py").read_text(encoding="utf-8") == "old"
+    assert checkpoint.backup_staging_dir is not None
+    assert (checkpoint.backup_staging_dir / "__init__.py").read_text(
+        encoding="utf-8"
+    ) == "new"
+
+
+def test_activate_and_finalize_persistent_backup_are_retryable(monkeypatch, tmp_path):
+    """备份激活保留旧载荷，数据库提交后的清理可以重复执行。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.SystemUtils.is_docker",
+        lambda: True,
+    )
+    plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
+    backup_dir = tmp_path / "config" / "plugins_backup" / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    backup_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("new", encoding="utf-8")
+    (backup_dir / "__init__.py").write_text("old", encoding="utf-8")
+    checkpoint = manager.checkpoint("DemoPlugin", "txn-2")
+    manager.stage_persistent_backup(checkpoint)
+
+    manager.activate_persistent_backup(checkpoint)
+    manager.activate_persistent_backup(checkpoint)
+
+    assert (backup_dir / "__init__.py").read_text(encoding="utf-8") == "new"
+    assert checkpoint.backup_staging_dir is not None
+    assert not checkpoint.backup_staging_dir.exists()
+    assert checkpoint.backup_previous_dir is not None
+    assert (checkpoint.backup_previous_dir / "__init__.py").read_text(
+        encoding="utf-8"
+    ) == "old"
+
+    manager.finalize_persistent_backup(checkpoint)
+    manager.finalize_persistent_backup(checkpoint)
+
+    assert not checkpoint.backup_previous_dir.exists()
+
+
+def test_rollback_removes_staging_but_preserves_current_backup(monkeypatch, tmp_path):
+    """提交前失败只恢复运行目录，不修改上一份容器恢复备份。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.SystemUtils.is_docker",
+        lambda: True,
+    )
+    plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
+    backup_dir = tmp_path / "config" / "plugins_backup" / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    backup_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("old-runtime", encoding="utf-8")
+    (backup_dir / "__init__.py").write_text("old-backup", encoding="utf-8")
+    checkpoint = manager.checkpoint("DemoPlugin", "txn-3")
+    (plugin_dir / "__init__.py").write_text("new-runtime", encoding="utf-8")
+    manager.stage_persistent_backup(checkpoint)
+
+    manager.rollback(checkpoint)
+
+    assert (plugin_dir / "__init__.py").read_text(encoding="utf-8") == "old-runtime"
+    assert (backup_dir / "__init__.py").read_text(encoding="utf-8") == "old-backup"
+    assert checkpoint.backup_staging_dir is not None
+    assert not checkpoint.backup_staging_dir.exists()
+
+
+def test_rollback_after_backup_activation_restores_previous_backup(
+    monkeypatch,
+    tmp_path,
+):
+    """数据库提交前失败时，已激活的新备份必须回退到上一份载荷。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.SystemUtils.is_docker",
+        lambda: True,
+    )
+    plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
+    backup_dir = tmp_path / "config" / "plugins_backup" / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    backup_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("old-runtime", encoding="utf-8")
+    (backup_dir / "__init__.py").write_text("old-backup", encoding="utf-8")
+    checkpoint = manager.checkpoint("DemoPlugin", "txn-4")
+    (plugin_dir / "__init__.py").write_text("new-runtime", encoding="utf-8")
+    manager.stage_persistent_backup(checkpoint)
+    manager.activate_persistent_backup(checkpoint)
+
+    manager.rollback(checkpoint)
+
+    assert (plugin_dir / "__init__.py").read_text(encoding="utf-8") == "old-runtime"
+    assert (backup_dir / "__init__.py").read_text(encoding="utf-8") == "old-backup"
+
+
+def test_restore_checkpoint_derives_only_controlled_paths(monkeypatch, tmp_path):
+    """崩溃回放只按事务 ID 在受控根目录内重建文件引用。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.SystemUtils.is_docker",
+        lambda: True,
+    )
+
+    checkpoint = manager.restore_checkpoint(
+        plugin_id="DemoPlugin",
+        transaction_id="txn-5",
+        plugin_existed=True,
+        persistent_backup_existed=False,
+    )
+
+    assert checkpoint.transaction_dir == (
+        tmp_path / "config" / "plugin_transactions" / "txn-5"
+    )
+    assert checkpoint.backup_staging_dir == (
+        tmp_path / "config" / "plugins_backup" / ".demoplugin.staging-txn-5"
+    )
+    assert checkpoint.backup_previous_dir == (
+        tmp_path / "config" / "plugins_backup" / ".demoplugin.previous-txn-5"
+    )
 
 
 def test_local_sync_failure_restores_previous_runtime_copy(monkeypatch, tmp_path):

@@ -396,7 +396,12 @@ class CandidateInventory:
     @property
     def can_use_for_tofu(self) -> bool:
         """判断快照是否足以证明唯一第三方来源。"""
-        return self.complete and self.local_read.status is not LocalCandidateReadStatus.FAILED
+        local_read = self.local_read
+        return (
+            self.complete
+            and local_read is not None
+            and local_read.status is not LocalCandidateReadStatus.FAILED
+        )
 
     @property
     def online_candidates(self) -> tuple[PluginMarketCandidate, ...]:
@@ -428,10 +433,13 @@ class CandidateInventory:
 
     def public_dict(self) -> dict[str, Any]:
         """生成完整库存的脱敏投影，不泄漏本地路径或原始 DTO。"""
+        local_read = self.local_read
+        if local_read is None:
+            raise RuntimeError("候选清单缺少本地读取终态")
         return {
             "markets": [read.public_dict() for read in self.market_reads],
             "local_candidates": [candidate.public_dict() for candidate in self.local_candidates],
-            "local_read": self.local_read.public_dict(),
+            "local_read": local_read.public_dict(),
             "complete": self.complete,
         }
 
@@ -529,10 +537,12 @@ def select_plugin_candidate(
         raise TypeError("本地候选必须是 PluginLocalCandidate")
     if any(candidate.normalized_plugin_id != normalized_id for candidate in local):
         raise ValueError("本地候选的插件 ID 必须与选择目标一致")
+    local_read = inventory.local_read
     if (
         requested_source is None
         and not local
-        and inventory.local_read.status is LocalCandidateReadStatus.FAILED
+        and local_read is not None
+        and local_read.status is LocalCandidateReadStatus.FAILED
     ):
         return PluginSelection(
             status=PluginSelectionStatus.INCOMPLETE,

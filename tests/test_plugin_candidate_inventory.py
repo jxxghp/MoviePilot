@@ -3,11 +3,7 @@
 import pytest
 
 from app.application.plugin.identity import TrustedPluginSourceType
-from app.application.plugin.inventory import (
-    LocalCandidateLoadResult,
-    PluginCandidateInventoryReader,
-    PluginIndexLoadResult,
-)
+from app.application.plugin.inventory import PluginCandidateInventoryReader
 from app.application.plugin.source import LocalCandidateReadStatus, MarketReadStatus
 
 OFFICIAL_MARKET = "https://github.com/jxxghp/MoviePilot-Plugins"
@@ -109,7 +105,7 @@ def test_partial_generation_failure_blocks_tofu_but_keeps_successful_candidates(
     """某一代读取失败时保留其他代候选，但库存不能用于第三方 TOFU。"""
     def loader(_market: str, package_version: str | None, _force: bool):
         if package_version == "v2":
-            return None
+            raise TimeoutError("timeout")
         return {"DemoPlugin": {"version": "3.0.0", "v3": True}}
 
     inventory = PluginCandidateInventoryReader(market_loader=loader).load(
@@ -128,7 +124,7 @@ def test_absent_generation_is_complete_without_creating_candidates() -> None:
 
     def loader(_market: str, package_version: str | None, _force: bool):
         if package_version == "v2":
-            return PluginIndexLoadResult.absent()
+            return None
         return {"DemoPlugin": {"version": "3.0.0", "v3": True}}
 
     inventory = PluginCandidateInventoryReader(market_loader=loader).load(
@@ -147,7 +143,7 @@ def test_absent_generation_is_complete_without_creating_candidates() -> None:
 def test_empty_index_is_present_and_complete() -> None:
     """真实存在但为空的索引与 absent 保持可观察差异。"""
     inventory = PluginCandidateInventoryReader(
-        market_loader=lambda *_args: PluginIndexLoadResult.present({}),
+        market_loader=lambda *_args: {},
     ).load([THIRD_PARTY_MARKET])
 
     assert inventory.complete
@@ -158,12 +154,12 @@ def test_empty_index_is_present_and_complete() -> None:
     assert inventory.online_candidates == ()
 
 
-def test_explicit_failed_result_blocks_tofu() -> None:
-    """Adapter 明确报告失败时必须阻止唯一第三方来源 TOFU。"""
+def test_loader_exception_blocks_tofu() -> None:
+    """Adapter 读取失败时必须阻止唯一第三方来源 TOFU。"""
 
     def loader(_market: str, package_version: str | None, _force: bool):
         if package_version == "v2":
-            return PluginIndexLoadResult.failed("timeout")
+            raise TimeoutError("timeout")
         return {"DemoPlugin": {"version": "3.0.0", "v3": True}}
 
     inventory = PluginCandidateInventoryReader(market_loader=loader).load(
@@ -185,7 +181,7 @@ def test_local_scan_preserves_absent_present_and_failed_states() -> None:
     )
     present = PluginCandidateInventoryReader(
         market_loader=market_loader,
-        local_candidate_loader=lambda: LocalCandidateLoadResult.present({}),
+        local_candidate_loader=lambda: {},
     ).load([THIRD_PARTY_MARKET])
 
     def failed_loader():

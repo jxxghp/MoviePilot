@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.application.plugin.lifecycle import PluginStartupLease
 from app.runtime.config import global_vars
 from app.startup import lifecycle
 
@@ -12,10 +13,12 @@ from app.startup import lifecycle
 async def test_runtime_ready_waits_for_scheduler_and_command_refresh(monkeypatch) -> None:
     """插件 ready 只在调度任务和命令注册完成后对外可见。"""
     order: list[str] = []
+    startup_tokens: list[PluginStartupLease] = []
     manager = MagicMock()
     command_future = Future()
 
-    async def sync_plugins() -> bool:
+    async def sync_plugins(startup_token: PluginStartupLease) -> bool:
+        startup_tokens.append(startup_token)
         order.append("plugins")
         return True
 
@@ -70,3 +73,5 @@ async def test_runtime_ready_waits_for_scheduler_and_command_refresh(monkeypatch
         "settling:False",
         "monitor",
     ]
+    assert len(startup_tokens) == 1
+    assert isinstance(startup_tokens[0], PluginStartupLease)

@@ -1,153 +1,343 @@
+"""插件安装事务用例的端到端副作用顺序与补偿测试。"""
+
 import asyncio
-from contextlib import nullcontext
-from unittest.mock import AsyncMock, Mock, patch
+from contextlib import contextmanager, nullcontext
+from dataclasses import replace
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.schemas.exception import (
-    DatabaseWorkerClosedError,
-    DatabaseWorkerOverloadedError,
-    PersistenceUnavailableError,
+from app.application.plugin.admission import (
+    PluginInstallAdmission,
+    PluginInstallAdmissionRequest,
+    admit_plugin_install,
+)
+from app.application.plugin.identity import (
+    PluginBindingBasis,
+    PluginIdentity,
+    PluginPayloadSourceType,
+    TrustedPluginSourceType,
 )
 from app.application.plugin.install import PluginInstallCommand
-from app.runtime.extensions.plugin.admission import PluginMutationAdmission
+from app.application.plugin.source import (
+    CandidateInventory,
+    MarketRead,
+    PluginMarketCandidate,
+)
+from app.application.plugin.transaction import (
+    PluginInstallationPhase,
+    PluginInstallationRecord,
+)
+from app.schemas.exception import (
+    DatabaseWorkerClosedError,
+    PersistenceUnavailableError,
+    PluginMutationRejectedError,
+)
+
+
+NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
+REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
+SOURCE_KEY = "github:jxxghp/moviepilot-plugins"
+RECEIPT = "sha256:" + "a" * 64
+
+
+def _identity(*, version: str = "1.0.0", revision: int = 1) -> PluginIdentity:
+    """构造与市场候选匹配的已提交来源身份。"""
+    return PluginIdentity(
+        plugin_id="DemoPlugin",
+        normalized_plugin_id="demoplugin",
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key=SOURCE_KEY,
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        payload_source_type=PluginPayloadSourceType.OFFICIAL,
+        payload_source_key=SOURCE_KEY,
+        declared_version=version,
+        package_generation="v3",
+        system_version=None,
+        supports_v3=True,
+        supports_v3t=False,
+        payload_receipt=RECEIPT,
+        revision=revision,
+        created_at=NOW,
+        updated_at=NOW,
+        bound_at=NOW,
+        payload_applied_at=NOW,
+    )
+
+
+def _admission(
+    *,
+    identity: PluginIdentity | None = None,
+    version: str = "1.0.0",
+) -> PluginInstallAdmission:
+    """冻结一个可供安装用例消费的官方 V3 候选。"""
+    candidate = PluginMarketCandidate(
+        plugin_id="DemoPlugin",
+        source_key=SOURCE_KEY,
+        source_type=TrustedPluginSourceType.OFFICIAL,
+        repo_url=REPO_URL,
+        package_generation="v3",
+        plugin_version=version,
+        dto={"v3": True},
+    )
+    inventory = CandidateInventory(
+        (
+            MarketRead.present(
+                REPO_URL,
+                (candidate,),
+                package_generation="v3",
+            ),
+        )
+    )
+    return admit_plugin_install(
+        inventory,
+        request=PluginInstallAdmissionRequest(
+            plugin_id="DemoPlugin",
+            generations=("v3", "v2", "v1"),
+            requested_repo_url=REPO_URL,
+            explicit_source=identity is None,
+        ),
+        identity=identity,
+        now=NOW,
+    )
+
+
+class _PersistenceSpy:
+    """记录安装 journal 的异步状态转移，并允许注入持久化失败。"""
+
+    def __init__(
+        self,
+        calls: list[str],
+        *,
+        create_error: Exception | None = None,
+        target_error: Exception | None = None,
+        commit_error: Exception | None = None,
+        delete_error: Exception | None = None,
+    ) -> None:
+        self.calls = calls
+        self.records: dict[str, PluginInstallationRecord] = {}
+        self.create_error = create_error
+        self.target_error = target_error
+        self.commit_error = commit_error
+        self.delete_error = delete_error
+
+    async def create_installation(
+        self,
+        record: PluginInstallationRecord,
+    ) -> PluginInstallationRecord:
+        """保存 PREPARED journal。"""
+        self.calls.append("journal_create")
+        if self.create_error:
+            raise self.create_error
+        self.records[record.transaction_id] = record
+        return record
+
+    async def get_installation(
+        self,
+        transaction_id: str,
+    ) -> PluginInstallationRecord | None:
+        """返回 journal 创建结果，模拟超时后的确认读取。"""
+        self.calls.append("journal_get")
+        return self.records.get(transaction_id)
+
+    async def set_installation_target(
+        self,
+        transaction_id: str,
+        *,
+        membership_target: bool,
+        identity_target: PluginIdentity | None,
+    ) -> PluginInstallationRecord:
+        """保存最终 membership 与身份 revision。"""
+        self.calls.append("journal_target")
+        if self.target_error:
+            raise self.target_error
+        record = self.records[transaction_id]
+        record = replace(
+            record,
+            membership_target=membership_target,
+            identity_target_revision=(
+                identity_target.revision if identity_target else None
+            ),
+        )
+        self.records[transaction_id] = record
+        return record
+
+    async def commit_installation(
+        self,
+        transaction_id: str,
+        *,
+        identity_target: PluginIdentity | None,
+    ) -> PluginInstallationRecord:
+        """把 journal 推进到 COMMITTED。"""
+        self.calls.append("journal_commit")
+        if self.commit_error:
+            raise self.commit_error
+        record = self.records[transaction_id]
+        record = replace(
+            record,
+            phase=PluginInstallationPhase.COMMITTED,
+            membership_target=True,
+            identity_target_revision=(
+                identity_target.revision if identity_target else None
+            ),
+        )
+        self.records[transaction_id] = record
+        return record
+
+    async def delete_installation(
+        self,
+        transaction_id: str,
+        *,
+        expected_phase: PluginInstallationPhase,
+    ) -> bool:
+        """按 phase 删除已补偿或已收尾 journal。"""
+        self.calls.append("journal_delete")
+        if self.delete_error:
+            raise self.delete_error
+        record = self.records.get(transaction_id)
+        if record is None or record.phase is not expected_phase:
+            return False
+        del self.records[transaction_id]
+        return True
 
 
 def _command(
     *,
-    installed=None,
-    plugin_ids=None,
-    compatibility=None,
+    persistence: _PersistenceSpy | None = None,
+    installed: list[str] | None = None,
+    plugin_ids: list[str] | None = None,
     installer=None,
-    reporter=None,
-    writer=None,
-    reloader=None,
-    refresher=None,
     checkpointer=None,
-    committer=None,
-    rollback=None,
+    package_restore=None,
+    package_rollback=None,
+    package_cleanup=None,
+    package_stage_backup=None,
+    package_activate_backup=None,
+    package_finalize_backup=None,
+    package_commit=None,
+    payload_receipt=None,
+    reporter=None,
+    target_reloader=None,
+    rollback_reloader=None,
+    registration_refresher=None,
     mutation=None,
     package_write_guard=None,
-):
-    """构造可观测每一步副作用的插件安装命令。"""
-    return PluginInstallCommand(
-        installed_plugins_reader=Mock(return_value=installed or []),
-        installed_plugins_writer=writer or AsyncMock(),
-        plugin_ids_provider=Mock(return_value=plugin_ids or []),
-        compatibility_checker=compatibility or AsyncMock(return_value=None),
-        package_installer=installer or AsyncMock(return_value=(True, "ok")),
-        package_checkpointer=checkpointer or AsyncMock(return_value=object()),
-        package_committer=committer or AsyncMock(),
-        package_rollback=rollback or AsyncMock(),
-        install_reporter=reporter or AsyncMock(),
-        plugin_reloader=reloader or AsyncMock(),
-        registration_refresher=refresher or AsyncMock(),
-        mutation=mutation or (lambda _operation: nullcontext()),
-        package_write_guard=package_write_guard
-        or (lambda _plugin_id: nullcontext()),
+    transaction_id: str = "txn-demo",
+) -> tuple[PluginInstallCommand, _PersistenceSpy, list[str]]:
+    """构造只含窄端口的安装命令，并返回可观测调用记录。"""
+    calls: list[str] = persistence.calls if persistence else []
+    persistence = persistence or _PersistenceSpy(calls)
+    checkpoint = SimpleNamespace(
+        plugin_existed=False,
+        persistent_backup_existed=False,
     )
 
-
-@pytest.mark.asyncio
-async def test_install_failure_stops_before_report_persistence_and_reload():
-    """包安装失败后恢复文件快照，且不得写配置、刷新或上报。"""
-    reporter = AsyncMock()
-    writer = AsyncMock()
-    reloader = AsyncMock()
-    rollback = AsyncMock()
-    command = _command(
-        installer=AsyncMock(return_value=(False, "download failed")),
-        reporter=reporter,
-        writer=writer,
-        reloader=reloader,
-        rollback=rollback,
-    )
-
-    result = await command.execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
-    )
-
-    assert result.success is False
-    assert result.package_installed is False
-    assert result.failure_stage == "package_install"
-    assert result.rollback.file_restored is True
-    assert result.rollback.dependency_supported is False
-    assert "插件文件已恢复" not in result.message
-    assert "Python依赖变更不支持自动回滚" not in result.message
-    rollback.assert_awaited_once()
-    reporter.assert_not_awaited()
-    writer.assert_not_awaited()
-    reloader.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_sealed_install_rejects_before_package_guard_and_checkpoint() -> None:
-    """安装事务在封口后不进入监控抑制，也不创建文件快照。"""
-    admission = PluginMutationAdmission()
-    admission.seal()
-    package_guard = Mock(return_value=nullcontext())
-    checkpointer = AsyncMock()
-
-    result = await _command(
-        mutation=admission.hold,
-        package_write_guard=package_guard,
-        checkpointer=checkpointer,
-    ).execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
-    )
-
-    assert result.success is False
-    assert result.failure_stage == "admission"
-    assert "停机阶段" in result.message
-    package_guard.assert_not_called()
-    checkpointer.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_success_records_completed_install_stages_in_order():
-    """成功安装在提交文件快照后再执行非关键远程上报。"""
-    calls = []
-
-    async def install(*_args):
-        calls.append("package")
-        return True, "installed"
-
-    checkpoint = object()
-
-    async def create_checkpoint(_plugin_id):
+    async def default_checkpoint(_plugin_id: str, _transaction_id: str):
+        """返回事务级文件快照。"""
         calls.append("checkpoint")
         return checkpoint
 
-    async def commit(target):
-        assert target is checkpoint
-        calls.append("commit")
+    async def default_installer(**_kwargs):
+        """表示包载荷安装成功。"""
+        calls.append("package")
+        return True, "installed"
 
-    async def report(*_args):
+    async def default_receipt(_plugin_id: str):
+        """返回稳定的已落盘载荷收据。"""
+        calls.append("receipt")
+        return RECEIPT
+
+    async def default_reporter(_plugin_id: str, _repo_url: str | None):
+        """表示远程安装上报成功。"""
         calls.append("report")
+        return True
 
-    async def write(_plugins):
-        calls.append("persist")
-
-    async def reload(_plugin_id):
-        calls.append("reload")
-
-    async def refresh(_plugin_id):
-        calls.append("registrations")
-
-    result = await _command(
-        installer=install,
-        reporter=report,
-        writer=write,
-        reloader=reload,
-        refresher=refresh,
-        checkpointer=create_checkpoint,
-        committer=commit,
-    ).execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
+    packages = SimpleNamespace(
+        async_checkpoint=checkpointer or default_checkpoint,
+        async_install=installer or default_installer,
+        async_restore=package_restore or AsyncMock(),
+        async_cleanup=package_cleanup or AsyncMock(),
+        async_stage_persistent_backup=package_stage_backup or AsyncMock(),
+        async_activate_persistent_backup=package_activate_backup or AsyncMock(),
+        async_finalize_persistent_backup=package_finalize_backup or AsyncMock(),
+        async_commit=package_commit or AsyncMock(),
+        async_payload_receipt=payload_receipt or default_receipt,
     )
+    command = PluginInstallCommand(
+        persistence=persistence,
+        installed_plugins_reader=lambda: installed or [],
+        plugin_ids_provider=lambda: plugin_ids or [],
+        packages=packages,
+        install_reporter=reporter or default_reporter,
+        target_reloader=target_reloader or AsyncMock(),
+        rollback_reloader=rollback_reloader or AsyncMock(),
+        registration_refresher=registration_refresher or AsyncMock(),
+        mutation=mutation or (lambda _operation: nullcontext()),
+        package_write_guard=package_write_guard
+        or (lambda _plugin_id: nullcontext()),
+        clock=lambda: NOW,
+        transaction_id_factory=lambda: transaction_id,
+    )
+    return command, persistence, calls
+
+
+async def _execute(
+    command: PluginInstallCommand,
+    admission=None,
+    *,
+    release_version: str | None = None,
+    force: bool = False,
+    **kwargs,
+):
+    """执行测试安装并默认使用当前冻结候选。"""
+    return await command.execute(
+        admission=admission or _admission(),
+        release_version=release_version,
+        force=force,
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio
+async def test_success_commits_journal_before_report_and_cleans_package_snapshot():
+    """成功路径按快照、journal、运行态、数据库提交、清理和上报顺序执行。"""
+    calls: list[str] = []
+
+    def mark(name: str):
+        async def action(_value):
+            calls.append(name)
+
+        return action
+
+    async def installer(**_kwargs):
+        calls.append("package")
+        return True, "installed"
+
+    async def receipt(_plugin_id):
+        calls.append("receipt")
+        return RECEIPT
+
+    async def report(_plugin_id, _repo_url):
+        calls.append("report")
+        return True
+
+    persistence = _PersistenceSpy(calls)
+    command, _, _ = _command(
+        persistence=persistence,
+        installer=installer,
+        payload_receipt=receipt,
+        package_stage_backup=mark("stage_backup"),
+        package_activate_backup=mark("activate_backup"),
+        target_reloader=mark("target_reload"),
+        registration_refresher=mark("registrations"),
+        package_finalize_backup=mark("finalize_backup"),
+        package_commit=mark("package_commit"),
+        reporter=report,
+    )
+
+    result = await _execute(command)
 
     assert result.success is True
     assert result.package_installed is True
@@ -157,516 +347,559 @@ async def test_success_records_completed_install_stages_in_order():
     assert result.reported is True
     assert calls == [
         "checkpoint",
+        "journal_create",
         "package",
-        "persist",
-        "reload",
+        "receipt",
+        "journal_target",
+        "stage_backup",
+        "activate_backup",
+        "target_reload",
         "registrations",
-        "commit",
+        "journal_commit",
+        "finalize_backup",
+        "package_commit",
+        "journal_delete",
         "report",
     ]
+    assert persistence.records == {}
 
 
 @pytest.mark.asyncio
-async def test_existing_plugin_checks_compatibility_without_reinstalling_package():
-    """已存在插件只校验兼容性、上报和重载，不重复安装包。"""
-    installer = AsyncMock()
-    checkpointer = AsyncMock()
-    command = _command(
-        installed=["DemoPlugin"],
-        plugin_ids=["DemoPlugin"],
+async def test_package_rejection_restores_files_and_removes_prepared_journal():
+    """包安装返回失败时不得切换运行态，且必须删除 PREPARED journal。"""
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+    target_reloader = AsyncMock()
+    reporter = AsyncMock()
+
+    async def installer(**_kwargs):
+        return False, "download failed"
+
+    command, persistence, _ = _command(
         installer=installer,
-        checkpointer=checkpointer,
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
+        target_reloader=target_reloader,
+        reporter=reporter,
     )
 
-    result = await command.execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
-    )
-
-    assert result.success is True
-    assert result.refreshed_only is True
-    assert result.package_installed is False
-    assert result.installed_list_persisted is False
-    installer.assert_not_awaited()
-    checkpointer.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_cancelled_existing_plugin_refresh_restores_runtime_and_registrations():
-    """已存在插件刷新被取消时，必须重新收敛运行态和注册。"""
-    registration_started = asyncio.Event()
-    calls: list[str] = []
-
-    async def reload_plugin(_plugin_id: str) -> None:
-        calls.append("reload")
-
-    async def refresh_registrations(_plugin_id: str) -> None:
-        calls.append("registrations")
-        if calls.count("registrations") == 1:
-            registration_started.set()
-            await asyncio.Event().wait()
-
-    with patch("app.application.plugin.install.logger.warning") as warning:
-        task = asyncio.create_task(
-            _command(
-                installed=["DemoPlugin"],
-                plugin_ids=["DemoPlugin"],
-                reloader=reload_plugin,
-                refresher=refresh_registrations,
-            ).execute(
-                plugin_id="DemoPlugin",
-                repo_url="https://github.com/demo/plugins",
-            )
-        )
-        await registration_started.wait()
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-
-    assert calls == ["reload", "registrations", "reload", "registrations"]
-    warning.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_persistence_failure_restores_package_without_touching_runtime():
-    """已安装列表保存失败时恢复文件，且运行态尚未开始切换。"""
-    checkpoint = object()
-    rollback = AsyncMock()
-    reloader = AsyncMock()
-    command = _command(
-        checkpointer=AsyncMock(return_value=checkpoint),
-        writer=AsyncMock(side_effect=RuntimeError("db unavailable")),
-        rollback=rollback,
-        reloader=reloader,
-    )
-
-    result = await command.execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
-    )
+    result = await _execute(command)
 
     assert result.success is False
-    assert result.failure_stage == "installed_list_persistence"
+    assert result.failure_stage == "package_install"
     assert result.rollback.file_restored is True
-    assert result.rollback.installed_list_attempted is True
-    assert result.rollback.runtime_attempted is False
-    rollback.assert_awaited_once_with(checkpoint)
-    reloader.assert_not_awaited()
+    assert result.rollback.journal_deleted is True
+    package_restore.assert_awaited_once()
+    package_cleanup.assert_awaited_once()
+    target_reloader.assert_not_awaited()
+    reporter.assert_not_awaited()
+    assert persistence.records == {}
 
 
 @pytest.mark.asyncio
-async def test_persistence_exception_after_write_restores_installed_list():
-    """清单写入已提交后抛异常时，文件和清单必须一起恢复。"""
-    persisted: list[list[str]] = []
-    checkpoint = object()
-    rollback = AsyncMock()
-
-    async def write(plugin_ids: list[str]) -> None:
-        persisted.append(list(plugin_ids))
-        if len(persisted) == 1:
-            raise RuntimeError("write acknowledgement lost")
-
-    result = await _command(
-        checkpointer=AsyncMock(return_value=checkpoint),
-        writer=write,
-        rollback=rollback,
-    ).execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
+async def test_journal_create_failure_uses_legacy_rollback_without_journal_cleanup():
+    """journal 创建失败时使用兼容回滚，不尝试删除不存在的 journal。"""
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+    persistence = _PersistenceSpy(
+        [],
+        create_error=RuntimeError("database unavailable"),
+    )
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
     )
 
+    result = await _execute(command)
+
     assert result.success is False
-    assert result.failure_stage == "installed_list_persistence"
-    assert result.rollback.installed_list_attempted is True
-    assert result.rollback.installed_list_restored is True
-    assert persisted == [["DemoPlugin"], []]
-    rollback.assert_awaited_once_with(checkpoint)
+    assert result.failure_stage == "journal_prepare"
+    assert result.rollback.file_restored is True
+    package_restore.assert_awaited_once()
+    package_cleanup.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_persistence_unavailable_during_journal_prepare_is_rethrown():
+    """数据库 worker 暂不可用时完成无 journal 回滚后保留异常语义。"""
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+    persistence = _PersistenceSpy(
+        [],
+        create_error=DatabaseWorkerClosedError("worker closed"),
+    )
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
+    )
+
+    with pytest.raises(PersistenceUnavailableError):
+        await _execute(command)
+
+    package_restore.assert_awaited_once()
+    package_cleanup.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "error_type",
-    [DatabaseWorkerClosedError, DatabaseWorkerOverloadedError],
+    ("failure", "failure_stage", "runtime_touched"),
+    [
+        ("receipt", "payload_receipt", False),
+        ("target", "payload_receipt", False),
+        ("stage", "persistent_backup_stage", False),
+        ("activate", "persistent_backup_activate", False),
+        ("reload", "runtime_reload", True),
+        ("registrations", "registration_refresh", True),
+    ],
 )
-async def test_persistence_unavailable_rolls_back_and_reaches_api_boundary(
-        error_type: type[PersistenceUnavailableError],
-) -> None:
-    """持久化能力暂不可用时完成补偿并交由 API 映射为 503。"""
-    checkpoint = object()
-    rollback = AsyncMock()
-    command = _command(
-        checkpointer=AsyncMock(return_value=checkpoint),
-        writer=AsyncMock(side_effect=error_type("persistence unavailable")),
-        rollback=rollback,
+async def test_precommit_failure_restores_files_and_runtime(
+    failure: str,
+    failure_stage: str,
+    runtime_touched: bool,
+):
+    """每个提交前阶段失败都恢复文件，运行态失败还要恢复旧运行态。"""
+    package_restore = AsyncMock()
+    rollback_reloader = AsyncMock()
+    registration_refresher = AsyncMock()
+
+    async def failing_receipt(_plugin_id):
+        raise RuntimeError("receipt failed")
+
+    async def failing_stage(_value):
+        raise RuntimeError("backup stage failed")
+
+    async def failing_activate(_value):
+        raise RuntimeError("backup activation failed")
+
+    async def failing_reload(_plugin_id):
+        raise RuntimeError("reload failed")
+
+    registration_attempts = 0
+
+    async def failing_registrations(_plugin_id):
+        nonlocal registration_attempts
+        registration_attempts += 1
+        if registration_attempts == 1:
+            raise RuntimeError("registration failed")
+
+    persistence = _PersistenceSpy(
+        [],
+        target_error=RuntimeError("target failed") if failure == "target" else None,
+    )
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+        payload_receipt=(failing_receipt if failure == "receipt" else None),
+        package_stage_backup=(failing_stage if failure == "stage" else None),
+        package_activate_backup=(
+            failing_activate if failure == "activate" else None
+        ),
+        target_reloader=failing_reload if failure == "reload" else None,
+        rollback_reloader=rollback_reloader,
+        registration_refresher=(
+            failing_registrations
+            if failure == "registrations"
+            else registration_refresher
+        ),
     )
 
-    with pytest.raises(error_type):
-        await command.execute(
-            plugin_id="DemoPlugin",
-            repo_url="https://github.com/demo/plugins",
-        )
+    result = await _execute(command)
 
-    rollback.assert_awaited_once_with(checkpoint)
+    assert result.success is False
+    assert result.failure_stage == failure_stage
+    assert result.rollback.file_restored is True
+    assert result.rollback.journal_deleted is True
+    if runtime_touched:
+        rollback_reloader.assert_awaited_once_with("DemoPlugin")
+    else:
+        rollback_reloader.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_reload_failure_restores_list_files_and_previous_runtime():
-    """重载失败时依次恢复已安装列表、包文件和旧运行态。"""
-    calls = []
-    checkpoint = object()
-    reload_count = 0
-
-    async def write(plugin_ids):
-        calls.append(("persist", list(plugin_ids)))
-
-    async def rollback(target):
-        assert target is checkpoint
-        calls.append(("rollback", target))
-
-    async def reload(_plugin_id):
-        nonlocal reload_count
-        reload_count += 1
-        calls.append(("reload", reload_count))
-        if reload_count == 1:
-            raise RuntimeError("route registration failed")
-
-    async def refresh(_plugin_id):
-        calls.append(("registrations", reload_count))
-
-    result = await _command(
-        installed=[],
-        checkpointer=AsyncMock(return_value=checkpoint),
-        writer=write,
-        rollback=rollback,
-        reloader=reload,
-        refresher=refresh,
-    ).execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
+async def test_database_commit_failure_restores_runtime_before_deleting_journal():
+    """数据库最终提交失败时，文件、运行态和 PREPARED journal 必须一起补偿。"""
+    package_restore = AsyncMock()
+    rollback_reloader = AsyncMock()
+    persistence = _PersistenceSpy(
+        [],
+        commit_error=RuntimeError("commit failed"),
     )
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+        rollback_reloader=rollback_reloader,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is False
+    assert result.failure_stage == "database_commit"
+    assert result.rollback.file_restored is True
+    assert result.rollback.runtime_restored is True
+    assert result.rollback.journal_deleted is True
+    package_restore.assert_awaited_once()
+    rollback_reloader.assert_awaited_once_with("DemoPlugin")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_failure_keeps_committed_journal_for_replay():
+    """数据库已提交但清理失败时不能回滚载荷，journal 必须保留供启动重放。"""
+    package_finalize = AsyncMock(side_effect=RuntimeError("cleanup unavailable"))
+    rollback_reloader = AsyncMock()
+    command, persistence, _ = _command(
+        package_finalize_backup=package_finalize,
+        rollback_reloader=rollback_reloader,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is True
+    assert result.checkpoint_cleanup_error == "cleanup unavailable"
+    assert not result.rollback.file_attempted
+    assert persistence.records["txn-demo"].phase is PluginInstallationPhase.COMMITTED
+    rollback_reloader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_report_failure_does_not_rollback_committed_install():
+    """远程安装上报失败属于非关键副作用，不得撤销已提交本地安装。"""
+    package_restore = AsyncMock()
+    reporter = AsyncMock(side_effect=RuntimeError("server unavailable"))
+    command, persistence, _ = _command(
+        package_restore=package_restore,
+        reporter=reporter,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is True
+    assert result.reported is False
+    assert result.report_error == "server unavailable"
+    assert "不影响本地安装" in result.message
+    package_restore.assert_not_awaited()
+    assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_existing_matching_payload_only_refreshes_runtime():
+    """同一来源、代际和版本已提交时只刷新运行态，不重复写包或 journal。"""
+    checkpointer = AsyncMock()
+    installer = AsyncMock()
+    reloader = AsyncMock()
+    refresher = AsyncMock()
+    reporter = AsyncMock(return_value=True)
+    command, persistence, _ = _command(
+        installed=["DemoPlugin"],
+        plugin_ids=["DemoPlugin"],
+        checkpointer=checkpointer,
+        installer=installer,
+        target_reloader=reloader,
+        registration_refresher=refresher,
+        reporter=reporter,
+    )
+
+    result = await _execute(command, admission=_admission(identity=_identity()))
+
+    assert result.success is True
+    assert result.refreshed_only is True
+    assert result.package_installed is False
+    assert result.runtime_reloaded is True
+    checkpointer.assert_not_awaited()
+    installer.assert_not_awaited()
+    reloader.assert_awaited_once_with("DemoPlugin")
+    refresher.assert_awaited_once_with("DemoPlugin")
+    reporter.assert_awaited_once_with("DemoPlugin", REPO_URL)
+    assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_force_install_replaces_matching_payload_and_local_sync_skips_report():
+    """强制安装和本地同步都绕过刷新短路，本地同步还禁止远程上报。"""
+    installer = AsyncMock(return_value=(True, "synced"))
+    reporter = AsyncMock(return_value=True)
+    command, _, _ = _command(
+        installed=["DemoPlugin"],
+        plugin_ids=["DemoPlugin"],
+        installer=installer,
+        reporter=reporter,
+    )
+
+    result = await _execute(
+        command,
+        admission=_admission(identity=_identity()),
+        force=True,
+        local_sync=True,
+    )
+
+    assert result.success is True
+    assert result.refreshed_only is False
+    installer.assert_awaited_once_with(
+        plugin_id="DemoPlugin",
+        repo_url=REPO_URL,
+        package_version="v3",
+        release_version=None,
+        force_install=True,
+    )
+    reporter.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mutation_rejection_happens_before_package_write_guard():
+    """运行时封口后拒绝安装，不能进入包写入抑制或文件快照。"""
+    checkpointer = AsyncMock()
+    package_guard = Mock(return_value=nullcontext())
+
+    @contextmanager
+    def rejected(_operation):
+        raise PluginMutationRejectedError("安装插件 DemoPlugin")
+        yield
+
+    command, _, _ = _command(
+        checkpointer=checkpointer,
+        mutation=rejected,
+        package_write_guard=package_guard,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is False
+    assert result.failure_stage == "admission"
+    package_guard.assert_not_called()
+    checkpointer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_package_install_waits_for_compensation():
+    """包安装被取消时等待文件恢复和 journal 清理完成后再传播取消。"""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+
+    async def installer(**_kwargs):
+        started.set()
+        await release.wait()
+
+    command, persistence, _ = _command(
+        installer=installer,
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
+    )
+    task = asyncio.create_task(_execute(command))
+    await started.wait()
+    task.cancel()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    package_restore.assert_awaited_once()
+    package_cleanup.assert_awaited_once()
+    assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_cancelled_journal_create_resolves_persisted_record_before_rollback():
+    """PREPARED 已写入但调用被取消时，必须确认记录并完成补偿。"""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+    persistence = _PersistenceSpy([])
+
+    async def create(record: PluginInstallationRecord):
+        persistence.calls.append("journal_create")
+        persistence.records[record.transaction_id] = record
+        started.set()
+        await release.wait()
+        return record
+
+    persistence.create_installation = create
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
+    )
+    task = asyncio.create_task(_execute(command))
+    await started.wait()
+    task.cancel()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    package_restore.assert_awaited_once()
+    package_cleanup.assert_awaited_once()
+    assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_cancelled_prepared_commit_rolls_back_after_outcome_check():
+    """提交任务确定仍为 PREPARED 时，取消必须先完成旧载荷补偿。"""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    package_restore = AsyncMock()
+    rollback_reloader = AsyncMock()
+    persistence = _PersistenceSpy([])
+
+    async def commit(
+        transaction_id: str,
+        *,
+        identity_target: PluginIdentity | None,
+    ) -> PluginInstallationRecord:
+        del transaction_id, identity_target
+        persistence.calls.append("journal_commit")
+        started.set()
+        await release.wait()
+        raise RuntimeError("commit failed")
+
+    persistence.commit_installation = commit
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+        rollback_reloader=rollback_reloader,
+    )
+    task = asyncio.create_task(_execute(command))
+    await started.wait()
+    task.cancel()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    package_restore.assert_awaited_once()
+    rollback_reloader.assert_awaited_once_with("DemoPlugin")
+    assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_cancelled_committed_install_keeps_journal_for_startup_cleanup():
+    """数据库已提交后发生取消时不得回滚新载荷，journal 留给启动收尾。"""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    package_restore = AsyncMock()
+    package_finalize = AsyncMock()
+    persistence = _PersistenceSpy([])
+
+    async def commit(
+        transaction_id: str,
+        *,
+        identity_target: PluginIdentity | None,
+    ) -> PluginInstallationRecord:
+        record = replace(
+            persistence.records[transaction_id],
+            phase=PluginInstallationPhase.COMMITTED,
+            membership_target=True,
+            identity_target_revision=(
+                identity_target.revision if identity_target else None
+            ),
+        )
+        persistence.records[transaction_id] = record
+        started.set()
+        await release.wait()
+        return record
+
+    persistence.commit_installation = commit
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+        package_finalize_backup=package_finalize,
+    )
+    task = asyncio.create_task(_execute(command))
+    await started.wait()
+    task.cancel()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    package_restore.assert_not_awaited()
+    package_finalize.assert_not_awaited()
+    assert persistence.records["txn-demo"].phase is PluginInstallationPhase.COMMITTED
+
+
+@pytest.mark.asyncio
+async def test_commit_ack_failure_uses_committed_journal_as_final_fact():
+    """提交回执丢失但 journal 已为 COMMITTED 时继续完成新载荷收尾。"""
+    package_restore = AsyncMock()
+    persistence = _PersistenceSpy([])
+
+    async def commit(
+        transaction_id: str,
+        *,
+        identity_target: PluginIdentity | None,
+    ) -> PluginInstallationRecord:
+        record = replace(
+            persistence.records[transaction_id],
+            phase=PluginInstallationPhase.COMMITTED,
+            membership_target=True,
+            identity_target_revision=(
+                identity_target.revision if identity_target else None
+            ),
+        )
+        persistence.records[transaction_id] = record
+        raise RuntimeError("commit acknowledgement lost")
+
+    persistence.commit_installation = commit
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is True
+    package_restore.assert_not_awaited()
+    assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_unknown_commit_result_preserves_current_payload_and_journal():
+    """数据库最终状态无法读取时不得猜测回滚，必须留待启动恢复。"""
+    package_restore = AsyncMock()
+    rollback_reloader = AsyncMock()
+    persistence = _PersistenceSpy([], commit_error=RuntimeError("commit failed"))
+    persistence.get_installation = AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    command, _, _ = _command(
+        persistence=persistence,
+        package_restore=package_restore,
+        rollback_reloader=rollback_reloader,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is False
+    assert result.failure_stage == "database_commit_unknown"
+    package_restore.assert_not_awaited()
+    rollback_reloader.assert_not_awaited()
+    assert persistence.records["txn-demo"].phase is PluginInstallationPhase.PREPARED
+
+
+@pytest.mark.asyncio
+async def test_runtime_compensation_failure_keeps_prepared_journal():
+    """旧运行态未恢复完整时不得删除 PREPARED journal 和恢复材料。"""
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+    target_reloader = AsyncMock(side_effect=RuntimeError("reload failed"))
+    rollback_reloader = AsyncMock(side_effect=RuntimeError("rollback failed"))
+    command, persistence, _ = _command(
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
+        target_reloader=target_reloader,
+        rollback_reloader=rollback_reloader,
+    )
+
+    result = await _execute(command)
 
     assert result.success is False
     assert result.failure_stage == "runtime_reload"
     assert result.rollback.file_restored is True
-    assert result.rollback.installed_list_restored is True
-    assert result.rollback.runtime_restored is True
-    assert result.rollback.registrations_restored is True
-    assert calls == [
-        ("persist", ["DemoPlugin"]),
-        ("reload", 1),
-        ("persist", []),
-        ("rollback", checkpoint),
-        ("reload", 2),
-        ("registrations", 2),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_registration_failure_restores_instance_files_and_routes() -> None:
-    """动态路由刷新失败时恢复列表、文件、旧实例并再次刷新旧注册。"""
-    calls = []
-    checkpoint = object()
-    refresh_count = 0
-
-    async def write(plugin_ids):
-        calls.append(("persist", list(plugin_ids)))
-
-    async def rollback(target):
-        assert target is checkpoint
-        calls.append(("rollback", target))
-
-    async def reload(_plugin_id):
-        calls.append("reload")
-
-    async def refresh(_plugin_id):
-        nonlocal refresh_count
-        refresh_count += 1
-        calls.append(("registrations", refresh_count))
-        if refresh_count == 1:
-            raise RuntimeError("route registration failed")
-
-    result = await _command(
-        checkpointer=AsyncMock(return_value=checkpoint),
-        writer=write,
-        rollback=rollback,
-        reloader=reload,
-        refresher=refresh,
-    ).execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
-    )
-
-    assert result.success is False
-    assert result.failure_stage == "registration_refresh"
-    assert result.rollback.file_restored is True
-    assert result.rollback.installed_list_restored is True
-    assert result.rollback.runtime_restored is True
-    assert result.rollback.registrations_restored is True
-    assert calls == [
-        ("persist", ["DemoPlugin"]),
-        "reload",
-        ("registrations", 1),
-        ("persist", []),
-        ("rollback", checkpoint),
-        "reload",
-        ("registrations", 2),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_same_plugin_install_lifecycle_is_serialized() -> None:
-    """同一插件的两个安装调用不得同时修改包、运行态和注册信息。"""
-    first_started = asyncio.Event()
-    release_first = asyncio.Event()
-    calls: list[str] = []
-
-    async def install(plugin_id, *_args):
-        calls.append(plugin_id)
-        if len(calls) == 1:
-            first_started.set()
-            await release_first.wait()
-        return True, "ok"
-
-    command = _command(installer=install)
-    first = asyncio.create_task(
-        command.execute(
-            plugin_id="DemoPlugin",
-            repo_url="https://github.com/demo/plugins",
-        )
-    )
-    await first_started.wait()
-    second = asyncio.create_task(
-        command.execute(
-            plugin_id="DemoPlugin",
-            repo_url="https://github.com/demo/plugins",
-        )
-    )
-    await asyncio.sleep(0.02)
-    assert calls == ["DemoPlugin"]
-
-    release_first.set()
-    results = await asyncio.gather(first, second)
-    assert all(result.success for result in results)
-    assert calls == ["DemoPlugin", "DemoPlugin"]
-
-
-@pytest.mark.asyncio
-async def test_cancelled_install_waits_for_rollback_before_releasing_lifecycle() -> None:
-    """取消安装后先完成包快照补偿，再允许同一插件的新调用进入。"""
-    install_started = asyncio.Event()
-    release_install = asyncio.Event()
-    rollback = AsyncMock()
-
-    async def install(*_args):
-        install_started.set()
-        await release_install.wait()
-        return True, "ok"
-
-    command = _command(installer=install, rollback=rollback)
-    task = asyncio.create_task(
-        command.execute(
-            plugin_id="DemoPlugin",
-            repo_url="https://github.com/demo/plugins",
-        )
-    )
-    await install_started.wait()
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-
-    rollback.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_repeated_checkpoint_cancellation_retains_mutation_owner() -> None:
-    """快照等待被连续取消时，lease 必须保留到快照子任务终态。"""
-    admission = PluginMutationAdmission()
-    checkpoint_started = asyncio.Event()
-    checkpoint_release = asyncio.Event()
-    checkpoint_finished = asyncio.Event()
-
-    async def checkpoint(_plugin_id: str) -> object:
-        """阻塞快照创建，直到测试确认 owner 仍被持有。"""
-        checkpoint_started.set()
-        await checkpoint_release.wait()
-        checkpoint_finished.set()
-        return object()
-
-    task = asyncio.create_task(
-        _command(
-            checkpointer=checkpoint,
-            mutation=admission.hold,
-        ).execute(
-            plugin_id="DemoPlugin",
-            repo_url="https://github.com/demo/plugins",
-        )
-    )
-    await checkpoint_started.wait()
-    task.cancel()
-    await asyncio.sleep(0)
-    task.cancel()
-    await asyncio.sleep(0)
-
-    assert task.done() is False
-    assert admission.seal() == 1
-    idle_waiter = asyncio.create_task(asyncio.to_thread(admission.wait_until_idle))
-    await asyncio.sleep(0.02)
-    assert idle_waiter.done() is False
-
-    checkpoint_release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    await idle_waiter
-    assert checkpoint_finished.is_set()
-    assert admission.active_count == 0
-
-
-@pytest.mark.asyncio
-async def test_repeated_rollback_cancellation_retains_mutation_owner() -> None:
-    """补偿等待被再次连续取消时，lease 必须保留到补偿子任务终态。"""
-    admission = PluginMutationAdmission()
-    install_started = asyncio.Event()
-    rollback_started = asyncio.Event()
-    rollback_release = asyncio.Event()
-    rollback_finished = asyncio.Event()
-
-    async def install(*_args) -> tuple[bool, str]:
-        """阻塞包安装，使首次取消进入补偿路径。"""
-        install_started.set()
-        await asyncio.Event().wait()
-        return True, "ok"
-
-    async def rollback(_checkpoint: object) -> None:
-        """阻塞文件补偿，直到测试确认 owner 仍被持有。"""
-        rollback_started.set()
-        await rollback_release.wait()
-        rollback_finished.set()
-
-    task = asyncio.create_task(
-        _command(
-            installer=install,
-            rollback=rollback,
-            mutation=admission.hold,
-        ).execute(
-            plugin_id="DemoPlugin",
-            repo_url="https://github.com/demo/plugins",
-        )
-    )
-    await install_started.wait()
-    task.cancel()
-    await rollback_started.wait()
-    assert admission.seal() == 1
-    idle_waiter = asyncio.create_task(asyncio.to_thread(admission.wait_until_idle))
-
-    task.cancel()
-    await asyncio.sleep(0)
-    task.cancel()
-    await asyncio.sleep(0.02)
-    assert task.done() is False
-    assert idle_waiter.done() is False
-    assert admission.active_count == 1
-
-    rollback_release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    await idle_waiter
-    assert rollback_finished.is_set()
-    assert admission.active_count == 0
-
-
-@pytest.mark.asyncio
-async def test_cancelled_persisted_list_is_restored_conservatively() -> None:
-    """清单写入已产生副作用但尚未返回时取消，也必须恢复原清单。"""
-    persisted: list[list[str]] = []
-    writer_started = asyncio.Event()
-    rollback = AsyncMock()
-
-    async def writer(plugin_ids: list[str]) -> None:
-        persisted.append(list(plugin_ids))
-        if len(persisted) == 1:
-            writer_started.set()
-            await asyncio.Event().wait()
-
-    task = asyncio.create_task(
-        _command(writer=writer, rollback=rollback).execute(
-            plugin_id="DemoPlugin",
-            repo_url="https://github.com/demo/plugins",
-        )
-    )
-    await writer_started.wait()
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-
-    assert persisted == [["DemoPlugin"], []]
-    rollback.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_cancelled_snapshot_cleanup_does_not_rollback_committed_plugin() -> None:
-    """运行态提交后清理快照期间取消，不得删除已生效插件。"""
-    cleanup_started = asyncio.Event()
-    rollback = AsyncMock()
-
-    async def committer(_checkpoint) -> None:
-        cleanup_started.set()
-        await asyncio.Event().wait()
-
-    task = asyncio.create_task(
-        _command(committer=committer, rollback=rollback).execute(
-            plugin_id="DemoPlugin",
-            repo_url="https://github.com/demo/plugins",
-        )
-    )
-    await cleanup_started.wait()
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-
-    rollback.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_startup_lifecycle_lock_blocks_plugin_install_until_settlement() -> None:
-    """启动同步持有全局资格时，插件安装不得穿过启动收口。"""
-    from app.application.plugin.lifecycle import plugin_lifecycle
-
-    entered = asyncio.Event()
-    release = asyncio.Event()
-
-    async def startup_scope():
-        async with plugin_lifecycle.hold_startup():
-            entered.set()
-            await release.wait()
-
-    startup = asyncio.create_task(startup_scope())
-    await entered.wait()
-    plugin_context = plugin_lifecycle.hold("DemoPlugin")
-    plugin_scope = asyncio.create_task(plugin_context.__aenter__())
-    await asyncio.sleep(0.02)
-    assert plugin_scope.done() is False
-
-    release.set()
-    await plugin_scope
-    await plugin_context.__aexit__(None, None, None)
-    await startup
-
-
-@pytest.mark.asyncio
-async def test_report_failure_does_not_rollback_completed_local_install():
-    """统计上报失败属于非关键副作用，不得撤销已成功的本地安装。"""
-    rollback = AsyncMock()
-    result = await _command(
-        reporter=AsyncMock(side_effect=RuntimeError("server unavailable")),
-        rollback=rollback,
-    ).execute(
-        plugin_id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
-    )
-
-    assert result.success is True
-    assert result.runtime_reloaded is True
-    assert result.reported is False
-    assert result.report_error == "server unavailable"
-    assert "不影响本地安装" in result.message
-    rollback.assert_not_awaited()
+    assert result.rollback.runtime_restored is False
+    assert result.rollback.journal_deleted is False
+    assert result.rollback.errors == ("插件运行态恢复失败：rollback failed",)
+    package_cleanup.assert_not_awaited()
+    assert persistence.records["txn-demo"].phase is PluginInstallationPhase.PREPARED
