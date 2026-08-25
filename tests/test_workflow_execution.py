@@ -146,12 +146,12 @@ def test_workflow_executor_preserves_trigger_context(monkeypatch):
     )
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
     monkeypatch.setattr(
-        workflow_module.global_vars,
-        "workflow_resume",
+        workflow_module.runtime_stop_state,
+        "resume_workflow",
         lambda _workflow_id: None,
     )
     monkeypatch.setattr(
-        workflow_module.global_vars,
+        workflow_module.runtime_stop_state,
         "is_workflow_stopped",
         lambda _workflow_id: False,
     )
@@ -192,8 +192,8 @@ def test_workflow_executor_resumes_downstream_nodes(monkeypatch):
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -217,8 +217,8 @@ def test_workflow_executor_restores_structured_context(monkeypatch):
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -235,8 +235,8 @@ def test_workflow_executor_reports_incremental_progress(monkeypatch):
     fake_manager = _FakeWorkflowManager(calls)
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(
         _build_workflow(),
@@ -275,8 +275,8 @@ def test_workflow_executor_skips_false_condition_branch(monkeypatch):
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -328,8 +328,8 @@ def test_workflow_executor_all_success_join_waits_parallel_branches(monkeypatch)
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -370,8 +370,8 @@ def test_workflow_executor_any_success_join_runs_after_available_branch(monkeypa
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -402,8 +402,8 @@ def test_workflow_executor_all_done_join_can_continue_after_failure(monkeypatch)
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -441,8 +441,8 @@ def test_workflow_executor_exclusive_branch_uses_first_matching_flow(monkeypatch
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -478,8 +478,8 @@ def test_workflow_executor_passes_declared_inputs(monkeypatch):
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -519,8 +519,8 @@ def test_workflow_executor_uses_contract_inputs(monkeypatch):
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -546,8 +546,8 @@ def test_workflow_executor_persists_structured_state(monkeypatch):
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(
         _build_workflow(actions=[{"id": "A", "type": "FakeAction", "name": "动作A", "data": {}}], flows=[]),
@@ -579,8 +579,8 @@ def test_workflow_executor_restores_outputs_from_execution_state(monkeypatch):
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -606,8 +606,8 @@ def test_workflow_executor_keeps_execution_state_dict_for_non_json_leaf(monkeypa
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(
         _build_workflow(actions=[{"id": "A", "type": "FakeAction", "name": "动作A", "data": {}}], flows=[]),
@@ -638,8 +638,8 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
     monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: fake_oper)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     success, message = workflow_module.WorkflowChain.process(workflow_id=1)
 
@@ -686,8 +686,8 @@ def test_workflow_executor_concurrency_key_serializes_parallel_nodes(monkeypatch
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -724,8 +724,8 @@ def test_workflow_executor_filter_action_replaces_artifact_outputs(monkeypatch):
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -775,8 +775,8 @@ def test_workflow_executor_filter_action_replaces_with_empty_outputs(monkeypatch
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     executor = workflow_module.WorkflowExecutor(workflow)
     executor.execute()
@@ -792,8 +792,8 @@ def test_workflow_executor_stop_is_not_success(monkeypatch):
     fake_manager = _FakeWorkflowManager(calls)
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda workflow_id: None)
-    monkeypatch.setattr(workflow_module.global_vars, "is_workflow_stopped", lambda workflow_id: True)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: True)
 
     executor = workflow_module.WorkflowExecutor(_build_workflow())
     executor.execute()
@@ -841,9 +841,9 @@ def test_workflow_manager_shutdown_retains_blocked_execution_for_retry(monkeypat
         flows=[],
     )
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda _workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda _workflow_id: None)
     monkeypatch.setattr(
-        workflow_module.global_vars,
+        workflow_module.runtime_stop_state,
         "is_workflow_stopped",
         lambda _workflow_id: False,
     )
@@ -947,8 +947,8 @@ def test_workflow_chain_rejects_execution_before_persisting_running_state(monkey
         raise AssertionError("拒绝准入时不得恢复工作流")
 
     monkeypatch.setattr(
-        workflow_module.global_vars,
-        "workflow_resume",
+        workflow_module.runtime_stop_state,
+        "resume_workflow",
         unexpected_resume,
     )
 
@@ -979,7 +979,7 @@ def test_workflow_chain_releases_admitted_owner_when_start_fails(monkeypatch):
     workflowoper = FailingWorkflowOper(_build_workflow())
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
     monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: workflowoper)
-    monkeypatch.setattr(workflow_module.global_vars, "workflow_resume", lambda _workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda _workflow_id: None)
 
     with pytest.raises(RuntimeError, match="start failed"):
         workflow_module.WorkflowChain.process(workflow_id=1)
@@ -1059,7 +1059,7 @@ def test_workflow_manager_retries_action_until_success(monkeypatch):
 
     manager = object.__new__(workflow_package.WorkFlowManager)
     manager._actions = {"RetryAction": RetryAction}
-    monkeypatch.setattr(workflow_package.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(workflow_package.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     result = manager.execute(
         workflow_id=1,

@@ -56,7 +56,7 @@ def test_fetch_rss_reads_proxy_from_chain_snapshot(monkeypatch):
         "get_chain_runtime_config_snapshot",
         lambda: _runtime_config(),
     )
-    monkeypatch.setattr(fetch_rss_module.global_vars, "is_workflow_stopped", lambda _: False)
+    monkeypatch.setattr(fetch_rss_module.runtime_stop_state, "is_workflow_stopped", lambda _: False)
 
     FetchRssAction("rss").execute(
         workflow_id=1,
@@ -89,7 +89,7 @@ def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
         "get_chain_runtime_config_snapshot",
         lambda: _runtime_config(),
     )
-    monkeypatch.setattr(scan_file_module.global_vars, "is_workflow_stopped", lambda _: False)
+    monkeypatch.setattr(scan_file_module.runtime_stop_state, "is_workflow_stopped", lambda _: False)
 
     context = ScanFileAction("scan").execute(
         workflow_id=1,
@@ -120,7 +120,7 @@ def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
         "get_chain_runtime_config_snapshot",
         lambda: _runtime_config(superuser="snapshot-owner"),
     )
-    monkeypatch.setattr(add_subscribe_module.global_vars, "is_workflow_stopped", lambda _: False)
+    monkeypatch.setattr(add_subscribe_module.runtime_stop_state, "is_workflow_stopped", lambda _: False)
     monkeypatch.setattr(
         add_subscribe_module,
         "get_chain_subscribe_port",
@@ -158,7 +158,7 @@ def test_fetch_medias_internal_api_uses_chain_snapshot(monkeypatch):
         "get_chain_runtime_config_snapshot",
         lambda: _runtime_config(),
     )
-    monkeypatch.setattr(fetch_medias_module.global_vars, "is_workflow_stopped", lambda _: False)
+    monkeypatch.setattr(fetch_medias_module.runtime_stop_state, "is_workflow_stopped", lambda _: False)
 
     action = FetchMediasAction("medias")
     action._FetchMediasAction__inner_sources = [

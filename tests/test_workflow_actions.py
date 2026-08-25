@@ -25,7 +25,7 @@ def test_fetch_downloads_updates_context_downloads(monkeypatch):
             return [SimpleNamespace(path="/downloads/movie.mkv", progress=100)]
 
     monkeypatch.setattr(fetch_downloads_module, "ActionChain", FakeActionChain)
-    monkeypatch.setattr(fetch_downloads_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(fetch_downloads_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
     context = ActionContext(
         downloads=[
@@ -65,7 +65,7 @@ def test_fetch_torrents_filters_special_season_zero(monkeypatch):
             ]
 
     monkeypatch.setattr(fetch_torrents_module, "SearchChain", FakeSearchChain)
-    monkeypatch.setattr(fetch_torrents_module.global_vars, "is_workflow_stopped", lambda _workflow_id: False)
+    monkeypatch.setattr(fetch_torrents_module.runtime_stop_state, "is_workflow_stopped", lambda _workflow_id: False)
 
     action = FetchTorrentsAction("fetch-torrents")
     action.job_done = lambda *_args, **_kwargs: None
@@ -103,7 +103,7 @@ def test_scrape_file_keeps_workflow_action_context(monkeypatch):
     monkeypatch.setattr(scrape_file_module, "StorageChain", FakeStorageChain)
     monkeypatch.setattr(scrape_file_module, "MediaChain", FakeMediaChain)
     monkeypatch.setattr(scrape_file_module, "ScrapingChain", FakeScrapingChain)
-    monkeypatch.setattr(scrape_file_module.global_vars, "is_workflow_stopped", lambda workflow_id: False)
+    monkeypatch.setattr(scrape_file_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
     monkeypatch.setattr(ScrapeFileAction, "check_cache", lambda self, workflow_id, key: False)
     monkeypatch.setattr(ScrapeFileAction, "save_cache", lambda self, workflow_id, data: None)
 
@@ -150,7 +150,7 @@ def test_scrape_file_does_not_cache_failed_music_scrape(monkeypatch):
     monkeypatch.setattr(scrape_file_module, "MediaChain", FakeMediaChain)
     monkeypatch.setattr(scrape_file_module, "ScrapingChain", FakeScrapingChain)
     monkeypatch.setattr(
-        scrape_file_module.global_vars,
+        scrape_file_module.runtime_stop_state,
         "is_workflow_stopped",
         lambda workflow_id: False,
     )

@@ -27,7 +27,7 @@ class FetchRssActionTest(unittest.TestCase):
         ]
 
         with patch("app.workflow.actions.fetch_rss.RssHelper") as rss_helper, \
-                patch("app.workflow.actions.fetch_rss.global_vars.is_workflow_stopped", return_value=False):
+                patch("app.workflow.actions.fetch_rss.runtime_stop_state.is_workflow_stopped", return_value=False):
             rss_helper.return_value.parse.return_value = rss_items
 
             context = FetchRssAction("fetch-rss").execute(

@@ -6,10 +6,18 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI
 
+from app.adapters.network import http as http_utils
+from app.runtime.tasks import configure_task_registry, get_task_registry
 from app.startup import lifecycle
 from app.startup.initializers import modules as modules_initializer
-from app.adapters.network import http as http_utils
-from app.runtime.tasks import get_task_registry
+
+
+@pytest.fixture(autouse=True)
+def _isolate_task_registry():
+    """生命周期用例结束后恢复未启动宿主时的默认任务登记器。"""
+    configure_task_registry(None)
+    yield
+    configure_task_registry(None)
 
 
 def _assert_completed_once(mock: MagicMock) -> None:

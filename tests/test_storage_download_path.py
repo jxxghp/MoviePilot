@@ -147,7 +147,7 @@ def test_alipan_download_writes_sanitized_filename(tmp_path: Path) -> None:
             return_value=_noop_progress,
         ),
         patch(
-            "app.modules.filemanager.storages.alipan.global_vars.is_transfer_stopped",
+            "app.modules.filemanager.storages.alipan.runtime_stop_state.consume_transfer_stop",
             return_value=False,
         ),
         patch("app.modules.filemanager.storages.alipan.RequestUtils") as request_utils,
@@ -187,7 +187,7 @@ def test_u115_download_writes_sanitized_filename(tmp_path: Path) -> None:
             return_value=_noop_progress,
         ),
         patch(
-            "app.modules.filemanager.storages.u115.global_vars.is_transfer_stopped",
+            "app.modules.filemanager.storages.u115.runtime_stop_state.consume_transfer_stop",
             return_value=False,
         ),
     ):
