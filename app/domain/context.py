@@ -1,16 +1,17 @@
 import re
+import typing
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
-from typing import Callable, List, Dict, Any, Tuple, Optional, Set, Union, Self
+from typing import Any, Callable, Dict, List, Optional, Self, Set, Tuple, Union
 
-import yaml
-from yaml.constructor import ConstructorError
-from yaml.events import AliasEvent
-from yaml.nodes import MappingNode
+import yaml  # type: ignore[import-untyped]
+from yaml.constructor import ConstructorError  # type: ignore[import-untyped]
+from yaml.events import AliasEvent  # type: ignore[import-untyped]
+from yaml.nodes import MappingNode  # type: ignore[import-untyped]
 
 from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.metamusic import (
+    MetaMusic,
     audio_quality_score,
     audio_quality_tier,
     format_audio_quality,
@@ -18,6 +19,8 @@ from app.domain.meta.metamusic import (
     normalize_audio_format,
 )
 from app.domain.metainfo import MetaInfo
+from app.foundation import temporal as time_tools
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
@@ -25,8 +28,6 @@ from app.schemas.types import (
     MediaSource,
     MediaType,
 )
-from app.schemas.media import normalize_media_source, resolve_media_identity
-from app.foundation import temporal as time_tools
 
 BANGUMI_MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
 ANILIST_MOVIE_FORMATS = frozenset({"MOVIE"})
@@ -35,10 +36,12 @@ ANILIST_JAPANESE_KANA_PATTERN = re.compile(r"[\u3040-\u30ff]")
 _tmdb_image_url_builder: Callable[[str], Optional[str]] = lambda path: path
 
 
-class _LyricsfileSafeLoader(yaml.SafeLoader):
+class _LyricsfileSafeLoader(yaml.SafeLoader):  # type: ignore[misc]
     """在 SafeLoader 基础上拒绝 Lyricsfile 规范禁止的重复映射键。"""
 
-    def construct_mapping(self, node: MappingNode, deep: bool = False) -> dict:
+    def construct_mapping(
+        self, node: MappingNode, deep: bool = False
+    ) -> dict[Any, Any]:
         """构造映射并在解析阶段拒绝重复键。"""
         if not isinstance(node, MappingNode):
             raise ConstructorError(None, None, "Lyricsfile 映射节点无效", node.start_mark)
@@ -52,7 +55,9 @@ class _LyricsfileSafeLoader(yaml.SafeLoader):
             if duplicated:
                 raise ConstructorError(None, None, f"Lyricsfile 存在重复键：{key}", key_node.start_mark)
             keys.add(key)
-        return super().construct_mapping(node, deep=deep)
+        return typing.cast(
+            dict[Any, Any], super().construct_mapping(node, deep=deep)
+        )
 
 
 def configure_tmdb_image_url_builder(
@@ -95,7 +100,7 @@ def _music_optional_int(value: object) -> int | None:
     if value in {None, ""}:
         return None
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 
@@ -105,7 +110,7 @@ def _music_optional_float(value: object) -> float:
     if value in {None, ""}:
         return 0.0
     try:
-        return float(value)
+        return float(str(value))
     except (TypeError, ValueError):
         return 0.0
 
@@ -148,7 +153,10 @@ class MusicLyrics:
         parsed = self._parse_lyricsfile(self.lyricsfile)
         if not parsed:
             return
-        metadata = parsed.get("metadata") if isinstance(parsed.get("metadata"), dict) else {}
+        metadata_value = parsed.get("metadata")
+        metadata: dict[str, Any] = (
+            metadata_value if isinstance(metadata_value, dict) else {}
+        )
         self.instrumental = self.instrumental or bool(
             metadata.get("instrumental", parsed.get("instrumental"))
         )
@@ -338,11 +346,10 @@ class MusicLyrics:
         for line in payload.get("lines") or []:
             if not isinstance(line, dict):
                 continue
-            start = line.get("start_ms")
-            try:
-                start_ms = max(int(start), 0)
-            except (TypeError, ValueError):
+            start_ms = _music_optional_int(line.get("start_ms"))
+            if start_ms is None:
                 continue
+            start_ms = max(start_ms, 0)
             text = cls._optional_text(line.get("text"))
             if not text and isinstance(line.get("words"), list):
                 text = "".join(
@@ -575,7 +582,7 @@ class MusicInfo:
             artists=list(meta.artists),
             album=meta.album,
             album_artist=meta.album_artist,
-            year=meta.year,
+            year=_music_optional_int(meta.year),
             disc_number=meta.disc_number,
             track_number=meta.track_number,
             total_tracks=meta.total_tracks,
