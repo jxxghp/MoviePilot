@@ -263,6 +263,25 @@ def _mark_prepared_update_failed(message: str) -> None:
     _clear_json_file(PREPARED_UPDATE_MANIFEST)
 
 
+def _local_update_env() -> dict[str, str]:
+    """构造本地更新子进程使用的包缓存、代理和认证环境。"""
+    update_env = os.environ.copy()
+    package_cache_root = Path(
+        update_env.get("PACKAGE_CACHE_ROOT", "").strip() or settings.PACKAGE_CACHE_PATH
+    )
+    update_env.setdefault("PACKAGE_CACHE_ROOT", str(package_cache_root))
+    update_env.setdefault("UV_CACHE_DIR", str(package_cache_root / "uv"))
+    if settings.PIP_PROXY:
+        update_env["PIP_PROXY"] = settings.PIP_PROXY
+    if settings.PROXY_HOST:
+        update_env["PROXY_HOST"] = settings.PROXY_HOST
+        for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+            update_env[key] = settings.PROXY_HOST
+    if settings.GITHUB_TOKEN:
+        update_env.setdefault("GITHUB_TOKEN", settings.GITHUB_TOKEN)
+    return update_env
+
+
 def _apply_prepared_release_update() -> bool:
     """本地 CLI 重启时离线安装已校验的 Release；返回是否发现安装意图。"""
     manifest = _read_json_file(PREPARED_UPDATE_MANIFEST)
@@ -309,7 +328,7 @@ def _apply_prepared_release_update() -> bool:
         result = subprocess.run(
             update_command,
             cwd=str(_repo_root()),
-            env=os.environ.copy(),
+            env=_local_update_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -375,24 +394,11 @@ def _best_effort_auto_update() -> None:
         str(settings.CONFIG_PATH),
     ]
 
-    update_env = os.environ.copy()
-    package_cache_root = Path(update_env.get("PACKAGE_CACHE_ROOT", "").strip() or settings.PACKAGE_CACHE_PATH)
-    update_env.setdefault("PACKAGE_CACHE_ROOT", str(package_cache_root))
-    update_env.setdefault("UV_CACHE_DIR", str(package_cache_root / "uv"))
-    if settings.PIP_PROXY:
-        update_env["PIP_PROXY"] = settings.PIP_PROXY
-    if settings.PROXY_HOST:
-        update_env["PROXY_HOST"] = settings.PROXY_HOST
-        for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
-            update_env[key] = settings.PROXY_HOST
-    if settings.GITHUB_TOKEN:
-        update_env.setdefault("GITHUB_TOKEN", settings.GITHUB_TOKEN)
-
     click.echo(f"检测到 MOVIEPILOT_AUTO_UPDATE={mode}，启动前执行本地自动更新")
     result = subprocess.run(
         update_command,
         cwd=str(_repo_root()),
-        env=update_env,
+        env=_local_update_env(),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

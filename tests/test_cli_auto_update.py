@@ -142,6 +142,46 @@ def test_prepared_release_uses_downloaded_package_before_dev_mode():
     mode.assert_not_called()
 
 
+def test_prepared_release_passes_package_env_and_overrides_proxy():
+    module = load_cli_module()
+    module.settings.PROXY_HOST = "http://proxy.example:7890"
+    module.settings.PIP_PROXY = "https://mirror.example/simple"
+    module.PREPARED_UPDATE_ROOT.mkdir(parents=True, exist_ok=True)
+    backend = module.PREPARED_UPDATE_ROOT / "backend.zip"
+    frontend = module.PREPARED_UPDATE_ROOT / "frontend.zip"
+    backend.write_bytes(b"backend")
+    frontend.write_bytes(b"frontend")
+    module.PREPARED_UPDATE_MANIFEST.write_text(
+        json.dumps(
+            {
+                "version": "v3.1.0",
+                "frontend_version": "v3.1.0",
+                "backend_archive": str(backend),
+                "frontend_archive": str(frontend),
+                "backend_sha256": hashlib.sha256(backend.read_bytes()).hexdigest(),
+                "frontend_sha256": hashlib.sha256(frontend.read_bytes()).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_result = SimpleNamespace(returncode=0, stdout="ok")
+
+    with patch.dict(
+        module.os.environ,
+        {"HTTPS_PROXY": "http://old.example:8080"},
+        clear=True,
+    ), patch.object(
+        module.subprocess, "run", return_value=run_result
+    ) as run_mock, patch.object(module.click, "echo"):
+        assert module._apply_prepared_release_update() is True
+
+    env = run_mock.call_args.kwargs["env"]
+    assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
+    assert env["PIP_PROXY"] == "https://mirror.example/simple"
+    assert env["PACKAGE_CACHE_ROOT"] == str(module.settings.PACKAGE_CACHE_PATH)
+    assert env["UV_CACHE_DIR"] == str(module.settings.PACKAGE_CACHE_PATH / "uv")
+
+
 def test_best_effort_auto_update_does_not_pass_frontend_version_override():
     module = load_cli_module()
     run_result = SimpleNamespace(returncode=0, stdout="ok")
