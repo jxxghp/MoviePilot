@@ -94,8 +94,8 @@ class MetaInfoSnapshot:
     @classmethod
     def from_meta(cls, meta: "MetaBase") -> "MetaInfoSnapshot":
         """从兼容的可变 MetaBase 对象提取不包含临时状态的完整契约。"""
-        media_type = getattr(meta.type, "value", meta.type)
-        media_source = getattr(meta.media_source, "value", meta.media_source)
+        media_type = meta.type.value if meta.type else ""
+        media_source = meta.media_source.value if meta.media_source else None
         return cls(
             kind="anime" if type(meta).__name__ == "MetaAnime" else "video",
             isfile=bool(meta.isfile),

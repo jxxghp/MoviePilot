@@ -3,7 +3,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from functools import lru_cache
-from typing import Mapping, Tuple, List, Optional
+from typing import Any, Mapping, Tuple, List, Optional
 
 import regex as re
 
@@ -98,7 +98,7 @@ class _PreparedMetaInput:
     subtitle: Optional[str]
     isfile: bool
     apply_words: tuple[str, ...]
-    explicit_metainfo: Mapping[str, object]
+    explicit_metainfo: Mapping[str, Any]
 
 
 def _empty_metainfo() -> dict:
@@ -279,7 +279,7 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
 def _prepare_meta_input(
         title: str,
         subtitle: Optional[str] = None,
-        custom_words: List[str] = None,
+        custom_words: Optional[List[str]] = None,
 ) -> _PreparedMetaInput:
     """
     应用识别词、显式标签和文件后缀规则，生成稳定的解析阶段输入。
@@ -305,7 +305,7 @@ def _prepare_meta_input(
     )
 
 
-def _apply_explicit_metainfo(meta: MetaBase, metainfo: Mapping[str, object]) -> None:
+def _apply_explicit_metainfo(meta: MetaBase, metainfo: Mapping[str, Any]) -> None:
     """以显式标签覆盖推断字段，保持用户声明拥有最高优先级。"""
     media_source, media_id = resolve_media_identity(media=dict(metainfo))
     if media_source and media_id:
@@ -332,7 +332,7 @@ def _apply_explicit_metainfo(meta: MetaBase, metainfo: Mapping[str, object]) -> 
 def _build_meta_info(
         title: str,
         subtitle: Optional[str] = None,
-        custom_words: List[str] = None,
+        custom_words: Optional[List[str]] = None,
 ) -> MetaBase:
     """按准备、分类解析、显式覆盖三个阶段构造 Python MetaInfo。"""
     prepared = _prepare_meta_input(title, subtitle, custom_words)
@@ -354,7 +354,7 @@ def _build_meta_info(
 def _build_python_meta_info(
         title: str,
         subtitle: Optional[str] = None,
-        custom_words: List[str] = None,
+        custom_words: Optional[List[str]] = None,
 ) -> MetaBase:
     """构造并完成 original_name 的纯 Python 参考解析结果。"""
     meta = _build_meta_info(title=title, subtitle=subtitle, custom_words=custom_words)
