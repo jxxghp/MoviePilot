@@ -103,6 +103,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         video_extensions=tuple(settings.RMT_MEDIAEXT),
         subtitle_extensions=tuple(settings.RMT_SUBEXT),
         audio_extensions=tuple(settings.RMT_AUDIOEXT),
+        lyrics_batch_timeout=settings.LYRICS_BATCH_TIMEOUT,
         temporary_path=settings.TEMP_PATH,
         root_path=settings.ROOT_PATH,
         config_path=settings.CONFIG_PATH,

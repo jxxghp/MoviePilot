@@ -155,8 +155,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         self._subtitle_exts = self.runtime_config.subtitle_extensions
         # 音频文件后缀
         self._audio_exts = self.runtime_config.audio_extensions
-        # 可处理的文件后缀（视频文件、字幕、音频文件）
-        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts
+        # 可处理的文件后缀（视频文件、字幕、音频文件和音乐歌词）
+        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + (
+            ".lrc", ".txt", ".yaml",
+        )
         # 待整理任务队列
         self._queue = queue.Queue()
         # 文件整理线程
@@ -1997,6 +1999,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     return False
                 matched_template = True
             if batch_mtype == MediaType.MUSIC:
+                if self._is_music_lyrics_file(item):
+                    return not self._is_blocked_by_exclude_words(item.path, exclude_words)
                 if not self._is_media_file(item, batch_mtype):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
@@ -2332,7 +2336,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 dir_key = self._get_file_parent_key(item)
                 if not is_bluray_dir and self._is_media_file(item, batch_mtype):
                     main_items_by_dir.setdefault(dir_key, []).append(item)
-                elif self._is_subtitle_file(item) or self._is_audio_file(item):
+                elif (
+                        self._is_subtitle_file(item)
+                        or self._is_audio_file(item)
+                        or self._is_music_lyrics_file(item)
+                ):
                     extra_items_by_dir.setdefault(dir_key, []).append((item, is_bluray_dir))
             return main_items_by_dir, extra_items_by_dir
 
@@ -2358,7 +2366,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 if self._is_media_file(item, batch_mtype):
                     main_fileitems.append(item)
                     continue
-                if not (self._is_subtitle_file(item) or self._is_audio_file(item)):
+                if not (
+                        self._is_subtitle_file(item)
+                        or self._is_audio_file(item)
+                        or self._is_music_lyrics_file(item)
+                ):
                     continue
                 if not _is_allowed_transfer_item(item, False):
                     continue
@@ -2404,7 +2416,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         main_items = [(current_item, current_bluray_dir)]
                         main_items_by_dir[current_dir_key] = [current_item]
                         extra_items_by_dir[current_dir_key] = sibling_extra_items
-                    elif self._is_subtitle_file(current_item) or self._is_audio_file(current_item):
+                    elif (
+                            self._is_subtitle_file(current_item)
+                            or self._is_audio_file(current_item)
+                            or self._is_music_lyrics_file(current_item)
+                    ):
                         related_main_file_key = self._get_related_main_file_key(
                             extra_fileitem=current_item,
                             main_fileitems=sibling_main_items,
@@ -2428,7 +2444,15 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         return list(items), inherited_map
 
             if not main_items:
-                return list(items), inherited_map
+                remaining = [
+                    item
+                    for item in items
+                    if not (
+                            batch_mtype == MediaType.MUSIC
+                            and self._is_music_lyrics_file(item[0])
+                    )
+                ]
+                return remaining, inherited_map
 
             planned_items: List[Tuple[FileItem, bool]] = []
             seen_file_keys: set[Tuple[str, str]] = set()
@@ -2516,6 +2540,12 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         inherited_map[self._get_file_key(extra_item)] = deepcopy(extra_meta)
 
             for item, is_bluray_dir in items:
+                if (
+                        batch_mtype == MediaType.MUSIC
+                        and self._is_music_lyrics_file(item)
+                        and self._get_file_key(item) not in inherited_map
+                ):
+                    continue
                 _append_item(planned_items, seen_file_keys, item, is_bluray_dir)
 
             return planned_items, inherited_map

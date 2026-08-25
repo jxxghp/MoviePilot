@@ -25,7 +25,7 @@ from app.schemas.transfer import ManualTransferHistoryInfo as _SchemaManualTrans
 from app.schemas.transfer import ManualTransferResultData as _SchemaManualTransferResultData
 from app.schemas.transfer import ManualTransferTargetPath as _SchemaManualTransferTargetPath
 from app.schemas.transfer import TransferJob as _SchemaTransferJob
-from app.schemas.types import MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
 from app.schemas.workflow import FileItem
 from app.schemas.workflow import FileItem as _SchemaFileItem
 
@@ -425,6 +425,16 @@ def _execute_manual_transfer(
             return _SchemaResponse(
                 success=False, message=f"不支持的媒体类型：{type_name}"
             )
+
+    def _resolve_music_type(file_item: FileItem) -> Optional[str]:
+        """为未显式指定实体的旧客户端按源项类型补全音乐命名空间。"""
+        if mtype != MediaType.MUSIC or transer_item.music_type:
+            return transer_item.music_type
+        return (
+            MUSIC_ENTITY_ALBUM
+            if file_item.type == "dir"
+            else MUSIC_ENTITY_RECORDING
+        )
     # 自定义格式
     epformat = None
     if (
@@ -486,7 +496,7 @@ def _execute_manual_transfer(
                 target_path=target_path,
                 media_source=transer_item.media_source,
                 media_id=transer_item.media_id,
-                music_type=transer_item.music_type,
+                music_type=_resolve_music_type(src_fileitem),
                 mtype=mtype,
                 season=transer_item.season,
                 episode_group=transer_item.episode_group,
@@ -570,7 +580,7 @@ def _execute_manual_transfer(
         target_path=target_path,
         media_source=transer_item.media_source,
         media_id=transer_item.media_id,
-        music_type=transer_item.music_type,
+        music_type=_resolve_music_type(src_fileitem),
         mtype=mtype,
         season=transer_item.season,
         episode_group=transer_item.episode_group,

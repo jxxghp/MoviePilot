@@ -168,6 +168,7 @@ class ChainRuntimeConfig:
     data_cleanup_transfer_history_days: Any = 0
     data_cleanup_download_failure_days: Any = 0
     download_subtitle: bool = True
+    lyrics_batch_timeout: int = 120
     music_metadata_to_simplified: bool = True
     recognize_plugin_first: bool = False
     ai_agent_enable: bool = False

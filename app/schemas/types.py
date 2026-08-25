@@ -668,6 +668,8 @@ class OtherModulesType(Enum):
     ListenBrainz = "ListenBrainz"
     # LRCLIB 歌词
     Lrclib = "LRCLIB"
+    # Musixmatch 授权歌词
+    Musixmatch = "Musixmatch"
     # AcoustID 音频指纹
     AcoustId = "AcoustID"
 
@@ -689,6 +691,7 @@ class ScrapingPolicy(NameValueEnum):
     MISSINGONLY = "仅缺失"
     SKIP = "跳过"
     OVERWRITE = "覆盖"
+    UPGRADE = "质量升级"
 
 
 # 刮削目标类型

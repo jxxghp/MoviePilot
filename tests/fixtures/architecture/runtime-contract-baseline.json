@@ -5299,6 +5299,24 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "music_lyrics_candidates": {
+      "aggregation": "ordered_list_merge",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "music",
+      "input_contract": "MusicLyricsRequest",
+      "plugin_short_circuit": false,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "music"
+      ],
+      "result_contract": "list[MusicLyrics]",
+      "result_shape": "list",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "obtain_images": {
       "aggregation": "pipeline_relay",
       "error_policy": "isolate_provider",
@@ -6423,10 +6441,10 @@
     }
   },
   "run_module": {
-    "call_count": 261,
+    "call_count": 263,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 211,
+    "method_count": 212,
     "methods": {
       "anilist_credits": [
         {
@@ -7616,12 +7634,24 @@
       ],
       "music_lyrics": [
         {
-          "caller": "app.chain.lrclib",
+          "caller": "app.chain.lyrics",
           "count": 1,
           "mode": "async"
         },
         {
-          "caller": "app.chain.lrclib",
+          "caller": "app.chain.lyrics",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "music_lyrics_candidates": [
+        {
+          "caller": "app.chain.lyrics",
+          "count": 1,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.lyrics",
           "count": 1,
           "mode": "sync"
         }

@@ -12,4 +12,4 @@ priority = 5
 
 [activation]
 policy = "bootstrap"
-watch = []
+watch = ["LRCLIB_BASE_URL"]

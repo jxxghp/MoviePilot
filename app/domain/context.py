@@ -3,6 +3,11 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from typing import Callable, List, Dict, Any, Tuple, Optional, Set, Union, Self
 
+import yaml
+from yaml.constructor import ConstructorError
+from yaml.events import AliasEvent
+from yaml.nodes import MappingNode
+
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.metamusic import (
@@ -28,6 +33,26 @@ ANILIST_MOVIE_FORMATS = frozenset({"MOVIE"})
 ANILIST_CHINESE_TITLE_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 ANILIST_JAPANESE_KANA_PATTERN = re.compile(r"[\u3040-\u30ff]")
 _tmdb_image_url_builder: Callable[[str], Optional[str]] = lambda path: path
+
+
+class _LyricsfileSafeLoader(yaml.SafeLoader):
+    """在 SafeLoader 基础上拒绝 Lyricsfile 规范禁止的重复映射键。"""
+
+    def construct_mapping(self, node: MappingNode, deep: bool = False) -> dict:
+        """构造映射并在解析阶段拒绝重复键。"""
+        if not isinstance(node, MappingNode):
+            raise ConstructorError(None, None, "Lyricsfile 映射节点无效", node.start_mark)
+        keys = set()
+        for key_node, _value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                duplicated = key in keys
+            except TypeError as err:
+                raise ConstructorError(None, None, "Lyricsfile 映射键必须可哈希", key_node.start_mark) from err
+            if duplicated:
+                raise ConstructorError(None, None, f"Lyricsfile 存在重复键：{key}", key_node.start_mark)
+            keys.add(key)
+        return super().construct_mapping(node, deep=deep)
 
 
 def configure_tmdb_image_url_builder(
@@ -99,13 +124,41 @@ def _music_init_values(model: type, data: dict[str, Any]) -> dict[str, Any]:
 
 @dataclass
 class MusicLyrics:
-    """标准化单曲歌词，区分同步歌词、纯文本歌词和纯音乐结果。"""
+    """标准化单曲歌词候选，保留来源匹配度和 Lyricsfile 原始内容。"""
 
     provider: str
     provider_id: str | None = None
     instrumental: bool = False
     plain_lyrics: str | None = None
     synced_lyrics: str | None = None
+    lyricsfile: str | None = None
+    language: str | None = None
+    match_score: int = 0
+    provider_priority: int = 0
+
+    _lyricsfile_max_bytes = 1024 * 1024
+    _lyricsfile_max_lines = 10000
+    _lyricsfile_max_nodes = 50000
+    _lyricsfile_max_depth = 20
+
+    def __post_init__(self) -> None:
+        """补全 Lyricsfile 中可安全降级为 LRC 或纯文本的内容。"""
+        if not self.lyricsfile:
+            return
+        parsed = self._parse_lyricsfile(self.lyricsfile)
+        if not parsed:
+            return
+        metadata = parsed.get("metadata") if isinstance(parsed.get("metadata"), dict) else {}
+        self.instrumental = self.instrumental or bool(
+            metadata.get("instrumental", parsed.get("instrumental"))
+        )
+        self.language = self.language or self._optional_text(
+            metadata.get("language", parsed.get("language"))
+        )
+        if not self.synced_lyrics:
+            self.synced_lyrics = self._lyricsfile_to_lrc(parsed)
+        if not self.plain_lyrics:
+            self.plain_lyrics = self._lyricsfile_to_plain(parsed)
 
     @property
     def content(self) -> str | None:
@@ -120,6 +173,189 @@ class MusicLyrics:
         if self.plain_lyrics:
             return ".txt"
         return None
+
+    @property
+    def quality_rank(self) -> int:
+        """返回可比较的歌词质量等级，逐字同步高于逐行同步和纯文本。"""
+        if self.lyricsfile and self._lyricsfile_has_words(self.lyricsfile):
+            return 4
+        if self.synced_lyrics:
+            return 3
+        if self.plain_lyrics:
+            return 1
+        if self.instrumental:
+            return 1
+        return 0
+
+    @property
+    def identity_key(self) -> tuple[str, str, str]:
+        """构造候选去重键，兼容未提供来源 ID 的插件结果。"""
+        return (
+            self.provider.casefold(),
+            self.provider_id or "",
+            self.content or self.lyricsfile or "",
+        )
+
+    @classmethod
+    def _parse_lyricsfile(cls, content: str) -> dict[str, Any] | None:
+        """安全解析受大小和行数约束的 Lyricsfile YAML，并拒绝锚点别名。"""
+        if len(content.encode("utf-8")) > cls._lyricsfile_max_bytes:
+            return None
+        try:
+            if any(isinstance(event, AliasEvent) for event in yaml.parse(content)):
+                return None
+            payload = yaml.load(content, Loader=_LyricsfileSafeLoader)
+        except yaml.YAMLError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("version") != "1.0" or not isinstance(payload.get("metadata"), dict):
+            return None
+        if not cls._lyricsfile_value_is_safe(payload):
+            return None
+        lines = payload.get("lines")
+        if isinstance(lines, list) and len(lines) > cls._lyricsfile_max_lines:
+            return None
+        return payload if cls._lyricsfile_structure_is_valid(payload) else None
+
+    @classmethod
+    def _lyricsfile_structure_is_valid(cls, payload: dict[str, Any]) -> bool:
+        """校验 Lyricsfile 1.0 的必需元数据、歌词形状和毫秒时间范围。"""
+        metadata = payload.get("metadata")
+        if not isinstance(metadata, dict):
+            return False
+        if not cls._optional_text(metadata.get("title")) or not cls._optional_text(metadata.get("artist")):
+            return False
+        lines = payload.get("lines")
+        plain = payload.get("plain")
+        if lines is not None and not isinstance(lines, list):
+            return False
+        if plain is not None and not isinstance(plain, str):
+            return False
+        if metadata.get("instrumental") is True:
+            return not lines and not str(plain or "").strip()
+        if not lines and not str(plain or "").strip():
+            return False
+        return all(cls._lyricsfile_line_is_valid(line) for line in lines or [])
+
+    @classmethod
+    def _lyricsfile_line_is_valid(cls, line: Any) -> bool:
+        """校验单行与逐字时间戳，拒绝布尔值伪装整数和倒序区间。"""
+        if not isinstance(line, dict) or not isinstance(line.get("text"), str):
+            return False
+        start = line.get("start_ms")
+        end = line.get("end_ms")
+        if isinstance(start, bool) or not isinstance(start, int) or start < 0:
+            return False
+        if end is not None and (
+                isinstance(end, bool) or not isinstance(end, int) or end < start
+        ):
+            return False
+        words = line.get("words")
+        if words is None:
+            return True
+        if not isinstance(words, list):
+            return False
+        for word in words:
+            if not isinstance(word, dict) or not isinstance(word.get("text"), str):
+                return False
+            word_start = word.get("start_ms")
+            word_end = word.get("end_ms")
+            if isinstance(word_start, bool) or not isinstance(word_start, int) or word_start < 0:
+                return False
+            if word_end is not None and (
+                    isinstance(word_end, bool)
+                    or not isinstance(word_end, int)
+                    or word_end < word_start
+            ):
+                return False
+        return True
+
+    @classmethod
+    def _lyricsfile_value_is_safe(cls, value: Any, depth: int = 0, count: Optional[list[int]] = None) -> bool:
+        """限制 YAML 解析后的类型、深度和节点数，避免外部文档消耗过量资源。"""
+        if depth > cls._lyricsfile_max_depth:
+            return False
+        counter = count if count is not None else [0]
+        counter[0] += 1
+        if counter[0] > cls._lyricsfile_max_nodes:
+            return False
+        if value is None or isinstance(value, (str, int, bool)):
+            return True
+        if isinstance(value, list):
+            return all(cls._lyricsfile_value_is_safe(item, depth + 1, counter) for item in value)
+        if isinstance(value, dict):
+            return all(
+                isinstance(key, str)
+                and cls._lyricsfile_value_is_safe(item, depth + 1, counter)
+                for key, item in value.items()
+            )
+        return False
+
+    @classmethod
+    def _lyricsfile_has_words(cls, content: str) -> bool:
+        """判断 Lyricsfile 是否包含逐字时间轴。"""
+        payload = cls._parse_lyricsfile(content)
+        return bool(
+            payload
+            and any(
+                isinstance(line, dict) and isinstance(line.get("words"), list)
+                for line in payload.get("lines") or []
+            )
+        )
+
+    @staticmethod
+    def _optional_text(value: Any) -> str | None:
+        """把可选标量规范化为非空文本。"""
+        text = str(value or "").strip()
+        return text or None
+
+    @classmethod
+    def _lyricsfile_to_plain(cls, payload: dict[str, Any]) -> str | None:
+        """从 Lyricsfile plain 或时间行生成播放器可读纯文本。"""
+        plain = cls._optional_text(payload.get("plain"))
+        if plain:
+            return plain
+        texts = []
+        for line in payload.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            text = cls._optional_text(line.get("text"))
+            if not text and isinstance(line.get("words"), list):
+                text = "".join(
+                    str(word.get("text") or "")
+                    for word in line["words"]
+                    if isinstance(word, dict)
+                ).strip() or None
+            if text:
+                texts.append(text)
+        return "\n".join(texts) or None
+
+    @classmethod
+    def _lyricsfile_to_lrc(cls, payload: dict[str, Any]) -> str | None:
+        """把 Lyricsfile 行级毫秒时间轴转换为通用 LRC。"""
+        output = []
+        for line in payload.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            start = line.get("start_ms")
+            try:
+                start_ms = max(int(start), 0)
+            except (TypeError, ValueError):
+                continue
+            text = cls._optional_text(line.get("text"))
+            if not text and isinstance(line.get("words"), list):
+                text = "".join(
+                    str(word.get("text") or "")
+                    for word in line["words"]
+                    if isinstance(word, dict)
+                ).strip() or None
+            if not text:
+                continue
+            minutes, remainder = divmod(start_ms, 60000)
+            seconds = remainder / 1000
+            output.append(f"[{minutes:02d}:{seconds:05.2f}]{text}")
+        return "\n".join(output) or None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:

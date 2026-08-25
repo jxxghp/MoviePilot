@@ -141,6 +141,12 @@ class FileFilterMixin:
             return False
         return True if f".{fileitem.extension.lower()}" in self._audio_exts else False
 
+    @staticmethod
+    def _is_music_lyrics_file(fileitem: FileItem) -> bool:
+        """判断文件是否为可随同名音乐音轨迁移的歌词旁挂文件。"""
+        path = str(fileitem.path or fileitem.name or "").casefold()
+        return path.endswith((".lrc", ".txt", ".lyricsfile.yaml"))
+
     def _is_media_file(
             self,
             fileitem: FileItem,
@@ -1068,6 +1074,11 @@ class FileKeyMixin:
         """
         if self._is_subtitle_file(extra_fileitem):
             return self._get_subtitle_media_stem(extra_fileitem)
+        if self._is_music_lyrics_file(extra_fileitem):
+            file_name = extra_fileitem.name or Path(extra_fileitem.path).name
+            lowered = file_name.casefold()
+            suffix = ".lyricsfile.yaml" if lowered.endswith(".lyricsfile.yaml") else Path(file_name).suffix
+            return file_name[:-len(suffix)].casefold() if suffix else lowered
         return self._get_file_stem(extra_fileitem)
 
     def _get_related_main_file_key(
@@ -1081,6 +1092,7 @@ class FileKeyMixin:
         if not (
                 self._is_subtitle_file(extra_fileitem)
                 or self._is_audio_file(extra_fileitem)
+                or self._is_music_lyrics_file(extra_fileitem)
         ):
             return None
 

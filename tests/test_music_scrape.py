@@ -181,9 +181,9 @@ def test_generic_scrape_dispatches_music_without_entering_video_handlers() -> No
     )
 
 
-def test_default_scraping_config_enables_missing_only_music_lyrics() -> None:
-    """新安装和未保存过该字段的用户应默认仅在缺失时下载歌词。"""
-    assert ScrapingConfig.get_default_config()["music_lyrics"] == ScrapingPolicy.MISSINGONLY
+def test_default_scraping_config_enables_music_lyrics_quality_upgrade() -> None:
+    """新安装和未保存过该字段的用户应默认升级歌词且不允许质量降级。"""
+    assert ScrapingConfig.get_default_config()["music_lyrics"] == ScrapingPolicy.UPGRADE
 
 
 def test_album_track_match_uses_disc_track_title_and_duration() -> None:
@@ -252,7 +252,7 @@ def test_music_scrape_can_run_lyrics_without_tags_or_cover() -> None:
     )
     music_chain = Mock()
 
-    with patch("app.chain.scraping.LrclibChain", return_value=music_chain):
+    with patch("app.chain.scraping.LyricsChain", return_value=music_chain):
         success, message = chain.scrape_music_metadata(
             FileItem(
                 storage="local",
@@ -265,7 +265,10 @@ def test_music_scrape_can_run_lyrics_without_tags_or_cover() -> None:
         )
 
     assert success is True
-    assert message == "已刮削 1 个音频文件，歌词新增 1 首、已存在 0 首、未匹配 0 首"
+    assert message == (
+        "已刮削 1 个音频文件，歌词新增 1 首、升级 0 首、已存在 0 首、"
+        "防降级保护 0 首、未匹配 0 首"
+    )
     call = chain._scrape_music_file.call_args
     assert call.kwargs["write_tags"] is False
     assert call.kwargs["with_cover"] is False

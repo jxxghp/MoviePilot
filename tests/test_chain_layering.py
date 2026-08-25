@@ -14,7 +14,6 @@ MUSIC_SOURCE_CHAIN_FILES = (
     "acoustid.py",
     "douban.py",
     "listenbrainz.py",
-    "lrclib.py",
     "musicbrainz.py",
     "theaudiodb.py",
 )

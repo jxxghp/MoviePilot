@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 from app.chain.acoustid import AcoustIdChain
 from app.chain.douban import DoubanChain
 from app.chain.listenbrainz import ListenBrainzChain
-from app.chain.lrclib import LrclibChain
+from app.chain.lyrics import LyricsChain
 from app.chain.musicbrainz import MusicBrainzChain
 from app.chain.theaudiodb import TheAudioDbChain
 from app.domain.context import MusicAlbumInfo, MusicInfo, MusicLyrics
@@ -95,9 +95,9 @@ def test_acoustid_chain_normalizes_fingerprint_result(monkeypatch) -> None:
     assert result == "recording-1"
 
 
-def test_lrclib_chain_converts_dictionary_result(monkeypatch) -> None:
-    """LRCLIB 来源链应把字典结果转换为标准歌词对象。"""
-    chain = LrclibChain()
+def test_lyrics_chain_converts_dictionary_result(monkeypatch) -> None:
+    """通用歌词链应把来源返回的字典转换为标准歌词对象。"""
+    chain = LyricsChain()
     monkeypatch.setattr(chain, "run_module", Mock(return_value={
         "provider": "lrclib",
         "provider_id": "1",

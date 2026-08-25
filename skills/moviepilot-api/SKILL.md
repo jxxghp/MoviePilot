@@ -209,7 +209,7 @@ Music acquisition rules:
 - Subscribe/download one recording as one track. Subscribe/download one album as a complete multi-track pack.
 - Album torrent validation compares supported audio files with `total_tracks`; incomplete resources do not complete the subscription.
 - Artist IDs are never subscription, torrent, download, transfer, or library-existence targets.
-- `/api/v1/media/scrape/{storage}` writes configured music tags/covers and can fetch LRCLIB lyrics as `.lrc`/`.txt` sidecars. External metadata, cover, exploration, statistics, and lyrics requests use bounded TTL/LRU caches in their owning modules/helpers.
+- `/api/v1/media/scrape/{storage}` writes configured music tags/covers and resolves lyrics from existing sidecars, embedded tags, plugins, LRCLIB, optional authorized Musixmatch, and TheAudioDB plain-text fallback. The default upgrade policy keeps `.lyricsfile.yaml` plus compatible `.lrc` output and never replaces higher-quality synchronized lyrics with plain text. Album lyrics requests have a batch deadline and provider cooldowns; external metadata, cover, exploration, statistics, and lyrics requests use bounded caches in their owning modules/helpers.
 
 ### Search / Torrents / Subtitles (11 endpoints)
 
@@ -356,7 +356,7 @@ Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business 
 | DELETE | `/api/v1/transfer/queue` | Remove from transfer queue. Body: FileItem JSON |
 | POST | `/api/v1/transfer/manual/target-path` | Match the manual transfer target from source path and directory configuration. Body: ManualTransferItem JSON; this endpoint does not recognize media |
 | POST | `/api/v1/transfer/manual/history` | Query successful transfer-history summary for selected files or directories. Body: ManualTransferItem JSON |
-| POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source; matching failed history is cleared automatically, while `reorganize=true` removes matched successful history and old non-move targets before retrying |
+| POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source; music directories default to `music_type=album` and files to `music_type=recording` when omitted; matching failed history is cleared automatically, while `reorganize=true` removes matched successful history and old non-move targets before retrying |
 | GET | `/api/v1/transfer/now` | Run immediate transfer |
 
 ### Dashboard (19 endpoints)

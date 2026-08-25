@@ -4,10 +4,10 @@ from uuid import UUID
 
 from mutagen import File as MutagenFile
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC
+from mutagen.id3 import APIC, SYLT, USLT
 from mutagen.mp4 import MP4, MP4Cover
 
-from app.domain.context import MusicInfo
+from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
@@ -85,6 +85,83 @@ class AudioMetadataHelper:
             media_source=MediaSource.MusicBrainz if musicbrainz_id else None,
             media_id=musicbrainz_id,
         )
+
+    @classmethod
+    def read_lyrics(cls, path: Path) -> Optional[MusicLyrics]:
+        """读取常见音频容器中的逐行同步歌词、纯文本歌词和 Lyricsfile 标签。"""
+        try:
+            audio = MutagenFile(path, easy=False)
+        except Exception as err:
+            logger.warning(f"读取内嵌歌词失败：{path} - {err}")
+            return None
+        if not audio or not audio.tags:
+            return None
+        tags = audio.tags
+        synced = None
+        plain = None
+        lyricsfile = None
+
+        getall = getattr(tags, "getall", None)
+        if callable(getall):
+            synced_frames = getall("SYLT")
+            plain_frames = getall("USLT")
+            synced = cls._sylt_to_lrc(synced_frames[0]) if synced_frames else None
+            plain = str(plain_frames[0].text or "").strip() if plain_frames else None
+
+        normalized = {
+            str(key).casefold(): value
+            for key, value in getattr(tags, "items", lambda: [])()
+        }
+        synced = synced or cls._tag_text(
+            normalized,
+            "syncedlyrics",
+            "synced lyrics",
+            "lyrics_synced",
+        )
+        plain = plain or cls._tag_text(
+            normalized,
+            "lyrics",
+            "unsyncedlyrics",
+            "unsynced lyrics",
+            "©lyr",
+            "\xa9lyr",
+        )
+        lyricsfile = cls._tag_text(normalized, "lyricsfile", "lyricsfile.yaml")
+        if not synced and not plain and not lyricsfile:
+            return None
+        return MusicLyrics(
+            provider="embedded",
+            plain_lyrics=plain,
+            synced_lyrics=synced,
+            lyricsfile=lyricsfile,
+            match_score=100,
+            provider_priority=100,
+        )
+
+    @staticmethod
+    def _tag_text(tags: dict[str, Any], *keys: str) -> Optional[str]:
+        """从不同容器的单值或列表标签中提取首个非空文本。"""
+        for key in keys:
+            value = tags.get(key.casefold())
+            if isinstance(value, (list, tuple)) and value:
+                value = value[0]
+            if isinstance(value, (USLT, SYLT)):
+                value = getattr(value, "text", None)
+            text = str(value or "").strip()
+            if text:
+                return text
+        return None
+
+    @staticmethod
+    def _sylt_to_lrc(frame: SYLT) -> Optional[str]:
+        """把 ID3 SYLT 的毫秒时间戳转换为通用 LRC 行。"""
+        output = []
+        for text, timestamp in frame.text or []:
+            if not str(text or "").strip():
+                continue
+            minutes, remainder = divmod(max(int(timestamp), 0), 60000)
+            output.append(f"[{minutes:02d}:{remainder / 1000:05.2f}]{str(text).strip()}")
+        return "\n".join(output) or None
 
     @staticmethod
     def read_filename(path: Path) -> MetaMusic:

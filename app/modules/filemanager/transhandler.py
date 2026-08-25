@@ -208,6 +208,13 @@ class TransHandler:
                 return True
             return False
 
+        def __is_music_lyrics_file(_fileitem: FileItem) -> bool:
+            """判断是否为音乐音轨的歌词附件。"""
+            path = str(_fileitem.path or _fileitem.name or "").casefold()
+            return mediainfo.type == MediaType.MUSIC and path.endswith(
+                (".lrc", ".txt", ".lyricsfile.yaml")
+            )
+
         def __is_extra_file(_fileitem: FileItem) -> bool:
             """
             判断是否为附加文件
@@ -218,6 +225,8 @@ class TransHandler:
                 return False
             extension = f".{_fileitem.extension.lower()}"
             if extension in settings.RMT_SUBEXT:
+                return True
+            if __is_music_lyrics_file(_fileitem):
                 return True
             if mediainfo.type != MediaType.MUSIC and extension in settings.RMT_AUDIOEXT:
                 return True
@@ -384,6 +393,11 @@ class TransHandler:
 
                 # 目的文件名
                 if need_rename:
+                    file_extension = (
+                        ".lyricsfile.yaml"
+                        if str(fileitem.path or "").casefold().endswith(".lyricsfile.yaml")
+                        else f".{fileitem.extension}"
+                    )
                     new_file = self.get_rename_path(
                         path=target_path,
                         template_string=rename_format,
@@ -391,7 +405,7 @@ class TransHandler:
                             meta=in_meta,
                             mediainfo=mediainfo,
                             episodes_info=episodes_info,
-                            file_ext=f".{fileitem.extension}",
+                            file_ext=file_extension,
                         ),
                         source_path=fileitem.path,
                         source_item=fileitem,

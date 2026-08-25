@@ -157,7 +157,7 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧/音乐）。音乐会按策略处理音频标签、封面和歌词 |
 | POST | `/api/v1/transfer/manual/target-path` | 按源文件与目录配置匹配手动整理目标路径；请求体为 `ManualTransferItem`，该接口不执行媒体识别 |
 | POST | `/api/v1/transfer/manual/history` | 查询文件、批量文件或目录命中的成功整理历史摘要，用于进入手动整理界面时显示重新整理状态 |
-| POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源；命中失败历史时自动清理旧目标和记录后重试，`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |
+| POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源；音乐请求未传 `music_type` 时，目录按 `album`、文件按 `recording` 解释；命中失败历史时自动清理旧目标和记录后重试，`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |
 
 #### 站点
 
@@ -217,7 +217,7 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 | GET | `/api/v1/recommend/music_weekly` | 浏览本周热门音乐，参数：`page`、`count` |
 | GET | `/api/v1/recommend/music_douban` | 浏览豆瓣音乐新碟榜，参数：`page`、`count` |
 
-专辑下载与订阅按“整包”处理：下载层会读取种子文件清单并以专辑 `total_tracks` 校验独立音频文件数量；未确认完整覆盖时不会把专辑订阅销订，也不会把部分曲目报告为完整专辑已入库。音乐刮削遵循 `music` 的标签、封面和歌词策略，歌词通过带有界 TTL/LRU 缓存的 LRCLIB 模块保存为同名 `.lrc` 或 `.txt` 旁挂文件。
+专辑下载与订阅按“整包”处理：下载层会读取种子文件清单并以专辑 `total_tracks` 校验独立音频文件数量；未确认完整覆盖时不会把专辑订阅销订，也不会把部分曲目报告为完整专辑已入库。音乐整理会迁移与音轨同目录、同主干名的 `.lrc`、`.txt` 和 `.lyricsfile.yaml` 旁挂歌词。音乐刮削默认使用“质量升级”策略：先读取已有旁挂和 MP3/FLAC/Ogg/MP4 内嵌歌词，再聚合插件、LRCLIB、可选 Musixmatch 和 TheAudioDB 纯文本候选；逐字 Lyricsfile、逐行同步 LRC、纯文本依次降级，任何覆盖入口都不会用低质量结果替换高质量歌词。LRCLIB 的 Lyricsfile 会保留为 `.lyricsfile.yaml`，同时生成播放器兼容的 `.lrc`。
 
 音乐订阅可使用 `audio_quality=hires|lossless|lossy`（支持正则组合）、`audio_format`、`min_bitrate`、`min_bit_depth`、`min_sample_rate` 过滤资源。`best_version=1` 开启音质洗版，系统按格式、无损属性、位深、采样率和码率换算 0-100 优先级，只下载高于 `current_priority` 的候选；DSD 或 24-bit/192 kHz 无损资源达到终态 100。内置规则 `HIRES`、`LOSSLESS`、`FLAC`、`ALAC`、`APE`、`WAV`、`DSD`、`MP3`、`AAC`、`OPUS`、`BITRATE320`、`BITRATE256`、`BITRATE192` 可用于自定义过滤规则组。
 
@@ -313,7 +313,7 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 
 媒体相关 MCP 工具以 `media_source` + 来源原生 `media_id` 传递精确身份；内置来源使用 `MediaSource` 常量，插件来源使用注册的稳定扩展标识。`query_media_detail`、`search_torrents`、`query_library_exists` 必须提供完整字段对；`add_subscribe`、`transfer_file`、`scrape_metadata` 在显式指定身份时也必须成对提供。`search_media` 和 `recognize_media` 是按标题或路径发现身份的入口，其结果中的字段对可直接用于后续工具。音乐调用还使用 `media_type=music` 与 `music_type=recording|album|artist`；其中艺术家只允许搜索和详情浏览。工具响应中的专用 ID 仅是跨源映射辅助输出，不应再作为上述通用工具的输入。TMDB 专用的 `query_episode_schedule` 仍使用 `tmdb_id`，因为它直接调用单一 TMDB 剧集接口。
 
-Agent 音乐流程与影视共用同一采集管线，但实体边界不同：单曲通过 `music_type=recording` 按一个文件处理；专辑通过 `music_type=album` 类似电视剧整季包，按一个目录/资源处理并校验总曲目数；艺术家不是采集目标。`add_subscribe` / `update_subscribe` 支持音乐音质筛选字段和 `best_version` 音质洗版；`query_subscribes` 会返回筛选条件及当前音质快照。`scrape_metadata(media_type="music")` 会按策略写音频标签、封面和歌词，并返回歌词新增、已存在、未匹配和失败数量。
+Agent 音乐流程与影视共用同一采集管线，但实体边界不同：单曲通过 `music_type=recording` 按一个文件处理；专辑通过 `music_type=album` 类似电视剧整季包，按一个目录/资源处理并校验总曲目数；艺术家不是采集目标。`add_subscribe` / `update_subscribe` 支持音乐音质筛选字段和 `best_version` 音质洗版；`query_subscribes` 会返回筛选条件及当前音质快照。`scrape_metadata(media_type="music")` 会按策略写音频标签、封面和歌词，并返回歌词新增、升级、已存在、防降级保护、未匹配、预算耗尽和失败数量。
 
 `get_search_results` 可使用 `title_pattern` 对种子标题执行正则筛选，也可使用 `content_pattern` 联合匹配种子标题、简介和标签。`title_pattern` 保持仅匹配标题的兼容语义；需要在结果中查看种子简介时，传入 `include_description=true`；需要查看种子标签时，传入 `include_labels=true`。两种正则参数与站点、分辨率等结构化筛选条件同时传入时按 AND 关系组合。
 

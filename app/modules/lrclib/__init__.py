@@ -3,30 +3,32 @@ import threading
 import time
 from typing import Any, Optional, Tuple, Union
 
-from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
+from app.adapters.network.http import RequestUtils
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
-from app.runtime.log import logger
 from app.modules import _ModuleBase
+from app.runtime.cache import cached
+from app.runtime.log import logger
+from app.runtime.settings import RuntimeSettingsCompat
 from app.schemas.types import ModuleType, OtherModulesType
-from app.adapters.network.http import RequestUtils
+
+settings = RuntimeSettingsCompat()
 
 
 class LrclibModule(_ModuleBase):
     """通过 LRCLIB 获取与单个音轨匹配的同步歌词或纯文本歌词。"""
 
-    _base_url = "https://lrclib.net"
     _source = "lrclib"
     _request_interval = 0.3
     _request_lock = threading.Lock()
     _last_request_at = 0.0
+    _cooldown_until = 0.0
     _match_pattern = re.compile(r"[^\w]+", flags=re.UNICODE)
 
     def init_module(self) -> None:
-        """初始化无状态的 LRCLIB 歌词模块。"""
+        """配置变化后清理跨实例请求缓存和供应商冷却状态。"""
+        self._request_json.cache_clear()
+        type(self)._cooldown_until = 0.0
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """LRCLIB 无需密钥，是否请求由音乐歌词刮削策略控制。"""
@@ -79,6 +81,7 @@ class LrclibModule(_ModuleBase):
         if duration:
             exact_params["duration"] = duration
         payload = self._request_json("/api/get", params=exact_params)
+        match_score = 100
         if not payload:
             results = self._request_json(
                 "/api/search",
@@ -95,7 +98,16 @@ class LrclibModule(_ModuleBase):
                 album=album,
                 duration=duration,
             )
-        return self._to_lyrics(payload)
+            match_score = 90
+        return self._to_lyrics(payload, match_score=match_score)
+
+    def music_lyrics_candidates(
+            self,
+            music: Union[MetaMusic, MusicInfo],
+    ) -> list[MusicLyrics]:
+        """向通用歌词链返回候选列表，保留旧单结果接口兼容插件生态。"""
+        lyrics = self.music_lyrics(music)
+        return [lyrics] if lyrics else []
 
     @classmethod
     def _select_result(
@@ -152,14 +164,15 @@ class LrclibModule(_ModuleBase):
             return None
 
     @classmethod
-    def _to_lyrics(cls, payload: Any) -> Optional[MusicLyrics]:
+    def _to_lyrics(cls, payload: Any, match_score: int = 90) -> Optional[MusicLyrics]:
         """把 LRCLIB 响应转换为标准歌词对象。"""
         if not isinstance(payload, dict) or payload.get("id") is None:
             return None
         plain_lyrics = str(payload.get("plainLyrics") or "").strip() or None
         synced_lyrics = str(payload.get("syncedLyrics") or "").strip() or None
+        lyricsfile = str(payload.get("lyricsfile") or "").strip() or None
         instrumental = bool(payload.get("instrumental"))
-        if not instrumental and not plain_lyrics and not synced_lyrics:
+        if not instrumental and not plain_lyrics and not synced_lyrics and not lyricsfile:
             return None
         return MusicLyrics(
             provider=cls._source,
@@ -167,6 +180,9 @@ class LrclibModule(_ModuleBase):
             instrumental=instrumental,
             plain_lyrics=plain_lyrics,
             synced_lyrics=synced_lyrics,
+            lyricsfile=lyricsfile,
+            match_score=match_score,
+            provider_priority=20,
         )
 
     @classmethod
@@ -174,9 +190,12 @@ class LrclibModule(_ModuleBase):
             cls,
             path: str,
             params: Optional[dict[str, Any]],
+            base_url: Optional[str] = None,
     ) -> Any:
         """串行执行一次 LRCLIB 请求，确保批量专辑刮削遵守最小请求间隔。"""
         with cls._request_lock:
+            if time.monotonic() < cls._cooldown_until:
+                return None
             delay = cls._request_interval - (time.monotonic() - cls._last_request_at)
             if delay > 0:
                 time.sleep(delay)
@@ -187,7 +206,10 @@ class LrclibModule(_ModuleBase):
                 },
                 proxies=settings.PROXY,
                 timeout=20,
-            ).get_res(f"{cls._base_url}{path}", params=params)
+            ).get_res(
+                f"{(base_url or str(settings.LRCLIB_BASE_URL)).rstrip('/')}{path}",
+                params=params,
+            )
             cls._last_request_at = time.monotonic()
             return response
 
@@ -197,9 +219,10 @@ class LrclibModule(_ModuleBase):
             cls,
             path: str,
             params: Optional[dict[str, Any]] = None,
+            base_url: Optional[str] = None,
     ) -> Any:
         """请求 LRCLIB JSON 接口，缓存命中与未命中结果并按 Retry-After 重试一次。"""
-        response = cls._request_once(path, params)
+        response = cls._request_once(path, params, base_url)
         if response is None:
             return None
         try:
@@ -208,8 +231,14 @@ class LrclibModule(_ModuleBase):
             if response.status_code in (429, 503):
                 retry_after = cls._retry_after_seconds(response.headers.get("Retry-After"))
                 response.close()
+                max_wait = max(int(settings.LYRICS_PROVIDER_RETRY_MAX_WAIT), 0)
+                if retry_after > max_wait:
+                    cls._cooldown_until = time.monotonic() + retry_after
+                    logger.warning(f"LRCLIB 进入冷却 {retry_after:g} 秒，跳过当前批次后续请求")
+                    response = None
+                    return None
                 time.sleep(retry_after)
-                response = cls._request_once(path, params)
+                response = cls._request_once(path, params, base_url)
                 if response is None:
                     return None
                 if response.status_code == 404:

@@ -1,0 +1,19 @@
+schema_version = 1
+id = "MusixmatchModule"
+kind = "host_module"
+entrypoint = "app.modules.musixmatch:MusixmatchModule"
+depends_on = []
+
+[metadata]
+name = "Musixmatch"
+type = "other"
+subtype = "Musixmatch"
+priority = 4
+
+[activation]
+policy = "when_configured"
+watch = ["MUSIXMATCH_API_KEY", "MUSIXMATCH_BASE_URL"]
+
+[activation.selector]
+kind = "setting_truthy"
+key = "MUSIXMATCH_API_KEY"

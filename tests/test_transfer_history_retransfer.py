@@ -50,6 +50,75 @@ def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
     assert captured["music_type"] == "album"
 
 
+def test_manual_music_directory_defaults_to_album_namespace(monkeypatch):
+    """旧客户端只声明音乐目录时，后端应按整张专辑而不是单曲解释媒体 ID。"""
+    captured = {}
+
+    class FakeTransferChain:
+        """记录手动整理调用参数。"""
+
+        def manual_transfer(self, **kwargs):
+            captured.update(kwargs)
+            return True, ""
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitem=FileItem(
+                storage="local",
+                path="/downloads/叶惠美",
+                name="叶惠美",
+                type="dir",
+            ),
+            type_name="音乐",
+            media_source="musicbrainz",
+            media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+        ),
+        background=True,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is True
+    assert captured["music_type"] == "album"
+
+
+def test_manual_music_file_defaults_to_recording_namespace(monkeypatch):
+    """旧客户端只声明音乐文件时，后端应继续按单曲解释媒体 ID。"""
+    captured = {}
+
+    class FakeTransferChain:
+        """记录手动整理调用参数。"""
+
+        def manual_transfer(self, **kwargs):
+            captured.update(kwargs)
+            return True, ""
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitem=FileItem(
+                storage="local",
+                path="/downloads/晴天.flac",
+                name="晴天.flac",
+                type="file",
+                extension="flac",
+            ),
+            type_name="音乐",
+            media_source="musicbrainz",
+            media_id="recording-1",
+        ),
+        background=True,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is True
+    assert captured["music_type"] == "recording"
+
+
 def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
     """复用历史识别信息时应传递原下载上下文。"""
     history = SimpleNamespace(
