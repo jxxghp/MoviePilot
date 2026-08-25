@@ -1623,11 +1623,18 @@ class MediaInfo:
             if episodes_count:
                 self.seasons[season] = list(range(1, episodes_count + 1))
         # 季年份
-        if self.type == MediaType.TV and not self.season_years:
-            season = self.season if self.season is not None else 1
-            self.season_years = {
-                season: self.year
-            }
+        if not self.season_years:
+            raw_season_years = info.get("season_years")
+            if isinstance(raw_season_years, dict):
+                # 豆瓣榜单偶尔用 null 表示未知年份，避免污染统一响应模型
+                self.season_years = {
+                    season: str(year)
+                    for season, year in raw_season_years.items()
+                    if year is not None
+                }
+            if self.type == MediaType.TV and not self.season_years and self.year:
+                season = self.season if self.season is not None else 1
+                self.season_years = {season: self.year}
         # 风格
         if not self.genres:
             self.genres = [{"id": genre, "name": genre} for genre in info.get("genres") or []]
@@ -1642,6 +1649,8 @@ class MediaInfo:
             self.production_countries = [{"id": country, "name": country} for country in info.get("countries") or []]
         # 剩余属性赋值
         for key, value in info.items():
+            if key == "season_years":
+                continue
             if not value:
                 continue
             if not hasattr(self, key):

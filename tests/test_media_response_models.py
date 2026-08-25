@@ -94,6 +94,34 @@ async def test_media_response_accepts_cross_source_credit_shapes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_douban_media_response_filters_unknown_season_years() -> None:
+    """豆瓣榜单的未知季年份不应导致整个媒体列表响应校验失败。"""
+    media = CoreMediaInfo(douban_info={
+        "id": "1292052",
+        "title": "示例电影",
+        "type": "movie",
+        "season_years": {1: None, 2: 2025},
+    })
+    router = ResponseAPIRouter()
+
+    @router.get("/discover/douban_movies", response_model=list[schemas.MediaInfo])
+    def discover_douban_movies() -> list[dict]:
+        """返回包含未知季年份的豆瓣榜单条目。"""
+        return [media.to_dict()]
+
+    app = FastAPI()
+    app.include_router(router)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/discover/douban_movies")
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["season_years"] == {"2": "2025"}
+
+
+@pytest.mark.asyncio
 async def test_media_response_accepts_legacy_source_key() -> None:
     """媒体身份重构前缓存的旧格式条目（source + media_id）应被归一化并正常响应。"""
     router = ResponseAPIRouter()
