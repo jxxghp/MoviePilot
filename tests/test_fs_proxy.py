@@ -141,6 +141,47 @@ def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch):
         proxy.close()
 
 
+def test_windows_pipe_wait_stat_works(tmp_path, monkeypatch):
+    """
+    Windows 上 select() 不能等匿名管道（WinError 10038），必须走线程等待。
+    强制走这条路径时，stat 语义仍要与直接调用一致。
+    """
+    monkeypatch.setattr(sys, "platform", "win32")
+    proxy = FileSystemProxy(timeout=30)
+    try:
+        media = tmp_path / "win.mkv"
+        media.write_bytes(b"abcd")
+        result = proxy.stat(media)
+        assert result["size"] == 4
+        assert result["is_file"] is True
+        assert proxy._selector is None
+    finally:
+        proxy.close()
+
+
+def test_windows_pipe_wait_timeout_kills_worker(tmp_path, monkeypatch):
+    """
+    线程等待路径同样必须能在超时后放弃并回收冻住的 worker。
+    """
+    import app.adapters.system.fsproxy as fsproxy_module
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    stuck_worker = tmp_path / "stuck_worker.py"
+    stuck_worker.write_text("import time\nwhile True:\n    time.sleep(60)\n", encoding="utf-8")
+    monkeypatch.setattr(fsproxy_module, "_WORKER_PATH", stuck_worker)
+
+    proxy = FileSystemProxy(timeout=0.5)
+    try:
+        started = time.monotonic()
+        with pytest.raises(FileSystemTimeout) as excinfo:
+            proxy.stat(tmp_path / "whatever.mkv")
+        assert time.monotonic() - started < 10
+        assert excinfo.value.errno == errno.ETIMEDOUT
+        assert proxy._process is None
+    finally:
+        proxy.close()
+
+
 def test_timeout_is_an_oserror():
     """
     超时必须是 OSError 子类：整理链与监控 watcher 对 OSError 已有完整的退避

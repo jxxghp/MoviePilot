@@ -25,7 +25,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from app.runtime.settings import RuntimeSettingsCompat
 
@@ -364,17 +364,63 @@ class FileSystemProxy:
         :return: 响应行
         """
         timeout = self._timeout if timeout is None else timeout
+        # Windows 的 select() 只能等 socket。subprocess.PIPE 是匿名管道，
+        # selectors.DefaultSelector.select() 会抛 WinError 10038（WSAENOTSOCK），
+        # 整理链每次 stat 都会直接失败。POSIX 继续用 selector，Windows 改走线程等待。
+        if sys.platform == "win32":
+            return self._read_line_windows(timeout)
         if not self._selector.select(timeout=timeout):
-            logger.error(f"文件系统操作 {timeout} 秒无响应，判定挂载挂死，正在回收代理进程")
-            self._shutdown()
-            raise FileSystemTimeout(
-                errno_module.ETIMEDOUT,
-                f"文件系统操作超过 {timeout} 秒无响应，挂载可能已无响应"
-            )
+            self._raise_timeout(timeout)
         line = self._process.stdout.readline()
         if not line:
             raise BrokenPipeError("文件系统代理进程已退出")
         return line
+
+    def _read_line_windows(self, timeout: float) -> bytes:
+        """
+        在辅助线程上读一行，用 join(timeout) 实现可放弃等待。
+
+        不能用 select()/WaitForSingleObject：匿名管道在 Windows 上不是
+        可选择的套接字，也不是可靠的「有数据」同步对象。
+        :param timeout: 本次读取的超时秒数
+        :return: 响应行
+        """
+        if self._process is None or self._process.stdout is None:
+            raise BrokenPipeError("文件系统代理进程已退出")
+        stdout = self._process.stdout
+        holder: List[Union[bytes, BaseException]] = []
+
+        def _read() -> None:
+            try:
+                holder.append(stdout.readline())
+            except Exception as err:  # noqa: BLE001
+                holder.append(err)
+
+        reader = threading.Thread(target=_read, name="fsproxy-stdout", daemon=True)
+        reader.start()
+        reader.join(timeout)
+        if reader.is_alive():
+            self._raise_timeout(timeout)
+        if not holder:
+            raise BrokenPipeError("文件系统代理进程已退出")
+        line = holder[0]
+        if isinstance(line, BaseException):
+            raise line
+        if not line:
+            raise BrokenPipeError("文件系统代理进程已退出")
+        return line
+
+    def _raise_timeout(self, timeout: float) -> None:
+        """
+        判定挂载无响应：杀掉代理并抛出可被整理链处理的超时。
+        :param timeout: 已等待的秒数
+        """
+        logger.error(f"文件系统操作 {timeout} 秒无响应，判定挂载挂死，正在回收代理进程")
+        self._shutdown()
+        raise FileSystemTimeout(
+            errno_module.ETIMEDOUT,
+            f"文件系统操作超过 {timeout} 秒无响应，挂载可能已无响应"
+        )
 
     def _ensure_worker(self):
         """
@@ -383,15 +429,22 @@ class FileSystemProxy:
         if self._process is not None and self._process.poll() is None:
             return
         self._shutdown()
+        popen_kwargs: Dict[str, Any] = {
+            "stdin": subprocess.PIPE,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.DEVNULL,
+            "bufsize": 0,
+        }
+        if sys.platform == "win32":
+            # NSSM 服务里再拉 python.exe 时避免弹出控制台窗口
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         self._process = subprocess.Popen(
             [sys.executable, str(_WORKER_PATH)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            bufsize=0,
+            **popen_kwargs,
         )
-        self._selector = selectors.DefaultSelector()
-        self._selector.register(self._process.stdout, selectors.EVENT_READ)
+        if sys.platform != "win32":
+            self._selector = selectors.DefaultSelector()
+            self._selector.register(self._process.stdout, selectors.EVENT_READ)
         logger.debug(f"文件系统代理进程已启动: pid={self._process.pid}")
 
     def _shutdown(self):
