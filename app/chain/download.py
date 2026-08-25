@@ -6,18 +6,25 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Tuple, Set, Dict, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
-from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
-from app.schemas.workflow import FileItem as _SchemaFileItem
+from app.adapters.network.http import RequestUtils
+from app.adapters.system.host import SystemUtils
+from app.application.chain.data import (
+    get_chain_download_failure_port,
+    get_chain_download_history_port,
+    get_chain_media_server_port,
+)
+from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.directory import DirectoryHelper, validate_download_save_path
+from app.application.download import selection as _selection
+from app.application.download.tasks import DownloadTaskService
+from app.application.torrent import TorrentHelper
 from app.chain import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
-from app.runtime.cache import FileCache
-from app.runtime.config import global_vars
-from app.application.configuration import get_chain_runtime_config_snapshot
+from app.domain import episode as episode_rules
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -25,36 +32,36 @@ from app.domain.context import (
     SubtitleInfo,
     TorrentInfo,
 )
-from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.application.chain.data import (
-    get_chain_download_failure_port,
-    get_chain_download_history_port,
-    get_chain_media_server_port,
-)
-from app.application.directory import DirectoryHelper, validate_download_save_path
-from app.application.download.tasks import DownloadTaskService
-from app.application.download import selection as _selection
-from app.runtime.thread import ThreadHelper
-from app.application.torrent import TorrentHelper
-from app.runtime.log import logger
-from app.schemas.mediaserver import ExistMediaInfo
-from app.schemas.file import FileURI
-from app.schemas.mediaserver import NotExistMediaInfo
-from app.schemas.transfer import DownloaderTorrent
-from app.schemas.message import Message
-from app.schemas.event import ResourceSelectionEventData
-from app.schemas.event import ResourceDownloadEventData
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, TorrentStatus, EventType, NotificationChannel, MessageType, ContentType, \
-    ChainEventType
-from app.adapters.network.http import RequestUtils
-from app.schemas.media import build_media_key, resolve_media_identity
-from app.domain import episode as episode_rules
 from app.foundation import size as size_tools
 from app.foundation import text as text_tools
-from app.adapters.system.host import SystemUtils
+from app.runtime.cache import FileCache
+from app.runtime.events import Event, eventmanager
+from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
+from app.runtime.thread import ThreadHelper
+from app.schemas.event import ResourceDownloadEventData, ResourceSelectionEventData
+from app.schemas.file import FileURI
+from app.schemas.media import build_media_key, resolve_media_identity
+from app.schemas.mediaserver import ExistMediaInfo, NotExistMediaInfo
+from app.schemas.message import Message
+from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
+from app.schemas.transfer import DownloaderTorrent
+from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    ChainEventType,
+    ContentType,
+    EventType,
+    MediaSource,
+    MediaType,
+    MessageType,
+    NotificationChannel,
+    TorrentStatus,
+)
+from app.schemas.workflow import FileItem as _SchemaFileItem
 
 if TYPE_CHECKING:
     from typing import Any
@@ -1000,7 +1007,7 @@ class DownloadChain(ChainBase):
             MediaType.MUSIC: set(),
         }
         for context in contexts:
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 break
             media_type = context.media_info.type
             if media_type not in downloaded_keys:
@@ -1657,7 +1664,7 @@ class DownloadChain(ChainBase):
             for need_mid, need_season in need_seasons.items():
                 # 循环种子
                 for context in contexts:
-                    if global_vars.is_system_stopped:
+                    if runtime_stop_state.is_system_stopped:
                         break
                     # 媒体信息
                     media = context.media_info
@@ -1801,7 +1808,7 @@ class DownloadChain(ChainBase):
                         need_episodes = list(range(start_episode, total_episode + 1))
                     # 循环种子
                     for context in contexts:
-                        if global_vars.is_system_stopped:
+                        if runtime_stop_state.is_system_stopped:
                             break
                         # 媒体信息
                         media = context.media_info
@@ -1889,7 +1896,7 @@ class DownloadChain(ChainBase):
                         continue
                     # 循环种子
                     for context in contexts:
-                        if global_vars.is_system_stopped:
+                        if runtime_stop_state.is_system_stopped:
                             break
                         # 媒体信息
                         media = context.media_info
@@ -2040,7 +2047,7 @@ class DownloadChain(ChainBase):
                                                             media_id=media_id,
                                                             episode_group=mediainfo.episode_group)
                 if not mediainfo:
-                    logger.error(f"媒体信息识别失败！")
+                    logger.error("媒体信息识别失败！")
                     return False, {}
                 if not mediainfo.seasons:
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")

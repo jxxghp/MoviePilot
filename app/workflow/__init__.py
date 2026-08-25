@@ -4,18 +4,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
-from app.runtime.config import global_vars
-from app.runtime.events import eventmanager, Event
 from app.application.chain.data import get_chain_workflow_port
 from app.application.workflow import WorkflowExecutionOwner
 from app.foundation.reflection import ModuleHelper
-from app.runtime.log import logger
-from app.schemas.workflow import ActionContext
-from app.schemas.workflow import Action
-from app.schemas.workflow import ActionResult
-from app.schemas.workflow import Workflow
-from app.schemas.types import EventType
 from app.foundation.singleton import Singleton
+from app.runtime.config import global_vars
+from app.runtime.events import Event, eventmanager
+from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
+from app.schemas.types import EventType
+from app.schemas.workflow import Action, ActionContext, ActionResult, Workflow
 
 _WORKFLOW_STOP_TIMEOUT_SECONDS = 10.0
 
@@ -283,7 +281,7 @@ class WorkFlowManager(metaclass=Singleton):
     def _is_cancelled(workflow_id: int, cancel_token: Optional[Any]) -> bool:
         if cancel_token and cancel_token.is_cancelled():
             return True
-        return global_vars.is_workflow_stopped(workflow_id)
+        return runtime_stop_state.is_workflow_stopped(workflow_id)
 
     def _sleep_with_cancel(self, workflow_id: int, seconds: float, cancel_token: Optional[Any]) -> None:
         deadline = monotonic() + seconds

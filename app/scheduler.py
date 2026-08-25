@@ -9,16 +9,30 @@ import time
 import traceback
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Callable, Optional, Dict, Any, List
+from typing import Any, Callable, Dict, List, Optional
 
 import pytz
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from app.schemas.dashboard import ScheduleInfo as _SchemaScheduleInfo
-from app.schemas.dashboard import ScheduleProgress as _SchemaScheduleProgress
-from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
+
+from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.system.update import system_update_manager
+from app.application.agentdata import get_agent_task_port
+from app.application.configuration import (
+    SchedulerRuntimeConfig,
+    get_configured_system_config,
+    get_scheduler_runtime_config,
+)
+from app.application.database import get_database_governance
+from app.application.image import WallpaperHelper
+from app.application.mediaserver import get_mediaserver_configs
+from app.application.messaging.message import MessageHelper
+from app.application.outbox import dispatch_pending_outbox
+from app.application.plugin.routes import register_plugin_api
+from app.application.plugin.runtime import get_plugin_manager
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain import ChainBase
 from app.chain.mediaserver import MediaServerChain
 from app.chain.recommend import RecommendChain
@@ -26,36 +40,23 @@ from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.transfer import TransferChain
 from app.chain.workflow import WorkflowChain
-from app.runtime.config import global_vars
-from app.runtime.events import Event, eventmanager
-from app.application.agentdata import get_agent_task_port
-from app.application.database import get_database_governance
-from app.application.outbox import dispatch_pending_outbox
-from app.application.plugin.runtime import get_plugin_manager
-from app.application.plugin.routes import register_plugin_api
-from app.application.configuration import (
-    SchedulerRuntimeConfig,
-    get_configured_system_config,
-    get_scheduler_runtime_config,
-)
-from app.application.image import WallpaperHelper
-from app.application.mediaserver import get_mediaserver_configs
-from app.application.messaging.message import MessageHelper
-from app.runtime.progress import AsyncProgressHelper, ProgressHelper
-from app.adapters.external.server import MoviePilotServerHelper
-from app.adapters.system.update import system_update_manager
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.runtime.log import logger
-from app.schemas.message import Message
-from app.schemas.message import MessageType
-from app.schemas.workflow import Workflow
-from app.schemas.types import EventType, SystemConfigKey
-from app.runtime.gc import get_memory_usage
-from app.runtime.reload import ConfigReloadMixin
 from app.foundation.singleton import SingletonClass
-from app.runtime.scheduling import TimerUtils
+from app.runtime.config import global_vars
 from app.runtime.correlation import call_with_correlation, get_correlation_id
+from app.runtime.events import Event, eventmanager
+from app.runtime.gc import get_memory_usage
+from app.runtime.log import logger
 from app.runtime.observability import record_metric
+from app.runtime.progress import AsyncProgressHelper, ProgressHelper
+from app.runtime.reload import ConfigReloadMixin
+from app.runtime.scheduling import TimerUtils
+from app.runtime.stop import runtime_stop_state
+from app.schemas.dashboard import ScheduleInfo as _SchemaScheduleInfo
+from app.schemas.dashboard import ScheduleProgress as _SchemaScheduleProgress
+from app.schemas.message import Message, MessageType
+from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
+from app.schemas.types import EventType, SystemConfigKey
+from app.schemas.workflow import Workflow
 
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"
@@ -1966,7 +1967,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """停止旧计划的提交入口，保留已开始任务直到其自然完成。"""
         with self._lock:
             if (
-                    global_vars.is_system_stopped
+                    runtime_stop_state.is_system_stopped
                     or self._lifecycle_state in {"stopping", "reloading"}
             ):
                 return False, None
@@ -2066,7 +2067,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         if self._auth_count > __max_try__:
             if not self._auth_message:
                 SchedulerChain().messagehelper.put(
-                    title=f"用户认证失败",
+                    title="用户认证失败",
                     message="用户认证失败次数过多，将不再尝试认证！",
                     role="system",
                 )

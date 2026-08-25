@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, Callable, Generator
 from typing import Any
 
-
 SessionProvider = Callable[[], Generator[Any, None, None]]
 AsyncSessionProvider = Callable[[], AsyncGenerator[Any, None]]
 RepositoryFactory = Callable[[Any], Any]

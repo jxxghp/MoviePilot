@@ -5,15 +5,15 @@ from typing import AsyncIterator, List, Optional
 from fastapi import APIRouter, Depends, Header, Security
 from fastapi.responses import JSONResponse
 
-from app.schemas.openai import AnthropicErrorDetail as _SchemaAnthropicErrorDetail
-from app.schemas.openai import AnthropicErrorResponse as _SchemaAnthropicErrorResponse
-from app.schemas.openai import AnthropicMessagesRequest as _SchemaAnthropicMessagesRequest
-from app.schemas.openai import AnthropicMessagesResponse as _SchemaAnthropicMessagesResponse
-from app.schemas.openai import AnthropicTextBlock as _SchemaAnthropicTextBlock
+from app.adapters.web.security.access import anthropic_api_key_header
+from app.api.context import (
+    get_background_task_registry_compat,
+    resolve_background_task_registry,
+)
 from app.api.endpoints.openai import (
     MODEL_ID,
-    _is_manager_unavailable,
     _is_manager_queue_full,
+    _is_manager_unavailable,
     _run_managed_agent,
 )
 from app.api.openai_utils import (
@@ -24,12 +24,12 @@ from app.api.openai_utils import (
 from app.api.presentation.sse import build_sse_response, encode_named_event
 from app.application.agent import get_running_agent_manager
 from app.application.configuration import get_api_runtime_config_snapshot
-from app.adapters.web.security.access import anthropic_api_key_header
-from app.api.context import (
-    get_background_task_registry_compat,
-    resolve_background_task_registry,
-)
 from app.runtime.tasks import TaskRegistry
+from app.schemas.openai import AnthropicErrorDetail as _SchemaAnthropicErrorDetail
+from app.schemas.openai import AnthropicErrorResponse as _SchemaAnthropicErrorResponse
+from app.schemas.openai import AnthropicMessagesRequest as _SchemaAnthropicMessagesRequest
+from app.schemas.openai import AnthropicMessagesResponse as _SchemaAnthropicMessagesResponse
+from app.schemas.openai import AnthropicTextBlock as _SchemaAnthropicTextBlock
 
 ANTHROPIC_ERROR_RESPONSES = {
     400: {"model": _SchemaAnthropicErrorResponse, "description": "请求格式错误"},

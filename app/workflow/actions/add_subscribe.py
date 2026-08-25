@@ -1,12 +1,11 @@
-from app.workflow.actions import BaseAction
-from app.chain.subscribe import SubscribeChain
-from app.application.configuration import get_chain_runtime_config_snapshot
-from app.runtime.config import global_vars
-from app.domain.context import MediaInfo
 from app.application.chain.data import get_chain_subscribe_port
+from app.application.configuration import get_chain_runtime_config_snapshot
+from app.chain.subscribe import SubscribeChain
+from app.domain.context import MediaInfo
 from app.runtime.log import logger
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionContext
+from app.runtime.stop import runtime_stop_state
+from app.schemas.workflow import ActionContext, ActionParams
+from app.workflow.actions import BaseAction
 
 
 class AddSubscribeParams(ActionParams):
@@ -45,7 +44,7 @@ class AddSubscribeAction(BaseAction):
         """
         _started = False
         for media in context.medias:
-            if global_vars.is_workflow_stopped(workflow_id):
+            if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
             # 检查缓存
             cache_key = f"{media.type}-{media.title}-{media.year}-{media.season}"

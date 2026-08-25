@@ -6,25 +6,76 @@ import zipfile
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union, Annotated
-from urllib.parse import urljoin, urlparse
+from typing import Annotated, Any, Optional, Union
+from urllib.parse import urlparse
 
 import aiofiles
 import anyio
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
 from anyio import Path as AsyncPath
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from fastapi import Body, Depends, HTTPException, Header, Request, Response
+from fastapi import Body, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
+from app.adapters.external.market import (
+    PLUGIN_MARKET_WIKI_URL,
+    extract_plugin_market_repos_from_wiki,
+    merge_plugin_market_repos,
+    split_plugin_market_repo_urls,
+)
+from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.adapters.system import rust as rust_accel
+from app.adapters.system.update import system_update_manager
+from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
+from app.api.dependencies.auth import (
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+    get_current_active_user_async,
+)
+from app.api.principal import ApiPrincipal
+from app.api.response import ResponseAPIRouter
+from app.application.backup import DatabaseBackupInProgressError
+from app.application.configuration import (
+    get_configured_system_config,
+    get_runtime_settings,
+)
+from app.application.database import get_database_governance
+from app.application.image import ImageHelper
+from app.application.messaging.message import MessageHelper
+from app.application.module import get_module_manager
+from app.application.network import NetworkTestService
+from app.application.plugin.runtime import plugin_system_config_mutation
+from app.application.rules import RuleHelper
+from app.application.scheduling import get_scheduler
+from app.application.security.url import SecurityUtils
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.chain.media import MediaChain
+from app.chain.mediaserver import MediaServerChain
+from app.chain.search import SearchChain
+from app.domain.metainfo import MetaInfo
+from app.foundation.crypto import HashUtils
+from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
+from app.foundation.url import UrlUtils
+from app.runtime.events import eventmanager
+from app.runtime.execution import run_in_threadpool_to_completion
+from app.runtime.localization import LocaleHelper
+from app.runtime.log import logger
+from app.runtime.progress import AsyncProgressHelper
+from app.runtime.scheduling import TimerUtils
+from app.runtime.state import SystemHelper
+from app.runtime.stop import runtime_stop_state
+from app.runtime.config import global_vars
+from app.runtime.version import get_app_version, get_frontend_version
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.common import JsonObjectList as _SchemaJsonObjectList
 from app.schemas.common import TimeData as _SchemaTimeData
 from app.schemas.common import ValueData as _SchemaValueData
+from app.schemas.event import ConfigChangeEventData
+from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.system import NetTestTarget as _SchemaNetTestTarget
 from app.schemas.system import DatabaseBackupArtifactData as _SchemaDatabaseBackupArtifactData
 from app.schemas.system import DatabaseBackupVerificationData as _SchemaDatabaseBackupVerificationData
+from app.schemas.system import NetTestTarget as _SchemaNetTestTarget
 from app.schemas.system import PluginMarketSyncData as _SchemaPluginMarketSyncData
 from app.schemas.system import PluginMarketSyncRequest as _SchemaPluginMarketSyncRequest
 from app.schemas.system import RuleTestData as _SchemaRuleTestData
@@ -33,58 +84,7 @@ from app.schemas.system import SystemModuleListData as _SchemaSystemModuleListDa
 from app.schemas.system import SystemUpdateStatus as _SchemaSystemUpdateStatus
 from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.mediaserver import MediaServerChain
-from app.chain.search import SearchChain
-from app.chain.system import SystemChain
-from app.runtime.config import global_vars
-from app.runtime.events import eventmanager
-from app.domain.metainfo import MetaInfo
-from app.application.module import get_module_manager
-from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
-from app.api.principal import ApiPrincipal
-from app.application.configuration import (
-    get_configured_system_config,
-    get_runtime_settings,
-)
-from app.application.backup import DatabaseBackupInProgressError
-from app.application.database import get_database_governance
-from app.application.plugin.runtime import plugin_system_config_mutation
-from app.api.dependencies.auth import (
-    get_current_active_superuser,
-    get_current_active_superuser_async,
-    get_current_active_user_async,
-)
-from app.application.image import ImageHelper
-from app.runtime.localization import LocaleHelper
-from app.adapters.external.market import (
-    PLUGIN_MARKET_WIKI_URL,
-    extract_plugin_market_repos_from_wiki,
-    merge_plugin_market_repos,
-    split_plugin_market_repo_urls,
-)
-from app.application.messaging.message import MessageHelper
-from app.runtime.progress import AsyncProgressHelper
-from app.runtime.scheduling import TimerUtils
-from app.application.rules import RuleHelper
-from app.adapters.external.server import MoviePilotServerHelper
-from app.runtime.state import SystemHelper
-from app.runtime.log import logger
-from app.runtime.execution import run_in_threadpool_to_completion
-from app.application.scheduling import get_scheduler
-from app.schemas.event import ConfigChangeEventData
-from app.schemas.exception import PluginMutationRejectedError
-from app.schemas.types import SystemConfigKey, EventType
-from app.foundation.crypto import HashUtils
-from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.adapters.system import rust as rust_accel
-from app.adapters.system.update import system_update_manager
-from app.application.security.url import SecurityUtils
-from app.application.network import NetworkTestService
-from app.foundation.url import UrlUtils
-from app.runtime.version import get_app_version, get_frontend_version
+from app.schemas.types import EventType, SystemConfigKey
 
 router = ResponseAPIRouter()
 
@@ -1042,7 +1042,7 @@ async def get_progress(
 
     async def event_generator():
         try:
-            while not global_vars.is_system_stopped:
+            while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():
                     break
                 detail = await progress.get(locale=locale)
@@ -1233,7 +1233,7 @@ async def get_message(
 
     async def event_generator():
         try:
-            while not global_vars.is_system_stopped:
+            while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():
                     break
                 detail = message.get(role)
@@ -1314,7 +1314,7 @@ async def _get_logging_impl(
                 initial_stat = await log_path.stat()
                 initial_size = initial_stat.st_size
                 # 实时监听新日志，使用更短的轮询间隔
-                while not global_vars.is_system_stopped:
+                while not runtime_stop_state.is_system_stopped:
                     if await request.is_disconnected():
                         break
                     # 检查文件是否有新内容
@@ -1413,7 +1413,7 @@ async def latest_version(_: _SchemaTokenPayload = Depends(verify_token)):
     version_res = await AsyncRequestUtils(
         proxies=get_runtime_settings().get("PROXY"),
         headers=get_runtime_settings().get("GITHUB_HEADERS"),
-    ).get_res(f"https://api.github.com/repos/jxxghp/MoviePilot/releases")
+    ).get_res("https://api.github.com/repos/jxxghp/MoviePilot/releases")
     if version_res is not None and version_res.status_code == 200:
         ver_json = version_res.json()
         if ver_json:

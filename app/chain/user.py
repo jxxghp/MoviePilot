@@ -2,14 +2,13 @@ import secrets
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, Tuple, Union
 
-from app.chain import ChainBase
-from app.application.security.token import get_password_hash, verify_password
 from app.application.chain.data import get_chain_user_port
-from app.runtime.log import logger
-from app.schemas.event import AuthCredentials
-from app.schemas.event import AuthInterceptCredentials
-from app.schemas.types import ChainEventType
 from app.application.security.otp import OtpUtils
+from app.application.security.token import get_password_hash, verify_password
+from app.chain import ChainBase
+from app.runtime.log import logger
+from app.schemas.event import AuthCredentials, AuthInterceptCredentials
+from app.schemas.types import ChainEventType
 
 PASSWORD_INVALID_CREDENTIALS_MESSAGE = "用户名、密码或验证码错误"
 User = Any

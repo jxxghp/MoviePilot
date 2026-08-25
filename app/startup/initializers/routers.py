@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+
 def init_routers(app: FastAPI, api_prefix: str = "/api/v1"):
     """
     初始化路由

@@ -26,18 +26,18 @@ def _prepare_direct_execution_import_path() -> None:
 
 _prepare_direct_execution_import_path()
 
-import setproctitle
 import signal
 import threading
 from pathlib import Path
 from typing import Optional
 
+import setproctitle
 import uvicorn as uvicorn
 from PIL import Image
 from uvicorn import Config
 
-from app.adapters.system.stdio import configure_rotating_stdio
 from app.adapters.system.host import SystemUtils
+from app.adapters.system.stdio import configure_rotating_stdio
 
 stdio_log_file = os.getenv("MOVIEPILOT_STDIO_LOG_FILE")
 if stdio_log_file:
@@ -55,8 +55,9 @@ elif SystemUtils.is_frozen():
     sys.stderr = open(os.devnull, 'w')
 
 from app.factory import app
-from app.runtime.config import global_vars
 from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.config import global_vars
+from app.runtime.stop import runtime_stop_state
 
 settings = RuntimeSettingsCompat()
 from app.runtime.topology import (
@@ -71,7 +72,7 @@ class MoviePilotServer(uvicorn.Server):
     """在 Uvicorn 开始优雅退出前发布应用协作停止标志"""
 
     def handle_exit(self, sig, frame) -> None:
-        global_vars.stop_system()
+        getattr(global_vars, "stop_system")()
         super().handle_exit(sig, frame)
 
 
@@ -92,7 +93,7 @@ def create_server() -> MoviePilotServer:
         )
     )
     # 数据库准备阶段收到的信号早于 Server 物化，创建后必须继承既有停止意图。
-    if global_vars.is_system_stopped:
+    if runtime_stop_state.is_system_stopped:
         server.should_exit = True
     return server
 
@@ -124,7 +125,7 @@ def run_api_server() -> None:
 
 def request_shutdown() -> None:
     """发布协作停止标志并请求 Uvicorn 退出"""
-    global_vars.stop_system()
+    getattr(global_vars, "stop_system")()
     if Server is not None:
         Server.should_exit = True
 

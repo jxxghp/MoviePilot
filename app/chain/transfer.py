@@ -10,55 +10,38 @@ from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
 from copy import deepcopy
 from pathlib import Path
-from typing import List, Optional, Tuple, Union, Dict, Callable, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from app.chain import ChainBase
-from app.chain.media import MediaChain
-from app.chain.storage import StorageChain
-from app.chain.tmdb import TmdbChain
-from app.runtime.config import global_vars
-from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
-from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.metainfo import MetaInfoPath
 from app.application.chain.data import (
     get_chain_download_history_port,
     get_chain_transfer_history_port,
     get_chain_transfer_pending_port,
 )
+from app.chain import ChainBase
+from app.chain.media import MediaChain
+from app.chain.storage import StorageChain
+from app.chain.tmdb import TmdbChain
+from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfoPath
+from app.runtime.config import global_vars
+from app.runtime.stop import runtime_stop_state
+
 DownloadHistory = Any
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
 from app.application.formatting import FormatParser
-from app.runtime.progress import ProgressHelper
-from app.application.history import (add_transfer_fail, add_transfer_success,
-                                     clear_transfer_failures, describe_history_gate,
-                                     evaluate_history_gate, is_skip_action,
-                                     record_transfer_failure)
-from app.application.outbox import TRANSFER_COMPLETED_TOPIC, TRANSFER_FAILED_TOPIC
-from app.runtime.log import logger
-from app.schemas.event import StorageOperSelectionEventData
-from app.schemas.transfer import TransferInfo
-from app.schemas.message import Message
-from app.schemas.transfer import EpisodeFormat
-from app.schemas.workflow import FileItem
-from app.schemas.system import TransferDirectoryConf
-from app.schemas.transfer import TransferJob
-from app.schemas.tmdb import TmdbEpisode
-from app.schemas.exception import OperationInterrupted
-from app.schemas.types import (
-    TorrentStatus,
-    EventType,
-    MediaType,
-    ProgressKey,
-    MessageType,
-    NotificationChannel,
-    SystemConfigKey,
-    ChainEventType,
-    ContentType,
-    MediaSource,
+from app.application.history import (
+    add_transfer_fail,
+    add_transfer_success,
+    clear_transfer_failures,
+    describe_history_gate,
+    evaluate_history_gate,
+    is_skip_action,
+    record_transfer_failure,
 )
-from app.runtime.reload import ConfigReloadMixin
+from app.application.outbox import TRANSFER_COMPLETED_TOPIC, TRANSFER_FAILED_TOPIC
 from app.application.transfer import (
     FailedRetryScheduler,
     JobManager,
@@ -70,13 +53,40 @@ from app.application.transfer import (
     build_transfer_failure_group_key,
     job_lock,
 )
-from app.chain._transfer import (EpisodeFormatMixin, FailedRetryMixin,
-                               FileFilterMixin, FileKeyMixin,
-                               HistoryMatchMixin, ManualHistoryMixin,
-                               ScrapeBatchMixin)
-from app.schemas.media import resolve_media_identity
-from app.foundation.singleton import Singleton
+from app.chain._transfer import (
+    EpisodeFormatMixin,
+    FailedRetryMixin,
+    FileFilterMixin,
+    FileKeyMixin,
+    HistoryMatchMixin,
+    ManualHistoryMixin,
+    ScrapeBatchMixin,
+)
 from app.domain import episode as episode_rules
+from app.foundation.singleton import Singleton
+from app.runtime.log import logger
+from app.runtime.progress import ProgressHelper
+from app.runtime.reload import ConfigReloadMixin
+from app.schemas.event import StorageOperSelectionEventData
+from app.schemas.exception import OperationInterrupted
+from app.schemas.media import resolve_media_identity
+from app.schemas.message import Message
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.tmdb import TmdbEpisode
+from app.schemas.transfer import EpisodeFormat, TransferInfo, TransferJob
+from app.schemas.types import (
+    ChainEventType,
+    ContentType,
+    EventType,
+    MediaSource,
+    MediaType,
+    MessageType,
+    NotificationChannel,
+    ProgressKey,
+    SystemConfigKey,
+    TorrentStatus,
+)
+from app.schemas.workflow import FileItem
 
 # 下载器锁
 downloader_lock = threading.Lock()
@@ -89,6 +99,24 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
     """
     文件整理处理链
     """
+
+    @classmethod
+    def _transfer_media_chain(cls):
+        """为整理 mixin 提供可替换的媒体识别构造点。"""
+        from app.chain import _transfer as _transfer_mixin
+        return (_transfer_mixin.MediaChain or MediaChain)()
+
+    @classmethod
+    def _transfer_storage_chain(cls):
+        """为整理 mixin 提供可替换的存储构造点。"""
+        from app.chain import _transfer as _transfer_mixin
+        return (_transfer_mixin.StorageChain or StorageChain)()
+
+    @classmethod
+    def _transfer_subscribe_chain(cls):
+        """为整理 mixin 提供可替换的订阅构造点。"""
+        from app.chain.subscribe import SubscribeChain as _SubscribeChain
+        return _SubscribeChain()
 
     # worker 在构造期启动；若中途失败，单例仍需先发布给 lifespan 清理入口。
     _retain_failed_singleton = True
@@ -1148,7 +1176,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
         :param stop_event: 当前 worker 代专属停止信号，热更新后不会被重新清除
         """
-        while not global_vars.is_system_stopped and not stop_event.is_set():
+        while not runtime_stop_state.is_system_stopped and not stop_event.is_set():
             try:
                 item: TransferQueue = self._queue.get(
                     block=True, timeout=self._transfer_interval
@@ -1156,10 +1184,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 if item is self._QUEUE_STOP_SENTINEL:
                     self._queue.task_done()
                     self.__settle_transfer_progress_if_idle()
-                    if stop_event.is_set() or global_vars.is_system_stopped:
+                    if stop_event.is_set() or runtime_stop_state.is_system_stopped:
                         break
                     continue
-                if stop_event.is_set() or global_vars.is_system_stopped:
+                if stop_event.is_set() or runtime_stop_state.is_system_stopped:
                     # 关闭信号与 queue.get 竞态时，把尚未处理的任务放回队列；其
                     # TransferPending 登记保持不变，供同进程重启 worker 或下次启动回放。
                     self._queue.put(item)
@@ -1606,7 +1634,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             try:
                 total_num = len(torrents)
                 for index, torrent in enumerate(torrents, start=1):
-                    if global_vars.is_system_stopped:
+                    if runtime_stop_state.is_system_stopped:
                         break
                     if progress_callback:
                         torrent_name = (
@@ -1732,7 +1760,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             若 `predicate` 为 `None`，则默认保留所有项
         :param verify_file_exists: 验证目录或文件是否存在，默认值为 `True`
         """
-        if global_vars.is_system_stopped:
+        if runtime_stop_state.is_system_stopped:
             raise OperationInterrupted()
 
         storagechain = StorageChain()
@@ -2536,7 +2564,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         skipped_torrents = set()
         try:
             for file_item, bluray_dir in file_items:
-                if global_vars.is_system_stopped:
+                if runtime_stop_state.is_system_stopped:
                     raise OperationInterrupted()
                 if continue_callback and not continue_callback():
                     raise OperationInterrupted()
@@ -2762,7 +2790,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 progress.update(value=0, text=__process_msg)
             try:
                 for transfer_task in transfer_tasks:
-                    if global_vars.is_system_stopped:
+                    if runtime_stop_state.is_system_stopped:
                         break
                     if continue_callback and not continue_callback():
                         break

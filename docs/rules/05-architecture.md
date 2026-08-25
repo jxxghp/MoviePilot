@@ -316,6 +316,11 @@ architecture snapshot, not through incidental module globals.
 
 ### Chain layer
 
+运行时停止信号统一由 `app/runtime/stop.py` 的 `StopState` 持有。业务代码应注入或读取
+`runtime_stop_state`，`app/runtime/config.py` 中的 `global_vars` 停止属性只作为旧插件和
+兼容测试的门面，不得新增依赖。Chain mixin 通过 `app/chain/_contracts.py` 声明最小宿主
+能力，并优先使用宿主提供的可替换工厂；具体 mixin 的反向导入按批次收敛。
+
 `app/chain/` implements use cases shared by API, CLI, Agent, scheduler and other
 entrypoints. Chains may coordinate modules, application services, injected
 persistence Ports, events and caches. New chain-to-chain dependencies are allowed only while the

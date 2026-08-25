@@ -1,6 +1,6 @@
+import traceback
 from collections.abc import Callable
 from configparser import ConfigParser as _ConfigParser
-import traceback
 
 from alembic.command import upgrade
 from alembic.config import Config

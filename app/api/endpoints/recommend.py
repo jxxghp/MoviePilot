@@ -2,17 +2,17 @@ from typing import Any, Awaitable, List, Optional
 
 from fastapi import Depends, HTTPException, status
 
-from app.schemas.event import RecommendMediaSource as _SchemaRecommendMediaSource
-from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
+from app.adapters.web.security.access import verify_token
 from app.api.response import ResponseAPIRouter
 from app.chain.recommend import RecommendChain
 from app.runtime.events import eventmanager
-from app.adapters.web.security.access import verify_token
-from app.schemas.exception import TMDbException
+from app.schemas.event import RecommendMediaSource as _SchemaRecommendMediaSource
 from app.schemas.event import RecommendSourceEventData
+from app.schemas.exception import TMDbException
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.schemas.types import ChainEventType
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

@@ -9,6 +9,7 @@ from typing import Awaitable, Callable
 from fastapi import FastAPI
 
 from app.startup.initializers.cache import configure_cache_dependencies
+
 # 缓存装饰器会在业务模块导入时创建后端，必须先完成适配器装配。
 configure_cache_dependencies()
 # urllib3-future 覆盖 urllib3 命名空间后删除了 format_header_param，导致 telebot 崩溃，需在加载模块前打补丁
@@ -24,23 +25,29 @@ try:
 except Exception:
     pass
 
-from app.chain.system import SystemChain
 from app.application.plugin.lifecycle import plugin_lifecycle
 from app.application.plugin.runtime import get_plugin_manager
+from app.chain.system import SystemChain
+from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 from app.runtime.config import global_vars
 from app.runtime.settings import RuntimeSettingsCompat
-from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
+from app.runtime.stop import runtime_stop_state
 
 settings = RuntimeSettingsCompat()
-from app.runtime.health import get_application_health
-from app.runtime.execution import run_in_threadpool_to_completion
-from app.runtime.topology import validate_process_topology
-from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.network.http import (
+    aclose_shared_async_transports,
+    configure_default_user_agent,
+)
+from app.db.engine import check_connection_budget, get_engine, get_global_async_engine
+from app.runtime.execution import run_in_threadpool_to_completion
+from app.runtime.health import get_application_health
+from app.runtime.log import LoggerManager, logger
 from app.runtime.state import SystemHelper
-from app.runtime.log import logger, LoggerManager
-from app.startup.initializers.command import init_command, restart_command
+from app.runtime.tasks import TaskRegistry, configure_task_registry
+from app.runtime.topology import validate_process_topology
 from app.startup.initializers.agent import stop_agent
+from app.startup.initializers.command import init_command, restart_command
 from app.startup.initializers.domain import configure_domain_dependencies
 from app.startup.initializers.modules import (
     drain_events,
@@ -48,7 +55,7 @@ from app.startup.initializers.modules import (
     settle_events,
     stop_modules,
 )
-from app.startup.initializers.monitor import stop_monitor, init_monitor
+from app.startup.initializers.monitor import init_monitor, stop_monitor
 from app.startup.initializers.plugins import (
     configure_plugin_services,
     execute_task,
@@ -61,11 +68,10 @@ from app.startup.initializers.plugins import (
 )
 from app.startup.initializers.routers import init_routers
 from app.startup.initializers.scheduler import (
-    stop_scheduler,
-    init_scheduler,
     init_plugin_scheduler,
+    init_scheduler,
+    stop_scheduler,
 )
-from app.db.engine import check_connection_budget, get_engine, get_global_async_engine
 from app.startup.initializers.transfer import (
     replay_pending_transfers,
     stop_transfer_runtime,
@@ -76,10 +82,6 @@ from app.startup.lifecycle.components import (
     LifecycleFailurePolicy,
     LifecycleMode,
     lifecycle_manifest,
-)
-from app.adapters.network.http import (
-    aclose_shared_async_transports,
-    configure_default_user_agent,
 )
 
 
@@ -541,7 +543,8 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         # 停止信号必须先于一切资源释放发出，让工作流、整理等长任务尽早感知停机。
         LifecycleComponent(
             name="停止信号",
-            stop=global_vars.stop_system,
+            # 兼容旧测试与插件；GlobalVar 内部已委托到 StopState。
+            stop=getattr(global_vars, "stop_system"),
             stop_order=4,
             stop_timeout_seconds=10,
         ),

@@ -9,6 +9,7 @@ from typing import Any, Optional
 from app.application.chain.data import ChainDataPorts
 from app.application.chain.durable_events import ChainDurableEventWriter
 from app.application.configuration import ChainRuntimeConfig
+from app.runtime.stop import StopState, runtime_stop_state
 
 
 MessageQueueFactory = Callable[[Callable[..., Any]], Any]
@@ -34,6 +35,7 @@ class ChainRuntimeContext:
     configuration: ChainRuntimeConfig = field(
         default_factory=lambda: ChainRuntimeConfig(media_extensions=())
     )
+    stop_state: StopState = field(default_factory=lambda: runtime_stop_state)
 
 
 def _unconfigured_chain_runtime_context() -> ChainRuntimeContext:

@@ -2,21 +2,21 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
+from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.stop import runtime_stop_state
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.runtime.config import global_vars
-from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
-from app.application.directory import DirectoryHelper
-from app.runtime.log import logger
 from app.adapters.system.fsproxy import fsproxy
+from app.adapters.system.host import SystemUtils
+from app.application.directory import DirectoryHelper
 from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.runtime.log import logger
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.adapters.system.host import SystemUtils
 
 
 class LocalStorage(StorageBase):
@@ -301,7 +301,7 @@ class LocalStorage(StorageBase):
             copied = fsproxy.copy(
                 src, partial,
                 progress_cb=progress_callback,
-                cancel_cb=lambda: global_vars.is_transfer_stopped(src.as_posix()),
+                cancel_cb=lambda: runtime_stop_state.consume_transfer_stop(src.as_posix()),
                 chunk_size=self.chunk_size,
             )
             if not copied:
@@ -352,7 +352,7 @@ class LocalStorage(StorageBase):
         try:
             with open(src, "rb") as fsrc, open(dest, "wb") as fdst:
                 while True:
-                    if global_vars.is_transfer_stopped(src.as_posix()):
+                    if runtime_stop_state.consume_transfer_stop(src.as_posix()):
                         logger.info(f"【本地】{src} 复制已取消！")
                         return False
                     buf = fsrc.read(self.chunk_size)

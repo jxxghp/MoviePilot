@@ -4,10 +4,37 @@ MFA (Multi-Factor Authentication) API 端点
 """
 
 import json
-from typing import Any, Annotated, Optional
+from typing import Annotated, Any, Optional
 
-from fastapi import Depends, HTTPException, Body, Request, Response
+from fastapi import Body, Depends, HTTPException, Request, Response
 
+from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
+from app.api.dependencies.auth import (
+    get_current_active_user,
+    get_current_active_user_async,
+    get_passkey_service,
+    get_user_service,
+)
+from app.api.principal import ApiPrincipal
+from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.application.security.auth import get_configured_auth_service
+from app.application.security.otp import OtpUtils
+from app.application.security.passkey import (
+    PasskeyChallengeStore,
+    PassKeyHelper,
+    PassKeyRegistrationOriginMismatchError,
+    PassKeyRegistrationVerificationError,
+)
+from app.application.security.passkeys import (
+    PasskeyService,
+)
+from app.application.security.token import verify_password
+from app.application.security.user import (
+    UserService,
+    get_configured_user_id_lookup,
+    get_configured_user_name_lookup,
+)
+from app.runtime.log import logger
 from app.schemas.mcp import BaseModel as _SchemaBaseModel
 from app.schemas.mcp import JsonData as _SchemaJsonData
 from app.schemas.mfa import MfaStatusData as _SchemaMfaStatusData
@@ -17,33 +44,6 @@ from app.schemas.mfa import PasskeyStartData as _SchemaPasskeyStartData
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
-from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
-from app.application.security.token import verify_password
-from app.application.security.auth import get_configured_auth_service
-from app.application.security.user import UserService
-from app.application.security.user import (
-    get_configured_user_id_lookup,
-    get_configured_user_name_lookup,
-)
-from app.application.security.passkeys import (
-    PasskeyService,
-)
-from app.api.principal import ApiPrincipal
-from app.api.dependencies.auth import (
-    get_current_active_user,
-    get_current_active_user_async,
-    get_user_service,
-    get_passkey_service,
-)
-from app.application.security.passkey import (
-    PassKeyHelper,
-    PassKeyRegistrationOriginMismatchError,
-    PassKeyRegistrationVerificationError,
-    PasskeyChallengeStore,
-)
-from app.runtime.log import logger
-from app.application.security.otp import OtpUtils
 
 router = ResponseAPIRouter()
 

@@ -65,6 +65,9 @@ jobs:
       - name: Check process runtime service locators
         run: uv run --locked --no-sync python scripts/architecture/service_locator.py
 
+      - name: Check Ruff diagnostic ratchet
+        run: uv run --locked --no-sync python scripts/architecture/ruff_ratchet.py
+
       - name: Check mypy error ratchet
         run: uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
 
@@ -108,7 +111,6 @@ jobs:
         run: uv run --locked --no-sync python tests/run.py --shard "${{ matrix.shard }}"
 
   coverage:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     name: Coverage Report
     timeout-minutes: 20
@@ -138,6 +140,7 @@ jobs:
           uv run --locked --no-sync python -m coverage report
           uv run --locked --no-sync python -m coverage json
           uv run --locked --no-sync python -m coverage xml
+          uv run --locked --no-sync python scripts/architecture/coverage_ratchet.py
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v7

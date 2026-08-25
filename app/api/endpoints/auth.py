@@ -3,12 +3,12 @@ from typing import Any
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 
+from app.api.dependencies.auth import get_auth_service
+from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.application.plugin.runtime import get_plugin_manager
+from app.application.security.auth import AuthService, consume_plugin_auth_ticket
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.user import AuthProviderInfo as _SchemaAuthProviderInfo
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
-from app.application.security.auth import AuthService, consume_plugin_auth_ticket
-from app.application.plugin.runtime import get_plugin_manager
-from app.api.dependencies.auth import get_auth_service
 
 router = ResponseAPIRouter()
 

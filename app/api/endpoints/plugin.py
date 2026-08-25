@@ -9,11 +9,48 @@ from fastapi import Depends, Header, HTTPException, Security
 from starlette import status
 from starlette.responses import StreamingResponse
 
+from app.adapters.external.market import PluginHelper
+from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.system.plugin.package import PluginPackageManager
+from app.adapters.web.security.access import (
+    resource_token_cookie,
+    verify_resource_token,
+    verify_token,
+)
+from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.api.dependencies.auth import (
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+)
+from app.api.dependencies.plugin import (
+    get_plugin_config_command,
+)
+from app.api.principal import ApiPrincipal
+from app.api.response import ResponseAPIRouter
+from app.application.commands import init_commands
+from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
+from app.application.plugin.config import PluginConfigCommand
+from app.application.plugin.folders import remove_plugin_from_folders
+from app.application.plugin.install import PluginInstallCommand
+from app.application.plugin.routes import register_plugin_api, remove_plugin_api
+from app.application.plugin.runtime import PluginRuntime, get_plugin_manager
+from app.application.scheduling import remove_plugin_job, update_plugin_job
+from app.runtime.cache import async_fresh
 from app.runtime.execution import run_in_threadpool
+from app.runtime.extensions.plugin.contracts import (
+    PluginDashboardError,
+    PluginNotFoundError,
+)
+from app.runtime.log import logger
+from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonObject as _SchemaJsonObject
+from app.schemas.exception import (
+    PersistenceUnavailableError,
+    PluginMutationRejectedError,
+)
 from app.schemas.plugin import Plugin as _SchemaPlugin
-from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
+from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginFoldersData as _SchemaPluginFoldersData
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
@@ -26,45 +63,7 @@ from app.schemas.plugin import PluginRuntimeSummary as _SchemaPluginRuntimeSumma
 from app.schemas.plugin import PluginSidebarNavItem as _SchemaPluginSidebarNavItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.api.response import ResponseAPIRouter
-from app.application.plugin.folders import remove_plugin_from_folders
-from app.application.plugin.routes import register_plugin_api, remove_plugin_api
-from app.application.plugin.install import PluginInstallCommand
-from app.application.plugin.config import PluginConfigCommand
-from app.application.commands import init_commands
-from app.application.scheduling import remove_plugin_job, update_plugin_job
-from app.runtime.cache import async_fresh
-from app.application.configuration import get_api_runtime_config_snapshot
-from app.application.plugin.runtime import PluginRuntime, get_plugin_manager
-from app.runtime.extensions.plugin.contracts import (
-    PluginDashboardError,
-    PluginNotFoundError,
-)
-from app.adapters.web.security.access import (
-    resource_token_cookie,
-    verify_resource_token,
-    verify_token,
-)
-from app.api.principal import ApiPrincipal
-from app.application.configuration import get_configured_system_config
-from app.api.dependencies.auth import (
-    get_current_active_superuser,
-    get_current_active_superuser_async,
-)
-from app.api.dependencies.plugin import (
-    get_plugin_config_command,
-)
-from app.adapters.external.server import MoviePilotServerHelper
-from app.adapters.external.market import PluginHelper
-from app.adapters.system.plugin.package import PluginPackageManager
-from app.schemas.exception import (
-    PersistenceUnavailableError,
-    PluginMutationRejectedError,
-)
-from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
-from app.api.context import get_background_task_registry, resolve_background_task_registry
-from app.runtime.tasks import TaskRegistry
 
 router = ResponseAPIRouter()
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()

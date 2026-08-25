@@ -1,8 +1,8 @@
-from typing import Optional, List
+from typing import List, Optional
 
+from app.chain import ChainBase
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.schemas.dashboard import Statistic as _SchemaStatistic
-from app.chain import ChainBase
 
 
 class DashboardChain(ChainBase):

@@ -3,7 +3,7 @@ import inspect
 import sys
 from typing import Callable
 
-from app.adapters.cache.redis import RedisHelper, AsyncRedisHelper
+from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 from app.chain.mediaserver import MediaServerChain
 from app.chain.tmdb import TmdbChain
 
@@ -17,53 +17,57 @@ except ImportError as e:
     sys.exit(1)
 
 from app.adapters.system.host import SystemUtils
+from app.runtime.config import settings as legacy_settings
 from app.runtime.log import logger
 from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.config import settings as legacy_settings
+from app.runtime.stop import runtime_stop_state
 
 settings = RuntimeSettingsCompat()
-from app.runtime.cache import AsyncFileCache, FileCache
-from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.extensions.plugin_manager import PluginManager
-from app.runtime.events import EventHandlerBinding, EventManager
-from app.runtime.execution import run_in_threadpool_to_completion
-from app.runtime.observability import record_metric
-from app.runtime.state import SystemHelper
-from app.runtime.settings import configure_runtime_setting_provider
-from app.runtime.thread import ThreadHelper
+from app.adapters.external.server import (
+    MoviePilotServerHelper,
+    configure_server_application_services,
+)
 from app.adapters.network.doh import DohHelper
 from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
 )
-from app.application.messaging.message import (
-    MessageHelper,
-    MessageQueueManager,
-    stop_message,
+from app.adapters.web.security.access import set_superuser_token_payload_provider
+from app.api.data import ApiDataPorts, configure_api_data_runtime
+from app.application.agentdata import configure_agent_data_ports
+from app.application.agenttask import (
+    AgentTaskExecutionService,
+    configure_agent_task_execution,
+)
+from app.application.chain.context import (
+    ChainRuntimeContext,
+    configure_chain_runtime_context_provider,
+)
+from app.application.chain.data import configure_chain_data_ports, get_chain_data_ports
+from app.application.chain.durable_events import (
+    restore_download_added,
+    restore_transfer_result,
 )
 from app.application.configuration import (
     RuntimeConfiguration,
     RuntimeSettingsService,
     SystemConfigService,
-    get_configured_system_config,
     TransferRetryConfig,
-    configure_token_runtime_config,
     configure_runtime_configuration,
     configure_runtime_settings,
     configure_system_config,
+    configure_token_runtime_config,
     configure_transfer_retry_config,
-)
-from app.startup.composition.configuration import (
-    build_api_runtime_config,
-    build_chain_runtime_config,
-    build_scheduler_runtime_config,
-    build_token_runtime_config,
+    get_configured_system_config,
 )
 from app.application.database import configure_database_governance
-from app.application.service import configure_service_directory
-from app.application.plugin.runtime import configure_plugin_runtime
-from app.application.module import configure_module_runtime
+from app.application.history import configure_transfer_history_provider
+from app.application.image import configure_wallpaper_providers
+from app.application.messaging.agent import (
+    dispatch_web_agent_message_event,
+    shutdown_web_agent_background_tasks,
+    wait_web_agent_background_tasks,
+)
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AgentChatService,
@@ -71,43 +75,58 @@ from app.application.messaging.chat import (
     configure_agent_chat_service,
     get_configured_agent_chat_persistence,
 )
-from app.application.messaging.agent import (
-    dispatch_web_agent_message_event,
-    shutdown_web_agent_background_tasks,
-    wait_web_agent_background_tasks,
+from app.application.messaging.message import (
+    MessageHelper,
+    MessageQueueManager,
+    stop_message,
 )
-from app.application.security.user import configure_user_lookups
-from app.application.security.auth import AuthService, configure_auth_service
-from app.application.security.passkeys import PasskeyService, configure_passkey_service
-from app.application.security.url import close_image_proxy_block_log_coalescer
-from app.application.security.userconfig import (
-    UserConfigurationService,
-    configure_user_configuration,
-)
-from app.application.history import configure_transfer_history_provider
+from app.application.module import configure_module_runtime
 from app.application.outbox import (
     OutboxDispatcher,
     configure_outbox_dispatcher,
     durable_event_topic,
     validate_durable_event_handlers,
 )
-from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
-from app.application.site.query import SiteQueryService, configure_site_query_service
-from app.application.site.health import SiteHealthService, configure_site_health_service
-from app.application.workflow import WorkflowQueryService, configure_workflow_query
-from app.application.agentdata import configure_agent_data_ports
-from app.application.agenttask import (
-    AgentTaskExecutionService,
-    configure_agent_task_execution,
-)
-from app.api.data import ApiDataPorts, configure_api_data_runtime
-from app.application.subscription.write import configure_subscribe_writer
-from app.adapters.external.server import (
-    MoviePilotServerHelper,
-    configure_server_application_services,
+from app.application.plugin.runtime import configure_plugin_runtime
+from app.application.security.auth import AuthService, build_superuser_token_payload, configure_auth_service
+from app.application.security.passkeys import PasskeyService, configure_passkey_service
+from app.application.security.url import close_image_proxy_block_log_coalescer
+from app.application.security.user import configure_user_lookups
+from app.application.security.userconfig import (
+    UserConfigurationService,
+    configure_user_configuration,
 )
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
+from app.application.service import configure_service_directory
+from app.application.site.health import SiteHealthService, configure_site_health_service
+from app.application.site.query import SiteQueryService, configure_site_query_service
+from app.application.subscription.write import configure_subscribe_writer
+from app.application.workflow import WorkflowQueryService, configure_workflow_query
+from app.command import CommandChain
+from app.db.adapters.chain import TransactionalChainDurableEventWriter
+from app.db.adapters.download import TransactionalDownloadFailureRepository
+from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
+from app.db.adapters.site import TransactionalSiteRepository
+from app.db.adapters.subscription import TransactionalSubscribeWriter
+from app.db.adapters.transaction import TransactionalWriteRunner
+from app.db.adapters.workflow import TransactionalWorkflowExecutionService
+from app.db.oper.agentchat import AgentChatOper
+from app.db.oper.agenttask import AgentTaskOper
+from app.db.oper.downloadhistory import DownloadHistoryOper
+from app.db.oper.mediaserver import MediaServerOper
+from app.db.oper.message import MessageOper
+from app.db.oper.passkey import PassKeyOper
+from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.site import SiteOper
+from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.subscribehistory import SubscribeHistoryOper
+from app.db.oper.systemconfig import SystemConfigOper
+from app.db.oper.transferhistory import TransferHistoryOper
+from app.db.oper.transferpending import TransferPendingOper
+from app.db.oper.user import UserOper
+from app.db.oper.userconfig import UserConfigOper
+from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
 from app.db.session import (
     SessionFactory,
     async_session_scope,
@@ -115,47 +134,35 @@ from app.db.session import (
     get_async_db,
     get_db,
 )
-from app.db.worker import DatabaseWorker
 from app.db.uow import (
     SqlAlchemyAsyncUnitOfWork,
     SqlAlchemyUnitOfWork,
     configure_transaction_runners,
 )
-from app.db.oper.subscribe import SubscribeOper
-from app.db.oper.agentchat import AgentChatOper
-from app.db.oper.agenttask import AgentTaskOper
-from app.db.oper.user import UserOper
-from app.db.oper.passkey import PassKeyOper
-from app.db.oper.userconfig import UserConfigOper
-from app.db.oper.transferhistory import TransferHistoryOper
-from app.db.oper.downloadhistory import DownloadHistoryOper
-from app.db.oper.transferpending import TransferPendingOper
-from app.db.oper.mediaserver import MediaServerOper
-from app.db.oper.site import SiteOper
-from app.db.oper.message import MessageOper
-from app.db.oper.subscribehistory import SubscribeHistoryOper
-from app.db.oper.plugindata import PluginDataOper
-from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
-from app.command import CommandChain
-from app.schemas.message import Message
-from app.schemas.message import MessageType
+from app.db.worker import DatabaseWorker
+from app.runtime.cache import AsyncFileCache, FileCache
+from app.runtime.events import EventHandlerBinding, EventManager
+from app.runtime.execution import run_in_threadpool_to_completion
+from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.service_config import (
+    ServiceConfigHelper,
+    configure_service_config_reader,
+)
+from app.runtime.observability import record_metric
+from app.runtime.settings import configure_runtime_setting_provider
+from app.runtime.state import SystemHelper
+from app.runtime.tasks import get_task_registry
+from app.runtime.thread import ThreadHelper
+from app.schemas.message import Message, MessageType
 from app.schemas.types import EventType, SystemConfigKey
-from app.startup.initializers.agent import init_agent
-from app.startup.composition.database import build_database_governance
-from app.startup.initializers.managed_resources import (
-    init_managed_resources,
-    stop_managed_resources,
+from app.startup.composition.configuration import (
+    build_api_runtime_config,
+    build_chain_runtime_config,
+    build_scheduler_runtime_config,
+    build_token_runtime_config,
 )
-from app.db.adapters.subscription import TransactionalSubscribeWriter
-from app.startup.composition.subscription import (
-    configure_transactional_subscription_scopes,
-)
-from app.db.adapters.chain import TransactionalChainDurableEventWriter
-from app.db.adapters.download import TransactionalDownloadFailureRepository
-from app.db.adapters.site import TransactionalSiteRepository
-from app.db.adapters.workflow import TransactionalWorkflowExecutionService
-from app.db.adapters.transaction import TransactionalWriteRunner
 from app.startup.composition.context import (
     AgentChatRuntime,
     AuthenticationRuntime,
@@ -167,24 +174,15 @@ from app.startup.composition.context import (
     SubscriptionRuntime,
     WorkflowRuntime,
 )
-from app.adapters.web.security.access import set_superuser_token_payload_provider
-from app.application.security.auth import build_superuser_token_payload
-from app.application.image import configure_wallpaper_providers
-from app.application.chain.context import (
-    ChainRuntimeContext,
-    configure_chain_runtime_context_provider,
+from app.startup.composition.database import build_database_governance
+from app.startup.composition.subscription import (
+    configure_transactional_subscription_scopes,
 )
-from app.application.chain.durable_events import (
-    restore_download_added,
-    restore_transfer_result,
+from app.startup.initializers.agent import init_agent
+from app.startup.initializers.managed_resources import (
+    init_managed_resources,
+    stop_managed_resources,
 )
-from app.application.chain.data import configure_chain_data_ports, get_chain_data_ports
-from app.runtime.extensions.service_config import (
-    ServiceConfigHelper,
-    configure_service_config_reader,
-)
-from app.runtime.tasks import get_task_registry
-
 
 _database_worker: DatabaseWorker | None = None
 
@@ -252,6 +250,7 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
         configuration=build_chain_runtime_config(settings),
         data_ports=get_chain_data_ports(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
+        stop_state=runtime_stop_state,
     )
 
 
@@ -503,7 +502,7 @@ def stop_frontend():
             or not SystemUtils.is_windows():
         return
     import subprocess
-    subprocess.Popen(f"taskkill /f /im nginx.exe", shell=True)
+    subprocess.Popen("taskkill /f /im nginx.exe", shell=True)
 
 
 def clear_temp():

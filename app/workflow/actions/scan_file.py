@@ -3,13 +3,12 @@ from typing import Optional
 
 from pydantic import Field
 
-from app.workflow.actions import BaseAction
-from app.chain.storage import StorageChain
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.runtime.config import global_vars
+from app.chain.storage import StorageChain
 from app.runtime.log import logger
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionContext
+from app.runtime.stop import runtime_stop_state
+from app.schemas.workflow import ActionContext, ActionParams
+from app.workflow.actions import BaseAction
 
 
 class ScanFileParams(ActionParams):
@@ -64,7 +63,7 @@ class ScanFileAction(BaseAction):
             + runtime_config.audio_extensions
         )
         for file in files:
-            if global_vars.is_workflow_stopped(workflow_id):
+            if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
             if not file.extension or f".{file.extension.lower()}" not in media_exts:
                 continue

@@ -7,34 +7,34 @@ import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from contextlib import aclosing
 from datetime import datetime
-from typing import AsyncIterator, Any, Awaitable, Callable, Dict, Iterable, Tuple
-from typing import List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple
 from unicodedata import normalize
 
-from app.runtime.execution import run_in_threadpool, submit_with_context
-from app.chain import ChainBase
-from app.chain.media import MediaChain
-from app.runtime.config import global_vars
-from app.domain.context import Context
-from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo
-from app.runtime.events import eventmanager, Event
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.metainfo import MetaInfo
-from app.domain.context import MusicInfo
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
     get_configured_system_config,
 )
-from app.runtime.progress import AsyncProgressHelper, ProgressHelper
-from app.runtime.tasks import get_task_registry
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.search.state import (
     SearchStateService,
     normalize_search_params,
     stringify_sites,
 )
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.torrent import TorrentHelper
+from app.chain import ChainBase
+from app.chain.media import MediaChain
+from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
+from app.foundation import size as size_tools
+from app.foundation.text import convert as zhconv_convert
+from app.runtime.events import Event, eventmanager
+from app.runtime.execution import run_in_threadpool, submit_with_context
 from app.runtime.log import logger
+from app.runtime.progress import AsyncProgressHelper, ProgressHelper
+from app.runtime.stop import runtime_stop_state
+from app.runtime.tasks import get_task_registry
+from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -44,9 +44,6 @@ from app.schemas.types import (
     ProgressKey,
     SystemConfigKey,
 )
-from app.schemas.media import build_media_key, resolve_media_identity
-from app.foundation import size as size_tools
-from app.foundation.text import convert as zhconv_convert
 
 
 class SearchChain(ChainBase):
@@ -1355,7 +1352,7 @@ class SearchChain(ChainBase):
             logger.info(f"开始匹配结果 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
             progress.update(value=51, text=f'开始匹配，总 {_total} 个资源 ...')
             for torrent in torrents:
-                if global_vars.is_system_stopped:
+                if runtime_stop_state.is_system_stopped:
                     break
                 _count += 1
                 progress.update(value=(_count / _total) * 96,
@@ -1709,7 +1706,7 @@ class SearchChain(ChainBase):
                 **self._media_recognize_kwargs(mediainfo),
             )
             if not mediainfo:
-                logger.error(f'媒体信息识别失败！')
+                logger.error('媒体信息识别失败！')
                 return []
 
         # 准备搜索参数
@@ -1802,7 +1799,7 @@ class SearchChain(ChainBase):
                 **self._media_recognize_kwargs(mediainfo),
             )
             if not mediainfo:
-                logger.error(f'媒体信息识别失败！')
+                logger.error('媒体信息识别失败！')
                 return []
 
         # 准备搜索参数
@@ -1885,7 +1882,7 @@ class SearchChain(ChainBase):
                 **self._media_recognize_kwargs(mediainfo),
             )
             if not mediainfo:
-                logger.error(f'媒体信息识别失败！')
+                logger.error('媒体信息识别失败！')
                 yield {
                     "type": "error",
                     "success": False,
@@ -2071,7 +2068,7 @@ class SearchChain(ChainBase):
         match_subtitles = []
         logger.info(f"开始匹配字幕 标题：{mediainfo.title}，原标题：{mediainfo.original_title}，别名：{mediainfo.names}")
         for subtitle in subtitles:
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 break
             subtitle_names = self.__build_subtitle_names(subtitle)
             if not subtitle_names:
@@ -2384,7 +2381,7 @@ class SearchChain(ChainBase):
 
             try:
                 while pending_tasks:
-                    if global_vars.is_system_stopped:
+                    if runtime_stop_state.is_system_stopped:
                         break
                     done_tasks, _ = wait(pending_tasks, return_when=FIRST_COMPLETED)
                     for future in done_tasks:
@@ -2460,7 +2457,7 @@ class SearchChain(ChainBase):
 
         try:
             while pending_tasks:
-                if global_vars.is_system_stopped:
+                if runtime_stop_state.is_system_stopped:
                     break
                 done_tasks, _ = await asyncio.wait(
                     pending_tasks,

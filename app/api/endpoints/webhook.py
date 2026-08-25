@@ -1,13 +1,13 @@
-from typing import Any, Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Request
 
-from app.schemas.response import Response as _SchemaResponse
-from app.api.response import ResponseAPIRouter
-from app.chain.webhook import WebhookChain
 from app.adapters.web.security.access import verify_apitoken
 from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.api.response import ResponseAPIRouter
+from app.chain.webhook import WebhookChain
 from app.runtime.tasks import TaskRegistry
+from app.schemas.response import Response as _SchemaResponse
 
 router = ResponseAPIRouter()
 

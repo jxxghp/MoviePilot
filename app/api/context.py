@@ -5,24 +5,24 @@ from typing import cast
 
 from fastapi import Depends, Request
 
-from app.application.messaging.chat import AsyncAgentChatRepository, AsyncUnitOfWork
-from app.application.outbox import AsyncOutboxTransaction
 from app.application.configuration import (
     ApiRuntimeConfig,
     get_api_runtime_config_snapshot,
 )
+from app.application.messaging.chat import AsyncAgentChatRepository, AsyncUnitOfWork
+from app.application.outbox import AsyncOutboxTransaction
 from app.application.subscription.delete import SubscribeDeletionRepository
 from app.application.subscription.identity import SubscribeIdentityDeletionRepository
 from app.application.subscription.mutation import (
     SubscriptionHistoryMutationRepository,
     SubscriptionMutationRepository,
 )
+from app.runtime.tasks import TaskRegistry, get_task_registry
 from app.startup.composition.context import (
     AgentChatRuntime,
     HostRuntime,
     SubscriptionRuntime,
 )
-from app.runtime.tasks import TaskRegistry, get_task_registry
 
 
 def get_host_runtime(request: Request) -> HostRuntime:

@@ -10,26 +10,24 @@ import time
 from contextvars import Context, copy_context
 from datetime import datetime
 from functools import partial
-from typing import Any, Literal, Optional, List, Dict, Protocol, Union
-from typing import Callable
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union
 
 from jinja2 import Template
 
-from app.runtime.cache import TTLCache
-from app.runtime.config import global_vars
+from app.application.configuration import get_configured_system_config
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.application.configuration import get_configured_system_config
+from app.foundation import size as size_tools
+from app.foundation.crypto import HashUtils
+from app.foundation.singleton import Singleton, SingletonClass
+from app.runtime.cache import TTLCache
 from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, SystemConfigKey
-from app.foundation.singleton import Singleton, SingletonClass
-from app.foundation import size as size_tools
-from app.foundation.crypto import HashUtils
-
 
 # 专辑名尾部的括号年份标记；重命名模板会独立追加 `({{year}})`，
 # 标签或目录名中自带的尾部年份若不剥离，会生成重复年份的目录名（issue #6355）
@@ -998,7 +996,7 @@ class MessageQueueManager(metaclass=SingletonClass):
             current_time = datetime.now()
             if self._is_in_scheduled_time(current_time):
                 while self._running and not self.queue.empty():
-                    if global_vars.is_system_stopped:
+                    if runtime_stop_state.is_system_stopped:
                         break
                     if not self._is_in_scheduled_time(datetime.now()):
                         break

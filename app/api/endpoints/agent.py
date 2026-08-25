@@ -7,8 +7,8 @@ import shutil
 import time
 import uuid
 from collections import deque
-from queue import Empty, Queue
 from pathlib import Path
+from queue import Empty, Queue
 from threading import Lock
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional, Union
 
@@ -16,15 +16,58 @@ import aiofiles
 from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app.agent.contracts import ReplyMode, build_display_message
+from app.agent.mcp import agent_mcp_manager
+from app.agent.runtime_loader import get_moviepilot_agent_type
+from app.api.dependencies.agent import (
+    get_agent_chat_persistence,
+    get_agent_chat_service,
+)
+from app.api.dependencies.auth import get_current_active_user
+from app.api.presentation.sse import build_sse_error_response, build_sse_response
+from app.api.principal import ApiPrincipal
+from app.api.response import ResponseAPIRouter
+from app.application.agent import (
+    get_running_agent_manager,
+    is_audio_input_available,
+    transcribe_audio,
+)
+from app.application.commands import get_command, get_commands
+from app.application.configuration import get_api_runtime_config_snapshot
+from app.application.messaging.agent import (
+    agent_interaction_manager,
+    attach_web_agent_edit_queue,
+    attach_web_agent_message_queue,
+    build_agent_choice_button_rows,
+    create_web_agent_background_task,
+    detach_web_agent_edit_queue,
+    detach_web_agent_message_queue,
+    is_web_agent_message_for_user,
+    normalize_web_agent_button_rows,
+    parse_agent_choice_callback,
+)
+from app.application.messaging.chat import (
+    AgentChatPersistenceService,
+    AgentChatRecord,
+    AgentChatService,
+    get_configured_agent_chat_persistence,
+    get_configured_agent_chat_service,
+)
+from app.application.messaging.router import has_pending_interaction
+from app.application.security.user import get_configured_user_id_lookup
+from app.chain.message import MessageChain
 from app.runtime.execution import run_in_threadpool
+from app.runtime.localization import LocaleHelper
+from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
 from app.schemas.agent import AgentChatDisplaySaveRequest as _SchemaAgentChatDisplaySaveRequest
 from app.schemas.agent import AgentChatSessionDetail as _SchemaAgentChatSessionDetail
 from app.schemas.agent import AgentChatSessionSummary as _SchemaAgentChatSessionSummary
 from app.schemas.agent import AgentChatUploadAttachment as _SchemaAgentChatUploadAttachment
 from app.schemas.agent import AgentMcpServerListData as _SchemaAgentMcpServerListData
+from app.schemas.agent import AgentMcpServersSaveRequest as _SchemaAgentMcpServersSaveRequest
 from app.schemas.agent import AgentMcpServerTestRequest as _SchemaAgentMcpServerTestRequest
 from app.schemas.agent import AgentMcpServerTestResult as _SchemaAgentMcpServerTestResult
-from app.schemas.agent import AgentMcpServersSaveRequest as _SchemaAgentMcpServersSaveRequest
 from app.schemas.agent import AgentSessionStopData as _SchemaAgentSessionStopData
 from app.schemas.agent import AgentWebCallbackData as _SchemaAgentWebCallbackData
 from app.schemas.agent import AgentWebCommandInfo as _SchemaAgentWebCommandInfo
@@ -32,52 +75,7 @@ from app.schemas.message import AgentWebChatRequest as _SchemaAgentWebChatReques
 from app.schemas.message import AgentWebChoiceRequest as _SchemaAgentWebChoiceRequest
 from app.schemas.message import Message as _SchemaMessage
 from app.schemas.response import Response as _SchemaResponse
-from app.api.response import ResponseAPIRouter
-from app.api.presentation.sse import build_sse_error_response, build_sse_response
-from app.agent.contracts import ReplyMode, build_display_message
-from app.agent.mcp import agent_mcp_manager
-from app.agent.runtime_loader import get_moviepilot_agent_type
-from app.application.agent import (
-    get_running_agent_manager,
-    is_audio_input_available,
-    transcribe_audio,
-)
-from app.chain.message import MessageChain
-from app.application.commands import get_command, get_commands
-from app.runtime.config import global_vars
-from app.api.principal import ApiPrincipal
-from app.api.dependencies.agent import (
-    get_agent_chat_persistence,
-    get_agent_chat_service,
-)
-from app.api.dependencies.auth import get_current_active_user
-from app.application.messaging.chat import (
-    AgentChatRecord,
-    AgentChatPersistenceService,
-    AgentChatService,
-    get_configured_agent_chat_service,
-    get_configured_agent_chat_persistence,
-)
-from app.application.security.user import get_configured_user_id_lookup
-from app.application.configuration import get_api_runtime_config_snapshot
-from app.application.messaging.agent import (
-    attach_web_agent_message_queue,
-    attach_web_agent_edit_queue,
-    create_web_agent_background_task,
-    detach_web_agent_message_queue,
-    detach_web_agent_edit_queue,
-    is_web_agent_message_for_user,
-)
-from app.application.messaging.agent import agent_interaction_manager
-from app.application.messaging.agent import (
-    build_agent_choice_button_rows,
-    normalize_web_agent_button_rows,
-    parse_agent_choice_callback,
-)
-from app.application.messaging.router import has_pending_interaction
-from app.runtime.localization import LocaleHelper
-from app.runtime.log import logger
-from app.schemas.types import EventType, NotificationChannel
+from app.schemas.types import NotificationChannel
 
 router = ResponseAPIRouter()
 
@@ -2274,7 +2272,7 @@ async def _web_agent_stream_impl(
                 {"session_id": session_id},
                 locale=locale,
             )
-            while not global_vars.is_system_stopped:
+            while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():
                     disconnected = True
                     break

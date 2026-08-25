@@ -7,47 +7,44 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
-from app.schemas.workflow import FileItem as _SchemaFileItem
+from app.adapters.network.http import RequestUtils
+from app.application.audio import AudioMetadataHelper
+from app.application.configuration import (
+    get_chain_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.chain import ChainBase
 from app.chain.lrclib import LrclibChain
+from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
-from app.runtime.cache import cached
 from app.domain.context import (
     MediaInfo,
     MusicAlbumInfo,
     MusicInfo,
     MusicLyrics,
 )
-from app.runtime.events import eventmanager, Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.application.configuration import (
-    get_chain_runtime_config_snapshot,
-    get_configured_system_config,
-)
-from app.application.audio import AudioMetadataHelper
+from app.foundation.singleton import Singleton
+from app.runtime.cache import cached
+from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
-from app.schemas.workflow import FileItem
+from app.runtime.reload import ConfigReloadMixin
+from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     EventType,
     MediaSource,
     MediaType,
-    ScrapingTarget,
     ScrapingMetadata,
     ScrapingPolicy,
+    ScrapingTarget,
     SystemConfigKey,
 )
-from app.adapters.network.http import RequestUtils
-from app.schemas.media import resolve_media_identity
-from app.runtime.reload import ConfigReloadMixin
-from app.foundation.singleton import Singleton
-
-
-
-from app.chain.media import MediaChain
+from app.schemas.workflow import FileItem
+from app.schemas.workflow import FileItem as _SchemaFileItem
 
 scraping_lock = Lock()
 

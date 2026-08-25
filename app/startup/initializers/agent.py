@@ -1,15 +1,19 @@
 from typing import Any
 
+from app.agent.llm.gateway import register_llm_provider_runtime
 from app.agent.runtime_loader import (
     activate_agent_service,
     begin_agent_shutdown,
     close_materialized_terminal_sessions,
-    get_agent_manager as get_runtime_agent_manager,
-    get_running_agent_manager as get_runtime_running_agent_manager,
     is_tool_factory_materialized,
     reconcile_agent_service,
 )
-from app.agent.llm.gateway import register_llm_provider_runtime
+from app.agent.runtime_loader import (
+    get_agent_manager as get_runtime_agent_manager,
+)
+from app.agent.runtime_loader import (
+    get_running_agent_manager as get_runtime_running_agent_manager,
+)
 from app.application.agent import register_agent_service_providers
 from app.application.messaging.skill import register_skill_catalog_provider
 from app.runtime.settings import RuntimeSettingsCompat
@@ -18,7 +22,6 @@ settings = RuntimeSettingsCompat()
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.schemas.types import EventType
-
 
 AGENT_BLOCKING_EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS = 10.0
 
@@ -226,6 +229,8 @@ async def stop_agent() -> bool:
         if is_tool_factory_materialized():
             from app.agent.tools.base import (
                 begin_blocking_executor_shutdown,
+            )
+            from app.agent.tools.base import (
                 close_blocking_executors as close_executors,
             )
 

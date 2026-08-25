@@ -5,36 +5,36 @@ from uuid import UUID
 from fastapi import Depends, Query
 from pydantic import BeforeValidator
 
+from app.adapters.web.security.access import verify_apitoken, verify_token
+from app.api.dependencies.auth import (
+    get_current_active_superuser,
+    get_current_active_user,
+)
+from app.api.response import ResponseAPIRouter
+from app.application.configuration import get_api_runtime_config_snapshot
+from app.chain.media import MediaChain
+from app.chain.scraping import ScrapingChain
+from app.chain.tmdb import TmdbChain
+from app.domain.context import Context, MusicInfo
+from app.domain.media import is_music_media_source, normalize_music_type, parse_media_source_selection
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo, MetaInfoPath
+from app.schemas.category import CategoryConfig
 from app.schemas.category import CategoryConfig as _SchemaCategoryConfig
 from app.schemas.category import MediaCategoryMap as _SchemaMediaCategoryMap
 from app.schemas.context import MediaEpisodeGroup as _SchemaMediaEpisodeGroup
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.context import MediaSearchResults as _SchemaMediaSearchResults
 from app.schemas.context import MediaSeason as _SchemaMediaSeason
+from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 from app.schemas.workflow import Context as _SchemaContext
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
-from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.scraping import ScrapingChain
-from app.chain.tmdb import TmdbChain
-from app.application.configuration import get_api_runtime_config_snapshot
-from app.domain.context import Context, MusicInfo
-from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.adapters.web.security.access import verify_token, verify_apitoken
-from app.api.dependencies.auth import (
-    get_current_active_superuser,
-    get_current_active_user,
-)
-from app.schemas.category import CategoryConfig
-from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
-from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType
-from app.domain.media import is_music_media_source, normalize_music_type, parse_media_source_selection
-from app.schemas.media import normalize_media_source, resolve_media_identity
 
 router = ResponseAPIRouter()
 

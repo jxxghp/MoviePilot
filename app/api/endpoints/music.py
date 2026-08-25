@@ -2,6 +2,18 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, Query
 
+from app.adapters.web.security.access import verify_token
+from app.api.dependencies.auth import get_current_active_superuser_async
+from app.api.response import ResponseAPIRouter
+from app.chain.listenbrainz import (
+    LISTENBRAINZ_CHART_RANGES,
+    LISTENBRAINZ_FRESH_MAX_DAYS,
+    LISTENBRAINZ_FRESH_SORTS,
+)
+from app.chain.media import MediaChain
+from app.chain.musicbrainz import MusicBrainzChain
+from app.chain.recommend import RecommendChain
+from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.schemas.music import MusicAlbumInfo as _SchemaMusicAlbumInfo
 from app.schemas.music import MusicArtistInfo as _SchemaMusicArtistInfo
 from app.schemas.music import MusicRecognitionCacheData as _SchemaMusicRecognitionCacheData
@@ -9,19 +21,7 @@ from app.schemas.music import MusicRecognizeRequest as _SchemaMusicRecognizeRequ
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
-from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.recommend import RecommendChain
 from app.schemas.types import MediaSource, MediaType
-from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
-from app.adapters.web.security.access import verify_token
-from app.api.dependencies.auth import get_current_active_superuser_async
-from app.chain.listenbrainz import (
-    LISTENBRAINZ_CHART_RANGES,
-    LISTENBRAINZ_FRESH_MAX_DAYS,
-    LISTENBRAINZ_FRESH_SORTS,
-)
-from app.chain.musicbrainz import MusicBrainzChain
 
 router = ResponseAPIRouter()
 

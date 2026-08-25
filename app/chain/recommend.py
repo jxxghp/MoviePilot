@@ -2,25 +2,25 @@ from typing import Callable, List, Optional
 
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
 
+from app.application.image import ImageHelper
 from app.chain import ChainBase
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
 from app.chain.listenbrainz import ListenBrainzChain
 from app.chain.tmdb import TmdbChain
-from app.runtime.cache import cached, fresh
-from app.runtime.config import global_vars
 from app.domain.context import MusicInfo
-from app.application.image import ImageHelper
+from app.foundation.singleton import Singleton
+from app.runtime.cache import cached, fresh
+from app.runtime.execution import log_execution_time
 from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
+from app.schemas.media import normalize_media_source
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MediaSource,
     MediaType,
 )
-from app.runtime.execution import log_execution_time
-from app.schemas.media import normalize_media_source
-from app.foundation.singleton import Singleton
 
 
 class RecommendChain(ChainBase, metaclass=Singleton):
@@ -222,7 +222,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         # 这里避免区间内连续调用相同来源，因此遍历方案为每页遍历所有推荐来源，再进行页数遍历
         for page in range(1, self.cache_max_pages + 1):
             for method in recommend_methods:
-                if global_vars.is_system_stopped:
+                if runtime_stop_state.is_system_stopped:
                     return
                 if method in methods_finished:
                     continue
@@ -277,7 +277,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
         total_num = len(datas)
         for index, data in enumerate(datas, start=1):
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 return
             poster_path = data.get("poster_path")
             if poster_path:

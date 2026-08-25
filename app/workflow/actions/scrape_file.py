@@ -1,10 +1,9 @@
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
-from app.runtime.config import global_vars
 from app.runtime.log import logger
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionContext
+from app.runtime.stop import runtime_stop_state
+from app.schemas.workflow import ActionContext, ActionParams
 from app.workflow.actions import BaseAction
 
 
@@ -45,7 +44,7 @@ class ScrapeFileAction(BaseAction):
         # 失败次数
         _failed_count = 0
         for fileitem in context.fileitems:
-            if global_vars.is_workflow_stopped(workflow_id):
+            if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
             if fileitem in self._scraped_files:
                 continue

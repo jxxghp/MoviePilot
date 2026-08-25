@@ -9,31 +9,32 @@ import sys
 import threading
 from asyncio import AbstractEventLoop
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_origin, get_args
+from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_args, get_origin
 from urllib.parse import quote, urlencode, urlparse
 
 from dotenv import set_key, unset_key
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.foundation.environment import is_free_threaded_runtime
-from app.runtime.log import (
-    LogConfigModel,
-    configure_log_settings,
-    configure_log_writer,
-    logger,
-    log_settings,
-    NonBlockingFileHandler,
-)
-from app.schemas.types import MediaType
 from app.foundation.environment import (
     cpu_arch,
     get_env_path,
     is_docker,
+    is_free_threaded_runtime,
     is_frozen,
 )
 from app.foundation.url import UrlUtils
+from app.runtime.log import (
+    LogConfigModel,
+    NonBlockingFileHandler,
+    configure_log_settings,
+    configure_log_writer,
+    log_settings,
+    logger,
+)
+from app.runtime.stop import runtime_stop_state
 from app.runtime.version import get_app_version
+from app.schemas.types import MediaType
 
 
 class SystemConfModel(BaseModel):
@@ -1374,7 +1375,6 @@ class GlobalVar(object):
     """
 
     # 系统停止事件
-    STOP_EVENT: threading.Event = threading.Event()
     # webpush订阅
     SUBSCRIPTIONS: List[dict] = []
     # webpush订阅读写锁
@@ -1391,18 +1391,28 @@ class GlobalVar(object):
         self._event_loop_owners: dict[object, AbstractEventLoop] = {}
         self._event_loop_owner_lock = threading.Lock()
 
+    @property
+    def STOP_EVENT(self) -> threading.Event:
+        """兼容旧代码读取进程停止事件。"""
+        return runtime_stop_state.system_event
+
+    @STOP_EVENT.setter
+    def STOP_EVENT(self, event: threading.Event) -> None:
+        """兼容旧测试替换事件，同时保持新 StopState 为唯一状态源。"""
+        runtime_stop_state.replace_system_event(event)
+
     def stop_system(self):
         """
         停止系统
         """
-        self.STOP_EVENT.set()
+        runtime_stop_state.stop_system()
 
     @property
     def is_system_stopped(self):
         """
         是否停止
         """
-        return self.STOP_EVENT.is_set()
+        return runtime_stop_state.is_system_stopped
 
     def get_subscriptions(self):
         """
@@ -1444,39 +1454,31 @@ class GlobalVar(object):
         """
         停止工作流
         """
-        if workflow_id not in self.EMERGENCY_STOP_WORKFLOWS:
-            self.EMERGENCY_STOP_WORKFLOWS.append(workflow_id)
+        runtime_stop_state.stop_workflow(workflow_id)
 
     def workflow_resume(self, workflow_id: int):
         """
         恢复工作流
         """
-        if workflow_id in self.EMERGENCY_STOP_WORKFLOWS:
-            self.EMERGENCY_STOP_WORKFLOWS.remove(workflow_id)
+        runtime_stop_state.resume_workflow(workflow_id)
 
     def is_workflow_stopped(self, workflow_id: int) -> bool:
         """
         是否停止工作流
         """
-        return self.is_system_stopped or workflow_id in self.EMERGENCY_STOP_WORKFLOWS
+        return runtime_stop_state.is_workflow_stopped(workflow_id)
 
     def stop_transfer(self, path: str):
         """
         停止文件整理
         """
-        if path not in self.EMERGENCY_STOP_TRANSFER:
-            self.EMERGENCY_STOP_TRANSFER.append(path)
+        runtime_stop_state.stop_transfer(path)
 
     def is_transfer_stopped(self, path: str) -> bool:
         """
         是否停止文件整理
         """
-        if self.is_system_stopped:
-            return True
-        if path in self.EMERGENCY_STOP_TRANSFER:
-            self.EMERGENCY_STOP_TRANSFER.remove(path)
-            return True
-        return False
+        return runtime_stop_state.consume_transfer_stop(path)
 
     @property
     def loop(self) -> AbstractEventLoop:

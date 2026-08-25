@@ -1,11 +1,11 @@
 import random
-from typing import Optional, List
+from typing import List, Optional
 
-from app.schemas.context import MediaPerson as _SchemaMediaPerson
-from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
-from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.chain import ChainBase
 from app.domain.context import MediaInfo
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
+from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
+from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
 from app.schemas.types import MediaType
 
 

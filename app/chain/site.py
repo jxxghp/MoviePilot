@@ -1,35 +1,35 @@
 import base64
 import re
 from datetime import datetime
-from typing import Any, Callable, Optional, Tuple, Union, Dict
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 from urllib.parse import urljoin
 
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from lxml import etree
 
-from app.chain import ChainBase
-from app.chain._interaction import InteractionChainMixin
-from app.runtime.config import global_vars
-from app.runtime.events import Event, eventmanager
-from app.application.chain.data import get_chain_site_port
-from app.application.configuration import get_configured_system_config
+from app.adapters.external.cookiecloud import CookieCloudHelper
 from app.adapters.network.browser import PlaywrightHelper
 from app.adapters.network.cloudflare import under_challenge
-from app.application.security.cookie import CookieHelper
-from app.adapters.external.cookiecloud import CookieCloudHelper
+from app.adapters.network.http import RequestUtils
+from app.application.chain.data import get_chain_site_port
+from app.application.configuration import get_configured_system_config
 from app.application.messaging.site import SiteInteractionHandler
 from app.application.rss import RssHelper
-from app.runtime.log import logger
-from app.schemas.notification import NotificationChannel
-from app.schemas.message import Message
-from app.schemas.site import SiteUserData
-from app.schemas.types import EventType, MessageType
-from app.adapters.network.http import RequestUtils
-from app.domain.site import SiteUtils
+from app.application.security.cookie import CookieHelper
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.chain import ChainBase
+from app.chain._interaction import InteractionChainMixin
 from app.domain import site as site_rules
+from app.domain.site import SiteUtils
 from app.foundation import size as size_tools
 from app.foundation import url as url_tools
 from app.foundation.dom import DomUtils
+from app.runtime.events import Event, eventmanager
+from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
+from app.schemas.message import Message
+from app.schemas.notification import NotificationChannel
+from app.schemas.site import SiteUserData
+from app.schemas.types import EventType, MessageType
 
 Site = Any
 
@@ -83,7 +83,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     re.search(r"(贵宾|VIP?)", userdata.user_level or "", re.IGNORECASE)):
                 self.post_message(Message(
                     mtype=MessageType.SiteMessage,
-                    title=f"【站点分享率低预警】",
+                    title="【站点分享率低预警】",
                     text=f"站点 {site.get('name')} 分享率 {userdata.ratio}，请注意！"
                 ))
         return userdata
@@ -140,7 +140,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 data={"total": total_num, "finished": 0},
             )
         for index, site in enumerate(sites, start=1):
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 return None
             if progress_callback:
                 progress_callback(
@@ -429,7 +429,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         update_count = add_count = fail_count = 0
         for index, (domain, cookie) in enumerate(cookies.items(), start=1):
             # 检查系统是否停止
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 logger.info("系统正在停止，中断CookieCloud同步")
                 return False, "系统正在停止，同步被中断"
             if progress_callback:
@@ -708,8 +708,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
                                                              timeout=timeout)
             if not public and not SiteUtils.is_logged_in(page_source):
                 if under_challenge(page_source):
-                    return False, f"无法通过Cloudflare！"
-                return False, f"仿真登录失败，Cookie已失效！"
+                    return False, "无法通过Cloudflare！"
+                return False, "仿真登录失败，Cookie已失效！"
         else:
             res = RequestUtils(cookies=site_cookie,
                                ua=ua,
@@ -731,7 +731,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             elif res is not None:
                 return False, f"错误：{res.status_code} {res.reason}！"
             else:
-                return False, f"无法打开网站！"
+                return False, "无法打开网站！"
         return True, "连接成功"
 
     def _interaction_handler(self) -> "SiteInteractionHandler":

@@ -2,14 +2,14 @@ from typing import Any, List, Optional
 
 from fastapi import Depends
 
-from app.schemas.context import MediaPerson as _SchemaMediaPerson
-from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
+from app.adapters.web.security.access import verify_token
 from app.api.response import ResponseAPIRouter
 from app.chain.douban import DoubanChain
 from app.domain.context import MediaInfo
-from app.adapters.web.security.access import verify_token
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaType
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

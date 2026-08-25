@@ -9,25 +9,33 @@ from sqlalchemy.orm import Session
 from app.adapters.external.server import MoviePilotServerHelper
 from app.api.context import (
     get_async_session,
+    get_background_task_registry,
     get_host_runtime,
     get_subscription_history_repository,
     get_subscription_outbox,
     get_subscription_repository,
     get_subscription_transaction,
     get_sync_session,
+    resolve_background_task_registry,
 )
 from app.application.outbox import AsyncOutboxTransaction
 from app.application.scheduling import start_scheduler_job
 from app.application.servarr import ServarrSubscriptionService
 from app.application.subscription.delete import (
     AsyncUnitOfWork as DeleteUnitOfWork,
+)
+from app.application.subscription.delete import (
     DeleteSubscribeCommand,
     SubscribeDeletionRepository,
 )
-from app.application.subscription.identity import DeleteSubscriptionsByIdentityCommand
-from app.application.subscription.identity import SubscribeIdentityDeletionRepository
+from app.application.subscription.identity import (
+    DeleteSubscriptionsByIdentityCommand,
+    SubscribeIdentityDeletionRepository,
+)
 from app.application.subscription.mutation import (
     AsyncUnitOfWork as MutationUnitOfWork,
+)
+from app.application.subscription.mutation import (
     SubscriptionHistoryMutationRepository,
     SubscriptionMutationRepository,
     SubscriptionMutationService,
@@ -36,10 +44,9 @@ from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.search import SearchSubscriptionsCommand
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
+from app.runtime.tasks import TaskRegistry
 from app.schemas.types import EventType
 from app.startup.composition.context import HostRuntime
-from app.api.context import get_background_task_registry, resolve_background_task_registry
-from app.runtime.tasks import TaskRegistry
 
 
 async def _publish_subscribe_deleted(

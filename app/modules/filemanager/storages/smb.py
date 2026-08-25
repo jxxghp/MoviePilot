@@ -7,22 +7,22 @@ from typing import List, Optional, Union
 import smbclient
 from smbclient import ClientConfig, register_session, reset_connection_cache
 from smbprotocol.exceptions import (
+    SMBAuthenticationError,
     SMBException,
     SMBResponseException,
-    SMBAuthenticationError,
 )
 
+from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.stop import runtime_stop_state
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.config import global_vars
 
 settings = RuntimeSettingsCompat()
-from app.runtime.log import logger
+from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.runtime.log import logger
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.foundation.singleton import WeakSingleton
 
 lock = threading.Lock()
 
@@ -572,7 +572,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                 with open(local_path, "wb") as dst_file:
                     downloaded_size = 0
                     while True:
-                        if global_vars.is_transfer_stopped(fileitem.path):
+                        if runtime_stop_state.consume_transfer_stop(fileitem.path):
                             logger.info(f"【SMB】{fileitem.path} 下载已取消！")
                             return None
                         chunk = src_file.read(self.chunk_size)
@@ -622,7 +622,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                 with smbclient.open_file(smb_path, mode="wb") as dst_file:
                     uploaded_size = 0
                     while True:
-                        if global_vars.is_transfer_stopped(path.as_posix()):
+                        if runtime_stop_state.consume_transfer_stop(path.as_posix()):
                             logger.info(f"【SMB】{path} 上传已取消！")
                             return None
                         chunk = src_file.read(self.chunk_size)

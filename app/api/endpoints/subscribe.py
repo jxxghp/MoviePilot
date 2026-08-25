@@ -1,46 +1,13 @@
-from typing import List, Any, Annotated, Optional
+from typing import Annotated, Any, List, Optional
 
 import cn2an
-from fastapi import Request, Depends, HTTPException, Header
+from fastapi import Depends, Header, HTTPException, Request
 
-from app.schemas.common import IdData as _SchemaIdData
-from app.schemas.response import Response as _SchemaResponse
-from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
-from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
-from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
-from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
-from app.schemas.workflow import Subscribe as _SchemaSubscribe
-from app.api.response import ResponseAPIRouter
+from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.context import (
     get_background_task_registry,
     resolve_background_task_registry,
-)
-from app.chain.subscribe import SubscribeChain
-from app.runtime.events import eventmanager
-from app.domain.context import MediaInfo
-from app.domain.metainfo import MetaInfo
-from app.adapters.web.security.access import verify_token, verify_apitoken
-from app.application.subscription.delete import (
-    DeleteSubscribeCommand,
-    SubscribeDeletionActor,
-)
-from app.application.subscription.identity import (
-    DeleteSubscriptionsByIdentityCommand,
-)
-from app.application.subscription.search import (
-    SearchSubscriptionsCommand,
-    SubscribeSearchActor,
-)
-from app.api.principal import ApiPrincipal
-from app.application.subscription.query import SubscriptionQueryService
-from app.application.subscription.mutation import (
-    SubscriptionActor,
-    SubscriptionMutationService,
-)
-from app.application.configuration import (
-    get_api_runtime_config_snapshot,
-    get_configured_system_config,
 )
 from app.api.dependencies.auth import (
     get_current_active_user,
@@ -50,23 +17,56 @@ from app.api.dependencies.subscription import (
     get_delete_subscribe_command,
     get_delete_subscriptions_by_identity_command,
     get_search_subscriptions_command,
-    get_subscription_query_service,
     get_subscription_mutation_service,
+    get_subscription_query_service,
     get_subscription_sync_mutation_service,
 )
-from app.adapters.external.server import MoviePilotServerHelper
+from app.api.principal import ApiPrincipal
+from app.api.response import ResponseAPIRouter
+from app.application.configuration import (
+    get_api_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.application.scheduling import get_scheduler
+from app.application.subscription.delete import (
+    DeleteSubscribeCommand,
+    SubscribeDeletionActor,
+)
+from app.application.subscription.identity import (
+    DeleteSubscriptionsByIdentityCommand,
+)
+from app.application.subscription.mutation import (
+    SubscriptionActor,
+    SubscriptionMutationService,
+)
+from app.application.subscription.query import SubscriptionQueryService
+from app.application.subscription.search import (
+    SearchSubscriptionsCommand,
+    SubscribeSearchActor,
+)
+from app.chain.subscribe import SubscribeChain
+from app.domain.context import MediaInfo
+from app.domain.metainfo import MetaInfo
+from app.runtime.events import eventmanager
 from app.runtime.tasks import TaskRegistry
+from app.schemas.common import IdData as _SchemaIdData
 from app.schemas.event import SubscribeModifiedEventData
+from app.schemas.media import normalize_media_source, resolve_media_identity
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
+from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
+from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
+    EventType,
     MediaSource,
     MediaType,
-    EventType,
     SystemConfigKey,
 )
-from app.schemas.media import normalize_media_source, resolve_media_identity
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
+from app.schemas.workflow import Subscribe as _SchemaSubscribe
 
 router = ResponseAPIRouter()
 

@@ -1,33 +1,21 @@
 import time
 from collections.abc import Coroutine
-from typing import List, Any, Callable, Optional
+from typing import Any, Callable, List, Optional
 
 from fastapi import Depends
 
-from app.schemas.common import BatchProgressKeyData as _SchemaBatchProgressKeyData
-from app.schemas.common import ProgressKeyData as _SchemaProgressKeyData
-from app.schemas.history import BatchTransferHistoryRedoRequest as _SchemaBatchTransferHistoryRedoRequest
-from app.schemas.history import TransferHistory as _SchemaTransferHistory
-from app.schemas.history import TransferHistoryPage as _SchemaTransferHistoryPage
-from app.schemas.response import Response as _SchemaResponse
-from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
-from app.api.response import ResponseAPIRouter
+from app.adapters.web.security.access import verify_token
 from app.agent.contracts import ReplyMode
-from app.application.agent import get_running_agent_manager
 from app.agent.prompt.transfer_redo import (
     build_batch_manual_redo_prompt,
     build_manual_redo_prompt,
 )
-from app.runtime.config import global_vars
 from app.api.context import (
     get_api_runtime_config,
     get_background_task_registry,
     resolve_api_runtime_config,
     resolve_background_task_registry,
 )
-from app.application.configuration import ApiRuntimeConfig
-from app.adapters.web.security.access import verify_token
 from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_superuser,
@@ -37,14 +25,26 @@ from app.api.dependencies.history import (
     get_history_query_service,
     get_transfer_history_mutation_command,
 )
-from app.runtime.progress import AsyncProgressHelper
+from app.api.response import ResponseAPIRouter
+from app.application.agent import get_running_agent_manager
+from app.application.configuration import ApiRuntimeConfig
 from app.application.history import (
     DownloadHistoryMutationCommand,
     HistoryQueryService,
     TransferHistoryMutationCommand,
 )
+from app.runtime.config import global_vars
 from app.runtime.log import logger
+from app.runtime.progress import AsyncProgressHelper
 from app.runtime.tasks import TaskRegistry
+from app.schemas.common import BatchProgressKeyData as _SchemaBatchProgressKeyData
+from app.schemas.common import ProgressKeyData as _SchemaProgressKeyData
+from app.schemas.history import BatchTransferHistoryRedoRequest as _SchemaBatchTransferHistoryRedoRequest
+from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
+from app.schemas.history import TransferHistory as _SchemaTransferHistory
+from app.schemas.history import TransferHistoryPage as _SchemaTransferHistoryPage
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 
 router = ResponseAPIRouter()
 

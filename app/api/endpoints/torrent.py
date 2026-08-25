@@ -2,24 +2,24 @@ from typing import Optional
 
 from fastapi import Depends
 
-from app.schemas.cache import TorrentCacheData as _SchemaTorrentCacheData
-from app.schemas.cache import TorrentReidentifyData as _SchemaTorrentReidentifyData
-from app.schemas.response import Response as _SchemaResponse
-from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.torrents import TorrentsChain
-from app.application.configuration import get_api_runtime_config_snapshot
 from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
+from app.api.response import ResponseAPIRouter
+from app.application.configuration import get_api_runtime_config_snapshot
+from app.application.torrent_cache import TorrentCacheRecognitionService
+from app.chain.media import MediaChain
+from app.chain.torrents import TorrentsChain
+from app.foundation.crypto import HashUtils
+from app.schemas.cache import TorrentCacheData as _SchemaTorrentCacheData
+from app.schemas.cache import TorrentReidentifyData as _SchemaTorrentReidentifyData
+from app.schemas.media import resolve_media_identity
+from app.schemas.response import Response as _SchemaResponse
 from app.schemas.types import (
     MediaSource,
     MusicTargetEntityType,
 )
-from app.foundation.crypto import HashUtils
-from app.schemas.media import resolve_media_identity
-from app.application.torrent_cache import TorrentCacheRecognitionService
 
 router = ResponseAPIRouter()
 

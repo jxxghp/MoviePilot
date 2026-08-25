@@ -1,31 +1,30 @@
 import base64
 import secrets
 import time
+from hashlib import sha256
 from pathlib import Path
 from threading import Lock
 from typing import List, Optional, Tuple, Union
-from hashlib import sha256
 
-import oss2
 import httpx
+import oss2
+from cryptography.hazmat.primitives import hashes
 from oss2 import SizedFileAdapter, determine_part_size
 from oss2.models import PartInfo
-from cryptography.hazmat.primitives import hashes
 
+from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.stop import runtime_stop_state
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.config import global_vars
 
 settings = RuntimeSettingsCompat()
-from app.runtime.log import logger
+from app.foundation import size as size_tools
+from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.runtime.log import logger
+from app.runtime.rate import QpsRateLimiter, RateStats
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.foundation.singleton import WeakSingleton
-from app.foundation import size as size_tools
-from app.runtime.rate import QpsRateLimiter, RateStats
-
 
 lock = Lock()
 
@@ -778,7 +777,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             part_number = 1
             offset = 0
             while offset < file_size:
-                if global_vars.is_transfer_stopped(local_path.as_posix()):
+                if runtime_stop_state.consume_transfer_stop(local_path.as_posix()):
                     logger.info(f"【115】{local_path} 上传已取消！")
                     return None
                 num_to_upload = min(part_size, file_size - offset)
@@ -929,7 +928,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
                 with open(local_path, "wb") as f:
                     for chunk in r.iter_bytes(chunk_size=self.chunk_size):
-                        if global_vars.is_transfer_stopped(fileitem.path):
+                        if runtime_stop_state.consume_transfer_stop(fileitem.path):
                             logger.info(f"【115】{fileitem.path} 下载已取消！")
                             r.close()
                             return None

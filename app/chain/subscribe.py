@@ -5,35 +5,9 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
-from app.schemas.message import Message as _SchemaMessage
-from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
-from app.schemas.subscribe import SubscribeDownloadFileInfo as _SchemaSubscribeDownloadFileInfo
-from app.schemas.subscribe import SubscribeEpisodeInfo as _SchemaSubscribeEpisodeInfo
-from app.schemas.subscribe import SubscribeLibraryFileInfo as _SchemaSubscribeLibraryFileInfo
-from app.schemas.workflow import Subscribe as _SchemaSubscribe
-from app.chain import ChainBase
-from app.chain._interaction import InteractionChainMixin
-from app.chain._music import MusicSubscribeMixin
-from app.chain.download import DownloadChain
-from app.chain.media import MediaChain
-from app.chain.mediaserver import MediaServerChain
-from app.chain.search import SearchChain
-from app.chain.tmdb import TmdbChain
-from app.chain.torrents import TorrentsChain
-from app.runtime.config import global_vars
-from app.domain.context import (
-    Context,
-    MediaInfo,
-    TorrentInfo,
-)
-from app.runtime.events import eventmanager, Event
-from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.meta.words import WordsMatcher
-from app.domain.metainfo import MetaInfo
+from app.adapters.external.server import MoviePilotServerHelper
 from app.application.chain.data import (
     get_chain_download_history_port,
     get_chain_site_port,
@@ -43,30 +17,66 @@ from app.application.configuration import (
     get_chain_runtime_config_snapshot,
     get_configured_system_config,
 )
-from app.application.messaging.subscribe import SubscribeInteractionHandler
-from app.application.messaging.message import MessageTemplateHelper
 from app.application.mediaserver import MediaServerHelper
-from app.application.subscription.write import add_subscribe, async_add_subscribe
-from app.application.subscription.complete import get_subscription_completion_scope
+from app.application.messaging.message import MessageTemplateHelper
+from app.application.messaging.subscribe import SubscribeInteractionHandler
 from app.application.subscription import priority as _priority
+from app.application.subscription.complete import get_subscription_completion_scope
+from app.application.subscription.contract import (
+    build_subscribe_meta as _build_subscribe_meta,
+)
+from app.application.subscription.contract import (
+    subscribe_media_key,
+    subscribe_media_keys,
+)
 from app.application.subscription.delete import (
     SubscribeDeletionActor,
     get_sync_delete_subscribe_scope,
 )
-from app.application.subscription.contract import (
-    build_subscribe_meta as _build_subscribe_meta,
-    subscribe_media_key,
-    subscribe_media_keys,
-)
 from app.application.subscription.query import SubscriptionQueryService
-from app.adapters.external.server import MoviePilotServerHelper
+from app.application.subscription.write import add_subscribe, async_add_subscribe
 from app.application.torrent import TorrentHelper
+from app.chain import ChainBase
+from app.chain._interaction import InteractionChainMixin
+from app.chain._music import MusicSubscribeMixin
+from app.chain.download import DownloadChain
+from app.chain.media import MediaChain
+from app.chain.mediaserver import MediaServerChain
+from app.chain.search import SearchChain
+from app.chain.tmdb import TmdbChain
+from app.chain.torrents import TorrentsChain
+from app.domain.context import (
+    Context,
+    MediaInfo,
+    TorrentInfo,
+)
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.words import WordsMatcher
+from app.domain.metainfo import MetaInfo
+from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
-from app.schemas.event import SubscribeEpisodesRefreshEventData
-from app.schemas.event import SubscribeCompletionCheckEventData
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, SystemConfigKey, NotificationChannel, MessageType, EventType, ChainEventType, \
-    ContentType
+from app.runtime.stop import runtime_stop_state
+from app.schemas.event import SubscribeCompletionCheckEventData, SubscribeEpisodesRefreshEventData
 from app.schemas.media import normalize_media_source, resolve_media_identity
+from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
+from app.schemas.message import Message as _SchemaMessage
+from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
+from app.schemas.subscribe import SubscribeDownloadFileInfo as _SchemaSubscribeDownloadFileInfo
+from app.schemas.subscribe import SubscribeEpisodeInfo as _SchemaSubscribeEpisodeInfo
+from app.schemas.subscribe import SubscribeLibraryFileInfo as _SchemaSubscribeLibraryFileInfo
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    ChainEventType,
+    ContentType,
+    EventType,
+    MediaSource,
+    MediaType,
+    MessageType,
+    NotificationChannel,
+    SystemConfigKey,
+)
+from app.schemas.workflow import Subscribe as _SchemaSubscribe
 
 if hasattr(_SchemaSubscribe, "model_fields"):
     Subscribe = _SchemaSubscribe
@@ -190,6 +200,28 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     和完成策略收敛订阅状态。电影没有按集事实，电影洗版的 current_priority 由
     电影下载优先级 writer 单独维护。
     """
+
+    @classmethod
+    def _music_media_chain(cls):
+        """为音乐 mixin 提供可替换的媒体识别构造点。"""
+        from app.chain import _music as _music_mixin
+        return (_music_mixin.MediaChain or MediaChain)()
+
+    def _music_download_chain(self):
+        """为音乐 mixin 提供可替换的下载构造点。"""
+        from app.chain import _music as _music_mixin
+        return (_music_mixin.DownloadChain or DownloadChain)()
+
+    def _music_search_chain(self):
+        """为音乐 mixin 提供可替换的搜索构造点。"""
+        from app.chain import _music as _music_mixin
+        return (_music_mixin.SearchChain or SearchChain)()
+
+    def _music_site_keywords(self, mediainfo):
+        return SearchChain.music_site_keywords(mediainfo)
+
+    def _matches_music_resource(self, mediainfo, *texts):
+        return SearchChain.matches_music_resource(mediainfo, *texts)
 
     # 交互处理器类注入，供 InteractionChainMixin 的 parse_callback 委托
     _interaction_handler_type = SubscribeInteractionHandler
@@ -1179,7 +1211,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             try:
                 # 遍历订阅
                 for index, subscribe in enumerate(subscribes, start=1):
-                    if global_vars.is_system_stopped:
+                    if runtime_stop_state.is_system_stopped:
                         break
                     processed_subscribes.append(subscribe)
                     if progress_callback:
@@ -1275,7 +1307,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                         matched_contexts = []
                         try:
                             for context in contexts:
-                                if global_vars.is_system_stopped:
+                                if runtime_stop_state.is_system_stopped:
                                     break
                                 torrent_meta = context.meta_info
                                 torrent_info = context.torrent_info
@@ -1592,11 +1624,11 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """预识别待匹配资源，并保留原上下文供后续订阅复用。"""
         processed_torrents: Dict[str, List[Context]] = {}
         for domain, contexts in torrents.items():
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 break
             processed_torrents[domain] = []
             for context in contexts:
-                if global_vars.is_system_stopped:
+                if runtime_stop_state.is_system_stopped:
                     break
                 if context.torrent_info and getattr(context.torrent_info, "category", None) in (
                         MediaType.MUSIC,
@@ -1699,7 +1731,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 )
             try:
                 for index, subscribe in enumerate(subscribes, start=1):
-                    if global_vars.is_system_stopped:
+                    if runtime_stop_state.is_system_stopped:
                         break
                     if progress_callback:
                         progress_callback(
@@ -1772,13 +1804,13 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     systemconfig = _system_config()
                     wordsmatcher = WordsMatcher()
                     for domain, contexts in processed_torrents.items():
-                        if global_vars.is_system_stopped:
+                        if runtime_stop_state.is_system_stopped:
                             break
                         if domains and domain not in domains:
                             continue
                         logger.debug(f'开始匹配站点：{domain}，共缓存了 {len(contexts)} 个种子...')
                         for context in contexts:
-                            if global_vars.is_system_stopped:
+                            if runtime_stop_state.is_system_stopped:
                                 break
                             # 提取信息
                             _context = copy.copy(context)
@@ -2046,7 +2078,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             )
         # 遍历订阅
         for index, subscribe in enumerate(subscribes, start=1):
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 break
             logger.info(f'开始更新订阅元数据：{subscribe.name} ...')
             if progress_callback:
@@ -2174,7 +2206,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             if progress_callback:
                 progress_callback(value=100, text="未配置 Follow 订阅用户，跳过刷新")
             return
-        logger.info(f'开始刷新follow用户分享订阅 ...')
+        logger.info('开始刷新follow用户分享订阅 ...')
         success_count = 0
         subscribeoper = get_chain_subscribe_port()
         share_subscribes = MoviePilotServerHelper.get_subscribe_shares() or []
@@ -2186,7 +2218,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 data={"total": total_num, "finished": 0},
             )
         for index, share_sub in enumerate(share_subscribes, start=1):
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 break
             if progress_callback:
                 progress_callback(
@@ -2276,7 +2308,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         :param progress_callback: 定时服务进度更新回调
         """
-        logger.info(f'开始预缓存订阅日历 ...')
+        logger.info('开始预缓存订阅日历 ...')
         subscribes = await get_chain_subscribe_port().async_list()
         total_num = len(subscribes)
         if progress_callback:
@@ -2286,7 +2318,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 data={"total": total_num, "finished": 0},
             )
         for index, subscribe in enumerate(subscribes, start=1):
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 break
             if progress_callback:
                 progress_callback(
@@ -2336,7 +2368,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     text=f"订阅日历（{index}/{total_num}）预缓存完成",
                     data={"total": total_num, "finished": index},
                 )
-        logger.info(f'订阅日历预缓存完成')
+        logger.info('订阅日历预缓存完成')
         if progress_callback:
             progress_callback(value=100, text="订阅日历预缓存完成")
 

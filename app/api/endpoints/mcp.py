@@ -1,8 +1,13 @@
-from typing import List, Any, Dict, Annotated, Union
+from typing import Annotated, Any, Dict, List, Union
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
+from app.adapters.web.security.access import verify_apikey
+from app.agent.tools.manager import moviepilot_tool_manager
+from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.runtime.log import logger
+from app.runtime.version import get_app_version
 from app.schemas.mcp import MCP_JSONRPC_REQUEST_SCHEMA as _SchemaMCP_JSONRPC_REQUEST_SCHEMA
 from app.schemas.mcp import McpJsonRpcError as _SchemaMcpJsonRpcError
 from app.schemas.mcp import McpJsonRpcResponse as _SchemaMcpJsonRpcResponse
@@ -11,11 +16,6 @@ from app.schemas.mcp import McpToolInfo as _SchemaMcpToolInfo
 from app.schemas.mcp import ToolCallData as _SchemaToolCallData
 from app.schemas.mcp import ToolCallRequest as _SchemaToolCallRequest
 from app.schemas.response import Response as _SchemaResponse
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
-from app.agent.tools.manager import moviepilot_tool_manager
-from app.adapters.web.security.access import verify_apikey
-from app.runtime.version import get_app_version
-from app.runtime.log import logger
 
 router = ResponseAPIRouter()
 

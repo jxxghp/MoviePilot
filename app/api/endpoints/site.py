@@ -1,31 +1,9 @@
-from typing import List, Any, Dict, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException
-from typing import Annotated
 
-from app.schemas.common import JsonObject as _SchemaJsonObject
-from app.schemas.response import Response as _SchemaResponse
-from app.schemas.site import SiteAuth as _SchemaSiteAuth
-from app.schemas.site import SiteCategory as _SchemaSiteCategory
-from app.schemas.site import SiteCookieUpdate as _SchemaSiteCookieUpdate
-from app.schemas.site import SiteIconData as _SchemaSiteIconData
-from app.schemas.site import SiteMappingData as _SchemaSiteMappingData
-from app.schemas.site import SiteStatistic as _SchemaSiteStatistic
-from app.schemas.site import SiteUserData as _SchemaSiteUserData
-from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
-from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.workflow import Site as _SchemaSite
-from app.api.response import ResponseAPIRouter
-from app.application.site.mutation import SiteMutationCommand
-from app.application.site.query import SiteQueryService
-from app.api.endpoints.plugin import register_plugin_api
-from app.chain.site import SiteChain
-from app.chain.torrents import TorrentsChain
-from app.application.commands import init_commands
-from app.application.plugin.runtime import get_plugin_manager
 from app.adapters.web.security.access import verify_token
-from app.api.principal import ApiPrincipal
-from app.application.configuration import get_configured_system_config
+from app.api.context import get_background_task_registry, resolve_background_task_registry
 from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -37,13 +15,34 @@ from app.api.dependencies.site import (
     get_site_query_service,
     get_site_sync_query_service,
 )
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.runtime.log import logger
+from app.api.endpoints.plugin import register_plugin_api
+from app.api.principal import ApiPrincipal
+from app.api.response import ResponseAPIRouter
+from app.application.commands import init_commands
+from app.application.configuration import get_configured_system_config
+from app.application.plugin.runtime import get_plugin_manager
 from app.application.scheduling import get_scheduler
-from app.schemas.types import SystemConfigKey, MediaType
+from app.application.site.mutation import SiteMutationCommand
+from app.application.site.query import SiteQueryService
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.chain.site import SiteChain
+from app.chain.torrents import TorrentsChain
 from app.domain import site as site_rules
-from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
+from app.schemas.common import JsonObject as _SchemaJsonObject
+from app.schemas.response import Response as _SchemaResponse
+from app.schemas.site import SiteAuth as _SchemaSiteAuth
+from app.schemas.site import SiteCategory as _SchemaSiteCategory
+from app.schemas.site import SiteCookieUpdate as _SchemaSiteCookieUpdate
+from app.schemas.site import SiteIconData as _SchemaSiteIconData
+from app.schemas.site import SiteMappingData as _SchemaSiteMappingData
+from app.schemas.site import SiteStatistic as _SchemaSiteStatistic
+from app.schemas.site import SiteUserData as _SchemaSiteUserData
+from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.types import MediaType, SystemConfigKey
+from app.schemas.workflow import Site as _SchemaSite
 
 router = ResponseAPIRouter()
 

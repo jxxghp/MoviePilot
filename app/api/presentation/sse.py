@@ -6,7 +6,6 @@ from typing import Any
 
 from fastapi.responses import StreamingResponse
 
-
 SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
     "Connection": "keep-alive",

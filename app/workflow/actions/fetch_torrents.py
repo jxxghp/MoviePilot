@@ -1,17 +1,16 @@
 import random
 import time
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import Field
 
-from app.workflow.actions import BaseAction
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.runtime.config import global_vars
 from app.runtime.log import logger
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionContext
+from app.runtime.stop import runtime_stop_state
 from app.schemas.types import MediaType
+from app.schemas.workflow import ActionContext, ActionParams
+from app.workflow.actions import BaseAction
 
 
 class FetchTorrentsParams(ActionParams):
@@ -59,7 +58,7 @@ class FetchTorrentsAction(BaseAction):
             # 按关键字搜索
             torrents = searchchain.search_by_title(title=params.name, sites=params.sites)
             for torrent in torrents:
-                if global_vars.is_workflow_stopped(workflow_id):
+                if runtime_stop_state.is_workflow_stopped(workflow_id):
                     break
                 if params.year and torrent.meta_info.year != params.year:
                     continue
@@ -80,7 +79,7 @@ class FetchTorrentsAction(BaseAction):
         else:
             # 搜索媒体列表
             for media in context.medias:
-                if global_vars.is_workflow_stopped(workflow_id):
+                if runtime_stop_state.is_workflow_stopped(workflow_id):
                     break
                 torrents = searchchain.search_by_id(
                     media_source=media.media_source,

@@ -1,3 +1,4 @@
+from app.adapters.system import rust as rust_accelerator
 from app.domain.context import configure_tmdb_image_url_builder
 from app.domain.media import configure_search_source_provider
 from app.domain.meta.customization import configure_customization_provider
@@ -5,7 +6,6 @@ from app.domain.meta.releasegroup import configure_release_groups_provider
 from app.domain.meta.runtime import configure_recognition_runtime
 from app.domain.meta.words import configure_custom_words_provider
 from app.domain.metainfo import clear_rust_parse_options_cache
-from app.adapters.system import rust as rust_accelerator
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()

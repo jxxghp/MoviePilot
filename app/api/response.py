@@ -11,7 +11,6 @@ from starlette.responses import Response as StarletteResponse
 from app.schemas.common import JsonData
 from app.schemas.response import Response, ValidationIssue
 
-
 ERROR_RESPONSES: dict[int, dict[str, Any]] = {
     400: {"model": Response[None], "description": "请求错误"},
     401: {"model": Response[None], "description": "未认证"},

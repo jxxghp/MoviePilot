@@ -7,21 +7,12 @@ TransferChain 中。mixin 方法运行时经 MRO 解析，共享 TransferChain �
 注意：这里的方法均已去掉私有名前缀双下划线（__ -> _），因为 Python 的名字
 改编按定义类生效，方法迁到 mixin 后 __ 前缀会改变改编目标，导致跨类调用失败。
 """
-import asyncio
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
-from app.schemas.transfer import EpisodeFormatRule as _SchemaEpisodeFormatRule
 from app.adapters.system.host import SystemUtils
 from app.application.agent import build_manual_redo_prompt, get_running_agent_manager
-from app.application.formatting import EpisodeFormatRuleHelper
-from app.application.history import clear_transfer_failures, resolve_history
-from app.application.transfer import TransferTask, job_lock
-from app.chain.media import MediaChain
-from app.chain.storage import StorageChain
-from app.chain.subscribe import SubscribeChain
 from app.application.chain.data import (
     get_chain_download_history_port,
     get_chain_transfer_history_port,
@@ -30,6 +21,18 @@ from app.application.configuration import (
     get_chain_runtime_config_snapshot,
     get_configured_system_config,
 )
+from app.application.formatting import EpisodeFormatRuleHelper
+from app.application.history import clear_transfer_failures, resolve_history
+from app.application.transfer import TransferTask, job_lock
+from app.chain._contracts import TransferMixinHost
+from app.chain.media import MediaChain
+from app.chain.storage import StorageChain
+from app.chain.subscribe import SubscribeChain
+
+# 旧测试与插件补丁入口；正式依赖通过宿主工厂逐步收敛。
+MediaChain = MediaChain
+StorageChain = StorageChain
+SubscribeChain = SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
@@ -38,9 +41,10 @@ from app.foundation import text as text_tools
 from app.runtime.config import global_vars
 from app.runtime.log import logger
 from app.runtime.tasks import get_task_registry
-from app.schemas.workflow import FileItem
+from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
+from app.schemas.transfer import EpisodeFormatRule as _SchemaEpisodeFormatRule
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -51,6 +55,7 @@ from app.schemas.types import (
     ReplyMode,
     SystemConfigKey,
 )
+from app.schemas.workflow import FileItem
 
 DownloadFiles = Any
 DownloadHistory = Any
@@ -100,6 +105,7 @@ SUBTITLE_STEM_TAGS = {
 
 
 class FileFilterMixin:
+    __mixin_host_protocol__ = TransferMixinHost
     @staticmethod
     def _requires_automatic_category(task: TransferTask) -> bool:
         """
@@ -446,6 +452,7 @@ class FileFilterMixin:
 
 
 class ScrapeBatchMixin:
+    __mixin_host_protocol__ = TransferMixinHost
 
     def _send_metadata_scrape_event(
             self, task: TransferTask, transferinfo: TransferInfo
@@ -647,6 +654,7 @@ class ScrapeBatchMixin:
 
 
 class EpisodeFormatMixin:
+    __mixin_host_protocol__ = TransferMixinHost
 
     def recommend_name(self, meta: MetaBase, mediainfo: MediaInfo) -> Optional[str]:
         """
@@ -837,6 +845,7 @@ class EpisodeFormatMixin:
 
 
 class HistoryMatchMixin:
+    __mixin_host_protocol__ = TransferMixinHost
     @staticmethod
     def _match_download_file(
             download_file: DownloadFiles,
@@ -1023,6 +1032,7 @@ class HistoryMatchMixin:
 
 
 class FileKeyMixin:
+    __mixin_host_protocol__ = TransferMixinHost
     @staticmethod
     def _get_file_key(fileitem: FileItem) -> Tuple[str, str]:
         """
@@ -1110,6 +1120,7 @@ class FileKeyMixin:
 
 
 class ManualHistoryMixin:
+    __mixin_host_protocol__ = TransferMixinHost
     @staticmethod
     def _get_subscribe_custom_words(
             history_record: Optional[DownloadHistory],
@@ -1234,6 +1245,7 @@ class ManualHistoryMixin:
 
 
 class FailedRetryMixin:
+    __mixin_host_protocol__ = TransferMixinHost
     @staticmethod
     def build_failed_transfer_buttons(
             history_id: Optional[int],

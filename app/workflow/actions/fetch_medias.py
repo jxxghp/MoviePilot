@@ -2,18 +2,16 @@ from typing import List, Optional
 
 from pydantic import Field
 
-from app.workflow.actions import BaseAction
-from app.chain.recommend import RecommendChain
+from app.adapters.network.http import RequestUtils
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionContext
-from app.runtime.config import global_vars
+from app.chain.recommend import RecommendChain
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
 from app.schemas.event import RecommendSourceEventData
-from app.schemas.workflow import MediaInfo
 from app.schemas.types import ChainEventType
-from app.adapters.network.http import RequestUtils
+from app.schemas.workflow import ActionContext, ActionParams, MediaInfo
+from app.workflow.actions import BaseAction
 
 
 class FetchMediasParams(ActionParams):
@@ -141,7 +139,7 @@ class FetchMediasAction(BaseAction):
         try:
             if params.source_type == "ranking":
                 for api_path in params.sources:
-                    if global_vars.is_workflow_stopped(workflow_id):
+                    if runtime_stop_state.is_workflow_stopped(workflow_id):
                         break
                     source = self.__get_source(api_path)
                     if not source:

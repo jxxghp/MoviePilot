@@ -2,11 +2,10 @@ from typing import List, Optional, Union
 
 from pydantic import Field
 
-from app.workflow.actions import BaseAction, ActionChain
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionContext
 from app.schemas.message import Message
+from app.schemas.workflow import ActionContext, ActionParams
+from app.workflow.actions import ActionChain, BaseAction
 
 
 class SendMessageParams(ActionParams):

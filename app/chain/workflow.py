@@ -13,19 +13,15 @@ from typing import Any, Callable, List, Optional, Tuple
 
 from pydantic import BaseModel
 
-from app.chain import ChainBase
-from app.runtime.config import global_vars
-from app.runtime.events import Event, eventmanager
-from app.application.workflow import get_workflow_manager
 from app.application.chain.data import get_chain_workflow_port
+from app.application.workflow import get_workflow_manager
+from app.chain import ChainBase
+from app.runtime.events import Event, eventmanager
 from app.runtime.execution import OwnedThreadPoolExecutor
 from app.runtime.log import logger
-from app.schemas.workflow import ActionContext
-from app.schemas.workflow import ActionFlow
-from app.schemas.workflow import Action
-from app.schemas.workflow import ActionExecution
-from app.schemas.workflow import ActionResult
+from app.runtime.stop import runtime_stop_state
 from app.schemas.types import EventType
+from app.schemas.workflow import Action, ActionContext, ActionExecution, ActionFlow, ActionResult
 
 ARTIFACT_FIELDS = {"torrents", "medias", "fileitems", "downloads", "sites", "subscribes"}
 DEFAULT_WORKFLOW_MAX_WORKERS = 4
@@ -113,7 +109,7 @@ class WorkflowCancelToken:
         """
         return bool(
             (self.stop_event and self.stop_event.is_set())
-            or global_vars.is_workflow_stopped(self.workflow_id)
+            or runtime_stop_state.is_workflow_stopped(self.workflow_id)
         )
 
 
@@ -236,7 +232,7 @@ class WorkflowExecutor:
             self._registered_execution = callable(register)
             self._admission_state = "admitted"
         # 只有获得执行准入后才能清除历史单工作流停止标记。
-        global_vars.workflow_resume(self.workflow.id)
+        runtime_stop_state.resume_workflow(self.workflow.id)
         return True
 
     def request_stop(self) -> None:
@@ -285,7 +281,7 @@ class WorkflowExecutor:
         """判断本次执行或全局工作流是否已收到停止请求。"""
         return bool(
             self._stop_event.is_set()
-            or global_vars.is_workflow_stopped(self.workflow.id)
+            or runtime_stop_state.is_workflow_stopped(self.workflow.id)
         )
 
     def get_workflow_max_workers(self) -> int:

@@ -9,20 +9,21 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 from app.application.chain.data import get_chain_user_port
+from app.application.messaging.message import MessageTemplateHelper
+from app.application.notification import get_notification_switch
+from app.chain._contracts import ChainRuntimeMixinHost
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.foundation.identity import normalize_internal_user_id
-from app.application.messaging.message import MessageTemplateHelper
-from app.application.notification import get_notification_switch
 from app.runtime.log import logger
-from app.schemas.message import MessageResponse
-from app.schemas.message import Message
-from app.schemas.transfer import TransferInfo
+from app.schemas.message import Message, MessageResponse
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType, NotificationChannel
 
 
 class MessageProcessingMixin:
+    __mixin_host_protocol__ = ChainRuntimeMixinHost
     """消息输入/处理状态机与通知派发规范化。"""
 
     def start_message_processing_status(
@@ -117,6 +118,7 @@ class MessageProcessingMixin:
 
 
 class NotificationMixin:
+    __mixin_host_protocol__ = ChainRuntimeMixinHost
     """通知消息发送域：渲染、隔离路由、队列发送与消息编辑。"""
 
     def post_message(

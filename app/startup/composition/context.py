@@ -4,15 +4,13 @@ from collections.abc import AsyncGenerator, Callable, Generator
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from app.runtime.tasks import TaskRegistry
-
+from app.application.configuration import RuntimeConfiguration, RuntimeSettingsService
 from app.application.messaging.chat import (
-    AsyncAgentChatRepository,
     AgentChatPersistenceService,
+    AsyncAgentChatRepository,
     AsyncUnitOfWork,
 )
 from app.application.outbox import AsyncOutboxTransaction
-from app.application.configuration import RuntimeConfiguration, RuntimeSettingsService
 from app.application.subscription.delete import SubscribeDeletionRepository
 from app.application.subscription.identity import SubscribeIdentityDeletionRepository
 from app.application.subscription.mutation import (
@@ -20,6 +18,7 @@ from app.application.subscription.mutation import (
     SubscriptionMutationRepository,
 )
 from app.application.workflow import WorkflowCachePort
+from app.runtime.tasks import TaskRegistry
 
 
 class AgentChatRepositoryFactory(Protocol):

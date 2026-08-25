@@ -1,16 +1,22 @@
 import copy
 from typing import Any, List, Optional, Tuple
 
-from app.application.torrent import TorrentHelper
+from app.application.chain.data import get_chain_subscribe_port
+from app.application.configuration import get_configured_system_config
 from app.application.subscription.contract import (
     build_subscribe_meta,
     subscribe_media_key,
 )
+from app.application.torrent import TorrentHelper
+from app.chain._contracts import MusicSubscribeMixinHost
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.application.chain.data import get_chain_subscribe_port
-from app.application.configuration import get_configured_system_config
+
+# 旧测试与插件补丁入口；正式依赖通过宿主工厂逐步收敛。
+MediaChain = MediaChain
+DownloadChain = DownloadChain
+SearchChain = SearchChain
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.domain.meta.metamusic import MetaMusic
@@ -35,6 +41,7 @@ def _normalize_music_total_tracks(value: Any) -> Optional[int]:
 
 
 class MusicSubscribeMixin:
+    __mixin_host_protocol__ = MusicSubscribeMixinHost
     """
     音乐订阅功能域 mixin：单曲/专辑目标识别、实体快照同步、候选筛选、
     择优下载与完成推进。

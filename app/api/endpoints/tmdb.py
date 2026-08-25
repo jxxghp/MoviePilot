@@ -1,21 +1,20 @@
-from typing import List, Any, Optional
+from typing import Any, List, Optional
 
 from fastapi import Depends
 
+from app.adapters.web.security.access import verify_token
+from app.api.dependencies.auth import get_current_active_superuser_async
+from app.api.response import ResponseAPIRouter
+from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
+from app.chain.tmdb import TmdbChain
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.schemas.tmdb import TmdbRecognitionCacheData as _SchemaTmdbRecognitionCacheData
 from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
-from app.api.response import ResponseAPIRouter
-from app.chain.tmdb import TmdbChain
-from app.application.configuration import get_api_runtime_config_snapshot
-from app.adapters.web.security.access import verify_token
-from app.application.configuration import get_configured_system_config
-from app.api.dependencies.auth import get_current_active_superuser_async
 from app.schemas.types import MediaType, SystemConfigKey
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

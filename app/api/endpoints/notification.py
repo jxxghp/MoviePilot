@@ -2,11 +2,11 @@ from typing import Any, Dict
 
 from fastapi import Depends
 
-from app.schemas.common import ManageRequest as _SchemaManageRequest
-from app.schemas.response import Response as _SchemaResponse
+from app.api.dependencies.auth import get_current_active_superuser
 from app.api.response import ResponseAPIRouter
 from app.chain.notification import NotificationChain
-from app.api.dependencies.auth import get_current_active_superuser
+from app.schemas.common import ManageRequest as _SchemaManageRequest
+from app.schemas.response import Response as _SchemaResponse
 
 router = ResponseAPIRouter()
 

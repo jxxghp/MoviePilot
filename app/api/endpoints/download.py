@@ -1,7 +1,26 @@
-from typing import Any, List, Annotated, Optional, Union
+from typing import Annotated, Any, List, Optional, Union
 
-from fastapi import Depends, Body
+from fastapi import Body, Depends
 
+from app.adapters.web.security.access import verify_token
+from app.api.dependencies.auth import get_current_active_user
+from app.api.dependencies.site import get_site_sync_query_service
+from app.api.principal import ApiPrincipal
+from app.api.response import ResponseAPIRouter
+from app.application.configuration import get_configured_system_config
+from app.application.directory import DirectoryHelper
+from app.application.security.url import SecurityUtils
+from app.application.site.query import (
+    SiteQueryService,
+    get_configured_site_query_service,
+)
+from app.chain.download import DownloadChain
+from app.chain.media import MediaChain
+from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.domain.media import is_music_media_source, normalize_music_type
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
 from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
@@ -13,24 +32,6 @@ from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
 from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
-from app.api.response import ResponseAPIRouter
-from app.chain.download import DownloadChain
-from app.chain.media import MediaChain
-from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
-from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.metainfo import MetaInfo
-from app.adapters.web.security.access import verify_token
-from app.api.principal import ApiPrincipal
-from app.application.configuration import get_configured_system_config
-from app.application.site.query import (
-    SiteQueryService,
-    get_configured_site_query_service,
-)
-from app.api.dependencies.auth import get_current_active_user
-from app.api.dependencies.site import get_site_sync_query_service
-from app.application.directory import DirectoryHelper
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
@@ -38,8 +39,7 @@ from app.schemas.types import (
     MusicTargetEntityType,
     SystemConfigKey,
 )
-from app.domain.media import is_music_media_source, normalize_music_type
-from app.application.security.url import SecurityUtils
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

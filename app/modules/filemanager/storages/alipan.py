@@ -8,19 +8,19 @@ from typing import List, Optional, Tuple, Union
 
 import requests
 
+from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.stop import runtime_stop_state
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.config import global_vars
 
 settings = RuntimeSettingsCompat()
-from app.runtime.log import logger
+from app.adapters.network.http import RequestUtils
+from app.foundation import temporal as time_tools
+from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.runtime.log import logger
 from app.schemas.exception import StorageQueryError
 from app.schemas.types import StorageSchema
-from app.adapters.network.http import RequestUtils
-from app.foundation.singleton import WeakSingleton
-from app.foundation import temporal as time_tools
 
 lock = threading.Lock()
 
@@ -645,7 +645,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         uploaded_size = 0
         with open(local_path, "rb") as f:
             for part_info in part_info_list:
-                if global_vars.is_transfer_stopped(local_path.as_posix()):
+                if runtime_stop_state.consume_transfer_stop(local_path.as_posix()):
                     logger.info(f"【阿里云盘】{target_name} 上传已取消！")
                     return None
 
@@ -780,7 +780,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 downloaded_size = 0
                 with open(local_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=self.chunk_size):
-                        if global_vars.is_transfer_stopped(fileitem.path):
+                        if runtime_stop_state.consume_transfer_stop(fileitem.path):
                             logger.info(f"【阿里云盘】{fileitem.path} 下载已取消！")
                             return None
                         if chunk:

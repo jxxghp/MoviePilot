@@ -7,20 +7,22 @@
 import copy
 from typing import Optional
 
-from app.runtime.execution import run_in_threadpool
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.configuration import get_configured_system_config
+from app.chain._contracts import ChainRuntimeMixinHost
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.runtime.cache import fresh, async_fresh
+from app.runtime.cache import async_fresh, fresh
 from app.runtime.events import Event
+from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import ChainEventType, MediaSource, MediaType, SystemConfigKey
 
 
 class RecognitionMixin:
+    __mixin_host_protocol__ = ChainRuntimeMixinHost
 
     def _can_use_media_recognize_share(
             self,

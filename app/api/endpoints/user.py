@@ -2,23 +2,23 @@ import base64
 import re
 from typing import Annotated, Any, List, Union
 
-from fastapi import Body, Depends, HTTPException, UploadFile, File
+from fastapi import Body, Depends, File, HTTPException, UploadFile
 
+from app.api.dependencies.auth import (
+    get_current_active_superuser_async,
+    get_current_active_user_async,
+    get_user_service,
+)
+from app.api.response import ResponseAPIRouter
+from app.application.security.token import PasswordTooLongError, get_password_hash
+from app.application.security.user import UserService
+from app.application.security.userconfig import get_configured_user_configuration
 from app.schemas.common import FileNameData as _SchemaFileNameData
 from app.schemas.common import ValueData as _SchemaValueData
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.user import User as _SchemaUser
 from app.schemas.user import UserCreate as _SchemaUserCreate
 from app.schemas.user import UserUpdate as _SchemaUserUpdate
-from app.api.response import ResponseAPIRouter
-from app.application.security.token import PasswordTooLongError, get_password_hash
-from app.application.security.user import UserService
-from app.api.dependencies.auth import (
-    get_current_active_superuser_async,
-    get_current_active_user_async,
-    get_user_service,
-)
-from app.application.security.userconfig import get_configured_user_configuration
 
 router = ResponseAPIRouter()
 

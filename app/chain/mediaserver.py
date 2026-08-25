@@ -1,18 +1,15 @@
 import threading
 from datetime import datetime
-from typing import Callable, Dict, List, Union, Optional, Generator, Any, Tuple
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 
-from app.chain import ChainBase
-from app.runtime.config import global_vars
 from app.application.chain.data import get_chain_media_server_port
 from app.application.mediaserver import get_mediaserver_configs
-from app.runtime.log import logger
-from app.schemas.mediaserver import MediaServerLibrary
-from app.schemas.mediaserver import MediaServerItem
-from app.schemas.mediaserver import MediaServerSeasonInfo
-from app.schemas.mediaserver import MediaServerPlayItem
-from app.schemas.types import MediaType
 from app.application.security.url import SecurityUtils
+from app.chain import ChainBase
+from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
+from app.schemas.mediaserver import MediaServerItem, MediaServerLibrary, MediaServerPlayItem, MediaServerSeasonInfo
+from app.schemas.types import MediaType
 
 lock = threading.Lock()
 
@@ -355,7 +352,7 @@ class MediaServerChain(ChainBase):
             library_media_total = library_media_counts.get(str(library.id))
             library_count = 0
             for item in self.items(server=server_name, library_id=library.id):
-                if global_vars.is_system_stopped:
+                if runtime_stop_state.is_system_stopped:
                     return total_count, global_media_finished
                 if not item or not item.item_id:
                     continue
@@ -554,7 +551,7 @@ class MediaServerChain(ChainBase):
                     global_media_total=global_media_total,
                     global_media_finished=global_media_finished,
                 )
-                if global_vars.is_system_stopped:
+                if runtime_stop_state.is_system_stopped:
                     return
                 total_count += server_count
                 logger.info(f"媒体服务器 {server_name} 数据同步完成，总同步数量：{total_count}")

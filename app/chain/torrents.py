@@ -1,27 +1,25 @@
 import copy
 import re
 import traceback
-from typing import Callable, Dict, List, Union, Optional
+from typing import Callable, Dict, List, Optional, Union
 
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-
-from app.chain import ChainBase
-from app.chain.media import MediaChain
-from app.runtime.config import global_vars
-from app.domain.context import TorrentInfo, Context, MediaInfo
-from app.domain.context import MusicInfo
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.metainfo import MetaInfo
 from app.application.chain.data import get_chain_site_port
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.torrent import TorrentHelper
-from app.runtime.log import logger
-from app.schemas.message import Message
-from app.schemas.types import SystemConfigKey, NotificationChannel, MessageType, MediaType
-from app.schemas.media import resolve_media_identity
+from app.chain import ChainBase
+from app.chain.media import MediaChain
 from app.domain import site as site_rules
+from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
 from app.foundation import text as text_tools
+from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
+from app.schemas.media import resolve_media_identity
+from app.schemas.message import Message
+from app.schemas.types import MediaType, MessageType, NotificationChannel, SystemConfigKey
 
 
 class TorrentsChain(ChainBase):
@@ -50,13 +48,13 @@ class TorrentsChain(ChainBase):
         """
         self.post_message(Message(
             channel=channel,
-            title=f"开始刷新种子 ...",
+            title="开始刷新种子 ...",
             userid=userid,
             save_history=False))
         self.refresh()
         self.post_message(Message(
             channel=channel,
-            title=f"种子刷新完成！",
+            title="种子刷新完成！",
             userid=userid,
             save_history=False))
 
@@ -362,23 +360,23 @@ class TorrentsChain(ChainBase):
         """
         清理种子缓存数据，包含音乐独立缓存
         """
-        logger.info(f'开始清理种子缓存数据 ...')
+        logger.info('开始清理种子缓存数据 ...')
         self.remove_cache(self._spider_file)
         self.remove_cache(self._rss_file)
         self.remove_cache(self._music_spider_file)
         self.remove_cache(self._music_rss_file)
-        logger.info(f'种子缓存数据清理完成')
+        logger.info('种子缓存数据清理完成')
 
     async def async_clear_torrents(self):
         """
         异步清理种子缓存数据，包含音乐独立缓存
         """
-        logger.info(f'开始异步清理种子缓存数据 ...')
+        logger.info('开始异步清理种子缓存数据 ...')
         await self.async_remove_cache(self._spider_file)
         await self.async_remove_cache(self._rss_file)
         await self.async_remove_cache(self._music_spider_file)
         await self.async_remove_cache(self._music_rss_file)
-        logger.info(f'异步种子缓存数据清理完成')
+        logger.info('异步种子缓存数据清理完成')
 
     def browse(self, domain: str, keyword: Optional[str] = None, cat: Optional[str] = None,
                page: Optional[int] = 0,
@@ -585,7 +583,7 @@ class TorrentsChain(ChainBase):
             return domain
         logger.info(f'{indexer.get("name")} 有 {len(torrents) + len(music_torrents)} 个新种子')
         for torrent in torrents + music_torrents:
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 break
             if not torrent.enclosure:
                 logger.warning(f"缺少种子链接，忽略处理: {torrent.title}")
@@ -692,7 +690,7 @@ class TorrentsChain(ChainBase):
             )
         # 遍历站点缓存资源
         for index, indexer in enumerate(indexers, start=1):
-            if global_vars.is_system_stopped:
+            if runtime_stop_state.is_system_stopped:
                 break
             if progress_callback:
                 progress_callback(

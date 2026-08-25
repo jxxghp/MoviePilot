@@ -4,14 +4,13 @@ from typing import Optional
 
 from pydantic import Field
 
-from app.workflow.actions import BaseAction
-from app.runtime.config import global_vars
 from app.application.chain.data import get_chain_transfer_history_port
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionContext
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
+from app.schemas.workflow import ActionContext, ActionParams
+from app.workflow.actions import BaseAction
 
 
 class TransferFileParams(ActionParams):
@@ -58,7 +57,7 @@ class TransferFileAction(BaseAction):
             """
             检查是否继续整理文件
             """
-            if global_vars.is_workflow_stopped(workflow_id):
+            if runtime_stop_state.is_workflow_stopped(workflow_id):
                 return False
             return True
 
@@ -71,7 +70,7 @@ class TransferFileAction(BaseAction):
         if params.source == "downloads":
             # 从下载任务中整理文件
             for download in context.downloads:
-                if global_vars.is_workflow_stopped(workflow_id):
+                if runtime_stop_state.is_workflow_stopped(workflow_id):
                     break
                 if not download.completed:
                     logger.info(f"下载任务 {download.download_id} 未完成")

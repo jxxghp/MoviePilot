@@ -1,8 +1,7 @@
-from app.workflow.actions import BaseAction, ActionChain
-from app.runtime.config import global_vars
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionContext
 from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
+from app.schemas.workflow import ActionContext, ActionParams
+from app.workflow.actions import ActionChain, BaseAction
 
 
 class FetchDownloadsParams(ActionParams):
@@ -45,7 +44,7 @@ class FetchDownloadsAction(BaseAction):
             return context
 
         for download in self._downloads:
-            if global_vars.is_workflow_stopped(workflow_id):
+            if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
             logger.info(f"获取下载任务 {download.download_id} 状态 ...")
             torrents = ActionChain().list_torrents(

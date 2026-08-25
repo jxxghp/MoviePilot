@@ -1,9 +1,11 @@
 from typing import Optional, Tuple, Union
 
+from app.chain._contracts import InteractionMixinHost
 from app.schemas.types import NotificationChannel
 
 
 class InteractionChainMixin:
+    __mixin_host_protocol__ = InteractionMixinHost
     """
     斜杠命令交互四件套委托：remote_list / parse_callback /
     handle_callback_interaction / handle_text_interaction。

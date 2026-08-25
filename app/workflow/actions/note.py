@@ -1,5 +1,5 @@
-from app.workflow.actions import BaseAction
 from app.schemas.workflow import ActionContext
+from app.workflow.actions import BaseAction
 
 
 class NoteAction(BaseAction):

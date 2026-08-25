@@ -5,7 +5,7 @@ import traceback
 from abc import ABCMeta
 from collections.abc import Callable
 from pathlib import Path
-from typing import Optional, Any, Tuple, List, Set, Union, Dict
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from app.application.chain.context import ChainRuntimeContext, get_chain_runtime_context
 from app.application.chain.data import get_chain_data_ports
@@ -18,24 +18,22 @@ from app.chain._recognition import RecognitionMixin
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
-from app.schemas.exception import RateLimitExceededException
-from app.schemas.transfer import TransferInfo
-from app.schemas.mediaserver import ExistMediaInfo
-from app.schemas.transfer import DownloaderFile, DownloaderTorrent
-from app.schemas.message import IncomingMessage
-from app.schemas.mediaserver import WebhookEventInfo
-from app.schemas.tmdb import TmdbEpisode
-from app.schemas.context import MediaPerson
-from app.schemas.workflow import FileItem
-from app.schemas.system import TransferDirectoryConf
 from app.schemas.category import CategoryConfig
+from app.schemas.context import MediaPerson
+from app.schemas.exception import RateLimitExceededException
+from app.schemas.mediaserver import ExistMediaInfo, WebhookEventInfo
+from app.schemas.message import IncomingMessage
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.tmdb import TmdbEpisode
+from app.schemas.transfer import DownloaderFile, DownloaderTorrent, TransferInfo
 from app.schemas.types import (
-    TorrentStatus,
-    MediaType,
-    MediaSourceSelection,
-    MediaImageType,
     EventType,
+    MediaImageType,
+    MediaSourceSelection,
+    MediaType,
+    TorrentStatus,
 )
+from app.schemas.workflow import FileItem
 
 
 class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
@@ -57,6 +55,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.filecache = context.file_cache
         self.async_filecache = context.async_file_cache
         self.runtime_config = context.configuration
+        self.stop_state = context.stop_state
         self.data_ports = context.data_ports or get_chain_data_ports()
         self.durable_event_writer = context.durable_event_writer
         self._module_dispatcher = context.module_dispatcher_factory(

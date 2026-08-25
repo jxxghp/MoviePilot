@@ -3,15 +3,15 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
-from app.runtime.execution import run_in_threadpool
-from app.schemas.event import MediaRecognizeConvertEventData as _SchemaMediaRecognizeConvertEventData
+from app.application.audio import AudioMetadataHelper
+from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.music.catalog import MusicCatalogService
 from app.chain import ChainBase
 from app.chain.acoustid import AcoustIdChain
 from app.chain.douban import DoubanChain
 from app.chain.musicbrainz import MusicBrainzChain, _MusicMetadataSourceChain
 from app.chain.theaudiodb import TheAudioDbChain
-from app.runtime.cache import async_fresh, fresh
-from app.application.configuration import get_chain_runtime_config_snapshot
+from app.domain import title as title_rules
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -19,13 +19,18 @@ from app.domain.context import (
     MusicArtistInfo,
     MusicInfo,
 )
-from app.runtime.events import Event
+from app.domain.media import is_music_media_source
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.application.audio import AudioMetadataHelper
-from app.application.music.catalog import MusicCatalogService
+from app.foundation.singleton import Singleton
+from app.foundation.text import convert as zhconv_convert
+from app.runtime.cache import async_fresh, fresh
+from app.runtime.events import Event
+from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
+from app.schemas.event import MediaRecognizeConvertEventData as _SchemaMediaRecognizeConvertEventData
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     ChainEventType,
@@ -33,11 +38,6 @@ from app.schemas.types import (
     MediaSourceSelection,
     MediaType,
 )
-from app.domain.media import is_music_media_source
-from app.schemas.media import normalize_media_source, resolve_media_identity
-from app.foundation.singleton import Singleton
-from app.foundation.text import convert as zhconv_convert
-from app.domain import title as title_rules
 
 recognize_lock = Lock()
 
@@ -786,9 +786,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
             year = None
         # 结果赋值
         if title == org_meta.name and year == org_meta.year:
-            logger.info(f"辅助识别与原始识别结果一致，无需重新识别媒体信息")
+            logger.info("辅助识别与原始识别结果一致，无需重新识别媒体信息")
             return None
-        logger.info(f"辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
+        logger.info("辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
         org_meta.name = title
         org_meta.year = year
         org_meta.begin_season = season_number
@@ -1725,9 +1725,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
             year = None
         # 结果赋值
         if title == org_meta.name and year == org_meta.year:
-            logger.info(f"辅助识别与原始识别结果一致，无需重新识别媒体信息")
+            logger.info("辅助识别与原始识别结果一致，无需重新识别媒体信息")
             return None
-        logger.info(f"辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
+        logger.info("辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
         org_meta.name = title
         org_meta.year = year
         org_meta.begin_season = season_number

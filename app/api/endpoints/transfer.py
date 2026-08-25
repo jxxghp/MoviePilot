@@ -1,34 +1,33 @@
 from pathlib import Path
-from typing import Any, List, Annotated, Optional
+from typing import Annotated, Any, List, Optional
 
 from fastapi import Depends
 
+from app.adapters.web.security.access import verify_apitoken, verify_token
+from app.api.dependencies.auth import get_current_active_manage_user
+from app.api.dependencies.history import get_transfer_history_lookup_service
+from app.api.response import ResponseAPIRouter
+from app.application.configuration import get_api_runtime_config_snapshot
+from app.application.directory import DirectoryHelper
+from app.application.history import TransferHistoryLookupService
+from app.chain.media import MediaChain
+from app.chain.transfer import TransferChain
+from app.runtime.log import logger
+from app.runtime.stop import runtime_stop_state
 from app.schemas.common import NameData as _SchemaNameData
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import EpisodeFormat as _SchemaEpisodeFormat
 from app.schemas.transfer import EpisodeFormatRecommendData as _SchemaEpisodeFormatRecommendData
+from app.schemas.transfer import EpisodeFormatRecommendItem, ManualTransferItem
 from app.schemas.transfer import ManualTransferHistoryInfo as _SchemaManualTransferHistoryInfo
 from app.schemas.transfer import ManualTransferResultData as _SchemaManualTransferResultData
 from app.schemas.transfer import ManualTransferTargetPath as _SchemaManualTransferTargetPath
-from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.schemas.transfer import TransferJob as _SchemaTransferJob
-from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.api.response import ResponseAPIRouter
-from app.chain.media import MediaChain
-from app.chain.transfer import TransferChain
-from app.runtime.config import global_vars
-from app.application.configuration import get_api_runtime_config_snapshot
-from app.adapters.web.security.access import verify_token, verify_apitoken
-from app.api.dependencies.auth import get_current_active_manage_user
-from app.api.dependencies.history import get_transfer_history_lookup_service
-from app.application.directory import DirectoryHelper
-from app.application.history import TransferHistoryLookupService
-from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.schemas.workflow import FileItem
-from app.schemas.transfer import ManualTransferItem
-from app.schemas.transfer import EpisodeFormatRecommendItem
+from app.schemas.workflow import FileItem as _SchemaFileItem
 
 router = ResponseAPIRouter()
 
@@ -102,7 +101,7 @@ async def remove_queue(
     """
     TransferChain().remove_from_queue(fileitem)
     # 取消整理
-    global_vars.stop_transfer(fileitem.path)
+    runtime_stop_state.stop_transfer(fileitem.path)
     return _SchemaResponse(success=True)
 
 
@@ -398,7 +397,7 @@ def _execute_manual_transfer(
     elif transer_item.fileitem:
         src_fileitems = [transer_item.fileitem]
     else:
-        return _SchemaResponse(success=False, message=f"缺少参数")
+        return _SchemaResponse(success=False, message="缺少参数")
 
     dedup_fileitems: List[FileItem] = []
     seen_paths = set()

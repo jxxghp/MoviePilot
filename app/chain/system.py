@@ -4,17 +4,17 @@ import re
 import shutil
 import uuid
 from pathlib import Path
-from typing import Union, Optional
+from typing import Optional, Union
 
-from app.chain import ChainBase
-from app.application.configuration import get_chain_runtime_config_snapshot
-from app.runtime.state import SystemHelper
-from app.runtime.log import logger
-from app.schemas.message import Message
-from app.schemas.notification import NotificationChannel
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
+from app.application.configuration import get_chain_runtime_config_snapshot
+from app.chain import ChainBase
 from app.runtime import version as runtime_version
+from app.runtime.log import logger
+from app.runtime.state import SystemHelper
+from app.schemas.message import Message
+from app.schemas.notification import NotificationChannel
 
 
 class SystemChain(ChainBase):
@@ -33,7 +33,7 @@ class SystemChain(ChainBase):
         self.post_message(Message(
             channel=channel,
             source=source,
-            title=f"缓存清理完成！",
+            title="缓存清理完成！",
             userid=userid,
             save_history=False))
 

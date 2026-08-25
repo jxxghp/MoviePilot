@@ -7,6 +7,23 @@ from typing import Annotated, Any, List, Optional, Protocol, Union
 from fastapi import Depends, Request
 from starlette.responses import PlainTextResponse
 
+from app.adapters.external.wechat_crypt import WXBizMsgCrypt
+from app.adapters.web.security.access import verify_apitoken, verify_token
+from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.api.dependencies.agent import get_message_query_service
+from app.api.dependencies.auth import get_current_active_superuser
+from app.api.principal import ApiPrincipal
+from app.api.response import ResponseAPIRouter
+from app.application.configuration import (
+    get_api_runtime_config_snapshot,
+    get_configured_system_config,
+)
+from app.application.messaging.message import MessageQueryService
+from app.application.notification import get_notification_configs
+from app.chain.message import MessageChain
+from app.runtime.config import global_vars
+from app.runtime.log import logger
+from app.runtime.tasks import TaskRegistry
 from app.schemas.message import MessageClearBefore as _SchemaMessageClearBefore
 from app.schemas.message import MessageClearData as _SchemaMessageClearData
 from app.schemas.message import MessageClearScope as _SchemaMessageClearScope
@@ -16,24 +33,7 @@ from app.schemas.message import SubscriptionMessage as _SchemaSubscriptionMessag
 from app.schemas.message import WebMessageItem as _SchemaWebMessageItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.api.response import ResponseAPIRouter
-from app.chain.message import MessageChain
-from app.runtime.config import global_vars
-from app.adapters.web.security.access import verify_token, verify_apitoken
-from app.api.principal import ApiPrincipal
-from app.application.configuration import (
-    get_api_runtime_config_snapshot,
-    get_configured_system_config,
-)
-from app.api.dependencies.agent import get_message_query_service
-from app.api.dependencies.auth import get_current_active_superuser
-from app.application.messaging.message import MessageQueryService
-from app.application.notification import get_notification_configs
-from app.runtime.log import logger
-from app.adapters.external.wechat_crypt import WXBizMsgCrypt
 from app.schemas.types import NotificationChannel, SystemConfigKey
-from app.api.context import get_background_task_registry, resolve_background_task_registry
-from app.runtime.tasks import TaskRegistry
 
 router = ResponseAPIRouter()
 

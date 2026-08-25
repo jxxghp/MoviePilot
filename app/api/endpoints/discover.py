@@ -2,17 +2,17 @@ from typing import Any, List, Optional
 
 from fastapi import Depends
 
-from app.schemas.event import DiscoverMediaSource as _SchemaDiscoverMediaSource
-from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
+from app.adapters.web.security.access import verify_token
 from app.api.response import ResponseAPIRouter
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
 from app.runtime.events import eventmanager
-from app.adapters.web.security.access import verify_token
+from app.schemas.event import DiscoverMediaSource as _SchemaDiscoverMediaSource
 from app.schemas.event import DiscoverSourceEventData
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import ChainEventType, MediaType
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

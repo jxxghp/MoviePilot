@@ -16,7 +16,7 @@ from app.application.workflow import (
     WorkflowQueryService,
     get_workflow_manager,
 )
-from app.runtime.config import global_vars
+from app.runtime.stop import runtime_stop_state
 from app.startup.composition.context import HostRuntime
 
 
@@ -36,7 +36,7 @@ def get_workflow_mutation_command(
         load_event=workflow_manager.load_workflow_events,
         remove_event=workflow_manager.remove_workflow_event,
         refresh_event=workflow_manager.update_workflow_event,
-        stop_running=global_vars.stop_workflow,
+        stop_running=runtime_stop_state.stop_workflow,
         delete_cache=lambda workflow_id: system_config.delete(
             f"WorkflowCache-{workflow_id}"
         ),
@@ -52,7 +52,7 @@ def get_workflow_definition_command(
     return WorkflowDefinitionCommand(
         repository=runtime.workflow.repository(db),
         unit_of_work=runtime.persistence.async_transaction(db),
-        stop_running=global_vars.stop_workflow,
+        stop_running=runtime_stop_state.stop_workflow,
         async_delete_cache=lambda workflow_id: system_config.async_delete(
             f"WorkflowCache-{workflow_id}"
         ),

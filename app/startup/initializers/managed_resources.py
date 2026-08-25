@@ -17,7 +17,6 @@ from app.runtime.managed_resources import (
     configure_managed_resource_runtime,
 )
 
-
 _runtime_lock = threading.RLock()
 _managed_resource_runtime: Optional[CapabilityRuntime] = None
 

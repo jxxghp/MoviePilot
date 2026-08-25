@@ -3,23 +3,22 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-from app.schemas.file import StorageUsage as _SchemaStorageUsage
-from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.runtime.cache import cached
 from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.config import global_vars
+from app.runtime.stop import runtime_stop_state
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
+from app.schemas.workflow import FileItem as _SchemaFileItem
 
 settings = RuntimeSettingsCompat()
-from app.runtime.log import logger
-from app.modules.filemanager.storages import StorageBase, transfer_process
-from app.schemas.exception import OperationInterrupted, StorageQueryError
-from app.schemas.types import StorageSchema
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
-
+from app.modules.filemanager.storages import StorageBase, transfer_process
+from app.runtime.log import logger
+from app.schemas.exception import OperationInterrupted, StorageQueryError
+from app.schemas.types import StorageSchema
 
 # OpenList/AList 在 per_page<=0 时会退回后端默认 200，显式指定最大页大小避免大目录被截断。
 OPENLIST_MAX_LIST_PAGE_SIZE = 500
@@ -703,7 +702,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 r.raise_for_status()
                 with open(local_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
-                        if global_vars.is_transfer_stopped(fileitem.path):
+                        if runtime_stop_state.consume_transfer_stop(fileitem.path):
                             logger.info(f"【OpenList】{fileitem.path} 下载已取消！")
                             return None
                         f.write(chunk)
@@ -760,7 +759,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                     return self.file_size
 
                 def read(self, size=-1):
-                    if global_vars.is_transfer_stopped(path.as_posix()):
+                    if runtime_stop_state.consume_transfer_stop(path.as_posix()):
                         logger.info(f"【OpenList】{path} 上传已取消！")
                         raise OperationInterrupted(f"Upload cancelled: {path}")
                     chunk = self.file.read(size)

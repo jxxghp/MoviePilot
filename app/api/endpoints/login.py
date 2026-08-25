@@ -1,22 +1,22 @@
 from datetime import timedelta
-from typing import Any, List, Annotated
+from typing import Annotated, Any, List
 
 from fastapi import Depends, Form, HTTPException, Request, Response
-from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
 
+from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
+from app.api.context import get_api_runtime_config, resolve_api_runtime_config
+from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.application.configuration import ApiRuntimeConfig, get_configured_system_config
+from app.application.image import WallpaperHelper
+from app.application.security.token import create_access_token
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.chain.user import MfaRequired, UserChain
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import MfaChallenge as _SchemaMfaChallenge
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
-from app.chain.user import MfaRequired, UserChain
-from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
-from app.application.security.token import create_access_token
-from app.api.context import get_api_runtime_config, resolve_api_runtime_config
-from app.application.configuration import ApiRuntimeConfig, get_configured_system_config
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.application.image import WallpaperHelper
 from app.schemas.types import SystemConfigKey
 
 router = ResponseAPIRouter()

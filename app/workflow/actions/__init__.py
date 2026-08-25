@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Union
 
-from app.chain import ChainBase
 from app.application.configuration import get_configured_system_config
-from app.schemas.workflow import ActionContext
-from app.schemas.workflow import ActionParams
-from app.schemas.workflow import ActionResult
+from app.chain import ChainBase
+from app.schemas.workflow import ActionContext, ActionParams, ActionResult
 
 
 class ActionChain(ChainBase):

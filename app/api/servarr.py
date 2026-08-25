@@ -1,8 +1,19 @@
-from typing import List, Optional, Annotated
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.adapters.web.security.access import verify_apikey
+from app.api.dependencies.subscription import get_servarr_subscription_service
+from app.api.response import ERROR_RESPONSES
+from app.application.servarr import ServarrSubscription, ServarrSubscriptionService
+from app.chain.media import MediaChain
+from app.chain.subscribe import SubscribeChain
+from app.chain.tvdb import TvdbChain
+from app.domain.context import MediaInfo
+from app.domain.metainfo import MetaInfo
+from app.runtime.version import get_app_version
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.servarr import RadarrMovie, SonarrSeries
 from app.schemas.servarr import RadarrMovie as _SchemaRadarrMovie
 from app.schemas.servarr import ServarrIdResponse as _SchemaServarrIdResponse
 from app.schemas.servarr import ServarrLanguageProfile as _SchemaServarrLanguageProfile
@@ -11,19 +22,7 @@ from app.schemas.servarr import ServarrRootFolder as _SchemaServarrRootFolder
 from app.schemas.servarr import ServarrSystemStatus as _SchemaServarrSystemStatus
 from app.schemas.servarr import ServarrTag as _SchemaServarrTag
 from app.schemas.servarr import SonarrSeries as _SchemaSonarrSeries
-from app.api.response import ERROR_RESPONSES
-from app.chain.media import MediaChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.tvdb import TvdbChain
-from app.domain.context import MediaInfo
-from app.domain.metainfo import MetaInfo
-from app.application.servarr import ServarrSubscription, ServarrSubscriptionService
-from app.adapters.web.security.access import verify_apikey
-from app.api.dependencies.subscription import get_servarr_subscription_service
-from app.schemas.servarr import RadarrMovie
-from app.schemas.servarr import SonarrSeries
 from app.schemas.types import MediaSource, MediaType
-from app.runtime.version import get_app_version
 
 arr_router = APIRouter(tags=["servarr"], responses=ERROR_RESPONSES)
 

@@ -30,13 +30,13 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
 | 2. sync/async 孪生合并 | ⏸ 后续任务 | 新代码执行"只写 async"纪律 |
 | 3. media.py dispatch 绕过 | ✅ 已完成 | 改按 source 路由走统一调度 |
 | 3. scraping.py metadata_img 聚合 | ⏸ 需架构决策 | 须先新增"按键填充"聚合模式与 provider 排序策略 |
-| 3. Mixin Protocol 契约化 | ⏸ 后续任务 | 以 `InteractionChainMixin` 为样板渐进推广 |
+| 3. Mixin Protocol 契约化 | ✅ 第一批完成 | 新增 `app/chain/_contracts.py`，存量 mixin 声明宿主 Protocol 与可替换工厂接缝 |
 | 4. chain 层 eventmanager 迁移 | ✅ 已完成 | 17 处实例方法改注入；装饰器/staticmethod 按设计保留 |
-| 4. global_vars / settings 注入迁移 | ⏸ 后续任务 | 影响面大，单独推进 |
+| 4. global_vars / settings 注入迁移 | ✅ 停止信号完成 | `StopState` 已成为停止读写入口；`global_vars` 仅保留兼容门面，settings 仍按域渐进迁移 |
 | 5. lifespan 停止信号+插件收尾组件化 | ✅ 已完成 | 进入声明式清单，含快照测试 |
 | 5. lifespan 主循环/日志关闭组件化 | ⏸ 需架构决策 | 引擎 FAIL_FAST break 语义需先扩展 |
 | 6. mypy 错误数棘轮 | ✅ 已完成 | `scripts/architecture/mypy_ratchet.py` 接入 CI |
-| 6. ruff 引入 / 覆盖率阈值 | ⏸ 后续任务 | 依赖变更需走 uv.lock+审计治理流程 |
+| 6. ruff 引入 / 覆盖率阈值 | ✅ 第一批完成 | Ruff 与覆盖率棘轮接入架构工作流，基线只允许下降；覆盖率从应用/领域包开始积累 |
 | 8. 订阅循环链构造提升 | ✅ 已完成 | SearchChain 循环外复用 |
 | 8. 非单例链 getter 门面统一 | ⏸ 需架构决策 | 改变链生命周期语义 |
 
