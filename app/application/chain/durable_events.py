@@ -8,6 +8,7 @@ from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol, cast
+from uuid import uuid4
 
 from app.application.history import TransferHistoryRecord, TransferHistoryWriter
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
@@ -56,13 +57,13 @@ class TransferHistoryRef:
 
 
 def download_added_event_key(history_id: int) -> str:
-    """由下载历史 ID 构造本次下载事实稳定的 DownloadAdded 幂等键。"""
-    return f"download.added:{history_id}:v1"
+    """由下载历史 ID 与本次事实标识构造 DownloadAdded 幂等键。"""
+    return f"download.added:{history_id}:{uuid4().hex}:v1"
 
 
 def transfer_result_event_key(topic: str, history_id: int) -> str:
-    """由结果 topic 与整理历史 ID 构造稳定幂等键。"""
-    return f"{topic}:{history_id}:v1"
+    """由结果 topic、整理历史 ID 与本次事实标识构造幂等键。"""
+    return f"{topic}:{history_id}:{uuid4().hex}:v1"
 
 
 def snapshot_download_added(payload: dict[str, Any]) -> dict[str, Any]:

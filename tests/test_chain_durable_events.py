@@ -1,16 +1,19 @@
 """下载与整理 durable 事件的原子写入和对象恢复测试。"""
 
 import json
+from uuid import UUID
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import sessionmaker
 
 from app.application.chain.durable_events import (
+    download_added_event_key,
     restore_download_added,
     restore_transfer_result,
     snapshot_download_added,
     snapshot_transfer_result,
+    transfer_result_event_key,
 )
 from app.db.base import Base
 from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
@@ -61,6 +64,19 @@ def _objects():
         transfer_type="copy",
     )
     return meta, media, context, fileitem, transferinfo
+
+
+def _assert_event_key(
+    event_key: str,
+    topic: str,
+    history_id: int,
+) -> None:
+    """校验事件键保留业务关联，并以合法 UUID 区分每次事实。"""
+    key_topic, key_history_id, occurrence_id, version = event_key.split(":")
+    assert key_topic == topic
+    assert key_history_id == str(history_id)
+    assert UUID(occurrence_id).hex == occurrence_id
+    assert version == "v1"
 
 
 def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
@@ -144,7 +160,7 @@ def test_download_history_and_event_intent_share_one_transaction():
     assert history.download_hash == "hash-2"
     assert download_file.fullpath == "/downloads/Demo.mkv"
     assert outbox.status == "completed"
-    assert outbox.event_key == f"download.added:{history.id}:v1"
+    _assert_event_key(outbox.event_key, "download.added", history.id)
     assert [call if isinstance(call, str) else call[0] for call in calls] == [
         "after_commit",
         "event",
@@ -177,10 +193,69 @@ def test_download_history_and_event_intent_share_one_transaction():
     assert len(histories) == 2
     assert len(outboxes) == 2
     assert all(message.status == "completed" for message in outboxes)
-    assert [message.event_key for message in outboxes] == [
-        f"download.added:{history.id}:v1" for history in histories
-    ]
+    for history, message in zip(histories, outboxes, strict=True):
+        _assert_event_key(message.event_key, "download.added", history.id)
     assert outboxes[0].event_key != outboxes[1].event_key
+
+
+def test_event_keys_distinguish_reused_history_ids():
+    """历史主键被数据库复用时，每次业务事实仍获得不同的幂等键。"""
+    download_keys = {download_added_event_key(7) for _ in range(2)}
+    transfer_keys = {
+        transfer_result_event_key("transfer.completed", 7)
+        for _ in range(2)
+    }
+    assert len(download_keys) == 2
+    assert len(transfer_keys) == 2
+    for event_key in download_keys:
+        _assert_event_key(event_key, "download.added", 7)
+    for event_key in transfer_keys:
+        _assert_event_key(event_key, "transfer.completed", 7)
+
+
+def test_transfer_succeeds_when_history_id_is_reused_with_retained_outbox():
+    """整理历史删除而 outbox 保留时，复用主键不得阻断新整理记录。"""
+    factory = _session_factory()
+    writer = TransactionalChainDurableEventWriter(factory)
+
+    def transfer(src: str):
+        """写入一条最小成功整理事实并完成即时事件。"""
+        return writer.transfer_result(
+            topic="transfer.completed",
+            stage_history=lambda repository: repository.add_force(
+                src=src,
+                src_storage="local",
+                status=1,
+            ),
+            event_payload={},
+            publish=lambda _payload: None,
+        )
+
+    first_history = transfer("/downloads/first.mkv")
+    with factory() as session:
+        session.execute(delete(TransferHistory))
+        session.commit()
+
+    second_history = transfer("/downloads/second.mkv")
+
+    with factory() as session:
+        histories = session.execute(select(TransferHistory)).scalars().all()
+        outboxes = session.execute(
+            select(OutboxMessage).order_by(OutboxMessage.id)
+        ).scalars().all()
+    assert first_history is not None
+    assert second_history is not None
+    assert first_history.id == second_history.id
+    assert len(histories) == 1
+    assert len(outboxes) == 2
+    assert all(message.status == "completed" for message in outboxes)
+    assert outboxes[0].event_key != outboxes[1].event_key
+    for message in outboxes:
+        _assert_event_key(
+            message.event_key,
+            "transfer.completed",
+            second_history.id,
+        )
 
 
 def test_transfer_event_failure_leaves_committed_intent_pending():
@@ -226,4 +301,4 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
         outbox = session.execute(select(OutboxMessage)).scalar_one()
     assert history.status is True
     assert outbox.status == "pending"
-    assert outbox.event_key == f"transfer.completed:{history.id}:v1"
+    _assert_event_key(outbox.event_key, "transfer.completed", history.id)
