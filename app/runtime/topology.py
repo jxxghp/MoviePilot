@@ -20,7 +20,7 @@ def process_topology_issue(*, workers: int, safe_mode: bool) -> Optional[str]:
     if workers == 1 or safe_mode:
         return None
     return (
-        "MoviePilot V3 全功能模式仅支持 API_WORKERS=1；"
+        "MoviePilot v3 全功能模式仅支持 API_WORKERS=1；"
         f"当前配置为 {workers}，每个 worker 都会重复启动插件、调度器、监控器和工作流。"
         "请将 API_WORKERS 改为 1 后重启。故障排查可以临时启用 "
         "MOVIEPILOT_SAFE_MODE=true，但安全模式不是全功能扩容方案。"
