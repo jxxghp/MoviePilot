@@ -82,6 +82,27 @@ def test_only_v3_compatible_entries_are_candidates() -> None:
     assert not inventory.candidates_for("Undeclared")
 
 
+def test_free_threaded_runtime_excludes_explicit_v3t_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """V3t 只拒绝明确声明不支持的插件，未声明仍保持兼容。"""
+    monkeypatch.setattr(
+        "app.application.plugin.inventory.is_free_threaded_runtime",
+        lambda: True,
+    )
+
+    inventory = PluginCandidateInventoryReader(
+        market_loader=lambda *_args: {
+            "Allowed": {"version": "1.0.0"},
+            "Rejected": {"version": "1.0.0", "v3t": False},
+        },
+    ).load([THIRD_PARTY_MARKET])
+
+    assert {candidate.plugin_id for candidate in inventory.online_candidates} == {
+        "Allowed"
+    }
+
+
 def test_official_source_is_classified_and_public_candidate_uses_plugin_version() -> None:
     """官方仓库使用官方来源类型，候选公共字段与 Plugin schema 对齐。"""
     reader = PluginCandidateInventoryReader(

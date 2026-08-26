@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import json
 import sys
 import threading
 import traceback
@@ -11,6 +12,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
+from app.foundation.environment import is_free_threaded_runtime
+from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import PluginInstance
 
 
@@ -73,6 +76,11 @@ class PluginLoader:
                     f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）"
                 )
                 continue
+            if not self._is_runtime_compatible(plugin_dir):
+                self._logger.warning(
+                    f"跳过插件 {plugin_dir.name}：声明与当前运行时不兼容"
+                )
+                continue
 
             try:
                 module_name = f"app.plugins.{plugin_dir.name}"
@@ -113,6 +121,11 @@ class PluginLoader:
         if not source_file.exists():
             self._logger.warning(
                 f"虚拟插件实例 {instance.instance_id} 的源码不存在：{source_dir}"
+            )
+            return []
+        if not self._is_runtime_compatible(source_dir):
+            self._logger.warning(
+                f"跳过虚拟插件实例 {instance.instance_id}：声明与当前运行时不兼容"
             )
             return []
 
@@ -160,6 +173,21 @@ class PluginLoader:
                 f"{traceback.format_exc()}"
             )
         return []
+
+    @staticmethod
+    def _is_runtime_compatible(plugin_dir: Path) -> bool:
+        """按载荷自身 package 声明执行运行时兼容门禁，缺失声明时保持兼容。"""
+        package_file = plugin_dir / "package.json"
+        try:
+            package = json.loads(package_file.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return True
+        if not isinstance(package, dict):
+            return True
+        version_flag = get_runtime_setting("VERSION_FLAG")
+        if version_flag and package.get(version_flag) is False:
+            return False
+        return not (is_free_threaded_runtime() and package.get("v3t") is False)
 
     def _execute_instance_module(
         self,
