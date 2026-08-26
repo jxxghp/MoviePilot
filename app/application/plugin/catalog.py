@@ -190,9 +190,10 @@ class PluginCatalogService:
                 [str, Optional[str], bool],
                 Awaitable[list[Any]],
             ],
+            preserve_sources: bool = False,
             progress_callback: Optional[ProgressCallback] = None,
     ) -> list[Any]:
-        """异步读取多个市场和代际，并持续报告稳定进度。"""
+        """异步读取多个市场和代际，并按调用方需要合并或保留仓库候选。"""
         async def fetch(
                 market: str,
                 package_version: Optional[str],
@@ -249,7 +250,11 @@ class PluginCatalogService:
                     target = higher_plugins if version == "higher_version" else base_plugins
                     target.extend(plugins)
 
-            result = self.merge(higher_plugins, base_plugins, markets)
+            result = (
+                self.merge_by_source(higher_plugins, base_plugins, markets)
+                if preserve_sources
+                else self.merge(higher_plugins, base_plugins, markets)
+            )
             if progress_callback:
                 progress_callback(value=100, text="插件市场缓存刷新完成")
             return result
@@ -312,6 +317,41 @@ class PluginCatalogService:
                     ):
                 result_by_id[plugin.id] = plugin
         return list(result_by_id.values())
+
+    def merge_by_source(
+            self,
+            higher_plugins: list[Any],
+            base_plugins: list[Any],
+            markets: list[str],
+    ) -> list[Any]:
+        """每个仓库保留同一插件的最高兼容版本，供来源准入继续决策。"""
+        higher_keys = {
+            (plugin.repo_url, plugin.id, plugin.plugin_version)
+            for plugin in higher_plugins
+        }
+        all_plugins = list(higher_plugins)
+        all_plugins.extend(
+            plugin
+            for plugin in base_plugins
+            if (plugin.repo_url, plugin.id, plugin.plugin_version) not in higher_keys
+        )
+
+        def repo_order(plugin: Any) -> int:
+            if plugin.repo_url in markets:
+                return markets.index(plugin.repo_url)
+            return len(markets)
+
+        result_by_source: dict[tuple[Optional[str], Optional[str]], Any] = {}
+        for plugin in sorted(all_plugins, key=repo_order):
+            key = (plugin.repo_url, plugin.id)
+            exists = result_by_source.get(key)
+            if not exists or self._version_compare(
+                plugin.plugin_version,
+                ">",
+                exists.plugin_version,
+            ):
+                result_by_source[key] = plugin
+        return list(result_by_source.values())
 
     def _map_plugins(
             self,

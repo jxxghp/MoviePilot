@@ -187,6 +187,58 @@ def test_bound_repository_update_precedes_a_higher_alternative():
     assert result[0].update_candidate.is_bound is True
 
 
+def test_market_endpoint_reads_source_preserving_candidates_for_bound_update():
+    """市场接口必须在全局版本合并前保留绑定仓库候选。"""
+    installed = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="1.0.0",
+        installed=True,
+    )
+    bound_update = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="2.0.0",
+        repo_url=SOURCE_URL,
+        has_update=True,
+    )
+    alternative_update = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="3.0.0",
+        repo_url="https://github.com/jxxghp/MoviePilot-Plugins",
+        has_update=True,
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = [installed]
+    plugin_manager.get_local_plugins.return_value = []
+    plugin_manager.get_local_repo_plugins.return_value = []
+    plugin_manager.async_get_online_plugin_candidates = AsyncMock(
+        return_value=[bound_update, alternative_update]
+    )
+    plugin_manager.process_plugins_list.side_effect = (
+        lambda higher, base: [
+            max(
+                higher + base,
+                key=lambda plugin: tuple(
+                    int(part) for part in plugin.plugin_version.split(".")
+                ),
+            )
+        ]
+    )
+    persistence = MagicMock()
+    persistence.list_identities = AsyncMock(return_value=[_plugin_identity()])
+
+    with (
+        patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.get_plugin_persistence", return_value=persistence),
+    ):
+        result = asyncio.run(plugin_endpoint.all_plugins(None, "market", False))
+
+    assert result == [bound_update]
+    assert result[0].update_candidate is not None
+    assert result[0].update_candidate.version == "2.0.0"
+    assert result[0].update_candidate.is_bound is True
+    plugin_manager.async_get_online_plugin_candidates.assert_awaited_once_with(False)
+
+
 def _persistence(identity: PluginIdentity) -> MagicMock:
     """构造只暴露身份读取合同的异步持久化替身。"""
     persistence = MagicMock()
