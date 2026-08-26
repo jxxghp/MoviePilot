@@ -9,6 +9,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -34,6 +35,7 @@ def _identity(
     declared_version: str | None = None,
 ) -> PluginIdentity:
     """构造一份已从官方仓成功安装的物理插件身份。"""
+    installed_version = declared_version or "1.0.0"
     return PluginIdentity(
         plugin_id=plugin_id,
         normalized_plugin_id=plugin_id.lower(),
@@ -42,11 +44,19 @@ def _identity(
         binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
         payload_source_type=PluginPayloadSourceType.OFFICIAL,
         payload_source_key=OFFICIAL_SOURCE,
-        declared_version=declared_version or "1.0.0",
+        declared_version=installed_version,
         package_generation="v3",
-        system_version=None,
-        supports_v3=None,
-        supports_v3t=None,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {
+                "name": "Demo",
+                "description": "Demo plugin",
+                "v3": True,
+                "v3t": False,
+                "release": True,
+            },
+            declaration_version=installed_version,
+            manifest_matches_payload=True,
+        ),
         payload_receipt="sha256:" + "0" * 64,
         revision=1,
         created_at=NOW,
@@ -197,9 +207,15 @@ def test_local_payload_preserves_trusted_online_binding() -> None:
         payload_source_key=None,
         declared_version="2.0.0-dev",
         package_generation="v3",
-        system_version=">=3.0.0",
-        supports_v3=True,
-        supports_v3t=False,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {
+                "name": "Demo local",
+                "v3": True,
+                "v3t": False,
+            },
+            declaration_version="2.0.0-dev",
+            manifest_matches_payload=True,
+        ),
         payload_receipt="sha256:" + "a" * 64,
         payload_applied_at=NOW + timedelta(seconds=1),
         updated_at=NOW + timedelta(seconds=1),
@@ -321,7 +337,6 @@ def test_plugin_identity_rejects_noncanonical_physical_id(plugin_id) -> None:
     ("field_name", "value", "message"),
     (
         ("declared_version", "v" * 65, "插件声明版本"),
-        ("system_version", ">" * 129, "插件系统版本要求"),
     ),
 )
 def test_plugin_identity_rejects_values_longer_than_database_columns(

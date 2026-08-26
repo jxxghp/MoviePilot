@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -60,14 +61,13 @@ class PluginInstallAdmission:
         payload_receipt: str,
         applied_at: datetime,
         declared_version: str | None = None,
+        manifest_matches_payload: bool = True,
     ) -> PluginIdentity:
         """在载荷落盘并生成收据后构造唯一数据库提交目标。"""
         current = self.identity_before
         plugin_id = current.plugin_id if current else self.candidate.plugin_id
         metadata = self.candidate.dto if isinstance(self.candidate.dto, Mapping) else {}
-        system_version = metadata.get("system_version")
-        supports_v3 = metadata.get("v3")
-        supports_v3t = metadata.get("v3t")
+        installed_version = declared_version or self.candidate.plugin_version
         source_binding_changed = (
             self.trusted_source_type is not TrustedPluginSourceType.UNKNOWN
             and (
@@ -89,13 +89,13 @@ class PluginInstallAdmission:
                 if isinstance(self.candidate, PluginLocalCandidate)
                 else self.candidate.source_key
             ),
-            declared_version=declared_version or self.candidate.plugin_version,
+            declared_version=installed_version,
             package_generation=self.candidate.package_generation,
-            system_version=(
-                system_version if isinstance(system_version, str) else None
+            declared_metadata=PluginDeclaredMetadata.from_package(
+                metadata,
+                declaration_version=self.candidate.plugin_version,
+                manifest_matches_payload=manifest_matches_payload,
             ),
-            supports_v3=supports_v3 if isinstance(supports_v3, bool) else None,
-            supports_v3t=supports_v3t if isinstance(supports_v3t, bool) else None,
             payload_receipt=payload_receipt,
             revision=(current.revision + 1) if current else 1,
             created_at=current.created_at if current else applied_at,

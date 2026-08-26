@@ -7,6 +7,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -21,6 +22,15 @@ from app.db.uow import SqlAlchemyUnitOfWork
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 OFFICIAL_SOURCE = "github:jxxghp/moviepilot-plugins"
 THIRD_PARTY_SOURCE = "github:example/moviepilot-plugins"
+
+
+def _metadata(version: str, *, matches_payload: bool = True) -> PluginDeclaredMetadata:
+    """构造测试用 package 声明快照。"""
+    return PluginDeclaredMetadata.from_package(
+        {"name": "Demo", "v3": True, "v3t": False},
+        declaration_version=version,
+        manifest_matches_payload=matches_payload,
+    )
 
 
 def _identity(
@@ -43,9 +53,13 @@ def _identity(
         payload_source_key=payload_source_key,
         declared_version="1.0.0",
         package_generation="v3",
-        system_version=None,
-        supports_v3=None,
-        supports_v3t=None,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo", "v3": True, "v3t": False},
+            declaration_version="1.0.0",
+            manifest_matches_payload=True,
+        )
+        if payload_source_type is not PluginPayloadSourceType.UNKNOWN
+        else None,
         payload_receipt="sha256:" + "0" * 64,
         revision=1,
         created_at=NOW,
@@ -95,9 +109,7 @@ def _legacy_identity(plugin_id: str = "DemoPlugin") -> PluginIdentity:
         payload_source_key=None,
         declared_version=None,
         package_generation=None,
-        system_version=None,
-        supports_v3=None,
-        supports_v3t=None,
+        declared_metadata=None,
         payload_receipt=None,
         revision=1,
         created_at=NOW,
@@ -124,6 +136,7 @@ def _online_binding_target(
         payload_source_key=source_key,
         declared_version="2.0.0",
         package_generation="v3",
+        declared_metadata=_metadata("2.0.0"),
         payload_receipt="sha256:" + "2" * 64,
         updated_at=updated_at,
         bound_at=updated_at,
@@ -214,6 +227,7 @@ def test_bind_local_commits_only_legacy_unbound_transition(identity_store) -> No
         payload_source_type=PluginPayloadSourceType.LOCAL,
         declared_version="2.0.0-dev",
         package_generation="v3",
+        declared_metadata=_metadata("2.0.0-dev"),
         payload_receipt="sha256:" + "1" * 64,
         updated_at=NOW + timedelta(seconds=1),
         payload_applied_at=NOW + timedelta(seconds=1),
@@ -249,6 +263,7 @@ def test_bind_online_commits_legacy_and_local_first_bindings(identity_store) -> 
         payload_source_type=PluginPayloadSourceType.LOCAL,
         declared_version="2.0.0-dev",
         package_generation="v3",
+        declared_metadata=_metadata("2.0.0-dev"),
         payload_receipt="sha256:" + "1" * 64,
         updated_at=NOW + timedelta(seconds=1),
         payload_applied_at=NOW + timedelta(seconds=1),
@@ -302,6 +317,7 @@ def test_first_local_install_still_uses_ordinary_create(identity_store) -> None:
         payload_source_type=PluginPayloadSourceType.LOCAL,
         payload_source_key=None,
         declared_version="2.0.0-dev",
+        declared_metadata=_metadata("2.0.0-dev"),
         payload_receipt="sha256:" + "1" * 64,
         bound_at=None,
     )
@@ -325,6 +341,7 @@ def test_bind_local_rejects_nonlegacy_state_and_stale_revision(identity_store) -
         payload_source_key=None,
         bound_at=None,
         declared_version="2.0.0-dev",
+        declared_metadata=_metadata("2.0.0-dev"),
         payload_receipt="sha256:" + "1" * 64,
         updated_at=NOW + timedelta(seconds=1),
         payload_applied_at=NOW + timedelta(seconds=1),
@@ -341,6 +358,7 @@ def test_bind_local_rejects_nonlegacy_state_and_stale_revision(identity_store) -
         payload_source_key=None,
         declared_version=None,
         package_generation=None,
+        declared_metadata=None,
         payload_receipt=None,
         bound_at=None,
         payload_applied_at=None,
@@ -352,6 +370,7 @@ def test_bind_local_rejects_nonlegacy_state_and_stale_revision(identity_store) -
         payload_source_type=PluginPayloadSourceType.LOCAL,
         declared_version="2.0.0-dev",
         package_generation="v3",
+        declared_metadata=_metadata("2.0.0-dev"),
         payload_receipt="sha256:" + "1" * 64,
         updated_at=NOW + timedelta(seconds=1),
         payload_applied_at=NOW + timedelta(seconds=1),

@@ -356,6 +356,10 @@ class PluginInstallCommand:
                 payload_receipt=receipt,
                 applied_at=self.__clock(),
                 declared_version=release_version,
+                manifest_matches_payload=(
+                    release_version is None
+                    or release_version == candidate.plugin_version
+                ),
             )
             await self.__await_side_effect(
                 self.__persistence.set_installation_target(

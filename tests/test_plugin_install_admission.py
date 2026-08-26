@@ -10,6 +10,7 @@ from app.application.plugin.admission import (
     PluginSourceAdmissionError,
     admit_plugin_install,
 )
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -58,9 +59,11 @@ def _identity() -> PluginIdentity:
         payload_source_key=OFFICIAL,
         declared_version="1.0.0",
         package_generation="v3",
-        system_version=None,
-        supports_v3=True,
-        supports_v3t=None,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo", "v3": True, "v3t": False},
+            declaration_version="1.0.0",
+            manifest_matches_payload=True,
+        ),
         payload_receipt="sha256:" + "0" * 64,
         revision=3,
         created_at=NOW,
@@ -102,6 +105,55 @@ def test_same_source_update_preserves_binding_and_advances_payload() -> None:
     assert target.trusted_source_key == OFFICIAL
     assert target.revision == 4
     assert target.declared_version == "2.0.0"
+
+
+def test_current_release_marks_declaration_as_matching_payload() -> None:
+    """按当前 package 版本安装时，声明快照应标记为对应当前载荷。"""
+    admission = admit_plugin_install(
+        _inventory(_online_candidate()),
+        request=PluginInstallAdmissionRequest(
+            plugin_id="DemoPlugin",
+            generations=("v3", "v2", "v1"),
+            requested_repo_url="https://github.com/jxxghp/MoviePilot-Plugins",
+        ),
+        identity=None,
+        now=NOW,
+    )
+
+    target = admission.build_identity(
+        payload_receipt="sha256:" + "7" * 64,
+        applied_at=NOW,
+    )
+
+    assert target.declared_metadata is not None
+    assert target.declared_metadata.declaration_version == "2.0.0"
+    assert target.declared_metadata.manifest_matches_payload is True
+
+
+def test_historical_release_marks_declaration_as_not_matching_payload() -> None:
+    """安装历史 Release 时必须保留其声明版本，并标记与当前载荷不对应。"""
+    admission = admit_plugin_install(
+        _inventory(_online_candidate()),
+        request=PluginInstallAdmissionRequest(
+            plugin_id="DemoPlugin",
+            generations=("v3", "v2", "v1"),
+            requested_repo_url="https://github.com/jxxghp/MoviePilot-Plugins",
+        ),
+        identity=None,
+        now=NOW,
+    )
+
+    target = admission.build_identity(
+        payload_receipt="sha256:" + "8" * 64,
+        applied_at=NOW,
+        declared_version="1.0.0",
+        manifest_matches_payload=False,
+    )
+
+    assert target.declared_version == "1.0.0"
+    assert target.declared_metadata is not None
+    assert target.declared_metadata.declaration_version == "2.0.0"
+    assert target.declared_metadata.manifest_matches_payload is False
 
 
 def test_first_online_binding_uses_payload_commit_time() -> None:
@@ -315,7 +367,7 @@ def test_legacy_identity_can_bind_explicit_online_source() -> None:
         payload_source_key=None,
         declared_version=None,
         package_generation=None,
-        supports_v3=None,
+        declared_metadata=None,
         payload_receipt=None,
         bound_at=None,
         payload_applied_at=None,

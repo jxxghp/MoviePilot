@@ -1,5 +1,6 @@
 """插件来源身份的数据访问原语。"""
 
+from collections.abc import Sequence
 from typing import cast
 
 from sqlalchemy import select, update
@@ -22,6 +23,23 @@ class PluginIdentityOper(DbOper):
                         PluginIdentity.normalized_plugin_id == plugin_id
                     )
                 ).scalar_one_or_none(),
+            )
+        )
+
+    def list_by_plugin_ids(
+        self,
+        plugin_ids: Sequence[str],
+    ) -> list[PluginIdentity]:
+        """批量读取规范化物理插件 ID 对应的身份。"""
+        if not plugin_ids:
+            return []
+        return list(
+            self._execute_sync_query(
+                lambda session: session.execute(
+                    select(PluginIdentity).where(
+                        PluginIdentity.normalized_plugin_id.in_(plugin_ids)
+                    )
+                ).scalars()
             )
         )
 

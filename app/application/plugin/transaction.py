@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -166,6 +167,9 @@ class PluginIdentityPersistence(Protocol):
     def get(self, plugin_id: str) -> PluginIdentity | None:
         """读取一个物理插件的来源身份。"""
 
+    def list(self, plugin_ids: Sequence[str]) -> list[PluginIdentity]:
+        """批量读取指定物理插件的来源身份。"""
+
     def compare_and_set(
         self,
         identity: PluginIdentity,
@@ -201,6 +205,15 @@ class PluginPersistenceService:
     async def get_identity(self, plugin_id: str) -> PluginIdentity | None:
         """在数据库 worker 中读取插件来源身份。"""
         return await self.__executor.run(partial(self.__identities.get, plugin_id))
+
+    async def list_identities(
+        self,
+        plugin_ids: Sequence[str],
+    ) -> list[PluginIdentity]:
+        """在一次数据库任务中批量读取插件来源身份。"""
+        return await self.__executor.run(
+            partial(self.__identities.list, tuple(plugin_ids))
+        )
 
     async def migrate_identity(
         self,

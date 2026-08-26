@@ -14,6 +14,7 @@ from app.application.plugin.admission import (
     PluginInstallAdmissionRequest,
     admit_plugin_install,
 )
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -56,9 +57,11 @@ def _identity(*, version: str = "1.0.0", revision: int = 1) -> PluginIdentity:
         payload_source_key=SOURCE_KEY,
         declared_version=version,
         package_generation="v3",
-        system_version=None,
-        supports_v3=True,
-        supports_v3t=False,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo", "v3": True, "v3t": False},
+            declaration_version=version,
+            manifest_matches_payload=True,
+        ),
         payload_receipt=RECEIPT,
         revision=revision,
         created_at=NOW,
@@ -197,6 +200,8 @@ class _PersistenceSpy:
         self.calls.append("journal_commit")
         if self.commit_error:
             raise self.commit_error
+        if identity_target is not None:
+            self.identity = identity_target
         record = self.records[transaction_id]
         record = replace(
             record,
@@ -622,6 +627,33 @@ async def test_precommit_failure_restores_files_and_runtime(
         rollback_reloader.assert_awaited_once_with("DemoPlugin")
     else:
         rollback_reloader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_precommit_failure_keeps_previous_declared_metadata_snapshot():
+    """提交前失败不得把新声明快照写成当前身份事实。"""
+    previous = _identity(version="1.0.0", revision=3)
+    persistence = _PersistenceSpy([], identity=previous)
+    rollback_reloader = AsyncMock()
+    target_reloader = AsyncMock(side_effect=RuntimeError("reload failed"))
+    command, _, _ = _command(
+        persistence=persistence,
+        target_reloader=target_reloader,
+        rollback_reloader=rollback_reloader,
+    )
+
+    result = await _execute(
+        command,
+        admission=_admission(identity=previous),
+    )
+
+    assert result.success is False
+    assert result.failure_stage == "runtime_reload"
+    assert result.rollback.journal_deleted is True
+    assert persistence.identity is previous
+    assert persistence.identity.declared_version == "1.0.0"
+    assert persistence.identity.declared_metadata is previous.declared_metadata
+    rollback_reloader.assert_awaited_once_with("DemoPlugin")
 
 
 @pytest.mark.asyncio

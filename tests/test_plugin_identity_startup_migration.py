@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -32,6 +33,15 @@ OFFICIAL_REPO = "https://github.com/jxxghp/MoviePilot-Plugins"
 OFFICIAL_SOURCE = "github:jxxghp/moviepilot-plugins"
 THIRD_PARTY_REPO = "https://github.com/example/MoviePilot-Plugins"
 THIRD_PARTY_SOURCE = "github:example/moviepilot-plugins"
+
+
+def _metadata(version: str, *, matches_payload: bool = True) -> PluginDeclaredMetadata:
+    """构造测试用 package 声明快照。"""
+    return PluginDeclaredMetadata.from_package(
+        {"name": "Demo", "v3": True, "v3t": False},
+        declaration_version=version,
+        manifest_matches_payload=matches_payload,
+    )
 
 
 class _Persistence:
@@ -140,9 +150,7 @@ def _legacy(plugin_id: str = "DemoPlugin") -> PluginIdentity:
         payload_source_key=None,
         declared_version=None,
         package_generation=None,
-        system_version=None,
-        supports_v3=None,
-        supports_v3t=None,
+        declared_metadata=None,
         payload_receipt=None,
         revision=1,
         created_at=NOW,
@@ -356,6 +364,7 @@ async def test_migration_does_not_replace_existing_bound_or_local_identity() -> 
         payload_source_type=PluginPayloadSourceType.LOCAL,
         declared_version="1.0.0-dev",
         package_generation="v3",
+        declared_metadata=_metadata("1.0.0-dev"),
         payload_receipt="sha256:" + "1" * 64,
         payload_applied_at=NOW,
     )
@@ -399,6 +408,7 @@ async def test_collect_online_restore_plugins_requires_trust_and_local_payload()
         payload_source_type=PluginPayloadSourceType.LOCAL,
         declared_version="9.9.10",
         package_generation="v3",
+        declared_metadata=_metadata("9.9.10"),
         payload_receipt="sha256:" + "2" * 64,
         bound_at=NOW,
         payload_applied_at=NOW,
@@ -409,6 +419,7 @@ async def test_collect_online_restore_plugins_requires_trust_and_local_payload()
         payload_source_type=PluginPayloadSourceType.LOCAL,
         declared_version="1.0.0-dev",
         package_generation="v3",
+        declared_metadata=_metadata("1.0.0-dev"),
         payload_receipt="sha256:" + "3" * 64,
         payload_applied_at=NOW,
     )
@@ -421,6 +432,7 @@ async def test_collect_online_restore_plugins_requires_trust_and_local_payload()
         payload_source_key=OFFICIAL_SOURCE,
         declared_version="1.2.0",
         package_generation="v3",
+        declared_metadata=_metadata("1.2.0"),
         payload_receipt="sha256:" + "4" * 64,
         bound_at=NOW,
         payload_applied_at=NOW,
@@ -470,6 +482,7 @@ async def test_sync_runs_identity_migration_before_automatic_install(
         payload_source_type=PluginPayloadSourceType.LOCAL,
         declared_version="9.9.10",
         package_generation="v3",
+        declared_metadata=_metadata("9.9.10"),
         payload_receipt="sha256:" + "5" * 64,
         bound_at=NOW,
         payload_applied_at=NOW,
