@@ -252,6 +252,62 @@ def resolve_imports(
     return dependencies
 
 
+def _is_module_or_child(module_name: str, root: str) -> bool:
+    """判断模块是否等于指定根或位于其点分子树内。"""
+    return module_name == root or module_name.startswith(f"{root}.")
+
+
+def _resolve_import_from_module(
+    module_name: str,
+    path: Path,
+    node: ast.ImportFrom,
+) -> str:
+    """把 from-import 的相对模块解析为绝对模块名，非法越顶时返回空串。"""
+    if not node.level:
+        return node.module or ""
+    package = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
+    package_parts = package.split(".") if package else []
+    keep_count = len(package_parts) - node.level + 1
+    if keep_count < 0:
+        return ""
+    base = ".".join(package_parts[:keep_count])
+    return ".".join(part for part in (base, node.module or "") if part)
+
+
+def collect_direct_adapter_imports(
+    modules: dict[str, Path],
+) -> list[dict[str, str]]:
+    """收集 Application/Chain 对 Adapter 的原始运行期 import，不展开父包。"""
+    source_roots = ("app.application", "app.chain")
+    target_root = "app.adapters"
+    edges: set[tuple[str, str]] = set()
+    for source, path in modules.items():
+        if not any(_is_module_or_child(source, root) for root in source_roots):
+            continue
+        for node in iter_runtime_import_nodes(parse_source(path)):
+            targets: list[str] = []
+            if isinstance(node, ast.Import):
+                targets.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported_module = _resolve_import_from_module(source, path, node)
+                if imported_module:
+                    targets.append(imported_module)
+                    targets.extend(
+                        f"{imported_module}.{alias.name}"
+                        for alias in node.names
+                        if imported_module == "app" and alias.name != "*"
+                    )
+            edges.update(
+                (source, target)
+                for target in targets
+                if _is_module_or_child(target, target_root)
+            )
+    return [
+        {"source": source, "target": target}
+        for source, target in sorted(edges)
+    ]
+
+
 def strongly_connected_components(
     graph: dict[str, set[str]],
 ) -> list[list[str]]:
@@ -376,8 +432,15 @@ def collect_dependency_baseline() -> dict[str, Any]:
         for target in dependencies
     )
     digest = hashlib.sha256("\n".join(edges).encode("utf-8")).hexdigest()
+    direct_adapter_imports = collect_direct_adapter_imports(modules)
+    direct_adapter_sources = sorted(
+        {edge["source"] for edge in direct_adapter_imports}
+    )
+    direct_adapter_targets = sorted(
+        {edge["target"] for edge in direct_adapter_imports}
+    )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "scope": "MoviePilot host app excluding app/plugins",
         "module_count": len(modules),
         "edge_count": len(edges),
@@ -385,6 +448,31 @@ def collect_dependency_baseline() -> dict[str, Any]:
         "modules": sorted(modules),
         "edges": edges,
         "strongly_connected_components": strongly_connected_components(graph),
+        "direct_adapter_imports": {
+            "scope": {
+                "source_roots": ["app.application", "app.chain"],
+                "target_root": "app.adapters",
+                "runtime_only": True,
+                "parent_package_expansion": False,
+                "imported_symbols": False,
+            },
+            "count": len(direct_adapter_imports),
+            "counts_by_source_root": {
+                "app.application": sum(
+                    _is_module_or_child(edge["source"], "app.application")
+                    for edge in direct_adapter_imports
+                ),
+                "app.chain": sum(
+                    _is_module_or_child(edge["source"], "app.chain")
+                    for edge in direct_adapter_imports
+                ),
+            },
+            "source_count": len(direct_adapter_sources),
+            "sources": direct_adapter_sources,
+            "target_count": len(direct_adapter_targets),
+            "targets": direct_adapter_targets,
+            "edges": direct_adapter_imports,
+        },
         "boundary_edges": collect_boundary_edges(graph, modules),
     }
 

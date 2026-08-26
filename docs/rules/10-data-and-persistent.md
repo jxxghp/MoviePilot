@@ -199,19 +199,21 @@ oper.delete(sid=1)                    # Delete by key
 
 **Enum:** `SystemConfigKey` in `app/schemas/types.py`
 
-**Oper:** `SystemConfigOper` in `app/db/oper/systemconfig.py`
+**Host service:** `SystemConfigService` and `get_configured_system_config()` in
+`app/application/configuration.py`. `SystemConfigOper` is used behind the
+composition/persistence boundary and remains available for legacy plugin ABI.
 
 ```python
+from app.application.configuration import get_configured_system_config
 from app.schemas.types import SystemConfigKey
-from app.db.oper.systemconfig import SystemConfigOper
 
-oper = SystemConfigOper()
+configuration = get_configured_system_config()
 
 # Read
-rss_urls = oper.get(SystemConfigKey.RssUrls)
+rss_urls = configuration.get(SystemConfigKey.RssUrls)
 
 # Write
-oper.set(SystemConfigKey.RssUrls, ["https://example.com/rss"])
+configuration.set(SystemConfigKey.RssUrls, ["https://example.com/rss"])
 ```
 
 **Rule:** Never use raw string literals as `SystemConfig` keys. Always define a new `SystemConfigKey` enum entry first. Raw string key lookups are not searchable and cannot be refactored safely.
@@ -220,15 +222,20 @@ oper.set(SystemConfigKey.RssUrls, ["https://example.com/rss"])
 
 ## UserConfig — Per-User Configuration
 
-**Purpose:** Settings that differ per user account. Uses `UserConfigOper`.
+**Purpose:** Settings that differ per user account. Host callers use the configured
+`UserConfigurationService`; its concrete repository adapts `UserConfigOper` behind
+the persistence boundary.
 
 ```python
-from app.db.oper.userconfig import UserConfigOper
+from app.application.security.userconfig import get_configured_user_configuration
 
-oper = UserConfigOper()
-value = oper.get(user_id=1, key="notification_enabled")
-oper.set(user_id=1, key="notification_enabled", value=True)
+configuration = get_configured_user_configuration()
+value = configuration.get(username="alice", key="notification_enabled")
+configuration.set(username="alice", key="notification_enabled", value=True)
 ```
+
+The no-Session `UserConfigOper()` form is legacy plugin ABI only and must not be
+copied into host code.
 
 ---
 
@@ -290,4 +297,4 @@ When `REDIS_HOST` is configured, `app/modules/redis/` provides a distributed cac
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-08-24*
+*Last Updated: 2026-08-27*

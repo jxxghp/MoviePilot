@@ -378,7 +378,7 @@ async def all_plugins(
     # 本地插件仓库目录中的插件
     local_repo_plugins = plugin_manager.get_local_repo_plugins()
     # 在线插件
-    online_plugins = await plugin_manager.async_get_online_plugins(force)
+    online_plugins = await plugin_manager.async_get_online_plugin_candidates(force)
     installed_ids = [plugin.id for plugin in installed_plugins if plugin.id]
     candidate_plugins = (
         plugin_manager.process_plugins_list(online_plugins + local_repo_plugins, [])

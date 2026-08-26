@@ -114,6 +114,32 @@ async def test_async_collect_isolates_failure_and_completes_progress():
 
 
 @pytest.mark.asyncio
+async def test_async_collect_preserves_each_repository_update_candidate():
+    """来源准入读取应保留每个仓库的最高版本，不能先按插件 ID 全局去重。"""
+    service = _service()
+
+    async def loader(market: str, package_version: str | None, _force: bool):
+        if package_version is None:
+            return []
+        version = "2.0.0" if market == "https://market-bound" else "3.0.0"
+        return [_plugin("Demo", version, market)]
+
+    result = await service.async_collect(
+        markets=["https://market-bound", "https://market-alternative"],
+        compatible_flags=["v3"],
+        force=False,
+        loader=loader,
+        preserve_sources=True,
+    )
+
+    assert [(plugin.repo_url, plugin.plugin_version) for plugin in result] == [
+        ("https://market-bound", "2.0.0"),
+        ("https://market-alternative", "3.0.0"),
+    ]
+    assert service.merge(result, [], ["https://market-bound", "https://market-alternative"]) == [result[1]]
+
+
+@pytest.mark.asyncio
 async def test_async_collect_cancels_all_loaders_when_parent_is_cancelled():
     """请求取消时必须取消并回收全部市场 loader，不能把子任务遗留在事件循环。"""
     service = _service()

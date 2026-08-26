@@ -13,6 +13,172 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
+  "direct_adapter_imports": {
+    "count": 28,
+    "counts_by_source_root": {
+      "app.application": 15,
+      "app.chain": 13
+    },
+    "edges": [
+      {
+        "source": "app.application.backup",
+        "target": "app.adapters.system.backup.files"
+      },
+      {
+        "source": "app.application.directory",
+        "target": "app.adapters.system.host"
+      },
+      {
+        "source": "app.application.image",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.application.image",
+        "target": "app.adapters.network.ip"
+      },
+      {
+        "source": "app.application.messaging.ingress",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.network.browser"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.system"
+      },
+      {
+        "source": "app.application.rules",
+        "target": "app.adapters.system"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.external.ocr"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.network.browser"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.application.security.passkey",
+        "target": "app.adapters.cache.redis"
+      },
+      {
+        "source": "app.application.torrent",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.application.transfer",
+        "target": "app.adapters.system.host"
+      },
+      {
+        "source": "app.chain._recognition",
+        "target": "app.adapters.external.server"
+      },
+      {
+        "source": "app.chain._transfer",
+        "target": "app.adapters.system.host"
+      },
+      {
+        "source": "app.chain.download",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.chain.download",
+        "target": "app.adapters.system.host"
+      },
+      {
+        "source": "app.chain.message",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.chain.scraping",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.external.cookiecloud"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.browser"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.cloudflare"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.chain.subscribe",
+        "target": "app.adapters.external.server"
+      },
+      {
+        "source": "app.chain.system",
+        "target": "app.adapters.network.http"
+      },
+      {
+        "source": "app.chain.system",
+        "target": "app.adapters.system.host"
+      }
+    ],
+    "scope": {
+      "imported_symbols": false,
+      "parent_package_expansion": false,
+      "runtime_only": true,
+      "source_roots": [
+        "app.application",
+        "app.chain"
+      ],
+      "target_root": "app.adapters"
+    },
+    "source_count": 18,
+    "sources": [
+      "app.application.backup",
+      "app.application.directory",
+      "app.application.image",
+      "app.application.messaging.ingress",
+      "app.application.rss",
+      "app.application.rules",
+      "app.application.security.cookie",
+      "app.application.security.passkey",
+      "app.application.torrent",
+      "app.application.transfer",
+      "app.chain._recognition",
+      "app.chain._transfer",
+      "app.chain.download",
+      "app.chain.message",
+      "app.chain.scraping",
+      "app.chain.site",
+      "app.chain.subscribe",
+      "app.chain.system"
+    ],
+    "target_count": 11,
+    "targets": [
+      "app.adapters.cache.redis",
+      "app.adapters.external.cookiecloud",
+      "app.adapters.external.ocr",
+      "app.adapters.external.server",
+      "app.adapters.network.browser",
+      "app.adapters.network.cloudflare",
+      "app.adapters.network.http",
+      "app.adapters.network.ip",
+      "app.adapters.system",
+      "app.adapters.system.backup.files",
+      "app.adapters.system.host"
+    ]
+  },
   "edge_count": 6817,
   "edge_sha256": "e3d43fec9f7bc936ef5a2ffe7ba11ea054d1ba7d1c42e7101978480cd99a63fe",
   "edges": [
@@ -7672,7 +7838,7 @@
     "app.workflow.actions.send_message",
     "app.workflow.actions.transfer_file"
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "scope": "MoviePilot host app excluding app/plugins",
   "strongly_connected_components": [
     [

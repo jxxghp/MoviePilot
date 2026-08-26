@@ -45,6 +45,7 @@ jobs:
         run: |
           uv run --locked --no-sync pytest \
             tests/test_architecture_dependencies.py \
+            tests/test_architecture_adapter_imports.py \
             tests/test_architecture_contract_baseline.py \
             tests/test_architecture_baseline_cli.py -q
           uv run --locked --no-sync python \

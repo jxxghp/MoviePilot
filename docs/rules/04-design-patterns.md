@@ -110,7 +110,9 @@ eventmanager.send_event(EventType.TransferComplete, data_dict)
 
 ## 4. Repository (Oper) Pattern
 
-**When to use:** All database reads and writes. Never issue SQLAlchemy queries directly from chain, module, or endpoint code.
+**When to use:** Implementing table-oriented persistence behind an Application-owned
+Protocol. Never issue SQLAlchemy queries or construct Oper objects directly from
+chain, module, endpoint, Agent, scheduler, or workflow code.
 
 **Convention:** Each SQLAlchemy model in `app/db/models/` has a corresponding `<Model>Oper` class in `app/db/oper/<model>.py` — the two packages mirror each other file for file, so the module name carries the entity and the package carries the role.
 
@@ -120,15 +122,35 @@ app/db/models/systemconfig.py    → app/db/oper/systemconfig.py    (SystemConfi
 app/db/models/transferhistory.py → app/db/oper/transferhistory.py (TransferHistoryOper)
 ```
 
-**Usage:**
+**Host usage:**
+
+Host entrypoints depend on an Application service or Protocol. The concrete
+`app/db/adapters/` implementation creates one operation-scoped Session, adapts the
+Protocol with Oper objects, and gives commit/rollback ownership to the Application
+command. Oper methods only query, stage, or flush in that caller-owned Session.
 
 ```python
-from app.db.oper.subscribe import SubscribeOper
+from app.application.subscription.write import SubscribeWriter
 
-oper = SubscribeOper()
-subscribe = oper.get(sid=1)
-oper.add(Subscribe(name="Example", type="电影"))
+def create_subscription(writer: SubscribeWriter, identity: dict, payload: dict):
+    return writer.add(identity=identity, payload=payload)
 ```
+
+The explicit Session/Oper composition belongs in `app/db/adapters/`, not at the
+host call site:
+
+```python
+with SessionFactory() as session:
+    command = CreateSubscriptionCommand(
+        repository=SubscribeOper(session),
+        unit_of_work=SqlAlchemyUnitOfWork(session),
+    )
+    result = command.execute(identity=identity, payload=payload)
+```
+
+The no-Session `SubscribeOper()` facade is legacy plugin ABI only. It may remain
+available through the curated SDK/Compat boundary, but new host code and examples
+must not copy that form.
 
 ---
 
@@ -180,16 +202,20 @@ Do not introduce new singletons unless the class genuinely manages global shared
 
 **Enum:** `SystemConfigKey` in `app/schemas/types.py`
 
-**Oper class:** `SystemConfigOper` in `app/db/oper/systemconfig.py`
+**Host service:** `SystemConfigService` and `get_configured_system_config()` in
+`app/application/configuration.py`.
 
 ```python
+from app.application.configuration import get_configured_system_config
 from app.schemas.types import SystemConfigKey
-from app.db.oper.systemconfig import SystemConfigOper
 
-oper = SystemConfigOper()
-value = oper.get(SystemConfigKey.RssUrls)
-oper.set(SystemConfigKey.RssUrls, ["https://..."])
+configuration = get_configured_system_config()
+value = configuration.get(SystemConfigKey.RssUrls)
+configuration.set(SystemConfigKey.RssUrls, ["https://..."])
 ```
+
+`SystemConfigOper` is the DB/composition implementation and legacy plugin-facing
+facade; canonical host consumers do not construct it.
 
 **Rule:** Never use raw string literals as SystemConfig keys. Always add a new entry to the `SystemConfigKey` enum first.
 
@@ -199,9 +225,12 @@ oper.set(SystemConfigKey.RssUrls, ["https://..."])
 
 **When to use:** Per-user settings that must survive across sessions but differ by user.
 
-**Oper class:** `UserConfigOper` in `app/db/oper/userconfig.py`
+**Host service:** `UserConfigurationService` and
+`get_configured_user_configuration()` in
+`app/application/security/userconfig.py`.
 
-Usage mirrors `SystemConfigOper` but scoped to a `user_id`.
+The concrete repository uses `UserConfigOper` behind the service boundary. Host
+callers do not construct it.
 
 ---
 
@@ -212,8 +241,8 @@ Usage mirrors `SystemConfigOper` but scoped to a `user_id`.
 | `module -> chain` coupling | Move orchestration into `chain` and shared logic into its owning canonical package |
 | `module -> module` direct calls | Use `chain` to orchestrate cross-module workflows |
 | Lower-level module importing a chain or manager | Register a callback/resolver from `app/startup/` or move orchestration to `chain` |
-| Raw SQLAlchemy queries in endpoints or chains | Use the corresponding Oper class in `app/db/oper/` |
+| Raw SQLAlchemy queries or Oper construction in host entrypoints | Define/use an Application Protocol or command; implement it in `app/db/adapters/` with an operation-scoped Session/UoW |
 | Raw string keys for SystemConfig | Define and use a `SystemConfigKey` enum entry |
 | HTTP requests via `requests` or `httpx` directly | Host code uses `RequestUtils` from `app/adapters/network/http.py`; plugins use `app.sdk.network` |
 
-*Last Updated: 2026-08-14*
+*Last Updated: 2026-08-27*

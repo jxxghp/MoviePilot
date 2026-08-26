@@ -243,6 +243,23 @@ class PluginCatalogFacade:
         self._logger.info(f"获取到 {len(result)} 个线上插件")
         return result
 
+    async def async_online_candidates(self, force: bool = False) -> list[Plugin]:
+        """读取在线目录并保留每个仓库的最高候选，供来源准入使用。"""
+        plugin_market = get_runtime_setting('PLUGIN_MARKET')
+        if not plugin_market:
+            return []
+        markets = [item for item in plugin_market.split(",") if item]
+        result: list[Plugin] = await self._market_catalog().async_collect(
+            markets=markets,
+            compatible_flags=self._system().compatible_flags(
+                get_runtime_setting('VERSION_FLAG')
+            ),
+            force=force,
+            loader=self._async_market_loader,
+            preserve_sources=True,
+        )
+        return result
+
     async def async_get_from_market(
         self,
         market: str,

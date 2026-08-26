@@ -1231,9 +1231,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
         indexed_tracks = list(enumerate(tracks))
         by_title: dict[str, list[int]] = {}
         for index, track in indexed_tracks:
-            key = cls._music_track_title_key(track.title)
-            if key:
-                by_title.setdefault(key, []).append(index)
+            title_key = cls._music_track_title_key(track.title)
+            if title_key:
+                by_title.setdefault(title_key, []).append(index)
 
         pending: list[tuple[Path, MetaMusic]] = []
         for file, meta in zip(files, metas):
@@ -1266,9 +1266,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
                 ).append(index)
         unresolved: list[tuple[Path, MetaMusic]] = []
         for file, meta in pending:
-            key = (meta.disc_number or 1, meta.track_number or 0)
+            position_key = (meta.disc_number or 1, meta.track_number or 0)
             candidates = [
-                index for index in by_position.get(key, [])
+                index for index in by_position.get(position_key, [])
                 if index not in used
             ] if meta.track_number else []
             if candidates:

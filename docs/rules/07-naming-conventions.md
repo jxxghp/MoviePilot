@@ -116,9 +116,9 @@ All new code must follow these conventions. Consistent naming is how the codebas
 | `def GetSubscribe():` | `def get_subscribe():` |
 | `TORRENT_info = ...` | `torrent_info = ...` |
 | `def handleConfigChanged():` | `def on_config_changed():` or `def handle_config_changed():` |
-| `SystemConfigOper().get("RssUrls")` | `SystemConfigOper().get(SystemConfigKey.RssUrls)` |
+| `configuration.get("RssUrls")` | `configuration.get(SystemConfigKey.RssUrls)` |
 | `class subscribe_oper:` | `class SubscribeOper:` |
 | `MessageChannel.Telegram`（新代码） | `NotificationChannel.Telegram` |
 | `Notification(title=...)`（新代码） | `Message(title=...)` |
 
-*Last Updated: 2026-08-16*
+*Last Updated: 2026-08-27*

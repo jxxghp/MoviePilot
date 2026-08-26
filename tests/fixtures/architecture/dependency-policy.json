@@ -1,0 +1,217 @@
+{
+  "schema_version": 2,
+  "scope": {
+    "dependency_kind": "static_runtime_imports",
+    "excluded_roots": [
+      "app/plugins"
+    ],
+    "include_parent_package_initialization": true,
+    "root": "app"
+  },
+  "allowed_sccs": [
+    {
+      "classification": "temporary_debt",
+      "id": "chain-package-root",
+      "modules": [
+        "app.chain",
+        "app.chain._messaging",
+        "app.chain._recognition"
+      ],
+      "reason": "ChainBase 仍由包根导出，包根又加载消息和识别实现；S2-L2 负责拆出 app.chain.base 并清零该环。",
+      "tracking": "ARCH-107"
+    },
+    {
+      "classification": "contained_vendor",
+      "id": "themoviedb-vendored-package",
+      "modules": [
+        "app.modules.themoviedb",
+        "app.modules.themoviedb.scraper",
+        "app.modules.themoviedb.tmdbapi",
+        "app.modules.themoviedb.tmdbv3api",
+        "app.modules.themoviedb.tmdbv3api.objs.account",
+        "app.modules.themoviedb.tmdbv3api.objs.auth",
+        "app.modules.themoviedb.tmdbv3api.objs.certification",
+        "app.modules.themoviedb.tmdbv3api.objs.change",
+        "app.modules.themoviedb.tmdbv3api.objs.collection",
+        "app.modules.themoviedb.tmdbv3api.objs.company",
+        "app.modules.themoviedb.tmdbv3api.objs.configuration",
+        "app.modules.themoviedb.tmdbv3api.objs.credit",
+        "app.modules.themoviedb.tmdbv3api.objs.discover",
+        "app.modules.themoviedb.tmdbv3api.objs.episode",
+        "app.modules.themoviedb.tmdbv3api.objs.find",
+        "app.modules.themoviedb.tmdbv3api.objs.genre",
+        "app.modules.themoviedb.tmdbv3api.objs.group",
+        "app.modules.themoviedb.tmdbv3api.objs.keyword",
+        "app.modules.themoviedb.tmdbv3api.objs.list",
+        "app.modules.themoviedb.tmdbv3api.objs.movie",
+        "app.modules.themoviedb.tmdbv3api.objs.network",
+        "app.modules.themoviedb.tmdbv3api.objs.person",
+        "app.modules.themoviedb.tmdbv3api.objs.provider",
+        "app.modules.themoviedb.tmdbv3api.objs.review",
+        "app.modules.themoviedb.tmdbv3api.objs.search",
+        "app.modules.themoviedb.tmdbv3api.objs.season",
+        "app.modules.themoviedb.tmdbv3api.objs.trending",
+        "app.modules.themoviedb.tmdbv3api.objs.tv",
+        "app.modules.themoviedb.tmdbv3api.tmdb"
+      ],
+      "reason": "隔离的移植代码保持精确成员 containment；普通单向包外依赖允许，任何成员扩张或包外反向入环均失败。",
+      "tracking": "replace-or-upgrade-vendored-package"
+    }
+  ],
+  "direct_adapter_imports": {
+    "classification": "temporary_debt",
+    "scope": {
+      "source_roots": [
+        "app.application",
+        "app.chain"
+      ],
+      "target_root": "app.adapters",
+      "runtime_only": true,
+      "parent_package_expansion": false,
+      "imported_symbols": false
+    },
+    "entries": [
+      {
+        "source": "app.application.backup",
+        "target": "app.adapters.system.backup.files",
+        "tracking": "S2-L5"
+      },
+      {
+        "source": "app.application.directory",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.image",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.image",
+        "target": "app.adapters.network.ip",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.messaging.ingress",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.network.browser",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.system",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.rules",
+        "target": "app.adapters.system",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.external.ocr",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.network.browser",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.security.passkey",
+        "target": "app.adapters.cache.redis",
+        "tracking": "S2-L4"
+      },
+      {
+        "source": "app.application.torrent",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.transfer",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.chain._recognition",
+        "target": "app.adapters.external.server",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain._transfer",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.download",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.download",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.message",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.scraping",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.external.cookiecloud",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.browser",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.cloudflare",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.subscribe",
+        "target": "app.adapters.external.server",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.system",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.system",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L7"
+      }
+    ],
+    "target_state": "empty"
+  }
+}
