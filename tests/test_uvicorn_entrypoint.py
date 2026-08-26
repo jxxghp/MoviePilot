@@ -5,6 +5,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from uvicorn import Config
+from uvicorn.supervisors.watchfilesreload import FileFilter
 
 from app import factory, main
 from app.runtime.topology import UnsupportedProcessTopologyError
@@ -60,14 +62,22 @@ def test_development_reload_uses_import_string_factory(monkeypatch):
         host=main.settings.HOST,
         port=main.settings.PORT,
         reload=True,
-        reload_excludes=[str(main.settings.ROOT_PATH / "app" / "plugins")],
+        reload_excludes=[
+            str(main.settings.ROOT_PATH / "app" / "plugins"),
+            str(main.settings.CONFIG_PATH),
+        ],
         workers=1,
         timeout_graceful_shutdown=60,
     )
 
 
-def test_development_reload_ignores_runtime_plugin_payloads(monkeypatch):
-    """插件载荷由宿主热加载器管理，写入运行目录不得重启整个开发服务器。"""
+def test_development_reload_ignores_plugin_runtime_state(monkeypatch):
+    """插件载荷与恢复快照由热加载管理，仅宿主源码变更触发进程重载。"""
+    root_path = main.settings.ROOT_PATH
+    plugin_path = root_path / "app" / "plugins"
+    config_path = main.settings.CONFIG_PATH
+    assert plugin_path.is_dir()
+    assert config_path.is_dir()
     monkeypatch.setattr(main.settings, "DEV", True)
     monkeypatch.setattr(main.settings, "API_WORKERS", 1)
     uvicorn_run = MagicMock()
@@ -75,9 +85,22 @@ def test_development_reload_ignores_runtime_plugin_payloads(monkeypatch):
 
     main.run_api_server()
 
-    assert uvicorn_run.call_args.kwargs["reload_excludes"] == [
-        str(main.settings.ROOT_PATH / "app" / "plugins")
-    ]
+    reload_excludes = uvicorn_run.call_args.kwargs["reload_excludes"]
+    reload_filter = FileFilter(
+        Config(main.APP_FACTORY, reload=True, reload_excludes=reload_excludes)
+    )
+
+    assert reload_filter(plugin_path / "autosignin" / "__init__.py") is False
+    assert reload_filter(
+        config_path
+        / "plugins_backup"
+        / ".autosignin.staging-transaction"
+        / "__init__.py"
+    ) is False
+    assert reload_filter(
+        config_path / "plugin_transactions" / "transaction" / "package" / "__init__.py"
+    ) is False
+    assert reload_filter(root_path / "app" / "main.py") is True
 
 
 def test_safe_mode_multi_worker_uses_import_string_factory(monkeypatch):
