@@ -86,8 +86,9 @@
 | 0 | 历史任务清账、现行架构图、外部契约核对和宿主基线对齐 | 已推送 | `d234c7132`；远端同 SHA；ahead/behind `0/0`；架构契约 `71 passed` |
 | 1 | Mypy fail-closed，并把 Ruff/Mypy 已下降债务固化为真实低水位 | 已推送 | `6062b0661`；远端同 SHA；ahead/behind `0/0`；Mypy 11994、Ruff 976 |
 | 2 | 用全量串行测试初始化非零 Coverage 低水位，并补齐 CI/文档防回退契约 | 已推送 | `265d3c6d1`；远端同 SHA；ahead/behind `0/0`；Application 77.76%，Domain 79.24% |
-| 3 | 收口阶段 62 遗留的 QQ Gateway heartbeat Timer 所有权 | 已全量验证 | generation owner 已实现；全量 `6391 passed, 6 skipped`；等待提交推送 |
-| Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 进行中 | 本地门禁已通过；等待批次 3 推送及远端 0/0 复核 |
+| 3 | 收口阶段 62 遗留的 QQ Gateway heartbeat Timer 所有权 | 已推送 | `50b85235d`；远端同 SHA；ahead/behind `0/0`；全量 `6391 passed, 6 skipped` |
+| 4 | 收口并行 Rousi 提交暴露的质量门禁回退 | 已全量验证 | 最终合并 SHA 全量 `6404 passed, 6 skipped`；Mypy 11983、Ruff 973；等待提交推送 |
+| Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 本地完成 | 等待批次 4 推送及最终远端 0/0 复核 |
 
 ### 批次 0：审计与基线对齐
 
@@ -195,6 +196,35 @@ Gateway join 预算后保留 owner 并允许再次停止；故障注入证明首
   官方插件 ABI 语义门禁均通过，架构/质量专项 `50 passed`。插件参考仓只有不参与语义判定的
   schema/provenance 漂移，且本地分支落后其远端 2 个提交，本轮保持参考仓只读且不刷新指纹。
 
+交付证据：提交在并行 Rousi 和 Ruff baseline 提交之后重放为 `50b85235d`，已推送到
+`origin/v3`；`git ls-remote` 返回同一 SHA，`HEAD...origin/v3` 为 `0/0`。
+
+### 批次 4：并行提交质量门禁集成
+
+批次 3 最终回归期间，远端合入 `5484223d1`（Rousi PeerGo 个人 API Key）和
+`b1c415089`（对应 Spider Ruff 低水位）。前者行为专项通过，但在 fail-closed 门禁下暴露两条
+新增 Mypy 错误；Parser 触达文件和基类还各有一条已消除但未固化的 Ruff 导入债务。
+
+准入边界：只修复当前主线提交造成的类型回退及同文件低水位，不扩张站点解析器重构。基类
+`err_msg` 显式标注为真实的 `Optional[str]`，Rousi 在调用时间解析器前验证 `registered_at`
+为字符串；由此净消除 10 条既有 assignment 债务。触达文件导入排序完成后，Mypy 低水位
+从 11993 收紧为 11983，Ruff 从远端固化后的 975 继续收紧为 973。
+
+停止条件：Rousi 行为、解析器相关回归、Mypy/Ruff 只读 ratchet、适用架构门禁和最终全量
+测试通过；批次独立提交推送；台账定稿后远端保持 `0/0`。
+
+本地验收结果：
+
+* Rousi `14 passed`；与 SunnyPT、TorrentLeech 和 Yema 合计 `33 passed`，触达文件 Ruff 通过，
+  Pylint `10.00/10`；
+* Mypy `11983`、Ruff `973` 的只读 ratchet 通过，Coverage 仍为 Application 77.76%、
+  Domain 79.24%；锁文件、Schema、宿主架构、复杂度、async blocking、service locator、
+  task ownership 和官方插件 ABI 语义门禁均通过；架构/质量专项 `50 passed`；
+* 在不含共享工作树并行改动的干净 detached worktree 中，包含并行 Rousi 提交和本批源码/
+  测试的 4 分片全量回归为 `6402 passed, 6 skipped`；随后远端 `ee53d6df0` 交付 #6449
+  durable event 修复，其 blob 与共享工作树副本逐字一致。本批重放到该提交后，durable 专项
+  `5 passed`，最终合并 SHA 的 4 分片全量为 `6404 passed, 6 skipped`。
+
 ## 五、验证矩阵
 
 每个批次按改动范围选择下列命令，Final 全部执行：
@@ -240,6 +270,11 @@ git rev-list --left-right --count HEAD...origin/v3
 | 2026-08-26 | 批次 3 启动 | 仅收口阶段 62 已记录的 QQ heartbeat owner，不扩张公开 `QQBot.stop()` 合同 |
 | 2026-08-26 | 批次 3 专项验收 | 三条故障注入并行重复 4 轮稳定；生命周期 `96 passed`；静态、所有权和架构门禁通过 |
 | 2026-08-26 | 批次 3 全量验收 | 最终快照 4 分片 `6391 passed, 6 skipped`；全部适用主仓门禁通过；插件 ABI 语义无变化 |
+| 2026-08-26 | 批次 3 交付 | `50b85235d` 已推送；远端同 SHA；ahead/behind `0/0` |
+| 2026-08-26 | 批次 4 启动 | 只收口并行 Rousi 提交的类型回退和触达文件低水位；不扩大解析器重构 |
+| 2026-08-26 | 批次 4 本地验收 | 解析器 `33 passed`；干净 worktree 全量 `6402 passed, 6 skipped`；全部适用门禁通过 |
+| 2026-08-26 | 同步并行 #6449 | `ee53d6df0` 已在远端；共享工作树 blob 完全相同，rebase 后无重复 diff |
+| 2026-08-26 | 最终合并验收 | durable `5 passed`；最终 SHA 全量 `6404 passed, 6 skipped`；质量门禁通过 |
 
 ## 七、本轮停止条件
 

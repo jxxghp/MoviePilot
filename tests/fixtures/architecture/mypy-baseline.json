@@ -2258,7 +2258,7 @@
   },
   "app/modules/indexer/parser/__init__.py": {
     "arg-type": 20,
-    "assignment": 5,
+    "assignment": 4,
     "comparison-overlap": 1,
     "no-untyped-call": 4,
     "no-untyped-def": 14,
@@ -2363,7 +2363,7 @@
   },
   "app/modules/indexer/parser/sunnypt.py": {
     "arg-type": 2,
-    "assignment": 14,
+    "assignment": 10,
     "type-arg": 2
   },
   "app/modules/indexer/parser/tnode.py": {
@@ -2373,7 +2373,7 @@
     "type-arg": 1
   },
   "app/modules/indexer/parser/torrent_leech.py": {
-    "assignment": 8,
+    "assignment": 7,
     "no-untyped-call": 2,
     "type-arg": 1
   },
@@ -2384,7 +2384,7 @@
     "type-arg": 1
   },
   "app/modules/indexer/parser/yema.py": {
-    "assignment": 17,
+    "assignment": 13,
     "type-arg": 1
   },
   "app/modules/indexer/parser/zhixing.py": {

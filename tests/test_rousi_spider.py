@@ -40,6 +40,18 @@ def _build_indexer(apikey: str = "rousi-secret", proxy: bool = False) -> dict:
     }
 
 
+def _build_user_parser() -> RousiSiteUserInfo:
+    """构造无需真实网络请求的 Rousi 用户数据解析器。"""
+    return RousiSiteUserInfo(
+        site_name="Rousi Pro",
+        url="https://rousi.pro/",
+        site_cookie="",
+        apikey="rousi-secret",
+        token=None,
+        ua="MoviePilot-Test",
+    )
+
+
 @pytest.fixture()
 def rousi_spider(monkeypatch):
     """构造不依赖真实数据库配置的 RousiSpider。"""
@@ -226,6 +238,44 @@ def test_user_parser_reads_peergo_profile_with_personal_api_key(monkeypatch):
     assert parser.seeding_size == 2147483648000
     assert parser.leeching == 1
     assert parser.leeching_size == 10737418240
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    [
+        ([], "用户数据响应结构无效"),
+        ({"code": 1, "message": 619}, "619"),
+        ({"code": 1, "message": None}, "未知错误"),
+    ],
+)
+def test_user_parser_normalizes_profile_errors(
+    payload: object,
+    expected_error: str,
+) -> None:
+    """无效资料响应必须给调用方稳定的字符串错误消息。"""
+    parser = _build_user_parser()
+
+    parser._parse_user_base_info(json.dumps(payload))
+
+    assert parser.err_msg == expected_error
+
+
+@pytest.mark.parametrize("registered_at", [None, 619, {"unexpected": "value"}])
+def test_user_parser_ignores_non_string_registration_time(
+    registered_at: object,
+) -> None:
+    """非字符串注册时间不得被强转为看似有效的日期输入。"""
+    parser = _build_user_parser()
+    payload = {
+        "code": 0,
+        "data": {
+            "registered_at": registered_at,
+        },
+    }
+
+    parser._parse_user_base_info(json.dumps(payload))
+
+    assert parser.join_at is None
 
 
 def test_site_connectivity_uses_peergo_personal_api_key(monkeypatch):

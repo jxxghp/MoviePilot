@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 import json
-from urllib.parse import urljoin
 from typing import Optional, Tuple
-
-from app.runtime.log import logger
-from app.runtime.settings import get_runtime_setting
+from urllib.parse import urljoin
 
 from app.adapters.network.http import RequestUtils
 from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 
 class RousiSiteUserInfo(SiteParserBase):
@@ -86,15 +85,12 @@ class RousiSiteUserInfo(SiteParserBase):
             return
 
         if not isinstance(data, dict):
-            # 基类把 err_msg 推断为 None，运行时契约允许解析器写入错误文本。
-            self.err_msg = "用户数据响应结构无效"  # type: ignore[assignment]
+            self.err_msg = "用户数据响应结构无效"
             logger.warning(f"{self._site_name} API 响应结构无效")
             return
 
         if data.get("code") != 0:
-            self.err_msg = str(  # type: ignore[assignment]
-                data.get("message") or "未知错误"
-            )
+            self.err_msg = str(data.get("message") or "未知错误")
             logger.warning(f"{self._site_name} API 错误: {self.err_msg}")
             return
 
@@ -108,8 +104,11 @@ class RousiSiteUserInfo(SiteParserBase):
         self.user_level = user_info.get("level_text") or user_info.get("role_text")
 
         # 注册时间：统一格式为 YYYY-MM-DD HH:MM:SS
-        join_at = time_tools.normalize_datetime(
-            str(user_info.get("registered_at") or "")
+        registered_at = user_info.get("registered_at")
+        join_at = (
+            time_tools.normalize_datetime(registered_at)
+            if isinstance(registered_at, str)
+            else None
         )
         if join_at:
             # 确保格式为 YYYY-MM-DD HH:MM:SS (19位)

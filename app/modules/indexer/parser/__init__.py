@@ -8,13 +8,12 @@ from urllib.parse import urljoin, urlsplit
 
 from requests import Session
 
-from app.runtime.settings import get_runtime_setting
-
 from app.adapters.network.cloudflare import under_challenge
-from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
 from app.domain.site import SiteUtils
 from app.foundation import size as size_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 
 # 站点框架
@@ -170,7 +169,7 @@ class SiteParserBase(metaclass=ABCMeta):
         self._torrent_seeding_headers = None
 
         # 错误信息
-        self.err_msg = None
+        self.err_msg: Optional[str] = None
 
     def site_schema(self) -> SiteSchema:
         """

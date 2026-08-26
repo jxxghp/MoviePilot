@@ -692,9 +692,6 @@
   "app/modules/indexer/__init__.py": {
     "I001": 1
   },
-  "app/modules/indexer/parser/__init__.py": {
-    "I001": 1
-  },
   "app/modules/indexer/parser/bitpt.py": {
     "I001": 1
   },
@@ -726,9 +723,6 @@
     "I001": 1
   },
   "app/modules/indexer/parser/nexus_rabbit.py": {
-    "I001": 1
-  },
-  "app/modules/indexer/parser/rousi.py": {
     "I001": 1
   },
   "app/modules/indexer/parser/small_horse.py": {
