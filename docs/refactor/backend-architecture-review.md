@@ -1,197 +1,190 @@
-# 后端架构优化点评审（2026-08）
+# MoviePilot V3 后端架构收敛台账
 
-> 本文档是 2026-08-24 基于当前 `v3` 分支代码的全面架构评审结论，取代此前
-> `docs/refactor/` 下的分阶段治理文档（`backend-architecture-governance.md`、
-> `backend-module-refactor-compatibility.md`、`backend-architecture-next-stage.md`、
-> `module-quality-scale.md`，历史内容见对应提交的 git 记录）。分层权威规范仍以
-> [`docs/rules/05-architecture.md`](../rules/05-architecture.md) 为准，后台动作可靠性分级
-> （E0–E3）的决策依据见 [`docs/adr/0007-background-action-reliability.md`](../adr/0007-background-action-reliability.md)。
-> 本文档不重复既有约束，只记录现状差距与改进方向。
-
-## 总体结论
-
-v3 重构骨架健康：架构测试 `tests/test_architecture_dependencies.py` 全部通过，
-chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置注入纪律近乎完全落实。
-当前的主要优化空间不是"分层错误"，而是三类问题：
-
-1. **上帝类**——领域算法埋在编排链里；
-2. **迁移过半的全局状态**——注入通道已建好，存量未迁完；
-3. **收缩的质量门禁**——静态检查名义严格、实际覆盖面很小。
-
-## 优化点执行状态（2026-08-24）
-
-| 优化点 | 状态 | 说明 |
-|---|---|---|
-| 1.1 subscribe 洗版优先级算法下沉 | ✅ 已完成 | 迁入 `application/subscription/priority.py`，链上留兼容委托 |
-| 1.2 download 批量择优规则下沉 | ✅ 已完成 | 迁入 `application/download/selection.py` |
-| 1.3 media 音乐识别子域拆分 | ⏸ 后续任务 | 需大范围行为等价性验证 |
-| 1.4 transfer 三类职责拆分 | ⏸ 后续任务 | 线程池/队列/编排解耦需单独设计 |
-| 2. 死代码清理 | ✅ 已完成 | transfer 双重初始化、search 相同分支 |
-| 2. sync/async 孪生合并 | ⏸ 后续任务 | 新代码执行"只写 async"纪律 |
-| 3. media.py dispatch 绕过 | ✅ 已完成 | 改按 source 路由走统一调度 |
-| 3. scraping.py metadata_img 聚合 | ⏸ 需架构决策 | 须先新增"按键填充"聚合模式与 provider 排序策略 |
-| 3. Mixin Protocol 契约化 | ✅ 第一批完成 | 新增 `app/chain/_contracts.py`，存量 mixin 声明宿主 Protocol 与可替换工厂接缝 |
-| 4. chain 层 eventmanager 迁移 | ✅ 已完成 | 17 处实例方法改注入；装饰器/staticmethod 按设计保留 |
-| 4. global_vars / settings 注入迁移 | ✅ 停止信号完成 | `StopState` 已成为停止读写入口；`global_vars` 仅保留兼容门面，settings 仍按域渐进迁移 |
-| 5. lifespan 停止信号+插件收尾组件化 | ✅ 已完成 | 进入声明式清单，含快照测试 |
-| 5. lifespan 主循环/日志关闭组件化 | ⏸ 需架构决策 | 引擎 FAIL_FAST break 语义需先扩展 |
-| 6. mypy 错误数棘轮 | ✅ 已完成 | `scripts/architecture/mypy_ratchet.py` 接入 CI |
-| 6. ruff 引入 / 覆盖率阈值 | ✅ 第一批完成 | Ruff 与覆盖率棘轮接入架构工作流，基线只允许下降；覆盖率从应用/领域包开始积累 |
-| 8. 订阅循环链构造提升 | ✅ 已完成 | SearchChain 循环外复用 |
-| 8. 非单例链 getter 门面统一 | ⏸ 需架构决策 | 改变链生命周期语义 |
-
-> 测试隔离风险点（第七节）与 scheduler/orchestrator 拆分按 AGENTS.md
-> "机会性转换、最小改动"原则在后续触碰相关文件时渐进处理。
-
-## 一、Chain 层上帝类：领域算法埋在编排类里（优先级最高）
-
-| 文件 | 行数 | 问题 |
-|---|---|---|
-| `app/chain/subscribe.py` | 4155 | 约 15 个职责域：洗版优先级纯计算约 650 行（L201-847）、订阅创建状态机（L976-1406）、搜索编排（单方法 285 行 L1505-1790）、匹配编排（L2032-2421）、进度/完成事实管理（L2735-3106）、分享跟随、日历缓存、远程交互删除等 |
-| `app/chain/download.py` | 2293 | `_execute_batch_download`（L1533-2052）是"电影→整季→按集→拆包"四轮择优策略引擎，本质是领域算法却埋在链里；字幕下载子系统约 500 行；失败冷却指纹（L774-946） |
-| `app/chain/transfer.py` | 3208 | 线程池基础设施 + 内存队列/落盘回放 + 整理编排三类职责同居一个单例；MRO 深达 10 个类；`_execute_transfer` 单方法约 820 行 |
-| `app/chain/media.py` | 2060 | 音乐识别子域（约 900 行路径专辑推断）与影视识别门面强行同居一个类 |
-
-**建议**：按项目已有的 topic-package 先例（参照 `application/subscription/` 的拆分方式），
-把纯策略计算下沉到 `domain` 或 `application`：
-
-* 洗版优先级/缺集计算 → 如 `application/subscription/priority.py` 或 domain；
-* 批量择优下载策略 → 如 `application/download/strategy.py`；
-* 音乐识别 → 并入既有 `application/music/` 目录；
-* 链本身只保留编排职责。
-
-> 处理进展（2026-08-24）：
-> * 洗版优先级/缺集计算的 25 个纯函数已迁入 `app/application/subscription/priority.py`
->   （含 `prepare_subscribe_progress_fields`），链上保留单行兼容委托，新模块 mypy 零错误；
-> * 批量择优的缺集记账与覆盖判定规则（9 个纯函数）已迁入
->   `app/application/download/selection.py`，`_execute_batch_download` 内嵌套闭包改为委托；
-> * 音乐识别子域与 media.py 的 sync/async 孪生合并、transfer.py 的三类职责拆分
->   涉及大范围行为等价性验证，列为后续独立任务。
-
-## 二、sync/async 手工双写造成系统性重复
-
-* `chain/media.py` 有 **11 对**同步/异步孪生方法；
-  `_recognize_with_fallback_by_meta`（L647-723）与其异步版（L1596-1669）结构逐行对应。
-* `chain/search.py` 的 `process / async_process / async_process_stream` 三份实现
-  （L1665/1758/1848），站点并发搜索三份（L2301/2486/2602），字幕搜索再两份。
-* 过滤规则组解析同一表达式出现 **5 处**；`_media_recognize_kwargs` 三胞胎逐行相同；
-  "未识别到媒体信息"告警模式全目录 **18 处**。
-* 死代码残留：`transfer.py` L2146-2173 变量初始化两次；`search.py` L2366-2378
-  if/else 两分支提交完全相同的调用。
-
-> 处理进展（2026-08-24）：死代码两处已清理。sync/async 孪生合并与重复模式收敛
-> 涉及大量行为等价性验证（`media.py` 11 对、`search.py` 三份站点搜索实现），
-> 列为后续独立任务，优先在新代码中执行"只写 async 版本"的纪律。
-
-**建议**：统一封装"同步包装异步"的基础设施（复用 `app/runtime/execution.py` 的跨线程提交边界），
-新代码只写 async 版本；重复告警/解析模式收敛到共享 mixin 或 application 服务。
-
-## 三、Mixin 组合缺契约 + 两处 dispatch 绕过
-
-* mixin 大量使用 `self.messageoper` / `self.run_module` 等，但无 Protocol/ABC 声明依赖，
-  靠 docstring 书面承认（`_music.py:42-46`）；每个链无差别继承全部基础能力，
-  TransferChain MRO 达 10 个类。
-* `_music.py:9-11`、`_transfer.py:22-24` mixin 反向 import 具体链，形成耦合网。
-* 正面样板是 `_interaction.py` 的 `InteractionChainMixin`（显式 `_interaction_handler_type`
-  注入点 + 抽象方法），值得推广为所有 mixin 的标准姿势。
-* 违反"chains reach modules only through run_module dispatch"约束的两处实锤：
-  * `media.py:626-638` 硬编码 `get_running_module("TheMovieDbModule")` 直调其方法；
-  * `scraping.py:584-598` 自行聚合 `metadata_img` 多模块结果
-    （dispatcher 已有 aggregation contract 可表达）。
-
-> 处理进展（2026-08-24）：`media.py` 的 TMDB 补充已改为按 source 路由的
-> `run_module("recognize_media")` 统一调度（宿主识别模块对非自身来源快速返回 None，
-> 与 `_recognition.py` 既有模式一致）。`scraping.py` 的 `metadata_img` 合并经复核
-> **不能直接替换**：手写循环是"按键合并、宿主模块限定"，而 dispatcher 现有聚合只有
-> 整体短路或后值覆盖，且 dispatch 全局插件优先会让第三方插件图片覆盖内置源图片。
-> 如需收口，须先做显式架构决策：新增"按键填充"聚合模式并提供调用方可控的
-> provider 排序策略，否则维持现状是行为最安全的选择。
-
-## 四、全局状态："通道已建、存量过半"
-
-| 全局点 | 现状 | 建议 |
-|---|---|---|
-| `eventmanager` 单例 | 36 个文件直连 import；其中 chain 层 8 个文件绕过已注入的 `context.event_manager`（search/download/media/subscribe/transfer/site/scraping/workflow） | chain 层直连改为使用注入上下文，改动机械、风险低 |
-| `global_vars` 容器 | 47 个文件 147 处引用，workflow + chain 占近半，被当"停止信号总线"广泛直读 | 停止信号演进为 `runtime/state.py` 的显式契约 |
-| 运行时 Settings 读取 | 宿主已统一通过 `app.runtime.settings.get_runtime_setting()` 读取；可变部署配置只经 `RuntimeSettingsService` 管理，旧 `settings` 对象仅由插件兼容入口保留 | 新代码使用只读端口或类型化快照，禁止恢复模块级代理 |
-| Singleton 元类 | 41 处 class 使用，与 getter 门面双轨并存 | 维持双轨兼容，新增能力一律走 getter 门面 |
-
-> 处理进展（2026-08-26）：Agent、Module、Adapter、Doctor、Startup、CLI 及入口层已完成 Settings 读取迁移，宿主源码不再导入或实例化旧兼容代理；插件兼容入口继续提供旧 `settings` ABI。后续新增宿主代码必须依赖读取端口、配置服务或不可变快照。
+> 更新时间：2026-08-26
 >
-> 处理进展（2026-08-24）：chain 层 17 处实例方法调用已改用注入的 `self.eventmanager`
-> （`transfer.py`、`media.py` 已完全脱离全局导入，其余文件因 `@eventmanager.register`
-> 装饰器注册与 staticmethod 调用点按设计保留全局引用）；`media.py` 的
-> `select_recognize_source`/`async_select_recognize_source` 由 staticmethod 转为
-> 实例方法以使用注入依赖。global_vars 停止信号总线化与 modules 层配置注入迁移
-> 影响面大，列为后续独立任务。
+> 本文是本轮工作的实时计划、进度和证据事实源。历史评审文档及本文在旧提交中的内容
+> 只用于追溯，不再作为待办清单。架构规范仍以 `docs/rules/05-architecture.md` 为准，
+> 后台动作可靠性分级以 `docs/adr/0007-background-action-reliability.md` 为准。
 
-## 五、启动生命周期欠账（违反自家规则）
+## 一、范围和完成定义
 
-规则明确"新增进程级资源不得只在 lifespan() 中追加过程代码"，但 `startup/lifecycle/__init__.py`
-仍有 4 处过程式资源管理：
+本轮只修改 `MoviePilot` 主仓。`MoviePilot-Frontend`、`MoviePilot-Plugins`、
+`MoviePilot-Rust`、资源、构建、服务、OCR、Wiki 和官网仓仅用于核对外部契约，
+不在本轮产生代码、提交或推送。
 
-1. 主事件循环注册/清理（global_vars set_loop/clear_loop）未进组件清单；
-2. 插件同步与启动收尾任务（init_extra）游离在清单之外，不参与依赖排序和清理集合推导；
-3. 停止标志设置；
-4. 日志关闭靠注释约定顺序。
+本轮不是新一轮开放式架构改造。一个事项只有同时满足以下条件才可准入：
 
-> 处理进展（2026-08-24）：第 2、3 项已组件化——"停止信号"（stop_order=4，先于一切
-> 资源释放发出停机通知，启动失败清理同样生效）与"插件同步与启动收尾"（start_order=150，
-> 依赖工作流，取消权仍归最前置 TaskRegistry owner）均已进入声明式清单并通过顺序快照测试。
-> 第 1、4 项经复核**不能直接进清单**：当前引擎的 FAIL_FAST break 会跳过更高 stop_order
-> 的组件，而主循环清除与日志关闭在现有嵌套 finally 中是无条件执行的"最外层保底"，
-> 直接搬移会让无关 owner 未收敛时跳过这两步（回归）。如需收口，须先做显式引擎决策：
-> 引入"最终保底 finalizer"概念或调整 FAIL_FAST 传播语义。
+1. 本轮开始前已有代码、提交、任务记录或“已实施但未验收/未交付”的明确证据；
+2. 当前 `v3` 仍能复现未闭环状态；
+3. 可以在两天内完成实现、回归、独立提交和推送；
+4. 不破坏插件 ABI、跨仓契约、显式 Session/UoW 和现有并发工作；
+5. 有确定的验收命令和停止条件。
 
-另有两个组合根脆弱点：
+仅有历史建议、尚未启动的愿望项、需要产品决策或无法在两天内完整交付的主题，
+一律记录为“排除”，不创建执行目标。
 
-* `initializers/command.py`、`initializers/scheduler.py`、`initializers/agent.py`
-  在 **import 时即注册**全局服务，构成隐式时序契约，任何提前 import 都会改变注册顺序；
-* `initializers/modules.py`（908 行、约 68 处 configure 调用）事实上成为第二过程式组合根，
-  与 `composition/` 的纯函数式装配存在职责重叠。
+每个批次保持单一主题。批次通过验证后使用显式路径暂存，提交并推送到 `v3`，
+随后在本文记录提交 SHA、远端 SHA、ahead/behind 和验证结果。共享工作区中，
+审计可以并行，但同时只允许一个叶子目标编辑主仓。
 
-## 六、质量门禁名义严格、实际收缩（投入产出比最高）
+## 二、当前架构事实
 
-| 工具 | 现状 | 建议 |
+### 2.1 宿主边界
+
+* FastAPI 入口和启动生命周期位于 `app/startup/`，组合根负责装配运行时服务；
+  API、Command 和 Application 层负责用例边界。
+* Domain 保持业务规则，Application 负责用例编排，Adapter/Module 负责外部系统，
+  Chain 是保留兼容面的宿主编排层。当前依赖门禁持续检查这些方向。
+* 宿主 Model/Base/Oper 不隐式创建 Session；Application Command/UoW 拥有
+  commit/rollback 和提交后副作用。transaction debt 基线当前为零。
+* 宿主配置读取已经迁入类型化读取端口、配置服务或快照；旧 Settings 门面只为插件
+  兼容保留。配置债务门禁当前通过。
+
+### 2.2 运行时所有权
+
+* 进程级资源由生命周期组件和显式 owner 负责启动、停止与超时收敛；
+  TaskRegistry、工作流执行 owner、线程池 owner 和持久事件 Outbox 已有独立门禁。
+* E0-E3 后台动作按 ADR 分级。业务事务提交成功后，非关键通知失败不能反向回滚业务；
+  需要可靠交付的意图进入持久队列并由 dispatcher 重试。
+* 全局兼容对象仍可能存在，但 canonical 宿主调用必须经过组合根、运行时端口或 getter，
+  不得恢复 service locator 和隐式事务所有权。
+
+### 2.3 插件和外部契约
+
+本轮只读核对确认以下契约必须保持：
+
+* `_PluginBase` 生命周期、`close -> stop_service` 收敛语义和 `get_*` 投影 hook；
+* 旧导入路径及对象 identity、插件无 Session 的 Oper 调用兼容；
+* `media_source + media_id` 成对身份、虚拟实例的 source plugin 身份；
+* 动态插件 API 原始响应、插件远程组件和市场/安装边界；
+* Rust 导入名、V3 资源落点、Server/OCR HTTP 边界。
+
+官方插件基线和 483 个插件侧测试已经只读通过；其他仓没有产生修改。
+
+## 三、历史任务对账
+
+| 既有任务 | 当前证据 | 结论 |
 |---|---|---|
-| mypy | `strict=True` 但 `files=` 白名单仅 41 个文件；全量扫描约 10072 个错误被白名单挡在门外；`follow_imports = skip` 架空跨模块检查 | 引入棘轮机制：新增文件必须达标，白名单只减不增 |
-| ruff | 完全不在工具链中 | 引入并启用 import 排序等检查，与架构测试互补 |
-| pylint | `disable=all` 后仅 enable 12 项高确定性检查 | 维持现状可接受，不指望它兜底 |
-| 覆盖率 | 无 `fail_under` 门禁，coverage job 仅手动触发 | 至少给 `app/application`、`app/domain` 设阈值 |
+| `core/helper/utils` 迁移与精确兼容导入 | 物理旧根已清零；Compat/SDK、官方插件基线和兼容测试存在 | 关闭：后续提交已完成 |
+| 显式 Session/UoW 与宿主事务所有权 | transaction baseline 中隐式事务和宿主自建 Session 均为零 | 关闭：已完成 |
+| 长期整改阶段 0-67 | 阶段 67 提交 `ffe6da213` 是当前 `v3` 祖先 | 阶段已交付，只复核明确余项 |
+| 宿主 Settings/全局配置迁移 | `9dbe424c3` 清除 canonical 宿主兼容代理使用，门禁通过 | 关闭：已完成 |
+| durable 事件可靠性第一批 | `362f60675`、`bd0795082` 已交付事件保留、清理和门禁 | 事件切片关闭；后台 owner 只审计原阶段余项 |
+| 跨线程任务终态和模块关闭所有权 | `6c334f7b9`、`be7dfd77a` 已在当前分支 | 关闭：已完成 |
+| Ruff/Mypy/Coverage 增量门禁第一批 | 脚本和 CI 已接入，但低水位没有真实固化 | 准入：见批次 1、2 |
+| 大型 Chain 拆分、全量 sync/async 合并、扩大类型范围 | 历史内容只有建议，没有未交付实现 | 排除：未启动，不新开大任务 |
+| 资源原子更新、Server helper 再拆分、Wiki/Web 陈旧内容 | 本轮只读审计新发现或属于其他仓 | 排除：超出既有主仓任务范围 |
 
-## 七、测试隔离的风险点
+审计开始时存在来自并行 Issue #6468 的 6 个未提交文件，该任务已独立提交推送为
+`88703d645`。随后 `0a5b6a637`（Issue #6464）和 `d24c52ea9`（Issue #6472）
+由其他任务合入 `origin/v3`；本轮只快进同步，没有把这些改动纳入自己的提交。
 
-四道防线（CONFIG_DIR 隔离、网络守卫双重断言、水位回收、会话收尾）设计精细，但有三个隐患：
+## 四、批次计划和实时进度
 
-* 单一 SQLite 库按主键水位回收，正确性依赖每个用例自觉登记模型表，漏登记即污染后续用例，
-  且清理失败被静默吞掉；
-* 约 290 行巨型 autouse fixture 装配几十个进程级服务槽位，teardown 只复位
-  `reset_plugin_system()` 一个，其余槽位跨用例残留（164 处手动 `reset_*` 说明恢复靠约定而非机制）;
-* 54 个 `unittest.TestCase` 残留文件（占测试文件的 9.9%），按 AGENTS.md 策略在触碰时机会性转换。
+| 批次 | 叶子目标 | 状态 | 当前证据/停止条件 |
+|---|---|---|---|
+| 0 | 历史任务清账、现行架构图、外部契约核对和宿主基线对齐 | 已本地验证 | #6472 遗漏的 dependency fixture 和 Schema 导出清单已对齐；架构契约 `71 passed` |
+| 1 | Mypy fail-closed，并把 Ruff/Mypy 已下降债务固化为真实低水位 | 待批次 0 | Mypy 1.18.2 在 `message.py` 内部错误退出 2，但脚本误报通过；Ruff 978 对旧基线 1623 |
+| 2 | 用全量串行测试初始化非零 Coverage 低水位，并补齐 CI/文档防回退契约 | 待批次 1 | fixture 当前 Application/Domain 均为 0%；最近 CI 仅作参考，必须在最终代码快照本地重建 |
+| 3 | 收口阶段 62 遗留的 QQ Gateway heartbeat Timer 所有权 | 待批次 2 | Timer 只 cancel 不 join，Gateway 主线程可能在 heartbeat 仍执行时报告停止成功 |
+| Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 待前置批次 | 所有准入项已推送；全量测试和适用门禁通过；本地/远端 0/0 |
 
-## 八、其他次要点
+### 批次 0：审计与基线对齐
 
-* **非单例链反复实例化**：`MediaChain()` 全仓构造 54 处，`DownloadChain().batch_download()`
-  在订阅循环内反复构造重跑 init；建议统一走 getter 门面。
-  > 处理进展（2026-08-24）：订阅搜索循环内的 `SearchChain()` 已提升到循环外复用；
-  > `MediaChain`/`TransferChain` 本身是 Singleton 元类（构造为缓存命中，代价低）。
-  > 把 `DownloadChain`/`SearchChain`/`SubscribeChain` 统一改为进程级 getter 门面
-  > 会改变链实例的生命周期与状态共享语义，需显式架构决策后另行推进。
-* `app/scheduler.py`（2096 行）：入边已收敛到组合根，但调度器 + GC + 壁纸 + 媒体库同步等
-  job 实现混在一个文件，建议按 job 域拆分。
-* `app/agent/orchestrator.py`（3655 行）：`MoviePilotAgent` 与 `AgentManager` 同居，
-  含会话快照、任务队列、脱敏确认等多个内部类，可按 `agent/` 已有子包惯例拆分。
+已完成：
 
-## 建议实施顺序
+* 核对主仓、历史治理 worktree、阶段 67 祖先关系和后续治理提交；
+* 并行核对插件/前端、Rust/资源/外围服务契约，所有参考仓保持只读；
+* 运行 transaction、configuration、complexity、async blocking、task ownership、
+  service locator 和 startup performance 快速门禁，已检查项通过；
+* 在同步最新远端后定位 dependency baseline 的唯一漂移：
+  `app.api.endpoints.plugin` 新增到 `app.application.plugin.identity` 和
+  `app.application.plugin.inventory` 的两条依赖。这是 API 调用 Application 的合法方向，
+  来自已合入的 #6472，已机械更新基线；
+* #6472 新增公开枚举 `PluginSourceBindingStatus` 后没有刷新 Schema 惰性导出清单，
+  已用生成脚本补入并恢复确定性排序；
+* `baseline.py --check-host`、`scripts/schema/exports.py --check` 和相关架构契约测试通过，
+  测试结果为 `71 passed`。
 
-1. **补质量门禁棘轮**（mypy/ruff/覆盖率）——先止血，防止新增债务；
-2. **完成 chain 层 eventmanager/global_vars 存量迁移**——机械性工作，风险低；
-3. **按 domain 下沉方式拆 subscribe/download 的领域算法**——收益最大；
-4. **修两处 dispatch 绕过与 lifespan 清单欠账**——对齐自家规则。
+待完成：提交并推送本批次，记录远端证据。
 
-## 附：评审方法
+### 批次 1：Ruff/Mypy 低水位闭环
 
-基于 2026-08-24 对 `v3` 分支的证据收集：架构测试运行结果、全仓静态扫描
-（mypy 全量 vs 白名单对比）、大文件方法级职责盘点（wc/rg/class 清单）、
-全局符号引用统计（eventmanager/global_vars/settings import 分布）、
-lifecycle 组件清单与 lifespan 过程式代码比对、tests/conftest 隔离机制审查。
+已确认的既有缺口：
+
+* `mypy_ratchet.py` 只解析 stdout，忽略 return code 和 stderr；当前 Mypy 内部错误退出 2
+  仍被报告为“通过”，现有 Mypy fixture 因扫描中断而无效；
+* 当前 Ruff 为 978 项，fixture 仍保留 1623 项，允许已消除的 645 项重新引入；
+* CI 已调用两条棘轮，但缺少工具异常 fail-closed 和低水位新鲜度契约。
+
+停止条件：等价改写触发 Mypy 崩溃的表达式；工具退出 2 或输出不可解析时门禁失败；
+完整扫描正常退出并生成真实 Mypy fixture；Ruff/Mypy fixture 与当前结果完全相等；
+针对性测试、两条门禁和适用静态检查通过；批次独立提交推送。
+
+### 批次 2：Coverage 低水位闭环
+
+已确认的既有缺口：Coverage 脚本和 CI 已落地，但 fixture 的 Application/Domain 都是
+`0 statements / 0 covered / 0.00%`，所以门禁没有保护作用；开发文档仍误称该任务只手工运行。
+
+停止条件：在批次 1 的最终代码快照上运行串行全量 Coverage；fixture 为真实非零结果；
+零 statements、工具失败和低水位未固化均会失败；CI 命令存在性有契约测试；文档与 CI 一致；
+批次独立提交推送。
+
+### 批次 3：QQ Gateway heartbeat owner
+
+阶段 62 的既有合同要求消息渠道只有在线程真实终止后才能返回成功，超时时 owner 和句柄
+继续保留供重试。当前 QQ Gateway 的 Hello 回调会递归创建 `threading.Timer` 心跳；
+WebSocket 和 Gateway 退出路径只调用 `cancel()`，而 `QQBot.stop()` 只等待 Gateway 主线程。
+当 heartbeat callback 已进入 `send()` 时，`cancel()` 不能终止它，外层因此可能误报收敛。
+
+停止条件：Gateway 最终退出路径在现有外层 20 秒硬预算内等待当前 Timer 真正终止；
+Timer 未终止时 Gateway 线程保持存活，`QQBot` 保留 owner 并允许再次停止；故障注入证明首次
+停止返回 `False`、释放 callback 后第二次返回 `True`；生命周期专项和 task ownership 门禁通过；
+批次独立提交推送。
+
+## 五、验证矩阵
+
+每个批次按改动范围选择下列命令，Final 全部执行：
+
+```bash
+uv lock --check
+uv run --locked --no-sync python scripts/architecture/baseline.py --check-host
+uv run --locked --no-sync python scripts/architecture/ruff_ratchet.py
+uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
+uv run --locked --no-sync pytest -q tests/test_architecture_contract_baseline.py
+uv run --locked --no-sync pytest -q tests/test_quality_ratchets.py tests/test_mypy_gate.py
+uv run --locked --no-sync python scripts/architecture/baseline.py \
+  --check-plugins --plugin-repo ../MoviePilot-Plugins
+uv run --locked --no-sync python -m coverage run tests/run.py --serial
+```
+
+提交推送后还必须验证：
+
+```bash
+git ls-remote origin refs/heads/v3
+git merge-base --is-ancestor HEAD origin/v3
+git rev-list --left-right --count HEAD...origin/v3
+```
+
+## 六、进度日志
+
+| 时间 | 事件 | 结果 |
+|---|---|---|
+| 2026-08-26 | 建立父目标和并行只读审计 | 只准入既有、可复现、两天内可交付事项 |
+| 2026-08-26 | 对账阶段 0-67 和后续远端提交 | 多数旧台账余项已由后续提交关闭 |
+| 2026-08-26 | 插件/外部仓契约核对 | 参考仓只读；插件基线和 483 个测试通过 |
+| 2026-08-26 | 质量门禁核验 | 确认 Mypy fail-open、Ruff 低水位滞后和 Coverage 零基线 |
+| 2026-08-26 | 同步并行 Issue 提交 | 主仓快进到 `d24c52ea9`，本轮文档改动完整保留 |
+| 2026-08-26 | 复验宿主基线 | 只剩 #6472 引入的两条合法依赖尚未写入 fixture |
+| 2026-08-26 | 收口 #6472 生成契约 | dependency fixture 与 Schema 导出清单已更新；架构契约 `71 passed` |
+| 2026-08-26 | 后台 owner 历史余项审计 | 仅 QQ heartbeat Timer 满足阶段 62 既有合同和两天准入条件，其余候选关闭或排除 |
+
+## 七、本轮停止条件
+
+本轮在以下条件全部满足后结束：
+
+* 历史审计确认的所有准入项均已实现、验证、独立提交并推送；
+* 其余旧事项都有“已由后续提交完成”“从未开工”“外部决策”或“非主仓”的证据；
+* 宿主架构、质量、全量测试和官方插件兼容门禁通过；
+* 本地提交是远端 `v3` 的祖先，ahead/behind 为 `0/0`；
+* 工作区不存在本轮遗留，其他任务和其他仓的改动未被暂存、改写或提交。

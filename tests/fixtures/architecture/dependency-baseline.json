@@ -13,8 +13,8 @@
     "runtime_to_db": [],
     "workflow_to_db": []
   },
-  "edge_count": 6808,
-  "edge_sha256": "bde5dc465241463f8695da3a7140dfed1f05757fd3f57493fa91d20fd80b6847",
+  "edge_count": 6810,
+  "edge_sha256": "141ed79f9097aaed4b1933f2fe931b7364e7a1a88d63ea8ca79a6012255f8d9c",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -2116,6 +2116,8 @@
     "app.api.endpoints.plugin -> app.application.plugin.config",
     "app.api.endpoints.plugin -> app.application.plugin.folders",
     "app.api.endpoints.plugin -> app.application.plugin.gateway",
+    "app.api.endpoints.plugin -> app.application.plugin.identity",
+    "app.api.endpoints.plugin -> app.application.plugin.inventory",
     "app.api.endpoints.plugin -> app.application.plugin.routes",
     "app.api.endpoints.plugin -> app.application.plugin.runtime",
     "app.api.endpoints.plugin -> app.application.plugin.transaction",
