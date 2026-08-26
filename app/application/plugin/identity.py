@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
+
+from app.application.plugin.declaration import PluginDeclaredMetadata
 
 _PLUGIN_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,127}$")
 _ONLINE_SOURCE_KEY_PATTERN = re.compile(
@@ -116,9 +118,7 @@ class PluginIdentity:
     payload_source_key: str | None
     declared_version: str | None
     package_generation: str | None
-    system_version: str | None
-    supports_v3: bool | None
-    supports_v3t: bool | None
+    declared_metadata: PluginDeclaredMetadata | None
     payload_receipt: str | None
     revision: int
     created_at: datetime
@@ -200,9 +200,7 @@ class PluginIdentity:
             if any((
                 self.declared_version,
                 self.package_generation,
-                self.system_version,
-                self.supports_v3 is not None,
-                self.supports_v3t is not None,
+                self.declared_metadata,
                 self.payload_receipt,
                 self.payload_applied_at,
             )):
@@ -210,6 +208,8 @@ class PluginIdentity:
         else:
             if not self.declared_version or not self.package_generation:
                 raise ValueError("已知载荷必须携带声明版本和包代际")
+            if self.declared_metadata is None:
+                raise ValueError("已知载荷必须携带已提交 package 声明快照")
             if self.payload_applied_at is None or self.payload_receipt is None:
                 raise ValueError("已知载荷必须携带应用时间和内容收据")
             if (
@@ -233,11 +233,6 @@ class PluginIdentity:
             self.declared_version,
             field_name="插件声明版本",
             max_length=64,
-        )
-        _validate_optional_text(
-            self.system_version,
-            field_name="插件系统版本要求",
-            max_length=128,
         )
         object.__setattr__(self, "trusted_source_key", trusted_key)
         object.__setattr__(self, "payload_source_key", payload_key)
@@ -320,9 +315,7 @@ def plan_legacy_plugin_identity(
         payload_source_key=None,
         declared_version=None,
         package_generation=None,
-        system_version=None,
-        supports_v3=None,
-        supports_v3t=None,
+        declared_metadata=None,
         payload_receipt=None,
         revision=1,
         created_at=now,
@@ -355,6 +348,9 @@ class PluginIdentityStore(Protocol):
 
     def get(self, plugin_id: str) -> PluginIdentity | None:
         """读取一个物理插件的来源身份。"""
+
+    def list(self, plugin_ids: Sequence[str]) -> list[PluginIdentity]:
+        """批量读取指定物理插件的来源身份。"""
 
     def compare_and_set(
         self,

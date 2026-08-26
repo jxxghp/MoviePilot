@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.gateway import PluginInstallGateway
 from app.application.plugin.identity import (
     PluginBindingBasis,
@@ -141,9 +142,11 @@ async def test_gateway_checks_compatibility_on_final_trusted_candidate() -> None
         payload_source_key=None,
         declared_version="9.9.9",
         package_generation="v3",
-        system_version=None,
-        supports_v3=True,
-        supports_v3t=None,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo local", "v3": True},
+            declaration_version="9.9.9",
+            manifest_matches_payload=True,
+        ),
         payload_receipt="sha256:" + "1" * 64,
         revision=3,
         created_at=NOW,
@@ -253,9 +256,11 @@ async def test_gateway_forwards_explicit_source_change_revision() -> None:
         payload_source_key="github:jxxghp/moviepilot-plugins",
         declared_version="1.0.0",
         package_generation="v3",
-        system_version=None,
-        supports_v3=True,
-        supports_v3t=None,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo", "v3": True},
+            declaration_version="1.0.0",
+            manifest_matches_payload=True,
+        ),
         payload_receipt="sha256:" + "0" * 64,
         revision=4,
         created_at=NOW,

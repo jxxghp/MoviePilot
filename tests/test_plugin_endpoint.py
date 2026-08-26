@@ -1,18 +1,29 @@
 import asyncio
 from contextlib import nullcontext
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.api.endpoints import plugin as plugin_endpoint
 from app import schemas
-from app.api.endpoints.plugin import plugin_history
-from app.api.endpoints.plugin import plugin_releases
-from app.api.endpoints.plugin import reset_plugin
-from app.api.endpoints.plugin import reload_plugin
-from app.api.endpoints.plugin import runtime_status
-from app.api.endpoints.plugin import plugin_static_file
-from app.api.endpoints.plugin import uninstall_plugin
+from app.api.endpoints import plugin as plugin_endpoint
+from app.api.endpoints.plugin import (
+    plugin_history,
+    plugin_releases,
+    plugin_static_file,
+    reload_plugin,
+    reset_plugin,
+    runtime_status,
+    uninstall_plugin,
+)
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.application.plugin.config import PluginConfigCommand
+from app.application.plugin.declaration import PluginDeclaredMetadata
+from app.application.plugin.identity import (
+    PluginBindingBasis,
+    PluginIdentity,
+    PluginPayloadSourceType,
+    TrustedPluginSourceType,
+)
+from app.foundation.singleton import Singleton
 from app.runtime.config import settings
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin_manager import PluginManager
@@ -20,7 +31,47 @@ from app.runtime.tasks import TaskRegistry
 from app.schemas.event import PluginDataResetEventData
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import ChainEventType, SystemConfigKey
-from app.foundation.singleton import Singleton
+
+NOW = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+SOURCE_KEY = "github:demo/plugins"
+SOURCE_URL = "https://github.com/demo/plugins"
+
+
+def _plugin_identity(
+    *,
+    metadata: PluginDeclaredMetadata | None = None,
+) -> PluginIdentity:
+    """构造绑定到测试仓库的插件身份。"""
+    has_payload = metadata is not None
+    return PluginIdentity(
+        plugin_id="DemoPlugin",
+        normalized_plugin_id="demoplugin",
+        trusted_source_type=TrustedPluginSourceType.THIRD_PARTY,
+        trusted_source_key=SOURCE_KEY,
+        binding_basis=PluginBindingBasis.EXPLICIT_INSTALL,
+        payload_source_type=(
+            PluginPayloadSourceType.THIRD_PARTY
+            if has_payload
+            else PluginPayloadSourceType.UNKNOWN
+        ),
+        payload_source_key=SOURCE_KEY if has_payload else None,
+        declared_version="1.0.0" if has_payload else None,
+        package_generation="v3" if has_payload else None,
+        declared_metadata=metadata,
+        payload_receipt="sha256:" + "0" * 64 if has_payload else None,
+        revision=1,
+        created_at=NOW,
+        updated_at=NOW,
+        bound_at=NOW,
+        payload_applied_at=NOW if has_payload else None,
+    )
+
+
+def _persistence(identity: PluginIdentity) -> MagicMock:
+    """构造只暴露身份读取合同的异步持久化替身。"""
+    persistence = MagicMock()
+    persistence.get_identity = AsyncMock(return_value=identity)
+    return persistence
 
 
 def test_plugin_history_merges_remote_metadata():
@@ -36,24 +87,31 @@ def test_plugin_history_merges_remote_metadata():
     )
     market_plugin = schemas.Plugin(
         id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
+        repo_url=SOURCE_URL,
         history={"v1.1.0": "- 新增更新说明"},
         system_version=">=2.0.0",
         system_version_compatible=True,
         has_update=True,
     )
     plugin_manager = MagicMock()
-    plugin_manager.get_local_plugins.return_value = [installed_plugin]
+    plugin_manager.get_installed_plugins.return_value = [installed_plugin]
     plugin_manager.get_local_repo_plugins.return_value = []
-    plugin_manager.async_get_online_plugins = AsyncMock(return_value=[market_plugin])
+    plugin_manager.async_get_plugins_from_market = AsyncMock(return_value=[market_plugin])
+    persistence = _persistence(_plugin_identity())
 
-    with patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager):
+    with (
+        patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.get_plugin_persistence", return_value=persistence),
+    ):
         result = asyncio.run(plugin_history("DemoPlugin", None, True))
 
     assert result.repo_url == "https://github.com/demo/plugins"
     assert result.history == {"v1.1.0": "- 新增更新说明"}
     assert result.system_version == ">=2.0.0"
     assert result.has_update
+    plugin_manager.async_get_plugins_from_market.assert_awaited_once_with(
+        SOURCE_URL, settings.VERSION_FLAG, True
+    )
 
 
 def test_runtime_status_reports_pending_and_terminal_counts():
@@ -103,47 +161,92 @@ def test_plugin_history_returns_installed_plugin_when_remote_missing():
         installed=True,
     )
     plugin_manager = MagicMock()
-    plugin_manager.get_local_plugins.return_value = [installed_plugin]
+    plugin_manager.get_installed_plugins.return_value = [installed_plugin]
     plugin_manager.get_local_repo_plugins.return_value = []
-    plugin_manager.async_get_online_plugins = AsyncMock(return_value=[])
+    plugin_manager.async_get_plugins_from_market = AsyncMock(return_value=[])
+    persistence = _persistence(_plugin_identity())
 
-    with patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager):
+    with (
+        patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.get_plugin_persistence", return_value=persistence),
+    ):
         result = asyncio.run(plugin_history("DemoPlugin", None, True))
 
     assert result.id == "DemoPlugin"
     assert result.history == {}
 
 
-def test_plugin_history_uses_installed_repo_without_refreshing_all_markets():
+def test_plugin_history_uses_bound_repo_without_refreshing_all_markets():
     """
-    已安装插件记录了来源仓库时，更新说明只刷新该仓库，避免弹窗触发全市场慢刷新。
+    更新说明只读取持久化绑定仓库，不信任运行态 DTO 中可漂移的来源地址。
     """
     installed_plugin = schemas.Plugin(
         id="DemoPlugin",
         plugin_name="Demo Plugin",
         plugin_version="1.0.0",
-        repo_url="https://github.com/demo/plugins",
+        repo_url="https://github.com/attacker/plugins",
         installed=True,
     )
     market_plugin = schemas.Plugin(
         id="DemoPlugin",
-        repo_url="https://github.com/demo/plugins",
+        repo_url=SOURCE_URL,
         history={"v1.1.0": "- 新增更新说明"},
     )
     plugin_manager = MagicMock()
-    plugin_manager.get_local_plugins.return_value = [installed_plugin]
+    plugin_manager.get_installed_plugins.return_value = [installed_plugin]
     plugin_manager.get_local_repo_plugins.return_value = []
     plugin_manager.async_get_plugins_from_market = AsyncMock(return_value=[market_plugin])
     plugin_manager.async_get_online_plugins = AsyncMock(return_value=[])
+    persistence = _persistence(_plugin_identity())
 
-    with patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager):
+    with (
+        patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.get_plugin_persistence", return_value=persistence),
+    ):
         result = asyncio.run(plugin_history("DemoPlugin", None, True))
 
     assert result.history == {"v1.1.0": "- 新增更新说明"}
     plugin_manager.async_get_plugins_from_market.assert_awaited_once_with(
-        "https://github.com/demo/plugins", settings.VERSION_FLAG, True
+        SOURCE_URL, settings.VERSION_FLAG, True
     )
     plugin_manager.async_get_online_plugins.assert_not_awaited()
+
+
+def test_plugin_history_uses_declared_metadata_when_bound_market_is_unavailable():
+    """加载失败且绑定市场不可用时，详情仍返回已提交载荷的展示信息。"""
+    installed_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_name="DemoPlugin",
+        installed=True,
+        runtime_status=PluginRuntimeStatus.LOAD_FAILED,
+    )
+    metadata = PluginDeclaredMetadata.from_package(
+        {
+            "name": "Saved Demo",
+            "description": "Saved description",
+            "author": "Saved author",
+            "v3": True,
+        },
+        declaration_version="1.0.0",
+        manifest_matches_payload=True,
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = [installed_plugin]
+    plugin_manager.get_local_repo_plugins.return_value = []
+    plugin_manager.async_get_plugins_from_market = AsyncMock(return_value=[])
+    persistence = _persistence(_plugin_identity(metadata=metadata))
+
+    with (
+        patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.get_plugin_persistence", return_value=persistence),
+    ):
+        result = asyncio.run(plugin_history("DemoPlugin", None, True))
+
+    assert result.plugin_name == "Saved Demo"
+    assert result.plugin_desc == "Saved description"
+    assert result.plugin_author == "Saved author"
+    assert result.plugin_version == "1.0.0"
+    assert result.runtime_status is PluginRuntimeStatus.LOAD_FAILED
 
 
 def test_plugin_releases_returns_supported_versions_with_latest_and_current(monkeypatch):

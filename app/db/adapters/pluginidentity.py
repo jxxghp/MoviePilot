@@ -1,11 +1,12 @@
 """插件来源身份 Application Port 的 SQLAlchemy 实现。"""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     BindLocalPluginIdentityCommand,
     BindOnlinePluginIdentityCommand,
@@ -40,9 +41,11 @@ def _to_record(model: IdentityModel) -> PluginIdentity:
         payload_source_key=model.payload_source_key,
         declared_version=model.declared_version,
         package_generation=model.package_generation,
-        system_version=model.system_version,
-        supports_v3=model.supports_v3,
-        supports_v3t=model.supports_v3t,
+        declared_metadata=(
+            PluginDeclaredMetadata.from_storage(model.declared_metadata)
+            if model.declared_metadata is not None
+            else None
+        ),
         payload_receipt=model.payload_receipt,
         revision=model.revision,
         created_at=datetime.fromisoformat(model.created_at),
@@ -64,9 +67,11 @@ def _to_model(identity: PluginIdentity) -> IdentityModel:
         payload_source_key=identity.payload_source_key,
         declared_version=identity.declared_version,
         package_generation=identity.package_generation,
-        system_version=identity.system_version,
-        supports_v3=identity.supports_v3,
-        supports_v3t=identity.supports_v3t,
+        declared_metadata=(
+            identity.declared_metadata.to_json()
+            if identity.declared_metadata is not None
+            else None
+        ),
         payload_receipt=identity.payload_receipt,
         revision=identity.revision,
         created_at=identity.created_at.isoformat(),
@@ -91,6 +96,13 @@ class _SqlAlchemyIdentityRepository:
         """读取并映射指定来源身份。"""
         model = self._oper.get_by_plugin_id(plugin_id)
         return _to_record(model) if model else None
+
+    def list(self, plugin_ids: Sequence[str]) -> list[PluginIdentity]:
+        """批量读取并映射指定来源身份。"""
+        return [
+            _to_record(model)
+            for model in self._oper.list_by_plugin_ids(plugin_ids)
+        ]
 
     def stage_create(self, identity: PluginIdentity) -> None:
         """暂存首次身份。"""
@@ -128,6 +140,20 @@ class TransactionalPluginIdentityStore:
             return _SqlAlchemyIdentityRepository(session).get(
                 normalize_physical_plugin_id(plugin_id)
             )
+        finally:
+            session.close()
+
+    def list(self, plugin_ids: Sequence[str]) -> list[PluginIdentity]:
+        """在一个短会话内批量读取规范化插件身份。"""
+        normalized_ids = tuple(
+            dict.fromkeys(
+                normalize_physical_plugin_id(plugin_id)
+                for plugin_id in plugin_ids
+            )
+        )
+        session = self._session_factory()
+        try:
+            return _SqlAlchemyIdentityRepository(session).list(normalized_ids)
         finally:
             session.close()
 

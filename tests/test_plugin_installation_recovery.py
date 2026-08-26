@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -38,9 +39,11 @@ def _identity(*, revision: int = 2, receipt: str = RECEIPT) -> PluginIdentity:
         payload_source_key="github:jxxghp/moviepilot-plugins",
         declared_version="2.0.0",
         package_generation="v3",
-        system_version=None,
-        supports_v3=True,
-        supports_v3t=True,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo", "v3": True, "v3t": True},
+            declaration_version="2.0.0",
+            manifest_matches_payload=True,
+        ),
         payload_receipt=receipt,
         revision=revision,
         created_at=NOW,

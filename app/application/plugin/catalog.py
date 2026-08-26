@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, Optional
 
+from app.application.plugin.identity import PluginIdentity
+from app.schemas.plugin import Plugin
 
 MarketLoader = Callable[[str, Optional[str], bool], Optional[dict[str, dict]]]
 AsyncMarketLoader = Callable[
@@ -15,6 +17,44 @@ AsyncMarketLoader = Callable[
 ]
 PluginMapper = Callable[[str, dict, str, list[str], int, Optional[str]], Any]
 ProgressCallback = Callable[..., Any]
+
+
+def apply_declared_metadata_fallback(
+    plugins: Sequence[Plugin],
+    identities: Mapping[str, PluginIdentity],
+) -> list[Plugin]:
+    """用已提交快照补齐加载失败插件，不覆盖真实运行态字段。"""
+    result: list[Plugin] = []
+    for plugin in plugins:
+        identity = identities.get((plugin.id or "").lower())
+        if (
+            identity is None
+            or identity.declared_metadata is None
+            or identity.declared_version is None
+        ):
+            result.append(plugin)
+            continue
+        fallback = identity.declared_metadata.display_fallback(
+            installed_version=identity.declared_version
+        )
+        updates: dict[str, str] = {}
+        if not plugin.plugin_version:
+            updates["plugin_version"] = fallback["plugin_version"]
+        if (
+            (not plugin.plugin_name or plugin.plugin_name == plugin.id)
+            and "plugin_name" in fallback
+        ):
+            updates["plugin_name"] = fallback["plugin_name"]
+        if not plugin.plugin_desc and "plugin_desc" in fallback:
+            updates["plugin_desc"] = fallback["plugin_desc"]
+        if not plugin.plugin_icon and "plugin_icon" in fallback:
+            updates["plugin_icon"] = fallback["plugin_icon"]
+        if not plugin.plugin_author and "plugin_author" in fallback:
+            updates["plugin_author"] = fallback["plugin_author"]
+        if not plugin.plugin_label and "plugin_label" in fallback:
+            updates["plugin_label"] = fallback["plugin_label"]
+        result.append(plugin.model_copy(update=updates) if updates else plugin)
+    return result
 
 
 class PluginCatalogService:

@@ -26,6 +26,7 @@ except ModuleNotFoundError:
 
     POSTGRESQL_DIALECT = "postgresql+psycopg"
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -63,9 +64,11 @@ def _identity(
         payload_source_key="github:jxxghp/moviepilot-plugins",
         declared_version=version,
         package_generation="v3",
-        system_version=None,
-        supports_v3=True,
-        supports_v3t=False,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo", "v3": True, "v3t": False},
+            declaration_version=version,
+            manifest_matches_payload=True,
+        ),
         payload_receipt="sha256:" + "0" * 64,
         revision=revision,
         created_at=NOW,
@@ -238,8 +241,11 @@ def _identity_model(identity: PluginIdentity) -> PluginIdentityModel:
         payload_source_key=identity.payload_source_key,
         declared_version=identity.declared_version,
         package_generation=identity.package_generation,
-        supports_v3=identity.supports_v3,
-        supports_v3t=identity.supports_v3t,
+        declared_metadata=(
+            identity.declared_metadata.to_json()
+            if identity.declared_metadata is not None
+            else None
+        ),
         payload_receipt=identity.payload_receipt,
         revision=identity.revision,
         created_at=identity.created_at.isoformat(),
@@ -609,6 +615,10 @@ def postgresql_installation_stores():
         _upgrade_migration(
             connection,
             "database.versions.e4f7a1b2c3d5_3_0_10",
+        )
+        _upgrade_migration(
+            connection,
+            "database.versions.5f2a9c1e7b4d_3_0_12",
         )
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     _set_config(factory, [])

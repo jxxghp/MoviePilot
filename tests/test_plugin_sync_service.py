@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.gateway import PluginInstallGateway
 from app.application.plugin.identity import (
     PluginBindingBasis,
@@ -165,9 +166,11 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
         payload_source_key=None,
         declared_version="9.9.10",
         package_generation="v3",
-        system_version=None,
-        supports_v3=True,
-        supports_v3t=None,
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo local", "v3": True},
+            declaration_version="9.9.10",
+            manifest_matches_payload=True,
+        ),
         payload_receipt="sha256:" + "0" * 64,
         revision=1,
         created_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),

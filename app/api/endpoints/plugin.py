@@ -28,6 +28,7 @@ from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
+from app.application.plugin.catalog import apply_declared_metadata_fallback
 from app.application.plugin.config import PluginConfigCommand
 from app.application.plugin.folders import remove_plugin_from_folders
 from app.application.plugin.gateway import get_plugin_install_service
@@ -234,13 +235,20 @@ async def _get_plugin_history_detail(
     installed_plugin = next(
         (
             plugin
-            for plugin in plugin_manager.get_local_plugins()
-            if plugin.id == plugin_id and plugin.installed
+            for plugin in plugin_manager.get_installed_plugins()
+            if plugin.id == plugin_id
         ),
         None,
     )
     if not installed_plugin:
         return None
+
+    identity = await get_plugin_persistence().get_identity(plugin_id)
+    if identity is not None:
+        installed_plugin = apply_declared_metadata_fallback(
+            [installed_plugin],
+            {identity.normalized_plugin_id: identity},
+        )[0]
 
     local_repo_plugin = next(
         (plugin for plugin in plugin_manager.get_local_repo_plugins() if plugin.id == plugin_id),
@@ -249,27 +257,35 @@ async def _get_plugin_history_detail(
     if local_repo_plugin:
         return _merge_plugin_market_metadata(installed_plugin, local_repo_plugin)
 
-    if installed_plugin.repo_url:
+    trusted_repo_url = None
+    if identity is not None and identity.trusted_source_key:
+        owner_repo = identity.trusted_source_key.removeprefix("github:")
+        trusted_repo_url = f"https://github.com/{owner_repo}"
+
+    if trusted_repo_url:
         market_plugin = await _get_market_plugin_from_repo(
-            plugin_manager, plugin_id, installed_plugin.repo_url, force
+            plugin_manager, plugin_id, trusted_repo_url, force
         )
         if not market_plugin:
             logger.debug(f"插件 {plugin_id} 未从来源仓库获取到更新说明，返回本地插件信息")
             return installed_plugin
         return _merge_plugin_market_metadata(installed_plugin, market_plugin)
 
-    market_plugin = next(
-        (
-            plugin
-            for plugin in await plugin_manager.async_get_online_plugins(force=force)
-            if plugin.id == plugin_id
-        ),
-        None,
-    )
-    if not market_plugin:
-        return installed_plugin
+    return installed_plugin
 
-    return _merge_plugin_market_metadata(installed_plugin, market_plugin)
+
+async def _installed_plugins_with_declared_metadata(
+    plugin_manager: PluginRuntime,
+) -> list[_SchemaPlugin]:
+    """批量读取身份，并为未加载插件补齐已提交的展示声明。"""
+    plugins = plugin_manager.get_installed_plugins()
+    identities = await get_plugin_persistence().list_identities(
+        [plugin.id for plugin in plugins if plugin.id]
+    )
+    return apply_declared_metadata_fallback(
+        plugins,
+        {identity.normalized_plugin_id: identity for identity in identities},
+    )
 
 
 @router.get("/", summary="所有插件", response_model=List[_SchemaPlugin])
@@ -281,14 +297,13 @@ async def all_plugins(
     """
     查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
     """
-    # 本地插件
     plugin_manager = get_plugin_manager()
-    local_plugins = plugin_manager.get_local_plugins()
-    # 已安装插件
-    installed_plugins = [plugin for plugin in local_plugins if plugin.installed]
+    installed_plugins = plugin_manager.get_installed_plugins()
     if state == "installed":
-        return plugin_manager.get_installed_plugins()
+        return await _installed_plugins_with_declared_metadata(plugin_manager)
 
+    # 本地插件
+    local_plugins = plugin_manager.get_local_plugins()
     # 未安装的本地插件
     not_installed_plugins = [plugin for plugin in local_plugins if not plugin.installed]
     # 本地插件仓库目录中的插件
@@ -305,7 +320,10 @@ async def all_plugins(
         if state == "market":
             # 返回未安装的本地插件
             return not_installed_plugins
-        return local_plugins
+        return (
+            await _installed_plugins_with_declared_metadata(plugin_manager)
+            + not_installed_plugins
+        )
 
     # 插件市场插件清单
     market_plugins = []
@@ -328,7 +346,10 @@ async def all_plugins(
         return market_plugins
 
     # 返回所有插件
-    return installed_plugins + market_plugins
+    return (
+        await _installed_plugins_with_declared_metadata(plugin_manager)
+        + market_plugins
+    )
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])

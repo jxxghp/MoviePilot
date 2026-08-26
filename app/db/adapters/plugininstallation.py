@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -50,9 +51,11 @@ def _identity_from_model(model: IdentityModel) -> PluginIdentity:
         payload_source_key=model.payload_source_key,
         declared_version=model.declared_version,
         package_generation=model.package_generation,
-        system_version=model.system_version,
-        supports_v3=model.supports_v3,
-        supports_v3t=model.supports_v3t,
+        declared_metadata=(
+            PluginDeclaredMetadata.from_storage(model.declared_metadata)
+            if model.declared_metadata is not None
+            else None
+        ),
         payload_receipt=model.payload_receipt,
         revision=model.revision,
         created_at=datetime.fromisoformat(model.created_at),
@@ -82,9 +85,11 @@ def _identity_model_values(identity: PluginIdentity) -> dict[str, object]:
         "payload_source_key": identity.payload_source_key,
         "declared_version": identity.declared_version,
         "package_generation": identity.package_generation,
-        "system_version": identity.system_version,
-        "supports_v3": identity.supports_v3,
-        "supports_v3t": identity.supports_v3t,
+        "declared_metadata": (
+            identity.declared_metadata.to_json()
+            if identity.declared_metadata is not None
+            else None
+        ),
         "payload_receipt": identity.payload_receipt,
         "revision": identity.revision,
         "created_at": identity.created_at.isoformat(),
