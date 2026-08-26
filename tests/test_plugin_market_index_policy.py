@@ -44,10 +44,13 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
     )
 
     helper.get_plugins.cache_clear()
+    helper.get_plugin_index_result.cache_clear()
     await helper.async_get_plugins.cache_clear()
+    await helper.async_get_plugin_index_result.cache_clear()
     sync_result = helper.get_plugins(repo_url, "v3")
     # 同步与异步装饰器按设计共享缓存区；清除后再验证异步 I/O 入口本身。
     await helper.async_get_plugins.cache_clear()
+    await helper.async_get_plugin_index_result.cache_clear()
     async_result = await helper.async_get_plugins(repo_url, "v3")
 
     assert sync_result == async_result == {
@@ -58,6 +61,94 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
         "https://raw.githubusercontent.com/policy-owner/"
         "policy-repository/main/package.v3.json"
     )
+
+
+@pytest.mark.asyncio
+async def test_market_read_warms_source_inventory_cache(monkeypatch) -> None:
+    """市场目录成功读取后，来源库存不得再次请求同一仓库代际。"""
+    helper = PluginHelper()
+    repo_url = "https://github.com/policy-owner/shared-index-cache"
+    requests = 0
+
+    async def request(_url: str, *, headers: dict):
+        nonlocal requests
+        requests += 1
+        return SimpleNamespace(
+            status_code=200,
+            text='{"DemoPlugin": {"version": "1.2.3"}}',
+        )
+
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_request_with_fallback",
+        request,
+    )
+    await helper.async_get_plugins.cache_clear()
+    await helper.async_get_plugin_index_result.cache_clear()
+
+    market_result = await helper.async_get_plugins(repo_url, "v3")
+    inventory_result = await helper.async_get_plugin_index_result(repo_url, "v3")
+
+    assert market_result == inventory_result
+    assert requests == 1
+
+
+@pytest.mark.asyncio
+async def test_absent_plugin_generation_is_cached(monkeypatch) -> None:
+    """明确不存在的代际是稳定事实，后续来源检查不得重复请求。"""
+    helper = PluginHelper()
+    repo_url = "https://github.com/policy-owner/absent-index-cache"
+    requests = 0
+
+    async def request(_url: str, *, headers: dict):
+        nonlocal requests
+        requests += 1
+        return SimpleNamespace(status_code=404, text="404: Not Found")
+
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_request_with_fallback",
+        request,
+    )
+    await helper.async_get_plugin_index_result.cache_clear()
+
+    first = await helper.async_get_plugin_index_result(repo_url, "v2")
+    second = await helper.async_get_plugin_index_result(repo_url, "v2")
+
+    assert first is second is None
+    assert requests == 1
+
+
+@pytest.mark.asyncio
+async def test_index_cache_retains_multi_market_generation_working_set(
+    monkeypatch,
+) -> None:
+    """数十个市场的多代索引不能因缓存容量不足立即重复出站。"""
+    helper = PluginHelper()
+    requests = 0
+
+    async def request(_url: str, *, headers: dict):
+        nonlocal requests
+        requests += 1
+        return SimpleNamespace(status_code=200, text='{"DemoPlugin": {}}')
+
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_request_with_fallback",
+        request,
+    )
+    await helper.async_get_plugin_index_result.cache_clear()
+    targets = [
+        (f"https://github.com/cache-owner/repository-{index}", generation)
+        for index in range(100)
+        for generation in ("v3", "v2", None)
+    ]
+
+    for repo_url, generation in targets:
+        await helper.async_get_plugin_index_result(repo_url, generation)
+    await helper.async_get_plugin_index_result(*targets[0])
+
+    assert requests == len(targets)
 
 
 @pytest.mark.parametrize(
