@@ -32,7 +32,7 @@ def _steps_by_name(workflow: dict) -> dict[str, dict]:
 
 
 def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> None:
-    """基础镜像允许获得上游更新，构建阶段不得无边界升级整套 Debian。"""
+    """基础镜像允许更新，并仅显式刷新运行时安全包而非整套 Debian。"""
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
 
     assert 'ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"' in dockerfile
@@ -45,6 +45,7 @@ def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> 
     assert "ARG MOVIEPILOT_PYTHON_VERSION" in free_threaded_stage
     assert 'uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t"' in free_threaded_stage
     assert "apt-get upgrade" not in dockerfile
+    assert "\n    openssl \\\n" in dockerfile
     assert "\n    util-linux \\\n" in dockerfile
 
 

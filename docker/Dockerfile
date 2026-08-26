@@ -88,6 +88,7 @@ RUN apt-get update \
     lsof \
     nano \
     unar \
+    openssl \
     postgresql-client-18 \
     libchromaprint-tools \
     libjemalloc2 \
