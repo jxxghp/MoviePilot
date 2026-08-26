@@ -86,12 +86,15 @@ class RousiSiteUserInfo(SiteParserBase):
             return
 
         if not isinstance(data, dict):
-            self.err_msg = "用户数据响应结构无效"
+            # 基类把 err_msg 推断为 None，运行时契约允许解析器写入错误文本。
+            self.err_msg = "用户数据响应结构无效"  # type: ignore[assignment]
             logger.warning(f"{self._site_name} API 响应结构无效")
             return
 
         if data.get("code") != 0:
-            self.err_msg = data.get("message", "未知错误")
+            self.err_msg = str(  # type: ignore[assignment]
+                data.get("message") or "未知错误"
+            )
             logger.warning(f"{self._site_name} API 错误: {self.err_msg}")
             return
 
@@ -105,7 +108,9 @@ class RousiSiteUserInfo(SiteParserBase):
         self.user_level = user_info.get("level_text") or user_info.get("role_text")
 
         # 注册时间：统一格式为 YYYY-MM-DD HH:MM:SS
-        join_at = time_tools.normalize_datetime(user_info.get("registered_at"))
+        join_at = time_tools.normalize_datetime(
+            str(user_info.get("registered_at") or "")
+        )
         if join_at:
             # 确保格式为 YYYY-MM-DD HH:MM:SS (19位)
             if len(join_at) >= 19:
