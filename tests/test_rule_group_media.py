@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
-from app.chain import subscribe as subscribe_module
-from app.chain.subscribe import SubscribeChain
 from app.agent.tools.impl._filter_rule_utils import normalize_media_type
 from app.application.rules import RuleHelper
+from app.chain import subscribe as subscribe_module
+from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.modules.filter import FilterModule
 from app.runtime.events import Event

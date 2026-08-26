@@ -120,15 +120,15 @@ def admit_plugin_install(
     bound_at: datetime | None
     if request.source_change:
         if not request.explicit_source or not request.requested_repo_url:
-            raise PluginSourceAdmissionError("显式换源必须指定目标在线来源")
+            raise PluginSourceAdmissionError("请选择要更换到的插件仓库")
         if request.requested_repo_url.startswith("local://"):
-            raise PluginSourceAdmissionError("显式换源只接受在线插件仓库")
+            raise PluginSourceAdmissionError("只能更换为在线插件仓库")
         if identity is None or identity.trusted_source_type is TrustedPluginSourceType.UNKNOWN:
-            raise PluginSourceAdmissionError("显式换源要求插件已经绑定在线来源")
+            raise PluginSourceAdmissionError("当前插件尚未绑定仓库")
         if request.expected_revision != identity.revision:
-            raise PluginSourceAdmissionError("显式换源的身份 revision 已失效")
+            raise PluginSourceAdmissionError("插件状态已变化，请重新打开页面后再试")
     elif request.expected_revision is not None:
-        raise PluginSourceAdmissionError("普通安装不能携带换源 revision")
+        raise PluginSourceAdmissionError("插件操作参数无效，请重新打开页面后再试")
 
     requested_source_key = None
     local_candidates = None
@@ -142,7 +142,7 @@ def admit_plugin_install(
                 or referenced_plugin_id.lower() != request.plugin_id.lower()
             ):
                 raise PluginSourceAdmissionError(
-                    "明确选择的本地来源与目标插件不一致"
+                    "所选本地插件与安装目标不一致"
                 )
             available_local_candidates = inventory.local_candidates_for(
                 request.plugin_id
@@ -154,7 +154,7 @@ def admit_plugin_install(
             )
             local_candidates = exact_candidates or available_local_candidates
             if not local_candidates:
-                raise PluginSourceAdmissionError("明确选择的本地来源没有当前插件候选")
+                raise PluginSourceAdmissionError("所选本地仓库中没有该插件")
         else:
             requested_source_key, _repo_url = normalize_github_plugin_source(
                 request.requested_repo_url
@@ -171,10 +171,10 @@ def admit_plugin_install(
         allow_source_change=request.source_change,
     )
     if selection.status is not PluginSelectionStatus.SELECTED or selection.candidate is None:
-        raise PluginSourceAdmissionError(selection.reason or "插件来源准入失败")
+        raise PluginSourceAdmissionError(selection.reason or "当前无法确认插件仓库")
     candidate = selection.candidate
     if not candidate.plugin_version:
-        raise PluginSourceAdmissionError("插件候选缺少可持久化的版本声明")
+        raise PluginSourceAdmissionError("插件包缺少版本信息，无法安装")
 
     if isinstance(candidate, PluginLocalCandidate):
         if identity is not None and identity.trusted_source_type is not TrustedPluginSourceType.UNKNOWN:
@@ -201,7 +201,7 @@ def admit_plugin_install(
             and identity.trusted_source_type is candidate.source_type
             and identity.trusted_source_key == candidate.source_key
         ):
-            raise PluginSourceAdmissionError("显式换源的目标必须不同于当前来源")
+            raise PluginSourceAdmissionError("所选仓库与当前绑定仓库相同")
         basis = PluginBindingBasis.EXPLICIT_SOURCE_CHANGE
         bound_at = now
     elif identity is not None and identity.trusted_source_type is not TrustedPluginSourceType.UNKNOWN:

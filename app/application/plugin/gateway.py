@@ -115,7 +115,7 @@ class PluginInstallGateway:
                 )
                 if not compatible:
                     raise PluginSourceAdmissionError(
-                        message or "插件候选与当前 MoviePilot 版本不兼容"
+                        message or "插件包与当前 MoviePilot 版本不兼容"
                     )
                 return await self.__executor.execute(
                     admission=admission,

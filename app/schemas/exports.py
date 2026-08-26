@@ -297,6 +297,7 @@ SCHEMA_EXPORTS = {
     'PluginSourceIdentity': ('app.schemas.plugin', 'PluginSourceIdentity'),
     'PluginSourceInstallRequest': ('app.schemas.plugin', 'PluginSourceInstallRequest'),
     'PluginSourceOptions': ('app.schemas.plugin', 'PluginSourceOptions'),
+    'PluginUpdateCandidate': ('app.schemas.plugin', 'PluginUpdateCandidate'),
     'PluginTriggeredEventData': ('app.schemas.event', 'PluginTriggeredEventData'),
     'PluginWorkflowActionGroup': ('app.schemas.workflow', 'PluginWorkflowActionGroup'),
     'ProcessInfo': ('app.schemas.dashboard', 'ProcessInfo'),

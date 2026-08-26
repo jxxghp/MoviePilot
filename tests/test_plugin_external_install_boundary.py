@@ -384,7 +384,7 @@ async def test_http_source_options_return_sanitized_candidates(monkeypatch) -> N
         identity=identity,
         selection=SimpleNamespace(
             status=SimpleNamespace(value="conflict"),
-            reason="未安装插件存在多个在线来源，不能静默选择",
+            reason="该插件存在于多个仓库，请选择仓库",
         ),
         online_candidates=(
             SimpleNamespace(
