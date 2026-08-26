@@ -4,7 +4,6 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-
 PROJECT_ROOT = Path(__file__).parents[1]
 WORKFLOW_ROOT = PROJECT_ROOT / ".github" / "workflows"
 
@@ -33,6 +32,10 @@ def test_unit_test_workflow_has_independent_host_architecture_gate():
     assert "tests/test_architecture_dependencies.py" in commands
     assert "tests/test_architecture_contract_baseline.py" in commands
     assert "scripts/architecture/baseline.py --check-host" in commands
+    assert "scripts/architecture/ruff_ratchet.py" in commands
+    assert "scripts/architecture/mypy_ratchet.py" in commands
+    assert "scripts/architecture/ruff_ratchet.py --write" not in commands
+    assert "scripts/architecture/mypy_ratchet.py --write" not in commands
     assert "scripts/architecture/service_locator.py" in commands
     assert "scripts/startup/performance.py --check --repeat 3" in commands
 

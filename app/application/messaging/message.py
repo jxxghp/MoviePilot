@@ -963,13 +963,9 @@ class MessageQueueManager(metaclass=SingletonClass):
             context = copy_context()
             call = partial(self._send, *args, **kwargs)
             loop = asyncio.get_running_loop()
+            submission = partial(loop.run_in_executor, None, context.run, call)
             # 默认执行器保持空底层上下文，渠道调用只使用当前消息快照。
-            await Context().run(
-                loop.run_in_executor,
-                None,
-                context.run,
-                call,
-            )
+            await Context().run(submission)
             return
         self.queue.put({
             "args": args,

@@ -83,8 +83,8 @@
 
 | 批次 | 叶子目标 | 状态 | 当前证据/停止条件 |
 |---|---|---|---|
-| 0 | 历史任务清账、现行架构图、外部契约核对和宿主基线对齐 | 已本地验证 | #6472 遗漏的 dependency fixture 和 Schema 导出清单已对齐；架构契约 `71 passed` |
-| 1 | Mypy fail-closed，并把 Ruff/Mypy 已下降债务固化为真实低水位 | 待批次 0 | Mypy 1.18.2 在 `message.py` 内部错误退出 2，但脚本误报通过；Ruff 978 对旧基线 1623 |
+| 0 | 历史任务清账、现行架构图、外部契约核对和宿主基线对齐 | 已推送 | `d234c7132`；远端同 SHA；ahead/behind `0/0`；架构契约 `71 passed` |
+| 1 | Mypy fail-closed，并把 Ruff/Mypy 已下降债务固化为真实低水位 | 已本地验证 | Mypy 完整低水位 11994、Ruff 976；专项 `33 passed`；架构契约 `71 passed`；Pylint `10.00/10` |
 | 2 | 用全量串行测试初始化非零 Coverage 低水位，并补齐 CI/文档防回退契约 | 待批次 1 | fixture 当前 Application/Domain 均为 0%；最近 CI 仅作参考，必须在最终代码快照本地重建 |
 | 3 | 收口阶段 62 遗留的 QQ Gateway heartbeat Timer 所有权 | 待批次 2 | Timer 只 cancel 不 join，Gateway 主线程可能在 heartbeat 仍执行时报告停止成功 |
 | Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 待前置批次 | 所有准入项已推送；全量测试和适用门禁通过；本地/远端 0/0 |
@@ -106,7 +106,8 @@
 * `baseline.py --check-host`、`scripts/schema/exports.py --check` 和相关架构契约测试通过，
   测试结果为 `71 passed`。
 
-待完成：提交并推送本批次，记录远端证据。
+交付证据：提交 `d234c7132` 已推送到 `origin/v3`；`git ls-remote` 返回同一 SHA，
+`HEAD...origin/v3` 为 `0/0`，且本地 HEAD 是远端祖先。
 
 ### 批次 1：Ruff/Mypy 低水位闭环
 
@@ -120,6 +121,20 @@
 停止条件：等价改写触发 Mypy 崩溃的表达式；工具退出 2 或输出不可解析时门禁失败；
 完整扫描正常退出并生成真实 Mypy fixture；Ruff/Mypy fixture 与当前结果完全相等；
 针对性测试、两条门禁和适用静态检查通过；批次独立提交推送。
+
+本地验收结果：
+
+* 消息 executor 提交改为零参数 `partial`，保持空底层上下文提交和 worker 请求快照，
+  Mypy 1.18.2 不再 INTERNAL ERROR；同步 fake loop 已验证提交阶段无关联 ID、渠道回调可见 ID；
+* Mypy runner 固定使用 CI 的 Linux/Python 3.14 分析目标，只接受退出码 0/1，拒绝 stderr、
+  缺失/重复摘要和摘要计数不一致；完整扫描覆盖 601 个文件、11994 项。旧 fixture 的
+  342 个文件、6209 项已确认是截断快照；macOS 与 Linux 目标生成结果逐字一致；
+* Ruff/Mypy 将增长与低水位滞后分开；已有基线存在增长时 `--write` 被拒绝，
+  只有纯下降或缺失的新基线可以写入；
+* Ruff fixture 从 1623 收紧到 976，Mypy 和 Ruff 默认路径复跑均通过；
+* 质量/CI/上下文/严格类型专项 `33 passed`，架构契约 `71 passed`，改动文件 Pylint `10.00/10`。
+
+待完成：提交推送并记录远端证据。
 
 ### 批次 2：Coverage 低水位闭环
 
@@ -178,6 +193,8 @@ git rev-list --left-right --count HEAD...origin/v3
 | 2026-08-26 | 复验宿主基线 | 只剩 #6472 引入的两条合法依赖尚未写入 fixture |
 | 2026-08-26 | 收口 #6472 生成契约 | dependency fixture 与 Schema 导出清单已更新；架构契约 `71 passed` |
 | 2026-08-26 | 后台 owner 历史余项审计 | 仅 QQ heartbeat Timer 满足阶段 62 既有合同和两天准入条件，其余候选关闭或排除 |
+| 2026-08-26 | 批次 0 交付 | `d234c7132` 已推送；远端同 SHA；ahead/behind `0/0` |
+| 2026-08-26 | 批次 1 本地验收 | Mypy 11994、Ruff 976；专项 `33 passed`；架构契约 `71 passed`；Pylint `10.00/10` |
 
 ## 七、本轮停止条件
 

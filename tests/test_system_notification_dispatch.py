@@ -71,22 +71,45 @@ class TestSystemNotificationDispatch(unittest.TestCase):
     def test_async_send_message_uses_executor_for_immediate_send(self):
         """异步立即发送不能在事件循环里直接执行同步渠道回调。"""
         class _FakeLoop:
-            def __init__(self):
-                self.called = False
+            """同步模拟 asyncio 的 executor 提交，并记录提交时的上下文。"""
 
-            async def run_in_executor(self, _executor, func, *args):
+            def __init__(self, loop):
+                self.called = False
+                self.loop = loop
+                self.submission_correlation_id = None
+
+            def run_in_executor(self, _executor, func, *args):
+                """立即执行 worker 调用并返回已完成 Future。"""
                 self.called = True
-                func(*args)
+                self.submission_correlation_id = get_correlation_id()
+                future = self.loop.create_future()
+                try:
+                    func(*args)
+                except BaseException as error:
+                    future.set_exception(error)
+                else:
+                    future.set_result(None)
+                return future
 
         async def _run():
             manager = MessageQueueManager()
-            fake_loop = _FakeLoop()
+            fake_loop = _FakeLoop(asyncio.get_running_loop())
+            observed = []
             with patch(
                 "asyncio.get_running_loop",
                 return_value=fake_loop,
-            ), patch.object(manager, "_send") as send:
-                await manager.async_send_message("payload", immediately=True)
+            ), patch.object(
+                manager,
+                "_send",
+                side_effect=lambda *_args, **_kwargs: observed.append(
+                    get_correlation_id()
+                ),
+            ) as send:
+                with correlation_scope("message-request"):
+                    await manager.async_send_message("payload", immediately=True)
             self.assertTrue(fake_loop.called)
+            self.assertIsNone(fake_loop.submission_correlation_id)
+            self.assertEqual(observed, ["message-request"])
             send.assert_called_once_with("payload")
 
         asyncio.run(_run())

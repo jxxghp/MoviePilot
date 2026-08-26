@@ -1,9 +1,8 @@
 """为宿主源码维护 mypy 类型错误只降不增的基线。
 
 与 ``complexity.py`` 同一模式：AST/subprocess 收集当前计数，与 JSON 基线对比，
-删除和减少均合法，新增文件或错误码、既有计数增长都会被拒绝。
-基线按 文件 -> 错误码 -> 数量 三级组织，修复单个文件后可用 ``--write`` 收紧基线，
-不影响其他文件的存量豁免。
+基线按 文件 -> 错误码 -> 数量 三级组织。任何增长都会被拒绝；债务下降后也必须用
+``--write`` 固化新的低水位，避免已经修复的错误重新获得回退额度。
 """
 
 from __future__ import annotations
@@ -22,19 +21,23 @@ DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/mypy-baseline.jso
 # 只扫描宿主源码；app/plugins 是运行时插件副本，质量由插件市场链路自行管理。
 MYPY_TARGETS = ("app",)
 MYPY_EXCLUDES = ("app/plugins",)
+MYPY_PLATFORM = "linux"
 
 # 形如 app/foo.py:12: error: 消息说明 [error-code]；个别错误可能缺代码。
 _ERROR_LINE = re.compile(r"^(?P<path>.+?):\d+(?::\d+)?: error: .+?(?:\s+\[(?P<code>[a-z0-9-]+)\])?$")
+_ERROR_SUMMARY = re.compile(r"^Found (?P<count>\d+) errors? in ")
 
 
 def run_mypy() -> str:
-    """以当前解释器运行全量 mypy 并返回 stdout（非零退出码属于预期结果）。"""
+    """运行全量 mypy；只接受可完整解析的正常成功或诊断结果。"""
     command = [
         sys.executable,
         "-m",
         "mypy",
         "--no-incremental",
         "--no-pretty",
+        "--platform",
+        MYPY_PLATFORM,
         *MYPY_TARGETS,
     ]
     for pattern in MYPY_EXCLUDES:
@@ -46,6 +49,36 @@ def run_mypy() -> str:
         text=True,
         check=False,
     )
+    if result.returncode not in {0, 1}:
+        details = result.stderr.strip() or result.stdout.strip() or "mypy 执行失败"
+        raise RuntimeError(f"mypy 异常退出（{result.returncode}）：{details}")
+    if result.stderr.strip():
+        raise RuntimeError(f"mypy 在 stderr 输出异常：{result.stderr.strip()}")
+
+    parsed_total = sum(
+        count
+        for codes in parse_errors(result.stdout).values()
+        for count in codes.values()
+    )
+    summaries = [
+        match
+        for line in result.stdout.splitlines()
+        if (match := _ERROR_SUMMARY.match(line.strip()))
+    ]
+    if result.returncode == 0:
+        if parsed_total or not any(
+            line.startswith("Success: no issues found")
+            for line in result.stdout.splitlines()
+        ):
+            raise RuntimeError("mypy 成功输出缺少可验证摘要")
+        return result.stdout
+    if len(summaries) != 1:
+        raise RuntimeError("mypy 错误输出缺少唯一的完整摘要")
+    summary_total = int(summaries[0].group("count"))
+    if summary_total != parsed_total:
+        raise RuntimeError(
+            f"mypy 摘要与已解析错误数不一致：摘要 {summary_total}，解析 {parsed_total}"
+        )
     return result.stdout
 
 
@@ -66,19 +99,38 @@ def parse_errors(output: str) -> dict[str, dict[str, int]]:
     return {path: dict(codes) for path, codes in sorted(report.items())}
 
 
+def classify_counts(
+    baseline: dict[str, dict[str, int]], current: dict[str, dict[str, int]]
+) -> tuple[list[str], list[str]]:
+    """把计数差异分为不可写入的回退和可固化的低水位下降。"""
+    regressions: list[str] = []
+    stale: list[str] = []
+    for path in sorted(baseline.keys() | current.keys()):
+        previous = baseline.get(path, {})
+        latest = current.get(path, {})
+        for code in sorted(previous.keys() | latest.keys()):
+            old_count = previous.get(code, 0)
+            new_count = latest.get(code, 0)
+            if new_count > old_count:
+                if old_count == 0:
+                    regressions.append(f"{path}: 新增类型错误 [{code}] x{new_count}")
+                else:
+                    regressions.append(
+                        f"{path}: 既有错误增长 [{code}] {old_count}->{new_count}"
+                    )
+            elif new_count < old_count:
+                stale.append(
+                    f"{path}: 类型错误低水位未固化 [{code}] {old_count}->{new_count}"
+                )
+    return regressions, stale
+
+
 def compare_counts(
     baseline: dict[str, dict[str, int]], current: dict[str, dict[str, int]]
 ) -> list[str]:
-    """返回新增文件/错误码或既有计数增长问题；删除与减少均合法。"""
-    problems = []
-    for path, codes in current.items():
-        previous = baseline.get(path, {})
-        for code, count in codes.items():
-            if code not in previous:
-                problems.append(f"{path}: 新增类型错误 [{code}] x{count}")
-            elif count > previous[code]:
-                problems.append(f"{path}: 既有错误增长 [{code}] {previous[code]}->{count}")
-    return problems
+    """返回类型错误增长和尚未固化的新低水位。"""
+    regressions, stale = classify_counts(baseline, current)
+    return [*regressions, *stale]
 
 
 def main() -> int:
@@ -88,22 +140,40 @@ def main() -> int:
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     args = parser.parse_args()
     current = parse_errors(run_mypy())
+    baseline_exists = args.baseline.exists()
+    baseline = (
+        json.loads(args.baseline.read_text(encoding="utf-8"))
+        if baseline_exists
+        else {}
+    )
+    regressions, stale = classify_counts(baseline, current)
     if args.write:
+        if baseline_exists and regressions:
+            print("\n".join(regressions))
+            print("拒绝写入：当前结果包含类型错误回退，--write 只能固化下降后的低水位。")
+            return 1
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(
             json.dumps(current, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        print(f"已写入 {args.baseline.relative_to(PROJECT_ROOT)}")
+        display_path = (
+            args.baseline.relative_to(PROJECT_ROOT)
+            if args.baseline.is_relative_to(PROJECT_ROOT)
+            else args.baseline
+        )
+        print(f"已写入 {display_path}")
         return 0
-    baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
-    problems = compare_counts(baseline, current)
+    problems = [*regressions, *stale]
     if problems:
         print("\n".join(problems))
-        print("提示：修复后可用 --write 收紧基线；禁止为绕过门禁放宽基线。")
+        if regressions:
+            print("先消除类型错误回退；存在增长时禁止用 --write 覆盖基线。")
+        else:
+            print("提示：当前只有债务下降，可用 --write 固化新的低水位。")
         return 1
     total = sum(count for codes in current.values() for count in codes.values())
-    print(f"mypy ratchet 通过（存量 {total} 个类型错误，只降不增）")
+    print(f"mypy ratchet 通过（低水位已同步：{total} 个类型错误）")
     return 0
 
 
