@@ -26,7 +26,7 @@ class PluginSourceBindingStatus(str, _Enum):
 
 
 class PluginUpdateCandidate(BaseModel):  # type: ignore[misc]
-    """插件市场为已安装插件发现的当前最高在线更新候选。"""
+    """插件市场为已安装插件选择的当前更新候选。"""
 
     source_type: Literal["official", "third_party"] = Field(
         description="候选仓库是官方来源还是第三方来源"
@@ -93,7 +93,7 @@ class Plugin(BaseModel):
     has_page: Optional[bool] = False
     # 是否有新版本
     has_update: Optional[bool] = False
-    # 当前市场选择的最高在线更新候选；没有确定候选时为空
+    # 当前市场选择的更新候选；绑定仓库可更新时优先返回该仓库
     update_candidate: Optional[PluginUpdateCandidate] = None
     # 插件仓库绑定状态；仅已安装物理插件由后端投影真实身份
     source_binding_status: PluginSourceBindingStatus = PluginSourceBindingStatus.BOUND

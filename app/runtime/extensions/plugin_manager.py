@@ -1364,6 +1364,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             progress_callback,
         )
 
+    async def async_get_online_plugin_candidates(
+            self,
+            force: bool = False,
+    ) -> List[_SchemaPlugin]:
+        """获取按仓库保留的在线插件候选，供来源准入和更新选择。"""
+        return await self._plugin_catalog_view.async_online_candidates(force)
+
     async def async_get_plugins_from_market(self, market: str,
                                             package_version: Optional[str] = None,
                                             force: bool = False) -> Optional[List[_SchemaPlugin]]:
