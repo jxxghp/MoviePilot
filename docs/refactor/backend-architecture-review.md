@@ -87,8 +87,8 @@
 | 1 | Mypy fail-closed，并把 Ruff/Mypy 已下降债务固化为真实低水位 | 已推送 | `6062b0661`；远端同 SHA；ahead/behind `0/0`；Mypy 11994、Ruff 976 |
 | 2 | 用全量串行测试初始化非零 Coverage 低水位，并补齐 CI/文档防回退契约 | 已推送 | `265d3c6d1`；远端同 SHA；ahead/behind `0/0`；Application 77.76%，Domain 79.24% |
 | 3 | 收口阶段 62 遗留的 QQ Gateway heartbeat Timer 所有权 | 已推送 | `50b85235d`；远端同 SHA；ahead/behind `0/0`；全量 `6391 passed, 6 skipped` |
-| 4 | 收口并行 Rousi 提交暴露的质量门禁回退 | 已全量验证 | 最终合并 SHA 全量 `6404 passed, 6 skipped`；Mypy 11983、Ruff 973；等待提交推送 |
-| Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 本地完成 | 等待批次 4 推送及最终远端 0/0 复核 |
+| 4 | 收口并行 Rousi 提交暴露的质量门禁回退 | 已推送 | `9e81421eb`；远端同 SHA；ahead/behind `0/0`；全量 `6404 passed, 6 skipped` |
+| Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 已完成 | 所有准入项已推送；全量与适用门禁通过；代码交付 SHA 远端 `0/0` |
 
 ### 批次 0：审计与基线对齐
 
@@ -225,6 +225,9 @@ Gateway join 预算后保留 owner 并允许再次停止；故障注入证明首
   durable event 修复，其 blob 与共享工作树副本逐字一致。本批重放到该提交后，durable 专项
   `5 passed`，最终合并 SHA 的 4 分片全量为 `6404 passed, 6 skipped`。
 
+交付证据：提交 `9e81421eb` 已推送到 `origin/v3`；`git ls-remote` 返回同一 SHA，
+本地提交是远端祖先，`HEAD...origin/v3` 为 `0/0`，提交严格包含本批 6 个主仓路径。
+
 ## 五、验证矩阵
 
 每个批次按改动范围选择下列命令，Final 全部执行：
@@ -275,6 +278,8 @@ git rev-list --left-right --count HEAD...origin/v3
 | 2026-08-26 | 批次 4 本地验收 | 解析器 `33 passed`；干净 worktree 全量 `6402 passed, 6 skipped`；全部适用门禁通过 |
 | 2026-08-26 | 同步并行 #6449 | `ee53d6df0` 已在远端；共享工作树 blob 完全相同，rebase 后无重复 diff |
 | 2026-08-26 | 最终合并验收 | durable `5 passed`；最终 SHA 全量 `6404 passed, 6 skipped`；质量门禁通过 |
+| 2026-08-26 | 批次 4 交付 | `9e81421eb` 已推送；远端同 SHA；ahead/behind `0/0`；显式变更 6 个路径 |
+| 2026-08-26 | Final 收口 | 全部准入项已交付；排除项均有证据；其他仓只读；代码工作区干净 |
 
 ## 七、本轮停止条件
 
@@ -285,3 +290,6 @@ git rev-list --left-right --count HEAD...origin/v3
 * 宿主架构、质量、全量测试和官方插件兼容门禁通过；
 * 本地提交是远端 `v3` 的祖先，ahead/behind 为 `0/0`；
 * 工作区不存在本轮遗留，其他任务和其他仓的改动未被暂存、改写或提交。
+
+截至本台账定稿，以上条件全部满足；未把从未启动的大型改造、外部仓变化或 provenance 指纹
+漂移误报为本轮未完成任务。
