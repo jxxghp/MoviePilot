@@ -72,11 +72,13 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S0-L1 可信基线恢复 | `VERIFIED` | 无 | 交付架构审计/路线图，修复 `ARCH-001` 两个 mypy 增量错误；现有专项和主线门禁通过 |
-| S0-L2 规范事实统一 | `PLANNED` | S0-L1 | 修正 Oper、Adapter、HTTP、SCC、调用图规则冲突；规范目标与已执行门禁逐项对应 |
-| S0-L3 完整宿主 SCC 门禁 | `PLANNED` | S0-L2 | 完整宿主 SCC 集合只允许 TMDB 精确 allowlist；Chain 环清零前门禁提供可审查低水位，最终由 S2-L2 清零 |
-| S0-L4 Adapter/Egress 债务门禁 | `PLANNED` | S0-L2 | Application/Chain Adapter 导入和 direct HTTP egress 有精确分类；未解释项归零且禁止增长 |
-| S0-L5 Event 扫描事实修复 | `PLANNED` | S0-L2 | consumer 只识别 EventManager 注册；动态误报归零，台账与真实生产/消费一致 |
+| S0-L1 可信基线恢复 | `DELIVERED` | 无 | `5df388719`：交付架构审计/路线图，修复 `ARCH-001` 两个 mypy 增量错误；远端 `0/0` |
+| S0-L2.1 Host Oper/UoW 规范 | `VERIFIED` | S0-L1 | 宿主规则中未标注兼容范围的无 Session Oper 示例归零，并由文档测试锁定 |
+| S0-L2.2 完整宿主 SCC policy | `PLANNED` | S0-L2.1 | 完整宿主 SCC 全部精确分类；Chain 临时债务和 TMDB containment 分离 |
+| S0-L2.3 Adapter 直连事实 | `PLANNED` | S0-L2.1 | 收集 Application/Chain 的原始 Adapter import，不因父包展开重复计数 |
+| S0-L2.4 Adapter zero-growth | `PLANNED` | S0-L2.3 | 当前直连均登记迁移 owner，新增/替换失败，删除后要求清理陈旧 policy |
+| S0-L2.5 Event consumer 识别 | `PLANNED` | S0-L2.1 | consumer 只识别可静态证明的 EventManager 注册，动态误报归零 |
+| S0-L2.6 事实源与 CI 投影 | `PLANNED` | S0-L2.2,S0-L2.4,S0-L2.5 | fixture/policy/overview 职责固定，CI 分开报告语义 policy 与快照一致性 |
 
 ### S1：可靠性、事务与数据合同
 
@@ -151,53 +153,38 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 
 ## 4. 当前活动叶子
 
-### S0-L1 可信基线恢复
+### S0-L2.1 Host Oper/UoW 规范
 
 **Status:** `VERIFIED`（本地验收完成，等待提交、推送和远端一致性确认）
 
 **Outcome**
 
-在不接受新债务的前提下恢复当前主线类型门禁，交付审计清单、Goal 路线图和与实际基线一致的架构总览。
+让宿主数据访问规范与已经建立的 Application Port、DB Adapter、显式 Session/UoW
+边界一致；无 Session Oper 只作为明确标注的插件 Legacy/Compat ABI 出现。
 
 **Ownership**
 
-- `app/chain/media.py` 的音乐曲目匹配局部类型回归。
-- `docs/architecture-optimization-checklist.md`。
-- `docs/architecture-refactor-roadmap.md`。
-- `docs/architecture-overview.md` 的当前事实与文档索引。
+- `docs/rules/04-design-patterns.md` 的 Oper、SystemConfig、UserConfig 示例。
+- `docs/rules/10-data-and-persistent.md` 的对应交叉规则。
+- `tests/test_architecture_documentation.py` 的无 Session Oper 文档门禁。
+- 本路线图的叶子状态和交付记录。
 
 **Excluded**
 
-- 不在本叶实现 ARCH-102 之后的业务重构。
-- 不刷新 mypy、Ruff、依赖或复杂度 fixture。
-- 不修改 `app/plugins/**` 或独立插件仓。
+- 不迁移当前 startup 注入的无 Session Oper；该债务由 ARCH-103 逐领域切换。
+- 不修改运行时代码、fixture、`app/plugins/**` 或独立插件仓。
+- 不以删除 Legacy/Compat ABI 伪装宿主规范收口。
 
 **Acceptance**
 
 ```bash
-.venv/bin/python -m pytest tests/test_music_album_match.py -q
-.venv/bin/mypy --config-file mypy.ini
-.venv/bin/python scripts/architecture/mypy_ratchet.py
+.venv/bin/python -m pytest tests/test_architecture_documentation.py -q
 .venv/bin/python scripts/architecture/baseline.py --check-host
-.venv/bin/python scripts/architecture/complexity.py
-.venv/bin/python scripts/architecture/async_blocking.py
-.venv/bin/python scripts/architecture/task_ownership.py
-.venv/bin/python scripts/architecture/service_locator.py
-.venv/bin/python scripts/architecture/ruff_ratchet.py
-.venv/bin/python -m pytest \
-  tests/test_architecture_dependencies.py \
-  tests/test_architecture_contract_baseline.py \
-  tests/test_architecture_baseline_cli.py \
-  tests/test_complexity_gate.py \
-  tests/test_async_blocking_gate.py \
-  tests/test_task_ownership_gate.py \
-  tests/test_quality_ratchets.py \
-  tests/test_mypy_gate.py \
-  tests/test_architecture_ci.py -q
+rg -n 'SubscribeOper\(\)|SystemConfigOper\(\)|UserConfigOper\(\)' docs/rules
 git diff --check
 ```
 
 **Delivery**
 
-- 单一提交主题：恢复可信架构基线并建立长期路线图。
+- 单一提交主题：统一宿主持久化规范并建立文档门禁。
 - 推送 `origin/v3` 后确认提交祖先关系、远端 SHA 和 ahead/behind `0/0`。

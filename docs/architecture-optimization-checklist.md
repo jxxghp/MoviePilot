@@ -24,8 +24,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 4. **治理事实源不一致**：架构规则、总览、AST 基线和 CI 语义存在漂移；快照门禁能证明“没有变化”，
    但不能自动证明依赖合理、没有新环或所有运行资源都有生命周期 owner。
 
-当前唯一 P0 是主线 `mypy` ratchet 已失败。后续架构优化应先恢复主线，再按可靠性、边界类型化、
-生命周期、复杂度的顺序推进；不建议再做一次大规模目录搬迁。
+审计时唯一 P0 的主线 `mypy` ratchet 失败已由 `5df388719` 修复并推送。后续架构优化按可靠性、
+边界类型化、生命周期、复杂度的顺序推进；不建议再做一次大规模目录搬迁。
 
 ## 2. 范围与证据边界
 
@@ -105,8 +105,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | ID | 优先级 | 状态 | 事项 | 目标结果 |
 |---|---|---|---|---|
-| ARCH-001 | P0 | 阻塞 | 恢复 mypy ratchet | 主线所有既有 CI gate 重新通过 |
-| ARCH-101 | P1 | 待执行 | 统一规则、总览、基线和语义门禁 | 文档声明与机器拒绝条件一一对应 |
+| ARCH-001 | P0 | 已交付 | 恢复 mypy ratchet | `5df388719` 已推送，主线既有 CI gate 通过 |
+| ARCH-101 | P1 | 执行中 | 统一规则、总览、基线和语义门禁 | 文档声明与机器拒绝条件一一对应 |
 | ARCH-102 | P1 | 待执行 | 将 Transfer pending 升级为真实 E3 状态机 | 崩溃窗口可判定恢复，结果未知时进入人工确认 |
 | ARCH-103 | P1 | 待执行 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
 | ARCH-104 | P1 | 待执行 | 收口跨多次写入的业务事务 | 站点/规则引用清理可整体回滚或幂等恢复 |
@@ -135,9 +135,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **执行要求**
 
-- [ ] 将标题键和位置键使用不同、带语义的变量名，修复真实类型错误。
-- [ ] 不得用 `mypy_ratchet.py --write` 接受增长。
-- [ ] 保留音乐专辑“精确标题优先、碟号/曲序回退”的现有行为。
+- [x] 将标题键和位置键使用不同、带语义的变量名，修复真实类型错误。
+- [x] 未使用 `mypy_ratchet.py --write` 接受增长。
+- [x] 保留音乐专辑“精确标题优先、碟号/曲序回退”的现有行为。
 
 **验收**
 
@@ -152,8 +152,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- `docs/rules/04-design-patterns.md:125-131` 仍示范 `SubscribeOper()` 无 Session 调用，
-  与 `docs/rules/10-data-and-persistent.md:111-132` 的生产路径显式 UoW 规则冲突。
+- 审计时 `docs/rules/04-design-patterns.md` 仍示范 `SubscribeOper()` 无 Session 调用，
+  与生产路径显式 UoW 规则冲突；该项已由 S0-L2.1 修复并增加文档门禁。
 - `docs/rules/05-architecture.md:507` 禁止 `application -> concrete adapter`，但同一文档
   `177-183` 又要求 RSS 消费 network adapter；当前测试没有形式化这类例外。
 - 规则 `docs/rules/05-architecture.md:516` 禁止任意模块级环，实际 SCC 测试只覆盖特定根。
@@ -163,7 +163,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 **目标与步骤**
 
 - [ ] 指定一个机器可读事实源，文档指标由 fixture 生成或只保留不易漂移的语义描述。
-- [ ] 修正 Oper 示例，分别展示宿主显式 UoW 与插件兼容 Facade。
+- [x] 修正 Oper 示例，分别展示宿主显式 UoW 与插件兼容 Facade，并以文档测试禁止回退。
 - [ ] 对 Adapter 规则作出明确决策：允许哪些通用技术机制，哪些命名外部/持久化能力必须注入。
 - [ ] 让 SCC 规则、精确 allowlist 和文档声明一致。
 - [ ] Event 扫描只识别 EventManager 实例/别名和事件装饰器。

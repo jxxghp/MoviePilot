@@ -97,7 +97,7 @@ if not self._initialized:
 
 ```python
 # 获取订阅列表  ← 这只是在重述代码，不需要
-subscribes = SubscribeOper().list()
+subscribes = repository.list()
 
 # 如果 result 为 None 则返回  ← 无意义
 if result is None:
@@ -139,4 +139,4 @@ When modifying code, update or remove any comment that no longer accurately desc
 | Commented-out dead code | Delete it; git history preserves it |
 | New contract documentation in English inside an otherwise Chinese file | Breaks the repository's default documentation language and local consistency |
 
-*Last Updated: 2026-08-13*
+*Last Updated: 2026-08-27*
