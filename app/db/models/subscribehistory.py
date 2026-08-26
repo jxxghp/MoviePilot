@@ -102,6 +102,7 @@ class SubscribeHistory(Base):
     __table_args__ = (
         media_identity_constraint("subscribehistory"),
         Index('ix_subscribehistory_type_date', 'type', 'date'),
+        Index('ix_subscribehistory_date_id', 'date', 'id'),
         Index('ix_subscribehistory_media_identity', 'media_source', 'media_id'),
     )
 

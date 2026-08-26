@@ -70,6 +70,26 @@ class FakeCleanupRepository:
         """模拟下载失败记录删除。"""
         return self._delete("downloadfailure")
 
+    def delete_subscribe_history(self, db, cutoff: str, limit: int) -> int:
+        """模拟订阅历史删除。"""
+        return self._delete("subscribehistory")
+
+    def delete_agent_chats(self, db, cutoff: str, limit: int) -> int:
+        """模拟 Agent 会话删除。"""
+        return self._delete("agentchat")
+
+    def delete_agent_task_runs(self, db, cutoff: str, limit: int) -> int:
+        """模拟 Agent 运行历史删除。"""
+        return self._delete("agenttaskrun")
+
+    def delete_outbox_completed(self, db, cutoff: str, limit: int) -> int:
+        """模拟 Outbox 已完成记录删除。"""
+        return self._delete("outbox_completed")
+
+    def delete_outbox_dead(self, db, cutoff: str, limit: int) -> int:
+        """模拟 Outbox 死信记录删除。"""
+        return self._delete("outbox_dead")
+
 
 def _policy(**overrides) -> CleanupPolicy:
     """构造所有表默认启用的测试策略。"""
@@ -80,6 +100,11 @@ def _policy(**overrides) -> CleanupPolicy:
         "site_userdata_days": 1,
         "transfer_history_days": 1,
         "download_failure_days": 1,
+        "subscribe_history_days": 1,
+        "agent_chat_days": 1,
+        "agent_task_run_days": 1,
+        "outbox_completed_days": 1,
+        "outbox_dead_days": 1,
     }
     values.update(overrides)
     return CleanupPolicy(**values)
@@ -112,6 +137,11 @@ def test_cleanup_service_owns_batching_report_and_progress() -> None:
         "siteuserdata",
         "transferhistory",
         "downloadfailure",
+        "subscribehistory",
+        "agentchat",
+        "agenttaskrun",
+        "outbox_completed",
+        "outbox_dead",
     ]
     assert progress.call_args.kwargs["value"] == 100
 
@@ -128,7 +158,7 @@ def test_cleanup_service_finishes_other_tables_before_raising_partial_failure() 
     with pytest.raises(RuntimeError, match="downloadhistory: boom"):
         service.execute(batch_size=2)
 
-    assert repository.calls[-1] == "downloadfailure"
+    assert repository.calls[-1] == "outbox_dead"
     assert repository.rollbacks == 1
 
 

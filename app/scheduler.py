@@ -126,6 +126,12 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         "DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS",
         "DATA_CLEANUP_SITE_USERDATA_DAYS",
         "DATA_CLEANUP_TRANSFER_HISTORY_DAYS",
+        "DATA_CLEANUP_DOWNLOAD_FAILURE_DAYS",
+        "DATA_CLEANUP_SUBSCRIBE_HISTORY_DAYS",
+        "DATA_CLEANUP_AGENT_CHAT_DAYS",
+        "DATA_CLEANUP_AGENT_TASK_RUN_DAYS",
+        "DATA_CLEANUP_OUTBOX_COMPLETED_DAYS",
+        "DATA_CLEANUP_OUTBOX_DEAD_DAYS",
         "DB_BACKUP_ENABLE",
         "DB_BACKUP_CRON",
         "USAGE_STATISTIC_SHARE",
@@ -591,7 +597,6 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 kwargs={"job_id": "outbox_dispatch"},
                 replace_existing=True,
             )
-
             # CookieCloud定时同步
             if (
                     config.cookiecloud_interval

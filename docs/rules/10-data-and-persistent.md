@@ -140,9 +140,30 @@ startup composition supplies the repository, transaction scope and topic
 handlers.
 
 The dispatcher claims an intent with a lease, executes an idempotent handler,
-and records bounded retries or dead-letter state. The `app/runtime/tasks.py`
+and records bounded retries or dead-letter state. The shared data-maintenance
+policy controls bounded terminal-history cleanup, with user-configurable 30-day
+completed and 90-day dead-letter defaults; `0` disables either cleanup. It must
+not delete pending or leased processing rows. The `app/runtime/tasks.py`
 TaskRegistry is only the owner for in-process work and bounded shutdown waiting;
 it is not a durable queue or a replacement for an Outbox/persistent task table.
+
+All append-only or snapshot history owned by the host must participate in the
+shared `DATA_CLEANUP_ENABLE` policy when it has a safe time boundary:
+
+- `message`, `downloadhistory` and orphaned `downloadfiles`, `siteuserdata`,
+  `transferhistory`, `downloadfailure`, and `subscribehistory` use their own
+  user-configurable retention periods.
+- `agentchat` removes only expired sessions not referenced by an `agenttask`;
+  `agenttaskrun` removes only expired terminal runs that are neither running nor
+  the task's current `last_run_id`.
+- `outboxmessage` has separate completed and dead-letter retention periods;
+  pending and processing intents are recovery state and are never age-deleted.
+
+`transferpending` and `plugininstallation` are recovery queues/journals rather
+than history. Their age is not proof that they are disposable, so generic
+retention cleanup must not delete them. Current-state tables keyed by a user,
+site, plugin, workflow, passkey, or media-library item are likewise outside
+time-based cleanup; their owning mutation lifecycle must replace or delete them.
 
 Run `./.venv/bin/python scripts/architecture/baseline.py --check-host` after
 persistence changes. A deliberate debt reduction may refresh the low-water mark

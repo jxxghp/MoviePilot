@@ -7,10 +7,12 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
+from app.application.maintenance import CleanupPolicy, DataCleanupService
 from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher, OutboxIntent
 from app.application.subscription.write import CreateSubscriptionCommand
 from app.db.adapters.outbox import SqlAlchemyOutboxRepository
 from app.db.base import Base
+from app.db.maintenance import DatabaseCleanupRepository
 from app.db.models.outbox import OutboxMessage
 
 
@@ -171,3 +173,97 @@ def test_sync_outbox_claim_is_exclusive_for_event_key() -> None:
     assert message.status == "processing"
     assert message.attempt == 1
     assert message.lease_until == lease_until.isoformat()
+
+
+def test_outbox_cleanup_removes_only_expired_terminal_history_in_batches() -> None:
+    """清理只删除超过各自保留期的终态记录，并按批次持续收口。"""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 26, tzinfo=timezone.utc)
+
+    def message(
+        event_key: str,
+        status: str,
+        *,
+        completed_at: datetime | None = None,
+        next_retry_at: datetime | None = None,
+    ) -> OutboxMessage:
+        """构造指定终态时间的最小 Outbox 测试记录。"""
+        return OutboxMessage(
+            event_key=event_key,
+            topic="test",
+            payload_version=1,
+            payload={},
+            status=status,
+            attempt=1,
+            next_retry_at=(next_retry_at or now).isoformat(),
+            created_at=(now - timedelta(days=120)).isoformat(),
+            completed_at=completed_at.isoformat() if completed_at else None,
+        )
+
+    with factory() as session:
+        session.add_all([
+            message(
+                "completed-expired-1",
+                "completed",
+                completed_at=now - timedelta(days=31),
+            ),
+            message(
+                "completed-expired-2",
+                "completed",
+                completed_at=now - timedelta(days=40),
+            ),
+            message(
+                "completed-boundary",
+                "completed",
+                completed_at=now - timedelta(days=30),
+            ),
+            message(
+                "dead-expired",
+                "dead",
+                next_retry_at=now - timedelta(days=91),
+            ),
+            message(
+                "dead-recent",
+                "dead",
+                next_retry_at=now - timedelta(days=20),
+            ),
+            message("pending-old", "pending"),
+            message("processing-old", "processing"),
+        ])
+        session.commit()
+
+    cleanup = DataCleanupService(
+        repository=DatabaseCleanupRepository(session_factory=factory),
+        policy_reader=lambda: CleanupPolicy(
+            enabled=True,
+            message_days=0,
+            download_history_days=0,
+            site_userdata_days=0,
+            transfer_history_days=0,
+            download_failure_days=0,
+            subscribe_history_days=0,
+            agent_chat_days=0,
+            agent_task_run_days=0,
+            outbox_completed_days=30,
+            outbox_dead_days=90,
+        ),
+        clock=lambda: now,
+    )
+    report = cleanup.execute(batch_size=2)
+
+    assert report["tables"]["outbox_completed"]["deleted"] == 2
+    assert report["tables"]["outbox_dead"]["deleted"] == 1
+    assert report["total_deleted"] == 3
+
+    with factory() as session:
+        remaining = set(
+            session.execute(select(OutboxMessage.event_key)).scalars().all()
+        )
+    assert remaining == {
+        "completed-boundary",
+        "dead-recent",
+        "pending-old",
+        "processing-old",
+    }

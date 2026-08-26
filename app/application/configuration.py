@@ -167,6 +167,11 @@ class ChainRuntimeConfig:
     data_cleanup_site_userdata_days: Any = 0
     data_cleanup_transfer_history_days: Any = 0
     data_cleanup_download_failure_days: Any = 0
+    data_cleanup_subscribe_history_days: Any = 0
+    data_cleanup_agent_chat_days: Any = 0
+    data_cleanup_agent_task_run_days: Any = 0
+    data_cleanup_outbox_completed_days: Any = 0
+    data_cleanup_outbox_dead_days: Any = 0
     download_subtitle: bool = True
     lyrics_batch_timeout: int = 120
     music_metadata_to_simplified: bool = True

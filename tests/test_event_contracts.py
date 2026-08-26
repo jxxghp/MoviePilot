@@ -89,6 +89,7 @@ def test_selected_user_side_effects_are_marked_durable_required() -> None:
     }
 
     assert set(DURABLE_EVENT_TOPICS) == durable_events
+    assert len(durable_events) == 11
     assert len(set(DURABLE_EVENT_TOPICS.values())) == len(durable_events)
 
 

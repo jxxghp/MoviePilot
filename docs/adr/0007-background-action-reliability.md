@@ -19,8 +19,9 @@ MoviePilot 保持模块化单体，不把所有后台动作迁到分布式队列
 `durable-required` 是目标语义，不代表当前实现已经 durable。ARCH-251 前，Event Registry 中标记该值的
 事件仍应在风险报告中说明崩溃窗口。
 
-截至 2026-08-23，宿主正式装配的 `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted`、
-`SubscribeComplete`、`DownloadAdded`、`TransferComplete`、`TransferFailed` 广播已由业务事务内的 outbox
+截至 2026-08-26，宿主正式装配的 `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted`、
+`SubscribeComplete`、`DownloadAdded` 以及媒体、字幕、音频的 `TransferComplete` / `TransferFailed`
+广播已由业务事务内的 outbox
 intent 提供 at-least-once 恢复；订阅完成的历史新增、订阅删除、完成事件和完成统计 intent 同事务提交，
 提交后通知/事件/统计仍按原顺序执行，事件与统计失败保持独立 pending。payload 保持插件 dict/对象 ABI，
 并增加可选幂等键。下载和整理的 outbox 只保存
@@ -38,8 +39,7 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   `DownloadFileDeleted`、`DownloadDeleted`。
 - 消息/UI：`UserMessage`、`WebhookMessage`、`NoticeMessage`、`MessageAction`。
 - 生命周期/诊断：`SystemError`、`ModuleReload`、`ConfigChanged`、`WorkflowExecute`、
-  `AgentTokensUsage`、`MetadataScrape`、`SubscribeComplete`、`SubtitleTransferComplete`、
-  `SubtitleTransferFailed`、`AudioTransferComplete`、`AudioTransferFailed`。
+  `AgentTokensUsage`、`MetadataScrape`。
 - 链式扩展：全部 22 个 `ChainEventType`（`PluginDataReset`、`NameRecognize`、
   `MusicNameRecognize`、`MediaRecognize`、`MusicMediaRecognize`、`AuthVerification`、
   `AuthIntercept`、`CommandRegister`、`TransferRename`、`TransferRenameBuild`、
@@ -50,11 +50,12 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 
 ### E2：业务提交后的用户副作用
 
-- `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted`：订阅业务行 commit 是业务完成点；事件、
+- `SubscribeAdded`、`SubscribeModified`、`SubscribeDeleted`、`SubscribeComplete`：订阅业务行 commit 是业务完成点；事件、
   通知和服务端上报必须由同事务 durable intent 驱动。ARCH-251 首选 `SubscribeAdded` pilot。
 - `DownloadAdded`：下载器确认接收后，下载历史与事件 intent 已在返回前原子提交；通知和模块后处理只在
   commit 后启动，事件由 Outbox 恢复投递。
-- `TransferComplete`、`TransferFailed`：整理步骤本身属于 E3，但向事件消费者发布结果属于 E2。
+- `TransferComplete`、`TransferFailed` 以及对应的字幕、音频完成/失败事件：整理步骤本身属于 E3，
+  但历史行提交后向事件消费者发布结果属于 E2，使用同一 JSON 快照与恢复 handler。
 
 ## 非 Event 后台机制映射
 
@@ -129,6 +130,11 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
 - E0：不重试或仅当前调用内有限重试；队列关停可丢弃，必须记录。
 - E1：固定上限或指数退避，下一周期可重建；同一 job key 不并发重叠。
 - E2：稳定 idempotency key；原子 claim；指数退避有上限；超过上限进入 dead letter，不无限刷日志。
+- Outbox 终态历史并入统一数据维护任务，受 `DATA_CLEANUP_ENABLE` 总开关控制；`completed`
+  与 dead letter 默认分别保留 30/90 天，并可在高级设置中独立调整或设为 `0` 禁用。
+  `pending` / `processing` 不参与保留期删除，恰好位于截止边界的记录继续保留。
+- 统一数据维护还覆盖全部具备安全时间边界的宿主追加表；Agent 会话保护任务引用，Agent 运行历史
+  保护运行中与最后一次运行。`transferpending` 与 `plugininstallation` 是恢复状态，不按年龄删除。
 - E3：步骤级幂等、lease/heartbeat、重启恢复和人工决策入口；外部不可逆步骤必须记录补偿边界。
 
 关停顺序为停止接收新任务、停止 claim、等待有界 drain、释放资源。超过预算的 E2/E3 任务保持持久
@@ -143,6 +149,6 @@ pending 状态交由下次启动，不以取消异常写成成功。
 ## 验证与演进
 
 - Event Registry 的 `delivery` 字段与本 ADR 同步进入 runtime baseline。
-- ARCH-251 已覆盖 Registry 中六种 `durable_required` 事件，并通过 commit 后崩溃、重复 claim、并发
+- ARCH-251 已覆盖 Registry 中十一种 `durable_required` 事件，并通过 commit 后崩溃、重复 claim、并发
   claim、JSON 快照恢复和 dead-letter 测试；后续新增 E2 事件必须同时提供业务事务边界和恢复测试。
 - ARCH-252 将 Scheduler 的定义、触发和执行状态拆分，但不提升不需要 durable 的 E0 信号。

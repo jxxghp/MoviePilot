@@ -17,18 +17,28 @@ T = TypeVar("T")
 SUBSCRIBE_ADDED_TOPIC = "subscribe.added"
 SUBSCRIBE_MODIFIED_TOPIC = "subscribe.modified"
 SUBSCRIBE_DELETED_TOPIC = "subscribe.deleted"
+SUBSCRIBE_COMPLETED_TOPIC = "subscribe.complete"
 DOWNLOAD_ADDED_TOPIC = "download.added"
 TRANSFER_COMPLETED_TOPIC = "transfer.completed"
 TRANSFER_FAILED_TOPIC = "transfer.failed"
+SUBTITLE_TRANSFER_COMPLETED_TOPIC = "transfer.subtitle.completed"
+SUBTITLE_TRANSFER_FAILED_TOPIC = "transfer.subtitle.failed"
+AUDIO_TRANSFER_COMPLETED_TOPIC = "transfer.audio.completed"
+AUDIO_TRANSFER_FAILED_TOPIC = "transfer.audio.failed"
 OUTBOX_LEASE_SECONDS = 60
 
 DURABLE_EVENT_TOPICS: Mapping[EventType, str] = MappingProxyType({
     EventType.SubscribeAdded: SUBSCRIBE_ADDED_TOPIC,
     EventType.SubscribeModified: SUBSCRIBE_MODIFIED_TOPIC,
     EventType.SubscribeDeleted: SUBSCRIBE_DELETED_TOPIC,
+    EventType.SubscribeComplete: SUBSCRIBE_COMPLETED_TOPIC,
     EventType.DownloadAdded: DOWNLOAD_ADDED_TOPIC,
     EventType.TransferComplete: TRANSFER_COMPLETED_TOPIC,
     EventType.TransferFailed: TRANSFER_FAILED_TOPIC,
+    EventType.SubtitleTransferComplete: SUBTITLE_TRANSFER_COMPLETED_TOPIC,
+    EventType.SubtitleTransferFailed: SUBTITLE_TRANSFER_FAILED_TOPIC,
+    EventType.AudioTransferComplete: AUDIO_TRANSFER_COMPLETED_TOPIC,
+    EventType.AudioTransferFailed: AUDIO_TRANSFER_FAILED_TOPIC,
 })
 
 
@@ -95,7 +105,6 @@ class OutboxRepository(Protocol):
         dead: bool,
     ) -> None:
         """记录有限退避或 dead-letter 终态。"""
-
 
 class AsyncOutboxTransaction(Protocol):
     """异步业务事务暂存并收口 durable intent 的最小端口。"""
@@ -235,7 +244,6 @@ class OutboxDispatcher:
     def close(self) -> None:
         """释放 dispatcher 工厂创建的短生命周期持久化资源。"""
         self._close()
-
 
 _configured_dispatcher: Callable[[], OutboxDispatcher] | None = None
 

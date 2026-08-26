@@ -419,7 +419,13 @@ flowchart LR
   和插件到 Model 的依赖，保证提交权不会被底层抢走。
 - **Outbox 可靠副作用**：业务行与 durable intent 在同一 Session/UoW 中提交；提交后由
   Outbox dispatcher 依据 topic、claim/lease、有限重试和 dead-letter 执行。完成通知、事件和统计
-  的 post-commit 逻辑必须保持幂等，不能用普通线程或 TaskRegistry 代替持久 intent。
+  的 post-commit 逻辑必须保持幂等，不能用普通线程或 TaskRegistry 代替持久 intent。终态历史随统一
+  数据维护任务分批清理，默认成功记录保留 30 天、dead letter 保留 90 天；总开关和两项保留期由
+  高级设置维护，待投递和 lease 中记录不参与清理。
+- **统一历史保留期**：所有可安全按时间回收的追加型数据均受 `DATA_CLEANUP_ENABLE` 控制，包括消息、
+  下载及孤儿文件、站点快照、整理历史、下载失败冷却、订阅历史、Agent 会话、Agent 任务运行和 Outbox
+  终态。Agent 会话会保护任务引用，Agent 运行会保护运行中与最后一次运行；`transferpending` 和
+  `plugininstallation` 承担恢复语义，禁止按年龄删除。
 - 站点、历史、工作流、Agent 会话删除和插件数据重置已经形成同构事务切片；对应 Application
   Command/Service 持有 UoW，Oper 的 `stage_*` 方法只修改当前会话。插件数据重置从
   `startup/initializers/plugins.py` 注入事务能力，插件直接使用 `PluginDataOper` 的旧 ABI 仅作兼容。

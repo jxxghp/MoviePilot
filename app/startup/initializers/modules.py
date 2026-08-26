@@ -374,7 +374,9 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
             message.payload,
         ),
         "subscribe.deleted.report": dispatch_subscribe_deleted_report,
-        "subscribe.complete": lambda message: EventManager().send_event(
+        durable_event_topic(
+            EventType.SubscribeComplete
+        ): lambda message: EventManager().send_event(
             EventType.SubscribeComplete,
             message.payload,
         ),
@@ -396,6 +398,30 @@ def _build_outbox_dispatcher() -> OutboxDispatcher:
             EventType.TransferFailed
         ): lambda message: EventManager().send_event(
             EventType.TransferFailed,
+            restore_transfer_result(message.payload),
+        ),
+        durable_event_topic(
+            EventType.SubtitleTransferComplete
+        ): lambda message: EventManager().send_event(
+            EventType.SubtitleTransferComplete,
+            restore_transfer_result(message.payload),
+        ),
+        durable_event_topic(
+            EventType.SubtitleTransferFailed
+        ): lambda message: EventManager().send_event(
+            EventType.SubtitleTransferFailed,
+            restore_transfer_result(message.payload),
+        ),
+        durable_event_topic(
+            EventType.AudioTransferComplete
+        ): lambda message: EventManager().send_event(
+            EventType.AudioTransferComplete,
+            restore_transfer_result(message.payload),
+        ),
+        durable_event_topic(
+            EventType.AudioTransferFailed
+        ): lambda message: EventManager().send_event(
+            EventType.AudioTransferFailed,
             restore_transfer_result(message.payload),
         ),
     }

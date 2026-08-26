@@ -46,6 +46,7 @@ class AgentChat(Base):
         Index("ix_agentchat_session_user", "session_id", "user_id"),
         Index("ix_agentchat_user_updated", "user_id", "updated_at", "id"),
         Index("ix_agentchat_channel_updated", "channel", "updated_at", "id"),
+        Index("ix_agentchat_updated_id", "updated_at", "id"),
     )
 
     @classmethod

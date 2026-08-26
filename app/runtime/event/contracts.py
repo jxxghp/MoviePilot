@@ -159,9 +159,14 @@ _DURABLE_REQUIRED = {
     EventType.SubscribeAdded,
     EventType.SubscribeModified,
     EventType.SubscribeDeleted,
+    EventType.SubscribeComplete,
     EventType.DownloadAdded,
     EventType.TransferComplete,
     EventType.TransferFailed,
+    EventType.SubtitleTransferComplete,
+    EventType.SubtitleTransferFailed,
+    EventType.AudioTransferComplete,
+    EventType.AudioTransferFailed,
 }
 _TARGET_PLUGIN = {EventType.PluginAction, EventType.PluginTriggered}
 _HOST_ONLY = {EventType.SystemError, EventType.ConfigChanged, EventType.ModuleReload}

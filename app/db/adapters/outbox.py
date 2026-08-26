@@ -176,7 +176,6 @@ class SqlAlchemyOutboxRepository:
         )
         self._session.commit()
 
-
 class SqlAlchemyAsyncOutboxStager:
     """只负责把 outbox 意图加入调用方异步事务。"""
 

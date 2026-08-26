@@ -6,7 +6,7 @@
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, ContextManager, Dict, Optional, Protocol
 
 from app.application.configuration import get_chain_runtime_config_snapshot
@@ -26,6 +26,11 @@ class CleanupPolicy:
     site_userdata_days: int
     transfer_history_days: int
     download_failure_days: int
+    subscribe_history_days: int
+    agent_chat_days: int
+    agent_task_run_days: int
+    outbox_completed_days: int
+    outbox_dead_days: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +76,26 @@ class CleanupRepository(Protocol):
 
     def delete_download_failures(self, db: Any, cutoff: str, limit: int) -> int:
         """删除已经过期的下载失败冷却记录。"""
+        ...
+
+    def delete_subscribe_history(self, db: Any, cutoff: str, limit: int) -> int:
+        """删除早于截止时间的订阅历史。"""
+        ...
+
+    def delete_agent_chats(self, db: Any, cutoff: str, limit: int) -> int:
+        """删除早于截止时间且未被任务引用的 Agent 会话。"""
+        ...
+
+    def delete_agent_task_runs(self, db: Any, cutoff: str, limit: int) -> int:
+        """删除早于截止时间且不再承担恢复语义的 Agent 运行历史。"""
+        ...
+
+    def delete_outbox_completed(self, db: Any, cutoff: str, limit: int) -> int:
+        """删除早于截止时间的 Outbox 已完成记录。"""
+        ...
+
+    def delete_outbox_dead(self, db: Any, cutoff: str, limit: int) -> int:
+        """删除早于截止时间的 Outbox 死信记录。"""
         ...
 
 
@@ -249,6 +274,29 @@ class DataCleanupService:
             policy.download_failure_days,
             "%Y-%m-%d %H:%M:%S",
         )
+        subscribe_history_cutoff = self._cutoff(
+            started_at,
+            policy.subscribe_history_days,
+            "%Y-%m-%d %H:%M:%S",
+        )
+        agent_chat_cutoff = self._cutoff(
+            started_at,
+            policy.agent_chat_days,
+            "%Y-%m-%d %H:%M:%S",
+        )
+        agent_task_run_cutoff = self._cutoff(
+            started_at,
+            policy.agent_task_run_days,
+            "%Y-%m-%d %H:%M:%S",
+        )
+        outbox_completed_cutoff = self._outbox_cutoff(
+            started_at,
+            policy.outbox_completed_days,
+        )
+        outbox_dead_cutoff = self._outbox_cutoff(
+            started_at,
+            policy.outbox_dead_days,
+        )
         return [
             CleanupPlan(
                 "message",
@@ -296,6 +344,46 @@ class DataCleanupService:
                     db, download_failure_cutoff, batch_size
                 ),
             ),
+            CleanupPlan(
+                "subscribehistory",
+                policy.subscribe_history_days,
+                subscribe_history_cutoff,
+                lambda db: self._repository.delete_subscribe_history(
+                    db, subscribe_history_cutoff, batch_size
+                ),
+            ),
+            CleanupPlan(
+                "agentchat",
+                policy.agent_chat_days,
+                agent_chat_cutoff,
+                lambda db: self._repository.delete_agent_chats(
+                    db, agent_chat_cutoff, batch_size
+                ),
+            ),
+            CleanupPlan(
+                "agenttaskrun",
+                policy.agent_task_run_days,
+                agent_task_run_cutoff,
+                lambda db: self._repository.delete_agent_task_runs(
+                    db, agent_task_run_cutoff, batch_size
+                ),
+            ),
+            CleanupPlan(
+                "outbox_completed",
+                policy.outbox_completed_days,
+                outbox_completed_cutoff,
+                lambda db: self._repository.delete_outbox_completed(
+                    db, outbox_completed_cutoff, batch_size
+                ),
+            ),
+            CleanupPlan(
+                "outbox_dead",
+                policy.outbox_dead_days,
+                outbox_dead_cutoff,
+                lambda db: self._repository.delete_outbox_dead(
+                    db, outbox_dead_cutoff, batch_size
+                ),
+            ),
         ]
 
     def _cleanup_in_batches(
@@ -326,6 +414,19 @@ class DataCleanupService:
         """按兼容格式计算一个清理截止时间。"""
         return (started_at - timedelta(days=retention_days)).strftime(pattern)
 
+    @staticmethod
+    def _outbox_cutoff(started_at: datetime, retention_days: int) -> str:
+        """按 Outbox 的 UTC ISO 格式生成可排序截止时间。"""
+        aware_started_at = (
+            started_at.astimezone()
+            if started_at.tzinfo is None
+            else started_at
+        )
+        return (
+            aware_started_at.astimezone(timezone.utc)
+            - timedelta(days=retention_days)
+        ).isoformat()
+
 
 def read_cleanup_policy() -> CleanupPolicy:
     """读取并规范化当前数据清理配置，单次运行期间保持快照一致。"""
@@ -337,6 +438,11 @@ def read_cleanup_policy() -> CleanupPolicy:
         site_userdata_days=_normalize_days(config.data_cleanup_site_userdata_days),
         transfer_history_days=_normalize_days(config.data_cleanup_transfer_history_days),
         download_failure_days=_normalize_days(config.data_cleanup_download_failure_days),
+        subscribe_history_days=_normalize_days(config.data_cleanup_subscribe_history_days),
+        agent_chat_days=_normalize_days(config.data_cleanup_agent_chat_days),
+        agent_task_run_days=_normalize_days(config.data_cleanup_agent_task_run_days),
+        outbox_completed_days=_normalize_days(config.data_cleanup_outbox_completed_days),
+        outbox_dead_days=_normalize_days(config.data_cleanup_outbox_dead_days),
     )
 
 

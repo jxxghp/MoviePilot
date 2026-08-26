@@ -1514,7 +1514,7 @@
       "visibility": "plugin_public"
     },
     "EventType.AudioTransferComplete": {
-      "delivery": "ephemeral",
+      "delivery": "durable_required",
       "error_behavior": "notify",
       "input_contract": "TransferResultContractData",
       "legacy_reason": null,
@@ -1529,7 +1529,7 @@
       "visibility": "plugin_public"
     },
     "EventType.AudioTransferFailed": {
-      "delivery": "ephemeral",
+      "delivery": "durable_required",
       "error_behavior": "notify",
       "input_contract": "TransferResultContractData",
       "legacy_reason": null,
@@ -1799,7 +1799,7 @@
       "visibility": "plugin_public"
     },
     "EventType.SubscribeComplete": {
-      "delivery": "ephemeral",
+      "delivery": "durable_required",
       "error_behavior": "notify",
       "input_contract": "SubscribeCompleteEventData",
       "legacy_reason": null,
@@ -1844,7 +1844,7 @@
       "visibility": "plugin_public"
     },
     "EventType.SubtitleTransferComplete": {
-      "delivery": "ephemeral",
+      "delivery": "durable_required",
       "error_behavior": "notify",
       "input_contract": "TransferResultContractData",
       "legacy_reason": null,
@@ -1859,7 +1859,7 @@
       "visibility": "plugin_public"
     },
     "EventType.SubtitleTransferFailed": {
-      "delivery": "ephemeral",
+      "delivery": "durable_required",
       "error_behavior": "notify",
       "input_contract": "TransferResultContractData",
       "legacy_reason": null,
@@ -2253,6 +2253,10 @@
           {
             "caller": "app.chain.transfer",
             "count": 1
+          },
+          {
+            "caller": "app.startup.initializers.modules",
+            "count": 1
           }
         ]
       },
@@ -2261,6 +2265,10 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
+            "count": 1
+          },
+          {
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]
@@ -2521,6 +2529,10 @@
           {
             "caller": "app.chain.transfer",
             "count": 1
+          },
+          {
+            "caller": "app.startup.initializers.modules",
+            "count": 1
           }
         ]
       },
@@ -2529,6 +2541,10 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
+            "count": 1
+          },
+          {
+            "caller": "app.startup.initializers.modules",
             "count": 1
           }
         ]
@@ -2555,7 +2571,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "count": 2
+            "count": 1
           },
           {
             "caller": "app.startup.initializers.modules",
@@ -2568,7 +2584,7 @@
         "producers": [
           {
             "caller": "app.chain.transfer",
-            "count": 2
+            "count": 1
           },
           {
             "caller": "app.startup.initializers.modules",
@@ -2609,7 +2625,7 @@
         ]
       }
     },
-    "producer_count": 78
+    "producer_count": 80
   },
   "module_method_specs": {
     "anilist_credits": {

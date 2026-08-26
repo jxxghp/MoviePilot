@@ -2,10 +2,18 @@
 
 from typing import Any, Callable, ContextManager
 
+from sqlalchemy import delete, exists, select
+
+from app.db.base import execute_dml
+from app.db.models.agentchat import AgentChat
+from app.db.models.agenttask import AgentTask
+from app.db.models.agenttaskrun import AgentTaskRun
 from app.db.models.downloadfailure import DownloadFailure
 from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.models.message import Message
+from app.db.models.outbox import OutboxMessage
 from app.db.models.siteuserdata import SiteUserData
+from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.transferhistory import TransferHistory
 from app.db.uow import SqlAlchemyUnitOfWork
 
@@ -66,4 +74,117 @@ class DatabaseCleanupRepository:
             db=db,
             before_time=cutoff,
             limit=limit,
+        )
+
+    @staticmethod
+    def delete_subscribe_history(db: Any, cutoff: str, limit: int) -> int:
+        """分批删除超过用户保留期的已完成订阅快照。"""
+        return DatabaseCleanupRepository._delete_selected_ids(
+            db=db,
+            model=SubscribeHistory,
+            condition=SubscribeHistory.date < cutoff,
+            limit=limit,
+        )
+
+    @staticmethod
+    def delete_agent_chats(db: Any, cutoff: str, limit: int) -> int:
+        """清理旧会话，但保留仍被 Agent 定时任务引用的上下文。"""
+        task_reference = exists(
+            select(AgentTask.id).where(AgentTask.session_id == AgentChat.session_id)
+        )
+        return DatabaseCleanupRepository._delete_selected_ids(
+            db=db,
+            model=AgentChat,
+            condition=(AgentChat.updated_at < cutoff) & ~task_reference,
+            limit=limit,
+        )
+
+    @staticmethod
+    def delete_agent_task_runs(db: Any, cutoff: str, limit: int) -> int:
+        """清理旧终态运行，但保留运行中和父任务最后一次运行。"""
+        latest_run_reference = exists(
+            select(AgentTask.id).where(AgentTask.last_run_id == AgentTaskRun.run_id)
+        )
+        return DatabaseCleanupRepository._delete_selected_ids(
+            db=db,
+            model=AgentTaskRun,
+            condition=(
+                (AgentTaskRun.started_at < cutoff)
+                & (AgentTaskRun.status != "running")
+                & ~latest_run_reference
+            ),
+            limit=limit,
+        )
+
+    @staticmethod
+    def delete_outbox_completed(db: Any, cutoff: str, limit: int) -> int:
+        """删除过期 completed 记录，事务提交由维护用例统一控制。"""
+        return DatabaseCleanupRepository._delete_outbox_status(
+            db=db,
+            status="completed",
+            timestamp_column=OutboxMessage.completed_at,
+            cutoff=cutoff,
+            limit=limit,
+        )
+
+    @staticmethod
+    def delete_outbox_dead(db: Any, cutoff: str, limit: int) -> int:
+        """删除过期 dead-letter 记录，保留 pending/processing 恢复语义。"""
+        return DatabaseCleanupRepository._delete_outbox_status(
+            db=db,
+            status="dead",
+            timestamp_column=OutboxMessage.next_retry_at,
+            cutoff=cutoff,
+            limit=limit,
+        )
+
+    @staticmethod
+    def _delete_outbox_status(
+        *,
+        db: Any,
+        status: str,
+        timestamp_column: Any,
+        cutoff: str,
+        limit: int,
+    ) -> int:
+        """先锁定有限 ID 再删除，避免一次维护事务无界膨胀。"""
+        message_ids = db.execute(
+            select(OutboxMessage.id)
+            .where(
+                OutboxMessage.status == status,
+                timestamp_column.is_not(None),
+                timestamp_column < cutoff,
+            )
+            .order_by(OutboxMessage.id)
+            .limit(limit)
+        ).scalars().all()
+        if not message_ids:
+            return 0
+        return execute_dml(
+            db,
+            delete(OutboxMessage).where(OutboxMessage.id.in_(message_ids)),
+            execution_options={"synchronize_session": False},
+        )
+
+    @staticmethod
+    def _delete_selected_ids(
+        *,
+        db: Any,
+        model: Any,
+        condition: Any,
+        limit: int,
+    ) -> int:
+        """按安全谓词锁定有限主键并暂存删除。"""
+        record_ids = db.execute(
+            select(model.id)
+            .where(condition)
+            .order_by(model.id)
+            .limit(limit)
+        ).scalars().all()
+        if not record_ids:
+            return 0
+        return execute_dml(
+            db,
+            delete(model).where(model.id.in_(record_ids)),
+            execution_options={"synchronize_session": False},
         )

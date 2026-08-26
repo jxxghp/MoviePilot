@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from app.application.outbox import (
     OUTBOX_LEASE_SECONDS,
     OutboxIntent,
+    SUBSCRIBE_COMPLETED_TOPIC,
     SyncOutboxTransaction,
     SyncUnitOfWork,
 )
@@ -77,7 +78,7 @@ class CompleteSubscriptionCommand:
                 self._outbox.stage(
                     OutboxIntent(
                         event_key=event_key,
-                        topic="subscribe.complete",
+                        topic=SUBSCRIBE_COMPLETED_TOPIC,
                         payload=event_payload,
                     ),
                     now,

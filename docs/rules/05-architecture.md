@@ -453,6 +453,11 @@ Durable post-commit side effects have a separate boundary:
 - The dispatcher claims an intent with a lease, executes the topic handler, and
   records retry/dead-letter state. Handlers must be idempotent and must not rely
   on a live request object.
+- Terminal history is part of the shared data-maintenance policy and is cleaned
+  in bounded daily batches only when that policy is enabled. Completed intents
+  default to 30-day retention and dead letters to 90 days; both values are
+  user-configurable and `0` disables that status cleanup. Pending or processing
+  intents must never be removed by retention cleanup.
 - `app/runtime/tasks.py` is only the in-process TaskRegistry boundary. It owns
   cancellation and bounded shutdown waiting, but it is not a durable queue and
   must not replace an Outbox or persistent task table.

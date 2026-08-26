@@ -9,7 +9,6 @@ from sqlalchemy.schema import CreateTable
 from app.db.models.agenttask import AgentTask
 from app.db.models.agenttaskrun import AgentTaskRun
 
-
 MIGRATION = "database.versions.f4c8d2a7b1e6_3_0_6"
 
 
@@ -84,7 +83,18 @@ def test_agent_task_run_migration_accepts_fresh_current_schema(monkeypatch) -> N
         assert {
             column["name"] for column in inspector.get_columns("agenttaskrun")
         } == {column.name for column in AgentTaskRun.__table__.columns}
-        assert len(inspector.get_indexes("agenttaskrun")) == 2
+        actual_indexes = {
+            index["name"]: (tuple(index["column_names"]), index["unique"])
+            for index in inspector.get_indexes("agenttaskrun")
+        }
+        expected_indexes = {
+            index.name: (
+                tuple(column.name for column in index.columns),
+                int(index.unique),
+            )
+            for index in AgentTaskRun.__table__.indexes
+        }
+        assert actual_indexes == expected_indexes
 
 
 def test_agent_task_run_migration_matches_postgresql_identity() -> None:

@@ -37,6 +37,7 @@ class AgentTaskRun(Base):
     __table_args__ = (
         Index("ix_agenttaskrun_run_id", "run_id", unique=True),
         Index("ix_agenttaskrun_task_started", "task_id", "started_at", "id"),
+        Index("ix_agenttaskrun_status_started_id", "status", "started_at", "id"),
     )
 
     @classmethod

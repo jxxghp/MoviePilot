@@ -9,10 +9,17 @@ __is_overwrite_declined 用于识别这一场景，__default_callback 失败分�
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.chain.transfer import TransferChain
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType
-from tests.test_transfer_job_manager import FakeMedia, make_task, make_transfer_chain
+from tests.test_transfer_job_manager import (
+    FakeMedia,
+    make_fileitem,
+    make_task,
+    make_transfer_chain,
+)
 
 
 def make_history_oper(history=None, success_history=None, raise_on_query: bool = False):
@@ -271,3 +278,49 @@ def test_default_callback_delegates_primary_failure_to_durable_writer():
     event_type, event_payload = chain.eventmanager.send_event.call_args.args
     assert event_type == EventType.TransferFailed
     assert event_payload["idempotency_key"] == "transfer.failed:1:v1"
+
+
+@pytest.mark.parametrize(
+    ("path", "success", "expected_topic", "expected_event"),
+    [
+        (
+            "/downloads/demo.srt",
+            True,
+            "transfer.subtitle.completed",
+            EventType.SubtitleTransferComplete,
+        ),
+        (
+            "/downloads/demo.srt",
+            False,
+            "transfer.subtitle.failed",
+            EventType.SubtitleTransferFailed,
+        ),
+        (
+            "/downloads/demo.flac",
+            True,
+            "transfer.audio.completed",
+            EventType.AudioTransferComplete,
+        ),
+        (
+            "/downloads/demo.flac",
+            False,
+            "transfer.audio.failed",
+            EventType.AudioTransferFailed,
+        ),
+    ],
+)
+def test_subtitle_and_audio_results_use_durable_topics(
+    path: str,
+    success: bool,
+    expected_topic: str,
+    expected_event: EventType,
+) -> None:
+    """字幕与音频结果必须和主要媒体结果共用 durable writer 分类。"""
+    chain = make_transfer_chain()
+    task = make_task(1)
+    task.fileitem = make_fileitem(path)
+
+    assert chain._durable_transfer_event(task, success=success) == (
+        expected_topic,
+        expected_event,
+    )

@@ -218,6 +218,16 @@ class ConfigModel(BaseModel):
     DATA_CLEANUP_TRANSFER_HISTORY_DAYS: int = 365 * 3
     # 下载失败冷却记录保留天数，0为不清理
     DATA_CLEANUP_DOWNLOAD_FAILURE_DAYS: int = 7
+    # 订阅完成历史保留天数，0为不清理
+    DATA_CLEANUP_SUBSCRIBE_HISTORY_DAYS: int = 365 * 3
+    # Agent 会话历史保留天数，0为不清理
+    DATA_CLEANUP_AGENT_CHAT_DAYS: int = 180
+    # Agent 定时任务运行历史保留天数，0为不清理
+    DATA_CLEANUP_AGENT_TASK_RUN_DAYS: int = 180
+    # Outbox 已完成记录保留天数，0为不清理
+    DATA_CLEANUP_OUTBOX_COMPLETED_DAYS: int = 30
+    # Outbox 死信记录保留天数，0为不清理
+    DATA_CLEANUP_OUTBOX_DEAD_DAYS: int = 90
 
     # ==================== 缓存配置 ====================
     # 缓存类型，支持 cachetools 和 redis，默认使用 cachetools
