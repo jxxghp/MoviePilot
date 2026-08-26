@@ -1237,6 +1237,8 @@ class PluginHelper(metaclass=WeakSingleton):
                                            timeout=30)
         if res is None:
             return None, "连接仓库失败"
+        elif res.status_code == 404:
+            return None, "插件源码目录不存在"
         elif res.status_code != 200:
             return None, f"连接仓库失败：{res.status_code} - " \
                          f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.reason}"
@@ -2386,8 +2388,12 @@ class PluginHelper(metaclass=WeakSingleton):
             timeout=30,
             is_api=True,
         )
-        if rel_res is None or rel_res.status_code != 200:
-            return False, f"获取 Release 信息失败：{rel_res.status_code if rel_res else '连接失败'}"
+        if rel_res is None:
+            return False, "获取 Release 信息失败：连接失败"
+        if rel_res.status_code == 404:
+            return False, f"{release_tag} 插件发布包不存在"
+        if rel_res.status_code != 200:
+            return False, f"获取 Release 信息失败：{rel_res.status_code}"
 
         try:
             rel_json = rel_res.json()
@@ -2726,6 +2732,8 @@ class PluginHelper(metaclass=WeakSingleton):
                                                        timeout=30)
         if res is None:
             return None, "连接仓库失败"
+        elif res.status_code == 404:
+            return None, "插件源码目录不存在"
         elif res.status_code != 200:
             return None, f"连接仓库失败：{res.status_code} - " \
                          f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.text}"
@@ -3400,8 +3408,12 @@ class PluginHelper(metaclass=WeakSingleton):
             timeout=30,
             is_api=True,
         )
-        if rel_res is None or rel_res.status_code != 200:
-            return False, f"获取 Release 信息失败：{rel_res.status_code if rel_res else '连接失败'}"
+        if rel_res is None:
+            return False, "获取 Release 信息失败：连接失败"
+        if rel_res.status_code == 404:
+            return False, f"{release_tag} 插件发布包不存在"
+        if rel_res.status_code != 200:
+            return False, f"获取 Release 信息失败：{rel_res.status_code}"
 
         try:
             rel_json = rel_res.json()
