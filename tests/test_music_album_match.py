@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -163,6 +164,57 @@ def test_recognize_album_directory_maps_files(tmp_path, media_chain, monkeypatch
     # 同一目录再次识别直接命中缓存，不重复请求模块
     assert media_chain.recognize_music_album_directory(album_dir) == matched
     source_chain.match_music_album.assert_called_once()
+
+
+def test_align_album_tracks_prefers_exact_titles_over_conflicting_positions():
+    """本地曲序与发行版本冲突时，精确曲名必须优先，避免整张专辑错位。"""
+    files = [
+        Path("费玉清-真的好想你.flac"),
+        Path("费玉清-冬之夜.flac"),
+        Path("费玉清-愛是一個圓.flac"),
+        Path("04.flac"),
+    ]
+    metas = [
+        MetaMusic(title="真的好想你", track_number=1),
+        MetaMusic(title="冬之夜", track_number=2),
+        MetaMusic(title="愛是一個圓", track_number=3),
+        MetaMusic(title="04", track_number=4),
+    ]
+    tracks = [
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="winter",
+            title="冬之夜",
+            track_number=1,
+        ),
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="circle",
+            title="爱是一个圆",
+            track_number=2,
+        ),
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="miss",
+            title="真的好想你",
+            track_number=3,
+        ),
+        MusicInfo(
+            media_source="musicbrainz",
+            media_id="fallback",
+            title="一生的朋友",
+            track_number=4,
+        ),
+    ]
+
+    matched = MediaChain._align_music_album_tracks(files, metas, tracks)
+
+    assert [matched[file].media_id for file in files] == [
+        "miss",
+        "winter",
+        "circle",
+        "fallback",
+    ]
 
 
 def test_async_recognize_album_directory_calls_async_module(

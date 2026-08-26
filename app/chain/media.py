@@ -1209,33 +1209,81 @@ class MediaChain(ChainBase, metaclass=Singleton):
         return tuple(str(path.relative_to(directory)).casefold() for path in files)
 
     @staticmethod
+    def _music_track_title_key(value: Optional[str]) -> str:
+        """统一繁简、大小写和标点，生成专辑曲目精确对位键。"""
+        text = str(value or "")
+        try:
+            text = zhconv_convert(text, "zh-hans")
+        except Exception:  # pylint: disable=broad-except
+            pass
+        return MetaMusic.compact_text(text)
+
+    @classmethod
     def _align_music_album_tracks(
+            cls,
             files: list[Path],
             metas: list[MetaMusic],
             tracks: list[MusicInfo],
     ) -> dict[Path, MusicInfo]:
-        """优先按碟号和曲序把专辑曲目对位到本地文件。"""
+        """优先按精确曲名、再按碟号和曲序把专辑曲目对位到本地文件。"""
         matched: dict[Path, MusicInfo] = {}
-        used: set[tuple[int, int]] = set()
-        by_position = {
-            (track.disc_number or 1, track.track_number): track
-            for track in tracks if track.track_number
-        }
+        used: set[int] = set()
+        indexed_tracks = list(enumerate(tracks))
+        by_title: dict[str, list[int]] = {}
+        for index, track in indexed_tracks:
+            key = cls._music_track_title_key(track.title)
+            if key:
+                by_title.setdefault(key, []).append(index)
+
         pending: list[tuple[Path, MetaMusic]] = []
         for file, meta in zip(files, metas):
-            key = (meta.disc_number or 1, meta.track_number or 0)
-            track = by_position.get(key) if meta.track_number else None
-            if track and key not in used:
-                matched[file] = track
-                used.add(key)
+            candidates = [
+                index for index in by_title.get(cls._music_track_title_key(meta.title), [])
+                if index not in used
+            ]
+            if candidates:
+                local_position = (meta.disc_number or 1, meta.track_number or 0)
+                index = next(
+                    (
+                        candidate for candidate in candidates
+                        if (
+                            tracks[candidate].disc_number or 1,
+                            tracks[candidate].track_number or 0,
+                        ) == local_position
+                    ),
+                    candidates[0],
+                )
+                matched[file] = tracks[index]
+                used.add(index)
             else:
                 pending.append((file, meta))
+
+        by_position: dict[tuple[int, int], list[int]] = {}
+        for index, track in indexed_tracks:
+            if track.track_number:
+                by_position.setdefault(
+                    (track.disc_number or 1, track.track_number), []
+                ).append(index)
+        unresolved: list[tuple[Path, MetaMusic]] = []
+        for file, meta in pending:
+            key = (meta.disc_number or 1, meta.track_number or 0)
+            candidates = [
+                index for index in by_position.get(key, [])
+                if index not in used
+            ] if meta.track_number else []
+            if candidates:
+                index = candidates[0]
+                matched[file] = tracks[index]
+                used.add(index)
+            else:
+                unresolved.append((file, meta))
         remaining = [
-            track for track in tracks
-            if (track.disc_number or 1, track.track_number or 0) not in used
+            track for index, track in indexed_tracks if index not in used
         ]
-        pending.sort(key=lambda item: (item[1].disc_number or 1, item[0].name.casefold()))
-        for (file, _), track in zip(pending, remaining):
+        unresolved.sort(
+            key=lambda item: (item[1].disc_number or 1, item[0].name.casefold())
+        )
+        for (file, _), track in zip(unresolved, remaining):
             matched[file] = track
         return matched
 
