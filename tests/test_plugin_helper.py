@@ -2175,13 +2175,13 @@ demo = { index = "private" }
             monkeypatch,
             {"release": True, "version": "1.2.3"},
             (False, "DemoPlugin_v1.2.3 插件发布包不存在"),
-            (False, "插件源码目录不存在"),
+            (False, "DemoPlugin 插件源码目录不存在"),
         )
 
         success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert not success
-        assert "插件源码目录不存在" == message
+        assert "DemoPlugin 插件源码目录不存在" == message
         assert ["remove", "release", "remove", "filelist", "remove"] == calls
 
     def test_install_uses_filelist_when_release_flag_is_disabled(self, monkeypatch):
@@ -2617,7 +2617,7 @@ demo = { index = "private" }
             monkeypatch,
             {"release": True, "version": "1.2.3"},
             (False, "DemoPlugin_v1.2.3 插件发布包不存在"),
-            (False, "插件源码目录不存在"),
+            (False, "DemoPlugin 插件源码目录不存在"),
         )
 
         success, message = asyncio.run(
@@ -2625,12 +2625,12 @@ demo = { index = "private" }
         )
 
         assert not success
-        assert "插件源码目录不存在" == message
+        assert "DemoPlugin 插件源码目录不存在" == message
         assert calls == ["remove", "release", "remove", "filelist", "remove"]
 
-    def test_async_install_release_fallback_uses_lowercase_filelist_pid(self, monkeypatch):
+    def test_async_install_release_fallback_preserves_plugin_id(self, monkeypatch):
         """
-        异步 release 回退文件列表安装时使用小写插件 ID，保持 GitHub 目录查询与同步路径一致。
+        异步 release 回退保留清单中的插件 ID，供文件列表层生成可读错误。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2659,11 +2659,11 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["demoplugin"] == filelist_pids
+        assert ["DemoPlugin"] == filelist_pids
 
-    def test_async_install_non_release_uses_lowercase_filelist_pid(self, monkeypatch):
+    def test_async_install_non_release_preserves_plugin_id(self, monkeypatch):
         """
-        异步文件列表直装使用小写插件 ID，避免大小写插件 ID 影响远端目录匹配。
+        异步文件列表直装保留清单中的插件 ID，路径规范化由文件列表层负责。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2692,7 +2692,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["demoplugin"] == filelist_pids
+        assert ["DemoPlugin"] == filelist_pids
 
     def test_install_from_release_reports_missing_tag(self, monkeypatch):
         """
@@ -3182,6 +3182,36 @@ demo = { index = "private" }
         assert not success
         assert "list failed" == message
 
+    def test_prepare_content_via_filelist_sync_names_missing_plugin(self, monkeypatch):
+        """同步文件列表层规范化路径 ID，并在源码目录缺失时保留原插件 ID。"""
+        try:
+            from app.adapters.external.market import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        requested_ids = []
+
+        def fake_file_list(pid, *_args):
+            requested_ids.append(pid)
+            return None, "插件源码目录不存在"
+
+        monkeypatch.setattr(
+            helper,
+            "_PluginHelper__get_file_list",
+            fake_file_list,
+        )
+
+        success, message = helper._PluginHelper__prepare_content_via_filelist_sync(
+            PLUGIN_ID,
+            "demo/repo",
+            "v2",
+        )
+
+        assert not success
+        assert message == "DemoPlugin 插件源码目录不存在"
+        assert requested_ids == ["demoplugin"]
+
     def test_prepare_content_via_filelist_sync_returns_download_error(self, monkeypatch):
         """
         文件列表存在但文件下载失败时向上返回下载错误。
@@ -3255,6 +3285,38 @@ demo = { index = "private" }
 
         assert not success
         assert "list failed" == message
+
+    def test_async_prepare_content_via_filelist_names_missing_plugin(self, monkeypatch):
+        """异步文件列表层规范化路径 ID，并在源码目录缺失时保留原插件 ID。"""
+        try:
+            from app.adapters.external.market import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        requested_ids = []
+
+        async def fake_file_list(pid, *_args):
+            requested_ids.append(pid)
+            return None, "插件源码目录不存在"
+
+        monkeypatch.setattr(
+            helper,
+            "_PluginHelper__async_get_file_list",
+            fake_file_list,
+        )
+
+        success, message = asyncio.run(
+            helper._PluginHelper__prepare_content_via_filelist_async(
+                PLUGIN_ID,
+                "demo/repo",
+                "v2",
+            )
+        )
+
+        assert not success
+        assert message == "DemoPlugin 插件源码目录不存在"
+        assert requested_ids == ["demoplugin"]
 
     def test_async_prepare_content_via_filelist_returns_download_error(self, monkeypatch):
         """
