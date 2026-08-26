@@ -43,13 +43,10 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
         async_request,
     )
 
-    helper.get_plugins.cache_clear()
     helper.get_plugin_index_result.cache_clear()
-    await helper.async_get_plugins.cache_clear()
     await helper.async_get_plugin_index_result.cache_clear()
     sync_result = helper.get_plugins(repo_url, "v3")
     # 同步与异步装饰器按设计共享缓存区；清除后再验证异步 I/O 入口本身。
-    await helper.async_get_plugins.cache_clear()
     await helper.async_get_plugin_index_result.cache_clear()
     async_result = await helper.async_get_plugins(repo_url, "v3")
 
@@ -83,7 +80,6 @@ async def test_market_read_warms_source_inventory_cache(monkeypatch) -> None:
         "_PluginHelper__async_request_with_fallback",
         request,
     )
-    await helper.async_get_plugins.cache_clear()
     await helper.async_get_plugin_index_result.cache_clear()
 
     market_result = await helper.async_get_plugins(repo_url, "v3")
@@ -91,6 +87,87 @@ async def test_market_read_warms_source_inventory_cache(monkeypatch) -> None:
 
     assert market_result == inventory_result
     assert requests == 1
+
+
+def test_sync_force_refresh_bypasses_index_cache(
+    monkeypatch,
+) -> None:
+    """同步强刷必须绕过唯一索引缓存。"""
+    helper = PluginHelper()
+    client = PluginMarketClient(helper)
+    repo_url = "https://github.com/policy-owner/sync-force-refresh"
+    version = "1.0.0"
+    requests = 0
+
+    def request(_url: str, *, headers: dict):
+        nonlocal requests
+        requests += 1
+        return SimpleNamespace(
+            status_code=200,
+            text=f'{{"DemoPlugin": {{"version": "{version}"}}}}',
+        )
+
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__request_with_fallback",
+        request,
+    )
+    helper.get_plugin_index_result.cache_clear()
+
+    assert client.get_plugins(repo_url, "v3") == {
+        "DemoPlugin": {"version": "1.0.0"},
+    }
+    assert client.get_plugins(repo_url, "v3") == {
+        "DemoPlugin": {"version": "1.0.0"},
+    }
+    assert requests == 1
+
+    version = "2.0.0"
+    assert client.get_plugins(repo_url, "v3", force=True) == {
+        "DemoPlugin": {"version": "2.0.0"},
+    }
+    assert requests == 2
+
+
+@pytest.mark.asyncio
+async def test_async_force_refresh_bypasses_index_cache(
+    monkeypatch,
+) -> None:
+    """异步强刷必须绕过唯一索引缓存。"""
+    helper = PluginHelper()
+    client = PluginMarketClient(helper)
+    repo_url = "https://github.com/policy-owner/async-force-refresh"
+    version = "1.0.0"
+    requests = 0
+
+    async def request(_url: str, *, headers: dict):
+        nonlocal requests
+        requests += 1
+        return SimpleNamespace(
+            status_code=200,
+            text=f'{{"DemoPlugin": {{"version": "{version}"}}}}',
+        )
+
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_request_with_fallback",
+        request,
+    )
+    await helper.async_get_plugin_index_result.cache_clear()
+
+    assert await client.async_get_plugins(repo_url, "v3") == {
+        "DemoPlugin": {"version": "1.0.0"},
+    }
+    assert await client.async_get_plugins(repo_url, "v3") == {
+        "DemoPlugin": {"version": "1.0.0"},
+    }
+    assert requests == 1
+
+    version = "2.0.0"
+    assert await client.async_get_plugins(repo_url, "v3", force=True) == {
+        "DemoPlugin": {"version": "2.0.0"},
+    }
+    assert requests == 2
 
 
 @pytest.mark.asyncio

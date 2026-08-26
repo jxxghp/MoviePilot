@@ -884,7 +884,6 @@ class PluginHelper(metaclass=WeakSingleton):
             raise RuntimeError("插件索引响应格式无效")
         return payload
 
-    @cached(maxsize=1024, ttl=1800)
     def get_plugins(self, repo_url: str,
                     package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
@@ -2579,7 +2578,6 @@ class PluginHelper(metaclass=WeakSingleton):
             raise RuntimeError("插件索引响应格式无效")
         return payload
 
-    @cached(maxsize=1024, ttl=1800)
     async def async_get_plugins(self, repo_url: str,
                                 package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
