@@ -73,8 +73,8 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
 | S0-L1 可信基线恢复 | `DELIVERED` | 无 | `5df388719`：交付架构审计/路线图，修复 `ARCH-001` 两个 mypy 增量错误；远端 `0/0` |
-| S0-L2.1 Host Oper/UoW 规范 | `VERIFIED` | S0-L1 | 宿主规则中未标注兼容范围的无 Session Oper 示例归零，并由文档测试锁定 |
-| S0-L2.2 完整宿主 SCC policy | `PLANNED` | S0-L2.1 | 完整宿主 SCC 全部精确分类；Chain 临时债务和 TMDB containment 分离 |
+| S0-L2.1 Host Oper/UoW 规范 | `DELIVERED` | S0-L1 | `3bf94ffed`：宿主无 Session Oper 规范债务归零，远端 `0/0` |
+| S0-L2.2 完整宿主 SCC policy | `VERIFIED` | S0-L2.1 | 完整宿主 SCC 全部精确分类；Chain 临时债务和 TMDB containment 分离 |
 | S0-L2.3 Adapter 直连事实 | `PLANNED` | S0-L2.1 | 收集 Application/Chain 的原始 Adapter import，不因父包展开重复计数 |
 | S0-L2.4 Adapter zero-growth | `PLANNED` | S0-L2.3 | 当前直连均登记迁移 owner，新增/替换失败，删除后要求清理陈旧 policy |
 | S0-L2.5 Event consumer 识别 | `PLANNED` | S0-L2.1 | consumer 只识别可静态证明的 EventManager 注册，动态误报归零 |
@@ -153,38 +153,42 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 
 ## 4. 当前活动叶子
 
-### S0-L2.1 Host Oper/UoW 规范
+### S0-L2.2 完整宿主 SCC policy
 
 **Status:** `VERIFIED`（本地验收完成，等待提交、推送和远端一致性确认）
 
 **Outcome**
 
-让宿主数据访问规范与已经建立的 Application Port、DB Adapter、显式 Session/UoW
-边界一致；无 Session Oper 只作为明确标注的插件 Legacy/Compat ABI 出现。
+让完整宿主静态依赖图中的每个 SCC 都有精确、人工审查的分类；生成快照只记录事实，
+不能通过刷新 baseline 自动批准新环。
 
 **Ownership**
 
-- `docs/rules/04-design-patterns.md` 的 Oper、SystemConfig、UserConfig 示例。
-- `docs/rules/10-data-and-persistent.md` 的对应交叉规则。
-- `tests/test_architecture_documentation.py` 的无 Session Oper 文档门禁。
+- `tests/test_architecture_dependencies.py` 的统一图算法和完整 SCC 语义门禁。
+- `tests/fixtures/architecture/dependency-policy.json` 的精确人工 policy。
+- `docs/rules/05-architecture.md` 与 `docs/architecture-overview.md` 的事实/policy 边界。
 - 本路线图的叶子状态和交付记录。
 
 **Excluded**
 
-- 不迁移当前 startup 注入的无 Session Oper；该债务由 ARCH-103 逐领域切换。
-- 不修改运行时代码、fixture、`app/plugins/**` 或独立插件仓。
-- 不以删除 Legacy/Compat ABI 伪装宿主规范收口。
+- 不在本叶消除 Chain SCC；由 `ARCH-107`/S2-L2 删除包根环和临时 policy。
+- 不拆分 TMDB 移植包，不把普通单向包外依赖误判为 SCC 成员扩张。
+- 不修改 `app/plugins/**`、运行时代码或独立插件仓。
 
 **Acceptance**
 
 ```bash
-.venv/bin/python -m pytest tests/test_architecture_documentation.py -q
-.venv/bin/python scripts/architecture/baseline.py --check-host
-rg -n 'SubscribeOper\(\)|SystemConfigOper\(\)|UserConfigOper\(\)' docs/rules
+.venv/bin/python -m pytest \
+  tests/test_architecture_dependencies.py \
+  tests/test_architecture_baseline_cli.py -q
+.venv/bin/python scripts/architecture/baseline.py --check-host --diagnostics
+.venv/bin/python scripts/architecture/ruff_ratchet.py
+.venv/bin/python scripts/architecture/mypy_ratchet.py
+.venv/bin/pylint tests/test_architecture_dependencies.py
 git diff --check
 ```
 
 **Delivery**
 
-- 单一提交主题：统一宿主持久化规范并建立文档门禁。
+- 单一提交主题：建立完整宿主 SCC policy 与 zero-growth 语义门禁。
 - 推送 `origin/v3` 后确认提交祖先关系、远端 SHA 和 ahead/behind `0/0`。

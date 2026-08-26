@@ -156,7 +156,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   与生产路径显式 UoW 规则冲突；该项已由 S0-L2.1 修复并增加文档门禁。
 - `docs/rules/05-architecture.md:507` 禁止 `application -> concrete adapter`，但同一文档
   `177-183` 又要求 RSS 消费 network adapter；当前测试没有形式化这类例外。
-- 规则 `docs/rules/05-architecture.md:516` 禁止任意模块级环，实际 SCC 测试只覆盖特定根。
+- 审计时完整 SCC 只进入生成快照，语义测试只覆盖特定根；S0-L2.2 已增加完整宿主 SCC policy 门禁。
 - 架构总览此前仍记录 811 模块、6,572 条边和 1 个 SCC，已经落后于当前基线。
 - Event consumer 扫描把任意名为 `.register()` 的调用都当成事件注册，存在明确误报。
 
@@ -165,7 +165,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [ ] 指定一个机器可读事实源，文档指标由 fixture 生成或只保留不易漂移的语义描述。
 - [x] 修正 Oper 示例，分别展示宿主显式 UoW 与插件兼容 Facade，并以文档测试禁止回退。
 - [ ] 对 Adapter 规则作出明确决策：允许哪些通用技术机制，哪些命名外部/持久化能力必须注入。
-- [ ] 让 SCC 规则、精确 allowlist 和文档声明一致。
+- [x] 让 SCC 规则、精确 policy 和文档声明一致；Chain 临时债务与 TMDB vendor containment 分开治理。
 - [ ] Event 扫描只识别 EventManager 实例/别名和事件装饰器。
 - [ ] CI 分开报告“快照一致”与“语义规则通过”，禁止把前者表述为架构完全正确。
 

@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "dependency_kind": "static_runtime_imports",
+    "excluded_roots": [
+      "app/plugins"
+    ],
+    "include_parent_package_initialization": true,
+    "root": "app"
+  },
+  "allowed_sccs": [
+    {
+      "classification": "temporary_debt",
+      "id": "chain-package-root",
+      "modules": [
+        "app.chain",
+        "app.chain._messaging",
+        "app.chain._recognition"
+      ],
+      "reason": "ChainBase 仍由包根导出，包根又加载消息和识别实现；S2-L2 负责拆出 app.chain.base 并清零该环。",
+      "tracking": "ARCH-107"
+    },
+    {
+      "classification": "contained_vendor",
+      "id": "themoviedb-vendored-package",
+      "modules": [
+        "app.modules.themoviedb",
+        "app.modules.themoviedb.scraper",
+        "app.modules.themoviedb.tmdbapi",
+        "app.modules.themoviedb.tmdbv3api",
+        "app.modules.themoviedb.tmdbv3api.objs.account",
+        "app.modules.themoviedb.tmdbv3api.objs.auth",
+        "app.modules.themoviedb.tmdbv3api.objs.certification",
+        "app.modules.themoviedb.tmdbv3api.objs.change",
+        "app.modules.themoviedb.tmdbv3api.objs.collection",
+        "app.modules.themoviedb.tmdbv3api.objs.company",
+        "app.modules.themoviedb.tmdbv3api.objs.configuration",
+        "app.modules.themoviedb.tmdbv3api.objs.credit",
+        "app.modules.themoviedb.tmdbv3api.objs.discover",
+        "app.modules.themoviedb.tmdbv3api.objs.episode",
+        "app.modules.themoviedb.tmdbv3api.objs.find",
+        "app.modules.themoviedb.tmdbv3api.objs.genre",
+        "app.modules.themoviedb.tmdbv3api.objs.group",
+        "app.modules.themoviedb.tmdbv3api.objs.keyword",
+        "app.modules.themoviedb.tmdbv3api.objs.list",
+        "app.modules.themoviedb.tmdbv3api.objs.movie",
+        "app.modules.themoviedb.tmdbv3api.objs.network",
+        "app.modules.themoviedb.tmdbv3api.objs.person",
+        "app.modules.themoviedb.tmdbv3api.objs.provider",
+        "app.modules.themoviedb.tmdbv3api.objs.review",
+        "app.modules.themoviedb.tmdbv3api.objs.search",
+        "app.modules.themoviedb.tmdbv3api.objs.season",
+        "app.modules.themoviedb.tmdbv3api.objs.trending",
+        "app.modules.themoviedb.tmdbv3api.objs.tv",
+        "app.modules.themoviedb.tmdbv3api.tmdb"
+      ],
+      "reason": "隔离的移植代码保持精确成员 containment；普通单向包外依赖允许，任何成员扩张或包外反向入环均失败。",
+      "tracking": "replace-or-upgrade-vendored-package"
+    }
+  ]
+}

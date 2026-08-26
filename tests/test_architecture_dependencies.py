@@ -1,11 +1,23 @@
 import ast
+import json
 from functools import lru_cache
 from pathlib import Path
 
-from scripts.architecture.baseline import iter_runtime_import_nodes
+from scripts.architecture.baseline import (
+    discover_modules as _discover_modules,
+)
+from scripts.architecture.baseline import (
+    resolve_imports as _resolve_imports,
+)
+from scripts.architecture.baseline import (
+    strongly_connected_components as _strongly_connected_components,
+)
 
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
+DEPENDENCY_POLICY_PATH = (
+    PROJECT_ROOT / "tests" / "fixtures" / "architecture" / "dependency-policy.json"
+)
 LEGACY_ROOTS = ("app.core", "app.helper", "app.utils")
 LEGACY_MODULES = {"app.log"}
 IMPLEMENTATION_ROOTS = (
@@ -153,111 +165,6 @@ FORBIDDEN_IMPORT_PREFIXES = {
         "app.runtime.extensions.module_manager",
     ),
 }
-
-
-def _discover_modules() -> dict[str, Path]:
-    """建立实际 Python 模块名到源码路径的映射。
-
-    `app/plugins/` 由插件仓自治（包含独立第三方实现与未完成文件），
-    不参与宿主架构图分析。
-    """
-    modules: dict[str, Path] = {}
-    for path in APP_ROOT.rglob("*.py"):
-        relative = path.relative_to(PROJECT_ROOT).with_suffix("")
-        parts = list(relative.parts)
-        if parts[0] == "app" and parts[1] == "plugins":
-            continue
-        if parts[-1] == "__init__":
-            parts.pop()
-        modules[".".join(parts)] = path
-    return modules
-
-
-def _resolve_imports(
-    module_name: str,
-    path: Path,
-    known_modules: set[str],
-) -> set[str]:
-    """解析一个模块的静态导入，并计入 Python 必然初始化的父包。"""
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    package = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
-    dependencies: set[str] = set()
-    for node in iter_runtime_import_nodes(tree):
-        candidates: list[str] = []
-        if isinstance(node, ast.Import):
-            candidates.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                package_parts = package.split(".")
-                base = ".".join(package_parts[: len(package_parts) - node.level + 1])
-                imported_module = ".".join(
-                    part for part in (base, node.module or "") if part
-                )
-            else:
-                imported_module = node.module or ""
-            if imported_module:
-                candidates.append(imported_module)
-                candidates.extend(
-                    f"{imported_module}.{alias.name}"
-                    for alias in node.names
-                    if alias.name != "*"
-                )
-
-        for candidate in candidates:
-            parts = candidate.split(".")
-            dependencies.update(
-                parent
-                for index in range(2, len(parts))
-                if (parent := ".".join(parts[:index])) in known_modules
-            )
-            if candidate in known_modules:
-                dependencies.add(candidate)
-    dependencies.discard(module_name)
-    return dependencies
-
-
-def _strongly_connected_components(
-    graph: dict[str, set[str]],
-) -> list[set[str]]:
-    """使用 Tarjan 算法返回依赖图中的非平凡强连通分量。"""
-    indices: dict[str, int] = {}
-    low_links: dict[str, int] = {}
-    stack: list[str] = []
-    on_stack: set[str] = set()
-    components: list[set[str]] = []
-
-    def visit(module_name: str) -> None:
-        """深度遍历一个模块并在根节点处收集强连通分量。"""
-        indices[module_name] = len(indices)
-        low_links[module_name] = indices[module_name]
-        stack.append(module_name)
-        on_stack.add(module_name)
-        for dependency in graph[module_name]:
-            if dependency not in indices:
-                visit(dependency)
-                low_links[module_name] = min(
-                    low_links[module_name], low_links[dependency]
-                )
-            elif dependency in on_stack:
-                low_links[module_name] = min(
-                    low_links[module_name], indices[dependency]
-                )
-        if low_links[module_name] != indices[module_name]:
-            return
-        component: set[str] = set()
-        while stack:
-            dependency = stack.pop()
-            on_stack.remove(dependency)
-            component.add(dependency)
-            if dependency == module_name:
-                break
-        if len(component) > 1:
-            components.append(component)
-
-    for module_name in sorted(graph):
-        if module_name not in indices:
-            visit(module_name)
-    return components
 
 
 def _legacy_imports(path: Path) -> set[str]:
@@ -1152,6 +1059,126 @@ def _build_module_graph() -> dict[str, set[str]]:
         name: _resolve_imports(name, path, known_modules)
         for name, path in modules.items()
     }
+
+
+def _load_dependency_policy() -> dict:
+    """读取人工审查的依赖语义 policy；生成基线不得改写该文件。"""
+    return json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
+
+
+def _scc_policy_violations(
+    graph: dict[str, set[str]],
+    entries: list[dict],
+) -> tuple[list[list[str]], list[list[str]]]:
+    """返回未审查 SCC 与已经失效但未清理的 policy SCC。"""
+    actual = {
+        tuple(component)
+        for component in _strongly_connected_components(graph)
+    }
+    reviewed = {tuple(entry["modules"]) for entry in entries}
+    return (
+        [list(component) for component in sorted(actual - reviewed)],
+        [list(component) for component in sorted(reviewed - actual)],
+    )
+
+
+def test_complete_host_sccs_match_reviewed_policy() -> None:
+    """完整宿主图的每个 SCC 都必须精确匹配人工 policy，且不得保留陈旧项。"""
+    policy = _load_dependency_policy()
+    entries = policy["allowed_sccs"]
+
+    assert policy["schema_version"] == 1
+    assert policy["scope"] == {
+        "dependency_kind": "static_runtime_imports",
+        "excluded_roots": ["app/plugins"],
+        "include_parent_package_initialization": True,
+        "root": "app",
+    }
+    assert {entry["classification"] for entry in entries} == {
+        "contained_vendor",
+        "temporary_debt",
+    }
+    assert len({entry["id"] for entry in entries}) == len(entries)
+    assert all(entry["modules"] == sorted(set(entry["modules"])) for entry in entries)
+    assert all(entry["reason"] and entry["tracking"] for entry in entries)
+    all_members = [member for entry in entries for member in entry["modules"]]
+    assert len(all_members) == len(set(all_members))
+
+    temporary = next(
+        entry for entry in entries if entry["classification"] == "temporary_debt"
+    )
+    assert temporary["id"] == "chain-package-root"
+    assert temporary["tracking"] == "ARCH-107"
+    assert temporary["modules"] == [
+        "app.chain",
+        "app.chain._messaging",
+        "app.chain._recognition",
+    ]
+
+    vendor = next(
+        entry for entry in entries if entry["classification"] == "contained_vendor"
+    )
+    assert vendor["id"] == "themoviedb-vendored-package"
+    assert vendor["tracking"] == "replace-or-upgrade-vendored-package"
+    assert len(vendor["modules"]) == 29
+    assert all(
+        member.startswith("app.modules.themoviedb")
+        for member in vendor["modules"]
+    )
+
+    unreviewed, stale = _scc_policy_violations(_build_module_graph(), entries)
+    assert unreviewed == []
+    assert stale == []
+
+
+def test_scc_policy_rejects_unreviewed_cycles_in_every_host_root() -> None:
+    """API、Chain、Module 与 Startup 内的新环都必须落入未审查集合。"""
+    for root in ("app.api", "app.chain", "app.modules", "app.startup"):
+        first = f"{root}.first"
+        second = f"{root}.second"
+        unreviewed, stale = _scc_policy_violations(
+            {first: {second}, second: {first}},
+            [],
+        )
+        assert unreviewed == [[first, second]]
+        assert stale == []
+
+
+def test_scc_policy_rejects_changed_or_stale_membership() -> None:
+    """已知 SCC 缩小、扩大或消失后必须同步审查 policy，不能静默放行。"""
+    entries = [{"modules": ["app.chain.first", "app.chain.second", "app.chain.third"]}]
+    unreviewed, stale = _scc_policy_violations(
+        {
+            "app.chain.first": {"app.chain.second"},
+            "app.chain.second": {"app.chain.first"},
+            "app.chain.third": set(),
+        },
+        entries,
+    )
+    assert unreviewed == [["app.chain.first", "app.chain.second"]]
+    assert stale == [["app.chain.first", "app.chain.second", "app.chain.third"]]
+
+
+def test_contained_vendor_scc_may_have_one_way_outbound_dependency() -> None:
+    """vendor SCC 的普通单向向下依赖不应把包外模块误纳入 containment。"""
+    first = "app.modules.themoviedb.first"
+    second = "app.modules.themoviedb.second"
+    domain = "app.domain.media"
+    entries = [{"modules": [first, second]}]
+    unreviewed, stale = _scc_policy_violations(
+        {first: {second, domain}, second: {first}, domain: set()},
+        entries,
+    )
+    assert unreviewed == []
+    assert stale == []
+
+
+def test_host_dependency_graph_excludes_plugin_copies() -> None:
+    """`app/plugins/**` 是运行时副本，不能进入宿主模块或 SCC 图。"""
+    assert all(
+        not module.startswith("app.plugins")
+        for module in _discover_modules()
+    )
 
 
 def test_chain_does_not_import_agent_implementation():

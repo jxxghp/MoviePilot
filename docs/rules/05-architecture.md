@@ -493,6 +493,29 @@ Durable post-commit side effects have a separate boundary:
   functional and emits one actionable warning per plugin and legacy module.
 - Delayed imports are not accepted as a way to hide dependency cycles.
 
+### Dependency facts and semantic policy
+
+`tests/fixtures/architecture/dependency-baseline.json` is generated evidence: it
+records the complete host module graph, edges and SCCs while excluding
+`app/plugins/**`. It does not approve those facts. Human-reviewed classifications
+live separately in `tests/fixtures/architecture/dependency-policy.json`, and
+`scripts/architecture/baseline.py --write-host` must never create or update that
+policy.
+
+The semantic architecture test compares every SCC in the complete host graph with
+the exact member sets in policy. A new SCC, member expansion, changed member set,
+or stale policy entry fails. The current policy has only two classifications:
+
+- `temporary_debt`: the three-module `app.chain` package-root cycle, owned by
+  `ARCH-107` and removed when `ChainBase` moves to `app.chain.base`.
+- `contained_vendor`: the exact 29-module TMDB vendored SCC. It may have ordinary
+  one-way dependencies outside the package, but no outside module may join the SCC
+  and its member set may not grow.
+
+The target remains zero canonical host cycles except the precisely contained
+vendor component. A temporary policy entry is an executable migration obligation,
+not precedent for approving another cycle.
+
 ## Permitted Call Directions
 
 | Direction | Status |
@@ -513,7 +536,7 @@ Durable post-commit side effects have a separate boundary:
 | `foundation -> other app packages` | Forbidden |
 | `canonical implementation -> sdk / compat` | Forbidden |
 | `compat -> canonical implementation at module import time` | Forbidden |
-| Any import that creates a module-level cycle | Forbidden |
+| Any import that creates a module-level cycle | Forbidden; the complete host graph must match the exact reviewed SCC policy, and temporary debt must have a removal owner |
 
 ## Key File Locations
 
@@ -592,4 +615,4 @@ imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
 modules only through `run_module` dispatch), and downloader SDK
 (`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
 
-*Last Updated: 2026-08-24*
+*Last Updated: 2026-08-27*

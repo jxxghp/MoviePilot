@@ -668,6 +668,9 @@ flowchart LR
   物理遗留源码、禁止的上向依赖、SDK/compat 反向引用、包含迁移模块的强连通分量、
   模块间/模块到 Chain 的 import、入口层对 `app.modules` 内部的 import、
   Chain 直接 import 模块内部（必须走 `run_module` 分发）、`app/chain` 内的下载器 SDK 依赖。
+- `tests/fixtures/architecture/dependency-baseline.json` 记录生成事实；人工审查的 SCC 分类单独存入
+  `dependency-policy.json`。完整宿主 SCC 必须精确匹配 policy，新增、扩大、变形和陈旧 policy 都失败；
+  `--write-host` 不会替代人工决策。
 - 任何所有权迁移必须同步更新：canonical 导入、`app/runtime/compat/manifest.py`、
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。
@@ -681,7 +684,7 @@ flowchart LR
 |---|---:|
 | Python 模块 | 835 |
 | 内部导入边 | 6,810 |
-| 非平凡 SCC | 2（Chain 包根环与隔离的 TMDB 移植包环） |
+| 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
 | Module Contract V2 spec | 215（其中 214 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Model/Oper 自动事务与自建 Session | 0 |
