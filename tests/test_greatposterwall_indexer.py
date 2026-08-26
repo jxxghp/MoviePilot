@@ -1,3 +1,4 @@
+from app.adapters.system import rust as rust_accel
 from app.modules.indexer.parser.gazelle import GazelleSiteUserInfo
 from app.modules.indexer.spider import SiteSpider
 
@@ -10,7 +11,8 @@ GPW_HTML = """
         <span class="TableTorrent-titleActions">
           <a href="/torrents.php?action=download&amp;id=115362">DL</a>
         </span>
-        <a href="/torrents.php?id=8064&amp;torrentid=115362">
+        <a data-tooltip="Nobody.2025.1080p.WEB-DL.H.265-Example-GROUP.mkv"
+           href="/torrents.php?id=8064&amp;torrentid=115362">
           <span class="TorrentTitle">
             <span class="TorrentTitle-item resolution">1080p</span>
             <span class="TorrentTitle-item is-releaseGroup">Example-GROUP</span>
@@ -55,7 +57,16 @@ def _gpw_indexer() -> dict:
                         {"name": "re_search", "args": [r"torrentid=(\d+)", 1]}
                     ],
                 },
-                "title": {"selector": f"{detail_selector} > span.TorrentTitle"},
+                "title_default": {"selector": f"{detail_selector} > span.TorrentTitle"},
+                "title_optional": {
+                    "selector": detail_selector,
+                    "attribute": "data-tooltip",
+                    "optional": True,
+                },
+                "title": {
+                    "text": "{% if fields['title_optional'] %}{{ fields['title_optional'] }}"
+                            "{% else %}{{ fields['title_default'] }}{% endif %}"
+                },
                 "details": {"selector": detail_selector, "attribute": "href"},
                 "download": {
                     "selector": 'a[href*="torrents.php?action=download"]',
@@ -90,8 +101,8 @@ def _build_parser() -> GazelleSiteUserInfo:
     )
 
 
-def test_greatposterwall_search_parses_tabletorrent_row(monkeypatch):
-    """GPW 搜索结果应从 TableTorrent 行提取完整种子信息。"""
+def test_greatposterwall_python_search_prefers_complete_filename(monkeypatch):
+    """GPW Python 解析应优先使用详情链接携带的完整文件名。"""
     monkeypatch.setattr(
         "app.modules.indexer.spider.rust_accel.parse_indexer_torrents",
         lambda **_: None,
@@ -100,7 +111,7 @@ def test_greatposterwall_search_parses_tabletorrent_row(monkeypatch):
     results = SiteSpider(_gpw_indexer(), keyword="Example").parse(GPW_HTML)
 
     assert len(results) == 1
-    assert results[0]["title"] == "1080p Example-GROUP"
+    assert results[0]["title"] == "Nobody.2025.1080p.WEB-DL.H.265-Example-GROUP.mkv"
     assert results[0]["page_url"].endswith("torrents.php?id=8064&torrentid=115362")
     assert results[0]["enclosure"].endswith("torrents.php?action=download&id=115362")
     assert results[0]["size"] == 1610612736
@@ -108,6 +119,37 @@ def test_greatposterwall_search_parses_tabletorrent_row(monkeypatch):
     assert results[0]["peers"] == 2
     assert results[0]["grabs"] == 12
     assert results[0]["pubdate"] == "2026-08-24 22:51:00"
+
+
+def test_greatposterwall_rust_search_prefers_complete_filename(monkeypatch):
+    """GPW Rust 解析应使用与 Python 相同的完整文件名配置。"""
+    monkeypatch.setattr(rust_accel, "is_enabled", lambda: True)
+
+    def fail_python_fallback(*_args, **_kwargs):
+        """Rust 返回空值时阻止测试静默落入 Python 路径。"""
+        raise AssertionError("GPW Rust 解析不应回退 Python")
+
+    monkeypatch.setattr(SiteSpider, "get_info", fail_python_fallback)
+
+    results = SiteSpider(_gpw_indexer(), keyword="Nobody").parse(GPW_HTML)
+
+    assert results[0]["title"] == "Nobody.2025.1080p.WEB-DL.H.265-Example-GROUP.mkv"
+
+
+def test_greatposterwall_search_falls_back_to_visible_title(monkeypatch):
+    """详情链接缺少完整文件名时应保留可见规格标题作为回退。"""
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.rust_accel.parse_indexer_torrents",
+        lambda **_: None,
+    )
+    html_without_tooltip = GPW_HTML.replace(
+        ' data-tooltip="Nobody.2025.1080p.WEB-DL.H.265-Example-GROUP.mkv"',
+        "",
+    )
+
+    results = SiteSpider(_gpw_indexer(), keyword="Nobody").parse(html_without_tooltip)
+
+    assert results[0]["title"] == "1080p Example-GROUP"
 
 
 def test_greatposterwall_seeding_uses_semantic_stat_cells():
