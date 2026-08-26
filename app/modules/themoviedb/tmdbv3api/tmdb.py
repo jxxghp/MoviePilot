@@ -10,9 +10,8 @@ import requests
 import requests.exceptions
 
 from app.runtime.cache import cached, fresh, async_fresh
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from .exceptions import TMDbException, TMDbConnectionError
 
@@ -44,7 +43,7 @@ def _is_empty_result_snapshot(snapshot) -> bool:
     判断响应快照是否为空结果（列表/搜索类接口的 results 为空列表）。
 
     这类快照结构合法但无业务内容，常由代理瞬时故障产生；不能靠 skip_none/skip_empty
-    识别（快照本身是非空字典），需单独谓词判定后按 settings.EMPTY_RESULT_CACHE_TTL
+    识别（快照本身是非空字典），需单独谓词判定后按 get_runtime_setting('EMPTY_RESULT_CACHE_TTL')
     短 TTL 缓存。详情类接口无 results 字段，不属于空结果。
     """
     if not isinstance(snapshot, dict):
@@ -60,13 +59,13 @@ class TMDb(object):
     _RESPONSE_SNAPSHOT_MARKER = "__mp_tmdb_response_snapshot__"
 
     def __init__(self, session=None, language=None):
-        self._api_key = settings.TMDB_API_KEY
-        self._language = language or settings.TMDB_LOCALE or "en-US"
+        self._api_key = get_runtime_setting('TMDB_API_KEY')
+        self._language = language or get_runtime_setting('TMDB_LOCALE') or "en-US"
         self._session_id = None
         self._session = session
         self._wait_on_rate_limit = True
-        self._proxies = settings.PROXY
-        self._domain = settings.TMDB_API_DOMAIN
+        self._proxies = get_runtime_setting('PROXY')
+        self._domain = get_runtime_setting('TMDB_API_DOMAIN')
         self._page = None
         self._total_results = None
         self._total_pages = None
@@ -76,7 +75,7 @@ class TMDb(object):
 
         # TMDB 在部分代理和运营商链路下的 HTTP/2 长连接偶发卡死，识别路径优先保证稳定性。
         self._async_req = AsyncRequestUtils(
-            ua=settings.NORMAL_USER_AGENT,
+            ua=get_runtime_setting('NORMAL_USER_AGENT'),
             proxies=self.proxies,
             http2=False,
         )
@@ -91,7 +90,7 @@ class TMDb(object):
         """
         self._session = session or requests.Session()
         self._req = RequestUtils(
-            ua=settings.NORMAL_USER_AGENT,
+            ua=get_runtime_setting('NORMAL_USER_AGENT'),
             session=self._session,
             proxies=self.proxies,
         )
@@ -175,9 +174,9 @@ class TMDb(object):
     def wait_on_rate_limit(self, wait_on_rate_limit):
         self._wait_on_rate_limit = bool(wait_on_rate_limit)
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True,
+    @cached(maxsize=get_runtime_setting('CONF').tmdb, ttl=get_runtime_setting('CONF').meta, skip_none=True,
             skip_if=_is_business_failure_snapshot,
-            empty_ttl=settings.EMPTY_RESULT_CACHE_TTL, empty_if=_is_empty_result_snapshot)
+            empty_ttl=get_runtime_setting('EMPTY_RESULT_CACHE_TTL'), empty_if=_is_empty_result_snapshot)
     def request(self, method, url, data, json, **kwargs):
         req = self._request_once(method, url, data, json)
         if req is None and method == "GET" and self._owns_session:
@@ -201,9 +200,9 @@ class TMDb(object):
             return self._req.get_res(url, params=data, json=json)
         return self._req.post_res(url, data=data, json=json)
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True,
+    @cached(maxsize=get_runtime_setting('CONF').tmdb, ttl=get_runtime_setting('CONF').meta, skip_none=True,
             skip_if=_is_business_failure_snapshot,
-            empty_ttl=settings.EMPTY_RESULT_CACHE_TTL, empty_if=_is_empty_result_snapshot)
+            empty_ttl=get_runtime_setting('EMPTY_RESULT_CACHE_TTL'), empty_if=_is_empty_result_snapshot)
     async def async_request(self, method, url, data, json, **kwargs):
         req = await self._async_request_once(method, url, data, json)
         if req is None:

@@ -9,9 +9,8 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import Context
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
@@ -104,7 +103,7 @@ class RecognizeMediaTool(MoviePilotTool):
                 }, ensure_ascii=False)
 
             is_audio_path = bool(
-                path and Path(path).suffix.lower() in settings.RMT_AUDIOEXT
+                path and Path(path).suffix.lower() in get_runtime_setting('RMT_AUDIOEXT')
             )
             recognize_music = media_type_enum == MediaType.MUSIC or (
                 media_type_enum is None and is_audio_path

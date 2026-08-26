@@ -46,10 +46,11 @@ def _patch_market_paths(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
     plugin_root.mkdir(parents=True)
     config_dir.mkdir(parents=True)
     monkeypatch.setattr(market_module, "PLUGIN_DIR", plugin_root)
+    runtime_settings = SimpleNamespace(CONFIG_PATH=config_dir)
     monkeypatch.setattr(
         market_module,
-        "settings",
-        SimpleNamespace(CONFIG_PATH=config_dir),
+        "get_runtime_setting",
+        lambda key, default=None: getattr(runtime_settings, key, default),
     )
     monkeypatch.setattr(
         market_module.SystemUtils,

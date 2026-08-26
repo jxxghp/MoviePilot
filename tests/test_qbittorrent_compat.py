@@ -84,13 +84,6 @@ def _load_qbittorrent_modules():
         def get(self, *_args, **_kwargs):
             return None
 
-    class _RuntimeSettingsCompat:
-        """隔离测试用动态配置代理，保持生产模块的兼容读取语义。"""
-
-        def __getattr__(self, key):
-            """从测试提供的旧 Settings 桩读取配置项。"""
-            return getattr(config_module.settings, key)
-
     class _MetaInfo:
         def __init__(self, name):
             self.name = name
@@ -195,7 +188,9 @@ def _load_qbittorrent_modules():
     log_module.logger = _Logger()
     cache_module.FileCache = _FileCache
     config_module.settings = types.SimpleNamespace(TORRENT_TAG="moviepilot-tag")
-    runtime_settings_module.RuntimeSettingsCompat = _RuntimeSettingsCompat
+    runtime_settings_module.get_runtime_setting = lambda key, default=None: getattr(
+        config_module.settings, key, default
+    )
     metainfo_module.MetaInfo = _MetaInfo
     schema_dashboard_module.DownloaderInfo = object
     schema_transfer_module.TransferTorrent = object

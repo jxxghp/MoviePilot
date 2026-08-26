@@ -8,9 +8,8 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.messaging.ingress import forward_message_to_host
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
@@ -266,7 +265,7 @@ class Slack:
         try:
             headers = {
                 "Authorization": f"Bearer {self._oauth_token}",
-                "User-Agent": settings.USER_AGENT,
+                "User-Agent": get_runtime_setting('USER_AGENT'),
                 "Accept": "*/*",
             }
             resp = RequestUtils(headers=headers, timeout=30).get_res(file_url)

@@ -1,9 +1,8 @@
 from typing import Any, Optional, Tuple, Union
 
 from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -553,20 +552,20 @@ class TheAudioDbModule(_ModuleBase):
         return results
 
     @classmethod
-    @cached(maxsize=settings.CONF.theaudiodb, ttl=settings.CONF.meta, skip_none=True)
+    @cached(maxsize=get_runtime_setting('CONF').theaudiodb, ttl=get_runtime_setting('CONF').meta, skip_none=True)
     def _request_json(
             cls,
             endpoint: str,
             params: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
         """请求 TheAudioDB V1 JSON 接口并统一处理错误响应。"""
-        api_key = str(settings.THEAUDIODB_API_KEY or "").strip()
+        api_key = str(get_runtime_setting('THEAUDIODB_API_KEY') or "").strip()
         if not api_key:
             logger.warning("TheAudioDB API Key 未配置，跳过请求")
             return None
         response = RequestUtils(
-            ua=settings.USER_AGENT,
-            proxies=settings.PROXY,
+            ua=get_runtime_setting('USER_AGENT'),
+            proxies=get_runtime_setting('PROXY'),
             timeout=30,
         ).get_res(
             url=f"{cls._base_url}/{api_key}/{endpoint}",
@@ -594,8 +593,8 @@ class TheAudioDbModule(_ModuleBase):
 
     @classmethod
     @cached(
-        maxsize=settings.CONF.theaudiodb,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').theaudiodb,
+        ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
         shared_key="_request_json",
     )
@@ -605,13 +604,13 @@ class TheAudioDbModule(_ModuleBase):
             params: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
         """异步请求 TheAudioDB V1 JSON 接口并统一处理错误响应。"""
-        api_key = str(settings.THEAUDIODB_API_KEY or "").strip()
+        api_key = str(get_runtime_setting('THEAUDIODB_API_KEY') or "").strip()
         if not api_key:
             logger.warning("TheAudioDB API Key 未配置，跳过请求")
             return None
         response = await AsyncRequestUtils(
-            ua=settings.USER_AGENT,
-            proxies=settings.PROXY,
+            ua=get_runtime_setting('USER_AGENT'),
+            proxies=get_runtime_setting('PROXY'),
             timeout=30,
         ).get_res(
             url=f"{cls._base_url}/{api_key}/{endpoint}",

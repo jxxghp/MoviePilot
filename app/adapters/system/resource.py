@@ -5,17 +5,11 @@ import sysconfig
 from pathlib import Path
 from typing import Callable
 
-from app.runtime import config as _runtime_config
-from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
-from app.foundation.version import compare_version
 from app.adapters.system.host import SystemUtils
+from app.foundation.version import compare_version
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-
-
-# 保留模块级旧 Settings 入口，旧插件和测试可能仍会对其做运行时覆盖；实现读取统一走 runtime 端口。
-settings = _runtime_config.settings
-
 
 ResourceVersionProvider = Callable[[], tuple[str, str]]
 
@@ -39,9 +33,9 @@ class ResourceHelper:
     检测和更新资源包
     """
 
-    _base_dir: Path = get_runtime_setting("ROOT_PATH")
+    _base_dir: Path = get_runtime_setting('ROOT_PATH')
     _resource_target = Path("app/application/site")
-    _version_flag = get_runtime_setting("RESOURCE_VERSION_FLAG")
+    _version_flag = get_runtime_setting('RESOURCE_VERSION_FLAG')
     _repo = (
         f"{get_runtime_setting('GITHUB_PROXY')}https://raw.githubusercontent.com/"
         f"jxxghp/MoviePilot-Resources/main/package.{_version_flag}.json"
@@ -56,8 +50,8 @@ class ResourceHelper:
         """返回访问 GitHub 资源时应使用的代理配置。"""
         return (
             None
-            if get_runtime_setting("GITHUB_PROXY")
-            else get_runtime_setting("PROXY")
+            if get_runtime_setting('GITHUB_PROXY')
+            else get_runtime_setting('PROXY')
         )
 
     @staticmethod
@@ -97,7 +91,7 @@ class ResourceHelper:
         """读取 V3 资源清单。"""
         response = RequestUtils(
             proxies=self.proxies,
-            headers=get_runtime_setting("GITHUB_HEADERS"),
+            headers=get_runtime_setting('GITHUB_HEADERS'),
             timeout=10,
         ).get_res(self._repo)
         return response if response and response.status_code == 200 else None
@@ -115,7 +109,7 @@ class ResourceHelper:
         :param indexer_version: 当前已加载的站点索引资源版本；省略时使用组合根注入值
         :return: 是否成功安装了需要由上层处理重启的新资源
         """
-        if not get_runtime_setting("AUTO_UPDATE_RESOURCE"):
+        if not get_runtime_setting('AUTO_UPDATE_RESOURCE'):
             return False
         if SystemUtils.is_frozen():
             return False
@@ -170,8 +164,8 @@ class ResourceHelper:
                     if need_updates:
                         # 下载文件信息列表
                         r = RequestUtils(
-                            proxies=get_runtime_setting("PROXY"),
-                            headers=get_runtime_setting("GITHUB_HEADERS"),
+                            proxies=get_runtime_setting('PROXY'),
+                            headers=get_runtime_setting('GITHUB_HEADERS'),
                             timeout=30,
                         ).get_res(self._files_api)
                         if r and not r.ok:
@@ -201,7 +195,7 @@ class ResourceHelper:
                                 )
                                 res = RequestUtils(
                                     proxies=self.proxies,
-                                    headers=get_runtime_setting("GITHUB_HEADERS"),
+                                    headers=get_runtime_setting('GITHUB_HEADERS'),
                                     timeout=180,
                                 ).get_res(download_url)
                                 if not res:

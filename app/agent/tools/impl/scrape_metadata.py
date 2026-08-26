@@ -10,9 +10,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.workflow import FileItem
 from app.schemas.types import (
@@ -184,7 +183,7 @@ class ScrapeMetadataTool(MoviePilotTool):
             scraping_chain = ScrapingChain()
             is_audio_file = (
                 fileitem.type == "file"
-                and Path(path).suffix.lower() in settings.RMT_AUDIOEXT
+                and Path(path).suffix.lower() in get_runtime_setting('RMT_AUDIOEXT')
             )
             scrape_music = media_type_enum == MediaType.MUSIC or (
                 media_type_enum is None and is_audio_file

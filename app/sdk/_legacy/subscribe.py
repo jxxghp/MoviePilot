@@ -1,8 +1,12 @@
 """把旧订阅 Oper 写入调用转交给新的应用服务。"""
 
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
-from app.application.subscription.write import add_subscribe, async_add_subscribe
+from app.application.subscription.write import (
+    SubscribeWriter,
+    add_subscribe,
+    async_add_subscribe,
+)
 from app.db.oper.subscribe import SubscribeOper as CanonicalSubscribeOper
 from app.domain.context import MediaInfo, MusicInfo
 
@@ -10,11 +14,12 @@ from app.domain.context import MediaInfo, MusicInfo
 class SubscribeOper(CanonicalSubscribeOper):
     """保留旧 ``mediainfo`` 写入签名，同时继承新的查询接口。"""
 
-    def add(
+    # 旧插件 ABI 以 mediainfo 为首参，故签名有意宽于 canonical Oper。
+    def add(  # type: ignore[override]
             self,
             mediainfo: Optional[MediaInfo | MusicInfo] = None,
             **kwargs: Any,
-    ):
+    ) -> tuple[int, str]:
         """
         兼容旧订阅写入；应用服务回调的新字典签名直接交给 canonical Oper。
 
@@ -35,16 +40,17 @@ class SubscribeOper(CanonicalSubscribeOper):
                 username=username,
             )
         return add_subscribe(
-            mediainfo=mediainfo,
-            subscribe_oper=self,
+            mediainfo=cast(MediaInfo | MusicInfo, mediainfo),
+            subscribe_oper=cast(SubscribeWriter, self),
             **kwargs,
         )
 
-    async def async_add(
+    # 异步入口保留相同的旧插件双签名合同。
+    async def async_add(  # type: ignore[override]
             self,
             mediainfo: Optional[MediaInfo | MusicInfo] = None,
             **kwargs: Any,
-    ):
+    ) -> tuple[int, str]:
         """
         异步兼容旧订阅写入；新字典签名直接交给 canonical Oper。
 
@@ -65,8 +71,8 @@ class SubscribeOper(CanonicalSubscribeOper):
                 username=username,
             )
         return await async_add_subscribe(
-            mediainfo=mediainfo,
-            subscribe_oper=self,
+            mediainfo=cast(MediaInfo | MusicInfo, mediainfo),
+            subscribe_oper=cast(SubscribeWriter, self),
             **kwargs,
         )
 

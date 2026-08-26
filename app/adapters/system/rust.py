@@ -17,7 +17,7 @@ else:
 
 def _rust_accel_enabled() -> bool:
     """读取 Rust 开关快照，组合根未装配时回退旧 Settings。"""
-    return bool(get_runtime_setting("RUST_ACCEL"))
+    return bool(get_runtime_setting('RUST_ACCEL'))
 
 
 def is_required() -> bool:

@@ -10,13 +10,14 @@ from app.adapters.system.plugin.package import PluginPackageManager
 
 def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:
     """构造使用隔离运行目录和事务目录的插件包管理器。"""
+    settings = SimpleNamespace(
+        ROOT_PATH=tmp_path,
+        TEMP_PATH=tmp_path / "temp",
+        CONFIG_PATH=tmp_path / "config",
+    )
     monkeypatch.setattr(
-        "app.adapters.system.plugin.package.settings",
-        SimpleNamespace(
-            ROOT_PATH=tmp_path,
-            TEMP_PATH=tmp_path / "temp",
-            CONFIG_PATH=tmp_path / "config",
-        ),
+        "app.adapters.system.plugin.package.get_runtime_setting",
+        lambda key: getattr(settings, key),
     )
     return PluginPackageManager(helper=Mock())
 

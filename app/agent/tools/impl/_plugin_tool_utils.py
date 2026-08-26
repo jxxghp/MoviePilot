@@ -9,11 +9,10 @@ from app.adapters.external.market import PluginHelper
 from app.application.configuration import get_configured_system_config
 from app.application.plugin.gateway import get_plugin_install_service
 from app.application.plugin.runtime import get_plugin_manager
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
-settings = RuntimeSettingsCompat()
 
 # 默认只向智能体返回一个可读预览，避免超大插件数据挤爆上下文窗口。
 DEFAULT_PLUGIN_DATA_PREVIEW_CHARS = 12_000
@@ -395,7 +394,7 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
         elif was_clone:
             plugin_manager.delete_plugin_config(plugin_id)
             plugin_manager.delete_plugin_data(plugin_id)
-            plugin_base_dir = settings.ROOT_PATH / "app" / "plugins" / plugin_id.lower()
+            plugin_base_dir = get_runtime_setting('ROOT_PATH') / "app" / "plugins" / plugin_id.lower()
             try:
                 clone_files_removed = await run_agent_blocking(
                     "plugin",

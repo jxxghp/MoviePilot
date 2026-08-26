@@ -10,13 +10,11 @@ from alembic.util import CommandError
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.db.base import Base
 from app.db.engine import get_engine
 from app.db.models import load_all_models
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.startup.composition.database import build_database_governance
 
 
@@ -27,7 +25,7 @@ def _build_alembic_config(engine: Engine | None = None) -> Config:
     alembic_cfg.file_config = _ConfigParser(interpolation=None)
     alembic_cfg.set_main_option(
         'script_location',
-        str(settings.ROOT_PATH / 'database'),
+        str(get_runtime_setting('ROOT_PATH') / 'database'),
     )
     alembic_cfg.set_main_option(
         'sqlalchemy.url',
@@ -105,8 +103,8 @@ def prepare_database(*, before_alembic: Callable[[], None] | None = None) -> Non
     )
     if (
         requires_migration
-        and settings.DB_BACKUP_ENABLE
-        and settings.DB_BACKUP_ON_UPGRADE
+        and get_runtime_setting('DB_BACKUP_ENABLE')
+        and get_runtime_setting('DB_BACKUP_ON_UPGRADE')
     ):
         current_version = current_heads[0] if current_heads else "未标记"
         target_version = target_heads[0]

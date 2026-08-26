@@ -7,9 +7,8 @@ from enum import Enum
 from typing import List, Optional, Union
 from urllib.parse import quote
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils, requests
 
@@ -583,7 +582,7 @@ class Api:
         else:
             queries_unquoted = None
         headers = {
-            "User-Agent": settings.USER_AGENT,
+            "User-Agent": get_runtime_setting('USER_AGENT'),
             "Accept": "application/json",
             "Referer": self._host,
             "Authorization": self._token,

@@ -1310,6 +1310,89 @@ def test_modules_read_deployment_settings_through_runtime_port():
     assert violations == []
 
 
+def test_runtime_implementation_does_not_use_legacy_settings_proxy():
+    """runtime 实现只能使用只读配置端口，不得重新引入迁移期代理对象。"""
+    violations: list[str] = []
+    for path in (APP_ROOT / "runtime").rglob("*.py"):
+        if path == APP_ROOT / "runtime" / "settings.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.runtime.settings":
+                continue
+            if any(alias.name.lower().endswith("compat") for alias in node.names):
+                violations.append(path.relative_to(PROJECT_ROOT).as_posix())
+                break
+
+    assert violations == []
+
+
+def test_deprecated_settings_proxy_imports_are_zero():
+    """宿主代码不得导入已删除的 Settings 兼容代理。"""
+    limits = {
+        "adapters": 0,
+        "agent": 0,
+        "application": 0,
+        "cli.py": 0,
+        "doctor": 0,
+        "factory.py": 0,
+        "main.py": 0,
+        "modules": 0,
+        "startup": 0,
+    }
+    counts: dict[str, int] = {}
+    for path in APP_ROOT.rglob("*.py"):
+        if path == APP_ROOT / "runtime" / "settings.py":
+            continue
+        if path.is_relative_to(APP_ROOT / "plugins"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        imports_compat = any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == "app.runtime.settings"
+            and any(alias.name.lower().endswith("compat") for alias in node.names)
+            for node in ast.walk(tree)
+        )
+        if not imports_compat:
+            continue
+        relative = path.relative_to(APP_ROOT)
+        group = relative.parts[0] if len(relative.parts) > 1 else relative.as_posix()
+        counts[group] = counts.get(group, 0) + 1
+
+    unexpected = set(counts) - set(limits)
+    exceeded = {
+        group: count
+        for group, count in counts.items()
+        if group in limits and count > limits[group]
+    }
+    assert unexpected == set()
+    assert exceeded == {}
+
+
+def test_global_settings_imports_stay_within_compatibility_baseline():
+    """真实 Settings 对象只能保留在已知迁移点和插件 SDK，不得产生新宿主调用。"""
+    allowed = {
+        "app/sdk/config.py",
+        "app/startup/initializers/modules.py",
+    }
+    imports: set[str] = set()
+    for path in APP_ROOT.rglob("*.py"):
+        if path.is_relative_to(APP_ROOT / "plugins"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        if any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == "app.runtime.config"
+            and any(alias.name == "settings" for alias in node.names)
+            for node in ast.walk(tree)
+        ):
+            imports.add(path.relative_to(PROJECT_ROOT).as_posix())
+
+    assert imports <= allowed
+
+
 def test_api_does_not_import_factory():
     """装配器（factory）只允许 app.main 使用，HTTP 端点不得回引。"""
     violations: dict[str, set[str]] = {}

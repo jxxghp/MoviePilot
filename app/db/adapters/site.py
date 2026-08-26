@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
-from typing import Any, TypeVar
+from typing import Any, List, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.oper.site import SiteOper
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
-
 
 T = TypeVar("T")
 
@@ -80,19 +79,19 @@ class TransactionalSiteRepository:
         """按域名查询站点。"""
         return self._read(lambda repository: repository.get_by_domain(domain))
 
-    def get_domains_by_ids(self, ids: list[int]) -> list[str | None]:
+    def get_domains_by_ids(self, ids: List[int]) -> List[str | None]:
         """查询一组站点 ID 对应的域名。"""
         return self._read(lambda repository: repository.get_domains_by_ids(ids))
 
-    def list(self) -> list[Any]:
+    def list(self) -> List[Any]:
         """查询全部站点。"""
         return self._read(lambda repository: repository.list())
 
-    def list_order_by_pri(self) -> list[Any]:
+    def list_order_by_pri(self) -> List[Any]:
         """同步按优先级查询站点。"""
         return self._read(lambda repository: repository.list_order_by_pri())
 
-    def get_userdata_latest(self) -> list[Any]:
+    def get_userdata_latest(self) -> List[Any]:
         """同步查询各站点最新用户数据。"""
         return self._read(lambda repository: repository.get_userdata_latest())
 
@@ -112,11 +111,11 @@ class TransactionalSiteRepository:
             lambda repository: repository.async_get_by_name(name)
         )
 
-    async def async_list(self) -> list[Any]:
+    async def async_list(self) -> List[Any]:
         """异步查询全部站点。"""
         return await self._async_read(lambda repository: repository.async_list())
 
-    async def async_list_order_by_pri(self) -> list[Any]:
+    async def async_list_order_by_pri(self) -> List[Any]:
         """异步按优先级查询站点。"""
         return await self._async_read(
             lambda repository: repository.async_list_order_by_pri()
@@ -132,13 +131,13 @@ class TransactionalSiteRepository:
         self,
         domain: str,
         workdate: str | None = None,
-    ) -> list[Any]:
+    ) -> List[Any]:
         """异步查询站点用户数据。"""
         return await self._async_read(
             lambda repository: repository.async_get_userdata_by_domain(domain, workdate)
         )
 
-    async def async_get_userdata_latest(self) -> list[Any]:
+    async def async_get_userdata_latest(self) -> List[Any]:
         """异步查询各站点最新用户数据。"""
         return await self._async_read(
             lambda repository: repository.async_get_userdata_latest()
@@ -156,7 +155,7 @@ class TransactionalSiteRepository:
             lambda repository: repository.async_get_statistic_by_domain(domain)
         )
 
-    async def async_list_statistics(self) -> list[Any]:
+    async def async_list_statistics(self) -> List[Any]:
         """异步查询全部站点统计。"""
         return await self._async_read(
             lambda repository: repository.async_list_statistics()

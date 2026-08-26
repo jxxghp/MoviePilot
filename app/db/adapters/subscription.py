@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -41,8 +42,8 @@ class TransactionalSubscribeWriter:
 
     def add(
         self,
-        identity: dict,
-        payload: dict,
+        identity: dict[str, Any],
+        payload: dict[str, Any],
         username: str | None = None,
         after_commit: AfterCommitEffect | None = None,
         notification: dict[str, object] | None = None,
@@ -88,8 +89,8 @@ class TransactionalSubscribeWriter:
 
     async def async_add(
         self,
-        identity: dict,
-        payload: dict,
+        identity: dict[str, Any],
+        payload: dict[str, Any],
         username: str | None = None,
         after_commit: AsyncAfterCommitEffect | None = None,
         notification: dict[str, object] | None = None,

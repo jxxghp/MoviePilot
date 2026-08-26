@@ -29,13 +29,13 @@ def get_frontend_version(*, fallback_to_declared: bool = True) -> str | None:
     """返回当前部署的前端资源版本，并可关闭发布声明回退。"""
     if is_frozen() and is_windows():
         version_file = (
-            Path(get_runtime_setting("CONFIG_PATH")).parent
+            Path(get_runtime_setting('CONFIG_PATH')).parent
             / "nginx"
             / "html"
             / "version.txt"
         )
     else:
-        version_file = Path(get_runtime_setting("FRONTEND_PATH")) / "version.txt"
+        version_file = Path(get_runtime_setting('FRONTEND_PATH')) / "version.txt"
     installed_version = _read_version_file(version_file)
     if installed_version or not fallback_to_declared:
         return installed_version

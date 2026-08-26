@@ -6,9 +6,8 @@ from time import time
 from typing import Any, Optional
 
 from app.runtime.cache import FileCache, TTLCache
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
@@ -32,8 +31,8 @@ class TmdbCache(metaclass=WeakSingleton):
     """
     def __init__(self):
         """初始化 TMDB 识别缓存并恢复未过期的持久化数据。"""
-        self.maxsize = settings.CONF.tmdb
-        self.ttl = settings.CONF.meta
+        self.maxsize = get_runtime_setting('CONF').tmdb
+        self.ttl = get_runtime_setting('CONF').meta
         self.region = "__tmdb_cache__"
         self._cache = TTLCache(region=self.region, maxsize=self.maxsize, ttl=self.ttl)
         self._expires_at: dict[str, float] = {}
@@ -42,8 +41,8 @@ class TmdbCache(metaclass=WeakSingleton):
         self._legacy_file_cache = None
         self._legacy_cache_found = False
         if not self._cache.is_redis():
-            self._file_cache = FileCache(base=settings.CACHE_PATH, ttl=self.ttl)
-            self._legacy_file_cache = FileCache(base=settings.TEMP_PATH.parent, ttl=self.ttl)
+            self._file_cache = FileCache(base=get_runtime_setting('CACHE_PATH'), ttl=self.ttl)
+            self._legacy_file_cache = FileCache(base=get_runtime_setting('TEMP_PATH').parent, ttl=self.ttl)
             self._restore()
 
     def _restore(self) -> None:
@@ -53,7 +52,7 @@ class TmdbCache(metaclass=WeakSingleton):
             if not content:
                 content = self._legacy_file_cache.get(
                     self.region,
-                    region=settings.TEMP_PATH.name,
+                    region=get_runtime_setting('TEMP_PATH').name,
                 )
                 if content:
                     self._legacy_cache_found = True
@@ -146,7 +145,7 @@ class TmdbCache(metaclass=WeakSingleton):
         获取缓存KEY
         """
         media_id = meta.media_id if meta.media_source == MediaSource.TMDB else None
-        return f"[{meta.type.value if meta.type else '未知'}][{settings.TMDB_LOCALE}]{media_id or meta.name}-{meta.year}-{meta.begin_season}"
+        return f"[{meta.type.value if meta.type else '未知'}][{get_runtime_setting('TMDB_LOCALE')}]{media_id or meta.name}-{meta.year}-{meta.begin_season}"
 
     @staticmethod
     def __is_type_conflicted(meta: MetaBase, media_type: Any, tmdb_id: Any) -> bool:
@@ -263,7 +262,7 @@ class TmdbCache(metaclass=WeakSingleton):
                 # 负识别缓存使用独立的短 TTL：故障期间「合法 JSON 但结果为空」会被
                 # 记为未识别，若按完整有效期固化，故障自愈后同名仍会被判无法识别；
                 # 短过期让恢复后可重新识别，真不存在的条目过期后重新确认一次即可
-                self._set(key, {"id": 0}, ttl=settings.EMPTY_RESULT_CACHE_TTL)
+                self._set(key, {"id": 0}, ttl=get_runtime_setting('EMPTY_RESULT_CACHE_TTL'))
 
     def save(self, force: bool = False) -> None:
         """
@@ -314,7 +313,7 @@ class TmdbCache(metaclass=WeakSingleton):
                 if self._legacy_cache_found:
                     self._legacy_file_cache.delete(
                         self.region,
-                        region=settings.TEMP_PATH.name,
+                        region=get_runtime_setting('TEMP_PATH').name,
                     )
                     self._legacy_cache_found = False
                 self._dirty = False

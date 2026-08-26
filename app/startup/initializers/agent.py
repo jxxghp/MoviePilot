@@ -16,11 +16,9 @@ from app.agent.runtime_loader import (
 )
 from app.application.agent import register_agent_service_providers
 from app.application.messaging.skill import register_skill_catalog_provider
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import EventType
 
 AGENT_BLOCKING_EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS = 10.0
@@ -127,7 +125,7 @@ class AgentInitializer:
             self._shutdown_started = False
             self._shutdown_complete = False
             if agent_manager is not None:
-                if not settings.AI_AGENT_ENABLE:
+                if not get_runtime_setting('AI_AGENT_ENABLE'):
                     logger.info("AI智能体功能未启用")
                     return True
                 self._manager = agent_manager

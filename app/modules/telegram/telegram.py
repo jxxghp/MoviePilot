@@ -36,9 +36,8 @@ try:
 except ImportError:
     from telegramify_markdown.type import ContentTypes, File, Photo, Text  # noqa: E402
 
-from app.runtime.settings import RuntimeSettingsCompat  # noqa: E402
+from app.runtime.settings import get_runtime_setting  # noqa: E402
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, Context  # noqa: E402
 from app.domain.metainfo import MetaInfo  # noqa: E402
 from app.application.image import ImageHelper  # noqa: E402
@@ -124,7 +123,7 @@ class Telegram:
                 apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
                 apihelper.FILE_URL = "https://api.telegram.org/file/bot{0}/{1}"
                 # 设置代理
-                apihelper.proxy = settings.PROXY
+                apihelper.proxy = get_runtime_setting('PROXY')
             # bot
             _bot = TeleBot(self._telegram_token, parse_mode=TELEGRAM_PARSE_MODE_MARKDOWN)
             # 记录句柄

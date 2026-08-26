@@ -16,7 +16,7 @@ from fastapi.security import (
 
 from app.runtime.cache import cached
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.schemas.token import TokenPayload
 
 SuperuserTokenPayloadProvider = Callable[[], TokenPayload]
@@ -28,15 +28,12 @@ _token_decoder: Optional[TokenDecoder] = None
 JWT_ALGORITHM = "HS256"
 
 
-# 兼容旧鉴权插件覆盖模块级设置；令牌实际策略仍由已注入 codec 和 runtime 配置提供。
-settings = RuntimeSettingsCompat()
-
 oauth2_scheme_manual_error = OAuth2PasswordBearer(
     auto_error=False,
-    tokenUrl=f"{settings.API_V1_STR}/login/access-token",
+    tokenUrl=f"{get_runtime_setting('API_V1_STR')}/login/access-token",
 )
 resource_token_cookie = APIKeyCookie(
-    name=settings.PROJECT_NAME,
+    name=get_runtime_setting('PROJECT_NAME'),
     auto_error=False,
     scheme_name="resource_token_cookie",
 )
@@ -133,12 +130,13 @@ def set_or_refresh_resource_token_cookie(
     payload: TokenPayload,
 ) -> None:
     """复用匹配的资源令牌，或为当前身份写入新的安全 Cookie。"""
-    resource_token = request.cookies.get(settings.PROJECT_NAME)
+    project_name = get_runtime_setting('PROJECT_NAME')
+    resource_token = request.cookies.get(project_name)
     if resource_token:
         try:
             decoded = jwt.decode(
                 resource_token,
-                settings.RESOURCE_SECRET_KEY,
+                get_runtime_setting('RESOURCE_SECRET_KEY'),
                 algorithms=[JWT_ALGORITHM],
             )
             exp = decoded.get("exp")
@@ -148,7 +146,12 @@ def set_or_refresh_resource_token_cookie(
                     tz=datetime.UTC,
                 ) - datetime.datetime.now(datetime.UTC)
                 if remaining_time < timedelta(
-                    seconds=settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS / 3
+                    seconds=(
+                        get_runtime_setting(
+                            "RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS"
+                        )
+                        / 3
+                    )
                 ):
                     raise jwt.ExpiredSignatureError
             expected_claims = {
@@ -177,7 +180,7 @@ def set_or_refresh_resource_token_cookie(
         username=payload.username or "",
         super_user=payload.super_user,
         expires_delta=timedelta(
-            seconds=settings.RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS
+            seconds=get_runtime_setting('RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS')
         ),
         level=payload.level,
         purpose="resource",
@@ -187,7 +190,7 @@ def set_or_refresh_resource_token_cookie(
         or request.headers.get("x-forwarded-proto", "").lower() == "https"
     )
     response.set_cookie(
-        key=settings.PROJECT_NAME,
+        key=project_name,
         value=resource_token,
         httponly=True,
         secure=is_https,
@@ -261,11 +264,11 @@ def verify_apitoken(
     token: Annotated[str | None, Security(_get_api_token)],
 ) -> str:
     """校验 URL 查询参数中的兼容 API Token。"""
-    return _verify_key(token, settings.API_TOKEN, "token")
+    return _verify_key(token, get_runtime_setting('API_TOKEN'), "token")
 
 
 def verify_apikey(
     apikey: Annotated[str | None, Security(_get_api_key)],
 ) -> str:
     """校验请求头或查询参数中的兼容 API Key。"""
-    return _verify_key(apikey, settings.API_TOKEN, "apikey")
+    return _verify_key(apikey, get_runtime_setting('API_TOKEN'), "apikey")

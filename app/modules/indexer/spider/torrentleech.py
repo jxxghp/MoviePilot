@@ -1,9 +1,8 @@
 from typing import List, Tuple, Optional
 from urllib.parse import quote
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
@@ -34,7 +33,7 @@ class TorrentLeech:
         """初始化站点认证信息和媒体分类配置。"""
         self._indexer = indexer
         if indexer.get('proxy'):
-            self._proxy = settings.PROXY
+            self._proxy = get_runtime_setting('PROXY')
             self._timeout = indexer.get('timeout') or 15
 
     def __category_ids(self, mtype: MediaType = None) -> List[str]:

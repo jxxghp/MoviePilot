@@ -12,22 +12,62 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-
 from packaging.requirements import Requirement
 from packaging.version import Version
-
 
 PLUGIN_ID = "DemoPlugin"
 REPO_URL = "https://github.com/demo/MoviePilot-Plugins"
 
 
+def _patch_catalog_settings(monkeypatch, **values) -> None:
+    """通过只读端口注入插件目录测试需要的部署配置。"""
+    from app.runtime.extensions.plugin import catalog as catalog_module
+
+    settings = SimpleNamespace(**values)
+    monkeypatch.setattr(
+        catalog_module,
+        "get_runtime_setting",
+        lambda key: getattr(settings, key),
+    )
+
+
 @pytest.fixture(autouse=True)
 def _configure_plugin_catalog_factory(monkeypatch):
     """为直接构造 PluginManager 的测试注入真实目录用例和假持久化接缝。"""
+    from app.adapters.external import market as market_module
     from app.adapters.external.plugin.client import PluginMarketClient
     from app.application.plugin.catalog import PluginCatalogService
     from app.foundation.version import compare_version
     from app.runtime.extensions import plugin_manager as manager_module
+    original_runtime_setting = market_module.get_runtime_setting
+
+    class _SettingsStub(SimpleNamespace):
+        """允许存量用例覆盖尚未显式声明的配置键。"""
+
+        def __getattr__(self, _key):
+            return None
+
+    market_settings = _SettingsStub(
+        VERSION_FLAG="v3",
+        ROOT_PATH=original_runtime_setting("ROOT_PATH"),
+        TEMP_PATH=original_runtime_setting("TEMP_PATH"),
+        CONFIG_PATH=original_runtime_setting("CONFIG_PATH"),
+        PACKAGE_CACHE_PATH=original_runtime_setting("PACKAGE_CACHE_PATH"),
+        PIP_PROXY=original_runtime_setting("PIP_PROXY"),
+        PROXY_HOST=original_runtime_setting("PROXY_HOST"),
+        REPO_GITHUB_HEADERS=original_runtime_setting("REPO_GITHUB_HEADERS"),
+        PLUGIN_LOCAL_REPO_PATHS="",
+    )
+    monkeypatch.setattr(market_module, "settings", market_settings, raising=False)
+    monkeypatch.setattr(
+        market_module,
+        "get_runtime_setting",
+        lambda key, default=None: (
+            getattr(market_module.settings, key)
+            if hasattr(market_module.settings, key)
+            else original_runtime_setting(key, default)
+        ),
+    )
 
     def build_catalog(manager):
         """按生产组合方式连接目录服务，但保留测试可替换的依赖。"""
@@ -231,8 +271,8 @@ class TestPluginHelper:
         插件库强制刷新时远端索引 URL 也要变化，避免命中镜像或代理缓存。
         """
         try:
-            from app.runtime.cache import fresh
             from app.adapters.external.market import PluginHelper
+            from app.runtime.cache import fresh
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -342,8 +382,8 @@ class TestPluginHelper:
         插件市场强制刷新时 Release 列表请求也要绕过 GitHub 镜像或代理缓存。
         """
         try:
-            from app.runtime.cache import fresh
             from app.adapters.external.market import PluginHelper
+            from app.runtime.cache import fresh
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -442,8 +482,8 @@ class TestPluginHelper:
         同一仓库的并发强制刷新共享一个请求任务，避免缓存失效瞬间放大 GitHub 请求。
         """
         try:
-            from app.runtime.cache import async_fresh
             from app.adapters.external.market import PluginHelper
+            from app.runtime.cache import async_fresh
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -484,8 +524,8 @@ class TestPluginHelper:
     def test_async_forced_release_refresh_does_not_reuse_normal_read_task(self, monkeypatch):
         """强刷等待在途普通读取后再请求，最终缓存必须保留强刷结果。"""
         try:
-            from app.runtime.cache import async_fresh
             from app.adapters.external.market import PluginHelper
+            from app.runtime.cache import async_fresh
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -594,8 +634,8 @@ class TestPluginHelper:
     def test_async_normal_release_read_does_not_wait_for_pending_force_refresh(self, monkeypatch):
         """普通读取遇到后台强刷时仍优先返回已有缓存，避免页面响应被强刷阻塞。"""
         try:
-            from app.runtime.cache import async_fresh
             from app.adapters.external.market import PluginHelper
+            from app.runtime.cache import async_fresh
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -697,8 +737,8 @@ class TestPluginHelper:
     def test_failed_forced_release_refresh_preserves_cached_repository_payload(self, monkeypatch):
         """GitHub 强刷失败时不以空值覆盖该仓库已有 Release 缓存。"""
         try:
-            from app.runtime.cache import fresh
             from app.adapters.external.market import PluginHelper
+            from app.runtime.cache import fresh
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -730,8 +770,8 @@ class TestPluginHelper:
         插件市场 labels 为列表时应转换为字符串，避免响应模型序列化异常。
         """
         try:
-            from app.runtime.extensions.plugin_manager import PluginManager
             from app.adapters.external.market import PluginHelper
+            from app.runtime.extensions.plugin_manager import PluginManager
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -747,7 +787,7 @@ class TestPluginHelper:
         plugin_manager = PluginManager()
         monkeypatch.setattr(plugin_manager, "_plugins", {})
         monkeypatch.setattr(plugin_manager, "_running_plugins", {})
-        monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", SimpleNamespace(VERSION_FLAG="v2"))
+        _patch_catalog_settings(monkeypatch, VERSION_FLAG="v2")
         monkeypatch.setattr(
             "app.runtime.extensions.plugin_manager.get_plugin_storage",
             lambda: SimpleNamespace(read=lambda _key: []),
@@ -770,8 +810,8 @@ class TestPluginHelper:
         package.v2.json 中的 v2 原生插件，并过滤掉未声明任何版本兼容的 v1 插件。
         """
         try:
-            from app.runtime.extensions.plugin_manager import PluginManager
             from app.adapters.external.market import PluginHelper
+            from app.runtime.extensions.plugin_manager import PluginManager
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -807,9 +847,10 @@ class TestPluginHelper:
         plugin_manager = PluginManager()
         monkeypatch.setattr(plugin_manager, "_plugins", {})
         monkeypatch.setattr(plugin_manager, "_running_plugins", {})
-        monkeypatch.setattr(
-            "app.runtime.extensions.plugin_manager.settings",
-            SimpleNamespace(VERSION_FLAG="v3", PLUGIN_MARKET=REPO_URL),
+        _patch_catalog_settings(
+            monkeypatch,
+            VERSION_FLAG="v3",
+            PLUGIN_MARKET=REPO_URL,
         )
         monkeypatch.setattr("app.adapters.external.market.settings", SimpleNamespace(VERSION_FLAG="v3"))
         monkeypatch.setattr(
@@ -968,13 +1009,17 @@ class TestPluginHelper:
         全市场刷新不清理 Release 缓存，Release 接口按请求仓库协调刷新两类数据。
         """
         try:
-            from app.runtime.extensions.plugin_manager import PluginManager
             from app.adapters.external.market import PluginHelper
+            from app.runtime.extensions.plugin_manager import PluginManager
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
         clear_calls = []
-        monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
+        _patch_catalog_settings(
+            monkeypatch,
+            PLUGIN_MARKET="https://github.com/demo/plugins",
+            VERSION_FLAG="v3",
+        )
         monkeypatch.setattr(PluginManager, "get_plugins_from_market", lambda *_args, **_kwargs: [])
 
         PluginManager().get_online_plugins(force=True)
@@ -996,7 +1041,11 @@ class TestPluginHelper:
         async def fake_market(*_args, **_kwargs):
             return []
 
-        monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings.PLUGIN_MARKET", "https://github.com/demo/plugins")
+        _patch_catalog_settings(
+            monkeypatch,
+            PLUGIN_MARKET="https://github.com/demo/plugins",
+            VERSION_FLAG="v3",
+        )
         monkeypatch.setattr(PluginManager, "async_get_plugins_from_market", fake_market)
 
         asyncio.run(PluginManager().async_get_online_plugins(force=True))
@@ -1788,8 +1837,8 @@ demo = { index = "private" }
 
             with patch("app.adapters.system.package.find_uv", return_value=uv_bin), \
                     patch.dict(os.environ, {}, clear=True), \
-                    patch("app.adapters.external.market.settings.CONFIG_DIR", str(root / "config")), \
-                    patch("app.adapters.external.market.settings.PACKAGE_CACHE_ROOT", str(root / "custom-package-cache")), \
+                    patch("app.adapters.external.market.settings.CONFIG_PATH", root / "config"), \
+                    patch("app.adapters.external.market.settings.PACKAGE_CACHE_PATH", root / "custom-package-cache"), \
                     patch("app.adapters.external.market.settings.PIP_PROXY", "https://user:pass@mirror.example/simple"), \
                     patch("app.adapters.external.market.settings.PROXY_HOST", "http://proxy.example:7890"), \
                     patch("app.adapters.external.market.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
@@ -3425,8 +3474,8 @@ demo = { index = "private" }
         异步 release zip 带顶层插件目录时剥离该层后写入运行目录。
         """
         try:
-            from app.runtime.config import settings
             from app.adapters.external.market import PluginHelper
+            from app.runtime.config import settings
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 

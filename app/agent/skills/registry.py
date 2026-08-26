@@ -9,15 +9,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlencode, urljoin, urlparse
 
-from app.agent.skills.metadata import parse_skill_metadata
-from app.runtime.cache import cached, fresh
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
-from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
+from app.agent.skills.metadata import parse_skill_metadata
+from app.application.configuration import get_runtime_settings
 from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
+from app.runtime.cache import cached, fresh
+from app.runtime.config import Settings
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 _SOURCE_META_FILENAME = ".moviepilot-skill-source.json"
 _DEFAULT_BRANCHES = ("main", "master")
@@ -77,30 +77,30 @@ class SkillHelper(metaclass=WeakSingleton):
         """
         返回用户技能目录，所有市场安装的技能都落在这里。
         """
-        return settings.CONFIG_PATH / "agent" / "skills"
+        return get_runtime_setting('CONFIG_PATH') / "agent" / "skills"
 
     @staticmethod
     def get_bundled_skills_dir() -> Path:
         """
         返回仓库内置技能目录。
         """
-        return settings.ROOT_PATH / "skills"
+        return get_runtime_setting('ROOT_PATH') / "skills"
 
     @staticmethod
     def get_market_sources() -> List[str]:
         """
         解析配置中的技能市场列表。
         """
-        if not settings.SKILL_MARKET:
+        if not get_runtime_setting('SKILL_MARKET'):
             return []
-        return [item.strip() for item in settings.SKILL_MARKET.split(",") if item.strip()]
+        return [item.strip() for item in get_runtime_setting('SKILL_MARKET').split(",") if item.strip()]
 
     @staticmethod
     def get_default_market_sources() -> List[str]:
         """
         返回系统默认的技能市场列表，用于区分内置源和用户追加源。
         """
-        skill_market_field = type(settings).model_fields.get("SKILL_MARKET")
+        skill_market_field = Settings.model_fields.get("SKILL_MARKET")
         default_value = skill_market_field.default if skill_market_field else None
         if not default_value:
             return []
@@ -199,10 +199,10 @@ class SkillHelper(metaclass=WeakSingleton):
     @staticmethod
     def _persist_market_sources(sources: List[str]) -> Tuple[bool, str]:
         """
-        将技能源列表写回配置文件，并同步更新内存中的 settings。
+        将技能源列表写回配置服务，并让后续读取立即看到新值。
         """
         filtered_sources = [item.strip() for item in sources if item and item.strip()]
-        success, message = settings.update_setting(
+        success, message = get_runtime_settings().update(
             key="SKILL_MARKET",
             value=",".join(filtered_sources),
         )
@@ -1093,8 +1093,8 @@ class SkillHelper(metaclass=WeakSingleton):
         }
 
         strategies = []
-        if settings.PROXY_HOST:
-            strategies.append({"proxies": settings.PROXY, "timeout": timeout})
+        if get_runtime_setting('PROXY_HOST'):
+            strategies.append({"proxies": get_runtime_setting('PROXY'), "timeout": timeout})
         strategies.append({"timeout": timeout})
 
         for kwargs in strategies:
@@ -1124,8 +1124,8 @@ class SkillHelper(metaclass=WeakSingleton):
         请求注册表 API，兼容代理和直连场景。
         """
         strategies = []
-        if settings.PROXY_HOST:
-            strategies.append(({"proxies": settings.PROXY, "timeout": timeout}, url))
+        if get_runtime_setting('PROXY_HOST'):
+            strategies.append(({"proxies": get_runtime_setting('PROXY'), "timeout": timeout}, url))
         strategies.append(({"timeout": timeout}, url))
 
         for kwargs, target_url in strategies:
@@ -1152,17 +1152,17 @@ class SkillHelper(metaclass=WeakSingleton):
         按代理优先级顺序请求 GitHub 资源，兼容代理和直连场景。
         """
         strategies = []
-        headers = settings.REPO_GITHUB_HEADERS(repo=repo_name)
-        if not is_api and settings.GITHUB_PROXY:
-            proxy_url = f"{UrlUtils.standardize_base_url(settings.GITHUB_PROXY)}{url}"
+        headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=repo_name)
+        if not is_api and get_runtime_setting('GITHUB_PROXY'):
+            proxy_url = f"{UrlUtils.standardize_base_url(get_runtime_setting('GITHUB_PROXY'))}{url}"
             strategies.append((proxy_url, {"headers": headers, "timeout": timeout}))
-        if settings.PROXY_HOST:
+        if get_runtime_setting('PROXY_HOST'):
             strategies.append(
                 (
                     url,
                     {
                         "headers": headers,
-                        "proxies": settings.PROXY,
+                        "proxies": get_runtime_setting('PROXY'),
                         "timeout": timeout,
                     },
                 )

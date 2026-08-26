@@ -12,17 +12,15 @@ from smbprotocol.exceptions import (
     SMBResponseException,
 )
 
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.stop import runtime_stop_state
-from app.schemas.file import StorageUsage as _SchemaStorageUsage
-from app.schemas.workflow import FileItem as _SchemaFileItem
-
-settings = RuntimeSettingsCompat()
 from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
+from app.schemas.workflow import FileItem as _SchemaFileItem
 
 lock = threading.Lock()
 
@@ -550,7 +548,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         带实时进度显示的下载
         """
-        local_path = self._build_download_path(fileitem, path or settings.TEMP_PATH)
+        local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
         if not local_path:
             return None
         smb_path = self._normalize_path(fileitem.path)

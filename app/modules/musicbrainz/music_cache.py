@@ -6,9 +6,8 @@ from time import time
 from typing import Optional
 
 from app.runtime.cache import FileCache, TTLCache
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
@@ -37,15 +36,15 @@ class MusicBrainzCache(metaclass=WeakSingleton):
 
     def __init__(self):
         """初始化音乐识别缓存并恢复未过期的持久化数据。"""
-        self.maxsize = settings.CONF.musicbrainz
-        self.ttl = settings.CONF.meta
+        self.maxsize = get_runtime_setting('CONF').musicbrainz
+        self.ttl = get_runtime_setting('CONF').meta
         self.region = "__musicbrainz_cache__"
         self._cache = TTLCache(region=self.region, maxsize=self.maxsize, ttl=self.ttl)
         self._expires_at: dict[str, float] = {}
         self._dirty = False
         self._file_cache = None
         if not self._cache.is_redis():
-            self._file_cache = FileCache(base=settings.CACHE_PATH, ttl=self.ttl)
+            self._file_cache = FileCache(base=get_runtime_setting('CACHE_PATH'), ttl=self.ttl)
             self._restore()
 
     def _restore(self) -> None:

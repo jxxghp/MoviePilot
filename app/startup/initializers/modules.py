@@ -22,18 +22,12 @@ except ImportError as e:
     print(error_message, file=sys.stderr)
     sys.exit(1)
 
-from app.adapters.system.host import SystemUtils
-from app.runtime.config import settings as legacy_settings
-from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.stop import runtime_stop_state
-
-settings = RuntimeSettingsCompat()
 from app.adapters.external.server import (
     MoviePilotServerHelper,
     configure_server_application_services,
 )
 from app.adapters.network.doh import DohHelper
+from app.adapters.system.host import SystemUtils
 from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
@@ -147,6 +141,7 @@ from app.db.uow import (
 )
 from app.db.worker import DatabaseWorker
 from app.runtime.cache import AsyncFileCache, FileCache
+from app.runtime.config import settings as legacy_settings
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
@@ -156,9 +151,15 @@ from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     configure_service_config_reader,
 )
+from app.runtime.log import logger
 from app.runtime.observability import record_metric
-from app.runtime.settings import configure_runtime_setting_provider
+from app.runtime.settings import (
+    configure_runtime_setting_provider,
+    configure_runtime_setting_updater,
+    get_runtime_setting,
+)
 from app.runtime.state import SystemHelper
+from app.runtime.stop import runtime_stop_state
 from app.runtime.tasks import get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.message import Message, MessageType
@@ -226,7 +227,7 @@ async def _initialize_configuration_services(
 
 
 def _build_runtime_settings_service() -> RuntimeSettingsService:
-    """将可变部署配置实现注入管理服务，避免把兼容代理再次包装。"""
+    """将唯一可变部署配置实现注入管理服务。"""
     return RuntimeSettingsService(legacy_settings)
 
 
@@ -254,7 +255,7 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
             send_callback=callback
         ),
         module_dispatcher_factory=ModuleInvocationDispatcher,
-        configuration=build_chain_runtime_config(settings),
+        configuration=build_chain_runtime_config(legacy_settings),
         data_ports=get_chain_data_ports(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
         stop_state=runtime_stop_state,
@@ -512,11 +513,11 @@ def start_frontend():
             or not SystemUtils.is_windows():
         return
     # 临时Nginx目录
-    nginx_path = settings.ROOT_PATH / 'nginx'
+    nginx_path = get_runtime_setting("ROOT_PATH") / 'nginx'
     if not nginx_path.exists():
         return
     # 配置目录下的Nginx目录
-    run_nginx_dir = settings.CONFIG_PATH.with_name('nginx')
+    run_nginx_dir = get_runtime_setting("CONFIG_PATH").with_name('nginx')
     if not run_nginx_dir.exists():
         # 移动到配置目录
         SystemUtils.move(nginx_path, run_nginx_dir)
@@ -543,9 +544,15 @@ def clear_temp():
     清理临时文件和图片缓存
     """
     # 清理临时目录中3天前的文件
-    SystemUtils.clear(settings.TEMP_PATH, days=settings.TEMP_FILE_DAYS)
+    SystemUtils.clear(
+        get_runtime_setting("TEMP_PATH"),
+        days=get_runtime_setting("TEMP_FILE_DAYS"),
+    )
     # 清理图片缓存目录中7天前的文件
-    SystemUtils.clear(settings.CACHE_PATH / "images", days=settings.GLOBAL_IMAGE_CACHE_DAYS)
+    SystemUtils.clear(
+        get_runtime_setting("CACHE_PATH") / "images",
+        days=get_runtime_setting("GLOBAL_IMAGE_CACHE_DAYS"),
+    )
     # 清理 pip/uv 包下载缓存，不接管整个 .cache 目录。
     clear_package_tool_cache()
 
@@ -554,10 +561,10 @@ def clear_package_tool_cache():
     """
     清理 pip/uv 包下载缓存，只处理 MoviePilot 管理的工具子目录。
     """
-    days = settings.PACKAGE_CACHE_DAYS
+    days = get_runtime_setting("PACKAGE_CACHE_DAYS")
     if days <= 0:
         return
-    tool_cache_root = settings.PACKAGE_CACHE_PATH
+    tool_cache_root = get_runtime_setting("PACKAGE_CACHE_PATH")
     for child in ("pip", "uv"):
         cache_path = tool_cache_root / child
         try:
@@ -593,7 +600,7 @@ def check_auth():
                 mtype=MessageType.Manual,
                 title="MoviePilot用户认证",
                 text=err_msg,
-                link=settings.MP_DOMAIN('#/site')
+                link=get_runtime_setting("MP_DOMAIN")('#/site')
             )
         )
 
@@ -776,9 +783,9 @@ async def init_modules() -> HostRuntime:
         },
     )
     runtime_configuration = RuntimeConfiguration(
-        api=lambda: build_api_runtime_config(settings),
-        scheduler=lambda: build_scheduler_runtime_config(settings),
-        chain=lambda: build_chain_runtime_config(settings),
+        api=lambda: build_api_runtime_config(legacy_settings),
+        scheduler=lambda: build_scheduler_runtime_config(legacy_settings),
+        chain=lambda: build_chain_runtime_config(legacy_settings),
     )
     runtime_settings = _build_runtime_settings_service()
     agent_chat_persistence = AgentChatPersistenceService(
@@ -831,7 +838,8 @@ async def init_modules() -> HostRuntime:
     configure_runtime_configuration(host_runtime.configuration)
     configure_runtime_settings(host_runtime.settings)
     configure_runtime_setting_provider(lambda key: getattr(legacy_settings, key))
-    configure_token_runtime_config(lambda: build_token_runtime_config(settings))
+    configure_runtime_setting_updater(host_runtime.settings.update)
+    configure_token_runtime_config(lambda: build_token_runtime_config(legacy_settings))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
     configure_runtime_data_providers()
@@ -856,7 +864,7 @@ async def init_modules() -> HostRuntime:
     configure_outbox_dispatcher(_build_outbox_dispatcher)
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
-            max_failed_retries=settings.TRANSFER_MAX_FAILED_RETRIES,
+            max_failed_retries=get_runtime_setting("TRANSFER_MAX_FAILED_RETRIES"),
         )
     )
     configure_database_governance(build_database_governance())

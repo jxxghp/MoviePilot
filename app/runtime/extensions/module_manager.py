@@ -12,9 +12,7 @@ from app.runtime.capabilities.model import (
     CapabilitySpec,
 )
 from app.runtime.capabilities.runtime import CapabilityRuntime
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
+from app.runtime.settings import get_runtime_setting
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.extensions.host_module_adapter import (
     HOST_MODULE_KIND,
@@ -259,7 +257,7 @@ class ModuleManager(metaclass=Singleton):
         if not setting:
             return True
         switch, value = setting
-        option = getattr(settings, switch)
+        option = get_runtime_setting(switch)
         if not option:
             return False
         if value is True:

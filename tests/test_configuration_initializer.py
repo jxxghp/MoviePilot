@@ -7,7 +7,6 @@ import pytest
 from app.startup.initializers import modules as modules_initializer
 from app.startup.lifecycle import initialize_modules_component
 from app.application.configuration import configure_runtime_settings
-from app.runtime.settings import RuntimeSettingsCompat
 
 
 class _InlineWorker:
@@ -46,18 +45,17 @@ class _MutableSettings:
         return True, ""
 
 
-def test_runtime_settings_compat_uses_legacy_settings_from_startup_root(monkeypatch) -> None:
-    """组合根装配的兼容代理应读写原始部署配置而不是自身。"""
+def test_runtime_settings_service_uses_legacy_settings_from_startup_root(monkeypatch) -> None:
+    """组合根装配的设置服务应直接读写唯一部署配置对象。"""
     legacy_settings = _MutableSettings()
     monkeypatch.setattr(modules_initializer, "legacy_settings", legacy_settings)
 
     service = modules_initializer._build_runtime_settings_service()
     configure_runtime_settings(service)
-    compat = RuntimeSettingsCompat()
 
-    assert compat.model_dump(include={"VALUE"}) == {"VALUE": "before"}
-    assert compat.update_setting("VALUE", "after") == (True, "")
-    assert compat.model_dump(include={"VALUE"}) == {"VALUE": "after"}
+    assert service.snapshot(include={"VALUE"}) == {"VALUE": "before"}
+    assert service.update("VALUE", "after") == (True, "")
+    assert service.snapshot(include={"VALUE"}) == {"VALUE": "after"}
 
 
 @pytest.mark.asyncio

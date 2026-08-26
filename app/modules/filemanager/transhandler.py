@@ -4,9 +4,8 @@ from typing import Optional, List, Tuple
 
 from jinja2 import Template
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, MusicInfo
 from app.runtime.events import eventmanager
 from app.domain.meta.metabase import MetaBase
@@ -204,7 +203,7 @@ class TransHandler:
             """
             if not _fileitem.extension:
                 return False
-            if f".{_fileitem.extension.lower()}" in settings.RMT_SUBEXT:
+            if f".{_fileitem.extension.lower()}" in get_runtime_setting('RMT_SUBEXT'):
                 return True
             return False
 
@@ -224,11 +223,11 @@ class TransHandler:
             if not _fileitem.extension:
                 return False
             extension = f".{_fileitem.extension.lower()}"
-            if extension in settings.RMT_SUBEXT:
+            if extension in get_runtime_setting('RMT_SUBEXT'):
                 return True
             if __is_music_lyrics_file(_fileitem):
                 return True
-            if mediainfo.type != MediaType.MUSIC and extension in settings.RMT_AUDIOEXT:
+            if mediainfo.type != MediaType.MUSIC and extension in get_runtime_setting('RMT_AUDIOEXT'):
                 return True
             return False
 
@@ -252,7 +251,7 @@ class TransHandler:
 
         try:
             # 重命名格式
-            rename_format = settings.RENAME_FORMAT(mediainfo.type)
+            rename_format = get_runtime_setting('RENAME_FORMAT')(mediainfo.type)
 
             # 判断是否为文件夹
             if fileitem.type == "dir":
@@ -953,10 +952,10 @@ class TransHandler:
 
         # 添加默认字幕标识
         if (
-            (settings.DEFAULT_SUB == "zh-cn" and new_file_type == ".chi.zh-cn")
-            or (settings.DEFAULT_SUB == "zh-tw" and new_file_type == ".zh-tw")
-            or (settings.DEFAULT_SUB == "ja" and new_file_type == ".ja")
-            or (settings.DEFAULT_SUB == "eng" and new_file_type == ".eng")
+            (get_runtime_setting('DEFAULT_SUB') == "zh-cn" and new_file_type == ".chi.zh-cn")
+            or (get_runtime_setting('DEFAULT_SUB') == "zh-tw" and new_file_type == ".zh-tw")
+            or (get_runtime_setting('DEFAULT_SUB') == "ja" and new_file_type == ".ja")
+            or (get_runtime_setting('DEFAULT_SUB') == "eng" and new_file_type == ".eng")
         ):
             new_sub_tag = ".default" + new_file_type
         else:
@@ -1283,7 +1282,7 @@ class TransHandler:
             if media_file.type != "file":
                 continue
             # 当前只有视频文件需要保留最新版本，其余格式无需处理，以避免误删 (issue 5449)
-            if f".{media_file.extension.lower()}" not in settings.RMT_MEDIAEXT:
+            if f".{media_file.extension.lower()}" not in get_runtime_setting('RMT_MEDIAEXT'):
                 continue
             # 识别文件中的季集信息
             filemeta = MetaInfoPath(media_path)

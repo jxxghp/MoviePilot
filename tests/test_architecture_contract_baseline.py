@@ -195,11 +195,10 @@ def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
         "count": 0,
         "calls": [],
     }
-    assert {
-        entry["file"]
-        for entry in baseline["foundational_settings_boundaries"]["entries"]
-    } == {"app/db/base.py", "app/db/engine.py", "app/db/session.py"}
-    assert baseline["foundational_settings_boundaries"]["count"] == 3
+    assert baseline["foundational_settings_boundaries"] == {
+        "count": 0,
+        "entries": [],
+    }
     assert baseline["composition_root_oper_boundaries"]["count"] == 1
     assert baseline["composition_root_oper_boundaries"]["entries"][0]["file"] == (
         "app/startup/initializers/modules.py"

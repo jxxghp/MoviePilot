@@ -39,9 +39,9 @@ class TransferDispatcher:
         :param cache: 去重缓存，默认使用 10 秒 TTL 缓存
         """
         self.all_exts = all_exts if all_exts is not None else (
-            get_runtime_setting("RMT_MEDIAEXT")
-            + get_runtime_setting("RMT_SUBEXT")
-            + get_runtime_setting("RMT_AUDIOEXT")
+            get_runtime_setting('RMT_MEDIAEXT')
+            + get_runtime_setting('RMT_SUBEXT')
+            + get_runtime_setting('RMT_AUDIOEXT')
         )
         self._cache = cache if cache is not None else TTLCache(region="monitor", maxsize=1024, ttl=10)
         self._lock = Lock()
@@ -79,7 +79,7 @@ class TransferDispatcher:
         """
         判断监控事件路径是否需要进入整理链。
         """
-        if self._has_suffix_in(file_path, get_runtime_setting("DOWNLOAD_TMPEXT")):
+        if self._has_suffix_in(file_path, get_runtime_setting('DOWNLOAD_TMPEXT')):
             return False
         return self._has_suffix_in(file_path, self.all_exts)
 

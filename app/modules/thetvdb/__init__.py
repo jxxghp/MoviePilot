@@ -38,11 +38,11 @@ class TheTvDbModule(_ModuleBase):
         action = "刷新" if is_retry else "创建"
         logger.info(f"开始{action}TVDB登录会话...")
         try:
-            if not get_runtime_setting("TVDB_V4_API_KEY"):
+            if not get_runtime_setting('TVDB_V4_API_KEY'):
                 raise ConnectionError("TVDB API Key 未配置，无法初始化会话。")
-            self.tvdb = tvdb_v4_official.TVDB(apikey=get_runtime_setting("TVDB_V4_API_KEY"),
-                                              pin=get_runtime_setting("TVDB_V4_API_PIN"),
-                                              proxy=get_runtime_setting("PROXY"),
+            self.tvdb = tvdb_v4_official.TVDB(apikey=get_runtime_setting('TVDB_V4_API_KEY'),
+                                              pin=get_runtime_setting('TVDB_V4_API_PIN'),
+                                              proxy=get_runtime_setting('PROXY'),
                                               timeout=self.__timeout)
             if self.tvdb:
                 logger.info(f"TVDB登录会话{action}成功。")

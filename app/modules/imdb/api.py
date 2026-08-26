@@ -9,11 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.tasks import get_task_registry
-
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.runtime.tasks import get_task_registry
 
 TModel = TypeVar("TModel", bound=BaseModel)
 
@@ -227,7 +225,7 @@ class ImdbApi:
     def __init__(self, proxies: Optional[dict] = None) -> None:
         """按一次模块配置快照创建网络请求适配器。"""
         headers = {
-            "User-Agent": settings.NORMAL_USER_AGENT,
+            "User-Agent": get_runtime_setting('NORMAL_USER_AGENT'),
             "Accept": "application/graphql+json, application/json",
             "Content-Type": "application/json",
             "x-imdb-client-name": "imdb-web-next-localized",
@@ -262,8 +260,8 @@ class ImdbApi:
         return cls._freeze_value(params or {})
 
     @cached(
-        maxsize=settings.CONF.imdb,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').imdb,
+        ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
         shared_key="imdb_get",
     )
@@ -274,8 +272,8 @@ class ImdbApi:
         return self._request.get_json(url, params=dict(params_key))
 
     @cached(
-        maxsize=settings.CONF.imdb,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').imdb,
+        ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
         shared_key="imdb_get",
     )
@@ -286,8 +284,8 @@ class ImdbApi:
         return await self._async_request.get_json(url, params=dict(params_key))
 
     @cached(
-        maxsize=settings.CONF.imdb,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').imdb,
+        ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
         shared_key="imdb_graphql",
         skip_if=_is_graphql_error,
@@ -302,8 +300,8 @@ class ImdbApi:
         )
 
     @cached(
-        maxsize=settings.CONF.imdb,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').imdb,
+        ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
         shared_key="imdb_graphql",
         skip_if=_is_graphql_error,

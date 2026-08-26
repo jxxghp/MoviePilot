@@ -9,17 +9,12 @@ from anyio import Path as AsyncPath
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 from app.runtime.cache import (
+    DEFAULT_CACHE_REGION,
     AsyncCacheBackend,
     CacheBackend,
-    DEFAULT_CACHE_REGION,
     configure_cache_factories,
 )
-from app.runtime import config as _runtime_config
 from app.runtime.settings import get_runtime_setting
-
-
-# 兼容旧插件对模块级 Settings 的覆盖，工厂实际读取统一经过 runtime 端口。
-settings = _runtime_config.settings
 
 
 class RedisBackend(CacheBackend):
@@ -335,14 +330,14 @@ class AsyncFileBackend(AsyncCacheBackend):
 def configure_platform_cache() -> None:
     """把配置感知的 Redis 与文件适配器注册到平台缓存工厂。"""
     configure_cache_factories(
-        backend_type_provider=lambda: get_runtime_setting("CACHE_BACKEND_TYPE"),
+        backend_type_provider=lambda: get_runtime_setting('CACHE_BACKEND_TYPE'),
         redis_factory=lambda ttl: RedisBackend(ttl=ttl),
         async_redis_factory=lambda ttl: AsyncRedisBackend(ttl=ttl),
         file_factory=lambda base: FileBackend(
-            base=base or get_runtime_setting("TEMP_PATH")
+            base=base or get_runtime_setting('TEMP_PATH')
         ),
         async_file_factory=lambda base: AsyncFileBackend(
-            base=base or get_runtime_setting("TEMP_PATH")
+            base=base or get_runtime_setting('TEMP_PATH')
         ),
-        file_ttl_provider=lambda: get_runtime_setting("TEMP_FILE_DAYS") * 24 * 3600,
+        file_ttl_provider=lambda: get_runtime_setting('TEMP_FILE_DAYS') * 24 * 3600,
     )

@@ -13,9 +13,7 @@ from app.runtime.capabilities.model import (
     SelectorSchema,
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
+from app.runtime.settings import get_runtime_setting, has_runtime_setting
 from app.runtime.extensions.service_config import ServiceConfigHelper
 from app.schemas.types import (
     DownloaderType,
@@ -63,7 +61,7 @@ class HostModuleConfigSnapshot:
 def _validate_setting_selector(config: Mapping[str, Any]) -> None:
     """限制 setting selector 只能读取已声明的应用设置。"""
     key = config["key"]
-    if not isinstance(key, str) or not key or not hasattr(settings, key):
+    if not isinstance(key, str) or not key or not has_runtime_setting(key):
         raise ValueError(f"未知应用设置：{key!r}")
 
 
@@ -176,7 +174,7 @@ def capture_host_module_config(
             service_keys.add(key)
 
     setting_values = {
-        key: getattr(settings, key)
+        key: get_runtime_setting(key)
         for key in sorted(setting_keys)
     }
     service_values = {

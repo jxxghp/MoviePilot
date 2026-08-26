@@ -10,21 +10,8 @@
     ]
   },
   "foundational_settings_boundaries": {
-    "count": 3,
-    "entries": [
-      {
-        "file": "app/db/base.py",
-        "reason": "模型声明阶段必须在运行时配置服务装配前确定数据库主键类型"
-      },
-      {
-        "file": "app/db/engine.py",
-        "reason": "数据库引擎是运行时配置服务的底层依赖，不能通过兼容代理自递归"
-      },
-      {
-        "file": "app/db/session.py",
-        "reason": "数据库会话与连接配额必须在应用组合根装配前可用"
-      }
-    ]
+    "count": 0,
+    "entries": []
   },
   "schema_version": 2,
   "scope": {

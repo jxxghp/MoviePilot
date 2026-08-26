@@ -14,14 +14,15 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
 ) -> None:
     """同步与异步请求必须使用相同镜像、代理、直连顺序和参数。"""
     proxy = {"all": "http://proxy.example:7890"}
-    monkeypatch.setattr(
-        market,
-        "settings",
-        SimpleNamespace(
+    runtime_settings = SimpleNamespace(
             GITHUB_PROXY="https://mirror.example",
             PROXY_HOST="http://proxy.example:7890",
             PROXY=proxy,
-        ),
+    )
+    monkeypatch.setattr(
+        market,
+        "get_runtime_setting",
+        lambda key, default=None: getattr(runtime_settings, key, default),
     )
     sync_requests: list[tuple[dict, str]] = []
     async_requests: list[tuple[dict, str]] = []
@@ -88,14 +89,15 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
 
 def test_github_api_request_policy_skips_content_mirror(monkeypatch) -> None:
     """GitHub API 请求必须跳过只用于 raw 内容的镜像站。"""
-    monkeypatch.setattr(
-        market,
-        "settings",
-        SimpleNamespace(
+    runtime_settings = SimpleNamespace(
             GITHUB_PROXY="https://mirror.example",
             PROXY_HOST=None,
             PROXY=None,
-        ),
+    )
+    monkeypatch.setattr(
+        market,
+        "get_runtime_setting",
+        lambda key, default=None: getattr(runtime_settings, key, default),
     )
 
     strategies = PluginHelper._build_github_request_strategies(

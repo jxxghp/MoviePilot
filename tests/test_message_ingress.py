@@ -20,6 +20,16 @@ from app.modules.wechatclawbot import wechatclawbot as clawbot_module
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _patch_ingress_settings(monkeypatch, **values):
+    """通过只读运行配置端口注入回环入口测试设置。"""
+    settings = SimpleNamespace(**values)
+    monkeypatch.setattr(
+        ingress,
+        "get_runtime_setting",
+        lambda key: getattr(settings, key),
+    )
+
+
 def test_forward_message_to_host_encodes_source_and_closes_response(monkeypatch):
     """统一入口必须安全编码查询参数并释放本地 HTTP 响应。"""
     response = SimpleNamespace(status_code=200, close=MagicMock())
@@ -27,11 +37,7 @@ def test_forward_message_to_host_encodes_source_and_closes_response(monkeypatch)
     request = MagicMock()
     request.post_res = post_res
     request_factory = MagicMock(return_value=request)
-    monkeypatch.setattr(
-        ingress,
-        "settings",
-        SimpleNamespace(PORT=3000, API_TOKEN="token value"),
-    )
+    _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token value")
     monkeypatch.setattr(ingress, "RequestUtils", request_factory)
 
     assert ingress.forward_message_to_host(
@@ -60,11 +66,7 @@ def test_forward_message_to_host_rejects_unconfirmed_response(
     response = SimpleNamespace(status_code=status_code, close=MagicMock())
     request = MagicMock()
     request.post_res.return_value = response
-    monkeypatch.setattr(
-        ingress,
-        "settings",
-        SimpleNamespace(PORT=3000, API_TOKEN="token"),
-    )
+    _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token")
     monkeypatch.setattr(ingress, "RequestUtils", MagicMock(return_value=request))
 
     assert ingress.forward_message_to_host({}, "channel") is False
@@ -78,11 +80,7 @@ async def test_async_forward_message_to_host_uses_same_contract(monkeypatch):
     request = MagicMock()
     request.post_res = AsyncMock(return_value=response)
     request_factory = MagicMock(return_value=request)
-    monkeypatch.setattr(
-        ingress,
-        "settings",
-        SimpleNamespace(PORT=3000, API_TOKEN="token value"),
-    )
+    _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token value")
     monkeypatch.setattr(ingress, "AsyncRequestUtils", request_factory)
 
     assert await ingress.async_forward_message_to_host(

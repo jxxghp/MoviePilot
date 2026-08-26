@@ -4,9 +4,8 @@ from typing import Optional, Tuple, Union
 
 from app.runtime.cache import cached
 from app.domain.context import MediaInfo
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.runtime.tasks import get_task_registry
 from app.modules import _ModuleBase
@@ -309,14 +308,14 @@ class FanartModule(_ModuleBase):
     """
 
     # 代理
-    _proxies: dict = settings.PROXY
+    _proxies: dict = get_runtime_setting('PROXY')
 
     # Fanart Api
     _movie_url: str = (
-        f"https://webservice.fanart.tv/v3/movies/%s?api_key={settings.FANART_API_KEY}"
+        f"https://webservice.fanart.tv/v3/movies/%s?api_key={get_runtime_setting('FANART_API_KEY')}"
     )
     _tv_url: str = (
-        f"https://webservice.fanart.tv/v3/tv/%s?api_key={settings.FANART_API_KEY}"
+        f"https://webservice.fanart.tv/v3/tv/%s?api_key={get_runtime_setting('FANART_API_KEY')}"
     )
 
     def init_module(self) -> None:
@@ -451,7 +450,7 @@ class FanartModule(_ModuleBase):
         """
         获取 Fanart 查询参数
         """
-        if not settings.FANART_ENABLE:
+        if not get_runtime_setting('FANART_ENABLE'):
             return None
         if not mediainfo.tmdb_id and not mediainfo.tvdb_id:
             return None
@@ -532,7 +531,7 @@ class FanartModule(_ModuleBase):
         """
         其他图片，优先环境变量指定语言，再like最多
         """
-        lang_env = settings.FANART_LANG
+        lang_env = get_runtime_setting('FANART_LANG')
         if lang_env:
             langs = [lang.strip() for lang in lang_env.split(",") if lang.strip()]
             for lang in langs:
@@ -582,7 +581,7 @@ class FanartModule(_ModuleBase):
         return cls._FANART_NAME_MAP.get(fanart_name.lower(), fanart_name)
 
     @classmethod
-    @cached(maxsize=settings.CONF.fanart, ttl=settings.CONF.meta, shared_key="get")
+    @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     def __request_fanart(
         cls, media_type: MediaType, queryid: Union[str, int]
     ) -> Optional[dict]:
@@ -601,7 +600,7 @@ class FanartModule(_ModuleBase):
             return None
 
     @classmethod
-    @cached(maxsize=settings.CONF.fanart, ttl=settings.CONF.meta, shared_key="get")
+    @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     async def __async_request_fanart(
         cls, media_type: MediaType, queryid: Union[str, int]
     ) -> Optional[dict]:

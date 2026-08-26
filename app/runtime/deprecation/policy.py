@@ -62,7 +62,7 @@ def _enabled_keys() -> FrozenSet[str]:
 
     :return: 标识集合
     """
-    configured = get_runtime_setting("DEPRECATION_ENABLED") or ""
+    configured = get_runtime_setting('DEPRECATION_ENABLED') or ""
     return frozenset(item.strip() for item in str(configured).split(",") if item.strip())
 
 

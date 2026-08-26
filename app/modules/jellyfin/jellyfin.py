@@ -9,9 +9,8 @@ from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.runtime.log import logger
 from app.schemas.types import MediaType
@@ -40,7 +39,7 @@ class Jellyfin:
         if self._playhost:
             self._playhost = UrlUtils.standardize_base_url(self._playhost)
         self._apikey = apikey
-        self.user = self.get_user(settings.SUPERUSER)
+        self.user = self.get_user(get_runtime_setting('SUPERUSER'))
         self.serverid = self.get_server_id()
         self._sync_libraries = sync_libraries or []
 
@@ -253,9 +252,9 @@ class Jellyfin:
                     for user in users:
                         if user.get("Name") == user_name:
                             return user.get("Id")
-                if user_name == settings.SUPERUSER:
+                if user_name == get_runtime_setting('SUPERUSER'):
                     logger.warning(
-                        "MoviePilot 当前配置的超级管理员用户名为 {}，请确保Jellyfin中存在同名管理员账号，否则可能无法正常使用部分功能！".format(settings.SUPERUSER)
+                        "MoviePilot 当前配置的超级管理员用户名为 {}，请确保Jellyfin中存在同名管理员账号，否则可能无法正常使用部分功能！".format(get_runtime_setting('SUPERUSER'))
                     )
                 # 查询管理员，优先选择同时具备全库访问能力的账号，再回退到普通管理员。
                 # 获取总媒体库数量

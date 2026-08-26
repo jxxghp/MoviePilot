@@ -7,11 +7,9 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.application.agentdata import get_agent_task_port
 from app.runtime.scheduling import TimerUtils
+from app.runtime.settings import get_runtime_setting
 
 
 class UpdateAgentTaskInput(BaseModel):
@@ -115,7 +113,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
         trigger_type = payload.trigger_type or task.trigger_type
         trigger_value = payload.trigger
         if trigger_type == "date" and payload.delay_minutes is not None:
-            timezone = pytz.timezone(settings.TZ)
+            timezone = pytz.timezone(get_runtime_setting('TZ'))
             trigger_value = (
                 datetime.now(timezone) + timedelta(minutes=payload.delay_minutes)
             ).isoformat(timespec="seconds")
@@ -134,7 +132,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
             normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
                 trigger_type=trigger_type,
                 trigger_value=trigger_value,
-                timezone_name=settings.TZ,
+                timezone_name=get_runtime_setting('TZ'),
                 require_future=bool(
                     trigger_type == "date"
                     and (
@@ -181,7 +179,7 @@ class UpdateAgentTaskTool(MoviePilotTool):
         return oper.to_dict(
             updated_task,
             next_run_at=next_run_at,
-            timezone=settings.TZ,
+            timezone=get_runtime_setting('TZ'),
         )
 
     async def run(

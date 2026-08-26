@@ -113,9 +113,11 @@ chain 层零 `app.db` / `app.modules` 内部直连，domain 与 chain 层配置�
 |---|---|---|
 | `eventmanager` 单例 | 36 个文件直连 import；其中 chain 层 8 个文件绕过已注入的 `context.event_manager`（search/download/media/subscribe/transfer/site/scraping/workflow） | chain 层直连改为使用注入上下文，改动机械、风险低 |
 | `global_vars` 容器 | 47 个文件 147 处引用，workflow + chain 占近半，被当"停止信号总线"广泛直读 | 停止信号演进为 `runtime/state.py` 的显式契约 |
-| `RuntimeSettingsCompat` | 119 个文件 import（modules 占 60），形式上是端口、用法上仍是每模块全局对象 | modules 层逐步改为注入快照 |
+| 运行时 Settings 读取 | 宿主已统一通过 `app.runtime.settings.get_runtime_setting()` 读取；可变部署配置只经 `RuntimeSettingsService` 管理，旧 `settings` 对象仅由插件兼容入口保留 | 新代码使用只读端口或类型化快照，禁止恢复模块级代理 |
 | Singleton 元类 | 41 处 class 使用，与 getter 门面双轨并存 | 维持双轨兼容，新增能力一律走 getter 门面 |
 
+> 处理进展（2026-08-26）：Agent、Module、Adapter、Doctor、Startup、CLI 及入口层已完成 Settings 读取迁移，宿主源码不再导入或实例化旧兼容代理；插件兼容入口继续提供旧 `settings` ABI。后续新增宿主代码必须依赖读取端口、配置服务或不可变快照。
+>
 > 处理进展（2026-08-24）：chain 层 17 处实例方法调用已改用注入的 `self.eventmanager`
 > （`transfer.py`、`media.py` 已完全脱离全局导入，其余文件因 `@eventmanager.register`
 > 装饰器注册与 staticmethod 调用点按设计保留全局引用）；`media.py` 的

@@ -4,7 +4,7 @@ from typing import Set, Tuple, Optional, Union, List, Dict
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.modules._base import _DownloaderModuleBase
 from app.modules.transmission.transmission import Transmission
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
@@ -18,7 +18,6 @@ from app.schemas.types import (
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 
-settings = RuntimeSettingsCompat()
 
 _TRANSMISSION_DOWNLOADING_STATES = {
     "download_pending",
@@ -111,8 +110,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         # 标签
         if label:
             labels = label.split(',')
-        elif settings.TORRENT_TAG:
-            labels = settings.TORRENT_TAG.split(',')
+        elif get_runtime_setting('TORRENT_TAG'):
+            labels = get_runtime_setting('TORRENT_TAG').split(',')
         else:
             labels = None
         # 添加任务
@@ -139,16 +138,16 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                             torrent_hash = torrent.hashString
                             logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.name}")
                             # 给种子打上标签
-                            if settings.TORRENT_TAG:
-                                logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
+                            if get_runtime_setting('TORRENT_TAG'):
+                                logger.info(f"给种子 {torrent_hash} 打上标签：{get_runtime_setting('TORRENT_TAG')}")
                                 # 种子标签
                                 labels = [str(tag).strip()
                                           for tag in torrent.labels] if hasattr(torrent, "labels") else []
                                 if "已整理" in labels:
                                     labels.remove("已整理")
                                     server.set_torrent_tag(ids=torrent_hash, tags=labels)
-                                if settings.TORRENT_TAG and settings.TORRENT_TAG not in labels:
-                                    labels.append(settings.TORRENT_TAG)
+                                if get_runtime_setting('TORRENT_TAG') and get_runtime_setting('TORRENT_TAG') not in labels:
+                                    labels.append(get_runtime_setting('TORRENT_TAG'))
                                     server.set_torrent_tag(ids=torrent_hash, tags=labels)
                             return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
                 finally:
@@ -213,7 +212,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             servers: Dict[str, Transmission] = self.get_instances()
         ret_torrents = []
         query_status = self._normalize_query_status(status)
-        query_tags = None if include_all_tags else settings.TORRENT_TAG
+        query_tags = None if include_all_tags else get_runtime_setting('TORRENT_TAG')
 
         def __get_torrent_attr(torrent_data, *attr_names):
             """

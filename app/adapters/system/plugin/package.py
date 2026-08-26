@@ -16,10 +16,7 @@ from app.runtime.execution import (
     run_in_threadpool_to_completion as _await_thread_operation,
 )
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
-
-# 保留旧模块级入口，插件本地同步测试和旧扩展仍可能覆盖这些设置。
-settings = RuntimeSettingsCompat()
+from app.runtime.settings import get_runtime_setting
 
 @dataclass(frozen=True, slots=True)
 class PluginPackageCheckpoint:
@@ -58,7 +55,7 @@ class PluginPackageManager:
     def __plugin_dir(plugin_id: str) -> Path:
         """解析插件运行目录并拒绝越出宿主插件根目录的标识。"""
         plugins_root = (
-            Path(settings.ROOT_PATH) / "app" / "plugins"
+            Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins"
         ).resolve()
         plugin_dir = (plugins_root / plugin_id.lower()).resolve()
         if plugin_dir == plugins_root or not plugin_dir.is_relative_to(plugins_root):
@@ -74,7 +71,9 @@ class PluginPackageManager:
         plugin_dir = self.__plugin_dir(plugin_id)
         durable = transaction_id is not None
         persistent_backup_dir = (
-            Path(settings.CONFIG_PATH) / "plugins_backup" / plugin_id.lower()
+            Path(get_runtime_setting('CONFIG_PATH'))
+            / "plugins_backup"
+            / plugin_id.lower()
         ).resolve()
         backup_staging_dir = (
             persistent_backup_dir.parent
@@ -89,9 +88,9 @@ class PluginPackageManager:
             else None
         )
         transaction_root = (
-            Path(settings.CONFIG_PATH)
+            Path(get_runtime_setting('CONFIG_PATH'))
             if durable
-            else Path(settings.TEMP_PATH)
+            else Path(get_runtime_setting('TEMP_PATH'))
         )
         transaction_dir = (
             transaction_root
@@ -129,7 +128,9 @@ class PluginPackageManager:
         """按受控根目录和事务 ID 重建崩溃回放所需的文件引用。"""
         plugin_dir = self.__plugin_dir(plugin_id)
         persistent_backup_dir = (
-            Path(settings.CONFIG_PATH) / "plugins_backup" / plugin_id.lower()
+            Path(get_runtime_setting('CONFIG_PATH'))
+            / "plugins_backup"
+            / plugin_id.lower()
         ).resolve()
         durable_backup = SystemUtils.is_docker()
         return PluginPackageCheckpoint(
@@ -149,7 +150,7 @@ class PluginPackageManager:
                 else None
             ),
             transaction_dir=(
-                Path(settings.CONFIG_PATH)
+                Path(get_runtime_setting('CONFIG_PATH'))
                 / "plugin_transactions"
                 / transaction_id
             ),

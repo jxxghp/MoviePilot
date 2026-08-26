@@ -2,9 +2,8 @@ import base64
 import json
 from typing import List, Optional, Tuple
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
@@ -46,9 +45,9 @@ class YemaSpider:
         indexer = indexer or {}
         self._name = indexer.get("name") or "YemaPT"
         self._site_url = str(indexer.get("domain") or "https://www.yemapt.org/").rstrip("/")
-        self._proxy = settings.PROXY if indexer.get("proxy") else None
+        self._proxy = get_runtime_setting('PROXY') if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
-        self._user_agent = indexer.get("ua") or settings.USER_AGENT
+        self._user_agent = indexer.get("ua") or get_runtime_setting('USER_AGENT')
         self._api_key = indexer.get("apikey")
         self._timeout = indexer.get("timeout") or 15
         self._search_url = f"{self._site_url}/openApi/torrent/fetchOpenTorrentList.json"

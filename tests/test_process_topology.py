@@ -52,8 +52,16 @@ def test_main_rejects_topology_before_startup_side_effects(monkeypatch):
     """主入口应在注册信号、迁移数据库和启动服务器前拒绝错误拓扑。"""
     from app import main
 
-    monkeypatch.setattr(main.settings, "API_WORKERS", 2)
-    monkeypatch.setattr(main.settings, "MOVIEPILOT_SAFE_MODE", False)
+    original_setting = main.get_runtime_setting
+    topology_settings = {
+        "API_WORKERS": 2,
+        "MOVIEPILOT_SAFE_MODE": False,
+    }
+    monkeypatch.setattr(
+        main,
+        "get_runtime_setting",
+        lambda key: topology_settings[key] if key in topology_settings else original_setting(key),
+    )
     signal_handler = MagicMock()
     start_tray = MagicMock()
     server_run = MagicMock()

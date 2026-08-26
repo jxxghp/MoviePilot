@@ -4,9 +4,8 @@ from typing import Union, Tuple
 from pywebpush import webpush, WebPushException
 
 from app.runtime.config import global_vars
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
 from app.schemas.message import Message
@@ -103,9 +102,9 @@ class WebPushModule(_ModuleBase, _MessageBase):
                                 "body": content,
                                 "url": message.link or "/?shotcut=message"
                             }),
-                            vapid_private_key=settings.VAPID.get("privateKey"),
+                            vapid_private_key=get_runtime_setting('VAPID').get("privateKey"),
                             vapid_claims={
-                                "sub": settings.VAPID.get("subject")
+                                "sub": get_runtime_setting('VAPID').get("subject")
                             },
                             **webpush_options,
                         )

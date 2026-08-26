@@ -37,7 +37,7 @@ from app.runtime.dependencies import (
     iter_runtime_requirement_strings,
     runtime_excluded_dependency_pairs,
 )
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.adapters.system.package import (
     PackageInstallRequest,
     build_package_install_strategies,
@@ -64,9 +64,8 @@ from app.adapters.system.host import SystemUtils
 from app.foundation.url import UrlUtils
 from app.runtime.version import get_app_version
 
-# 保留模块级可替换入口，代理默认读取组合根的最新 runtime 配置。
-settings = RuntimeSettingsCompat()
-PLUGIN_DIR = Path(settings.ROOT_PATH) / "app" / "plugins"
+# 插件市场只通过 runtime 读取端口消费组合根的最新配置。
+PLUGIN_DIR = Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins"
 LOCAL_REPO_PREFIX = "local://"
 PLUGIN_SYSTEM_VERSION_FIELD = "system_version"
 PLUGIN_MARKET_WIKI_START = "<!-- plugin-market-repos:start -->"
@@ -317,7 +316,7 @@ class PluginHelper(metaclass=WeakSingleton):
                 return None
             path = Path(values[0]).expanduser()
             if not path.is_absolute():
-                path = settings.ROOT_PATH / path
+                path = get_runtime_setting('ROOT_PATH') / path
             return path.resolve()
         except Exception:
             return None
@@ -355,9 +354,9 @@ class PluginHelper(metaclass=WeakSingleton):
         未启用 VERSION_FLAG（v1）时返回空列表，表示仅使用 package.json 基础索引。
         """
         flags: List[str] = []
-        if settings.VERSION_FLAG:
-            flags.append(settings.VERSION_FLAG)
-            flags.extend(VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, []))
+        if get_runtime_setting('VERSION_FLAG'):
+            flags.append(get_runtime_setting('VERSION_FLAG'))
+            flags.extend(VERSION_BACKWARD_COMPATIBLE_FLAGS.get(get_runtime_setting('VERSION_FLAG'), []))
         return flags
 
     @classmethod
@@ -370,9 +369,9 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         if not isinstance(plugin_info, dict):
             return False
-        if not settings.VERSION_FLAG:
+        if not get_runtime_setting('VERSION_FLAG'):
             return True
-        current_flag = settings.VERSION_FLAG
+        current_flag = get_runtime_setting('VERSION_FLAG')
         if plugin_info.get(current_flag) is False:
             return False
         if plugin_info.get(current_flag) is True:
@@ -398,7 +397,7 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         if not isinstance(plugin_info, dict):
             return False
-        current_flag = settings.VERSION_FLAG
+        current_flag = get_runtime_setting('VERSION_FLAG')
         if not current_flag:
             return not package_version
         if package_version == current_flag:
@@ -416,7 +415,7 @@ class PluginHelper(metaclass=WeakSingleton):
             package_version: Optional[str],
     ) -> Tuple[str, ...]:
         """返回插件安装唯一的代际候选顺序，并去除重复的基础索引。"""
-        preferred_version = package_version or settings.VERSION_FLAG
+        preferred_version = package_version or get_runtime_setting('VERSION_FLAG')
         candidates = [preferred_version]
         candidates.extend(
             VERSION_BACKWARD_COMPATIBLE_FLAGS.get(preferred_version, [])
@@ -491,16 +490,16 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         获取本地插件仓库目录列表
         """
-        if not settings.PLUGIN_LOCAL_REPO_PATHS:
+        if not get_runtime_setting('PLUGIN_LOCAL_REPO_PATHS'):
             return []
         paths = []
-        for item in settings.PLUGIN_LOCAL_REPO_PATHS.split(","):
+        for item in get_runtime_setting('PLUGIN_LOCAL_REPO_PATHS').split(","):
             local_repo_path = item.strip()
             if not local_repo_path:
                 continue
             path = Path(local_repo_path).expanduser()
             if not path.is_absolute():
-                path = settings.ROOT_PATH / path
+                path = get_runtime_setting('ROOT_PATH') / path
             paths.append(path.resolve())
         return paths
 
@@ -542,11 +541,11 @@ class PluginHelper(metaclass=WeakSingleton):
                 continue
 
             package_candidates = []
-            if settings.VERSION_FLAG:
-                package_candidates.append((settings.VERSION_FLAG, self.__get_local_package(repo_path,
-                                                                                           settings.VERSION_FLAG)))
+            if get_runtime_setting('VERSION_FLAG'):
+                package_candidates.append((get_runtime_setting('VERSION_FLAG'), self.__get_local_package(repo_path,
+                                                                                           get_runtime_setting('VERSION_FLAG'))))
                 # 向后兼容：补充扫描更低版本的 package 文件，便于本地仓库复用历史版本插件。
-                for backward_flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, []):
+                for backward_flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(get_runtime_setting('VERSION_FLAG'), []):
                     package_candidates.append((backward_flag, self.__get_local_package(repo_path, backward_flag)))
             package_candidates.append(("", self.__get_local_package(repo_path)))
 
@@ -611,9 +610,9 @@ class PluginHelper(metaclass=WeakSingleton):
             repo_paths = [repo_path.resolve()] if repo_path else self.get_local_repo_paths()
             package_versions = [package_version] if package_version is not None else []
             if package_version is None:
-                if settings.VERSION_FLAG:
-                    package_versions.append(settings.VERSION_FLAG)
-                    package_versions.extend(VERSION_BACKWARD_COMPATIBLE_FLAGS.get(settings.VERSION_FLAG, []))
+                if get_runtime_setting('VERSION_FLAG'):
+                    package_versions.append(get_runtime_setting('VERSION_FLAG'))
+                    package_versions.extend(VERSION_BACKWARD_COMPATIBLE_FLAGS.get(get_runtime_setting('VERSION_FLAG'), []))
                 package_versions.append("")
             selected_candidate = None
             for repo_order, local_repo_path in enumerate(self.get_local_repo_paths()):
@@ -650,7 +649,7 @@ class PluginHelper(metaclass=WeakSingleton):
                         if not is_compatible:
                             candidate["compatible"] = False
                             candidate["skip_reason"] = (
-                                f"插件索引条目不兼容 {settings.VERSION_FLAG}"
+                                f"插件索引条目不兼容 {get_runtime_setting('VERSION_FLAG')}"
                             )
                         self.annotate_plugin_system_version(candidate)
                         if strict_system_version and candidate.get("system_version_compatible") is False:
@@ -729,7 +728,7 @@ class PluginHelper(metaclass=WeakSingleton):
             else "package.json"
         )
         package_url = cls.__append_cache_buster(f"{raw_url}{package_file}")
-        headers = settings.REPO_GITHUB_HEADERS(repo=f"{user}/{repo}")
+        headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=f"{user}/{repo}")
         return package_url, headers
 
     @classmethod
@@ -829,7 +828,7 @@ class PluginHelper(metaclass=WeakSingleton):
             return
 
         user_repo = f"{user}/{repo}"
-        headers = settings.REPO_GITHUB_HEADERS(repo=user_repo)
+        headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo)
         for page in range(1, 11):
             release_api = (
                 f"https://api.github.com/repos/{user_repo}/releases"
@@ -998,7 +997,7 @@ class PluginHelper(metaclass=WeakSingleton):
                                    package_version: Optional[str] = None) -> Optional[str]:
         """
         检查并获取指定插件的可用版本，支持多版本优先级加载和版本兼容性检测
-        1. 如果未指定版本，则使用系统配置的默认版本（通过 settings.VERSION_FLAG 设置）
+        1. 如果未指定版本，则使用系统配置的默认版本（通过 get_runtime_setting('VERSION_FLAG') 设置）
         2. 优先检查指定版本的插件（如 `package.v2.json`）
         3. 检查更低版本的 package 文件，并应用版本兼容标志
         4. 检查 `package.json` 文件，并应用共享实现兼容标志
@@ -1084,7 +1083,7 @@ class PluginHelper(metaclass=WeakSingleton):
         user_repo = f"{user}/{repo}"
 
         if not package_version:
-            package_version = settings.VERSION_FLAG
+            package_version = get_runtime_setting('VERSION_FLAG')
 
         # 1. 优先检查指定版本的插件
         package_version = self.get_plugin_package_version(pid, repo_url, package_version)
@@ -1232,7 +1231,7 @@ class PluginHelper(metaclass=WeakSingleton):
         file_api += f"/{pid.lower()}"
 
         res = self.__request_with_fallback(file_api,
-                                           headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+                                           headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
                                            is_api=True,
                                            timeout=30)
         if res is None:
@@ -1273,7 +1272,7 @@ class PluginHelper(metaclass=WeakSingleton):
                 if item.get("download_url"):
                     logger.debug(f"正在下载文件：{item.get('path')}")
                     res = self.__request_with_fallback(item.get('download_url'),
-                                                       headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
+                                                       headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo))
                     if not res:
                         return False, f"文件 {item.get('path')} 下载失败！"
                     elif res.status_code != 200:
@@ -1285,7 +1284,7 @@ class PluginHelper(metaclass=WeakSingleton):
                         relative_path = relative_path.replace(f"plugins.{package_version}", "plugins", 1)
 
                     # 创建插件文件夹并写入文件
-                    file_path = Path(settings.ROOT_PATH) / "app" / relative_path
+                    file_path = Path(get_runtime_setting('ROOT_PATH')) / "app" / relative_path
                     file_path.parent.mkdir(parents=True, exist_ok=True)
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(res.text)
@@ -1327,7 +1326,7 @@ class PluginHelper(metaclass=WeakSingleton):
         :return: 备份目录路径
         """
         plugin_dir = PLUGIN_DIR / pid.lower()
-        backup_dir = Path(settings.TEMP_PATH) / "plugin_backup" / pid.lower()
+        backup_dir = Path(get_runtime_setting('TEMP_PATH')) / "plugin_backup" / pid.lower()
 
         if plugin_dir.exists():
             # 备份时清理已有的备份目录，防止残留文件影响
@@ -1381,7 +1380,7 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.warn(f"{pid} 插件目录不存在，跳过刷新插件备份")
             return False
 
-        backup_root = settings.CONFIG_PATH / "plugins_backup"
+        backup_root = get_runtime_setting('CONFIG_PATH') / "plugins_backup"
         backup_dir = backup_root / pid.lower()
         staging_dir = backup_root / f".{pid.lower()}.tmp-{uuid.uuid4().hex}"
         previous_dir = backup_root / f".{pid.lower()}.old-{uuid.uuid4().hex}"
@@ -1546,7 +1545,7 @@ class PluginHelper(metaclass=WeakSingleton):
             if package_name in cls._protected_runtime_packages
         }
 
-        project_file = settings.ROOT_PATH / "pyproject.toml"
+        project_file = get_runtime_setting('ROOT_PATH') / "pyproject.toml"
         root_requirements = cls.__parse_project_requirement_roots(project_file)
         if not root_requirements:
             return protected_packages
@@ -1595,7 +1594,7 @@ class PluginHelper(metaclass=WeakSingleton):
     def __get_strict_runtime_packages(cls) -> Set[str]:
         """返回核心包及当前 ABI profile 中不得被插件改写的根包。"""
         packages = set(cls._protected_runtime_packages)
-        project_file = settings.ROOT_PATH / "pyproject.toml"
+        project_file = get_runtime_setting('ROOT_PATH') / "pyproject.toml"
         try:
             for raw_requirement in iter_runtime_profile_requirement_strings(project_file):
                 requirement = Requirement(raw_requirement)
@@ -1717,7 +1716,7 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         以主程序依赖的当前已安装版本生成临时约束文件，确保插件安装不会改写主程序依赖。
         """
-        temp_dir = Path(settings.TEMP_PATH) / "plugin_dependencies"
+        temp_dir = Path(get_runtime_setting('TEMP_PATH')) / "plugin_dependencies"
         temp_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
                 mode="w",
@@ -1794,10 +1793,10 @@ class PluginHelper(metaclass=WeakSingleton):
             python_bin=Path(sys.executable),
             find_links_dirs=find_links_dirs or [],
             constraints_file=constraints_file,
-            config_dir=settings.CONFIG_PATH,
-            package_cache_root=settings.PACKAGE_CACHE_PATH,
-            package_index_url=settings.PIP_PROXY or None,
-            proxy_url=settings.PROXY_HOST or None,
+            config_dir=get_runtime_setting('CONFIG_PATH'),
+            package_cache_root=get_runtime_setting('PACKAGE_CACHE_PATH'),
+            package_index_url=get_runtime_setting('PIP_PROXY') or None,
+            proxy_url=get_runtime_setting('PROXY_HOST') or None,
             purpose=purpose,
         )
 
@@ -1868,7 +1867,7 @@ class PluginHelper(metaclass=WeakSingleton):
             return lines
 
         excluded_pairs = runtime_excluded_dependency_pairs(
-            Path(settings.ROOT_PATH) / "pyproject.toml"
+            Path(get_runtime_setting('ROOT_PATH')) / "pyproject.toml"
         )
         package_errors = set()
         for match in matches:
@@ -1930,12 +1929,12 @@ class PluginHelper(metaclass=WeakSingleton):
         if repair_target and not repair_target.exists():
             repair_target = None
         if repair_target is None:
-            repair_target = settings.ROOT_PATH / "pyproject.toml"
+            repair_target = get_runtime_setting('ROOT_PATH') / "pyproject.toml"
             repair_desc = "主程序 uv.lock"
         if not repair_target.exists():
             return False, f"恢复依赖文件不存在：{repair_target}"
-        if snapshot_file is None and not (settings.ROOT_PATH / "uv.lock").exists():
-            return False, f"恢复依赖文件不存在：{settings.ROOT_PATH / 'uv.lock'}"
+        if snapshot_file is None and not (get_runtime_setting('ROOT_PATH') / "uv.lock").exists():
+            return False, f"恢复依赖文件不存在：{get_runtime_setting('ROOT_PATH') / 'uv.lock'}"
 
         last_error = ""
         request = cls.__build_package_install_request(repair_target, purpose="runtime-repair")
@@ -2127,21 +2126,21 @@ class PluginHelper(metaclass=WeakSingleton):
     ) -> List[Tuple[str, str, dict]]:
         """构造同步与异步 GitHub 请求共用的镜像、代理和直连顺序。"""
         strategies: List[Tuple[str, str, dict]] = []
-        if not is_api and settings.GITHUB_PROXY:
+        if not is_api and get_runtime_setting('GITHUB_PROXY'):
             proxy_url = (
-                f"{UrlUtils.standardize_base_url(settings.GITHUB_PROXY)}{url}"
+                f"{UrlUtils.standardize_base_url(get_runtime_setting('GITHUB_PROXY'))}{url}"
             )
             strategies.append(
                 ("镜像站", proxy_url, {"headers": headers, "timeout": timeout})
             )
-        if settings.PROXY_HOST:
+        if get_runtime_setting('PROXY_HOST'):
             strategies.append(
                 (
                     "代理",
                     url,
                     {
                         "headers": headers,
-                        "proxies": settings.PROXY,
+                        "proxies": get_runtime_setting('PROXY'),
                         "timeout": timeout,
                     },
                 )
@@ -2218,7 +2217,7 @@ class PluginHelper(metaclass=WeakSingleton):
             compatible, message = self.check_plugin_system_version(candidate)
             return None if compatible else message
 
-        package_version = self.get_plugin_package_version(pid, repo_url, settings.VERSION_FLAG)
+        package_version = self.get_plugin_package_version(pid, repo_url, get_runtime_setting('VERSION_FLAG'))
         if package_version is None:
             return None
         meta = self.__get_plugin_meta(pid, repo_url, package_version)
@@ -2235,7 +2234,7 @@ class PluginHelper(metaclass=WeakSingleton):
         if self.is_local_repo_url(repo_url):
             return await asyncio.to_thread(self.get_plugin_system_version_check_message, pid, repo_url)
 
-        package_version = await self.async_get_plugin_package_version(pid, repo_url, settings.VERSION_FLAG)
+        package_version = await self.async_get_plugin_package_version(pid, repo_url, get_runtime_setting('VERSION_FLAG'))
         if package_version is None:
             return None
         meta = await self.__async_get_plugin_meta(pid, repo_url, package_version)
@@ -2382,7 +2381,7 @@ class PluginHelper(metaclass=WeakSingleton):
         release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
         rel_res = self.__request_with_fallback(
             release_api,
-            headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+            headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
             timeout=30,
             is_api=True,
         )
@@ -2405,7 +2404,7 @@ class PluginHelper(metaclass=WeakSingleton):
             return False, f"解析 Release 信息失败：{e}"
 
         # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
-        headers = settings.REPO_GITHUB_HEADERS(repo=user_repo).copy()
+        headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo).copy()
         headers["Accept"] = "application/octet-stream"
         res = self.__request_with_fallback(download_url, headers=headers, is_api=True)
         if res is None or res.status_code != 200:
@@ -2416,7 +2415,7 @@ class PluginHelper(metaclass=WeakSingleton):
                 infos = zf.infolist()
                 if not infos:
                     return False, "压缩包内容为空"
-                dest_base = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
+                dest_base = Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins" / pid.lower()
                 targets = self.__iter_release_zip_targets(zf, dest_base)
                 wrote_any = False
                 for info, dest_path, is_dir in targets:
@@ -2721,7 +2720,7 @@ class PluginHelper(metaclass=WeakSingleton):
         file_api += f"/{pid.lower()}"
 
         res = await self.__async_request_with_fallback(file_api,
-                                                       headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+                                                       headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
                                                        is_api=True,
                                                        timeout=30)
         if res is None:
@@ -2762,7 +2761,7 @@ class PluginHelper(metaclass=WeakSingleton):
                 if item.get("download_url"):
                     logger.debug(f"正在下载文件：{item.get('path')}")
                     res = await self.__async_request_with_fallback(item.get('download_url'),
-                                                                   headers=settings.REPO_GITHUB_HEADERS(repo=user_repo))
+                                                                   headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo))
                     if not res:
                         return False, f"文件 {item.get('path')} 下载失败！"
                     elif res.status_code != 200:
@@ -2774,7 +2773,7 @@ class PluginHelper(metaclass=WeakSingleton):
                         relative_path = relative_path.replace(f"plugins.{package_version}", "plugins", 1)
 
                     # 创建插件文件夹并写入文件
-                    file_path = AsyncPath(settings.ROOT_PATH) / "app" / relative_path
+                    file_path = AsyncPath(get_runtime_setting('ROOT_PATH')) / "app" / relative_path
                     await file_path.parent.mkdir(parents=True, exist_ok=True)
                     async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
                         await f.write(res.text)
@@ -2825,13 +2824,13 @@ class PluginHelper(metaclass=WeakSingleton):
         if repair_target and not await _await_thread_operation(repair_target.exists):
             repair_target = None
         if repair_target is None:
-            repair_target = settings.ROOT_PATH / "pyproject.toml"
+            repair_target = get_runtime_setting('ROOT_PATH') / "pyproject.toml"
             repair_desc = "主程序 uv.lock"
         if not await _await_thread_operation(repair_target.exists):
             return False, f"恢复依赖文件不存在：{repair_target}"
-        lock_file = settings.ROOT_PATH / "uv.lock"
+        lock_file = get_runtime_setting('ROOT_PATH') / "uv.lock"
         if snapshot_file is None and not await _await_thread_operation(lock_file.exists):
-            return False, f"恢复依赖文件不存在：{settings.ROOT_PATH / 'uv.lock'}"
+            return False, f"恢复依赖文件不存在：{get_runtime_setting('ROOT_PATH') / 'uv.lock'}"
 
         request = cls.__build_package_install_request(
             repair_target,
@@ -3076,7 +3075,7 @@ class PluginHelper(metaclass=WeakSingleton):
         :return: 备份目录路径
         """
         plugin_dir = AsyncPath(PLUGIN_DIR) / pid.lower()
-        backup_dir = AsyncPath(settings.TEMP_PATH) / "plugin_backup" / pid.lower()
+        backup_dir = AsyncPath(get_runtime_setting('TEMP_PATH')) / "plugin_backup" / pid.lower()
 
         if await plugin_dir.exists():
             try:
@@ -3234,7 +3233,7 @@ class PluginHelper(metaclass=WeakSingleton):
         user_repo = f"{user}/{repo}"
 
         if not package_version:
-            package_version = settings.VERSION_FLAG
+            package_version = get_runtime_setting('VERSION_FLAG')
 
         # 1. 优先检查指定版本的插件
         package_version = await self.async_get_plugin_package_version(pid, repo_url, package_version)
@@ -3396,7 +3395,7 @@ class PluginHelper(metaclass=WeakSingleton):
         release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
         rel_res = await self.__async_request_with_fallback(
             release_api,
-            headers=settings.REPO_GITHUB_HEADERS(repo=user_repo),
+            headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
             timeout=30,
             is_api=True,
         )
@@ -3419,7 +3418,7 @@ class PluginHelper(metaclass=WeakSingleton):
             return False, f"解析 Release 信息失败：{e}"
 
         # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
-        headers = settings.REPO_GITHUB_HEADERS(repo=user_repo).copy()
+        headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo).copy()
         headers["Accept"] = "application/octet-stream"
         res = await self.__async_request_with_fallback(download_url,
                                                        headers=headers,
@@ -3432,7 +3431,7 @@ class PluginHelper(metaclass=WeakSingleton):
                 infos = zf.infolist()
                 if not infos:
                     return False, "压缩包内容为空"
-                dest_base = Path(settings.ROOT_PATH) / "app" / "plugins" / pid.lower()
+                dest_base = Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins" / pid.lower()
                 targets = self.__iter_release_zip_targets(zf, dest_base)
                 wrote_any = False
                 for info, dest_path, is_dir in targets:

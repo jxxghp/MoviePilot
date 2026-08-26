@@ -6,9 +6,8 @@ from pydantic import BaseModel, Field
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.message import MessageType
@@ -96,7 +95,7 @@ class SendVoiceMessageTool(MoviePilotTool):
                 voice_path=voice_path,
                 voice_caption=(
                     message
-                    if voice_path and settings.AUDIO_OUTPUT_INCLUDE_TEXT
+                    if voice_path and get_runtime_setting('AUDIO_OUTPUT_INCLUDE_TEXT')
                     else None
                 ),
                 save_history=False,

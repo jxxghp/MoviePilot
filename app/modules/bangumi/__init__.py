@@ -44,7 +44,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         初始化Bangumi客户端
         """
-        self._config = BangumiConfigSnapshot(proxy=get_runtime_setting("PROXY"))
+        self._config = BangumiConfigSnapshot(proxy=get_runtime_setting('PROXY'))
         self.bangumiapi = BangumiApi()
         self.scraper = MediaScraperHelper()
 
@@ -126,7 +126,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         bangumiid = int(media_id) if media_id is not None else None
         if not bangumiid and (
-            not meta or (media_source or get_runtime_setting("RECOGNIZE_SOURCE")) != MediaSource.Bangumi
+            not meta or (media_source or get_runtime_setting('RECOGNIZE_SOURCE')) != MediaSource.Bangumi
         ):
             return None
 
@@ -175,7 +175,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         bangumiid = int(media_id) if media_id is not None else None
         if not bangumiid and (
-            not meta or (media_source or get_runtime_setting("RECOGNIZE_SOURCE")) != MediaSource.Bangumi
+            not meta or (media_source or get_runtime_setting('RECOGNIZE_SOURCE')) != MediaSource.Bangumi
         ):
             return None
 
@@ -316,7 +316,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param episode: 集号
         :return: NFO XML文本
         """
-        scrape_source = mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")
+        scrape_source = mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')
         if scrape_source != "bangumi":
             return None
         return self.scraper.get_metadata_nfo(mediainfo, season=season, episode=episode)
@@ -335,7 +335,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param episode: 集号
         :return: 图片文件名与下载地址映射
         """
-        scrape_source = mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")
+        scrape_source = mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')
         if scrape_source != "bangumi":
             return None
         return self.scraper.get_metadata_img(mediainfo, season=season, episode=episode)

@@ -3,9 +3,8 @@ import json
 import time
 from typing import List, Optional, Tuple
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
@@ -34,9 +33,9 @@ class SunnyPTSpider:
         self._api_url = str(
             indexer.get("api_url") or "https://api.sunnypt.top/api/v1/mp"
         ).rstrip("/")
-        self._proxy = settings.PROXY if indexer.get("proxy") else None
+        self._proxy = get_runtime_setting('PROXY') if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
-        self._user_agent = indexer.get("ua") or settings.USER_AGENT
+        self._user_agent = indexer.get("ua") or get_runtime_setting('USER_AGENT')
         self._api_key = indexer.get("apikey")
         self._timeout = indexer.get("timeout") or 15
         self._configured_categories = self._parse_configured_categories(

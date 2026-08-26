@@ -2,10 +2,8 @@ from typing import Tuple, Union
 
 from app.adapters.cache.redis import RedisHelper
 from app.modules import _ModuleBase
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import ModuleType, OtherModulesType
-
-settings = RuntimeSettingsCompat()
 
 
 class RedisModule(_ModuleBase):
@@ -55,7 +53,7 @@ class RedisModule(_ModuleBase):
         """
         测试模块连接性
         """
-        if settings.CACHE_BACKEND_TYPE != "redis":
+        if get_runtime_setting('CACHE_BACKEND_TYPE') != "redis":
             return None
         if RedisHelper().test():
             return True, ""

@@ -50,9 +50,8 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
     P2CardActionTriggerResponse,
 )
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.messaging.ingress import submit_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.application.security.user import get_configured_user_channel_lookup
@@ -1065,7 +1064,7 @@ class Feishu:
         response = None
         temp_path = None
         try:
-            response = RequestUtils(timeout=30, ua=settings.USER_AGENT).get_res(image_url)
+            response = RequestUtils(timeout=30, ua=get_runtime_setting('USER_AGENT')).get_res(image_url)
             if not response or not getattr(response, "content", None):
                 logger.warning(f"飞书图片下载失败：{image_url}")
                 return None

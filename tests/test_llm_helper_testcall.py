@@ -146,6 +146,10 @@ with stub_modules({"app.runtime.config": _config_stub, "app.runtime.log": _log_s
     llm_module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(llm_module)
+llm_module.settings = _config_stub.settings
+llm_module.get_runtime_setting = lambda key, default=None: getattr(
+    _config_stub.settings, key, default
+)
 
 
 class _OfflineProviderManager:

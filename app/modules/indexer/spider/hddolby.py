@@ -1,8 +1,7 @@
 from typing import Tuple, List, Optional
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import MediaType
@@ -76,7 +75,7 @@ class HddolbySpider:
             self._domain_host = site_rules.extract_domain(self._domain)
             self._name = indexer.get('name')
             if indexer.get('proxy'):
-                self._proxy = settings.PROXY
+                self._proxy = get_runtime_setting('PROXY')
             self._cookie = indexer.get('cookie')
             self._ua = indexer.get('ua')
             self._apikey = indexer.get('apikey')

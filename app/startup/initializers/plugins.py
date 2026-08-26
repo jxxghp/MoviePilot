@@ -3,7 +3,24 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.adapters.external.market import (
+    LOCAL_REPO_PREFIX,
+    VERSION_BACKWARD_COMPATIBLE_FLAGS,
+    PluginHelper,
+    configure_installed_plugins_provider,
+    configure_plugin_install_gateway,
+    split_plugin_market_repo_urls,
+)
+from app.adapters.external.plugin.client import PluginMarketClient
+from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.system.host import SystemUtils
+from app.adapters.system.plugin.dependency import PluginDependencyInstaller
+from app.adapters.system.plugin.manifest import dependency_manifest_status
+from app.adapters.system.plugin.package import PluginPackageManager
 from app.application.commands import init_commands
+from app.application.configuration import get_configured_system_config
+from app.application.plugin.catalog import PluginCatalogService
+from app.application.plugin.data import DeletePluginDataCommand
 from app.application.plugin.gateway import (
     PluginInstallGateway,
     configure_plugin_install_service,
@@ -32,37 +49,17 @@ from app.application.plugin.transaction import (
     get_plugin_persistence,
 )
 from app.application.scheduling import update_plugin_job
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.db.oper.plugindata import PluginDataOper
+from app.db.session import SessionFactory
+from app.db.uow import SqlAlchemyUnitOfWork
+from app.foundation.version import compare_version
 from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
 from app.runtime.compat.resource_imports import scan_plugin_resource_imports
 from app.runtime.config import global_vars
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
-from app.adapters.external.market import (
-    LOCAL_REPO_PREFIX,
-    VERSION_BACKWARD_COMPATIBLE_FLAGS,
-    PluginHelper,
-    configure_installed_plugins_provider,
-    configure_plugin_install_gateway,
-    split_plugin_market_repo_urls,
-)
-from app.adapters.external.plugin.client import PluginMarketClient
-from app.adapters.external.server import MoviePilotServerHelper
-from app.adapters.system.host import SystemUtils
-from app.adapters.system.plugin.dependency import PluginDependencyInstaller
-from app.adapters.system.plugin.manifest import dependency_manifest_status
-from app.adapters.system.plugin.package import PluginPackageManager
-from app.application.configuration import get_configured_system_config
-from app.application.plugin.catalog import PluginCatalogService
-from app.application.plugin.data import DeletePluginDataCommand
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.db.oper.plugindata import PluginDataOper
-from app.db.session import SessionFactory
-from app.db.uow import SqlAlchemyUnitOfWork
-from app.foundation.version import compare_version
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
 from app.runtime.extensions.plugin.storage import (
@@ -83,6 +80,7 @@ from app.runtime.extensions.plugin_manager import (
 )
 from app.runtime.log import logger
 from app.runtime.managed_resources import acquire_managed_resource
+from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
@@ -130,7 +128,7 @@ def configure_plugin_services() -> None:
     async def load_inventory(force: bool):
         """读取本轮配置市场和本地仓库的完整候选事实。"""
         return await inventory_reader.async_load(
-            split_plugin_market_repo_urls(settings.PLUGIN_MARKET),
+            split_plugin_market_repo_urls(get_runtime_setting('PLUGIN_MARKET')),
             force=force,
         )
 
@@ -263,7 +261,7 @@ def configure_plugin_services() -> None:
             installed_plugins_provider=lambda: get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
-            plugin_dir=Path(settings.ROOT_PATH) / "app" / "plugins",
+            plugin_dir=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
         ),
         dependency_manifest_status=dependency_manifest_status,
         compatible_flags=lambda flag: (

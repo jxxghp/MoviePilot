@@ -23,10 +23,11 @@ def test_package_version_candidates_have_one_canonical_order(
     expected: tuple[str, ...],
 ) -> None:
     """显式版本、向后兼容版本和基础索引必须由一个有序事实源产生。"""
+    runtime_settings = SimpleNamespace(VERSION_FLAG=configured_version)
     monkeypatch.setattr(
         market,
-        "settings",
-        SimpleNamespace(VERSION_FLAG=configured_version),
+        "get_runtime_setting",
+        lambda key, default=None: getattr(runtime_settings, key, default),
     )
 
     assert PluginHelper._package_version_candidates(requested_version) == expected
@@ -37,10 +38,11 @@ async def test_sync_and_async_package_resolution_visit_same_candidates(
     monkeypatch,
 ) -> None:
     """同步与异步安装必须按相同顺序停止在首个兼容插件索引。"""
+    runtime_settings = SimpleNamespace(VERSION_FLAG="v3")
     monkeypatch.setattr(
         market,
-        "settings",
-        SimpleNamespace(VERSION_FLAG="v3"),
+        "get_runtime_setting",
+        lambda key, default=None: getattr(runtime_settings, key, default),
     )
     helper = PluginHelper.__new__(PluginHelper)
     indexes = {

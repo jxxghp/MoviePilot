@@ -9,9 +9,8 @@ from jinja2 import Template
 from pyquery import PyQuery
 
 from app.runtime.execution import run_in_threadpool
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.system import rust as rust_accel
@@ -136,9 +135,9 @@ class SiteSpider:
         self.page = page
         if self.domain and not str(self.domain).endswith("/"):
             self.domain = self.domain + "/"
-        self.ua = indexer.get('ua') or settings.USER_AGENT
-        self.proxies = settings.PROXY if indexer.get('proxy') else None
-        self.proxy_server = settings.PROXY_SERVER if indexer.get('proxy') else None
+        self.ua = indexer.get('ua') or get_runtime_setting('USER_AGENT')
+        self.proxies = get_runtime_setting('PROXY') if indexer.get('proxy') else None
+        self.proxy_server = get_runtime_setting('PROXY_SERVER') if indexer.get('proxy') else None
         self.cookie = indexer.get('cookie')
         self.referer = referer
         # 初始化属性
@@ -362,8 +361,8 @@ class SiteSpider:
         return self.parse(
             RequestUtils.get_decoded_html_content(
                 ret,
-                performance_mode=settings.ENCODING_DETECTION_PERFORMANCE_MODE,
-                confidence_threshold=settings.ENCODING_DETECTION_MIN_CONFIDENCE
+                performance_mode=get_runtime_setting('ENCODING_DETECTION_PERFORMANCE_MODE'),
+                confidence_threshold=get_runtime_setting('ENCODING_DETECTION_MIN_CONFIDENCE')
             )
         )
 
@@ -394,8 +393,8 @@ class SiteSpider:
             self.parse,
             RequestUtils.get_decoded_html_content(
                 ret,
-                performance_mode=settings.ENCODING_DETECTION_PERFORMANCE_MODE,
-                confidence_threshold=settings.ENCODING_DETECTION_MIN_CONFIDENCE
+                performance_mode=get_runtime_setting('ENCODING_DETECTION_PERFORMANCE_MODE'),
+                confidence_threshold=get_runtime_setting('ENCODING_DETECTION_MIN_CONFIDENCE')
             )
         )
 

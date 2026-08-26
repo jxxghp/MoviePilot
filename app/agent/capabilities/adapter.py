@@ -17,10 +17,7 @@ from app.runtime.capabilities.model import (
     SelectorSchema,
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
-
+from app.runtime.settings import get_runtime_setting, has_runtime_setting
 
 _DEFAULT_CAPABILITY_ROOT = Path(__file__).resolve().parent
 _SETTING_SELECTOR = "setting_truthy"
@@ -29,7 +26,7 @@ _SETTING_SELECTOR = "setting_truthy"
 def _validate_setting_selector(config: Mapping[str, Any]) -> None:
     """限制 selector 只能读取已声明的应用设置。"""
     key = config["key"]
-    if not isinstance(key, str) or not key or not hasattr(settings, key):
+    if not isinstance(key, str) or not key or not has_runtime_setting(key):
         raise ValueError(f"未知应用设置：{key!r}")
 
 
@@ -221,4 +218,4 @@ def should_run_agent_service(spec: CapabilitySpec) -> bool:
         or selector.kind != _SETTING_SELECTOR
     ):
         raise ValueError(f"{spec.source}: 不是可协调的 Agent Service 声明")
-    return bool(getattr(settings, selector.config["key"]))
+    return bool(get_runtime_setting(selector.config["key"]))

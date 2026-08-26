@@ -12,10 +12,8 @@ from app.domain.scraper import MediaScraperHelper
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.context import MediaCredit, MediaImageSet
 from app.schemas.media import normalize_media_source
 from app.schemas.types import (
@@ -59,7 +57,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     def init_module(self) -> None:
         """按当前代理配置初始化 IMDb 客户端和通用刮削器。"""
-        self._config = ImdbConfigSnapshot(proxy=settings.PROXY)
+        self._config = ImdbConfigSnapshot(proxy=get_runtime_setting('PROXY'))
         self.imdb_api = ImdbApi(proxies=self._config.proxy)
         self.scraper = MediaScraperHelper()
 
@@ -517,7 +515,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             if requested_source not in {None, MediaSource.IMDb}:
                 return None
             selected_source = requested_source or normalize_media_source(
-                settings.RECOGNIZE_SOURCE
+                get_runtime_setting('RECOGNIZE_SOURCE')
             )
             if selected_source != MediaSource.IMDb or not meta or not meta.name:
                 return None
@@ -560,7 +558,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             if requested_source not in {None, MediaSource.IMDb}:
                 return None
             selected_source = requested_source or normalize_media_source(
-                settings.RECOGNIZE_SOURCE
+                get_runtime_setting('RECOGNIZE_SOURCE')
             )
             if selected_source != MediaSource.IMDb or not meta or not meta.name:
                 return None
@@ -657,7 +655,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     ) -> Optional[str]:
         """生成 IMDb 来源的 NFO 元数据文本。"""
         del kwargs
-        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != MediaSource.IMDb.value:
+        if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != MediaSource.IMDb.value:
             return None
         if not self.scraper:
             return None
@@ -672,7 +670,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         episode: Optional[int] = None,
     ) -> Optional[dict]:
         """生成 IMDb 来源的图片文件名与下载地址映射。"""
-        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != MediaSource.IMDb.value:
+        if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != MediaSource.IMDb.value:
             return None
         if not self.scraper:
             return None

@@ -52,7 +52,7 @@ class PluginDependencyInstaller:
         self._helper = helper
         self._installed_plugins_provider = installed_plugins_provider or (lambda: [])
         self._plugin_dir = plugin_dir or (
-            Path(get_runtime_setting("ROOT_PATH")) / "app" / "plugins"
+            Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins"
         )
 
     @staticmethod

@@ -7,41 +7,40 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
-from app.api.response import ResponseAPIRoute
-from app.adapters.web.correlation import CorrelationIdMiddleware
-from app.adapters.web.metrics import HttpMetricsMiddleware
 from app.adapters.observability.otel import build_observation_port
-from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
+from app.adapters.web.correlation import CorrelationIdMiddleware
 from app.adapters.web.health import install_health_routes
-from app.application.plugin.routes import configure_plugin_routes
-from app.application.plugin.runtime import get_plugin_manager
-from app.schemas.exception import (
-    PersistenceUnavailableError,
-)
+from app.adapters.web.metrics import HttpMetricsMiddleware
+from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.adapters.web.security.access import (
     configure_token_codec,
     verify_apikey,
     verify_token,
 )
+from app.api.response import ResponseAPIRoute
+from app.application.plugin.routes import configure_plugin_routes
+from app.application.plugin.runtime import get_plugin_manager
 from app.application.security.token import create_access_token, decode_access_token
 from app.runtime.config import global_vars
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.runtime.correlation import get_correlation_id
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import configure_correlation_id_provider, logger
 from app.runtime.observability import configure_observation
+from app.runtime.settings import get_runtime_setting
+from app.runtime.version import get_app_version
+from app.schemas.exception import (
+    PersistenceUnavailableError,
+)
+from app.schemas.mcp import McpJsonRpcError, McpJsonRpcErrorDetail
 from app.schemas.openai import (
     AnthropicErrorDetail,
     AnthropicErrorResponse,
     OpenAIErrorDetail,
     OpenAIErrorResponse,
 )
-from app.schemas.mcp import McpJsonRpcError, McpJsonRpcErrorDetail
-from app.schemas.response import Response as ApiResponse, ValidationIssue
+from app.schemas.response import Response as ApiResponse
+from app.schemas.response import ValidationIssue
 from app.startup.lifecycle import lifespan
-from app.runtime.version import get_app_version
 
 
 def _get_http_exception_message(detail: Any) -> str:
@@ -67,15 +66,15 @@ def _localize_exception_message(request: Request, message: str) -> str:
 def _is_mcp_jsonrpc_request(request: Request) -> bool:
     """判断请求是否指向保持原生响应的 MCP JSON-RPC 根端点。"""
     request_path = getattr(getattr(request, "url", None), "path", "")
-    return request_path.rstrip("/") == f"{settings.API_V1_STR}/mcp"
+    return request_path.rstrip("/") == f"{get_runtime_setting('API_V1_STR')}/mcp"
 
 
 def _get_native_ai_protocol(request: Request) -> str | None:
     """识别需要保持原生错误体的 OpenAI 或 Anthropic 兼容请求。"""
     request_path = getattr(getattr(request, "url", None), "path", "")
-    if request_path.startswith(f"{settings.API_V1_STR}/openai/v1/"):
+    if request_path.startswith(f"{get_runtime_setting('API_V1_STR')}/openai/v1/"):
         return "openai"
-    if request_path.startswith(f"{settings.API_V1_STR}/anthropic/v1/"):
+    if request_path.startswith(f"{get_runtime_setting('API_V1_STR')}/anthropic/v1/"):
         return "anthropic"
     return None
 
@@ -327,9 +326,9 @@ def create_app() -> FastAPI:
     configure_correlation_id_provider(get_correlation_id)
     configure_observation(build_observation_port())
     _app = FastAPI(
-        title=settings.PROJECT_NAME,
+        title=get_runtime_setting('PROJECT_NAME'),
         version=get_app_version(),
-        openapi_url=f"{settings.API_V1_STR}/openapi.json",
+        openapi_url=f"{get_runtime_setting('API_V1_STR')}/openapi.json",
         lifespan=lifespan
     )
 
@@ -351,7 +350,7 @@ def create_app() -> FastAPI:
     # 配置 CORS 中间件
     _app.add_middleware(
         CORSMiddleware,  # noqa
-        allow_origins=settings.ALLOWED_HOSTS,
+        allow_origins=get_runtime_setting('ALLOWED_HOSTS'),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -386,9 +385,9 @@ def create_app() -> FastAPI:
         plugin_apis=lambda plugin_id: get_plugin_manager().get_plugin_apis(plugin_id),
         verify_token=verify_token,
         verify_apikey=verify_apikey,
-        prefix=f"{settings.API_V1_STR}/plugin",
+        prefix=f"{get_runtime_setting('API_V1_STR')}/plugin",
         protected_routes={
-            f"{settings.API_V1_STR}/openapi.json",
+            f"{get_runtime_setting('API_V1_STR')}/openapi.json",
             "/docs",
             "/docs/oauth2-redirect",
             "/redoc",

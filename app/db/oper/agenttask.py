@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Any, List, Optional, cast
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -65,13 +65,16 @@ class AgentTaskOper(DbOper):
         """
         def query(session: Session) -> Optional[AgentTask]:
             """在调用方会话中读取单个任务。"""
-            return session.execute(
-                _get_for_user_statement(
-                    AgentTask,
-                    task_id=task_id,
-                    user_id=user_id,
-                )
-            ).scalars().first()
+            return cast(
+                Optional[AgentTask],
+                session.execute(
+                    _get_for_user_statement(
+                        AgentTask,
+                        task_id=task_id,
+                        user_id=user_id,
+                    )
+                ).scalars().first(),
+            )
 
         return self._execute_sync_query(query)
 
@@ -90,7 +93,7 @@ class AgentTaskOper(DbOper):
                     user_id=user_id,
                 )
             )
-            return result.scalars().first()
+            return cast(Optional[AgentTask], result.scalars().first())
 
         return await self._execute_async_query(query)
 
@@ -98,11 +101,11 @@ class AgentTaskOper(DbOper):
             self,
             user_id: Optional[str] = None,
             enabled: Optional[bool] = None,
-    ) -> list[AgentTask]:
+    ) -> List[AgentTask]:
         """
         查询 Agent 定时任务列表。
         """
-        def query(session: Session) -> list[AgentTask]:
+        def query(session: Session) -> List[AgentTask]:
             """在调用方会话中读取任务列表。"""
             return list(session.execute(
                 _list_for_user_statement(
@@ -117,7 +120,7 @@ class AgentTaskOper(DbOper):
     def update(
             self,
             task_id: int,
-            payload: dict,
+            payload: dict[str, Any],
             user_id: Optional[str] = None,
     ) -> bool:
         """
@@ -217,7 +220,7 @@ class AgentTaskOper(DbOper):
             task_id: int,
             user_id: Optional[str] = None,
             limit: int = 10,
-    ) -> list[AgentTaskRun]:
+    ) -> List[AgentTaskRun]:
         """查询任务最近的有界运行历史。"""
         return self._execute_sync_query(
             lambda session: AgentTaskRun.list_for_task(
@@ -330,7 +333,7 @@ class AgentTaskOper(DbOper):
             task: AgentTask,
             next_run_at: Optional[str] = None,
             timezone: Optional[str] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         将 Agent 定时任务转换为工具可返回的结构。
         """
@@ -354,7 +357,7 @@ class AgentTaskOper(DbOper):
         }
 
     @staticmethod
-    def run_to_dict(run: AgentTaskRun) -> dict:
+    def run_to_dict(run: AgentTaskRun) -> dict[str, Any]:
         """将一次 Agent 任务运行转换为工具返回结构。"""
         return {
             "run_id": run.run_id,

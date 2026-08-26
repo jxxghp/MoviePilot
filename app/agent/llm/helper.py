@@ -11,10 +11,8 @@ from urllib.parse import urlsplit
 from langchain_core.messages import AIMessage, AIMessageChunk
 
 from app.agent.llm.gateway import resolve_llm_provider_runtime
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 if TYPE_CHECKING:
     from app.agent.llm.server_tools import ServerToolResolution
@@ -148,8 +146,8 @@ def _resolve_llm_proxy(use_proxy: bool | None = None) -> str | None:
     """
     解析本次 LLM 调用应使用的系统代理地址。
     """
-    should_use_proxy = settings.LLM_USE_PROXY if use_proxy is None else use_proxy
-    return settings.PROXY_HOST if should_use_proxy and settings.PROXY_HOST else None
+    should_use_proxy = get_runtime_setting('LLM_USE_PROXY') if use_proxy is None else use_proxy
+    return get_runtime_setting('PROXY_HOST') if should_use_proxy and get_runtime_setting('PROXY_HOST') else None
 
 
 def _build_httpx_proxy_kwargs(proxy_url: str | None) -> dict[str, str]:
@@ -539,7 +537,7 @@ class LLMHelper:
         record_input = cls._source_input_limit(model_record)
         metadata_input = cls._source_input_limit(metadata_source)
         profile_input = cls._positive_token_limit(profile.get("max_input_tokens"))
-        configured_k = cls._positive_token_limit(settings.LLM_MAX_CONTEXT_TOKENS)
+        configured_k = cls._positive_token_limit(get_runtime_setting('LLM_MAX_CONTEXT_TOKENS'))
         configured_input = configured_k * 1000 if configured_k else None
 
         endpoint_matched = runtime.get("model_profile_endpoint_matched") is True
@@ -790,8 +788,8 @@ class LLMHelper:
             base_url_preset: Optional[str] = None,
     ) -> Optional[bool]:
         """复用 provider 目录缓存解析当前模型是否支持图片输入。"""
-        provider_name = str(provider if provider is not None else settings.LLM_PROVIDER).strip()
-        model_name = str(model if model is not None else settings.LLM_MODEL).strip()
+        provider_name = str(provider if provider is not None else get_runtime_setting('LLM_PROVIDER')).strip()
+        model_name = str(model if model is not None else get_runtime_setting('LLM_MODEL')).strip()
         if not provider_name or not model_name:
             return None
 
@@ -799,11 +797,11 @@ class LLMHelper:
             metadata = resolve_llm_provider_runtime().resolve_cached_model_metadata(
                 provider_id=provider_name,
                 model_id=model_name,
-                base_url=base_url if base_url is not None else settings.LLM_BASE_URL,
+                base_url=base_url if base_url is not None else get_runtime_setting('LLM_BASE_URL'),
                 base_url_preset_id=(
                     base_url_preset
                     if base_url_preset is not None
-                    else settings.LLM_BASE_URL_PRESET
+                    else get_runtime_setting('LLM_BASE_URL_PRESET')
                 ),
             )
         except Exception as err:
@@ -828,7 +826,7 @@ class LLMHelper:
         被兼容端点以 400 拒绝。无参调用保持旧版“只读总开关”语义，
         未知自定义模型也保持原有开关语义。
         """
-        if not settings.LLM_SUPPORT_IMAGE_INPUT:
+        if not get_runtime_setting('LLM_SUPPORT_IMAGE_INPUT'):
             return False
         if provider is None and model is None:
             return True
@@ -857,8 +855,8 @@ class LLMHelper:
         这主要用于单测 stub 环境以及极端的最小运行环境，正常生产路径仍优先
         走 `LLMProviderManager.resolve_runtime()`。
         """
-        api_key_value = api_key if api_key is not None else settings.LLM_API_KEY
-        base_url_value = base_url if base_url is not None else settings.LLM_BASE_URL
+        api_key_value = api_key if api_key is not None else get_runtime_setting('LLM_API_KEY')
+        base_url_value = base_url if base_url is not None else get_runtime_setting('LLM_BASE_URL')
         if not api_key_value:
             raise ValueError("未配置LLM API Key")
 
@@ -1037,7 +1035,7 @@ class LLMHelper:
         """
         规范化 API 协议配置，未知值统一回退为 ``auto`` 以保持兼容。
         """
-        normalized = str(api_protocol or settings.LLM_API_PROTOCOL or "").strip().lower()
+        normalized = str(api_protocol or get_runtime_setting('LLM_API_PROTOCOL') or "").strip().lower()
         if normalized in {"auto", "chat_completions", "responses"}:
             return normalized
         if normalized:
@@ -1185,15 +1183,15 @@ class LLMHelper:
         :param prompt_cache_key: 同一 Agent 会话内稳定且脱敏的提示词缓存路由键。
         :return: LLM实例
         """
-        provider_name = str(provider if provider is not None else settings.LLM_PROVIDER).lower()
-        model_name = model if model is not None else settings.LLM_MODEL
-        api_key_value = api_key if api_key is not None else settings.LLM_API_KEY
-        base_url_value = base_url if base_url is not None else settings.LLM_BASE_URL
+        provider_name = str(provider if provider is not None else get_runtime_setting('LLM_PROVIDER')).lower()
+        model_name = model if model is not None else get_runtime_setting('LLM_MODEL')
+        api_key_value = api_key if api_key is not None else get_runtime_setting('LLM_API_KEY')
+        base_url_value = base_url if base_url is not None else get_runtime_setting('LLM_BASE_URL')
         base_url_preset_value = (
-            base_url_preset if base_url_preset is not None else settings.LLM_BASE_URL_PRESET
+            base_url_preset if base_url_preset is not None else get_runtime_setting('LLM_BASE_URL_PRESET')
         )
-        user_agent_value = user_agent if user_agent is not None else settings.LLM_USER_AGENT
-        temperature_value = temperature if temperature is not None else settings.LLM_TEMPERATURE
+        user_agent_value = user_agent if user_agent is not None else get_runtime_setting('LLM_USER_AGENT')
+        temperature_value = temperature if temperature is not None else get_runtime_setting('LLM_TEMPERATURE')
         normalized_thinking_level = cls._resolve_thinking_level(
             thinking_level=thinking_level,
         )
@@ -1228,12 +1226,12 @@ class LLMHelper:
             mode=(
                 web_search_mode
                 if web_search_mode is not None
-                else getattr(settings, "LLM_WEB_SEARCH_MODE", "local")
+                else get_runtime_setting("LLM_WEB_SEARCH_MODE", "local")
             ),
             api_protocol=(
                 api_protocol
                 if api_protocol is not None
-                else settings.LLM_API_PROTOCOL
+                else get_runtime_setting('LLM_API_PROTOCOL')
             ),
             base_url=runtime.get("base_url"),
         )
@@ -1345,7 +1343,7 @@ class LLMHelper:
                 credentials=aws_auth,
                 base_url=runtime.get("base_url"),
                 use_proxy=use_proxy,
-                read_timeout=settings.LLM_TOOL_TIMEOUT,
+                read_timeout=get_runtime_setting('LLM_TOOL_TIMEOUT'),
             )
             model = bedrock_model_cls(
                 model_id=model_name,
@@ -1492,8 +1490,8 @@ class LLMHelper:
         :param api_protocol: OpenAI 兼容接口 API 协议，未显式传入时沿用已保存配置。
         :param web_search_mode: 联网搜索模式，未显式传入时沿用已保存配置。
         """
-        provider_name = provider if provider is not None else settings.LLM_PROVIDER
-        model_name = model if model is not None else settings.LLM_MODEL
+        provider_name = provider if provider is not None else get_runtime_setting('LLM_PROVIDER')
+        model_name = model if model is not None else get_runtime_setting('LLM_MODEL')
         start = time.perf_counter()
         llm_kwargs = {
             "streaming": False,

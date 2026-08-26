@@ -5,20 +5,19 @@ from __future__ import annotations
 import importlib
 import os
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 
 import pytest
 
 from app.runtime.compat import resource_imports
 from app.runtime.compat.resource_imports import (
-    PluginResourceImportScanError,
     RESOURCE_IMPORT_RULES,
+    PluginResourceImportScanError,
     scan_plugin_resource_imports,
 )
 from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.startup.initializers import plugins as plugins_initializer
-
 
 _HEADED_CLOAKBROWSER_ENTRYPOINTS = (
     "launch",
@@ -317,8 +316,12 @@ def test_plugin_preparer_runs_before_import_in_non_debug_and_isolates_failures(
 
     monkeypatch.setattr(
         plugin_manager_module,
-        "settings",
-        SimpleNamespace(ROOT_PATH=tmp_path, DEBUG=False),
+        "get_runtime_setting",
+        lambda key, default=None: {
+            "ROOT_PATH": tmp_path,
+            "DEBUG": False,
+            "DEV": False,
+        }.get(key, default),
     )
     monkeypatch.setattr(
         plugin_manager_module,

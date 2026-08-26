@@ -7,11 +7,9 @@ import json
 import urllib.parse
 from http import HTTPStatus
 
-from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils
+from app.runtime.cache import cached
+from app.runtime.settings import get_runtime_setting
 
 
 class Auth:
@@ -69,7 +67,7 @@ class Request:
         self.proxy = proxy
         self.timeout = timeout
 
-    @cached(maxsize=settings.CONF.tmdb, ttl=settings.CONF.meta, skip_none=True)
+    @cached(maxsize=get_runtime_setting('CONF').tmdb, ttl=get_runtime_setting('CONF').meta, skip_none=True)
     def make_request(self, url: str, if_modified_since: bool = None):
         """
         向指定的 URL 发起请求并返回数据

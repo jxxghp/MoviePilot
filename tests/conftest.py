@@ -35,6 +35,71 @@ class _TestDatabaseExecutor:
         return await asyncio.to_thread(operation)
 
 
+class _TestRuntimeSettingsProxy:
+    """为仍需覆盖旧配置字段的测试提供局部桩，不回到宿主模块级代理。"""
+
+    def __init__(self) -> None:
+        self._originals: dict[str, tuple[bool, object]] = {}
+
+    def __getattr__(self, key: str):
+        from app.runtime.config import settings
+
+        return getattr(settings, key)
+
+    def __setattr__(self, key: str, value):
+        if key == "_originals":
+            object.__setattr__(self, key, value)
+            return
+        from app.runtime.config import settings
+
+        if key not in self._originals:
+            self._originals[key] = (hasattr(settings, key), getattr(settings, key, None))
+        setattr(settings, key, value)
+
+    def __delattr__(self, key: str) -> None:
+        if key in self._originals:
+            from app.runtime.config import settings
+
+            had_value, original = self._originals.pop(key)
+            if had_value:
+                setattr(settings, key, original)
+            elif hasattr(settings, key):
+                delattr(settings, key)
+            return
+        raise AttributeError(key)
+
+
+@pytest.fixture(autouse=True)
+def install_runtime_settings_test_proxies(monkeypatch):
+    """给历史测试 patch 点注入测试专用对象，生产代码不保留 settings 属性。"""
+    proxy = _TestRuntimeSettingsProxy()
+    _install_runtime_settings_test_proxies(proxy, monkeypatch)
+    yield
+
+
+def _install_runtime_settings_test_proxies(proxy, monkeypatch=None) -> None:
+    """把测试专用 patch 点补到当前已导入的 Agent/模块。"""
+    for module_name, module in tuple(sys.modules.items()):
+        if not (
+            module_name.startswith("app.modules.")
+            or module_name.startswith("app.agent.")
+            or module_name.startswith("app.startup.")
+            or module_name == "app.main"
+            or module_name.startswith("app.adapters.")
+        ):
+            continue
+        if hasattr(module, "get_runtime_setting") and "settings" not in vars(module):
+            if monkeypatch is None:
+                setattr(module, "settings", proxy)
+            else:
+                monkeypatch.setattr(module, "settings", proxy, raising=False)
+
+
+def pytest_runtest_call(item):
+    """显式 fixture 期间才导入的模块也要拥有同一个测试 patch 点。"""
+    _install_runtime_settings_test_proxies(_TestRuntimeSettingsProxy())
+
+
 @pytest.fixture(autouse=True)
 def configure_plugin_system_services():
     """为绕过完整启动流程的单元测试装配真实插件系统适配器。"""

@@ -9,10 +9,9 @@ from app.domain.meta.metamusic import MetaMusic
 from app.modules import _ModuleBase
 from app.runtime.cache import cached
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import ModuleType, OtherModulesType
 
-settings = RuntimeSettingsCompat()
 
 
 class LrclibModule(_ModuleBase):
@@ -201,13 +200,13 @@ class LrclibModule(_ModuleBase):
                 time.sleep(delay)
             response = RequestUtils(
                 headers={
-                    "User-Agent": f"{settings.USER_AGENT} (https://github.com/jxxghp/MoviePilot)",
+                    "User-Agent": f"{get_runtime_setting('USER_AGENT')} (https://github.com/jxxghp/MoviePilot)",
                     "Accept": "application/json",
                 },
-                proxies=settings.PROXY,
+                proxies=get_runtime_setting('PROXY'),
                 timeout=20,
             ).get_res(
-                f"{(base_url or str(settings.LRCLIB_BASE_URL)).rstrip('/')}{path}",
+                f"{(base_url or str(get_runtime_setting('LRCLIB_BASE_URL'))).rstrip('/')}{path}",
                 params=params,
             )
             cls._last_request_at = time.monotonic()
@@ -231,7 +230,7 @@ class LrclibModule(_ModuleBase):
             if response.status_code in (429, 503):
                 retry_after = cls._retry_after_seconds(response.headers.get("Retry-After"))
                 response.close()
-                max_wait = max(int(settings.LYRICS_PROVIDER_RETRY_MAX_WAIT), 0)
+                max_wait = max(int(get_runtime_setting('LYRICS_PROVIDER_RETRY_MAX_WAIT')), 0)
                 if retry_after > max_wait:
                     cls._cooldown_until = time.monotonic() + retry_after
                     logger.warning(f"LRCLIB 进入冷却 {retry_after:g} 秒，跳过当前批次后续请求")

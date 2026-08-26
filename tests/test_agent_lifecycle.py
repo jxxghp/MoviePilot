@@ -81,7 +81,7 @@ async def test_agent_entrypoint_initializes_on_calling_loop(monkeypatch) -> None
         initialized_loops.append(asyncio.get_running_loop())
 
     manager.initialize.side_effect = initialize
-    monkeypatch.setattr(agent_initializer.settings, "AI_AGENT_ENABLE", True)
+    _patch_agent_settings(monkeypatch, True)
     monkeypatch.setattr(agent_initializer, "agent_manager", manager)
     monkeypatch.setattr(
         agent_initializer,
@@ -134,7 +134,7 @@ async def test_agent_entrypoint_reuses_tasks_and_closes_idempotently(
     memory_manager = MemoryManager()
     initializer = agent_initializer.AgentInitializer()
     monkeypatch.setattr(agent_module, "memory_manager", memory_manager)
-    monkeypatch.setattr(agent_initializer.settings, "AI_AGENT_ENABLE", True)
+    _patch_agent_settings(monkeypatch, True)
     monkeypatch.setattr(agent_initializer, "agent_manager", manager)
     monkeypatch.setattr(agent_initializer, "agent_initializer", initializer)
 
@@ -162,7 +162,7 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
     """Agent 初始化异常只关闭该能力，基础模块仍继续完成启动。"""
     manager = AsyncMock()
     manager.initialize.side_effect = RuntimeError("agent init failed")
-    monkeypatch.setattr(agent_initializer.settings, "AI_AGENT_ENABLE", True)
+    _patch_agent_settings(monkeypatch, True)
     monkeypatch.setattr(agent_initializer, "agent_manager", manager)
     monkeypatch.setattr(
         agent_initializer,
@@ -214,7 +214,7 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
 async def test_disabled_agent_does_not_create_background_tasks(monkeypatch) -> None:
     """Agent 未启用时启动入口不得创建运行时任务。"""
     manager = AsyncMock()
-    monkeypatch.setattr(agent_initializer.settings, "AI_AGENT_ENABLE", False)
+    _patch_agent_settings(monkeypatch, False)
     monkeypatch.setattr(agent_initializer, "agent_manager", manager)
     monkeypatch.setattr(
         agent_initializer,
@@ -903,3 +903,10 @@ async def test_session_worker_restarts_after_idle_timeout_races_with_full_enqueu
         if manager._accepting_tasks:
             await manager.clear_session(session_id, "1")
             await manager.close()
+def _patch_agent_settings(monkeypatch, enabled: bool) -> None:
+    """注入 Agent 启动测试所需的只读配置。"""
+    monkeypatch.setattr(
+        agent_initializer,
+        "get_runtime_setting",
+        lambda key: enabled if key == "AI_AGENT_ENABLE" else None,
+    )

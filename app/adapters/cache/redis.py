@@ -2,22 +2,17 @@ import asyncio
 import json
 import pickle
 import threading
-from typing import Any, Optional, Generator, Tuple, AsyncGenerator, Union
+from typing import Any, AsyncGenerator, Generator, Optional, Tuple, Union
 from urllib.parse import quote, unquote
 
 import redis
 from redis.asyncio import BlockingConnectionPool as AsyncBlockingConnectionPool
 from redis.asyncio import Redis
 
-from app.runtime import config as _runtime_config
+from app.foundation.singleton import Singleton
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.settings import get_runtime_setting
-from app.foundation.singleton import Singleton
-
-
-# 兼容旧插件和测试对模块级 Settings 的覆盖，Redis 连接逻辑统一读取 runtime 端口。
-settings = _runtime_config.settings
 
 # 类型缓存集合，针对非容器简单类型
 _complex_serializable_types = set()
@@ -102,7 +97,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         初始化Redis助手实例
         """
-        self.redis_url = get_runtime_setting("CACHE_BACKEND_URL")
+        self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
         self.client = None
         self._connect_lock = threading.RLock()
 
@@ -117,15 +112,15 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             with self._connect_lock:
                 if self.client is not None:
                     return
-                self.redis_url = get_runtime_setting("CACHE_BACKEND_URL")
+                self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
                 connection_pool = redis.BlockingConnectionPool.from_url(
                     self.redis_url,
                     decode_responses=False,
                     socket_timeout=_socket_timeout,
                     socket_connect_timeout=_socket_connect_timeout,
                     health_check_interval=_health_check_interval,
-                    max_connections=get_runtime_setting("CACHE_REDIS_MAX_CONNECTIONS"),
-                    timeout=get_runtime_setting("CACHE_REDIS_POOL_TIMEOUT"),
+                    max_connections=get_runtime_setting('CACHE_REDIS_MAX_CONNECTIONS'),
+                    timeout=get_runtime_setting('CACHE_REDIS_POOL_TIMEOUT'),
                 )
                 client = redis.Redis(connection_pool=connection_pool)
                 # 测试连接，确保Redis可用
@@ -143,7 +138,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
     def on_config_changed(self):
         """缓存配置变化后重建同步 Redis 连接。"""
         with self._connect_lock:
-            self.redis_url = get_runtime_setting("CACHE_BACKEND_URL")
+            self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
             self.close()
         self._connect()
 
@@ -159,8 +154,8 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             # 如果有显式值，则直接使用，为0时说明不限制，如果未配置，开启BIG_MEMORY_MODE时为"1024mb"，未开启时为"256mb"
-            maxmemory = get_runtime_setting("CACHE_REDIS_MAXMEMORY") or (
-                "1024mb" if get_runtime_setting("BIG_MEMORY_MODE") else "256mb"
+            maxmemory = get_runtime_setting('CACHE_REDIS_MAXMEMORY') or (
+                "1024mb" if get_runtime_setting('BIG_MEMORY_MODE') else "256mb"
             )
             self.client.config_set("maxmemory", maxmemory)
             self.client.config_set("maxmemory-policy", policy)
@@ -371,7 +366,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         初始化异步Redis助手实例
         """
-        self.redis_url = get_runtime_setting("CACHE_BACKEND_URL")
+        self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
         self.client: Optional[Redis] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._connect_lock: Optional[asyncio.Lock] = None
@@ -401,15 +396,15 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
                     await self._close_client()
                 if self.client is not None:
                     return
-                self.redis_url = get_runtime_setting("CACHE_BACKEND_URL")
+                self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
                 connection_pool = AsyncBlockingConnectionPool.from_url(
                     self.redis_url,
                     decode_responses=False,
                     socket_timeout=_socket_timeout,
                     socket_connect_timeout=_socket_connect_timeout,
                     health_check_interval=_health_check_interval,
-                    max_connections=get_runtime_setting("CACHE_REDIS_MAX_CONNECTIONS"),
-                    timeout=get_runtime_setting("CACHE_REDIS_POOL_TIMEOUT"),
+                    max_connections=get_runtime_setting('CACHE_REDIS_MAX_CONNECTIONS'),
+                    timeout=get_runtime_setting('CACHE_REDIS_POOL_TIMEOUT'),
                 )
                 client = Redis(connection_pool=connection_pool)
                 self._loop = current_loop
@@ -440,7 +435,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
 
     async def on_config_changed(self):
         """缓存配置变化后异步重建 Redis 连接。"""
-        self.redis_url = get_runtime_setting("CACHE_BACKEND_URL")
+        self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
         await self._close_client()
         await self._connect()
 
@@ -456,8 +451,8 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             # 如果有显式值，则直接使用，为0时说明不限制，如果未配置，开启BIG_MEMORY_MODE时为"1024mb"，未开启时为"256mb"
-            maxmemory = get_runtime_setting("CACHE_REDIS_MAXMEMORY") or (
-                "1024mb" if get_runtime_setting("BIG_MEMORY_MODE") else "256mb"
+            maxmemory = get_runtime_setting('CACHE_REDIS_MAXMEMORY') or (
+                "1024mb" if get_runtime_setting('BIG_MEMORY_MODE') else "256mb"
             )
             await self.client.config_set("maxmemory", maxmemory)
             await self.client.config_set("maxmemory-policy", policy)

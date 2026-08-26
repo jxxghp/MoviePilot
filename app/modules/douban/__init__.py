@@ -706,7 +706,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if (
             meta
             and not doubanid
-            and (kwargs.get("media_source") or get_runtime_setting("RECOGNIZE_SOURCE")) != "douban"
+            and (kwargs.get("media_source") or get_runtime_setting('RECOGNIZE_SOURCE')) != "douban"
         ):
             return None
 
@@ -777,7 +777,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if (
             meta
             and not doubanid
-            and (kwargs.get("media_source") or get_runtime_setting("RECOGNIZE_SOURCE")) != "douban"
+            and (kwargs.get("media_source") or get_runtime_setting('RECOGNIZE_SOURCE')) != "douban"
         ):
             return None
 
@@ -1684,7 +1684,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param mediainfo: 媒体信息
         :param season: 季号
         """
-        if (mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")) != "douban":
+        if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != "douban":
             return None
         return self.scraper.get_metadata_nfo(mediainfo=mediainfo, season=season)
 
@@ -1695,7 +1695,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param season: 季号
         :param episode: 集号
         """
-        if (mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")) != "douban":
+        if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != "douban":
             return None
         return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
@@ -1706,7 +1706,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param mediainfo: 媒体信息
         :return: None 表示不处理，MediaInfo 表示继续处理
         """
-        if mediainfo.media_source != MediaSource.Douban and get_runtime_setting("RECOGNIZE_SOURCE") != "douban":
+        if mediainfo.media_source != MediaSource.Douban and get_runtime_setting('RECOGNIZE_SOURCE') != "douban":
             return None
         if not mediainfo.douban_id:
             return None

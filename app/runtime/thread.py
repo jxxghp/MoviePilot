@@ -4,9 +4,7 @@ from typing import Any, Callable, TypeVar, cast
 
 from app.foundation.singleton import Singleton
 from app.runtime.execution import OwnedThreadPoolExecutor
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
+from app.runtime.settings import get_runtime_setting
 
 _Result = TypeVar("_Result")
 _THREAD_POOL_STOP_TIMEOUT_SECONDS = 10.0
@@ -23,7 +21,9 @@ class ThreadHelper(metaclass=Singleton):  # type: ignore[metaclass]
 
     def __init__(self) -> None:
         """按系统配置创建共享后台线程池。"""
-        self.pool = OwnedThreadPoolExecutor(max_workers=settings.CONF.threadpool)
+        self.pool = OwnedThreadPoolExecutor(
+            max_workers=get_runtime_setting('CONF').threadpool
+        )
 
     def submit(
             self,

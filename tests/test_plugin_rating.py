@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from app import schemas
 from app.api.endpoints.plugin import plugin_rating, plugin_ratings, rate_plugin
+from app.adapters.external import server as server_module
 from app.adapters.external.server import MoviePilotServerHelper
 
 
@@ -13,8 +14,13 @@ def test_server_helper_uses_plugin_rating_endpoints() -> None:
     """评分辅助方法应使用独立中心端路径并传递评分载荷。"""
 
     async def run_scenario() -> None:
+        runtime_setting = server_module.get_runtime_setting
         with (
-            patch("app.adapters.external.server.settings.MP_SERVER_HOST", "https://movie-pilot.org"),
+            patch.object(
+                server_module,
+                "get_runtime_setting",
+                side_effect=lambda key: "https://movie-pilot.org" if key == "MP_SERVER_HOST" else runtime_setting(key),
+            ),
             patch.object(
                 MoviePilotServerHelper,
                 "_async_get",
@@ -30,16 +36,12 @@ def test_server_helper_uses_plugin_rating_endpoints() -> None:
             await MoviePilotServerHelper.async_plugin_rating("Demo Plugin")
             await MoviePilotServerHelper.async_rate_plugin("Demo Plugin", 4.5)
 
-        assert get_request.await_args_list[0].args == (
-            "https://movie-pilot.org/plugin/rating",
-        )
+        assert get_request.await_args_list[0].args == ("https://movie-pilot.org/plugin/rating",)
         assert get_request.await_args_list[0].kwargs == {
             "params": {"plugin_ids": "DemoPlugin,OtherPlugin"},
             "timeout": 10,
         }
-        assert get_request.await_args_list[1].args == (
-            "https://movie-pilot.org/plugin/rating/Demo%20Plugin",
-        )
+        assert get_request.await_args_list[1].args == ("https://movie-pilot.org/plugin/rating/Demo%20Plugin",)
         assert post_request.await_args.args == (
             "https://movie-pilot.org/plugin/rating/Demo%20Plugin",
             {"rating": 4.5},

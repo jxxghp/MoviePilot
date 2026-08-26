@@ -10,9 +10,8 @@ from typing import Any, Optional, Tuple, Union
 from uuid import UUID
 
 from app.runtime.execution import run_in_threadpool
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.schemas.types import ModuleType, OtherModulesType
@@ -71,19 +70,19 @@ class AcoustIdModule(_ModuleBase):
         模块初始化早于 fpcalc 安装，或运行期依赖被移除，测试也能如实反映本地
         依赖状态，而不是只校验网络连通性。
         """
-        if not str(settings.ACOUSTID_API_KEY or "").strip():
+        if not str(get_runtime_setting('ACOUSTID_API_KEY') or "").strip():
             return False, "AcoustID API Key 未配置"
         fpcalc_path = self._resolve_fpcalc()
         if not fpcalc_path:
             return False, "未找到 fpcalc，请先安装 Chromaprint"
         self._fpcalc_path = fpcalc_path
         response = RequestUtils(
-            ua=settings.USER_AGENT,
-            proxies=settings.PROXY,
+            ua=get_runtime_setting('USER_AGENT'),
+            proxies=get_runtime_setting('PROXY'),
             timeout=15,
         ).get_res(
             url=self._base_url,
-            params={"client": settings.ACOUSTID_API_KEY, "format": "json"},
+            params={"client": get_runtime_setting('ACOUSTID_API_KEY'), "format": "json"},
         )
         if response is None:
             return False, "AcoustID 网络连接失败"
@@ -298,13 +297,13 @@ class AcoustIdModule(_ModuleBase):
             fingerprint: str,
     ) -> Optional[str]:
         """查询 AcoustID 指纹库并提取 MusicBrainz Recording ID。"""
-        api_key = str(settings.ACOUSTID_API_KEY or "").strip()
+        api_key = str(get_runtime_setting('ACOUSTID_API_KEY') or "").strip()
         if not api_key:
             return None
         self._wait_for_rate_limit()
         response = RequestUtils(
-            ua=settings.USER_AGENT,
-            proxies=settings.PROXY,
+            ua=get_runtime_setting('USER_AGENT'),
+            proxies=get_runtime_setting('PROXY'),
             timeout=30,
         ).post_res(
             url=self._base_url,
@@ -337,13 +336,13 @@ class AcoustIdModule(_ModuleBase):
             fingerprint: str,
     ) -> Optional[str]:
         """异步查询 AcoustID 指纹库并提取 MusicBrainz Recording ID。"""
-        api_key = str(settings.ACOUSTID_API_KEY or "").strip()
+        api_key = str(get_runtime_setting('ACOUSTID_API_KEY') or "").strip()
         if not api_key:
             return None
         await self._async_wait_for_rate_limit()
         response = await AsyncRequestUtils(
-            ua=settings.USER_AGENT,
-            proxies=settings.PROXY,
+            ua=get_runtime_setting('USER_AGENT'),
+            proxies=get_runtime_setting('PROXY'),
             timeout=30,
         ).post_res(
             url=self._base_url,

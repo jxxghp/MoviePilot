@@ -286,7 +286,7 @@ class LocalDirectoryWatcher:
         :return: 重扫轮次延迟秒数元组
         """
         return self._parse_rescan_delays(
-            get_runtime_setting("MONITOR_RESCAN_DELAYS")
+            get_runtime_setting('MONITOR_RESCAN_DELAYS')
         )
 
     @classmethod

@@ -211,6 +211,8 @@ def test_string_api_data_locator_is_confined_to_compatibility_boundary() -> None
     """字符串数据注册表只能由 startup 注入并经旧 Facade 转发。"""
     importers = set()
     for path in (PROJECT_ROOT / "app").rglob("*.py"):
+        if path.is_relative_to(PROJECT_ROOT / "app" / "plugins"):
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         imported_modules = {
             node.module

@@ -8,19 +8,17 @@ from typing import List, Optional, Tuple, Union
 
 import requests
 
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.stop import runtime_stop_state
-from app.schemas.file import StorageUsage as _SchemaStorageUsage
-from app.schemas.workflow import FileItem as _SchemaFileItem
-
-settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils
 from app.foundation import temporal as time_tools
 from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
+from app.schemas.workflow import FileItem as _SchemaFileItem
 
 lock = threading.Lock()
 
@@ -48,7 +46,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
     base_url = "https://openapi.alipan.com"
 
     # 阿里云盘目录时间不随子文件变更而更新，默认关闭目录修改时间检查
-    snapshot_check_folder_modtime = settings.ALIPAN_SNAPSHOT_CHECK_FOLDER_MODTIME
+    snapshot_check_folder_modtime = get_runtime_setting('ALIPAN_SNAPSHOT_CHECK_FOLDER_MODTIME')
 
     # 文件块大小，默认10MB
     chunk_size = 10 * 1024 * 1024
@@ -117,7 +115,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         resp = self.session.post(
             f"{self.base_url}/oauth/authorize/qrcode",
             json={
-                "client_id": settings.ALIPAN_APP_ID,
+                "client_id": get_runtime_setting('ALIPAN_APP_ID'),
                 "scopes": [
                     "user:base",
                     "file:all:read",
@@ -181,7 +179,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         resp = self.session.post(
             f"{self.base_url}/oauth/access_token",
             json={
-                "client_id": settings.ALIPAN_APP_ID,
+                "client_id": get_runtime_setting('ALIPAN_APP_ID'),
                 "grant_type": "authorization_code",
                 "code": self._auth_state["authCode"],
                 "code_verifier": self._auth_state["code_verifier"],
@@ -205,7 +203,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         resp = self.session.post(
             f"{self.base_url}/oauth/access_token",
             json={
-                "client_id": settings.ALIPAN_APP_ID,
+                "client_id": get_runtime_setting('ALIPAN_APP_ID'),
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
             },
@@ -745,7 +743,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【阿里云盘】下载链接为空: {fileitem.name}")
             return None
 
-        local_path = self._build_download_path(fileitem, path or settings.TEMP_PATH)
+        local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
         if not local_path:
             return None
 
@@ -759,7 +757,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         try:
             # 构建请求头，包含必要的认证信息
             headers = {
-                "User-Agent": settings.NORMAL_USER_AGENT,
+                "User-Agent": get_runtime_setting('NORMAL_USER_AGENT'),
                 "Referer": "https://www.aliyundrive.com/",
                 "Accept": "*/*",
                 "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",

@@ -27,10 +27,8 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 # worker 脚本路径。用绝对路径直接执行，而不是 -m 或 import：
 # 直接执行文件不会触发 app/__init__.py 的导入链，代理启动才是毫秒级的
@@ -258,7 +256,7 @@ class FileSystemProxy:
         """
         if self._timeout_override is not None:
             return self._timeout_override
-        return float(getattr(settings, "FS_PROXY_TIMEOUT", DEFAULT_TIMEOUT))
+        return float(get_runtime_setting("FS_PROXY_TIMEOUT", DEFAULT_TIMEOUT))
 
     @property
     def _stall_timeout(self) -> float:
@@ -267,14 +265,16 @@ class FileSystemProxy:
         """
         if self._stall_timeout_override is not None:
             return self._stall_timeout_override
-        return float(getattr(settings, "FS_PROXY_STALL_TIMEOUT", DEFAULT_STALL_TIMEOUT))
+        return float(
+            get_runtime_setting("FS_PROXY_STALL_TIMEOUT", DEFAULT_STALL_TIMEOUT)
+        )
 
     @staticmethod
     def _enabled() -> bool:
         """
         代理是否启用。关闭时退回直接调用，行为与引入代理之前完全一致。
         """
-        return bool(getattr(settings, "FS_PROXY_ENABLED", True))
+        return bool(get_runtime_setting("FS_PROXY_ENABLED", True))
 
     @staticmethod
     def _direct(op: str, payload: Dict[str, Any]) -> Any:

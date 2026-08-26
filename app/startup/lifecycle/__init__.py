@@ -26,25 +26,23 @@ try:
 except Exception:
     pass
 
-from app.application.plugin.lifecycle import plugin_lifecycle
-from app.application.plugin.runtime import get_plugin_manager
-from app.chain.system import SystemChain
-from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
-from app.runtime.config import global_vars
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.stop import runtime_stop_state
-
-settings = RuntimeSettingsCompat()
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.network.http import (
     aclose_shared_async_transports,
     configure_default_user_agent,
 )
+from app.application.plugin.lifecycle import plugin_lifecycle
+from app.application.plugin.runtime import get_plugin_manager
+from app.chain.system import SystemChain
 from app.db.engine import check_connection_budget, get_engine, get_global_async_engine
+from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
+from app.runtime.config import global_vars
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.health import get_application_health
 from app.runtime.log import LoggerManager, logger
+from app.runtime.settings import get_runtime_setting
 from app.runtime.state import SystemHelper
+from app.runtime.stop import runtime_stop_state
 from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.runtime.topology import validate_process_topology
 from app.startup.initializers.agent import stop_agent
@@ -90,7 +88,7 @@ async def init_extra():
     """
     同步插件及重启相关依赖服务
     """
-    if settings.MOVIEPILOT_SAFE_MODE:
+    if get_runtime_setting('MOVIEPILOT_SAFE_MODE'):
         SystemHelper().set_system_modified()
         SystemChain().restart_finish()
         _log_runtime_gil_status()
@@ -355,7 +353,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         ),
         LifecycleComponent(
             name="HTTP 基础能力",
-            start=lambda: configure_default_user_agent(settings.USER_AGENT),
+            start=lambda: configure_default_user_agent(get_runtime_setting('USER_AGENT')),
             stop=aclose_shared_async_transports,
             start_order=20,
             stop_order=80,
@@ -386,7 +384,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         LifecycleComponent(
             name="路由",
             dependencies=("数据库连接预算",),
-            start=lambda: init_routers(app, settings.API_V1_STR),
+            start=lambda: init_routers(app, get_runtime_setting('API_V1_STR')),
             start_order=60,
             start_timeout_seconds=30,
         ),
@@ -584,8 +582,8 @@ async def lifespan(app: FastAPI):
     active_start_component: LifecycleComponent | None = None
     try:
         validate_process_topology(
-            workers=settings.API_WORKERS,
-            safe_mode=settings.MOVIEPILOT_SAFE_MODE,
+            workers=get_runtime_setting('API_WORKERS'),
+            safe_mode=get_runtime_setting('MOVIEPILOT_SAFE_MODE'),
         )
         print("Starting up...")
         main_loop_owner = global_vars.set_loop(main_loop)
@@ -593,7 +591,7 @@ async def lifespan(app: FastAPI):
         enabled_components = tuple(
             component
             for component in components
-            if component.enabled(settings.MOVIEPILOT_SAFE_MODE)
+            if component.enabled(get_runtime_setting('MOVIEPILOT_SAFE_MODE'))
         )
         logger.info(
             "启用生命周期组件：%s",
@@ -611,7 +609,7 @@ async def lifespan(app: FastAPI):
             )
             started_component_names.add(component.name)
             active_start_component = None
-        if settings.MOVIEPILOT_SAFE_MODE:
+        if get_runtime_setting('MOVIEPILOT_SAFE_MODE'):
             print("MoviePilot safe mode enabled: skip plugins, scheduler, monitor, commands and workflow.")
         health.mark_ready()
     except BaseException:

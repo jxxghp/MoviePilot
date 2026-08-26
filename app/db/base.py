@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, declared_attr, mapped_column
 
 from app.db.uow import run_async_transaction, run_sync_transaction
-from app.runtime.config import settings
+from app.runtime.settings import get_runtime_setting
 
 
 T = TypeVar("T")
@@ -43,7 +43,7 @@ def get_id_column() -> Mapped[int]:
     """
     根据数据库类型返回合适的ID列定义
     """
-    if settings.DB_TYPE.lower() == "postgresql":
+    if get_runtime_setting('DB_TYPE').lower() == "postgresql":
         # PostgreSQL使用SERIAL类型，让数据库自动处理序列
         return mapped_column(Integer, Identity(start=1, cycle=True), primary_key=True)
     else:

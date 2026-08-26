@@ -8,9 +8,8 @@ import discord
 from discord import app_commands
 
 from app.runtime.execution import run_in_threadpool
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.messaging.ingress import async_forward_message_to_host
 from app.domain.context import MediaInfo, Context
 from app.domain.metainfo import MetaInfo
@@ -72,7 +71,7 @@ class Discord:
         intents.guilds = True
 
         self._client: Optional[discord.Client] = discord.Client(
-            intents=intents, proxy=settings.PROXY_HOST
+            intents=intents, proxy=get_runtime_setting('PROXY_HOST')
         )
         self._tree: Optional[app_commands.CommandTree] = app_commands.CommandTree(self._client)
         self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()

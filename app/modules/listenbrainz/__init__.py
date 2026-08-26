@@ -1,9 +1,8 @@
 from typing import Any, Optional, Tuple, Union
 
 from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import MusicInfo
 from app.runtime.log import logger
 from app.modules import _ModuleBase
@@ -155,7 +154,7 @@ class ListenBrainzModule(_ModuleBase):
         )
 
     @classmethod
-    @cached(maxsize=settings.CONF.listenbrainz, ttl=settings.CONF.meta, skip_none=True)
+    @cached(maxsize=get_runtime_setting('CONF').listenbrainz, ttl=get_runtime_setting('CONF').meta, skip_none=True)
     def _request_json(
             cls,
             path: str,
@@ -164,10 +163,10 @@ class ListenBrainzModule(_ModuleBase):
         """请求 ListenBrainz JSON 接口并统一处理网络和响应错误。"""
         response = RequestUtils(
             headers={
-                "User-Agent": f"{settings.USER_AGENT} (https://github.com/jxxghp/MoviePilot)",
+                "User-Agent": f"{get_runtime_setting('USER_AGENT')} (https://github.com/jxxghp/MoviePilot)",
                 "Accept": "application/json",
             },
-            proxies=settings.PROXY,
+            proxies=get_runtime_setting('PROXY'),
             timeout=20,
         ).get_res(f"{cls._base_url}{path}", params=params)
         if response is None:
@@ -281,7 +280,7 @@ class ListenBrainzModule(_ModuleBase):
         if not release_mbid:
             return None
         # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
-        base = (settings.MUSIC_COVER_PROXY or "https://coverartarchive.org").rstrip("/")
+        base = (get_runtime_setting('MUSIC_COVER_PROXY') or "https://coverartarchive.org").rstrip("/")
         return f"{base}/release/{release_mbid}/front-500"
 
     @classmethod
@@ -290,7 +289,7 @@ class ListenBrainzModule(_ModuleBase):
         if not release_group_id:
             return None
         # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
-        base = (settings.MUSIC_COVER_PROXY or "https://coverartarchive.org").rstrip("/")
+        base = (get_runtime_setting('MUSIC_COVER_PROXY') or "https://coverartarchive.org").rstrip("/")
         return f"{base}/release-group/{release_group_id}/front-500"
 
     @staticmethod

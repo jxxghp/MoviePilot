@@ -4,9 +4,8 @@ from urllib.parse import urljoin
 from typing import Optional, Tuple
 
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils
 from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
@@ -195,7 +194,7 @@ class RousiSiteUserInfo(SiteParserBase):
             res = RequestUtils(
                 headers=headers,
                 timeout=60,
-                proxies=settings.PROXY if self._proxy else None
+                proxies=get_runtime_setting('PROXY') if self._proxy else None
             ).get_res(
                 url=urljoin(self._base_url, "api/messages"),
                 params=params
@@ -231,7 +230,7 @@ class RousiSiteUserInfo(SiteParserBase):
         RequestUtils(
             headers=headers,
             timeout=60,
-            proxies=settings.PROXY if self._proxy else None
+            proxies=get_runtime_setting('PROXY') if self._proxy else None
         ).post_res(
             url=urljoin(self._base_url, "api/messages/read-all")
         )

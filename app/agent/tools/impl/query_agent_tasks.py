@@ -5,10 +5,8 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.application.agentdata import get_agent_task_port
+from app.runtime.settings import get_runtime_setting
 
 
 class QueryAgentTasksInput(BaseModel):
@@ -63,7 +61,7 @@ class QueryAgentTasksTool(MoviePilotTool):
             data = oper.to_dict(
                 task,
                 next_run_at=get_agent_task_next_run(task.id),
-                timezone=settings.TZ,
+                timezone=get_runtime_setting('TZ'),
             )
             if task_id:
                 data["recent_runs"] = [

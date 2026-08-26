@@ -6,19 +6,20 @@ from urllib.parse import urlencode
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
+from app.runtime.settings import get_runtime_setting
 
 BackgroundSubmitter = Callable[..., object]
 
 
 def build_message_ingress_url(source: str | None) -> str:
     """按当前运行配置构造安全编码的本地消息入口 URL。"""
-    query = {"token": settings.API_TOKEN}
+    query = {"token": get_runtime_setting('API_TOKEN')}
     if source:
         query["source"] = source
-    return f"http://127.0.0.1:{settings.PORT}/api/v1/message?{urlencode(query)}"
+    return (
+        f"http://127.0.0.1:{get_runtime_setting('PORT')}/api/v1/message?"
+        f"{urlencode(query)}"
+    )
 
 
 def forward_message_to_host(

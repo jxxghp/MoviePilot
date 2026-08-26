@@ -235,7 +235,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         # 启动定时服务进程
         if not self.__accepting_work():
             return False
-        self._scheduler = BackgroundScheduler(timezone=get_runtime_setting("TZ"))
+        self._scheduler = BackgroundScheduler(timezone=get_runtime_setting('TZ'))
 
         mon_storages: Dict[str, List[Path]] = {}
         # 本地监控启动结果计数，用于输出真实的启动总结
@@ -400,7 +400,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             # 网络/FUSE 挂载轮询降频，减少监控自身对挂载后端的持续 stat 压力
             poll_delay_ms = None
             if use_polling and SystemUtils.is_network_filesystem(mon_path):
-                poll_delay_ms = (get_runtime_setting("MONITOR_POLL_DELAY_NETWORK")
+                poll_delay_ms = (get_runtime_setting('MONITOR_POLL_DELAY_NETWORK')
                                  or LocalDirectoryWatcher.POLL_DELAY_NETWORK_MS)
                 logger.info(f"检测到网络文件系统，轮询扫描间隔调整为 {poll_delay_ms}ms: {mon_path}")
 

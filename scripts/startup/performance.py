@@ -104,6 +104,7 @@ from app.testing.bootstrap import ensure_sites_stub
 
 ensure_sites_stub()
 from app.startup import lifecycle
+from app.runtime.config import settings as legacy_settings
 
 
 def _noop():
@@ -140,7 +141,7 @@ def _isolated_stop(component):
 
 async def _probe():
     '''执行一次隔离生命周期并输出资源与耗时样本。'''
-    lifecycle.settings.MOVIEPILOT_SAFE_MODE = {safe_mode!r}
+    legacy_settings.MOVIEPILOT_SAFE_MODE = {safe_mode!r}
     lifecycle.init_extra = _async_noop
     lifecycle.global_vars.set_loop = lambda loop: None
     lifecycle.global_vars.stop_system = lambda: None

@@ -9,16 +9,12 @@ from typing import Any, Callable, Optional, Protocol
 from urllib.parse import urlparse
 
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.runtime.managed_resources import (
     acquire_managed_resource,
     acquire_managed_resource_async,
 )
 from app.adapters.network.http import RequestUtils, cookie_parse
-
-
-# 保留旧插件可覆盖的模块级入口，默认通过 runtime 代理动态读取浏览器配置。
-settings = RuntimeSettingsCompat()
 
 
 class BrowserElement(Protocol):
@@ -721,8 +717,8 @@ class BrowserSessionHelper:
     ) -> BrowserContext:
         """按宿主反检测配置创建 CloakBrowser 上下文。"""
         context_kwargs = {
-            "humanize": settings.CLOAKBROWSER_HUMANIZE,
-            "human_preset": settings.CLOAKBROWSER_HUMAN_PRESET,
+            "humanize": get_runtime_setting('CLOAKBROWSER_HUMANIZE'),
+            "human_preset": get_runtime_setting('CLOAKBROWSER_HUMAN_PRESET'),
         }
         if user_agent:
             context_kwargs["user_agent"] = user_agent
@@ -922,14 +918,18 @@ class PlaywrightHelper:
         """
         兼容旧的 PlaywrightHelper(browser_type=...) 构造方式。
         """
-        self.browser_type = browser_type or settings.PLAYWRIGHT_BROWSER_TYPE
+        self.browser_type = browser_type or get_runtime_setting(
+            "PLAYWRIGHT_BROWSER_TYPE"
+        )
 
     @staticmethod
     def __browser_emulation() -> str:
         """
         当前浏览器仿真类型。
         """
-        return (settings.BROWSER_EMULATION or "cloakbrowser").lower()
+        return (
+            get_runtime_setting('BROWSER_EMULATION') or "cloakbrowser"
+        ).lower()
 
     @staticmethod
     def __launch_cloakbrowser_context(headless: bool,
@@ -941,8 +941,8 @@ class PlaywrightHelper:
         return launch_browser_context(headless=headless,
                                       proxy=proxies,
                                       user_agent=user_agent,
-                                      humanize=settings.CLOAKBROWSER_HUMANIZE,
-                                      human_preset=settings.CLOAKBROWSER_HUMAN_PRESET)
+                                      humanize=get_runtime_setting('CLOAKBROWSER_HUMANIZE'),
+                                      human_preset=get_runtime_setting('CLOAKBROWSER_HUMAN_PRESET'))
 
     @staticmethod
     def __fs_cookie_str(cookies: list) -> str:
@@ -960,11 +960,12 @@ class PlaywrightHelper:
         调用 FlareSolverr 解决 Cloudflare 并返回 solution 结果
         参考: https://github.com/FlareSolverr/FlareSolverr
         """
-        if not settings.FLARESOLVERR_URL:
+        flaresolverr_url = get_runtime_setting('FLARESOLVERR_URL')
+        if not flaresolverr_url:
             logger.warn("未配置 FLARESOLVERR_URL，无法使用 FlareSolverr")
             return None
 
-        fs_api = settings.FLARESOLVERR_URL.rstrip("/") + "/v1"
+        fs_api = flaresolverr_url.rstrip("/") + "/v1"
         session_id = None
 
         try:

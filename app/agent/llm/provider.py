@@ -20,9 +20,8 @@ import aiofiles
 import httpx
 import jwt
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.types import LlmProviderAction, SystemConfigKey
@@ -268,7 +267,7 @@ class LLMProviderManager(metaclass=Singleton):
         self._models_dev_data: dict[str, Any] | None = None
         self._models_dev_loaded_at: float = 0
         self._models_dev_cache_path = (
-                Path(settings.TEMP_PATH) / "llm_provider_models_dev_cache.json"
+                Path(get_runtime_setting('TEMP_PATH')) / "llm_provider_models_dev_cache.json"
         )
 
     def _cleanup_auth_sessions_locked(self, now: Optional[float] = None) -> None:
@@ -1498,13 +1497,13 @@ class LLMProviderManager(metaclass=Singleton):
 
     def _build_httpx_kwargs(self, use_proxy: Optional[bool] = None) -> dict[str, Any]:
         """构造用于 httpx 客户端的参数，如代理等。"""
-        should_use_proxy = settings.LLM_USE_PROXY if use_proxy is None else use_proxy
+        should_use_proxy = get_runtime_setting('LLM_USE_PROXY') if use_proxy is None else use_proxy
         kwargs: dict[str, Any] = {
             "timeout": self._DEFAULT_TIMEOUT,
             "trust_env": False,
         }
-        if should_use_proxy and settings.PROXY_HOST:
-            kwargs[self._httpx_proxy_key()] = settings.PROXY_HOST
+        if should_use_proxy and get_runtime_setting('PROXY_HOST'):
+            kwargs[self._httpx_proxy_key()] = get_runtime_setting('PROXY_HOST')
         return kwargs
 
     @staticmethod
@@ -1616,7 +1615,7 @@ class LLMProviderManager(metaclass=Singleton):
 
     async def _fetch_models_dev(self, use_proxy: Optional[bool] = None) -> dict[str, Any]:
         """通过网络请求获取最新 models.dev 数据。"""
-        headers = {"User-Agent": settings.USER_AGENT}
+        headers = {"User-Agent": get_runtime_setting('USER_AGENT')}
         async with httpx.AsyncClient(**self._build_httpx_kwargs(use_proxy)) as client:
             response = await client.get(self._MODELS_DEV_URL, headers=headers)
             response.raise_for_status()
@@ -2043,10 +2042,10 @@ class LLMProviderManager(metaclass=Singleton):
         from google import genai
         from google.genai.types import HttpOptions
 
-        should_use_proxy = settings.LLM_USE_PROXY if use_proxy is None else use_proxy
+        should_use_proxy = get_runtime_setting('LLM_USE_PROXY') if use_proxy is None else use_proxy
         client_args: dict[str, Any] = {"trust_env": False}
-        if should_use_proxy and settings.PROXY_HOST:
-            client_args[self._httpx_proxy_key()] = settings.PROXY_HOST
+        if should_use_proxy and get_runtime_setting('PROXY_HOST'):
+            client_args[self._httpx_proxy_key()] = get_runtime_setting('PROXY_HOST')
         http_options = HttpOptions(
             client_args=client_args,
             async_client_args=client_args,
@@ -2160,10 +2159,10 @@ class LLMProviderManager(metaclass=Singleton):
         """
         from botocore.config import Config
 
-        should_use_proxy = settings.LLM_USE_PROXY if use_proxy is None else use_proxy
+        should_use_proxy = get_runtime_setting('LLM_USE_PROXY') if use_proxy is None else use_proxy
         proxies = None
-        if should_use_proxy and settings.PROXY_HOST:
-            proxies = {"http": settings.PROXY_HOST, "https": settings.PROXY_HOST}
+        if should_use_proxy and get_runtime_setting('PROXY_HOST'):
+            proxies = {"http": get_runtime_setting('PROXY_HOST'), "https": get_runtime_setting('PROXY_HOST')}
         return Config(
             connect_timeout=10,
             read_timeout=60,
@@ -2388,7 +2387,7 @@ class LLMProviderManager(metaclass=Singleton):
         仅补充 Copilot 必需的意图头，避免重复覆盖。
         """
         headers = {
-            "User-Agent": settings.USER_AGENT,
+            "User-Agent": get_runtime_setting('USER_AGENT'),
             "Openai-Intent": "conversation-edits",
             "x-initiator": "user",
         }
@@ -2769,7 +2768,7 @@ class LLMProviderManager(metaclass=Singleton):
                     f"{self._CHATGPT_ISSUER}/api/accounts/deviceauth/usercode",
                     headers={
                         "Content-Type": "application/json",
-                        "User-Agent": settings.USER_AGENT,
+                        "User-Agent": get_runtime_setting('USER_AGENT'),
                     },
                     json={"client_id": self._CHATGPT_CLIENT_ID},
                 )
@@ -2806,7 +2805,7 @@ class LLMProviderManager(metaclass=Singleton):
                     headers={
                         "Accept": "application/json",
                         "Content-Type": "application/json",
-                        "User-Agent": settings.USER_AGENT,
+                        "User-Agent": get_runtime_setting('USER_AGENT'),
                     },
                     json={
                         "client_id": self._COPILOT_CLIENT_ID,
@@ -3036,11 +3035,11 @@ class LLMProviderManager(metaclass=Singleton):
         """管理动作：使用传入配置或当前已保存配置执行一次最小 LLM 调用。"""
         from app.agent.llm.helper import LLMHelper, LLMTestTimeout
 
-        provider_name = provider or settings.LLM_PROVIDER
-        model = params.get("model") if params.get("model") is not None else settings.LLM_MODEL
+        provider_name = provider or get_runtime_setting('LLM_PROVIDER')
+        model = params.get("model") if params.get("model") is not None else get_runtime_setting('LLM_MODEL')
         enabled = params.get("enabled")
-        enabled = bool(enabled) if enabled is not None else bool(settings.AI_AGENT_ENABLE)
-        api_key = params.get("api_key") if params.get("api_key") is not None else settings.LLM_API_KEY
+        enabled = bool(enabled) if enabled is not None else bool(get_runtime_setting('AI_AGENT_ENABLE'))
+        api_key = params.get("api_key") if params.get("api_key") is not None else get_runtime_setting('LLM_API_KEY')
 
         data = {"provider": provider_name, "model": model}
         if not provider_name:
@@ -3151,7 +3150,7 @@ class LLMProviderManager(metaclass=Singleton):
                 f"{self._CHATGPT_ISSUER}/api/accounts/deviceauth/token",
                 headers={
                     "Content-Type": "application/json",
-                    "User-Agent": settings.USER_AGENT,
+                    "User-Agent": get_runtime_setting('USER_AGENT'),
                 },
                 json={
                     "device_auth_id": session.context["device_auth_id"],
@@ -3196,7 +3195,7 @@ class LLMProviderManager(metaclass=Singleton):
                 headers={
                     "Accept": "application/json",
                     "Content-Type": "application/json",
-                    "User-Agent": settings.USER_AGENT,
+                    "User-Agent": get_runtime_setting('USER_AGENT'),
                 },
                 json={
                     "client_id": self._COPILOT_CLIENT_ID,

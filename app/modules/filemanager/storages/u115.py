@@ -12,19 +12,17 @@ from cryptography.hazmat.primitives import hashes
 from oss2 import SizedFileAdapter, determine_part_size
 from oss2.models import PartInfo
 
-from app.runtime.settings import RuntimeSettingsCompat
-from app.runtime.stop import runtime_stop_state
-from app.schemas.file import StorageUsage as _SchemaStorageUsage
-from app.schemas.workflow import FileItem as _SchemaFileItem
-
-settings = RuntimeSettingsCompat()
 from app.foundation import size as size_tools
 from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.runtime.log import logger
 from app.runtime.rate import QpsRateLimiter, RateStats
+from app.runtime.settings import get_runtime_setting
+from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
+from app.schemas.workflow import FileItem as _SchemaFileItem
 
 lock = Lock()
 
@@ -130,7 +128,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         生成 OAuth2 授权 URL
         """
         try:
-            resp = self.session.get(f"{settings.U115_AUTH_SERVER}/u115/auth_url")
+            resp = self.session.get(f"{get_runtime_setting('U115_AUTH_SERVER')}/u115/auth_url")
             if resp is None:
                 return {}, "无法连接到授权服务器"
 
@@ -165,7 +163,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         resp = self.session.post(
             "https://passportapi.115.com/open/authDeviceCode",
             data={
-                "client_id": settings.U115_APP_ID,
+                "client_id": get_runtime_setting('U115_APP_ID'),
                 "code_challenge": code_challenge,
                 "code_challenge_method": "sha256",
             },
@@ -229,7 +227,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         try:
             resp = self.session.get(
-                f"{settings.U115_AUTH_SERVER}/u115/token", params={"state": state}
+                f"{get_runtime_setting('U115_AUTH_SERVER')}/u115/token", params={"state": state}
             )
             if resp is None:
                 return {}, "无法连接到授权服务器"
@@ -910,7 +908,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【115】下载链接为空: {fileitem.name}")
             return None
 
-        local_path = self._build_download_path(fileitem, path or settings.TEMP_PATH)
+        local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
         if not local_path:
             return None
 

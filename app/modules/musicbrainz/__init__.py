@@ -8,9 +8,8 @@ from typing import Any, Iterable, Optional, Tuple, Union
 from requests import Session
 
 from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -1761,7 +1760,7 @@ class MusicBrainzModule(_ModuleBase):
         if not release_group_id:
             return None
         # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
-        base = (settings.MUSIC_COVER_PROXY or "https://coverartarchive.org").rstrip("/")
+        base = (get_runtime_setting('MUSIC_COVER_PROXY') or "https://coverartarchive.org").rstrip("/")
         return f"{base}/release-group/{release_group_id}/front-500"
 
     @classmethod
@@ -1795,7 +1794,7 @@ class MusicBrainzModule(_ModuleBase):
             await asyncio.sleep(delay)
 
     @classmethod
-    @cached(maxsize=settings.CONF.musicbrainz, ttl=settings.CONF.meta, skip_none=True)
+    @cached(maxsize=get_runtime_setting('CONF').musicbrainz, ttl=get_runtime_setting('CONF').meta, skip_none=True)
     def _request_json(
             cls,
             path: str,
@@ -1811,10 +1810,10 @@ class MusicBrainzModule(_ModuleBase):
             cls._wait_for_rate_limit()
             response = RequestUtils(
                 headers={
-                    "User-Agent": f"{settings.USER_AGENT} (https://github.com/jxxghp/MoviePilot)",
+                    "User-Agent": f"{get_runtime_setting('USER_AGENT')} (https://github.com/jxxghp/MoviePilot)",
                     "Accept": "application/json",
                 },
-                proxies=settings.PROXY,
+                proxies=get_runtime_setting('PROXY'),
                 session=cls._get_session(),
                 timeout=20,
             ).get_res(f"{cls._base_url}{path}", params=params)
@@ -1850,8 +1849,8 @@ class MusicBrainzModule(_ModuleBase):
 
     @classmethod
     @cached(
-        maxsize=settings.CONF.musicbrainz,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').musicbrainz,
+        ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
         shared_key="_request_json",
     )
@@ -1866,10 +1865,10 @@ class MusicBrainzModule(_ModuleBase):
             await cls._async_wait_for_rate_limit()
             response = await AsyncRequestUtils(
                 headers={
-                    "User-Agent": f"{settings.USER_AGENT} (https://github.com/jxxghp/MoviePilot)",
+                    "User-Agent": f"{get_runtime_setting('USER_AGENT')} (https://github.com/jxxghp/MoviePilot)",
                     "Accept": "application/json",
                 },
-                proxies=settings.PROXY,
+                proxies=get_runtime_setting('PROXY'),
                 timeout=20,
             ).get_res(f"{cls._base_url}{path}", params=params)
             if response is None:

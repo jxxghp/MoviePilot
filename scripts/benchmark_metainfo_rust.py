@@ -20,7 +20,7 @@ from app.domain.meta.runtime import (
 )
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.adapters.system import rust as rust_accel
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from tests.cases.meta import meta_cases
 
 
@@ -64,14 +64,13 @@ _MUSIC_CASES: tuple[BenchmarkInput, ...] = (
 
 def configure_benchmark_runtime() -> None:
     """注入独立基准所需的文件类型和 Rust 适配器，避免静默测量 Python 回退。"""
-    settings = RuntimeSettingsCompat()
     configure_recognition_runtime(
         media_extensions_provider=lambda: (
-            *settings.RMT_MEDIAEXT,
-            *settings.RMT_SUBEXT,
-            *settings.RMT_AUDIOEXT,
+            *get_runtime_setting("RMT_MEDIAEXT"),
+            *get_runtime_setting("RMT_SUBEXT"),
+            *get_runtime_setting("RMT_AUDIOEXT"),
         ),
-        audio_extensions_provider=lambda: settings.RMT_AUDIOEXT,
+        audio_extensions_provider=lambda: get_runtime_setting("RMT_AUDIOEXT"),
         accelerator=rust_accel,
     )
 

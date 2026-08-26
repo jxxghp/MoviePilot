@@ -9,10 +9,8 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 # 搜索超时时间（秒）
 SEARCH_TIMEOUT = 20
@@ -412,7 +410,7 @@ class SearchWebTool(MoviePilotTool):
                 """在线程中执行同步搜索"""
                 results = []
                 ddgs_kwargs = {"timeout": SEARCH_TIMEOUT}
-                proxy_url = self._get_proxy_url(settings.PROXY)
+                proxy_url = self._get_proxy_url(get_runtime_setting('PROXY'))
                 if proxy_url:
                     ddgs_kwargs["proxy"] = proxy_url
 

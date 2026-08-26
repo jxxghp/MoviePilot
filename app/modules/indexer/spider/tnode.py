@@ -2,9 +2,8 @@ import re
 from typing import Tuple, List, Optional
 
 from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation.singleton import SingletonClass
@@ -33,7 +32,7 @@ class TNodeSpider(metaclass=SingletonClass):
             self._searchurl = self._baseurl % self._domain
             self._name = indexer.get('name')
             if indexer.get('proxy'):
-                self._proxy = settings.PROXY
+                self._proxy = get_runtime_setting('PROXY')
             self._cookie = indexer.get('cookie')
             self._ua = indexer.get('ua')
             self._timeout = indexer.get('timeout') or 15

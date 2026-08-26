@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import pickle
@@ -5,26 +6,22 @@ import re
 import threading
 import time
 import uuid
-import base64
-from typing import Optional, List, Dict, Tuple, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 import websocket
 from Crypto.Cipher import AES
 
-from app.runtime.cache import FileCache
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
-from app.application.messaging.ingress import submit_message_to_host
-from app.domain.context import MediaInfo, Context
-from app.domain.metainfo import MetaInfo
+from app.adapters.network.http import RequestUtils
 from app.application.messaging.agent import matches_channel_admin
+from app.application.messaging.ingress import submit_message_to_host
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
+from app.foundation import size as size_tools
+from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.runtime.thread import ThreadHelper
 from app.schemas.message import IncomingMessage
 from app.schemas.types import NotificationChannel
-from app.adapters.network.http import RequestUtils
-from app.foundation import size as size_tools
 
 
 class WeChatBot:

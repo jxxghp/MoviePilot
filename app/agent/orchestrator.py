@@ -68,9 +68,8 @@ from app.agent.tools.impl.mcp import (
 )
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.chain.agent import AgentChain
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.events import eventmanager
 from app.runtime.observability import record_metric
 from app.application.plugin.runtime import get_plugin_manager
@@ -622,7 +621,7 @@ class MoviePilotAgent:
     def _get_recursion_limit() -> int:
         """读取 LangGraph 递归上限，防止模型持续循环调用工具。"""
         try:
-            limit = int(settings.LLM_MAX_ITERATIONS or 0)
+            limit = int(get_runtime_setting('LLM_MAX_ITERATIONS') or 0)
         except (TypeError, ValueError):
             limit = 0
         return limit if limit > 0 else 128
@@ -747,7 +746,7 @@ class MoviePilotAgent:
         self._session_usage.cache_usage_available |= cache_usage_available
         provider_type = _agent_provider_metric_type(
             (self._llm_provider_selection or {}).get("provider")
-            or settings.LLM_PROVIDER
+            or get_runtime_setting('LLM_PROVIDER')
         )
         if input_tokens:
             record_metric(
@@ -872,14 +871,14 @@ class MoviePilotAgent:
             not self._session_usage.model
             and self._session_usage.last_request_sequence == 0
         ):
-            self._session_usage.model = settings.LLM_MODEL
+            self._session_usage.model = get_runtime_setting('LLM_MODEL')
         if (
             not self._session_usage.context_window_tokens
             and self._session_usage.last_request_sequence == 0
         ):
             self._session_usage.context_window_tokens = (
-                settings.LLM_MAX_CONTEXT_TOKENS * 1000
-                if settings.LLM_MAX_CONTEXT_TOKENS
+                get_runtime_setting('LLM_MAX_CONTEXT_TOKENS') * 1000
+                if get_runtime_setting('LLM_MAX_CONTEXT_TOKENS')
                 else None
             )
         return self._session_usage.to_dict(self.session_id)
@@ -899,9 +898,9 @@ class MoviePilotAgent:
                 session_id=self.session_id,
                 selected_provider_id=selection.get("selected_provider_id"),
                 selected_provider_name=selection.get("selected_provider_name"),
-                provider=selection.get("provider") or settings.LLM_PROVIDER,
-                base_url=selection.get("base_url") or settings.LLM_BASE_URL,
-                model=self._session_usage.model or selection.get("model") or settings.LLM_MODEL,
+                provider=selection.get("provider") or get_runtime_setting('LLM_PROVIDER'),
+                base_url=selection.get("base_url") or get_runtime_setting('LLM_BASE_URL'),
+                model=self._session_usage.model or selection.get("model") or get_runtime_setting('LLM_MODEL'),
                 input_tokens=self._session_usage.total_input_tokens,
                 output_tokens=self._session_usage.total_output_tokens,
                 total_tokens=self._session_usage.total_tokens,
@@ -1272,7 +1271,7 @@ class MoviePilotAgent:
         if self.is_background:
             return False
         # 啰嗦模式下始终需要流式输出来捕获工具调用前的 Agent 文字
-        if settings.AI_AGENT_VERBOSE:
+        if get_runtime_setting('AI_AGENT_VERBOSE'):
             return True
         try:
             channel_enum = NotificationChannel(self.channel)
@@ -1321,16 +1320,16 @@ class MoviePilotAgent:
             return self._llm_runtime_config
 
         event_data = AgentLLMProviderEventData(
-            provider=settings.LLM_PROVIDER,
-            model=settings.LLM_MODEL,
-            api_key=settings.LLM_API_KEY,
-            base_url=settings.LLM_BASE_URL,
-            base_url_preset=settings.LLM_BASE_URL_PRESET,
-            user_agent=settings.LLM_USER_AGENT,
-            use_proxy=settings.LLM_USE_PROXY,
-            thinking_level=settings.LLM_THINKING_LEVEL,
-            api_protocol=settings.LLM_API_PROTOCOL,
-            web_search_mode=settings.LLM_WEB_SEARCH_MODE,
+            provider=get_runtime_setting('LLM_PROVIDER'),
+            model=get_runtime_setting('LLM_MODEL'),
+            api_key=get_runtime_setting('LLM_API_KEY'),
+            base_url=get_runtime_setting('LLM_BASE_URL'),
+            base_url_preset=get_runtime_setting('LLM_BASE_URL_PRESET'),
+            user_agent=get_runtime_setting('LLM_USER_AGENT'),
+            use_proxy=get_runtime_setting('LLM_USE_PROXY'),
+            thinking_level=get_runtime_setting('LLM_THINKING_LEVEL'),
+            api_protocol=get_runtime_setting('LLM_API_PROTOCOL'),
+            web_search_mode=get_runtime_setting('LLM_WEB_SEARCH_MODE'),
         )
         selected_event = await eventmanager.async_send_event(
             ChainEventType.AgentLLMProvider,
@@ -1340,43 +1339,43 @@ class MoviePilotAgent:
 
         provider = (
                 self._clean_optional_text(self._get_event_value(resolved_data, "provider"))
-                or settings.LLM_PROVIDER
+                or get_runtime_setting('LLM_PROVIDER')
         )
         model = (
                 self._clean_optional_text(self._get_event_value(resolved_data, "model"))
-                or settings.LLM_MODEL
+                or get_runtime_setting('LLM_MODEL')
         )
         api_key = (
                 self._clean_optional_text(self._get_event_value(resolved_data, "api_key"))
-                or settings.LLM_API_KEY
+                or get_runtime_setting('LLM_API_KEY')
         )
         base_url = (
                 self._clean_optional_text(self._get_event_value(resolved_data, "base_url"))
-                or settings.LLM_BASE_URL
+                or get_runtime_setting('LLM_BASE_URL')
         )
         base_url_preset = (
                 self._clean_optional_text(self._get_event_value(resolved_data, "base_url_preset"))
-                or settings.LLM_BASE_URL_PRESET
+                or get_runtime_setting('LLM_BASE_URL_PRESET')
         )
         user_agent = (
                 self._clean_optional_text(self._get_event_value(resolved_data, "user_agent"))
-                or settings.LLM_USER_AGENT
+                or get_runtime_setting('LLM_USER_AGENT')
         )
         use_proxy = self._get_event_value(resolved_data, "use_proxy")
         if use_proxy is None:
-            use_proxy = settings.LLM_USE_PROXY
+            use_proxy = get_runtime_setting('LLM_USE_PROXY')
         thinking_level = (
                 self._clean_optional_text(
                     self._get_event_value(resolved_data, "thinking_level")
                 )
-                or settings.LLM_THINKING_LEVEL
+                or get_runtime_setting('LLM_THINKING_LEVEL')
         )
         api_protocol = self._clean_optional_text(
             self._get_event_value(resolved_data, "api_protocol")
-        ) or settings.LLM_API_PROTOCOL
+        ) or get_runtime_setting('LLM_API_PROTOCOL')
         web_search_mode = self._clean_optional_text(
             self._get_event_value(resolved_data, "web_search_mode")
-        ) or settings.LLM_WEB_SEARCH_MODE
+        ) or get_runtime_setting('LLM_WEB_SEARCH_MODE')
         selected_provider_id = self._clean_optional_text(
             self._get_event_value(resolved_data, "selected_provider_id")
         )
@@ -1519,8 +1518,8 @@ class MoviePilotAgent:
         清理执行错误中的密钥和尾部长说明，避免把敏感字段或 SDK 调参文档直接发给用户。
         """
         sanitized = re.sub(r"\s+", " ", str(message or "")).strip()
-        if settings.LLM_API_KEY:
-            sanitized = sanitized.replace(settings.LLM_API_KEY, "***")
+        if get_runtime_setting('LLM_API_KEY'):
+            sanitized = sanitized.replace(get_runtime_setting('LLM_API_KEY'), "***")
         sanitized = re.sub(
             r"(?i)(api[_-]?key\s*[:=]\s*)([^\s,;]+)",
             r"\1***",
@@ -1713,11 +1712,11 @@ class MoviePilotAgent:
             bool(self._tool_context.get("is_admin")),
             self.has_message_context,
             self.is_background,
-            settings.AI_AGENT_VERBOSE,
-            settings.LLM_TEMPERATURE,
-            settings.LLM_MAX_CONTEXT_TOKENS,
-            settings.LLM_MAX_TOOLS,
-            settings.LLM_MAX_ITERATIONS,
+            get_runtime_setting('AI_AGENT_VERBOSE'),
+            get_runtime_setting('LLM_TEMPERATURE'),
+            get_runtime_setting('LLM_MAX_CONTEXT_TOKENS'),
+            get_runtime_setting('LLM_MAX_TOOLS'),
+            get_runtime_setting('LLM_MAX_ITERATIONS'),
             self._public_runtime_config_signature(runtime_config),
             agent_runtime_manager.current_signature(),
             agent_mcp_manager.config_signature(),
@@ -2004,7 +2003,7 @@ class MoviePilotAgent:
             )
             skills_middleware = SkillsMiddleware(
                 sources=[str(agent_runtime_manager.skills_dir)],
-                bundled_skills_dir=str(settings.ROOT_PATH / "skills"),
+                bundled_skills_dir=str(get_runtime_setting('ROOT_PATH') / "skills"),
                 stream_handler=self.stream_handler,
             )
             skill_tools = list(getattr(skills_middleware, "tools", []) or [])
@@ -2060,7 +2059,7 @@ class MoviePilotAgent:
                 temporary_subagent_middlewares = ()
                 logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
                 return cached_agent
-            max_tools = settings.LLM_MAX_TOOLS
+            max_tools = get_runtime_setting('LLM_MAX_TOOLS')
             from app.agent.runtime_loader import get_tool_factory
 
             always_include_tools = (
@@ -2558,7 +2557,7 @@ class MoviePilotAgent:
                 "agent.provider.duration",
                 time.perf_counter() - metric_started_at,
                 provider_type=_agent_provider_metric_type(
-                    selection.get("provider") or settings.LLM_PROVIDER
+                    selection.get("provider") or get_runtime_setting('LLM_PROVIDER')
                 ),
                 outcome="success" if execution_success else "error",
             )
@@ -2588,7 +2587,7 @@ class MoviePilotAgent:
                 source=None if broadcast else self.source,
                 mtype=MessageType.Agent,
                 userid=None if broadcast else self.user_id,
-                username=self.username or (settings.SUPERUSER if broadcast else None),
+                username=self.username or (get_runtime_setting('SUPERUSER') if broadcast else None),
                 original_message_id=None if broadcast else self.original_message_id,
                 original_chat_id=None if broadcast else self.original_chat_id,
                 title=title,
@@ -2704,10 +2703,10 @@ class AgentManager:
             status = agent.get_session_status()
         else:
             status = _SessionUsageSnapshot(
-                model=settings.LLM_MODEL,
+                model=get_runtime_setting('LLM_MODEL'),
                 context_window_tokens=(
-                    settings.LLM_MAX_CONTEXT_TOKENS * 1000
-                    if settings.LLM_MAX_CONTEXT_TOKENS
+                    get_runtime_setting('LLM_MAX_CONTEXT_TOKENS') * 1000
+                    if get_runtime_setting('LLM_MAX_CONTEXT_TOKENS')
                     else None
                 ),
             ).to_dict(session_id)
@@ -3515,7 +3514,7 @@ class AgentManager:
                 message=message,
                 channel=None,
                 source=None,
-                username=settings.SUPERUSER,
+                username=get_runtime_setting('SUPERUSER'),
                 reply_mode=reply_mode,
                 output_callback=output_callback,
                 allow_message_tools=allow_message_tools,
@@ -3538,7 +3537,7 @@ class AgentManager:
         :param trigger_source: 触发入口，scheduled-自动调度，manual-显式立即执行
         :return: 执行是否成功及结果摘要
         """
-        if not settings.AI_AGENT_ENABLE:
+        if not get_runtime_setting('AI_AGENT_ENABLE'):
             return False, "AI Agent 未启用"
         accepting_before_claim = self._accepting_tasks
         task_service = get_agent_task_execution_service()
@@ -3564,7 +3563,7 @@ class AgentManager:
         )
         success = True
         result = ""
-        notification_username = run.username or settings.SUPERUSER
+        notification_username = run.username or get_runtime_setting('SUPERUSER')
         try:
             result = await self.process_message(
                 session_id=run.session_id,
@@ -3650,7 +3649,7 @@ class AgentManager:
                 message=heartbeat_message,
                 channel=None,
                 source=None,
-                username=settings.SUPERUSER,
+                username=get_runtime_setting('SUPERUSER'),
                 reply_mode=ReplyMode.CAPTURE_ONLY,
                 allow_message_tools=True,
             )

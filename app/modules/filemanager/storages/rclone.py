@@ -6,17 +6,15 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import List, Optional, Union
 
-from app.runtime.settings import RuntimeSettingsCompat
-from app.schemas.file import StorageUsage as _SchemaStorageUsage
-from app.schemas.workflow import FileItem as _SchemaFileItem
-
-settings = RuntimeSettingsCompat()
 from app.adapters.system.host import SystemUtils
 from app.foundation import temporal as time_tools
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
+from app.schemas.workflow import FileItem as _SchemaFileItem
 
 _MAX_FOLDER_LOCKS = 4096
 _folder_locks: OrderedDict[str, threading.Lock] = OrderedDict()
@@ -50,7 +48,7 @@ class Rclone(StorageBase):
         "copy": "复制"
     }
 
-    snapshot_check_folder_modtime = settings.RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME
+    snapshot_check_folder_modtime = get_runtime_setting('RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME')
 
     def init_storage(self):
         """
@@ -376,7 +374,7 @@ class Rclone(StorageBase):
         """
         带实时进度显示的下载
         """
-        local_path = self._build_download_path(fileitem, path or settings.TEMP_PATH)
+        local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
         if not local_path:
             return None
         

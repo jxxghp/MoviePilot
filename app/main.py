@@ -55,17 +55,16 @@ elif SystemUtils.is_frozen():
     sys.stderr = open(os.devnull, 'w')
 
 from app.factory import app
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.runtime.config import global_vars
 from app.runtime.stop import runtime_stop_state
 
-settings = RuntimeSettingsCompat()
 from app.runtime.topology import (
     UnsupportedProcessTopologyError,
     validate_process_topology,
 )
 
-setproctitle.setproctitle(settings.PROJECT_NAME)
+setproctitle.setproctitle(get_runtime_setting('PROJECT_NAME'))
 
 
 class MoviePilotServer(uvicorn.Server):
@@ -85,8 +84,8 @@ def create_server() -> MoviePilotServer:
     server = MoviePilotServer(
         Config(
             app,
-            host=settings.HOST,
-            port=settings.PORT,
+            host=get_runtime_setting('HOST'),
+            port=get_runtime_setting('PORT'),
             reload=False,
             workers=1,
             timeout_graceful_shutdown=60,
@@ -101,9 +100,9 @@ def create_server() -> MoviePilotServer:
 def run_api_server() -> None:
     """按开发 reload、安全模式多进程或生产单进程选择 Uvicorn 入口。"""
     global Server
-    supervised = settings.DEV or settings.API_WORKERS > 1
+    supervised = get_runtime_setting('DEV') or get_runtime_setting('API_WORKERS') > 1
     if supervised:
-        if settings.DEV and settings.API_WORKERS > 1:
+        if get_runtime_setting('DEV') and get_runtime_setting('API_WORKERS') > 1:
             raise UnsupportedProcessTopologyError(
                 "Uvicorn reload 与多 worker 不能同时启用；"
                 "开发模式请设置 API_WORKERS=1。"
@@ -112,10 +111,10 @@ def run_api_server() -> None:
         uvicorn.run(
             APP_FACTORY,
             factory=True,
-            host=settings.HOST,
-            port=settings.PORT,
-            reload=settings.DEV,
-            workers=settings.API_WORKERS,
+            host=get_runtime_setting('HOST'),
+            port=get_runtime_setting('PORT'),
+            reload=get_runtime_setting('DEV'),
+            workers=get_runtime_setting('API_WORKERS'),
             timeout_graceful_shutdown=60,
         )
         return
@@ -146,7 +145,7 @@ def start_tray():
         调用浏览器打开前端页面
         """
         import webbrowser
-        webbrowser.open(f"http://localhost:{settings.NGINX_PORT}")
+        webbrowser.open(f"http://localhost:{get_runtime_setting('NGINX_PORT')}")
 
     def quit_app():
         """
@@ -158,8 +157,8 @@ def start_tray():
     import pystray
 
     TrayIcon = pystray.Icon(
-        settings.PROJECT_NAME,
-        icon=Image.open(settings.ROOT_PATH / 'app.ico'),
+        get_runtime_setting('PROJECT_NAME'),
+        icon=Image.open(get_runtime_setting('ROOT_PATH') / 'app.ico'),
         menu=pystray.Menu(
             pystray.MenuItem(
                 '打开',
@@ -185,8 +184,8 @@ def signal_handler(signum, frame):
 def run_application() -> None:
     """初始化进程并启动 API 服务"""
     validate_process_topology(
-        workers=settings.API_WORKERS,
-        safe_mode=settings.MOVIEPILOT_SAFE_MODE,
+        workers=get_runtime_setting('API_WORKERS'),
+        safe_mode=get_runtime_setting('MOVIEPILOT_SAFE_MODE'),
     )
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)

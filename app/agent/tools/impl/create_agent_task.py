@@ -7,9 +7,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.agentdata import get_agent_chat_port
 from app.application.agentdata import get_agent_task_port
 from app.runtime.scheduling import TimerUtils
@@ -73,7 +72,7 @@ class CreateAgentTaskInput(BaseModel):
         self.trigger_type, self.trigger = TimerUtils.normalize_schedule_trigger(
             trigger_type=self.trigger_type,
             trigger_value=self.trigger,
-            timezone_name=settings.TZ,
+            timezone_name=get_runtime_setting('TZ'),
             require_future=True,
         )
         return self
@@ -105,14 +104,14 @@ class CreateAgentTaskTool(MoviePilotTool):
 
         trigger_value = payload.trigger
         if payload.trigger_type == "date" and payload.delay_minutes is not None:
-            timezone = pytz.timezone(settings.TZ)
+            timezone = pytz.timezone(get_runtime_setting('TZ'))
             trigger_value = (
                 datetime.now(timezone) + timedelta(minutes=payload.delay_minutes)
             ).isoformat(timespec="seconds")
         _, trigger_value = TimerUtils.normalize_schedule_trigger(
             trigger_type=payload.trigger_type,
             trigger_value=trigger_value,
-            timezone_name=settings.TZ,
+            timezone_name=get_runtime_setting('TZ'),
             require_future=True,
         )
         chat = get_agent_chat_port().get(
@@ -136,7 +135,7 @@ class CreateAgentTaskTool(MoviePilotTool):
         return get_agent_task_port().to_dict(
             task,
             next_run_at=next_run_at,
-            timezone=settings.TZ,
+            timezone=get_runtime_setting('TZ'),
         )
 
     async def run(
@@ -149,7 +148,7 @@ class CreateAgentTaskTool(MoviePilotTool):
             **kwargs: object,
     ) -> str:
         """创建 Agent 自主定时任务。"""
-        if not settings.AI_AGENT_ENABLE:
+        if not get_runtime_setting('AI_AGENT_ENABLE'):
             return "AI Agent 未启用，无法创建自主定时任务"
         payload = CreateAgentTaskInput(
             name=name,

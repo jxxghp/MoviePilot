@@ -2,9 +2,8 @@ import re
 import traceback
 from typing import Optional, List
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.foundation import text as text_tools
@@ -1279,7 +1278,7 @@ class TmdbApi:
         """
         languages = []
         for language in (
-                settings.TMDB_LOCALE,
+                get_runtime_setting('TMDB_LOCALE'),
                 "en",
                 None,
                 original_language,

@@ -4,9 +4,8 @@ from urllib.parse import urljoin, urlparse
 
 from lxml import etree
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import Context
 from app.application.site.query import get_configured_site_query_service
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -146,7 +145,7 @@ class SubtitleModule(_ModuleBase):
         request = RequestUtils(
             cookies=torrent.site_cookie,
             ua=torrent.site_ua,
-            proxies=settings.PROXY if torrent.site_proxy else None,
+            proxies=get_runtime_setting('PROXY') if torrent.site_proxy else None,
         )
         res = request.get_res(torrent.page_url)
         if res and res.status_code == 200:

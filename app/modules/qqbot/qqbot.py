@@ -7,19 +7,15 @@ import hashlib
 import io
 import pickle
 import threading
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 from PIL import Image
 
-from app.runtime.cache import FileCache
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
+from app.adapters.network.http import RequestUtils
 from app.application.messaging.ingress import submit_message_to_host
-from app.domain.context import MediaInfo, Context
+from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
-from app.runtime.thread import ThreadHelper
+from app.foundation import size as size_tools
 from app.modules.qqbot.api import (
     get_access_token,
     get_gateway_url,
@@ -27,8 +23,9 @@ from app.modules.qqbot.api import (
     send_proactive_group_message,
 )
 from app.modules.qqbot.gateway import run_gateway
-from app.adapters.network.http import RequestUtils
-from app.foundation import size as size_tools
+from app.runtime.cache import FileCache
+from app.runtime.log import logger
+from app.runtime.thread import ThreadHelper
 
 # QQ Markdown 图片展示尺寸限制，避免竖版海报被客户端拉伸变形
 _DEFAULT_IMAGE_SIZE: Tuple[int, int] = (208, 320)

@@ -11,9 +11,7 @@ from typing import Optional, Tuple
 import docker
 import psutil
 
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
+from app.runtime.settings import get_runtime_setting
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 from app.foundation.environment import is_docker
@@ -33,10 +31,18 @@ class SystemHelper(ConfigReloadMixin):
     }
 
     __system_flag_file = "/var/log/nginx/__moviepilot__"
-    __local_backend_runtime_file = settings.TEMP_PATH / "moviepilot.runtime.json"
-    __local_restart_log_file = settings.LOG_PATH / "moviepilot.restart.stdout.log"
-    __one_shot_dev_update_flag_file = settings.TEMP_PATH / "moviepilot.pending_dev_update"
-    __docker_restart_intent_file = settings.TEMP_PATH / "moviepilot.intentional_restart"
+    __local_backend_runtime_file = (
+        get_runtime_setting('TEMP_PATH') / "moviepilot.runtime.json"
+    )
+    __local_restart_log_file = (
+        get_runtime_setting('LOG_PATH') / "moviepilot.restart.stdout.log"
+    )
+    __one_shot_dev_update_flag_file = (
+        get_runtime_setting('TEMP_PATH') / "moviepilot.pending_dev_update"
+    )
+    __docker_restart_intent_file = (
+        get_runtime_setting('TEMP_PATH') / "moviepilot.intentional_restart"
+    )
     __graceful_shutdown_monitor_lock = threading.Lock()
     __graceful_shutdown_monitor: Optional[threading.Thread] = None
 
@@ -142,13 +148,14 @@ class SystemHelper(ConfigReloadMixin):
             "subprocess.run(cmd, cwd=os.environ.get('MOVIEPILOT_ROOT'), env=os.environ.copy(), check=False)"
         )
         env = os.environ.copy()
-        env["MOVIEPILOT_ROOT"] = str(settings.ROOT_PATH)
+        root_path = get_runtime_setting('ROOT_PATH')
+        env["MOVIEPILOT_ROOT"] = str(root_path)
         env["PYTHONUNBUFFERED"] = "1"
 
         SystemHelper.__local_restart_log_file.parent.mkdir(parents=True, exist_ok=True)
         with SystemHelper.__local_restart_log_file.open("a", encoding="utf-8") as log_handle:
             kwargs = {
-                "cwd": str(settings.ROOT_PATH),
+                "cwd": str(root_path),
                 "stdout": log_handle,
                 "stderr": subprocess.STDOUT,
                 "stdin": subprocess.DEVNULL,
@@ -200,7 +207,9 @@ class SystemHelper(ConfigReloadMixin):
                 return False
 
             # 创建 Docker 客户端
-            client = docker.DockerClient(base_url=settings.DOCKER_CLIENT_API)
+            client = docker.DockerClient(
+                base_url=get_runtime_setting('DOCKER_CLIENT_API')
+            )
             # 获取容器信息
             container = client.containers.get(container_id)
             restart_policy = container.attrs.get('HostConfig', {}).get('RestartPolicy', {})
@@ -280,7 +289,9 @@ class SystemHelper(ConfigReloadMixin):
     @staticmethod
     def upgrade_dev() -> Tuple[bool, str]:
         """保留原 Dev 模式：重启后跟踪当前 v3 开发分支。"""
-        configured_mode = str(settings.MOVIEPILOT_AUTO_UPDATE or "").strip().lower()
+        configured_mode = str(
+            get_runtime_setting('MOVIEPILOT_AUTO_UPDATE') or ""
+        ).strip().lower()
         if configured_mode != "dev":
             queued, message = SystemHelper.queue_one_shot_dev_update()
             if not queued:
@@ -340,7 +351,9 @@ class SystemHelper(ConfigReloadMixin):
         """
         try:
             # 创建 Docker 客户端
-            client = docker.DockerClient(base_url=settings.DOCKER_CLIENT_API)
+            client = docker.DockerClient(
+                base_url=get_runtime_setting('DOCKER_CLIENT_API')
+            )
             container_id = SystemHelper._get_container_id()
             if not container_id:
                 return False, "获取容器ID失败！"

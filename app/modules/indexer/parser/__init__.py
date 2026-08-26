@@ -8,9 +8,8 @@ from urllib.parse import urljoin, urlsplit
 
 from requests import Session
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.adapters.network.cloudflare import under_challenge
 from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
@@ -228,7 +227,7 @@ class SiteParserBase(metaclass=ABCMeta):
                     )
                 )
             # 解析用户未读消息
-            if settings.SITE_MESSAGE:
+            if get_runtime_setting('SITE_MESSAGE'):
                 self._pase_unread_msgs()
             # 解析用户上传、下载、分享率等信息
             if self._user_traffic_page:
@@ -346,7 +345,7 @@ class SiteParserBase(metaclass=ABCMeta):
         :return:
         """
         req_headers = None
-        proxies = settings.PROXY if self._proxy else None
+        proxies = get_runtime_setting('PROXY') if self._proxy else None
         if self._ua or headers or self._addition_headers:
 
             if self.request_mode == "apikey":
@@ -408,8 +407,8 @@ class SiteParserBase(metaclass=ABCMeta):
                         f"{self._site_name} 检测到Cloudflare，请更新Cookie和UA")
                     return ""
                 return RequestUtils.get_decoded_html_content(res,
-                                                             settings.ENCODING_DETECTION_PERFORMANCE_MODE,
-                                                             settings.ENCODING_DETECTION_MIN_CONFIDENCE)
+                                                             get_runtime_setting('ENCODING_DETECTION_PERFORMANCE_MODE'),
+                                                             get_runtime_setting('ENCODING_DETECTION_MIN_CONFIDENCE'))
 
         return ""
 

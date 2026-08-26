@@ -79,6 +79,12 @@ def load_cli_module():
 
         with patch.dict(sys.modules, stub_modules):
             spec.loader.exec_module(module)
+        # CLI 生产代码只依赖读取端口；这个动态加载器仍提供旧字段 patch 点，
+        # 让历史更新流程测试可以独立于全局测试配置运行。
+        module.settings = settings
+        module.get_runtime_setting = lambda key, default=None: getattr(
+            settings, key, default
+        )
         return module
 
 

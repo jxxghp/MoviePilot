@@ -1,9 +1,8 @@
 from pathlib import Path
 from typing import Any, Optional, List, Tuple, Union, Dict, Callable
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -191,7 +190,7 @@ class FileManagerModule(_ModuleBase):
         """
         handler = TransHandler()
         # 重命名格式
-        rename_format = settings.RENAME_FORMAT(mediainfo.type)
+        rename_format = get_runtime_setting('RENAME_FORMAT')(mediainfo.type)
         # 获取重命名后的名称
         path = handler.get_rename_path(
             template_string=rename_format,
@@ -631,7 +630,7 @@ class FileManagerModule(_ModuleBase):
             # 媒体分类路径
             dir_path = handler.get_dest_dir(mediainfo=mediainfo, target_dir=dest_dir)
             # 重命名格式
-            rename_format = settings.RENAME_FORMAT(mediainfo.type)
+            rename_format = get_runtime_setting('RENAME_FORMAT')(mediainfo.type)
             # 元数据补上常用属性，尽可能确保重命名后的路径不出现空白
             meta = self._build_library_lookup_meta(mediainfo)
             # 获取路径（重命名路径）
@@ -665,9 +664,9 @@ class FileManagerModule(_ModuleBase):
                 continue
             if media_files:
                 media_extensions = (
-                    settings.RMT_AUDIOEXT
+                    get_runtime_setting('RMT_AUDIOEXT')
                     if mediainfo.type == MediaType.MUSIC
-                    else settings.RMT_MEDIAEXT
+                    else get_runtime_setting('RMT_MEDIAEXT')
                 )
                 for media_file in media_files:
                     if (
@@ -692,7 +691,7 @@ class FileManagerModule(_ModuleBase):
         if kwargs.get("server"):
             return None
 
-        if not settings.LOCAL_EXISTS_SEARCH:
+        if not get_runtime_setting('LOCAL_EXISTS_SEARCH'):
             return None
 
         logger.debug(f"正在本地媒体库中查找 {mediainfo.title_year}...")

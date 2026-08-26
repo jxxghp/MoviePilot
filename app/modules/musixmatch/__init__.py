@@ -6,10 +6,8 @@ from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.modules import _ModuleBase
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import ModuleType, OtherModulesType
-
-settings = RuntimeSettingsCompat()
 
 
 class MusixmatchModule(_ModuleBase):
@@ -30,7 +28,7 @@ class MusixmatchModule(_ModuleBase):
 
     def test(self) -> Tuple[bool, str]:
         """验证 API Key 和官方接口连通性。"""
-        if not str(settings.MUSIXMATCH_API_KEY or "").strip():
+        if not str(get_runtime_setting('MUSIXMATCH_API_KEY') or "").strip():
             return False, "Musixmatch API Key 未配置"
         payload = self._request("matcher.lyrics.get", {"q_track": "test", "q_artist": "test"})
         return (True, "") if payload is not None else (False, "Musixmatch API 连接或授权失败")
@@ -106,15 +104,15 @@ class MusixmatchModule(_ModuleBase):
 
     def _request(self, method: str, params: dict[str, Any]) -> Optional[dict[str, Any]]:
         """请求官方 API，并对限流或服务过载设置进程内冷却。"""
-        api_key = str(settings.MUSIXMATCH_API_KEY or "").strip()
+        api_key = str(get_runtime_setting('MUSIXMATCH_API_KEY') or "").strip()
         if not api_key or time.monotonic() < self._cooldown_until:
             return None
         response = RequestUtils(
-            ua=settings.USER_AGENT,
-            proxies=settings.PROXY,
+            ua=get_runtime_setting('USER_AGENT'),
+            proxies=get_runtime_setting('PROXY'),
             timeout=20,
         ).get_res(
-            f"{str(settings.MUSIXMATCH_BASE_URL).rstrip('/')}/{method}",
+            f"{str(get_runtime_setting('MUSIXMATCH_BASE_URL')).rstrip('/')}/{method}",
             params={**params, "apikey": api_key},
         )
         if response is None:

@@ -14,6 +14,7 @@ ensure_optional_stub("aioshutil")
 ensure_optional_stub("pyquery", PyQuery=object)
 
 from app.chain.message import MessageChain
+from app.application.configuration import get_runtime_settings  # noqa: E402 - optional stubs must be installed first
 from app.application.messaging.interaction import InteractionContext
 from app.application.messaging.skill import SkillInteractionHandler
 from app.application.messaging.skill import skill_interaction_manager
@@ -21,7 +22,6 @@ from app.agent.skills.registry import (
     SkillHelper,
     SkillInfo,
     SkillMarketSource,
-    settings as skill_settings,
 )
 from app.schemas.types import NotificationChannel
 
@@ -358,8 +358,8 @@ class TestSkillsCommand(unittest.TestCase):
             "get_market_sources",
             return_value=["https://github.com/openai/skills"],
         ), patch.object(
-            type(skill_settings),
-            "update_setting",
+            get_runtime_settings(),
+            "update",
             return_value=(True, ""),
         ) as update_setting:
             success, message = helper.add_custom_market_source("acme/custom-skills")

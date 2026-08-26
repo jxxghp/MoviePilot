@@ -14,10 +14,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.agent.tools.impl._command_safety import validate_command_safety
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 if os.name == "posix":
     import fcntl as _fcntl
@@ -151,10 +149,10 @@ class _TerminalSessionManager:
     def _normalize_cwd(cwd: Optional[str]) -> str:
         """解析工作目录，未传入时默认使用 MoviePilot 项目根目录。"""
         if not cwd:
-            return str(settings.ROOT_PATH)
+            return str(get_runtime_setting('ROOT_PATH'))
         path = Path(cwd).expanduser()
         if not path.is_absolute():
-            path = (settings.ROOT_PATH / path).resolve()
+            path = (get_runtime_setting('ROOT_PATH') / path).resolve()
         else:
             path = path.resolve()
         if not path.exists():

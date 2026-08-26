@@ -6,15 +6,13 @@ from typing import Dict, List, Optional
 
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.application.agentdata import get_agent_chat_port
 from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
     get_configured_agent_chat_service,
 )
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.agent import ConversationMemory
 
 
@@ -228,7 +226,7 @@ class MemoryManager:
                 for cache_key, memory in self.memory_cache.items():
                     if (
                             current_time - memory.updated_at
-                    ).days > settings.LLM_MEMORY_RETENTION_DAYS:
+                    ).days > get_runtime_setting('LLM_MEMORY_RETENTION_DAYS'):
                         expired_sessions.append(cache_key)
 
                 # 只清理内存缓存，不删除Redis中的键（Redis会自动过期）

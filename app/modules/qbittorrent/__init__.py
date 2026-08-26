@@ -4,7 +4,7 @@ from typing import Set, Tuple, Optional, Union, List, Dict
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.modules._base import _DownloaderModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
@@ -19,7 +19,6 @@ from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 
-settings = RuntimeSettingsCompat()
 
 _QBITTORRENT_DOWNLOADING_STATES = {
     "allocating",
@@ -128,8 +127,8 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         tag = text_tools.random_string(10)
         if label:
             tags = label.split(',') + [tag]
-        elif settings.TORRENT_TAG:
-            tags = [tag, settings.TORRENT_TAG]
+        elif get_runtime_setting('TORRENT_TAG'):
+            tags = [tag, get_runtime_setting('TORRENT_TAG')]
         else:
             tags = [tag]
         # 如果要选择文件则先暂停
@@ -163,9 +162,9 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                             # 给种子打上标签
                             if "已整理" in torrent_tags:
                                 server.remove_torrents_tag(ids=torrent_hash, tag=['已整理'])
-                            if settings.TORRENT_TAG and settings.TORRENT_TAG not in torrent_tags:
-                                logger.info(f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}")
-                                server.set_torrents_tag(ids=torrent_hash, tags=[settings.TORRENT_TAG])
+                            if get_runtime_setting('TORRENT_TAG') and get_runtime_setting('TORRENT_TAG') not in torrent_tags:
+                                logger.info(f"给种子 {torrent_hash} 打上标签：{get_runtime_setting('TORRENT_TAG')}")
+                                server.set_torrents_tag(ids=torrent_hash, tags=[get_runtime_setting('TORRENT_TAG')])
                             # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
                             torrent_layout = server.get_content_layout()
                             return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
@@ -250,7 +249,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
             servers: Dict[str, Qbittorrent] = self.get_instances()
         ret_torrents = []
         query_status = self._normalize_query_status(status)
-        query_tags = None if include_all_tags else settings.TORRENT_TAG
+        query_tags = None if include_all_tags else get_runtime_setting('TORRENT_TAG')
 
         def __get_torrent_path(torrent_data: dict) -> Path:
             """

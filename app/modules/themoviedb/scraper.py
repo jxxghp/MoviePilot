@@ -2,9 +2,8 @@ from pathlib import Path
 from typing import Optional, Tuple
 from xml.dom import minidom
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaType
@@ -22,14 +21,14 @@ class TmdbScraper:
         获取元数据TMDB Api
         """
         if not self._meta_tmdb:
-            self._meta_tmdb = TmdbApi(language=settings.TMDB_LOCALE)
+            self._meta_tmdb = TmdbApi(language=get_runtime_setting('TMDB_LOCALE'))
         return self._meta_tmdb
 
     def original_tmdb(self, mediainfo: Optional[MediaInfo] = None):
         """
         获取图片TMDB Api
         """
-        if settings.TMDB_SCRAP_ORIGINAL_IMAGE and mediainfo:
+        if get_runtime_setting('TMDB_SCRAP_ORIGINAL_IMAGE') and mediainfo:
             return TmdbApi(language=mediainfo.original_language)
         return self.default_tmdb
 
@@ -116,7 +115,7 @@ class TmdbScraper:
                         # TMDB集still图片
                         ext = Path(still_path).suffix
                         still_name = f"episode-thumb{ext}"
-                        still_url = settings.TMDB_IMAGE_URL(still_path)
+                        still_url = get_runtime_setting('TMDB_IMAGE_URL')(still_path)
                         images[still_name] = still_url
             else:
                 # 季的图片
@@ -144,14 +143,14 @@ class TmdbScraper:
                     images[image_name] = attr_value
 
             # 替换原语言Poster
-            if settings.TMDB_SCRAP_ORIGINAL_IMAGE:
+            if get_runtime_setting('TMDB_SCRAP_ORIGINAL_IMAGE'):
                 _mediainfo = self.original_tmdb(mediainfo).get_info(
                     mediainfo.type, mediainfo.tmdb_id
                 )
                 if _mediainfo:
                     for attr_name, attr_value in _mediainfo.items():
                         if attr_name.endswith("_path") and attr_value is not None:
-                            image_url = settings.TMDB_IMAGE_URL(attr_value)
+                            image_url = get_runtime_setting('TMDB_IMAGE_URL')(attr_value)
                             image_name = (
                                 attr_name.replace("_path", "") + Path(image_url).suffix
                             )
@@ -181,11 +180,11 @@ class TmdbScraper:
         if not mediainfo.poster_path:
             poster_path = self.__pick_best_image_path(image_info.get("posters"))
             if poster_path:
-                mediainfo.poster_path = settings.TMDB_IMAGE_URL(poster_path)
+                mediainfo.poster_path = get_runtime_setting('TMDB_IMAGE_URL')(poster_path)
         if not mediainfo.backdrop_path:
             backdrop_path = self.__pick_best_image_path(image_info.get("backdrops"))
             if backdrop_path:
-                mediainfo.backdrop_path = settings.TMDB_IMAGE_URL(backdrop_path)
+                mediainfo.backdrop_path = get_runtime_setting('TMDB_IMAGE_URL')(backdrop_path)
 
     @staticmethod
     def __pick_best_image_path(images: list) -> Optional[str]:
@@ -215,7 +214,7 @@ class TmdbScraper:
             # 后缀
             ext = Path(poster_path).suffix
             # URL
-            url = settings.TMDB_IMAGE_URL(poster_path)
+            url = get_runtime_setting('TMDB_IMAGE_URL')(poster_path)
             # S0海报格式不同
             if season == 0:
                 image_name = f"season-specials-poster{ext}"
@@ -286,7 +285,7 @@ class TmdbScraper:
             DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
             if profile_path := actor.get("profile_path"):
                 DomUtils.add_node(
-                    doc, xactor, "thumb", settings.TMDB_IMAGE_URL(profile_path)
+                    doc, xactor, "thumb", get_runtime_setting('TMDB_IMAGE_URL')(profile_path)
                 )
             DomUtils.add_node(
                 doc,
@@ -453,7 +452,7 @@ class TmdbScraper:
                 DomUtils.add_node(doc, xactor, "tmdbid", actor.get("id") or "")
                 if profile_path := actor.get("profile_path"):
                     DomUtils.add_node(
-                        doc, xactor, "thumb", settings.TMDB_IMAGE_URL(profile_path)
+                        doc, xactor, "thumb", get_runtime_setting('TMDB_IMAGE_URL')(profile_path)
                     )
                 DomUtils.add_node(
                     doc,

@@ -21,6 +21,30 @@ from app.schemas.types import EventType, SystemConfigKey
 def plugin_manager(monkeypatch) -> Iterator[PluginManager]:
     """构造隔离的插件管理器实例，避免单例状态污染其它用例。"""
     system = get_plugin_system()
+    from app.adapters.external import market as market_module
+    original_runtime_setting = market_module.get_runtime_setting
+
+    class _SettingsStub(SimpleNamespace):
+        """允许存量用例覆盖尚未显式声明的配置键。"""
+
+        def __getattr__(self, _key):
+            return None
+
+    market_settings = _SettingsStub(
+        VERSION_FLAG="v2",
+        REPO_GITHUB_HEADERS=original_runtime_setting("REPO_GITHUB_HEADERS"),
+        PLUGIN_LOCAL_REPO_PATHS="",
+    )
+    monkeypatch.setattr(market_module, "settings", market_settings, raising=False)
+    monkeypatch.setattr(
+        market_module,
+        "get_runtime_setting",
+        lambda key, default=None: (
+            getattr(market_module.settings, key)
+            if hasattr(market_module.settings, key)
+            else original_runtime_setting(key, default)
+        ),
+    )
 
     def install_local(**kwargs) -> tuple[bool, str]:
         """用测试包适配器模拟已通过来源准入的本地 Gateway。"""
@@ -73,6 +97,22 @@ def _build_local_plugin_repo(tmp_path: Path) -> tuple[Path, Path]:
     return repo_path, source_file
 
 
+def _patch_plugin_runtime_settings(monkeypatch, settings) -> None:
+    """以只读键值端口注入插件运行配置。"""
+    monkeypatch.setattr(
+        "app.runtime.extensions.plugin_manager.get_runtime_setting",
+        lambda key: getattr(settings, key),
+    )
+
+
+def _patch_package_runtime_settings(monkeypatch, settings) -> None:
+    """为插件包文件适配器注入隔离路径配置。"""
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.get_runtime_setting",
+        lambda key: getattr(settings, key),
+    )
+
+
 def _configure_local_watcher(
     monkeypatch,
     tmp_path: Path,
@@ -91,9 +131,9 @@ def _configure_local_watcher(
         CONFIG_PATH=tmp_path / "config",
         VERSION_FLAG="v2",
     )
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
+    _patch_plugin_runtime_settings(monkeypatch, settings_stub)
     monkeypatch.setattr("app.adapters.external.market.settings", settings_stub)
-    monkeypatch.setattr("app.adapters.system.plugin.package.settings", settings_stub)
+    _patch_package_runtime_settings(monkeypatch, settings_stub)
     monkeypatch.setattr("app.runtime.extensions.plugin_manager.watch", lambda *_args, **_kwargs: iter([changes]))
 
 
@@ -169,8 +209,8 @@ def test_dev_local_plugin_candidate_keeps_hot_sync_allowed_when_system_version_l
         TEMP_PATH=tmp_path / "temp",
         CONFIG_PATH=tmp_path / "config",
     )
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
-    monkeypatch.setattr("app.adapters.system.plugin.package.settings", settings_stub)
+    _patch_plugin_runtime_settings(monkeypatch, settings_stub)
+    _patch_package_runtime_settings(monkeypatch, settings_stub)
     monkeypatch.setattr("app.adapters.external.market.settings.PLUGIN_LOCAL_REPO_PATHS", str(repo_path))
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.10"))
     _set_installed_plugins(monkeypatch, ["DemoPlugin"])
@@ -193,7 +233,10 @@ def test_local_plugin_candidate_keeps_system_version_gate_outside_dev(
     """非 DEV 本地候选继续受主系统版本门禁保护，避免自动热加载绕过安装约束。"""
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
 
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", SimpleNamespace(DEV=False, ROOT_PATH=tmp_path))
+    _patch_plugin_runtime_settings(
+        monkeypatch,
+        SimpleNamespace(DEV=False, ROOT_PATH=tmp_path),
+    )
     monkeypatch.setattr("app.adapters.external.market.settings.PLUGIN_LOCAL_REPO_PATHS", str(repo_path))
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.10"))
 
@@ -219,7 +262,7 @@ def test_local_plugin_sync_without_candidate_respects_system_version_gate(
         PLUGIN_LOCAL_REPO_PATHS=str(repo_path),
     )
 
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
+    _patch_plugin_runtime_settings(monkeypatch, settings_stub)
     monkeypatch.setattr("app.adapters.external.market.settings", settings_stub)
     monkeypatch.setattr(PluginHelper, "get_current_system_version", lambda: Version("2.13.10"))
     _set_installed_plugins(monkeypatch, ["DemoPlugin"])
@@ -374,7 +417,7 @@ def test_local_federated_asset_reads_running_render_mode_for_each_batch(
         ROOT_PATH=tmp_path,
         VERSION_FLAG="v2",
     )
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.settings", settings_stub)
+    _patch_plugin_runtime_settings(monkeypatch, settings_stub)
     monkeypatch.setattr("app.adapters.external.market.settings", settings_stub)
     monkeypatch.setattr(
         "app.runtime.extensions.plugin_manager.watch",

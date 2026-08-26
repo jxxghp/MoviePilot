@@ -12,9 +12,8 @@ from app.agent.tools.tags import ToolTag
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo
 from app.application.agentdata import get_agent_site_port
@@ -142,7 +141,7 @@ class AddDownloadTasksTool(MoviePilotTool):
     @staticmethod
     def _merge_labels_with_system_tag(labels: Optional[str]) -> Optional[str]:
         """合并用户标签与系统默认标签，确保任务可被系统管理"""
-        system_tag = (settings.TORRENT_TAG or "").strip()
+        system_tag = (get_runtime_setting('TORRENT_TAG') or "").strip()
         user_labels = [item.strip() for item in (labels or "").split(",") if item.strip()]
 
         if system_tag and system_tag not in user_labels:

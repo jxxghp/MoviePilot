@@ -43,7 +43,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     @property
     def _root(self) -> Path:
-        return Path(get_runtime_setting("TEMP_PATH")) / "moviepilot-update"
+        return Path(get_runtime_setting('TEMP_PATH')) / "moviepilot-update"
 
     @property
     def _state_file(self) -> Path:
@@ -268,8 +268,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     def _request(self) -> RequestUtils:
         return RequestUtils(
-            proxies=get_runtime_setting("PROXY"),
-            headers=get_runtime_setting("GITHUB_HEADERS"),
+            proxies=get_runtime_setting('PROXY'),
+            headers=get_runtime_setting('GITHUB_HEADERS'),
             timeout=60,
         )
 
@@ -474,7 +474,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     @staticmethod
     def _proxied(url: str) -> str:
-        proxy = str(get_runtime_setting("GITHUB_PROXY") or "").strip()
+        proxy = str(get_runtime_setting('GITHUB_PROXY') or "").strip()
         return f"{proxy}{url}" if proxy else url
 
 

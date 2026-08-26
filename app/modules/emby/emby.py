@@ -12,9 +12,8 @@ from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibr
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.runtime.log import logger
 from app.schemas.mediaserver import MediaServerItem
@@ -44,7 +43,7 @@ class Emby:
             self._playhost = UrlUtils.standardize_base_url(self._playhost)
         self._apikey = apikey
         self._username = username
-        self.user = self.get_user(username or settings.SUPERUSER)
+        self.user = self.get_user(username or get_runtime_setting('SUPERUSER'))
         self.folders = self.get_emby_folders()
         self.serverid = self.get_server_id()
         self._sync_libraries = sync_libraries or []

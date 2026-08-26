@@ -23,7 +23,8 @@ import app.db.engine as engine_module
 from app.db.engine import (_async_pool_enabled, _get_database_engine,
                            _database_backend_label, get_engine,
                            get_global_async_engine)
-from app.runtime.config import global_vars, settings
+from app.runtime.config import global_vars
+from app.runtime.settings import get_runtime_setting
 from app.runtime.log import logger
 from app.runtime.observability import record_metric
 
@@ -134,7 +135,7 @@ _pooled_async_engines: Dict[int, Any] = {}
 _pooled_async_lock = threading.Lock()
 # 回退路径（未池化的临时循环）共享的全局连接配额。用 threading 信号量而非
 # asyncio.Semaphore：后者绑定单个事件循环，无法跨循环生效
-_fallback_slots = threading.BoundedSemaphore(max(1, settings.DB_ASYNC_FALLBACK_LIMIT))
+_fallback_slots = threading.BoundedSemaphore(max(1, get_runtime_setting('DB_ASYNC_FALLBACK_LIMIT')))
 
 
 def _pooled_loop() -> Optional[Any]:
@@ -179,8 +180,8 @@ def _resolve_async_engine() -> Tuple[SaAsyncEngine, bool]:
         if engine is None:
             engine = cast(SaAsyncEngine, _get_database_engine(is_async=True, pooled=True))
             _pooled_async_engines[key] = engine
-            logger.info(f"异步数据库连接池已启用: pool_size={settings.DB_ASYNC_POOL_SIZE}, "
-                        f"max_overflow={settings.DB_ASYNC_MAX_OVERFLOW}")
+            logger.info(f"异步数据库连接池已启用: pool_size={get_runtime_setting('DB_ASYNC_POOL_SIZE')}, "
+                        f"max_overflow={get_runtime_setting('DB_ASYNC_MAX_OVERFLOW')}")
     return engine, True
 
 
@@ -201,7 +202,7 @@ async def _acquire_fallback_slot():
     因此用非阻塞获取 + 异步让出。
     """
     started_at = time.monotonic()
-    deadline = started_at + settings.DB_POOL_TIMEOUT
+    deadline = started_at + get_runtime_setting('DB_POOL_TIMEOUT')
     outcome = "success"
     try:
         while not _fallback_slots.acquire(blocking=False):
@@ -212,8 +213,8 @@ async def _acquire_fallback_slot():
                     backend=_database_backend_label(),
                 )
                 raise TimeoutError(
-                    f"异步数据库连接配额已耗尽（上限 {settings.DB_ASYNC_FALLBACK_LIMIT}），"
-                    f"等待超过 {settings.DB_POOL_TIMEOUT} 秒"
+                    f"异步数据库连接配额已耗尽（上限 {get_runtime_setting('DB_ASYNC_FALLBACK_LIMIT')}），"
+                    f"等待超过 {get_runtime_setting('DB_POOL_TIMEOUT')} 秒"
                 )
             await asyncio.sleep(0.01)
     finally:

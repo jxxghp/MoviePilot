@@ -29,10 +29,9 @@ from app.foundation.version import compare_version
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
 
-settings = RuntimeSettingsCompat()
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.extensions.plugin.loader import PluginLoader
@@ -215,10 +214,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._monitor_suppression_lock = threading.Lock()
         self._suppressed_monitor_plugins: Dict[str, int] = {}
         self._plugin_paths = PluginPathResolver(
-            runtime_root=settings.ROOT_PATH / "app" / "plugins",
+            runtime_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
             running=lambda: self._running_plugins,
             system=get_plugin_system,
-            strict_system_version=lambda: not settings.DEV,
+            strict_system_version=lambda: not get_runtime_setting('DEV'),
             log=logger,
         )
         self._local_plugin_sync = LocalPluginSyncService(
@@ -248,7 +247,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             log=logger,
         )
         self._plugin_loader = PluginLoader(
-            plugins_root=settings.ROOT_PATH / "app" / "plugins",
+            plugins_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
             import_preparer=lambda **kwargs: _legacy_plugin_import_preparer(**kwargs),
             import_scanner=lambda **kwargs: _legacy_import_scanner(**kwargs),
             log=logger,
@@ -384,7 +383,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             with self.mutation("启动插件"):
                 with self._plugin_quiesce_lock:
                     _legacy_diagnostics_configurator(
-                        enabled=settings.DEBUG,
+                        enabled=get_runtime_setting('DEBUG'),
                         emitter=logger.warning,
                     )
                     gil_enabled_before = is_gil_enabled()
@@ -564,7 +563,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :return: 插件类列表
         """
         return PluginLoader(
-            plugins_root=settings.ROOT_PATH / "app" / "plugins",
+            plugins_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
             import_preparer=lambda **kwargs: _legacy_plugin_import_preparer(**kwargs),
             import_scanner=lambda **kwargs: _legacy_import_scanner(**kwargs),
             log=logger,
@@ -624,7 +623,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return
         if (
             not self.is_plugin_settling()
-            and (settings.DEV or settings.PLUGIN_AUTO_RELOAD)
+            and (
+                get_runtime_setting('DEV')
+                or get_runtime_setting('PLUGIN_AUTO_RELOAD')
+            )
         ):
             self._plugin_monitor.start()
 
@@ -635,7 +637,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_monitor.reload(
             enabled=(
                 not self.is_plugin_settling()
-                and (settings.DEV or settings.PLUGIN_AUTO_RELOAD)
+                and (
+                    get_runtime_setting('DEV')
+                    or get_runtime_setting('PLUGIN_AUTO_RELOAD')
+                )
             )
         )
 
@@ -652,7 +657,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         运行 watchfiles 监视器的主循环。
         """
         PluginChangeMonitor(
-            runtime_root=settings.ROOT_PATH / "app" / "plugins",
+            runtime_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
             local_roots=get_plugin_system().local_repo_paths,
             stop_event=self._plugin_monitor.stop_event,
             recent_sync=self._recent_local_sync,
@@ -812,7 +817,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
 
         return PluginLoader(
-            plugins_root=settings.ROOT_PATH / "app" / "plugins",
+            plugins_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
             import_preparer=lambda **kwargs: _legacy_plugin_import_preparer(**kwargs),
             import_scanner=lambda **kwargs: _legacy_import_scanner(**kwargs),
             log=logger,

@@ -4,9 +4,8 @@ from typing import Optional
 import requests
 
 from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 
 
@@ -33,16 +32,16 @@ class BangumiApi(object):
     def __init__(self):
         self._session = requests.Session()
         self._req = RequestUtils(
-            ua=settings.NORMAL_USER_AGENT,
-            proxies=settings.PROXY,
+            ua=get_runtime_setting('NORMAL_USER_AGENT'),
+            proxies=get_runtime_setting('PROXY'),
             session=self._session,
         )
         self._async_req = AsyncRequestUtils(
-            ua=settings.NORMAL_USER_AGENT,
-            proxies=settings.PROXY,
+            ua=get_runtime_setting('NORMAL_USER_AGENT'),
+            proxies=get_runtime_setting('PROXY'),
         )
 
-    @cached(maxsize=settings.CONF.bangumi, ttl=settings.CONF.meta, shared_key="get")
+    @cached(maxsize=get_runtime_setting('CONF').bangumi, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     def __invoke(self, url, key: Optional[str] = None, **kwargs):
         req_url = self._base_url + url
         params = {}
@@ -58,7 +57,7 @@ class BangumiApi(object):
             print(e)
             return None
 
-    @cached(maxsize=settings.CONF.bangumi, ttl=settings.CONF.meta, shared_key="get")
+    @cached(maxsize=get_runtime_setting('CONF').bangumi, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     async def __async_invoke(self, url, key: Optional[str] = None, **kwargs):
         req_url = self._base_url + url
         params = {}

@@ -17,9 +17,8 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
 from app.runtime.cache import FileCache
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.messaging.ingress import forward_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -1686,14 +1685,14 @@ class WechatClawBot:
             except Exception:
                 return None
         if image_url.startswith("/"):
-            image_url = settings.MP_DOMAIN(image_url)
+            image_url = get_runtime_setting('MP_DOMAIN')(image_url)
         if not image_url.lower().startswith("http"):
             return None
         try:
             resp = RequestUtils(
                 timeout=20,
-                proxies=settings.PROXY,
-                ua=settings.USER_AGENT,
+                proxies=get_runtime_setting('PROXY'),
+                ua=get_runtime_setting('USER_AGENT'),
             ).get_res(image_url)
             if resp and resp.status_code == 200 and resp.content:
                 content_type = (resp.headers.get("Content-Type") or "").lower()

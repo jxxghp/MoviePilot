@@ -30,6 +30,16 @@ def _reset_plugin_manager() -> None:
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
 
 
+def _patch_runtime_settings(monkeypatch, **values) -> None:
+    """按键注入插件运行时配置，避免测试恢复模块级 Settings 代理。"""
+    settings = SimpleNamespace(**values)
+    monkeypatch.setattr(
+        plugin_manager_module,
+        "get_runtime_setting",
+        lambda key: getattr(settings, key),
+    )
+
+
 @pytest.mark.parametrize(
     ("dev", "auto_reload"),
     ((True, False), (False, True)),
@@ -43,13 +53,11 @@ def test_plugin_manager_constructor_does_not_start_monitor_before_runtime(
     _reset_plugin_manager()
     reset_plugin_system()
     start = MagicMock()
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.settings",
-        SimpleNamespace(
-            DEV=dev,
-            PLUGIN_AUTO_RELOAD=auto_reload,
-            ROOT_PATH=MagicMock(),
-        ),
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=dev,
+        PLUGIN_AUTO_RELOAD=auto_reload,
+        ROOT_PATH=MagicMock(),
     )
     monkeypatch.setattr(PluginMonitorController, "start", start)
 
@@ -422,13 +430,11 @@ def test_start_monitor_respects_runtime_configuration(
     """首次启动只在开发模式或插件自动重载启用时创建监控线程。"""
     _reset_plugin_manager()
     reset_plugin_system()
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.settings",
-        SimpleNamespace(
-            DEV=dev,
-            PLUGIN_AUTO_RELOAD=auto_reload,
-            ROOT_PATH=MagicMock(),
-        ),
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=dev,
+        PLUGIN_AUTO_RELOAD=auto_reload,
+        ROOT_PATH=MagicMock(),
     )
     manager = PluginManager()
     start = MagicMock()
@@ -444,13 +450,11 @@ def test_plugin_monitor_waits_until_dependency_settlement(monkeypatch) -> None:
     """后台依赖收敛期间不启动文件监控，避免源码写入触发重复重载。"""
     _reset_plugin_manager()
     reset_plugin_system()
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.settings",
-        SimpleNamespace(
-            DEV=True,
-            PLUGIN_AUTO_RELOAD=False,
-            ROOT_PATH=MagicMock(),
-        ),
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=True,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
     )
     manager = PluginManager()
     start = MagicMock()
@@ -589,13 +593,11 @@ def test_plugin_manager_start_monitor_can_reopen_new_lifespan(monkeypatch) -> No
     """新应用生命周期可显式解除封口，再按运行配置启动监控。"""
     _reset_plugin_manager()
     reset_plugin_system()
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.settings",
-        SimpleNamespace(
-            DEV=True,
-            PLUGIN_AUTO_RELOAD=False,
-            ROOT_PATH=MagicMock(),
-        ),
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=True,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
     )
     manager = PluginManager()
     reopen = MagicMock(return_value=True)
@@ -648,13 +650,11 @@ async def test_quiesce_timeout_retains_future_owner_until_worker_finishes(
     """同步插件 hook 超时后必须保留 Future，且未结束前拒绝卸载实例。"""
     _reset_plugin_manager()
     reset_plugin_system()
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.settings",
-        SimpleNamespace(
-            DEV=False,
-            PLUGIN_AUTO_RELOAD=False,
-            ROOT_PATH=MagicMock(),
-        ),
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=False,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
     )
     manager = PluginManager()
     started = threading.Event()
@@ -703,14 +703,12 @@ async def test_quiesce_seals_runtime_until_new_lifespan_reopens(monkeypatch) -> 
     """屏障前封口后 start/reload/config 不能重开 producer，新 lifespan 可显式恢复。"""
     _reset_plugin_manager()
     reset_plugin_system()
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.settings",
-        SimpleNamespace(
-            DEBUG=False,
-            DEV=False,
-            PLUGIN_AUTO_RELOAD=False,
-            ROOT_PATH=MagicMock(),
-        ),
+    _patch_runtime_settings(
+        monkeypatch,
+        DEBUG=False,
+        DEV=False,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
     )
     manager = PluginManager()
     manager._plugin_lifecycle.quiesce_handlers = MagicMock(return_value=True)
@@ -831,13 +829,11 @@ def test_plugin_monitor_suppression_is_reference_counted(monkeypatch) -> None:
     """同一插件的重叠写入必须等最后一个事务退出后才解除监控抑制。"""
     _reset_plugin_manager()
     reset_plugin_system()
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.settings",
-        SimpleNamespace(
-            DEV=False,
-            PLUGIN_AUTO_RELOAD=False,
-            ROOT_PATH=MagicMock(),
-        ),
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=False,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
     )
     manager = PluginManager()
 
@@ -855,13 +851,11 @@ def test_config_change_reloads_monitor(monkeypatch) -> None:
     """配置热更新继续使用重建语义，不复用首次启动入口。"""
     _reset_plugin_manager()
     reset_plugin_system()
-    monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.settings",
-        SimpleNamespace(
-            DEV=False,
-            PLUGIN_AUTO_RELOAD=False,
-            ROOT_PATH=MagicMock(),
-        ),
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=False,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
     )
     manager = PluginManager()
     reload_monitor = MagicMock()

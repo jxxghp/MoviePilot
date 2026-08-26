@@ -4,7 +4,7 @@ from typing import Set, Tuple, Optional, Union, List, Dict
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 from app.modules._base import _DownloaderModuleBase
 from app.modules.rtorrent.rtorrent import Rtorrent
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
@@ -19,7 +19,6 @@ from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 
-settings = RuntimeSettingsCompat()
 
 
 class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
@@ -113,8 +112,8 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         tag = text_tools.random_string(10)
         if label:
             tags = label.split(",") + [tag]
-        elif settings.TORRENT_TAG:
-            tags = [tag, settings.TORRENT_TAG]
+        elif get_runtime_setting('TORRENT_TAG'):
+            tags = [tag, get_runtime_setting('TORRENT_TAG')]
         else:
             tags = [tag]
         # 如果要选择文件则先暂停
@@ -160,14 +159,14 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                                     ids=torrent_hash, tag=["已整理"]
                                 )
                             if (
-                                settings.TORRENT_TAG
-                                and settings.TORRENT_TAG not in torrent_tags
+                                get_runtime_setting('TORRENT_TAG')
+                                and get_runtime_setting('TORRENT_TAG') not in torrent_tags
                             ):
                                 logger.info(
-                                    f"给种子 {torrent_hash} 打上标签：{settings.TORRENT_TAG}"
+                                    f"给种子 {torrent_hash} 打上标签：{get_runtime_setting('TORRENT_TAG')}"
                                 )
                                 server.set_torrents_tag(
-                                    ids=torrent_hash, tags=[settings.TORRENT_TAG]
+                                    ids=torrent_hash, tags=[get_runtime_setting('TORRENT_TAG')]
                                 )
                             return (
                                 downloader or self.get_default_config_name(),
@@ -266,7 +265,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             servers: Dict[str, Rtorrent] = self.get_instances()
         ret_torrents = []
         query_status = self._normalize_query_status(status)
-        query_tags = None if include_all_tags else settings.TORRENT_TAG
+        query_tags = None if include_all_tags else get_runtime_setting('TORRENT_TAG')
 
         def __get_torrent_path(torrent_data: dict) -> Path:
             """

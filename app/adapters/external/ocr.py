@@ -13,7 +13,7 @@ class OcrHelper:
     def __init__(self, ocr_base_url: Optional[str] = None) -> None:
         """初始化 OCR 服务地址，优先使用组合根设置快照。"""
         if ocr_base_url is None:
-            ocr_base_url = get_runtime_setting("OCR_HOST")
+            ocr_base_url = get_runtime_setting('OCR_HOST')
         self._ocr_b64_url = f"{str(ocr_base_url).rstrip('/')}/captcha/base64"
 
     def get_captcha_text(

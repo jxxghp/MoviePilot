@@ -7,12 +7,10 @@ from collections.abc import Callable, Mapping
 from typing import Any, Optional
 
 from app.foundation.version import compare_version
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
 from app.runtime.extensions.plugin.contracts import supports_plugin_hook
 from app.runtime.extensions.plugin.storage import PluginStorage
 from app.runtime.extensions.plugin.system import PluginSystemServices
+from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import Plugin, PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
@@ -56,12 +54,15 @@ class PluginCatalogFacade:
 
     def online(self, force: bool = False) -> list[Plugin]:
         """读取所有兼容代际的在线插件目录。"""
-        if not settings.PLUGIN_MARKET:
+        plugin_market = get_runtime_setting('PLUGIN_MARKET')
+        if not plugin_market:
             return []
-        markets = [item for item in settings.PLUGIN_MARKET.split(",") if item]
+        markets = [item for item in plugin_market.split(",") if item]
         result = self._market_catalog().collect(
             markets=markets,
-            compatible_flags=self._system().compatible_flags(settings.VERSION_FLAG),
+            compatible_flags=self._system().compatible_flags(
+                get_runtime_setting('VERSION_FLAG')
+            ),
             force=force,
             loader=self._market_loader,
         )
@@ -224,14 +225,17 @@ class PluginCatalogFacade:
         progress_callback: Optional[Callable[..., None]] = None,
     ) -> list[Plugin]:
         """异步读取所有兼容代际的在线插件目录。"""
-        if not settings.PLUGIN_MARKET:
+        plugin_market = get_runtime_setting('PLUGIN_MARKET')
+        if not plugin_market:
             if progress_callback:
                 progress_callback(value=100, text="未配置插件市场，跳过刷新")
             return []
-        markets = [item for item in settings.PLUGIN_MARKET.split(",") if item]
+        markets = [item for item in plugin_market.split(",") if item]
         result = await self._market_catalog().async_collect(
             markets=markets,
-            compatible_flags=self._system().compatible_flags(settings.VERSION_FLAG),
+            compatible_flags=self._system().compatible_flags(
+                get_runtime_setting('VERSION_FLAG')
+            ),
             force=force,
             loader=self._async_market_loader,
             progress_callback=progress_callback,
@@ -254,7 +258,8 @@ class PluginCatalogFacade:
 
     def merge(self, higher: list[Plugin], base: list[Plugin]) -> list[Plugin]:
         """合并不同代际插件目录并保留市场优先级。"""
-        markets = [item for item in settings.PLUGIN_MARKET.split(",") if item]
+        plugin_market = get_runtime_setting('PLUGIN_MARKET')
+        markets = [item for item in plugin_market.split(",") if item]
         return self._market_catalog().merge(higher, base, markets)
 
     def _safe_state(self, plugin_id: str, plugin: Any) -> bool:

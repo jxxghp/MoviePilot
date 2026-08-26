@@ -19,9 +19,8 @@ from app.agent.policy.sanitizer import (
 )
 from app.agent.tools.tags import ToolTag
 from app.chain import ChainBase
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.application.messaging.agent import matches_channel_admin
 from app.application.notification import get_notification_configs
 from app.runtime.log import logger
@@ -301,7 +300,7 @@ class ToolExecutionTimeoutError(TimeoutError):
 def _get_tool_timeout_seconds() -> Optional[float]:
     """读取工具执行超时时间，配置为 0 或负数时表示不限制。"""
     try:
-        timeout = float(settings.LLM_TOOL_TIMEOUT or 0)
+        timeout = float(get_runtime_setting('LLM_TOOL_TIMEOUT') or 0)
     except (TypeError, ValueError):
         timeout = 0
     return timeout if timeout > 0 else None
@@ -414,7 +413,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         # 发送工具执行过程消息（流式传输且非最后终结工具时）
         if self._stream_handler and self._stream_handler.is_streaming and not self.return_direct:
-            if settings.AI_AGENT_VERBOSE:
+            if get_runtime_setting('AI_AGENT_VERBOSE'):
                 if self._stream_handler.is_auto_flushing:
                     # 渠道支持编辑：工具消息追加到 buffer，由定时刷新推送
                     if tool_message:
@@ -614,7 +613,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         :return: 普通用户允许读写的本地目录列表
         """
         roots = [
-            settings.CONFIG_PATH / "agent",
+            get_runtime_setting('CONFIG_PATH') / "agent",
         ]
         resolved_roots = []
         for root in roots:
@@ -758,7 +757,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                     "userid": None,
                     "username": message.username
                     or self._username
-                    or settings.SUPERUSER,
+                    or get_runtime_setting('SUPERUSER'),
                     "original_message_id": None,
                     "original_chat_id": None,
                 }

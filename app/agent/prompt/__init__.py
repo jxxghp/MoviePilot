@@ -10,9 +10,8 @@ from typing import Any, Dict, Optional
 import yaml
 
 from app.agent.llm.capability import AgentCapabilityManager
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.schemas.notification import ChannelCapability
 from app.schemas.notification import ChannelCapabilities
@@ -301,9 +300,9 @@ class PromptManager:
     def _get_runtime_path_lines() -> list[str]:
         """返回基础系统提示词需要常驻注入的全局运行路径。"""
         paths = {
-            "项目根目录": settings.ROOT_PATH,
-            "配置目录": settings.CONFIG_PATH,
-            "临时目录": settings.TEMP_PATH,
+            "项目根目录": get_runtime_setting('ROOT_PATH'),
+            "配置目录": get_runtime_setting('CONFIG_PATH'),
+            "临时目录": get_runtime_setting('TEMP_PATH'),
         }
         return [f"  - {label}: `{path}`" for label, path in paths.items()]
 

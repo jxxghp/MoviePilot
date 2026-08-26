@@ -150,7 +150,11 @@ def test_copy_falls_back_to_direct_when_disabled(tmp_path, monkeypatch):
     """
     import app.adapters.system.fsproxy as fsproxy_module
 
-    monkeypatch.setattr(fsproxy_module.settings, "FS_PROXY_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        fsproxy_module,
+        "get_runtime_setting",
+        lambda key, default=None: False if key == "FS_PROXY_ENABLED" else default,
+    )
     src = tmp_path / "a.mkv"
     src.write_bytes(b"direct" * 100)
     dst = tmp_path / "b.mkv"
@@ -171,7 +175,11 @@ def test_direct_copy_honours_cancel(tmp_path, monkeypatch):
     """
     import app.adapters.system.fsproxy as fsproxy_module
 
-    monkeypatch.setattr(fsproxy_module.settings, "FS_PROXY_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        fsproxy_module,
+        "get_runtime_setting",
+        lambda key, default=None: False if key == "FS_PROXY_ENABLED" else default,
+    )
     src = tmp_path / "a.mkv"
     src.write_bytes(b"x" * 8192)
     dst = tmp_path / "b.mkv"

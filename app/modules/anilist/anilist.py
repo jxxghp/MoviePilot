@@ -2,9 +2,8 @@ from datetime import date
 from typing import Optional
 
 from app.runtime.cache import cached
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.runtime.log import logger
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 
@@ -103,16 +102,16 @@ class AniListApi:
     def __init__(self) -> None:
         """初始化同步与异步请求客户端"""
         headers = {
-            "User-Agent": settings.NORMAL_USER_AGENT,
+            "User-Agent": get_runtime_setting('NORMAL_USER_AGENT'),
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
         self._request = RequestUtils(
-            proxies=settings.PROXY,
+            proxies=get_runtime_setting('PROXY'),
             headers=headers,
         )
         self._async_request = AsyncRequestUtils(
-            proxies=settings.PROXY,
+            proxies=get_runtime_setting('PROXY'),
             headers=headers,
         )
         self._proxy_available = True
@@ -363,8 +362,8 @@ class AniListApi:
         return seasons[(current.month - 1) // 3], current.year
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="detail",
     )
@@ -380,8 +379,8 @@ class AniListApi:
         return result.get("Media") if result else None
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="detail",
     )
@@ -397,8 +396,8 @@ class AniListApi:
         return result.get("Media") if result else None
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="search",
     )
@@ -421,8 +420,8 @@ class AniListApi:
         return self._page_medias(result)
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="search",
     )
@@ -445,8 +444,8 @@ class AniListApi:
         return self._page_medias(result)
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="discover",
     )
@@ -483,8 +482,8 @@ class AniListApi:
         return self._page_medias(self._invoke(self._page_query, variables))
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="discover",
     )
@@ -576,8 +575,8 @@ class AniListApi:
         )
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="credits",
     )
@@ -606,8 +605,8 @@ class AniListApi:
         return result.get("Media", {}).get("characters", {}).get("edges") or [] if result else []
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="credits",
     )
@@ -636,8 +635,8 @@ class AniListApi:
         return result.get("Media", {}).get("characters", {}).get("edges") or [] if result else []
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="recommendations",
     )
@@ -662,8 +661,8 @@ class AniListApi:
         return self._medias_by_ids(media_ids)
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="recommendations",
     )
@@ -688,8 +687,8 @@ class AniListApi:
         return await self._async_medias_by_ids(media_ids)
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="person_detail",
     )
@@ -713,8 +712,8 @@ class AniListApi:
         return result.get("Staff") if result else None
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="person_detail",
     )
@@ -738,8 +737,8 @@ class AniListApi:
         return result.get("Staff") if result else None
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="person_credits",
     )
@@ -763,8 +762,8 @@ class AniListApi:
         return self._medias_by_ids([node.get("id") for node in nodes])
 
     @cached(
-        maxsize=settings.CONF.anilist,
-        ttl=settings.CONF.meta,
+        maxsize=get_runtime_setting('CONF').anilist,
+        ttl=get_runtime_setting('CONF').meta,
         skip_empty=True,
         shared_key="person_credits",
     )

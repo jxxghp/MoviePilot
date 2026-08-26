@@ -19,7 +19,7 @@ class SnapshotStore:
         :param cache: 快照文件缓存，默认使用 CACHE_PATH/snapshots
         """
         self._cache = cache if cache is not None else FileCache(
-            base=get_runtime_setting("CACHE_PATH") / "snapshots"
+            base=get_runtime_setting('CACHE_PATH') / "snapshots"
         )
 
     def save(self, storage: str, snapshot: Dict, file_count: int = 0,

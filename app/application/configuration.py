@@ -396,9 +396,6 @@ def configure_runtime_settings(service: RuntimeSettingsService) -> None:
     """由组合根登记管理 API 使用的部署设置服务。"""
     global _runtime_settings_service
     _runtime_settings_service = service
-    from app.runtime.settings import configure_runtime_settings_compat
-
-    configure_runtime_settings_compat(service)
 
 
 def get_runtime_settings() -> RuntimeSettingsService:

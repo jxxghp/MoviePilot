@@ -6,9 +6,8 @@ import sys
 from datetime import datetime
 from typing import Any, Optional
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.runtime.settings import get_runtime_setting
 
-settings = RuntimeSettingsCompat()
 from app.doctor.checks import default_checks
 from app.doctor.models import (
     DoctorFinding,
@@ -110,12 +109,12 @@ class DoctorRunner:
             "platform": platform.platform(),
             "python": sys.executable,
             "python_version": platform.python_version(),
-            "root_path": str(settings.ROOT_PATH),
-            "config_path": str(settings.CONFIG_PATH),
-            "log_path": str(settings.LOG_PATH),
-            "temp_path": str(settings.TEMP_PATH),
+            "root_path": str(get_runtime_setting('ROOT_PATH')),
+            "config_path": str(get_runtime_setting('CONFIG_PATH')),
+            "log_path": str(get_runtime_setting('LOG_PATH')),
+            "temp_path": str(get_runtime_setting('TEMP_PATH')),
             "is_docker": SystemUtils.is_docker(),
-            "safe_mode": settings.MOVIEPILOT_SAFE_MODE,
+            "safe_mode": get_runtime_setting('MOVIEPILOT_SAFE_MODE'),
             "pid": os.getpid(),
         }
 

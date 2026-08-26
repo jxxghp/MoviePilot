@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine as SaAsyncEngine, create_async_en
 from sqlalchemy.pool import Pool
 
 from app.foundation.environment import is_free_threaded_runtime
-from app.runtime.config import settings
+from app.runtime.settings import get_runtime_setting
 from app.db.diagnostics import _register_database_error_logging
 from app.db.worker import DATABASE_WORKER_MAX_WORKERS
 from app.runtime.log import logger
@@ -22,7 +22,7 @@ from app.runtime.observability import record_metric
 
 def _database_backend_label() -> str:
     """把数据库类型收敛为有限的观测标签。"""
-    return "postgresql" if settings.DB_TYPE.lower() == "postgresql" else "sqlite"
+    return "postgresql" if get_runtime_setting('DB_TYPE').lower() == "postgresql" else "sqlite"
 
 
 def _sync_postgresql_driver() -> Optional[str]:
@@ -61,9 +61,9 @@ def _async_pool_kwargs(pooled: bool) -> dict:
     if not pooled:
         return {"poolclass": NullPool}
     return {
-        "pool_size": settings.DB_ASYNC_POOL_SIZE,
-        "max_overflow": settings.DB_ASYNC_MAX_OVERFLOW,
-        "pool_timeout": settings.DB_POOL_TIMEOUT,
+        "pool_size": get_runtime_setting('DB_ASYNC_POOL_SIZE'),
+        "max_overflow": get_runtime_setting('DB_ASYNC_MAX_OVERFLOW'),
+        "pool_timeout": get_runtime_setting('DB_POOL_TIMEOUT'),
     }
 
 
@@ -75,7 +75,7 @@ def _get_database_engine(is_async: bool = False, pooled: bool = False):
     :return: 返回对应的数据库引擎
     """
     # 根据数据库类型选择连接方式
-    if settings.DB_TYPE.lower() == "postgresql":
+    if get_runtime_setting('DB_TYPE').lower() == "postgresql":
         return _get_postgresql_engine(is_async, pooled=pooled)
     else:
         return _get_sqlite_engine(is_async, pooled=pooled)
@@ -87,35 +87,35 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
     """
     # 连接参数
     _connect_args = {
-        "timeout": settings.DB_TIMEOUT,
+        "timeout": get_runtime_setting('DB_TIMEOUT'),
     }
     # 允许部署侧注入驱动级参数（如 PgBouncer 事务模式下的 statement_cache_size）
-    _connect_args.update(settings.DB_CONNECT_ARGS or {})
+    _connect_args.update(get_runtime_setting('DB_CONNECT_ARGS') or {})
     # 启用 WAL 模式时的额外配置
-    if settings.DB_WAL_ENABLE:
+    if get_runtime_setting('DB_WAL_ENABLE'):
         _connect_args["check_same_thread"] = False
 
     # 创建同步引擎
     if not is_async:
         # 根据池类型设置 poolclass 和相关参数
-        _pool_class = NullPool if settings.DB_POOL_TYPE == "NullPool" else QueuePool
+        _pool_class = NullPool if get_runtime_setting('DB_POOL_TYPE') == "NullPool" else QueuePool
 
         # 数据库参数
         _db_kwargs = {
-            "url": settings.DB_SQLITE_URL(),
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
+            "url": get_runtime_setting('DB_SQLITE_URL')(),
+            "pool_pre_ping": get_runtime_setting('DB_POOL_PRE_PING'),
+            "echo": get_runtime_setting('DB_ECHO'),
             "poolclass": _pool_class,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
+            "pool_recycle": get_runtime_setting('DB_POOL_RECYCLE'),
             "connect_args": _connect_args
         }
 
         # 当使用 QueuePool 时，添加 QueuePool 特有的参数
         if _pool_class == QueuePool:
             _db_kwargs.update({
-                "pool_size": settings.DB_SQLITE_POOL_SIZE,
-                "pool_timeout": settings.DB_POOL_TIMEOUT,
-                "max_overflow": settings.DB_SQLITE_MAX_OVERFLOW
+                "pool_size": get_runtime_setting('DB_SQLITE_POOL_SIZE'),
+                "pool_timeout": get_runtime_setting('DB_POOL_TIMEOUT'),
+                "max_overflow": get_runtime_setting('DB_SQLITE_MAX_OVERFLOW')
             })
 
         # 创建数据库引擎
@@ -129,7 +129,7 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
         # 设置一次，而同步引擎的首次创建由 lifespan 数据库准备组件中的 init_db() 完成，
         # 不存在一群线程
         # 等在锁上的场面；即便退化到运行期首次访问，阻塞的也只是本地 SQLite 的一次 PRAGMA。
-        _journal_mode = "WAL" if settings.DB_WAL_ENABLE else "DELETE"
+        _journal_mode = "WAL" if get_runtime_setting('DB_WAL_ENABLE') else "DELETE"
         with engine.connect() as connection:
             current_mode = connection.execute(text(f"PRAGMA journal_mode={_journal_mode};")).scalar()
             print(f"SQLite database journal mode set to: {current_mode}")
@@ -138,10 +138,10 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
     else:
         # 数据库参数，只能使用 NullPool
         _db_kwargs = {
-            "url": settings.DB_SQLITE_URL("aiosqlite"),
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
+            "url": get_runtime_setting('DB_SQLITE_URL')("aiosqlite"),
+            "pool_pre_ping": get_runtime_setting('DB_POOL_PRE_PING'),
+            "echo": get_runtime_setting('DB_ECHO'),
+            "pool_recycle": get_runtime_setting('DB_POOL_RECYCLE'),
             "connect_args": _connect_args,
             **_async_pool_kwargs(pooled),
         }
@@ -162,51 +162,51 @@ def _get_postgresql_engine(is_async: bool = False, pooled: bool = False):
     """
     获取PostgreSQL数据库引擎
     """
-    db_url = settings.DB_POSTGRESQL_URL(_sync_postgresql_driver())
+    db_url = get_runtime_setting('DB_POSTGRESQL_URL')(_sync_postgresql_driver())
 
     # PostgreSQL连接参数。允许部署侧注入驱动级参数，
     # 例如经 PgBouncer 事务模式接入时 asyncpg 需要 statement_cache_size=0
-    _connect_args = dict(settings.DB_CONNECT_ARGS or {})
+    _connect_args = dict(get_runtime_setting('DB_CONNECT_ARGS') or {})
 
     # 创建同步引擎
     if not is_async:
         # 根据池类型设置 poolclass 和相关参数
-        _pool_class = NullPool if settings.DB_POOL_TYPE == "NullPool" else QueuePool
+        _pool_class = NullPool if get_runtime_setting('DB_POOL_TYPE') == "NullPool" else QueuePool
 
         # 数据库参数
         _db_kwargs = {
             "url": db_url,
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
+            "pool_pre_ping": get_runtime_setting('DB_POOL_PRE_PING'),
+            "echo": get_runtime_setting('DB_ECHO'),
             "poolclass": _pool_class,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
+            "pool_recycle": get_runtime_setting('DB_POOL_RECYCLE'),
             "connect_args": _connect_args
         }
 
         # 当使用 QueuePool 时，添加 QueuePool 特有的参数
         if _pool_class == QueuePool:
             _db_kwargs.update({
-                "pool_size": settings.DB_POSTGRESQL_POOL_SIZE,
-                "pool_timeout": settings.DB_POOL_TIMEOUT,
-                "max_overflow": settings.DB_POSTGRESQL_MAX_OVERFLOW
+                "pool_size": get_runtime_setting('DB_POSTGRESQL_POOL_SIZE'),
+                "pool_timeout": get_runtime_setting('DB_POOL_TIMEOUT'),
+                "max_overflow": get_runtime_setting('DB_POSTGRESQL_MAX_OVERFLOW')
             })
 
         # 创建数据库引擎
         engine = create_engine(**_db_kwargs)
         _register_database_error_logging(engine)
         _register_database_pool_metrics(engine)
-        print(f"PostgreSQL database connected to {settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE}")
+        print(f"PostgreSQL database connected to {get_runtime_setting('DB_POSTGRESQL_TARGET')}/{get_runtime_setting('DB_POSTGRESQL_DATABASE')}")
 
         return engine
     else:
-        async_db_url = settings.DB_POSTGRESQL_URL("asyncpg")
+        async_db_url = get_runtime_setting('DB_POSTGRESQL_URL')("asyncpg")
 
         # 数据库参数，只能使用 NullPool
         _db_kwargs = {
             "url": async_db_url,
-            "pool_pre_ping": settings.DB_POOL_PRE_PING,
-            "echo": settings.DB_ECHO,
-            "pool_recycle": settings.DB_POOL_RECYCLE,
+            "pool_pre_ping": get_runtime_setting('DB_POOL_PRE_PING'),
+            "echo": get_runtime_setting('DB_ECHO'),
+            "pool_recycle": get_runtime_setting('DB_POOL_RECYCLE'),
             "connect_args": _connect_args,
             **_async_pool_kwargs(pooled),
         }
@@ -214,7 +214,7 @@ def _get_postgresql_engine(is_async: bool = False, pooled: bool = False):
         async_engine = create_async_engine(**_db_kwargs)
         _register_database_error_logging(async_engine.sync_engine)
         _register_database_pool_metrics(async_engine.sync_engine)
-        print(f"Async PostgreSQL database connected to {settings.DB_POSTGRESQL_TARGET}/{settings.DB_POSTGRESQL_DATABASE}")
+        print(f"Async PostgreSQL database connected to {get_runtime_setting('DB_POSTGRESQL_TARGET')}/{get_runtime_setting('DB_POSTGRESQL_DATABASE')}")
 
         return async_engine
 
@@ -291,7 +291,7 @@ def _async_pool_enabled() -> bool:
     """
     是否启用异步连接池。设为 NullPool 可回退到池化前的行为。
     """
-    return str(settings.DB_ASYNC_POOL_TYPE or "").strip().lower() != "nullpool"
+    return str(get_runtime_setting('DB_ASYNC_POOL_TYPE') or "").strip().lower() != "nullpool"
 
 
 def connection_budget() -> Dict[str, int]:
@@ -306,19 +306,19 @@ def connection_budget() -> Dict[str, int]:
     就顶穿了 max_connections。
     :return: 单进程各项上限、worker 数与合计
     """
-    if settings.DB_TYPE.lower() == "postgresql":
-        sync_max = settings.DB_POSTGRESQL_POOL_SIZE + settings.DB_POSTGRESQL_MAX_OVERFLOW
+    if get_runtime_setting('DB_TYPE').lower() == "postgresql":
+        sync_max = get_runtime_setting('DB_POSTGRESQL_POOL_SIZE') + get_runtime_setting('DB_POSTGRESQL_MAX_OVERFLOW')
     else:
-        sync_max = settings.DB_SQLITE_POOL_SIZE + settings.DB_SQLITE_MAX_OVERFLOW
-    if settings.DB_POOL_TYPE == "NullPool":
+        sync_max = get_runtime_setting('DB_SQLITE_POOL_SIZE') + get_runtime_setting('DB_SQLITE_MAX_OVERFLOW')
+    if get_runtime_setting('DB_POOL_TYPE') == "NullPool":
         # 未池化连接由通用线程池和专属数据库 worker 共同创建，二者都要计入上限估计。
-        sync_max = settings.CONF.threadpool + DATABASE_WORKER_MAX_WORKERS
-    async_max = (settings.DB_ASYNC_POOL_SIZE + settings.DB_ASYNC_MAX_OVERFLOW
+        sync_max = get_runtime_setting('CONF').threadpool + DATABASE_WORKER_MAX_WORKERS
+    async_max = (get_runtime_setting('DB_ASYNC_POOL_SIZE') + get_runtime_setting('DB_ASYNC_MAX_OVERFLOW')
                  if _async_pool_enabled() else 0)
-    fallback = settings.DB_ASYNC_FALLBACK_LIMIT if _async_pool_enabled() else settings.CONF.scheduler
+    fallback = get_runtime_setting('DB_ASYNC_FALLBACK_LIMIT') if _async_pool_enabled() else get_runtime_setting('CONF').scheduler
     per_worker = sync_max + async_max + fallback
     # worker 数非法时按 1 计：退化成 0 会让合计归零、反而误判「额度充足」
-    workers = getattr(settings, "API_WORKERS", 1) or 1
+    workers = get_runtime_setting("API_WORKERS", 1) or 1
     workers = workers if isinstance(workers, int) and workers > 0 else 1
     return {
         "sync": sync_max,
@@ -339,7 +339,7 @@ def check_connection_budget() -> bool:
     :return: 是否在额度之内
     """
     budget = connection_budget()
-    if settings.DB_TYPE.lower() != "postgresql":
+    if get_runtime_setting('DB_TYPE').lower() != "postgresql":
         logger.info(f"数据库连接理论峰值: {budget['total']} "
                     f"(单进程 {budget['per_worker']} = 同步 {budget['sync']} + 异步池 "
                     f"{budget['async_pooled']} + 回退 {budget['async_fallback']}"

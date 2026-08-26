@@ -16,21 +16,20 @@ from urllib.request import Request, urlopen
 import click
 import psutil
 
-from app.runtime.config import Settings
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
-from app.runtime.state import SystemHelper
 from app.application.backup import BackupArtifact
-from app.startup.composition.database import build_database_governance
+from app.application.configuration import get_runtime_settings
+from app.runtime.config import Settings
+from app.runtime.settings import get_runtime_setting
+from app.runtime.state import SystemHelper
 from app.runtime.version import get_app_version, get_frontend_version
+from app.startup.composition.database import build_database_governance
 
-BACKEND_RUNTIME_FILE = settings.TEMP_PATH / "moviepilot.runtime.json"
-BACKEND_STDIO_LOG_FILE = settings.LOG_PATH / "moviepilot.stdout.log"
-BACKEND_APP_LOG_FILE = settings.LOG_PATH / "moviepilot.log"
-FRONTEND_RUNTIME_FILE = settings.TEMP_PATH / "moviepilot.frontend.runtime.json"
-FRONTEND_STDIO_LOG_FILE = settings.LOG_PATH / "moviepilot.frontend.stdout.log"
-FRONTEND_DIR = settings.ROOT_PATH / "public"
+BACKEND_RUNTIME_FILE = get_runtime_setting('TEMP_PATH') / "moviepilot.runtime.json"
+BACKEND_STDIO_LOG_FILE = get_runtime_setting('LOG_PATH') / "moviepilot.stdout.log"
+BACKEND_APP_LOG_FILE = get_runtime_setting('LOG_PATH') / "moviepilot.log"
+FRONTEND_RUNTIME_FILE = get_runtime_setting('TEMP_PATH') / "moviepilot.frontend.runtime.json"
+FRONTEND_STDIO_LOG_FILE = get_runtime_setting('LOG_PATH') / "moviepilot.frontend.stdout.log"
+FRONTEND_DIR = get_runtime_setting('ROOT_PATH') / "public"
 FRONTEND_SERVICE_FILE = FRONTEND_DIR / "service.js"
 FRONTEND_VERSION_FILE = FRONTEND_DIR / "version.txt"
 HEALTH_PATH = "/api/v1/system/global"
@@ -47,13 +46,13 @@ MASKED_FIELDS = {
 }
 MASKED_SUFFIXES = ("_TOKEN", "_PASSWORD", "_SECRET", "_API_KEY")
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
-PREPARED_UPDATE_ROOT = settings.TEMP_PATH / "moviepilot-update"
+PREPARED_UPDATE_ROOT = get_runtime_setting('TEMP_PATH') / "moviepilot-update"
 PREPARED_UPDATE_MANIFEST = PREPARED_UPDATE_ROOT / "install.json"
 PREPARED_UPDATE_STATE = PREPARED_UPDATE_ROOT / "state.json"
 
 
 def _repo_root() -> Path:
-    return settings.ROOT_PATH
+    return get_runtime_setting('ROOT_PATH')
 
 
 def _read_json_file(path: Path) -> Optional[Dict[str, Any]]:
@@ -115,21 +114,21 @@ def _frontend_runtime() -> Optional[Dict[str, Any]]:
 
 def _backend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
     runtime = runtime or _backend_runtime() or {}
-    host = runtime.get("host") or settings.HOST
-    port = runtime.get("port") or settings.PORT
+    host = runtime.get("host") or get_runtime_setting('HOST')
+    port = runtime.get("port") or get_runtime_setting('PORT')
     return f"http://{_client_host(host)}:{port}"
 
 
 def _frontend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
     runtime = runtime or _frontend_runtime() or {}
-    host = runtime.get("host") or settings.HOST
-    port = runtime.get("port") or settings.NGINX_PORT
+    host = runtime.get("host") or get_runtime_setting('HOST')
+    port = runtime.get("port") or get_runtime_setting('NGINX_PORT')
     return f"http://{_client_host(host)}:{port}"
 
 
 def _runtime_api_token(runtime: Optional[Dict[str, Any]] = None) -> str:
     runtime = runtime or _backend_runtime() or {}
-    return runtime.get("api_token") or settings.API_TOKEN
+    return runtime.get("api_token") or get_runtime_setting('API_TOKEN')
 
 
 def _http_request(
@@ -238,7 +237,7 @@ def _git_current_branch() -> Optional[str]:
 def _auto_update_mode() -> str:
     if SystemHelper.consume_one_shot_dev_update():
         return "dev"
-    return str(settings.MOVIEPILOT_AUTO_UPDATE or "").strip().lower()
+    return str(get_runtime_setting('MOVIEPILOT_AUTO_UPDATE') or "").strip().lower()
 
 
 def _file_sha256(path: Path) -> str:
@@ -267,18 +266,18 @@ def _local_update_env() -> dict[str, str]:
     """构造本地更新子进程使用的包缓存、代理和认证环境。"""
     update_env = os.environ.copy()
     package_cache_root = Path(
-        update_env.get("PACKAGE_CACHE_ROOT", "").strip() or settings.PACKAGE_CACHE_PATH
+        update_env.get("PACKAGE_CACHE_ROOT", "").strip() or get_runtime_setting('PACKAGE_CACHE_PATH')
     )
     update_env.setdefault("PACKAGE_CACHE_ROOT", str(package_cache_root))
     update_env.setdefault("UV_CACHE_DIR", str(package_cache_root / "uv"))
-    if settings.PIP_PROXY:
-        update_env["PIP_PROXY"] = settings.PIP_PROXY
-    if settings.PROXY_HOST:
-        update_env["PROXY_HOST"] = settings.PROXY_HOST
+    if get_runtime_setting('PIP_PROXY'):
+        update_env["PIP_PROXY"] = get_runtime_setting('PIP_PROXY')
+    if get_runtime_setting('PROXY_HOST'):
+        update_env["PROXY_HOST"] = get_runtime_setting('PROXY_HOST')
         for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
-            update_env[key] = settings.PROXY_HOST
-    if settings.GITHUB_TOKEN:
-        update_env.setdefault("GITHUB_TOKEN", settings.GITHUB_TOKEN)
+            update_env[key] = get_runtime_setting('PROXY_HOST')
+    if get_runtime_setting('GITHUB_TOKEN'):
+        update_env.setdefault("GITHUB_TOKEN", get_runtime_setting('GITHUB_TOKEN'))
     return update_env
 
 
@@ -322,7 +321,7 @@ def _apply_prepared_release_update() -> bool:
             "--venv",
             str(_repo_root() / "venv"),
             "--config-dir",
-            str(settings.CONFIG_PATH),
+            str(get_runtime_setting('CONFIG_PATH')),
         ]
         click.echo(f"安装已下载并校验的 MoviePilot {version} 更新包")
         result = subprocess.run(
@@ -391,7 +390,7 @@ def _best_effort_auto_update() -> None:
         "--venv",
         str(_repo_root() / "venv"),
         "--config-dir",
-        str(settings.CONFIG_PATH),
+        str(get_runtime_setting('CONFIG_PATH')),
     ]
 
     click.echo(f"检测到 MOVIEPILOT_AUTO_UPDATE={mode}，启动前执行本地自动更新")
@@ -647,10 +646,12 @@ def _parse_key_value_pairs(items: Iterable[str]) -> Dict[str, str]:
 
 
 def _ensure_local_api_token() -> bool:
-    if settings.API_TOKEN and len(str(settings.API_TOKEN).strip()) >= 16:
+    if get_runtime_setting('API_TOKEN') and len(str(get_runtime_setting('API_TOKEN')).strip()) >= 16:
         return False
 
-    result, message = settings.update_setting("API_TOKEN", settings.API_TOKEN or "")
+    result, message = get_runtime_settings().update(
+        "API_TOKEN", get_runtime_setting('API_TOKEN') or ""
+    )
     if result is False:
         raise click.ClickException(message or "初始化 API_TOKEN 失败")
     return result is True
@@ -691,10 +692,10 @@ def _spawn_backend_process(*, safe: bool = False) -> subprocess.Popen:
         "MOVIEPILOT_DISABLE_CONSOLE_LOG": "1",
         "MOVIEPILOT_STDIO_LOG_FILE": str(BACKEND_STDIO_LOG_FILE),
         "MOVIEPILOT_STDIO_LOG_MAX_BYTES": str(
-            max(int(settings.LOG_MAX_FILE_SIZE or 0), 1) * 1024 * 1024
+            max(int(get_runtime_setting('LOG_MAX_FILE_SIZE') or 0), 1) * 1024 * 1024
         ),
         "MOVIEPILOT_STDIO_LOG_BACKUP_COUNT": str(
-            max(int(settings.LOG_BACKUP_COUNT or 0), 0)
+            max(int(get_runtime_setting('LOG_BACKUP_COUNT') or 0), 0)
         ),
     }
     if safe:
@@ -741,7 +742,7 @@ def _spawn_frontend_process(backend_port: int) -> subprocess.Popen:
         env={
             **os.environ,
             "PORT": str(backend_port),
-            "NGINX_PORT": str(settings.NGINX_PORT),
+            "NGINX_PORT": str(get_runtime_setting('NGINX_PORT')),
         },
     )
 
@@ -796,9 +797,9 @@ def _start_backend_service(timeout: int, safe: bool = False) -> Dict[str, Any]:
     runtime = {
         "pid": process.pid,
         "create_time": ps_process.create_time(),
-        "host": settings.HOST,
-        "port": settings.PORT,
-        "api_token": settings.API_TOKEN,
+        "host": get_runtime_setting('HOST'),
+        "port": get_runtime_setting('PORT'),
+        "api_token": get_runtime_setting('API_TOKEN'),
         "started_at": int(time.time()),
         "python": sys.executable,
         "stdio_log": str(BACKEND_STDIO_LOG_FILE),
@@ -822,8 +823,8 @@ def _start_frontend_service(timeout: int, backend_port: int) -> Dict[str, Any]:
     runtime = {
         "pid": process.pid,
         "create_time": ps_process.create_time(),
-        "host": settings.HOST,
-        "port": settings.NGINX_PORT,
+        "host": get_runtime_setting('HOST'),
+        "port": get_runtime_setting('NGINX_PORT'),
         "backend_port": backend_port,
         "started_at": int(time.time()),
         "node": str(_frontend_node_binary()),
@@ -1139,8 +1140,9 @@ def config() -> None:
 @config.command("path", context_settings=CONTEXT_SETTINGS)
 def config_path() -> None:
     """显示配置路径"""
-    click.echo(f"Config Dir: {settings.CONFIG_PATH}")
-    click.echo(f"Env File: {settings.CONFIG_PATH / 'app.env'}")
+    config_path = get_runtime_setting('CONFIG_PATH')
+    click.echo(f"Config Dir: {config_path}")
+    click.echo(f"Env File: {config_path / 'app.env'}")
     click.echo(f"Frontend Dir: {FRONTEND_DIR}")
 
 
@@ -1148,7 +1150,7 @@ def config_path() -> None:
 @click.option("--show-secrets", is_flag=True, help="显示敏感配置原文")
 def config_list(show_secrets: bool) -> None:
     """列出当前配置"""
-    values = settings.model_dump()
+    values = get_runtime_settings().snapshot()
     for key in sorted(values):
         click.echo(f"{key}={_format_value(_mask_value(key, values[key], show_secrets))}")
 
@@ -1158,9 +1160,9 @@ def config_list(show_secrets: bool) -> None:
 def config_get(key: str) -> None:
     """读取单个配置项"""
     setting_fields = Settings.model_fields.keys()
-    if key not in setting_fields and not hasattr(settings, key):
+    if key not in setting_fields and not get_runtime_settings().contains(key):
         raise click.ClickException(f"配置项不存在：{key}")
-    click.echo(_format_value(getattr(settings, key)))
+    click.echo(_format_value(get_runtime_settings().get(key)))
 
 
 @config.command("set", context_settings=CONTEXT_SETTINGS)
@@ -1168,7 +1170,7 @@ def config_get(key: str) -> None:
 @click.argument("value")
 def config_set(key: str, value: str) -> None:
     """写入单个配置项"""
-    result, message = settings.update_setting(key, value)
+    result, message = get_runtime_settings().update(key, value)
     if result is False:
         raise click.ClickException(message or f"配置项更新失败：{key}")
     if result is None:
@@ -1196,7 +1198,7 @@ def config_keys(pattern: Optional[str], show_current: bool, show_secrets: bool) 
         if pattern and pattern.lower() not in key.lower():
             continue
         default_value = _field_default(field)
-        current_value = getattr(settings, key, default_value)
+        current_value = get_runtime_settings().get(key, default_value)
         rows.append(
             (
                 key,
@@ -1228,12 +1230,12 @@ def config_describe(key: str, show_secrets: bool) -> None:
         raise click.ClickException(f"配置项不存在：{key}")
 
     default_value = _field_default(field)
-    current_value = getattr(settings, key, default_value)
+    current_value = get_runtime_settings().get(key, default_value)
     click.echo(f"Key: {key}")
     click.echo(f"Type: {_annotation_name(field.annotation)}")
     click.echo(f"Default: {_format_value(_mask_value(key, default_value, show_secrets))}")
     click.echo(f"Current: {_format_value(_mask_value(key, current_value, show_secrets))}")
-    click.echo(f"Env File: {settings.CONFIG_PATH / 'app.env'}")
+    click.echo(f"Env File: {get_runtime_setting('CONFIG_PATH') / 'app.env'}")
 
 
 @cli.group(context_settings=CONTEXT_SETTINGS)

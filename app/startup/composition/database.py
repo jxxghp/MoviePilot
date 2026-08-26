@@ -20,9 +20,7 @@ from app.db.engine import get_engine
 from app.db.health import probe_database
 from app.db.maintenance import DatabaseCleanupRepository
 from app.db.session import SessionFactory
-from app.runtime.settings import RuntimeSettingsCompat
-
-settings = RuntimeSettingsCompat()
+from app.runtime.settings import get_runtime_setting
 
 
 def build_database_governance() -> DatabaseGovernance:
@@ -57,7 +55,7 @@ def configure_database() -> None:
 def read_backup_policy() -> BackupPolicy:
     """读取一次可热更新的数据库备份目录与保留策略。"""
     return BackupPolicy(
-        root=settings.DATABASE_BACKUP_PATH,
-        retention_days=settings.DB_BACKUP_RETENTION_DAYS,
-        max_count=settings.DB_BACKUP_MAX_COUNT,
+        root=get_runtime_setting('DATABASE_BACKUP_PATH'),
+        retention_days=get_runtime_setting('DB_BACKUP_RETENTION_DAYS'),
+        max_count=get_runtime_setting('DB_BACKUP_MAX_COUNT'),
     )
