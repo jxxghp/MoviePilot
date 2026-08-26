@@ -1,5 +1,7 @@
 """插件市场候选库存读取测试。"""
 
+import asyncio
+
 import pytest
 
 from app.application.plugin.identity import TrustedPluginSourceType
@@ -288,3 +290,40 @@ async def test_async_loader_preserves_generation_facts() -> None:
     assert [read.package_generation for read in inventory.market_reads] == [
         "v3", "v2", "v1"
     ]
+
+
+@pytest.mark.asyncio
+async def test_async_inventory_bounds_large_market_working_set() -> None:
+    """大市场库存允许 24 个并发读取，但不能无界放大出站连接。"""
+    active = 0
+    max_active = 0
+    first_batch_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def loader(_market: str, _package_version: str | None, _force: bool):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        if active == 24:
+            first_batch_started.set()
+        await release.wait()
+        active -= 1
+        return {}
+
+    markets = [
+        f"https://github.com/concurrency-owner/repository-{index}"
+        for index in range(10)
+    ]
+    reader = PluginCandidateInventoryReader(
+        market_loader=lambda *_args: {},
+        async_market_loader=loader,
+    )
+    inventory_task = asyncio.create_task(reader.async_load(markets))
+
+    await asyncio.wait_for(first_batch_started.wait(), timeout=1)
+    assert active == 24
+    release.set()
+    inventory = await inventory_task
+
+    assert max_active == 24
+    assert inventory.complete

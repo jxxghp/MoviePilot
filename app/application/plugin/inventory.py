@@ -53,7 +53,7 @@ class PluginCandidateInventoryReader:
         local_candidate_loader: LocalCandidateLoader | None = None,
         async_market_loader: AsyncMarketLoader | None = None,
         generations: Sequence[str] = PLUGIN_V3_GENERATIONS,
-        max_concurrency: int = 12,
+        max_concurrency: int = 24,
     ) -> None:
         """保存读取端口，并限制异步市场请求的进程内并发。"""
         normalized_generations = tuple(
