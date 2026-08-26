@@ -177,7 +177,10 @@ the plugin SDK.
 RSS is not classified as a transport adapter merely because it uses HTTP. The
 current `RssHelper` combines feed parsing, torrent item semantics, configured
 site-specific URL discovery and browser fallback, so it belongs to
-`app/application/rss.py` and consumes network adapters. Likewise, the generated
+`app/application/rss.py`. The target design gives it ownership of the required
+technical Ports and lets startup inject network/system Adapter implementations.
+Its current concrete imports are tracked as `S2-L6` temporary debt, not an
+approved dependency direction. Likewise, the generated
 site extension owns the configured catalog/authentication/index capability and
 lives in `app/application/site/`; only its download and file installation
 mechanism remains in `app/adapters/system/resource.py`.
@@ -516,12 +519,21 @@ The target remains zero canonical host cycles except the precisely contained
 vendor component. A temporary policy entry is an executable migration obligation,
 not precedent for approving another cycle.
 
+The same fact/policy split governs direct Adapter imports. The generated
+dependency baseline records the original runtime imports from `app.application`
+and `app.chain` without parent-package expansion. Every current edge is an exact
+`temporary_debt` entry in dependency policy with a removal leaf; the target state
+is empty. New or replacement edges and stale policy entries fail. Application owns
+the Port required by its use case, startup injects the concrete Adapter, and Chain
+consumes the Application capability or an injected Port. A `canonical capability`
+never means permission to import a concrete `app.adapters.*` implementation.
+
 ## Permitted Call Directions
 
 | Direction | Status |
 |---|---|
 | `entrypoint -> chain / application / injected persistence Port` | Allowed according to workflow complexity |
-| `chain -> module (only via run_module dispatch) / application / injected Port / canonical capability` | Allowed; direct `chain -> module` and `chain -> Oper` imports forbidden |
+| `chain -> module (only via run_module dispatch) / application / injected Port / canonical capability` | Allowed; direct `chain -> module`, `chain -> Oper` and `chain -> concrete adapter` imports forbidden |
 | `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/initializers/agent.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
 | `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugin/routes.py`, `plugin/folders.py`, `scheduling.py` and `commands.py` application services |
 | `api -> factory` | Forbidden; the FastAPI route adapter is injected into `app/application/plugin/routes.py` by the composition root after creation |

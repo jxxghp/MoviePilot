@@ -154,8 +154,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 - 审计时 `docs/rules/04-design-patterns.md` 仍示范 `SubscribeOper()` 无 Session 调用，
   与生产路径显式 UoW 规则冲突；该项已由 S0-L2.1 修复并增加文档门禁。
-- `docs/rules/05-architecture.md:507` 禁止 `application -> concrete adapter`，但同一文档
-  `177-183` 又要求 RSS 消费 network adapter；当前测试没有形式化这类例外。
+- 审计时规则禁止 `application -> concrete adapter`，但 RSS 段落又要求直接消费 network adapter；
+  S0-L2.4 已统一为 Application-owned Port + startup 注入，并将现有直连全部列为临时债务。
 - 审计时完整 SCC 只进入生成快照，语义测试只覆盖特定根；S0-L2.2 已增加完整宿主 SCC policy 门禁。
 - 架构总览此前仍记录 811 模块、6,572 条边和 1 个 SCC，已经落后于当前基线。
 - Event consumer 扫描把任意名为 `.register()` 的调用都当成事件注册，存在明确误报。
@@ -164,7 +164,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 - [ ] 指定一个机器可读事实源，文档指标由 fixture 生成或只保留不易漂移的语义描述。
 - [x] 修正 Oper 示例，分别展示宿主显式 UoW 与插件兼容 Facade，并以文档测试禁止回退。
-- [ ] 对 Adapter 规则作出明确决策：允许哪些通用技术机制，哪些命名外部/持久化能力必须注入。
+- [x] 明确 Application/Chain 不永久直连具体 Adapter；业务层拥有 Port，startup 注入实现。
 - [x] 让 SCC 规则、精确 policy 和文档声明一致；Chain 临时债务与 TMDB vendor containment 分开治理。
 - [ ] Event 扫描只识别 EventManager 实例/别名和事件装饰器。
 - [ ] CI 分开报告“快照一致”与“语义规则通过”，禁止把前者表述为架构完全正确。
@@ -420,11 +420,11 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **目标与步骤**
 
-- [ ] 先建立 `application_to_adapters`、`chain_to_adapters` 和 direct-egress 可审查清单，冻结增长。
+- [x] 建立 Application/Chain 原始 Adapter 直连事实与精确临时 policy，冻结新增、替换和陈旧条目。
 - [ ] 将 Passkey 原子领取提升为 runtime cache contract，由 Memory/Redis backend 分别实现。
 - [ ] 为 Backup 定义 Application-owned artifact store Port，由 startup 注入文件系统实现。
 - [ ] 普通外部请求迁移到统一网络能力；SDK transport、streaming 和 vendor code 例外必须精确到路径与原因。
-- [ ] 命名外部产品和安全敏感能力优先改为注入 Port；通用技术 Adapter 是否可直接使用由 ARCH-101 决策。
+- [ ] 命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不在 Application/Chain 保留直连例外。
 - [ ] 最终把基线收缩到零或少量书面化例外，而不是一次性禁止后再大量豁免。
 
 ```bash

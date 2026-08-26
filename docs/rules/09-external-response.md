@@ -2,7 +2,11 @@
 
 ## HTTP Client Conventions
 
-**Rule:** Host outbound HTTP requests must go through `RequestUtils` from `app/adapters/network/http.py`. Plugins import it from `app.sdk.network`. Do not use `requests`, `httpx`, or `aiohttp` directly.
+**Rule:** Host outbound HTTP transport implementations must go through `RequestUtils` from
+`app/adapters/network/http.py`. This transport rule does not authorize Application or Chain to
+import the concrete Adapter; they own/use a Port and receive its implementation from startup.
+Plugins import the curated facade from `app.sdk.network`. Do not use `requests`, `httpx`, or
+`aiohttp` directly outside a separately reviewed SDK, streaming, or vendored transport boundary.
 
 `RequestUtils` handles:
 - Proxy configuration (from `settings.PROXY_*`)
@@ -12,6 +16,7 @@
 - Retry logic
 
 ```python
+# Adapter implementation example; Application/Chain consume an injected Port instead.
 from app.adapters.network.http import RequestUtils
 
 res = RequestUtils(

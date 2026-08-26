@@ -30,7 +30,7 @@ For work that changes or reviews repository behavior, identify the domains actua
 
 ### External Communication and Interfaces
 * **Primary Reference:** `docs/rules/09-external-response.md`
-* **Required Constraints:** All third-party HTTP requests must go through `RequestUtils`. Response formats must use the project's standard schemas. Error handling must follow the per-layer conventions.
+* **Required Constraints:** Transport implementations for third-party HTTP must go through `RequestUtils`; this rule does not authorize Application/Chain to import the concrete Adapter. Response formats must use the project's standard schemas. Error handling must follow the per-layer conventions.
 
 ### Data and Persistence
 * **Primary Reference:** `docs/rules/10-data-and-persistent.md`
@@ -66,17 +66,17 @@ The legacy roots have no physical directories in the source tree. Current images
 | `app/adapters/cache/` | Redis 与文件缓存等具体持久化实现 | 缓存协议、装饰器和进程内缓存策略 | `backends.py`, `redis.py` |
 | `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `display/`, `stdio.py`, `package.py`, `resource.py`, `rust.py`, `fsproxy.py` |
 | `app/adapters/external/` | CookieCloud、插件市场、OCR、IP 归属和 MoviePilot Server 等命名外部生态 | 通用 HTTP/DNS/文件机制或可复用领域语义 | `market.py`, `server.py`, `cookiecloud.py`, `ocr.py`, `location.py`, `wechat_crypt.py` |
-| `app/application/` | 聚焦应用服务、用例命令，以及由用例拥有的持久化 Port/Protocol | SQLAlchemy、Session、Oper 等具体 DB 实现，多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `outbox.py`, `subscription/write.py`, `workflow.py` |
+| `app/application/` | 聚焦应用服务、用例命令，以及由用例拥有的持久化/技术能力 Port/Protocol | SQLAlchemy、Session、Oper 等具体 DB 实现，具体 Adapter 静态依赖，多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `outbox.py`, `subscription/write.py`, `workflow.py` |
 | `app/application/messaging/` | 消息渲染/路由、交互和 Agent 到消息桥接：`ingress.py` 统一渠道回环入口；`interaction.py` 通用交互契约和视图工具；`router.py` 统一交互优先级和回调分发；`site.py`/`subscribe.py`/`skill.py` 对应命令的会话、输入解析和视图；`media.py` 媒体交互状态（业务工作流仍由 `MediaInteractionChain` 执行）；`plugin.py` 插件输入接管和插件按钮回调；`agent.py` Agent 选择状态、回调协议和 WebAgent 消息桥接；`message.py` 通知渲染、模板和队列。不作为推荐给插件直接使用的公开 SDK | 认证策略、通用 HTTP、服务发现、仅端点使用的 Web Push 行为 | `ingress.py`, `message.py`, `interaction.py`, `router.py`, `agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、路径/URL 安全、SSRF 和签名策略 | 通用 URL 解析、进程运行策略、普通业务校验 | `access.py`, `auth.py`, `cookie.py`, `passkey.py`, `otp.py`, `twofactor.py`, `url.py` |
-| `app/chain/` | Reusable use-case orchestration across modules, Application services, injected ports, events, and caches; chains reach modules only through `run_module` dispatch on method-name contracts | Transport schemas, backend-specific protocol details, generic primitives, direct Oper/DB imports, direct imports of module internals (classes, exceptions, constants) | `media.py`, `download.py`, `subscribe.py`, `transfer.py` |
+| `app/chain/` | Reusable use-case orchestration across modules, Application services, injected ports, events, and caches; chains reach modules only through `run_module` dispatch on method-name contracts | Transport schemas, backend-specific protocol details, concrete Adapter imports, generic primitives, direct Oper/DB imports, direct imports of module internals (classes, exceptions, constants) | `media.py`, `download.py`, `subscribe.py`, `transfer.py` |
 | `app/db/oper/` | 面向表和持久化值的 SQLAlchemy 数据访问；接收调用方 Session，只查询、暂存或 flush | Application 业务规则、隐式事务所有权、外部副作用 | `subscribe.py`, `site.py`, `workflow.py` |
 | `app/db/adapters/` | 实现 Application 持久化 Port，创建短生命周期 Session/UoW，并适配 Oper | 用例规则、启动顺序、进程生命周期 | `subscription.py`, `site.py`, `outbox.py`, `workflow.py` |
 | `app/startup/` | Composition root: `composition/` 构造并注入跨层依赖，`initializers/` 按领域初始化，`lifecycle/` 编排启动关闭 | Reusable business rules or adapter implementation details | `composition/context.py`, `composition/database.py`, `initializers/modules.py`, `lifecycle/components.py` |
 | `app/sdk/` | Deliberately curated stable imports for new plugins | Canonical implementation logic or host-internal dependencies | `browser.py`, `cache.py`, `logging.py`, `media.py`, `network.py`, `services.py` |
 | `app/runtime/compat/` | 仅依赖标准库的精确旧导入路由、资源前置扫描和 DEBUG 诊断 | 业务实现、通配猜测、目标模块的提前导入 | `manifest.py`, `imports.py`, `resource_imports.py`, `diagnostics.py` |
 
-容易误分的三个边界必须按实际职责判断：`application/rss.py` 同时承担 Feed/种子语义、站点规则和浏览器回退，不是单纯 HTTP 传输；`application/site/sites.*` 及 `user.sites.v3.bin` 共同构成站点目录、认证和索引应用能力，只有下载安装机制留在 `adapters/system/resource.py`；`foundation/crypto.py` 只提供无状态 RSA/摘要/AES 算法，认证、签名、令牌和二次验证策略仍属于 `application/security/`。
+容易误分的三个边界必须按实际职责判断：`application/rss.py` 同时承担 Feed/种子语义、站点规则和浏览器回退，不是单纯 HTTP 传输；规范目标是由它拥有所需 Port、startup 注入 network/system Adapter。当前直接导入是 `S2-L6` 临时债务，不是允许的新模式。`application/site/sites.*` 及 `user.sites.v3.bin` 共同构成站点目录、认证和索引应用能力，只有下载安装机制留在 `adapters/system/resource.py`；`foundation/crypto.py` 只提供无状态 RSA/摘要/AES 算法，认证、签名、令牌和二次验证策略仍属于 `application/security/`。
 
 ### Placement Decision Order
 

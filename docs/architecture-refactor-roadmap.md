@@ -75,10 +75,11 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S0-L1 可信基线恢复 | `DELIVERED` | 无 | `5df388719`：交付架构审计/路线图，修复 `ARCH-001` 两个 mypy 增量错误；远端 `0/0` |
 | S0-L2.1 Host Oper/UoW 规范 | `DELIVERED` | S0-L1 | `3bf94ffed`：宿主无 Session Oper 规范债务归零，远端 `0/0` |
 | S0-L2.2 完整宿主 SCC policy | `DELIVERED` | S0-L2.1 | `a884ab5c2`：完整宿主 SCC 精确 policy 生效，远端 `0/0` |
-| S0-L2.3 Adapter 直连事实 | `VERIFIED` | S0-L2.1 | 收集 Application/Chain 的原始 Adapter import，不因父包展开重复计数 |
-| S0-L2.4 Adapter zero-growth | `PLANNED` | S0-L2.3 | 当前直连均登记迁移 owner，新增/替换失败，删除后要求清理陈旧 policy |
+| S0-L2.3 Adapter 直连事实 | `DELIVERED` | S0-L2.1 | `e1483e85d`：锁定 28 条原始 Adapter import 事实，远端 `0/0` |
+| S0-L2.4 Adapter zero-growth | `VERIFIED` | S0-L2.3 | 当前直连均登记迁移 owner，新增/替换失败，删除后要求清理陈旧 policy |
+| S0-L2.4b HTTP/Egress 事实与政策 | `PLANNED` | S0-L2.4 | direct HTTP/SDK/stream/vendor egress 分类完整，债务与精确例外分别受不可增长政策约束 |
 | S0-L2.5 Event consumer 识别 | `PLANNED` | S0-L2.1 | consumer 只识别可静态证明的 EventManager 注册，动态误报归零 |
-| S0-L2.6 事实源与 CI 投影 | `PLANNED` | S0-L2.2,S0-L2.4,S0-L2.5 | fixture/policy/overview 职责固定，CI 分开报告语义 policy 与快照一致性 |
+| S0-L2.6 事实源与 CI 投影 | `PLANNED` | S0-L2.2,S0-L2.4b,S0-L2.5 | fixture/policy/overview 职责固定，CI 分开报告语义 policy 与快照一致性 |
 
 ### S1：可靠性、事务与数据合同
 
@@ -153,27 +154,29 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 
 ## 4. 当前活动叶子
 
-### S0-L2.3 Adapter 直连事实
+### S0-L2.4 Adapter zero-growth
 
 **Status:** `VERIFIED`（本地验收完成，等待提交、推送和远端一致性确认）
 
 **Outcome**
 
-用原始 AST import 记录 Application/Chain 到 Adapter 的稳定直连事实，不把父包初始化边、
-导入符号、行号、TYPE_CHECKING 或动态字符串导入混入治理面。
+把 S0-L2.3 收集的 Application/Chain 到具体 Adapter 直连全部登记为有迁移 owner 的临时债务。
+初始 28 条形成只减不增的冻结上界，政策目标固定为空集合；新增、替换和删除后未同步清理的
+陈旧登记都必须失败。
 
 **Ownership**
 
-- `scripts/architecture/baseline.py` 的 direct Adapter import collector。
-- `tests/test_architecture_adapter_imports.py` 的 AST 语义和当前 28 条事实断言。
-- `tests/fixtures/architecture/dependency-baseline.json` 的 schema v2 生成字段。
+- `tests/fixtures/architecture/dependency-policy.json` 的人工 Adapter policy。
+- `tests/test_architecture_adapter_imports.py` 的精确集合、owner 和 stale-policy 门禁。
+- `AGENTS.md`、`docs/rules/05-architecture.md` 与架构总览中的规范边界。
+- `.github/workflows/test.yml` 的快速架构 CI 投影。
 - 本路线图的叶子状态和交付记录。
 
 **Excluded**
 
-- 不批准当前直连、不写 owner、不建立豁免；这些属于紧随其后的 S0-L2.4。
-- 不修改现有完整依赖图、SCC、digest、`app/plugins/**` 或运行时代码。
-- 不把 `app.db.adapters`、SDK、插件副本或第三方 HTTP egress 混入本字段。
+- 不在本叶迁移 28 条运行时依赖；迁移由 S2-L4 至 S2-L7 按 owner 债务清零。
+- 不修改生成事实、完整依赖图、SCC、digest、`app/plugins/**` 或运行时代码。
+- 不把 direct HTTP/SDK/stream/vendor egress 混入 Adapter policy；这些由 S0-L2.4b 独立治理。
 
 **Acceptance**
 
@@ -182,17 +185,19 @@ G-ARCH 只有在以下条件全部满足后才可完成：
   tests/test_architecture_adapter_imports.py \
   tests/test_architecture_contract_baseline.py \
   tests/test_architecture_dependencies.py \
-  tests/test_architecture_baseline_cli.py -q
-.venv/bin/python scripts/architecture/baseline.py --check-host --diagnostics
+  tests/test_architecture_ci.py \
+  tests/test_architecture_documentation.py -q
+.venv/bin/python scripts/architecture/baseline.py --check-host
 .venv/bin/python scripts/architecture/ruff_ratchet.py
 .venv/bin/python scripts/architecture/mypy_ratchet.py
-.venv/bin/pylint scripts/architecture/baseline.py \
-  tests/test_architecture_adapter_imports.py \
-  tests/test_architecture_contract_baseline.py
+.venv/bin/pylint tests/test_architecture_adapter_imports.py \
+  tests/test_architecture_contract_baseline.py \
+  tests/test_architecture_dependencies.py \
+  tests/test_architecture_ci.py
 git diff --check
 ```
 
 **Delivery**
 
-- 单一提交主题：生成并锁定 Adapter 原始直连事实。
+- 单一提交主题：冻结现有 Adapter 直连债务并阻止增长。
 - 推送 `origin/v3` 后确认提交祖先关系、远端 SHA 和 ahead/behind `0/0`。

@@ -61,7 +61,7 @@ flowchart LR
 
 MoviePilot v3 以单向依赖的模块化单体为目标。历史包 `app/core`、`app/helper`、`app/utils`
 已不再存在物理目录，仅作为旧插件的**虚拟兼容导入根**保留。核心边界已有机器门禁，
-尚未强制的 Adapter 例外、完整宿主 SCC 等差距记录在本章末的优化清单中。
+完整宿主 SCC 与 Adapter 直连已有精确政策门禁；其余尚未强制的边界记录在本章末的优化清单中。
 
 下图同时表达职责关系与运行时调用方向，不等同于 Python 静态 import 图；通过 Port 注入的调用
 会与具体 Adapter 的静态依赖方向相反。
@@ -164,9 +164,9 @@ Chain/Agent 的 `Any` factory 和裸 Oper 仍需迁移为类型化 Port/DTO，�
 `app/db/adapters/outbox.py` 实现；`app/runtime/tasks.py` 的 TaskRegistry 只负责进程内任务所有权、
 取消和有限等待，不承担 durable queue 语义。
 
-**依赖方向的规范目标**如下。`tests/test_architecture_dependencies.py` 已强制其中的核心子集；
-Application/Chain 到具体 Adapter 的例外和完整宿主 SCC 仍需按优化清单补齐门禁，不能把表中每一行
-都理解为当前已经被 CI 全量证明：
+**依赖方向的规范目标**如下。完整宿主 SCC 与 Application/Chain 具体 Adapter 直连已经使用
+生成事实 + 人工 policy 门禁；当前 Adapter 边均为有迁移 owner 的临时债务，不是永久例外。
+其余尚未机器化的规则仍按优化清单补齐，不能把表中每一行都理解为当前已经被 CI 全量证明：
 
 | 方向 | 状态 |
 |---|---|
@@ -640,8 +640,8 @@ flowchart LR
     Caller --> AB
 ```
 
-- **所有第三方 HTTP 请求必须走 `RequestUtils`**（`app/adapters/network/http.py`）；
-  插件使用 `app.sdk.network`。
+- **第三方 HTTP 的 transport 实现必须走 `RequestUtils`**（`app/adapters/network/http.py`）；
+  这不授权 Application/Chain 直接导入具体 Adapter，插件使用 `app.sdk.network`。
 - `app/runtime/log.py` 是依赖叶子（无任何 `app.*` 导入）；`foundation` 不输出运行日志，
   由上层所有者决定是否记录。
 - 缓存契约与内存后端在 `runtime/cache.py`，Redis/文件实现在 `adapters/cache/backends.py`，
@@ -671,6 +671,8 @@ flowchart LR
 - `tests/fixtures/architecture/dependency-baseline.json` 记录生成事实；人工审查的 SCC 分类单独存入
   `dependency-policy.json`。完整宿主 SCC 必须精确匹配 policy，新增、扩大、变形和陈旧 policy 都失败；
   `--write-host` 不会替代人工决策。
+- 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；policy 将其全部标为有 owner 的
+  `temporary_debt`，并以初始 28 条冻结上界、目标为空集合。新增、替换、删除后未清理 policy 都会失败。
 - 任何所有权迁移必须同步更新：canonical 导入、`app/runtime/compat/manifest.py`、
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。

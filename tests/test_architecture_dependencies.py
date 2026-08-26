@@ -1087,7 +1087,7 @@ def test_complete_host_sccs_match_reviewed_policy() -> None:
     policy = _load_dependency_policy()
     entries = policy["allowed_sccs"]
 
-    assert policy["schema_version"] == 1
+    assert policy["schema_version"] == 2
     assert policy["scope"] == {
         "dependency_kind": "static_runtime_imports",
         "excluded_roots": ["app/plugins"],

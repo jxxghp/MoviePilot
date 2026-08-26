@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "scope": {
     "dependency_kind": "static_runtime_imports",
     "excluded_roots": [
@@ -57,5 +57,161 @@
       "reason": "隔离的移植代码保持精确成员 containment；普通单向包外依赖允许，任何成员扩张或包外反向入环均失败。",
       "tracking": "replace-or-upgrade-vendored-package"
     }
-  ]
+  ],
+  "direct_adapter_imports": {
+    "classification": "temporary_debt",
+    "scope": {
+      "source_roots": [
+        "app.application",
+        "app.chain"
+      ],
+      "target_root": "app.adapters",
+      "runtime_only": true,
+      "parent_package_expansion": false,
+      "imported_symbols": false
+    },
+    "entries": [
+      {
+        "source": "app.application.backup",
+        "target": "app.adapters.system.backup.files",
+        "tracking": "S2-L5"
+      },
+      {
+        "source": "app.application.directory",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.image",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.image",
+        "target": "app.adapters.network.ip",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.messaging.ingress",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.network.browser",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.rss",
+        "target": "app.adapters.system",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.rules",
+        "target": "app.adapters.system",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.external.ocr",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.network.browser",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.security.cookie",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.security.passkey",
+        "target": "app.adapters.cache.redis",
+        "tracking": "S2-L4"
+      },
+      {
+        "source": "app.application.torrent",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.application.transfer",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L6"
+      },
+      {
+        "source": "app.chain._recognition",
+        "target": "app.adapters.external.server",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain._transfer",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.download",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.download",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.message",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.scraping",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.external.cookiecloud",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.browser",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.cloudflare",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.site",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.subscribe",
+        "target": "app.adapters.external.server",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.system",
+        "target": "app.adapters.network.http",
+        "tracking": "S2-L7"
+      },
+      {
+        "source": "app.chain.system",
+        "target": "app.adapters.system.host",
+        "tracking": "S2-L7"
+      }
+    ],
+    "target_state": "empty"
+  }
 }

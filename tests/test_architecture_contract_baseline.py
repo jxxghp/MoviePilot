@@ -70,13 +70,14 @@ def test_dependency_baseline_records_nonempty_host_graph() -> None:
     assert baseline["module_count"] > 0
     assert baseline["edge_count"] > 0
     direct_imports = baseline["direct_adapter_imports"]
-    assert direct_imports["count"] == len(direct_imports["edges"]) == 28
-    assert direct_imports["counts_by_source_root"] == {
-        "app.application": 15,
-        "app.chain": 13,
+    assert direct_imports["count"] == len(direct_imports["edges"])
+    assert sum(direct_imports["counts_by_source_root"].values()) == direct_imports["count"]
+    assert set(direct_imports["counts_by_source_root"]) <= {
+        "app.application",
+        "app.chain",
     }
-    assert direct_imports["source_count"] == len(direct_imports["sources"]) == 18
-    assert direct_imports["target_count"] == len(direct_imports["targets"]) == 11
+    assert direct_imports["source_count"] == len(direct_imports["sources"])
+    assert direct_imports["target_count"] == len(direct_imports["targets"])
 
 
 def test_official_discovery_plugins_explicitly_keep_host_page_envelope():
