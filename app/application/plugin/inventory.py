@@ -20,6 +20,7 @@ from app.application.plugin.source import (
     PluginMarketCandidate,
     normalize_package_generation,
 )
+from app.foundation.environment import is_free_threaded_runtime
 
 PLUGIN_V3_GENERATIONS = ("v3", "v2", "v1")
 PluginIndex: TypeAlias = Mapping[str, Mapping[str, Any]]
@@ -382,6 +383,8 @@ def _is_v3_compatible(
 ) -> bool:
     """按宿主 V3、兼容 V2、基础索引顺序判断候选兼容性。"""
     if plugin_info.get("v3") is False:
+        return False
+    if is_free_threaded_runtime() and plugin_info.get("v3t") is False:
         return False
     if package_generation in {"v3", "v2"}:
         return True

@@ -1006,6 +1006,27 @@ class TestPluginHelper:
         )
         assert not PluginHelper.is_package_plugin_compatible({}, "")
 
+    def test_free_threaded_package_compatibility_honors_explicit_v3t_false(
+        self,
+        monkeypatch,
+    ) -> None:
+        """V3t 只把 package 中明确的 v3t:false 视为运行时不兼容。"""
+        from app.adapters.external import market as market_module
+        from app.adapters.external.market import PluginHelper
+
+        monkeypatch.setattr(market_module, "is_free_threaded_runtime", lambda: True)
+        monkeypatch.setattr(
+            market_module,
+            "settings",
+            SimpleNamespace(VERSION_FLAG="v3"),
+        )
+
+        assert PluginHelper.is_package_plugin_compatible({}, "v3")
+        assert PluginHelper.is_package_plugin_compatible({"v3t": True}, "v3")
+        assert not PluginHelper.is_package_plugin_compatible(
+            {"v3t": False}, "v3"
+        )
+
     def test_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
         """
         全市场刷新不清理 Release 缓存，Release 接口按请求仓库协调刷新两类数据。

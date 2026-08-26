@@ -32,6 +32,7 @@ from importlib.metadata import distributions
 from requests import Response
 
 from app.runtime.cache import cached, is_fresh
+from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.dependencies import (
     iter_runtime_profile_requirement_strings,
     iter_runtime_requirement_strings,
@@ -369,6 +370,8 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         if not isinstance(plugin_info, dict):
             return False
+        if is_free_threaded_runtime() and plugin_info.get("v3t") is False:
+            return False
         if not get_runtime_setting('VERSION_FLAG'):
             return True
         current_flag = get_runtime_setting('VERSION_FLAG')
@@ -396,6 +399,8 @@ class PluginHelper(metaclass=WeakSingleton):
         除非条目显式声明 ``v3: false``；默认索引仍需先声明 ``v2: true``。
         """
         if not isinstance(plugin_info, dict):
+            return False
+        if is_free_threaded_runtime() and plugin_info.get("v3t") is False:
             return False
         current_flag = get_runtime_setting('VERSION_FLAG')
         if not current_flag:

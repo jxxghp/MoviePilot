@@ -113,6 +113,35 @@ def test_loader_executes_each_instance_in_an_isolated_module_namespace(
     assert plugin_package.demoplugin is source_module
 
 
+def test_loader_runtime_gate_only_rejects_explicit_incompatible_declarations(
+    tmp_path,
+    monkeypatch,
+):
+    """运行目录缺少声明或 runtime 为空时保持历史插件可加载。"""
+    from app.runtime.extensions.plugin import loader as loader_module
+
+    monkeypatch.setattr(
+        loader_module,
+        "get_runtime_setting",
+        lambda key: "v3" if key == "VERSION_FLAG" else None,
+    )
+    monkeypatch.setattr(loader_module, "is_free_threaded_runtime", lambda: True)
+
+    missing = tmp_path / "missing"
+    missing.mkdir()
+    assert PluginLoader._is_runtime_compatible(missing)
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "package.json").write_text('{"runtime": {}}', encoding="utf-8")
+    assert PluginLoader._is_runtime_compatible(empty)
+
+    rejected = tmp_path / "rejected"
+    rejected.mkdir()
+    (rejected / "package.json").write_text('{"v3t": false}', encoding="utf-8")
+    assert not PluginLoader._is_runtime_compatible(rejected)
+
+
 def test_clone_service_persists_descriptor_without_copying_source_package():
     """创建分身只写实例描述和隔离配置，并始终跟随源插件版本。"""
     instances: dict[str, PluginInstance] = {}
