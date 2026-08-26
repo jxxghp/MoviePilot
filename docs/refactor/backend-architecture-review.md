@@ -84,8 +84,8 @@
 | 批次 | 叶子目标 | 状态 | 当前证据/停止条件 |
 |---|---|---|---|
 | 0 | 历史任务清账、现行架构图、外部契约核对和宿主基线对齐 | 已推送 | `d234c7132`；远端同 SHA；ahead/behind `0/0`；架构契约 `71 passed` |
-| 1 | Mypy fail-closed，并把 Ruff/Mypy 已下降债务固化为真实低水位 | 已本地验证 | Mypy 完整低水位 11994、Ruff 976；专项 `33 passed`；架构契约 `71 passed`；Pylint `10.00/10` |
-| 2 | 用全量串行测试初始化非零 Coverage 低水位，并补齐 CI/文档防回退契约 | 待批次 1 | fixture 当前 Application/Domain 均为 0%；最近 CI 仅作参考，必须在最终代码快照本地重建 |
+| 1 | Mypy fail-closed，并把 Ruff/Mypy 已下降债务固化为真实低水位 | 已推送 | `6062b0661`；远端同 SHA；ahead/behind `0/0`；Mypy 11994、Ruff 976 |
+| 2 | 用全量串行测试初始化非零 Coverage 低水位，并补齐 CI/文档防回退契约 | 已本地验证 | Ubuntu canonical：Application `9292/11949`（77.76%），Domain `3390/4278`（79.24%）；专项 `26 passed` |
 | 3 | 收口阶段 62 遗留的 QQ Gateway heartbeat Timer 所有权 | 待批次 2 | Timer 只 cancel 不 join，Gateway 主线程可能在 heartbeat 仍执行时报告停止成功 |
 | Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 待前置批次 | 所有准入项已推送；全量测试和适用门禁通过；本地/远端 0/0 |
 
@@ -134,7 +134,9 @@
 * Ruff fixture 从 1623 收紧到 976，Mypy 和 Ruff 默认路径复跑均通过；
 * 质量/CI/上下文/严格类型专项 `33 passed`，架构契约 `71 passed`，改动文件 Pylint `10.00/10`。
 
-待完成：提交推送并记录远端证据。
+交付证据：提交 `6062b0661` 已推送到 `origin/v3`；`git ls-remote` 返回同一 SHA，
+`HEAD...origin/v3` 为 `0/0`。提交严格包含上述 10 个批次路径；并行任务在提交前推进的
+`1f7fac2b2` 是其父提交，不在本批次 diff 中。
 
 ### 批次 2：Coverage 低水位闭环
 
@@ -144,6 +146,23 @@
 停止条件：在批次 1 的最终代码快照上运行串行全量 Coverage；fixture 为真实非零结果；
 零 statements、工具失败和低水位未固化均会失败；CI 命令存在性有契约测试；文档与 CI 一致；
 批次独立提交推送。
+
+本地验收结果：
+
+* 脚本拒绝 malformed/零语句报告、非法或不完整基线、布尔/负数/越界计数和计数不一致的
+  百分比；唯一旧全零 fixture 只允许初始化一次，后续不能再借 `--write` 绕过回退；
+* 回退使用整数交叉相乘比较真实比例，避免四舍五入隐藏下降；任一包下降会整体拒绝写入且
+  基线原始字节不变，等比例计数变化和覆盖提升都必须显式固化完整快照；
+* GitHub Actions run `32977180133` 在 `15ddbbbaf` 上完成 Ubuntu/Python 3.14、locked
+  依赖和串行全量 Coverage，日志精确聚合为 Application `9292/11949`（77.76%）、Domain
+  `3390/4278`（79.24%）；本机报告得到相同计数后，旧全零 fixture 已初始化并复验通过；
+* CI 在同一 job 内按 erase、serial run、report、JSON、XML 顺序生成报告，先上传 canonical
+  工件再执行只读 ratchet；PR、push、手工触发、Python 版本、锁依赖和禁止绕过均有契约测试；
+* 当前应用代码快照的本地串行全量结果为 `6379 passed, 6 skipped`；随后新增的边界测试由
+  最新专项覆盖，质量/CI 专项 `26 passed`，Ruff 通过，Pylint `10.00/10`，宿主、Schema、
+  Coverage 和锁文件门禁均通过。
+
+待完成：提交推送并记录远端证据。
 
 ### 批次 3：QQ Gateway heartbeat owner
 
@@ -195,6 +214,9 @@ git rev-list --left-right --count HEAD...origin/v3
 | 2026-08-26 | 后台 owner 历史余项审计 | 仅 QQ heartbeat Timer 满足阶段 62 既有合同和两天准入条件，其余候选关闭或排除 |
 | 2026-08-26 | 批次 0 交付 | `d234c7132` 已推送；远端同 SHA；ahead/behind `0/0` |
 | 2026-08-26 | 批次 1 本地验收 | Mypy 11994、Ruff 976；专项 `33 passed`；架构契约 `71 passed`；Pylint `10.00/10` |
+| 2026-08-26 | 批次 1 交付 | `6062b0661` 已推送；远端同 SHA；ahead/behind `0/0`；显式变更 10 个路径 |
+| 2026-08-26 | 批次 2 canonical Coverage | run `32977180133` 与本机计数一致；Application 77.76%，Domain 79.24%；零 fixture 已初始化 |
+| 2026-08-26 | 批次 2 本地验收 | 串行全量 `6379 passed, 6 skipped`；最新专项 `26 passed`；Coverage/宿主/Schema/锁文件门禁通过 |
 
 ## 七、本轮停止条件
 

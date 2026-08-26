@@ -1,5 +1,6 @@
 """后端架构治理工作流的静态契约测试。"""
 
+import configparser
 from pathlib import Path
 
 from ruamel.yaml import YAML
@@ -55,6 +56,57 @@ def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():
         step.get("uses", "").startswith("actions/upload-artifact@")
         for step in steps
     )
+
+
+def test_coverage_job_runs_full_suite_and_read_only_ratchet() -> None:
+    """PR 与推送的 Coverage job 必须串行采集全量报告并只读检查低水位。"""
+    workflow = _load_workflow("test.yml")
+    coverage_job = workflow["jobs"]["coverage"]
+    steps = coverage_job["steps"]
+    assert workflow["on"]["pull_request"]["branches"] == ["v3"]
+    assert workflow["on"]["push"]["branches"] == ["v3"]
+    assert "workflow_dispatch" in workflow["on"]
+    assert coverage_job["runs-on"] == "ubuntu-latest"
+    assert "if" not in coverage_job
+
+    setup_step = next(step for step in steps if step.get("name") == "Set up uv")
+    install_step = next(
+        step for step in steps if step.get("name") == "Install dependencies"
+    )
+    generate_step = next(
+        step for step in steps if step.get("name") == "Generate coverage reports"
+    )
+    upload_step = next(
+        step for step in steps if step.get("name") == "Upload coverage report"
+    )
+    ratchet_step = next(
+        step for step in steps if step.get("name") == "Check coverage ratchet"
+    )
+    assert setup_step["with"]["python-version"] == "3.14"
+    assert install_step["run"] == "uv sync --locked"
+    commands = generate_step["run"]
+    expected_commands = [
+        "python -m coverage erase",
+        "python -m coverage run tests/run.py --serial",
+        "python -m coverage report",
+        "python -m coverage json",
+        "python -m coverage xml",
+    ]
+    positions = [commands.index(command) for command in expected_commands]
+    assert positions == sorted(positions)
+    assert ratchet_step["run"].endswith("scripts/architecture/coverage_ratchet.py")
+    assert steps.index(generate_step) < steps.index(upload_step) < steps.index(ratchet_step)
+
+    all_commands = _step_commands(workflow, "coverage")
+    assert "--write" not in all_commands
+    assert "|| true" not in all_commands
+    assert all(step.get("continue-on-error") is not True for step in steps)
+    assert all("always()" not in str(step.get("if", "")) for step in steps)
+
+    coverage_config = configparser.ConfigParser()
+    coverage_config.read(PROJECT_ROOT / ".coveragerc", encoding="utf-8")
+    assert coverage_config["run"]["source"].strip() == "app"
+    assert "app/plugins/*/*" in coverage_config["run"]["omit"].splitlines()
 
 
 def test_pylint_workflow_runs_for_v3_pull_requests_and_pushes():

@@ -140,7 +140,6 @@ jobs:
           uv run --locked --no-sync python -m coverage report
           uv run --locked --no-sync python -m coverage json
           uv run --locked --no-sync python -m coverage xml
-          uv run --locked --no-sync python scripts/architecture/coverage_ratchet.py
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
@@ -150,3 +149,6 @@ jobs:
             coverage.xml
             coverage.json
           retention-days: 7
+
+      - name: Check coverage ratchet
+        run: uv run --locked --no-sync python scripts/architecture/coverage_ratchet.py

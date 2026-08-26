@@ -198,8 +198,9 @@ uvx --from pip-audit==2.10.1 pip-audit \
 
    `python tests/run.py` 在本地默认把排序后的测试文件按向上取整的连续区间切成 4 片，
    并启动 4 个独立 pytest 进程；GitHub Actions 使用同一入口的 `--shard N/TOTAL`
-   参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。覆盖率报告
-   按需通过 `Unit Tests` workflow 的手动触发串行生成，不阻塞常规 PR / push 门禁。
+   参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。Coverage job
+   会在 `v3` 的 PR / push 中串行运行同一全量入口，并检查 Application 与 Domain 的
+   已提交低水位；它不是只在手工触发时运行的建议性报告。
 
 4. **运行架构与静态门禁**：主仓架构检查不依赖独立插件仓；官方插件兼容观察单独运行，
    任何检查命令都不会写入 fixture。
@@ -210,17 +211,24 @@ uvx --from pip-audit==2.10.1 pip-audit \
      --check-plugins --plugin-repo ../MoviePilot-Plugins \
      --report official-plugin-architecture-report.json
    uv run --locked --no-sync pylint app/
+   uv run --locked --no-sync python scripts/architecture/ruff_ratchet.py
    uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
+   uv run --locked --no-sync python -m coverage erase
+   uv run --locked --no-sync python -m coverage run tests/run.py --serial
+   uv run --locked --no-sync python -m coverage json
+   uv run --locked --no-sync python scripts/architecture/coverage_ratchet.py
    ```
 
    GitHub Actions 会在 `v3` 的 PR/push 中独立执行宿主架构门禁，并对本次改动的 Python
    文件执行 Pylint 硬门禁；`app/` 全量结果作为建议性报告上传。最新官方插件仓通过每周
    或手工观察工作流检查，只上传语义差异报告，不会自动更新已提交基线。
 
-   mypy 类型错误基线（`tests/fixtures/architecture/mypy-baseline.json`）只降不增：
-   新增文件、错误码或既有计数增长都会被 `scripts/architecture/mypy_ratchet.py` 拒绝；
-   修复存量错误后用同脚本 `--write` 收紧基线，禁止为绕过门禁放宽基线。受治文件清单
-   仍由 `mypy.ini` 的 `files=` 维护并保持零错误。
+   Ruff/Mypy/Coverage 基线只允许收紧：新增诊断、类型错误增长或覆盖率下降都会被拒绝；
+   已有债务下降或覆盖率提升但 fixture 尚未同步时，门禁也会要求用对应脚本的 `--write`
+   显式固化新低水位。存在回退时 `--write` 会拒绝覆盖，不能用于放宽基线。Mypy 完整
+   ratchet 固定按 Linux/Python 3.14 分析；Coverage fixture 只接受 GitHub Actions 的
+   Ubuntu/Python 3.14、locked 依赖和串行全量测试工件，本机 macOS 报告仅用于诊断，
+   不得直接写入并提交。受治零错误文件仍由 `mypy.ini` 的 `files=` 维护。
 
 ### 7. 参考资源
 
