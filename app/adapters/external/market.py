@@ -861,7 +861,7 @@ class PluginHelper(metaclass=WeakSingleton):
         releases.extend(cls.__normalize_plugin_release_response(payload))
         return len(payload) >= 100
 
-    @cached(maxsize=128, ttl=1800)  # type: ignore[misc]  # 缓存装饰器暂未提供泛型签名
+    @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
     def get_plugin_index_result(
             self,
             repo_url: str,
@@ -884,7 +884,7 @@ class PluginHelper(metaclass=WeakSingleton):
             raise RuntimeError("插件索引响应格式无效")
         return payload
 
-    @cached(maxsize=128, ttl=1800)
+    @cached(maxsize=1024, ttl=1800)
     def get_plugins(self, repo_url: str,
                     package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
@@ -892,16 +892,13 @@ class PluginHelper(metaclass=WeakSingleton):
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
-        request = self._build_plugin_index_request(repo_url, package_version)
-        if request is None:
+        try:
+            payload = self.get_plugin_index_result(repo_url, package_version)
+        except (ValueError, RuntimeError):
             return None
-        package_url, headers = request
-        res = self.__request_with_fallback(package_url, headers=headers)
-        if res is None:
-            return None
-        return self._resolve_plugin_index_response(res.status_code, res.text)
+        return payload if payload is not None else {}
 
-    @cached(maxsize=32, ttl=1800, shared_key="get_plugin_repo_releases")
+    @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")
     def _get_plugin_repo_releases(self, repo_url: str) -> Optional[List[dict]]:
         """
         按仓库获取 GitHub Release 原始分页数据，供仓库内所有插件共享。
@@ -2556,7 +2553,7 @@ class PluginHelper(metaclass=WeakSingleton):
         logger.error(f"[GitHub] 所有策略均请求失败，URL: {url}，请检查网络连接或 GitHub 配置")
         return None
 
-    @cached(maxsize=128, ttl=1800)  # type: ignore[misc]  # 缓存装饰器暂未提供泛型签名
+    @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
     async def async_get_plugin_index_result(
             self,
             repo_url: str,
@@ -2582,7 +2579,7 @@ class PluginHelper(metaclass=WeakSingleton):
             raise RuntimeError("插件索引响应格式无效")
         return payload
 
-    @cached(maxsize=128, ttl=1800)
+    @cached(maxsize=1024, ttl=1800)
     async def async_get_plugins(self, repo_url: str,
                                 package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
@@ -2590,19 +2587,16 @@ class PluginHelper(metaclass=WeakSingleton):
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
-        request = self._build_plugin_index_request(repo_url, package_version)
-        if request is None:
+        try:
+            payload = await self.async_get_plugin_index_result(
+                repo_url,
+                package_version,
+            )
+        except (ValueError, RuntimeError):
             return None
-        package_url, headers = request
-        res = await self.__async_request_with_fallback(
-            package_url,
-            headers=headers,
-        )
-        if res is None:
-            return None
-        return self._resolve_plugin_index_response(res.status_code, res.text)
+        return payload if payload is not None else {}
 
-    @cached(maxsize=32, ttl=1800, shared_key="get_plugin_repo_releases")
+    @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")
     async def _async_get_plugin_repo_releases(self, repo_url: str) -> Optional[List[dict]]:
         """
         异步按仓库获取 GitHub Release 原始分页数据。
