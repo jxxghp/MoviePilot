@@ -64,7 +64,7 @@ def test_dependency_baseline_records_nonempty_host_graph() -> None:
     baseline_path = BASELINE_ROOT / "dependency-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["schema_version"] == 2
+    assert baseline["schema_version"] == 3
     assert baseline["module_count"] == len(baseline["modules"])
     assert baseline["edge_count"] == len(baseline["edges"])
     assert baseline["module_count"] > 0
@@ -78,6 +78,19 @@ def test_dependency_baseline_records_nonempty_host_graph() -> None:
     }
     assert direct_imports["source_count"] == len(direct_imports["sources"])
     assert direct_imports["target_count"] == len(direct_imports["targets"])
+    direct_egress = baseline["direct_egress"]
+    assert direct_egress["count"] == len(direct_egress["entries"])
+    assert sum(direct_egress["counts_by_kind"].values()) == direct_egress["count"]
+    assert set(direct_egress["counts_by_kind"]) == {
+        "raw_transport",
+        "network_sdk",
+        "protocol_operation",
+    }
+    assert set(direct_egress["application_chain_counts"]) == {
+        "app.application",
+        "app.chain",
+    }
+    assert all("line" not in entry for entry in direct_egress["entries"])
 
 
 def test_official_discovery_plugins_explicitly_keep_host_page_envelope():

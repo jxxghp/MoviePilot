@@ -451,7 +451,10 @@ def test_architecture_write_host_only_updates_host_files(
     dependency_path = tmp_path / "dependency.json"
     runtime_path = tmp_path / "runtime.json"
     transaction_path = tmp_path / "transaction.json"
+    configuration_path = tmp_path / "configuration.json"
+    policy_path = tmp_path / "dependency-policy.json"
     plugin_path = tmp_path / "plugin.json"
+    policy_path.write_text('{"manual": true}\n', encoding="utf-8")
     monkeypatch.setattr(
         architecture_baseline,
         "DEPENDENCY_BASELINE_PATH",
@@ -466,6 +469,16 @@ def test_architecture_write_host_only_updates_host_files(
         architecture_baseline,
         "TRANSACTION_BASELINE_PATH",
         transaction_path,
+    )
+    monkeypatch.setattr(
+        architecture_baseline,
+        "CONFIGURATION_BASELINE_PATH",
+        configuration_path,
+    )
+    monkeypatch.setattr(
+        architecture_baseline,
+        "DEPENDENCY_POLICY_PATH",
+        policy_path,
     )
     monkeypatch.setattr(architecture_baseline, "PLUGIN_BASELINE_PATH", plugin_path)
     monkeypatch.setattr(
@@ -483,6 +496,11 @@ def test_architecture_write_host_only_updates_host_files(
         "collect_transaction_debt_baseline",
         lambda: {"scope": "host-transaction"},
     )
+    monkeypatch.setattr(
+        architecture_baseline,
+        "collect_configuration_debt_baseline",
+        lambda: {"scope": "host-configuration"},
+    )
 
     assert architecture_baseline.main(["--write-host"]) == 0
 
@@ -491,12 +509,18 @@ def test_architecture_write_host_only_updates_host_files(
     assert json.loads(transaction_path.read_text()) == {
         "scope": "host-transaction"
     }
+    assert json.loads(configuration_path.read_text()) == {
+        "scope": "host-configuration"
+    }
+    assert json.loads(policy_path.read_text()) == {"manual": True}
     assert not plugin_path.exists()
     output = capsys.readouterr().out
     assert "即将写入" in output
     assert "dependency.json" in output
     assert "runtime.json" in output
     assert "transaction.json" in output
+    assert "configuration.json" in output
+    assert "dependency-policy.json" not in output
 
 
 def test_architecture_write_plugins_only_updates_plugin_file(

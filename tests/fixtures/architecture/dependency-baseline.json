@@ -179,6 +179,1268 @@
       "app.adapters.system.host"
     ]
   },
+  "direct_egress": {
+    "application_chain_counts": {
+      "app.application": 1,
+      "app.chain": 0
+    },
+    "count": 66,
+    "counts_by_kind": {
+      "network_sdk": 29,
+      "protocol_operation": 7,
+      "raw_transport": 30
+    },
+    "entries": [
+      {
+        "bindings": [
+          "from:redis.asyncio.BlockingConnectionPool as AsyncBlockingConnectionPool",
+          "from:redis.asyncio.Redis as Redis",
+          "import:redis as redis"
+        ],
+        "fingerprint": "9d455a5298d4373ff18d74a9d498a3dd797bcb5f5543af9776c0c741c30362c7",
+        "kind": "network_sdk",
+        "source": "app.adapters.cache.redis",
+        "target": "redis",
+        "uses": [
+          "AsyncRedisHelper._close_client|call:close",
+          "AsyncRedisHelper._connect|call:asyncio.BlockingConnectionPool.from_url",
+          "AsyncRedisHelper._connect|call:asyncio.Redis",
+          "AsyncRedisHelper._connect|call:ping",
+          "AsyncRedisHelper.clear|call:flushdb",
+          "AsyncRedisHelper.clear|call:pipeline",
+          "AsyncRedisHelper.clear|call:scan_iter",
+          "AsyncRedisHelper.delete|call:delete",
+          "AsyncRedisHelper.exists|call:exists",
+          "AsyncRedisHelper.get|call:get",
+          "AsyncRedisHelper.items|call:get",
+          "AsyncRedisHelper.items|call:get",
+          "AsyncRedisHelper.items|call:scan_iter",
+          "AsyncRedisHelper.items|call:scan_iter",
+          "AsyncRedisHelper.set_memory_limit|call:config_set",
+          "AsyncRedisHelper.set_memory_limit|call:config_set",
+          "AsyncRedisHelper.set|call:set",
+          "RedisHelper._connect|call:BlockingConnectionPool.from_url",
+          "RedisHelper._connect|call:Redis",
+          "RedisHelper._connect|call:ping",
+          "RedisHelper.clear|call:flushdb",
+          "RedisHelper.clear|call:pipeline",
+          "RedisHelper.clear|call:scan_iter",
+          "RedisHelper.close|call:close",
+          "RedisHelper.delete|call:delete",
+          "RedisHelper.exists|call:exists",
+          "RedisHelper.get|call:get",
+          "RedisHelper.items|call:get",
+          "RedisHelper.items|call:get",
+          "RedisHelper.items|call:scan_iter",
+          "RedisHelper.items|call:scan_iter",
+          "RedisHelper.pop|call:getdel",
+          "RedisHelper.set_memory_limit|call:config_set",
+          "RedisHelper.set_memory_limit|call:config_set",
+          "RedisHelper.set|call:set"
+        ]
+      },
+      {
+        "bindings": [
+          "import:httpx2 as httpx2"
+        ],
+        "fingerprint": "d4a648e8188818c0465013fc63cc3e49899da4df38541344303c251896564b1f",
+        "kind": "raw_transport",
+        "source": "app.adapters.external.market",
+        "target": "httpx2",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "from:requests.Response as Response"
+        ],
+        "fingerprint": "ecc5368adfced20741e5ed8696008ea7555a4a81ceda6d7149e09f5f3d0ff7e3",
+        "kind": "raw_transport",
+        "source": "app.adapters.external.market",
+        "target": "requests",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "from:cloakbrowser.launch_context as launch_context",
+          "from:cloakbrowser.launch_context_async as launch_context_async"
+        ],
+        "fingerprint": "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173",
+        "kind": "network_sdk",
+        "source": "app.adapters.network.browser",
+        "target": "cloakbrowser",
+        "uses": [
+          "launch_browser_context_async|call:launch_context_async",
+          "launch_browser_context|call:launch_context"
+        ]
+      },
+      {
+        "bindings": [
+          "import:socket as socket"
+        ],
+        "fingerprint": "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
+        "kind": "protocol_operation",
+        "source": "app.adapters.network.doh",
+        "target": "socket.getaddrinfo",
+        "uses": [
+          "enable_doh._patched_getaddrinfo|call:socket.getaddrinfo",
+          "enable_doh._patched_getaddrinfo|call:socket.getaddrinfo",
+          "enable_doh._patched_getaddrinfo|call:socket.getaddrinfo",
+          "enable_doh._patched_getaddrinfo|call:socket.getaddrinfo"
+        ]
+      },
+      {
+        "bindings": [
+          "import:urllib.request as urllib"
+        ],
+        "fingerprint": "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",
+        "kind": "raw_transport",
+        "source": "app.adapters.network.doh",
+        "target": "urllib.request",
+        "uses": [
+          "_doh_query|call:Request",
+          "_doh_query|call:urlopen",
+          "doh_query_json|call:Request",
+          "doh_query_json|call:urlopen"
+        ]
+      },
+      {
+        "bindings": [
+          "import:httpx2 as httpx2"
+        ],
+        "fingerprint": "a70799e9930ff79cd28ebed92836c8108cd2d18bc668e0081f68533d84f69d0d",
+        "kind": "raw_transport",
+        "source": "app.adapters.network.http",
+        "target": "httpx2",
+        "uses": [
+          "AsyncRequestUtils._dispatch_request|call:AsyncClient",
+          "AsyncRequestUtils._dispatch_request|call:AsyncClient",
+          "AsyncRequestUtils._dispatch_request|call:Timeout",
+          "AsyncRequestUtils._make_request|call:request",
+          "AsyncRequestUtils._make_request|call:request",
+          "AsyncRequestUtils.get_stream|call:AsyncClient",
+          "AsyncRequestUtils.get_stream|call:AsyncClient",
+          "AsyncRequestUtils.get_stream|call:Timeout",
+          "AsyncRequestUtils.get_stream|call:stream",
+          "AsyncRequestUtils.get_stream|call:stream",
+          "_get_shared_async_transport|call:AsyncHTTPTransport",
+          "_get_shared_async_transport|call:Limits",
+          "_h2_proxy_breaker_key|call:URL"
+        ]
+      },
+      {
+        "bindings": [
+          "from:requests.Response as Response",
+          "from:requests.Session as Session",
+          "import:requests as requests"
+        ],
+        "fingerprint": "95fb4576cec363355f40aa1758d90fbb09242a2b1d029b7ab5ab65e2aaca12f8",
+        "kind": "raw_transport",
+        "source": "app.adapters.network.http",
+        "target": "requests",
+        "uses": [
+          "RequestUtils.request|call:close",
+          "RequestUtils.request|call:request",
+          "RequestUtils.request|call:request",
+          "RequestUtils.request|call:request",
+          "RequestUtils.request|call:request"
+        ]
+      },
+      {
+        "bindings": [
+          "from:urllib3.exceptions.InsecureRequestWarning as InsecureRequestWarning",
+          "import:urllib3 as urllib3"
+        ],
+        "fingerprint": "66cbd8ec4e7552bd458db0baada30f1953e6d0493793822d23a2199567bca98a",
+        "kind": "raw_transport",
+        "source": "app.adapters.network.http",
+        "target": "urllib3",
+        "uses": [
+          "<module>|call:disable_warnings"
+        ]
+      },
+      {
+        "bindings": [
+          "import:socket as socket"
+        ],
+        "fingerprint": "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048",
+        "kind": "protocol_operation",
+        "source": "app.adapters.network.ip",
+        "target": "socket.gethostbyname",
+        "uses": [
+          "IpUtils.is_internal_domain|call:socket.gethostbyname"
+        ]
+      },
+      {
+        "bindings": [
+          "from:openai.OpenAI as OpenAI"
+        ],
+        "fingerprint": "60160ab01b60be2c9794b9724a50b90f8875c6a10748ff9392a1e4bc7d48c334",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.capability",
+        "target": "openai",
+        "uses": [
+          "MiniMaxAudioProvider._build_client|call:OpenAI",
+          "OpenAIAudioProvider._build_client|call:OpenAI",
+          "OpenAIChatAudioProvider._build_client|call:OpenAI"
+        ]
+      },
+      {
+        "bindings": [
+          "from:google.genai as genai",
+          "from:google.genai.types.HttpOptions as HttpOptions"
+        ],
+        "fingerprint": "d41688ecda4c5de296fabb0d0d25c79a7b0f29f67ccdd44569dc1110e1db9b86",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.helper",
+        "target": "google.genai",
+        "uses": [
+          "LLMHelper._get_google_models|call:Client",
+          "LLMHelper._get_google_models|call:aio.aclose",
+          "LLMHelper._get_google_models|call:aio.models.list",
+          "LLMHelper._get_google_models|call:types.HttpOptions"
+        ]
+      },
+      {
+        "bindings": [
+          "import:httpx as httpx"
+        ],
+        "fingerprint": "caeccd432f48d9a23948dd5b9220ddbebc57d2b2936bfa499fc7d4876e935ea8",
+        "kind": "raw_transport",
+        "source": "app.agent.llm.helper",
+        "target": "httpx",
+        "uses": [
+          "_build_httpx_client|call:__call__"
+        ]
+      },
+      {
+        "bindings": [
+          "from:langchain_anthropic.ChatAnthropic as ChatAnthropic"
+        ],
+        "fingerprint": "c8d2c3166c4d42d61e7ef38a25080cac0f93422f47393df6dc19b329a7f72265",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.helper",
+        "target": "langchain_anthropic",
+        "uses": [
+          "LLMHelper.get_llm|call:ChatAnthropic"
+        ]
+      },
+      {
+        "bindings": [
+          "from:langchain_aws.ChatBedrockConverse as ChatBedrockConverse"
+        ],
+        "fingerprint": "51dd02f5e2305cce4e1f6f29b4ed47edf54dde9f6557781178a6edf96bfeeb6b",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.helper",
+        "target": "langchain_aws",
+        "uses": [
+          "LLMHelper.get_llm|call:ChatBedrockConverse"
+        ]
+      },
+      {
+        "bindings": [
+          "from:langchain_deepseek.ChatDeepSeek as ChatDeepSeek"
+        ],
+        "fingerprint": "bcf8b1ffae0995cfc33cfe26609cef8014cd2ce036b845c2a88c0cd878b1ebc4",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.helper",
+        "target": "langchain_deepseek",
+        "uses": [
+          "LLMHelper.get_llm|call:ChatDeepSeek"
+        ]
+      },
+      {
+        "bindings": [
+          "from:langchain_google_genai.ChatGoogleGenerativeAI as ChatGoogleGenerativeAI",
+          "import:langchain_google_genai.chat_models as _cm"
+        ],
+        "fingerprint": "79ae88c63908da9ea36dcfc23c4ad5345bc5d1977b80cc2e0b89292d063ed8ee",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.helper",
+        "target": "langchain_google_genai",
+        "uses": [
+          "LLMHelper.get_llm|call:ChatGoogleGenerativeAI",
+          "_patch_gemini_thought_signature._patched_parse_chat_history|call:chat_models._parse_chat_history"
+        ]
+      },
+      {
+        "bindings": [
+          "from:langchain_openai.ChatOpenAI as ChatOpenAI",
+          "import:langchain_openai.chat_models.base as _openai_base"
+        ],
+        "fingerprint": "15775bf1694780d5cf516e6cc3d3b5174ebb25e3038433132d3071e6abceba52",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.helper",
+        "target": "langchain_openai",
+        "uses": [
+          "LLMHelper.get_llm|call:ChatOpenAI"
+        ]
+      },
+      {
+        "bindings": [
+          "from:openai.AsyncOpenAI as AsyncOpenAI"
+        ],
+        "fingerprint": "dbebd5e9fa38b2a525a5a2e5a92d855ba9d05762410590bfb544e665fe38f620",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.helper",
+        "target": "openai",
+        "uses": [
+          "LLMHelper._get_openai_compatible_models|call:AsyncOpenAI",
+          "LLMHelper._get_openai_compatible_models|call:close",
+          "LLMHelper._get_openai_compatible_models|call:models.list"
+        ]
+      },
+      {
+        "bindings": [
+          "import:boto3 as boto3"
+        ],
+        "fingerprint": "04ca4b5ecbda1531266d5f53817dde061dcfdd3293cabf9301fc8d8e4c281a88",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.provider",
+        "target": "boto3",
+        "uses": [
+          "LLMProviderManager.create_bedrock_client|call:client",
+          "LLMProviderManager.create_bedrock_client|call:client",
+          "LLMProviderManager.create_bedrock_client|call:meta.events.register"
+        ]
+      },
+      {
+        "bindings": [
+          "from:botocore.UNSIGNED as UNSIGNED",
+          "from:botocore.config.Config as Config"
+        ],
+        "fingerprint": "fbeaa702703665ca60233a153aade0da7e49dfb6fe31f72e5593c883fb7d3f11",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.provider",
+        "target": "botocore",
+        "uses": [
+          "LLMProviderManager._build_bedrock_boto3_config|call:config.Config"
+        ]
+      },
+      {
+        "bindings": [
+          "from:google.genai as genai",
+          "from:google.genai.types.HttpOptions as HttpOptions"
+        ],
+        "fingerprint": "b545cffb169b87f87606c17762b5d9da3f35372bd411c1f4ebba010b3d7c3ebb",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.provider",
+        "target": "google.genai",
+        "uses": [
+          "LLMProviderManager._list_models_from_google|call:Client",
+          "LLMProviderManager._list_models_from_google|call:aio.models.list",
+          "LLMProviderManager._list_models_from_google|call:types.HttpOptions"
+        ]
+      },
+      {
+        "bindings": [
+          "import:httpx as httpx"
+        ],
+        "fingerprint": "a68ad216d86b4b33aa8c35572c26f7993245c0c12dd512e962bcacb46d7f15fc",
+        "kind": "raw_transport",
+        "source": "app.agent.llm.provider",
+        "target": "httpx",
+        "uses": [
+          "LLMProviderManager._exchange_chatgpt_code_for_tokens|call:AsyncClient",
+          "LLMProviderManager._exchange_chatgpt_code_for_tokens|call:post",
+          "LLMProviderManager._fetch_models_dev|call:AsyncClient",
+          "LLMProviderManager._fetch_models_dev|call:get",
+          "LLMProviderManager._list_models_from_copilot|call:AsyncClient",
+          "LLMProviderManager._list_models_from_copilot|call:get",
+          "LLMProviderManager._list_models_from_openai_compatible|call:AsyncClient",
+          "LLMProviderManager._poll_chatgpt_device_auth|call:AsyncClient",
+          "LLMProviderManager._poll_chatgpt_device_auth|call:post",
+          "LLMProviderManager._poll_copilot_device_auth|call:AsyncClient",
+          "LLMProviderManager._poll_copilot_device_auth|call:post",
+          "LLMProviderManager._refresh_chatgpt_tokens|call:AsyncClient",
+          "LLMProviderManager._refresh_chatgpt_tokens|call:post",
+          "LLMProviderManager.start_auth|call:AsyncClient",
+          "LLMProviderManager.start_auth|call:AsyncClient",
+          "LLMProviderManager.start_auth|call:post",
+          "LLMProviderManager.start_auth|call:post",
+          "LLMProviderManager|call:Timeout"
+        ]
+      },
+      {
+        "bindings": [
+          "from:openai.AsyncOpenAI as AsyncOpenAI"
+        ],
+        "fingerprint": "ffac3b355eb640f6421299cf838cb4e24866a39afabd9dcfd8d0f340925dc1a8",
+        "kind": "network_sdk",
+        "source": "app.agent.llm.provider",
+        "target": "openai",
+        "uses": [
+          "LLMProviderManager._list_models_from_openai_compatible|call:AsyncOpenAI",
+          "LLMProviderManager._list_models_from_openai_compatible|call:models.list"
+        ]
+      },
+      {
+        "bindings": [
+          "from:ddgs.DDGS as DDGS"
+        ],
+        "fingerprint": "377e73bb3be804b825d60ad6e792344ca633de107f8c4dbb45d50a34a4dfa04b",
+        "kind": "network_sdk",
+        "source": "app.agent.tools.impl.search_web",
+        "target": "ddgs",
+        "uses": [
+          "SearchWebTool._search_ddgs.sync_search|call:DDGS",
+          "SearchWebTool._search_ddgs.sync_search|call:text"
+        ]
+      },
+      {
+        "bindings": [
+          "from:pywebpush.WebPushException as WebPushException",
+          "from:pywebpush.webpush as webpush"
+        ],
+        "fingerprint": "7d83ca0dc89dfb6af1cdd7bc90d922105de94222e4e3a44bba4f53bbd97bc31b",
+        "kind": "network_sdk",
+        "source": "app.api.endpoints.message",
+        "target": "pywebpush",
+        "uses": [
+          "send_notification|call:webpush"
+        ]
+      },
+      {
+        "bindings": [
+          "import:socket as socket"
+        ],
+        "fingerprint": "89c563fdb640259584563fc718f7104a7b4dc6717e97b9c9e449f70f74a9532b",
+        "kind": "protocol_operation",
+        "source": "app.application.security.url",
+        "target": "socket.getaddrinfo",
+        "uses": [
+          "SecurityUtils._hostname_addresses|call:socket.getaddrinfo"
+        ]
+      },
+      {
+        "bindings": [
+          "from:urllib.request.Request as Request",
+          "from:urllib.request.urlopen as urlopen"
+        ],
+        "fingerprint": "71b3e5be2a7d85fdc7a207d15c0e690d7ab96b335b882a3eaec03a1cb4ec1d1b",
+        "kind": "raw_transport",
+        "source": "app.cli",
+        "target": "urllib.request",
+        "uses": [
+          "_frontend_health|call:Request",
+          "_frontend_health|call:urlopen",
+          "_http_request|call:Request",
+          "_http_request|call:urlopen"
+        ]
+      },
+      {
+        "bindings": [
+          "import:socket as socket"
+        ],
+        "fingerprint": "dfb34d4710353029dcc06e0e0ce3b299bae1a7e71a5743de1d253ac26380f9b6",
+        "kind": "protocol_operation",
+        "source": "app.doctor.checks",
+        "target": "socket.create_connection",
+        "uses": [
+          "_can_connect|call:socket.create_connection"
+        ]
+      },
+      {
+        "bindings": [
+          "from:urllib.request.Request as Request",
+          "from:urllib.request.urlopen as urlopen"
+        ],
+        "fingerprint": "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
+        "kind": "raw_transport",
+        "source": "app.doctor.checks",
+        "target": "urllib.request",
+        "uses": [
+          "_backend_health_payload|call:Request",
+          "_backend_health_payload|call:urlopen"
+        ]
+      },
+      {
+        "bindings": [
+          "import:requests as requests"
+        ],
+        "fingerprint": "e5baf8a89b8661025169e9eec8d3c13d30660f63b35d94ec4896cd97e7fde3bf",
+        "kind": "raw_transport",
+        "source": "app.modules.bangumi.bangumi",
+        "target": "requests",
+        "uses": [
+          "BangumiApi.__init__|call:Session",
+          "BangumiApi.close|call:close"
+        ]
+      },
+      {
+        "bindings": [
+          "from:discord.app_commands as app_commands",
+          "import:discord as discord"
+        ],
+        "fingerprint": "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86",
+        "kind": "network_sdk",
+        "source": "app.modules.discord.discord",
+        "target": "discord",
+        "uses": [
+          "Discord.__init__|call:Client",
+          "Discord.__init__|call:Intents.default",
+          "Discord.__init__|call:app_commands.CommandTree",
+          "Discord._build_embed|call:Embed",
+          "Discord._build_embed|call:add_field",
+          "Discord._build_embed|call:set_image",
+          "Discord._build_media_embeds|call:Embed",
+          "Discord._build_media_embeds|call:set_thumbnail",
+          "Discord._build_slash_command|call:app_commands.Command",
+          "Discord._build_slash_command|call:app_commands.describe",
+          "Discord._build_torrent_embeds|call:Embed",
+          "Discord._build_torrent_embeds|call:set_thumbnail",
+          "Discord._build_view|call:add_item",
+          "Discord._build_view|call:add_item",
+          "Discord._build_view|call:ui.Button",
+          "Discord._build_view|call:ui.Button",
+          "Discord._build_view|call:ui.Button",
+          "Discord._build_view|call:ui.View",
+          "Discord._get_dm_channel|call:fetch_user",
+          "Discord._get_dm_channel|call:get_user",
+          "Discord._resolve_channel|call:fetch_channel",
+          "Discord._resolve_channel|call:fetch_channel",
+          "Discord._resolve_channel|call:fetch_channel",
+          "Discord._resolve_channel|call:get_channel",
+          "Discord._resolve_channel|call:get_channel",
+          "Discord._resolve_channel|call:get_channel",
+          "Discord._resolve_channel|call:get_guild",
+          "Discord._send_file|call:File",
+          "Discord._should_process_message|call:user.mentioned_in",
+          "Discord._start.runner|call:close",
+          "Discord._start.runner|call:start",
+          "Discord._sync_registered_commands|call:Object",
+          "Discord._sync_registered_commands|call:add_command",
+          "Discord._sync_registered_commands|call:clear_commands",
+          "Discord._sync_registered_commands|call:is_ready",
+          "Discord._sync_registered_commands|call:sync",
+          "Discord._sync_registered_commands|call:wait_until_ready",
+          "Discord.stop|call:close"
+        ]
+      },
+      {
+        "bindings": [
+          "import:httpx2 as httpx2"
+        ],
+        "fingerprint": "edc337b12976d978cad3f83d0fa6faf71b2af2d814926dff890d5acc94f0a0a6",
+        "kind": "raw_transport",
+        "source": "app.modules.douban.apiv2",
+        "target": "httpx2",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "import:requests as requests"
+        ],
+        "fingerprint": "6e871a27b88263676797edd65093d0b38db48f77fb5db2bb581b7b82e9b2977d",
+        "kind": "raw_transport",
+        "source": "app.modules.douban.apiv2",
+        "target": "requests",
+        "uses": [
+          "DoubanApi.__init__|call:Session",
+          "DoubanApi.close|call:close"
+        ]
+      },
+      {
+        "bindings": [
+          "from:requests.Response as Response"
+        ],
+        "fingerprint": "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
+        "kind": "raw_transport",
+        "source": "app.modules.emby.emby",
+        "target": "requests",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "from:lark_oapi.api.cardkit.v1.ContentCardElementRequest as ContentCardElementRequest",
+          "from:lark_oapi.api.cardkit.v1.ContentCardElementRequestBody as ContentCardElementRequestBody",
+          "from:lark_oapi.api.cardkit.v1.CreateCardRequest as CreateCardRequest",
+          "from:lark_oapi.api.cardkit.v1.CreateCardRequestBody as CreateCardRequestBody",
+          "from:lark_oapi.api.cardkit.v1.SettingsCardRequest as SettingsCardRequest",
+          "from:lark_oapi.api.cardkit.v1.SettingsCardRequestBody as SettingsCardRequestBody",
+          "from:lark_oapi.api.im.v1.CreateFileRequest as CreateFileRequest",
+          "from:lark_oapi.api.im.v1.CreateFileRequestBody as CreateFileRequestBody",
+          "from:lark_oapi.api.im.v1.CreateImageRequest as CreateImageRequest",
+          "from:lark_oapi.api.im.v1.CreateImageRequestBody as CreateImageRequestBody",
+          "from:lark_oapi.api.im.v1.CreateMessageReactionRequest as CreateMessageReactionRequest",
+          "from:lark_oapi.api.im.v1.CreateMessageReactionRequestBody as CreateMessageReactionRequestBody",
+          "from:lark_oapi.api.im.v1.CreateMessageRequest as CreateMessageRequest",
+          "from:lark_oapi.api.im.v1.CreateMessageRequestBody as CreateMessageRequestBody",
+          "from:lark_oapi.api.im.v1.DeleteMessageReactionRequest as DeleteMessageReactionRequest",
+          "from:lark_oapi.api.im.v1.Emoji as Emoji",
+          "from:lark_oapi.api.im.v1.GetFileRequest as GetFileRequest",
+          "from:lark_oapi.api.im.v1.GetImageRequest as GetImageRequest",
+          "from:lark_oapi.api.im.v1.GetMessageResourceRequest as GetMessageResourceRequest",
+          "from:lark_oapi.api.im.v1.P2ImChatAccessEventBotP2pChatEnteredV1 as P2ImChatAccessEventBotP2pChatEnteredV1",
+          "from:lark_oapi.api.im.v1.P2ImMessageMessageReadV1 as P2ImMessageMessageReadV1",
+          "from:lark_oapi.api.im.v1.P2ImMessageReactionCreatedV1 as P2ImMessageReactionCreatedV1",
+          "from:lark_oapi.api.im.v1.P2ImMessageReactionDeletedV1 as P2ImMessageReactionDeletedV1",
+          "from:lark_oapi.api.im.v1.P2ImMessageRecalledV1 as P2ImMessageRecalledV1",
+          "from:lark_oapi.api.im.v1.P2ImMessageReceiveV1 as P2ImMessageReceiveV1",
+          "from:lark_oapi.api.im.v1.PatchMessageRequest as PatchMessageRequest",
+          "from:lark_oapi.api.im.v1.PatchMessageRequestBody as PatchMessageRequestBody",
+          "from:lark_oapi.api.im.v1.ReplyMessageRequest as ReplyMessageRequest",
+          "from:lark_oapi.api.im.v1.ReplyMessageRequestBody as ReplyMessageRequestBody",
+          "from:lark_oapi.core.const.FEISHU_DOMAIN as FEISHU_DOMAIN",
+          "from:lark_oapi.core.enum.LogLevel as LogLevel",
+          "from:lark_oapi.event.callback.model.p2_card_action_trigger.P2CardActionTrigger as P2CardActionTrigger",
+          "from:lark_oapi.event.callback.model.p2_card_action_trigger.P2CardActionTriggerResponse as P2CardActionTriggerResponse",
+          "import:lark_oapi as lark",
+          "import:lark_oapi.ws.client as lark_ws_client_module"
+        ],
+        "fingerprint": "99d16968a59932b5980f6d42ea2bbc8fa35ccdb1a27933beec29b4bdc093d78b",
+        "kind": "network_sdk",
+        "source": "app.modules.feishu.feishu",
+        "target": "lark_oapi",
+        "uses": [
+          "Feishu._build_api_client|call:Client.builder",
+          "Feishu._build_event_handler|call:EventDispatcherHandler.builder",
+          "Feishu._create_streaming_card|call:api.cardkit.v1.CreateCardRequest.builder",
+          "Feishu._create_streaming_card|call:api.cardkit.v1.CreateCardRequestBody.builder",
+          "Feishu._disconnect_ws_client_quietly|call:_conn.close",
+          "Feishu._disconnect_ws_client_quietly|call:_lock.acquire",
+          "Feishu._disconnect_ws_client_quietly|call:_lock.release",
+          "Feishu._on_card_action|call:event.callback.model.p2_card_action_trigger.P2CardActionTriggerResponse",
+          "Feishu._reply_message|call:api.im.v1.ReplyMessageRequest.builder",
+          "Feishu._reply_message|call:api.im.v1.ReplyMessageRequestBody.builder",
+          "Feishu._run_ws_client|call:start",
+          "Feishu._run_ws_client|call:ws.Client",
+          "Feishu._send_message|call:api.im.v1.CreateMessageRequest.builder",
+          "Feishu._send_message|call:api.im.v1.CreateMessageRequestBody.builder",
+          "Feishu._update_streaming_card_content|call:api.cardkit.v1.ContentCardElementRequest.builder",
+          "Feishu._update_streaming_card_content|call:api.cardkit.v1.ContentCardElementRequestBody.builder",
+          "Feishu._upload_file|call:api.im.v1.CreateFileRequest.builder",
+          "Feishu._upload_file|call:api.im.v1.CreateFileRequestBody.builder",
+          "Feishu._upload_image|call:api.im.v1.CreateImageRequest.builder",
+          "Feishu._upload_image|call:api.im.v1.CreateImageRequestBody.builder",
+          "Feishu.add_message_reaction|call:api.im.v1.CreateMessageReactionRequest.builder",
+          "Feishu.add_message_reaction|call:api.im.v1.CreateMessageReactionRequestBody.builder",
+          "Feishu.add_message_reaction|call:api.im.v1.Emoji.builder",
+          "Feishu.close_streaming_card|call:api.cardkit.v1.SettingsCardRequest.builder",
+          "Feishu.close_streaming_card|call:api.cardkit.v1.SettingsCardRequestBody.builder",
+          "Feishu.delete_message_reaction|call:api.im.v1.DeleteMessageReactionRequest.builder",
+          "Feishu.download_file_bytes|call:api.im.v1.GetFileRequest.builder",
+          "Feishu.download_image_bytes|call:api.im.v1.GetImageRequest.builder",
+          "Feishu.download_message_resource_bytes|call:api.im.v1.GetMessageResourceRequest.builder",
+          "Feishu.edit_message|call:api.im.v1.PatchMessageRequest.builder",
+          "Feishu.edit_message|call:api.im.v1.PatchMessageRequestBody.builder",
+          "_select_bound_ws_client|call:ws.client._select"
+        ]
+      },
+      {
+        "bindings": [
+          "import:requests as requests"
+        ],
+        "fingerprint": "82d84425f58ed9664a6e2a4ece53240198c95a0f9fee5d0afd0a11e3c459ecf6",
+        "kind": "raw_transport",
+        "source": "app.modules.filemanager.storages.alipan",
+        "target": "requests",
+        "uses": [
+          "AliPan.__get_access_token|call:post",
+          "AliPan.__get_drive_id|call:post",
+          "AliPan.__init__|call:Session",
+          "AliPan.__refresh_access_token|call:post",
+          "AliPan._init_session|call:headers.update",
+          "AliPan._request_api|call:request",
+          "AliPan._upload_part|call:put",
+          "AliPan.access_token|call:headers.update",
+          "AliPan.check_login|call:get",
+          "AliPan.generate_qrcode|call:post"
+        ]
+      },
+      {
+        "bindings": [
+          "from:smbclient.ClientConfig as ClientConfig",
+          "from:smbclient.register_session as register_session",
+          "from:smbclient.reset_connection_cache as reset_connection_cache",
+          "import:smbclient as smbclient"
+        ],
+        "fingerprint": "62e0585282ef206ac81b2bf9e93a58423fb058685edc0ef4ee592453bbf30376",
+        "kind": "network_sdk",
+        "source": "app.modules.filemanager.storages.smb",
+        "target": "smbclient",
+        "uses": [
+          "SMB.__del__|call:reset_connection_cache",
+          "SMB._create_fileitem|call:path.isdir",
+          "SMB._init_connection|call:ClientConfig",
+          "SMB._init_connection|call:register_session",
+          "SMB._recursive_delete|call:listdir",
+          "SMB._recursive_delete|call:path.exists",
+          "SMB._recursive_delete|call:path.isdir",
+          "SMB._recursive_delete|call:path.isfile",
+          "SMB._recursive_delete|call:remove",
+          "SMB._recursive_delete|call:remove",
+          "SMB._recursive_delete|call:rmdir",
+          "SMB._test_connection|call:listdir",
+          "SMB.create_folder|call:mkdir",
+          "SMB.delete|call:path.exists",
+          "SMB.delete|call:remove",
+          "SMB.download|call:open_file",
+          "SMB.download|call:read",
+          "SMB.get_item_strict|call:stat",
+          "SMB.get_item|call:path.exists",
+          "SMB.get_item|call:stat",
+          "SMB.init_storage|call:reset_connection_cache",
+          "SMB.link|call:link",
+          "SMB.link|call:makedirs",
+          "SMB.link|call:path.exists",
+          "SMB.link|call:path.exists",
+          "SMB.list|call:listdir",
+          "SMB.list|call:stat",
+          "SMB.rename|call:rename",
+          "SMB.upload|call:open_file",
+          "SMB.upload|call:write",
+          "SMB.usage|call:stat_volume"
+        ]
+      },
+      {
+        "bindings": [
+          "from:smbprotocol.exceptions.SMBAuthenticationError as SMBAuthenticationError",
+          "from:smbprotocol.exceptions.SMBException as SMBException",
+          "from:smbprotocol.exceptions.SMBResponseException as SMBResponseException"
+        ],
+        "fingerprint": "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
+        "kind": "network_sdk",
+        "source": "app.modules.filemanager.storages.smb",
+        "target": "smbprotocol",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "import:httpx as httpx"
+        ],
+        "fingerprint": "f6678109963f9973d5d15e38e5f5e8dca01ec5e0117598ad1ac877b841ff7961",
+        "kind": "raw_transport",
+        "source": "app.modules.filemanager.storages.u115",
+        "target": "httpx",
+        "uses": [
+          "U115Pan.__check_oauth_login|call:get",
+          "U115Pan.__get_access_token|call:post",
+          "U115Pan.__init__|call:Client",
+          "U115Pan.__refresh_access_token|call:post",
+          "U115Pan._init_session|call:headers.update",
+          "U115Pan._request_api|call:request",
+          "U115Pan.access_token|call:headers.update",
+          "U115Pan.check_login|call:get",
+          "U115Pan.download|call:stream",
+          "U115Pan.generate_auth_url|call:get",
+          "U115Pan.generate_qrcode|call:post"
+        ]
+      },
+      {
+        "bindings": [
+          "from:oss2.SizedFileAdapter as SizedFileAdapter",
+          "from:oss2.determine_part_size as determine_part_size",
+          "from:oss2.models.PartInfo as PartInfo",
+          "import:oss2 as oss2"
+        ],
+        "fingerprint": "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
+        "kind": "network_sdk",
+        "source": "app.modules.filemanager.storages.u115",
+        "target": "oss2",
+        "uses": [
+          "U115Pan.upload.encode_callback|call:utils.b64encode_as_string",
+          "U115Pan.upload.refresh_upload_bucket|call:Bucket",
+          "U115Pan.upload.refresh_upload_bucket|call:StsAuth",
+          "U115Pan.upload|call:Bucket",
+          "U115Pan.upload|call:SizedFileAdapter",
+          "U115Pan.upload|call:StsAuth",
+          "U115Pan.upload|call:complete_multipart_upload",
+          "U115Pan.upload|call:determine_part_size",
+          "U115Pan.upload|call:init_multipart_upload",
+          "U115Pan.upload|call:models.PartInfo",
+          "U115Pan.upload|call:upload_part"
+        ]
+      },
+      {
+        "bindings": [
+          "import:requests as requests"
+        ],
+        "fingerprint": "3d05532e62d2cddf3bb05495196176b76aa02216c2b0d868cf9281d2257d9627",
+        "kind": "raw_transport",
+        "source": "app.modules.imdb.api",
+        "target": "requests",
+        "uses": [
+          "ImdbApi.__init__|call:Session",
+          "ImdbApi.close|call:close"
+        ]
+      },
+      {
+        "bindings": [
+          "from:requests.Session as Session"
+        ],
+        "fingerprint": "facdb091442bacba0fc0f631637643e95e18545bd7ab63f1d49d67a9a928d016",
+        "kind": "raw_transport",
+        "source": "app.modules.indexer.parser",
+        "target": "requests",
+        "uses": [
+          "SiteParserBase.close|call:close"
+        ]
+      },
+      {
+        "bindings": [
+          "from:requests.Response as Response"
+        ],
+        "fingerprint": "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
+        "kind": "raw_transport",
+        "source": "app.modules.jellyfin.jellyfin",
+        "target": "requests",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "from:requests.Session as Session"
+        ],
+        "fingerprint": "c54a10dd672fb0ebb32a536ae42c221ad434313466cc108d43e433dd84cac9a5",
+        "kind": "raw_transport",
+        "source": "app.modules.musicbrainz",
+        "target": "requests",
+        "uses": [
+          "MusicBrainzModule._get_session|call:Session"
+        ]
+      },
+      {
+        "bindings": [
+          "from:plexapi.exceptions.NotFound as NotFound",
+          "from:plexapi.myplex.MyPlexAccount as MyPlexAccount",
+          "from:plexapi.server.PlexServer as PlexServer"
+        ],
+        "fingerprint": "76c1334863dc6c6623ce6ad3415bec5ff92656f51c31e4d982285898f193e57e",
+        "kind": "network_sdk",
+        "source": "app.modules.plex.plex",
+        "target": "plexapi",
+        "uses": [
+          "Plex.__fetch_item|call:fetchItem",
+          "Plex.__get_library_images|call:fetchItems",
+          "Plex.__init__|call:library.sections",
+          "Plex.__init__|call:server.PlexServer",
+          "Plex.__search_show|call:library.search",
+          "Plex.__search_show|call:library.search",
+          "Plex.authenticate|call:myplex.MyPlexAccount",
+          "Plex.authenticate|call:server.PlexServer",
+          "Plex.get_items_count|call:library.sectionByID",
+          "Plex.get_items|call:library.sectionByID",
+          "Plex.get_latest|call:fetchItems",
+          "Plex.get_librarys|call:library.sections",
+          "Plex.get_medias_count|call:library.sections",
+          "Plex.get_movies|call:library.search",
+          "Plex.get_movies|call:library.search",
+          "Plex.get_movies|call:library.search",
+          "Plex.get_movies|call:library.search",
+          "Plex.get_music|call:library.sections",
+          "Plex.get_remote_image_by_id|call:fetchItem",
+          "Plex.get_resume|call:fetchItems",
+          "Plex.reconnect|call:library.sections",
+          "Plex.reconnect|call:server.PlexServer",
+          "Plex.refresh_library_by_items|call:library.update",
+          "Plex.refresh_library_by_items|call:query",
+          "Plex.refresh_root_library|call:library.update"
+        ]
+      },
+      {
+        "bindings": [
+          "from:requests.Response as Response",
+          "from:requests.Session as Session"
+        ],
+        "fingerprint": "93f20b9c01571553e9601f4b9f4ee9471073e65f938cb635320f72fa41ec3843",
+        "kind": "raw_transport",
+        "source": "app.modules.plex.plex",
+        "target": "requests",
+        "uses": [
+          "Plex.__adapt_plex_session|call:Session"
+        ]
+      },
+      {
+        "bindings": [
+          "from:qbittorrentapi.TorrentDictionary as TorrentDictionary",
+          "from:qbittorrentapi.TorrentFilesList as TorrentFilesList",
+          "from:qbittorrentapi.client.Client as Client",
+          "from:qbittorrentapi.transfer.TransferInfoDictionary as TransferInfoDictionary",
+          "import:qbittorrentapi as qbittorrentapi"
+        ],
+        "fingerprint": "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
+        "kind": "network_sdk",
+        "source": "app.modules.qbittorrent.qbittorrent",
+        "target": "qbittorrentapi",
+        "uses": [
+          "Qbittorrent.__login_qbittorrent|call:Client",
+          "Qbittorrent.__login_qbittorrent|call:app_version",
+          "Qbittorrent.__login_qbittorrent|call:auth_log_in",
+          "Qbittorrent.__sync_incomplete_file_suffix|call:app_preferences",
+          "Qbittorrent.__sync_incomplete_file_suffix|call:app_set_preferences"
+        ]
+      },
+      {
+        "bindings": [
+          "import:websocket as websocket"
+        ],
+        "fingerprint": "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",
+        "kind": "raw_transport",
+        "source": "app.modules.qqbot.gateway",
+        "target": "websocket",
+        "uses": [
+          "run_gateway|call:WebSocketApp",
+          "run_gateway|call:run_forever"
+        ]
+      },
+      {
+        "bindings": [
+          "import:http.client as http"
+        ],
+        "fingerprint": "6adc93b3bc479dfe81197554c7977930a60abc51714f14ef29298eb40730aaf7",
+        "kind": "raw_transport",
+        "source": "app.modules.rtorrent.rtorrent",
+        "target": "http.client",
+        "uses": [
+          "SCGITransport._build_response|call:HTTPResponse"
+        ]
+      },
+      {
+        "bindings": [
+          "import:socket as socket"
+        ],
+        "fingerprint": "878114d6b1bda091bd3b3d8aa819831d84381682feba78267592d2593295af90",
+        "kind": "protocol_operation",
+        "source": "app.modules.rtorrent.rtorrent",
+        "target": "socket.create_connection",
+        "uses": [
+          "SCGITransport.single_request|call:socket.create_connection"
+        ]
+      },
+      {
+        "bindings": [
+          "import:xmlrpc.client as xmlrpc"
+        ],
+        "fingerprint": "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85",
+        "kind": "protocol_operation",
+        "source": "app.modules.rtorrent.rtorrent",
+        "target": "xmlrpc.client.ServerProxy",
+        "uses": [
+          "Rtorrent.__login_rtorrent|call:xmlrpc.client.ServerProxy",
+          "Rtorrent.__login_rtorrent|call:xmlrpc.client.ServerProxy"
+        ]
+      },
+      {
+        "bindings": [
+          "from:slack_bolt.App as App",
+          "from:slack_bolt.adapter.socket_mode.SocketModeHandler as SocketModeHandler"
+        ],
+        "fingerprint": "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6",
+        "kind": "network_sdk",
+        "source": "app.modules.slack.slack",
+        "target": "slack_bolt",
+        "uses": [
+          "Slack.__find_public_channel|call:client.conversations_list",
+          "Slack.__init__|call:App",
+          "Slack.__init__|call:action",
+          "Slack.__init__|call:adapter.socket_mode.SocketModeHandler",
+          "Slack.__init__|call:command",
+          "Slack.__init__|call:connect",
+          "Slack.__init__|call:event",
+          "Slack.__init__|call:event",
+          "Slack.__init__|call:shortcut",
+          "Slack.add_reaction|call:client.reactions_add",
+          "Slack.delete_msg|call:client.chat_delete",
+          "Slack.remove_reaction|call:client.reactions_remove",
+          "Slack.send_file|call:client.files_upload_v2",
+          "Slack.send_medias_msg|call:client.chat_postMessage",
+          "Slack.send_medias_msg|call:client.chat_update",
+          "Slack.send_msg|call:client.chat_postMessage",
+          "Slack.send_msg|call:client.chat_update",
+          "Slack.send_torrents_msg|call:client.chat_postMessage",
+          "Slack.send_torrents_msg|call:client.chat_update",
+          "Slack.stop|call:close"
+        ]
+      },
+      {
+        "bindings": [
+          "from:slack_sdk.WebClient as WebClient"
+        ],
+        "fingerprint": "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
+        "kind": "network_sdk",
+        "source": "app.modules.slack.slack",
+        "target": "slack_sdk",
+        "uses": [
+          "Slack.__init__|call:WebClient"
+        ]
+      },
+      {
+        "bindings": [
+          "from:urllib3.fields as fields"
+        ],
+        "fingerprint": "18862bbdb252b59573f57ea776b5d64bfb775e7739603fecd23cc8f2c38a7e0d",
+        "kind": "raw_transport",
+        "source": "app.modules.telegram.compat",
+        "target": "urllib3",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "from:telebot.TeleBot as TeleBot",
+          "from:telebot.apihelper as apihelper",
+          "from:telebot.types.BotCommand as BotCommand",
+          "from:telebot.types.ForceReply as ForceReply",
+          "from:telebot.types.InlineKeyboardButton as InlineKeyboardButton",
+          "from:telebot.types.InlineKeyboardMarkup as InlineKeyboardMarkup",
+          "from:telebot.types.InputMediaPhoto as InputMediaPhoto",
+          "from:telebot.types.InputRichMessage as TelebotInputRichMessage",
+          "from:telebot.types.ReplyParameters as ReplyParameters"
+        ],
+        "fingerprint": "78f5ab18bfd67ba4fa0f3c0fc4a1a561a7b1d9e81e335fb80de86edb480b84b8",
+        "kind": "network_sdk",
+        "source": "app.modules.telegram.telegram",
+        "target": "telebot",
+        "uses": [
+          "Telegram.__edit_message_text_or_caption|call:edit_message_caption",
+          "Telegram.__edit_message_text_or_caption|call:edit_message_text",
+          "Telegram.__edit_message|call:edit_message_media",
+          "Telegram.__edit_message|call:types.InputMediaPhoto",
+          "Telegram.__edit_rich_message|call:edit_message_text",
+          "Telegram.__init__.callback_query|call:answer_callback_query",
+          "Telegram.__init__.callback_query|call:answer_callback_query",
+          "Telegram.__init__.run_polling|call:infinity_polling",
+          "Telegram.__init__.send_welcome|call:reply_to",
+          "Telegram.__init__|call:TeleBot",
+          "Telegram.__init__|call:callback_query_handler",
+          "Telegram.__init__|call:get_me",
+          "Telegram.__init__|call:message_handler",
+          "Telegram.__init__|call:message_handler",
+          "Telegram.__send_long_message|call:send_document",
+          "Telegram.__send_long_message|call:send_message",
+          "Telegram.__send_long_message|call:send_photo",
+          "Telegram.__send_long_plain_message|call:send_message",
+          "Telegram.__send_long_plain_message|call:send_photo",
+          "Telegram.__send_rich_message|call:send_rich_message",
+          "Telegram.__send_rich_message|call:types.ReplyParameters",
+          "Telegram.__send_short_message|call:send_message",
+          "Telegram.__send_short_message|call:send_photo",
+          "Telegram._build_rich_message_chunks|call:types.InputRichMessage",
+          "Telegram._create_force_reply_markup|call:types.ForceReply",
+          "Telegram._create_force_reply_markup|call:types.ForceReply",
+          "Telegram._create_force_reply_markup|call:types.ForceReply",
+          "Telegram._create_inline_keyboard|call:types.InlineKeyboardButton",
+          "Telegram._create_inline_keyboard|call:types.InlineKeyboardButton",
+          "Telegram._create_inline_keyboard|call:types.InlineKeyboardMarkup",
+          "Telegram._start_typing_task.typing_worker|call:send_chat_action",
+          "Telegram.answer_callback_query|call:answer_callback_query",
+          "Telegram.delete_commands|call:delete_my_commands",
+          "Telegram.delete_msg|call:delete_message",
+          "Telegram.download_file|call:apihelper.FILE_URL.format",
+          "Telegram.download_file|call:get_file",
+          "Telegram.register_commands|call:delete_my_commands",
+          "Telegram.register_commands|call:set_my_commands",
+          "Telegram.register_commands|call:types.BotCommand",
+          "Telegram.send_file|call:send_document",
+          "Telegram.send_file|call:send_photo",
+          "Telegram.send_voice|call:send_voice"
+        ]
+      },
+      {
+        "bindings": [
+          "import:requests as requests",
+          "import:requests.exceptions as requests"
+        ],
+        "fingerprint": "d605eb176a203b3f4d205c5d183469b3002426682eb9cb4e7408bb6013652484",
+        "kind": "raw_transport",
+        "source": "app.modules.themoviedb.tmdbv3api.tmdb",
+        "target": "requests",
+        "uses": [
+          "TMDb._init_session|call:Session"
+        ]
+      },
+      {
+        "bindings": [
+          "from:transmission_rpc.Client as Client",
+          "from:transmission_rpc.File as File",
+          "from:transmission_rpc.Torrent as Torrent",
+          "from:transmission_rpc.session.Session as Session",
+          "from:transmission_rpc.session.SessionStats as SessionStats",
+          "import:transmission_rpc as transmission_rpc"
+        ],
+        "fingerprint": "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
+        "kind": "network_sdk",
+        "source": "app.modules.transmission.transmission",
+        "target": "transmission_rpc",
+        "uses": [
+          "Transmission.__login_transmission|call:Client",
+          "Transmission.__sync_incomplete_file_suffix|call:get_session",
+          "Transmission.__sync_incomplete_file_suffix|call:set_session"
+        ]
+      },
+      {
+        "bindings": [
+          "reexport:app.adapters.network.http.requests as requests"
+        ],
+        "fingerprint": "aecbe00404b2866c918c939bee5f1002045fc72aed4440c85e0811a4379913e4",
+        "kind": "raw_transport",
+        "source": "app.modules.trimemedia.api",
+        "target": "requests",
+        "uses": [
+          "Api.__init__|call:Session",
+          "Api.close|call:close",
+          "Api.cookies|call:cookies.get_dict"
+        ]
+      },
+      {
+        "bindings": [
+          "from:requests.Session as Session"
+        ],
+        "fingerprint": "a266dd2b74f216b289682e5d83c0b5a7d0d08b5447d79c165659b6d7302656d6",
+        "kind": "raw_transport",
+        "source": "app.modules.ugreen.api",
+        "target": "requests",
+        "uses": [
+          "Api.__init__|call:Session",
+          "Api._request_json|call:get",
+          "Api._request_json|call:post",
+          "Api.close|call:close",
+          "Api.export_session_state|call:cookies.get_dict",
+          "Api.import_session_state|call:cookies.update",
+          "Api.login|call:post",
+          "Api.logout|call:get"
+        ]
+      },
+      {
+        "bindings": [
+          "from:pywebpush.WebPushException as WebPushException",
+          "from:pywebpush.webpush as webpush"
+        ],
+        "fingerprint": "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76",
+        "kind": "network_sdk",
+        "source": "app.modules.webpush",
+        "target": "pywebpush",
+        "uses": [
+          "WebPushModule.post_message|call:webpush"
+        ]
+      },
+      {
+        "bindings": [
+          "import:websocket as websocket"
+        ],
+        "fingerprint": "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
+        "kind": "raw_transport",
+        "source": "app.modules.wechat.wechatbot",
+        "target": "websocket",
+        "uses": [
+          "WeChatBot._run_gateway|call:WebSocketApp",
+          "WeChatBot._run_gateway|call:run_forever",
+          "WeChatBot._send_raw|call:send",
+          "WeChatBot.stop|call:close"
+        ]
+      },
+      {
+        "bindings": [
+          "from:requests.Response as Response"
+        ],
+        "fingerprint": "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
+        "kind": "raw_transport",
+        "source": "app.modules.zspace.zspace",
+        "target": "requests",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "import:docker as docker"
+        ],
+        "fingerprint": "20a91ec521f7dfe6a0153dfd8ea49c4bac7f0a16b55f1c0655dfb33f54a01215",
+        "kind": "network_sdk",
+        "source": "app.runtime.state",
+        "target": "docker",
+        "uses": [
+          "SystemHelper._check_restart_policy|call:DockerClient",
+          "SystemHelper._check_restart_policy|call:containers.get",
+          "SystemHelper._docker_api_restart|call:DockerClient",
+          "SystemHelper._docker_api_restart|call:containers.get"
+        ]
+      },
+      {
+        "bindings": [
+          "import:urllib3.fields as _urllib3_fields"
+        ],
+        "fingerprint": "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
+        "kind": "raw_transport",
+        "source": "app.startup.lifecycle",
+        "target": "urllib3",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "import:socket as socket"
+        ],
+        "fingerprint": "2518de211c9ba32ccbc004cf58fe9c98837fe8ac95fe8ffb6ea82897b28d753f",
+        "kind": "protocol_operation",
+        "source": "app.testing.network_guard",
+        "target": "socket.getaddrinfo",
+        "uses": [
+          "block_real_network._guarded_getaddrinfo|call:socket.getaddrinfo"
+        ]
+      }
+    ],
+    "registry": {
+      "network_sdks": [
+        "boto3",
+        "botocore",
+        "cloakbrowser",
+        "ddgs",
+        "discord",
+        "docker",
+        "google.genai",
+        "langchain_anthropic",
+        "langchain_aws",
+        "langchain_deepseek",
+        "langchain_google_genai",
+        "langchain_openai",
+        "lark_oapi",
+        "openai",
+        "oss2",
+        "plexapi",
+        "pywebpush",
+        "qbittorrentapi",
+        "redis",
+        "slack_bolt",
+        "slack_sdk",
+        "smbclient",
+        "smbprotocol",
+        "telebot",
+        "transmission_rpc"
+      ],
+      "protocol_operations": [
+        "asyncio.open_connection",
+        "socket.create_connection",
+        "socket.getaddrinfo",
+        "socket.gethostbyname",
+        "xmlrpc.client.ServerProxy"
+      ],
+      "raw_transports": [
+        "requests",
+        "httpx",
+        "httpx2",
+        "aiohttp",
+        "urllib.request",
+        "urllib3",
+        "http.client",
+        "websocket",
+        "websockets",
+        "curl_cffi",
+        "cloudscraper",
+        "httplib2",
+        "pycurl"
+      ],
+      "reexports": [
+        {
+          "source": "app.adapters.network.http.requests",
+          "target": "requests"
+        }
+      ]
+    },
+    "scope": {
+      "excluded_roots": [
+        "app.plugins"
+      ],
+      "line_numbers": false,
+      "root": "app",
+      "runtime_only": true
+    }
+  },
   "edge_count": 6817,
   "edge_sha256": "e3d43fec9f7bc936ef5a2ffe7ba11ea054d1ba7d1c42e7101978480cd99a63fe",
   "edges": [
@@ -7838,7 +9100,7 @@
     "app.workflow.actions.send_message",
     "app.workflow.actions.transfer_file"
   ],
-  "schema_version": 2,
+  "schema_version": 3,
   "scope": "MoviePilot host app excluding app/plugins",
   "strongly_connected_components": [
     [

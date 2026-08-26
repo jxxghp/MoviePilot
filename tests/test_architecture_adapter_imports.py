@@ -255,7 +255,7 @@ def test_current_direct_adapter_imports_match_temporary_debt_policy() -> None:
     adapter_policy = policy["direct_adapter_imports"]
     entries = adapter_policy["entries"]
 
-    assert policy["schema_version"] == 2
+    assert policy["schema_version"] == 3
     assert adapter_policy["classification"] == "temporary_debt"
     assert adapter_policy["target_state"] == "empty"
     assert _adapter_policy_scope_errors(adapter_policy["scope"], contract["scope"]) == []

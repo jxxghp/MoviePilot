@@ -76,8 +76,8 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S0-L2.1 Host Oper/UoW 规范 | `DELIVERED` | S0-L1 | `3bf94ffed`：宿主无 Session Oper 规范债务归零，远端 `0/0` |
 | S0-L2.2 完整宿主 SCC policy | `DELIVERED` | S0-L2.1 | `a884ab5c2`：完整宿主 SCC 精确 policy 生效，远端 `0/0` |
 | S0-L2.3 Adapter 直连事实 | `DELIVERED` | S0-L2.1 | `e1483e85d`：锁定 28 条原始 Adapter import 事实，远端 `0/0` |
-| S0-L2.4 Adapter zero-growth | `VERIFIED` | S0-L2.3 | 当前直连均登记迁移 owner，新增/替换失败，删除后要求清理陈旧 policy |
-| S0-L2.4b HTTP/Egress 事实与政策 | `PLANNED` | S0-L2.4 | direct HTTP/SDK/stream/vendor egress 分类完整，债务与精确例外分别受不可增长政策约束 |
+| S0-L2.4 Adapter zero-growth | `DELIVERED` | S0-L2.3 | `2553226f3`：冻结 28 条直连及 owner，收缩/新增/stale policy 门禁生效，远端 `0/0` |
+| S0-L2.4b HTTP/Egress 事实与政策 | `VERIFIED` | S0-L2.4 | 66 条事实、12 条债务和 54 条精确例外已冻结；collector、policy、全量测试与本地质量门禁通过，待推送后确认远端 CI |
 | S0-L2.5 Event consumer 识别 | `PLANNED` | S0-L2.1 | consumer 只识别可静态证明的 EventManager 注册，动态误报归零 |
 | S0-L2.6 事实源与 CI 投影 | `PLANNED` | S0-L2.2,S0-L2.4b,S0-L2.5 | fixture/policy/overview 职责固定，CI 分开报告语义 policy 与快照一致性 |
 
@@ -107,8 +107,8 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S2-L3 GlobalVar/provider 注册收口 | `PLANNED` | S2-L1 | `global_vars` canonical 消费清零，provider 注册进入显式装配阶段并可 reset；Legacy 入口精确保留 |
 | S2-L4 Passkey 缓存边界 | `PLANNED` | S0-L4 | Application 不识别 Redis；原子 consume 由 runtime cache contract + backend 实现 |
 | S2-L5 Backup artifact Port | `PLANNED` | S0-L4 | Application 不构造 `BackupFiles`，文件 I/O 由注入 Adapter 拥有 |
-| S2-L6 Application Adapter 债务清零 | `PLANNED` | S2-L4,S2-L5 | Application 到具体 Adapter 的未批准边归零，批准通用机制有精确规则和门禁 |
-| S2-L7 Chain Adapter/HTTP 债务清零 | `PLANNED` | S2-L6 | Chain 具体 Adapter 与普通 direct HTTP 依赖归零；SDK/stream/vendor 例外精确 containment |
+| S2-L6 Application Adapter/DNS 债务清零 | `PLANNED` | S2-L4,S2-L5 | Application 到具体 Adapter 的未批准边归零，SSRF DNS I/O 进入注入 Port，批准通用机制有精确规则和门禁 |
+| S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `PLANNED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 归零；SDK/stream/vendor 例外保持精确 containment |
 
 ### S3：大型编排器职责清零
 
@@ -154,50 +154,53 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 
 ## 4. 当前活动叶子
 
-### S0-L2.4 Adapter zero-growth
+### S0-L2.4b HTTP/Egress 事实与政策
 
-**Status:** `VERIFIED`（本地验收完成，等待提交、推送和远端一致性确认）
+**Status:** `VERIFIED`（本地验收完成，等待提交、推送和远端 CI 确认）
 
 **Outcome**
 
-把 S0-L2.3 收集的 Application/Chain 到具体 Adapter 直连全部登记为有迁移 owner 的临时债务。
-初始 28 条形成只减不增的冻结上界，政策目标固定为空集合；新增、替换和删除后未同步清理的
-陈旧登记都必须失败。
+扫描宿主 raw transport、network SDK 和库名扫描会漏掉的协议操作，事实保留 import provenance、
+稳定 callable/operation，不保存行号。普通 HTTP/Session bridge 是待迁移债务；canonical transport、
+SDK、streaming、contained vendor 和 local control-plane 只允许精确 containment。
 
 **Ownership**
 
-- `tests/fixtures/architecture/dependency-policy.json` 的人工 Adapter policy。
-- `tests/test_architecture_adapter_imports.py` 的精确集合、owner 和 stale-policy 门禁。
-- `AGENTS.md`、`docs/rules/05-architecture.md` 与架构总览中的规范边界。
-- `.github/workflows/test.yml` 的快速架构 CI 投影。
+- `scripts/architecture/` 的 direct egress AST collector 与 registry。
+- `tests/fixtures/architecture/dependency-baseline.json` 的生成事实和
+  `dependency-policy.json` 的人工分类。
+- `tests/test_architecture_egress.py` 的 collector、当前事实、policy 和 zero-growth 门禁。
+- HTTP 规范、架构总览、优化清单与快速架构 CI 投影。
 - 本路线图的叶子状态和交付记录。
 
 **Excluded**
 
-- 不在本叶迁移 28 条运行时依赖；迁移由 S2-L4 至 S2-L7 按 owner 债务清零。
-- 不修改生成事实、完整依赖图、SCC、digest、`app/plugins/**` 或运行时代码。
-- 不把 direct HTTP/SDK/stream/vendor egress 混入 Adapter policy；这些由 S0-L2.4b 独立治理。
+- 不在本叶迁移生产 HTTP 调用；本叶完成完整事实、分类和不可增长门禁。
+- 不修改 Adapter 直连 policy、完整依赖图/SCC/digest、运行时代码或 `app/plugins/**`。
+- 未登记 registry 的任意第三方包不能被猜测为网络 SDK；新增 SDK 必须显式扩展 registry 与 policy。
 
 **Acceptance**
 
 ```bash
 .venv/bin/python -m pytest \
-  tests/test_architecture_adapter_imports.py \
+  tests/test_architecture_egress.py \
   tests/test_architecture_contract_baseline.py \
-  tests/test_architecture_dependencies.py \
+  tests/test_architecture_baseline_cli.py \
   tests/test_architecture_ci.py \
-  tests/test_architecture_documentation.py -q
+  tests/test_plugin_identity_transitions.py -q
 .venv/bin/python scripts/architecture/baseline.py --check-host
 .venv/bin/python scripts/architecture/ruff_ratchet.py
 .venv/bin/python scripts/architecture/mypy_ratchet.py
-.venv/bin/pylint tests/test_architecture_adapter_imports.py \
+.venv/bin/pylint scripts/architecture/baseline.py \
+  scripts/architecture/egress.py \
+  tests/test_architecture_egress.py \
   tests/test_architecture_contract_baseline.py \
-  tests/test_architecture_dependencies.py \
-  tests/test_architecture_ci.py
+  tests/test_architecture_ci.py \
+  tests/test_plugin_identity_transitions.py
 git diff --check
 ```
 
 **Delivery**
 
-- 单一提交主题：冻结现有 Adapter 直连债务并阻止增长。
+- 单一提交主题：建立并冻结 direct egress 事实与精确政策。
 - 推送 `origin/v3` 后确认提交祖先关系、远端 SHA 和 ahead/behind `0/0`。

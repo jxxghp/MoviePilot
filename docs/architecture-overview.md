@@ -673,6 +673,11 @@ flowchart LR
   `--write-host` 不会替代人工决策。
 - 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；policy 将其全部标为有 owner 的
   `temporary_debt`，并以初始 28 条冻结上界、目标为空集合。新增、替换、删除后未清理 policy 都会失败。
+- `direct_egress` 记录全宿主 66 条 raw transport、network SDK 和协议操作 identity；11 条普通 HTTP/
+  Session bridge 与 1 条 Application DNS I/O 是清零债务，54 条 canonical transport、SDK、
+  stream/vendor/diagnostic/control-plane 事实是精确 containment。每条初始边的指纹由测试独立冻结，
+  bindings/uses 变化、分类互换、通配导入和初始边增长都会失败；债务删除时同步删除冻结项以禁止恢复，
+  `--write-host` 不会改写人工 policy 或冻结上界。
 - 任何所有权迁移必须同步更新：canonical 导入、`app/runtime/compat/manifest.py`、
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。
@@ -687,6 +692,7 @@ flowchart LR
 | Python 模块 | 835 |
 | 内部导入边 | 6,810 |
 | 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
+| Direct egress | 66（12 条待迁移债务，54 条精确 containment） |
 | Module Contract V2 spec | 215（其中 214 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Model/Oper 自动事务与自建 Session | 0 |

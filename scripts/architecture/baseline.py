@@ -13,10 +13,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Optional
 
+try:
+    from scripts.architecture.egress import collect_direct_egress
+except ModuleNotFoundError:
+    from egress import collect_direct_egress
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = PROJECT_ROOT / "app"
 BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 DEPENDENCY_BASELINE_PATH = BASELINE_ROOT / "dependency-baseline.json"
+DEPENDENCY_POLICY_PATH = BASELINE_ROOT / "dependency-policy.json"
 RUNTIME_BASELINE_PATH = BASELINE_ROOT / "runtime-contract-baseline.json"
 TRANSACTION_BASELINE_PATH = BASELINE_ROOT / "transaction-debt-baseline.json"
 CONFIGURATION_BASELINE_PATH = BASELINE_ROOT / "configuration-debt-baseline.json"
@@ -440,7 +446,7 @@ def collect_dependency_baseline() -> dict[str, Any]:
         {edge["target"] for edge in direct_adapter_imports}
     )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "scope": "MoviePilot host app excluding app/plugins",
         "module_count": len(modules),
         "edge_count": len(edges),
@@ -473,6 +479,7 @@ def collect_dependency_baseline() -> dict[str, Any]:
             "targets": direct_adapter_targets,
             "edges": direct_adapter_imports,
         },
+        "direct_egress": collect_direct_egress(modules),
         "boundary_edges": collect_boundary_edges(graph, modules),
     }
 

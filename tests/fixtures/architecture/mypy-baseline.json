@@ -1462,8 +1462,7 @@
   },
   "app/chain/media.py": {
     "arg-type": 34,
-    "assignment": 16,
-    "call-overload": 1,
+    "assignment": 15,
     "comparison-overlap": 3,
     "no-any-return": 3,
     "no-untyped-def": 3,

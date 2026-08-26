@@ -2,11 +2,19 @@
 
 ## HTTP Client Conventions
 
-**Rule:** Host outbound HTTP transport implementations must go through `RequestUtils` from
+**Rule:** Host-authored ordinary outbound HTTP must go through `RequestUtils` from
 `app/adapters/network/http.py`. This transport rule does not authorize Application or Chain to
 import the concrete Adapter; they own/use a Port and receive its implementation from startup.
-Plugins import the curated facade from `app.sdk.network`. Do not use `requests`, `httpx`, or
-`aiohttp` directly outside a separately reviewed SDK, streaming, or vendored transport boundary.
+Plugins import the curated facade from `app.sdk.network`.
+
+Direct `requests`/`httpx` clients, SDK transports, product streaming protocols, contained vendor
+code, diagnostics and control-plane access are governed by the exact `direct_egress` facts and
+manual policy. An approved fingerprint is containment for that exact source/binding/use identity
+only; `owner: "$source"` names that source module and does not authorize another caller or
+operation. New SDK roots must be added to the registry and receive explicit policy review.
+Ordinary direct HTTP, RequestUtils Session bridges and Application-owned DNS I/O remain
+`temporary_debt` with an empty target state. Runtime wildcard imports from registered egress roots
+are forbidden.
 
 `RequestUtils` handles:
 - Proxy configuration (from `settings.PROXY_*`)

@@ -288,6 +288,34 @@ def test_bind_online_commits_legacy_and_local_first_bindings(identity_store) -> 
     assert local_bound.revision == 2
 
 
+def test_bind_online_preserves_legacy_unknown_payload_binding(identity_store) -> None:
+    """存量身份可先固化默认在线来源，且不伪造尚未应用的载荷事实。"""
+    legacy = identity_store.compare_and_set(
+        _legacy_identity("LegacyInventoryPlugin"),
+        expected_revision=None,
+    )
+    target = replace(
+        legacy,
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key=OFFICIAL_SOURCE,
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        updated_at=NOW + timedelta(seconds=1),
+        bound_at=NOW + timedelta(seconds=1),
+    )
+
+    bound = identity_store.bind_online(
+        target,
+        expected_revision=legacy.revision,
+    )
+
+    assert bound.trusted_source_type is TrustedPluginSourceType.OFFICIAL
+    assert bound.trusted_source_key == OFFICIAL_SOURCE
+    assert bound.binding_basis is PluginBindingBasis.OFFICIAL_DEFAULT
+    assert bound.payload_source_type is PluginPayloadSourceType.UNKNOWN
+    assert bound.payload_applied_at is None
+    assert bound.revision == 2
+
+
 def test_bind_online_rejects_bound_identity_and_stale_revision(identity_store) -> None:
     """首次在线绑定不能覆盖已有可信来源，也不能使用失效 revision。"""
     bound = identity_store.compare_and_set(_identity(), expected_revision=None)

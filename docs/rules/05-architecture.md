@@ -528,6 +528,25 @@ the Port required by its use case, startup injects the concrete Adapter, and Cha
 consumes the Application capability or an injected Port. A `canonical capability`
 never means permission to import a concrete `app.adapters.*` implementation.
 
+Direct egress is a separate boundary from Adapter imports. The generated
+`direct_egress` facts scan the complete host `app` tree except `app.plugins` and
+record raw transports, registered network SDKs and exact protocol operations.
+Each identity contains import provenance plus stable callable/operation uses and
+has no line number. The manual policy classifies every full fingerprint as either
+`temporary_debt` with a removal leaf and empty target state, or an
+`approved_exception` with an exact owner and reason. Canonical transports, SDKs,
+streaming protocols, contained vendor code, diagnostics and control planes are
+contained exceptions, not category-wide permissions. In policy, `owner: "$source"`
+means the fact's exact `source` module is the owner; it does not authorize sibling
+or child modules. Runtime wildcard imports from a registered egress root are
+forbidden. Updating the generated baseline never updates this policy; additions,
+fact changes, classification swaps and stale entries fail independently. Current
+debt may shrink without changing a fixed count, but no initial edge may grow or be
+reclassified. Tests independently freeze every initial edge fingerprint, so
+refreshing both generated facts and manual policy cannot hide growth on the same
+`source/target`; when debt is removed, its frozen edge and fingerprint must be
+removed in the same reviewed change so that it cannot return.
+
 ## Permitted Call Directions
 
 | Direction | Status |

@@ -30,7 +30,7 @@ For work that changes or reviews repository behavior, identify the domains actua
 
 ### External Communication and Interfaces
 * **Primary Reference:** `docs/rules/09-external-response.md`
-* **Required Constraints:** Transport implementations for third-party HTTP must go through `RequestUtils`; this rule does not authorize Application/Chain to import the concrete Adapter. Response formats must use the project's standard schemas. Error handling must follow the per-layer conventions.
+* **Required Constraints:** Host-authored ordinary HTTP must go through `RequestUtils`; this rule does not authorize Application/Chain to import the concrete Adapter. Canonical transport, SDK, streaming protocol, contained vendor, diagnostic and control-plane exceptions must match the exact direct-egress policy. Response formats must use the project's standard schemas. Error handling must follow the per-layer conventions.
 
 ### Data and Persistence
 * **Primary Reference:** `docs/rules/10-data-and-persistent.md`

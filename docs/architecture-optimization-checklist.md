@@ -415,15 +415,19 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - `app/chain` 有 8 个文件、13 条直接 Adapter 导入，使用 `RequestUtils`、Browser、Cloudflare、
   CookieCloud、ServerHelper 等具体能力。
 - Passkey Application 服务直接判断 Redis 后端并调用 `RedisHelper.pop()`，安全策略识别了具体实现。
-- “所有 HTTP 必须经 RequestUtils”与 LLM streaming、第三方 SDK、移植库中的直接 HTTP 客户端现状
-  没有一份精确例外表，也没有 zero-growth gate。
+- 审计时 LLM streaming、第三方 SDK、移植库和本地控制面没有精确例外表；S0-L2.4b 已建立
+  66 条完整 egress identity 与 zero-growth policy，其中 11 条普通 HTTP/Session bridge 和 1 条
+  Application DNS I/O 是清零债务；每条初始边另有独立指纹上界，不能靠同时刷新 baseline/policy
+  掩盖同一边的调用面增长，债务删除后也不得恢复。
 
 **目标与步骤**
 
 - [x] 建立 Application/Chain 原始 Adapter 直连事实与精确临时 policy，冻结新增、替换和陈旧条目。
+- [x] 建立全宿主 direct egress 事实；SDK/stream/vendor/local-control 例外精确到 bindings/uses 指纹。
 - [ ] 将 Passkey 原子领取提升为 runtime cache contract，由 Memory/Redis backend 分别实现。
 - [ ] 为 Backup 定义 Application-owned artifact store Port，由 startup 注入文件系统实现。
-- [ ] 普通外部请求迁移到统一网络能力；SDK transport、streaming 和 vendor code 例外必须精确到路径与原因。
+- [ ] 将 policy 中 11 条普通 HTTP/Session bridge 债务迁移到统一网络能力并把目标收缩为空。
+- [ ] 为 Application SSRF 校验注入 DNS 解析 Port，清除 `socket.getaddrinfo` 直接 I/O。
 - [ ] 命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不在 Application/Chain 保留直连例外。
 - [ ] 最终把基线收缩到零或少量书面化例外，而不是一次性禁止后再大量豁免。
 
