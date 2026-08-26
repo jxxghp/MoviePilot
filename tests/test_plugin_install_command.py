@@ -38,6 +38,7 @@ from app.schemas.exception import (
     PersistenceUnavailableError,
     PluginMutationRejectedError,
 )
+from app.schemas.plugin import PluginRuntimeStatus
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
@@ -299,7 +300,8 @@ def _command(
         plugin_ids_provider=lambda: plugin_ids or [],
         packages=packages,
         install_reporter=reporter or default_reporter,
-        target_reloader=target_reloader or AsyncMock(),
+        target_reloader=target_reloader
+        or AsyncMock(return_value=PluginRuntimeStatus.ACTIVE),
         rollback_reloader=rollback_reloader or AsyncMock(),
         registration_refresher=registration_refresher or AsyncMock(),
         mutation=mutation or (lambda _operation: nullcontext()),
@@ -361,6 +363,10 @@ async def test_success_commits_journal_before_report_and_cleans_package_snapshot
 
         return action
 
+    async def target_reload(_plugin_id):
+        calls.append("target_reload")
+        return PluginRuntimeStatus.ACTIVE
+
     async def installer(**_kwargs):
         calls.append("package")
         return True, "installed"
@@ -380,7 +386,7 @@ async def test_success_commits_journal_before_report_and_cleans_package_snapshot
         payload_receipt=receipt,
         package_stage_backup=mark("stage_backup"),
         package_activate_backup=mark("activate_backup"),
-        target_reloader=mark("target_reload"),
+        target_reloader=target_reload,
         registration_refresher=mark("registrations"),
         package_finalize_backup=mark("finalize_backup"),
         package_commit=mark("package_commit"),
@@ -411,6 +417,67 @@ async def test_success_commits_journal_before_report_and_cleans_package_snapshot
         "journal_delete",
         "report",
     ]
+    assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_non_active_runtime_status_compensates_before_database_commit():
+    """运行态重载未激活时，安装必须在数据库提交前补偿并返回失败。"""
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+    rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
+    registration_refresher = AsyncMock()
+    target_reloader = AsyncMock(return_value=PluginRuntimeStatus.LOAD_FAILED)
+    reporter = AsyncMock()
+
+    command, persistence, calls = _command(
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
+        target_reloader=target_reloader,
+        rollback_reloader=rollback_reloader,
+        registration_refresher=registration_refresher,
+        reporter=reporter,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is False
+    assert result.failure_stage == "runtime_reload"
+    assert result.package_installed is True
+    assert result.installed_list_persisted is False
+    assert result.runtime_reloaded is False
+    assert result.registrations_refreshed is False
+    assert result.reported is False
+    package_restore.assert_awaited_once()
+    rollback_reloader.assert_awaited_once_with("DemoPlugin")
+    registration_refresher.assert_awaited_once_with("DemoPlugin")
+    reporter.assert_not_awaited()
+    assert "journal_commit" not in calls
+    assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_existing_plugin_with_non_active_runtime_status_is_not_reported_successfully():
+    """已有载荷刷新失败时不得伪装成运行态成功或发送安装上报。"""
+    target_reloader = AsyncMock(return_value=PluginRuntimeStatus.LOAD_FAILED)
+    reporter = AsyncMock()
+    command, persistence, _ = _command(
+        installed=["DemoPlugin"],
+        plugin_ids=["DemoPlugin"],
+        target_reloader=target_reloader,
+        reporter=reporter,
+    )
+
+    result = await _execute(command, admission=_admission(identity=_identity()))
+
+    assert result.success is False
+    assert result.refreshed_only is True
+    assert result.failure_stage == "runtime_reload"
+    assert result.runtime_reloaded is False
+    assert result.registrations_refreshed is False
+    assert result.reported is False
+    target_reloader.assert_awaited_once_with("DemoPlugin")
+    reporter.assert_not_awaited()
     assert persistence.records == {}
 
 
@@ -726,7 +793,7 @@ async def test_existing_matching_payload_only_refreshes_runtime():
     """同一来源、代际和版本已提交时只刷新运行态，不重复写包或 journal。"""
     checkpointer = AsyncMock()
     installer = AsyncMock()
-    reloader = AsyncMock()
+    reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
     refresher = AsyncMock()
     reporter = AsyncMock(return_value=True)
     command, persistence, _ = _command(
