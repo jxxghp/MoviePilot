@@ -6,7 +6,6 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-
 MIGRATION_MODULE = "database.versions.a6c8e2f4b1d3_3_0_11"
 INDEXES = {
     "subscribehistory": (

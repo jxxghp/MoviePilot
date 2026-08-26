@@ -9,8 +9,8 @@ from typing import Any, Protocol
 
 from app.application.outbox import (
     OUTBOX_LEASE_SECONDS,
-    OutboxIntent,
     SUBSCRIBE_COMPLETED_TOPIC,
+    OutboxIntent,
     SyncOutboxTransaction,
     SyncUnitOfWork,
 )
