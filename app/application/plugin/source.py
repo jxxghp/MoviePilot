@@ -524,7 +524,7 @@ def _select_local_candidate(
     ):
         return PluginSelection(
             status=PluginSelectionStatus.INCOMPLETE,
-            reason="本地插件仓库读取失败，不能自动选择在线载荷",
+            reason="部分插件仓库暂时无法读取，请稍后重试",
         )
     if not local:
         return None
@@ -532,12 +532,12 @@ def _select_local_candidate(
     if selected_local is None:
         return PluginSelection(
             status=PluginSelectionStatus.UNAVAILABLE,
-            reason="本地候选没有符合当前运行代际的版本",
+            reason="本地插件不支持当前 MoviePilot 版本",
         )
     return PluginSelection(
         status=PluginSelectionStatus.SELECTED,
         candidate=selected_local,
-        reason="优先使用本地载荷",
+        reason="当前使用本地插件",
     )
 
 
@@ -587,7 +587,7 @@ def select_plugin_candidate(
     if not online:
         return PluginSelection(
             status=PluginSelectionStatus.UNAVAILABLE,
-            reason=f"没有找到插件 {plugin_id} 的在线候选",
+            reason=f"没有找到插件 {plugin_id} 的可用安装包",
         )
 
     allowed_source = _allowed_source(identity, normalized_id)
@@ -600,7 +600,7 @@ def select_plugin_candidate(
         if not requested_online:
             return PluginSelection(
                 status=PluginSelectionStatus.UNAVAILABLE,
-                reason="明确选择的在线来源没有当前插件候选",
+                reason="所选仓库中没有该插件的可用安装包",
             )
         if allowed_source is not None:
             _source_type, allowed_key = allowed_source
@@ -608,22 +608,22 @@ def select_plugin_candidate(
                 return PluginSelection(
                     status=PluginSelectionStatus.CONFLICT,
                     conflict_source_keys=(allowed_key, requested_source),
-                    reason="普通安装不能改变已绑定的在线来源",
+                    reason="该插件已绑定其他仓库，请先确认更换",
                 )
         if explicit_source or allow_source_change:
             selected_requested = _select_best(requested_online, generation_order)
             if selected_requested is None:
                 return PluginSelection(
                     status=PluginSelectionStatus.UNAVAILABLE,
-                    reason="明确选择的来源没有符合当前运行代际的版本",
+                    reason="所选仓库没有适用于当前 MoviePilot 版本的插件包",
                 )
             return PluginSelection(
                 status=PluginSelectionStatus.SELECTED,
                 candidate=selected_requested,
                 reason=(
-                    "按显式换源目标选择在线载荷"
+                    "已选择目标仓库中的插件包"
                     if allow_source_change
-                    else "按管理员明确选择的来源安装在线载荷"
+                    else "已选择指定仓库中的插件包"
                 ),
             )
     if allowed_source is not None:
@@ -636,24 +636,24 @@ def select_plugin_candidate(
         if not online:
             return PluginSelection(
                 status=PluginSelectionStatus.UNAVAILABLE,
-                reason="当前来源身份没有可用候选",
+                reason="已绑定仓库中暂无可用插件包",
             )
         selected_online = _select_best(online, generation_order)
         if selected_online is None:
             return PluginSelection(
                 status=PluginSelectionStatus.UNAVAILABLE,
-                reason="在线候选没有符合当前运行代际的版本",
+                reason="已绑定仓库没有适用于当前 MoviePilot 版本的插件包",
             )
         return PluginSelection(
             status=PluginSelectionStatus.SELECTED,
             candidate=selected_online,
-            reason="按已绑定来源选择在线载荷",
+            reason="已使用绑定仓库中的插件包",
         )
 
     if identity is not None:
         return PluginSelection(
             status=PluginSelectionStatus.INCOMPLETE,
-            reason="插件来源身份尚未绑定，不能自动选择在线载荷",
+            reason="当前插件尚未绑定仓库",
         )
 
     source_pairs = {(candidate.source_type, candidate.source_key) for candidate in online}
@@ -661,25 +661,25 @@ def select_plugin_candidate(
         return PluginSelection(
             status=PluginSelectionStatus.CONFLICT,
             conflict_source_keys=tuple(source_key for _source_type, source_key in source_pairs),
-            reason="该插件存在多个在线来源，请确认来源后安装。",
+            reason="该插件存在于多个仓库，请选择仓库",
         )
 
     source_type = next(iter(source_pairs))[0]
     if source_type is TrustedPluginSourceType.THIRD_PARTY and not inventory.can_use_for_tofu:
         return PluginSelection(
             status=PluginSelectionStatus.INCOMPLETE,
-            reason="市场读取不完整，不能建立唯一第三方来源的 TOFU",
+            reason="部分插件仓库暂时无法读取，无法安全确认仓库",
         )
     selected_online = _select_best(online, generation_order)
     if selected_online is None:
         return PluginSelection(
             status=PluginSelectionStatus.UNAVAILABLE,
-            reason="在线候选没有符合当前运行代际的版本",
+            reason="可用仓库中没有适用于当前 MoviePilot 版本的插件包",
         )
     return PluginSelection(
         status=PluginSelectionStatus.SELECTED,
         candidate=selected_online,
-        reason="唯一在线来源候选",
+        reason="已找到唯一可用仓库",
     )
 
 

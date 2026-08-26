@@ -32,6 +32,11 @@ from app.application.plugin.catalog import apply_declared_metadata_fallback
 from app.application.plugin.config import PluginConfigCommand
 from app.application.plugin.folders import remove_plugin_from_folders
 from app.application.plugin.gateway import get_plugin_install_service
+from app.application.plugin.identity import (
+    OFFICIAL_PLUGIN_SOURCE_KEY,
+    TrustedPluginSourceType,
+)
+from app.application.plugin.inventory import normalize_github_plugin_source
 from app.application.plugin.routes import register_plugin_api, remove_plugin_api
 from app.application.plugin.runtime import PluginRuntime, get_plugin_manager
 from app.application.plugin.transaction import get_plugin_persistence
@@ -66,6 +71,7 @@ from app.schemas.plugin import PluginSourceChangeRequest as _SchemaPluginSourceC
 from app.schemas.plugin import PluginSourceIdentity as _SchemaPluginSourceIdentity
 from app.schemas.plugin import PluginSourceInstallRequest as _SchemaPluginSourceInstallRequest
 from app.schemas.plugin import PluginSourceOptions as _SchemaPluginSourceOptions
+from app.schemas.plugin import PluginUpdateCandidate as _SchemaPluginUpdateCandidate
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import SystemConfigKey
@@ -288,6 +294,69 @@ async def _installed_plugins_with_declared_metadata(
     )
 
 
+async def _prepare_update_candidates(
+    plugin_manager: PluginRuntime,
+    online_plugins: list[_SchemaPlugin],
+    plugins: list[_SchemaPlugin],
+    installed_ids: list[str],
+) -> list[_SchemaPlugin]:
+    """优先选择绑定仓库的可用更新，再投影候选来源信息。"""
+    identities = await get_plugin_persistence().list_identities(installed_ids)
+    identity_by_id = {identity.normalized_plugin_id: identity for identity in identities}
+    installed_keys = {plugin_id.lower() for plugin_id in installed_ids}
+    result: list[_SchemaPlugin] = []
+    for plugin in plugins:
+        if not plugin.id or plugin.id.lower() not in installed_keys or not plugin.has_update:
+            result.append(plugin)
+            continue
+        identity = identity_by_id.get(plugin.id.lower())
+        if identity and identity.trusted_source_key:
+            bound_updates = []
+            for online_plugin in online_plugins:
+                if (
+                    not online_plugin.id
+                    or online_plugin.id.lower() != plugin.id.lower()
+                    or not online_plugin.has_update
+                    or not online_plugin.repo_url
+                ):
+                    continue
+                try:
+                    source_key, _ = normalize_github_plugin_source(
+                        online_plugin.repo_url
+                    )
+                except ValueError:
+                    continue
+                if source_key == identity.trusted_source_key:
+                    bound_updates.append(online_plugin)
+            if bound_updates:
+                preferred = plugin_manager.process_plugins_list(bound_updates, [])
+                if preferred:
+                    plugin = preferred[0]
+
+        if not plugin.repo_url or not plugin.plugin_version:
+            result.append(plugin)
+            continue
+        try:
+            source_key, repo_url = normalize_github_plugin_source(plugin.repo_url)
+        except ValueError:
+            result.append(plugin)
+            continue
+        source_type = (
+            TrustedPluginSourceType.OFFICIAL
+            if source_key == OFFICIAL_PLUGIN_SOURCE_KEY
+            else TrustedPluginSourceType.THIRD_PARTY
+        )
+        plugin.update_candidate = _SchemaPluginUpdateCandidate(
+            source_type=source_type.value,
+            source_key=source_key,
+            repo_url=repo_url,
+            version=plugin.plugin_version,
+            is_bound=bool(identity and identity.trusted_source_key == source_key),
+        )
+        result.append(plugin)
+    return result
+
+
 @router.get("/", summary="所有插件", response_model=List[_SchemaPlugin])
 async def all_plugins(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
@@ -310,10 +379,17 @@ async def all_plugins(
     local_repo_plugins = plugin_manager.get_local_repo_plugins()
     # 在线插件
     online_plugins = await plugin_manager.async_get_online_plugins(force)
+    installed_ids = [plugin.id for plugin in installed_plugins if plugin.id]
     candidate_plugins = (
         plugin_manager.process_plugins_list(online_plugins + local_repo_plugins, [])
         if online_plugins or local_repo_plugins
         else []
+    )
+    candidate_plugins = await _prepare_update_candidates(
+        plugin_manager,
+        online_plugins,
+        candidate_plugins,
+        installed_ids,
     )
     if not candidate_plugins:
         # 没有获取在线插件
@@ -328,10 +404,9 @@ async def all_plugins(
     # 插件市场插件清单
     market_plugins = []
     # 已安装插件IDS
-    _installed_ids = [plugin.id for plugin in installed_plugins]
     # 未安装的线上插件或者有更新的插件
     for plugin in candidate_plugins:
-        if plugin.id not in _installed_ids:
+        if plugin.id not in installed_ids:
             market_plugins.append(plugin)
         elif plugin.has_update:
             market_plugins.append(plugin)
@@ -616,7 +691,7 @@ async def get_plugin_source_identity(
     """返回显式换源确认所需的当前可信来源和 revision。"""
     identity = await get_plugin_persistence().get_identity(plugin_id)
     if identity is None:
-        return _SchemaResponse(success=False, message="插件来源身份不存在")
+        return _SchemaResponse(success=False, message="未找到该插件的仓库绑定信息")
     return _SchemaResponse(
         success=True,
         data=_plugin_source_identity_schema(identity),

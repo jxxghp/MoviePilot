@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app import schemas
 from app.api.endpoints import plugin as plugin_endpoint
 from app.api.endpoints.plugin import (
+    _prepare_update_candidates,
     plugin_history,
     plugin_releases,
     plugin_static_file,
@@ -40,21 +41,28 @@ SOURCE_URL = "https://github.com/demo/plugins"
 def _plugin_identity(
     *,
     metadata: PluginDeclaredMetadata | None = None,
+    plugin_id: str = "DemoPlugin",
+    source_type: TrustedPluginSourceType = TrustedPluginSourceType.THIRD_PARTY,
+    source_key: str = SOURCE_KEY,
 ) -> PluginIdentity:
     """构造绑定到测试仓库的插件身份。"""
     has_payload = metadata is not None
     return PluginIdentity(
-        plugin_id="DemoPlugin",
-        normalized_plugin_id="demoplugin",
-        trusted_source_type=TrustedPluginSourceType.THIRD_PARTY,
-        trusted_source_key=SOURCE_KEY,
+        plugin_id=plugin_id,
+        normalized_plugin_id=plugin_id.lower(),
+        trusted_source_type=source_type,
+        trusted_source_key=source_key,
         binding_basis=PluginBindingBasis.EXPLICIT_INSTALL,
         payload_source_type=(
-            PluginPayloadSourceType.THIRD_PARTY
-            if has_payload
-            else PluginPayloadSourceType.UNKNOWN
+            PluginPayloadSourceType.UNKNOWN
+            if not has_payload
+            else (
+                PluginPayloadSourceType.OFFICIAL
+                if source_type is TrustedPluginSourceType.OFFICIAL
+                else PluginPayloadSourceType.THIRD_PARTY
+            )
         ),
-        payload_source_key=SOURCE_KEY if has_payload else None,
+        payload_source_key=source_key if has_payload else None,
         declared_version="1.0.0" if has_payload else None,
         package_generation="v3" if has_payload else None,
         declared_metadata=metadata,
@@ -65,6 +73,118 @@ def _plugin_identity(
         bound_at=NOW,
         payload_applied_at=NOW if has_payload else None,
     )
+
+
+def test_update_candidates_report_source_and_binding_relationship():
+    """市场更新候选应标明仓库类型，并仅把当前绑定仓库视为可直接更新。"""
+    plugins = [
+        schemas.Plugin(
+            id="OfficialBound",
+            plugin_version="2.0.0",
+            repo_url="https://github.com/jxxghp/MoviePilot-Plugins",
+            has_update=True,
+        ),
+        schemas.Plugin(
+            id="ThirdPartyBound",
+            plugin_version="2.0.0",
+            repo_url="https://github.com/example/plugins",
+            has_update=True,
+        ),
+        schemas.Plugin(
+            id="AlternativeOfficial",
+            plugin_version="2.0.0",
+            repo_url="https://github.com/jxxghp/MoviePilot-Plugins",
+            has_update=True,
+        ),
+        schemas.Plugin(
+            id="LocalOnly",
+            plugin_version="2.0.0",
+            repo_url="local:///plugins",
+            has_update=True,
+        ),
+    ]
+    persistence = MagicMock()
+    persistence.list_identities = AsyncMock(
+        return_value=[
+            _plugin_identity(
+                plugin_id="OfficialBound",
+                source_type=TrustedPluginSourceType.OFFICIAL,
+                source_key="github:jxxghp/moviepilot-plugins",
+            ),
+            _plugin_identity(
+                plugin_id="ThirdPartyBound",
+                source_key="github:example/plugins",
+            ),
+            _plugin_identity(
+                plugin_id="AlternativeOfficial",
+                source_key="github:example/plugins",
+            ),
+        ]
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.process_plugins_list.side_effect = lambda higher, _base: higher
+
+    with patch(
+        "app.api.endpoints.plugin.get_plugin_persistence",
+        return_value=persistence,
+    ):
+        result = asyncio.run(
+            _prepare_update_candidates(
+                plugin_manager,
+                plugins,
+                plugins,
+                [plugin.id for plugin in plugins],
+            )
+        )
+
+    assert result[0].update_candidate is not None
+    assert result[0].update_candidate.source_type == "official"
+    assert result[0].update_candidate.is_bound is True
+    assert result[1].update_candidate is not None
+    assert result[1].update_candidate.source_type == "third_party"
+    assert result[1].update_candidate.is_bound is True
+    assert result[2].update_candidate is not None
+    assert result[2].update_candidate.source_type == "official"
+    assert result[2].update_candidate.is_bound is False
+    assert result[3].update_candidate is None
+
+
+def test_bound_repository_update_precedes_a_higher_alternative():
+    """绑定仓库仍有更新时先完成可信更新，下一轮再提示其他仓库版本。"""
+    bound_update = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="2.0.0",
+        repo_url=SOURCE_URL,
+        has_update=True,
+    )
+    alternative_update = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="3.0.0",
+        repo_url="https://github.com/jxxghp/MoviePilot-Plugins",
+        has_update=True,
+    )
+    persistence = MagicMock()
+    persistence.list_identities = AsyncMock(return_value=[_plugin_identity()])
+    plugin_manager = MagicMock()
+    plugin_manager.process_plugins_list.return_value = [bound_update]
+
+    with patch(
+        "app.api.endpoints.plugin.get_plugin_persistence",
+        return_value=persistence,
+    ):
+        result = asyncio.run(
+            _prepare_update_candidates(
+                plugin_manager,
+                [bound_update, alternative_update],
+                [alternative_update],
+                ["DemoPlugin"],
+            )
+        )
+
+    assert result == [bound_update]
+    assert result[0].update_candidate is not None
+    assert result[0].update_candidate.version == "2.0.0"
+    assert result[0].update_candidate.is_bound is True
 
 
 def _persistence(identity: PluginIdentity) -> MagicMock:

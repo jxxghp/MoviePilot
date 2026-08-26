@@ -7,8 +7,12 @@ import concurrent.futures
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, Optional
 
-from app.application.plugin.identity import PluginIdentity
-from app.schemas.plugin import Plugin
+from app.application.plugin.identity import (
+    PluginBindingBasis,
+    PluginIdentity,
+    TrustedPluginSourceType,
+)
+from app.schemas.plugin import Plugin, PluginSourceBindingStatus
 
 MarketLoader = Callable[[str, Optional[str], bool], Optional[dict[str, dict]]]
 AsyncMarketLoader = Callable[
@@ -27,17 +31,28 @@ def apply_declared_metadata_fallback(
     result: list[Plugin] = []
     for plugin in plugins:
         identity = identities.get((plugin.id or "").lower())
+        updates: dict[str, object] = {}
+        if plugin.installed and not plugin.is_instance:
+            if identity is None:
+                updates["source_binding_status"] = PluginSourceBindingStatus.BINDING_REQUIRED
+            elif identity.trusted_source_type is TrustedPluginSourceType.UNKNOWN:
+                updates["source_binding_status"] = (
+                    PluginSourceBindingStatus.LOCAL_ONLY
+                    if identity.binding_basis is PluginBindingBasis.LOCAL_ONLY
+                    else PluginSourceBindingStatus.BINDING_REQUIRED
+                )
+            else:
+                updates["source_binding_status"] = PluginSourceBindingStatus.BOUND
         if (
             identity is None
             or identity.declared_metadata is None
             or identity.declared_version is None
         ):
-            result.append(plugin)
+            result.append(plugin.model_copy(update=updates) if updates else plugin)
             continue
         fallback = identity.declared_metadata.display_fallback(
             installed_version=identity.declared_version
         )
-        updates: dict[str, str] = {}
         if not plugin.plugin_version:
             updates["plugin_version"] = fallback["plugin_version"]
         if (

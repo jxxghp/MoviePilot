@@ -184,7 +184,7 @@ def test_first_online_binding_uses_payload_commit_time() -> None:
 
 def test_force_semantics_cannot_authorize_source_change() -> None:
     """普通安装即使替换载荷，也不能选择不同于已绑定来源的仓库。"""
-    with pytest.raises(PluginSourceAdmissionError, match="普通安装不能改变"):
+    with pytest.raises(PluginSourceAdmissionError, match="已绑定其他仓库"):
         admit_plugin_install(
             _inventory(
                 _online_candidate(),
@@ -207,7 +207,7 @@ def test_force_semantics_cannot_authorize_source_change() -> None:
 @pytest.mark.parametrize("revision", [None, 2, 4])
 def test_source_change_requires_exact_identity_revision(revision: int | None) -> None:
     """显式换源必须携带当前身份的精确 revision。"""
-    with pytest.raises(PluginSourceAdmissionError, match="revision"):
+    with pytest.raises(PluginSourceAdmissionError, match="状态已变化"):
         admit_plugin_install(
             _inventory(
                 _online_candidate(
@@ -410,7 +410,7 @@ def test_source_change_rejects_local_payload_reference() -> None:
 
     with pytest.raises(
         PluginSourceAdmissionError,
-        match="显式换源只接受在线插件仓库",
+        match="只能更换为在线插件仓库",
     ):
         admit_plugin_install(
             _inventory(local_candidates=(local,)),

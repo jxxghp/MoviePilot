@@ -17,6 +17,26 @@ class PluginRuntimeStatus(str, _Enum):
     LOAD_FAILED = "load_failed"
 
 
+class PluginSourceBindingStatus(str, _Enum):
+    """已安装插件的在线更新仓库绑定状态。"""
+
+    BOUND = "bound"
+    BINDING_REQUIRED = "binding_required"
+    LOCAL_ONLY = "local_only"
+
+
+class PluginUpdateCandidate(BaseModel):  # type: ignore[misc]
+    """插件市场为已安装插件发现的当前最高在线更新候选。"""
+
+    source_type: Literal["official", "third_party"] = Field(
+        description="候选仓库是官方来源还是第三方来源"
+    )
+    source_key: str = Field(description="候选仓库的规范来源键")
+    repo_url: str = Field(description="候选仓库的公开 GitHub 地址")
+    version: str = Field(description="候选仓库当前可安装版本")
+    is_bound: bool = Field(description="候选仓库是否为插件当前已绑定仓库")
+
+
 class PluginInstance(BaseModel):
     """持久化一个共享源码插件的独立运行实例。"""
 
@@ -73,6 +93,10 @@ class Plugin(BaseModel):
     has_page: Optional[bool] = False
     # 是否有新版本
     has_update: Optional[bool] = False
+    # 当前市场选择的最高在线更新候选；没有确定候选时为空
+    update_candidate: Optional[PluginUpdateCandidate] = None
+    # 插件仓库绑定状态；仅已安装物理插件由后端投影真实身份
+    source_binding_status: PluginSourceBindingStatus = PluginSourceBindingStatus.BOUND
     # 主系统版本是否兼容
     system_version_compatible: Optional[bool] = True
     # 主系统版本兼容提示
