@@ -549,7 +549,7 @@ class PluginInstallCommand:
             self.__target_reloader(plugin_id)
         )
         if runtime_status is not PluginRuntimeStatus.ACTIVE:
-            raise RuntimeError(f"插件运行态未激活：{runtime_status.value}")
+            raise RuntimeError("插件加载失败，请查看插件日志")
 
     async def __finish_committed(self, state: _InstallState) -> str:
         """幂等清理 COMMITTED 事务；失败时保留 journal 供启动回放。"""
