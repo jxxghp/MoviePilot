@@ -108,15 +108,15 @@ class PluginLifecycle:
         plugins.sort(key=lambda item: getattr(item, "plugin_order", 0))
         for plugin in plugins:
             current_id = plugin.__name__
-            if plugin_id and current_id != plugin_id:
+            if plugin_id and current_id.casefold() != plugin_id.casefold():
                 continue
             try:
                 if not self._auth_checker(plugin):
                     if current_id in self._classes:
                         self._classes[current_id] = plugin
                     status = PluginRuntimeStatus.BLOCKED_BY_POLICY
-                    self._runtime_status_writer(current_id, status)
-                    results[current_id] = status
+                    self._runtime_status_writer(plugin_id or current_id, status)
+                    results[plugin_id or current_id] = status
                     continue
                 self._classes[current_id] = plugin
                 instance = plugin()
@@ -131,16 +131,19 @@ class PluginLifecycle:
                 else:
                     self._disable_events(plugin)
                 status = PluginRuntimeStatus.ACTIVE
-                self._runtime_status_writer(current_id, status)
-                results[current_id] = status
+                self._runtime_status_writer(plugin_id or current_id, status)
+                results[plugin_id or current_id] = status
             except Exception as error:  # noqa: BLE001
                 status = PluginRuntimeStatus.LOAD_FAILED
-                self._runtime_status_writer(current_id, status)
-                results[current_id] = status
+                self._runtime_status_writer(plugin_id or current_id, status)
+                results[plugin_id or current_id] = status
                 self._logger.error(
                     f"加载插件 {current_id} 出错：{error} - {traceback.format_exc()}"
                 )
-        if plugin_id and plugin_id not in results:
+        if plugin_id and not any(
+            result_id.casefold() == plugin_id.casefold()
+            for result_id in results
+        ):
             status = PluginRuntimeStatus.LOAD_FAILED
             self._runtime_status_writer(plugin_id, status)
             results[plugin_id] = status
@@ -286,9 +289,10 @@ class PluginLifecycle:
                 return False
 
             if plugin_id:
-                self._classes.pop(plugin_id, None)
-                self._running.pop(plugin_id, None)
-                self._quiesced_hooks.pop(plugin_id, None)
+                runtime_id = self._resolve_runtime_id(plugin_id)
+                self._classes.pop(runtime_id, None)
+                self._running.pop(runtime_id, None)
+                self._quiesced_hooks.pop(runtime_id, None)
             else:
                 self._classes.clear()
                 self._running.clear()
@@ -300,13 +304,21 @@ class PluginLifecycle:
         """返回本阶段处理的稳定实例快照，并保持旧停机日志语义。"""
         if plugin_id:
             self._logger.info(f"正在停止插件 {plugin_id}...")
-            plugin = self._running.get(plugin_id)
-            plugins = {plugin_id: plugin} if plugin else {}
+            runtime_id = self._resolve_runtime_id(plugin_id)
+            plugin = self._running.get(runtime_id)
+            plugins = {runtime_id: plugin} if plugin else {}
             if not plugin:
                 self._logger.debug(f"插件 {plugin_id} 不存在或未加载")
             return plugins
         self._logger.info("正在停止所有插件...")
         return dict(self._running)
+
+    def _resolve_runtime_id(self, plugin_id: str) -> str:
+        """按不区分大小写的插件 ID 找到运行时注册表键。"""
+        for runtime_id in (*self._running, *self._classes):
+            if runtime_id.casefold() == plugin_id.casefold():
+                return runtime_id
+        return plugin_id
 
     def _is_quiesced(self, plugin_id: str, plugin: Any) -> bool:
         """判断 handler 及当前实例声明的旧 ABI hooks 是否均已成功收敛。"""
@@ -334,6 +346,11 @@ class PluginLifecycle:
         """重启指定插件并返回本次加载结果。"""
         self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
         self.stop(plugin_id)
-        status = self.start(plugin_id)[plugin_id]
+        results = self.start(plugin_id)
+        status = next(
+            status
+            for result_id, status in results.items()
+            if result_id.casefold() == plugin_id.casefold()
+        )
         self._event_sender(reload_event, data={"plugin_id": plugin_id})
         return status
