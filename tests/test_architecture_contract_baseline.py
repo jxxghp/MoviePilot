@@ -7,7 +7,6 @@ from pathlib import Path
 
 from app.schemas.types import ChainEventType, EventType
 
-
 PROJECT_ROOT = Path(__file__).parents[1]
 BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 
@@ -65,11 +64,19 @@ def test_dependency_baseline_records_nonempty_host_graph() -> None:
     baseline_path = BASELINE_ROOT / "dependency-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["schema_version"] == 1
+    assert baseline["schema_version"] == 2
     assert baseline["module_count"] == len(baseline["modules"])
     assert baseline["edge_count"] == len(baseline["edges"])
     assert baseline["module_count"] > 0
     assert baseline["edge_count"] > 0
+    direct_imports = baseline["direct_adapter_imports"]
+    assert direct_imports["count"] == len(direct_imports["edges"]) == 28
+    assert direct_imports["counts_by_source_root"] == {
+        "app.application": 15,
+        "app.chain": 13,
+    }
+    assert direct_imports["source_count"] == len(direct_imports["sources"]) == 18
+    assert direct_imports["target_count"] == len(direct_imports["targets"]) == 11
 
 
 def test_official_discovery_plugins_explicitly_keep_host_page_envelope():

@@ -1266,9 +1266,6 @@
   "tests/test_api_response.py": {
     "I001": 1
   },
-  "tests/test_architecture_contract_baseline.py": {
-    "I001": 1
-  },
   "tests/test_async_db_pooling.py": {
     "I001": 1
   },
