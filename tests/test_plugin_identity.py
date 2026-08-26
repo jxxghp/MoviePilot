@@ -4,6 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
 
 import pytest
 import sqlalchemy as sa
@@ -18,6 +19,7 @@ from app.application.plugin.identity import (
     PluginPayloadSourceType,
     PluginSourceCandidate,
     TrustedPluginSourceType,
+    WritePluginIdentityCommand,
     plan_legacy_plugin_identity,
 )
 from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
@@ -197,6 +199,30 @@ def test_plugin_identity_store_allows_only_one_same_revision_writer(
 
     assert sorted(results) == ["applied", "conflict"]
     assert identity_store.get("DemoPlugin").revision == 2
+
+
+def test_write_command_rolls_back_when_conditional_replace_loses_race() -> None:
+    """条件更新在最终 CAS 失利时必须确定回滚并报告竞争冲突。"""
+    current = _identity()
+    repository = Mock()
+    repository.get.return_value = current
+    repository.stage_replace.return_value = False
+    unit_of_work = Mock()
+    command = WritePluginIdentityCommand(repository, unit_of_work)
+
+    with pytest.raises(PluginIdentityConflictError, match="其他任务更新"):
+        command.execute(
+            replace(
+                current,
+                declared_version="2.0.0",
+                updated_at=NOW + timedelta(seconds=1),
+            ),
+            expected_revision=current.revision,
+        )
+
+    repository.stage_replace.assert_called_once()
+    unit_of_work.commit.assert_not_called()
+    unit_of_work.rollback.assert_called_once()
 
 
 def test_local_payload_preserves_trusted_online_binding() -> None:
