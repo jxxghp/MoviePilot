@@ -179,3 +179,27 @@ def test_gazelle_seeding_keeps_legacy_column_fallback():
     assert parser.seeding == 1
     assert parser.seeding_size == 2147483648
     assert parser.seeding_info == [[45, 2147483648]]
+
+
+def test_gazelle_login_accepts_current_user_link_without_logout_marker():
+    """Gazelle 首页仅暴露当前用户链接时也应识别为已登录。"""
+    parser = _build_parser()
+    logged_in_html = (
+        '<html><body><a href="user.php?id=1234">tester</a>'
+        '<a href="bonus.php">积分 (42.0)</a></body></html>'
+    )
+
+    assert parser._parse_logged_in(logged_in_html) is True
+    assert parser.err_msg is None
+
+
+def test_gazelle_login_rejects_password_form_without_current_user_link():
+    """Gazelle 登录页不得因普通用户相关文本被误判为已登录。"""
+    parser = _build_parser()
+    login_html = (
+        '<html><body><form action="login.php">'
+        '<input type="password" name="password"></form></body></html>'
+    )
+
+    assert parser._parse_logged_in(login_html) is False
+    assert parser.err_msg == "未检测到已登陆，请检查cookies是否过期"

@@ -12,7 +12,28 @@ from app.modules.indexer.parser import SiteParserBase, SiteSchema
 
 
 class GazelleSiteUserInfo(SiteParserBase):
+    """Gazelle 站点用户数据解析器。"""
+
     schema = SiteSchema.Gazelle
+
+    def _parse_logged_in(self, html_text: str) -> bool:
+        """
+        识别 Gazelle 登录态，兼容不展示退出入口的站点首页。
+
+        :param html_text: 站点首页 HTML
+        :return: 已登录返回 True，否则返回 False
+        """
+        html = etree.HTML(html_text)
+        try:
+            if DomUtils.has_child_elements(html) and html.xpath(
+                '//a[contains(@href, "user.php?id=")]'
+            ):
+                return True
+        finally:
+            if html is not None:
+                del html
+
+        return super()._parse_logged_in(html_text)
 
     def _parse_user_base_info(self, html_text: str):
         html_text = self._prepare_html_text(html_text)
