@@ -11,7 +11,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
-from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()

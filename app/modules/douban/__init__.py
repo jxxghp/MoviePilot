@@ -21,7 +21,7 @@ from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.scraper import DoubanScraper
-from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.runtime.execution import retry
 from app.runtime.log import logger
 from app.runtime.rate import rate_limit_exponential

@@ -15,7 +15,7 @@ from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
-from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache

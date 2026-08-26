@@ -10,7 +10,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper
 from app.modules import _ModuleBase
 from app.modules.anilist.anilist import AniListApi
-from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.runtime.log import logger
 from app.schemas.types import (
     MediaRecognizeType,
