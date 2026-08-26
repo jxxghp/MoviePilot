@@ -213,13 +213,13 @@ async def test_gateway_source_inspection_preserves_sources_and_hides_local_path(
     )
     inventory = CandidateInventory(
         (
-            MarketRead.present(REPO_URL, (official_v3,), package_generation="v3"),
-            MarketRead.present(REPO_URL, (official_v2,), package_generation="v2"),
             MarketRead.present(
                 third_party.repo_url,
                 (third_party,),
                 package_generation="v3",
             ),
+            MarketRead.present(REPO_URL, (official_v3,), package_generation="v3"),
+            MarketRead.present(REPO_URL, (official_v2,), package_generation="v2"),
         ),
         (local,),
         local_read=LocalCandidateRead.present((local,)),
