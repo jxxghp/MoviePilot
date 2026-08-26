@@ -765,9 +765,6 @@
   "app/modules/indexer/spider/mtorrent.py": {
     "I001": 1
   },
-  "app/modules/indexer/spider/rousi.py": {
-    "I001": 1
-  },
   "app/modules/indexer/spider/sunnypt.py": {
     "I001": 1
   },
