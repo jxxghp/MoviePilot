@@ -1137,8 +1137,10 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_shutdown_timeout_does_not_skip_database_worker_cleanup(monkeypatch):
-    """模块关闭超时取消当前步骤后仍应继续收口数据库 worker。"""
+async def test_stop_modules_cancellation_does_not_skip_database_worker_cleanup(
+    monkeypatch,
+):
+    """模块关闭收到取消请求后仍应继续收口数据库 worker。"""
     started = asyncio.Event()
 
     async def blocked_web_agent_shutdown():
@@ -1169,18 +1171,13 @@ async def test_shutdown_timeout_does_not_skip_database_worker_cleanup(monkeypatc
     monkeypatch.setattr(modules_initializer, "stop_database_worker", stop_database_worker)
     monkeypatch.setattr(modules_initializer, "_database_worker", object())
 
-    shutdown = asyncio.create_task(
-        lifecycle.run_shutdown_step(
-            "模块服务",
-            modules_initializer.stop_modules,
-            timeout_seconds=0.01,
-        )
-    )
+    shutdown = asyncio.create_task(modules_initializer.stop_modules())
     await started.wait()
+    shutdown.cancel()
     completed = await shutdown
 
     assert completed is False
-    await asyncio.wait_for(database_worker_stopped.wait(), timeout=1.0)
+    assert database_worker_stopped.is_set()
     stop_database_worker.assert_awaited_once_with()
 
 
