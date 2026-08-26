@@ -35,7 +35,10 @@
 - Prefer `async def` for I/O-bound operations (network requests, database queries, file operations).
 - Use `await` consistently; do not mix sync and async code paths in the same function without using `run_in_threadpool` from FastAPI or `asyncio.to_thread`.
 - For CPU-bound work that must not block the event loop, submit to `ThreadHelper` (see `app/runtime/thread.py`).
-- Do not use bare `threading.Thread` in new code; use `ThreadHelper.submit()`.
+- Use `ThreadHelper.submit()` for finite background work. A long-lived protocol loop may use a
+  dedicated `threading.Thread` only when its existing lifecycle owner signals and joins that child,
+  while the external caller bounded-waits and retains the parent owner on non-convergence; do not
+  create a dedicated thread pool for that exception.
 
 ---
 

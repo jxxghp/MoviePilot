@@ -39,27 +39,116 @@ def run_gateway(
     :param ws_holder: 调用方持有的单元素列表，存放当前 WebSocketApp，供 stop() 时 close 以打断 run_forever
     """
     last_seq: Optional[int] = None
-    heartbeat_interval_ms: Optional[int] = None
-    heartbeat_timer: Optional[threading.Timer] = None
+    heartbeat_thread: Optional[threading.Thread] = None
+    heartbeat_stop_event: Optional[threading.Event] = None
+    heartbeat_epoch = 0
+    heartbeat_state_lock = threading.Lock()
+    heartbeat_replace_lock = threading.RLock()
 
-    def send_heartbeat():
-        nonlocal heartbeat_timer
-        if stop_event.is_set():
+    def heartbeat_loop(
+        generation_epoch: int,
+        generation_stop_event: threading.Event,
+        interval_seconds: float,
+        ws: websocket.WebSocketApp,
+    ) -> None:
+        """在当前连接 generation 内串行发送心跳，停止后不再派生新线程。"""
+        while not generation_stop_event.wait(interval_seconds):
+            if stop_event.is_set():
+                return
+            with heartbeat_state_lock:
+                if (
+                    generation_epoch != heartbeat_epoch
+                    or heartbeat_stop_event is not generation_stop_event
+                ):
+                    return
+                sequence = last_seq
+            try:
+                payload = {"op": 1, "d": sequence}
+                ws.send(json.dumps(payload))
+                logger.debug(
+                    f"[QQ Gateway:{config_name}] Heartbeat sent, seq={sequence}"
+                )
+            except Exception as err:
+                logger.debug(f"[QQ Gateway:{config_name}] Heartbeat error: {err}")
+
+    def invalidate_heartbeat_generation() -> tuple[Optional[threading.Thread], int]:
+        """锁内失效当前 generation，并返回待等待的 owner 与新 epoch。"""
+        nonlocal heartbeat_epoch
+        with heartbeat_state_lock:
+            heartbeat_epoch += 1
+            current_thread = heartbeat_thread
+            if heartbeat_stop_event is not None:
+                heartbeat_stop_event.set()
+            return current_thread, heartbeat_epoch
+
+    def clear_heartbeat_generation(current_thread: Optional[threading.Thread]) -> None:
+        """仅在快照仍是当前 owner 且已经终止时清除 generation 引用。"""
+        nonlocal heartbeat_thread, heartbeat_stop_event
+        if current_thread is not None and current_thread.is_alive():
             return
-        try:
-            if ws_holder and ws_holder[0]:
-                payload = {"op": 1, "d": last_seq}
-                ws_holder[0].send(json.dumps(payload))
-                logger.debug(f"[QQ Gateway:{config_name}] Heartbeat sent, seq={last_seq}")
-        except Exception as err:
-            logger.debug(f"[QQ Gateway:{config_name}] Heartbeat error: {err}")
-        if heartbeat_interval_ms and not stop_event.is_set():
-            heartbeat_timer = threading.Timer(heartbeat_interval_ms / 1000.0, send_heartbeat)
-            heartbeat_timer.daemon = True
-            heartbeat_timer.start()
+        with heartbeat_state_lock:
+            if heartbeat_thread is current_thread:
+                heartbeat_thread = None
+                heartbeat_stop_event = None
 
-    def on_ws_message(_, message):
-        nonlocal last_seq, heartbeat_interval_ms, heartbeat_timer
+    def stop_heartbeat(*, wait: bool) -> None:
+        """停止当前心跳；等待阶段不持有状态锁，避免阻塞 close 回调。"""
+        if wait:
+            heartbeat_replace_lock.acquire()
+        try:
+            current_thread, _ = invalidate_heartbeat_generation()
+            if (
+                wait
+                and current_thread is not None
+                and current_thread.is_alive()
+                and current_thread is not threading.current_thread()
+            ):
+                current_thread.join()
+            clear_heartbeat_generation(current_thread)
+        finally:
+            if wait:
+                heartbeat_replace_lock.release()
+
+    def start_heartbeat(ws: websocket.WebSocketApp, interval_ms: int) -> None:
+        """停止旧 generation 后启动一个由 Gateway 聚合的新心跳 owner。"""
+        nonlocal heartbeat_thread, heartbeat_stop_event
+        with heartbeat_replace_lock:
+            current_thread, generation_epoch = invalidate_heartbeat_generation()
+            if (
+                current_thread is not None
+                and current_thread.is_alive()
+                and current_thread is not threading.current_thread()
+            ):
+                current_thread.join()
+            clear_heartbeat_generation(current_thread)
+            with heartbeat_state_lock:
+                if (
+                    generation_epoch != heartbeat_epoch
+                    or stop_event.is_set()
+                    or not ws_holder
+                    or ws_holder[0] is not ws
+                ):
+                    return
+                generation_stop_event = threading.Event()
+                # 心跳是 Gateway 的常驻子 owner，不占用进程共享 ThreadHelper；Gateway 退出前统一 join。
+                generation_thread = threading.Thread(
+                    target=heartbeat_loop,
+                    args=(
+                        generation_epoch,
+                        generation_stop_event,
+                        interval_ms / 1000.0,
+                        ws,
+                    ),
+                    daemon=True,
+                    name=f"qq-gateway-heartbeat-{config_name}",
+                )
+                heartbeat_stop_event = generation_stop_event
+                heartbeat_thread = generation_thread
+                generation_thread.start()
+
+    def on_ws_message(ws, message):
+        """处理当前 WebSocket 连接收到的 QQ Gateway 消息。"""
+        nonlocal last_seq
         try:
             payload = json.loads(message)
         except json.JSONDecodeError as err:
@@ -72,7 +161,8 @@ def run_gateway(
         t = payload.get("t")
 
         if s is not None:
-            last_seq = s
+            with heartbeat_state_lock:
+                last_seq = s
 
         logger.debug(f"[QQ Gateway:{config_name}] op={op} t={t}")
 
@@ -89,15 +179,10 @@ def run_gateway(
                     "shard": [0, 1],
                 },
             }
-            ws_holder[0].send(json.dumps(identify))
+            ws.send(json.dumps(identify))
             logger.info(f"[QQ Gateway:{config_name}] Identify sent")
 
-            # 启动心跳
-            if heartbeat_timer:
-                heartbeat_timer.cancel()
-            heartbeat_timer = threading.Timer(heartbeat_interval_ms / 1000.0, send_heartbeat)
-            heartbeat_timer.daemon = True
-            heartbeat_timer.start()
+            start_heartbeat(ws, heartbeat_interval_ms)
 
         elif op == 0:  # Dispatch
             if t == "READY":
@@ -147,59 +232,69 @@ def run_gateway(
 
         elif op == 9:  # Invalid Session
             logger.warning(f"[QQ Gateway:{config_name}] Invalid session")
-            if ws_holder and ws_holder[0]:
-                ws_holder[0].close()
+            ws.close()
 
     def on_ws_error(_, error):
+        """记录当前 WebSocket 连接上报的错误。"""
         logger.error(f"[QQ Gateway:{config_name}] WebSocket error: {error}")
 
-    def on_ws_close(_, close_status_code, close_msg):
+    def on_ws_close(ws, close_status_code, close_msg):
+        """失效当前连接及其心跳 generation，但不在回调线程等待。"""
         logger.info(f"[QQ Gateway:{config_name}] WebSocket closed: {close_status_code} {close_msg}")
-        if heartbeat_timer:
-            heartbeat_timer.cancel()
-        ws_holder.clear()
+        # close 回调可能由 stop() 调用线程触发，只发信号，统一由 Gateway 线程等待终态。
+        with heartbeat_state_lock:
+            is_current_connection = bool(ws_holder and ws_holder[0] is ws)
+            if is_current_connection:
+                ws_holder.clear()
+        if is_current_connection:
+            stop_heartbeat(wait=False)
 
     reconnect_delays = [1, 2, 5, 10, 30, 60]
     attempt = 0
 
-    while not stop_event.is_set():
-        try:
-            token = get_token_fn(app_id, app_secret)
-            gateway_url = get_gateway_url_fn(token)
-            logger.info(f"[QQ Gateway:{config_name}] Connecting to {gateway_url[:60]}...")
+    try:
+        while not stop_event.is_set():
+            try:
+                token = get_token_fn(app_id, app_secret)
+                gateway_url = get_gateway_url_fn(token)
+                logger.info(f"[QQ Gateway:{config_name}] Connecting to {gateway_url[:60]}...")
 
-            ws = websocket.WebSocketApp(
-                gateway_url,
-                on_message=on_ws_message,
-                on_error=on_ws_error,
-                on_close=on_ws_close,
-            )
-            ws_holder.clear()
-            ws_holder.append(ws)
+                ws = websocket.WebSocketApp(
+                    gateway_url,
+                    on_message=on_ws_message,
+                    on_error=on_ws_error,
+                    on_close=on_ws_close,
+                )
+                with heartbeat_state_lock:
+                    ws_holder.clear()
+                    ws_holder.append(ws)
 
-            # run_forever 会阻塞，需要传入 stop_event 的检查
-            # websocket-client 的 run_forever 支持 ping_interval, ping_timeout
-            # 我们使用自定义心跳，所以不设置 ping
-            ws.run_forever(
-                ping_interval=None,
-                ping_timeout=None,
-                skip_utf8_validation=True,
-            )
+                # websocket-client 的 run_forever 会阻塞；QQ 协议使用自定义心跳，不启用 ping。
+                try:
+                    ws.run_forever(
+                        ping_interval=None,
+                        ping_timeout=None,
+                        skip_utf8_validation=True,
+                    )
+                finally:
+                    # 旧连接的心跳必须先终止，下一轮 reconnect 才能取得 owner。
+                    stop_heartbeat(wait=True)
 
-        except Exception as e:
-            logger.error(f"[QQ Gateway:{config_name}] Connection error: {e}")
+            except Exception as err:
+                logger.error(f"[QQ Gateway:{config_name}] Connection error: {err}")
 
-        if stop_event.is_set():
-            break
-
-        delay = reconnect_delays[min(attempt, len(reconnect_delays) - 1)]
-        attempt += 1
-        logger.info(f"[QQ Gateway:{config_name}] Reconnecting in {delay}s (attempt {attempt})")
-        for _ in range(delay * 10):
             if stop_event.is_set():
                 break
-            time.sleep(0.1)
 
-    if heartbeat_timer:
-        heartbeat_timer.cancel()
-    logger.info(f"[QQ Gateway:{config_name}] Gateway thread stopped")
+            delay = reconnect_delays[min(attempt, len(reconnect_delays) - 1)]
+            attempt += 1
+            logger.info(
+                f"[QQ Gateway:{config_name}] Reconnecting in {delay}s (attempt {attempt})"
+            )
+            for _ in range(delay * 10):
+                if stop_event.is_set():
+                    break
+                time.sleep(0.1)
+    finally:
+        stop_heartbeat(wait=True)
+        logger.info(f"[QQ Gateway:{config_name}] Gateway thread stopped")

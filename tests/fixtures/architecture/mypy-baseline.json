@@ -2580,7 +2580,7 @@
     "type-arg": 13
   },
   "app/modules/qqbot/gateway.py": {
-    "no-untyped-def": 4,
+    "no-untyped-def": 3,
     "type-arg": 2
   },
   "app/modules/qqbot/module.py": {

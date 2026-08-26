@@ -1,4 +1,5 @@
 import asyncio
+import json
 import threading
 import time
 from unittest.mock import Mock, patch
@@ -13,6 +14,7 @@ from app.modules.feishu import FeishuModule
 from app.modules.feishu.feishu import Feishu
 from app.modules.filter import FilterModule
 from app.modules.plex import PlexModule
+from app.modules.qqbot import gateway as qq_gateway
 from app.modules.qqbot.module import QQBotModule
 from app.modules.qqbot.qqbot import QQBot
 from app.modules.slack import SlackModule
@@ -326,6 +328,335 @@ def test_qqbot_stop_retains_gateway_thread_until_retry() -> None:
 
     gateway_thread.is_alive.return_value = False
     assert client.stop() is True
+
+
+def test_qqbot_stop_retains_gateway_until_inflight_heartbeat_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """心跳发送仍阻塞时 Gateway 必须保持存活，释放后才允许关闭成功。"""
+    heartbeat_started = threading.Event()
+    release_heartbeat = threading.Event()
+    connection_closed = threading.Event()
+    callbacks = {}
+    fake_ws = Mock()
+    hello_payload = json.dumps({"op": 10, "d": {"heartbeat_interval": 1}})
+
+    def build_websocket(_url, **kwargs):
+        """保存 Gateway 回调并返回隔离的 WebSocket 桩。"""
+        callbacks.update(kwargs)
+        return fake_ws
+
+    def send(payload: str) -> None:
+        """Identify 立即完成，首个心跳保持在发送中的故障状态。"""
+        if json.loads(payload).get("op") == 1:
+            heartbeat_started.set()
+            release_heartbeat.wait()
+
+    def close() -> None:
+        """同步触发 close 回调，复现 QQBot.stop() 的真实调用线程。"""
+        callbacks["on_close"](fake_ws, 1000, "test close")
+        connection_closed.set()
+
+    def run_forever(**_kwargs) -> None:
+        """发送 Hello 后保持连接，直到 stop() 主动关闭。"""
+        callbacks["on_message"](fake_ws, hello_payload)
+        connection_closed.wait()
+
+    fake_ws.send.side_effect = send
+    fake_ws.close.side_effect = close
+    fake_ws.run_forever.side_effect = run_forever
+    monkeypatch.setattr(qq_gateway.websocket, "WebSocketApp", build_websocket)
+
+    client = QQBot.__new__(QQBot)
+    client._gateway_stop = threading.Event()
+    client._gateway_ws_holder = []
+    client._gateway_join_timeout_seconds = 0.02
+    gateway_thread = threading.Thread(
+        target=qq_gateway.run_gateway,
+        kwargs={
+            "app_id": "app-id",
+            "app_secret": "secret",
+            "config_name": "test",
+            "get_token_fn": lambda _app_id, _secret: "token",
+            "get_gateway_url_fn": lambda _token: "wss://gateway.test",
+            "on_message_fn": lambda _payload: None,
+            "stop_event": client._gateway_stop,
+            "ws_holder": client._gateway_ws_holder,
+        },
+        daemon=True,
+    )
+    client._gateway_thread = gateway_thread
+    gateway_thread.start()
+
+    try:
+        assert heartbeat_started.wait(0.5)
+        started_at = time.monotonic()
+        assert client.stop() is False
+        assert time.monotonic() - started_at < 0.2
+        assert gateway_thread.is_alive()
+
+        release_heartbeat.set()
+        gateway_thread.join(timeout=1.0)
+        assert client.stop() is True
+        assert not gateway_thread.is_alive()
+    finally:
+        client._gateway_stop.set()
+        release_heartbeat.set()
+        connection_closed.set()
+        gateway_thread.join(timeout=1.0)
+
+
+def test_qq_gateway_replaces_heartbeat_generation_without_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """重复 Hello 必须等待旧心跳终止，任何时刻只能有一个发送 generation。"""
+    first_heartbeat_started = threading.Event()
+    release_first_heartbeat = threading.Event()
+    second_heartbeat_started = threading.Event()
+    release_second_heartbeat = threading.Event()
+    third_heartbeat_started = threading.Event()
+    second_hello_entered = threading.Event()
+    third_hello_entered = threading.Event()
+    connection_ready = threading.Event()
+    connection_closed = threading.Event()
+    counters_lock = threading.Lock()
+    callbacks = {}
+    fake_ws = Mock()
+    hello_payload = json.dumps({"op": 10, "d": {"heartbeat_interval": 1}})
+    heartbeat_count = 0
+    active_heartbeats = 0
+    max_active_heartbeats = 0
+
+    def build_websocket(_url, **kwargs):
+        """保存 Gateway 回调并返回隔离的 WebSocket 桩。"""
+        callbacks.update(kwargs)
+        return fake_ws
+
+    def send(payload: str) -> None:
+        """阻塞第一代心跳，并记录是否出现跨 generation 并发发送。"""
+        nonlocal heartbeat_count, active_heartbeats, max_active_heartbeats
+        if json.loads(payload).get("op") != 1:
+            return
+        with counters_lock:
+            heartbeat_count += 1
+            current_heartbeat = heartbeat_count
+            active_heartbeats += 1
+            max_active_heartbeats = max(
+                max_active_heartbeats,
+                active_heartbeats,
+            )
+        try:
+            if current_heartbeat == 1:
+                first_heartbeat_started.set()
+                release_first_heartbeat.wait()
+            elif current_heartbeat == 2:
+                second_heartbeat_started.set()
+                release_second_heartbeat.wait()
+            elif current_heartbeat == 3:
+                third_heartbeat_started.set()
+        finally:
+            with counters_lock:
+                active_heartbeats -= 1
+
+    def run_forever(**_kwargs) -> None:
+        """发送首个 Hello 后保持连接，第二个 Hello 由测试线程注入。"""
+        callbacks["on_message"](fake_ws, hello_payload)
+        connection_ready.set()
+        connection_closed.wait()
+
+    def send_second_hello() -> None:
+        """从独立调用线程注入重复 Hello，以观测 generation 屏障。"""
+        second_hello_entered.set()
+        callbacks["on_message"](fake_ws, hello_payload)
+
+    def send_third_hello() -> None:
+        """在第二代发送中再次注入 Hello，供 close 失效待发布 generation。"""
+        third_hello_entered.set()
+        callbacks["on_message"](fake_ws, hello_payload)
+
+    fake_ws.send.side_effect = send
+    fake_ws.run_forever.side_effect = run_forever
+    monkeypatch.setattr(qq_gateway.websocket, "WebSocketApp", build_websocket)
+
+    stop_event = threading.Event()
+    ws_holder = []
+    gateway_thread = threading.Thread(
+        target=qq_gateway.run_gateway,
+        kwargs={
+            "app_id": "app-id",
+            "app_secret": "secret",
+            "config_name": "generation-test",
+            "get_token_fn": lambda _app_id, _secret: "token",
+            "get_gateway_url_fn": lambda _token: "wss://gateway.test",
+            "on_message_fn": lambda _payload: None,
+            "stop_event": stop_event,
+            "ws_holder": ws_holder,
+        },
+        daemon=True,
+    )
+    gateway_thread.start()
+    hello_thread = threading.Thread(target=send_second_hello, daemon=True)
+    hello_thread_started = False
+    third_hello_thread = threading.Thread(target=send_third_hello, daemon=True)
+    third_hello_thread_started = False
+
+    try:
+        assert connection_ready.wait(0.5)
+        assert first_heartbeat_started.wait(0.5)
+        hello_thread.start()
+        hello_thread_started = True
+        assert second_hello_entered.wait(0.2)
+        assert not second_heartbeat_started.wait(0.03)
+        assert hello_thread.is_alive()
+        assert max_active_heartbeats == 1
+
+        release_first_heartbeat.set()
+        hello_thread.join(timeout=1.0)
+        assert not hello_thread.is_alive()
+        assert second_heartbeat_started.wait(0.5)
+        assert max_active_heartbeats == 1
+
+        third_hello_thread.start()
+        third_hello_thread_started = True
+        assert third_hello_entered.wait(0.2)
+        assert third_hello_thread.is_alive()
+        close_started_at = time.monotonic()
+        callbacks["on_close"](fake_ws, 1000, "close during replacement")
+        assert time.monotonic() - close_started_at < 0.2
+
+        release_second_heartbeat.set()
+        third_hello_thread.join(timeout=1.0)
+        assert not third_hello_thread.is_alive()
+        assert not third_heartbeat_started.wait(0.05)
+        assert max_active_heartbeats == 1
+
+        stop_event.set()
+        connection_closed.set()
+        gateway_thread.join(timeout=1.0)
+        assert not gateway_thread.is_alive()
+    finally:
+        stop_event.set()
+        release_first_heartbeat.set()
+        release_second_heartbeat.set()
+        connection_closed.set()
+        if hello_thread_started:
+            hello_thread.join(timeout=1.0)
+        if third_hello_thread_started:
+            third_hello_thread.join(timeout=1.0)
+        gateway_thread.join(timeout=1.0)
+
+
+def test_qq_gateway_reconnect_joins_old_heartbeat_and_ignores_stale_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """重连必须先回收旧心跳，迟到的旧连接 close 不得终止新 generation。"""
+    first_callbacks = {}
+    second_callbacks = {}
+    first_ws = Mock()
+    second_ws = Mock()
+    first_heartbeat_started = threading.Event()
+    release_first_heartbeat = threading.Event()
+    return_first_connection = threading.Event()
+    second_connection_created = threading.Event()
+    second_heartbeat_started = threading.Event()
+    release_second_heartbeat = threading.Event()
+    second_followup_started = threading.Event()
+    return_second_connection = threading.Event()
+    hello_payload = json.dumps({"op": 10, "d": {"heartbeat_interval": 1}})
+    websocket_count = 0
+    second_heartbeat_count = 0
+
+    def build_websocket(_url, **kwargs):
+        """依次创建两条连接，并保留各自回调以注入迟到 close。"""
+        nonlocal websocket_count
+        websocket_count += 1
+        if websocket_count == 1:
+            first_callbacks.update(kwargs)
+            return first_ws
+        if websocket_count == 2:
+            second_callbacks.update(kwargs)
+            second_connection_created.set()
+            return second_ws
+        raise AssertionError("Gateway 在停止后不应建立第三条测试连接")
+
+    def send_first(payload: str) -> None:
+        """阻塞第一条连接的心跳，供重连屏障检查。"""
+        if json.loads(payload).get("op") == 1:
+            first_heartbeat_started.set()
+            release_first_heartbeat.wait()
+
+    def send_second(payload: str) -> None:
+        """阻塞新连接首个心跳，并记录迟到 close 后是否继续工作。"""
+        nonlocal second_heartbeat_count
+        if json.loads(payload).get("op") != 1:
+            return
+        second_heartbeat_count += 1
+        if second_heartbeat_count == 1:
+            second_heartbeat_started.set()
+            release_second_heartbeat.wait()
+        else:
+            second_followup_started.set()
+
+    def run_first(**_kwargs) -> None:
+        """第一条连接握手后按测试信号返回，触发真实 reconnect 路径。"""
+        first_callbacks["on_message"](first_ws, hello_payload)
+        return_first_connection.wait()
+
+    def run_second(**_kwargs) -> None:
+        """第二条连接保持运行，直到测试完成迟到 close 校验。"""
+        second_callbacks["on_message"](second_ws, hello_payload)
+        return_second_connection.wait()
+
+    first_ws.send.side_effect = send_first
+    first_ws.run_forever.side_effect = run_first
+    second_ws.send.side_effect = send_second
+    second_ws.run_forever.side_effect = run_second
+    monkeypatch.setattr(qq_gateway.websocket, "WebSocketApp", build_websocket)
+    monkeypatch.setattr(qq_gateway.time, "sleep", lambda _seconds: None)
+
+    stop_event = threading.Event()
+    ws_holder = []
+    gateway_thread = threading.Thread(
+        target=qq_gateway.run_gateway,
+        kwargs={
+            "app_id": "app-id",
+            "app_secret": "secret",
+            "config_name": "reconnect-test",
+            "get_token_fn": lambda _app_id, _secret: "token",
+            "get_gateway_url_fn": lambda _token: "wss://gateway.test",
+            "on_message_fn": lambda _payload: None,
+            "stop_event": stop_event,
+            "ws_holder": ws_holder,
+        },
+        daemon=True,
+    )
+    gateway_thread.start()
+
+    try:
+        assert first_heartbeat_started.wait(0.5)
+        return_first_connection.set()
+        assert not second_connection_created.wait(0.05)
+
+        release_first_heartbeat.set()
+        assert second_connection_created.wait(0.5)
+        assert second_heartbeat_started.wait(0.5)
+
+        first_callbacks["on_close"](first_ws, 1000, "stale close")
+        release_second_heartbeat.set()
+        assert second_followup_started.wait(0.5)
+
+        stop_event.set()
+        second_callbacks["on_close"](second_ws, 1000, "current close")
+        return_second_connection.set()
+        gateway_thread.join(timeout=1.0)
+        assert not gateway_thread.is_alive()
+    finally:
+        stop_event.set()
+        release_first_heartbeat.set()
+        release_second_heartbeat.set()
+        return_first_connection.set()
+        return_second_connection.set()
+        gateway_thread.join(timeout=1.0)
 
 
 def test_wechat_bot_stop_reports_each_live_thread_until_retry() -> None:

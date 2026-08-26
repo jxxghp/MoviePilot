@@ -85,9 +85,9 @@
 |---|---|---|---|
 | 0 | 历史任务清账、现行架构图、外部契约核对和宿主基线对齐 | 已推送 | `d234c7132`；远端同 SHA；ahead/behind `0/0`；架构契约 `71 passed` |
 | 1 | Mypy fail-closed，并把 Ruff/Mypy 已下降债务固化为真实低水位 | 已推送 | `6062b0661`；远端同 SHA；ahead/behind `0/0`；Mypy 11994、Ruff 976 |
-| 2 | 用全量串行测试初始化非零 Coverage 低水位，并补齐 CI/文档防回退契约 | 已本地验证 | Ubuntu canonical：Application `9292/11949`（77.76%），Domain `3390/4278`（79.24%）；专项 `26 passed` |
-| 3 | 收口阶段 62 遗留的 QQ Gateway heartbeat Timer 所有权 | 待批次 2 | Timer 只 cancel 不 join，Gateway 主线程可能在 heartbeat 仍执行时报告停止成功 |
-| Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 待前置批次 | 所有准入项已推送；全量测试和适用门禁通过；本地/远端 0/0 |
+| 2 | 用全量串行测试初始化非零 Coverage 低水位，并补齐 CI/文档防回退契约 | 已推送 | `265d3c6d1`；远端同 SHA；ahead/behind `0/0`；Application 77.76%，Domain 79.24% |
+| 3 | 收口阶段 62 遗留的 QQ Gateway heartbeat Timer 所有权 | 已全量验证 | generation owner 已实现；全量 `6391 passed, 6 skipped`；等待提交推送 |
+| Final | 全仓回归、插件兼容复核、台账定稿和远端一致性验证 | 进行中 | 本地门禁已通过；等待批次 3 推送及远端 0/0 复核 |
 
 ### 批次 0：审计与基线对齐
 
@@ -162,7 +162,8 @@
   最新专项覆盖，质量/CI 专项 `26 passed`，Ruff 通过，Pylint `10.00/10`，宿主、Schema、
   Coverage 和锁文件门禁均通过。
 
-待完成：提交推送并记录远端证据。
+交付证据：提交 `265d3c6d1` 已推送到 `origin/v3`；`git ls-remote` 返回同一 SHA，
+`HEAD...origin/v3` 为 `0/0`，提交严格包含批次 2 的 8 个主仓路径。
 
 ### 批次 3：QQ Gateway heartbeat owner
 
@@ -171,10 +172,28 @@
 WebSocket 和 Gateway 退出路径只调用 `cancel()`，而 `QQBot.stop()` 只等待 Gateway 主线程。
 当 heartbeat callback 已进入 `send()` 时，`cancel()` 不能终止它，外层因此可能误报收敛。
 
-停止条件：Gateway 最终退出路径在现有外层 20 秒硬预算内等待当前 Timer 真正终止；
-Timer 未终止时 Gateway 线程保持存活，`QQBot` 保留 owner 并允许再次停止；故障注入证明首次
+停止条件：Gateway 最终退出路径等待当前 heartbeat owner 真正终止，不为 heartbeat 叠加
+第二份调用方等待预算；heartbeat 未终止时 Gateway 线程保持存活，`QQBot` 在现有 20 秒
+Gateway join 预算后保留 owner 并允许再次停止；故障注入证明首次
 停止返回 `False`、释放 callback 后第二次返回 `True`；生命周期专项和 task ownership 门禁通过；
 批次独立提交推送。
+
+本地实现与专项验收：
+
+* 递归 Timer 已替换为一个由 Gateway 聚合、按 connection generation 捕获精确 WebSocket 的
+  常驻心跳线程；新 Hello 必须先失效并等待旧 generation，旧连接 close 不能终止新连接心跳；
+* 状态锁只保护 epoch、owner 和 sequence 快照，任何 `join()`、网络发送及 close 回调都不持锁；
+  Gateway 的每次连接和最终退出都等待子 owner 终止，所以未收敛时外层 Gateway 线程保持存活；
+* 回调中的 Identify、Invalid Session 均使用回调携带的精确 WebSocket，避免 `ws_holder`
+  被并发 close 清空或替换后误发到别的连接；公开 `QQBot.stop()` 合同和等待预算未改变；
+* 三条阻塞发送、重复 Hello 和双连接重连故障注入测试并行重复 4 轮均通过；完整生命周期专项
+  `96 passed`，Ruff 通过，Pylint `10.00/10`，task ownership、复杂度、async blocking、
+  宿主基线及 Ruff/Mypy ratchet 均通过；Mypy 低水位从 11994 净减至 11993。
+* 双连接用例直接证明重连前必须等待旧心跳终止，且迟到的旧连接 close 不会终止新 generation；
+  独立代码审查未发现生产线程生命周期、锁序、generation 或 reconnect 合同缺陷；
+* 4 分片全量回归 `6391 passed, 6 skipped`；锁文件、Schema、Coverage、service locator 和
+  官方插件 ABI 语义门禁均通过，架构/质量专项 `50 passed`。插件参考仓只有不参与语义判定的
+  schema/provenance 漂移，且本地分支落后其远端 2 个提交，本轮保持参考仓只读且不刷新指纹。
 
 ## 五、验证矩阵
 
@@ -217,6 +236,10 @@ git rev-list --left-right --count HEAD...origin/v3
 | 2026-08-26 | 批次 1 交付 | `6062b0661` 已推送；远端同 SHA；ahead/behind `0/0`；显式变更 10 个路径 |
 | 2026-08-26 | 批次 2 canonical Coverage | run `32977180133` 与本机计数一致；Application 77.76%，Domain 79.24%；零 fixture 已初始化 |
 | 2026-08-26 | 批次 2 本地验收 | 串行全量 `6379 passed, 6 skipped`；最新专项 `26 passed`；Coverage/宿主/Schema/锁文件门禁通过 |
+| 2026-08-26 | 批次 2 交付 | `265d3c6d1` 已推送；远端同 SHA；ahead/behind `0/0`；显式变更 8 个路径 |
+| 2026-08-26 | 批次 3 启动 | 仅收口阶段 62 已记录的 QQ heartbeat owner，不扩张公开 `QQBot.stop()` 合同 |
+| 2026-08-26 | 批次 3 专项验收 | 三条故障注入并行重复 4 轮稳定；生命周期 `96 passed`；静态、所有权和架构门禁通过 |
+| 2026-08-26 | 批次 3 全量验收 | 最终快照 4 分片 `6391 passed, 6 skipped`；全部适用主仓门禁通过；插件 ABI 语义无变化 |
 
 ## 七、本轮停止条件
 
