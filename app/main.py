@@ -114,6 +114,10 @@ def run_api_server() -> None:
             host=get_runtime_setting('HOST'),
             port=get_runtime_setting('PORT'),
             reload=get_runtime_setting('DEV'),
+            # 运行态插件由热加载器管理，源码监听不应因插件同步重启整个服务。
+            reload_excludes=[str(settings.ROOT_PATH / "app" / "plugins")]
+            if get_runtime_setting('DEV')
+            else None,
             workers=get_runtime_setting('API_WORKERS'),
             timeout_graceful_shutdown=60,
         )
