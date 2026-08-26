@@ -3,10 +3,10 @@ from typing import Any, List, Optional, Tuple, Union
 
 import cn2an
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.runtime.settings import get_runtime_setting
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 
-settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils
 from app.domain.context import (
     MediaInfo,
@@ -21,7 +21,6 @@ from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.scraper import DoubanScraper
-from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.runtime.execution import retry
 from app.runtime.log import logger
 from app.runtime.rate import rate_limit_exponential
@@ -707,7 +706,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if (
             meta
             and not doubanid
-            and (kwargs.get("media_source") or settings.RECOGNIZE_SOURCE) != "douban"
+            and (kwargs.get("media_source") or get_runtime_setting("RECOGNIZE_SOURCE")) != "douban"
         ):
             return None
 
@@ -778,7 +777,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if (
             meta
             and not doubanid
-            and (kwargs.get("media_source") or settings.RECOGNIZE_SOURCE) != "douban"
+            and (kwargs.get("media_source") or get_runtime_setting("RECOGNIZE_SOURCE")) != "douban"
         ):
             return None
 
@@ -1685,7 +1684,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param mediainfo: 媒体信息
         :param season: 季号
         """
-        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != "douban":
+        if (mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")) != "douban":
             return None
         return self.scraper.get_metadata_nfo(mediainfo=mediainfo, season=season)
 
@@ -1696,7 +1695,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param season: 季号
         :param episode: 集号
         """
-        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != "douban":
+        if (mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")) != "douban":
             return None
         return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
@@ -1707,7 +1706,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param mediainfo: 媒体信息
         :return: None 表示不处理，MediaInfo 表示继续处理
         """
-        if mediainfo.media_source != MediaSource.Douban and settings.RECOGNIZE_SOURCE != "douban":
+        if mediainfo.media_source != MediaSource.Douban and get_runtime_setting("RECOGNIZE_SOURCE") != "douban":
             return None
         if not mediainfo.douban_id:
             return None

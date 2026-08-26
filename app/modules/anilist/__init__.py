@@ -1,16 +1,15 @@
 from typing import List, Optional, Tuple, Union
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.runtime.settings import get_runtime_setting
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 
-settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo
 from app.domain.media import is_media_source_enabled
 from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper
 from app.modules import _ModuleBase
 from app.modules.anilist.anilist import AniListApi
-from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.runtime.log import logger
 from app.schemas.types import (
     MediaRecognizeType,
@@ -78,7 +77,7 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param media_source: 请求级识别数据源
         :return: 是否启用 AniList 识别
         """
-        return (media_source or settings.RECOGNIZE_SOURCE) == MediaSource.AniList
+        return (media_source or get_runtime_setting("RECOGNIZE_SOURCE")) == MediaSource.AniList
 
     @staticmethod
     def _media_type(info: dict) -> MediaType:
@@ -571,7 +570,7 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param episode: 集号
         :return: NFO XML 文本
         """
-        scrape_source = mediainfo.scrape_source or settings.SCRAP_SOURCE
+        scrape_source = mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")
         if scrape_source != "anilist":
             return None
         return self.scraper.get_metadata_nfo(mediainfo, season=season, episode=episode)
@@ -590,7 +589,7 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param episode: 集号
         :return: 图片文件名与下载地址映射
         """
-        scrape_source = mediainfo.scrape_source or settings.SCRAP_SOURCE
+        scrape_source = mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")
         if scrape_source != "anilist":
             return None
         return self.scraper.get_metadata_img(mediainfo, season=season, episode=episode)

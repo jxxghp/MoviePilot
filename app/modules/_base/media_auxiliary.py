@@ -21,8 +21,9 @@ class MediaAuxiliaryProviderMixin:
     def _build_auxiliary_meta(
             mediainfo: MediaInfo,
             metainfo: Optional[MetaBase] = None,
-    ) -> MetaInfo:
+    ) -> MetaBase:
         """根据主识别结果构造不携带原来源身份的标题查询参数。"""
+        # MetaInfo 是工厂函数，实际返回 MetaBase 及其子类实例
         meta = MetaInfo(mediainfo.title or getattr(metainfo, "name", None) or "")
         if not meta.en_name:
             meta.en_name = mediainfo.en_title or getattr(metainfo, "en_name", None)

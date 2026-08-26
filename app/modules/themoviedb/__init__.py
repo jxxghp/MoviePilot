@@ -3,19 +3,18 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import cn2an
 
-from app.runtime.settings import RuntimeSettingsCompat
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.runtime.settings import get_runtime_setting
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
 
-settings = RuntimeSettingsCompat()
 from app.adapters.network.http import RequestUtils
 from app.domain.context import MediaInfo
 from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
-from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
@@ -95,13 +94,13 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         测试模块连接性
         """
-        ret = RequestUtils(ua=settings.NORMAL_USER_AGENT, proxies=settings.PROXY).get_res(
-            f"https://{settings.TMDB_API_DOMAIN}/3/movie/550?api_key={settings.TMDB_API_KEY}")
+        ret = RequestUtils(ua=get_runtime_setting("NORMAL_USER_AGENT"), proxies=get_runtime_setting("PROXY")).get_res(
+            f"https://{get_runtime_setting("TMDB_API_DOMAIN")}/3/movie/550?api_key={get_runtime_setting("TMDB_API_KEY")}")
         if ret and ret.status_code == 200:
             return True, ""
         elif ret:
-            return False, f"无法连接 {settings.TMDB_API_DOMAIN}，错误码：{ret.status_code}"
-        return False, f"{settings.TMDB_API_DOMAIN} 网络连接失败"
+            return False, f"无法连接 {get_runtime_setting("TMDB_API_DOMAIN")}，错误码：{ret.status_code}"
+        return False, f"{get_runtime_setting("TMDB_API_DOMAIN")} 网络连接失败"
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
@@ -123,7 +122,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if not tmdbid and not meta:
             return False
 
-        selected_source = normalize_media_source(media_source or settings.RECOGNIZE_SOURCE)
+        selected_source = normalize_media_source(media_source or get_runtime_setting("RECOGNIZE_SOURCE"))
         if meta and not tmdbid and selected_source != MediaSource.TMDB:
             return False
 
@@ -974,7 +973,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param season: 季号
         :param episode: 集号
         """
-        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != "themoviedb":
+        if (mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")) != "themoviedb":
             return None
         return self.scraper.get_metadata_nfo(meta=meta, mediainfo=mediainfo, season=season, episode=episode)
 
@@ -986,7 +985,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param season: 季号
         :param episode: 集号
         """
-        if (mediainfo.scrape_source or settings.SCRAP_SOURCE) != "themoviedb":
+        if (mediainfo.scrape_source or get_runtime_setting("SCRAP_SOURCE")) != "themoviedb":
             return None
         return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
@@ -1107,7 +1106,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param mediainfo: 媒体信息
         :return: None 表示不处理，MediaInfo 表示继续处理
         """
-        if mediainfo.media_source != "themoviedb" and settings.RECOGNIZE_SOURCE != "themoviedb":
+        if mediainfo.media_source != "themoviedb" and get_runtime_setting("RECOGNIZE_SOURCE") != "themoviedb":
             return None
         if not mediainfo.tmdb_id:
             return mediainfo
@@ -1148,15 +1147,15 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         # 背景图
         if not mediainfo.backdrop_path:
             if image_path := cls._pick_best_tmdb_image(images.get("backdrops")):
-                mediainfo.backdrop_path = settings.TMDB_IMAGE_URL(image_path)
+                mediainfo.backdrop_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
         # 标志
         if not mediainfo.logo_path:
             if image_path := cls._pick_best_tmdb_image(images.get("logos")):
-                mediainfo.logo_path = settings.TMDB_IMAGE_URL(image_path)
+                mediainfo.logo_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
         # 海报
         if not mediainfo.poster_path:
             if image_path := cls._pick_best_tmdb_image(images.get("posters")):
-                mediainfo.poster_path = settings.TMDB_IMAGE_URL(image_path)
+                mediainfo.poster_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
         return mediainfo
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
@@ -1246,7 +1245,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                 image_path = seasoninfo.get(image_type.value)
 
         if image_path:
-            return settings.TMDB_IMAGE_URL(image_path, image_prefix)
+            return get_runtime_setting("TMDB_IMAGE_URL")(image_path, image_prefix)
         return None
 
     def tmdb_movie_similar(self, tmdbid: int) -> List[MediaInfo]:
