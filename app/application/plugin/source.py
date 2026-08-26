@@ -661,7 +661,7 @@ def select_plugin_candidate(
         return PluginSelection(
             status=PluginSelectionStatus.CONFLICT,
             conflict_source_keys=tuple(source_key for _source_type, source_key in source_pairs),
-            reason="未安装插件存在多个在线来源，不能静默选择",
+            reason="该插件存在多个在线来源，请确认来源后安装。",
         )
 
     source_type = next(iter(source_pairs))[0]
