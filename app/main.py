@@ -115,8 +115,11 @@ def run_api_server() -> None:
             host=settings.HOST,
             port=settings.PORT,
             reload=settings.DEV,
-            # 运行态插件由热加载器管理，源码监听不应因插件同步重启整个服务。
-            reload_excludes=[str(settings.ROOT_PATH / "app" / "plugins")]
+            # 运行插件及其恢复材料由插件生命周期管理，不属于宿主源码变更。
+            reload_excludes=[
+                str(settings.ROOT_PATH / "app" / "plugins"),
+                str(settings.CONFIG_PATH),
+            ]
             if settings.DEV
             else None,
             workers=settings.API_WORKERS,
