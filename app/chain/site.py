@@ -343,8 +343,10 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def __rousi_test(self, site: Site) -> Tuple[bool, str]:
         """
-        判断站点是否已经登陆：rousi
+        使用 PeerGo 个人 API Key 验证 Rousi.pro 站点连接。
         """
+        if not site.apikey:
+            return False, "未配置个人 API Key"
         url = f"https://{site_rules.extract_domain(site.url)}/api/v1/profile"
         headers = {
             "Content-Type": "application/json",
@@ -359,10 +361,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if res is None:
             return False, "无法打开网站！"
         if res.status_code == 200:
-            user_info = res.json()
+            try:
+                user_info = res.json()
+            except (TypeError, ValueError):
+                return False, "站点返回了无效的用户数据"
             if user_info and user_info.get("code") == 0:
                 return True, "连接成功"
-            return False, "APIKEY已过期"
+            return False, "个人 API Key 已失效或权限不足"
+        elif res.status_code in (401, 403):
+            return False, "个人 API Key 已失效或权限不足"
         else:
             return False, f"错误：{res.status_code} {res.reason}"
 

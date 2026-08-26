@@ -14,8 +14,9 @@ from app.modules.indexer.parser import SiteParserBase, SiteSchema
 
 class RousiSiteUserInfo(SiteParserBase):
     """
-    Rousi.pro 站点解析器
-    使用 API v1 接口，通过 Passkey (Bearer Token) 进行认证
+    Rousi.pro PeerGo 用户数据解析器。
+
+    使用具有 profile:read 权限的个人 API Key 访问兼容资料接口。
     """
     schema = SiteSchema.RousiPro
     request_mode = "apikey"
@@ -23,10 +24,10 @@ class RousiSiteUserInfo(SiteParserBase):
     def _parse_site_page(self, html_text: str):
         """
         配置 API 请求地址和请求头
-        使用 API v1 的 /profile 接口获取用户信息
+        使用 PeerGo MoviePilot 兼容的 /profile 接口获取用户信息。
         """
         self._base_url = f"https://{site_rules.extract_domain(self._site_url)}"
-        self._user_basic_page = "api/v1/profile?include_fields[user]=seeding_leeching_data"
+        self._user_basic_page = "api/v1/profile"
         self._user_basic_params = {}
         self._user_basic_headers = {
             "Content-Type": "application/json",
@@ -84,13 +85,18 @@ class RousiSiteUserInfo(SiteParserBase):
             logger.error(f"{self._site_name} JSON 解析失败")
             return
 
-        if not data or data.get("code") != 0:
+        if not isinstance(data, dict):
+            self.err_msg = "用户数据响应结构无效"
+            logger.warning(f"{self._site_name} API 响应结构无效")
+            return
+
+        if data.get("code") != 0:
             self.err_msg = data.get("message", "未知错误")
-            logger.warn(f"{self._site_name} API 错误: {self.err_msg}")
+            logger.warning(f"{self._site_name} API 错误: {self.err_msg}")
             return
 
         user_info = data.get("data")
-        if not user_info:
+        if not isinstance(user_info, dict):
             return
 
         # 基本信息

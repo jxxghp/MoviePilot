@@ -2,30 +2,28 @@ import base64
 import json
 from typing import List, Optional, Tuple
 
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
-from app.runtime.log import logger
-from app.schemas.types import MediaType
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 class RousiSpider:
     """
-    Rousi.pro API v1 Spider
+    Rousi.pro PeerGo 兼容 API 索引器。
 
-    使用 API v1 接口进行种子搜索
-    - 认证方式：Bearer Token (Passkey)
-    - 搜索接口：/api/v1/torrents
-    - 详情接口：/api/v1/torrents/:id
+    使用个人 API Key 访问搜索兼容接口，并通过详情接口换取短时下载地址。
+    API Key 需要授予 torrent:read 和 torrent:download 权限。
     """
     _indexerid = None
     _domain = None
     _url = None
     _name = ""
     _proxy = None
+    _use_proxy = False
     _cookie = None
     _ua = None
     _size = 100
@@ -39,7 +37,7 @@ class RousiSpider:
     _tv_category = 'tv'
     _music_category = 'music'
 
-    # API KEY
+    # PeerGo 个人 API Key
     _apikey = None
 
     @classmethod
@@ -60,6 +58,7 @@ class RousiSpider:
             self._name = indexer.get('name')
             if indexer.get('proxy'):
                 self._proxy = get_runtime_setting('PROXY')
+            self._use_proxy = bool(indexer.get('proxy'))
             self._cookie = indexer.get('cookie')
             self._ua = indexer.get('ua')
             self._apikey = indexer.get('apikey')
@@ -134,23 +133,25 @@ class RousiSpider:
         :param res: 请求响应对象
         :return: (是否发生错误, 种子列表)
         """
-        if res and res.status_code == 200:
+        if res is not None and res.status_code == 200:
             try:
                 data = res.json()
-                if data.get('code') == 0:
-                    results = data.get('data', {}).get('torrents', [])
-                    return False, self.__parse_result(results)
-                else:
-                    logger.warn(f"{self._name} 搜索失败，错误信息：{data.get('message')}")
-                    return True, []
-            except Exception as e:
-                logger.warn(f"{self._name} 解析响应失败：{e}")
+            except (TypeError, ValueError) as err:
+                logger.warning(f"{self._name} 解析搜索响应失败：{str(err)}")
                 return True, []
+            if not isinstance(data, dict):
+                logger.warning(f"{self._name} 搜索响应结构无效")
+                return True, []
+            if data.get('code') == 0:
+                results = data.get('data', {}).get('torrents', [])
+                return False, self.__parse_result(results)
+            logger.warning(f"{self._name} 搜索失败，错误信息：{data.get('message')}")
+            return True, []
         elif res is not None:
-            logger.warn(f"{self._name} 搜索失败，HTTP 错误码：{res.status_code}")
+            logger.warning(f"{self._name} 搜索失败，HTTP 错误码：{res.status_code}")
             return True, []
         else:
-            logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
+            logger.warning(f"{self._name} 搜索失败，无法连接 {self._domain}")
             return True, []
 
     def __parse_result(self, results: List[dict]) -> List[dict]:
@@ -203,10 +204,11 @@ class RousiSpider:
                 if promotion.get('until'):
                     freedate = time_tools.normalize_datetime(promotion.get('until'))
 
+            torrent_id = result.get('id')
             torrent = {
                 'title': result.get('title'),
                 'description': result.get('subtitle'),
-                'enclosure': self.__get_download_url(result.get('id')),
+                'enclosure': self.__get_download_url(torrent_id),
                 'pubdate': time_tools.normalize_datetime(result.get('created_at')),
                 'size': int(result.get('size') or 0),
                 'seeders': int(result.get('seeders') or 0),
@@ -215,7 +217,7 @@ class RousiSpider:
                 'downloadvolumefactor': downloadvolumefactor,
                 'uploadvolumefactor': uploadvolumefactor,
                 'freedate': freedate,
-                'page_url': f"https://{self._domain}/torrent/{result.get('uuid')}",
+                'page_url': f"https://{self._domain}/torrents/{torrent_id}",
                 'labels': [],
                 'category': category
             }
@@ -233,7 +235,7 @@ class RousiSpider:
         :return: (是否发生错误, 种子列表)
         """
         if not self._apikey:
-            logger.warn(f"{self._name} 未配置 API Key (Passkey)")
+            logger.warning(f"{self._name} 未配置个人 API Key")
             return True, []
 
         params = self.__get_params(keyword, mtype, cat, page)
@@ -261,7 +263,7 @@ class RousiSpider:
         :return: (是否发生错误, 种子列表)
         """
         if not self._apikey:
-            logger.warn(f"{self._name} 未配置 API Key (Passkey)")
+            logger.warning(f"{self._name} 未配置个人 API Key")
             return True, []
 
         params = self.__get_params(keyword, mtype, cat, page)
@@ -282,8 +284,7 @@ class RousiSpider:
         """
         构建种子下载链接
 
-        使用 base64 编码的方式告诉 MoviePilot 如何获取真实下载地址
-        MoviePilot 会先请求详情接口，然后从响应中提取 data.download_url
+        MoviePilot 会携带个人 API Key 请求详情接口，再提取带 capability 的短时下载地址。
 
         :param torrent_id: 种子 ID
         :return: base64 编码的请求配置字符串 + 详情接口 URL
@@ -294,10 +295,12 @@ class RousiSpider:
         # 2. 从 JSON 响应中提取 result 指定的字段值作为真实下载地址
         params = {
             'method': 'get',
+            'cookie': False,
             'header': {
                 'Authorization': f'Bearer {self._apikey}',
                 'Accept': 'application/json'
             },
+            'proxy': self._use_proxy,
             'result': 'data.download_url'
         }
         base64_str = base64.b64encode(json.dumps(params).encode('utf-8')).decode('utf-8')
