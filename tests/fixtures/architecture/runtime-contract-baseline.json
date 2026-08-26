@@ -1965,7 +1965,7 @@
     }
   },
   "events": {
-    "consumer_count": 15,
+    "consumer_count": 16,
     "dynamic_consumers": [
       {
         "caller": "app.adapters.system.fsproxy",
@@ -2293,6 +2293,10 @@
       },
       "EventType.ConfigChanged": {
         "consumers": [
+          {
+            "caller": "app.chain.subscribe",
+            "count": 1
+          },
           {
             "caller": "app.runtime.extensions.module_manager",
             "count": 1

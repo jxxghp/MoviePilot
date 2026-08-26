@@ -1192,7 +1192,10 @@ async def set_setting(
         try:
             with plugin_system_config_mutation(key):
                 success = await get_configured_system_config().async_set(key, value)
-                if success:
+                if success or (
+                    success is None
+                    and key == SystemConfigKey.UserFilterRuleGroups.value
+                ):
                     # 发送配置变更事件
                     await eventmanager.async_send_event(
                         etype=EventType.ConfigChanged,

@@ -4,6 +4,7 @@
 """
 
 import threading
+from collections.abc import Iterable
 from typing import Dict, List, Optional
 
 from pyparsing import (
@@ -83,6 +84,20 @@ class RuleHelper:
             (rule for rule in self.get_custom_rules() if rule.id == rule_id),
             None,
         )
+
+
+def replace_group_name_in_list(
+    values: Optional[Iterable[str]],
+    old_name: str,
+    new_name: str,
+) -> list[str]:
+    """更新配置里的规则组名引用，并顺手去重。"""
+    result = []
+    for value in values or []:
+        mapped = new_name if value == old_name else value
+        if mapped not in result:
+            result.append(mapped)
+    return result
 
 
 # 内置规则只在这里维护一份，便于过滤模块和 Agent 工具共享同一套事实来源。

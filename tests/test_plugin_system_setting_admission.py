@@ -228,6 +228,35 @@ async def test_non_plugin_system_config_does_not_resolve_plugin_runtime(
 
 
 @pytest.mark.asyncio
+async def test_rule_group_setting_reconciles_stale_references_when_unchanged(
+    monkeypatch,
+) -> None:
+    """重复保存规则组也应按有效名称对账，修复旧版本遗留的悬空订阅引用。"""
+    config = MagicMock()
+    config.async_set = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        system_endpoint,
+        "get_runtime_settings",
+        lambda: SimpleNamespace(contains=lambda _key: False),
+    )
+    monkeypatch.setattr(
+        system_endpoint,
+        "get_configured_system_config",
+        lambda: config,
+    )
+    monkeypatch.setattr(system_endpoint.eventmanager, "async_send_event", AsyncMock())
+
+    response = await system_endpoint.set_setting(
+        SystemConfigKey.UserFilterRuleGroups.value,
+        [{"name": "keep", "rule_string": "4K"}],
+        None,
+    )
+
+    assert response.success is True
+    system_endpoint.eventmanager.async_send_event.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_agent_non_plugin_config_does_not_resolve_plugin_runtime(
     monkeypatch,
 ) -> None:

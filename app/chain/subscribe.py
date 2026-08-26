@@ -103,6 +103,24 @@ else:
             """返回快照字段，兼容整理链的响应转换。"""
             return dict(self.__dict__)
 
+
+def _rule_group_names(rule_groups: Optional[List[Any]]) -> set[str]:
+    """从规则组持久化字典中提取非空名称。"""
+    return {
+        str(group.get("name")).strip()
+        for group in rule_groups or []
+        if isinstance(group, dict) and group.get("name")
+    }
+
+
+def _retain_rule_group_names(
+    values: Optional[List[str]],
+    valid_names: set[str],
+) -> List[str]:
+    """按当前规则组定义保留有效引用，并维持原有顺序。"""
+    return [value for value in values or [] if value in valid_names]
+
+
 @dataclass(frozen=True, slots=True)
 class _SubscribePostCommitContext:
     """订阅提交后副作用所需的不可变业务快照。"""
@@ -1212,6 +1230,13 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 ]
             else:
                 subscribes = subscribeoper.list(self.get_states_for_search(state))
+            self._reconcile_rule_group_references(
+                valid_names=_rule_group_names(
+                    _system_config().get(SystemConfigKey.UserFilterRuleGroups)
+                ),
+                subscribeoper=subscribeoper,
+                subscribes=subscribes,
+            )
             total_num = len(subscribes)
             processed_subscribes = []
             # 搜索链在整个订阅循环内复用，避免每轮订阅重复执行链初始化
@@ -3020,6 +3045,69 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             subscribeoper.update(subscribe.id, {
                 "sites": sites
             })
+
+    @eventmanager.register(EventType.ConfigChanged)
+    def reconcile_rule_group_references(self, event: Event) -> None:
+        """规则组定义保存后清理默认配置和已有订阅中的悬空引用。"""
+        if not event:
+            return
+        event_data = event.event_data
+        if isinstance(event_data, dict):
+            changed_keys = event_data.get("key", set())
+            value = event_data.get("value")
+        else:
+            changed_keys = getattr(event_data, "key", set())
+            value = getattr(event_data, "value", None)
+        if isinstance(changed_keys, str):
+            changed_keys = {changed_keys}
+        normalized_keys = {str(key) for key in (changed_keys or set())}
+        if not normalized_keys.intersection({
+            SystemConfigKey.UserFilterRuleGroups.value,
+            str(SystemConfigKey.UserFilterRuleGroups),
+        }):
+            return
+
+        self._reconcile_rule_group_references(valid_names=_rule_group_names(value))
+
+    @staticmethod
+    def _reconcile_rule_group_references(
+        valid_names: set[str],
+        subscribeoper=None,
+        subscribes: Optional[List[Any]] = None,
+    ) -> None:
+        """持久化清理规则组引用，并同步当前搜索使用的订阅对象。"""
+        system_config = _system_config()
+        for config_key in (
+            SystemConfigKey.SearchFilterRuleGroups,
+            SystemConfigKey.SubscribeFilterRuleGroups,
+            SystemConfigKey.BestVersionFilterRuleGroups,
+        ):
+            original = system_config.get(config_key) or []
+            updated = _retain_rule_group_names(original, valid_names)
+            if updated != original:
+                system_config.set(config_key, updated)
+
+        for config_key in (
+            SystemConfigKey.DefaultMovieSubscribeConfig,
+            SystemConfigKey.DefaultTvSubscribeConfig,
+            SystemConfigKey.DefaultMusicSubscribeConfig,
+        ):
+            original = system_config.get(config_key) or {}
+            original_groups = original.get("filter_groups") or []
+            updated_groups = _retain_rule_group_names(original_groups, valid_names)
+            if updated_groups == original_groups:
+                continue
+            updated = copy.deepcopy(original)
+            updated["filter_groups"] = updated_groups
+            system_config.set(config_key, updated)
+
+        subscribeoper = subscribeoper or get_chain_subscribe_port()
+        for subscribe in subscribes if subscribes is not None else subscribeoper.list():
+            original = getattr(subscribe, "filter_groups", None) or []
+            updated = _retain_rule_group_names(original, valid_names)
+            if updated != original:
+                subscribeoper.update(subscribe.id, {"filter_groups": updated})
+                subscribe.filter_groups = updated
 
     @staticmethod
     def __get_default_subscribe_config(mtype: MediaType, default_config_key: str) -> Optional[str]:
