@@ -11,6 +11,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
+from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
@@ -43,9 +44,10 @@ class ImdbConfigSnapshot:
     proxy: Any
 
 
-class ImdbModule(_ModuleBase):
+class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     """提供 IMDb 搜索、识别、详情补全与刮削能力。"""
 
+    auxiliary_media_source = MediaSource.IMDb
     CONFIG_WATCH = {"PROXY_HOST"}
     _IMDB_ID_PATTERN = re.compile(r"^tt\d+$", re.IGNORECASE)
     _MOVIE_TYPES = frozenset({"movie", "tvMovie"})

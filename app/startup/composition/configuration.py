@@ -139,6 +139,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         ai_recommend_user_preference=settings.AI_RECOMMEND_USER_PREFERENCE,
         max_search_name_limit=settings.MAX_SEARCH_NAME_LIMIT,
         search_multiple_name=settings.SEARCH_MULTIPLE_NAME,
+        search_source=settings.SEARCH_SOURCE,
         search_threadpool_size=settings.CONF.threadpool,
         transfer_threads=settings.TRANSFER_THREADS,
         transfer_failure_notification_aggregation=(

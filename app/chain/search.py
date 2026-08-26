@@ -1212,6 +1212,7 @@ class SearchChain(ChainBase):
         else:
             # 去重去空，但要保持顺序
             keywords = list(dict.fromkeys([k for k in [mediainfo.title,
+                                                       *(mediainfo.names or []),
                                                        mediainfo.original_title,
                                                        mediainfo.en_title,
                                                        mediainfo.hk_title,
@@ -1709,6 +1710,9 @@ class SearchChain(ChainBase):
                 logger.error('媒体信息识别失败！')
                 return []
 
+        # 搜索前按用户启用的数据源聚合别名；分类、风格与外部 ID 仅由 TMDB 补充。
+        mediainfo = MediaChain().supplement_media_info(mediainfo) or mediainfo
+
         # 准备搜索参数
         season_episodes, keywords = self.__prepare_params(
             mediainfo=mediainfo,
@@ -1802,6 +1806,12 @@ class SearchChain(ChainBase):
                 logger.error('媒体信息识别失败！')
                 return []
 
+        # 异步搜索与同步入口共享同一份多来源附加信息语义。
+        mediainfo = (
+            await MediaChain().async_supplement_media_info(mediainfo)
+            or mediainfo
+        )
+
         # 准备搜索参数
         season_episodes, keywords = self.__prepare_params(
             mediainfo=mediainfo,
@@ -1889,6 +1899,11 @@ class SearchChain(ChainBase):
                     "message": "媒体信息识别失败"
                 }
                 return
+
+        mediainfo = (
+            await MediaChain().async_supplement_media_info(mediainfo)
+            or mediainfo
+        )
 
         # 准备搜索参数
         season_episodes, keywords = self.__prepare_params(

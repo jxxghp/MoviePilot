@@ -1,15 +1,17 @@
 from typing import List, Optional, Tuple, Union
 
-from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.runtime.settings import RuntimeSettingsCompat
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 
 settings = RuntimeSettingsCompat()
 from app.domain.context import MediaInfo
+from app.domain.media import is_media_source_enabled
 from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper
-from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.anilist.anilist import AniListApi
+from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.runtime.log import logger
 from app.schemas.types import (
     MediaRecognizeType,
     MediaSource,
@@ -17,14 +19,14 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.domain.media import is_media_source_enabled
 
 
-class AniListModule(_ModuleBase):
+class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     """
     AniList 动画媒体识别与刮削模块
     """
 
+    auxiliary_media_source = MediaSource.AniList
     CONFIG_WATCH = {"PROXY_HOST"}
 
     anilist_api: AniListApi = None

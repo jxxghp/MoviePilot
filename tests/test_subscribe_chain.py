@@ -74,6 +74,10 @@ def _load_subscribe_chain_class():
             """异步按元数据识别默认返回空结果。"""
             return None
 
+        def supplement_media_info(self, mediainfo, *args, **kwargs):
+            """隔离测试不访问外部附加信息源，原样返回识别结果。"""
+            return mediainfo
+
     interaction_module = ensure_module("app.application.messaging.interaction", types.ModuleType("app.application.messaging.interaction"))
 
     class _SlashInteractionManager:
@@ -455,7 +459,10 @@ SubscribeInteractionHandler = SUBSCRIBE_CHAIN_MODULE.SubscribeInteractionHandler
 def _patch_media_recognize(module, result):
     """将隔离测试中的统一媒体识别入口替换为指定结果或回调。"""
     recognizer = result if callable(result) else lambda **_kwargs: result
-    media_chain = SimpleNamespace(recognize_media=recognizer)
+    media_chain = SimpleNamespace(
+        recognize_media=recognizer,
+        supplement_media_info=lambda mediainfo: mediainfo,
+    )
     return patch.object(module, "MediaChain", return_value=media_chain)
 
 

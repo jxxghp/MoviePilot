@@ -1804,8 +1804,14 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     if exist_flag:
                         continue
 
-                    # 清理多余信息
+                    # 匹配前聚合多来源别名；清理大字段时保留匹配所需的标题合集。
+                    mediainfo = (
+                        MediaChain().supplement_media_info(mediainfo)
+                        or mediainfo
+                    )
+                    auxiliary_names = list(getattr(mediainfo, "names", None) or [])
                     mediainfo.clear()
+                    mediainfo.names = auxiliary_names
 
                     # 订阅识别词
                     if subscribe.custom_words:

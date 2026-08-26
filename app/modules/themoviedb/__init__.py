@@ -1,24 +1,29 @@
 import re
-from typing import Optional, List, Tuple, Union, Dict
+from typing import Dict, List, Optional, Tuple, Union
 
 import cn2an
 
-from app.schemas.context import MediaPerson as _SchemaMediaPerson
-from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
-from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.runtime.settings import RuntimeSettingsCompat
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
+from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
+from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
 
 settings = RuntimeSettingsCompat()
+from app.adapters.network.http import RequestUtils
 from app.domain.context import MediaInfo
+from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
-from app.runtime.log import logger
+from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
+from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdb_cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
+from app.runtime.log import logger
 from app.schemas.category import CategoryConfig
+from app.schemas.media import normalize_media_source
 from app.schemas.types import (
     MediaImageType,
     MediaRecognizeType,
@@ -27,20 +32,16 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.adapters.network.http import RequestUtils
-from app.domain.media import is_media_source_enabled, is_media_source_selected
-from app.schemas.media import normalize_media_source
-from app.foundation.text import convert as zhconv_convert
-
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-class TheMovieDbModule(_ModuleBase):
+class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     """
     TMDB媒体信息匹配
     """
     CONFIG_WATCH = {"PROXY_HOST", "TMDB_API_DOMAIN", "TMDB_API_KEY", "TMDB_LOCALE"}
+    auxiliary_media_source = MediaSource.TMDB
 
     # 元数据缓存
     cache: TmdbCache = None

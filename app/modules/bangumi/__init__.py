@@ -1,16 +1,19 @@
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union
 
-from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.runtime.settings import RuntimeSettingsCompat
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 
 settings = RuntimeSettingsCompat()
+from app.adapters.network.http import RequestUtils
 from app.domain.context import MediaInfo
+from app.domain.media import is_media_source_enabled
 from app.domain.meta.metabase import MetaBase
 from app.domain.scraper import MediaScraperHelper
-from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.bangumi.bangumi import BangumiApi
+from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.runtime.log import logger
 from app.schemas.types import (
     MediaRecognizeType,
     MediaSource,
@@ -18,8 +21,6 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.adapters.network.http import RequestUtils
-from app.domain.media import is_media_source_enabled
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,10 +30,11 @@ class BangumiConfigSnapshot:
     proxy: Any
 
 
-class BangumiModule(_ModuleBase):
+class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     """
     Bangumi媒体信息匹配
     """
+    auxiliary_media_source = MediaSource.Bangumi
     CONFIG_WATCH = {"PROXY_HOST"}
 
     bangumiapi: BangumiApi = None

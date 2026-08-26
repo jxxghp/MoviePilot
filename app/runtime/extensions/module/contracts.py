@@ -89,6 +89,13 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("meta", "media_source"),
     ),
+    "get_media_auxiliary_info": ModuleMethodContract(
+        family="media-recognition", input_contract="MediaAuxiliaryInfoRequest",
+        result_contract="list[MediaInfo]", result_shape=ModuleResultShape.LIST,
+        aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
+        required_parameters=("mediainfo", "media_source", "metainfo"),
+        plugin_short_circuit=False,
+    ),
     "obtain_images": ModuleMethodContract(family="media-recognition", input_contract="MediaInfo", result_contract="MediaInfo | None", aggregation=ModuleResultAggregation.PIPELINE_RELAY, required_parameters=("mediainfo",)),
     "media_category": ModuleMethodContract(family="media-recognition", input_contract="MediaCategoryRequest", result_contract="dict[str, list] | None", result_shape=ModuleResultShape.MAPPING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY),
     "mediaserver_items": ModuleMethodContract(family="media-server", input_contract="MediaServerItemsRequest", result_contract="Iterable[MediaServerItem] | None", aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("server", "library_id", "start_index", "limit")),
@@ -248,6 +255,7 @@ _METHOD_CONTRACTS.update({
     "async_match_tmdbinfo": _METHOD_CONTRACTS["match_tmdbinfo"],
     "async_update_recognize_cache": _METHOD_CONTRACTS["update_recognize_cache"],
     "async_search_medias": _METHOD_CONTRACTS["search_medias"],
+    "async_get_media_auxiliary_info": _METHOD_CONTRACTS["get_media_auxiliary_info"],
     "async_obtain_images": _METHOD_CONTRACTS["obtain_images"],
     "async_movie_hot": _METHOD_CONTRACTS["movie_hot"],
     "async_movie_showing": _METHOD_CONTRACTS["movie_showing"],
@@ -592,9 +600,9 @@ def _infer_observed_family(method: str) -> str:
     )):
         return "music"
     if method.startswith((
-        "async_match_", "async_obtain_images", "async_recognize_media",
+        "async_get_media_auxiliary_info", "async_match_", "async_obtain_images", "async_recognize_media",
         "async_update_recognize_cache", "match_", "obtain_images",
-        "recognize_media", "update_recognize_cache",
+        "get_media_auxiliary_info", "recognize_media", "update_recognize_cache",
     )):
         return "media-recognition"
     if method.startswith((

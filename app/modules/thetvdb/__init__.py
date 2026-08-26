@@ -1,13 +1,23 @@
 from threading import Lock
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, cast
 
 from app.runtime.settings import RuntimeSettingsCompat
 
 settings = RuntimeSettingsCompat()
-from app.runtime.log import logger
+from app.domain.context import MediaInfo
+from app.domain.media import is_media_source_enabled
+from app.domain.meta.metabase import MetaBase
 from app.modules import _ModuleBase
 from app.modules.thetvdb import tvdb_v4_official
-from app.schemas.types import ModuleType, MediaRecognizeType
+from app.runtime.execution import run_in_threadpool
+from app.runtime.log import logger
+from app.schemas.types import (
+    MediaRecognizeType,
+    MediaSource,
+    MediaSourceSelection,
+    MediaType,
+    ModuleType,
+)
 
 
 class TheTvDbModule(_ModuleBase):
@@ -178,6 +188,111 @@ class TheTvDbModule(_ModuleBase):
         except Exception as err:
             logger.error(f"用标题搜索TVDB剧集失败 ({title}): {str(err)}")
             return []
+
+    @staticmethod
+    def _tvdb_aliases(info: dict[str, object]) -> list[str]:
+        """从 TVDB 搜索或详情响应中提取名称与翻译别名。"""
+        values: list[object] = [info.get("name")]
+        for field in ("aliases", "translations", "nameTranslations"):
+            raw_value = info.get(field) or []
+            if isinstance(raw_value, dict):
+                raw_value = list(raw_value.values())
+            if not isinstance(raw_value, (list, tuple, set)):
+                raw_value = [raw_value]
+            for item in raw_value:
+                values.append(
+                    item.get("name") or item.get("value")
+                    if isinstance(item, dict)
+                    else item
+                )
+        aliases: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            alias = str(value or "").strip()
+            normalized = " ".join(alias.casefold().split())
+            if alias and normalized not in seen:
+                aliases.append(alias)
+                seen.add(normalized)
+        return aliases
+
+    @staticmethod
+    def _tvdb_media_id(info: dict[str, object]) -> Optional[str]:
+        """从不同形态的 TVDB 响应中提取纯数字来源 ID。"""
+        raw_id = info.get("tvdb_id") or info.get("id")
+        if raw_id is None:
+            return None
+        value = str(raw_id).rsplit("-", 1)[-1]
+        return value if value.isdigit() else None
+
+    def get_media_auxiliary_info(
+            self,
+            mediainfo: MediaInfo,
+            media_source: Optional[MediaSourceSelection] = None,
+            metainfo: Optional[MetaBase] = None,
+    ) -> list[MediaInfo]:
+        """从 TVDB 补充电视剧别名，不向主媒体写入 TVDB 专用字段。"""
+        if (
+                not mediainfo
+                or mediainfo.type != MediaType.TV
+                or not is_media_source_enabled(media_source, MediaSource.TVDB)
+        ):
+            return []
+        del metainfo
+        if (
+                mediainfo.media_source == MediaSource.TVDB
+                and str(mediainfo.media_id or "").isdigit()
+        ):
+            info = self.tvdb_info(int(mediainfo.media_id))
+            candidates = [info] if info else []
+        else:
+            candidates = self.search_tvdb(mediainfo.title)
+        target_names = {
+            " ".join(str(name).casefold().split())
+            for name in [mediainfo.title, *(mediainfo.names or [])]
+            if name
+        }
+        for info in candidates:
+            candidate_year = str(
+                info.get("year")
+                or info.get("firstAired")
+                or info.get("first_air_time")
+                or ""
+            )[:4]
+            if mediainfo.year and candidate_year and str(mediainfo.year) != candidate_year:
+                continue
+            aliases = self._tvdb_aliases(info)
+            normalized_aliases = {" ".join(alias.casefold().split()) for alias in aliases}
+            if not target_names.intersection(normalized_aliases):
+                continue
+            media_id = self._tvdb_media_id(info)
+            if not media_id or not aliases:
+                continue
+            return [MediaInfo(
+                media_source=MediaSource.TVDB,
+                media_id=media_id,
+                type=MediaType.TV,
+                title=aliases[0],
+                year=str(info.get("year")) if info.get("year") else mediainfo.year,
+                names=aliases,
+            )]
+        return []
+
+    async def async_get_media_auxiliary_info(
+            self,
+            mediainfo: MediaInfo,
+            media_source: Optional[MediaSourceSelection] = None,
+            metainfo: Optional[MetaBase] = None,
+    ) -> list[MediaInfo]:
+        """在线程池中执行 TVDB 同步附加信息查询。"""
+        return cast(
+            list[MediaInfo],
+            await run_in_threadpool(
+                self.get_media_auxiliary_info,
+                mediainfo=mediainfo,
+                media_source=media_source,
+                metainfo=metainfo,
+            ),
+        )
 
     def clear_cache(self):
         """

@@ -3,43 +3,45 @@ from typing import Any, List, Optional, Tuple, Union
 
 import cn2an
 
-from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.runtime.settings import RuntimeSettingsCompat
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 
 settings = RuntimeSettingsCompat()
+from app.adapters.network.http import RequestUtils
 from app.domain.context import (
     MediaInfo,
     MusicAlbumInfo,
     MusicInfo,
 )
+from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
+from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.scraper import DoubanScraper
+from app.modules.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.runtime.execution import retry
+from app.runtime.log import logger
+from app.runtime.rate import rate_limit_exponential
 from app.schemas.context import MediaPerson
 from app.schemas.exception import APIRateLimitException
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
+    MediaRecognizeType,
     MediaSource,
     MediaSourceSelection,
     MediaType,
     ModuleType,
-    MediaRecognizeType,
 )
-from app.runtime.execution import retry
-from app.adapters.network.http import RequestUtils
-from app.runtime.rate import rate_limit_exponential
-from app.domain.media import is_media_source_enabled, is_media_source_selected
-from app.foundation.text import convert as zhconv_convert
 
 
-class DoubanModule(_ModuleBase):
+class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     """提供豆瓣影视与豆瓣音乐元数据识别能力。"""
 
+    auxiliary_media_source = MediaSource.Douban
     _music_source = MediaSource.DoubanMusic
     doubanapi: DoubanApi = None
     scraper: DoubanScraper = None

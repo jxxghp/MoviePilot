@@ -15,7 +15,6 @@ from app.runtime.extensions.module.contracts import (
     list_explicit_module_contracts,
 )
 
-
 RUNTIME_BASELINE = (
     Path(__file__).parent / "fixtures" / "architecture" / "runtime-contract-baseline.json"
 )
@@ -282,6 +281,18 @@ def test_recognition_match_and_cache_contracts_share_sync_async_semantics() -> N
         assert contract.family == "media-recognition"
         assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
         assert contract.required_parameters
+
+
+def test_media_auxiliary_contract_merges_every_enabled_provider() -> None:
+    """附加信息能力应合并全部 provider 列表，不能被首个插件结果短路。"""
+    contract = get_module_method_contract("get_media_auxiliary_info")
+
+    assert contract is get_module_method_contract("async_get_media_auxiliary_info")
+    assert contract.family == "media-recognition"
+    assert contract.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
+    assert contract.result_shape is ModuleResultShape.LIST
+    assert contract.plugin_short_circuit is False
+    assert contract.required_parameters == ("mediainfo", "media_source", "metainfo")
 
 
 def test_torrent_filter_contract_preserves_original_argument_list_merge() -> None:

@@ -187,6 +187,7 @@ class ChainRuntimeConfig:
     ai_recommend_user_preference: str = ""
     max_search_name_limit: int = 3
     search_multiple_name: bool = False
+    search_source: str = "themoviedb"
     search_threadpool_size: int = 1
     transfer_threads: int = 1
     transfer_failure_notification_aggregation: bool = True
