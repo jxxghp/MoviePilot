@@ -685,6 +685,26 @@ def test_delete_torrents_tag_uses_supported_qbittorrent_api_arguments():
     fake_client.torrents_delete_tags.assert_called_once_with(tags="tmp-tag-01")
 
 
+def test_get_torrent_id_by_tag_deletes_temporary_tag_after_lookup_timeout():
+    """按标签查询超时时也应删除全局临时标签，避免随机标签残留。"""
+    fake_client = MagicMock()
+    downloader = Qbittorrent.__new__(Qbittorrent)
+    downloader.qbc = fake_client
+
+    with patch.object(
+        downloader,
+        "_Qbittorrent__get_last_add_torrentid_by_tag",
+        return_value=None,
+    ) as lookup, patch.object(qbittorrent_module.time, "sleep") as sleep:
+        torrent_id = downloader.get_torrent_id_by_tag(tags="tmp-tag-01")
+
+    assert torrent_id is None
+    assert lookup.call_count == 9
+    assert sleep.call_count == 9
+    fake_client.torrents_remove_tags.assert_not_called()
+    fake_client.torrents_delete_tags.assert_called_once_with(tags="tmp-tag-01")
+
+
 def test_get_files_retries_until_qbittorrent_files_available():
     """qBittorrent 添加任务后文件列表短暂未就绪时应重试。"""
     torrent_files = [{"id": 12, "name": "Show.S01E12.mkv"}]

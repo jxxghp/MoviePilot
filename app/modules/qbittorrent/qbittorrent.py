@@ -302,17 +302,18 @@ class Qbittorrent:
                                             tags=tags)
         return None if error else torrents or []
 
-    def delete_torrents_tag(self, ids: Union[str, list], tag: Union[str, list]) -> bool:
+    def delete_torrents_tag(self, ids: Optional[Union[str, list]], tag: Union[str, list]) -> bool:
         """
         从指定种子移除标签，并删除全局标签定义
-        :param ids: 种子Hash列表
+        :param ids: 种子Hash列表；未知种子Hash时传入None，仅删除全局标签定义
         :param tag: 标签内容
         :return: 是否删除成功
         """
         if not self.qbc:
             return False
         try:
-            self.qbc.torrents_remove_tags(torrent_hashes=ids, tags=tag)
+            if ids:
+                self.qbc.torrents_remove_tags(torrent_hashes=ids, tags=tag)
             self.qbc.torrents_delete_tags(tags=tag)
             return True
         except Exception as err:
@@ -384,7 +385,10 @@ class Qbittorrent:
     def get_torrent_id_by_tag(self, tags: Union[str, list],
                               status: Optional[str] = None) -> Optional[str]:
         """
-        通过标签多次尝试获取刚添加的种子ID，并移除标签
+        通过标签多次尝试获取刚添加的种子ID，并确保移除临时标签。
+
+        qBittorrent 可能已接受任务但暂时无法按标签查询到种子，此时仍需删除
+        全局临时标签，避免批量添加的部分失败路径留下随机标签。
         """
         torrent_id = None
         # QB添加下载后需要时间，重试10次每次等待3秒
@@ -397,6 +401,8 @@ class Qbittorrent:
             else:
                 self.delete_torrents_tag(torrent_id, tags)
                 break
+        if torrent_id is None:
+            self.delete_torrents_tag(None, tags)
         return torrent_id
 
     def add_torrent(self,
