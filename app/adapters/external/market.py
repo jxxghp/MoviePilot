@@ -1138,12 +1138,12 @@ class PluginHelper(metaclass=WeakSingleton):
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
                 self.__remove_old_plugin(pid)
-                return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
+                return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
 
             return self.__install_flow_sync(pid, force_install, prepare_release, repo_url)
         # 未声明 release 打包的插件继续使用文件列表方式安装。
         def prepare_filelist() -> Tuple[bool, str]:
-            return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
+            return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
 
         return self.__install_flow_sync(pid, force_install, prepare_filelist, repo_url)
 
@@ -3296,12 +3296,12 @@ class PluginHelper(metaclass=WeakSingleton):
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
                 await self.__async_remove_old_plugin(pid)
-                return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
+                return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
 
             return await self.__install_flow_async(pid, force_install, prepare_release, repo_url)
         # 未声明 release 打包的插件继续使用文件列表方式安装。
         async def prepare_filelist() -> Tuple[bool, str]:
-            return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
+            return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
 
         return await self.__install_flow_async(pid, force_install, prepare_filelist, repo_url)
 
@@ -3371,10 +3371,13 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         同步准备插件内容，通过文件列表获取插件文件和依赖
         """
-        file_list, msg = self.__get_file_list(pid, user_repo, package_version)
+        runtime_pid = pid.lower()
+        file_list, msg = self.__get_file_list(runtime_pid, user_repo, package_version)
         if not file_list:
+            if msg == "插件源码目录不存在":
+                return False, f"{pid} {msg}"
             return False, msg
-        ok, m = self.__download_files(pid, file_list, user_repo, package_version)
+        ok, m = self.__download_files(runtime_pid, file_list, user_repo, package_version)
         if not ok:
             return False, m
         return True, ""
@@ -3384,10 +3387,22 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         异步准备插件内容，通过文件列表获取插件文件和依赖
         """
-        file_list, msg = await self.__async_get_file_list(pid, user_repo, package_version)
+        runtime_pid = pid.lower()
+        file_list, msg = await self.__async_get_file_list(
+            runtime_pid,
+            user_repo,
+            package_version,
+        )
         if not file_list:
+            if msg == "插件源码目录不存在":
+                return False, f"{pid} {msg}"
             return False, msg
-        ok, m = await self.__async_download_files(pid, file_list, user_repo, package_version)
+        ok, m = await self.__async_download_files(
+            runtime_pid,
+            file_list,
+            user_repo,
+            package_version,
+        )
         if not ok:
             return False, m
         return True, ""
