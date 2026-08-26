@@ -60,9 +60,24 @@ def test_development_reload_uses_import_string_factory(monkeypatch):
         host=main.settings.HOST,
         port=main.settings.PORT,
         reload=True,
+        reload_excludes=[str(main.settings.ROOT_PATH / "app" / "plugins")],
         workers=1,
         timeout_graceful_shutdown=60,
     )
+
+
+def test_development_reload_ignores_runtime_plugin_payloads(monkeypatch):
+    """插件载荷由宿主热加载器管理，写入运行目录不得重启整个开发服务器。"""
+    monkeypatch.setattr(main.settings, "DEV", True)
+    monkeypatch.setattr(main.settings, "API_WORKERS", 1)
+    uvicorn_run = MagicMock()
+    monkeypatch.setattr(main.uvicorn, "run", uvicorn_run)
+
+    main.run_api_server()
+
+    assert uvicorn_run.call_args.kwargs["reload_excludes"] == [
+        str(main.settings.ROOT_PATH / "app" / "plugins")
+    ]
 
 
 def test_safe_mode_multi_worker_uses_import_string_factory(monkeypatch):
