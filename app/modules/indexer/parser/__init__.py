@@ -430,7 +430,7 @@ class SiteParserBase(metaclass=ABCMeta):
         """
         pass
 
-    def _parse_logged_in(self, html_text):
+    def _parse_logged_in(self, html_text: str) -> bool:
         """
         解析用户是否已经登陆
         :param html_text:
