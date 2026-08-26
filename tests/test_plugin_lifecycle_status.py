@@ -61,6 +61,20 @@ def test_lifecycle_records_active_result():
     assert statuses["DemoPlugin"] is PluginRuntimeStatus.ACTIVE
 
 
+def test_targeted_lifecycle_accepts_case_insensitive_directory_id():
+    """市场目录 ID 通常为小写，不能因插件类名大小写不同而误报加载失败。"""
+    lifecycle, classes, running, statuses = _lifecycle(
+        plugins=[_plugin_class()],
+    )
+
+    result = lifecycle.start("demoplugin")
+
+    assert result == {"demoplugin": PluginRuntimeStatus.ACTIVE}
+    assert "DemoPlugin" in classes
+    assert "DemoPlugin" in running
+    assert statuses["demoplugin"] is PluginRuntimeStatus.ACTIVE
+
+
 def test_lifecycle_records_policy_block_without_runtime_instance():
     """类已发现但权限策略拒绝时进入 blocked_by_policy。"""
     lifecycle, _classes, running, statuses = _lifecycle(

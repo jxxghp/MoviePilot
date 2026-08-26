@@ -23,11 +23,12 @@ from app.schemas.exception import (
     PersistenceUnavailableError,
     PluginMutationRejectedError,
 )
+from app.schemas.plugin import PluginRuntimeStatus
 
 InstalledPluginsReader = Callable[[], list[str]]
 PluginIdsProvider = Callable[[], list[str]]
 InstallReporter = Callable[[str, str | None], Awaitable[object]]
-PluginReloader = Callable[[str], Awaitable[object]]
+PluginReloader = Callable[[str], Awaitable[PluginRuntimeStatus]]
 PluginRegistrationRefresher = Callable[[str], Awaitable[object]]
 PluginMutationAdmission = Callable[[str], ContextManager[None]]
 PluginPackageWriteGuard = Callable[[str], ContextManager[None]]
@@ -380,7 +381,7 @@ class PluginInstallCommand:
 
             state.stage = "runtime_reload"
             state.runtime_touched = True
-            await self.__await_side_effect(self.__target_reloader(plugin_id))
+            await self.__reload_active(plugin_id)
             state.stage = "registration_refresh"
             state.registrations_touched = True
             await self.__await_side_effect(
@@ -511,7 +512,7 @@ class PluginInstallCommand:
         """刷新已经提交且载荷事实未变化的插件运行态。"""
         failure_stage = "runtime_reload"
         try:
-            await self.__await_side_effect(self.__target_reloader(plugin_id))
+            await self.__reload_active(plugin_id)
             failure_stage = "registration_refresh"
             await self.__await_side_effect(
                 self.__registration_refresher(plugin_id)
@@ -541,6 +542,14 @@ class PluginInstallCommand:
             reported=reported,
             report_error=report_error,
         )
+
+    async def __reload_active(self, plugin_id: str) -> None:
+        """重载只有进入 ACTIVE 才能作为安装或刷新成功继续提交。"""
+        runtime_status = await self.__await_side_effect(
+            self.__target_reloader(plugin_id)
+        )
+        if runtime_status is not PluginRuntimeStatus.ACTIVE:
+            raise RuntimeError("插件加载失败，请查看插件日志")
 
     async def __finish_committed(self, state: _InstallState) -> str:
         """幂等清理 COMMITTED 事务；失败时保留 journal 供启动回放。"""

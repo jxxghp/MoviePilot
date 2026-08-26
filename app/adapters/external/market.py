@@ -861,7 +861,7 @@ class PluginHelper(metaclass=WeakSingleton):
         releases.extend(cls.__normalize_plugin_release_response(payload))
         return len(payload) >= 100
 
-    @cached(maxsize=128, ttl=1800)  # type: ignore[misc]  # 缓存装饰器暂未提供泛型签名
+    @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
     def get_plugin_index_result(
             self,
             repo_url: str,
@@ -884,7 +884,6 @@ class PluginHelper(metaclass=WeakSingleton):
             raise RuntimeError("插件索引响应格式无效")
         return payload
 
-    @cached(maxsize=128, ttl=1800)
     def get_plugins(self, repo_url: str,
                     package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
@@ -892,16 +891,13 @@ class PluginHelper(metaclass=WeakSingleton):
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
-        request = self._build_plugin_index_request(repo_url, package_version)
-        if request is None:
+        try:
+            payload = self.get_plugin_index_result(repo_url, package_version)
+        except (ValueError, RuntimeError):
             return None
-        package_url, headers = request
-        res = self.__request_with_fallback(package_url, headers=headers)
-        if res is None:
-            return None
-        return self._resolve_plugin_index_response(res.status_code, res.text)
+        return payload if payload is not None else {}
 
-    @cached(maxsize=32, ttl=1800, shared_key="get_plugin_repo_releases")
+    @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")
     def _get_plugin_repo_releases(self, repo_url: str) -> Optional[List[dict]]:
         """
         按仓库获取 GitHub Release 原始分页数据，供仓库内所有插件共享。
@@ -1137,12 +1133,12 @@ class PluginHelper(metaclass=WeakSingleton):
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
                 self.__remove_old_plugin(pid)
-                return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
+                return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
 
             return self.__install_flow_sync(pid, force_install, prepare_release, repo_url)
         # 未声明 release 打包的插件继续使用文件列表方式安装。
         def prepare_filelist() -> Tuple[bool, str]:
-            return self.__prepare_content_via_filelist_sync(pid.lower(), user_repo, package_version)
+            return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
 
         return self.__install_flow_sync(pid, force_install, prepare_filelist, repo_url)
 
@@ -1236,6 +1232,8 @@ class PluginHelper(metaclass=WeakSingleton):
                                            timeout=30)
         if res is None:
             return None, "连接仓库失败"
+        elif res.status_code == 404:
+            return None, "插件源码目录不存在"
         elif res.status_code != 200:
             return None, f"连接仓库失败：{res.status_code} - " \
                          f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.reason}"
@@ -2385,8 +2383,12 @@ class PluginHelper(metaclass=WeakSingleton):
             timeout=30,
             is_api=True,
         )
-        if rel_res is None or rel_res.status_code != 200:
-            return False, f"获取 Release 信息失败：{rel_res.status_code if rel_res else '连接失败'}"
+        if rel_res is None:
+            return False, "获取 Release 信息失败：连接失败"
+        if rel_res.status_code == 404:
+            return False, f"{release_tag} 插件发布包不存在"
+        if rel_res.status_code != 200:
+            return False, f"获取 Release 信息失败：{rel_res.status_code}"
 
         try:
             rel_json = rel_res.json()
@@ -2550,7 +2552,7 @@ class PluginHelper(metaclass=WeakSingleton):
         logger.error(f"[GitHub] 所有策略均请求失败，URL: {url}，请检查网络连接或 GitHub 配置")
         return None
 
-    @cached(maxsize=128, ttl=1800)  # type: ignore[misc]  # 缓存装饰器暂未提供泛型签名
+    @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
     async def async_get_plugin_index_result(
             self,
             repo_url: str,
@@ -2576,7 +2578,6 @@ class PluginHelper(metaclass=WeakSingleton):
             raise RuntimeError("插件索引响应格式无效")
         return payload
 
-    @cached(maxsize=128, ttl=1800)
     async def async_get_plugins(self, repo_url: str,
                                 package_version: Optional[str] = None) -> Optional[Dict[str, dict]]:
         """
@@ -2584,19 +2585,16 @@ class PluginHelper(metaclass=WeakSingleton):
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
-        request = self._build_plugin_index_request(repo_url, package_version)
-        if request is None:
+        try:
+            payload = await self.async_get_plugin_index_result(
+                repo_url,
+                package_version,
+            )
+        except (ValueError, RuntimeError):
             return None
-        package_url, headers = request
-        res = await self.__async_request_with_fallback(
-            package_url,
-            headers=headers,
-        )
-        if res is None:
-            return None
-        return self._resolve_plugin_index_response(res.status_code, res.text)
+        return payload if payload is not None else {}
 
-    @cached(maxsize=32, ttl=1800, shared_key="get_plugin_repo_releases")
+    @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")
     async def _async_get_plugin_repo_releases(self, repo_url: str) -> Optional[List[dict]]:
         """
         异步按仓库获取 GitHub Release 原始分页数据。
@@ -2725,6 +2723,8 @@ class PluginHelper(metaclass=WeakSingleton):
                                                        timeout=30)
         if res is None:
             return None, "连接仓库失败"
+        elif res.status_code == 404:
+            return None, "插件源码目录不存在"
         elif res.status_code != 200:
             return None, f"连接仓库失败：{res.status_code} - " \
                          f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.text}"
@@ -3287,12 +3287,12 @@ class PluginHelper(metaclass=WeakSingleton):
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
                 await self.__async_remove_old_plugin(pid)
-                return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
+                return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
 
             return await self.__install_flow_async(pid, force_install, prepare_release, repo_url)
         # 未声明 release 打包的插件继续使用文件列表方式安装。
         async def prepare_filelist() -> Tuple[bool, str]:
-            return await self.__prepare_content_via_filelist_async(pid.lower(), user_repo, package_version)
+            return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
 
         return await self.__install_flow_async(pid, force_install, prepare_filelist, repo_url)
 
@@ -3362,10 +3362,13 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         同步准备插件内容，通过文件列表获取插件文件和依赖
         """
-        file_list, msg = self.__get_file_list(pid, user_repo, package_version)
+        runtime_pid = pid.lower()
+        file_list, msg = self.__get_file_list(runtime_pid, user_repo, package_version)
         if not file_list:
+            if msg == "插件源码目录不存在":
+                return False, f"{pid} {msg}"
             return False, msg
-        ok, m = self.__download_files(pid, file_list, user_repo, package_version)
+        ok, m = self.__download_files(runtime_pid, file_list, user_repo, package_version)
         if not ok:
             return False, m
         return True, ""
@@ -3375,10 +3378,22 @@ class PluginHelper(metaclass=WeakSingleton):
         """
         异步准备插件内容，通过文件列表获取插件文件和依赖
         """
-        file_list, msg = await self.__async_get_file_list(pid, user_repo, package_version)
+        runtime_pid = pid.lower()
+        file_list, msg = await self.__async_get_file_list(
+            runtime_pid,
+            user_repo,
+            package_version,
+        )
         if not file_list:
+            if msg == "插件源码目录不存在":
+                return False, f"{pid} {msg}"
             return False, msg
-        ok, m = await self.__async_download_files(pid, file_list, user_repo, package_version)
+        ok, m = await self.__async_download_files(
+            runtime_pid,
+            file_list,
+            user_repo,
+            package_version,
+        )
         if not ok:
             return False, m
         return True, ""
@@ -3399,8 +3414,12 @@ class PluginHelper(metaclass=WeakSingleton):
             timeout=30,
             is_api=True,
         )
-        if rel_res is None or rel_res.status_code != 200:
-            return False, f"获取 Release 信息失败：{rel_res.status_code if rel_res else '连接失败'}"
+        if rel_res is None:
+            return False, "获取 Release 信息失败：连接失败"
+        if rel_res.status_code == 404:
+            return False, f"{release_tag} 插件发布包不存在"
+        if rel_res.status_code != 200:
+            return False, f"获取 Release 信息失败：{rel_res.status_code}"
 
         try:
             rel_json = rel_res.json()

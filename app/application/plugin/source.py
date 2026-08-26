@@ -689,7 +689,7 @@ def list_effective_online_candidates(
     plugin_id: str,
     generations: Sequence[str],
 ) -> tuple[PluginMarketCandidate, ...]:
-    """按来源列出当前运行代际实际可安装的最高版本候选。"""
+    """按来源列出当前运行代际实际可安装的最高版本候选，官方来源始终置顶。"""
     generation_order = _normalize_generation_order(generations)
     grouped: dict[
         tuple[TrustedPluginSourceType, str],
@@ -706,6 +706,10 @@ def list_effective_online_candidates(
         selected_candidate = _select_best(candidates, generation_order)
         if isinstance(selected_candidate, PluginMarketCandidate):
             selected.append(selected_candidate)
+    selected.sort(
+        key=lambda candidate: candidate.source_type
+        is not TrustedPluginSourceType.OFFICIAL
+    )
     return tuple(selected)
 
 

@@ -94,6 +94,8 @@ class _FakeResponse:
     def __init__(self, status_code: int, payload: dict | None = None):
         self.status_code = status_code
         self._payload = payload or {}
+        self.reason = self._payload.get("message", "")
+        self.text = self.reason
 
     def json(self):
         """返回构造时注入的 JSON payload。"""
@@ -2160,7 +2162,7 @@ demo = { index = "private" }
 
     def test_install_reports_filelist_error_after_release_fallback_fails(self, monkeypatch):
         """
-        release 和文件列表都不可用时返回最终文件列表错误，并在每次写入前后保持目录可回滚。
+        release 和源码目录都不存在时返回稳定业务错误，并在每次写入前后保持目录可回滚。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2172,14 +2174,14 @@ demo = { index = "private" }
             helper,
             monkeypatch,
             {"release": True, "version": "1.2.3"},
-            (False, "未找到资产文件：demoplugin_v1.2.3.zip"),
-            (False, "获取文件列表失败"),
+            (False, "DemoPlugin_v1.2.3 插件发布包不存在"),
+            (False, "DemoPlugin 插件源码目录不存在"),
         )
 
         success, message = helper._PluginHelper__install_package(PLUGIN_ID, REPO_URL, package_version="v2", force_install=True)
 
         assert not success
-        assert "获取文件列表失败" == message
+        assert "DemoPlugin 插件源码目录不存在" == message
         assert ["remove", "release", "remove", "filelist", "remove"] == calls
 
     def test_install_uses_filelist_when_release_flag_is_disabled(self, monkeypatch):
@@ -2602,7 +2604,7 @@ demo = { index = "private" }
 
     def test_async_install_reports_filelist_error_after_release_fallback_fails(self, monkeypatch):
         """
-        异步安装路径在 release 与文件列表都失败时返回文件列表错误，并保持失败清理顺序稳定。
+        异步安装路径在 release 与源码目录都不存在时返回稳定业务错误，并保持失败清理顺序稳定。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2614,8 +2616,8 @@ demo = { index = "private" }
             helper,
             monkeypatch,
             {"release": True, "version": "1.2.3"},
-            (False, "未找到资产文件：demoplugin_v1.2.3.zip"),
-            (False, "获取文件列表失败"),
+            (False, "DemoPlugin_v1.2.3 插件发布包不存在"),
+            (False, "DemoPlugin 插件源码目录不存在"),
         )
 
         success, message = asyncio.run(
@@ -2623,12 +2625,12 @@ demo = { index = "private" }
         )
 
         assert not success
-        assert "获取文件列表失败" == message
+        assert "DemoPlugin 插件源码目录不存在" == message
         assert calls == ["remove", "release", "remove", "filelist", "remove"]
 
-    def test_async_install_release_fallback_uses_lowercase_filelist_pid(self, monkeypatch):
+    def test_async_install_release_fallback_preserves_plugin_id(self, monkeypatch):
         """
-        异步 release 回退文件列表安装时使用小写插件 ID，保持 GitHub 目录查询与同步路径一致。
+        异步 release 回退保留清单中的插件 ID，供文件列表层生成可读错误。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2657,11 +2659,11 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["demoplugin"] == filelist_pids
+        assert ["DemoPlugin"] == filelist_pids
 
-    def test_async_install_non_release_uses_lowercase_filelist_pid(self, monkeypatch):
+    def test_async_install_non_release_preserves_plugin_id(self, monkeypatch):
         """
-        异步文件列表直装使用小写插件 ID，避免大小写插件 ID 影响远端目录匹配。
+        异步文件列表直装保留清单中的插件 ID，路径规范化由文件列表层负责。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2690,7 +2692,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["demoplugin"] == filelist_pids
+        assert ["DemoPlugin"] == filelist_pids
 
     def test_install_from_release_reports_missing_tag(self, monkeypatch):
         """
@@ -2707,7 +2709,30 @@ demo = { index = "private" }
         success, message = helper._PluginHelper__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
 
         assert not success
-        assert "获取 Release 信息失败：404" == message
+        assert "DemoPlugin_v1.2.3 插件发布包不存在" == message
+
+    def test_get_file_list_reports_missing_plugin_directory(self, monkeypatch):
+        """索引存在但源码目录缺失时不向用户暴露底层 HTTP 404。"""
+        try:
+            from app.adapters.external.market import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        monkeypatch.setattr(
+            helper,
+            "_PluginHelper__request_with_fallback",
+            lambda *_args, **_kwargs: _FakeResponse(404),
+        )
+
+        file_list, message = helper._PluginHelper__get_file_list(
+            PLUGIN_ID,
+            "demo/repo",
+            "v2",
+        )
+
+        assert file_list is None
+        assert message == "插件源码目录不存在"
 
     def test_install_from_release_reports_missing_asset(self, monkeypatch):
         """
@@ -3157,6 +3182,36 @@ demo = { index = "private" }
         assert not success
         assert "list failed" == message
 
+    def test_prepare_content_via_filelist_sync_names_missing_plugin(self, monkeypatch):
+        """同步文件列表层规范化路径 ID，并在源码目录缺失时保留原插件 ID。"""
+        try:
+            from app.adapters.external.market import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        requested_ids = []
+
+        def fake_file_list(pid, *_args):
+            requested_ids.append(pid)
+            return None, "插件源码目录不存在"
+
+        monkeypatch.setattr(
+            helper,
+            "_PluginHelper__get_file_list",
+            fake_file_list,
+        )
+
+        success, message = helper._PluginHelper__prepare_content_via_filelist_sync(
+            PLUGIN_ID,
+            "demo/repo",
+            "v2",
+        )
+
+        assert not success
+        assert message == "DemoPlugin 插件源码目录不存在"
+        assert requested_ids == ["demoplugin"]
+
     def test_prepare_content_via_filelist_sync_returns_download_error(self, monkeypatch):
         """
         文件列表存在但文件下载失败时向上返回下载错误。
@@ -3230,6 +3285,38 @@ demo = { index = "private" }
 
         assert not success
         assert "list failed" == message
+
+    def test_async_prepare_content_via_filelist_names_missing_plugin(self, monkeypatch):
+        """异步文件列表层规范化路径 ID，并在源码目录缺失时保留原插件 ID。"""
+        try:
+            from app.adapters.external.market import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+        requested_ids = []
+
+        async def fake_file_list(pid, *_args):
+            requested_ids.append(pid)
+            return None, "插件源码目录不存在"
+
+        monkeypatch.setattr(
+            helper,
+            "_PluginHelper__async_get_file_list",
+            fake_file_list,
+        )
+
+        success, message = asyncio.run(
+            helper._PluginHelper__prepare_content_via_filelist_async(
+                PLUGIN_ID,
+                "demo/repo",
+                "v2",
+            )
+        )
+
+        assert not success
+        assert message == "DemoPlugin 插件源码目录不存在"
+        assert requested_ids == ["demoplugin"]
 
     def test_async_prepare_content_via_filelist_returns_download_error(self, monkeypatch):
         """
@@ -3374,7 +3461,36 @@ demo = { index = "private" }
         )
 
         assert not success
-        assert "获取 Release 信息失败：404" == message
+        assert "DemoPlugin_v1.2.3 插件发布包不存在" == message
+
+    def test_async_get_file_list_reports_missing_plugin_directory(self, monkeypatch):
+        """异步源码目录读取将 HTTP 404 收敛为稳定业务语义。"""
+        try:
+            from app.adapters.external.market import PluginHelper
+        except ModuleNotFoundError as exc:
+            pytest.skip(f"missing dependency: {exc}")
+
+        helper = PluginHelper()
+
+        async def fake_request(*_args, **_kwargs):
+            return _FakeResponse(404)
+
+        monkeypatch.setattr(
+            helper,
+            "_PluginHelper__async_request_with_fallback",
+            fake_request,
+        )
+
+        file_list, message = asyncio.run(
+            helper._PluginHelper__async_get_file_list(
+                PLUGIN_ID,
+                "demo/repo",
+                "v2",
+            )
+        )
+
+        assert file_list is None
+        assert message == "插件源码目录不存在"
 
     def test_async_install_from_release_reports_missing_asset_id(self, monkeypatch):
         """
