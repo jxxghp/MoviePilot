@@ -59,8 +59,12 @@ flowchart LR
 
 ## 二、整体分层架构
 
-MoviePilot v3 采用严格的单向依赖分层。历史包 `app/core`、`app/helper`、`app/utils`
-已不再存在物理目录，仅作为旧插件的**虚拟兼容导入根**保留。
+MoviePilot v3 以单向依赖的模块化单体为目标。历史包 `app/core`、`app/helper`、`app/utils`
+已不再存在物理目录，仅作为旧插件的**虚拟兼容导入根**保留。核心边界已有机器门禁，
+尚未强制的 Adapter 例外、完整宿主 SCC 等差距记录在本章末的优化清单中。
+
+下图同时表达职责关系与运行时调用方向，不等同于 Python 静态 import 图；通过 Port 注入的调用
+会与具体 Adapter 的静态依赖方向相反。
 
 ```mermaid
 flowchart TB
@@ -111,8 +115,7 @@ flowchart TB
 
     Chain -->|run_module 分发| Modules
     Chain -->|Application service / 命名数据端口| App
-    App --> Modules
-    App -->|Protocol / 持久化端口| Db
+    App -->|运行时调用 Protocol / 持久化端口| Db
 
     Modules --> Domain
     App --> Domain
@@ -136,13 +139,14 @@ flowchart TB
     Compat -.精确别名.-> Adapters
 ```
 
-图中的 `Chain → Application` 与 `Application → Db` 表示通过应用端口和组合根注入的实现完成持久化，
+图中的 `Chain → Application` 与 `Application → Db` 是运行时调用关系，表示通过应用端口和组合根
+注入的实现完成持久化；静态 import 方向是 `db.adapters → application Protocol`。
 具体 DB Adapter 再使用 Oper；这不是允许在用例代码中直接创建数据库引擎或拼接 SQL。`compat` 也不是只面向 SDK 的转发层，
 它按 `app/runtime/compat/manifest.py` 的白名单把已经删除的旧模块/符号精确映射到各自的 canonical
 归属。`app/application/subscribe.py` 与 `app/application/plugins.py` 都是 V3 重构过程中新增、
 未形成插件 ABI 的宿主内部聚合文件，主题实现收口后直接删除，不在 manifest 中制造新的兼容债务。
 
-当前实际的持久化调用路径可概括为：
+当前正式目标和已完成参考切片的持久化调用路径可概括为：
 
 ```text
 入口（API / Agent / CLI / Scheduler / Workflow）
@@ -153,13 +157,16 @@ flowchart TB
 ```
 
 `app/application/chain/data.py`、`app/application/agentdata.py` 和
-`app/application/history.py` 的 `get_*_port()` 是宿主生产代码读取组合根能力的规范入口；
-兼容期保留的 `*PortProxy` 不能重新被别名为 Oper。需要跨进程恢复或 commit 后可靠执行的
+`app/application/history.py` 的 `get_*_port()` 是宿主生产代码读取组合根能力的现有接缝；其中
+Chain/Agent 的 `Any` factory 和裸 Oper 仍需迁移为类型化 Port/DTO，不能把当前兼容代理当作最终合同。
+需要跨进程恢复或 commit 后可靠执行的
 业务副作用进入 `app/application/outbox.py` 定义的 Outbox 端口，由
 `app/db/adapters/outbox.py` 实现；`app/runtime/tasks.py` 的 TaskRegistry 只负责进程内任务所有权、
 取消和有限等待，不承担 durable queue 语义。
 
-**依赖方向的核心约束**（由 `tests/test_architecture_dependencies.py` 强制检查）：
+**依赖方向的规范目标**如下。`tests/test_architecture_dependencies.py` 已强制其中的核心子集；
+Application/Chain 到具体 Adapter 的例外和完整宿主 SCC 仍需按优化清单补齐门禁，不能把表中每一行
+都理解为当前已经被 CI 全量证明：
 
 | 方向 | 状态 |
 |---|---|
@@ -655,7 +662,7 @@ flowchart LR
 
 ## 十、架构治理
 
-架构边界不是文档约定，而是**由测试强制执行的门禁**：
+架构边界中的核心子集已经由测试强制执行，其余目标不能只停留在文档约定：
 
 - `tests/test_architecture_dependencies.py` 构建完整 Python 模块图，拒绝：
   物理遗留源码、禁止的上向依赖、SDK/compat 反向引用、包含迁移模块的强连通分量、
@@ -665,23 +672,24 @@ flowchart LR
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。
 
-### 10.1 2026-08-24 当前收口状态与后续边界
+### 10.1 2026-08-26 当前收口状态与后续边界
 
 当前宿主架构基线（排除 `app/plugins/**`）如下；数字来自
 `tests/fixtures/architecture/`，更新基线前必须先审查语义变化：
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 811 |
-| 内部导入边 | 6,572 |
-| 非平凡 SCC | 1（仅隔离的 TMDB 移植包） |
-| Module Contract V2 spec | 212（其中 211 个进入 `run_module` 观察面） |
+| Python 模块 | 835 |
+| 内部导入边 | 6,810 |
+| 非平凡 SCC | 2（Chain 包根环与隔离的 TMDB 移植包环） |
+| Module Contract V2 spec | 215（其中 214 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
 架构专项验证：`tests/test_architecture_dependencies.py` 与
-`tests/test_architecture_contract_baseline.py` 共 68 passed；当前工作树未修改架构 fixture。
+`tests/test_architecture_contract_baseline.py` 共同提供语义断言和快照比较；
+`scripts/architecture/baseline.py --check-host` 只验证快照一致，不能替代依赖合理性审查。
 
 本总览与本轮架构治理的关系如下：
 
@@ -696,13 +704,17 @@ flowchart LR
   文件夹操作归入 `app/application/plugin/routes.py`、`folders.py`。原
   `app/application/subscribe.py`、`app/application/plugins.py` 未形成插件 ABI，已经直接删除，
   宿主调用统一改为 canonical 路径。
-- 已完成的运行时可靠性收口：TaskRegistry 统一进程内后台任务 owner；durable-required 事件和
+- 已完成的运行时可靠性收口：已迁移的主干后台任务由 TaskRegistry 或领域 lifecycle owner 管理；
+  durable-required 事件和
   订阅关键副作用经 `app/application/outbox.py` 与 `app/db/adapters/outbox.py` 进入同事务 Outbox；
   搜索逐页任务、Agent/消息事件和插件市场子任务均遵守请求或生命周期 owner，不再由入口模块维护
   无法追踪的裸任务集合。
 - 判断是否需要新增 manifest 映射的标准：只有当旧物理模块被删除、改名或公开符号迁移时才登记；
   物理文件仍是稳定入口的，不应为了目录规整新增“自己映射自己”的别名，也不应在 canonical 包中
   保留多余导出。
+
+当前架构问题、优先级、分阶段实施步骤与验收门禁见
+[`docs/architecture-optimization-checklist.md`](architecture-optimization-checklist.md)。
 
 ---
 
@@ -718,5 +730,7 @@ flowchart LR
 | [`docs/rules/10-data-and-persistent.md`](rules/10-data-and-persistent.md) | 数据模型、迁移与缓存规范 |
 | [`docs/subscribe-lifecycle.md`](subscribe-lifecycle.md) | 订阅生命周期详解 |
 | [`docs/mcp-api.md`](mcp-api.md) | MCP 工具端点说明 |
+| [`docs/architecture-optimization-checklist.md`](architecture-optimization-checklist.md) | 当前架构差距、优先级与可执行优化清单 |
+| [`docs/architecture-refactor-roadmap.md`](architecture-refactor-roadmap.md) | 多级 Goal、叶子依赖、清零条件与交付状态 |
 | [`docs/v3t-runtime-governance.md`](v3t-runtime-governance.md) | V3/V3t 运行依赖、故障恢复、GIL 可观测性与兼容退场门禁 |
 | [`docs/adr/0007-background-action-reliability.md`](adr/0007-background-action-reliability.md) | 后台动作 E0–E3 可靠性分级与完成语义决策 |
