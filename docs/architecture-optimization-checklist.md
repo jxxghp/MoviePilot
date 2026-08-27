@@ -79,7 +79,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,983 / 601 文件 | strict frontier 当前只覆盖 41 个文件，且 ratchet 已新增 2 个错误 |
 | Ruff 历史诊断 | 934 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 78.21%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 覆盖率低水位 | Application 78.22%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
