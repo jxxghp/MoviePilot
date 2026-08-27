@@ -3,6 +3,7 @@ import concurrent.futures
 import inspect
 import posixpath
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import (
@@ -167,6 +168,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     """插件管理器"""
     CONFIG_WATCH = {"DEV", "PLUGIN_AUTO_RELOAD", "PLUGIN_LOCAL_REPO_PATHS"}
     AGENT_TOOLS_BUILD_MAX_ATTEMPTS = 3
+    # 略长于 watchfiles 默认 debounce，吸收包写入完成后才交付的延迟批次。
+    MONITOR_SETTLE_SECONDS = 2.0
 
     def __init__(self):
         """初始化插件注册表、缓存和开发模式监控状态。"""
@@ -213,6 +216,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._recent_local_sync: Dict[str, float] = {}
         self._monitor_suppression_lock = threading.Lock()
         self._suppressed_monitor_plugins: Dict[str, int] = {}
+        self._monitor_suppressed_until: Dict[str, float] = {}
         self._plugin_paths = PluginPathResolver(
             runtime_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
             running=lambda: self._running_plugins,
@@ -724,7 +728,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     @contextmanager
     def suppress_plugin_monitor(self, plugin_id: str):
-        """在插件目录原子更新期间阻止文件监控抢先重载半成品。"""
+        """在插件包写入及其文件事件收敛期间阻止监控重复重载。"""
         with self.mutation("更新插件包"):
             normalized_id = plugin_id.lower()
             with self._monitor_suppression_lock:
@@ -738,13 +742,25 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     count = self._suppressed_monitor_plugins.get(normalized_id, 0)
                     if count <= 1:
                         self._suppressed_monitor_plugins.pop(normalized_id, None)
+                        self._monitor_suppressed_until[normalized_id] = (
+                            time.monotonic() + self.MONITOR_SETTLE_SECONDS
+                        )
                     else:
                         self._suppressed_monitor_plugins[normalized_id] = count - 1
 
     def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
-        """判断指定插件是否处于安装或替换写入阶段。"""
+        """判断插件是否处于包写入或延迟文件事件收敛阶段。"""
         with self._monitor_suppression_lock:
-            return self._suppressed_monitor_plugins.get(plugin_id.lower(), 0) > 0
+            normalized_id = plugin_id.lower()
+            if self._suppressed_monitor_plugins.get(normalized_id, 0) > 0:
+                return True
+            suppressed_until = self._monitor_suppressed_until.get(normalized_id)
+            if suppressed_until is None:
+                return False
+            if time.monotonic() < suppressed_until:
+                return True
+            self._monitor_suppressed_until.pop(normalized_id, None)
+            return False
 
     def remove_plugin(self, plugin_id: str):
         """
