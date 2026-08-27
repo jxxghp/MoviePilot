@@ -60,6 +60,10 @@ from app.application.configuration import (
     configure_transfer_retry_config,
     get_configured_system_config,
 )
+from app.application.data_query import (
+    DataQueryService,
+    configure_data_query_service,
+)
 from app.application.database import configure_database_governance
 from app.application.history import configure_transfer_history_provider
 from app.application.image import configure_wallpaper_providers
@@ -105,6 +109,7 @@ from app.application.subscription.write import configure_subscribe_writer
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
 from app.command import CommandChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
+from app.db.adapters.data_query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
 from app.db.adapters.site import TransactionalSiteRepository
@@ -757,6 +762,14 @@ async def init_modules() -> HostRuntime:
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
+    data_query_adapter = SqlAlchemyDataQueryAdapter(SessionFactory)
+    configure_data_query_service(
+        DataQueryService(
+            subscriptions=data_query_adapter,
+            histories=data_query_adapter,
+            async_executor=database_worker,
+        )
+    )
     configure_plugin_persistence(
         PluginPersistenceService(
             executor=database_worker,
