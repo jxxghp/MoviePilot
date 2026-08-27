@@ -10,19 +10,20 @@ from typing import Any, Callable, Generic, Protocol, TypeVar, cast
 from pydantic import BaseModel
 
 from app.application.database import AsyncDatabaseExecutor
-from app.schemas.history import DownloadHistory, TransferHistory
 from app.schemas.query import (
     DownloadHistoryFilter,
+    DownloadHistorySnapshot,
     QueryPage,
     QueryPageRequest,
-    SubscribeHistory,
     SubscriptionFilter,
     SubscriptionHistoryFilter,
+    SubscriptionHistorySnapshot,
+    SubscriptionSnapshot,
     TransferHistoryFilter,
+    TransferHistorySnapshot,
 )
-from app.schemas.subscribe import Subscribe
 
-RecordT = TypeVar("RecordT")
+RecordT = TypeVar("RecordT", covariant=True)
 DtoT = TypeVar("DtoT", bound=BaseModel)
 ResultT = TypeVar("ResultT")
 
@@ -176,7 +177,7 @@ class DataQueryService:
         self,
         filters: SubscriptionFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[Subscribe]:
+    ) -> QueryPage[SubscriptionSnapshot]:
         """同步分页查询订阅。"""
         normalized_page = self._page_request(page)
         normalized_filters = self._filter(filters, SubscriptionFilter)
@@ -184,36 +185,35 @@ class DataQueryService:
             filters=normalized_filters,
             page=normalized_page,
         )
-        return self._to_page(Subscribe, normalized_page, rows)
+        return self._to_page(SubscriptionSnapshot, normalized_page, rows)
 
     async def async_list_subscriptions(
         self,
         filters: SubscriptionFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[Subscribe]:
+    ) -> QueryPage[SubscriptionSnapshot]:
         """异步分页查询订阅，业务规则在数据库 worker 中复用同步入口。"""
-        return await self._async_run(
-            partial(self.list_subscriptions, filters, page)
-        )
+        return await self._async_run(partial(self.list_subscriptions, filters, page))
 
-    def get_subscription(self, subscription_id: int) -> Subscribe | None:
+    def get_subscription(self, subscription_id: int) -> SubscriptionSnapshot | None:
         """同步按 ID 查询订阅。"""
         return self._to_item(
-            Subscribe,
+            SubscriptionSnapshot,
             self._subscriptions.get_subscription(subscription_id),
         )
 
-    async def async_get_subscription(self, subscription_id: int) -> Subscribe | None:
+    async def async_get_subscription(
+        self,
+        subscription_id: int,
+    ) -> SubscriptionSnapshot | None:
         """异步按 ID 查询订阅。"""
-        return await self._async_run(
-            partial(self.get_subscription, subscription_id)
-        )
+        return await self._async_run(partial(self.get_subscription, subscription_id))
 
     def list_subscription_history(
         self,
         filters: SubscriptionHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[SubscribeHistory]:
+    ) -> QueryPage[SubscriptionHistorySnapshot]:
         """同步分页查询订阅完成历史。"""
         normalized_page = self._page_request(page)
         normalized_filters = self._filter(filters, SubscriptionHistoryFilter)
@@ -221,39 +221,38 @@ class DataQueryService:
             filters=normalized_filters,
             page=normalized_page,
         )
-        return self._to_page(SubscribeHistory, normalized_page, rows)
+        return self._to_page(SubscriptionHistorySnapshot, normalized_page, rows)
 
     async def async_list_subscription_history(
         self,
         filters: SubscriptionHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[SubscribeHistory]:
+    ) -> QueryPage[SubscriptionHistorySnapshot]:
         """异步分页查询订阅完成历史。"""
-        return await self._async_run(
-            partial(self.list_subscription_history, filters, page)
-        )
+        return await self._async_run(partial(self.list_subscription_history, filters, page))
 
-    def get_subscription_history(self, history_id: int) -> SubscribeHistory | None:
+    def get_subscription_history(
+        self,
+        history_id: int,
+    ) -> SubscriptionHistorySnapshot | None:
         """同步按 ID 查询订阅完成历史。"""
         return self._to_item(
-            SubscribeHistory,
+            SubscriptionHistorySnapshot,
             self._subscriptions.get_subscription_history(history_id),
         )
 
     async def async_get_subscription_history(
         self,
         history_id: int,
-    ) -> SubscribeHistory | None:
+    ) -> SubscriptionHistorySnapshot | None:
         """异步按 ID 查询订阅完成历史。"""
-        return await self._async_run(
-            partial(self.get_subscription_history, history_id)
-        )
+        return await self._async_run(partial(self.get_subscription_history, history_id))
 
     def list_download_history(
         self,
         filters: DownloadHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[DownloadHistory]:
+    ) -> QueryPage[DownloadHistorySnapshot]:
         """同步分页查询下载历史。"""
         normalized_page = self._page_request(page)
         normalized_filters = self._filter(filters, DownloadHistoryFilter)
@@ -261,36 +260,35 @@ class DataQueryService:
             filters=normalized_filters,
             page=normalized_page,
         )
-        return self._to_page(DownloadHistory, normalized_page, rows)
+        return self._to_page(DownloadHistorySnapshot, normalized_page, rows)
 
     async def async_list_download_history(
         self,
         filters: DownloadHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[DownloadHistory]:
+    ) -> QueryPage[DownloadHistorySnapshot]:
         """异步分页查询下载历史。"""
-        return await self._async_run(
-            partial(self.list_download_history, filters, page)
-        )
+        return await self._async_run(partial(self.list_download_history, filters, page))
 
-    def get_download_history(self, history_id: int) -> DownloadHistory | None:
+    def get_download_history(self, history_id: int) -> DownloadHistorySnapshot | None:
         """同步按 ID 查询下载历史。"""
         return self._to_item(
-            DownloadHistory,
+            DownloadHistorySnapshot,
             self._histories.get_download_history(history_id),
         )
 
-    async def async_get_download_history(self, history_id: int) -> DownloadHistory | None:
+    async def async_get_download_history(
+        self,
+        history_id: int,
+    ) -> DownloadHistorySnapshot | None:
         """异步按 ID 查询下载历史。"""
-        return await self._async_run(
-            partial(self.get_download_history, history_id)
-        )
+        return await self._async_run(partial(self.get_download_history, history_id))
 
     def list_transfer_history(
         self,
         filters: TransferHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[TransferHistory]:
+    ) -> QueryPage[TransferHistorySnapshot]:
         """同步分页查询整理历史。"""
         normalized_page = self._page_request(page)
         normalized_filters = self._filter(filters, TransferHistoryFilter)
@@ -298,30 +296,29 @@ class DataQueryService:
             filters=normalized_filters,
             page=normalized_page,
         )
-        return self._to_page(TransferHistory, normalized_page, rows)
+        return self._to_page(TransferHistorySnapshot, normalized_page, rows)
 
     async def async_list_transfer_history(
         self,
         filters: TransferHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[TransferHistory]:
+    ) -> QueryPage[TransferHistorySnapshot]:
         """异步分页查询整理历史。"""
-        return await self._async_run(
-            partial(self.list_transfer_history, filters, page)
-        )
+        return await self._async_run(partial(self.list_transfer_history, filters, page))
 
-    def get_transfer_history(self, history_id: int) -> TransferHistory | None:
+    def get_transfer_history(self, history_id: int) -> TransferHistorySnapshot | None:
         """同步按 ID 查询整理历史。"""
         return self._to_item(
-            TransferHistory,
+            TransferHistorySnapshot,
             self._histories.get_transfer_history(history_id),
         )
 
-    async def async_get_transfer_history(self, history_id: int) -> TransferHistory | None:
+    async def async_get_transfer_history(
+        self,
+        history_id: int,
+    ) -> TransferHistorySnapshot | None:
         """异步按 ID 查询整理历史。"""
-        return await self._async_run(
-            partial(self.get_transfer_history, history_id)
-        )
+        return await self._async_run(partial(self.get_transfer_history, history_id))
 
 
 _configured_data_query_service: DataQueryService | None = None

@@ -11,6 +11,7 @@ import asyncio
 import inspect
 import threading
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -19,25 +20,22 @@ from app.db.models.downloadhistory import DownloadHistory as DownloadHistoryMode
 from app.db.models.subscribe import Subscribe as SubscribeModel
 from app.db.models.subscribehistory import SubscribeHistory as SubscribeHistoryModel
 from app.db.models.transferhistory import TransferHistory as TransferHistoryModel
-from app.schemas.history import (
-    DownloadHistory as DownloadHistoryDTO,
-    TransferHistory as TransferHistoryDTO,
-)
 from app.schemas.query import (
     DownloadHistoryFilter,
+    DownloadHistorySnapshot,
     QueryPage,
     QueryPageRequest,
     QuerySort,
     QuerySortDirection,
     QuerySortField,
-    SubscribeHistory as SubscribeHistoryDTO,
     SubscriptionFilter,
     SubscriptionHistoryFilter,
+    SubscriptionHistorySnapshot,
+    SubscriptionSnapshot,
     TransferHistoryFilter,
+    TransferHistorySnapshot,
 )
-from app.schemas.subscribe import Subscribe as SubscribeDTO
 from app.schemas.types import MediaSource, MediaType
-
 
 TMDB = MediaSource.TMDB.value
 
@@ -95,6 +93,7 @@ def _subscribe(
     episode_group: str | None = None,
     date: str = "2026-08-27 10:00:00",
     music_type: str | None = None,
+    manual_total_episode: int | None = 0,
 ) -> SubscribeModel:
     """构造隔离用例使用的订阅行。"""
     return SubscribeModel(
@@ -108,6 +107,7 @@ def _subscribe(
         username=username,
         date=date,
         music_type=music_type,
+        manual_total_episode=manual_total_episode,
     )
 
 
@@ -218,13 +218,15 @@ def _assert_projected_page(page: QueryPage, dto_type: type[Any], model_type: typ
 def test_sdk_projects_subscription_and_three_history_domains_to_dtos(db, query_sdk):
     """订阅、订阅完成历史、下载历史、整理历史均只返回 Pydantic 投影。"""
     sdk, _executor = query_sdk
-    subscribe = db.add(_subscribe("订阅 DTO", media_id="dto-sub"))
-    subscribe_history = db.add(
-        _subscribe_history("订阅历史 DTO", media_id="dto-sub-history")
+    subscribe = db.add(
+        _subscribe(
+            "订阅 DTO",
+            media_id="dto-sub",
+            manual_total_episode=1,
+        )
     )
-    download_history = db.add(
-        _download_history("下载历史 DTO", media_id="dto-download", path="/dto/download")
-    )
+    subscribe_history = db.add(_subscribe_history("订阅历史 DTO", media_id="dto-sub-history"))
+    download_history = db.add(_download_history("下载历史 DTO", media_id="dto-download", path="/dto/download"))
     transfer_history = db.add(
         _transfer_history(
             "整理历史 DTO",
@@ -235,13 +237,12 @@ def test_sdk_projects_subscription_and_three_history_domains_to_dtos(db, query_s
     )
 
     _assert_projected_page(
-        sdk.list_subscriptions(
-            SubscriptionFilter(media_source=TMDB, media_id="dto-sub")
-        ),
-        SubscribeDTO,
+        subscription_page := sdk.list_subscriptions(SubscriptionFilter(media_source=TMDB, media_id="dto-sub")),
+        SubscriptionSnapshot,
         SubscribeModel,
         subscribe.id,
     )
+    assert subscription_page.items[0].manual_total_episode == 1
     _assert_projected_page(
         sdk.list_subscription_history(
             SubscriptionHistoryFilter(
@@ -249,23 +250,19 @@ def test_sdk_projects_subscription_and_three_history_domains_to_dtos(db, query_s
                 media_id="dto-sub-history",
             )
         ),
-        SubscribeHistoryDTO,
+        SubscriptionHistorySnapshot,
         SubscribeHistoryModel,
         subscribe_history.id,
     )
     _assert_projected_page(
-        sdk.list_download_history(
-            DownloadHistoryFilter(media_source=TMDB, media_id="dto-download")
-        ),
-        DownloadHistoryDTO,
+        sdk.list_download_history(DownloadHistoryFilter(media_source=TMDB, media_id="dto-download")),
+        DownloadHistorySnapshot,
         DownloadHistoryModel,
         download_history.id,
     )
     _assert_projected_page(
-        sdk.list_transfer_history(
-            TransferHistoryFilter(media_source=TMDB, media_id="dto-transfer")
-        ),
-        TransferHistoryDTO,
+        sdk.list_transfer_history(TransferHistoryFilter(media_source=TMDB, media_id="dto-transfer")),
+        TransferHistorySnapshot,
         TransferHistoryModel,
         transfer_history.id,
     )
@@ -422,11 +419,12 @@ def test_sdk_applies_combined_filters_in_each_query_domain(db, query_sdk):
             media_source=TMDB,
             media_id="combo-download",
             media_types=(MediaType.TV,),
-            title="Combo",
+            title="Combo Film",
+            text="match",
             year="2026",
             seasons="S02",
             episodes="E03",
-            path="match",
+            path="/combo/match.mkv",
             download_hash="combo-hash",
             username="alice",
             episode_group="eg-a",
@@ -475,7 +473,7 @@ def test_sdk_applies_combined_filters_in_each_query_domain(db, query_sdk):
             media_types=(MediaType.TV,),
             media_sources=(MediaSource.TMDB,),
             require_media_identity=True,
-            title="Transfer",
+            title="Transfer Combo",
             text="dest-match",
             year="2026",
             seasons="S02",
@@ -533,9 +531,7 @@ def test_sdk_pagination_reports_total_and_stable_date_id_order(db, query_sdk):
     assert page_one.page == 1
     assert page_one.count == 2
     assert page_one.has_next is True
-    assert [item.id for item in page_one.items] == [
-        row.id for row in expected_desc[:2]
-    ]
+    assert [item.id for item in page_one.items] == [row.id for row in expected_desc[:2]]
     assert page_two.total == 3
     assert page_two.has_next is False
     assert [item.id for item in page_two.items] == [expected_desc[2].id]
@@ -552,9 +548,98 @@ def test_sdk_pagination_reports_total_and_stable_date_id_order(db, query_sdk):
         ),
     )
     expected_asc = sorted(rows, key=lambda row: (row.date, row.id))
-    assert [item.id for item in asc_page.items] == [
-        row.id for row in expected_asc
-    ]
+    assert [item.id for item in asc_page.items] == [row.id for row in expected_asc]
+
+
+def test_structured_text_fields_are_exact_and_text_search_is_explicit(db, query_sdk):
+    """结构化字段保持精确匹配，只有 text 承担转义后的模糊搜索。"""
+    sdk, _executor = query_sdk
+    db.add(
+        _download_history(
+            "Exact Film Extended",
+            media_id="exact-download",
+            path="/exact/extended.mkv",
+        ),
+        _download_history(
+            "Exact Film",
+            media_id="exact-download",
+            path="/exact/base.mkv",
+        ),
+        _transfer_history(
+            "Exact Transfer Extended",
+            media_id="exact-transfer",
+            src="/exact/extended-src.mkv",
+            dest="/exact/extended-dest.mkv",
+        ),
+        _transfer_history(
+            "Exact Transfer",
+            media_id="exact-transfer",
+            src="/exact/base-src.mkv",
+            dest="/exact/base-dest.mkv",
+        ),
+    )
+
+    exact_downloads = sdk.list_download_history(
+        DownloadHistoryFilter(
+            media_source=TMDB,
+            media_id="exact-download",
+            title="Exact Film",
+        )
+    )
+    assert [item.path for item in exact_downloads.items] == ["/exact/base.mkv"]
+    fuzzy_downloads = sdk.list_download_history(
+        DownloadHistoryFilter(
+            media_source=TMDB,
+            media_id="exact-download",
+            text="extended",
+        )
+    )
+    assert [item.path for item in fuzzy_downloads.items] == ["/exact/extended.mkv"]
+
+    exact_transfers = sdk.list_transfer_history(
+        TransferHistoryFilter(
+            media_source=TMDB,
+            media_id="exact-transfer",
+            title="Exact Transfer",
+        )
+    )
+    assert [item.src for item in exact_transfers.items] == ["/exact/base-src.mkv"]
+    fuzzy_transfers = sdk.list_transfer_history(
+        TransferHistoryFilter(
+            media_source=TMDB,
+            media_id="exact-transfer",
+            text="extended-dest",
+        )
+    )
+    assert [item.src for item in fuzzy_transfers.items] == ["/exact/extended-src.mkv"]
+
+
+def test_snapshots_normalize_legacy_identity_and_transfer_status():
+    """旧半对身份和 NULL 整理状态不得使分页投影失败或产生假成功。"""
+    dirty_transfer = SimpleNamespace(
+        id=1,
+        media_source=TMDB,
+        media_id=" ",
+        status=None,
+    )
+
+    snapshot = TransferHistorySnapshot.model_validate(dirty_transfer)
+
+    assert snapshot.media_source is None
+    assert snapshot.media_id is None
+    assert snapshot.status is False
+
+
+def test_query_snapshots_are_owned_by_the_sdk_contract_module():
+    """公开查询返回值由独立快照定义，不复用宿主写入或 API 响应模型。"""
+    snapshots = (
+        SubscriptionSnapshot,
+        SubscriptionHistorySnapshot,
+        DownloadHistorySnapshot,
+        TransferHistorySnapshot,
+    )
+
+    assert all(snapshot.__module__ == "app.schemas.query" for snapshot in snapshots)
 
 
 @pytest.mark.parametrize(
@@ -590,9 +675,7 @@ def test_sdk_get_returns_none_for_missing_records(query_sdk):
 def test_sdk_sync_async_semantics_match_and_async_uses_executor(db, query_sdk):
     """四个查询门面的异步结果与同步一致，并交给 executor 线程。"""
     sdk, executor = query_sdk
-    subscribe = db.add(
-        _subscribe("订阅同步异步", media_id="async-subscription")
-    )
+    subscribe = db.add(_subscribe("订阅同步异步", media_id="async-subscription"))
     subscribe_history = db.add(
         _subscribe_history(
             "订阅历史同步异步",

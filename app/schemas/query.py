@@ -1,14 +1,12 @@
 """插件只读数据查询使用的稳定筛选、分页与数据投影合同。"""
 
 from enum import Enum
-from typing import Generic, Optional, TypeVar
+from typing import Any, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.common import JsonData
-from app.schemas.history import DownloadHistory, TransferHistory
-from app.schemas.media import OptionalMediaIdentityMixin
-from app.schemas.subscribe import Subscribe
+from app.schemas.media import OptionalMediaIdentityMixin, normalize_media_source
 from app.schemas.types import MediaSource, MediaType
 
 T = TypeVar("T")
@@ -17,7 +15,7 @@ DEFAULT_QUERY_PAGE_SIZE = 50
 MAX_QUERY_PAGE_SIZE = 200
 
 
-class _QueryInput(BaseModel):
+class _QueryInput(BaseModel):  # type: ignore[misc]  # Pydantic imports are skipped by strict mypy
     """查询输入共同的严格字段合同。"""
 
     model_config = ConfigDict(extra="forbid")
@@ -56,7 +54,7 @@ class QueryPageRequest(_QueryInput):
     sort: QuerySort = Field(default_factory=QuerySort)
 
 
-class QueryPage(BaseModel, Generic[T]):
+class QueryPage(BaseModel, Generic[T]):  # type: ignore[misc]  # Pydantic imports are skipped by strict mypy
     """公开查询返回的分页 DTO。"""
 
     items: list[T] = Field(default_factory=list)
@@ -74,23 +72,105 @@ class QueryPage(BaseModel, Generic[T]):
         return self.page * self.count < self.total
 
 
-class MediaIdentityQuery(OptionalMediaIdentityMixin, _QueryInput):
+class MediaIdentityQuery(
+    OptionalMediaIdentityMixin,
+    _QueryInput,
+):
     """允许省略身份，但显式筛选时要求来源与原生 ID 成对有效。"""
 
     media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
 
 
-class SubscribeHistory(OptionalMediaIdentityMixin, BaseModel):
-    """订阅完成历史的稳定只读投影。"""
+class _QuerySnapshot(BaseModel):  # type: ignore[misc]  # Pydantic imports are skipped by strict mypy
+    """只读查询 DTO 的媒体身份与脏数据归一化边界。"""
+
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("media_source", mode="before")  # type: ignore[misc]
+    @classmethod
+    def _normalize_source(cls, value: Any) -> Optional[MediaSource]:
+        """未知旧来源不应使整页查询失败，统一降级为空身份。"""
+        return normalize_media_source(value)
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    def _normalize_identity_pair(self) -> "_QuerySnapshot":
+        """输出中的脏半对身份按无身份处理，避免向插件传播不可用主键。"""
+        normalized_id = str(self.media_id).strip() if self.media_id is not None else ""
+        if not self.media_source or not normalized_id or normalized_id == "0":
+            object.__setattr__(self, "media_source", None)
+            object.__setattr__(self, "media_id", None)
+        else:
+            object.__setattr__(self, "media_id", normalized_id)
+        return self
+
+
+class SubscriptionSnapshot(_QuerySnapshot):
+    """当前订阅的稳定只读快照，不包含 ORM 或写入行为。"""
 
     id: int
     name: Optional[str] = None
     year: Optional[str] = None
     type: Optional[str] = None
     keyword: Optional[str] = None
-    media_source: Optional[MediaSource] = None
-    media_id: Optional[str] = None
+    music_type: Optional[str] = None
+    total_tracks: Optional[int] = None
+    season: Optional[int] = None
+    poster: Optional[str] = None
+    backdrop: Optional[str] = None
+    vote: Optional[float] = None
+    description: Optional[str] = None
+    # 资源选择规则与质量约束均按宿主保存值只读返回。
+    filter: Optional[str] = None
+    include: Optional[str] = None
+    exclude: Optional[str] = None
+    quality: Optional[str] = None
+    resolution: Optional[str] = None
+    effect: Optional[str] = None
+    audio_quality: Optional[str] = None
+    audio_format: Optional[str] = None
+    min_bitrate: Optional[int] = None
+    min_bit_depth: Optional[int] = None
+    min_sample_rate: Optional[int] = None
+    # 订阅进度字段由宿主维护，插件查询不得据此直接写库。
+    total_episode: Optional[int] = None
+    start_episode: Optional[int] = None
+    lack_episode: Optional[int] = None
+    note: Optional[JsonData] = None
+    state: Optional[str] = None
+    last_update: Optional[str] = None
+    date: Optional[str] = None
+    username: Optional[str] = None
+    sites: Optional[list[int]] = None
+    downloader: Optional[str] = None
+    best_version: Optional[int] = None
+    best_version_full: Optional[int] = None
+    current_priority: Optional[int] = None
+    current_audio_format: Optional[str] = None
+    current_bitrate: Optional[int] = None
+    current_bit_depth: Optional[int] = None
+    current_sample_rate: Optional[int] = None
+    episode_priority: Optional[dict[str, int]] = None
+    save_path: Optional[str] = None
+    search_imdbid: Optional[int] = None
+    manual_total_episode: Optional[int] = None
+    custom_words: Optional[str] = None
+    media_category: Optional[str] = None
+    filter_groups: Optional[list[str]] = None
+    episode_group: Optional[str] = None
+
+
+class SubscriptionHistorySnapshot(_QuerySnapshot):
+    """订阅完成历史的稳定只读快照。"""
+
+    id: int
+    name: Optional[str] = None
+    year: Optional[str] = None
+    type: Optional[str] = None
+    keyword: Optional[str] = None
     music_type: Optional[str] = None
     total_tracks: Optional[int] = None
     season: Optional[int] = None
@@ -124,13 +204,78 @@ class SubscribeHistory(OptionalMediaIdentityMixin, BaseModel):
     episode_priority: Optional[dict[str, int]] = None
     save_path: Optional[str] = None
     search_imdbid: Optional[int] = None
-    note: Optional[JsonData] = None
     custom_words: Optional[str] = None
     media_category: Optional[str] = None
     filter_groups: Optional[list[str]] = None
     episode_group: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+
+class DownloadHistorySnapshot(_QuerySnapshot):
+    """下载历史的稳定只读快照。"""
+
+    id: int
+    path: Optional[str] = None
+    type: Optional[str] = None
+    title: Optional[str] = None
+    year: Optional[str] = None
+    music_type: Optional[str] = None
+    seasons: Optional[str] = None
+    episodes: Optional[str] = None
+    image: Optional[str] = None
+    poster: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    torrent_name: Optional[str] = None
+    torrent_description: Optional[str] = None
+    torrent_site: Optional[str] = None
+    userid: Optional[str] = None
+    username: Optional[str] = None
+    channel: Optional[str] = None
+    date: Optional[str] = None
+    note: Optional[JsonData] = None
+    media_category: Optional[str] = None
+    episode_group: Optional[str] = None
+    custom_words: Optional[str] = None
+
+
+class TransferHistorySnapshot(_QuerySnapshot):
+    """整理历史的稳定只读快照；内部任务结算标识不会暴露给插件。"""
+
+    id: int
+    src: Optional[str] = None
+    src_storage: Optional[str] = None
+    src_fileitem: Optional[JsonData] = None
+    dest: Optional[str] = None
+    dest_storage: Optional[str] = None
+    dest_fileitem: Optional[JsonData] = None
+    mode: Optional[str] = None
+    type: Optional[str] = None
+    category: Optional[str] = None
+    title: Optional[str] = None
+    year: Optional[str] = None
+    music_type: Optional[str] = None
+    total_tracks: Optional[int] = None
+    audio_format: Optional[str] = None
+    audio_lossless: Optional[bool] = None
+    bit_depth: Optional[int] = None
+    sample_rate: Optional[int] = None
+    bitrate: Optional[int] = None
+    seasons: Optional[str] = None
+    episodes: Optional[str] = None
+    image: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    status: bool = False
+    errmsg: Optional[str] = None
+    date: Optional[str] = None
+    files: Optional[JsonData] = None
+    episode_group: Optional[str] = None
+
+    @field_validator("status", mode="before")  # type: ignore[misc]
+    @classmethod
+    def _normalize_status(cls, value: object) -> bool:
+        """旧记录的 NULL 状态按失败处理，避免错误地向插件声明整理成功。"""
+        return bool(value)
 
 
 class SubscriptionFilter(MediaIdentityQuery):
@@ -164,6 +309,7 @@ class DownloadHistoryFilter(MediaIdentityQuery):
     ids: tuple[int, ...] = ()
     media_types: tuple[MediaType, ...] = ()
     title: Optional[str] = None
+    text: Optional[str] = None
     year: Optional[str] = None
     seasons: Optional[str] = None
     episodes: Optional[str] = None
@@ -198,18 +344,18 @@ class TransferHistoryFilter(MediaIdentityQuery):
 __all__ = [
     "DEFAULT_QUERY_PAGE_SIZE",
     "MAX_QUERY_PAGE_SIZE",
-    "DownloadHistory",
     "DownloadHistoryFilter",
+    "DownloadHistorySnapshot",
     "MediaIdentityQuery",
     "QueryPage",
     "QueryPageRequest",
     "QuerySort",
     "QuerySortDirection",
     "QuerySortField",
-    "Subscribe",
-    "SubscribeHistory",
     "SubscriptionFilter",
+    "SubscriptionHistorySnapshot",
     "SubscriptionHistoryFilter",
-    "TransferHistory",
+    "SubscriptionSnapshot",
     "TransferHistoryFilter",
+    "TransferHistorySnapshot",
 ]

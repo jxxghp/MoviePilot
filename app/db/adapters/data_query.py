@@ -16,23 +16,19 @@ from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory as SubscribeHistoryModel
 from app.db.models.transferhistory import TransferHistory
-from app.schemas.history import (
-    DownloadHistory as DownloadHistoryView,
-)
-from app.schemas.history import (
-    TransferHistory as TransferHistoryView,
-)
 from app.schemas.query import (
     DownloadHistoryFilter,
+    DownloadHistorySnapshot,
     QueryPageRequest,
     QuerySortDirection,
     QuerySortField,
     SubscriptionFilter,
     SubscriptionHistoryFilter,
+    SubscriptionHistorySnapshot,
+    SubscriptionSnapshot,
     TransferHistoryFilter,
+    TransferHistorySnapshot,
 )
-from app.schemas.query import SubscribeHistory as SubscribeHistoryView
-from app.schemas.subscribe import Subscribe as SubscribeView
 from app.schemas.types import MUSIC_ENTITY_RECORDING
 
 _ModelT = TypeVar("_ModelT", bound=Base)
@@ -168,7 +164,7 @@ class SqlAlchemyDataQueryAdapter:
         *,
         filters: SubscriptionFilter,
         page: QueryPageRequest,
-    ) -> QueryRows[SubscribeView]:
+    ) -> QueryRows[SubscriptionSnapshot]:
         """按受控组合条件分页查询当前订阅。"""
         query = filters
         conditions = self._identity_conditions(Subscribe, query)
@@ -196,16 +192,16 @@ class SqlAlchemyDataQueryAdapter:
             conditions.append(music_condition)
         return self._page(
             model=Subscribe,
-            view_model=SubscribeView,
+            view_model=SubscriptionSnapshot,
             conditions=conditions,
             page=page,
         )
 
-    def get_subscription(self, subscription_id: int) -> SubscribeView | None:
+    def get_subscription(self, subscription_id: int) -> SubscriptionSnapshot | None:
         """按主键查询订阅并返回脱离 Session 的 DTO。"""
         return self._get(
             model=Subscribe,
-            view_model=SubscribeView,
+            view_model=SubscriptionSnapshot,
             record_id=subscription_id,
         )
 
@@ -214,7 +210,7 @@ class SqlAlchemyDataQueryAdapter:
         *,
         filters: SubscriptionHistoryFilter,
         page: QueryPageRequest,
-    ) -> QueryRows[SubscribeHistoryView]:
+    ) -> QueryRows[SubscriptionHistorySnapshot]:
         """按受控组合条件分页查询订阅完成历史。"""
         query = filters
         conditions = self._identity_conditions(SubscribeHistoryModel, query)
@@ -242,7 +238,7 @@ class SqlAlchemyDataQueryAdapter:
             conditions.append(music_condition)
         return self._page(
             model=SubscribeHistoryModel,
-            view_model=SubscribeHistoryView,
+            view_model=SubscriptionHistorySnapshot,
             conditions=conditions,
             page=page,
         )
@@ -250,11 +246,11 @@ class SqlAlchemyDataQueryAdapter:
     def get_subscription_history(
         self,
         history_id: int,
-    ) -> SubscribeHistoryView | None:
+    ) -> SubscriptionHistorySnapshot | None:
         """按主键查询订阅完成历史并返回稳定 DTO。"""
         return self._get(
             model=SubscribeHistoryModel,
-            view_model=SubscribeHistoryView,
+            view_model=SubscriptionHistorySnapshot,
             record_id=history_id,
         )
 
@@ -263,7 +259,7 @@ class SqlAlchemyDataQueryAdapter:
         *,
         filters: DownloadHistoryFilter,
         page: QueryPageRequest,
-    ) -> QueryRows[DownloadHistoryView]:
+    ) -> QueryRows[DownloadHistorySnapshot]:
         """按受控组合条件分页查询下载历史。"""
         query = filters
         conditions = self._identity_conditions(DownloadHistory, query)
@@ -276,20 +272,23 @@ class SqlAlchemyDataQueryAdapter:
             conditions.append(DownloadHistory.type.in_(media_types))
         for column, value in (
             (DownloadHistory.title, query.title),
-            (DownloadHistory.path, query.path),
-        ):
-            if value:
-                conditions.append(_contains(column, value))
-        for column, value in (
             (DownloadHistory.year, query.year),
             (DownloadHistory.seasons, query.seasons),
             (DownloadHistory.episodes, query.episodes),
+            (DownloadHistory.path, query.path),
             (DownloadHistory.download_hash, query.download_hash),
             (DownloadHistory.username, query.username),
             (DownloadHistory.episode_group, query.episode_group),
         ):
             if value is not None and value != "":
                 conditions.append(column == value)
+        if query.text:
+            conditions.append(
+                or_(
+                    _contains(DownloadHistory.title, query.text),
+                    _contains(DownloadHistory.path, query.text),
+                )
+            )
         if usernames:
             conditions.append(DownloadHistory.username.in_(usernames))
         music_condition = _music_type_condition(DownloadHistory.music_type, query.music_type)
@@ -297,16 +296,16 @@ class SqlAlchemyDataQueryAdapter:
             conditions.append(music_condition)
         return self._page(
             model=DownloadHistory,
-            view_model=DownloadHistoryView,
+            view_model=DownloadHistorySnapshot,
             conditions=conditions,
             page=page,
         )
 
-    def get_download_history(self, history_id: int) -> DownloadHistoryView | None:
+    def get_download_history(self, history_id: int) -> DownloadHistorySnapshot | None:
         """按主键查询下载历史并返回稳定 DTO。"""
         return self._get(
             model=DownloadHistory,
-            view_model=DownloadHistoryView,
+            view_model=DownloadHistorySnapshot,
             record_id=history_id,
         )
 
@@ -315,7 +314,7 @@ class SqlAlchemyDataQueryAdapter:
         *,
         filters: TransferHistoryFilter,
         page: QueryPageRequest,
-    ) -> QueryRows[TransferHistoryView]:
+    ) -> QueryRows[TransferHistorySnapshot]:
         """按受控组合条件分页查询整理历史。"""
         query = filters
         conditions = self._identity_conditions(TransferHistory, query)
@@ -331,7 +330,7 @@ class SqlAlchemyDataQueryAdapter:
         if query.require_media_identity:
             conditions.extend(self._require_media_identity(TransferHistory))
         if query.title:
-            conditions.append(_contains(TransferHistory.title, query.title))
+            conditions.append(TransferHistory.title == query.title)
         if query.text:
             conditions.append(
                 or_(
@@ -358,16 +357,16 @@ class SqlAlchemyDataQueryAdapter:
             conditions.append(music_condition)
         return self._page(
             model=TransferHistory,
-            view_model=TransferHistoryView,
+            view_model=TransferHistorySnapshot,
             conditions=conditions,
             page=page,
         )
 
-    def get_transfer_history(self, history_id: int) -> TransferHistoryView | None:
+    def get_transfer_history(self, history_id: int) -> TransferHistorySnapshot | None:
         """按主键查询整理历史并返回稳定 DTO。"""
         return self._get(
             model=TransferHistory,
-            view_model=TransferHistoryView,
+            view_model=TransferHistorySnapshot,
             record_id=history_id,
         )
 
