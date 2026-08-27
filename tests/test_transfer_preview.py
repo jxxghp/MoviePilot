@@ -2,8 +2,9 @@ from pathlib import Path
 
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
-from app.modules.filemanager import FileManagerModule
-from app.schemas import FileItem, TransferDirectoryConf
+from app.modules.filemanager.module import FileManagerModule
+from app.schemas.file import FileItem
+from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import MediaType
 
 

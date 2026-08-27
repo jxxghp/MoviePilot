@@ -15,7 +15,8 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metavideo import MetaVideo
 from app.modules.filemanager.transhandler import TransHandler
 from app.runtime.config import settings
-from app.schemas import EpisodeFormat, FileItem, TransferInfo
+from app.schemas.file import FileItem
+from app.schemas.transfer import EpisodeFormat, TransferInfo
 from app.schemas.types import EventType, MediaSource, MediaType
 
 
