@@ -86,9 +86,9 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 退出条件：Transfer 达到 E3；正式数据 Port 类型化；跨表业务操作有单一 UoW；post-commit/Outbox
 竞争、失败呈现、at-least-once 和幂等语义全部闭环。
 
-`S1-L1` 是 ARCH-102 的 Transfer E3 父项，当前状态为**执行中**。只有 `S1-L1.1` 至
-`S1-L1.5` 全部 `DELIVERED`，真实调用链完成迁移且旧 fail-open 路径退出 canonical 主程序后，
-父项和 ARCH-102 才能标记已交付。
+`S1-L1` 是 ARCH-102 的 Transfer E3 父项，当前状态为 **DELIVERED**。`S1-L1.1` 至
+`S1-L1.5` 已全部交付，真实调用链已完成迁移，旧 fail-open、重复状态和兼容层外旧入口已退出
+canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
@@ -96,7 +96,7 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S1-L1.2 Planning checkpoint | `VERIFIED` | S1-L1.1 | 版本化输入与指纹先持久化；无 legacy provider 时以 `accepted -> planned` CAS 提交完整计划，有 provider 时先提交 `provider_pending`，全部返回空后再以第二次 CAS 提交 `planned`；重放只执行冻结目标，所有文件副作用晚于对应 checkpoint commit |
 | S1-L1.3 Lease 与恢复调度 | `VERIFIED` | S1-L1.2 | claim/lease/heartbeat/attempt 与过期接管规则落地；启动回放和同进程恢复共用唯一调度入口，同一任务同时只有一个 worker owner |
 | S1-L1.4 幂等执行与终态结算 | `VERIFIED` | S1-L1.3 | 文件操作、历史提交和 checkpoint 可重放；唯一 retry owner 生效，未知外部结果进入 `manual_review`，仅完整终态删除 pending |
-| S1-L1.5 E3 全链收口 | `PLANNED` | S1-L1.4 | 崩溃矩阵、升级/降级、重复回放和插件 ABI 验收完整；旧 fail-open、重复状态与兼容层外旧入口删除，ARCH-102 债务归零 |
+| S1-L1.5 E3 全链收口 | `DELIVERED` | S1-L1.4 | `e9de149db`、`a2e249f20`：崩溃矩阵、3.0.17 升降级、重复回放和插件 ABI 验收完整；旧 fail-open、重复状态与兼容层外旧入口删除；Unit Tests `33092427327`、Pylint `33092427348` 全绿，ARCH-102 债务归零 |
 | S1-L2 Workflow typed query | `PLANNED` | S0 | Workflow Application Port 不返回 `Any`/ORM，Session 内投影 DTO，正式调用方全部切换 |
 | S1-L3 Chain/Agent typed data ports | `PLANNED` | S1-L2 | `ChainDataPorts`/`AgentDataPorts` 的 raw Oper/`Any` factory 全部清零，兼容调用进入 Legacy 层 |
 | S1-L4 Subscription mutation UoW | `PLANNED` | S1-L3 | Subscription mutation 不跨 Session 传 ORM，正式写路径一个 UoW，旧自动事务入口退出 canonical 路径 |
@@ -263,7 +263,8 @@ git diff --check
 
 - 本叶不引入 claim、lease、heartbeat、attempt、执行步骤幂等或 `manual_review`；这些由
   `S1-L1.3` 和 `S1-L1.4` 交付。
-- 文件操作成功后到历史结算前的未知结果仍未达到 E3，ARCH-102 父项继续保持执行中。
+- 本叶当时不单独承诺文件操作成功后到历史结算前的未知结果；该能力现已由 `S1-L1.4` 和
+  `S1-L1.5` 的持久步骤账本、严格探测、`manual_review` 与 task-aware settlement 完整交付。
 
 **Local verification (2026-08-27)**
 

@@ -107,7 +107,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 |---|---|---|---|---|
 | ARCH-001 | P0 | 已交付 | 恢复 mypy ratchet | `5df388719` 已推送，主线既有 CI gate 通过 |
 | ARCH-101 | P1 | 已交付 | 统一规则、总览、基线和语义门禁 | `113355784` 已推送，Unit Tests `33031697902`、Pylint `33031697785` 全绿，远端 `0/0` |
-| ARCH-102 | P1 | 执行中 | 将 Transfer pending 升级为真实 E3 状态机 | `S1-L1.1` 至 `S1-L1.5` 全部交付后，崩溃窗口可判定恢复，结果未知时进入人工确认 |
+| ARCH-102 | P1 | 已交付 | 将 Transfer pending 升级为真实 E3 状态机 | `e9de149db`、`a2e249f20` 已推送；Unit Tests `33092427327`、Pylint `33092427348` 全绿，崩溃结果未知时进入人工确认 |
 | ARCH-103 | P1 | 待执行 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
 | ARCH-104 | P1 | 待执行 | 收口跨多次写入的业务事务 | 站点/规则引用清理可整体回滚或幂等恢复 |
 | ARCH-105 | P1 | 待执行 | 明确 post-commit 与 Outbox 完成语义 | “业务已提交、后置效果 pending”可被调用方正确识别 |
@@ -196,8 +196,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   claim/lease/heartbeat/attempt、过期接管、固定退避的唯一恢复入口和有界关闭 owner。
 - `S1-L1.4 幂等执行与终态结算`：`VERIFIED`。已交付稳定 operation ledger、严格结果探测、
   唯一 retry owner、`manual_review` 人工判定和 history/pending/outbox 同 UoW 终态结算。
-- `S1-L1.5 E3 全链收口`：`PLANNED`。完成崩溃矩阵、兼容验收与旧路径删除。此叶交付前，
-  ARCH-102 父项保持“执行中”，不得以局部绿色宣称 E3 完成。
+- `S1-L1.5 E3 全链收口`：`VERIFIED`。崩溃矩阵、3.0.17 升降级、重复回放、稳定计划身份、
+  outcome/settlement 一致性和插件 ABI 已完成验收；旧 fail-open、重复状态与兼容层外旧入口已删除。
 
 **问题与证据**
 
@@ -227,7 +227,13 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - 管理员人工判定 API 只公开 `not_applied` 与带结果证据的 `applied`，并持久记录操作者、理由、结论
   和 revision；无租约人工路径不能直接伪造失败终态。
 - 以上实现已满足 `docs/adr/0007-background-action-reliability.md:123-139` 对 E3 稳定身份、步骤状态、
-  lease/heartbeat 和人工恢复的阶段性要求；完整崩溃矩阵与兼容收口仍由 `S1-L1.5` 验收。
+  lease/heartbeat 和人工恢复的要求。`RETRY_WAIT`、重放、双重失败、人工放弃和结算崩溃窗口均有
+  故障注入覆盖；计划指纹、步骤成员关系和所有状态写入使用精确 CAS，异常不再降级到旧执行路径。
+- canonical 模块已按职责聚合为 `app/application/chain/events.py`、`app/application/transfer/execution.py`
+  和 `app/runtime/resources.py`；`durable_events.py`、`transfer_execution.py`、`managed_resources.py`
+  等旧物理模块已退役，仅允许精确 Compat manifest 和兼容测试引用旧导入名，宿主不保留重复导出。
+- 交付提交为 `e9de149db`、`a2e249f20`；精确 head SHA 的 Unit Tests `33092427327` 与 Pylint
+  `33092427348` 全绿，覆盖率低水位同步提升至 Application `78.71%`。
 
 **目标与步骤**
 
