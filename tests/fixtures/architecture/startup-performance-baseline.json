@@ -6,7 +6,7 @@
   "repeat": 3,
   "targets": {
     "app.startup.lifecycle": {
-      "loaded_app_module_count": 379,
+      "loaded_app_module_count": 380,
       "max_ms": 909.62,
       "median_ms": 908.975,
       "min_ms": 904.929,
@@ -17,7 +17,7 @@
       ]
     },
     "app.factory": {
-      "loaded_app_module_count": 391,
+      "loaded_app_module_count": 392,
       "max_ms": 952.709,
       "median_ms": 934.785,
       "min_ms": 916.888,
@@ -28,7 +28,7 @@
       ]
     },
     "app.main": {
-      "loaded_app_module_count": 393,
+      "loaded_app_module_count": 394,
       "max_ms": 947.928,
       "median_ms": 938.251,
       "min_ms": 932.597,
