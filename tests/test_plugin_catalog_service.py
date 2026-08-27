@@ -1,11 +1,12 @@
 import asyncio
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 from packaging.version import Version
 
 from app.application.plugin.catalog import PluginCatalogService
+from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
+from app.schemas.plugin import Plugin
 
 
 def _plugin(
@@ -13,14 +14,15 @@ def _plugin(
         version: str,
         repo_url: str,
         package_version: str | None = "v3",
-):
+) -> Plugin:
     """构造目录合并测试使用的最小插件 DTO。"""
-    return SimpleNamespace(
+    plugin = Plugin(
         id=plugin_id,
         plugin_version=version,
         repo_url=repo_url,
-        package_version=package_version,
     )
+    plugin.package_version = package_version
+    return plugin
 
 
 def _service(**overrides) -> PluginCatalogService:
@@ -130,6 +132,33 @@ def test_load_maps_market_entries_with_installed_snapshot():
     installed_provider.assert_called_once_with()
     assert mapper.call_args_list[0].args[3:] == (["Installed"], 2, "v3")
     assert mapper.call_args_list[1].args[3:] == (["Installed"], 1, "v3")
+
+
+def test_metadata_mapper_preserves_package_generation_without_serializing_it():
+    """市场映射必须保留候选代际，同时不能扩张插件 API 响应。"""
+    mapper = PluginMetadataMapper(
+        plugin_instance=lambda _plugin_id: None,
+        plugin_class=lambda _plugin_id: None,
+        annotate_system_version=lambda info: info,
+        is_package_compatible=lambda _info, _version: True,
+        auth_checker=lambda _plugin, _source: True,
+        version_compare=lambda _left, _operator, _right: False,
+        log=Mock(),
+    )
+
+    plugin = mapper.map(
+        plugin_id="Demo",
+        plugin_info={"name": "Demo", "version": "3.0.0"},
+        market="https://market-a",
+        installed_plugins=[],
+        add_time=1,
+        package_version="v3",
+    )
+
+    assert plugin is not None
+    assert plugin.package_version == "v3"
+    assert "package_version" not in plugin.model_dump()
+    assert "package_version" not in Plugin.model_json_schema()["properties"]
 
 
 @pytest.mark.asyncio

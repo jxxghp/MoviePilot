@@ -1,7 +1,7 @@
 from enum import Enum as _Enum
-from typing import Literal, Optional, List, Dict, Union
+from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, RootModel, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, RootModel, field_validator
 
 from app.schemas.common import JsonData
 
@@ -62,6 +62,8 @@ class Plugin(BaseModel):
     """
     插件信息
     """
+    _package_version: Optional[str] = PrivateAttr(default=None)
+
     id: str = None
     # 插件名称
     plugin_name: Optional[str] = None
@@ -123,6 +125,16 @@ class Plugin(BaseModel):
     is_instance: Optional[bool] = False
     # 实例实现模式；存量物理分身为空
     instance_mode: Optional[str] = None
+
+    @property
+    def package_version(self) -> Optional[str]:
+        """读取仅供宿主内部候选选择使用的插件包代际。"""
+        return self._package_version
+
+    @package_version.setter
+    def package_version(self, value: Optional[str]) -> None:
+        """保存插件包代际，但不把它暴露到 API 响应模型。"""
+        self._package_version = value
 
 
 class PluginRuntimeSummary(BaseModel):

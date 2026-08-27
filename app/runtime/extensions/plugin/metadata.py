@@ -86,6 +86,7 @@ class PluginMetadataMapper:
         plugin.history = info.get("history") or {}
         plugin.release = bool(info.get("release"))
         plugin.repo_url = market
+        plugin.package_version = package_version
         plugin.is_local = False
         plugin.add_time = add_time
         return plugin
