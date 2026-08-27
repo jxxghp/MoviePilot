@@ -108,7 +108,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-001 | P0 | 已交付 | 恢复 mypy ratchet | `5df388719` 已推送，主线既有 CI gate 通过 |
 | ARCH-101 | P1 | 已交付 | 统一规则、总览、基线和语义门禁 | `113355784` 已推送，Unit Tests `33031697902`、Pylint `33031697785` 全绿，远端 `0/0` |
 | ARCH-102 | P1 | 已交付 | 将 Transfer pending 升级为真实 E3 状态机 | `e9de149db`、`a2e249f20` 已推送；Unit Tests `33092427327`、Pylint `33092427348` 全绿，崩溃结果未知时进入人工确认 |
-| ARCH-103 | P1 | 待执行 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
+| ARCH-103 | P1 | 执行中 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
 | ARCH-104 | P1 | 待执行 | 收口跨多次写入的业务事务 | 站点/规则引用清理可整体回滚或幂等恢复 |
 | ARCH-105 | P1 | 待执行 | 明确 post-commit 与 Outbox 完成语义 | “业务已提交、后置效果 pending”可被调用方正确识别 |
 | ARCH-106 | P1 | 待执行 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 导入或普通 Chain 构造不再启动进程资源 |
@@ -276,6 +276,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   仍返回 `Any`/ORM，Subscription mutation 内部也消费 ORM，因而仍存在 Session 生命周期外
   detached/lazy-load 的潜在风险。公开 Subscription、Site、History QueryService 已经投影 DTO，
   属于完成项，不应重做。
+- S1-L2 由 `b4f873654`、`a01a35bcb` 交付；精确 head SHA 的 Unit Tests `33098869736` 与
+  Pylint `33098869837` 全绿，Application 覆盖率低水位提升并固化至 `78.78%`。该证据只完成
+  Workflow query 纵切面，不能替代 S1-L3 对其余 Chain/Agent raw data port 的清零。
 
 **目标与步骤**
 
