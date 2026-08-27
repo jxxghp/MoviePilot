@@ -283,6 +283,216 @@ def test_retired_canonical_filenames_do_not_return():
     assert leftovers == []
 
 
+def test_workflow_query_contract_returns_only_typed_snapshots():
+    """工作流正式查询端口不得退化为 Any 或 ORM 返回值。"""
+    path = APP_ROOT / "application" / "workflow.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    query_classes = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name in {"WorkflowQueryRepository", "WorkflowQueryService"}
+    }
+    methods = [
+        node
+        for query_class in query_classes.values()
+        for node in query_class.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not node.name.startswith("__")
+        and node.returns is not None
+    ]
+
+    assert set(query_classes) == {"WorkflowQueryRepository", "WorkflowQueryService"}
+    assert methods
+    for method in methods:
+        annotation = ast.unparse(method.returns)
+        assert "Any" not in annotation
+        assert "WorkflowSnapshot" in annotation
+
+
+def test_workflow_query_consumers_do_not_reach_raw_oper():
+    """API、Agent、共享服务和运行时管理器只消费统一快照查询服务。"""
+    consumer_paths = (
+        "app/api/dependencies/workflow.py",
+        "app/agent/tools/impl/query_workflows.py",
+        "app/application/server/share.py",
+        "app/workflow/__init__.py",
+    )
+    violations = {}
+    for relative_path in consumer_paths:
+        source = (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
+        forbidden = {
+            name
+            for name in (
+                "WorkflowOper",
+                "get_agent_workflow_port",
+                "get_chain_workflow_port",
+            )
+            if name in source
+        }
+        if forbidden:
+            violations[relative_path] = sorted(forbidden)
+
+    assert violations == {}
+
+
+def test_workflow_query_adapter_owns_projection_sessions():
+    """唯一查询适配器必须在自有同步和异步 Session 内投影快照。"""
+    path = APP_ROOT / "db" / "adapters" / "workflow.py"
+    source = path.read_text(encoding="utf-8")
+
+    assert "class TransactionalWorkflowQueryRepository" in source
+    assert "session.close()" in source
+    assert "async with self._async_session() as session" in source
+    assert "_project_workflow(record)" in source
+
+
+def test_workflow_execution_chain_uses_single_application_owned_port():
+    """工作流 Chain 写端必须只使用 Application owner 的唯一配置入口。"""
+    contract_path = APP_ROOT / "application" / "workflow.py"
+    contract_tree = ast.parse(
+        contract_path.read_text(encoding="utf-8"),
+        filename=str(contract_path),
+    )
+    contract = next(
+        node
+        for node in contract_tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "WorkflowExecutionPort"
+    )
+    methods = {
+        node.name: ast.unparse(node.returns)
+        for node in contract.body
+        if isinstance(node, ast.FunctionDef)
+        and node.returns is not None
+    }
+    assert methods == {
+        "start": "bool",
+        "success": "bool",
+        "fail": "bool",
+        "step": "bool",
+        "reset": "bool",
+    }
+
+    data_path = APP_ROOT / "application" / "chain" / "data.py"
+    data_tree = ast.parse(
+        data_path.read_text(encoding="utf-8"),
+        filename=str(data_path),
+    )
+    data_class = next(
+        node
+        for node in data_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "ChainDataPorts"
+    )
+    data_fields = {
+        node.target.id
+        for node in data_class.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+    }
+    data_functions = {
+        node.name
+        for node in data_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert "workflow" not in data_fields
+    assert "get_chain_workflow_port" not in data_functions
+
+    chain_source = (APP_ROOT / "chain" / "workflow.py").read_text(encoding="utf-8")
+    startup_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    assert chain_source.count("get_configured_workflow_execution()") == 1
+    assert "get_chain_workflow_port" not in chain_source
+    assert "configure_workflow_execution(workflow_execution)" in startup_source
+    assert "workflow=lambda:" not in startup_source
+
+
+def test_chain_registry_has_no_dynamic_proxies_or_dead_context_injection():
+    """Chain registry 不得恢复零消费者动态代理或失效 data_ports 伪注入。"""
+    data_path = APP_ROOT / "application" / "chain" / "data.py"
+    data_tree = ast.parse(
+        data_path.read_text(encoding="utf-8"),
+        filename=str(data_path),
+    )
+    proxy_classes = {
+        node.name
+        for node in data_tree.body
+        if isinstance(node, ast.ClassDef)
+        and (node.name.endswith("PortProxy") or node.name == "_PortProxyMeta")
+    }
+    dynamic_getters = {
+        node.name
+        for node in ast.walk(data_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "__getattr__"
+    }
+    assert proxy_classes == set()
+    assert dynamic_getters == set()
+
+    context_source = (
+        APP_ROOT / "application" / "chain" / "context.py"
+    ).read_text(encoding="utf-8")
+    chain_base_source = (APP_ROOT / "chain" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    startup_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    assert "data_ports" not in context_source
+    assert "self.data_ports" not in chain_base_source
+    assert "data_ports=" not in startup_source
+
+
+def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
+    """工作流旧写入口只能存在于 SDK Legacy facade。"""
+    oper_path = APP_ROOT / "db" / "oper" / "workflow.py"
+    oper_tree = ast.parse(
+        oper_path.read_text(encoding="utf-8"),
+        filename=str(oper_path),
+    )
+    oper_class = next(
+        node
+        for node in oper_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "WorkflowOper"
+    )
+    method_names = {
+        node.name
+        for node in oper_class.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert {"start", "success", "fail", "step", "reset"}.isdisjoint(method_names)
+    assert "legacy" not in oper_path.read_text(encoding="utf-8").lower()
+
+    package_source = (APP_ROOT / "db" / "oper" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"WorkflowOper"' not in package_source
+
+
+def test_agent_data_ports_do_not_duplicate_workflow_query_capability():
+    """Agent 数据聚合器不得重新暴露无类型工作流读取入口。"""
+    source = (APP_ROOT / "application" / "agentdata.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "WorkflowPort" not in source
+    assert "get_agent_workflow_port" not in source
+
+
+def test_host_uses_canonical_workflow_manager_name():
+    """宿主代码不得继续定义或导入旧 WorkFlowManager 拼写。"""
+    violations = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative_path = path.relative_to(APP_ROOT)
+        if relative_path.parts[:2] == ("runtime", "compat"):
+            continue
+        if "WorkFlowManager" in path.read_text(encoding="utf-8"):
+            violations.append(str(path.relative_to(PROJECT_ROOT)))
+
+    assert violations == []
+
+
 def test_startup_root_contains_only_composition_packages():
     """组合根顶层只保留稳定分区，禁止再次堆叠扁平实现文件。"""
     startup_root = APP_ROOT / "startup"

@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 849 / 6,940 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 850 / 6,944 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -77,9 +77,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 11,820 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 885 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 78.81%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 全量 mypy 历史债务 | 11,809 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
+| Ruff 历史诊断 | 875 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 78.89%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -107,8 +107,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 |---|---|---|---|---|
 | ARCH-001 | P0 | 已交付 | 恢复 mypy ratchet | `5df388719` 已推送，主线既有 CI gate 通过 |
 | ARCH-101 | P1 | 已交付 | 统一规则、总览、基线和语义门禁 | `113355784` 已推送，Unit Tests `33031697902`、Pylint `33031697785` 全绿，远端 `0/0` |
-| ARCH-102 | P1 | 执行中 | 将 Transfer pending 升级为真实 E3 状态机 | `S1-L1.1` 至 `S1-L1.5` 全部交付后，崩溃窗口可判定恢复，结果未知时进入人工确认 |
-| ARCH-103 | P1 | 待执行 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
+| ARCH-102 | P1 | 已交付 | 将 Transfer pending 升级为真实 E3 状态机 | `e9de149db`、`a2e249f20` 已推送；Unit Tests `33092427327`、Pylint `33092427348` 全绿，崩溃结果未知时进入人工确认 |
+| ARCH-103 | P1 | 执行中 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
 | ARCH-104 | P1 | 待执行 | 收口跨多次写入的业务事务 | 站点/规则引用清理可整体回滚或幂等恢复 |
 | ARCH-105 | P1 | 待执行 | 明确 post-commit 与 Outbox 完成语义 | “业务已提交、后置效果 pending”可被调用方正确识别 |
 | ARCH-106 | P1 | 待执行 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 导入或普通 Chain 构造不再启动进程资源 |
@@ -196,8 +196,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   claim/lease/heartbeat/attempt、过期接管、固定退避的唯一恢复入口和有界关闭 owner。
 - `S1-L1.4 幂等执行与终态结算`：`VERIFIED`。已交付稳定 operation ledger、严格结果探测、
   唯一 retry owner、`manual_review` 人工判定和 history/pending/outbox 同 UoW 终态结算。
-- `S1-L1.5 E3 全链收口`：`PLANNED`。完成崩溃矩阵、兼容验收与旧路径删除。此叶交付前，
-  ARCH-102 父项保持“执行中”，不得以局部绿色宣称 E3 完成。
+- `S1-L1.5 E3 全链收口`：`VERIFIED`。崩溃矩阵、3.0.17 升降级、重复回放、稳定计划身份、
+  outcome/settlement 一致性和插件 ABI 已完成验收；旧 fail-open、重复状态与兼容层外旧入口已删除。
 
 **问题与证据**
 
@@ -227,7 +227,13 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - 管理员人工判定 API 只公开 `not_applied` 与带结果证据的 `applied`，并持久记录操作者、理由、结论
   和 revision；无租约人工路径不能直接伪造失败终态。
 - 以上实现已满足 `docs/adr/0007-background-action-reliability.md:123-139` 对 E3 稳定身份、步骤状态、
-  lease/heartbeat 和人工恢复的阶段性要求；完整崩溃矩阵与兼容收口仍由 `S1-L1.5` 验收。
+  lease/heartbeat 和人工恢复的要求。`RETRY_WAIT`、重放、双重失败、人工放弃和结算崩溃窗口均有
+  故障注入覆盖；计划指纹、步骤成员关系和所有状态写入使用精确 CAS，异常不再降级到旧执行路径。
+- canonical 模块已按职责聚合为 `app/application/chain/events.py`、`app/application/transfer/execution.py`
+  和 `app/runtime/resources.py`；`durable_events.py`、`transfer_execution.py`、`managed_resources.py`
+  等旧物理模块已退役，仅允许精确 Compat manifest 和兼容测试引用旧导入名，宿主不保留重复导出。
+- 交付提交为 `e9de149db`、`a2e249f20`；精确 head SHA 的 Unit Tests `33092427327` 与 Pylint
+  `33092427348` 全绿，覆盖率低水位同步提升至 Application `78.71%`。
 
 **目标与步骤**
 
@@ -266,16 +272,25 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   `app/application/agentdata.py:91-120` 还通过 `__dict__.update()` 动态组装端口。
 - `app/startup/initializers/modules.py:848-863,896-910` 仍向生产 Chain/Agent 注入多个无 Session Oper。
 - 无 Session Oper 会为单次调用独立创建事务；一个业务操作的“查询后更新”可能被拆成多个事务。
-- Workflow query 和 Chain/Agent raw data port 仍返回 `Any`/ORM，Subscription mutation 内部也消费 ORM，
-  因而存在 Session 生命周期外 detached/lazy-load 的潜在风险。公开 Subscription、Site、History
-  QueryService 已经投影 DTO，属于完成项，不应重做。
+- Workflow query 已在 S1-L2 迁入冻结 DTO 和 adapter-owned Session 投影；其余 Chain/Agent raw data port
+  仍返回 `Any`/ORM，Subscription mutation 内部也消费 ORM，因而仍存在 Session 生命周期外
+  detached/lazy-load 的潜在风险。公开 Subscription、Site、History QueryService 已经投影 DTO，
+  属于完成项，不应重做。
+- S1-L2 由 `b4f873654`、`a01a35bcb` 交付；精确 head SHA 的 Unit Tests `33098869736` 与
+  Pylint `33098869837` 全绿，Application 覆盖率低水位提升并固化至 `78.78%`。该证据只完成
+  Workflow query 纵切面，不能替代 S1-L3 对其余 Chain/Agent raw data port 的清零。
 
 **目标与步骤**
 
 - [ ] 按领域定义 Query/Command Protocol，不再使用通用 `OperFactory = Callable[[], Any]`。
 - [ ] 写 Port 由 `db/adapters` 创建单操作 Session/UoW；Oper 的 canonical 写方法只 stage/flush，
   读取方法仍可在调用方 Session 中查询。
-- [ ] 查询 Port 在 adapter Session 内映射为冻结 DTO/Projection，Application 和 API 不接收 ORM。
+- [x] Workflow 查询 Port 在 adapter Session 内映射为冻结 DTO/Projection，API、Agent、Chain、Scheduler、
+  Workflow runtime 和中心服务分享均不接收 ORM。
+- [x] Workflow 执行写端由 Chain 直连 `WorkflowExecutionPort` 和短 Session/UoW 事务服务；canonical
+  `WorkflowOper` 只保留显式 Session query/stage，旧无 Session 五方法只存在于 SDK Legacy/Compat。
+- [x] 删除 Chain registry 中零消费者 `*PortProxy`/动态转发和 `ChainRuntimeContext.data_ports`
+  伪注入；Workflow 执行服务只在 Application owner 配置一次，不再重复注册到 `ChainDataPorts`。
 - [ ] `ChainDataPorts`/`AgentDataPorts` 可暂时保留为兼容聚合器，但字段必须显式、可类型检查。
 - [ ] 以一个业务纵切面迁移并验证后，再迁移下一组，禁止一次替换所有 Oper。
 - [ ] 增加 AST 门禁，禁止向 `ChainDataPorts`、`AgentDataPorts` 和新的 canonical use-case service

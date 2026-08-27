@@ -13,8 +13,12 @@ from typing import Any, Callable, List, Optional, Tuple
 
 from pydantic import BaseModel
 
-from app.application.chain.data import get_chain_workflow_port
-from app.application.workflow import get_workflow_manager
+from app.application.workflow import (
+    WorkflowSnapshot,
+    get_configured_workflow_execution,
+    get_configured_workflow_query,
+    get_workflow_manager,
+)
 from app.chain import ChainBase
 from app.runtime.events import Event, eventmanager
 from app.runtime.execution import OwnedThreadPoolExecutor
@@ -27,9 +31,6 @@ ARTIFACT_FIELDS = {"torrents", "medias", "fileitems", "downloads", "sites", "sub
 DEFAULT_WORKFLOW_MAX_WORKERS = 4
 WORKFLOW_EXECUTOR_STOP_TIMEOUT_SECONDS = 10.0
 CIRCULAR_REFERENCE_PLACEHOLDER = "[Circular]"
-Workflow = Any
-
-
 def _serialize_workflow_key(key: Any) -> Any:
     """将映射键转换为 JSON 安全值。"""
     if key is None or isinstance(key, (str, int, float, bool)):
@@ -118,7 +119,11 @@ class WorkflowExecutor:
     工作流执行器
     """
 
-    def __init__(self, workflow: Workflow, step_callback: Callable = None):
+    def __init__(
+            self,
+            workflow: WorkflowSnapshot,
+            step_callback: Callable = None,
+    ):
         """
         初始化工作流执行器
         :param workflow: 工作流对象
@@ -132,8 +137,13 @@ class WorkflowExecutor:
             if step_callback
             else False
         )
-        self.actions = {action['id']: Action(**action) for action in workflow.actions}
-        self.flows = [ActionFlow(**flow) for flow in workflow.flows]
+        self.actions: dict[str, Action] = {}
+        for action_data in workflow.actions:
+            action = Action(**dict(action_data))
+            if not action.id:
+                raise ValueError("工作流动作缺少 ID")
+            self.actions[action.id] = action
+        self.flows = [ActionFlow(**dict(flow)) for flow in workflow.flows]
         execution_config = getattr(workflow, "execution_config", None) or {}
         execution_state = getattr(workflow, "execution_state", None) or {}
         self.execution_config = (
@@ -652,7 +662,8 @@ class WorkflowExecutor:
                 self.flow_satisfied.add(flow_key)
             if not source_success and self.node_states.get(source_id) == "failed":
                 self.flow_failed.add(flow_key)
-            self.evaluate_target_state(flow.target)
+            if flow.target:
+                self.evaluate_target_state(flow.target)
 
     def evaluate_target_state(self, target_id: str) -> None:
         """
@@ -1275,15 +1286,35 @@ class WorkflowChain(ChainBase):
         :param from_begin: 是否从头开始，默认为True
         :param progress_callback: 定时服务进度更新回调
         """
-        workflowoper = get_chain_workflow_port()
+        workflow_execution = get_configured_workflow_execution()
 
-        def save_step(action: Action, context: ActionContext, execution_state: dict, completed: bool):
-            """
-            保存上下文到数据库
-            """
-            get_chain_workflow_port().step(
+        # 重置工作流
+        if from_begin:
+            workflow_execution.reset(workflow_id)
+
+        # 查询工作流数据
+        workflow = get_configured_workflow_query().get_sync(workflow_id)
+        if not workflow:
+            logger.warn(f"工作流 {workflow_id} 不存在")
+            return False, "工作流不存在"
+        if not workflow.actions:
+            logger.warn(f"工作流 {workflow.name} 无动作")
+            return False, "工作流无动作"
+        if not workflow.flows:
+            logger.warn(f"工作流 {workflow.name} 无流程")
+            return False, "工作流无流程"
+
+        def save_step(
+                action: Action,
+                context: ActionContext,
+                execution_state: dict,
+                completed: bool,
+        ) -> None:
+            """保存动作上下文和结构化执行状态。"""
+            persisted_action_id = (action.id or "") if completed else ""
+            workflow_execution.step(
                 workflow_id,
-                action_id=action.id if completed else "",
+                action_id=persisted_action_id,
                 context=_serialize_workflow_context(context),
                 execution_state=_serialize_workflow_value(execution_state)
             )
@@ -1305,22 +1336,6 @@ class WorkflowChain(ChainBase):
                     },
                 )
 
-        # 重置工作流
-        if from_begin:
-            workflowoper.reset(workflow_id)
-
-        # 查询工作流数据
-        workflow = workflowoper.get(workflow_id)
-        if not workflow:
-            logger.warn(f"工作流 {workflow_id} 不存在")
-            return False, "工作流不存在"
-        if not workflow.actions:
-            logger.warn(f"工作流 {workflow.name} 无动作")
-            return False, "工作流无动作"
-        if not workflow.flows:
-            logger.warn(f"工作流 {workflow.name} 无流程")
-            return False, "工作流无流程"
-
         logger.info(f"开始执行工作流 {workflow.name}，共 {len(workflow.actions)} 个动作 ...")
         if progress_callback:
             progress_callback(
@@ -1334,7 +1349,7 @@ class WorkflowChain(ChainBase):
             logger.warning("工作流服务正在停止，拒绝执行 %s", workflow.name)
             return False, executor.errmsg
         try:
-            workflowoper.start(workflow_id)
+            workflow_execution.start(workflow_id)
         except Exception:
             executor.abort_before_execute()
             raise
@@ -1346,31 +1361,31 @@ class WorkflowChain(ChainBase):
 
         if not executor.success or executor.has_failure:
             logger.info(f"工作流 {workflow.name} 执行失败：{executor.errmsg}")
-            workflowoper.fail(workflow_id, result=executor.errmsg)
+            workflow_execution.fail(workflow_id, result=executor.errmsg)
             return False, executor.errmsg
         logger.info(f"工作流 {workflow.name} 执行完成")
-        workflowoper.success(workflow_id)
+        workflow_execution.success(workflow_id)
         if progress_callback:
             progress_callback(value=100, text=f"工作流 {workflow.name} 执行完成")
         return True, ""
 
     @staticmethod
-    def get_workflows() -> List[Workflow]:
+    def get_workflows() -> List[WorkflowSnapshot]:
         """
         获取工作流列表
         """
-        return get_chain_workflow_port().list_enabled()
+        return get_configured_workflow_query().list_enabled()
 
     @staticmethod
-    def get_timer_workflows() -> List[Workflow]:
+    def get_timer_workflows() -> List[WorkflowSnapshot]:
         """
         获取定时触发的工作流列表
         """
-        return get_chain_workflow_port().get_timer_triggered_workflows()
+        return get_configured_workflow_query().list_timer_enabled()
 
     @staticmethod
-    def get_event_workflows() -> List[Workflow]:
+    def get_event_workflows() -> List[WorkflowSnapshot]:
         """
         获取事件触发的工作流列表
         """
-        return get_chain_workflow_port().get_event_triggered_workflows()
+        return get_configured_workflow_query().list_event_enabled()

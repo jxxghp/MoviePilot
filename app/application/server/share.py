@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import asdict
 from typing import Any, Optional
 
+from app.application.workflow import WorkflowSnapshot
 from app.schemas.media import resolve_media_identity
 
 
@@ -26,8 +28,10 @@ class ServerSharingService:
             *,
             subscribe_provider: Callable[[int], Any],
             async_subscribe_provider: Callable[[int], Awaitable[Any]],
-            workflow_provider: Callable[[int], Any],
-            async_workflow_provider: Callable[[int], Awaitable[Any]],
+            workflow_provider: Callable[[int], Optional[WorkflowSnapshot]],
+            async_workflow_provider: Callable[
+                [int], Awaitable[Optional[WorkflowSnapshot]]
+            ],
             user_uuid_provider: Callable[[], str],
             subscribe_sender: Callable[[dict], Any],
             async_subscribe_sender: Callable[[dict], Awaitable[Any]],
@@ -68,9 +72,9 @@ class ServerSharingService:
         return payload
 
     @staticmethod
-    def prepare_workflow(workflow: Any) -> dict:
+    def prepare_workflow(workflow: WorkflowSnapshot) -> dict:
         """移除本地字段并把动作和流程编码为中心服务兼容格式。"""
-        workflow_dict = workflow.to_dict()
+        workflow_dict = asdict(workflow)
         workflow_dict.pop("id", None)
         workflow_dict.pop("context", None)
         workflow_dict["actions"] = json.dumps(workflow_dict["actions"] or [])
@@ -78,7 +82,9 @@ class ServerSharingService:
         return workflow_dict
 
     @staticmethod
-    def validate_workflow(workflow: Any) -> tuple[bool, str]:
+    def validate_workflow(
+        workflow: Optional[WorkflowSnapshot],
+    ) -> tuple[bool, str]:
         """验证工作流存在且同时包含动作与流程。"""
         if not workflow:
             return False, "工作流不存在"
@@ -160,6 +166,8 @@ class ServerSharingService:
         valid, message = self.validate_workflow(workflow)
         if not valid:
             return False, message
+        if workflow is None:
+            return False, "工作流不存在"
         payload = {
             "share_title": share_title,
             "share_comment": share_comment,
@@ -188,6 +196,8 @@ class ServerSharingService:
         valid, message = self.validate_workflow(workflow)
         if not valid:
             return False, message
+        if workflow is None:
+            return False, "工作流不存在"
         payload = {
             "share_title": share_title,
             "share_comment": share_comment,

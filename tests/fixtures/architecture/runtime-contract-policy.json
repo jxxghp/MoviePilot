@@ -300,7 +300,7 @@
       },
       {
         "caller": "app.workflow",
-        "qualname": "WorkFlowManager.register_workflow_event",
+        "qualname": "WorkflowManager.register_workflow_event",
         "method": "add_event_listener",
         "receiver_kind": "canonical_singleton",
         "events": [],
@@ -309,7 +309,7 @@
         "handler": "self._handle_event",
         "registration_kind": "listener",
         "priority": "<default>",
-        "fingerprint": "042068d816db7e46ab4da6e96f8549af97b57bd9d75ba710cc1ff4fec7e5e188",
+        "fingerprint": "b99f557080a8ddb6dc9d2870d02c4cabc4b265b0daac086369c3bf1d51073c09",
         "classification": "approved_dynamic_exception",
         "owner": "app.workflow",
         "reason": "工作流配置在运行期决定事件类型，receiver 与 handler 仍可静态证明。"

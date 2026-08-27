@@ -284,9 +284,9 @@
       "app.db.workflow_oper": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "db",
-        "replacement": "app.db.oper.workflow",
-        "target": "app.db.oper.workflow"
+        "owner": "sdk",
+        "replacement": "app.application.workflow.WorkflowExecutionPort",
+        "target": "app.sdk._legacy.workflow"
       },
       "app.domain.string": {
         "introduced": "v3.0.0",
@@ -926,6 +926,13 @@
           "target_name": "MediaInteractionChain"
         }
       },
+      "app.db.oper": {
+        "WorkflowOper": {
+          "replacement": "app.application.workflow.WorkflowExecutionPort",
+          "target_module": "app.sdk._legacy.workflow",
+          "target_name": "WorkflowOper"
+        }
+      },
       "app.domain.media": {
         "MEDIA_SOURCE_ALIASES": {
           "replacement": "app.schemas.media.MEDIA_SOURCE_ALIASES",
@@ -1184,6 +1191,13 @@
           "target_module": "app.runtime.log",
           "target_name": "log_settings"
         }
+      },
+      "app.workflow": {
+        "WorkFlowManager": {
+          "replacement": "app.workflow.WorkflowManager",
+          "target_module": "app.workflow",
+          "target_name": "WorkflowManager"
+        }
       }
     },
     "virtual_packages": [
@@ -1440,12 +1454,12 @@
         "caller": "app.workflow",
         "dynamic": true,
         "events": [],
-        "fingerprint": "042068d816db7e46ab4da6e96f8549af97b57bd9d75ba710cc1ff4fec7e5e188",
+        "fingerprint": "b99f557080a8ddb6dc9d2870d02c4cabc4b265b0daac086369c3bf1d51073c09",
         "handler": "self._handle_event",
         "invalid": false,
         "method": "add_event_listener",
         "priority": "<default>",
-        "qualname": "WorkFlowManager.register_workflow_event",
+        "qualname": "WorkflowManager.register_workflow_event",
         "receiver_kind": "canonical_singleton",
         "registration_kind": "listener"
       }
@@ -1836,7 +1850,7 @@
           "50704edda70674af0932e769ddda40d2c21d50b134155c975d675035d7c933cd"
         ],
         "producer_fingerprints": [
-          "611abaaf708f0c2d555d3b963ff540c015f2155ff493ed17b92d7c7f0bd45e96"
+          "b92d348c57dac3ba348079b4e71d02a0c13933bbf14b7e81188b042c3c5e2db3"
         ]
       }
     },
@@ -2980,10 +2994,10 @@
         "events": [
           "EventType.WorkflowExecute"
         ],
-        "fingerprint": "611abaaf708f0c2d555d3b963ff540c015f2155ff493ed17b92d7c7f0bd45e96",
+        "fingerprint": "b92d348c57dac3ba348079b4e71d02a0c13933bbf14b7e81188b042c3c5e2db3",
         "invalid": false,
         "method": "send_event",
-        "qualname": "WorkFlowManager._trigger_workflow",
+        "qualname": "WorkflowManager._trigger_workflow",
         "receiver_kind": "canonical_singleton"
       },
       {

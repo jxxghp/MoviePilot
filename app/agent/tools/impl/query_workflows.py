@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_workflow_port
+from app.application.workflow import get_configured_workflow_query
 from app.runtime.log import logger
 
 
@@ -54,8 +54,7 @@ class QueryWorkflowsTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: state={state}, name={name}, trigger_type={trigger_type}")
 
         try:
-            workflow_oper = get_agent_workflow_port()
-            workflows = await workflow_oper.async_list()
+            workflows = await get_configured_workflow_query().list()
 
             # 过滤工作流
             filtered_workflows = []
@@ -101,7 +100,11 @@ class QueryWorkflowsTool(MoviePilotTool):
                     "event": "事件触发",
                     "manual": "手动触发"
                 }
-                trigger_type_desc = trigger_type_map.get(wf.trigger_type, wf.trigger_type or "定时触发")
+                trigger_type_key = wf.trigger_type or "timer"
+                trigger_type_desc = trigger_type_map.get(
+                    trigger_type_key,
+                    trigger_type_key,
+                )
 
                 simplified = {
                     "id": wf.id,

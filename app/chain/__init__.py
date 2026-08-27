@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 from app.application.chain.context import ChainRuntimeContext, get_chain_runtime_context
-from app.application.chain.data import get_chain_data_ports
 from app.application.configuration import (
     ChainRuntimeConfig,
     get_chain_runtime_config_snapshot,
@@ -59,7 +58,6 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.async_filecache = context.async_file_cache
         self.runtime_config = context.configuration
         self.stop_state = context.stop_state
-        self.data_ports = context.data_ports or get_chain_data_ports()
         self.durable_event_writer = context.durable_event_writer
         self._module_dispatcher = context.module_dispatcher_factory(
             module_catalog=self.modulemanager,

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-
 AgentDataFactory = Callable[[], Any]
 
 
@@ -76,12 +75,6 @@ class DownloadHistoryPort(_PortProxy):
     port_name = "download_history"
 
 
-class WorkflowPort(_PortProxy):
-    """工作流数据端口代理。"""
-
-    port_name = "workflow"
-
-
 class PluginDataPort(_PortProxy):
     """插件数据端口代理。"""
 
@@ -110,7 +103,6 @@ def configure_agent_data_ports(**factories: AgentDataFactory) -> None:
         "subscribe_history",
         "transfer_history",
         "download_history",
-        "workflow",
         "plugin_data",
     }
     missing = sorted(required - factories.keys())
@@ -165,11 +157,6 @@ def get_agent_transfer_history_port() -> Any:
 def get_agent_download_history_port() -> Any:
     """创建 Agent 下载历史数据端口实例。"""
     return get_agent_data_ports().download_history()
-
-
-def get_agent_workflow_port() -> Any:
-    """创建 Agent 工作流数据端口实例。"""
-    return get_agent_data_ports().workflow()
 
 
 def get_agent_plugin_data_port() -> Any:

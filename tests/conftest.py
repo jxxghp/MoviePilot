@@ -211,11 +211,12 @@ def configure_plugin_system_services():
     from app.application.site.query import SiteQueryService, configure_site_query_service
     from app.application.workflow import (
         WorkflowQueryService,
+        configure_workflow_execution,
         configure_workflow_query,
         configure_workflow_runtime,
     )
-    from app.workflow import WorkFlowManager
-    configure_workflow_runtime(lambda: WorkFlowManager())
+    from app.workflow import WorkflowManager
+    configure_workflow_runtime(lambda: WorkflowManager())
     from app.application.agentdata import configure_agent_data_ports
     from app.application.agenttask import (
         AgentTaskExecutionService,
@@ -229,7 +230,10 @@ def configure_plugin_system_services():
     from app.db.adapters.transfer.execution import (
         TransactionalTransferExecutionRepository,
     )
-    from app.db.adapters.workflow import TransactionalWorkflowExecutionService
+    from app.db.adapters.workflow import (
+        TransactionalWorkflowExecutionService,
+        TransactionalWorkflowQueryRepository,
+    )
     from app.db.oper.agentchat import AgentChatOper
     from app.db.oper.downloadhistory import DownloadHistoryOper
     from app.db.oper.mediaserver import MediaServerOper
@@ -240,7 +244,7 @@ def configure_plugin_system_services():
     from app.db.oper.subscribehistory import SubscribeHistoryOper
     from app.db.oper.transferhistory import TransferHistoryOper
     from app.db.oper.user import UserOper
-    from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
+    from app.db.oper.workflow import WorkflowOper
 
     def create_sync_session() -> Session:
         """为无显式会话的 Oper 测试入口创建独占同步 Session。"""
@@ -255,9 +259,8 @@ def configure_plugin_system_services():
         async_=transaction_runner.async_,
     )
 
-    configure_workflow_legacy_writer(
-        TransactionalWorkflowExecutionService(SessionFactory)
-    )
+    workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
+    configure_workflow_execution(workflow_execution)
 
     configure_api_data_ports(
         sync_session=get_db,
@@ -301,7 +304,6 @@ def configure_plugin_system_services():
     configure_chain_data_ports(
         site=site_repository,
         subscribe=lambda: SubscribeOper(),
-        workflow=lambda: WorkflowOper(),
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(
@@ -332,7 +334,12 @@ def configure_plugin_system_services():
     ))
     configure_site_query_service(SiteQueryService(repository=site_repository()))
     configure_site_health_service(SiteHealthService(repository=site_repository()))
-    configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
+    configure_workflow_query(WorkflowQueryService(
+        repository=TransactionalWorkflowQueryRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+    ))
     from app.db.oper.agenttask import AgentTaskOper
     from app.db.oper.plugindata import PluginDataOper
     configure_agent_data_ports(
@@ -344,7 +351,6 @@ def configure_plugin_system_services():
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         download_history=lambda: DownloadHistoryOper(),
-        workflow=lambda: WorkflowOper(),
         plugin_data=lambda: PluginDataOper(),
     )
     configure_agent_task_execution(AgentTaskExecutionService(

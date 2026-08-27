@@ -6,13 +6,17 @@
 `run_count` 的自增必须留在 SQL 侧，否则并发执行会丢计数。
 """
 import asyncio
+from dataclasses import FrozenInstanceError
 
 import pytest
 
+from app.application.workflow import WorkflowSnapshot
 from app.db import base as db_base
+from app.db.adapters.workflow import TransactionalWorkflowQueryRepository
 from app.db.models.workflow import Workflow
 from app.db.oper.workflow import WorkflowOper
-from app.db.session import async_session_scope
+from app.db.session import SessionFactory, async_session_scope
+from app.schemas.workflow import Workflow as WorkflowResponse
 
 
 @pytest.fixture(autouse=True)
@@ -88,6 +92,63 @@ def test_workflow_oper_reuses_explicit_query_sessions(db, monkeypatch):
             assert (await WorkflowOper(session).async_get_by_name(created.name)).id == created.id
 
     asyncio.run(check())
+
+
+def test_query_repository_returns_detached_deep_copied_snapshot(db):
+    """查询仓储必须在关闭短 Session 前投影，且 JSON 不与 ORM 记录共享。"""
+    workflow = _flow("wf-snapshot")
+    workflow.actions = [{"id": "action-1", "config": {"value": 1}}]
+    workflow.flows = [{"source": "action-1", "target": "end"}]
+    workflow.context = {"nested": {"value": 1}}
+    created = db.add(workflow)
+    repository = TransactionalWorkflowQueryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+
+    snapshot = repository.get(created.id)
+
+    assert isinstance(snapshot, WorkflowSnapshot)
+    assert snapshot.name == "wf-snapshot"
+    with pytest.raises(FrozenInstanceError):
+        snapshot.name = "changed"
+    snapshot.actions[0]["config"]["value"] = 2
+    snapshot.context["nested"]["value"] = 2
+    refreshed = repository.get(created.id)
+    assert refreshed.actions[0]["config"]["value"] == 1
+    assert refreshed.context["nested"]["value"] == 1
+
+
+def test_query_repository_async_projection_survives_session_close(db):
+    """异步查询返回值在仓储退出 Session 作用域后仍可完整序列化。"""
+    created = db.add(_flow("wf-async-snapshot"))
+    repository = TransactionalWorkflowQueryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+
+    snapshot = asyncio.run(repository.async_get(created.id))
+    listed = asyncio.run(repository.async_list())
+
+    assert isinstance(snapshot, WorkflowSnapshot)
+    assert snapshot.name == "wf-async-snapshot"
+    assert created.id in {item.id for item in listed}
+
+
+def test_workflow_snapshot_validates_against_api_response_contract(db):
+    """冻结快照可直接序列化为 API 合同且不会暴露内部执行上下文。"""
+    created = db.add(_flow("wf-api-snapshot"))
+    repository = TransactionalWorkflowQueryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+
+    response = WorkflowResponse.model_validate(repository.get(created.id))
+    payload = response.model_dump()
+
+    assert payload["id"] == created.id
+    assert payload["name"] == "wf-api-snapshot"
+    assert "context" not in payload
 
 
 def test_enabled_workflows_exclude_paused(db):

@@ -43,7 +43,7 @@ from app.application.chain.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
 )
-from app.application.chain.data import configure_chain_data_ports, get_chain_data_ports
+from app.application.chain.data import configure_chain_data_ports
 from app.application.chain.events import (
     restore_download_added,
     restore_transfer_result,
@@ -106,7 +106,11 @@ from app.application.service import configure_service_directory
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.subscription.write import configure_subscribe_writer
-from app.application.workflow import WorkflowQueryService, configure_workflow_query
+from app.application.workflow import (
+    WorkflowQueryService,
+    configure_workflow_execution,
+    configure_workflow_query,
+)
 from app.command import CommandChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
@@ -119,7 +123,10 @@ from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRep
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
-from app.db.adapters.workflow import TransactionalWorkflowExecutionService
+from app.db.adapters.workflow import (
+    TransactionalWorkflowExecutionService,
+    TransactionalWorkflowQueryRepository,
+)
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.downloadhistory import DownloadHistoryOper
@@ -134,7 +141,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.user import UserOper
 from app.db.oper.userconfig import UserConfigOper
-from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
+from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
     SessionFactory,
     async_session_scope,
@@ -244,11 +251,6 @@ async def _async_get_subscribe(subscribe_id: int):
     return await SubscribeOper().async_get(subscribe_id)
 
 
-async def _async_get_workflow(workflow_id: int):
-    """通过数据库操作器异步读取工作流，供服务端共享用例使用。"""
-    return await WorkflowOper().async_get(workflow_id)
-
-
 def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
     """把旧 Chain ABI 延迟转入唯一 TransferChain durable command。"""
     from app.chain.transfer import TransferChain
@@ -272,13 +274,12 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
         module_dispatcher_factory=ModuleInvocationDispatcher,
         legacy_transfer_command=_execute_legacy_transfer_command,
         configuration=build_chain_runtime_config(legacy_settings),
-        data_ports=get_chain_data_ports(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
         stop_state=runtime_stop_state,
     )
 
 
-def configure_runtime_data_providers() -> None:
+def configure_runtime_data_providers(workflow_query: WorkflowQueryService) -> None:
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
     configure_module_runtime(lambda: ModuleManager())
@@ -314,8 +315,8 @@ def configure_runtime_data_providers() -> None:
                 subscribe_id
             ),
             async_subscribe_provider=_async_get_subscribe,
-            workflow_provider=lambda workflow_id: WorkflowOper().get(workflow_id),
-            async_workflow_provider=_async_get_workflow,
+            workflow_provider=workflow_query.get_sync,
+            async_workflow_provider=workflow_query.get,
             user_uuid_provider=MoviePilotServerHelper.get_user_uuid,
             subscribe_sender=MoviePilotServerHelper.subscribe_share,
             async_subscribe_sender=MoviePilotServerHelper.async_subscribe_share,
@@ -812,6 +813,13 @@ async def init_modules() -> HostRuntime:
         chain=lambda: build_chain_runtime_config(legacy_settings),
     )
     runtime_settings = _build_runtime_settings_service()
+    workflow_query = WorkflowQueryService(
+        repository=TransactionalWorkflowQueryRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+    )
+    configure_workflow_query(workflow_query)
     agent_chat_persistence = AgentChatPersistenceService(
         repository=lambda session: AgentChatOper(session),
         async_executor=database_worker,
@@ -852,6 +860,7 @@ async def init_modules() -> HostRuntime:
             outbox=SqlAlchemyAsyncOutboxStager,
         ),
         workflow=WorkflowRuntime(
+            query=workflow_query,
             repository=WorkflowOper,
             system_config=get_configured_system_config,
         ),
@@ -866,16 +875,15 @@ async def init_modules() -> HostRuntime:
     configure_token_runtime_config(lambda: build_token_runtime_config(legacy_settings))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
-    configure_runtime_data_providers()
+    configure_runtime_data_providers(workflow_query)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
-    configure_workflow_legacy_writer(workflow_execution)
+    configure_workflow_execution(workflow_execution)
     configure_chain_data_ports(
         site=lambda: TransactionalSiteRepository(
             sync_session=SessionFactory,
             async_session=async_session_scope,
         ),
         subscribe=lambda: SubscribeOper(),
-        workflow=lambda: WorkflowOper(),
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(
@@ -921,7 +929,6 @@ async def init_modules() -> HostRuntime:
         sync_session=SessionFactory,
         async_session=async_session_scope,
     )))
-    configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
     configure_agent_data_ports(
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
@@ -934,7 +941,6 @@ async def init_modules() -> HostRuntime:
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         download_history=lambda: DownloadHistoryOper(),
-        workflow=lambda: WorkflowOper(),
         plugin_data=lambda: PluginDataOper(),
     )
     configure_agent_task_execution(AgentTaskExecutionService(

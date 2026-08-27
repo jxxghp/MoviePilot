@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from app import workflow as workflow_package
 from app.chain import workflow as workflow_module
 from app.runtime.correlation import correlation_scope, get_correlation_id
 from app.schemas.types import EventType
 from app.schemas.workflow import Action, ActionContext, ActionResult
-from app import workflow as workflow_package
 
 
 def _build_workflow(current_action=None, context=None, actions=None, flows=None,
@@ -635,9 +635,24 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
         flows=[{"id": "flow-end", "source": "A", "target": "END", "animated": True}],
     )
     fake_oper = _FakeWorkflowOper(workflow)
+    port_calls = []
+
+    def get_execution_port():
+        """记录单次执行获取事务端口的次数。"""
+        port_calls.append(True)
+        return fake_oper
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: fake_oper)
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_execution",
+        get_execution_port,
+    )
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_query",
+        lambda: SimpleNamespace(get_sync=lambda _workflow_id: workflow),
+    )
     monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
     monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 
@@ -645,6 +660,7 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
 
     assert success is True
     assert message == ""
+    assert port_calls == [True]
     assert fake_oper.succeeded is True
     saved_workflow_context = fake_oper.steps[-1]["context"]["workflow_context"]
     saved_self = saved_workflow_context["self"]
@@ -825,7 +841,7 @@ def test_workflow_manager_shutdown_retains_blocked_execution_for_retry(monkeypat
             release.wait()
             return ActionResult(success=True, context=context)
 
-    manager = object.__new__(workflow_package.WorkFlowManager)
+    manager = object.__new__(workflow_package.WorkflowManager)
     manager._lock = threading.RLock()
     manager._actions = {"BlockingAction": BlockingAction}
     manager._event_workflows = {}
@@ -904,7 +920,7 @@ def test_workflow_manager_shutdown_continues_across_owner_failures():
             self.manager.unregister_execution(self)
             return True
 
-    manager = object.__new__(workflow_package.WorkFlowManager)
+    manager = object.__new__(workflow_package.WorkflowManager)
     manager._lock = threading.RLock()
     action_marker = object()
     manager._actions = {"FakeAction": action_marker}
@@ -940,7 +956,16 @@ def test_workflow_chain_rejects_execution_before_persisting_running_state(monkey
     workflowoper = _FakeWorkflowOper(workflow)
     manager = RejectingWorkflowManager([])
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
-    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: workflowoper)
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_execution",
+        lambda: workflowoper,
+    )
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_query",
+        lambda: SimpleNamespace(get_sync=lambda _workflow_id: workflow),
+    )
 
     def unexpected_resume(_workflow_id: int) -> None:
         """拒绝准入时若仍恢复停止标记则立即暴露回归。"""
@@ -970,7 +995,7 @@ def test_workflow_chain_releases_admitted_owner_when_start_fails(monkeypatch):
             _ = wid
             raise RuntimeError("start failed")
 
-    manager = object.__new__(workflow_package.WorkFlowManager)
+    manager = object.__new__(workflow_package.WorkflowManager)
     manager._lock = threading.RLock()
     manager._actions = {"FakeAction": object()}
     manager._event_workflows = {}
@@ -978,7 +1003,18 @@ def test_workflow_chain_releases_admitted_owner_when_start_fails(monkeypatch):
     manager._executions = {}
     workflowoper = FailingWorkflowOper(_build_workflow())
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
-    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: workflowoper)
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_execution",
+        lambda: workflowoper,
+    )
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_query",
+        lambda: SimpleNamespace(
+            get_sync=lambda _workflow_id: workflowoper.workflow
+        ),
+    )
     monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda _workflow_id: None)
 
     with pytest.raises(RuntimeError, match="start failed"):
@@ -1018,7 +1054,7 @@ class _FakeEventManager:
 def test_workflow_event_listener_keeps_shared_handler_until_last_workflow(monkeypatch):
     """同一事件下移除单个工作流时不应断开其他工作流监听。"""
     fake_eventmanager = _FakeEventManager()
-    manager = object.__new__(workflow_package.WorkFlowManager)
+    manager = object.__new__(workflow_package.WorkflowManager)
     manager._lock = threading.Lock()
     manager._event_workflows = {}
 
@@ -1057,7 +1093,7 @@ def test_workflow_manager_retries_action_until_success(monkeypatch):
                 return ActionResult(success=False, message="第一次失败", context=context)
             return ActionResult(success=True, message="第二次成功", context=context, outputs={"ok": True})
 
-    manager = object.__new__(workflow_package.WorkFlowManager)
+    manager = object.__new__(workflow_package.WorkflowManager)
     manager._actions = {"RetryAction": RetryAction}
     monkeypatch.setattr(workflow_package.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
 

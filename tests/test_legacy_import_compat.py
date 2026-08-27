@@ -314,6 +314,19 @@ def test_db_refactor_legacy_modules_are_all_registered():
     assert expected <= set(MODULE_ALIASES)
 
 
+def test_workflow_oper_compatibility_is_only_exposed_by_overlay():
+    """旧工作流写入口只由 Legacy facade 和精确符号映射提供。"""
+    legacy = importlib.import_module("app.db.workflow_oper")
+    canonical = importlib.import_module("app.db.oper.workflow")
+    oper_package = importlib.import_module("app.db.oper")
+
+    assert MODULE_ALIASES["app.db.workflow_oper"].target == "app.sdk._legacy.workflow"
+    assert issubclass(legacy.WorkflowOper, canonical.WorkflowOper)
+    assert legacy.WorkflowOper is not canonical.WorkflowOper
+    assert oper_package.WorkflowOper is legacy.WorkflowOper
+    assert "WorkflowOper" not in oper_package.__all__
+
+
 def test_split_user_oper_facade_exports_data_and_auth_contracts():
     """旧 user_oper 同时提供 UserOper 与八个认证依赖。"""
     legacy = importlib.import_module("app.db.user_oper")
@@ -410,6 +423,16 @@ def test_chain_media_legacy_scraping_symbols_resolve_to_scraping_chain():
     assert legacy_media.ScrapingConfig is canonical_scraping.ScrapingConfig
 
 
+def test_workflow_manager_legacy_name_resolves_only_through_symbol_overlay():
+    """旧 WorkFlowManager 仍可显式导入，但不进入 canonical 模块公开面。"""
+    install_legacy_import_hook()
+    workflow_module = importlib.import_module("app.workflow")
+
+    assert workflow_module.WorkFlowManager is workflow_module.WorkflowManager
+    assert "WorkFlowManager" not in vars(workflow_module)
+    assert "WorkFlowManager" not in workflow_module.__all__
+
+
 def test_rules_domain_legacy_modules_resolve_to_rules():
     """规则域收敛后，filter/filter_rules 旧路径应复用 rules 模块。"""
     canonical = importlib.import_module("app.application.rules")
@@ -459,6 +482,8 @@ def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
 
 def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     """符号级映射清单应覆盖媒体身份、整理工作项、刮削拆分与消息/通知命名统一的旧入口。"""
+    assert set(SYMBOL_ALIASES["app.db.oper"]) == {"WorkflowOper"}
+    assert set(SYMBOL_ALIASES["app.workflow"]) == {"WorkFlowManager"}
     assert set(SYMBOL_ALIASES["app.domain.media"]) == {
         "MEDIA_SOURCE_ALIASES",
         "MEDIA_SOURCE_PREFIXES",

@@ -4,21 +4,23 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
-from app.application.chain.data import get_chain_workflow_port
-from app.application.workflow import WorkflowExecutionOwner
+from app.application.workflow import (
+    WorkflowExecutionOwner,
+    WorkflowSnapshot,
+    get_configured_workflow_query,
+)
 from app.foundation.reflection import ModuleHelper
 from app.foundation.singleton import Singleton
-from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.types import EventType
-from app.schemas.workflow import Action, ActionContext, ActionResult, Workflow
+from app.schemas.workflow import Action, ActionContext, ActionResult
 
 _WORKFLOW_STOP_TIMEOUT_SECONDS = 10.0
 
 
-class WorkFlowManager(metaclass=Singleton):
+class WorkflowManager(metaclass=Singleton):
     """
     工作流管理器
     """
@@ -316,7 +318,7 @@ class WorkFlowManager(metaclass=Singleton):
             return {}
         return action.get_contract()
 
-    def update_workflow_event(self, workflow: Workflow):
+    def update_workflow_event(self, workflow: WorkflowSnapshot):
         """
         更新工作流事件触发器
         """
@@ -333,11 +335,11 @@ class WorkFlowManager(metaclass=Singleton):
         """
         workflows = []
         if workflow_id:
-            workflow = get_chain_workflow_port().get(workflow_id)
+            workflow = get_configured_workflow_query().get_sync(workflow_id)
             if workflow:
                 workflows = [workflow]
         else:
-            workflows = get_chain_workflow_port().get_event_triggered_workflows()
+            workflows = get_configured_workflow_query().list_event_enabled()
         try:
             for workflow in workflows:
                 self.update_workflow_event(workflow)
@@ -410,7 +412,7 @@ class WorkFlowManager(metaclass=Singleton):
         """
         try:
             # 检查工作流是否存在且启用
-            workflow = get_chain_workflow_port().get(workflow_id)
+            workflow = get_configured_workflow_query().get_sync(workflow_id)
             if not workflow or workflow.state == 'P':
                 return
 

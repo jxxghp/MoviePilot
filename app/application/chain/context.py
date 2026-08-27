@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from app.application.chain.data import ChainDataPorts
 from app.application.chain.events import ChainDurableEventWriter
 from app.application.configuration import ChainRuntimeConfig
 from app.runtime.stop import StopState, runtime_stop_state
@@ -31,7 +30,6 @@ class ChainRuntimeContext:
     message_queue_factory: MessageQueueFactory
     module_dispatcher_factory: ModuleDispatcherFactory
     legacy_transfer_command: Optional[LegacyTransferCommand] = None
-    data_ports: Optional[ChainDataPorts] = None
     durable_event_writer: Optional[ChainDurableEventWriter] = None
     configuration: ChainRuntimeConfig = field(
         default_factory=lambda: ChainRuntimeConfig(media_extensions=())

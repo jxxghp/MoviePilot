@@ -6,12 +6,11 @@ Oper 层大多是模型方法的薄封装，但薄封装恰恰是最容易出错
 验证 Oper 的对外契约，而不是验证它调了哪个模型方法。
 """
 import asyncio
+import importlib
 from unittest.mock import Mock
 
 import pytest
 
-from app.db.oper.downloadhistory import DownloadHistoryOper
-from app.db.oper.mediaserver import MediaServerOper
 from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.models.mediaserver import MediaServerItem
 from app.db.models.plugindata import PluginData
@@ -22,6 +21,8 @@ from app.db.models.siteuserdata import SiteUserData
 from app.db.models.user import User
 from app.db.models.userconfig import UserConfig
 from app.db.models.workflow import Workflow
+from app.db.oper.downloadhistory import DownloadHistoryOper
+from app.db.oper.mediaserver import MediaServerOper
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.site import SiteOper
 from app.db.oper.user import UserOper
@@ -374,7 +375,7 @@ def test_workflow_oper_add_rejects_duplicate_name(db):
     assert oper.add(**_workflow_kwargs("op-wf")) == (False, "工作流已存在")
 
 
-def test_workflow_oper_exposes_lists_and_lifecycle(db):
+def test_workflow_oper_exposes_lists_and_staged_lifecycle(db):
     """
     列表入口与生命周期方法都应透传到模型并落库。
     """
@@ -387,23 +388,24 @@ def test_workflow_oper_exposes_lists_and_lifecycle(db):
     assert {w.name for w in oper.list_enabled()} >= {"op-wf-life"}
     assert {w.name for w in oper.get_timer_triggered_workflows()} >= {"op-wf-life"}
 
-    oper.start(flow.id)
+    oper.stage_start(flow.id)
     assert oper.get(flow.id).state == "R"
-    oper.step(flow.id, "a1", {"n": 1})
+    oper.stage_step(flow.id, "a1", {"n": 1})
     assert oper.get(flow.id).current_action == "a1"
-    oper.success(flow.id, "完成")
+    oper.stage_success(flow.id, "完成")
     assert oper.get(flow.id).state == "S"
-    oper.fail(flow.id, "出错")
+    oper.stage_fail(flow.id, "出错")
     assert oper.get(flow.id).state == "F"
-    oper.reset(flow.id, reset_count=True)
+    oper.stage_execution_reset(flow.id, reset_count=True)
     assert (oper.get(flow.id).state, oper.get(flow.id).run_count) == ("W", 0)
 
 
 def test_workflow_oper_no_session_uses_configured_uow_writer(db):
     """旧的无 Session Oper 写入口仍可用，但事务由组合根服务持有。"""
     flow = db.add(Workflow(**_workflow_kwargs("op-wf-legacy")))
+    legacy = importlib.import_module("app.db.workflow_oper")
 
-    assert WorkflowOper().start(flow.id) is True
+    assert legacy.WorkflowOper().start(flow.id) is True
 
     db.session.expire_all()
     assert WorkflowOper(db=db.session).get(flow.id).state == "R"

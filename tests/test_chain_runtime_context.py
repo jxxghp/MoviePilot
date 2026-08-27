@@ -2,9 +2,12 @@
 
 from unittest.mock import Mock
 
+import pytest
+
+from app.application.chain import context as chain_context
+from app.application.chain import data as chain_data
 from app.application.chain.context import ChainRuntimeContext
 from app.application.configuration import ChainRuntimeConfig
-from app.application.chain import context as chain_context
 from app.chain import ChainBase
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 
@@ -51,3 +54,42 @@ def test_no_arg_chain_uses_compatibility_context_provider(monkeypatch) -> None:
     provider.assert_called_once_with()
     assert chain.modulemanager is context.module_manager
     assert chain.pluginmanager is context.plugin_manager
+
+
+def test_chain_runtime_context_rejects_unconfigured_provider(monkeypatch) -> None:
+    """未由组合根配置运行上下文时必须显式拒绝无参 Chain。"""
+    monkeypatch.setattr(
+        chain_context,
+        "_context_provider",
+        chain_context._unconfigured_chain_runtime_context,
+    )
+
+    with pytest.raises(RuntimeError, match="Chain 运行上下文尚未由启动组合根配置"):
+        chain_context.get_chain_runtime_context()
+
+
+def test_chain_data_registry_rejects_unconfigured_and_returns_factories(
+    monkeypatch,
+) -> None:
+    """数据 registry 未配置时拒绝访问，配置后按字段返回工厂实例。"""
+    monkeypatch.setattr(chain_data, "_ports", None)
+
+    with pytest.raises(RuntimeError, match="Chain 数据端口尚未配置"):
+        chain_data.get_chain_data_ports()
+
+    media_server = Mock()
+    user = Mock()
+    chain_data.configure_chain_data_ports(
+        site=Mock,
+        subscribe=Mock,
+        download_history=Mock,
+        transfer_history=Mock,
+        transfer_pending=Mock,
+        transfer_execution=Mock,
+        media_server=lambda: media_server,
+        download_failure=Mock,
+        user=lambda: user,
+    )
+
+    assert chain_data.get_chain_media_server_port() is media_server
+    assert chain_data.get_chain_user_port() is user

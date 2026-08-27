@@ -1,60 +1,10 @@
-from typing import List, Mapping, Tuple, Optional, Any, Protocol
+from typing import Any, List, Mapping, Optional, Tuple
 
 from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.workflow import Workflow
-
-
-class WorkflowLegacyWriter(Protocol):
-    """无显式 Session 的旧 Oper 写入口所需事务服务。"""
-
-    def start(self, workflow_id: int) -> bool:
-        """提交工作流运行中状态。"""
-        ...
-
-    def success(
-            self,
-            workflow_id: int,
-            result: Optional[str] = None,
-    ) -> bool:
-        """提交工作流成功状态。"""
-        ...
-
-    def fail(self, workflow_id: int, result: str) -> bool:
-        """提交工作流失败状态。"""
-        ...
-
-    def step(
-            self,
-            workflow_id: int,
-            action_id: str,
-            context: dict[str, Any],
-            execution_state: Optional[dict[str, Any]] = None,
-    ) -> bool:
-        """提交工作流动作进度。"""
-        ...
-
-    def reset(self, workflow_id: int, reset_count: bool = False) -> bool:
-        """提交工作流执行状态重置。"""
-        ...
-
-
-_legacy_writer: Optional[WorkflowLegacyWriter] = None
-
-
-def configure_workflow_legacy_writer(writer: WorkflowLegacyWriter) -> None:
-    """由启动组合根为旧的无 Session Oper 写入口注入事务服务。"""
-    global _legacy_writer
-    _legacy_writer = writer
-
-
-def _get_workflow_legacy_writer() -> WorkflowLegacyWriter:
-    """返回已装配的兼容事务服务，避免 Oper 自行创建会话。"""
-    if _legacy_writer is None:
-        raise RuntimeError("工作流兼容写服务尚未配置")
-    return _legacy_writer
 
 
 class WorkflowOper(DbOper):
@@ -193,27 +143,11 @@ class WorkflowOper(DbOper):
             workflow.run_count = 0
         return workflow
 
-    def start(self, wid: int) -> bool:
-        """
-        启动
-        """
-        if self._db is None:
-            return _get_workflow_legacy_writer().start(wid)
-        return self.stage_start(wid)
-
     def stage_start(self, wid: int) -> bool:
         """在调用方持有的会话中暂存运行中状态。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         return Workflow.start(self._db, wid)
-
-    def success(self, wid: int, result: Optional[str] = None) -> bool:
-        """
-        成功
-        """
-        if self._db is None:
-            return _get_workflow_legacy_writer().success(wid, result)
-        return self.stage_success(wid, result)
 
     def stage_success(self, wid: int, result: Optional[str] = None) -> bool:
         """在调用方持有的会话中暂存成功状态。"""
@@ -221,38 +155,11 @@ class WorkflowOper(DbOper):
             raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         return Workflow.success(self._db, wid, result)
 
-    def fail(self, wid: int, result: str) -> bool:
-        """
-        失败
-        """
-        if self._db is None:
-            return _get_workflow_legacy_writer().fail(wid, result)
-        return self.stage_fail(wid, result)
-
     def stage_fail(self, wid: int, result: str) -> bool:
         """在调用方持有的会话中暂存失败状态。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         return Workflow.fail(self._db, wid, result)
-
-    def step(
-            self,
-            wid: int,
-            action_id: str,
-            context: dict[str, Any],
-            execution_state: Optional[dict[str, Any]] = None,
-    ) -> bool:
-        """
-        步进
-        """
-        if self._db is None:
-            return _get_workflow_legacy_writer().step(
-                wid,
-                action_id,
-                context,
-                execution_state,
-            )
-        return self.stage_step(wid, action_id, context, execution_state)
 
     def stage_step(
             self,
@@ -271,14 +178,6 @@ class WorkflowOper(DbOper):
             context,
             execution_state
         )
-
-    def reset(self, wid: int, reset_count: bool = False) -> bool:
-        """
-        重置
-        """
-        if self._db is None:
-            return _get_workflow_legacy_writer().reset(wid, reset_count)
-        return self.stage_execution_reset(wid, reset_count)
 
     def stage_execution_reset(
             self,

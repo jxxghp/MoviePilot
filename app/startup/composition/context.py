@@ -17,7 +17,7 @@ from app.application.subscription.mutation import (
     SubscriptionHistoryMutationRepository,
     SubscriptionMutationRepository,
 )
-from app.application.workflow import WorkflowCachePort
+from app.application.workflow import WorkflowCachePort, WorkflowQueryService
 from app.runtime.tasks import TaskRegistry
 
 
@@ -165,6 +165,7 @@ class SiteRuntime:
 class WorkflowRuntime:
     """工作流定义、状态与缓存操作所需的数据工厂。"""
 
+    query: WorkflowQueryService
     repository: RepositoryFactory
     system_config: Callable[[], WorkflowCachePort]
 

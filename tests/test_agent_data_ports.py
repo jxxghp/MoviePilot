@@ -14,7 +14,6 @@ def test_named_agent_data_getters_use_registered_factories(monkeypatch) -> None:
         "subscribe_history": agentdata.get_agent_subscribe_history_port,
         "transfer_history": agentdata.get_agent_transfer_history_port,
         "download_history": agentdata.get_agent_download_history_port,
-        "workflow": agentdata.get_agent_workflow_port,
         "plugin_data": agentdata.get_agent_plugin_data_port,
     }
     factories = {

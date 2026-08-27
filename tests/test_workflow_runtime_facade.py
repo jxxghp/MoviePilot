@@ -18,7 +18,7 @@ def test_workflow_runtime_facade_preserves_registered_identity(monkeypatch) -> N
 
 
 def test_workflow_runtime_facade_fails_before_composition(monkeypatch) -> None:
-    """未装配时不得隐式创建第二个 WorkFlowManager Singleton。"""
+    """未装配时不得隐式创建第二个 WorkflowManager Singleton。"""
     monkeypatch.setattr(
         workflow_application,
         "_workflow_runtime_provider",

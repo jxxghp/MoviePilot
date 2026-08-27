@@ -848,7 +848,7 @@
     "arg-type": 7
   },
   "app/api/dependencies/workflow.py": {
-    "arg-type": 4,
+    "arg-type": 3,
     "redundant-cast": 2
   },
   "app/api/endpoints/agent.py": {
@@ -1107,7 +1107,7 @@
     "no-any-return": 4
   },
   "app/application/agentdata.py": {
-    "attr-defined": 10
+    "attr-defined": 9
   },
   "app/application/agenttask.py": {
     "type-arg": 1
@@ -1299,7 +1299,6 @@
     "type-arg": 5
   },
   "app/application/server/share.py": {
-    "no-any-return": 1,
     "type-arg": 6
   },
   "app/application/service.py": {
@@ -1588,13 +1587,13 @@
     "index": 1
   },
   "app/chain/workflow.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "assignment": 1,
     "call-arg": 1,
     "index": 4,
     "misc": 1,
-    "no-any-return": 10,
-    "no-untyped-def": 3,
+    "no-any-return": 7,
+    "no-untyped-def": 2,
     "truthy-function": 2,
     "type-arg": 17,
     "union-attr": 4,
@@ -3232,7 +3231,7 @@
     "unused-ignore": 1
   },
   "app/scheduler.py": {
-    "arg-type": 8,
+    "arg-type": 7,
     "attr-defined": 1,
     "import-untyped": 1,
     "misc": 1,
@@ -3406,7 +3405,7 @@
     "misc": 1,
     "no-any-return": 2,
     "no-untyped-call": 33,
-    "no-untyped-def": 13,
+    "no-untyped-def": 12,
     "return-value": 5
   },
   "app/startup/initializers/plugins.py": {
@@ -3448,7 +3447,7 @@
     "no-untyped-call": 2
   },
   "app/workflow/__init__.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "assignment": 2,
     "index": 1,
     "no-any-return": 1,
