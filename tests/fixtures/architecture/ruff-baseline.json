@@ -1549,9 +1549,6 @@
   "tests/test_release_group.py": {
     "I001": 1
   },
-  "tests/test_release_supply_chain.py": {
-    "I001": 1
-  },
   "tests/test_reliability_adr.py": {
     "I001": 1
   },

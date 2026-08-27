@@ -7,7 +7,7 @@
 在开始之前，请确保您的系统已安装以下软件：
 
 - **Python 3.14+**
-- **uv 0.12.5**（Python 版本、虚拟环境和依赖锁定工具）
+- **uv 0.12.5+**（Python 版本、虚拟环境和依赖锁定工具，推荐使用最新稳定版）
 - **Git** (用于版本控制)
 - **RAR 解压工具**：本地开发如需测试或使用 `.rar` 字幕包解压，请安装 `unar`、`unrar`、`7z` 或 `bsdtar` 之一；Docker 镜像会内置 `unar`。
 
@@ -90,7 +90,7 @@ chmod +x scripts/start-local.sh
 1. **共享运行时依赖**：被 `app/` 生产代码直接导入，或是生产功能、后台任务、插件框架启动必需，写入 `[project].dependencies`。
 2. **ABI 敏感运行依赖**：标准与 free-threaded 解释器必须选择不同制品或版本时，分别写入 `runtime-standard` 和 `runtime-free-threaded`；两组保持互斥并由运行时统一选择。
 3. **开发 / 测试 / 静态检查 / 构建依赖**：只用于单测、覆盖率、lint 辅助、源码构建等，写入 `[dependency-groups].dev`。
-4. **工具依赖**：仓库要求使用 `uv 0.12.5`；不应为了安装工具而把它加入主程序运行依赖。
+4. **工具依赖**：仓库要求使用 `uv 0.12.5+`，推荐使用最新稳定版；不应为了安装工具而把它加入主程序运行依赖。
 5. **插件依赖**：由插件清单声明并在插件安装阶段处理，不直接并入主程序依赖。
 
 修改后更新并校验锁文件：
@@ -169,13 +169,13 @@ python -m scripts.generate_plugin_market_default \
 
 ### 5. 运行依赖漏洞检查
 
-正式发布会使用固定版本的 `pip-audit` 检查 `uv.lock` 锁定的运行时依赖。依赖变更后也可以在
+正式发布会使用最新稳定版 `pip-audit` 检查 `uv.lock` 锁定的运行时依赖。依赖变更后也可以在
 本地执行同一检查：
 
 ```bash
 uv export --quiet --locked --no-dev --no-emit-project \
   --output-file /tmp/moviepilot-audit-requirements.txt
-uvx --from pip-audit==2.10.1 pip-audit \
+uvx --from pip-audit pip-audit \
   --require-hashes --disable-pip --strict --progress-spinner off \
   --requirement /tmp/moviepilot-audit-requirements.txt
 ```

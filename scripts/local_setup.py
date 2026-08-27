@@ -9,8 +9,8 @@ import importlib.util
 import json
 import os
 import platform
-import secrets
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -36,7 +36,8 @@ NODE_DIR = RUNTIME_DIR / "node"
 INSTALL_ENV_FILE = ROOT / ".moviepilot.env"
 MIN_PYTHON_VERSION = (3, 14)
 SUPPORTED_PYTHON_TEXT = "Python 3.14+"
-UV_VERSION = "0.12.5"
+MIN_UV_VERSION = (0, 12, 5)
+MIN_UV_VERSION_TEXT = ".".join(str(part) for part in MIN_UV_VERSION)
 
 CONFIG_DIR = LEGACY_CONFIG_DIR
 LOG_DIR = CONFIG_DIR / "logs"
@@ -618,18 +619,27 @@ def get_venv_bin_dir(venv_dir: Path) -> Path:
     return venv_dir / "bin"
 
 
+def parse_uv_version(output: str) -> tuple[int, int, int] | None:
+    """从 uv 版本输出中提取稳定版三段版本号。"""
+    match = re.match(r"^uv\s+(\d+)\.(\d+)\.(\d+)(?:\s|$)", output.strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
 def require_uv() -> Path:
-    """返回仓库要求版本的 uv，避免不同安装入口使用不同解析器。"""
+    """返回满足仓库最低版本要求的 uv。"""
     uv_command = shutil.which("uv")
     if not uv_command:
         raise RuntimeError(
-            f"未找到 uv {UV_VERSION}，请先安装后重新执行。"
+            f"未找到 uv {MIN_UV_VERSION_TEXT}+，请先安装后重新执行。"
         )
     uv_bin = Path(uv_command).expanduser().resolve()
     version = capture([str(uv_bin), "--version"])
-    if version.split()[:2] != ["uv", UV_VERSION]:
+    parsed_version = parse_uv_version(version)
+    if parsed_version is None or parsed_version < MIN_UV_VERSION:
         raise RuntimeError(
-            f"MoviePilot 需要 uv {UV_VERSION}，当前为 {version or '未知版本'}。"
+            f"MoviePilot 需要 uv {MIN_UV_VERSION_TEXT}+，当前为 {version or '未知版本'}。"
         )
     return uv_bin
 

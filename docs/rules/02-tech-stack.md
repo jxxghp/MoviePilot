@@ -107,7 +107,7 @@
 |---|---|
 | Project metadata | `pyproject.toml` — runtime dependencies in `[project].dependencies`, development tooling in `[dependency-groups].dev` |
 | Lock | `uv.lock` — committed resolution for Python 3.14+ and supported platforms |
-| Package manager | uv 0.12.5 |
+| Package manager | uv 0.12.5+（推荐最新稳定版） |
 | Runtime install | `uv sync --locked --no-dev --no-install-project` |
 | Dev/test/lint/build install | `uv sync --locked` |
 | Supported platforms | Linux x86_64/arm64, macOS x86_64/arm64, Windows x64 |
@@ -132,7 +132,7 @@
 | pytest | Test runner | `uv run --locked --no-sync pytest tests/test_xxx.py` |
 | pylint | Static analysis | `uv run --locked --no-sync pylint app/` |
 | uv | Lock and environment consistency | `uv lock --check && uv sync --locked --offline --inexact --no-dev --check` |
-| pip-audit | Locked dependency vulnerability scan | `uv export --quiet --locked --no-dev --no-emit-project -o /tmp/moviepilot-audit-requirements.txt && uvx --from pip-audit==2.10.1 pip-audit --require-hashes --disable-pip --strict --progress-spinner off -r /tmp/moviepilot-audit-requirements.txt` |
+| pip-audit | Locked dependency vulnerability scan | `uv export --quiet --locked --no-dev --no-emit-project -o /tmp/moviepilot-audit-requirements.txt && uvx --from pip-audit pip-audit --require-hashes --disable-pip --strict --progress-spinner off -r /tmp/moviepilot-audit-requirements.txt` |
 
 ---
 

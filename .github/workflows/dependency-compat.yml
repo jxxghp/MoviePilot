@@ -71,12 +71,11 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@v10.0.1
         with:
-          version: '0.12.5'
           python-version: ${{ matrix.python-version }}
           enable-cache: true
           cache-dependency-glob: |
@@ -135,13 +134,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@v4
 
       - name: Build locked dependency stage
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -177,7 +176,13 @@ jobs:
           assert not expected_free_threaded or callable(moviepilot_rust.zhconv_fast);
           assert sys._is_gil_enabled() == (not expected_free_threaded)"
 
-      - name: Verify pinned uv version
+      - name: Verify minimum uv version
         env:
           IMAGE_TAG: ${{ matrix.image-tag }}
-        run: docker run --rm "${IMAGE_TAG}" uv --version | grep -F 'uv 0.12.5'
+        run: >-
+          docker run --rm "${IMAGE_TAG}" /opt/venv/bin/python -c
+          "from packaging.version import Version;
+          import subprocess;
+          version = subprocess.check_output(['uv', '--version'], text=True).split()[1];
+          assert Version(version) >= Version('0.12.5'), version;
+          print(version)"

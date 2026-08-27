@@ -20,15 +20,13 @@ jobs:
       TRIVY_SKIP_JAVA_DB_UPDATE: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: '0.12.5'
+        uses: astral-sh/setup-uv@v10.0.1
 
       - name: Verify dependency lock
         run: uv lock --check
@@ -37,7 +35,7 @@ jobs:
         run: |
           uv export --quiet --locked --no-default-groups --group runtime-standard \
             --no-emit-project --output-file /tmp/moviepilot-audit-standard.txt
-          uvx --from pip-audit==2.10.1 pip-audit \
+          uvx --from pip-audit pip-audit \
             --require-hashes --disable-pip --strict --progress-spinner off \
             --requirement /tmp/moviepilot-audit-standard.txt
 
@@ -48,7 +46,7 @@ jobs:
             --lock uv.lock \
             --input /tmp/moviepilot-audit-free-threaded.txt \
             --output /tmp/moviepilot-audit-free-threaded-normalized.txt
-          uvx --from pip-audit==2.10.1 pip-audit \
+          uvx --from pip-audit pip-audit \
             --no-deps --disable-pip --strict --progress-spinner off \
             --requirement /tmp/moviepilot-audit-free-threaded-normalized.txt
 
@@ -86,7 +84,7 @@ jobs:
           echo "frontend_sha256=$frontend_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Wiki Plugin Market
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: jxxghp/MoviePilot-Wiki
           ref: main
@@ -134,7 +132,7 @@ jobs:
 
       - name: Docker Meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3
@@ -144,7 +142,7 @@ jobs:
 
       - name: Docker Meta free-threaded
         id: meta_ft
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3t
@@ -153,13 +151,13 @@ jobs:
             type=raw,value=${{ env.app_version }}
 
       - name: Set Up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set Up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build amd64 candidate
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -178,10 +176,10 @@ jobs:
           cache-to: type=gha,scope=moviepilot-v3-standard-docker-amd64,mode=max,version=2
 
       - name: Scan amd64 candidate vulnerabilities
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: moviepilot-v3-candidate:linux-amd64
-          version: v0.70.0
+          version: latest
           cache-dir: ${{ runner.temp }}/trivy
           scanners: vuln
           vuln-type: os,library
@@ -191,7 +189,7 @@ jobs:
           exit-code: 1
 
       - name: Build arm64 candidate
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -210,10 +208,10 @@ jobs:
           cache-to: type=gha,scope=moviepilot-v3-standard-docker-arm64,mode=max,version=2
 
       - name: Scan arm64 candidate vulnerabilities
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: moviepilot-v3-candidate:linux-arm64
-          version: v0.70.0
+          version: latest
           cache-dir: ${{ runner.temp }}/trivy
           scanners: vuln
           vuln-type: os,library
@@ -223,7 +221,7 @@ jobs:
           exit-code: 1
 
       - name: Build free-threaded amd64 candidate
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -242,10 +240,10 @@ jobs:
           cache-to: type=gha,scope=moviepilot-v3t-docker-amd64,mode=max,version=2
 
       - name: Scan free-threaded amd64 candidate vulnerabilities
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: moviepilot-v3t-candidate:linux-amd64
-          version: v0.70.0
+          version: latest
           cache-dir: ${{ runner.temp }}/trivy
           scanners: vuln
           vuln-type: os,library
@@ -255,7 +253,7 @@ jobs:
           exit-code: 1
 
       - name: Build free-threaded arm64 candidate
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -274,10 +272,10 @@ jobs:
           cache-to: type=gha,scope=moviepilot-v3t-docker-arm64,mode=max,version=2
 
       - name: Scan free-threaded arm64 candidate vulnerabilities
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: moviepilot-v3t-candidate:linux-arm64
-          version: v0.70.0
+          version: latest
           cache-dir: ${{ runner.temp }}/trivy
           scanners: vuln
           vuln-type: os,library
@@ -287,20 +285,20 @@ jobs:
           exit-code: 1
 
       - name: Login DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Login GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish multi-architecture image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -332,7 +330,7 @@ jobs:
             type=gha,scope=moviepilot-v3-standard-docker-arm64,version=2
 
       - name: Publish free-threaded multi-architecture image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -481,52 +479,75 @@ jobs:
 
       - name: Get existing release body
         id: get_release_body
-        continue-on-error: true
         env:
           CHANGELOG: ${{ env.CHANGELOG }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          release_body=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.app_version }}" | \
-            jq -r '.body // ""')
+          tag_name="v${{ env.app_version }}"
+          response_file=$(mktemp)
+          error_file=$(mktemp)
+          trap 'rm -f "$response_file" "$error_file"' EXIT
+
+          if gh api --include \
+            "repos/${GITHUB_REPOSITORY}/releases/tags/${tag_name}" \
+            --jq '.body' > "$response_file" 2> "$error_file"; then
+            release_exists=true
+            release_body=$(awk 'body { sub(/\r$/, ""); print } /^[[:space:]]*$/ { body=1 }' "$response_file")
+          else
+            status_code=$(awk 'NR == 1 { print $2 }' "$response_file")
+            if [ "$status_code" = "404" ]; then
+              release_exists=false
+              release_body=""
+            else
+              cat "$error_file" >&2
+              exit 1
+            fi
+          fi
+          echo "exists=$release_exists" >> "$GITHUB_OUTPUT"
 
           # 如果已有手动编写的 release body，则保留；否则使用自动生成的 changelog
           if [ -n "$release_body" ] && [ "$release_body" != "null" ] && [ "$release_body" != "" ]; then
-            echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
-            echo "$release_body" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+            {
+              echo "RELEASE_BODY<<EOF"
+              echo "$release_body"
+              echo "EOF"
+            } >> "$GITHUB_ENV"
           else
-            echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
-            echo "$CHANGELOG" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+            {
+              echo "RELEASE_BODY<<EOF"
+              echo "$CHANGELOG"
+              echo "EOF"
+            } >> "$GITHUB_ENV"
           fi
-
-      - name: Delete Release
-        uses: dev-drprasad/delete-tag-and-release@v1.1
-        continue-on-error: true
-        with:
-          tag_name: v${{ env.app_version }}
-          delete_release: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Release Tag
         env:
           RELEASE_COMMIT: ${{ steps.release_snapshot.outputs.release_commit }}
         run: |
           tag_name="v${{ env.app_version }}"
-          if git show-ref --verify --quiet "refs/tags/${tag_name}"; then
-            git tag -d "$tag_name"
-          fi
-          git tag "$tag_name" "$RELEASE_COMMIT"
-          git push origin "refs/tags/${tag_name}"
+          git tag -f "$tag_name" "$RELEASE_COMMIT"
+          git push --force origin "refs/tags/${tag_name}"
 
-      - name: Generate Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.app_version }}
-          name: v${{ env.app_version }}
-          body: ${{ env.RELEASE_BODY }}
-          draft: false
-          prerelease: false
-          make_latest: true
+      - name: Publish Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ env.RELEASE_BODY }}
+          RELEASE_EXISTS: ${{ steps.get_release_body.outputs.exists }}
+        run: |
+          tag_name="v${{ env.app_version }}"
+          notes_file=$(mktemp)
+          trap 'rm -f "$notes_file"' EXIT
+          printf '%s\n' "$RELEASE_BODY" > "$notes_file"
+          if [ "$RELEASE_EXISTS" = "true" ]; then
+            gh release edit "$tag_name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag_name" \
+              --notes-file "$notes_file" \
+              --latest
+          else
+            gh release create "$tag_name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag_name" \
+              --notes-file "$notes_file" \
+              --latest
+          fi

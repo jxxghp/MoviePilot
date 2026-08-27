@@ -17,7 +17,7 @@ jobs:
    permissions:
      issues: write
    steps:
-     - uses: actions/github-script@v7
+     - uses: actions/github-script@v9
        with:
          script: |
            const issue = context.payload.issue;
@@ -74,7 +74,7 @@ jobs:
    permissions:
      issues: write
    steps:
-     - uses: actions/github-script@v7
+     - uses: actions/github-script@v9
        with:
          script: |
            const labelRules = [
@@ -139,7 +139,7 @@ jobs:
      issues: write
      pull-requests: write
    steps:
-     - uses: actions/stale@v5
+     - uses: actions/stale@v11
        with:
          # 标记 stale 标签时间
          days-before-issue-stale: 30
