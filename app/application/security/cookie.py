@@ -1,16 +1,17 @@
 import base64
 import time
-from typing import Tuple, Optional
+from typing import Optional, Tuple
+from urllib.parse import urljoin, urlparse
 
 from lxml import etree
 
-from app.adapters.network.browser import BrowserPage, PlaywrightHelper
 from app.adapters.external.ocr import OcrHelper
-from app.application.security.twofactor import TwoFactorAuth
-from app.runtime.log import logger
+from app.adapters.network.browser import BrowserPage, PlaywrightHelper
 from app.adapters.network.http import RequestUtils
+from app.application.security.twofactor import TwoFactorAuth
 from app.domain.site import SiteUtils
 from app.foundation import url as url_tools
+from app.runtime.log import logger
 
 
 class CookieHelper:
@@ -107,6 +108,24 @@ class CookieHelper:
             cookie_str += f"{cookie['name']}={cookie['value']}; "
         return cookie_str
 
+    @staticmethod
+    def _find_login_page_url(html, current_url: str) -> Optional[str]:
+        """从首页查找同源登录入口，避免把账号密码提交到跨域页面。"""
+        login_hrefs = html.xpath(
+            "//a["
+            "contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login')"
+            " or contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'signin')"
+            "]/@href"
+        )
+        current = urlparse(current_url)
+        for href in login_hrefs:
+            login_url = urljoin(current_url, href)
+            target = urlparse(login_url)
+            if target.scheme in ("http", "https") and \
+                    target.scheme == current.scheme and target.netloc == current.netloc:
+                return login_url
+        return None
+
     def get_site_cookie_ua(self,
                            url: str,
                            username: str,
@@ -161,6 +180,25 @@ class CookieHelper:
                     if html.xpath(xpath):
                         username_xpath = xpath
                         break
+                if not username_xpath:
+                    login_url = self._find_login_page_url(html, page.url or url)
+                    if login_url:
+                        try:
+                            page.goto(
+                                login_url,
+                                wait_until="domcontentloaded",
+                                timeout=(timeout or 60) * 1000,
+                            )
+                        except Exception as e:
+                            return None, None, f"打开登录页面失败：{str(e)}"
+                        html_text = self.get_page_content(page)
+                        html = etree.HTML(html_text) if html_text else None
+                        if html is None:
+                            return None, None, "解析网页源码失败"
+                        for xpath in self._SITE_LOGIN_XPATH.get("username"):
+                            if html.xpath(xpath):
+                                username_xpath = xpath
+                                break
                 if not username_xpath:
                     # 登录页可能为JS动态渲染（如SPA），等待用户名输入框出现后重试
                     try:
@@ -335,7 +373,7 @@ class CookieHelper:
                         error_msg = html.xpath(error_xpath)[0]
                         return None, None, error_msg
             finally:
-                if html:
+                if html is not None:
                     del html
 
         if not url or not username or not password:

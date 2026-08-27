@@ -8,13 +8,13 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol
 from urllib.parse import urlparse
 
+from app.adapters.network.http import RequestUtils, cookie_parse
 from app.runtime.log import logger
-from app.runtime.settings import get_runtime_setting
 from app.runtime.managed_resources import (
     acquire_managed_resource,
     acquire_managed_resource_async,
 )
-from app.adapters.network.http import RequestUtils, cookie_parse
+from app.runtime.settings import get_runtime_setting
 
 
 class BrowserElement(Protocol):
@@ -1070,6 +1070,7 @@ class PlaywrightHelper:
         :param headless: 是否无头模式
         :param timeout: 超时时间
         """
+        timeout = timeout or 60
         result = None
         try:
             context = None
@@ -1095,8 +1096,15 @@ class PlaywrightHelper:
                 if merged_cookie:
                     page.set_extra_http_headers({"cookie": merged_cookie})
 
-                page.goto(url)
-                page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+                page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
+                try:
+                    # 登录页的统计与长连接请求可能持续存在，不应阻断已就绪表单的处理。
+                    page.wait_for_load_state(
+                        "networkidle",
+                        timeout=min(timeout, 15) * 1000,
+                    )
+                except Exception:
+                    pass
 
                 # 回调函数
                 result = callback(page)

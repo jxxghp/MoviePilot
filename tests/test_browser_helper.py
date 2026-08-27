@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -11,13 +11,13 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from app.agent.tools.impl.browse_webpage import BrowserAction, BrowseWebpageTool
 from app.adapters.network.browser import (
     BrowserSessionHelper,
     PlaywrightHelper,
     launch_browser_context,
     launch_browser_context_async,
 )
+from app.agent.tools.impl.browse_webpage import BrowserAction, BrowseWebpageTool
 from app.runtime.correlation import correlation_scope, get_correlation_id
 
 
@@ -237,6 +237,33 @@ def test_legacy_browser_type_constructor_is_accepted():
         )
 
     assert source == "<html>ok</html>"
+
+
+def test_browser_action_runs_callback_when_network_never_becomes_idle():
+    """页面 DOM 已就绪时，持续后台请求不得阻断登录等页面回调。"""
+    page = _FakePage()
+    page.wait_for_load_state = MagicMock(side_effect=TimeoutError("still busy"))
+    context = _FakeContext([page])
+
+    with patch(
+        "app.adapters.network.browser.get_runtime_setting",
+        return_value="cloakbrowser",
+    ), patch.object(
+        PlaywrightHelper,
+        "_PlaywrightHelper__launch_cloakbrowser_context",
+        return_value=context,
+    ):
+        result = PlaywrightHelper().action(
+            url="https://example.com",
+            callback=lambda current_page: current_page.loaded_url,
+            timeout=30,
+        )
+
+    assert result == "https://example.com"
+    assert page.loaded_url == "https://example.com"
+    assert page.wait_for_load_state.call_args == call("networkidle", timeout=15000)
+    assert page.closed
+    assert context.closed
 
 
 def test_sync_browser_facade_activates_display_only_for_headed_mode(monkeypatch):
