@@ -122,9 +122,9 @@ class PluginInstallGateway:
                     admission=admission,
                     release_version=release_version,
                     force=force,
-                    local_sync=(
-                        local_sync
-                        or isinstance(admission.candidate, PluginLocalCandidate)
+                    local_sync=isinstance(
+                        admission.candidate,
+                        PluginLocalCandidate,
                     ),
                 )
         except (TypeError, ValueError, PluginSourceAdmissionError) as error:

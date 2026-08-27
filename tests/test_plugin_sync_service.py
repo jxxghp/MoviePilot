@@ -293,7 +293,7 @@ async def test_market_sync_preserves_generation_priority_through_gateway(
             package_version="v3",
             release_version=None,
             force=force,
-            local_sync=False,
+            local_sync=True,
             explicit_source=False,
             startup_token=startup_token,
         )
