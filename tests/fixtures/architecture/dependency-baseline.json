@@ -1441,8 +1441,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 6901,
-  "edge_sha256": "860590c25bd889096c9faa04f35ad3e3312e2c28ab415e57dce1d669d490e0a1",
+  "edge_count": 6907,
+  "edge_sha256": "8b3bb489cfc9573e377d0ee21337633b842b9969fc69fe99b86f547613b86a2a",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3988,6 +3988,7 @@
     "app.application.chain.data -> app.application.transfer",
     "app.application.chain.data -> app.application.transfer.execution",
     "app.application.chain.data -> app.application.transfer.workflow",
+    "app.application.chain.data -> app.application.workflow",
     "app.application.chain.events -> app.application",
     "app.application.chain.events -> app.application.history",
     "app.application.chain.events -> app.application.transfer",
@@ -7700,6 +7701,11 @@
     "app.sdk._legacy.user -> app.db",
     "app.sdk._legacy.user -> app.db.oper",
     "app.sdk._legacy.user -> app.db.oper.user",
+    "app.sdk._legacy.workflow -> app.application",
+    "app.sdk._legacy.workflow -> app.application.workflow",
+    "app.sdk._legacy.workflow -> app.db",
+    "app.sdk._legacy.workflow -> app.db.oper",
+    "app.sdk._legacy.workflow -> app.db.oper.workflow",
     "app.sdk.browser -> app.adapters",
     "app.sdk.browser -> app.adapters.network",
     "app.sdk.browser -> app.adapters.network.browser",
@@ -8346,7 +8352,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 844,
+  "module_count": 845,
   "modules": [
     "app",
     "app.adapters",
@@ -9136,6 +9142,7 @@
     "app.sdk._legacy.transfer",
     "app.sdk._legacy.transferpending",
     "app.sdk._legacy.user",
+    "app.sdk._legacy.workflow",
     "app.sdk.browser",
     "app.sdk.cache",
     "app.sdk.config",

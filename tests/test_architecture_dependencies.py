@@ -347,6 +347,94 @@ def test_workflow_query_adapter_owns_projection_sessions():
     assert "_project_workflow(record)" in source
 
 
+def test_workflow_execution_chain_uses_typed_transaction_port():
+    """工作流 Chain 写端不得再经过 raw Oper 或重复获取全局端口。"""
+    contract_path = APP_ROOT / "application" / "workflow.py"
+    contract_tree = ast.parse(
+        contract_path.read_text(encoding="utf-8"),
+        filename=str(contract_path),
+    )
+    contract = next(
+        node
+        for node in contract_tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "WorkflowExecutionPort"
+    )
+    methods = {
+        node.name: ast.unparse(node.returns)
+        for node in contract.body
+        if isinstance(node, ast.FunctionDef)
+        and node.returns is not None
+    }
+    assert methods == {
+        "start": "bool",
+        "success": "bool",
+        "fail": "bool",
+        "step": "bool",
+        "reset": "bool",
+    }
+
+    data_path = APP_ROOT / "application" / "chain" / "data.py"
+    data_tree = ast.parse(
+        data_path.read_text(encoding="utf-8"),
+        filename=str(data_path),
+    )
+    data_class = next(
+        node
+        for node in data_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "ChainDataPorts"
+    )
+    workflow_field = next(
+        node
+        for node in data_class.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "workflow"
+    )
+    workflow_getter = next(
+        node
+        for node in data_tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "get_chain_workflow_port"
+    )
+    assert ast.unparse(workflow_field.annotation) == "WorkflowExecutionPortFactory"
+    assert ast.unparse(workflow_getter.returns) == "WorkflowExecutionPort"
+
+    chain_source = (APP_ROOT / "chain" / "workflow.py").read_text(encoding="utf-8")
+    startup_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    assert chain_source.count("get_chain_workflow_port()") == 1
+    assert "workflow=lambda: workflow_execution" in startup_source
+    assert "workflow=lambda: WorkflowOper()" not in startup_source
+
+
+def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
+    """工作流旧写入口只能存在于 SDK Legacy facade。"""
+    oper_path = APP_ROOT / "db" / "oper" / "workflow.py"
+    oper_tree = ast.parse(
+        oper_path.read_text(encoding="utf-8"),
+        filename=str(oper_path),
+    )
+    oper_class = next(
+        node
+        for node in oper_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "WorkflowOper"
+    )
+    method_names = {
+        node.name
+        for node in oper_class.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert {"start", "success", "fail", "step", "reset"}.isdisjoint(method_names)
+    assert "legacy" not in oper_path.read_text(encoding="utf-8").lower()
+
+    package_source = (APP_ROOT / "db" / "oper" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"WorkflowOper"' not in package_source
+
+
 def test_agent_data_ports_do_not_duplicate_workflow_query_capability():
     """Agent 数据聚合器不得重新暴露无类型工作流读取入口。"""
     source = (APP_ROOT / "application" / "agentdata.py").read_text(

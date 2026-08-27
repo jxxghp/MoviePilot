@@ -233,6 +233,11 @@ manager 停机先封口新执行并向活动 owner 发送本地取消，再有�
 嵌套 JSON 深拷贝。API、Agent、Chain、Scheduler、`WorkflowManager` 和中心服务分享不得读取 raw
 `WorkflowOper` 或把 ORM 带出 Session。旧 `WorkFlowManager` 拼写只由 Compat 符号覆盖承接，不进入
 canonical 模块定义或 `__all__`。
+工作流执行状态写入统一依赖 `app.application.workflow.WorkflowExecutionPort`；Chain 在一次执行中只获取
+一个事务端口，并由 `TransactionalWorkflowExecutionService` 为每次状态写入持有短 Session/UoW。
+canonical `app.db.oper.workflow.WorkflowOper` 只提供显式 Session 的 query/stage 方法；旧无 Session
+`start/success/fail/step/reset` 仅由 `app.sdk._legacy.workflow` 和精确 Compat 映射承接，且不进入
+`app.db.oper.__all__`。
 协程环境文件日志属于有界 E1 观测能力，只允许单一队列 writer；队列满时不得再以无界 executor
 形成第二条异步写入路径。日志关闭必须有限等待 writer 与文件处理器，未收敛时 `LoggerManager`
 保留原 owner 并让 lifespan 以关闭失败结束，不得先清空引用或用无界 `join()` 掩盖失败。

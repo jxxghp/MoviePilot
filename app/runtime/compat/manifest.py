@@ -171,10 +171,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="db",
     ),
     "app.db.workflow_oper": ModuleAlias(
-        target="app.db.oper.workflow",
-        replacement="app.db.oper.workflow",
+        target="app.sdk._legacy.workflow",
+        replacement="app.application.workflow.WorkflowExecutionPort",
         introduced="v3.0.0",
-        owner="db",
+        owner="sdk",
     ),
     "app.utils.crypto": ModuleAlias(
         target="app.foundation.crypto",
@@ -774,6 +774,13 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 }
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.db.oper": {
+        "WorkflowOper": SymbolAlias(
+            target_module="app.sdk._legacy.workflow",
+            target_name="WorkflowOper",
+            replacement="app.application.workflow.WorkflowExecutionPort",
+        ),
+    },
     "app.workflow": {
         "WorkFlowManager": SymbolAlias(
             target_module="app.workflow",

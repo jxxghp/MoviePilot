@@ -211,6 +211,7 @@ def configure_plugin_system_services():
     from app.application.site.query import SiteQueryService, configure_site_query_service
     from app.application.workflow import (
         WorkflowQueryService,
+        configure_workflow_execution,
         configure_workflow_query,
         configure_workflow_runtime,
     )
@@ -243,7 +244,7 @@ def configure_plugin_system_services():
     from app.db.oper.subscribehistory import SubscribeHistoryOper
     from app.db.oper.transferhistory import TransferHistoryOper
     from app.db.oper.user import UserOper
-    from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
+    from app.db.oper.workflow import WorkflowOper
 
     def create_sync_session() -> Session:
         """为无显式会话的 Oper 测试入口创建独占同步 Session。"""
@@ -258,9 +259,8 @@ def configure_plugin_system_services():
         async_=transaction_runner.async_,
     )
 
-    configure_workflow_legacy_writer(
-        TransactionalWorkflowExecutionService(SessionFactory)
-    )
+    workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
+    configure_workflow_execution(workflow_execution)
 
     configure_api_data_ports(
         sync_session=get_db,
@@ -304,7 +304,7 @@ def configure_plugin_system_services():
     configure_chain_data_ports(
         site=site_repository,
         subscribe=lambda: SubscribeOper(),
-        workflow=lambda: WorkflowOper(),
+        workflow=lambda: workflow_execution,
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(

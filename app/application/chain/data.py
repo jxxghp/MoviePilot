@@ -12,8 +12,10 @@ from typing import Any, Optional
 
 from app.application.transfer.execution import TransferExecutionRepository
 from app.application.transfer.workflow import TransferAdmissionRepository
+from app.application.workflow import WorkflowExecutionPort
 
 OperFactory = Callable[[], Any]
+WorkflowExecutionPortFactory = Callable[[], WorkflowExecutionPort]
 TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]
 TransferExecutionRepositoryFactory = Callable[[], TransferExecutionRepository]
 
@@ -24,7 +26,7 @@ class ChainDataPorts:
 
     site: OperFactory
     subscribe: OperFactory
-    workflow: OperFactory
+    workflow: WorkflowExecutionPortFactory
     download_history: OperFactory
     transfer_history: OperFactory
     transfer_pending: TransferAdmissionRepositoryFactory
@@ -103,25 +105,33 @@ class UserPortProxy(_ChainDataPortProxy):
 _ports: Optional[ChainDataPorts] = None
 
 
-def configure_chain_data_ports(**factories: OperFactory) -> None:
-    """由启动组合根登记 Chain 的数据端口实现。"""
-    required = {
-        "site",
-        "subscribe",
-        "workflow",
-        "download_history",
-        "transfer_history",
-        "transfer_pending",
-        "transfer_execution",
-        "media_server",
-        "download_failure",
-        "user",
-    }
-    missing = sorted(required - factories.keys())
-    if missing:
-        raise ValueError(f"Chain 数据端口缺少实现: {', '.join(missing)}")
+def configure_chain_data_ports(
+        *,
+        site: OperFactory,
+        subscribe: OperFactory,
+        workflow: WorkflowExecutionPortFactory,
+        download_history: OperFactory,
+        transfer_history: OperFactory,
+        transfer_pending: TransferAdmissionRepositoryFactory,
+        transfer_execution: TransferExecutionRepositoryFactory,
+        media_server: OperFactory,
+        download_failure: OperFactory,
+        user: OperFactory,
+) -> None:
+    """由启动组合根登记显式命名的 Chain 数据端口实现。"""
     global _ports
-    _ports = ChainDataPorts(**{name: factories[name] for name in required})
+    _ports = ChainDataPorts(
+        site=site,
+        subscribe=subscribe,
+        workflow=workflow,
+        download_history=download_history,
+        transfer_history=transfer_history,
+        transfer_pending=transfer_pending,
+        transfer_execution=transfer_execution,
+        media_server=media_server,
+        download_failure=download_failure,
+        user=user,
+    )
 
 
 def get_chain_data_ports() -> ChainDataPorts:
@@ -141,8 +151,8 @@ def get_chain_subscribe_port() -> Any:
     return get_chain_data_ports().subscribe()
 
 
-def get_chain_workflow_port() -> Any:
-    """创建工作流数据端口实例。"""
+def get_chain_workflow_port() -> WorkflowExecutionPort:
+    """返回类型化的工作流执行状态事务端口。"""
     return get_chain_data_ports().workflow()
 
 

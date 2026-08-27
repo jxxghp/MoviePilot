@@ -284,9 +284,9 @@
       "app.db.workflow_oper": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "db",
-        "replacement": "app.db.oper.workflow",
-        "target": "app.db.oper.workflow"
+        "owner": "sdk",
+        "replacement": "app.application.workflow.WorkflowExecutionPort",
+        "target": "app.sdk._legacy.workflow"
       },
       "app.domain.string": {
         "introduced": "v3.0.0",
@@ -924,6 +924,13 @@
           "replacement": "app.chain.interaction.MediaInteractionChain",
           "target_module": "app.chain.interaction",
           "target_name": "MediaInteractionChain"
+        }
+      },
+      "app.db.oper": {
+        "WorkflowOper": {
+          "replacement": "app.application.workflow.WorkflowExecutionPort",
+          "target_module": "app.sdk._legacy.workflow",
+          "target_name": "WorkflowOper"
         }
       },
       "app.domain.media": {

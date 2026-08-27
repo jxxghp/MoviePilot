@@ -1286,11 +1286,11 @@ class WorkflowChain(ChainBase):
         :param from_begin: 是否从头开始，默认为True
         :param progress_callback: 定时服务进度更新回调
         """
-        workflowoper = get_chain_workflow_port()
+        workflow_execution = get_chain_workflow_port()
 
         # 重置工作流
         if from_begin:
-            workflowoper.reset(workflow_id)
+            workflow_execution.reset(workflow_id)
 
         # 查询工作流数据
         workflow = get_configured_workflow_query().get_sync(workflow_id)
@@ -1311,9 +1311,10 @@ class WorkflowChain(ChainBase):
                 completed: bool,
         ) -> None:
             """保存动作上下文和结构化执行状态。"""
-            get_chain_workflow_port().step(
+            persisted_action_id = (action.id or "") if completed else ""
+            workflow_execution.step(
                 workflow_id,
-                action_id=action.id if completed else "",
+                action_id=persisted_action_id,
                 context=_serialize_workflow_context(context),
                 execution_state=_serialize_workflow_value(execution_state)
             )
@@ -1348,7 +1349,7 @@ class WorkflowChain(ChainBase):
             logger.warning("工作流服务正在停止，拒绝执行 %s", workflow.name)
             return False, executor.errmsg
         try:
-            workflowoper.start(workflow_id)
+            workflow_execution.start(workflow_id)
         except Exception:
             executor.abort_before_execute()
             raise
@@ -1360,10 +1361,10 @@ class WorkflowChain(ChainBase):
 
         if not executor.success or executor.has_failure:
             logger.info(f"工作流 {workflow.name} 执行失败：{executor.errmsg}")
-            workflowoper.fail(workflow_id, result=executor.errmsg)
+            workflow_execution.fail(workflow_id, result=executor.errmsg)
             return False, executor.errmsg
         logger.info(f"工作流 {workflow.name} 执行完成")
-        workflowoper.success(workflow_id)
+        workflow_execution.success(workflow_id)
         if progress_callback:
             progress_callback(value=100, text=f"工作流 {workflow.name} 执行完成")
         return True, ""

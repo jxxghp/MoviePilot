@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from app.db.oper.transfersettlementreceipt import TransferSettlementReceiptOper
     from app.db.oper.user import UserOper
     from app.db.oper.userconfig import UserConfigOper
-    from app.db.oper.workflow import WorkflowOper
 
 # 类名 -> 所在子模块。子模块名即实体名，与 app/db/models 对齐。
 _OPER_MODULES = {
@@ -56,7 +55,6 @@ _OPER_MODULES = {
     "TransferSettlementReceiptOper": "transfersettlementreceipt",
     "UserConfigOper": "userconfig",
     "UserOper": "user",
-    "WorkflowOper": "workflow",
 }
 
 
@@ -99,5 +97,4 @@ __all__ = [
     "TransferSettlementReceiptOper",
     "UserConfigOper",
     "UserOper",
-    "WorkflowOper",
 ]

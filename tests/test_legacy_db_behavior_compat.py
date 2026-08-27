@@ -7,6 +7,62 @@ from app.db.models.transferhistory import TransferHistory
 from app.schemas.file import FileItem
 
 
+def test_legacy_workflow_writes_delegate_to_configured_execution_port(monkeypatch):
+    """旧 WorkflowOper 无 Session 写入必须完整委托类型化事务端口。"""
+    legacy = importlib.import_module("app.db.workflow_oper")
+    calls = []
+
+    class ExecutionPort:
+        """记录五种旧工作流写入调用。"""
+
+        def start(self, workflow_id):
+            """记录启动。"""
+            calls.append(("start", workflow_id))
+            return True
+
+        def success(self, workflow_id, result=None):
+            """记录成功。"""
+            calls.append(("success", workflow_id, result))
+            return True
+
+        def fail(self, workflow_id, result):
+            """记录失败。"""
+            calls.append(("fail", workflow_id, result))
+            return True
+
+        def step(self, workflow_id, action_id, context, execution_state=None):
+            """记录步骤。"""
+            calls.append(
+                ("step", workflow_id, action_id, context, execution_state)
+            )
+            return True
+
+        def reset(self, workflow_id, reset_count=False):
+            """记录重置。"""
+            calls.append(("reset", workflow_id, reset_count))
+            return True
+
+    monkeypatch.setattr(
+        legacy,
+        "get_configured_workflow_execution",
+        lambda: ExecutionPort(),
+    )
+    oper = legacy.WorkflowOper()
+
+    assert oper.start(7) is True
+    assert oper.success(7, "done") is True
+    assert oper.fail(7, "failed") is True
+    assert oper.step(7, "A", {"value": 1}, {"runtime": {}}) is True
+    assert oper.reset(7, reset_count=True) is True
+    assert calls == [
+        ("start", 7),
+        ("success", 7, "done"),
+        ("fail", 7, "failed"),
+        ("step", 7, "A", {"value": 1}, {"runtime": {}}),
+        ("reset", 7, True),
+    ]
+
+
 def test_legacy_subscribe_add_delegates_to_application_service(monkeypatch):
     """旧 SubscribeOper.add 应保留 mediainfo 写入签名。"""
     legacy = importlib.import_module("app.db.subscribe_oper")

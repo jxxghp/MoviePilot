@@ -635,9 +635,15 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
         flows=[{"id": "flow-end", "source": "A", "target": "END", "animated": True}],
     )
     fake_oper = _FakeWorkflowOper(workflow)
+    port_calls = []
+
+    def get_execution_port():
+        """记录单次执行获取事务端口的次数。"""
+        port_calls.append(True)
+        return fake_oper
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: fake_oper)
+    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", get_execution_port)
     monkeypatch.setattr(
         workflow_module,
         "get_configured_workflow_query",
@@ -650,6 +656,7 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
 
     assert success is True
     assert message == ""
+    assert port_calls == [True]
     assert fake_oper.succeeded is True
     saved_workflow_context = fake_oper.steps[-1]["context"]["workflow_context"]
     saved_self = saved_workflow_context["self"]

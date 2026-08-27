@@ -102,7 +102,11 @@ from app.application.service import configure_service_directory
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.subscription.write import configure_subscribe_writer
-from app.application.workflow import WorkflowQueryService, configure_workflow_query
+from app.application.workflow import (
+    WorkflowQueryService,
+    configure_workflow_execution,
+    configure_workflow_query,
+)
 from app.command import CommandChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
@@ -132,7 +136,7 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.user import UserOper
 from app.db.oper.userconfig import UserConfigOper
-from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
+from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
     SessionFactory,
     async_session_scope,
@@ -861,14 +865,14 @@ async def init_modules() -> HostRuntime:
     configure_api_data_runtime(api_data)
     configure_runtime_data_providers(workflow_query)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
-    configure_workflow_legacy_writer(workflow_execution)
+    configure_workflow_execution(workflow_execution)
     configure_chain_data_ports(
         site=lambda: TransactionalSiteRepository(
             sync_session=SessionFactory,
             async_session=async_session_scope,
         ),
         subscribe=lambda: SubscribeOper(),
-        workflow=lambda: WorkflowOper(),
+        workflow=lambda: workflow_execution,
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(

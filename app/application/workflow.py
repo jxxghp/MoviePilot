@@ -240,6 +240,56 @@ class UnitOfWork(Protocol):
         ...
 
 
+class WorkflowExecutionPort(Protocol):
+    """工作流 Chain 提交执行状态所需的类型化事务端口。"""
+
+    def start(self, workflow_id: int) -> bool:
+        """提交工作流运行中状态。"""
+        ...
+
+    def success(
+            self,
+            workflow_id: int,
+            result: Optional[str] = None,
+    ) -> bool:
+        """提交工作流成功状态。"""
+        ...
+
+    def fail(self, workflow_id: int, result: str) -> bool:
+        """提交工作流失败状态。"""
+        ...
+
+    def step(
+            self,
+            workflow_id: int,
+            action_id: str,
+            context: dict[str, Any],
+            execution_state: Optional[dict[str, Any]] = None,
+    ) -> bool:
+        """提交工作流动作进度。"""
+        ...
+
+    def reset(self, workflow_id: int, reset_count: bool = False) -> bool:
+        """提交工作流执行状态重置。"""
+        ...
+
+
+_configured_workflow_execution: Optional[WorkflowExecutionPort] = None
+
+
+def configure_workflow_execution(service: WorkflowExecutionPort) -> None:
+    """由启动组合根登记唯一工作流执行状态事务服务。"""
+    global _configured_workflow_execution
+    _configured_workflow_execution = service
+
+
+def get_configured_workflow_execution() -> WorkflowExecutionPort:
+    """返回启动阶段登记的工作流执行状态事务服务。"""
+    if _configured_workflow_execution is None:
+        raise RuntimeError("工作流执行状态事务服务尚未配置")
+    return _configured_workflow_execution
+
+
 class WorkflowExecutionRepository(Protocol):
     """工作流执行状态写入所需的最小暂存端口。"""
 
