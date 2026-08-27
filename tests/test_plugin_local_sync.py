@@ -12,6 +12,7 @@ from app.adapters.external.market import PluginHelper
 from app.foundation.singleton import Singleton
 from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.paths import PluginPathResolver
 from app.runtime.extensions.plugin.system import get_plugin_system
 from app.scheduler import Scheduler
 from app.schemas.types import EventType, SystemConfigKey
@@ -777,6 +778,45 @@ def test_local_python_and_federated_changes_share_one_batch_sync(
     plugin_manager._run_file_watcher()
 
     assert sync_spy.call_count == 1
+    reload_spy.assert_called_once_with("DemoPlugin")
+
+
+def test_runtime_python_change_reloads_without_local_repository_sync(
+    tmp_path,
+    monkeypatch,
+    plugin_manager: PluginManager,
+) -> None:
+    """直接修改运行目录中的 Python 文件只重载当前载荷。"""
+    runtime_dir = tmp_path / "app" / "plugins" / "demoplugin"
+    runtime_file = runtime_dir / "__init__.py"
+    runtime_dir.mkdir(parents=True)
+    runtime_file.write_text(
+        "from app.plugins import _PluginBase\n"
+        "class DemoPlugin(_PluginBase):\n"
+        "    plugin_name = 'Demo'\n",
+        encoding="utf-8",
+    )
+    _configure_local_watcher(
+        monkeypatch,
+        tmp_path,
+        tmp_path / "unused-local-repository",
+        {(Change.modified, str(runtime_file))},
+    )
+    plugin_manager._plugin_paths = PluginPathResolver(
+        runtime_root=tmp_path / "app" / "plugins",
+        running=lambda: plugin_manager.running_plugins,
+        system=get_plugin_system,
+        strict_system_version=lambda: False,
+        log=Mock(),
+    )
+    sync_spy = Mock()
+    reload_spy = Mock()
+    monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
+    monkeypatch.setattr(plugin_manager, "_reload_plugin_tree_from_monitor", reload_spy)
+
+    plugin_manager._run_file_watcher()
+
+    sync_spy.assert_not_called()
     reload_spy.assert_called_once_with("DemoPlugin")
 
 
