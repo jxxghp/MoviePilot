@@ -1568,19 +1568,19 @@
     "union-attr": 2
   },
   "app/chain/transfer.py": {
-    "arg-type": 57,
+    "arg-type": 53,
     "assignment": 25,
     "attr-defined": 4,
     "func-returns-value": 1,
     "misc": 2,
-    "no-any-return": 3,
+    "no-any-return": 2,
     "no-untyped-call": 8,
     "no-untyped-def": 12,
     "operator": 3,
     "return-value": 2,
     "truthy-function": 5,
     "type-arg": 10,
-    "union-attr": 33,
+    "union-attr": 31,
     "var-annotated": 4
   },
   "app/chain/user.py": {

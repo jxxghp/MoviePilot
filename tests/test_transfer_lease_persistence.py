@@ -20,6 +20,7 @@ from app.application.transfer.workflow import (
     TransferProviderReference,
 )
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
+from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferpending import TransferPendingOper
@@ -93,6 +94,7 @@ def repository_factory(tmp_path):
     )
     TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
+    TransferExecutionStep.__table__.create(engine)
     factory = sessionmaker(bind=engine)
     yield lambda: TransactionalTransferAdmissionRepository(factory)
     engine.dispose()
@@ -207,7 +209,7 @@ def test_claim_heartbeat_expired_takeover_and_stale_token_guards(
         lease_token=first.lease_token,
         error="expired worker",
     ) is False
-    assert repository.discard_claimed(
+    assert repository.abandon_unstarted(
         task_id=admitted.task_id,
         lease_token=first.lease_token,
     ) == 0
@@ -231,7 +233,7 @@ def test_claim_heartbeat_expired_takeover_and_stale_token_guards(
         lease_token=first.lease_token,
         error="stale worker",
     ) is False
-    assert repository.discard_claimed(
+    assert repository.abandon_unstarted(
         task_id=admitted.task_id,
         lease_token=first.lease_token,
     ) == 0
@@ -257,7 +259,7 @@ def test_claim_heartbeat_expired_takeover_and_stale_token_guards(
     )
     assert third is not None
     assert third.attempt_count == 3
-    assert repository.discard_claimed(
+    assert repository.abandon_unstarted(
         task_id=admitted.task_id,
         lease_token=third.lease_token,
     ) == 1

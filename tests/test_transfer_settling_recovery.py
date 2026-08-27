@@ -9,21 +9,33 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
+from app.application.chain.events import TransferResultSettlement
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
+    TransferExecutionCommand,
     TransferExecutionSnapshot,
     TransferExecutionState,
+    TransferOperationObservation,
+    TransferOperationObservationState,
+    TransferStepIntent,
+    TransferStepResult,
 )
 from app.application.transfer.workflow import (
     TransferAdmission,
     TransferPlanCheckpoint,
+    TransferPlanItem,
     TransferPlanningInput,
     TransferTask,
 )
+from app.chain import transfer as transfer_chain_module
 from app.chain.transfer import TransferChain
+from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
+from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository
+from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
+from app.db.models.transfersettlementreceipt import TransferSettlementReceipt
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 
@@ -173,6 +185,8 @@ def admission_store(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'settling-recovery.db'}")
     TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
+    TransferExecutionStep.__table__.create(engine)
+    TransferSettlementReceipt.__table__.create(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     try:
         yield TransactionalTransferAdmissionRepository(factory), factory
@@ -202,6 +216,7 @@ def _build_chain(admissions) -> TransferChain:
     """构造只允许执行 settling 终态恢复的 TransferChain 骨架。"""
     chain = object.__new__(TransferChain)
     chain._transfer_admissions = admissions
+    chain._transfer_executions = MagicMock()
     chain._worker_owner_id = "recovery-owner"
     chain._owned_leases = {}
     chain._queued_lease_tokens = set()
@@ -250,6 +265,18 @@ def _recovered_task(
     chain._owned_leases[admission.task_id] = (
         admission.lease_token,
         time.monotonic() + 120,
+    )
+    chain._transfer_executions.get_snapshot.return_value = TransferExecutionSnapshot(
+        task_id=admission.task_id,
+        state=TransferExecutionState.SETTLING,
+        checkpoint=execution_checkpoint,
+        retry_generation=0,
+        retry_count=0,
+        retry_due_at=None,
+        settlement_revision=0,
+        terminal_history_id=None,
+        last_error=None,
+        steps=(),
     )
     return task
 
@@ -381,7 +408,7 @@ def test_replay_settling_uses_frozen_source_without_filesystem_probe(
     queued_task = chain.put_to_queue.call_args.args[0]
     assert queued_task.fileitem.path == path
     assert queued_task.execution_checkpoint == execution_checkpoint
-    admissions.discard_claimed.assert_not_called()
+    admissions.abandon_unstarted.assert_not_called()
     admissions.release_claim.assert_not_called()
     chain._plan_checkpoint_and_execute.assert_not_called()
 
@@ -454,3 +481,204 @@ def test_writer_failure_releases_and_reclaims_same_settling_checkpoint(
     assert second_admission.lease_token != first_admission.lease_token
     chain._TransferChain__select_storage_oper.assert_not_called()
     chain._plan_checkpoint_and_execute.assert_not_called()
+
+
+def test_bound_checkpoint_is_not_restored_outside_settling() -> None:
+    """旧终态检查点留在 retry_wait 时不得跳过步骤恢复直接再次结算。"""
+    path = "/downloads/retry-state.mkv"
+    planning_input = _planning_input(path)
+    plan_checkpoint = _plan_checkpoint(planning_input)
+    execution_checkpoint = _execution_checkpoint(path, success=False)
+    admission = TransferAdmission(
+        task_id="retry-task",
+        storage="local",
+        src_path=path,
+        state="planned",
+        created_at="2026-08-27 09:00:00",
+        updated_at="2026-08-27 09:00:00",
+        planning_input=planning_input,
+        checkpoint=plan_checkpoint,
+        lease_owner="recovery-owner",
+        lease_token="retry-token",
+    )
+    chain = _build_chain(MagicMock())
+    task = _recovered_task(chain, admission, execution_checkpoint)
+    chain._transfer_executions.get_snapshot.return_value = TransferExecutionSnapshot(
+        task_id=admission.task_id,
+        state=TransferExecutionState.RETRY_WAIT,
+        checkpoint=execution_checkpoint,
+        retry_generation=1,
+        retry_count=1,
+        retry_due_at="2026-08-27 09:00:00.000000",
+        settlement_revision=1,
+        terminal_history_id=41,
+        last_error="copy failed",
+        steps=(),
+    )
+
+    restored = chain._TransferChain__restore_settling_transfer_result(task)
+
+    assert restored is None
+
+
+def test_failed_settlement_retry_replays_step_and_commits_new_receipt(
+        admission_store,
+) -> None:
+    """失败结算请求重试后应恢复 FAILED 步骤，并以新检查点完成下一版结算。"""
+    admissions, factory = admission_store
+    path = "/downloads/retry-success.mkv"
+    planning_input = _planning_input(path)
+    plan_checkpoint = TransferPlanCheckpoint(
+        planning_input=planning_input,
+        target_storage="local",
+        root_target_path="/library",
+        final_target_path="/library/retry-success.mkv",
+        resolved_transfer_type="copy",
+        items=(TransferPlanItem(
+            sequence=0,
+            source_fileitem=planning_input.source_fileitem,
+            target_storage="local",
+            target_path="/library/retry-success.mkv",
+        ),),
+        need_notify=False,
+    )
+    admitted = admissions.admit(
+        storage="local",
+        src_path=path,
+        planning_input=planning_input,
+    )
+    first_claim = admissions.claim_task(
+        task_id=admitted.task_id,
+        owner_id="first-owner",
+        lease_seconds=120,
+    )
+    assert first_claim is not None
+    assert first_claim.lease_token is not None
+    admissions.checkpoint_plan(
+        task_id=admitted.task_id,
+        lease_token=first_claim.lease_token,
+        input_fingerprint=planning_input.fingerprint,
+        checkpoint=plan_checkpoint,
+    )
+    executions = TransactionalTransferExecutionRepository(factory)
+    command = TransferExecutionCommand(
+        executions,
+        attempt_token_factory=iter(("attempt-1", "attempt-2")).__next__,
+    )
+    plan_fingerprint = (
+        TransferChain._TransferChain__transfer_plan_fingerprint(plan_checkpoint)
+    )
+    intent = TransferStepIntent.create(
+        task_id=admitted.task_id,
+        checkpoint_fingerprint=plan_fingerprint,
+        ordinal=0,
+        phase="transfer",
+        kind="copy",
+        payload={"source": path, "target": "/library/retry-success.mkv"},
+    )
+    prepared = command.prepare(
+        task_id=admitted.task_id,
+        lease_token=first_claim.lease_token,
+        intent=intent,
+    )
+    started = command.begin(
+        task_id=admitted.task_id,
+        lease_token=first_claim.lease_token,
+        operation_id=prepared.operation_id,
+    )
+    exhausted = command.exhaust(
+        task_id=admitted.task_id,
+        lease_token=first_claim.lease_token,
+        step=started,
+        error="copy failed",
+        evidence=TransferStepResult(payload={"target_exists": False}),
+    )
+    assert exhausted.checkpoint is not None
+    writer = TransactionalChainDurableEventWriter(factory)
+    first_settlement = writer.transfer_result(
+        topic=None,
+        stage_history=lambda repository: repository.add_force(
+            src=path,
+            src_storage="local",
+            status=False,
+            errmsg="copy failed",
+        ),
+        event_payload={},
+        publish=None,
+        settlement=TransferResultSettlement(
+            task_id=admitted.task_id,
+            lease_token=first_claim.lease_token,
+            execution_fingerprint=exhausted.checkpoint.fingerprint,
+            outcome="failed",
+            error="copy failed",
+        ),
+    )
+    assert first_settlement is not None
+    retry = command.request_retry(
+        task_id=admitted.task_id,
+        reason="manual retry",
+        requested_by="test",
+    )
+    assert retry.accepted is True
+
+    chain = _build_chain(admissions)
+    chain._transfer_executions = executions
+    chain.put_to_queue = MagicMock(return_value=True)
+    chain._TransferChain__replay_pending()
+
+    replayed_task = chain.put_to_queue.call_args.args[0]
+    assert replayed_task.execution_checkpoint is None
+    assert replayed_task.lease_token is not None
+    runner = transfer_chain_module._DurableTransferStepRunner(
+        task_id=admitted.task_id,
+        lease_token=replayed_task.lease_token,
+        checkpoint_fingerprint=plan_fingerprint,
+        repository=executions,
+    )
+    resumed = []
+    step_result = runner.run(
+        phase="transfer",
+        kind="copy",
+        payload={"source": path, "target": "/library/retry-success.mkv"},
+        execute=lambda: resumed.append("executed") or TransferStepResult(
+            payload={"target_exists": True}
+        ),
+        observe=lambda: TransferOperationObservation(
+            state=TransferOperationObservationState.NOT_APPLIED,
+            evidence=TransferStepResult(payload={"target_exists": False}),
+        ),
+    )
+    assert step_result.payload == {"target_exists": True}
+    assert resumed == ["executed"]
+    new_checkpoint = runner.checkpoint(_transfer_result(path, success=True))
+    assert new_checkpoint.fingerprint != exhausted.checkpoint.fingerprint
+    second_settlement = writer.transfer_result(
+        topic=None,
+        stage_history=lambda repository: repository.add_force(
+            src=path,
+            src_storage="local",
+            status=True,
+            errmsg=None,
+        ),
+        event_payload={},
+        publish=None,
+        settlement=TransferResultSettlement(
+            task_id=admitted.task_id,
+            lease_token=replayed_task.lease_token,
+            execution_fingerprint=new_checkpoint.fingerprint,
+            outcome="succeeded",
+        ),
+    )
+    assert second_settlement is not None
+
+    with factory() as session:
+        receipts = session.scalars(
+            select(TransferSettlementReceipt).order_by(
+                TransferSettlementReceipt.settlement_revision
+            )
+        ).all()
+        pending = session.scalar(select(TransferPending))
+        steps = session.scalars(select(TransferExecutionStep)).all()
+    assert [receipt.outcome for receipt in receipts] == ["failed", "succeeded"]
+    assert pending is None
+    assert steps == []

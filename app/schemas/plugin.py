@@ -1,7 +1,8 @@
 from enum import Enum as _Enum
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, PrivateAttr, RootModel, field_validator
+from pydantic import BaseModel, Field, RootModel, field_validator
+from pydantic import PrivateAttr as _PrivateAttr
 
 from app.schemas.common import JsonData
 
@@ -62,7 +63,7 @@ class Plugin(BaseModel):
     """
     插件信息
     """
-    _package_version: Optional[str] = PrivateAttr(default=None)
+    _package_version: Optional[str] = _PrivateAttr(default=None)
 
     id: str = None
     # 插件名称

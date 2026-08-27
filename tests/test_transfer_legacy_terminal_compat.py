@@ -76,9 +76,9 @@ def _compat_chain(result_factory):
         task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
             payload={
                 "outcome": (
-                    "succeeded"
-                    if result.success
-                    else "failed"
+                    "overwrite_skipped"
+                    if result.overwrite_skipped
+                    else "succeeded" if result.success else "failed"
                 ),
                 "transferinfo": result.model_dump(mode="json"),
             },
@@ -190,6 +190,34 @@ def test_legacy_settlement_response_loss_replays_receipt_by_same_task_id() -> No
     first = chain.durable_event_writer.transfer_result.call_args_list[0].kwargs
     second = chain.durable_event_writer.transfer_result.call_args_list[1].kwargs
     assert second["settlement"] == first["settlement"]
+
+
+def test_legacy_settlement_double_failure_releases_claim_without_deleting_evidence(
+) -> None:
+    """两次 writer 均失败时必须释放 lease，并保留 pending 与步骤供恢复。"""
+    chain, executed = _compat_chain(lambda task: _result(task, success=True))
+    chain._transfer_admissions = Mock()
+    chain._transfer_admissions.release_claim.return_value = True
+    chain._TransferChain__ensure_recovery_scheduler = Mock()
+    chain.durable_event_writer.transfer_result.side_effect = RuntimeError(
+        "writer unavailable"
+    )
+
+    returned = _invoke(chain, _fileitem())
+
+    assert returned.success is False
+    assert "writer unavailable" in (returned.message or "")
+    assert executed == ["source-v1"]
+    assert chain.durable_event_writer.transfer_result.call_count == 2
+    chain._transfer_admissions.release_claim.assert_called_once_with(
+        task_id="task-source-v1",
+        lease_token="lease-source-v1",
+        error=(
+            "旧整理兼容命令 durable 终态结算失败：writer unavailable"
+        ),
+    )
+    chain._transfer_admissions.abandon_unstarted.assert_not_called()
+    assert chain._owned_leases == {}
 
 
 def test_legacy_overwrite_skip_binds_existing_success_in_atomic_writer() -> None:

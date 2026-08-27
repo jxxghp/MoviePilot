@@ -550,6 +550,9 @@ expired claimed task remains exclusively owned by fenced recovery APIs.
 - 物理模块仍存在但公开符号已经迁走时（例如 `app.domain.media` 的身份原语、
   `app.schemas` 的整理工作项），兼容 Finder 在标准 Loader 执行后叠加白名单符号路由；
   canonical 模块不得为兼容而反向 import `app.runtime.compat`。
+- 符号级插件 ABI 只保证显式导入和属性访问；兼容符号不加入物理包的 `__all__`，
+  不支持依赖 `from ... import *` 获得迁移符号。宿主源码不得消费 `SYMBOL_ALIASES`
+  中的旧符号，必须直接导入 canonical owner，避免包根形成第二份宿主导出面。
 - Canonical implementation packages may not import `app/runtime/compat` or
   `app/sdk`.
 - Host code uses canonical paths. Only `app/plugins/` and compatibility tests

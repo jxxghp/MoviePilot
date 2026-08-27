@@ -1,5 +1,7 @@
 """兼容旧 ``app.db.transferpending_oper`` 的无 Session 数据访问接口。"""
 
+import hashlib
+import json
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
 from uuid import uuid4
@@ -11,6 +13,42 @@ from app.db.models.transferpending import TransferPending as _TransferPending
 
 _TRANSFER_EXECUTION_STEP = table("transferexecutionstep", column("task_id"))
 _TRANSFER_HISTORY = table("transferhistory", column("transfer_task_id"))
+
+
+def _legacy_planning_payload(storage: str, src_path: str) -> dict[str, Any]:
+    """只在旧登记 ABI 内构造可由新状态机保守重规划的最小输入。"""
+    return {
+        "schema_version": 1,
+        "source_fileitem": {"storage": storage, "path": src_path},
+        "meta": None,
+        "mediainfo": None,
+        "target_directory": None,
+        "target_storage": None,
+        "target_path": None,
+        "requested_transfer_type": None,
+        "media_source": None,
+        "media_id": None,
+        "media_type": None,
+        "need_scrape": False,
+        "need_rename": True,
+        "need_notify": True,
+        "overwrite_mode": None,
+        "episodes_info": [],
+        "preview": False,
+        "options": {"legacy_replan": True},
+    }
+
+
+def _planning_fingerprint(payload: dict[str, Any]) -> str:
+    """生成兼容登记输入与 canonical DTO 一致的规范指纹。"""
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _safe_legacy_delete_predicates() -> tuple[Any, ...]:
@@ -61,6 +99,7 @@ class TransferPendingOper(DbOper):
         :return: 登记记录
         """
         now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        planning_input = _legacy_planning_payload(storage, src_path)
         return self._execute_sync_write(
             lambda session: _TransferPending.stage_admit(
                 session,
@@ -69,6 +108,9 @@ class TransferPendingOper(DbOper):
                 src_path=src_path,
                 state="accepted",
                 now_time=now_time,
+                input_version=1,
+                planning_input=planning_input,
+                input_fingerprint=_planning_fingerprint(planning_input),
             )
         )
 

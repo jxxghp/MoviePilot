@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer.workflow import (
@@ -545,8 +546,10 @@ def test_checkpoint_rejects_missing_task(repository) -> None:
         )
 
 
-def test_direct_orm_defaults_create_valid_legacy_projection(tmp_path) -> None:
-    """兼容直接构造 ORM 行时也必须生成匹配路径的版本化输入与指纹。"""
+def test_canonical_admission_requires_explicit_versioned_planning_input(
+        tmp_path,
+) -> None:
+    """直接 ORM 写入不得伪造默认输入，canonical 仓储必须显式保存完整快照。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'orm-defaults.db'}")
     factory = sessionmaker(bind=engine)
     TransferPending.__table__.create(engine)
@@ -559,21 +562,27 @@ def test_direct_orm_defaults_create_valid_legacy_projection(tmp_path) -> None:
             updated_at="2026-08-27 10:00:00",
         )
         session.add(pending)
-        session.commit()
-        task_id = pending.task_id
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
 
     repository = TransactionalTransferAdmissionRepository(factory)
-    admitted = repository.claim_task(
-        task_id=task_id,
-        owner_id="legacy-projection-worker",
-        lease_seconds=3600,
+    planning_input = replace(
+        _planning_input(),
+        source_fileitem={
+            "storage": "local",
+            "path": "/downloads/legacy.mkv",
+            "type": "file",
+        },
+    )
+    admitted = repository.admit(
+        storage="local",
+        src_path="/downloads/legacy.mkv",
+        planning_input=planning_input,
     )
 
     assert admitted is not None
-    assert admitted.planning_input == TransferPlanningInput.legacy(
-        storage="local",
-        src_path="/downloads/legacy.mkv",
-    )
+    assert admitted.planning_input == planning_input
     assert admitted.input_fingerprint == admitted.planning_input.fingerprint
     engine.dispose()
 

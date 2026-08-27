@@ -5,6 +5,10 @@ from unittest.mock import Mock
 from jinja2 import Template
 
 from app.application.messaging.message import TemplateHelper
+from app.application.transfer.execution import (
+    TransferExecutionCheckpoint,
+    TransferSettlementResult,
+)
 from app.application.transfer.workflow import TransferTask
 from app.chain.media import MediaChain
 from app.chain.transfer import JobManager, TransferChain
@@ -494,6 +498,18 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
     chain.eventmanager = Mock()
     chain.transfer_completed = Mock()
     chain.send_transfer_message = Mock()
+
+    def transfer_result(**kwargs):
+        """执行测试历史暂存并返回 task-aware 原子结算回执。"""
+        history = kwargs["stage_history"](SimpleNamespace())
+        return TransferSettlementResult(
+            history_id=history.id,
+            settlement_revision=1,
+            pending_deleted=True,
+        )
+
+    chain.durable_event_writer = Mock()
+    chain.durable_event_writer.transfer_result.side_effect = transfer_result
     album_infos = [
         MusicInfo(
             music_type="album",
@@ -544,8 +560,21 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
         lambda **kwargs: SimpleNamespace(id=1),
     )
 
-    for task in tasks:
-        chain._TransferChain__default_callback(task, transfer_info(task))
+    for sequence, task in enumerate(tasks):
+        result = transfer_info(task)
+        task.bind_admission_task_id(f"music-terminal-{sequence}")
+        task.bind_execution_lease(
+            owner_id="music-test-owner",
+            lease_token=f"music-lease-{sequence}",
+        )
+        task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
+            payload={
+                "outcome": "succeeded",
+                "transferinfo": result.model_dump(mode="json"),
+            },
+            operation_ids=(f"music-operation-{sequence}",),
+        ))
+        chain._TransferChain__default_callback(task, result)
 
     notified_lists = [
         call.kwargs["transferinfo"].file_list_new

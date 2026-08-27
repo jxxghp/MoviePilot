@@ -1,5 +1,3 @@
-import hashlib
-import json
 from datetime import datetime
 from typing import Any, List, Optional, cast
 from uuid import uuid4
@@ -12,66 +10,21 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     and_,
+    column,
     delete,
+    exists,
     func,
     or_,
     select,
+    table,
     update,
 )
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
 
-
-def _legacy_planning_payload(storage: str, src_path: str) -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "source_fileitem": {"storage": storage, "path": src_path},
-        "meta": None,
-        "mediainfo": None,
-        "target_directory": None,
-        "target_storage": None,
-        "target_path": None,
-        "requested_transfer_type": None,
-        "media_source": None,
-        "media_id": None,
-        "media_type": None,
-        "need_scrape": False,
-        "need_rename": True,
-        "need_notify": True,
-        "overwrite_mode": None,
-        "episodes_info": [],
-        "preview": False,
-        "options": {"legacy_replan": True},
-    }
-
-
-def _planning_fingerprint(payload: dict[str, Any]) -> str:
-    canonical = json.dumps(
-        payload,
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _default_planning_payload(context: Any) -> dict[str, Any]:
-    params = context.get_current_parameters()
-    return _legacy_planning_payload(
-        params.get("storage", ""),
-        params.get("src_path", ""),
-    )
-
-
-def _default_planning_fingerprint(context: Any) -> str:
-    params = context.get_current_parameters()
-    payload = params.get("planning_input") or _legacy_planning_payload(
-        params.get("storage", ""),
-        params.get("src_path", ""),
-    )
-    return _planning_fingerprint(payload)
+_TRANSFER_EXECUTION_STEP = table("transferexecutionstep", column("task_id"))
+_TRANSFER_HISTORY = table("transferhistory", column("transfer_task_id"))
 
 
 class TransferPending(Base):
@@ -112,11 +65,11 @@ class TransferPending(Base):
     input_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     # 版本化规划输入 JSON
     planning_input: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, default=_default_planning_payload
+        JSON, nullable=False
     )
     # 规划输入规范 JSON 的 SHA-256 指纹
     input_fingerprint: Mapped[str] = mapped_column(
-        String(64), nullable=False, default=_default_planning_fingerprint
+        String(64), nullable=False
     )
     # 完整计划格式版本，尚未规划时为空
     checkpoint_version: Mapped[Optional[int]] = mapped_column(Integer)
@@ -203,9 +156,9 @@ class TransferPending(Base):
     @classmethod
     def stage_admit(cls, db: Session, *, task_id: str, storage: str,
                     src_path: str, state: str,
-                    now_time: str, input_version: int = 1,
-                    planning_input: Optional[dict[str, Any]] = None,
-                    input_fingerprint: Optional[str] = None) -> Optional["TransferPending"]:
+                    now_time: str, input_version: int,
+                    planning_input: dict[str, Any],
+                    input_fingerprint: str) -> Optional["TransferPending"]:
         """
         在调用方会话中暂存一条持久接纳记录。
 
@@ -221,15 +174,20 @@ class TransferPending(Base):
         :param input_fingerprint: 规划输入规范 JSON 指纹
         :return: 接纳记录
         """
-        if not task_id or not storage or not src_path or not state:
+        if (
+                not task_id
+                or not storage
+                or not src_path
+                or not state
+                or not planning_input
+                or not input_fingerprint
+        ):
             return None
         pending = db.execute(
             select(cls).where(cls.storage == storage, cls.src_path == src_path)
         ).scalars().first()
         if pending:
             return cast("TransferPending", pending)
-        effective_input = planning_input or _legacy_planning_payload(storage, src_path)
-        effective_fingerprint = input_fingerprint or _planning_fingerprint(effective_input)
         pending = cls(
             task_id=task_id,
             storage=storage,
@@ -238,8 +196,8 @@ class TransferPending(Base):
             created_at=now_time,
             updated_at=now_time,
             input_version=input_version,
-            planning_input=effective_input,
-            input_fingerprint=effective_fingerprint,
+            planning_input=planning_input,
+            input_fingerprint=input_fingerprint,
         )
         db.add(pending)
         return pending
@@ -425,17 +383,33 @@ class TransferPending(Base):
             *,
             task_id: str,
             lease_token: str,
+            admission_state: str,
+            checkpoint_version: int,
+            checkpoint_payload: dict[str, Any],
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以有效租约把可执行任务推进或保持为 running。"""
-        if not all((task_id, lease_token, now_utc, updated_at)):
+        """仅以有效租约和完整冻结计划把任务推进或保持为 running。"""
+        if not all((
+                task_id,
+                lease_token,
+                admission_state,
+                checkpoint_version,
+                checkpoint_payload,
+                now_utc,
+                updated_at,
+        )):
             return 0
         return execute_dml(
             db,
             update(cls)
             .where(
                 cls.task_id == task_id,
+                cls.state == admission_state,
+                cls.state.in_(("planned", "provider_pending")),
+                cls.checkpoint_version == checkpoint_version,
+                cls.checkpoint_payload == checkpoint_payload,
+                cls.planned_at.is_not(None),
                 cls.lease_token == lease_token,
                 cls.lease_expires_at.is_not(None),
                 cls.lease_expires_at > now_utc,
@@ -470,9 +444,10 @@ class TransferPending(Base):
             update(cls)
             .where(
                 cls.task_id == task_id,
-                cls.state == "planned",
+                cls.state.in_(("planned", "provider_pending")),
                 cls.checkpoint_version.is_not(None),
                 cls.checkpoint_payload.is_not(None),
+                cls.planned_at.is_not(None),
                 cls.execution_state == "running",
                 cls.lease_token == lease_token,
                 cls.lease_expires_at.is_not(None),
@@ -512,6 +487,10 @@ class TransferPending(Base):
             update(cls)
             .where(
                 cls.task_id == task_id,
+                cls.state.in_(("planned", "provider_pending")),
+                cls.checkpoint_version.is_not(None),
+                cls.checkpoint_payload.is_not(None),
+                cls.planned_at.is_not(None),
                 cls.execution_state.in_(("not_started", "running", "retry_wait")),
                 cls.lease_token == lease_token,
                 cls.lease_expires_at.is_not(None),
@@ -558,9 +537,10 @@ class TransferPending(Base):
             update(cls)
             .where(
                 cls.task_id == task_id,
-                cls.state == "planned",
+                cls.state.in_(("planned", "provider_pending")),
                 cls.checkpoint_version.is_not(None),
                 cls.checkpoint_payload.is_not(None),
+                cls.planned_at.is_not(None),
                 cls.execution_state == "running",
                 cls.lease_token == lease_token,
                 cls.lease_expires_at.is_not(None),
@@ -598,9 +578,10 @@ class TransferPending(Base):
             update(cls)
             .where(
                 cls.task_id == task_id,
-                cls.state == "planned",
+                cls.state.in_(("planned", "provider_pending")),
                 cls.checkpoint_version.is_not(None),
                 cls.checkpoint_payload.is_not(None),
+                cls.planned_at.is_not(None),
                 cls.execution_state == "running",
                 cls.lease_token == lease_token,
                 cls.lease_expires_at.is_not(None),
@@ -886,7 +867,7 @@ class TransferPending(Base):
         )
 
     @classmethod
-    def discard_claimed(
+    def abandon_unstarted(
             cls,
             db: Session,
             *,
@@ -895,7 +876,10 @@ class TransferPending(Base):
             now_time: str,
     ) -> int:
         """
-        仅以当前且未过期的 token 删除已经到达终态的租约任务。
+        仅以当前且未过期的 token 删除确认从未执行的缺失源任务。
+
+        任何执行状态、聚合检查点或步骤证据都意味着外部结果需要由状态机
+        判定；即使源文件已经消失，也不能以此推断 move 已经安全完成。
 
         :param db: 数据库会话
         :param task_id: 稳定任务标识
@@ -912,6 +896,29 @@ class TransferPending(Base):
                 cls.lease_token == lease_token,
                 cls.lease_expires_at.is_not(None),
                 cls.lease_expires_at > now_time,
+                cls.state == "accepted",
+                cls.checkpoint_version.is_(None),
+                cls.checkpoint_payload.is_(None),
+                cls.planned_at.is_(None),
+                cls.execution_state == "not_started",
+                cls.execution_version.is_(None),
+                cls.execution_payload.is_(None),
+                cls.execution_fingerprint.is_(None),
+                cls.retry_generation == 0,
+                cls.retry_count == 0,
+                cls.retry_due_at.is_(None),
+                cls.settlement_revision == 0,
+                cls.terminal_history_id.is_(None),
+                ~exists(
+                    select(_TRANSFER_EXECUTION_STEP.c.task_id).where(
+                        _TRANSFER_EXECUTION_STEP.c.task_id == cls.task_id
+                    )
+                ),
+                ~exists(
+                    select(_TRANSFER_HISTORY.c.transfer_task_id).where(
+                        _TRANSFER_HISTORY.c.transfer_task_id == cls.task_id
+                    )
+                ),
             ),
             execution_options={"synchronize_session": False},
         )

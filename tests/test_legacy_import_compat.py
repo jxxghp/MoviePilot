@@ -220,6 +220,58 @@ def test_transfer_package_exposes_plugin_symbols_only_through_overlay() -> None:
         reset_legacy_import_diagnostics()
 
 
+def test_transfer_legacy_symbols_support_all_explicit_imports() -> None:
+    """六个旧整理符号显式导入应在隔离进程中共享同一兼容类型。"""
+    code = """
+from app.application.transfer import TransferTask as ApplicationTask
+from app.application.transfer import TransferQueue as ApplicationQueue
+from app.schemas import TransferTask as SchemaTask
+from app.schemas import TransferQueue as SchemaQueue
+from app.schemas.transfer import TransferTask as TransferSchemaTask
+from app.schemas.transfer import TransferQueue as TransferSchemaQueue
+
+import app.application.transfer as application_package
+import app.schemas as schemas_package
+import app.schemas.transfer as transfer_schema
+from app.application.transfer.workflow import TransferQueue as CanonicalQueue
+from app.application.transfer.workflow import TransferTask as CanonicalTask
+from app.sdk._legacy.transfer import TransferQueue as LegacyQueue
+from app.sdk._legacy.transfer import TransferTask as LegacyTask
+
+
+class LegacyPayload:
+    def model_dump(self):
+        return {"kind": "legacy"}
+
+
+task_types = (ApplicationTask, SchemaTask, TransferSchemaTask)
+queue_types = (ApplicationQueue, SchemaQueue, TransferSchemaQueue)
+assert all(task_type is LegacyTask for task_type in task_types)
+assert all(queue_type is LegacyQueue for queue_type in queue_types)
+assert issubclass(LegacyTask, CanonicalTask)
+assert issubclass(LegacyQueue, CanonicalQueue)
+
+task = ApplicationTask(
+    fileitem={"storage": "local", "path": "/downloads/movie.mkv", "type": "file"},
+    meta=LegacyPayload(),
+)
+assert isinstance(task, CanonicalTask)
+assert task.to_dict()["meta"] == {"kind": "legacy"}
+for queue_type in queue_types:
+    queue = queue_type(task=task)
+    assert queue.task is task
+
+for package in (application_package, schemas_package, transfer_schema):
+    assert "TransferTask" not in package.__all__
+    assert "TransferQueue" not in package.__all__
+"""
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).parents[1],
+        check=True,
+    )
+
+
 def test_virtual_package_exports_resolve_exact_manifest_symbols():
     """合成旧包仅公开 manifest 声明的符号，并记录 DEBUG 兼容警告。"""
     legacy_package = "app.core.meta"

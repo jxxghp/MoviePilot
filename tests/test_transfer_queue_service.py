@@ -5,12 +5,30 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.application.transfer.workflow import TransferAdmission, TransferQueueService
+from app.application.transfer.workflow import (
+    TransferAdmission,
+    TransferPlanningInput,
+    TransferQueueService,
+)
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.schemas.file import FileItem
 from tests.test_transfer_job_manager import make_task, make_transfer_chain
+
+
+def _planning_input(path: str = "/tmp/demo.mkv") -> TransferPlanningInput:
+    """构造队列准入测试要求的显式版本化输入。"""
+    return TransferPlanningInput(
+        source_fileitem={
+            "storage": "local",
+            "path": path,
+            "type": "file",
+            "name": path.rsplit("/", 1)[-1],
+        },
+        meta=None,
+        mediainfo=None,
+    )
 
 
 def _service(**overrides):
@@ -24,6 +42,7 @@ def _service(**overrides):
             state="accepted",
             created_at="2026-08-27 10:00:00",
             updated_at="2026-08-27 10:00:00",
+            planning_input=_planning_input(),
         )),
         "enqueue": Mock(),
         "before_enqueue": Mock(),
@@ -48,6 +67,7 @@ def test_transfer_queue_service_put_preserves_registration_order():
             state="accepted",
             created_at="2026-08-27 10:00:00",
             updated_at="2026-08-27 10:00:00",
+            planning_input=_planning_input(),
         ),
         before_enqueue=lambda _task: calls.append("batch"),
         enqueue=lambda _item: calls.append("queue"),
@@ -123,10 +143,12 @@ def test_transfer_queue_service_commits_admission_before_failed_enqueue(tmp_path
     factory = sessionmaker(bind=engine)
     repository = TransactionalTransferAdmissionRepository(factory)
     task = make_task(1)
+    task.bind_planning_input(_planning_input(task.fileitem.path))
     service, _ = _service(
         admit_task=lambda item: repository.admit(
             storage=item.fileitem.storage,
             src_path=item.fileitem.path,
+            planning_input=item.planning_input,
         ),
         enqueue=Mock(side_effect=RuntimeError("queue closed")),
         enqueue_failed=lambda item, error: repository.record_enqueue_failure(

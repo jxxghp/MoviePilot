@@ -9,6 +9,10 @@ from app.application.history import (
     failed_retry_count,
     record_transfer_failure,
 )
+from app.application.transfer.execution import (
+    TransferExecutionCheckpoint,
+    TransferSettlementResult,
+)
 from app.application.transfer.workflow import (
     TransferAdmission,
     TransferPlanningInput,
@@ -223,11 +227,78 @@ def make_transfer_chain() -> TransferChain:
     admissions.admit.side_effect = admit
     admissions.claim_task.side_effect = claim_task
     admissions.checkpoint_plan.side_effect = checkpoint_plan
-    admissions.discard_claimed.return_value = 1
+    admissions.abandon_unstarted.return_value = 1
     admissions.release_claim.return_value = True
     chain._transfer_admissions = admissions
     chain._TransferChain__ensure_lease_heartbeat_owner = MagicMock()
+
+    class ImmediateStepRunner:
+        """为 JobManager 测试提交纯内存步骤与聚合执行检查点。"""
+
+        def run(self, *, phase, kind, payload, execute, observe):
+            """立即执行确定性测试步骤，不使用恢复探测。"""
+            del phase, kind, payload, observe
+            return execute()
+
+        def checkpoint(self, transferinfo):
+            """把测试整理结果冻结为可供 task-aware writer 使用的检查点。"""
+            return TransferExecutionCheckpoint.create(
+                payload={
+                    "outcome": "succeeded" if transferinfo.success else "failed",
+                    "transferinfo": transferinfo.model_dump(mode="json"),
+                },
+                operation_ids=("job-test-operation",),
+            )
+
+    step_runner = ImmediateStepRunner()
+    chain._TransferChain__build_durable_step_runner = MagicMock(
+        return_value=step_runner
+    )
+
+    def transfer_result(**kwargs):
+        """执行测试历史暂存与发布，并返回已删除 pending 的原子回执。"""
+        staging = SimpleNamespace(
+            get_success_by_src=lambda *_args, **_kwargs: SimpleNamespace(
+                id=99,
+                status=True,
+            )
+        )
+        history = kwargs["stage_history"](staging)
+        if kwargs["publish"] is not None:
+            kwargs["publish"](kwargs["event_payload"])
+        return TransferSettlementResult(
+            history_id=getattr(history, "id", 1) if history is not None else 1,
+            settlement_revision=1,
+            pending_deleted=True,
+        )
+
+    chain.durable_event_writer = MagicMock()
+    chain.durable_event_writer.transfer_result.side_effect = transfer_result
     return chain
+
+
+def bind_terminal_checkpoint(
+        task: TransferTask,
+        transferinfo: TransferInfo,
+) -> None:
+    """为直接回调测试绑定 task identity、lease 与聚合执行检查点。"""
+    task_id = f"terminal-{abs(hash(task.fileitem.path))}"
+    task.bind_admission_task_id(task_id)
+    task.bind_execution_lease(
+        owner_id="job-test-owner",
+        lease_token=f"lease-{task_id}",
+    )
+    task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
+        payload={
+            "outcome": (
+                "overwrite_skipped"
+                if transferinfo.overwrite_skipped
+                else "succeeded" if transferinfo.success else "failed"
+            ),
+            "transferinfo": transferinfo.model_dump(mode="json"),
+        },
+        operation_ids=("job-test-operation",),
+    ))
 
 
 def make_fileitem(path: str, size: int = 1024) -> FileItem:
@@ -545,6 +616,7 @@ class TransferJobManagerTest(unittest.TestCase):
             need_scrape=True,
             need_notify=False,
         )
+        bind_terminal_checkpoint(task, transferinfo)
 
         with patch(
             "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
@@ -969,6 +1041,7 @@ class TransferJobManagerTest(unittest.TestCase):
                 transfer_type="copy",
                 need_notify=False,
             )
+            bind_terminal_checkpoint(task, failed_transferinfo)
             failed_history_oper = SimpleNamespace()
             with patch(
                 "app.chain.transfer.get_chain_transfer_history_port",
@@ -1010,6 +1083,7 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_scrape=False,
                 need_notify=False,
             )
+            bind_terminal_checkpoint(task, success_transferinfo)
             with patch(
                 "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
             ), patch(
@@ -1023,7 +1097,8 @@ class TransferJobManagerTest(unittest.TestCase):
         finally:
             _reset_failed_retries(src_path, storage)
 
-    def test_unrecognized_task_marks_downloader_hash_completed(self):
+    def test_unrecognized_task_waits_for_durable_settlement_before_completion(self):
+        """拒绝检查点建立后、writer 结算前不得提前完成下载种子或移除作业。"""
         chain = make_transfer_chain()
         chain.post_message = lambda *_args, **_kwargs: None
         completed = []
@@ -1058,15 +1133,14 @@ class TransferJobManagerTest(unittest.TestCase):
 
         self.assertFalse(state)
         self.assertEqual("未识别到媒体信息", errmsg)
-        self.assertEqual([("abc123", "qbittorrent")], completed)
-        self.assertEqual([], chain.jobview.list_jobs())
+        self.assertEqual([], completed)
+        self.assertIsNotNone(task.plan_checkpoint)
+        self.assertIsNotNone(task.execution_checkpoint)
+        self.assertEqual(1, len(chain.jobview.list_jobs()))
+        chain.durable_event_writer.transfer_result.assert_not_called()
 
-    def test_unrecognized_task_survives_missing_failure_history(self):
-        """
-        写整理历史失败（``add_transfer_fail`` 返回 None）时，未识别分支仍须走完
-        通知、作业清理与种子完成标记：历史落库是通知的附属信息，不是前置条件。
-        通知正文只省去 ``/redo`` 指引，不得因读取 ``his.id`` 抛 NoneType。
-        """
+    def test_unrecognized_task_does_not_read_history_before_writer(self):
+        """拒绝步骤完成但 writer 未调用时，不得读取失败历史或发送通知。"""
         chain = make_transfer_chain()
         notifications = []
         chain.post_message = lambda message, **_kwargs: notifications.append(message)
@@ -1100,21 +1174,13 @@ class TransferJobManagerTest(unittest.TestCase):
 
         self.assertFalse(state)
         self.assertEqual("未识别到媒体信息", errmsg)
-        # 种子完成标记与作业清理都排在通知之后，通知崩掉会把它们一并跳过
-        self.assertEqual([("abc123", "qbittorrent")], completed)
-        self.assertEqual([], chain.jobview.list_jobs())
-        # 通知照发，但不含无法使用的 /redo 指引
-        self.assertEqual(1, len(notifications))
-        notification = notifications[0]
-        self.assertIn("未识别到媒体信息", notification.text)
-        self.assertNotIn("/redo", notification.text)
-        self.assertIsNone(notification.buttons)
+        self.assertEqual([], completed)
+        self.assertEqual([], notifications)
+        self.assertEqual(1, len(chain.jobview.list_jobs()))
+        chain.durable_event_writer.transfer_result.assert_not_called()
 
-    def test_unrecognized_task_keeps_redo_hint_when_history_written(self):
-        """
-        整理历史正常落库时，未识别通知须保留两条 ``/redo`` 指引与操作按钮，
-        防止上一条用例被「一律删掉 /redo」这种偷懒实现蒙混过关。
-        """
+    def test_unrecognized_task_does_not_publish_redo_before_writer(self):
+        """即使历史函数可用，未经过 task-aware writer 也不得发布 redo。"""
         chain = make_transfer_chain()
         notifications = []
         chain.post_message = lambda message, **_kwargs: notifications.append(message)
@@ -1141,22 +1207,8 @@ class TransferJobManagerTest(unittest.TestCase):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             chain._TransferChain__handle_transfer(task)
 
-        self.assertEqual(1, len(notifications))
-        notification = notifications[0]
-        self.assertIn("/redo 77\n", notification.text)
-        self.assertIn("/redo 77 [media_source]|[media_id]|[类型]", notification.text)
-        self.assertEqual(
-            [
-                [
-                    {"text": "重试", "callback_data": "transfer_retry_77"},
-                    {
-                        "text": "智能助手接管",
-                        "callback_data": "transfer_ai_retry_77",
-                    },
-                ]
-            ],
-            notification.buttons,
-        )
+        self.assertEqual([], notifications)
+        chain.durable_event_writer.transfer_result.assert_not_called()
 
     def test_do_transfer_syncs_same_stem_extra_files_by_default(self):
         chain = make_transfer_chain()
@@ -1594,6 +1646,7 @@ class TransferJobManagerTest(unittest.TestCase):
         ) as storage_chain_cls:
             storage_chain_cls.return_value.is_bluray_folder.return_value = False
             for task, transferinfo in zip(tasks, transferinfos):
+                bind_terminal_checkpoint(task, transferinfo)
                 chain._TransferChain__default_callback(task, transferinfo)
                 chain._finish_scrape_batch_task(task)
 
@@ -1649,6 +1702,7 @@ class TransferJobManagerTest(unittest.TestCase):
             need_scrape=True,
             need_notify=False,
         )
+        bind_terminal_checkpoint(task, transferinfo)
 
         with patch(
             "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()

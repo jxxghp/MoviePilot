@@ -378,6 +378,83 @@ def test_downgrade_marks_step_evidence_then_reupgrade_keeps_manual_review(
     engine.dispose()
 
 
+def test_downgrade_archives_and_reupgrade_restores_settlement_receipts(
+        monkeypatch,
+) -> None:
+    """降级必须归档 append-only 终态证据，重复降级和重升均不得丢失。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        pending, _ = _create_legacy_tables(connection)
+        _insert_legacy_rows(connection, pending)
+        migration = _bind_migration(monkeypatch, connection)
+        migration.upgrade()
+        connection.execute(sa.text(
+            "INSERT INTO transfersettlementreceipt ("
+            "task_id, history_id, settlement_revision, outcome, "
+            "execution_fingerprint, lease_token, history_status, src, src_storage, "
+            "pending_deleted, error, created_at, updated_at"
+            ") VALUES ("
+            "'settled', 42, 1, 'succeeded', 'fingerprint', 'lease', 1, "
+            "'/source', 'local', 1, NULL, "
+            "'2026-08-27 12:00:00', '2026-08-27 12:00:00'"
+            ")"
+        ))
+
+        migration.downgrade()
+        migration.downgrade()
+        tables = sa.inspect(connection).get_table_names()
+        assert "transfersettlementreceipt" not in tables
+        assert "transfersettlementreceipt_3_0_16_archive" in tables
+        migration.upgrade()
+        migration.upgrade()
+        receipt = connection.execute(sa.text(
+            "SELECT task_id, outcome, settlement_revision "
+            "FROM transfersettlementreceipt"
+        )).one()
+        assert receipt == ("settled", "succeeded", 1)
+        assert "transfersettlementreceipt_3_0_16_archive" not in (
+            sa.inspect(connection).get_table_names()
+        )
+
+
+def test_upgrade_repairs_owned_indexes_by_columns_and_uniqueness(monkeypatch) -> None:
+    """关键索引同名但列或唯一性错误时必须按 ORM 契约重建。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        pending, _ = _create_legacy_tables(connection)
+        _insert_legacy_rows(connection, pending)
+        migration = _bind_migration(monkeypatch, connection)
+        migration._add_pending_columns()
+        migration._backfill_pending()
+        migration._add_history_columns()
+        connection.execute(sa.text(
+            "CREATE UNIQUE INDEX ix_transferpending_execution_due "
+            "ON transferpending (task_id)"
+        ))
+        connection.execute(sa.text(
+            "CREATE INDEX ux_transferhistory_transfer_task_id "
+            "ON transferhistory (src_storage)"
+        ))
+
+        migration.upgrade()
+
+        inspector = sa.inspect(connection)
+        pending_index = next(
+            item for item in inspector.get_indexes("transferpending")
+            if item["name"] == "ix_transferpending_execution_due"
+        )
+        history_index = next(
+            item for item in inspector.get_indexes("transferhistory")
+            if item["name"] == "ux_transferhistory_transfer_task_id"
+        )
+        assert pending_index["column_names"] == [
+            "execution_state", "retry_due_at", "state", "created_at", "id",
+        ]
+        assert pending_index["unique"] == 0
+        assert history_index["column_names"] == ["transfer_task_id"]
+        assert history_index["unique"] == 1
+
+
 def test_upgrade_without_pending_table_is_a_safe_noop(monkeypatch):
     """全新数据库尚未执行前置迁移时本版本应安全等待迁移链建表。"""
     engine = sa.create_engine("sqlite://")
@@ -659,7 +736,7 @@ def test_upgrade_adds_synthetic_review_when_nonmanual_step_already_exists(
 def test_migrated_legacy_reviews_are_discoverable_resolvable_and_retryable(
         monkeypatch,
 ) -> None:
-    """迁移遗留任务应可分页判定，并在判定后准备真实首步骤。"""
+    """迁移遗留任务应可分页判定，判定后仍须重新规划才能准备步骤。"""
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -753,17 +830,32 @@ def test_migrated_legacy_reviews_are_discoverable_resolvable_and_retryable(
         snapshot = repository.get_snapshot(task_id=task_id)
         assert snapshot is not None
         assert snapshot.steps == ()
-        prepared = command.prepare(
-            task_id=task_id,
-            lease_token=f"lease-{task_id}",
-            intent=TransferStepIntent.create(
+        with factory() as session:
+            pending = session.scalar(
+                sa.select(TransferPending).where(
+                    TransferPending.task_id == task_id
+                )
+            )
+            assert pending is not None
+            assert pending.state in {"accepted", "planned"}
+        with pytest.raises(
+                TransferExecutionConflictError,
+                match="可执行规划状态|完整计划检查点|无法恢复",
+        ):
+            command.prepare(
                 task_id=task_id,
-                checkpoint_fingerprint="f" * 64,
-                ordinal=0,
-                phase="transfer",
-                kind="copy",
-                payload={"source": task_id},
-            ),
-        )
-        assert prepared.ordinal == 0
+                lease_token=f"lease-{task_id}",
+                intent=TransferStepIntent.create(
+                    task_id=task_id,
+                    checkpoint_fingerprint="f" * 64,
+                    ordinal=0,
+                    phase="transfer",
+                    kind="copy",
+                    payload={"source": task_id},
+                ),
+            )
+        current = repository.get_snapshot(task_id=task_id)
+        assert current is not None
+        assert current.state is TransferExecutionState.RETRY_WAIT
+        assert current.steps == ()
     engine.dispose()

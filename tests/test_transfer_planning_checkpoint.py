@@ -15,7 +15,11 @@ from sqlalchemy.orm import sessionmaker
 from app.application.transfer import workflow as transfer_application
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
+    TransferExecutionSnapshot,
+    TransferExecutionState,
+    TransferExecutionStep,
     TransferSettlementResult,
+    TransferStepState,
 )
 from app.application.transfer.workflow import TransferTask
 from app.chain.transfer import TransferChain
@@ -27,7 +31,6 @@ from app.domain.meta.metabase import MetaBase
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
 from app.runtime.extensions.module.dispatcher import (
-    FrozenModuleProviderMissingError,
     ModuleInvocationDispatcher,
 )
 from app.schemas.exception import StorageQueryError
@@ -204,10 +207,136 @@ def _planned_admission(task: TransferTask, checkpoint):
     )
 
 
+class _ExecutionRepositoryStub:
+    """为规划编排测试提供严格但内存化的 execution repository。"""
+
+    def __init__(self) -> None:
+        """初始化空步骤集合与未启动执行态。"""
+        self.steps = {}
+        self.state = TransferExecutionState.NOT_STARTED
+        self.checkpoint = None
+
+    def get_snapshot(self, *, task_id):
+        """返回当前任务的类型化执行投影。"""
+        return TransferExecutionSnapshot(
+            task_id=task_id,
+            state=self.state,
+            checkpoint=self.checkpoint,
+            retry_generation=0,
+            retry_count=0,
+            retry_due_at=None,
+            settlement_revision=0,
+            terminal_history_id=None,
+            last_error=None,
+            steps=tuple(self.steps.values()),
+        )
+
+    def prepare_step(self, *, task_id, lease_token, intent):
+        """幂等保存准备态步骤。"""
+        del lease_token
+        existing = self.steps.get(intent.operation_id)
+        if existing is not None:
+            return existing
+        step = TransferExecutionStep(
+            task_id=task_id,
+            operation_id=intent.operation_id,
+            checkpoint_fingerprint=intent.checkpoint_fingerprint,
+            ordinal=intent.ordinal,
+            phase=intent.phase,
+            kind=intent.kind,
+            state=TransferStepState.PREPARED,
+            attempt_token=None,
+            attempt_count=0,
+            intent=intent,
+            result=None,
+            last_error=None,
+            prepared_at="2026-08-27 10:00:00",
+            started_at=None,
+            completed_at=None,
+            updated_at="2026-08-27 10:00:00",
+        )
+        self.steps[intent.operation_id] = step
+        return step
+
+    def start_step(
+            self,
+            *,
+            task_id,
+            lease_token,
+            operation_id,
+            attempt_token,
+    ):
+        """把准备态步骤推进到已开始。"""
+        del task_id, lease_token
+        step = replace(
+            self.steps[operation_id],
+            state=TransferStepState.STARTED,
+            attempt_token=attempt_token,
+            attempt_count=1,
+            started_at="2026-08-27 10:00:01",
+        )
+        self.steps[operation_id] = step
+        self.state = TransferExecutionState.RUNNING
+        return step
+
+    def complete_step(
+            self,
+            *,
+            task_id,
+            lease_token,
+            operation_id,
+            attempt_token,
+            result,
+    ):
+        """以当前 attempt 提交成功证据。"""
+        del task_id, lease_token
+        assert self.steps[operation_id].attempt_token == attempt_token
+        step = replace(
+            self.steps[operation_id],
+            state=TransferStepState.SUCCEEDED,
+            result=result,
+            completed_at="2026-08-27 10:00:02",
+        )
+        self.steps[operation_id] = step
+        return step
+
+    def checkpoint_execution(self, *, task_id, lease_token, checkpoint):
+        """保存可重放终态的聚合检查点。"""
+        del lease_token
+        self.state = TransferExecutionState.SETTLING
+        self.checkpoint = checkpoint
+        return self.get_snapshot(task_id=task_id)
+
+    def mark_manual_review(
+            self,
+            *,
+            task_id,
+            lease_token,
+            operation_id,
+            attempt_token,
+            error,
+            evidence,
+    ):
+        """把执行结果不确定的步骤隔离到人工复核态。"""
+        del lease_token
+        step = self.steps[operation_id]
+        assert step.attempt_token == attempt_token
+        self.steps[operation_id] = replace(
+            step,
+            state=TransferStepState.MANUAL_REVIEW,
+            result=evidence,
+            last_error=error,
+        )
+        self.state = TransferExecutionState.MANUAL_REVIEW
+        return self.get_snapshot(task_id=task_id)
+
+
 def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
     """构造只保留规划编排依赖的 TransferChain 骨架。"""
     chain = object.__new__(TransferChain)
     chain._transfer_admissions = repository or Mock()
+    chain._transfer_executions = _ExecutionRepositoryStub()
+    chain.durable_event_writer = Mock()
     chain._worker_owner_id = "planning-owner"
     chain._owned_leases = {}
     chain._queued_lease_tokens = set()
@@ -225,6 +354,7 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
             state="accepted",
             created_at="2026-08-27 10:00:00",
             updated_at="2026-08-27 10:00:00",
+            planning_input=_planning_input(),
             lease_owner=kwargs["owner_id"],
             lease_token=f"lease-{kwargs['task_id']}",
             lease_expires_at="2026-08-27 10:02:00.000000",
@@ -245,6 +375,14 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
             transfer_type="copy",
         )
     )
+
+    def run_module(method, *args, **kwargs):
+        """让规划测试沿正式模块入口调用其可观察的宿主执行替身。"""
+        assert method == "execute_transfer_plan"
+        checkpoint_arg = kwargs.pop("checkpoint")
+        return chain.execute_transfer_plan(checkpoint_arg, *args, **kwargs)
+
+    chain.run_module = Mock(side_effect=run_module)
     return chain
 
 
@@ -252,6 +390,21 @@ def _replay_chain(repository) -> TransferChain:
     """构造绑定固定恢复 owner 且不启动真实 heartbeat 线程的测试链。"""
     chain = object.__new__(TransferChain)
     chain._transfer_admissions = repository
+    chain._transfer_executions = Mock()
+    chain._transfer_executions.get_snapshot.side_effect = (
+        lambda *, task_id: TransferExecutionSnapshot(
+            task_id=task_id,
+            state=TransferExecutionState.NOT_STARTED,
+            checkpoint=None,
+            retry_generation=0,
+            retry_count=0,
+            retry_due_at=None,
+            settlement_revision=0,
+            terminal_history_id=None,
+            last_error=None,
+            steps=(),
+        )
+    )
     chain._worker_owner_id = "replay-owner"
     chain._owned_leases = {}
     chain._queued_lease_tokens = set()
@@ -273,6 +426,43 @@ def _real_dispatcher(plugins: dict) -> ModuleInvocationDispatcher:
         system_error_handler=Mock(),
         rate_limit_handler=Mock(),
     )
+
+
+def test_non_preview_missing_durable_writer_stops_before_planning_or_execution():
+    """缺少原子 writer 时，持久任务取得租约后也不得开始任何外部流程。"""
+    task = _task()
+    task.bind_admission_task_id("task-missing-writer")
+    _bind_planning_input(task, _planning_input())
+    chain = _chain()
+    chain.durable_event_writer = None
+
+    with pytest.raises(RuntimeError, match="缺少 durable 原子写入端口"):
+        chain._plan_checkpoint_and_execute(task)
+
+    chain._module_dispatcher.freeze_plugin_providers.assert_not_called()
+    chain.plan_transfer.assert_not_called()
+    chain.execute_transfer_plan.assert_not_called()
+
+
+def test_non_preview_missing_execution_repository_stops_before_side_effects():
+    """缺少 execution repository 时不得调用 provider 或文件执行器。"""
+    task = _task()
+    task.bind_admission_task_id("task-missing-execution-repository")
+    _bind_planning_input(task, _planning_input())
+    _bind_checkpoint(task, _checkpoint())
+    chain = _chain()
+    chain._transfer_executions = None
+    chain._TransferChain__restore_planned_task = Mock()
+
+    with pytest.raises(RuntimeError, match="缺少 execution repository"):
+        chain._plan_checkpoint_and_execute(
+            task,
+            source_oper=object(),
+            target_oper=object(),
+        )
+
+    chain._module_dispatcher.execute_frozen_plugin_providers.assert_not_called()
+    chain.execute_transfer_plan.assert_not_called()
 
 
 def test_legacy_provider_runs_only_after_checkpoint_commit_and_short_circuits_host():
@@ -314,7 +504,7 @@ def test_legacy_provider_runs_only_after_checkpoint_commit_and_short_circuits_ho
 
     returned = chain._plan_checkpoint_and_execute(task)
 
-    assert returned is plugin_result
+    assert returned == plugin_result
     assert calls == ["checkpoint", "plugin"]
     chain.plan_transfer.assert_not_called()
     chain.execute_transfer_plan.assert_not_called()
@@ -548,8 +738,8 @@ def test_missing_frozen_provider_keeps_pending_and_skips_cleanup() -> None:
     chain._transfer_storage_chain = Mock(return_value=storage_chain)
 
     with pytest.raises(
-        FrozenModuleProviderMissingError,
-        match=r"ProviderTwo/插件二\.transfer",
+        RuntimeError,
+        match=r"禁止自动重放.*ProviderTwo/插件二\.transfer",
     ):
         chain._plan_checkpoint_and_execute(task)
 
@@ -824,7 +1014,7 @@ def test_provider_pending_crash_replay_executes_snapshot_without_host_planning()
 
     returned = recovered_chain._plan_checkpoint_and_execute(recovered_task)
 
-    assert returned is recovered_result
+    assert returned == recovered_result
     recovered_chain._module_dispatcher.freeze_plugin_providers.assert_not_called()
     recovered_chain.plan_transfer.assert_not_called()
     recovered_chain._transfer_admissions.checkpoint_plan.assert_not_called()
@@ -905,7 +1095,7 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
 
     assert returned is result
     assert calls == ["admit", "checkpoint", "execute", "settle"]
-    repository.discard_claimed.assert_not_called()
+    repository.abandon_unstarted.assert_not_called()
     writer_call = chain.durable_event_writer.transfer_result.call_args.kwargs
     assert writer_call["topic"] is None
     assert writer_call["publish"] is None
@@ -1561,31 +1751,22 @@ def test_filemanager_resolves_drifted_target_from_checkpoint(monkeypatch):
 
 
 def test_pre_checkpoint_recognition_failure_records_retryable_error(monkeypatch):
-    """准入后、checkpoint 前的业务失败必须写 last_error 并保持 accepted。"""
+    """未识别拒绝必须先建立 plan/execution checkpoint，且不提前写终态副作用。"""
     task = _task()
     task.meta = MetaBase("Unrecognized.Movie.2026.mkv")
     task.bind_admission_task_id("task-before-checkpoint")
-    task.bind_execution_lease(
-        owner_id="recognition-owner",
-        lease_token="lease-task-before-checkpoint",
-    )
-    chain = object.__new__(TransferChain)
-    chain._transfer_admissions = Mock()
+    chain = _chain()
     chain._worker_owner_id = "recognition-owner"
-    chain._owned_leases = {
-        "task-before-checkpoint": (
-            "lease-task-before-checkpoint",
-            float("inf"),
-        )
-    }
-    chain._worker_state_lock = threading.RLock()
     chain.jobview = Mock()
     chain.queue_failed_transfer_notification = Mock()
     chain.runtime_config = SimpleNamespace(
-        ai_agent_enable=False,
-        ai_agent_retry_transfer=False,
+        ai_agent_enable=True,
+        ai_agent_retry_transfer=True,
     )
     chain._TransferChain__mark_torrent_completed_if_done = Mock()
+    chain._transfer_admissions.checkpoint_plan.side_effect = (
+        lambda **kwargs: _planned_admission(task, kwargs["checkpoint"])
+    )
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
     monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
@@ -1593,17 +1774,91 @@ def test_pre_checkpoint_recognition_failure_records_retryable_error(monkeypatch)
         "app.chain.transfer.get_chain_transfer_history_port",
         lambda: SimpleNamespace(),
     )
-    monkeypatch.setattr("app.chain.transfer.record_transfer_failure", Mock())
-    monkeypatch.setattr("app.chain.transfer.add_transfer_fail", lambda **_kwargs: None)
+    record_transfer_failure = Mock()
+    add_transfer_fail = Mock()
+    monkeypatch.setattr(
+        "app.chain.transfer.record_transfer_failure",
+        record_transfer_failure,
+    )
+    monkeypatch.setattr("app.chain.transfer.add_transfer_fail", add_transfer_fail)
 
     result = chain._TransferChain__handle_transfer(task)
 
     assert result == (False, "未识别到媒体信息")
-    chain._transfer_admissions.record_planning_failure.assert_called_once_with(
-        task_id="task-before-checkpoint",
-        lease_token="lease-task-before-checkpoint",
-        error="未识别到媒体信息",
+    assert task.plan_checkpoint is not None
+    assert task.plan_checkpoint.rejection_error == "未识别到媒体信息"
+    assert task.plan_checkpoint.items == ()
+    assert task.execution_checkpoint is not None
+    assert task.execution_checkpoint.payload["outcome"] == "failed"
+    assert [step.kind for step in chain._transfer_executions.steps.values()] == [
+        "reject"
+    ]
+    chain._transfer_admissions.record_planning_failure.assert_not_called()
+    record_transfer_failure.assert_not_called()
+    add_transfer_fail.assert_not_called()
+    chain.queue_failed_transfer_notification.assert_not_called()
+    chain._TransferChain__mark_torrent_completed_if_done.assert_not_called()
+
+
+def test_recognition_rejection_without_writer_has_zero_terminal_side_effects(
+        monkeypatch,
+) -> None:
+    """缺 writer 时未识别拒绝不得提交计划、历史、通知或 AI 重试。"""
+    task = _task()
+    task.meta = MetaBase("Unrecognized.Movie.2026.mkv")
+    task.bind_admission_task_id("task-rejection-missing-writer")
+    chain = _chain()
+    chain.durable_event_writer = None
+    chain.jobview = Mock()
+    chain.queue_failed_transfer_notification = Mock()
+    chain._TransferChain__mark_torrent_completed_if_done = Mock()
+    chain.runtime_config = SimpleNamespace(
+        ai_agent_enable=True,
+        ai_agent_retry_transfer=True,
     )
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = None
+    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr(
+        "app.chain.transfer.get_chain_transfer_history_port",
+        lambda: SimpleNamespace(),
+    )
+    record_transfer_failure = Mock()
+    add_transfer_fail = Mock()
+    monkeypatch.setattr(
+        "app.chain.transfer.record_transfer_failure",
+        record_transfer_failure,
+    )
+    monkeypatch.setattr("app.chain.transfer.add_transfer_fail", add_transfer_fail)
+
+    with pytest.raises(RuntimeError, match="缺少 durable 原子写入端口"):
+        chain._TransferChain__handle_transfer(task)
+
+    assert task.plan_checkpoint is None
+    assert task.execution_checkpoint is None
+    chain._transfer_admissions.checkpoint_plan.assert_not_called()
+    record_transfer_failure.assert_not_called()
+    add_transfer_fail.assert_not_called()
+    chain.queue_failed_transfer_notification.assert_not_called()
+    chain._TransferChain__mark_torrent_completed_if_done.assert_not_called()
+
+
+def test_planning_rejection_checkpoint_round_trips_and_rejects_file_steps():
+    """拒绝原因必须稳定序列化，且不能与真实文件步骤同时存在。"""
+    checkpoint = replace(
+        _checkpoint(),
+        items=(),
+        rejection_error="未识别到媒体信息",
+    )
+
+    restored = transfer_application.TransferPlanCheckpoint.from_payload(
+        checkpoint.to_payload()
+    )
+
+    assert restored == checkpoint
+    assert restored.rejection_error == "未识别到媒体信息"
+    with pytest.raises(ValueError, match="不得包含文件步骤"):
+        replace(checkpoint, items=_checkpoint().items)
 
 
 def test_preview_plans_without_persistence_or_file_side_effects():

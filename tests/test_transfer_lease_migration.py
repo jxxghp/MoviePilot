@@ -185,6 +185,33 @@ def test_transfer_lease_upgrade_downgrade_reupgrade(monkeypatch) -> None:
     engine.dispose()
 
 
+def test_replayed_upgrade_repairs_named_lease_index(monkeypatch) -> None:
+    """同名但列和唯一性错误的租约索引必须精确重建。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        _create_planning_table(connection)
+        migration = _bind_migration(monkeypatch, connection)
+        migration.upgrade()
+        connection.execute(sa.text(
+            "DROP INDEX ix_transferpending_recovery_lease"
+        ))
+        connection.execute(sa.text(
+            "CREATE UNIQUE INDEX ix_transferpending_recovery_lease "
+            "ON transferpending (task_id)"
+        ))
+
+        migration.upgrade()
+
+        index = next(
+            item for item in sa.inspect(connection).get_indexes("transferpending")
+            if item["name"] == "ix_transferpending_recovery_lease"
+        )
+        assert index["column_names"] == [
+            "state", "lease_expires_at", "created_at", "id",
+        ]
+        assert index["unique"] == 0
+
+
 def test_partial_transfer_lease_upgrade_preserves_existing_owner(
         monkeypatch,
 ) -> None:

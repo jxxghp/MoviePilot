@@ -38,7 +38,6 @@ from typing import (
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from app.adapters.system.host import SystemUtils
-from app.application.agent import get_prompt_manager, get_running_agent_manager
 from app.application.transfer.execution import TransferExecutionCheckpoint
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
@@ -61,7 +60,6 @@ from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
     MediaType,
-    ReplyMode,
 )
 
 if TYPE_CHECKING:
@@ -208,14 +206,6 @@ class TransferPlanningInput:
         if not isinstance(storage, str) or not storage or not isinstance(path, str) or not path:
             raise ValueError("整理规划输入缺少源文件存储或路径")
         _canonical_json(self.to_payload())
-
-    @classmethod
-    def legacy(cls, *, storage: str, src_path: str) -> "TransferPlanningInput":
-        """为升级前只有存储与路径的登记构造保守重规划输入。"""
-        return cls(
-            source_fileitem={"storage": storage, "path": src_path},
-            options={"legacy_replan": True},
-        )
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "TransferPlanningInput":
@@ -495,6 +485,7 @@ class TransferPlanCheckpoint:
     overwrite_mode: Optional[str] = None
     preview: bool = False
     skip_reason: Optional[str] = None
+    rejection_error: Optional[str] = None
     schema_version: int = TRANSFER_PLAN_CHECKPOINT_VERSION
 
     def __post_init__(self) -> None:
@@ -551,6 +542,7 @@ class TransferPlanCheckpoint:
                     or self.resolved_transfer_type
                     or self.items
                     or self.skip_reason
+                    or self.rejection_error
             ):
                 raise ValueError("provider_pending 检查点不得包含宿主执行计划")
         else:
@@ -558,6 +550,12 @@ class TransferPlanCheckpoint:
                 raise ValueError("整理计划检查点缺少目标身份")
             if not self.resolved_transfer_type:
                 raise ValueError("整理计划检查点缺少已解析的整理方式")
+        if self.rejection_error is not None and (
+                not isinstance(self.rejection_error, str)
+                or not self.rejection_error.strip()
+                or self.items
+        ):
+            raise ValueError("整理拒绝检查点必须包含非空错误且不得包含文件步骤")
         if tuple(item.sequence for item in self.items) != tuple(range(len(self.items))):
             raise ValueError("整理计划项必须按从零开始的连续序号保存")
         if (
@@ -565,6 +563,7 @@ class TransferPlanCheckpoint:
                 and not self.items
                 and not self.preview
                 and not self.skip_reason
+                and not self.rejection_error
         ):
             raise ValueError("非预览空计划必须记录合法跳过原因")
         _canonical_json(self.to_payload())
@@ -573,6 +572,13 @@ class TransferPlanCheckpoint:
     def is_provider_pending(self) -> bool:
         """返回该检查点是否只冻结 provider 调用、尚未生成宿主计划。"""
         return self.provider_invocation is not None
+
+    @property
+    def fingerprint(self) -> str:
+        """返回完整冻结计划规范 JSON 的稳定 SHA-256 指纹。"""
+        return hashlib.sha256(
+            _canonical_json(self.to_payload()).encode("utf-8")
+        ).hexdigest()
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "TransferPlanCheckpoint":
@@ -634,6 +640,7 @@ class TransferPlanCheckpoint:
             overwrite_mode=payload.get("overwrite_mode"),
             preview=payload.get("preview", False),
             skip_reason=payload.get("skip_reason"),
+            rejection_error=payload.get("rejection_error"),
             schema_version=payload.get("schema_version", 0),
         )
 
@@ -672,6 +679,7 @@ class TransferPlanCheckpoint:
             "overwrite_mode": self.overwrite_mode,
             "preview": self.preview,
             "skip_reason": self.skip_reason,
+            "rejection_error": self.rejection_error,
         }
 
 
@@ -847,9 +855,9 @@ class TransferAdmission:
     state: str
     created_at: str
     updated_at: str
+    planning_input: TransferPlanningInput
     last_error: Optional[str] = None
     input_fingerprint: Optional[str] = None
-    planning_input: Optional[TransferPlanningInput] = None
     checkpoint: Optional[TransferPlanCheckpoint] = None
     lease_owner: Optional[str] = None
     lease_token: Optional[str] = None
@@ -866,7 +874,7 @@ class TransferAdmissionRepository(Protocol):
             *,
             storage: str,
             src_path: str,
-            planning_input: Optional[TransferPlanningInput] = None,
+            planning_input: TransferPlanningInput,
     ) -> TransferAdmission:
         """按规划输入幂等登记源文件并返回稳定任务身份。"""
         ...
@@ -932,8 +940,8 @@ class TransferAdmissionRepository(Protocol):
         """按 token 释放当前 claim，并可记录可恢复错误。"""
         ...
 
-    def discard_claimed(self, *, task_id: str, lease_token: str) -> int:
-        """仅允许当前 lease owner 删除已经到达终态的登记。"""
+    def abandon_unstarted(self, *, task_id: str, lease_token: str) -> int:
+        """仅允许当前 lease owner 删除确认未开始且源已消失的登记。"""
         ...
 
 
@@ -1929,162 +1937,3 @@ class JobManager:
         with job_lock:
             __mediaid__ = self.__get_media_id(media=media, season=season)
             return self._season_episodes.get(__mediaid__) or []
-
-
-class FailedRetryScheduler:
-    """
-    负责失败整理记录的进程内 debounce 聚合与 AI 重试调度。
-
-    缓冲不提供持久化保证；关闭时会取消尚未触发的记录，由上层 durable
-    工作流在后续阶段承接需要跨进程保证的重试意图。
-    """
-
-    RETRY_TRANSFER_DEBOUNCE_SECONDS = 300
-
-    def __init__(self) -> None:
-        """初始化重试缓冲、定时器、活跃任务集合与关闭状态。"""
-        super().__init__()
-        self._retry_transfer_buffer: dict[str, list[int]] = {}
-        self._retry_transfer_timers: dict[str, asyncio.TimerHandle] = {}
-        self._retry_transfer_generations: dict[str, int] = {}
-        self._retry_transfer_tasks: set[asyncio.Task[None]] = set()
-        self._retry_transfer_lock = asyncio.Lock()
-        self._closed = False
-
-    async def close(self) -> None:
-        """停止接收重试，取消定时器，并等待活跃 flush 任务完成取消。"""
-        async with self._retry_transfer_lock:
-            self._closed = True
-            timers = list(self._retry_transfer_timers.values())
-            buffered_count = sum(
-                len(history_ids)
-                for history_ids in self._retry_transfer_buffer.values()
-            )
-            self._retry_transfer_timers.clear()
-            self._retry_transfer_generations.clear()
-            self._retry_transfer_buffer.clear()
-            tasks = tuple(self._retry_transfer_tasks)
-
-        for timer in timers:
-            timer.cancel()
-        if buffered_count:
-            logger.warning(
-                f"智能体重试整理调度器关闭，取消 {buffered_count} 条未持久化缓冲记录"
-            )
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-    def _start_retry_transfer_task(self, group_key: str, generation: int) -> None:
-        """把定时器到期后的 flush 建为具名且受本调度器管理的任务。"""
-        if self._closed:
-            return
-        task = asyncio.create_task(
-            self._flush_retry_transfer(group_key, generation),
-            name="transfer.failed_retry.flush",
-        )
-        self._retry_transfer_tasks.add(task)
-        task.add_done_callback(self._observe_retry_transfer_task)
-
-    def _observe_retry_transfer_task(self, task: asyncio.Task[None]) -> None:
-        """移除已结束任务，并观察未被 flush 逻辑处理的异常。"""
-        self._retry_transfer_tasks.discard(task)
-        if task.cancelled():
-            return
-        exception = task.exception()
-        if exception is not None:
-            logger.error(f"智能体重试整理后台任务异常: {exception}")
-
-    @staticmethod
-    def _build_retry_transfer_template_context(
-            history_ids: list[int],
-    ) -> tuple[str, dict[str, int | str]]:
-        """仅负责把失败重试任务的动态数据映射成模板变量。"""
-        is_batch = len(history_ids) > 1
-        task_type = "batch_transfer_failed_retry" if is_batch else "transfer_failed_retry"
-        template_context: dict[str, int | str] = {
-            "history_ids_csv": ", ".join(str(item) for item in history_ids),
-            "history_count": len(history_ids),
-        }
-        if not is_batch:
-            template_context["history_id"] = history_ids[0]
-        return task_type, template_context
-
-    def _build_retry_transfer_prompt(self, history_ids: list[int]) -> str:
-        """根据失败记录数量构建统一的重试整理后台任务提示词。"""
-        task_type, template_context = self._build_retry_transfer_template_context(history_ids)
-        return cast(str, get_prompt_manager().render_system_task_message(
-            task_type,
-            template_context=template_context,
-        ))
-
-    async def schedule_retry(self, history_id: int, group_key: str = "") -> None:
-        """
-        同一 group_key 的失败记录会在缓冲期内合并为一次 agent 调用。
-        """
-        if not group_key:
-            group_key = f"_default_{history_id}"
-
-        async with self._retry_transfer_lock:
-            if self._closed:
-                raise RuntimeError("智能体重试整理调度器正在关闭，不能再接收任务")
-            if group_key not in self._retry_transfer_buffer:
-                self._retry_transfer_buffer[group_key] = []
-            if history_id not in self._retry_transfer_buffer[group_key]:
-                self._retry_transfer_buffer[group_key].append(history_id)
-                logger.info(
-                    f"智能体重试整理：记录 ID={history_id} 已加入缓冲区 "
-                    f"(group={group_key}, 当前{len(self._retry_transfer_buffer[group_key])}条)"
-                )
-
-            if group_key in self._retry_transfer_timers:
-                self._retry_transfer_timers[group_key].cancel()
-
-            loop = asyncio.get_running_loop()
-            generation = self._retry_transfer_generations.get(group_key, 0) + 1
-            self._retry_transfer_generations[group_key] = generation
-            self._retry_transfer_timers[group_key] = loop.call_later(
-                self.RETRY_TRANSFER_DEBOUNCE_SECONDS,
-                self._start_retry_transfer_task,
-                group_key,
-                generation,
-            )
-
-    async def _flush_retry_transfer(self, group_key: str, generation: int) -> None:
-        """
-        延迟定时器到期后，取出该分组的所有 history_id 并合并为一次 agent 调用。
-        """
-        async with self._retry_transfer_lock:
-            # callback 到期与真正取得锁之间可能有新记录续期；旧代不能提前取走新批次。
-            if self._retry_transfer_generations.get(group_key) != generation:
-                return
-            history_ids = self._retry_transfer_buffer.pop(group_key, [])
-            self._retry_transfer_timers.pop(group_key, None)
-            self._retry_transfer_generations.pop(group_key, None)
-
-        if not history_ids:
-            return
-
-        ids_str = ", ".join(str(item) for item in history_ids)
-        logger.info(
-            f"智能体重试整理：开始批量处理失败记录 IDs=[{ids_str}] (group={group_key})"
-        )
-
-        try:
-            manager = get_running_agent_manager()
-            if manager is None:
-                logger.warning("智能助手服务未运行，跳过整理失败自动重试")
-                return
-            await manager.run_background_prompt(
-                message=self._build_retry_transfer_prompt(history_ids),
-                session_prefix="__agent_retry_transfer_batch",
-                reply_mode=ReplyMode.DISPATCH,
-            )
-            logger.info(
-                f"智能体重试整理：批量处理完成 IDs=[{ids_str}] (group={group_key})"
-            )
-        except Exception as err:
-            logger.error(
-                f"智能体重试整理失败 (IDs=[{ids_str}], group={group_key}): {err}"
-            )
