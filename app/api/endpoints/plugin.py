@@ -669,7 +669,7 @@ async def install(
     """
     result = await get_plugin_install_service().install(
         plugin_id=plugin_id,
-        repo_url=None,
+        repo_url=repo_url or None,
         release_version=release_version,
         force=bool(force),
         explicit_source=False,

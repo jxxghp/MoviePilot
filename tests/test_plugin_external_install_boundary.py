@@ -214,10 +214,10 @@ async def test_external_async_helper_preserves_failure_tuple_on_gateway_error(
 
 
 @pytest.mark.asyncio
-async def test_http_install_does_not_treat_repo_url_as_explicit_source(
+async def test_http_install_forwards_repo_url_without_granting_source_authority(
     monkeypatch,
 ) -> None:
-    """旧 GET 安装入口不能把兼容参数误当成管理员明确选源。"""
+    """普通更新保留绑定仓库提示，但不能把它升级为选源授权。"""
     gateway = Mock()
     gateway.install = AsyncMock(
         return_value=SimpleNamespace(success=True, message="")
@@ -239,7 +239,7 @@ async def test_http_install_does_not_treat_repo_url_as_explicit_source(
     assert result.success is True
     gateway.install.assert_awaited_once_with(
         plugin_id="DemoPlugin",
-        repo_url=None,
+        repo_url=REPO_URL,
         release_version="1.2.3",
         force=False,
         explicit_source=False,
