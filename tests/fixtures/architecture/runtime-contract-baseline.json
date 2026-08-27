@@ -1968,38 +1968,6 @@
     "consumer_count": 16,
     "dynamic_consumers": [
       {
-        "caller": "app.adapters.system.fsproxy",
-        "count": 1
-      },
-      {
-        "caller": "app.agent.llm.provider",
-        "count": 1
-      },
-      {
-        "caller": "app.chain.transfer",
-        "count": 1
-      },
-      {
-        "caller": "app.db.oper.transferpending",
-        "count": 1
-      },
-      {
-        "caller": "app.runtime.events",
-        "count": 3
-      },
-      {
-        "caller": "app.runtime.tasks",
-        "count": 1
-      },
-      {
-        "caller": "app.startup.lifecycle",
-        "count": 1
-      },
-      {
-        "caller": "app.testing.bootstrap",
-        "count": 1
-      },
-      {
         "caller": "app.workflow",
         "count": 1
       }

@@ -18,6 +18,11 @@ try:
 except ModuleNotFoundError:
     from egress import collect_direct_egress
 
+try:
+    from scripts.architecture.event_consumers import collect_event_consumers
+except ModuleNotFoundError:
+    from event_consumers import collect_event_consumers
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = PROJECT_ROOT / "app"
 BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
@@ -743,12 +748,18 @@ def _collect_event_locations() -> tuple[
     """扫描事件枚举及其生产、消费位置，供语义和诊断视图复用。"""
     event_members = _event_enum_members("EventType")
     chain_event_members = _event_enum_members("ChainEventType")
+    modules = discover_modules()
 
     producers: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    consumers: dict[str, list[dict[str, Any]]] = defaultdict(list)
     dynamic_producers: list[dict[str, Any]] = []
-    dynamic_consumers: list[dict[str, Any]] = []
-    for module_name, path in discover_modules().items():
+    consumers, dynamic_consumers = collect_event_consumers(
+        modules,
+        {
+            "EventType": event_members,
+            "ChainEventType": chain_event_members,
+        },
+    )
+    for module_name, path in modules.items():
         tree = parse_source(path)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(
@@ -763,37 +774,6 @@ def _collect_event_locations() -> tuple[
                     producers[reference].append(location)
                 else:
                     dynamic_producers.append(location)
-                continue
-            if node.func.attr not in {"register", "add_event_listener"}:
-                continue
-            references: list[str] = []
-            if node.args:
-                target = node.args[0]
-                if reference := _event_reference(target):
-                    references.append(reference)
-                elif isinstance(target, (ast.List, ast.Tuple)):
-                    references.extend(
-                        reference
-                        for item in target.elts
-                        if (reference := _event_reference(item))
-                    )
-                elif (
-                    isinstance(target, ast.Name)
-                    and target.id in {"EventType", "ChainEventType"}
-                ):
-                    enum_members = (
-                        event_members
-                        if target.id == "EventType"
-                        else chain_event_members
-                    )
-                    references.extend(
-                        f"{target.id}.{member}" for member in enum_members
-                    )
-            if references:
-                for reference in references:
-                    consumers[reference].append(location)
-            else:
-                dynamic_consumers.append(location)
 
     enum_names = [
         *(f"EventType.{member}" for member in event_members),

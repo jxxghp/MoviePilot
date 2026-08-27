@@ -77,8 +77,8 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S0-L2.2 完整宿主 SCC policy | `DELIVERED` | S0-L2.1 | `a884ab5c2`：完整宿主 SCC 精确 policy 生效，远端 `0/0` |
 | S0-L2.3 Adapter 直连事实 | `DELIVERED` | S0-L2.1 | `e1483e85d`：锁定 28 条原始 Adapter import 事实，远端 `0/0` |
 | S0-L2.4 Adapter zero-growth | `DELIVERED` | S0-L2.3 | `2553226f3`：冻结 28 条直连及 owner，收缩/新增/stale policy 门禁生效，远端 `0/0` |
-| S0-L2.4b HTTP/Egress 事实与政策 | `VERIFIED` | S0-L2.4 | 66 条事实、12 条债务和 54 条精确例外已冻结；collector、policy、全量测试与本地质量门禁通过，待推送后确认远端 CI |
-| S0-L2.5 Event consumer 识别 | `PLANNED` | S0-L2.1 | consumer 只识别可静态证明的 EventManager 注册，动态误报归零 |
+| S0-L2.4b HTTP/Egress 事实与政策 | `DELIVERED` | S0-L2.4 | `47f0de745`、`43d52a35b`、`8d602149f`：冻结 66 条出口事实，消除 CI 类型/覆盖率漂移；远端全绿且 `0/0` |
+| S0-L2.5 Event consumer 识别 | `VERIFIED` | S0-L2.1 | consumer 只识别可静态证明的 EventManager 注册，10 个同名方法动态误报归零；本地 6,459 passed / 6 skipped，待推送 CI |
 | S0-L2.6 事实源与 CI 投影 | `PLANNED` | S0-L2.2,S0-L2.4b,S0-L2.5 | fixture/policy/overview 职责固定，CI 分开报告语义 policy 与快照一致性 |
 
 ### S1：可靠性、事务与数据合同
@@ -154,53 +154,56 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 
 ## 4. 当前活动叶子
 
-### S0-L2.4b HTTP/Egress 事实与政策
+### S0-L2.5 Event consumer 识别
 
 **Status:** `VERIFIED`（本地验收完成，等待提交、推送和远端 CI 确认）
 
 **Outcome**
 
-扫描宿主 raw transport、network SDK 和库名扫描会漏掉的协议操作，事实保留 import provenance、
-稳定 callable/operation，不保存行号。普通 HTTP/Session bridge 是待迁移债务；canonical transport、
-SDK、streaming、contained vendor 和 local control-plane 只允许精确 containment。
+把 Event consumer 从“末级方法名碰巧是 `register`/`add_event_listener`”收紧为可静态证明的
+canonical `EventManager` receiver。16 个静态注册点保持不变；10 个 selector、SDK hook、Oper、
+Model、TaskRegistry、`atexit` 和 EventManager 内部展开误报归零；配置驱动的 workflow 注册是唯一
+真实动态 consumer。
 
 **Ownership**
 
-- `scripts/architecture/` 的 direct egress AST collector 与 registry。
-- `tests/fixtures/architecture/dependency-baseline.json` 的生成事实和
-  `dependency-policy.json` 的人工分类。
-- `tests/test_architecture_egress.py` 的 collector、当前事实、policy 和 zero-growth 门禁。
-- HTTP 规范、架构总览、优化清单与快速架构 CI 投影。
+- `scripts/architecture/event_consumers.py` 的 receiver/event provenance collector。
+- `scripts/architecture/baseline.py` 的 runtime event contract 集成与 diagnostics。
+- `tests/fixtures/architecture/runtime-contract-baseline.json` 的生成事实。
+- `tests/test_architecture_event_consumers.py` 的 alias、shadow、rebind、decorator 与动态边界测试。
+- API listener 所有权规则、架构规范、优化清单与快速架构 CI 投影。
 - 本路线图的叶子状态和交付记录。
 
 **Excluded**
 
-- 不在本叶迁移生产 HTTP 调用；本叶完成完整事实、分类和不可增长门禁。
-- 不修改 Adapter 直连 policy、完整依赖图/SCC/digest、运行时代码或 `app/plugins/**`。
-- 未登记 registry 的任意第三方包不能被猜测为网络 SDK；新增 SDK 必须显式扩展 registry 与 policy。
+- 不修改生产 EventManager、事件 ABI、handler 执行顺序或插件消费者。
+- 不把 `app/plugins/**` 副本纳入宿主扫描。
+- producer 关键字/别名解析与 consumer 人工 zero-growth policy 留给 S0-L2.6 统一事实源叶；本叶只把
+  consumer 识别结果变为真实、完整且可测试的事实。
 
 **Acceptance**
 
 ```bash
 .venv/bin/python -m pytest \
-  tests/test_architecture_egress.py \
+  tests/test_architecture_event_consumers.py \
+  tests/test_architecture_dependencies.py \
   tests/test_architecture_contract_baseline.py \
   tests/test_architecture_baseline_cli.py \
-  tests/test_architecture_ci.py \
-  tests/test_plugin_identity_transitions.py -q
-.venv/bin/python scripts/architecture/baseline.py --check-host
+  tests/test_architecture_ci.py -q
+.venv/bin/python scripts/architecture/baseline.py --check-host --diagnostics
 .venv/bin/python scripts/architecture/ruff_ratchet.py
 .venv/bin/python scripts/architecture/mypy_ratchet.py
 .venv/bin/pylint scripts/architecture/baseline.py \
-  scripts/architecture/egress.py \
-  tests/test_architecture_egress.py \
+  scripts/architecture/event_consumers.py \
+  tests/test_architecture_event_consumers.py \
+  tests/test_architecture_dependencies.py \
   tests/test_architecture_contract_baseline.py \
-  tests/test_architecture_ci.py \
-  tests/test_plugin_identity_transitions.py
+  tests/test_architecture_baseline_cli.py \
+  tests/test_architecture_ci.py
 git diff --check
 ```
 
 **Delivery**
 
-- 单一提交主题：建立并冻结 direct egress 事实与精确政策。
+- 单一提交主题：以可证明的 EventManager provenance 替换同名方法扫描并清除全部动态误报。
 - 推送 `origin/v3` 后确认提交祖先关系、远端 SHA 和 ahead/behind `0/0`。

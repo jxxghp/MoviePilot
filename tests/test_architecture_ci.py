@@ -33,6 +33,7 @@ def test_unit_test_workflow_has_independent_host_architecture_gate():
     assert "tests/test_architecture_dependencies.py" in commands
     assert "tests/test_architecture_adapter_imports.py" in commands
     assert "tests/test_architecture_egress.py" in commands
+    assert "tests/test_architecture_event_consumers.py" in commands
     assert "tests/test_architecture_contract_baseline.py" in commands
     assert "scripts/architecture/baseline.py --check-host" in commands
     assert "scripts/architecture/ruff_ratchet.py" in commands

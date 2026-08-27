@@ -364,6 +364,11 @@ flowchart TB
 `errors` 分别用于处理未知自定义事件和兼容期校验失败。快照修改不会回写原事件，如需拦截、取消
 或替换链式结果，插件仍应修改原始 `event.event_data`。
 
+架构基线中的 consumer 表示宿主源码中可静态证明的注册点，不是运行时 listener 实例数。
+collector 只接受 canonical `eventmanager`、`EventManager()` 及其有限别名，忽略其他对象的同名
+`register`/`add_event_listener`；当前宿主有 16 个静态注册点，另保留 1 个由工作流配置驱动的
+真实动态注册。`app/plugins/**` 插件副本不进入宿主事实。
+
 ```python
 from app.sdk.events import snapshot_event_data
 

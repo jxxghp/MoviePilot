@@ -569,6 +569,16 @@ removed in the same reviewed change so that it cannot return.
 | `compat -> canonical implementation at module import time` | Forbidden |
 | Any import that creates a module-level cycle | Forbidden; the complete host graph must match the exact reviewed SCC policy, and temporary debt must have a removal owner |
 
+Event consumer facts require statically proven ownership. A `register` or
+`add_event_listener` method name alone is not evidence: the receiver must resolve
+to the canonical `app.runtime.events.eventmanager`, an `EventManager` instance,
+or a finite alias of either. Unknown receivers are ignored. A proven manager with
+an event value that cannot be resolved is recorded as a dynamic consumer; the
+current host permits only the configuration-driven workflow registration. The
+collector respects lexical shadowing and rebinds, distinguishes decorator
+application from obtaining a decorator factory, and never scans `app/plugins/**`
+as host code.
+
 ## Key File Locations
 
 | Path | Purpose |

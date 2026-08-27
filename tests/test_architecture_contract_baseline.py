@@ -395,4 +395,12 @@ def test_event_contract_baseline_covers_every_public_event_enum() -> None:
     assert set(events["events"]) == expected
     assert events["event_count"] == len(expected)
     assert events["producer_count"] > 0
-    assert events["consumer_count"] > 0
+    assert events["consumer_count"] == 16
+    assert events["dynamic_consumers"] == [
+        {"caller": "app.workflow", "count": 1}
+    ]
+    assert all(
+        not item["caller"].startswith("app.plugins")
+        for contract in events["events"].values()
+        for item in contract["consumers"]
+    )

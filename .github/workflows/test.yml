@@ -47,6 +47,7 @@ jobs:
             tests/test_architecture_dependencies.py \
             tests/test_architecture_adapter_imports.py \
             tests/test_architecture_egress.py \
+            tests/test_architecture_event_consumers.py \
             tests/test_architecture_contract_baseline.py \
             tests/test_architecture_baseline_cli.py -q
           uv run --locked --no-sync python \

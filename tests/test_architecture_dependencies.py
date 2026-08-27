@@ -4,6 +4,9 @@ from functools import lru_cache
 from pathlib import Path
 
 from scripts.architecture.baseline import (
+    collect_event_contracts as _collect_event_contracts,
+)
+from scripts.architecture.baseline import (
     discover_modules as _discover_modules,
 )
 from scripts.architecture.baseline import (
@@ -1285,21 +1288,15 @@ def test_application_services_do_not_resolve_event_manager_singleton():
 
 def test_http_endpoints_do_not_register_process_event_listeners():
     """HTTP 端点不得拥有进程级事件监听器，监听装配必须留在 startup。"""
-    violations: dict[str, set[str]] = {}
-    for module_name, path in _discover_modules().items():
-        if not module_name.startswith("app.api"):
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        calls = {
-            node.func.attr
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {"register", "add_event_listener"}
-        }
-        if calls:
-            violations[module_name] = calls
-    assert violations == {}
+    contracts = _collect_event_contracts()
+    callers = {
+        item["caller"]
+        for event in contracts["events"].values()
+        for item in event["consumers"]
+    }
+    callers.update(item["caller"] for item in contracts["dynamic_consumers"])
+
+    assert {caller for caller in callers if caller.startswith("app.api")} == set()
 
 
 def test_agent_tools_do_not_import_entrypoint_internals():
