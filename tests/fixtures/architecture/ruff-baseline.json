@@ -15,9 +15,6 @@
     "F841": 2,
     "I001": 1
   },
-  "app/adapters/system/display/__init__.py": {
-    "I001": 1
-  },
   "app/adapters/system/host.py": {
     "I001": 2
   },
@@ -300,9 +297,6 @@
   "app/application/agenttask.py": {
     "I001": 1
   },
-  "app/application/chain/data.py": {
-    "I001": 1
-  },
   "app/application/directory.py": {
     "I001": 1
   },
@@ -391,10 +385,6 @@
   },
   "app/chain/_music.py": {
     "E402": 5
-  },
-  "app/chain/_transfer.py": {
-    "E402": 15,
-    "F401": 1
   },
   "app/chain/media.py": {
     "E731": 2
@@ -962,9 +952,6 @@
   "app/runtime/extensions/host_module_adapter.py": {
     "I001": 1
   },
-  "app/runtime/extensions/managed_resource_adapter.py": {
-    "I001": 1
-  },
   "app/runtime/extensions/module_manager.py": {
     "I001": 1
   },
@@ -988,9 +975,6 @@
   },
   "app/runtime/log.py": {
     "E731": 1,
-    "I001": 1
-  },
-  "app/runtime/managed_resources.py": {
     "I001": 1
   },
   "app/runtime/observability/__init__.py": {
@@ -1038,16 +1022,10 @@
   "app/schemas/system.py": {
     "I001": 1
   },
-  "app/schemas/transfer.py": {
-    "I001": 1
-  },
   "app/schemas/types.py": {
     "I001": 1
   },
   "app/schemas/user.py": {
-    "I001": 1
-  },
-  "app/sdk/_legacy/transfer.py": {
     "I001": 1
   },
   "app/sdk/_legacy/user.py": {
@@ -1125,9 +1103,6 @@
   "scripts/perf/task_registry_ab.py": {
     "E402": 1
   },
-  "scripts/perf/test_scenarios.py": {
-    "I001": 1
-  },
   "scripts/schema/exports.py": {
     "I001": 1
   },
@@ -1136,10 +1111,6 @@
   },
   "scripts/startup/performance.py": {
     "I001": 1
-  },
-  "tests/conftest.py": {
-    "F401": 1,
-    "I001": 7
   },
   "tests/test_acoustid_module.py": {
     "I001": 1
@@ -1438,12 +1409,6 @@
     "I001": 1
   },
   "tests/test_main_direct_execution.py": {
-    "I001": 1
-  },
-  "tests/test_managed_resources.py": {
-    "I001": 1
-  },
-  "tests/test_manual_transfer_history.py": {
     "I001": 1
   },
   "tests/test_mcp_plugin_tools.py": {
@@ -1797,9 +1762,6 @@
     "E402": 6,
     "I001": 2
   },
-  "tests/test_transfer_failure_notification_aggregation.py": {
-    "I001": 1
-  },
   "tests/test_transfer_history_gate.py": {
     "I001": 1
   },
@@ -1809,25 +1771,10 @@
   "tests/test_transfer_history_write_path.py": {
     "I001": 1
   },
-  "tests/test_transfer_mark_torrent_completed.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_mounted_disk_cleanup.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_movie_collection.py": {
-    "I001": 1
-  },
   "tests/test_transfer_queue_count.py": {
     "I001": 1
   },
   "tests/test_transfer_rename_build_event.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_stale_tasks.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_tmdb_category.py": {
     "I001": 1
   },
   "tests/test_transferhistory_media_source_migration.py": {

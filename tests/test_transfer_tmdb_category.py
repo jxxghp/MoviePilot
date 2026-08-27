@@ -1,10 +1,11 @@
 from types import SimpleNamespace
 
+from app.application.transfer.workflow import TransferTask
 from app.chain.transfer import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.schemas import FileItem, TransferDirectoryConf
-from app.application.transfer import TransferTask
+from app.schemas.file import FileItem
+from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import MediaSource, MediaType
 
 

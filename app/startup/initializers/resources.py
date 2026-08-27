@@ -6,12 +6,12 @@ import threading
 from typing import Optional
 
 from app.runtime.capabilities.runtime import CapabilityRuntime
-from app.runtime.extensions.managed_resource_adapter import (
+from app.runtime.extensions.resource import (
     AsyncManagedResourceAdapter,
     SyncManagedResourceAdapter,
     build_managed_resource_registry,
 )
-from app.runtime.managed_resources import (
+from app.runtime.resources import (
     MANAGED_RESOURCE_ASYNC_KIND,
     MANAGED_RESOURCE_SYNC_KIND,
     configure_managed_resource_runtime,

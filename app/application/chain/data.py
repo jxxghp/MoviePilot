@@ -10,9 +10,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from app.application.transfer import TransferAdmissionRepository
-from app.application.transfer_execution import TransferExecutionRepository
-
+from app.application.transfer.execution import TransferExecutionRepository
+from app.application.transfer.workflow import TransferAdmissionRepository
 
 OperFactory = Callable[[], Any]
 TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]

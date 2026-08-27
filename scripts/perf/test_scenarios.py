@@ -14,7 +14,6 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-
 PERF_DIR = Path(__file__).resolve().parent
 
 
@@ -651,7 +650,7 @@ def test_sitecustomize_serializes_managed_resource_facade(monkeypatch) -> None:
         error=None,
     )
 
-    facade = ModuleType("app.runtime.managed_resources")
+    facade = ModuleType("app.runtime.resources")
 
     def managed_resource_snapshot(capability_id: str):
         assert capability_id == "host.display"
@@ -663,7 +662,7 @@ def test_sitecustomize_serializes_managed_resource_facade(monkeypatch) -> None:
 
     facade.managed_resource_snapshot = managed_resource_snapshot
     facade.managed_resource_observations = managed_resource_observations
-    monkeypatch.setitem(sys.modules, "app.runtime.managed_resources", facade)
+    monkeypatch.setitem(sys.modules, "app.runtime.resources", facade)
     probe = load_module(
         "moviepilot_perf_sitecustomize_observation",
         PERF_DIR / "instrument" / "sitecustomize.py",

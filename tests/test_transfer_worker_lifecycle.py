@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.application.transfer import TransferAdmission, TransferQueue, TransferTask
+from app.application.transfer.workflow import TransferAdmission, TransferQueue, TransferTask
 from app.chain.transfer import TransferChain
 from app.foundation.singleton import Singleton
 from app.runtime.config import global_vars

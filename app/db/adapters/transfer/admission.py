@@ -10,7 +10,7 @@ from uuid import uuid4
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.application.transfer import (
+from app.application.transfer.workflow import (
     TRANSFER_ADMISSION_ACCEPTED,
     TRANSFER_ADMISSION_PLANNED,
     TRANSFER_ADMISSION_PROVIDER_PENDING,

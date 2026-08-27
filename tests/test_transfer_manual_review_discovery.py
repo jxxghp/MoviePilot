@@ -8,14 +8,14 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.endpoints import transfer as transfer_endpoint
-from app.application.transfer_execution import (
+from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionState,
     TransferManualReviewQuery,
     TransferStepIntent,
     TransferStepResult,
 )
-from app.db.adapters.transfer_execution import (
+from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
 from app.db.base import Base

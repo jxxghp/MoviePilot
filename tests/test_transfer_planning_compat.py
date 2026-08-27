@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.application.transfer import TransferTask
+from app.application.transfer.workflow import TransferTask
 from app.chain import ChainBase
 from app.chain.transfer import TransferChain
 from app.modules.filemanager.module import FileManagerModule

@@ -50,7 +50,7 @@ def test_legacy_import_targets_private_sdk_facade() -> None:
 
     assert alias.target == "app.sdk._legacy.transferpending"
     assert alias.owner == "sdk"
-    assert alias.replacement == "app.application.transfer"
+    assert alias.replacement == "app.application.transfer.workflow"
     assert legacy is importlib.import_module(alias.target)
     assert legacy.__all__ == ["TransferPendingOper"]
     assert not hasattr(legacy, "TransferPending")

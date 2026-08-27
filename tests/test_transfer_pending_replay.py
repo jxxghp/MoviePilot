@@ -13,7 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from app.application.transfer import TransferAdmission, TransferPlanningInput, TransferTask
+from app.application.transfer.workflow import TransferAdmission, TransferPlanningInput, TransferTask
 from app.chain.transfer import TransferChain
 from app.schemas.file import FileItem
 

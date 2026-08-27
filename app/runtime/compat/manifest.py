@@ -56,6 +56,24 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0",
         owner="application",
     ),
+    "app.application.chain.durable_events": ModuleAlias(
+        target="app.application.chain.events",
+        replacement="app.application.chain.events",
+        introduced="v3.0.0",
+        owner="application",
+    ),
+    "app.application.transfer_execution": ModuleAlias(
+        target="app.application.transfer.execution",
+        replacement="app.application.transfer.execution",
+        introduced="v3.0.0",
+        owner="application",
+    ),
+    "app.runtime.managed_resources": ModuleAlias(
+        target="app.runtime.resources",
+        replacement="app.runtime.resources",
+        introduced="v3.0.0",
+        owner="runtime",
+    ),
     "app.db.agentchat_oper": ModuleAlias(
         target="app.db.oper.agentchat",
         replacement="app.db.oper.agentchat",
@@ -136,7 +154,7 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
     ),
     "app.db.transferpending_oper": ModuleAlias(
         target="app.sdk._legacy.transferpending",
-        replacement="app.application.transfer",
+        replacement="app.application.transfer.workflow",
         introduced="v3.0.0",
         owner="sdk",
     ),
@@ -756,6 +774,14 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 }
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.application.transfer": {
+        name: SymbolAlias(
+            target_module="app.sdk._legacy.transfer",
+            target_name=name,
+            replacement=f"app.application.transfer.workflow.{name}",
+        )
+        for name in ("TransferTask", "TransferQueue")
+    },
     "app.agent.orchestrator": {
         "AgentChain": SymbolAlias(
             target_module="app.chain.agent",
@@ -806,7 +832,7 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             name: SymbolAlias(
                 target_module="app.sdk._legacy.transfer",
                 target_name=name,
-                replacement=f"app.application.transfer.{name}",
+                replacement=f"app.application.transfer.workflow.{name}",
             )
             for name in ("TransferTask", "TransferQueue")
         },
@@ -817,7 +843,7 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             name: SymbolAlias(
                 target_module="app.sdk._legacy.transfer",
                 target_name=name,
-                replacement=f"app.application.transfer.{name}",
+                replacement=f"app.application.transfer.workflow.{name}",
             )
             for name in ("TransferTask", "TransferQueue")
         },

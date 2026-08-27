@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from app.application.chain.durable_events import (
+from app.application.chain.events import (
     TransferResultSettlement,
     download_added_event_key,
     restore_download_added,
@@ -21,7 +21,7 @@ from app.application.chain.durable_events import (
     transfer_result_event_key,
 )
 from app.application.history import TransferHistoryMutationCommand
-from app.application.transfer_execution import (
+from app.application.transfer.execution import (
     TransferExecutionLeaseLostError,
     TransferSettlementResult,
 )

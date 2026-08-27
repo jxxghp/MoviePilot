@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.application.chain.durable_events import (
+from app.application.chain.events import (
     ChainDurableEventWriter,
     TransferHistoryRef,
     TransferResultSettlement,
@@ -25,7 +25,7 @@ from app.application.outbox import (
     DurableEventCommand,
     OutboxIntent,
 )
-from app.application.transfer_execution import (
+from app.application.transfer.execution import (
     TransferExecutionConflictError,
     TransferExecutionLeaseLostError,
     TransferExecutionState,

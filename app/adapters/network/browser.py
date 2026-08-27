@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 from app.adapters.network.http import RequestUtils, cookie_parse
 from app.runtime.log import logger
-from app.runtime.managed_resources import (
+from app.runtime.resources import (
     acquire_managed_resource,
     acquire_managed_resource_async,
 )

@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.application.transfer_execution import (
+from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionState,
     TransferOperationObservation,
@@ -17,7 +17,7 @@ from app.application.transfer_execution import (
     TransferStepResult,
 )
 from app.chain import transfer as transfer_chain_module
-from app.db.adapters.transfer_execution import (
+from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
 from app.db.base import Base

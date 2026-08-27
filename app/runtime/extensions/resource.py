@@ -15,11 +15,10 @@ from app.runtime.capabilities.model import (
     CapabilitySpec,
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
-from app.runtime.managed_resources import (
+from app.runtime.resources import (
     MANAGED_RESOURCE_ASYNC_KIND,
     MANAGED_RESOURCE_SYNC_KIND,
 )
-
 
 _DEFAULT_RESOURCE_ROOT = Path(__file__).resolve().parents[2] / "adapters"
 _RESOURCE_KINDS = {MANAGED_RESOURCE_SYNC_KIND, MANAGED_RESOURCE_ASYNC_KIND}

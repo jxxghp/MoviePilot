@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.application.chain.data import ChainDataPorts
-from app.application.chain.durable_events import ChainDurableEventWriter
+from app.application.chain.events import ChainDurableEventWriter
 from app.application.configuration import ChainRuntimeConfig
 from app.runtime.stop import StopState, runtime_stop_state
 

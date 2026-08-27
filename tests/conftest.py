@@ -23,7 +23,6 @@ prepare_backend()
 # 复用共享 autouse 网络守卫；同一实现亦供各插件仓 conftest import 复用，避免逐仓维护
 from app.testing.network_guard import block_real_network  # noqa: E402,F401
 
-
 TResult = TypeVar("TResult")
 
 
@@ -104,31 +103,29 @@ def pytest_runtest_call(item):
 def configure_plugin_system_services():
     """为绕过完整启动流程的单元测试装配真实插件系统适配器。"""
     from app.adapters.web.security.access import configure_token_codec
-    from app.application.security.token import (
-        create_access_token,
-        decode_access_token,
-    )
     from app.api.data import configure_api_data_ports
     from app.application.configuration import (
         RuntimeConfiguration,
         RuntimeSettingsService,
         SystemConfigService,
         TransferRetryConfig,
-        configure_token_runtime_config,
         configure_runtime_configuration,
         configure_runtime_settings,
         configure_system_config,
+        configure_token_runtime_config,
         configure_transfer_retry_config,
     )
-    from app.runtime.config import settings
-    from app.runtime.settings import configure_runtime_setting_provider
-    from app.startup.composition.configuration import (
-        build_api_runtime_config,
-        build_chain_runtime_config,
-        build_scheduler_runtime_config,
-        build_token_runtime_config,
+    from app.application.security.token import (
+        create_access_token,
+        decode_access_token,
+    )
+    from app.application.security.userconfig import (
+        UserConfigurationService,
+        configure_user_configuration,
     )
     from app.application.service import configure_service_directory
+    from app.db.oper.systemconfig import SystemConfigOper
+    from app.db.oper.userconfig import UserConfigOper
     from app.db.session import (
         SessionFactory,
         async_session_scope,
@@ -140,11 +137,13 @@ def configure_plugin_system_services():
         SqlAlchemyUnitOfWork,
         configure_transaction_runners,
     )
-    from app.db.oper.systemconfig import SystemConfigOper
-    from app.db.oper.userconfig import UserConfigOper
-    from app.application.security.userconfig import (
-        UserConfigurationService,
-        configure_user_configuration,
+    from app.runtime.config import settings
+    from app.runtime.settings import configure_runtime_setting_provider
+    from app.startup.composition.configuration import (
+        build_api_runtime_config,
+        build_chain_runtime_config,
+        build_scheduler_runtime_config,
+        build_token_runtime_config,
     )
 
     configure_token_codec(create_access_token, decode_access_token)
@@ -181,25 +180,25 @@ def configure_plugin_system_services():
             max_failed_retries=settings.TRANSFER_MAX_FAILED_RETRIES,
         )
     )
-    from app.application.chain.data import configure_chain_data_ports
-    from app.application.subscription.write import configure_subscribe_writer
-    from app.application.plugin.runtime import configure_plugin_runtime
-    from app.application.module import configure_module_runtime
     from app.application.chain.context import (
         ChainRuntimeContext,
         configure_chain_runtime_context_provider,
     )
-    from app.application.messaging.message import MessageHelper, MessageQueueManager
+    from app.application.chain.data import configure_chain_data_ports
     from app.application.messaging.chat import (
-        AgentChatService,
         AgentChatPersistenceService,
-        configure_agent_chat_service,
+        AgentChatService,
         configure_agent_chat_persistence,
+        configure_agent_chat_service,
     )
+    from app.application.messaging.message import MessageHelper, MessageQueueManager
+    from app.application.module import configure_module_runtime
+    from app.application.plugin.runtime import configure_plugin_runtime
+    from app.application.subscription.write import configure_subscribe_writer
     from app.runtime.cache import AsyncFileCache, FileCache
     from app.runtime.events import EventManager
-    from app.runtime.extensions.module_manager import ModuleManager
     from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+    from app.runtime.extensions.module_manager import ModuleManager
     from app.runtime.extensions.plugin_manager import PluginManager
     from app.runtime.extensions.service_config import ServiceConfigHelper
     configure_service_directory(
@@ -208,8 +207,8 @@ def configure_plugin_system_services():
     )
     configure_plugin_runtime(lambda: PluginManager())
     configure_module_runtime(lambda: ModuleManager())
-    from app.application.site.query import SiteQueryService, configure_site_query_service
     from app.application.site.health import SiteHealthService, configure_site_health_service
+    from app.application.site.query import SiteQueryService, configure_site_query_service
     from app.application.workflow import (
         WorkflowQueryService,
         configure_workflow_query,
@@ -222,27 +221,26 @@ def configure_plugin_system_services():
         AgentTaskExecutionService,
         configure_agent_task_execution,
     )
+    from app.db.adapters.download import TransactionalDownloadFailureRepository
+    from app.db.adapters.site import TransactionalSiteRepository
+    from app.db.adapters.subscription import TransactionalSubscribeWriter
+    from app.db.adapters.transaction import TransactionalWriteRunner
+    from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
+    from app.db.adapters.transfer.execution import (
+        TransactionalTransferExecutionRepository,
+    )
+    from app.db.adapters.workflow import TransactionalWorkflowExecutionService
     from app.db.oper.agentchat import AgentChatOper
-    from app.db.oper.downloadfailure import DownloadFailureOper
     from app.db.oper.downloadhistory import DownloadHistoryOper
     from app.db.oper.mediaserver import MediaServerOper
+    from app.db.oper.message import MessageOper
+    from app.db.oper.passkey import PassKeyOper
     from app.db.oper.site import SiteOper
     from app.db.oper.subscribe import SubscribeOper
     from app.db.oper.subscribehistory import SubscribeHistoryOper
     from app.db.oper.transferhistory import TransferHistoryOper
-    from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
-    from app.db.adapters.transfer_execution import (
-        TransactionalTransferExecutionRepository,
-    )
     from app.db.oper.user import UserOper
     from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
-    from app.db.oper.message import MessageOper
-    from app.db.oper.passkey import PassKeyOper
-    from app.db.adapters.subscription import TransactionalSubscribeWriter
-    from app.db.adapters.download import TransactionalDownloadFailureRepository
-    from app.db.adapters.site import TransactionalSiteRepository
-    from app.db.adapters.workflow import TransactionalWorkflowExecutionService
-    from app.db.adapters.transaction import TransactionalWriteRunner
 
     def create_sync_session() -> Session:
         """为无显式会话的 Oper 测试入口创建独占同步 Session。"""
@@ -363,8 +361,8 @@ def configure_plugin_system_services():
     )
     configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
     from app.adapters.external.market import (
-        PluginHelper,
         VERSION_BACKWARD_COMPATIBLE_FLAGS,
+        PluginHelper,
     )
     from app.adapters.external.plugin.client import PluginMarketClient
     from app.adapters.system.plugin.dependency import PluginDependencyInstaller
@@ -389,9 +387,9 @@ def configure_plugin_system_services():
         frozen=lambda: False,
         install=lambda **_kwargs: (False, "测试环境未装配插件安装 Gateway"),
     ))
-    from app.agent.skills.registry import SkillHelper
     from app.agent.llm.gateway import register_llm_provider_runtime
     from app.agent.llm.provider import LLMProviderManager
+    from app.agent.skills.registry import SkillHelper
     from app.application.messaging.skill import register_skill_catalog_provider
 
     register_skill_catalog_provider(lambda: SkillHelper())

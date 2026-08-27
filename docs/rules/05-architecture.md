@@ -65,10 +65,10 @@ to make the directory tree look symmetrical.
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/download/` | Download task querying/control and later submission use cases |
 | `app/application/music/` | Multi-source music catalog orchestration |
-| `app/application/chain/` | Injectable Chain runtime context and compatibility provider |
+| `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the runtime dependency aggregate, `data.py` owns named persistence ports, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agentdata.py` | Named Agent data ports; canonical Agent consumers use `get_agent_*_port()` and do not alias legacy proxies to Oper classes |
 | `app/application/outbox.py` | Durable intent and Outbox repository/dispatcher contracts for post-commit side effects |
-| `app/application/transfer_execution.py` | Durable transfer execution contracts: stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs; contains no SQLAlchemy or external I/O |
+| `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns admission/planning/queue behavior; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs |
 | `app/application/plugin/` | Plugin market catalog, installation command, installed-plugin identity contract and startup migration, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `identity.py`, `migration.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
@@ -94,7 +94,7 @@ directory categories.
 | `app/runtime/observability/` | Low-cardinality metric contracts and no-op-capable observation facade |
 | `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
 | `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
-| `app/runtime/managed_resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
+| `app/runtime/resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
 | `app/runtime/tasks.py` | Lifespan-scoped ownership, cancellation and bounded shutdown waiting for in-process background tasks |
 | `app/runtime/execution.py` | Shared sync/async execution and cross-thread submission boundary with correlation propagation |
 | `app/runtime/correlation.py` | Request/cross-thread correlation context and safe propagation into logs and child work |
@@ -152,7 +152,7 @@ retained only for compatibility and is not a canonical Oper substitute.
 
 Durable transfer execution follows one explicit boundary. The Chain freezes each
 external file operation into the Application-owned contract in
-`app/application/transfer_execution.py`; `app/db/adapters/transfer_execution.py`
+`app/application/transfer/execution.py`; `app/db/adapters/transfer/execution.py`
 uses short transactions to persist the task ledger and fences every state change
 with the current lease and attempt token. `app/db/oper/transferexecutionstep.py`
 remains table-oriented and never owns retry or recovery policy. External file I/O
@@ -206,7 +206,7 @@ mechanism remains in `app/adapters/system/resource.py`.
 可选的进程级技术资源使用 Managed Resource 合同：实现及其 data-only
 `capability.toml` 与适配器同目录，`runtime/extensions` 只解释通用的同步/异步
 `start`、`stop` 生命周期，`startup` 负责构建 Capability Runtime。声明必须使用
-`on_first_use`，普通启动只发现声明；消费者通过 `app/runtime/managed_resources.py`
+`on_first_use`，普通启动只发现声明；消费者通过 `app/runtime/resources.py`
 显式获取资源。关闭路径先释放消费者，再关闭已初始化 Runtime，未使用的资源不得因关闭而物化。
 应用级启动顺序使用 `app/startup/lifecycle/components.py` 的组件描述声明依赖、
 normal/safe-mode 范围、start/stop 顺序、超时预算和失败策略。新增进程级资源不得只在
@@ -484,9 +484,9 @@ Durable post-commit side effects have a separate boundary:
   must not replace an Outbox or persistent task table.
 
 Transfer durable admission follows the same ownership direction without using
-the Outbox as an execution queue: `app/application/transfer.py` owns the typed
+the Outbox as an execution queue: `app/application/transfer/workflow.py` owns the typed
 admission and versioned planning-checkpoint contracts, while
-`app/db/adapters/transfer.py` commits admission and the
+`app/db/adapters/transfer/admission.py` commits admission and the
 `accepted -> provider_pending -> planned` compare-and-set transitions in short
 Session/UoW scopes. `app/modules/filemanager/` owns the
 single pure-plan and checkpoint-execution implementation: all file writes occur
@@ -504,8 +504,8 @@ command; `FileManagerModule.transfer` and `TransHandler.transfer_media` must not
 be recreated.
 
 Transfer execution ownership is orthogonal to those planning phases.
-`app/application/transfer.py` defines the claim, heartbeat, release and fenced
-mutation Port; `app/db/adapters/transfer.py` implements each operation in a
+`app/application/transfer/workflow.py` defines the claim, heartbeat, release and fenced
+mutation Port; `app/db/adapters/transfer/admission.py` implements each operation in a
 short UoW with a unique lease token. Any active lease rejects another claim,
 including one from the same process owner. Expired leases may be taken over with
 a new token and incremented attempt count, while the stale token cannot renew,
@@ -659,8 +659,9 @@ driven workflow registration.
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
 | `app/application/outbox.py` | Durable intent, topic handler and Outbox repository contracts |
 | `app/db/adapters/outbox.py` | SQLAlchemy Outbox persistence, claim/lease and retry state adapter |
-| `app/application/transfer.py` | Transfer task, durable admission, versioned planning input/checkpoint contracts and queue use case |
-| `app/db/adapters/transfer.py` | SQLAlchemy admission/checkpoint persistence, CAS state transition and detached snapshot adapter |
+| `app/application/chain/events.py` | Chain durable-event write port, settlement projection and replayable payload conversion |
+| `app/application/transfer/workflow.py` | Transfer task, durable admission, versioned planning input/checkpoint contracts and queue use case |
+| `app/db/adapters/transfer/admission.py` | SQLAlchemy admission/checkpoint persistence, CAS state transition and detached snapshot adapter |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
 | `app/application/workflow.py` | Workflow use cases plus the runtime port consumed by API and Chain; `WorkFlowManager` is registered by `app/startup/initializers/workflow.py` |
@@ -700,8 +701,8 @@ driven workflow registration.
 | `app/adapters/external/plugin/client.py` | Plugin-market read adapter and cache-refresh boundary |
 | `app/adapters/system/plugin/package.py` | Plugin package installation adapter |
 | `app/adapters/system/plugin/dependency.py` | Plugin dependency inspection and installation adapter |
-| `app/runtime/extensions/managed_resource_adapter.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
-| `app/runtime/managed_resources.py` | Lightweight acquisition, state observation and shutdown facade |
+| `app/runtime/extensions/resource.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
+| `app/runtime/resources.py` | Lightweight acquisition, state observation and shutdown facade |
 | `app/foundation/reflection.py` | Generic reflection and Python module discovery |
 | `app/adapters/network/http.py` | Shared synchronous and asynchronous HTTP clients |
 | `app/adapters/network/browser.py` | Browser launch facade and browser session implementation |

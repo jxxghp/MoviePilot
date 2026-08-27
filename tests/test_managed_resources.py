@@ -13,18 +13,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.runtime import resources as managed_resource_facade
 from app.runtime.capabilities.errors import (
     CapabilityOperationError,
     CapabilityRuntimeClosedError,
 )
 from app.runtime.capabilities.runtime import CapabilityRuntime
-from app.runtime.extensions.managed_resource_adapter import (
+from app.runtime.extensions.resource import (
     AsyncManagedResourceAdapter,
     SyncManagedResourceAdapter,
     build_managed_resource_registry,
 )
-from app.runtime import managed_resources as managed_resource_facade
-from app.runtime.managed_resources import (
+from app.runtime.resources import (
     MANAGED_RESOURCE_ASYNC_KIND,
     MANAGED_RESOURCE_SYNC_KIND,
     acquire_managed_resource,
@@ -34,7 +34,6 @@ from app.runtime.managed_resources import (
     managed_resource_snapshot,
     shutdown_managed_resource_runtime,
 )
-
 
 PROJECT_ROOT = Path(__file__).parents[1]
 
@@ -346,7 +345,7 @@ def test_startup_initializer_discovers_manifest_without_importing_resource() -> 
     script = """
 import asyncio
 import sys
-from app.startup.initializers.managed_resources import (
+from app.startup.initializers.resources import (
     init_managed_resources,
     stop_managed_resources,
 )
@@ -372,7 +371,7 @@ assert "pyvirtualdisplay" not in sys.modules
 
 def test_startup_shutdown_without_init_does_not_build_registry(monkeypatch) -> None:
     """未执行启动装配时，关闭入口不得通过发现声明反向初始化 Runtime。"""
-    from app.startup.initializers import managed_resources as managed_resources_initializer
+    from app.startup.initializers import resources as managed_resources_initializer
 
     build_registry = MagicMock(side_effect=AssertionError("must not discover"))
     monkeypatch.setattr(

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.application.transfer import TransferPlanningInput
+from app.application.transfer.workflow import TransferPlanningInput
 from app.domain.context import MediaInfo
 from app.domain.meta.metavideo import MetaVideo
 from app.modules.filemanager.transhandler import TransHandler

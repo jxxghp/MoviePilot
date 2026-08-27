@@ -2,12 +2,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.application.transfer.workflow import TransferTask
 from app.chain.transfer import TransferChain
-from app.runtime.config import settings
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
-from app.schemas import DownloadHistory, FileItem
-from app.application.transfer import TransferTask
+from app.runtime.config import settings
+from app.schemas.file import FileItem
+from app.schemas.history import DownloadHistory
 from app.schemas.types import MediaType
 
 
@@ -192,7 +193,6 @@ def test_movie_collection_conflict_only_drops_automatic_media(
     )
     monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace(get_by_src=lambda src, storage=None: None))
     monkeypatch.setattr("app.chain.transfer.get_chain_download_history_port", lambda: history_oper)
-    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: history_oper)
     monkeypatch.setattr(
         "app.chain.transfer.get_configured_system_config",
         lambda: SimpleNamespace(get=lambda key: None),

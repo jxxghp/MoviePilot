@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import Any, Optional, Protocol
-
+from typing import Any, Literal, Optional, Protocol, overload
 
 MANAGED_RESOURCE_SYNC_KIND = "managed_resource.sync"
 MANAGED_RESOURCE_ASYNC_KIND = "managed_resource.async"
@@ -63,6 +62,14 @@ def configure_managed_resource_runtime(runtime: ManagedResourceRuntime) -> None:
     global _managed_resource_runtime
     with _runtime_lock:
         _managed_resource_runtime = runtime
+
+
+@overload
+def _runtime(*, required: Literal[True]) -> ManagedResourceRuntime: ...
+
+
+@overload
+def _runtime(*, required: Literal[False]) -> Optional[ManagedResourceRuntime]: ...
 
 
 def _runtime(*, required: bool) -> Optional[ManagedResourceRuntime]:

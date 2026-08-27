@@ -1,15 +1,14 @@
 from pathlib import Path
-from typing import Literal, List, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.common import JsonData
-from app.schemas.media import OptionalMediaIdentityMixin
-from app.schemas.types import MediaSource, MusicTargetEntityType
-
-from app.schemas.context import MetaInfo, MediaInfo
-from app.schemas.music import MusicInfo, MusicMeta
+from app.schemas.context import MediaInfo, MetaInfo
 from app.schemas.file import FileItem
+from app.schemas.media import OptionalMediaIdentityMixin
+from app.schemas.music import MusicInfo, MusicMeta
+from app.schemas.types import MediaSource, MusicTargetEntityType
 
 
 class DownloaderTorrent(BaseModel):
@@ -88,7 +87,7 @@ class DownloadingTorrent(DownloaderTorrent):
     """
 
 
-# TransferTask 已迁至 app/application/transfer.py：它是整理链的进程内工作项，装的是
+# TransferTask 已迁至 app/application/transfer/workflow.py：它是整理链的进程内工作项，装的是
 # 领域对象而非 DTO，留在这里只能把两个字段标成 Any——app.schemas 命名领域类型会让
 # app.schemas -> app.schemas.transfer -> app.domain.* -> app.schemas.types -> app.schemas
 # 闭环。下面的 TransferJob / TransferJobTask 才是它面向前端的投影，用本包的同名 DTO。

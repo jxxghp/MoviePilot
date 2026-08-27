@@ -12,14 +12,14 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.application import transfer as transfer_application
-from app.application.transfer import TransferTask
-from app.application.transfer_execution import (
+from app.application.transfer import workflow as transfer_application
+from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
+from app.application.transfer.workflow import TransferTask
 from app.chain.transfer import TransferChain
-from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.domain.context import MediaInfo

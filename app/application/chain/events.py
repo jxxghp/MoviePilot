@@ -1,4 +1,4 @@
-"""Chain durable 事件的事务写端口与可重放 payload 转换。"""
+"""Chain 持久事件的事务写端口与可重放 payload 转换。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from app.application.history import TransferHistoryRecord, TransferHistoryWriter
-from app.application.transfer_execution import TransferSettlementResult
+from app.application.transfer.execution import TransferSettlementResult
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -108,7 +108,11 @@ def snapshot_download_added(payload: dict[str, Any]) -> dict[str, Any]:
     context = payload.get("context")
     return cast(dict[str, Any], _json_snapshot({
         "hash": payload.get("hash"),
-        "context": context.to_dict() if isinstance(context, Context) else context,
+        "context": (
+            cast(Callable[[], dict[str, Any]], context.to_dict)()
+            if isinstance(context, Context)
+            else context
+        ),
         "username": payload.get("username"),
         "downloader": payload.get("downloader"),
         "episodes": list(payload.get("episodes") or []),
@@ -211,11 +215,11 @@ def _restore_context(payload: dict[str, Any]) -> Context:
         media_info=(
             _restore_media(media_payload) if isinstance(media_payload, dict) else None
         ),
-        torrent_info=(
+        torrent_info=cast(TorrentInfo, (
             _restore_torrent(torrent_payload)
             if isinstance(torrent_payload, dict)
             else None
-        ),
+        )),
         media_recognize_fail_count=int(
             payload.get("media_recognize_fail_count") or 0
         ),

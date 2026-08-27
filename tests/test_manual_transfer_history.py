@@ -2,18 +2,20 @@ from types import SimpleNamespace
 
 from app.api.endpoints.transfer import (
     manual_transfer as manual_transfer_endpoint,
+)
+from app.api.endpoints.transfer import (
     query_manual_transfer_history,
 )
-from app.chain.transfer import TransferChain
-from app.runtime.config import settings
-from app.db.oper.transferhistory import TransferHistoryOper
 from app.application.history import (
     clear_transfer_failures,
     failed_retry_count,
     max_failed_retries,
     record_transfer_failure,
 )
-from app.schemas import ManualTransferItem
+from app.chain.transfer import TransferChain
+from app.db.oper.transferhistory import TransferHistoryOper
+from app.runtime.config import settings
+from app.schemas.transfer import ManualTransferItem
 from tests.test_transfer_sync_extra_files import (
     FakeMeta,
     make_fileitem,
@@ -72,12 +74,6 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             get_by_path=lambda path: None,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.get_chain_download_history_port", lambda: SimpleNamespace(
-            get_by_hash=lambda download_hash: None,
-            get_file_by_fullpath=lambda fullpath: None,
-            get_files_by_savepath=lambda savepath: [],
-            get_by_path=lambda path: None,
-        ))
     monkeypatch.setattr(
         "app.chain.transfer.get_configured_system_config",
         lambda: SimpleNamespace(get=lambda key: None),

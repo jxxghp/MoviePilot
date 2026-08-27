@@ -200,7 +200,7 @@ Chain/Agent 的 `Any` factory 和裸 Oper 仍需迁移为类型化 Port/DTO，�
 | `app/adapters/web/` | Web 技术适配：动态插件路由注册、认证依赖和 OpenAPI 重建；不承载插件路由用例 | `plugin/routes.py` |
 | `app/adapters/observability/` | 可选观测技术适配；核心层只依赖 `runtime/observability` 定义的窄端口 | `otel.py` |
 | `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则、可靠副作用等；同一主题拆成子包 | `recognition.py`、`rules.py`、`rss.py`、`outbox.py`、`site/`、`subscription/`、`plugin/` |
-| `app/application/chain/` | Chain 运行时上下文、跨领域数据端口和 durable event 命令；将组合根注入的能力以命名 getter 暴露给 Chain | `context.py`、`data.py`、`durable_events.py` |
+| `app/application/chain/` | Chain 运行时上下文、跨领域数据端口和 durable event 命令；将组合根注入的能力以命名 getter 暴露给 Chain | `context.py`、`data.py`、`events.py` |
 | `app/application/subscription/` | 订阅新增、查询、变更、删除、媒体身份与搜索契约 | `write.py`、`contract.py`、`mutation.py`、`delete.py`、`identity.py`、`search.py` |
 | `app/application/plugin/` | 插件市场、安装、运行时端口、文件夹操作和动态路由用例；具体 FastAPI 路由适配器在 adapters 层 | `catalog.py`、`install.py`、`runtime.py`、`folders.py`、`routes.py` |
 | `app/application/messaging/` | 渠道回环入口、消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `ingress.py`、`message.py`、`router.py`、`agent.py` |
@@ -458,7 +458,7 @@ flowchart LR
 |---|---|
 | **Config Reload** | 继承 `ConfigReloadMixin` 并声明 `CONFIG_WATCH`，配置变更时自动重建长生命周期对象（如下载器客户端重连） |
 | **Singleton** | `EventManager`、`ModuleManager`、`PluginManager` 等全局共享管理器继承 `foundation/singleton.py` 的 `Singleton` |
-| **Managed Resource** | 可选进程级技术资源（浏览器、虚拟显示等）以 data-only `capability.toml` 声明，`runtime/extensions` 解释生命周期，`startup` 构建 Runtime，消费者经 `runtime/managed_resources.py` 显式获取；插件使用浏览器走 `app.sdk.browser` |
+| **Managed Resource** | 可选进程级技术资源（浏览器、虚拟显示等）以 data-only `capability.toml` 声明，`runtime/extensions` 解释生命周期，`startup` 构建 Runtime，消费者经 `runtime/resources.py` 显式获取；插件使用浏览器走 `app.sdk.browser` |
 | **Observability** | `runtime/observability` 定义低基数指标和默认 no-op 端口，Startup 可选装配 OTel；HTTP、DB、Event、Module、Scheduler、插件生命周期和 Agent 只提交白名单标签 |
 
 ---
@@ -631,7 +631,7 @@ flowchart LR
         RE["events.py<br/>事件总线"]
         RL["log.py<br/>日志运行时（依赖叶子）"]
         RCA["cache.py<br/>缓存协议 / 内存后端 / 装饰器"]
-        MR["managed_resources.py<br/>托管资源门面"]
+        MR["resources.py<br/>托管资源门面"]
     end
 
     subgraph adapters["app/adapters（具体 I/O）"]
@@ -704,8 +704,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 842 |
-| 内部导入边 | 6,882 |
+| Python 模块 | 844 |
+| 内部导入边 | 6,898 |
 | 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
 | Direct egress | 66（12 条待迁移债务，54 条精确 containment） |
 | Module Contract V2 spec | 217（其中 215 个进入 `run_module` 观察面） |

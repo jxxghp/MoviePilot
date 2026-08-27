@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.application.transfer_execution import (
+from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferExecutionCommand,
     TransferExecutionConflictError,
@@ -20,7 +20,7 @@ from app.application.transfer_execution import (
     build_transfer_checkpoint_fingerprint,
     build_transfer_operation_id,
 )
-from app.db.adapters.transfer_execution import (
+from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
 from app.db.base import Base

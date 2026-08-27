@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from app.application.transfer import TransferPlanningInput
+from app.application.transfer.workflow import TransferPlanningInput
 from app.db.models.transferpending import TransferPending
 
 try:

@@ -36,7 +36,7 @@ from app.schemas.types import (
 from app.schemas.workflow import FileItem
 
 if TYPE_CHECKING:
-    from app.application.transfer import TransferPlanCheckpoint, TransferPlanningInput
+    from app.application.transfer.workflow import TransferPlanCheckpoint, TransferPlanningInput
 
 
 class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,

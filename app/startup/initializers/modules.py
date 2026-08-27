@@ -44,7 +44,7 @@ from app.application.chain.context import (
     configure_chain_runtime_context_provider,
 )
 from app.application.chain.data import configure_chain_data_ports, get_chain_data_ports
-from app.application.chain.durable_events import (
+from app.application.chain.events import (
     restore_download_added,
     restore_transfer_result,
 )
@@ -110,8 +110,8 @@ from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutbox
 from app.db.adapters.site import TransactionalSiteRepository
 from app.db.adapters.subscription import TransactionalSubscribeWriter
 from app.db.adapters.transaction import TransactionalWriteRunner
-from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
-from app.db.adapters.transfer_execution import (
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
+from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
 from app.db.adapters.workflow import TransactionalWorkflowExecutionService
@@ -189,7 +189,7 @@ from app.startup.composition.subscription import (
     configure_transactional_subscription_scopes,
 )
 from app.startup.initializers.agent import init_agent
-from app.startup.initializers.managed_resources import (
+from app.startup.initializers.resources import (
     init_managed_resources,
     stop_managed_resources,
 )

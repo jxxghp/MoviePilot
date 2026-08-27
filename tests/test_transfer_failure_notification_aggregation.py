@@ -1,16 +1,16 @@
-from unittest.mock import Mock, patch
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import pytest
 
-from app.chain import transfer as transfer_module
-from app.chain.transfer import TransferChain
-from app.application.transfer import (
+from app.application.transfer.workflow import (
     TransferFailureNotification,
     TransferFailureNotificationAggregator,
     TransferTask,
     build_transfer_failure_group_key,
 )
+from app.chain import transfer as transfer_module
+from app.chain.transfer import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.config import ConfigModel
@@ -247,7 +247,7 @@ def test_aggregator_close_observes_flush_callback_error():
         loop=loop,
     )
 
-    with patch("app.application.transfer.logger.error") as log_error:
+    with patch("app.application.transfer.workflow.logger.error") as log_error:
         aggregator.close()
 
     callback.assert_called_once_with([notice])

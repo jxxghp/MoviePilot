@@ -14,7 +14,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 from app.adapters.system.host import SystemUtils
 from app.application.agent import build_manual_redo_prompt, get_running_agent_manager
 from app.application.chain.data import (
-    get_chain_download_history_port,
     get_chain_transfer_execution_port,
     get_chain_transfer_history_port,
 )
@@ -24,17 +23,12 @@ from app.application.configuration import (
 )
 from app.application.formatting import EpisodeFormatRuleHelper
 from app.application.history import clear_transfer_failures, resolve_history
-from app.application.transfer import TransferTask, job_lock
-from app.application.transfer_execution import TransferExecutionCommand
+from app.application.transfer.execution import TransferExecutionCommand
+from app.application.transfer.workflow import TransferTask, job_lock
 from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.subscribe import SubscribeChain
-
-# 旧测试与插件补丁入口；正式依赖通过宿主工厂逐步收敛。
-MediaChain = MediaChain
-StorageChain = StorageChain
-SubscribeChain = SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase

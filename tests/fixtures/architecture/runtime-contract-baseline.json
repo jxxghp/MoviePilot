@@ -1,6 +1,13 @@
 {
   "compat_manifest": {
     "module_aliases": {
+      "app.application.chain.durable_events": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.chain.events",
+        "target": "app.application.chain.events"
+      },
       "app.application.filter": {
         "introduced": "v3.0.0",
         "is_package": false,
@@ -14,6 +21,13 @@
         "owner": "application",
         "replacement": "app.application.rules",
         "target": "app.application.rules"
+      },
+      "app.application.transfer_execution": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "application",
+        "replacement": "app.application.transfer.execution",
+        "target": "app.application.transfer.execution"
       },
       "app.chain.media_interaction": {
         "introduced": "v3.0.0",
@@ -250,7 +264,7 @@
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "sdk",
-        "replacement": "app.application.transfer",
+        "replacement": "app.application.transfer.workflow",
         "target": "app.sdk._legacy.transferpending"
       },
       "app.db.user_oper": {
@@ -596,6 +610,13 @@
         "replacement": "app.sdk.services",
         "target": "app.sdk.services"
       },
+      "app.runtime.managed_resources": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "runtime",
+        "replacement": "app.runtime.resources",
+        "target": "app.runtime.resources"
+      },
       "app.utils.coalesce": {
         "introduced": "v3.0.0",
         "is_package": false,
@@ -869,6 +890,18 @@
           "target_name": "ReplyMode"
         }
       },
+      "app.application.transfer": {
+        "TransferQueue": {
+          "replacement": "app.application.transfer.workflow.TransferQueue",
+          "target_module": "app.sdk._legacy.transfer",
+          "target_name": "TransferQueue"
+        },
+        "TransferTask": {
+          "replacement": "app.application.transfer.workflow.TransferTask",
+          "target_module": "app.sdk._legacy.transfer",
+          "target_name": "TransferTask"
+        }
+      },
       "app.chain.media": {
         "ScrapingChain": {
           "replacement": "app.chain.scraping.ScrapingChain",
@@ -987,12 +1020,12 @@
           "target_name": "MessageType"
         },
         "TransferQueue": {
-          "replacement": "app.application.transfer.TransferQueue",
+          "replacement": "app.application.transfer.workflow.TransferQueue",
           "target_module": "app.sdk._legacy.transfer",
           "target_name": "TransferQueue"
         },
         "TransferTask": {
-          "replacement": "app.application.transfer.TransferTask",
+          "replacement": "app.application.transfer.workflow.TransferTask",
           "target_module": "app.sdk._legacy.transfer",
           "target_name": "TransferTask"
         }
@@ -1083,12 +1116,12 @@
           "target_name": "TransferDirectoryConf"
         },
         "TransferQueue": {
-          "replacement": "app.application.transfer.TransferQueue",
+          "replacement": "app.application.transfer.workflow.TransferQueue",
           "target_module": "app.sdk._legacy.transfer",
           "target_name": "TransferQueue"
         },
         "TransferTask": {
-          "replacement": "app.application.transfer.TransferTask",
+          "replacement": "app.application.transfer.workflow.TransferTask",
           "target_module": "app.sdk._legacy.transfer",
           "target_name": "TransferTask"
         }

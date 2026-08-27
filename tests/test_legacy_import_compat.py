@@ -189,6 +189,37 @@ for legacy_name, alias in MODULE_ALIASES.items():
     )
 
 
+def test_renamed_modules_use_exact_compat_routes() -> None:
+    """旧模块路径只经 manifest 复用新的 canonical 模块。"""
+    expected = {
+        "app.application.chain.durable_events": "app.application.chain.events",
+        "app.application.transfer_execution": "app.application.transfer.execution",
+        "app.runtime.managed_resources": "app.runtime.resources",
+    }
+    configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
+    try:
+        for legacy_name, target_name in expected.items():
+            assert MODULE_ALIASES[legacy_name].target == target_name
+            assert importlib.import_module(legacy_name) is importlib.import_module(target_name)
+    finally:
+        reset_legacy_import_diagnostics()
+
+
+def test_transfer_package_exposes_plugin_symbols_only_through_overlay() -> None:
+    """整理包不重导出宿主实现，只按兼容清单惰性提供插件旧符号。"""
+    configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
+    try:
+        package = importlib.import_module("app.application.transfer")
+        legacy = importlib.import_module("app.sdk._legacy.transfer")
+
+        assert package.TransferTask is legacy.TransferTask
+        assert package.TransferQueue is legacy.TransferQueue
+        assert "TransferTask" not in package.__all__
+        assert "TransferQueue" not in package.__all__
+    finally:
+        reset_legacy_import_diagnostics()
+
+
 def test_virtual_package_exports_resolve_exact_manifest_symbols():
     """合成旧包仅公开 manifest 声明的符号，并记录 DEBUG 兼容警告。"""
     legacy_package = "app.core.meta"

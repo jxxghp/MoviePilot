@@ -11,7 +11,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy.orm import sessionmaker
 
-from app.application.transfer_execution import (
+from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionConflictError,
     TransferExecutionState,
@@ -20,7 +20,7 @@ from app.application.transfer_execution import (
     TransferStepIntent,
     TransferStepResult,
 )
-from app.db.adapters.transfer_execution import (
+from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
 from app.db.models.transferpending import TransferPending

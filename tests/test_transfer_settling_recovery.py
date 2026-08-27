@@ -9,19 +9,19 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.application.transfer import (
+from app.application.transfer.execution import (
+    TransferExecutionCheckpoint,
+    TransferExecutionSnapshot,
+    TransferExecutionState,
+)
+from app.application.transfer.workflow import (
     TransferAdmission,
     TransferPlanCheckpoint,
     TransferPlanningInput,
     TransferTask,
 )
-from app.application.transfer_execution import (
-    TransferExecutionCheckpoint,
-    TransferExecutionSnapshot,
-    TransferExecutionState,
-)
 from app.chain.transfer import TransferChain
-from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.schemas.file import FileItem

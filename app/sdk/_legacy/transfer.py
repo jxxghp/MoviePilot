@@ -2,8 +2,10 @@
 
 from typing import Any, Optional
 
-from app.application.transfer import (
+from app.application.transfer.workflow import (
     TransferQueue as CanonicalTransferQueue,
+)
+from app.application.transfer.workflow import (
     TransferTask as CanonicalTransferTask,
 )
 

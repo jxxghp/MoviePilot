@@ -4,8 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from app.adapters.system.host import SystemUtils
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import MessageHelper
-from app.application.transfer import TransferPlanCheckpoint, TransferPlanningInput
-from app.application.transfer_execution import TransferStepRunner
+from app.application.transfer.execution import TransferStepRunner
+from app.application.transfer.workflow import TransferPlanCheckpoint, TransferPlanningInput
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic

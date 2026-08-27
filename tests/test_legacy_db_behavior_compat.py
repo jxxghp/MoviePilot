@@ -2,7 +2,7 @@ import importlib
 
 import pytest
 
-from app.application.transfer import TransferTask as CanonicalTransferTask
+from app.application.transfer.workflow import TransferTask as CanonicalTransferTask
 from app.db.models.transferhistory import TransferHistory
 from app.schemas.file import FileItem
 

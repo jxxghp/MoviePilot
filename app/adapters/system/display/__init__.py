@@ -7,11 +7,10 @@ from typing import Any
 
 from app.foundation.singleton import Singleton
 from app.runtime.log import logger
-from app.runtime.managed_resources import (
+from app.runtime.resources import (
     acquire_managed_resource,
     stop_managed_resource,
 )
-
 
 DISPLAY_CAPABILITY_ID = "host.display"
 

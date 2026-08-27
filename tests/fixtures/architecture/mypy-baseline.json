@@ -1112,10 +1112,6 @@
   "app/application/agenttask.py": {
     "type-arg": 1
   },
-  "app/application/chain/durable_events.py": {
-    "arg-type": 1,
-    "no-untyped-call": 1
-  },
   "app/application/commands.py": {
     "no-any-return": 1
   },
@@ -1355,18 +1351,6 @@
   },
   "app/application/torrent_cache.py": {
     "type-arg": 1
-  },
-  "app/application/transfer.py": {
-    "arg-type": 16,
-    "assignment": 3,
-    "attr-defined": 4,
-    "misc": 6,
-    "no-any-return": 1,
-    "no-untyped-call": 2,
-    "no-untyped-def": 10,
-    "return-value": 1,
-    "type-arg": 14,
-    "union-attr": 47
   },
   "app/chain/__init__.py": {
     "assignment": 13,
@@ -3209,10 +3193,6 @@
   },
   "app/runtime/localization.py": {
     "no-any-return": 1
-  },
-  "app/runtime/managed_resources.py": {
-    "arg-type": 2,
-    "union-attr": 3
   },
   "app/runtime/progress.py": {
     "no-any-return": 4,

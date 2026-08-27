@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.application.transfer import TransferPlanCheckpoint, TransferPlanningInput
+from app.application.transfer.workflow import TransferPlanCheckpoint, TransferPlanningInput
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.filemanager import transhandler as transhandler_module

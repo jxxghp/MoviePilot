@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from jinja2 import Template
 
 from app.application.messaging.message import TemplateHelper
-from app.application.transfer import TransferTask
+from app.application.transfer.workflow import TransferTask
 from app.chain.media import MediaChain
 from app.chain.transfer import JobManager, TransferChain
 from app.domain.context import MusicInfo

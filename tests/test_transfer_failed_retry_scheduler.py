@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app.application.transfer import FailedRetryScheduler
+from app.application.transfer.workflow import FailedRetryScheduler
 
 
 def test_retry_scheduler_close_cancels_buffered_timer_and_rejects_new_work():
@@ -76,7 +76,7 @@ def test_retry_scheduler_observes_unexpected_background_task_error():
             raise RuntimeError("flush failed")
 
         scheduler._flush_retry_transfer = failing_flush
-        with patch("app.application.transfer.logger.error", Mock()) as log_error:
+        with patch("app.application.transfer.workflow.logger.error", Mock()) as log_error:
             await scheduler.schedule_retry(11, group_key="media:test")
             for _ in range(5):
                 await asyncio.sleep(0)

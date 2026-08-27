@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.application.transfer import (
+from app.application.transfer.workflow import (
     TRANSFER_ADMISSION_ACCEPTED,
     TRANSFER_ADMISSION_PLANNED,
     TRANSFER_ADMISSION_PROVIDER_PENDING,
@@ -19,7 +19,7 @@ from app.application.transfer import (
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
 )
-from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 

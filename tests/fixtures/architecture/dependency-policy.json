@@ -142,7 +142,7 @@
         "tracking": "S2-L6"
       },
       {
-        "source": "app.application.transfer",
+        "source": "app.application.transfer.workflow",
         "target": "app.adapters.system.host",
         "tracking": "S2-L6"
       },

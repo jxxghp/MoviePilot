@@ -144,7 +144,7 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 929 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 889 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口
@@ -175,7 +175,7 @@ planning、lease、幂等执行或终态恢复已经完成。
 
 **Ownership**
 
-- `app/application/transfer.py` 拥有 admission DTO、Protocol、结果语义与 persist-before-enqueue 编排。
+- `app/application/transfer/workflow.py` 拥有 admission DTO、Protocol、结果语义与 persist-before-enqueue 编排。
 - `app/db/adapters/` 提供短 Session/UoW 的 Transfer pending 持久化实现；`app/db/oper/` 只接收
   adapter 拥有的 Session 并 stage/flush。
 - `app/startup/` 负责构造并注入 adapter，宿主 Chain 不再取得 raw/`Any` `TransferPendingOper`。
@@ -242,11 +242,11 @@ git diff --check
 
 **Ownership and compatibility**
 
-- `app/application/transfer.py` 拥有 planning input、plan item、checkpoint 和状态错误合同；JSON 版本、
+- `app/application/transfer/workflow.py` 拥有 planning input、plan item、checkpoint 和状态错误合同；JSON 版本、
   指纹及 resolved 上下文均可跨进程 round-trip。
 - `app/modules/filemanager/transhandler.py` 是唯一目标规划与文件执行实现；`FileManagerModule.transfer`
   与 `TransHandler.transfer_media` 已删除，不保留第二套重命名、覆盖或目录递归逻辑。
-- `app/db/adapters/transfer.py` 通过短 Session/UoW 提交 checkpoint；Oper 只负责带状态和指纹条件的
+- `app/db/adapters/transfer/admission.py` 通过短 Session/UoW 提交 checkpoint；Oper 只负责带状态和指纹条件的
   stage，3.0.14 migration 可升级、降级并在中断后重跑。
 - cleanup intent 随准入输入冻结。宿主路径由 FileManager 在 `TransferIntercept` 放行后、任何文件写入前
   执行；legacy provider 路径为保持旧 ABI 顺序，在全部冻结引用解析成功后、调用 provider 前执行。

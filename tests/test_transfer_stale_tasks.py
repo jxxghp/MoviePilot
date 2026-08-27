@@ -1,10 +1,10 @@
 """整理任务失活收敛行为测试。"""
 
+from app.application.transfer import workflow as app_transfer
+from app.application.transfer.workflow import TransferTask
 from app.chain.transfer import JobManager
 from app.domain.meta.metabase import MetaBase
-from app.schemas import FileItem
-from app.application.transfer import TransferTask
-from app.application import transfer as app_transfer
+from app.schemas.file import FileItem
 from app.schemas.types import MediaType
 
 

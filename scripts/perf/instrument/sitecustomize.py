@@ -367,7 +367,7 @@ def _activate_agent_scenario(
 def _read_display_runtime() -> dict[str, object]:
     """读取 host.display 的只读状态和观测，不触发资源激活。"""
     try:
-        from app.runtime.managed_resources import (
+        from app.runtime.resources import (
             managed_resource_observations,
             managed_resource_snapshot,
         )

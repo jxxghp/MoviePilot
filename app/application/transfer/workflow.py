@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -31,27 +32,29 @@ from typing import (
     Tuple,
     TypeAlias,
     Union,
+    cast,
 )
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from app.adapters.system.host import SystemUtils
 from app.application.agent import get_prompt_manager, get_running_agent_manager
-from app.application.transfer_execution import TransferExecutionCheckpoint
+from app.application.transfer.execution import TransferExecutionCheckpoint
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.log import logger
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
+from app.schemas.context import MetaInfo as _SchemaMetaInfo
 from app.schemas.file import FileItem
 from app.schemas.history import DownloadHistory
 from app.schemas.media import OptionalMediaIdentityMixin, resolve_media_identity
+from app.schemas.music import MusicInfo as _SchemaMusicInfo
+from app.schemas.music import MusicMeta as _SchemaMusicMeta
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
-from app.schemas.transfer import MetaInfo as _SchemaMetaInfo
-from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
-from app.schemas.transfer import MusicMeta as _SchemaMusicMeta
 from app.schemas.transfer import TransferInfo, TransferJob, TransferJobTask
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -60,9 +63,61 @@ from app.schemas.types import (
     MediaType,
     ReplyMode,
 )
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
+
+if TYPE_CHECKING:
+    class _ApplicationModel:
+        """描述当前模块依赖的最小 Pydantic 模型类型形状。"""
+
+        def __init__(self, **data: Any) -> None:
+            """接受模型字段关键字参数。"""
+            raise NotImplementedError
+
+        def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+            """返回模型字段字典。"""
+            raise NotImplementedError
+else:
+    _ApplicationModel = BaseModel
 
 JSONValue: TypeAlias = Union[None, bool, int, float, str, list["JSONValue"], dict[str, "JSONValue"]]
+JobId: TypeAlias = tuple[object, ...]
+FileKey: TypeAlias = tuple[str, str]
+
+
+class _DictionarySerializable(Protocol):
+    """描述领域对象沿用的字典投影能力。"""
+
+    def to_dict(self) -> dict[str, Any]:
+        """返回领域对象的字典投影。"""
+
+
+def _domain_to_dict(value: object) -> dict[str, Any]:
+    """按领域对象既有 ``to_dict`` 合同生成字典投影。"""
+    return cast(_DictionarySerializable, value).to_dict()
+
+
+def _job_tasks(job: TransferJob) -> list[TransferJobTask]:
+    """声明进程内作业始终使用已初始化的任务列表。"""
+    return cast(list[TransferJobTask], job.tasks)
+
+
+def _job_task_fileitem(task: TransferJobTask) -> FileItem:
+    """声明进程内作业任务始终绑定源文件。"""
+    return cast(FileItem, task.fileitem)
+
+
+def _job_task_size(task: TransferJobTask) -> int:
+    """按既有本地目录回退规则返回已完成任务的文件大小。"""
+    fileitem = _job_task_fileitem(task)
+    if fileitem.size is not None:
+        return fileitem.size
+    if fileitem.storage == "local":
+        return SystemUtils.get_directory_size(Path(cast(str, fileitem.path)))
+    return 0
+
+
+def _transfer_task_meta(task: "TransferTask") -> MetaBase:
+    """声明进入作业管理器的整理任务已经完成元数据解析。"""
+    return cast(MetaBase, task.meta)
 
 TRANSFER_ADMISSION_ACCEPTED = "accepted"
 TRANSFER_ADMISSION_PROVIDER_PENDING = "provider_pending"
@@ -636,7 +691,7 @@ class TransferLeaseLostError(TransferPlanningStateError):
     """整理 worker 已失去持久租约、不得继续推进任务时抛出的错误。"""
 
 
-class TransferTask(OptionalMediaIdentityMixin, BaseModel):
+class TransferTask(OptionalMediaIdentityMixin, _ApplicationModel):
     """
     文件整理任务。
     """
@@ -748,7 +803,7 @@ class TransferTask(OptionalMediaIdentityMixin, BaseModel):
         self._lease_owner = owner_id
         self._lease_token = lease_token
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """
         返回字典。
 
@@ -758,13 +813,16 @@ class TransferTask(OptionalMediaIdentityMixin, BaseModel):
         """
         dicts = vars(self).copy()
         dicts["fileitem"] = self.fileitem.model_dump() if self.fileitem else None
-        dicts["meta"] = self.meta.to_dict() if self.meta else None
-        dicts["mediainfo"] = self.mediainfo.to_dict() if self.mediainfo else None
+        dicts["meta"] = _domain_to_dict(self.meta) if self.meta else None
+        dicts["mediainfo"] = _domain_to_dict(self.mediainfo) if self.mediainfo else None
         dicts["target_directory"] = self.target_directory.model_dump() if self.target_directory else None
         return dicts
 
 
-class TransferQueue(BaseModel):
+TransferCallback: TypeAlias = Callable[[TransferTask, TransferInfo], tuple[bool, str]]
+
+
+class TransferQueue(_ApplicationModel):
     """
     异步整理队列信息。
 
@@ -774,7 +832,7 @@ class TransferQueue(BaseModel):
     # 任务信息
     task: Optional[TransferTask] = None
     # 回调函数
-    callback: Optional[Callable] = None
+    callback: Optional[TransferCallback] = None
     # 整理结果
     result: Optional[TransferInfo] = None
 
@@ -904,7 +962,7 @@ class TransferQueueService:
         self._list_tasks = list_tasks
         self._expire_tasks = expire_tasks
 
-    def put(self, task: TransferTask, callback: Callable) -> bool:
+    def put(self, task: TransferTask, callback: TransferCallback) -> bool:
         """先持久化准入事实再入队；任何前置失败都撤销内存作业视图。"""
         if not task or not self._register_task(task):
             return False
@@ -1124,15 +1182,15 @@ class JobManager:
     """
 
     # 整理中的作业
-    _job_view: Dict[Tuple, TransferJob] = {}
+    _job_view: Dict[JobId, TransferJob] = {}
     # 汇总季集清单
-    _season_episodes: Dict[Tuple, List[int]] = {}
+    _season_episodes: Dict[JobId, List[int]] = {}
     # 记录从 meta 作业迁移到 media 作业的关系，用于清理提前失败后残留的 media 作业
-    _meta_to_media_ids: Dict[Tuple, set[Tuple]] = {}
+    _meta_to_media_ids: Dict[JobId, set[JobId]] = {}
     # 记录任务最近一次状态心跳，供外部异步接管任务的失活检测使用
-    _task_state_changed_at: Dict[Tuple[str, str], float] = {}
+    _task_state_changed_at: Dict[FileKey, float] = {}
     # 记录仍由主程序整理线程直接执行的任务，避免把阻塞中的本地任务误判为失活
-    _active_executions: set[Tuple[str, str]] = set()
+    _active_executions: set[FileKey] = set()
 
     def __init__(self) -> None:
         """初始化当前进程内的整理作业状态。"""
@@ -1143,15 +1201,18 @@ class JobManager:
         self._active_executions = set()
 
     @staticmethod
-    def __get_meta_id(meta: MetaBase = None, season: Optional[int] = None) -> Tuple:
+    def __get_meta_id(
+            meta: Optional[MetaBase] = None,
+            season: Optional[int] = None,
+    ) -> JobId:
         """
         获取元数据ID
         """
-        return meta.name, season
+        return cast(MetaBase, meta).name, season
 
     @staticmethod
     def __get_media_id(media: Optional[Union[MediaInfo, MusicInfo]] = None,
-                       season: Optional[int] = None) -> Tuple:
+                       season: Optional[int] = None) -> JobId:
         """
         获取媒体ID；音乐额外区分实体类型，并为无远端ID的曲目构造稳定身份。
         """
@@ -1204,18 +1265,19 @@ class JobManager:
         )
         return fileitem.storage or "local", normalized_path
 
-    def __get_id(self, task: TransferTask = None) -> Tuple:
+    def __get_id(self, task: Optional[TransferTask] = None) -> JobId:
         """
         获取作业ID
         """
-        if task.mediainfo:
+        resolved_task = cast(TransferTask, task)
+        meta = _transfer_task_meta(resolved_task)
+        if resolved_task.mediainfo:
             return self.__get_media_id(
-                media=task.mediainfo, season=task.meta.begin_season
+                media=resolved_task.mediainfo, season=meta.begin_season
             )
-        else:
-            return self.__get_meta_id(meta=task.meta, season=task.meta.begin_season)
+        return self.__get_meta_id(meta=meta, season=meta.begin_season)
 
-    def get_job_id(self, task: TransferTask) -> Tuple:
+    def get_job_id(self, task: TransferTask) -> JobId:
         """返回任务当前所属的稳定作业身份，供作业级附加状态隔离使用。"""
         return self.__get_id(task)
 
@@ -1229,11 +1291,11 @@ class JobManager:
             mediainfo = deepcopy(task.mediainfo)
             mediainfo.clear()
             if isinstance(mediainfo, MusicInfo):
-                return _SchemaMusicInfo(**mediainfo.to_dict())
-            return _SchemaMediaInfo(**mediainfo.to_dict())
+                return _SchemaMusicInfo(**_domain_to_dict(mediainfo))
+            return _SchemaMediaInfo(**_domain_to_dict(mediainfo))
         else:
             # 没有媒体信息
-            meta: MetaBase = task.meta
+            meta = _transfer_task_meta(task)
             if isinstance(meta, MetaMusic):
                 # 未识别的音乐按已解析元数据兜底展示；音乐年份为 int，
                 # 不能复用 MediaInfo（year 为 str），否则触发 pydantic 校验异常
@@ -1262,7 +1324,7 @@ class JobManager:
         """
         if isinstance(task.meta, MetaMusic):
             return _SchemaMusicMeta(**task.meta.to_dict())
-        return _SchemaMetaInfo(**task.meta.to_dict())
+        return _SchemaMetaInfo(**_domain_to_dict(_transfer_task_meta(task)))
 
     def add_task(self, task: TransferTask, state: Optional[str] = "waiting") -> bool:
         """
@@ -1278,16 +1340,16 @@ class JobManager:
             __mediaid__ = self.__get_id(task)
             # 同一个源文件可能在识别前后落入不同作业，必须跨作业去重。
             if any(
-                    self.__get_file_key(t.fileitem) == file_key
+                    self.__get_file_key(_job_task_fileitem(t)) == file_key
                     for job in self._job_view.values()
-                    for t in job.tasks
+                    for t in _job_tasks(job)
             ):
                 logger.debug(f"任务 {task.fileitem.name} 已存在，跳过重复添加")
                 return False
             if __mediaid__ not in self._job_view:
                 self._job_view[__mediaid__] = TransferJob(
                     media=self.__get_media(task),
-                    season=task.meta.begin_season,
+                    season=_transfer_task_meta(task).begin_season,
                     tasks=[
                         TransferJobTask(
                             fileitem=task.fileitem,
@@ -1302,13 +1364,13 @@ class JobManager:
                 # 不重复添加任务
                 if any(
                         [
-                            self.__get_file_key(t.fileitem) == file_key
-                            for t in self._job_view[__mediaid__].tasks
+                            self.__get_file_key(_job_task_fileitem(t)) == file_key
+                            for t in _job_tasks(self._job_view[__mediaid__])
                         ]
                 ):
                     logger.debug(f"任务 {task.fileitem.name} 已存在，跳过重复添加")
                     return False
-                self._job_view[__mediaid__].tasks.append(
+                _job_tasks(self._job_view[__mediaid__]).append(
                     TransferJobTask(
                         fileitem=task.fileitem,
                         meta=self.__get_meta(task),
@@ -1320,12 +1382,14 @@ class JobManager:
             self._task_state_changed_at[file_key] = monotonic()
             # 添加季集信息
             if self._season_episodes.get(__mediaid__):
-                self._season_episodes[__mediaid__].extend(task.meta.episode_list)
+                self._season_episodes[__mediaid__].extend(
+                    _transfer_task_meta(task).episode_list
+                )
                 self._season_episodes[__mediaid__] = list(
                     set(self._season_episodes[__mediaid__])
                 )
             else:
-                self._season_episodes[__mediaid__] = task.meta.episode_list
+                self._season_episodes[__mediaid__] = _transfer_task_meta(task).episode_list
             return True
 
     def migrate_task(self, task: TransferTask) -> bool:
@@ -1338,16 +1402,15 @@ class JobManager:
         if not self.add_task(task, state=curr_task.state if curr_task else "waiting"):
             return False
         if curr_task and task.mediainfo:
-            metaid = self.__get_meta_id(
-                meta=task.meta, season=task.meta.begin_season
-            )
+            meta = _transfer_task_meta(task)
+            metaid = self.__get_meta_id(meta=meta, season=meta.begin_season)
             mediaid = self.__get_id(task)
             if source_job_id == metaid and mediaid != metaid:
                 with job_lock:
                     self._meta_to_media_ids.setdefault(metaid, set()).add(mediaid)
         return True
 
-    def __is_job_done(self, job_id: Tuple) -> bool:
+    def __is_job_done(self, job_id: JobId) -> bool:
         """
         检查指定作业是否已完成
         """
@@ -1355,10 +1418,10 @@ class JobManager:
             return True
         return all(
             task.state in ["completed", "failed"]
-            for task in self._job_view[job_id].tasks
+            for task in _job_tasks(self._job_view[job_id])
         )
 
-    def __pop_job(self, job_id: Tuple):
+    def __pop_job(self, job_id: JobId) -> None:
         """
         移除指定作业和对应季集缓存
         """
@@ -1366,13 +1429,13 @@ class JobManager:
         self._season_episodes.pop(job_id, None)
         if not job:
             return
-        for task in job.tasks:
-            file_key = self.__get_file_key(task.fileitem)
+        for task in _job_tasks(job):
+            file_key = self.__get_file_key(_job_task_fileitem(task))
             if file_key:
                 self._task_state_changed_at.pop(file_key, None)
                 self._active_executions.discard(file_key)
 
-    def __remove_done_job_groups(self, job_ids: set[Tuple]):
+    def __remove_done_job_groups(self, job_ids: set[JobId]) -> None:
         """
         清理已进入终态的独立作业或关联作业组。
         """
@@ -1396,7 +1459,7 @@ class JobManager:
             if self.__is_job_done(job_id):
                 self.__pop_job(job_id)
 
-    def start_execution(self, task: TransferTask):
+    def start_execution(self, task: TransferTask) -> None:
         """
         标记任务仍由主程序整理线程直接执行。
 
@@ -1410,7 +1473,7 @@ class JobManager:
         with job_lock:
             self._active_executions.add(file_key)
 
-    def finish_execution(self, task: TransferTask):
+    def finish_execution(self, task: TransferTask) -> None:
         """
         结束主程序整理线程对任务的直接执行标记。
 
@@ -1426,7 +1489,7 @@ class JobManager:
 
     def expire_stale_running_tasks(
             self, timeout_seconds: int
-    ) -> List[Tuple[FileItem, int]]:
+    ) -> List[tuple[FileItem, int]]:
         """
         将外部接管后长期无心跳的运行中任务标记失败并清理作业视图。
 
@@ -1440,12 +1503,13 @@ class JobManager:
             return []
 
         current_time = monotonic()
-        expired: List[Tuple[FileItem, int]] = []
-        affected_job_ids: set[Tuple] = set()
+        expired: List[tuple[FileItem, int]] = []
+        affected_job_ids: set[JobId] = set()
         with job_lock:
             for mediaid, job in self._job_view.items():
-                for task in job.tasks:
-                    file_key = self.__get_file_key(task.fileitem)
+                for task in _job_tasks(job):
+                    fileitem = _job_task_fileitem(task)
+                    file_key = self.__get_file_key(fileitem)
                     if (
                             not file_key
                             or task.state != "running"
@@ -1463,13 +1527,13 @@ class JobManager:
                         self._season_episodes[mediaid] = list(
                             set(self._season_episodes[mediaid]) - set(episodes)
                         )
-                    expired.append((task.fileitem, int(inactive_seconds)))
+                    expired.append((fileitem, int(inactive_seconds)))
                     affected_job_ids.add(mediaid)
 
             self.__remove_done_job_groups(affected_job_ids)
         return expired
 
-    def running_task(self, task: TransferTask):
+    def running_task(self, task: TransferTask) -> None:
         """
         设置任务为运行中，并刷新外部异步任务的状态心跳。
         """
@@ -1478,15 +1542,15 @@ class JobManager:
             if __mediaid__ not in self._job_view:
                 return
             # 更新状态
-            for t in self._job_view[__mediaid__].tasks:
+            for t in _job_tasks(self._job_view[__mediaid__]):
                 if t.fileitem == task.fileitem:
                     t.state = "running"
-                    file_key = self.__get_file_key(t.fileitem)
+                    file_key = self.__get_file_key(_job_task_fileitem(t))
                     if file_key:
                         self._task_state_changed_at[file_key] = monotonic()
                     break
 
-    def finish_task(self, task: TransferTask):
+    def finish_task(self, task: TransferTask) -> None:
         """
         设置任务为完成/成功
         """
@@ -1495,15 +1559,15 @@ class JobManager:
             if __mediaid__ not in self._job_view:
                 return
             # 更新状态
-            for t in self._job_view[__mediaid__].tasks:
+            for t in _job_tasks(self._job_view[__mediaid__]):
                 if t.fileitem == task.fileitem:
                     t.state = "completed"
-                    file_key = self.__get_file_key(t.fileitem)
+                    file_key = self.__get_file_key(_job_task_fileitem(t))
                     if file_key:
                         self._task_state_changed_at[file_key] = monotonic()
                     break
 
-    def fail_task(self, task: TransferTask):
+    def fail_task(self, task: TransferTask) -> None:
         """
         设置任务为失败
         """
@@ -1512,10 +1576,10 @@ class JobManager:
             if __mediaid__ not in self._job_view:
                 return
             # 更新状态
-            for t in self._job_view[__mediaid__].tasks:
+            for t in _job_tasks(self._job_view[__mediaid__]):
                 if t.fileitem == task.fileitem:
                     t.state = "failed"
-                    file_key = self.__get_file_key(t.fileitem)
+                    file_key = self.__get_file_key(_job_task_fileitem(t))
                     if file_key:
                         self._task_state_changed_at[file_key] = monotonic()
                     break
@@ -1523,10 +1587,10 @@ class JobManager:
             if __mediaid__ in self._season_episodes:
                 self._season_episodes[__mediaid__] = list(
                     set(self._season_episodes[__mediaid__])
-                    - set(task.meta.episode_list)
+                    - set(_transfer_task_meta(task).episode_list)
                 )
 
-    def fail_unfinished_task(self, task: TransferTask):
+    def fail_unfinished_task(self, task: TransferTask) -> None:
         """
         将指定任务视图中的非终态任务标记为失败
         """
@@ -1537,8 +1601,8 @@ class JobManager:
             return
         with job_lock:
             for mediaid, job in self._job_view.items():
-                for job_task in job.tasks:
-                    if self.__get_file_key(job_task.fileitem) != file_key:
+                for job_task in _job_tasks(job):
+                    if self.__get_file_key(_job_task_fileitem(job_task)) != file_key:
                         continue
                     if job_task.state not in ["completed", "failed"]:
                         job_task.state = "failed"
@@ -1546,7 +1610,7 @@ class JobManager:
                         if mediaid in self._season_episodes:
                             self._season_episodes[mediaid] = list(
                                 set(self._season_episodes[mediaid])
-                                - set(task.meta.episode_list)
+                                - set(_transfer_task_meta(task).episode_list)
                             )
                     return
 
@@ -1561,7 +1625,7 @@ class JobManager:
             self,
             fileitem: FileItem,
             preserve_execution: bool = False,
-    ) -> Tuple[Optional[TransferJobTask], Optional[Tuple]]:
+    ) -> tuple[Optional[TransferJobTask], Optional[JobId]]:
         """
         根据文件项移除任务，并返回任务所在的作业ID
         """
@@ -1571,14 +1635,14 @@ class JobManager:
         with job_lock:
             for mediaid in list(self._job_view):
                 job = self._job_view[mediaid]
-                for task in job.tasks:
-                    if self.__get_file_key(task.fileitem) == file_key:
-                        job.tasks.remove(task)
+                for task in _job_tasks(job):
+                    if self.__get_file_key(_job_task_fileitem(task)) == file_key:
+                        _job_tasks(job).remove(task)
                         self._task_state_changed_at.pop(file_key, None)
                         if not preserve_execution:
                             self._active_executions.discard(file_key)
                         # 如果没有作业了，则移除作业
-                        if not job.tasks:
+                        if not _job_tasks(job):
                             self._job_view.pop(mediaid)
                         # 移除季集信息
                         if mediaid in self._season_episodes:
@@ -1602,16 +1666,15 @@ class JobManager:
                 return job
             return None
 
-    def try_remove_job(self, task: TransferTask):
+    def try_remove_job(self, task: TransferTask) -> None:
         """
         尝试移除任务对应的作业（严格检查未完成作业，线程安全）
         """
         with job_lock:
-            __metaid__ = self.__get_meta_id(
-                meta=task.meta, season=task.meta.begin_season
-            )
+            meta = _transfer_task_meta(task)
+            __metaid__ = self.__get_meta_id(meta=meta, season=meta.begin_season)
             __mediaid__ = self.__get_media_id(
-                media=task.mediainfo, season=task.meta.begin_season
+                media=task.mediainfo, season=meta.begin_season
             )
 
             related_media_ids = set(self._meta_to_media_ids.get(__metaid__, set()))
@@ -1634,23 +1697,22 @@ class JobManager:
         检查任务对应的作业是否整理完成（不管成功还是失败）
         """
         with job_lock:
-            __metaid__ = self.__get_meta_id(
-                meta=task.meta, season=task.meta.begin_season
-            )
+            meta = _transfer_task_meta(task)
+            __metaid__ = self.__get_meta_id(meta=meta, season=meta.begin_season)
             __mediaid__ = self.__get_media_id(
-                media=task.mediainfo, season=task.meta.begin_season
+                media=task.mediainfo, season=meta.begin_season
             )
             if __metaid__ in self._job_view:
                 meta_done = all(
                     task.state in ["completed", "failed"]
-                    for task in self._job_view[__metaid__].tasks
+                    for task in _job_tasks(self._job_view[__metaid__])
                 )
             else:
                 meta_done = True
             if __mediaid__ in self._job_view:
                 media_done = all(
                     task.state in ["completed", "failed"]
-                    for task in self._job_view[__mediaid__].tasks
+                    for task in _job_tasks(self._job_view[__mediaid__])
                 )
             else:
                 media_done = True
@@ -1661,21 +1723,20 @@ class JobManager:
         检查任务对应的作业是否已完成且有成功的记录
         """
         with job_lock:
-            __metaid__ = self.__get_meta_id(
-                meta=task.meta, season=task.meta.begin_season
-            )
+            meta = _transfer_task_meta(task)
+            __metaid__ = self.__get_meta_id(meta=meta, season=meta.begin_season)
             __mediaid__ = self.__get_media_id(
-                media=task.mediainfo, season=task.meta.begin_season
+                media=task.mediainfo, season=meta.begin_season
             )
             if __metaid__ in self._job_view:
                 meta_finished = all(
                     task.state in ["completed", "failed"]
-                    for task in self._job_view[__metaid__].tasks
+                    for task in _job_tasks(self._job_view[__metaid__])
                 )
             else:
                 meta_finished = True
             if __mediaid__ in self._job_view:
-                tasks = self._job_view[__mediaid__].tasks
+                tasks = _job_tasks(self._job_view[__mediaid__])
                 media_finished = all(
                     task.state in ["completed", "failed"] for task in tasks
                 ) and any(task.state == "completed" for task in tasks)
@@ -1688,23 +1749,22 @@ class JobManager:
         检查任务对应的作业是否全部成功
         """
         with job_lock:
-            __metaid__ = self.__get_meta_id(
-                meta=task.meta, season=task.meta.begin_season
-            )
+            meta = _transfer_task_meta(task)
+            __metaid__ = self.__get_meta_id(meta=meta, season=meta.begin_season)
             __mediaid__ = self.__get_media_id(
-                media=task.mediainfo, season=task.meta.begin_season
+                media=task.mediainfo, season=meta.begin_season
             )
             if __metaid__ in self._job_view:
                 meta_success = all(
                     task.state in ["completed"]
-                    for task in self._job_view[__metaid__].tasks
+                    for task in _job_tasks(self._job_view[__metaid__])
                 )
             else:
                 meta_success = True
             if __mediaid__ in self._job_view:
                 media_success = all(
                     task.state in ["completed"]
-                    for task in self._job_view[__mediaid__].tasks
+                    for task in _job_tasks(self._job_view[__mediaid__])
                 )
             else:
                 media_success = True
@@ -1716,9 +1776,9 @@ class JobManager:
         """
         with job_lock:
             return {
-                task.download_hash
+                cast(str, task.download_hash)
                 for job in self._job_view.values()
-                for task in job.tasks
+                for task in _job_tasks(job)
             }
 
     def is_torrent_done(self, download_hash: str) -> bool:
@@ -1729,7 +1789,7 @@ class JobManager:
             if any(
                     task.state not in {"completed", "failed"}
                     for job in self._job_view.values()
-                    for task in job.tasks
+                    for task in _job_tasks(job)
                     if task.download_hash == download_hash
             ):
                 return False
@@ -1743,7 +1803,7 @@ class JobManager:
             if any(
                     task.state != "completed"
                     for job in self._job_view.values()
-                    for task in job.tasks
+                    for task in _job_tasks(job)
                     if task.download_hash == download_hash
             ):
                 return False
@@ -1767,7 +1827,7 @@ class JobManager:
             __metaid__ = self.__get_meta_id(meta=meta, season=season)
             return (
                     __metaid__ in self._job_view
-                    and len(self._job_view[__metaid__].tasks) > 0
+                    and len(_job_tasks(self._job_view[__metaid__])) > 0
             )
 
     def success_tasks(
@@ -1782,7 +1842,7 @@ class JobManager:
                 return []
             return [
                 task
-                for task in self._job_view[__mediaid__].tasks
+                for task in _job_tasks(self._job_view[__mediaid__])
                 if task.state == "completed"
             ]
 
@@ -1796,7 +1856,7 @@ class JobManager:
             __mediaid__ = self.__get_media_id(media=media, season=season)
             if __mediaid__ not in self._job_view:
                 return []
-            return self._job_view[__mediaid__].tasks
+            return _job_tasks(self._job_view[__mediaid__])
 
     def count(self, media: Union[MediaInfo, MusicInfo], season: Optional[int] = None) -> int:
         """
@@ -1809,7 +1869,7 @@ class JobManager:
             return len(
                 [
                     task
-                    for task in self._job_view[__mediaid__].tasks
+                    for task in _job_tasks(self._job_view[__mediaid__])
                     if task.state == "completed"
                 ]
             )
@@ -1824,14 +1884,8 @@ class JobManager:
                 return 0
             return sum(
                 [
-                    task.fileitem.size
-                    if task.fileitem.size is not None
-                    else (
-                        SystemUtils.get_directory_size(Path(task.fileitem.path))
-                        if task.fileitem.storage == "local"
-                        else 0
-                    )
-                    for task in self._job_view[__mediaid__].tasks
+                    _job_task_size(task)
+                    for task in _job_tasks(self._job_view[__mediaid__])
                     if task.state == "completed"
                 ]
             )
@@ -1841,7 +1895,7 @@ class JobManager:
         获取所有任务总数
         """
         with job_lock:
-            return sum([len(job.tasks) for job in self._job_view.values()])
+            return sum([len(_job_tasks(job)) for job in self._job_view.values()])
 
     def pending_total(self) -> int:
         """
@@ -1855,7 +1909,7 @@ class JobManager:
             return sum(
                 1
                 for job in self._job_view.values()
-                for task in job.tasks
+                for task in _job_tasks(job)
                 if task.state not in ("completed", "failed")
             )
 
@@ -1960,10 +2014,10 @@ class FailedRetryScheduler:
     def _build_retry_transfer_prompt(self, history_ids: list[int]) -> str:
         """根据失败记录数量构建统一的重试整理后台任务提示词。"""
         task_type, template_context = self._build_retry_transfer_template_context(history_ids)
-        return get_prompt_manager().render_system_task_message(
+        return cast(str, get_prompt_manager().render_system_task_message(
             task_type,
             template_context=template_context,
-        )
+        ))
 
     async def schedule_retry(self, history_id: int, group_key: str = "") -> None:
         """

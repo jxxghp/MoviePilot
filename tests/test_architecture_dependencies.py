@@ -82,6 +82,13 @@ RETIRED_CANONICAL_FILES = (
     "app/adapters/network/sites.pyi",
     "app/application/plugins.py",
     "app/application/subscribe.py",
+    "app/application/chain/durable_events.py",
+    "app/application/transfer.py",
+    "app/application/transfer_execution.py",
+    "app/db/adapters/transfer.py",
+    "app/db/adapters/transfer_execution.py",
+    "app/runtime/extensions/managed_resource_adapter.py",
+    "app/runtime/managed_resources.py",
     "app/startup/agent_initializer.py",
     "app/startup/cache_initializer.py",
     "app/startup/chain_events.py",
@@ -93,6 +100,7 @@ RETIRED_CANONICAL_FILES = (
     "app/startup/domain_initializer.py",
     "app/startup/download_failure.py",
     "app/startup/managed_resources_initializer.py",
+    "app/startup/initializers/managed_resources.py",
     "app/startup/modules_initializer.py",
     "app/startup/monitor_initializer.py",
     "app/startup/outbox.py",
@@ -481,9 +489,9 @@ def test_transfer_chains_use_explicit_data_port_getters():
 def test_transfer_pending_oper_import_is_confined_to_database_boundary():
     """宿主仅允许事务适配器和兼容导出直接导入整理待处理 Oper。"""
     allowed_paths = {
-        "app/db/adapters/transfer.py",
+        "app/db/adapters/transfer/admission.py",
         "app/db/adapters/chain.py",
-        "app/db/adapters/transfer_execution.py",
+        "app/db/adapters/transfer/execution.py",
         "app/db/oper/__init__.py",
     }
     violations: list[str] = []
@@ -520,7 +528,7 @@ def test_startup_injects_transactional_transfer_admission_repository():
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     imports_repository = any(
         isinstance(node, ast.ImportFrom)
-        and node.module == "app.db.adapters.transfer"
+        and node.module == "app.db.adapters.transfer.admission"
         and any(
             alias.name == "TransactionalTransferAdmissionRepository"
             for alias in node.names

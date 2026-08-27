@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
-from app.application.transfer import (
+from app.application.transfer.workflow import (
     TRANSFER_ADMISSION_PLANNED,
     TransferAdmission,
     TransferAdmissionProjectionError,
@@ -19,7 +19,7 @@ from app.application.transfer import (
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
 )
-from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferpending import TransferPendingOper
@@ -321,7 +321,7 @@ def test_claim_recoverable_skips_corrupt_projection_and_claims_later_tasks(
     repository = repository_factory()
     messages: list[str] = []
     monkeypatch.setattr(
-        "app.db.adapters.transfer._diagnostic_logger.error",
+        "app.db.adapters.transfer.admission._diagnostic_logger.error",
         messages.append,
     )
     corrupt = _admit(repository, "/downloads/a-corrupt.mkv")
@@ -389,7 +389,7 @@ def test_projection_diagnostic_changes_are_recorded_once_each(
     repository = repository_factory()
     messages: list[str] = []
     monkeypatch.setattr(
-        "app.db.adapters.transfer._diagnostic_logger.error",
+        "app.db.adapters.transfer.admission._diagnostic_logger.error",
         messages.append,
     )
     admitted = _admit(repository, "/downloads/changing-corrupt.mkv")
@@ -459,7 +459,7 @@ def test_projection_diagnostic_cas_is_concurrency_safe(
             messages.append(message)
 
     monkeypatch.setattr(
-        "app.db.adapters.transfer._diagnostic_logger.error",
+        "app.db.adapters.transfer.admission._diagnostic_logger.error",
         capture,
     )
     barrier = Barrier(2)
@@ -498,7 +498,7 @@ def test_projection_diagnostic_does_not_overwrite_active_lease(
     before = _pending_snapshot(repository, admitted.task_id)
     messages: list[str] = []
     monkeypatch.setattr(
-        "app.db.adapters.transfer._diagnostic_logger.error",
+        "app.db.adapters.transfer.admission._diagnostic_logger.error",
         messages.append,
     )
 

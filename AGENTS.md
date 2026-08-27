@@ -60,8 +60,8 @@ The legacy roots have no physical directories in the source tree. Current images
 |---|---|---|---|
 | `app/foundation/` | 无状态、无配置和无 I/O 的底层机制：反射/动态导入、加密、DOM、身份、集合、单例、文本、URL 和版本比较 | `settings`、DB/SystemConfig、网络请求、运行日志、MoviePilot 业务规则、旧导入路径 | `reflection.py`, `crypto.py`, `collections.py`, `text.py`, `url.py` |
 | `app/domain/` | Pure MoviePilot business semantics and models for media, recognition, sites, and torrents | Persistence, global settings reads, network/filesystem clients, Rust imports, service discovery, process lifecycle | `context.py`, `media.py`, `metainfo.py`, `scraper.py`, `meta/` |
-| `app/runtime/` | 进程级运行机制和策略：配置、事件、完整日志、缓存契约/内存行为、托管资源门面、并发、调度、限流、本地化、GC 和重启状态 | 具体外部产品、业务流程、Redis/文件缓存实现 | `config.py`, `events.py`, `log.py`, `cache.py`, `managed_resources.py`, `thread.py`, `state.py` |
-| `app/runtime/extensions/` | 模块、插件、配置化服务和托管资源实现的发现、注册与生命周期适配 | 通用反射机制、插件公开 API、无关业务流程 | `module_manager.py`, `plugin_manager.py`, `managed_resource_adapter.py`, `service_registry.py` |
+| `app/runtime/` | 进程级运行机制和策略：配置、事件、完整日志、缓存契约/内存行为、托管资源门面、并发、调度、限流、本地化、GC 和重启状态 | 具体外部产品、业务流程、Redis/文件缓存实现 | `config.py`, `events.py`, `log.py`, `cache.py`, `resources.py`, `thread.py`, `state.py` |
+| `app/runtime/extensions/` | 模块、插件、配置化服务和托管资源实现的发现、注册与生命周期适配 | 通用反射机制、插件公开 API、无关业务流程 | `module_manager.py`, `plugin_manager.py`, `resource.py`, `service_registry.py` |
 | `app/adapters/network/` | HTTP、浏览器、DNS、Cloudflare 和 IP 等通用网络技术适配 | RSS/站点业务编排、身份认证策略、命名外部产品流程 | `http.py`, `browser.py`, `doh.py`, `ip.py` |
 | `app/adapters/cache/` | Redis 与文件缓存等具体持久化实现 | 缓存协议、装饰器和进程内缓存策略 | `backends.py`, `redis.py` |
 | `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `display/`, `stdio.py`, `package.py`, `resource.py`, `rust.py`, `fsproxy.py` |

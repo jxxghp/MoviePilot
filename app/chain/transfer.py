@@ -24,7 +24,7 @@ from app.application.chain.data import (
     get_chain_transfer_history_port,
     get_chain_transfer_pending_port,
 )
-from app.application.chain.durable_events import TransferResultSettlement
+from app.application.chain.events import TransferResultSettlement
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
 from app.application.formatting import FormatParser
@@ -46,7 +46,21 @@ from app.application.outbox import (
     TRANSFER_COMPLETED_TOPIC,
     TRANSFER_FAILED_TOPIC,
 )
-from app.application.transfer import (
+from app.application.transfer.execution import (
+    TransferExecutionCheckpoint,
+    TransferExecutionCommand,
+    TransferExecutionConflictError,
+    TransferExecutionRepository,
+    TransferExecutionSnapshot,
+    TransferExecutionState,
+    TransferOperationObservation,
+    TransferOperationObservationState,
+    TransferSettlementResult,
+    TransferStepIntent,
+    TransferStepResult,
+    TransferStepState,
+)
+from app.application.transfer.workflow import (
     FailedRetryScheduler,
     JobManager,
     TransferAdmission,
@@ -63,20 +77,6 @@ from app.application.transfer import (
     TransferTask,
     build_transfer_failure_group_key,
     job_lock,
-)
-from app.application.transfer_execution import (
-    TransferExecutionCheckpoint,
-    TransferExecutionCommand,
-    TransferExecutionConflictError,
-    TransferExecutionRepository,
-    TransferExecutionSnapshot,
-    TransferExecutionState,
-    TransferOperationObservation,
-    TransferOperationObservationState,
-    TransferSettlementResult,
-    TransferStepIntent,
-    TransferStepResult,
-    TransferStepState,
 )
 from app.chain import ChainBase
 from app.chain._transfer import (

@@ -79,7 +79,7 @@ from app.runtime.extensions.plugin_manager import (
     configure_site_auth_level_provider,
 )
 from app.runtime.log import logger
-from app.runtime.managed_resources import acquire_managed_resource
+from app.runtime.resources import acquire_managed_resource
 from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import PluginRuntimeStatus
