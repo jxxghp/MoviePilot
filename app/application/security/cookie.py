@@ -109,7 +109,7 @@ class CookieHelper:
         return cookie_str
 
     @staticmethod
-    def _find_login_page_url(html, current_url: str) -> Optional[str]:
+    def _find_login_page_url(html: etree._Element, current_url: str) -> Optional[str]:
         """从首页查找同源登录入口，避免把账号密码提交到跨域页面。"""
         login_hrefs = html.xpath(
             "//a["
@@ -123,7 +123,7 @@ class CookieHelper:
             target = urlparse(login_url)
             if target.scheme in ("http", "https") and \
                     target.scheme == current.scheme and target.netloc == current.netloc:
-                return login_url
+                return str(login_url)
         return None
 
     def get_site_cookie_ua(self,
@@ -195,7 +195,7 @@ class CookieHelper:
                         html = etree.HTML(html_text) if html_text else None
                         if html is None:
                             return None, None, "解析网页源码失败"
-                        for xpath in self._SITE_LOGIN_XPATH.get("username"):
+                        for xpath in self._SITE_LOGIN_XPATH["username"]:
                             if html.xpath(xpath):
                                 username_xpath = xpath
                                 break

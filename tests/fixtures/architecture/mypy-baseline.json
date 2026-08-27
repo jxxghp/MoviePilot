@@ -67,7 +67,7 @@
     "arg-type": 4,
     "no-any-return": 2,
     "no-untyped-def": 1,
-    "operator": 2,
+    "operator": 1,
     "type-arg": 8,
     "union-attr": 5,
     "var-annotated": 2
