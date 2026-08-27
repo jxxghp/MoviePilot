@@ -207,7 +207,7 @@ class PluginChangeMonitor:
                 else None
             )
             if runtime_plugin_id:
-                last_sync_time = self._recent_sync.get(runtime_plugin_id)
+                last_sync_time = self._recent_sync.get(runtime_plugin_id.lower())
                 if last_sync_time and time.time() - last_sync_time < 2:
                     continue
                 plugins_to_reload.add(runtime_plugin_id)

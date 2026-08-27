@@ -79,6 +79,8 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
     manager.reopen_plugins.side_effect = lambda: order.append("reopen") or True
     manager.start.side_effect = lambda plugin_id: order.append(f"plugin:{plugin_id}")
     manager.start_monitor.side_effect = lambda **_kwargs: order.append("monitor")
+    manager.get_local_repo_plugins.return_value = []
+    manager.get_plugin_source_id.side_effect = lambda plugin_id: plugin_id
     monkeypatch.setattr(
         plugins_initializer,
         "configure_plugin_services",
@@ -103,6 +105,37 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
     manager.reopen_plugins.assert_called_once_with()
     manager.set_plugin_settling.assert_called_once_with(True)
     manager.start_monitor.assert_called_once_with(reopen=True)
+
+
+def test_init_plugins_defers_installed_local_candidate_until_sync(monkeypatch) -> None:
+    """本地仓候选不得在源码协调前先启动运行目录中的旧载荷。"""
+    order: list[str] = []
+    manager = MagicMock()
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("DownloadCenter", "OnlineOnly"),
+        missing_dependencies=(),
+        missing_source=(),
+    )
+    manager.reopen_plugins.return_value = True
+    manager.get_local_repo_plugins.return_value = [
+        SimpleNamespace(id="downloadcenter", plugin_version="3.3.2")
+    ]
+    manager.get_plugin_source_id.side_effect = lambda plugin_id: plugin_id
+    manager.start.side_effect = lambda plugin_id: order.append(plugin_id)
+    config = MagicMock()
+    config.get.return_value = ["DownloadCenter", "OnlineOnly"]
+    monkeypatch.setattr(plugins_initializer, "configure_plugin_services", lambda: None)
+    monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_configured_system_config",
+        lambda: config,
+    )
+    monkeypatch.setattr(plugins_initializer, "register_plugin_api", MagicMock())
+
+    plugins_initializer.init_plugins()
+
+    assert order == ["OnlineOnly"]
 
 
 def test_plugin_manager_projects_dependency_classification_to_runtime_status() -> None:
@@ -196,7 +229,56 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
         return_value=dependency_result,
     )
     manager.get_plugin_runtime_statuses.return_value = {}
+    manager.get_local_repo_plugins.return_value = []
+    manager.get_plugin_source_id.side_effect = lambda plugin_id: plugin_id
     return register
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_installs_local_payload_before_first_activation(
+    monkeypatch,
+) -> None:
+    """本地高版本写入完成后才能首次激活对应插件。"""
+    order: list[str] = []
+    manager = MagicMock()
+    manager.sync.side_effect = lambda *_args, **_kwargs: (
+        order.append("install:downloadcenter") or ["downloadcenter"]
+    )
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=[], success=True)
+    )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("DownloadCenter",),
+        missing_dependencies=(),
+        missing_source=(),
+    )
+    manager.running_plugins = {}
+    manager.start.side_effect = lambda plugin_id: order.append(f"start:{plugin_id}")
+    register = _patch_sync_plugins(monkeypatch, manager)
+
+    assert await plugins_initializer.sync_plugins() is True
+
+    assert order == ["install:downloadcenter", "start:DownloadCenter"]
+    register.assert_called_once_with("DownloadCenter")
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_does_not_activate_after_package_sync_failure(
+    monkeypatch,
+) -> None:
+    """包同步失败后不得继续激活启动阶段主动延后的旧载荷。"""
+    manager = MagicMock()
+    _patch_sync_plugins(monkeypatch, manager)
+    monkeypatch.setattr(
+        plugins_initializer,
+        "execute_task",
+        AsyncMock(return_value=None),
+    )
+
+    assert await plugins_initializer.sync_plugins() is False
+
+    manager.async_install_plugin_missing_dependencies_with_status.assert_not_awaited()
+    manager.start.assert_not_called()
 
 
 @pytest.mark.asyncio

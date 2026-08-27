@@ -11,6 +11,7 @@ from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
     TrustedPluginSourceType,
+    normalize_physical_plugin_id,
 )
 from app.schemas.plugin import Plugin, PluginSourceBindingStatus
 
@@ -274,13 +275,16 @@ class PluginCatalogService:
         """按代际、来源顺序和版本合并插件目录。"""
         all_plugins = list(higher_plugins)
         higher_keys = {
-            f"{plugin.id}{plugin.plugin_version}"
+            (normalize_physical_plugin_id(plugin.id), plugin.plugin_version)
             for plugin in higher_plugins
         }
         all_plugins.extend(
             plugin
             for plugin in base_plugins
-            if f"{plugin.id}{plugin.plugin_version}" not in higher_keys
+            if (
+                normalize_physical_plugin_id(plugin.id),
+                plugin.plugin_version,
+            ) not in higher_keys
         )
 
         def repo_order(plugin: Any) -> int:
@@ -293,7 +297,10 @@ class PluginCatalogService:
 
         deduplicated = {}
         for plugin in sorted(all_plugins, key=repo_order):
-            key = f"{plugin.id}{plugin.plugin_version}"
+            key = (
+                normalize_physical_plugin_id(plugin.id),
+                plugin.plugin_version,
+            )
             exists = deduplicated.get(key)
             if not exists or (
                 self._is_local_repo(exists.repo_url)
@@ -303,7 +310,8 @@ class PluginCatalogService:
 
         result_by_id = {}
         for plugin in sorted(deduplicated.values(), key=repo_order):
-            exists = result_by_id.get(plugin.id)
+            normalized_id = normalize_physical_plugin_id(plugin.id)
+            exists = result_by_id.get(normalized_id)
             if not exists \
                     or self._version_compare(
                         plugin.plugin_version,
@@ -315,7 +323,7 @@ class PluginCatalogService:
                         and self._is_local_repo(exists.repo_url)
                         and not self._is_local_repo(plugin.repo_url)
                     ):
-                result_by_id[plugin.id] = plugin
+                result_by_id[normalized_id] = plugin
         return list(result_by_id.values())
 
     def merge_by_source(
@@ -326,14 +334,22 @@ class PluginCatalogService:
     ) -> list[Any]:
         """每个仓库保留同一插件的最高兼容版本，供来源准入继续决策。"""
         higher_keys = {
-            (plugin.repo_url, plugin.id, plugin.plugin_version)
+            (
+                plugin.repo_url,
+                normalize_physical_plugin_id(plugin.id),
+                plugin.plugin_version,
+            )
             for plugin in higher_plugins
         }
         all_plugins = list(higher_plugins)
         all_plugins.extend(
             plugin
             for plugin in base_plugins
-            if (plugin.repo_url, plugin.id, plugin.plugin_version) not in higher_keys
+            if (
+                plugin.repo_url,
+                normalize_physical_plugin_id(plugin.id),
+                plugin.plugin_version,
+            ) not in higher_keys
         )
 
         def repo_order(plugin: Any) -> int:
@@ -341,9 +357,9 @@ class PluginCatalogService:
                 return markets.index(plugin.repo_url)
             return len(markets)
 
-        result_by_source: dict[tuple[Optional[str], Optional[str]], Any] = {}
+        result_by_source: dict[tuple[Optional[str], str], Any] = {}
         for plugin in sorted(all_plugins, key=repo_order):
-            key = (plugin.repo_url, plugin.id)
+            key = (plugin.repo_url, normalize_physical_plugin_id(plugin.id))
             exists = result_by_source.get(key)
             if not exists or self._version_compare(
                 plugin.plugin_version,

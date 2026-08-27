@@ -44,10 +44,17 @@ class PluginSyncService:
         if self._frozen():
             return []
 
-        installed = self._installed_plugins()
+        installed = {
+            plugin_id.lower()
+            for plugin_id in self._installed_plugins()
+        }
         online = self._online_plugins()
         local = self._local_plugins()
-        local_plugin_ids = {plugin.id.lower() for plugin in local}
+        local_plugin_ids = {
+            plugin.id.lower()
+            for plugin in local
+        }
+        deferred_plugin_ids = installed & local_plugin_ids
         restore_plugin_ids = {
             plugin_id.lower()
             for plugin_id in (online_restore_plugins or set())
@@ -56,9 +63,10 @@ class PluginSyncService:
         targets = [
             plugin
             for plugin in candidates
-            if plugin.id in installed
+            if plugin.id.lower() in installed
             and (
-                plugin.id.lower() in restore_plugin_ids
+                plugin.id.lower() in deferred_plugin_ids
+                or plugin.id.lower() in restore_plugin_ids
                 or (
                     plugin.system_version_compatible is not False
                     and not self._plugin_exists(plugin.id, plugin.plugin_version)
@@ -71,6 +79,7 @@ class PluginSyncService:
         self._logger.info("开始安装第三方插件...")
         synced: list[str] = []
         failed: list[str] = []
+        failed_deferred: list[str] = []
 
         def install_one(plugin: Any) -> None:
             """安装一个插件并记录结果。"""
@@ -84,13 +93,14 @@ class PluginSyncService:
             elapsed = time.time() - started
             if state:
                 self._logger.info(
-                    f"插件 {plugin.plugin_name} 安装成功，版本：{plugin.plugin_version}，"
-                    f"耗时：{elapsed:.2f} 秒"
+                    f"插件 {plugin.plugin_name} 同步成功，耗时：{elapsed:.2f} 秒"
                 )
                 synced.append(plugin.id)
             else:
+                if plugin.id.lower() in deferred_plugin_ids:
+                    failed_deferred.append(plugin.id)
                 self._logger.error(
-                    f"插件 {plugin.plugin_name} v{plugin.plugin_version} 安装失败："
+                    f"插件 {plugin.plugin_name} 同步失败："
                     f"{message}，耗时：{elapsed:.2f} 秒"
                 )
                 failed.append(plugin.id)
@@ -102,6 +112,8 @@ class PluginSyncService:
                 try:
                     future.result()
                 except Exception as error:  # noqa: BLE001
+                    if plugin.id.lower() in deferred_plugin_ids:
+                        failed_deferred.append(plugin.id)
                     self._logger.error(
                         f"插件 {plugin.plugin_name} 安装过程中出现异常: {error}"
                     )
@@ -109,6 +121,11 @@ class PluginSyncService:
         self._logger.info(
             f"第三方插件安装完成，成功：{len(synced)} 个，失败：{len(failed)} 个"
         )
+        if failed_deferred:
+            raise RuntimeError(
+                "延后激活的插件同步未完成："
+                f"{', '.join(sorted(set(failed_deferred)))}"
+            )
         return synced
 
 
@@ -133,7 +150,12 @@ class LocalPluginSyncService:
 
     def sync(self, plugin_id: str, candidate: Optional[dict] = None) -> bool:
         """同步已安装且兼容的本地插件，成功后记录短时事件抑制标记。"""
-        if plugin_id not in self._installed_plugins():
+        normalized_plugin_id = plugin_id.lower()
+        installed = {
+            installed_id.lower()
+            for installed_id in self._installed_plugins()
+        }
+        if normalized_plugin_id not in installed:
             self._logger.info(f"本地插件 {plugin_id} 尚未安装，跳过自动同步和热重载")
             return False
         candidate = candidate or self._candidate(plugin_id)
@@ -160,7 +182,7 @@ class LocalPluginSyncService:
             if not state:
                 self._logger.error(f"同步本地插件 {plugin_id} 失败：{message}")
                 return False
-            self._recent_sync[plugin_id] = time.time()
+            self._recent_sync[normalized_plugin_id] = time.time()
             self._logger.info(f"已同步本地插件 {plugin_id}")
             return True
         except Exception as error:

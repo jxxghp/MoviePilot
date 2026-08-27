@@ -117,11 +117,15 @@ class PluginInstallGateway:
                     raise PluginSourceAdmissionError(
                         message or "插件包与当前 MoviePilot 版本不兼容"
                     )
+                # 本地同步是最终准入候选的执行属性，不能由调用前的 URL 推断。
                 return await self.__executor.execute(
                     admission=admission,
                     release_version=release_version,
                     force=force,
-                    local_sync=local_sync,
+                    local_sync=isinstance(
+                        admission.candidate,
+                        PluginLocalCandidate,
+                    ),
                 )
         except (TypeError, ValueError, PluginSourceAdmissionError) as error:
             return PluginInstallResult(
