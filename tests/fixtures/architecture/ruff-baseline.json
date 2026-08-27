@@ -354,9 +354,6 @@
   "app/application/security/auth.py": {
     "I001": 1
   },
-  "app/application/security/passkey.py": {
-    "I001": 1
-  },
   "app/application/security/url.py": {
     "I001": 1
   },

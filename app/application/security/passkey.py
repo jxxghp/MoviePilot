@@ -11,29 +11,26 @@ from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple
 from urllib.parse import urlparse
 
 from webauthn import (
-    generate_registration_options,
-    verify_registration_response,
     generate_authentication_options,
+    generate_registration_options,
+    options_to_json,
     verify_authentication_response,
-    options_to_json
+    verify_registration_response,
 )
-from webauthn.helpers import (
-    parse_registration_credential_json,
-    parse_authentication_credential_json
-)
-from webauthn.helpers.structs import (
-    PublicKeyCredentialDescriptor,
-    AuthenticatorTransport,
-    UserVerificationRequirement,
-    ResidentKeyRequirement,
-    AuthenticatorSelectionCriteria
-)
+from webauthn.helpers import parse_authentication_credential_json, parse_registration_credential_json
 from webauthn.helpers.cose import COSEAlgorithmIdentifier
 from webauthn.helpers.exceptions import InvalidRegistrationResponse
+from webauthn.helpers.structs import (
+    AuthenticatorSelectionCriteria,
+    AuthenticatorTransport,
+    PublicKeyCredentialDescriptor,
+    ResidentKeyRequirement,
+    UserVerificationRequirement,
+)
 
-from app.runtime.cache import TTLCache
-from app.application.configuration import get_api_runtime_config_snapshot
 from app.adapters.cache.redis import RedisHelper
+from app.application.configuration import get_api_runtime_config_snapshot
+from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 
 PASSKEY_CHALLENGE_TTL_SECONDS = 5 * 60
@@ -459,7 +456,7 @@ class PasskeyRepository(Protocol):
     def list(self) -> list[Any]:
         """列出全部启用凭证。"""
 
-    def list_by_user_id(self, user_id: int) -> list[Any]:
+    def list_by_user_id(self, user_id: int) -> List[Any]:
         """列出指定用户凭证。"""
 
     def get_by_credential_id(self, credential_id: str) -> Optional[Any]:
@@ -486,7 +483,7 @@ class PasskeyService:
         """列出全部启用凭证。"""
         return self._repository.list()
 
-    def list_by_user_id(self, user_id: int) -> list[Any]:
+    def list_by_user_id(self, user_id: int) -> List[Any]:
         """列出指定用户凭证。"""
         return self._repository.list_by_user_id(user_id)
 

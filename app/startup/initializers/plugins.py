@@ -30,14 +30,14 @@ from app.application.plugin.identity import (
     TrustedPluginSourceType,
     normalize_physical_plugin_id,
 )
+from app.application.plugin.install import PluginInstallCommand
+from app.application.plugin.inventory import PluginCandidateInventoryReader
+from app.application.plugin.lifecycle import PluginStartupLease
 from app.application.plugin.migration import (
     PluginIdentityMigrationService,
     configure_plugin_identity_migration,
     get_plugin_identity_migration,
 )
-from app.application.plugin.install import PluginInstallCommand
-from app.application.plugin.inventory import PluginCandidateInventoryReader
-from app.application.plugin.lifecycle import PluginStartupLease
 from app.application.plugin.recovery import (
     PluginInstallationRecoveryService,
     configure_plugin_installation_recovery,

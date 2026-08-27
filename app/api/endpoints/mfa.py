@@ -22,9 +22,9 @@ from app.application.security.otp import OtpUtils
 from app.application.security.passkey import (
     PasskeyChallengeStore,
     PassKeyHelper,
-    PasskeyService,
     PassKeyRegistrationOriginMismatchError,
     PassKeyRegistrationVerificationError,
+    PasskeyService,
 )
 from app.application.security.token import verify_password
 from app.application.security.user import (
