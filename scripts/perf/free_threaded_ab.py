@@ -55,7 +55,7 @@ COMMON_PREFLIGHT_IMPORTS = frozenset({
     "zstandard",
 })
 PROFILE_PREFLIGHT_IMPORTS = {
-    "v3": frozenset({"psycopg2-binary", "zhconv-rs"}),
+    "v3": frozenset({"psycopg2-binary"}),
     "v3t": frozenset({"psycopg"}),
 }
 REQUIRED_API_ENDPOINTS = (
@@ -367,7 +367,6 @@ if sysconfig.get_config_var("Py_GIL_DISABLED") == 1:
     })
 else:
     probe("psycopg2-binary", "psycopg2")
-    probe("zhconv-rs", "zhconv_rs")
 
 uv_check = subprocess.run(
     ["/usr/local/bin/uv", "pip", "check", "--python", sys.executable],
@@ -852,7 +851,7 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
             "gil_disabled": False,
             "gil_enabled": True,
             "thread_inherit_context": 0,
-            "has_zhconv_fast": False,
+            "has_zhconv_fast": True,
             "gil_enabled_after_imports": True,
         }
         for key, value in expected.items():
@@ -864,8 +863,10 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
             errors.append("标准镜像必须使用 bcrypt 4.3.0")
         if packages.get("crcmod-plus") != "2.3.1" or packages.get("crcmod") is not None:
             errors.append("标准镜像必须使用 crcmod-plus 2.3.1")
-        if packages.get("zhconv-rs") is None or packages.get("psycopg2-binary") is None:
-            errors.append("标准镜像必须保留 zhconv-rs 与 psycopg2-binary")
+        if packages.get("zhconv-rs") is not None:
+            errors.append("标准镜像不得保留 zhconv-rs")
+        if packages.get("psycopg2-binary") is None:
+            errors.append("标准镜像必须保留 psycopg2-binary")
         if packages.get("psycopg") is not None:
             errors.append("标准镜像不得混入 psycopg profile")
         if not native.get("crcmod_extension"):

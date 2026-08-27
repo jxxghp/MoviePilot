@@ -41,14 +41,14 @@ profile，依赖名称、版本和 source 语义全部由 `pyproject.toml` 与 `
 | 能力 | 标准 V3 | V3t | 当前处理与上游解除条件 |
 | --- | --- | --- | --- |
 | Python | CPython 3.14 | CPython 3.14t | 跟随同一 Python 3.14 patch 版本；升级后必须重新验证解释器 ABI、GIL 状态、启动与完整测试。 |
-| `moviepilot-rust` | `cp314-abi3` | `cp314t` | 同一包版本按 wheel tag 选择；两套 ABI 和 V2 使用的 `cp311-abi3` 必须在发布链中保持独立可用。 |
+| `moviepilot-rust` | `cp314-abi3` | `cp314t` | V3 两套 ABI 使用同一包版本并按 wheel tag 选择；V2 继续使用已发布的 0.2.x `cp311-abi3` 制品，不随 V3 的 0.3.x 更新。 |
 | `bcrypt` | 4.x | 5.x | V3t 使用提供 free-threaded 制品的版本；当同一稳定版本同时满足两套 ABI 与密码合同后可合并约束。 |
 | Brotli | 1.2.0 wheel | 同版本固定源码构建 | V3t 当前只对该 profile 使用固定上游源码。上游提供可复现的稳定 `cp314t` wheel 后，验证导入、压缩结果、并发与 GIL，再删除 source 覆盖。 |
 | CRC 加速 | `crcmod-plus` 2.3.1 | `crcmod-plus` 2.3.1 | 两套镜像统一使用继续维护且兼容 `crcmod` 导入接口的实现。`oss2` 的陈旧元数据仍声明不再维护的 `crcmod`，由 uv 在解析时排除该传递依赖；宿主不在运行时映射、卸载或替插件兼容旧分发包。 |
 | `lxml` | 6.1.2 | 7.0.0b1 | V3t 暂用提供目标 ABI 的预发布版本，是当前最高风险项。稳定版提供 `cp314t` wheel 后，需通过 XML、HTML、RSS、站点解析、并发和内存验证再替换。 |
 | PostgreSQL 同步驱动 | `psycopg2-binary` 2.x | `psycopg[c]` 3.3.4 | 当前分叉同时受 ABI 与实测性能影响，不要求仅为版本统一而收敛。若上游能力或性能变化，必须重跑三方案 PostgreSQL A/B 后再决策。异步路径继续使用 `asyncpg`。 |
 | `orjson` | 3.12.0 wheel | 同版本源码构建 | V3t 使用同一锁定版本并启用 free-threaded 构建变量。上游发布覆盖 Linux amd64/arm64 的稳定 `cp314t` wheel 后可删除本地构建要求。 |
-| 中文转换 | `zhconv-rs` | `moviepilot-rust.zhconv_fast()` | 主程序统一经 `app.foundation.text.convert()`，插件统一经 SDK；不得让调用方感知后端差异。只有语义、性能、体积和 ABI 均更优时才考虑统一实现。 |
+| 中文转换 | `moviepilot-rust.zhconv_fast()` | `moviepilot-rust.zhconv_fast()` | 从 0.3.3 起两套 ABI 使用同一 MediaWiki 转换实现；主程序统一经 `app.foundation.text.convert()`，插件统一经 SDK，不再安装独立 `zhconv-rs`。 |
 | 站点资源 | `cpython-314` | `cpython-314t` | 资源文件必须按解释器 ABI 独立构建和选取，不能让 V3t 复用普通 CPython 扩展，也不能影响 V2 的历史 ABI 制品。 |
 
 表中差异不是全部都要消除。只有临时 source 构建、预发布依赖或第三方元数据兼容适合在上游成熟后
@@ -218,7 +218,7 @@ GIL、working set、RSS/PSS/USS、API p50/p95、SQLite 同步/异步结果和 1/
 ## 8. 插件生态边界
 
 - 插件不得直接依赖 V3/V3t 的内部实现选择，应使用 `app.sdk` 暴露的文本、网络和运行时能力。
-- 插件直接导入 `zhconv_rs` 等标准 V3 专属包时，V3t 可以明确判定为不兼容；宿主不伪造第三方模块。
+- 插件不得直接导入 `zhconv_rs`；V3 与 V3t 均不再提供该分发包，中文转换统一使用 `app.sdk.utilities.convert`，宿主不伪造第三方模块。
 - 插件若自行声明不再维护的 `crcmod`，必须由插件迁移到 `crcmod-plus`；宿主不映射分发包、不增加插件
   特判，也不在运行期卸载插件声明的依赖。
 - 插件携带原生 wheel 时必须匹配当前解释器和平台 ABI。缺少 `cp314` 或 `cp314t` 制品属于插件依赖

@@ -79,6 +79,27 @@ def test_runtime_profiles_share_gil_safe_crcmod_distribution():
     } in document["tool"]["uv"]["exclude-dependencies"]
 
 
+def test_standard_runtime_uses_shared_rust_text_capabilities(monkeypatch):
+    """标准镜像的文本能力不得重新引入 profile 专属实现。"""
+    imported = []
+    moviepilot_rust = SimpleNamespace(
+        is_available=lambda: True,
+        jieba_cut=lambda _value: ["中文", "分词"],
+        zhconv_fast=lambda value, _target: value,
+    )
+
+    def import_module(name):
+        imported.append(name)
+        return moviepilot_rust if name == "moviepilot_rust" else SimpleNamespace()
+
+    monkeypatch.setattr(dependency_doctor, "import_module", import_module)
+    monkeypatch.setattr(dependency_doctor.sysconfig, "get_config_var", lambda _name: None)
+
+    dependency_doctor.main()
+
+    assert "zhconv_rs" not in imported
+
+
 def test_runtime_excluded_dependency_pairs_reads_uv_policy(tmp_path: Path):
     """运行时诊断应复用 uv 排除配置，不维护第二份包名特判。"""
     project_file = tmp_path / "pyproject.toml"
