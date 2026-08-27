@@ -102,8 +102,8 @@ def test_market_sync_restores_trusted_online_payload_after_local_source_removed(
     install.assert_called_once_with(plugin.id, None, False, None)
 
 
-def test_market_sync_keeps_active_local_payload_when_candidate_still_exists() -> None:
-    """本地候选仍存在时，不应被启动在线恢复覆盖。"""
+def test_market_sync_reconciles_existing_local_candidate_through_gateway() -> None:
+    """本地候选对应插件已延后激活，必须经 Gateway 协调后再启动。"""
     online = SimpleNamespace(
         id="DemoPlugin",
         repo_url=REPO_URL,
@@ -130,12 +130,12 @@ def test_market_sync_keeps_active_local_payload_when_candidate_still_exists() ->
         log=Mock(),
     )
 
-    assert service.sync(online_restore_plugins={"demoplugin"}) == []
-    install.assert_not_called()
+    assert service.sync(online_restore_plugins={"demoplugin"}) == [online.id]
+    install.assert_called_once_with(online.id, None, False, None)
 
 
-def test_market_sync_passes_selected_local_source_to_install() -> None:
-    """本地候选较新时，启动安装必须携带本地来源标识。"""
+def test_market_sync_defers_source_selection_to_gateway() -> None:
+    """启动目录只能决定同步目标，不能把本地候选升级为选源授权。"""
     local = SimpleNamespace(
         id="DemoPlugin",
         repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
@@ -156,7 +156,7 @@ def test_market_sync_passes_selected_local_source_to_install() -> None:
     )
 
     assert service.sync() == [local.id]
-    install.assert_called_once_with(local.id, local.repo_url, False, None)
+    install.assert_called_once_with(local.id, None, False, None)
 
 
 def test_market_sync_reports_local_install_failure() -> None:
@@ -179,7 +179,10 @@ def test_market_sync_reports_local_install_failure() -> None:
         log=Mock(),
     )
 
-    with pytest.raises(RuntimeError, match="本地插件同步未完成：DemoPlugin"):
+    with pytest.raises(
+        RuntimeError,
+        match="延后激活的插件同步未完成：DemoPlugin",
+    ):
         service.sync()
 
 
@@ -214,24 +217,24 @@ def test_local_sync_matches_installed_plugin_id_case_insensitively() -> None:
 
 
 @pytest.mark.asyncio
-async def test_market_sync_delivers_newer_local_candidate_through_gateway(
+async def test_market_sync_preserves_generation_priority_through_gateway(
     monkeypatch,
 ) -> None:
-    """启动同步选中的本地高版本必须完整传递到 Gateway 执行器。"""
+    """目录中的高版本 V2 不能绕过 Gateway 覆盖绑定仓库的 V3。"""
     online = PluginMarketCandidate(
         plugin_id="DownloadCenter",
         source_key="github:jxxghp/moviepilot-plugins",
         source_type=TrustedPluginSourceType.OFFICIAL,
         repo_url=REPO_URL,
         package_generation="v3",
-        plugin_version="3.2.1",
+        plugin_version="1.0.0",
         dto={"v3": True},
     )
     local = PluginLocalCandidate(
         plugin_id="downloadcenter",
-        repo_url="local://downloadcenter?path=/private/plugins&version=v3",
-        package_generation="v3",
-        plugin_version="3.3.2",
+        repo_url="local://downloadcenter?path=/private/plugins&version=v2",
+        package_generation="v2",
+        plugin_version="9.0.0",
         dto={"v3": True},
     )
     identity = PluginIdentity(
@@ -282,8 +285,7 @@ async def test_market_sync_delivers_newer_local_candidate_through_gateway(
         force: bool,
         startup_token: object | None,
     ) -> tuple[bool, str]:
-        """按生产兼容入口保留本地候选定位并进入 Gateway。"""
-        local_sync = bool(repo_url and repo_url.startswith("local://"))
+        """按生产兼容入口让 Gateway 完成最终来源准入。"""
         return plugins_initializer._run_plugin_install_sync(
             gateway,
             plugin_id=plugin_id,
@@ -291,8 +293,8 @@ async def test_market_sync_delivers_newer_local_candidate_through_gateway(
             package_version="v3",
             release_version=None,
             force=force,
-            local_sync=local_sync,
-            explicit_source=local_sync,
+            local_sync=False,
+            explicit_source=False,
             startup_token=startup_token,
         )
 
@@ -329,9 +331,156 @@ async def test_market_sync_delivers_newer_local_candidate_through_gateway(
 
     assert synced == [local.plugin_id]
     executor.execute.assert_awaited_once()
+    assert executor.execute.await_args.kwargs["local_sync"] is False
+    admission = executor.execute.await_args.kwargs["admission"]
+    assert admission.candidate is online
+    assert admission.trusted_source_key == online.source_key
+
+
+@pytest.mark.asyncio
+async def test_market_sync_blocks_activation_when_gateway_selected_local_fails(
+    monkeypatch,
+) -> None:
+    """目录预选在线候选时，Gateway 改选本地失败仍必须阻止旧载荷激活。"""
+    competing_repo_url = "https://github.com/example/MoviePilot-Plugins"
+    official = PluginMarketCandidate(
+        plugin_id="DemoPlugin",
+        source_key="github:jxxghp/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.OFFICIAL,
+        repo_url=REPO_URL,
+        package_generation="v3",
+        plugin_version="1.0.0",
+        dto={"v3": True},
+    )
+    competing = PluginMarketCandidate(
+        plugin_id=official.plugin_id,
+        source_key="github:example/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.THIRD_PARTY,
+        repo_url=competing_repo_url,
+        package_generation="v3",
+        plugin_version="9.0.0",
+        dto={"v3": True},
+    )
+    local = PluginLocalCandidate(
+        plugin_id=official.plugin_id,
+        repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
+        package_generation="v3",
+        plugin_version="2.0.0",
+        dto={"v3": True},
+    )
+    identity = PluginIdentity(
+        plugin_id=official.plugin_id,
+        normalized_plugin_id="demoplugin",
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key=official.source_key,
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        payload_source_type=PluginPayloadSourceType.OFFICIAL,
+        payload_source_key=official.source_key,
+        declared_version=official.plugin_version,
+        package_generation="v3",
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo", "v3": True},
+            declaration_version=official.plugin_version,
+            manifest_matches_payload=True,
+        ),
+        payload_receipt="sha256:" + "3" * 64,
+        revision=2,
+        created_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        bound_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        payload_applied_at=datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+    )
+    inventory = CandidateInventory(
+        (
+            MarketRead.present(REPO_URL, (official,)),
+            MarketRead.present(competing_repo_url, (competing,)),
+        ),
+        (local,),
+        local_read=LocalCandidateRead.present((local,)),
+    )
+    executor = AsyncMock(
+        **{"execute.return_value": PluginInstallResult(
+            success=False,
+            message="copy failed",
+        )}
+    )
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(return_value=inventory),
+        identity=AsyncMock(return_value=identity),
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(
+        global_vars,
+        "CURRENT_EVENT_LOOP",
+        asyncio.get_running_loop(),
+    )
+
+    def install(
+        plugin_id: str,
+        repo_url: str | None,
+        force: bool,
+        startup_token: object | None,
+    ) -> tuple[bool, str]:
+        return plugins_initializer._run_plugin_install_sync(
+            gateway,
+            plugin_id=plugin_id,
+            repo_url=repo_url or "",
+            package_version="v3",
+            release_version=None,
+            force=force,
+            local_sync=False,
+            explicit_source=False,
+            startup_token=startup_token,
+        )
+
+    merged_official = SimpleNamespace(
+        id=official.plugin_id,
+        repo_url=official.repo_url,
+        plugin_name="Demo Official",
+        plugin_version=official.plugin_version,
+        system_version_compatible=True,
+    )
+    merged_competing = SimpleNamespace(
+        id=competing.plugin_id,
+        repo_url=competing.repo_url,
+        plugin_name="Demo Competing",
+        plugin_version=competing.plugin_version,
+        system_version_compatible=True,
+    )
+    merged_local = SimpleNamespace(
+        id=local.plugin_id,
+        repo_url=local.repo_url,
+        plugin_name="Demo Local",
+        plugin_version=local.plugin_version,
+        system_version_compatible=True,
+    )
+    service = PluginSyncService(
+        frozen=lambda: False,
+        installed_plugins=lambda: [official.plugin_id],
+        online_plugins=lambda: [merged_official, merged_competing],
+        local_plugins=lambda: [merged_local],
+        merge_plugins=_merge_catalog_plugins,
+        plugin_exists=lambda *_args: False,
+        install=install,
+        log=Mock(),
+    )
+
+    async with plugin_lifecycle.hold_startup() as startup_token:
+        with pytest.raises(
+            RuntimeError,
+            match="延后激活的插件同步未完成：DemoPlugin",
+        ):
+            await asyncio.wait_for(
+                asyncio.to_thread(service.sync, startup_token),
+                timeout=2,
+            )
+
+    executor.execute.assert_awaited_once()
+    assert executor.execute.await_args.kwargs["local_sync"] is True
     admission = executor.execute.await_args.kwargs["admission"]
     assert admission.candidate is local
-    assert admission.trusted_source_key == online.source_key
 
 
 @pytest.mark.asyncio

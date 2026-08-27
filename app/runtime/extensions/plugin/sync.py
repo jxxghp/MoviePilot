@@ -54,6 +54,7 @@ class PluginSyncService:
             plugin.id.lower()
             for plugin in local
         }
+        deferred_plugin_ids = installed & local_plugin_ids
         restore_plugin_ids = {
             plugin_id.lower()
             for plugin_id in (online_restore_plugins or set())
@@ -64,7 +65,8 @@ class PluginSyncService:
             for plugin in candidates
             if plugin.id.lower() in installed
             and (
-                plugin.id.lower() in restore_plugin_ids
+                plugin.id.lower() in deferred_plugin_ids
+                or plugin.id.lower() in restore_plugin_ids
                 or (
                     plugin.system_version_compatible is not False
                     and not self._plugin_exists(plugin.id, plugin.plugin_version)
@@ -77,30 +79,28 @@ class PluginSyncService:
         self._logger.info("开始安装第三方插件...")
         synced: list[str] = []
         failed: list[str] = []
-        failed_local: list[str] = []
+        failed_deferred: list[str] = []
 
         def install_one(plugin: Any) -> None:
             """安装一个插件并记录结果。"""
             started = time.time()
-            repo_url = plugin.repo_url if plugin.repo_url.startswith("local://") else None
             state, message = self._install(
                 plugin.id,
-                repo_url,
+                None,
                 False,
                 startup_token,
             )
             elapsed = time.time() - started
             if state:
                 self._logger.info(
-                    f"插件 {plugin.plugin_name} 安装成功，版本：{plugin.plugin_version}，"
-                    f"耗时：{elapsed:.2f} 秒"
+                    f"插件 {plugin.plugin_name} 同步成功，耗时：{elapsed:.2f} 秒"
                 )
                 synced.append(plugin.id)
             else:
-                if repo_url:
-                    failed_local.append(plugin.id)
+                if plugin.id.lower() in deferred_plugin_ids:
+                    failed_deferred.append(plugin.id)
                 self._logger.error(
-                    f"插件 {plugin.plugin_name} v{plugin.plugin_version} 安装失败："
+                    f"插件 {plugin.plugin_name} 同步失败："
                     f"{message}，耗时：{elapsed:.2f} 秒"
                 )
                 failed.append(plugin.id)
@@ -112,8 +112,8 @@ class PluginSyncService:
                 try:
                     future.result()
                 except Exception as error:  # noqa: BLE001
-                    if plugin.repo_url.startswith("local://"):
-                        failed_local.append(plugin.id)
+                    if plugin.id.lower() in deferred_plugin_ids:
+                        failed_deferred.append(plugin.id)
                     self._logger.error(
                         f"插件 {plugin.plugin_name} 安装过程中出现异常: {error}"
                     )
@@ -121,9 +121,10 @@ class PluginSyncService:
         self._logger.info(
             f"第三方插件安装完成，成功：{len(synced)} 个，失败：{len(failed)} 个"
         )
-        if failed_local:
+        if failed_deferred:
             raise RuntimeError(
-                f"本地插件同步未完成：{', '.join(sorted(set(failed_local)))}"
+                "延后激活的插件同步未完成："
+                f"{', '.join(sorted(set(failed_deferred)))}"
             )
         return synced
 
