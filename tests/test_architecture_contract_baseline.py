@@ -11,33 +11,6 @@ PROJECT_ROOT = Path(__file__).parents[1]
 BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 
 
-def test_architecture_contract_baselines_match_current_source():
-    """宿主依赖图和公开运行契约变化必须显式刷新基线。"""
-    baseline_paths = (
-        BASELINE_ROOT / "dependency-baseline.json",
-        BASELINE_ROOT / "runtime-contract-baseline.json",
-        BASELINE_ROOT / "transaction-debt-baseline.json",
-        BASELINE_ROOT / "configuration-debt-baseline.json",
-    )
-    contents_before = {
-        path: path.read_bytes()
-        for path in baseline_paths
-    }
-    result = subprocess.run(
-        [sys.executable, "scripts/architecture/baseline.py", "--check-host"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert {
-        path: path.read_bytes()
-        for path in baseline_paths
-    } == contents_before
-
-
 def test_official_plugin_baseline_records_external_source():
     """官方插件快照必须绑定独立仓提交，且不得引用宿主插件副本。"""
     baseline_path = BASELINE_ROOT / "official-plugin-baseline.json"
@@ -93,6 +66,69 @@ def test_dependency_baseline_records_nonempty_host_graph() -> None:
     assert all("line" not in entry for entry in direct_egress["entries"])
 
 
+def test_architecture_documents_match_generated_quality_metrics() -> None:
+    """高漂移量化指标必须与生成 fixture 同步，不能在多份文档中分叉。"""
+    dependency = json.loads(
+        (BASELINE_ROOT / "dependency-baseline.json").read_text(encoding="utf-8")
+    )
+    ruff = json.loads(
+        (BASELINE_ROOT / "ruff-baseline.json").read_text(encoding="utf-8")
+    )
+    coverage = json.loads(
+        (BASELINE_ROOT / "coverage-baseline.json").read_text(encoding="utf-8")
+    )
+    runtime = json.loads(
+        (BASELINE_ROOT / "runtime-contract-baseline.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    overview = (PROJECT_ROOT / "docs" / "architecture-overview.md").read_text(
+        encoding="utf-8"
+    )
+    checklist = (
+        PROJECT_ROOT / "docs" / "architecture-optimization-checklist.md"
+    ).read_text(encoding="utf-8")
+    roadmap = (
+        PROJECT_ROOT / "docs" / "architecture-refactor-roadmap.md"
+    ).read_text(encoding="utf-8")
+    edge_count = f"{dependency['edge_count']:,}"
+    ruff_count = sum(
+        count
+        for diagnostics in ruff.values()
+        for count in diagnostics.values()
+    )
+    application_coverage = coverage["application"]["percent"]
+    domain_coverage = coverage["domain"]["percent"]
+    event_facts = runtime["event_facts"]
+
+    assert edge_count in overview
+    assert f"{dependency['module_count']} / {edge_count}" in checklist
+    assert f"Ruff 历史诊断 | {ruff_count}" in checklist
+    assert f"Application {application_coverage:.2f}%" in checklist
+    assert f"Domain {domain_coverage:.2f}%" in checklist
+    assert f"当前受控 {ruff_count} 条诊断归零" in roadmap
+    assert (
+        f"当前宿主有 {event_facts['producer_call_count']} 个\n"
+        f"生产调用，其中 {event_facts['static_producer_call_count']} 个静态解析为 "
+        f"{event_facts['producer_event_reference_count']} 个事件引用"
+    ) in overview
+    assert (
+        f"{event_facts['consumer_registration_count']} 个消费注册中 "
+        f"{event_facts['static_consumer_count']} 个静态、"
+        f"{event_facts['dynamic_consumer_count']} 个动态"
+    ) in overview
+    assert (
+        f"{event_facts['producer_call_count']} 个 producer（"
+        f"{event_facts['static_producer_call_count']} 静态、"
+        f"{event_facts['dynamic_producer_count']} 动态）"
+    ) in checklist
+    assert (
+        f"{event_facts['consumer_registration_count']} 个 consumer（"
+        f"{event_facts['static_consumer_count']} 静态、"
+        f"{event_facts['dynamic_consumer_count']} 动态）"
+    ) in checklist
+
+
 def test_official_discovery_plugins_explicitly_keep_host_page_envelope():
     """宿主探索页消费的官方插件 API 不得依赖动态路由隐式包装。"""
     baseline_path = BASELINE_ROOT / "official-plugin-baseline.json"
@@ -139,7 +175,12 @@ def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
     baseline_path = BASELINE_ROOT / "runtime-contract-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["schema_version"] == 2
+    assert baseline["schema_version"] == 3
+    assert baseline["scope"] == {
+        "repository": "MoviePilot",
+        "roots": ["app"],
+        "excluded": ["app/plugins"],
+    }
     assert '"line"' not in json.dumps(baseline)
 
 
@@ -383,24 +424,30 @@ for package_name, symbol_name in contracts:
 
 
 def test_event_contract_baseline_covers_every_public_event_enum() -> None:
-    """事件生产者/消费者快照必须覆盖全部广播和链式事件枚举。"""
+    """统一事件事实快照必须覆盖全部枚举和真实生产、消费调用。"""
     baseline_path = BASELINE_ROOT / "runtime-contract-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-    events = baseline["events"]
+    events = baseline["event_facts"]
     expected = {
         *(f"EventType.{member.name}" for member in EventType),
         *(f"ChainEventType.{member.name}" for member in ChainEventType),
     }
 
-    assert set(events["events"]) == expected
+    assert set(events["event_index"]) == expected
     assert events["event_count"] == len(expected)
-    assert events["producer_count"] > 0
-    assert events["consumer_count"] == 16
-    assert events["dynamic_consumers"] == [
-        {"caller": "app.workflow", "count": 1}
-    ]
+    assert events["producer_call_count"] == 99
+    assert events["static_producer_call_count"] == 98
+    assert events["dynamic_producer_count"] == 1
+    assert events["invalid_producer_count"] == 0
+    assert events["producer_event_reference_count"] == 100
+    assert events["consumer_registration_count"] == 17
+    assert events["static_consumer_count"] == 16
+    assert events["dynamic_consumer_count"] == 1
+    assert events["invalid_consumer_count"] == 0
+    assert events["consumer_event_reference_count"] == 16
+    assert events["fact_count"] == 116
+    assert len({fact["fingerprint"] for fact in events["consumers"]}) == 17
     assert all(
-        not item["caller"].startswith("app.plugins")
-        for contract in events["events"].values()
-        for item in contract["consumers"]
+        not fact["caller"].startswith("app.plugins")
+        for fact in (*events["producers"], *events["consumers"])
     )

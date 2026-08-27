@@ -78,8 +78,8 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S0-L2.3 Adapter 直连事实 | `DELIVERED` | S0-L2.1 | `e1483e85d`：锁定 28 条原始 Adapter import 事实，远端 `0/0` |
 | S0-L2.4 Adapter zero-growth | `DELIVERED` | S0-L2.3 | `2553226f3`：冻结 28 条直连及 owner，收缩/新增/stale policy 门禁生效，远端 `0/0` |
 | S0-L2.4b HTTP/Egress 事实与政策 | `DELIVERED` | S0-L2.4 | `47f0de745`、`43d52a35b`、`8d602149f`：冻结 66 条出口事实，消除 CI 类型/覆盖率漂移；远端全绿且 `0/0` |
-| S0-L2.5 Event consumer 识别 | `VERIFIED` | S0-L2.1 | consumer 只识别可静态证明的 EventManager 注册，10 个同名方法动态误报归零；本地 6,459 passed / 6 skipped，待推送 CI |
-| S0-L2.6 事实源与 CI 投影 | `PLANNED` | S0-L2.2,S0-L2.4b,S0-L2.5 | fixture/policy/overview 职责固定，CI 分开报告语义 policy 与快照一致性 |
+| S0-L2.5 Event consumer 识别 | `DELIVERED` | S0-L2.1 | `86157be2a`：consumer 只识别可静态证明的 EventManager 注册；全量 6,459 passed / 6 skipped，CI `33029645165`/`33029645254` 全绿，远端 `0/0` |
+| S0-L2.6 事实源与 CI 投影 | `VERIFIED` | S0-L2.2,S0-L2.4b,S0-L2.5 | 99/17 条逐调用事实、17 条 consumer policy 与 CI 分层本地通过；全量 6,481 passed / 6 skipped，待推送 CI |
 
 ### S1：可靠性、事务与数据合同
 
@@ -136,7 +136,7 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S4-L2 Event strict contract | `PLANNED` | S0-L5,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 973 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 972 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口
@@ -154,48 +154,49 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 
 ## 4. 当前活动叶子
 
-### S0-L2.5 Event consumer 识别
+### S0-L2.6 事实源与 CI 投影
 
 **Status:** `VERIFIED`（本地验收完成，等待提交、推送和远端 CI 确认）
 
 **Outcome**
 
-把 Event consumer 从“末级方法名碰巧是 `register`/`add_event_listener`”收紧为可静态证明的
-canonical `EventManager` receiver。16 个静态注册点保持不变；10 个 selector、SDK hook、Oper、
-Model、TaskRegistry、`atexit` 和 EventManager 内部展开误报归零；配置驱动的 workflow 注册是唯一
-真实动态 consumer。
+统一 Event producer/consumer 的 AST 事实源，完整解析 positional/keyword 参数、别名、重绑定和
+有限条件表达式。生成快照保存逐调用 line-free 事实及 multiplicity；consumer 由独立人工 policy
+按 exact fingerprint set 准入，任何刷新快照的操作都不能自动接受新消费注册。
 
 **Ownership**
 
-- `scripts/architecture/event_consumers.py` 的 receiver/event provenance collector。
-- `scripts/architecture/baseline.py` 的 runtime event contract 集成与 diagnostics。
-- `tests/fixtures/architecture/runtime-contract-baseline.json` 的生成事实。
-- `tests/test_architecture_event_consumers.py` 的 alias、shadow、rebind、decorator 与动态边界测试。
-- API listener 所有权规则、架构规范、优化清单与快速架构 CI 投影。
-- 本路线图的叶子状态和交付记录。
+- `scripts/architecture/event_facts.py` 的统一 producer/consumer provenance collector。
+- `scripts/architecture/event_policy.py` 与 `runtime-contract-policy.json` 的只读人工 consumer policy。
+- `scripts/architecture/baseline.py` 的 runtime schema v3、迁移链、事实索引与 diagnostics。
+- producer/consumer、policy、baseline/CLI 和 CI 分层测试。
+- 架构规范、总览、优化清单与本路线图的单一事实说明。
 
 **Excluded**
 
 - 不修改生产 EventManager、事件 ABI、handler 执行顺序或插件消费者。
 - 不把 `app/plugins/**` 副本纳入宿主扫描。
-- producer 关键字/别名解析与 consumer 人工 zero-growth policy 留给 S0-L2.6 统一事实源叶；本叶只把
-  consumer 识别结果变为真实、完整且可测试的事实。
+- 不使用源码行号、通配符或自动写入 policy 接受新 consumer。
 
 **Acceptance**
 
 ```bash
 .venv/bin/python -m pytest \
-  tests/test_architecture_event_consumers.py \
+  tests/test_architecture_event_facts.py \
+  tests/test_architecture_event_policy.py \
   tests/test_architecture_dependencies.py \
   tests/test_architecture_contract_baseline.py \
   tests/test_architecture_baseline_cli.py \
   tests/test_architecture_ci.py -q
+.venv/bin/python scripts/architecture/event_policy.py
 .venv/bin/python scripts/architecture/baseline.py --check-host --diagnostics
 .venv/bin/python scripts/architecture/ruff_ratchet.py
 .venv/bin/python scripts/architecture/mypy_ratchet.py
 .venv/bin/pylint scripts/architecture/baseline.py \
-  scripts/architecture/event_consumers.py \
-  tests/test_architecture_event_consumers.py \
+  scripts/architecture/event_facts.py \
+  scripts/architecture/event_policy.py \
+  tests/test_architecture_event_facts.py \
+  tests/test_architecture_event_policy.py \
   tests/test_architecture_dependencies.py \
   tests/test_architecture_contract_baseline.py \
   tests/test_architecture_baseline_cli.py \
@@ -205,5 +206,5 @@ git diff --check
 
 **Delivery**
 
-- 单一提交主题：以可证明的 EventManager provenance 替换同名方法扫描并清除全部动态误报。
+- 单一提交主题：统一 Event facts、锁定 consumer policy 并拆分 CI 语义/快照投影。
 - 推送 `origin/v3` 后确认提交祖先关系、远端 SHA 和 ahead/behind `0/0`。

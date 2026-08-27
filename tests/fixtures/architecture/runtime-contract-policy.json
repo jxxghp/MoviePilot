@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "root": "app",
+    "excluded": [
+      "app.plugins"
+    ],
+    "receiver_contract": "canonical_event_manager_only"
+  },
+  "event_consumers": {
+    "match_mode": "exact_fingerprint_set",
+    "entries": [
+      {
+        "caller": "app.chain.download",
+        "qualname": "DownloadChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.DownloadFileDeleted"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "DownloadChain.download_file_deleted",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "eb33287636f1bb928cb221c64dfb9663fb20b87ad699c41182a673f5af19ab27",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.download",
+        "reason": "下载文件删除事件由 DownloadChain 处理关联状态清理。"
+      },
+      {
+        "caller": "app.chain.scraping",
+        "qualname": "ScrapingChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.MetadataScrape"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "ScrapingChain.scrape_metadata_event",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "b744f0a05247f5ad9871c180f3e9fd8952d382e94b6e1acad7234796bfea7b4c",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.scraping",
+        "reason": "元数据刮削事件由 ScrapingChain 执行宿主刮削流程。"
+      },
+      {
+        "caller": "app.chain.search",
+        "qualname": "SearchChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.SiteDeleted"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "SearchChain.remove_site",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "5a7967a84e5716f1939530b1f5d561dbf97130d22330ad7c282d2924e0743fe5",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.search",
+        "reason": "站点删除后由 SearchChain 清理搜索侧站点状态。"
+      },
+      {
+        "caller": "app.chain.site",
+        "qualname": "SiteChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.SiteUpdated"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "SiteChain.cache_site_icon",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "1200b7097150958ec2003a597237ab746defe80a865b0efef30596dc3b503598",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.site",
+        "reason": "站点更新后由 SiteChain 刷新站点图标缓存。"
+      },
+      {
+        "caller": "app.chain.site",
+        "qualname": "SiteChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.SiteUpdated"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "SiteChain.clear_site_data",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "6ca5d8f1adb42c94670be1125435387ea8b9f3f20b4505337b2adc090a4b5714",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.site",
+        "reason": "站点更新后由 SiteChain 清理已经失效的站点数据。"
+      },
+      {
+        "caller": "app.chain.site",
+        "qualname": "SiteChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.SiteUpdated"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "SiteChain.cache_site_userdata",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "c43b969848df947bc8e13d1777a08282cd45386867991786fba7f7ffe5027b47",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.site",
+        "reason": "站点更新后由 SiteChain 刷新站点用户数据缓存。"
+      },
+      {
+        "caller": "app.chain.subscribe",
+        "qualname": "SubscribeChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.SiteDeleted"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "SubscribeChain.remove_site",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "f29dd0d5dd598e19281e2d1a577b98adc5a0c0722c569bb3e974cc6b984c0737",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.subscribe",
+        "reason": "站点删除后由 SubscribeChain 清理订阅侧站点引用。"
+      },
+      {
+        "caller": "app.chain.subscribe",
+        "qualname": "SubscribeChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.ConfigChanged"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "SubscribeChain.reconcile_rule_group_references",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "5764fa4e793a602ce36195edf6ce15a16d4875910c0104589b1c5aa9b3173077",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.subscribe",
+        "reason": "配置变更后由 SubscribeChain 对齐订阅规则组引用。"
+      },
+      {
+        "caller": "app.chain.workflow",
+        "qualname": "WorkflowChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.WorkflowExecute"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "WorkflowChain.event_process",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "50704edda70674af0932e769ddda40d2c21d50b134155c975d675035d7c933cd",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.workflow",
+        "reason": "工作流执行事件由 WorkflowChain 进入标准执行编排。"
+      },
+      {
+        "caller": "app.command",
+        "qualname": "Command",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.CommandExcute"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "Command.command_event",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "64006f45841531463b1489576e1aee24ae1b50a2509a9773bc2149415f2c7d18",
+        "classification": "approved_static_registration",
+        "owner": "app.command",
+        "reason": "命令执行事件由 Command 分派到宿主命令处理入口。"
+      },
+      {
+        "caller": "app.command",
+        "qualname": "Command",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.ModuleReload"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "Command.module_reload_event",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "89480fbdb61c366e8c77e42fd3bdaa330e634579e7d85cf28e2475b1e3ba7ae6",
+        "classification": "approved_static_registration",
+        "owner": "app.command",
+        "reason": "模块重载事件由 Command 更新命令注册状态。"
+      },
+      {
+        "caller": "app.runtime.extensions.module_manager",
+        "qualname": "ModuleManager.__init__",
+        "method": "add_event_listener",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.ConfigChanged"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "self.handle_config_changed",
+        "registration_kind": "listener",
+        "priority": "<default>",
+        "fingerprint": "37daee8e6104140ee28a6efebefd30f1f9ac6a7c44f9609199c1b4863b30c564",
+        "classification": "approved_static_registration",
+        "owner": "app.runtime.extensions.module_manager",
+        "reason": "模块管理器监听配置变化并重建受影响的模块运行状态。"
+      },
+      {
+        "caller": "app.runtime.reload",
+        "qualname": "ConfigReloadMixin.__init_subclass__",
+        "method": "add_event_listener",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.ConfigChanged"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "handler",
+        "registration_kind": "listener",
+        "priority": "<default>",
+        "fingerprint": "c53927bd5752ec004ac403f6dc07fca7b253f0db152fc773643972d7c3bf5d34",
+        "classification": "approved_static_registration",
+        "owner": "app.runtime.reload",
+        "reason": "配置重载 Mixin 为声明式宿主类型安装统一刷新处理器。"
+      },
+      {
+        "caller": "app.scheduler",
+        "qualname": "Scheduler",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.PluginReload"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "Scheduler.on_plugin_reload",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "055c11260c15adabe65ddf1c9fd39000a7c1b7e255848e3c028e3985731e0778",
+        "classification": "approved_static_registration",
+        "owner": "app.scheduler",
+        "reason": "插件重载后由 Scheduler 对齐插件提供的定时任务。"
+      },
+      {
+        "caller": "app.startup.initializers.agent",
+        "qualname": "AgentInitializer.__init__",
+        "method": "add_event_listener",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.ConfigChanged"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "_handle_agent_config_changed",
+        "registration_kind": "listener",
+        "priority": "<default>",
+        "fingerprint": "829bb1b5d09ee66c26f4f500a25e12a768f041a8bcc5dab8954453a186fe0909",
+        "classification": "approved_static_registration",
+        "owner": "app.startup.initializers.agent",
+        "reason": "Agent 初始化器监听配置变化并刷新 Agent 运行配置。"
+      },
+      {
+        "caller": "app.startup.initializers.modules",
+        "qualname": "init_modules",
+        "method": "add_event_listener",
+        "receiver_kind": "constructed_manager",
+        "events": [
+          "EventType.NoticeMessage"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "dispatch_web_agent_message_event",
+        "registration_kind": "listener",
+        "priority": "<default>",
+        "fingerprint": "59263eddd85e4e5e30606a9d0ab6d02ba6a9483bff7f262a3818495e2c4f6ef5",
+        "classification": "approved_static_registration",
+        "owner": "app.startup.initializers.modules",
+        "reason": "模块初始化阶段把通知消息桥接到 WebAgent 消息分发入口。"
+      },
+      {
+        "caller": "app.workflow",
+        "qualname": "WorkFlowManager.register_workflow_event",
+        "method": "add_event_listener",
+        "receiver_kind": "canonical_singleton",
+        "events": [],
+        "dynamic": true,
+        "invalid": false,
+        "handler": "self._handle_event",
+        "registration_kind": "listener",
+        "priority": "<default>",
+        "fingerprint": "042068d816db7e46ab4da6e96f8549af97b57bd9d75ba710cc1ff4fec7e5e188",
+        "classification": "approved_dynamic_exception",
+        "owner": "app.workflow",
+        "reason": "工作流配置在运行期决定事件类型，receiver 与 handler 仍可静态证明。"
+      }
+    ]
+  }
+}

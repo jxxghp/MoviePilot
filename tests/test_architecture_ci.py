@@ -27,15 +27,37 @@ def test_unit_test_workflow_has_independent_host_architecture_gate():
     """主仓 PR 与推送必须在全量分片外快速执行宿主架构门禁。"""
     workflow = _load_workflow("test.yml")
     commands = _step_commands(workflow, "architecture")
+    steps = workflow["jobs"]["architecture"]["steps"]
+    semantic_step = next(
+        step for step in steps if step.get("name") == "Check event semantic policy"
+    )
+    snapshot_step = next(
+        step for step in steps if step.get("name") == "Check host architecture snapshot"
+    )
 
     assert "pull_request" in workflow["on"]
     assert "push" in workflow["on"]
     assert "tests/test_architecture_dependencies.py" in commands
     assert "tests/test_architecture_adapter_imports.py" in commands
     assert "tests/test_architecture_egress.py" in commands
-    assert "tests/test_architecture_event_consumers.py" in commands
+    assert "tests/test_architecture_event_facts.py" in semantic_step["run"]
+    assert "tests/test_architecture_event_policy.py" in semantic_step["run"]
+    assert "tests/test_architecture_dependencies.py" in semantic_step["run"]
+    assert "tests/test_architecture_adapter_imports.py" in semantic_step["run"]
+    assert "tests/test_architecture_egress.py" in semantic_step["run"]
+    assert "scripts/architecture/event_policy.py" in semantic_step["run"]
+    assert "scripts/architecture/baseline.py" not in semantic_step["run"]
+    assert not {
+        "tests/test_architecture_dependencies.py",
+        "tests/test_architecture_adapter_imports.py",
+        "tests/test_architecture_egress.py",
+        "tests/test_architecture_event_facts.py",
+        "tests/test_architecture_event_policy.py",
+    } & set(snapshot_step["run"].split())
+    assert steps.index(semantic_step) < steps.index(snapshot_step)
     assert "tests/test_architecture_contract_baseline.py" in commands
     assert "scripts/architecture/baseline.py --check-host" in commands
+    assert commands.count("scripts/architecture/baseline.py --check-host") == 1
     assert "scripts/architecture/ruff_ratchet.py" in commands
     assert "scripts/architecture/mypy_ratchet.py" in commands
     assert "scripts/architecture/ruff_ratchet.py --write" not in commands

@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from scripts.architecture.baseline import (
-    collect_event_contracts as _collect_event_contracts,
+    collect_current_event_facts as _collect_current_event_facts,
 )
 from scripts.architecture.baseline import (
     discover_modules as _discover_modules,
@@ -1288,13 +1288,8 @@ def test_application_services_do_not_resolve_event_manager_singleton():
 
 def test_http_endpoints_do_not_register_process_event_listeners():
     """HTTP 端点不得拥有进程级事件监听器，监听装配必须留在 startup。"""
-    contracts = _collect_event_contracts()
-    callers = {
-        item["caller"]
-        for event in contracts["events"].values()
-        for item in event["consumers"]
-    }
-    callers.update(item["caller"] for item in contracts["dynamic_consumers"])
+    facts = _collect_current_event_facts()
+    callers = {item["caller"] for item in facts["consumers"]}
 
     assert {caller for caller in callers if caller.startswith("app.api")} == set()
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.architecture import baseline as architecture_baseline
+from scripts.architecture.event_policy import DEFAULT_EVENT_POLICY_PATH
 from scripts.startup import performance as startup_performance
 
 
@@ -153,7 +154,7 @@ def test_architecture_report_only_supports_check_operations(capsys, tmp_path: Pa
 
 
 def test_runtime_semantics_ignore_line_changes_but_keep_call_count(tmp_path: Path):
-    """旧 fixture 的行号变化不影响门禁，重复调用次数仍属于语义。"""
+    """v1 行号变化经链式迁移不影响语义，重复调用次数仍被保留。"""
     baseline_path = tmp_path / "runtime-contract-baseline.json"
     old_value = {
         "schema_version": 1,
@@ -199,9 +200,108 @@ def test_runtime_semantics_ignore_line_changes_but_keep_call_count(tmp_path: Pat
     )
 
     assert old_semantic == moved_semantic
+    assert old_semantic["schema_version"] == 3
+    assert old_semantic["event_facts"]["migration_required"] is True
     assert old_semantic["run_module"]["methods"]["search"] == [
         {"caller": "app.chain.search", "mode": "sync", "count": 2}
     ]
+
+
+def test_runtime_v2_fixture_migrates_to_explicit_v3_review_projection(
+    tmp_path: Path,
+) -> None:
+    """v2 聚合事件只能迁移为待审查投影，不能伪造逐调用事实身份。"""
+    baseline_path = tmp_path / "runtime-contract-baseline.json"
+    value = {
+        "schema_version": 2,
+        "run_module": {"method_count": 0, "call_count": 0},
+        "events": {
+            "event_count": 1,
+            "producer_count": 1,
+            "consumer_count": 0,
+            "events": {},
+            "dynamic_producers": [],
+            "dynamic_consumers": [],
+        },
+        "event_specs": {"EventType.Alpha": {"schema_version": 1}},
+        "module_method_specs": {"search": {"mode": "sync"}},
+        "sdk_exports": {},
+        "compat_manifest": {},
+    }
+
+    migrated = architecture_baseline.semantic_baseline(baseline_path, value)
+
+    assert migrated["schema_version"] == 3
+    assert migrated["scope"]["excluded"] == ["app/plugins"]
+    assert migrated["event_facts"] == {
+        "migration_required": True,
+        "legacy_v2_projection": value["events"],
+    }
+    assert migrated["event_specs"] == value["event_specs"]
+    assert migrated["module_method_specs"] == value["module_method_specs"]
+
+
+def test_runtime_v2_check_and_report_fail_cleanly_until_explicit_refresh(
+    tmp_path: Path,
+) -> None:
+    """旧 v2 fixture 面对逐调用 v3 事实时应正常报告差异而非崩溃。"""
+    baseline_path = tmp_path / "runtime-contract-baseline.json"
+    old_value = {
+        "schema_version": 2,
+        "run_module": {},
+        "events": {
+            "event_count": 0,
+            "producer_count": 0,
+            "consumer_count": 0,
+            "events": {},
+            "dynamic_producers": [],
+            "dynamic_consumers": [],
+        },
+        "sdk_exports": {},
+        "compat_manifest": {},
+    }
+    baseline_path.write_text(json.dumps(old_value), encoding="utf-8")
+    actual = {
+        "schema_version": 3,
+        "scope": {
+            "repository": "MoviePilot",
+            "roots": ["app"],
+            "excluded": ["app/plugins"],
+        },
+        "run_module": {},
+        "module_method_specs": {},
+        "event_facts": {
+            "producer_call_count": 0,
+            "producers": [],
+            "consumers": [],
+        },
+        "event_specs": {},
+        "sdk_exports": {},
+        "compat_manifest": {},
+    }
+
+    assert not architecture_baseline.check_json(
+        baseline_path,
+        actual,
+        write_hint="--write-host",
+    )
+    report = architecture_baseline.build_comparison_report(baseline_path, actual)
+    assert report["semantic_match"] is False
+    assert report["added"] or report["removed"] or report["changed"]
+
+
+def test_comparison_report_preserves_duplicate_fact_multiplicity(tmp_path: Path) -> None:
+    """相同 producer fingerprint 的调用次数变化也必须出现在审查报告。"""
+    baseline_path = tmp_path / "other-baseline.json"
+    baseline_path.write_text('{"facts": [{"id": "same"}]}', encoding="utf-8")
+
+    report = architecture_baseline.build_comparison_report(
+        baseline_path,
+        {"facts": [{"id": "same"}, {"id": "same"}]},
+    )
+
+    assert report["semantic_match"] is False
+    assert report["added"] == [{"path": "$.facts", "value": {"id": "same"}}]
 
 
 def test_plugin_provenance_does_not_participate_in_semantic_gate(tmp_path: Path):
@@ -455,6 +555,7 @@ def test_architecture_write_host_only_updates_host_files(
     policy_path = tmp_path / "dependency-policy.json"
     plugin_path = tmp_path / "plugin.json"
     policy_path.write_text('{"manual": true}\n', encoding="utf-8")
+    event_policy_before = DEFAULT_EVENT_POLICY_PATH.read_bytes()
     monkeypatch.setattr(
         architecture_baseline,
         "DEPENDENCY_BASELINE_PATH",
@@ -513,6 +614,7 @@ def test_architecture_write_host_only_updates_host_files(
         "scope": "host-configuration"
     }
     assert json.loads(policy_path.read_text()) == {"manual": True}
+    assert DEFAULT_EVENT_POLICY_PATH.read_bytes() == event_policy_before
     assert not plugin_path.exists()
     output = capsys.readouterr().out
     assert "即将写入" in output
@@ -521,6 +623,7 @@ def test_architecture_write_host_only_updates_host_files(
     assert "transaction.json" in output
     assert "configuration.json" in output
     assert "dependency-policy.json" not in output
+    assert "runtime-contract-policy.json" not in output
 
 
 def test_architecture_write_plugins_only_updates_plugin_file(

@@ -2,7 +2,7 @@
 
 > 审计日期：2026-08-26
 >
-> 审计基线：`v3@9053db926d20`，与 `origin/v3` 一致
+> 首次审计历史快照：`v3@9053db926d20`；当前交付状态以路线图和生成 fixture 为准
 >
 > 文档性质：当前源码的差距清单与分阶段执行说明，不是历史重构结项账本
 
@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 835 / 6,810 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 835 / 6,817 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,8 +78,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,983 / 601 文件 | strict frontier 当前只覆盖 41 个文件，且 ratchet 已新增 2 个错误 |
-| Ruff 历史诊断 | 973 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 77.76%，Domain 79.24% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| Ruff 历史诊断 | 972 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 77.82%，Domain 79.24% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -160,15 +160,17 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - 架构总览此前仍记录 811 模块、6,572 条边和 1 个 SCC，已经落后于当前基线。
 - Event consumer 扫描曾把任意同名 `.register()` 调用当成事件注册；S0-L2.5 已改为证明
   canonical EventManager receiver，10 个动态误报归零并保留唯一 workflow 动态注册。
+- S0-L2.6 已将 producer/consumer 合并为逐调用事实源：99 个 producer（98 静态、1 动态）与
+  17 个 consumer（16 静态、1 动态）；consumer 由不可自动写入的精确人工 policy 管理。
 
 **目标与步骤**
 
-- [ ] 指定一个机器可读事实源，文档指标由 fixture 生成或只保留不易漂移的语义描述。
+- [x] 指定统一 Event 机器事实源；生成快照与人工 consumer policy 分离且互相不能覆盖。
 - [x] 修正 Oper 示例，分别展示宿主显式 UoW 与插件兼容 Facade，并以文档测试禁止回退。
 - [x] 明确 Application/Chain 不永久直连具体 Adapter；业务层拥有 Port，startup 注入实现。
 - [x] 让 SCC 规则、精确 policy 和文档声明一致；Chain 临时债务与 TMDB vendor containment 分开治理。
 - [x] Event 扫描只识别 EventManager 实例/别名和事件装饰器；未知 receiver 不再污染动态事实。
-- [ ] CI 分开报告“快照一致”与“语义规则通过”，禁止把前者表述为架构完全正确。
+- [x] CI 分开报告“Event 语义 policy”与“宿主快照一致”，禁止把后者表述为架构完全正确。
 
 **验收**
 
@@ -496,8 +498,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - 复杂度脚本只检查 API、Application、Chain 的公共入口；私有长方法、类/文件规模和圈复杂度不受控。
 - strict mypy 仅 41 个文件，高风险 lifecycle、Scheduler、Agent、Plugin Manager 多数不在 frontier。
 - coverage ratchet 只聚合 Application 和 Domain。
-- Task owner gate 不盘点原生并发原语；Event producer 别名/关键字识别和 consumer 人工 policy
-  尚未纳入统一事实源门禁。
+- Task owner gate 尚未盘点原生并发原语；Event producer/consumer 已纳入统一事实源和人工 policy。
 - Ruff 仅是有限规则集的历史低水位，不代表整体风格/正确性无债务。
 
 **目标与步骤**
@@ -508,7 +509,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [ ] coverage 增加 Chain、Runtime、Agent、Startup 的高风险子包或关键文件组，不用低价值行数冲百分比。
 - [ ] 原生并发门禁按 ARCH-101/106 修正。
 - [x] Event consumer 扫描证明 canonical EventManager receiver，清除同名方法误报。
-- [ ] Event producer 识别和 consumer zero-growth policy 在 S0-L2.6 纳入统一事实源门禁。
+- [x] Event producer 别名/关键字/有限条件识别和 consumer exact policy 纳入统一事实源门禁。
 - [ ] Module Quality Scale 增加 capability -> required rules -> evidence tests 映射，避免“已登记”等同“已验证”。
 - [ ] 修改 CI 或门禁脚本时同时运行 `tests/test_architecture_ci.py` 和对应脚本单元测试。
 

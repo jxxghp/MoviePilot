@@ -9,7 +9,7 @@ import importlib.util
 import json
 import subprocess
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Optional
 
@@ -19,9 +19,9 @@ except ModuleNotFoundError:
     from egress import collect_direct_egress
 
 try:
-    from scripts.architecture.event_consumers import collect_event_consumers
+    from scripts.architecture.event_facts import collect_event_facts
 except ModuleNotFoundError:
-    from event_consumers import collect_event_consumers
+    from event_facts import collect_event_facts
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = PROJECT_ROOT / "app"
@@ -701,17 +701,6 @@ def collect_run_module_diagnostics() -> dict[str, Any]:
     }
 
 
-def _event_reference(node: ast.AST) -> str | None:
-    """从 AST 节点解析 EventType/ChainEventType 的静态成员引用。"""
-    if (
-        isinstance(node, ast.Attribute)
-        and isinstance(node.value, ast.Name)
-        and node.value.id in {"EventType", "ChainEventType"}
-    ):
-        return f"{node.value.id}.{node.attr}"
-    return None
-
-
 def _event_enum_members(enum_name: str) -> tuple[str, ...]:
     """从 schema 源码读取事件枚举成员，避免基线脚本导入宿主运行时。"""
     tree = parse_source(APP_ROOT / "schemas" / "types.py")
@@ -738,120 +727,91 @@ def _event_enum_members(enum_name: str) -> tuple[str, ...]:
     )
 
 
-def _collect_event_locations() -> tuple[
-    list[str],
-    dict[str, list[dict[str, Any]]],
-    dict[str, list[dict[str, Any]]],
-    list[dict[str, Any]],
-    list[dict[str, Any]],
-]:
-    """扫描事件枚举及其生产、消费位置，供语义和诊断视图复用。"""
+def collect_current_event_facts() -> dict[str, list[dict[str, Any]]]:
+    """收集排除插件副本的当前宿主 Event producer/consumer 事实。"""
     event_members = _event_enum_members("EventType")
     chain_event_members = _event_enum_members("ChainEventType")
-    modules = discover_modules()
-
-    producers: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    dynamic_producers: list[dict[str, Any]] = []
-    consumers, dynamic_consumers = collect_event_consumers(
-        modules,
+    return collect_event_facts(
+        discover_modules(),
         {
             "EventType": event_members,
             "ChainEventType": chain_event_members,
         },
     )
-    for module_name, path in modules.items():
-        tree = parse_source(path)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or not isinstance(
-                node.func,
-                ast.Attribute,
-            ):
-                continue
-            location = {"caller": module_name, "line": node.lineno}
-            if node.func.attr in {"send_event", "async_send_event"}:
-                reference = _event_reference(node.args[0]) if node.args else None
-                if reference:
-                    producers[reference].append(location)
-                else:
-                    dynamic_producers.append(location)
 
-    enum_names = [
-        *(f"EventType.{member}" for member in event_members),
-        *(f"ChainEventType.{member}" for member in chain_event_members),
-    ]
-    return (
-        enum_names,
-        producers,
-        consumers,
-        dynamic_producers,
-        dynamic_consumers,
+
+def _line_free_event_fact(fact: dict[str, Any]) -> dict[str, Any]:
+    """移除只用于诊断的源码行号，保留完整稳定事件身份。"""
+    return {key: value for key, value in fact.items() if key != "line"}
+
+
+def collect_event_fact_contract() -> dict[str, Any]:
+    """生成逐调用事实与按 fingerprint 索引的宿主事件契约。"""
+    event_names = sorted([
+        *(
+            f"EventType.{member}"
+            for member in _event_enum_members("EventType")
+        ),
+        *(
+            f"ChainEventType.{member}"
+            for member in _event_enum_members("ChainEventType")
+        ),
+    ])
+    current = collect_current_event_facts()
+    producers = sorted(
+        (_line_free_event_fact(fact) for fact in current["producers"]),
+        key=lambda fact: (fact["caller"], fact["qualname"], fact["fingerprint"]),
     )
-
-
-def collect_event_contracts() -> dict[str, Any]:
-    """收集不受源码行号变化影响的宿主事件语义契约。"""
-    (
-        enum_names,
-        producers,
-        consumers,
-        dynamic_producers,
-        dynamic_consumers,
-    ) = _collect_event_locations()
-    contracts = {
-        name: {
-            "producers": _aggregate_locations(
-                producers.get(name, []),
-                ("caller",),
+    consumers = sorted(
+        (_line_free_event_fact(fact) for fact in current["consumers"]),
+        key=lambda fact: (fact["caller"], fact["qualname"], fact["fingerprint"]),
+    )
+    all_facts = (*producers, *consumers)
+    event_index = {
+        event_name: {
+            "producer_fingerprints": sorted(
+                fact["fingerprint"]
+                for fact in producers
+                if event_name in fact["events"]
             ),
-            "consumers": _aggregate_locations(
-                consumers.get(name, []),
-                ("caller",),
+            "consumer_fingerprints": sorted(
+                fact["fingerprint"]
+                for fact in consumers
+                if event_name in fact["events"]
             ),
         }
-        for name in sorted(enum_names)
+        for event_name in event_names
     }
     return {
-        "event_count": len(contracts),
-        "producer_count": sum(len(items) for items in producers.values()),
-        "consumer_count": sum(len(items) for items in consumers.values()),
-        "events": contracts,
-        "dynamic_producers": _aggregate_locations(dynamic_producers, ("caller",)),
-        "dynamic_consumers": _aggregate_locations(dynamic_consumers, ("caller",)),
+        "event_count": len(event_names),
+        "producer_call_count": len(producers),
+        "static_producer_call_count": sum(
+            not fact["dynamic"] and not fact["invalid"] for fact in producers
+        ),
+        "dynamic_producer_count": sum(fact["dynamic"] for fact in producers),
+        "invalid_producer_count": sum(fact["invalid"] for fact in producers),
+        "producer_event_reference_count": sum(
+            len(fact["events"]) for fact in producers
+        ),
+        "consumer_registration_count": len(consumers),
+        "static_consumer_count": sum(
+            not fact["dynamic"] and not fact["invalid"] for fact in consumers
+        ),
+        "dynamic_consumer_count": sum(fact["dynamic"] for fact in consumers),
+        "invalid_consumer_count": sum(fact["invalid"] for fact in consumers),
+        "consumer_event_reference_count": sum(
+            len(fact["events"]) for fact in consumers
+        ),
+        "fact_count": len(all_facts),
+        "producers": producers,
+        "consumers": consumers,
+        "event_index": event_index,
     }
 
 
-def collect_event_diagnostics() -> dict[str, Any]:
-    """收集事件生产与消费的当前源码位置，仅用于人工诊断。"""
-    (
-        enum_names,
-        producers,
-        consumers,
-        dynamic_producers,
-        dynamic_consumers,
-    ) = _collect_event_locations()
-    return {
-        "events": {
-            name: {
-                "producers": sorted(
-                    producers.get(name, []),
-                    key=lambda item: (item["caller"], item["line"]),
-                ),
-                "consumers": sorted(
-                    consumers.get(name, []),
-                    key=lambda item: (item["caller"], item["line"]),
-                ),
-            }
-            for name in sorted(enum_names)
-        },
-        "dynamic_producers": sorted(
-            dynamic_producers,
-            key=lambda item: (item["caller"], item["line"]),
-        ),
-        "dynamic_consumers": sorted(
-            dynamic_consumers,
-            key=lambda item: (item["caller"], item["line"]),
-        ),
-    }
+def collect_event_fact_diagnostics() -> dict[str, list[dict[str, Any]]]:
+    """返回带源码行号的逐调用事件事实，仅用于人工诊断。"""
+    return collect_current_event_facts()
 
 
 def _sdk_all_names(tree: ast.Module, path: Path) -> tuple[str, ...]:
@@ -1021,10 +981,15 @@ def collect_compat_manifest() -> dict[str, Any]:
 def collect_runtime_baseline() -> dict[str, Any]:
     """生成模块调度、SDK 和兼容层公开契约基线。"""
     return {
-        "schema_version": 2,
+        "schema_version": 3,
+        "scope": {
+            "repository": "MoviePilot",
+            "roots": ["app"],
+            "excluded": ["app/plugins"],
+        },
         "run_module": collect_run_module_contracts(),
         "module_method_specs": collect_module_method_specs(),
-        "events": collect_event_contracts(),
+        "event_facts": collect_event_fact_contract(),
         "event_specs": collect_event_specs(),
         "sdk_exports": collect_sdk_exports(),
         "compat_manifest": collect_compat_manifest(),
@@ -1087,7 +1052,7 @@ def collect_runtime_diagnostics() -> dict[str, Any]:
     """生成带当前源码行号的运行契约诊断视图，不写入语义 fixture。"""
     return {
         "run_module": collect_run_module_diagnostics(),
-        "events": collect_event_diagnostics(),
+        "event_facts": collect_event_fact_diagnostics(),
     }
 
 
@@ -1295,10 +1260,8 @@ def _display_path(path: Path) -> Path:
         return path
 
 
-def _migrate_runtime_baseline(value: dict[str, Any]) -> dict[str, Any]:
-    """把包含源码行号的 v1 运行契约转换为稳定语义结构。"""
-    if value.get("schema_version") != 1:
-        return value
+def _migrate_runtime_v1_to_v2(value: dict[str, Any]) -> dict[str, Any]:
+    """把包含源码行号的 v1 运行契约转换为 v2 聚合语义。"""
     run_module = value["run_module"]
     events = value["events"]
     return {
@@ -1347,6 +1310,37 @@ def _migrate_runtime_baseline(value: dict[str, Any]) -> dict[str, Any]:
         "sdk_exports": value["sdk_exports"],
         "compat_manifest": value["compat_manifest"],
     }
+
+
+def _migrate_runtime_v2_to_v3(value: dict[str, Any]) -> dict[str, Any]:
+    """把 v2 聚合事件投影为显式待刷新的 v3 兼容视图。"""
+    return {
+        "schema_version": 3,
+        "scope": {
+            "repository": "MoviePilot",
+            "roots": ["app"],
+            "excluded": ["app/plugins"],
+        },
+        "run_module": value["run_module"],
+        "module_method_specs": value.get("module_method_specs", {}),
+        "event_facts": {
+            "migration_required": True,
+            "legacy_v2_projection": value["events"],
+        },
+        "event_specs": value.get("event_specs", {}),
+        "sdk_exports": value["sdk_exports"],
+        "compat_manifest": value["compat_manifest"],
+    }
+
+
+def _migrate_runtime_baseline(value: dict[str, Any]) -> dict[str, Any]:
+    """链式迁移旧运行契约，保证检查只报告语义变化而不崩溃。"""
+    migrated = value
+    if migrated.get("schema_version") == 1:
+        migrated = _migrate_runtime_v1_to_v2(migrated)
+    if migrated.get("schema_version") == 2:
+        migrated = _migrate_runtime_v2_to_v3(migrated)
+    return migrated
 
 
 def _migrate_plugin_baseline(value: dict[str, Any]) -> dict[str, Any]:
@@ -1484,18 +1478,20 @@ def _compare_semantic_values(
             )
         return
     if isinstance(expected, list) and isinstance(actual, list):
-        expected_items = {
-            json.dumps(item, ensure_ascii=False, sort_keys=True): item
+        expected_keys = [
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
             for item in expected
-        }
-        actual_items = {
-            json.dumps(item, ensure_ascii=False, sort_keys=True): item
+        ]
+        actual_keys = [
+            json.dumps(item, ensure_ascii=False, sort_keys=True)
             for item in actual
-        }
-        for key in sorted(expected_items.keys() - actual_items.keys()):
-            report["removed"].append({"path": path, "value": expected_items[key]})
-        for key in sorted(actual_items.keys() - expected_items.keys()):
-            report["added"].append({"path": path, "value": actual_items[key]})
+        ]
+        expected_counts = Counter(expected_keys)
+        actual_counts = Counter(actual_keys)
+        for key in sorted((expected_counts - actual_counts).elements()):
+            report["removed"].append({"path": path, "value": json.loads(key)})
+        for key in sorted((actual_counts - expected_counts).elements()):
+            report["added"].append({"path": path, "value": json.loads(key)})
         return
     if expected != actual:
         report["changed"].append(

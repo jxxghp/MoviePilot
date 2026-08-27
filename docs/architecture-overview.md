@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *Last Updated: 2026-08-24*
+> *Last Updated: 2026-08-27*
 
 ---
 
@@ -369,6 +369,13 @@ collector 只接受 canonical `eventmanager`、`EventManager()` 及其有限别�
 `register`/`add_event_listener`；当前宿主有 16 个静态注册点，另保留 1 个由工作流配置驱动的
 真实动态注册。`app/plugins/**` 插件副本不进入宿主事实。
 
+生产者与消费者共用 `scripts/architecture/event_facts.py` 这一份逐调用事实源。当前宿主有 99 个
+生产调用，其中 98 个静态解析为 100 个事件引用，只有 `Command.send_plugin_event` 的插件事件类型
+保持动态；17 个消费注册中 16 个静态、1 个动态。生成的
+`runtime-contract-baseline.json` 保存 line-free 事实、数量和枚举索引；人工维护的
+`runtime-contract-policy.json` 只批准 consumer 的精确 fingerprint、owner 和理由，任何新增、替换、
+重复或陈旧项都会失败，`--write-host` 不会改写该 policy。
+
 ```python
 from app.sdk.events import snapshot_event_data
 
@@ -683,6 +690,9 @@ flowchart LR
   stream/vendor/diagnostic/control-plane 事实是精确 containment。每条初始边的指纹由测试独立冻结，
   bindings/uses 变化、分类互换、通配导入和初始边增长都会失败；债务删除时同步删除冻结项以禁止恢复，
   `--write-host` 不会改写人工 policy 或冻结上界。
+- `event_facts` 是生产者/消费者唯一收集源；运行快照记录 99 个生产调用和 17 个消费注册，
+  consumer 的 17 个唯一 fingerprint 另由只读人工 policy 精确准入。CI 将语义 policy 与生成快照
+  分成独立步骤，前者不能通过刷新后者绕过。
 - 任何所有权迁移必须同步更新：canonical 导入、`app/runtime/compat/manifest.py`、
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。
@@ -695,17 +705,18 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 835 |
-| 内部导入边 | 6,810 |
+| 内部导入边 | 6,817 |
 | 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
 | Direct egress | 66（12 条待迁移债务，54 条精确 containment） |
 | Module Contract V2 spec | 215（其中 214 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
+| Event producer / consumer | 99（98 静态、1 动态）/ 17（16 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-架构专项验证：`tests/test_architecture_dependencies.py` 与
-`tests/test_architecture_contract_baseline.py` 共同提供语义断言和快照比较；
-`scripts/architecture/baseline.py --check-host` 只验证快照一致，不能替代依赖合理性审查。
+架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
+语义门禁，`Check host architecture snapshot` 再执行快照测试及一次
+`scripts/architecture/baseline.py --check-host`。快照一致只说明事实未漂移，不能替代边界合理性审查。
 
 本总览与本轮架构治理的关系如下：
 

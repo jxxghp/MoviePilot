@@ -569,15 +569,24 @@ removed in the same reviewed change so that it cannot return.
 | `compat -> canonical implementation at module import time` | Forbidden |
 | Any import that creates a module-level cycle | Forbidden; the complete host graph must match the exact reviewed SCC policy, and temporary debt must have a removal owner |
 
-Event consumer facts require statically proven ownership. A `register` or
-`add_event_listener` method name alone is not evidence: the receiver must resolve
-to the canonical `app.runtime.events.eventmanager`, an `EventManager` instance,
-or a finite alias of either. Unknown receivers are ignored. A proven manager with
-an event value that cannot be resolved is recorded as a dynamic consumer; the
-current host permits only the configuration-driven workflow registration. The
+Event producer and consumer facts share `scripts/architecture/event_facts.py` as
+their only collector. A send/register method name alone is not evidence: the
+receiver must resolve to the canonical `app.runtime.events.eventmanager`, an
+`EventManager` instance, or a proven injected Event publisher/manager port.
+Unknown same-name receivers are ignored. Positional and keyword event arguments,
+finite aliases and conditional enum choices must be resolved; only a proven
+receiver whose event value remains unknowable may produce a dynamic fact. The
 collector respects lexical shadowing and rebinds, distinguishes decorator
 application from obtaining a decorator factory, and never scans `app/plugins/**`
 as host code.
+
+The generated runtime baseline preserves every line-free call fact and its
+multiplicity. Consumer admission is separate and non-generated: every current
+consumer fingerprint, owner, classification and concrete reason must exactly
+match `runtime-contract-policy.json`. New, changed, duplicate, invalid and stale
+consumer identities fail independently, and `--write-host` never modifies the
+policy. The current host permits one dynamic consumer only: the configuration-
+driven workflow registration.
 
 ## Key File Locations
 

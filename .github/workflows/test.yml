@@ -41,13 +41,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      - name: Check host architecture contracts
+      - name: Check event semantic policy
         run: |
           uv run --locked --no-sync pytest \
             tests/test_architecture_dependencies.py \
             tests/test_architecture_adapter_imports.py \
             tests/test_architecture_egress.py \
-            tests/test_architecture_event_consumers.py \
+            tests/test_architecture_event_facts.py \
+            tests/test_architecture_event_policy.py -q
+          uv run --locked --no-sync python \
+            scripts/architecture/event_policy.py
+
+      - name: Check host architecture snapshot
+        run: |
+          uv run --locked --no-sync pytest \
             tests/test_architecture_contract_baseline.py \
             tests/test_architecture_baseline_cli.py -q
           uv run --locked --no-sync python \

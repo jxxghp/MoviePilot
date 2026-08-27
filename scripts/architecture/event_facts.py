@@ -1,7 +1,9 @@
-"""静态收集可证明的宿主 EventManager consumer。"""
+"""静态收集可证明的宿主 EventManager producer 与 consumer 事实。"""
 
 import ast
-from collections import defaultdict
+import hashlib
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypeAlias
@@ -9,6 +11,7 @@ from typing import Any, Literal, TypeAlias
 _DEFAULT_IDENTITY = "<default>"
 _DYNAMIC_IDENTITY = "<dynamic>"
 _EVENT_MANAGER_METHODS = {"add_event_listener", "register"}
+_PRODUCER_METHODS = {"async_send_event", "send_event"}
 _COMPREHENSION_SCOPES = (
     ast.ListComp,
     ast.SetComp,
@@ -33,6 +36,8 @@ class _Symbol:
         "manager_class",
         "manager_factory",
         "manager_instance",
+        "publisher_instance",
+        "injected_owner",
         "type_checking",
     ]
     value: str = ""
@@ -45,6 +50,20 @@ class _EventSelection:
     events: tuple[str, ...]
     kind: Literal["member", "enum", "list"]
     dynamic: bool = False
+    invalid: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _BoundEventMethod:
+    """记录已证明 receiver 的 EventManager 或 EventPublisher 绑定方法。"""
+
+    method: Literal[
+        "add_event_listener",
+        "register",
+        "send_event",
+        "async_send_event",
+    ]
+    receiver_kind: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +72,7 @@ class _DecoratorFactory:
 
     selection: _EventSelection
     priority: str
+    receiver_kind: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,9 +83,12 @@ class _Registration:
     selection: _EventSelection
     handler: str
     priority: str
+    receiver_kind: str
 
 
-_ScopeValue: TypeAlias = _Symbol | _EventSelection | _DecoratorFactory | None
+_ScopeValue: TypeAlias = (
+    _Symbol | _EventSelection | _DecoratorFactory | _BoundEventMethod | None
+)
 
 
 def _expression_name(node: ast.AST | None) -> str:
@@ -98,13 +121,45 @@ def _priority_identity(node: ast.AST | None) -> str:
     return _DYNAMIC_IDENTITY
 
 
-def _location_sort_key(item: dict[str, Any]) -> tuple[str, int, str]:
-    """返回 consumer location 的稳定排序键。"""
+def fingerprint_event_fact(fact: Mapping[str, object]) -> str:
+    """计算排除诊断行号与已有摘要后的字段敏感 SHA256。"""
+    payload = {
+        key: value
+        for key, value in fact.items()
+        if key not in {"fingerprint", "line"}
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _fact_sort_key(item: dict[str, Any]) -> tuple[str, str, int, str]:
+    """返回逐调用 Event fact 的确定排序键。"""
     return (
         str(item["caller"]),
+        str(item["qualname"]),
         int(item["line"]),
-        str(item["identity"]),
+        str(item["fingerprint"]),
     )
+
+
+def _annotation_names(node: ast.AST | None) -> set[str]:
+    """提取类型注解中的有限点分名称。"""
+    if node is None:
+        return set()
+    if isinstance(node, ast.Name):
+        return {node.id}
+    if isinstance(node, ast.Attribute):
+        return {_expression_name(node)}
+    return {
+        name
+        for child in ast.iter_child_nodes(node)
+        for name in _annotation_names(child)
+    }
 
 
 def _bound_names(target: ast.AST) -> set[str]:
@@ -236,8 +291,221 @@ def _function_local_names(
     return local_names - global_names - nonlocal_names
 
 
-class _EventConsumerCollector(ast.NodeVisitor):
-    """以有限 lexical provenance 收集单个宿主模块的事件消费者。"""
+def _event_port_symbol(
+    annotation: ast.AST | None,
+    canonical_aliases: Mapping[str, str] | None = None,
+) -> _Symbol | None:
+    """把明确的 EventPublisher/EventManager 注解转换为 receiver provenance。"""
+    annotation_names = _annotation_names(annotation)
+    leaf_names = {name.rsplit(".", 1)[-1] for name in annotation_names}
+    if any(name.endswith("EventPublisher") for name in leaf_names):
+        return _Symbol("publisher_instance", "injected_event_publisher")
+    if any(name.endswith("EventManagerPort") for name in leaf_names):
+        return _Symbol("manager_instance", "injected_event_manager")
+    for name in annotation_names:
+        head, *tail = name.split(".")
+        canonical = ".".join(
+            ((canonical_aliases or {}).get(head, head), *tail)
+        )
+        if canonical == "app.runtime.events.EventManager":
+            return _Symbol("manager_instance", "injected_event_manager")
+    return None
+
+
+def _function_parameter_symbols(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+    canonical_aliases: Mapping[str, str] | None = None,
+) -> dict[str, _Symbol]:
+    """收集函数参数上明确声明的 Event 发布端口。"""
+    arguments = (
+        *node.args.posonlyargs,
+        *node.args.args,
+        *node.args.kwonlyargs,
+    )
+    return {
+        argument.arg: symbol
+        for argument in arguments
+        if (
+            symbol := _event_port_symbol(
+                argument.annotation,
+                canonical_aliases,
+            )
+        ) is not None
+    }
+
+
+_InjectedFieldKey: TypeAlias = tuple[str, str]
+
+
+def _module_import_aliases(tree: ast.Module) -> dict[str, str]:
+    """收集解析类继承关系所需的模块级 import 别名。"""
+    aliases: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for item in node.names:
+                bound = item.asname or item.name.split(".", 1)[0]
+                aliases[bound] = item.name if item.asname else bound
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            for item in node.names:
+                if item.name != "*":
+                    aliases[item.asname or item.name] = f"{node.module}.{item.name}"
+    return aliases
+
+
+def _iter_classes(
+    statements: list[ast.stmt],
+    prefix: tuple[str, ...] = (),
+) -> list[tuple[str, ast.ClassDef]]:
+    """按 lexical qualname 返回语句中的类定义，不进入函数 scope。"""
+    classes: list[tuple[str, ast.ClassDef]] = []
+    for statement in statements:
+        if not isinstance(statement, ast.ClassDef):
+            continue
+        qualname = ".".join((*prefix, statement.name))
+        classes.append((qualname, statement))
+        classes.extend(_iter_classes(statement.body, (*prefix, statement.name)))
+    return classes
+
+
+def _canonical_class_name(
+    node: ast.expr,
+    *,
+    module_name: str,
+    aliases: dict[str, str],
+) -> str:
+    """把有限 Name/Attribute 基类表达式还原成 canonical 类名。"""
+    name = _expression_name(node)
+    if not name:
+        return ""
+    head, *tail = name.split(".")
+    if head in aliases:
+        return ".".join((aliases[head], *tail))
+    return f"{module_name}.{name}"
+
+
+def _discover_injected_event_fields(
+    trees: dict[str, ast.Module],
+) -> dict[_InjectedFieldKey, dict[str, _Symbol]]:
+    """按 owning class 发现构造注入字段，并沿已知继承关系传播。"""
+    classes = {
+        f"{module_name}.{qualname}": (module_name, qualname, node)
+        for module_name, tree in trees.items()
+        for qualname, node in _iter_classes(tree.body)
+    }
+    aliases = {
+        module_name: _module_import_aliases(tree)
+        for module_name, tree in trees.items()
+    }
+    fields: dict[str, dict[str, _Symbol]] = {
+        canonical: {} for canonical in classes
+    }
+    bases_by_class: dict[str, set[str]] = {
+        canonical: set() for canonical in classes
+    }
+    descendants_by_class: dict[str, set[str]] = {
+        canonical: set() for canonical in classes
+    }
+    for canonical, (module_name, _qualname, class_node) in classes.items():
+        for base in class_node.bases:
+            base_name = _canonical_class_name(
+                base,
+                module_name=module_name,
+                aliases=aliases[module_name],
+            )
+            if base_name in classes:
+                bases_by_class[canonical].add(base_name)
+                descendants_by_class[base_name].add(canonical)
+
+    for canonical, (module_name, qualname, class_node) in classes.items():
+        class_fields = fields[canonical]
+        for constructor in (
+            node
+            for node in class_node.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "__init__"
+        ):
+            parameters = _function_parameter_symbols(
+                constructor,
+                aliases[module_name],
+            )
+            for candidate in constructor.body:
+                candidates = ast.walk(candidate) if not isinstance(
+                    candidate,
+                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+                ) else ()
+                for assignment in candidates:
+                    if isinstance(assignment, ast.Assign):
+                        pairs = (
+                            (target, assignment.value)
+                            for target in assignment.targets
+                        )
+                    elif isinstance(assignment, ast.AnnAssign) and assignment.value:
+                        pairs = ((assignment.target, assignment.value),)
+                    else:
+                        continue
+                    for target, value in pairs:
+                        if not (
+                            isinstance(target, ast.Attribute)
+                            and isinstance(target.value, ast.Name)
+                            and target.value.id == "self"
+                        ):
+                            continue
+                        symbol = (
+                            parameters.get(value.id)
+                            if isinstance(value, ast.Name)
+                            else None
+                        )
+                        if (
+                            symbol is None
+                            and module_name == "app.chain"
+                            and qualname == "ChainBase"
+                            and target.attr == "eventmanager"
+                            and isinstance(value, ast.Attribute)
+                            and value.attr == "event_manager"
+                        ):
+                            symbol = _Symbol(
+                                "manager_instance",
+                                "injected_event_manager",
+                            )
+                        if symbol is not None:
+                            class_fields[target.attr] = symbol
+
+    direct_fields = {
+        canonical: dict(class_fields)
+        for canonical, class_fields in fields.items()
+        if class_fields
+    }
+    for owner, owner_fields in direct_fields.items():
+        def reachable(
+            starts: set[str],
+            relations: dict[str, set[str]],
+        ) -> set[str]:
+            """返回给定继承方向上的传递闭包。"""
+            pending = list(starts)
+            reached: set[str] = set()
+            while pending:
+                current = pending.pop()
+                if current in reached:
+                    continue
+                reached.add(current)
+                pending.extend(relations[current])
+            return reached
+
+        descendants = reachable({owner}, descendants_by_class)
+        targets = set(descendants)
+        targets.update(reachable(descendants, bases_by_class))
+        for target in targets:
+            fields[target].update(owner_fields)
+
+    return {
+        (module_name, qualname): fields[canonical]
+        for canonical, (module_name, qualname, _node) in classes.items()
+        if fields[canonical]
+    }
+
+
+class _EventFactCollector(ast.NodeVisitor):
+    """以有限 lexical provenance 收集单个宿主模块的 Event 事实。"""
 
     def __init__(
         self,
@@ -246,18 +514,21 @@ class _EventConsumerCollector(ast.NodeVisitor):
         *,
         collect_facts: bool,
         module_final_scope: dict[str, _ScopeValue] | None = None,
+        injected_fields: dict[_InjectedFieldKey, dict[str, _Symbol]] | None = None,
     ) -> None:
-        """初始化模块、事件枚举、收集模式和最终模块绑定。"""
+        """初始化模块、事件枚举、收集模式及已证明的注入字段。"""
         self._module_name = module_name
         self._event_members = event_members
         self._collect_facts = collect_facts
         self._module_final_scope = module_final_scope or {}
+        self._injected_fields = injected_fields or {}
         self._scopes: list[dict[str, _ScopeValue]] = [{}]
         self._scope_kinds = ["module"]
         self._function_final_scopes: list[dict[str, _ScopeValue]] = []
         self._qualnames: list[str] = []
-        self.static: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        self.dynamic: list[dict[str, Any]] = []
+        self._class_qualnames: list[str] = []
+        self.producers: list[dict[str, Any]] = []
+        self.consumers: list[dict[str, Any]] = []
 
     def module_scope(self) -> dict[str, _ScopeValue]:
         """返回按模块执行顺序收敛后的符号状态。"""
@@ -304,22 +575,70 @@ class _EventConsumerCollector(ast.NodeVisitor):
         scope_kinds: list[str],
     ) -> dict[str, _ScopeValue]:
         """无事实副作用地计算一组语句执行后的最内层 scope。"""
-        discovery = _EventConsumerCollector(
+        discovery = _EventFactCollector(
             self._module_name,
             self._event_members,
             collect_facts=False,
             module_final_scope=self._module_final_scope,
+            injected_fields=self._injected_fields,
         )
         discovery._scopes = [dict(scope) for scope in scopes]
         discovery._scope_kinds = list(scope_kinds)
+        discovery._qualnames = list(self._qualnames)
+        discovery._class_qualnames = list(self._class_qualnames)
         for statement in statements:
             discovery.visit(statement)
         return dict(discovery._scopes[-1])
 
+    def _function_initial_scope(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+    ) -> dict[str, _ScopeValue]:
+        """构造函数调用期的局部符号，并保留明确的参数端口 provenance。"""
+        scope: dict[str, _ScopeValue] = {
+            name: None for name in _function_local_names(node)
+        }
+        canonical_aliases = {
+            name: "app.runtime.events.EventManager"
+            for name, value in self._module_final_scope.items()
+            if isinstance(value, _Symbol) and value.kind == "manager_class"
+        }
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "__init__"
+            and self._class_qualnames
+        ):
+            scope.update(_function_parameter_symbols(node, canonical_aliases))
+        positional = (*node.args.posonlyargs, *node.args.args)
+        if (
+            self._module_name == "app.runtime.events"
+            and self._qualnames == ["EventManager"]
+            and positional
+            and positional[0].arg == "self"
+        ):
+            scope["self"] = _Symbol("publisher_instance", "event_manager_self")
+        elif (
+            self._class_qualnames
+            and positional
+            and not any(
+                _expression_name(decorator) in {"classmethod", "staticmethod"}
+                for decorator in getattr(node, "decorator_list", ())
+            )
+            and (
+                self._module_name,
+                self._class_qualnames[-1],
+            ) in self._injected_fields
+        ):
+            scope[positional[0].arg] = _Symbol(
+                "injected_owner",
+                self._class_qualnames[-1],
+            )
+        return scope
+
     def _symbol_for_canonical(self, canonical: str) -> _ScopeValue:
         """把有限 canonical 路径转换为 collector symbol。"""
         if canonical == "app.runtime.events.eventmanager":
-            return _Symbol("manager_instance")
+            return _Symbol("manager_instance", "canonical_singleton")
         if canonical == "app.runtime.events.EventManager":
             return _Symbol("manager_class")
         if canonical == "typing.TYPE_CHECKING":
@@ -356,11 +675,29 @@ class _EventConsumerCollector(ast.NodeVisitor):
             return self._lookup(node.id)
         if isinstance(node, ast.Attribute):
             parent = self._resolve(node.value)
+            if isinstance(parent, _Symbol) and parent.kind == "injected_owner":
+                fields = self._injected_fields.get(
+                    (self._module_name, parent.value),
+                    {},
+                )
+                if node.attr in fields:
+                    return fields[node.attr]
             if isinstance(parent, _Symbol) and parent.kind == "module":
                 return self._symbol_for_canonical(f"{parent.value}.{node.attr}")
             if isinstance(parent, _Symbol) and parent.kind == "manager_class":
                 if node.attr == "get_existing_instance":
                     return _Symbol("manager_factory")
+            if isinstance(parent, _Symbol) and parent.kind in {
+                "manager_instance",
+                "publisher_instance",
+            }:
+                methods = (
+                    _PRODUCER_METHODS | _EVENT_MANAGER_METHODS
+                    if parent.kind == "manager_instance"
+                    else _PRODUCER_METHODS
+                )
+                if node.attr in methods:
+                    return _BoundEventMethod(node.attr, parent.value)
             if isinstance(parent, _EventSelection) and parent.kind == "enum":
                 enum_name = parent.events[0].split(".", 1)[0] if parent.events else ""
                 if node.attr in self._event_members.get(enum_name, ()):
@@ -368,6 +705,7 @@ class _EventConsumerCollector(ast.NodeVisitor):
                         events=(f"{enum_name}.{node.attr}",),
                         kind="member",
                     )
+                return _EventSelection((), "member", invalid=True)
             return None
         if isinstance(node, ast.List):
             return self._resolve_event_selection(
@@ -375,18 +713,30 @@ class _EventConsumerCollector(ast.NodeVisitor):
                 allow_enum=True,
                 allow_list=True,
             )
+        if isinstance(node, ast.IfExp):
+            return self._resolve_event_selection(
+                node,
+                allow_enum=False,
+                allow_list=False,
+            )
         if isinstance(node, ast.Call):
             target = self._resolve(node.func)
             if isinstance(target, _Symbol) and target.kind in {
                 "manager_class",
                 "manager_factory",
             }:
-                return _Symbol("manager_instance")
+                receiver_kind = (
+                    "constructed_manager"
+                    if target.kind == "manager_class"
+                    else "existing_manager"
+                )
+                return _Symbol("manager_instance", receiver_kind)
             registration = self._registration(node)
             if registration and registration.method == "register":
                 return _DecoratorFactory(
                     selection=registration.selection,
                     priority=registration.priority,
+                    receiver_kind=registration.receiver_kind,
                 )
         return None
 
@@ -413,6 +763,7 @@ class _EventConsumerCollector(ast.NodeVisitor):
                 events=tuple(sorted({event for item in selections for event in item.events})),
                 kind="list",
                 dynamic=any(item.dynamic for item in selections),
+                invalid=any(item.invalid for item in selections),
             )
         if isinstance(node, ast.IfExp):
             branches = (
@@ -431,6 +782,7 @@ class _EventConsumerCollector(ast.NodeVisitor):
                 events=tuple(sorted({event for item in branches for event in item.events})),
                 kind="list" if allow_list else "member",
                 dynamic=any(item.dynamic for item in branches),
+                invalid=any(item.invalid for item in branches),
             )
         resolved = self._resolve(node)
         if isinstance(resolved, _EventSelection):
@@ -468,14 +820,13 @@ class _EventConsumerCollector(ast.NodeVisitor):
 
     def _registration(self, node: ast.Call) -> _Registration | None:
         """仅解析 receiver 已证明为 canonical EventManager 实例的注册。"""
-        if not isinstance(node.func, ast.Attribute):
+        bound_method = self._resolve(node.func)
+        if not (
+            isinstance(bound_method, _BoundEventMethod)
+            and bound_method.method in _EVENT_MANAGER_METHODS
+        ):
             return None
-        method = node.func.attr
-        if method not in _EVENT_MANAGER_METHODS:
-            return None
-        receiver = self._resolve(node.func.value)
-        if not isinstance(receiver, _Symbol) or receiver.kind != "manager_instance":
-            return None
+        method = bound_method.method
         if method == "register":
             arguments = self._bind_call_arguments(
                 node,
@@ -504,6 +855,34 @@ class _EventConsumerCollector(ast.NodeVisitor):
             selection=selection,
             handler=_handler_identity(handler_node),
             priority=_priority_identity(arguments.get("priority")),
+            receiver_kind=bound_method.receiver_kind,
+        )
+
+    def _producer_call(
+        self,
+        node: ast.Call,
+    ) -> tuple[_BoundEventMethod, _EventSelection] | None:
+        """解析 receiver 与调用签名均可证明的 Event producer。"""
+        bound_method = self._resolve(node.func)
+        if not (
+            isinstance(bound_method, _BoundEventMethod)
+            and bound_method.method in _PRODUCER_METHODS
+        ):
+            return None
+        arguments = self._bind_call_arguments(
+            node,
+            ("etype", "data", "priority"),
+            frozenset({"etype"}),
+        )
+        if arguments is None:
+            return None
+        return (
+            bound_method,
+            self._resolve_event_selection(
+                arguments["etype"],
+                allow_enum=False,
+                allow_list=False,
+            ),
         )
 
     def _decorator_factory_application(
@@ -523,39 +902,84 @@ class _EventConsumerCollector(ast.NodeVisitor):
             return None
         return factory, arguments["f"]
 
-    def _record(
+    def _base_fact(
         self,
         node: ast.AST,
         selection: _EventSelection,
         *,
+        method: str,
+        receiver_kind: str,
+    ) -> dict[str, Any]:
+        """构造带 line-free fingerprint 的逐调用基础事实。"""
+        fact = {
+            "caller": self._module_name,
+            "line": node.lineno,
+            "qualname": ".".join(self._qualnames) or "<module>",
+            "method": method,
+            "receiver_kind": receiver_kind,
+            "events": list(selection.events),
+            "dynamic": selection.dynamic,
+            "invalid": selection.invalid,
+        }
+        fact["fingerprint"] = fingerprint_event_fact(fact)
+        return fact
+
+    def _record_consumer(
+        self,
+        node: ast.AST,
+        selection: _EventSelection,
+        *,
+        method: str,
+        receiver_kind: str,
         handler: str,
         priority: str,
         registration_kind: Literal["decorator", "listener"],
     ) -> None:
-        """写入静态事件位置，并为未知余项写入一条 dynamic 位置。"""
+        """写入一条 handler、kind 和 priority 完整的 consumer 事实。"""
         if not self._collect_facts:
             return
-        location = {
-            "caller": self._module_name,
-            "line": node.lineno,
+        fact = self._base_fact(
+            node,
+            selection,
+            method=method,
+            receiver_kind=receiver_kind,
+        )
+        fact.update({
             "handler": handler,
             "priority": priority,
             "registration_kind": registration_kind,
-            "identity": f"{registration_kind}|{handler}|{priority}",
-        }
-        for event in selection.events:
-            self.static[event].append(dict(location))
-        if selection.dynamic:
-            self.dynamic.append(dict(location))
+        })
+        fact["fingerprint"] = fingerprint_event_fact(fact)
+        self.consumers.append(fact)
+
+    def _record_producer(
+        self,
+        node: ast.Call,
+        method: _BoundEventMethod,
+        selection: _EventSelection,
+    ) -> None:
+        """写入一条 receiver 已证明的 producer 事实。"""
+        if not self._collect_facts:
+            return
+        self.producers.append(
+            self._base_fact(
+                node,
+                selection,
+                method=method.method,
+                receiver_kind=method.receiver_kind,
+            )
+        )
 
     def _record_decorator(self, decorator: ast.expr, handler: str) -> bool:
         """记录直接或简单赋值别名形式的 register decorator。"""
         factory = self._resolve(decorator)
         if not isinstance(factory, _DecoratorFactory):
             return False
-        self._record(
+        self._record_consumer(
             decorator,
             factory.selection,
+            method="register",
+            receiver_kind=factory.receiver_kind,
             handler=handler,
             priority=factory.priority,
             registration_kind="decorator",
@@ -837,7 +1261,7 @@ class _EventConsumerCollector(ast.NodeVisitor):
         body_scopes = [
             dict(self._module_final_scope),
             *(dict(scope) for scope in self._function_final_scopes),
-            {name: None for name in _function_local_names(node)},
+            self._function_initial_scope(node),
         ]
         body_kinds = [
             "module",
@@ -867,12 +1291,14 @@ class _EventConsumerCollector(ast.NodeVisitor):
         for expression in (*node.bases, *(keyword.value for keyword in node.keywords)):
             self.visit(expression)
         self._qualnames.append(node.name)
+        self._class_qualnames.append(".".join(self._qualnames))
         self._scopes.append({})
         self._scope_kinds.append("class")
         for statement in node.body:
             self.visit(statement)
         self._scope_kinds.pop()
         self._scopes.pop()
+        self._class_qualnames.pop()
         self._qualnames.pop()
         self._set(node.name, None)
 
@@ -890,7 +1316,7 @@ class _EventConsumerCollector(ast.NodeVisitor):
         body_scopes = [
             dict(self._module_final_scope),
             *(dict(scope) for scope in self._function_final_scopes),
-            {name: None for name in _function_local_names(node)},
+            self._function_initial_scope(node),
         ]
         body_kinds = [
             "module",
@@ -911,73 +1337,86 @@ class _EventConsumerCollector(ast.NodeVisitor):
         self._scope_kinds = saved_kinds
 
     def visit_Call(self, node: ast.Call) -> None:
-        """记录直接 listener 调用或立即应用的 register decorator。"""
+        """记录 receiver 与调用签名均可证明的 producer/consumer。"""
+        producer = self._producer_call(node)
+        if producer is not None:
+            method, selection = producer
+            self._record_producer(node, method, selection)
+
         factory_application = self._decorator_factory_application(node)
         if factory_application:
             factory, handler_node = factory_application
-            self._record(
+            self._record_consumer(
                 node,
                 factory.selection,
+                method="register",
+                receiver_kind=factory.receiver_kind,
                 handler=_handler_identity(handler_node),
                 priority=factory.priority,
                 registration_kind="decorator",
             )
         else:
             registration = self._registration(node)
-            if not registration or registration.method != "add_event_listener":
-                self.generic_visit(node)
-                return
-            self._record(
-                node,
-                registration.selection,
-                handler=registration.handler,
-                priority=registration.priority,
-                registration_kind="listener",
-            )
+            if registration and registration.method == "add_event_listener":
+                self._record_consumer(
+                    node,
+                    registration.selection,
+                    method="add_event_listener",
+                    receiver_kind=registration.receiver_kind,
+                    handler=registration.handler,
+                    priority=registration.priority,
+                    registration_kind="listener",
+                )
         self.generic_visit(node)
 
 
-def collect_event_consumers(
+def collect_event_facts(
     modules: dict[str, Path],
     event_members: dict[str, tuple[str, ...]],
-) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
-    收集宿主 EventManager 的静态和动态 consumer 位置
+    收集宿主 EventManager 的逐调用 producer 与 consumer 事实。
 
-    只有可追溯到 ``app.runtime.events.eventmanager`` 或 canonical
-    ``EventManager`` 实例的注册才进入事实；未知 receiver 直接忽略。
+    只有可追溯到 canonical EventManager、其内部 ``self`` 或明确注入事件端口的
+    调用才进入事实。插件模块与未知同名 receiver 始终忽略；每条事实携带排除行号
+    的字段敏感 SHA256，供基线稳定追踪。
 
     :param modules: 宿主模块名到 Python 源码路径的映射
     :param event_members: EventType/ChainEventType 到公开成员名的映射
-    :return: 静态事件位置映射与事件值未知的位置列表
+    :return: ``producers`` 与 ``consumers`` 两组稳定排序的逐调用事实
     """
-    static: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    dynamic: list[dict[str, Any]] = []
-    for module_name, path in sorted(modules.items()):
-        if module_name == "app.plugins" or module_name.startswith("app.plugins."):
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        discovery = _EventConsumerCollector(
+    trees = {
+        module_name: ast.parse(
+            path.read_text(encoding="utf-8-sig"),
+            filename=str(path),
+        )
+        for module_name, path in sorted(modules.items())
+        if module_name != "app.plugins"
+        and not module_name.startswith("app.plugins.")
+    }
+    injected_fields = _discover_injected_event_fields(trees)
+    producers: list[dict[str, Any]] = []
+    consumers: list[dict[str, Any]] = []
+    for module_name, tree in sorted(trees.items()):
+        discovery = _EventFactCollector(
             module_name,
             event_members,
             collect_facts=False,
+            injected_fields=injected_fields,
         )
         discovery.visit(tree)
-        collector = _EventConsumerCollector(
+        collector = _EventFactCollector(
             module_name,
             event_members,
             collect_facts=True,
             module_final_scope=discovery.module_scope(),
+            injected_fields=injected_fields,
         )
         collector.visit(tree)
-        for event, locations in collector.static.items():
-            static[event].extend(locations)
-        dynamic.extend(collector.dynamic)
+        producers.extend(collector.producers)
+        consumers.extend(collector.consumers)
 
-    return (
-        {
-            event: sorted(locations, key=_location_sort_key)
-            for event, locations in sorted(static.items())
-        },
-        sorted(dynamic, key=_location_sort_key),
-    )
+    return {
+        "producers": sorted(producers, key=_fact_sort_key),
+        "consumers": sorted(consumers, key=_fact_sort_key),
+    }
