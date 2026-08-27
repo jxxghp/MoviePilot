@@ -101,7 +101,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S1-L3 Chain/Agent typed data ports | `ACTIVE` | S1-L2 | `ChainDataPorts`/`AgentDataPorts` 的 raw Oper/`Any` factory 全部清零，兼容调用进入 Legacy 层 |
 | S1-L3.1 Workflow typed execution | `DELIVERED` | S1-L2 | `17d8be2af`、`b33b29876`：Chain 直连类型化事务服务且单次执行只取一个 port；canonical Oper 删除旧 writer/无 Session 写方法，旧 ABI 只在 `_legacy/workflow.py` 与 Compat overlay；Unit Tests `33103913838`、Pylint `33103913935` 全绿，Application 覆盖率低水位提升至 `78.79%` |
 | S1-L3.2 Chain registry/DI | `ACTIVE` | S1-L3.1 | 显式类型化 factory，删除 PortProxy 与失效的双重注入，构造器注入真实控制调用 |
-| S1-L3.2.1 Registry hygiene | `VERIFIED` | S1-L3.1 | 删除零消费者 PortProxy/动态转发和 `ChainRuntimeContext.data_ports` 伪注入；Workflow 退出 Chain registry，只保留 Application owner 单一配置入口 |
+| S1-L3.2.1 Registry hygiene | `DELIVERED` | S1-L3.1 | `ac7a20132`：删除零消费者 PortProxy/动态转发和 `ChainRuntimeContext.data_ports` 伪注入；Workflow 退出 Chain registry，只保留 Application owner 单一配置入口；Unit Tests `33120205586`、Pylint `33120205581` 全绿 |
 | S1-L3.3 DownloadFailure/MediaServer | `PLANNED` | S1-L3.2 | 两组窄 DTO/Port/adapter 清零 raw Oper，不跨远端 I/O 持有 Session |
 | S1-L3.4 User | `PLANNED` | S1-L3.3 | 认证、偏好与渠道绑定投影冻结快照，User Chain/Agent 不接收 ORM |
 | S1-L3.5 History | `PLANNED` | S1-L3.4 | Download/Transfer history 统一 typed query/mutation，删除下载历史双事务 fail-open |
