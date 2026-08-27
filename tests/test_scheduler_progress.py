@@ -136,7 +136,13 @@ def test_scheduler_runs_async_job_from_current_event_loop(monkeypatch):
     async def run_task():
         """从已运行的事件循环启动定时服务。"""
         scheduler.start(job_id)
-        await asyncio.sleep(0)
+
+        async def wait_until_finished() -> None:
+            """等待任务及其异步进度句柄全部收敛。"""
+            while scheduler._handles or scheduler._active_job_generations:
+                await asyncio.sleep(0)
+
+        await asyncio.wait_for(wait_until_finished(), timeout=1)
 
     scheduler = _build_scheduler(job_id, task)
     target_loop = asyncio.new_event_loop()

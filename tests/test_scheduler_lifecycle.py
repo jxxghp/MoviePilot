@@ -340,16 +340,15 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
 
     scheduler = _scheduler("callback-handles", job)
     await asyncio.to_thread(scheduler.start, "callback-handles")
-    await asyncio.wait_for(
-        asyncio.gather(update_started.wait(), finish_started.wait()),
-        timeout=1,
-    )
+    await asyncio.wait_for(update_started.wait(), timeout=1)
+    await asyncio.sleep(0)
 
     assert len(scheduler._handles) == 2
+    assert not finish_started.is_set()
 
     await scheduler.stop_async()
 
-    assert cancelled == 2
+    assert cancelled == 1
     assert scheduler._handles == {}
 
 
@@ -385,6 +384,46 @@ async def test_stale_progress_cannot_update_replaced_job(monkeypatch) -> None:
 
     assert updates == []
     assert scheduler._handles == {}
+
+
+@pytest.mark.anyio
+async def test_final_progress_waits_for_pending_update(monkeypatch) -> None:
+    """任务终态必须等待已提交的进度回调，避免 running 快照迟到覆盖。"""
+    update_started = asyncio.Event()
+    allow_update = asyncio.Event()
+    finished = asyncio.Event()
+    writes = []
+
+    class BlockingProgress(_AsyncProgressStub):
+        """把中间进度写停在终态收尾之前。"""
+
+        async def update(self, **_kwargs) -> None:
+            update_started.set()
+            await allow_update.wait()
+            writes.append("update")
+
+        async def end(self, **_kwargs) -> None:
+            writes.append("end")
+            finished.set()
+
+    async def job(progress_callback) -> None:
+        progress_callback(value=100, text="业务处理完成")
+
+    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
+    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", BlockingProgress)
+    scheduler = _scheduler("progress-order", job)
+
+    assert scheduler.start("progress-order") is True
+    await asyncio.wait_for(update_started.wait(), timeout=1)
+    await asyncio.sleep(0)
+
+    assert writes == []
+    assert not finished.is_set()
+
+    allow_update.set()
+    await asyncio.wait_for(finished.wait(), timeout=1)
+
+    assert writes == ["update", "end"]
 
 
 @pytest.mark.anyio

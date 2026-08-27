@@ -71,6 +71,7 @@ class _SchedulerHandle:
     loop: asyncio.AbstractEventLoop
     handle: asyncio.Future[Any] | concurrent.futures.Future[Any]
     completion: asyncio.Future[Any] | concurrent.futures.Future[Any]
+    kind: str
 
 
 # Agent 自主定时任务前缀下沉到 application 门面，此处保留兼容导出。
@@ -250,6 +251,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             loop: asyncio.AbstractEventLoop,
             handle: asyncio.Future[Any] | concurrent.futures.Future[Any],
             completion: asyncio.Future[Any] | concurrent.futures.Future[Any] | None = None,
+            kind: str = "job",
     ) -> bool:
         """登记调度器拥有的句柄；关闭竞态下拒绝并取消新句柄。"""
         if completion is None:
@@ -269,6 +271,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 loop=loop,
                 handle=handle,
                 completion=completion,
+                kind=kind,
             )
         completion.add_done_callback(self._remove_handle)
         return True
@@ -321,6 +324,23 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             return_exceptions=True,
         )
 
+    async def _await_progress_handles(self, job_id: str, generation: int) -> None:
+        """等待同一轮任务已提交的进度更新，保证最终状态最后写入缓存。"""
+        with self._lock:
+            handles = tuple(
+                handle
+                for handle in self._handles.values()
+                if handle.job_id == job_id
+                and handle.generation == generation
+                and handle.kind == "progress"
+            )
+        if not handles:
+            return
+        await asyncio.gather(
+            *(self._wait_handle(handle) for handle in handles),
+            return_exceptions=True,
+        )
+
     @staticmethod
     def _track_cross_thread_completion(
             coro: Any,
@@ -352,6 +372,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             job_id: str,
             generation: int,
             on_unstarted_cancel: Optional[Callable[[], None]] = None,
+            kind: str = "job",
     ) -> bool:
         """向主循环提交协程，并以独立完成信号跟踪真实收尾。"""
         completion: concurrent.futures.Future[Any] = concurrent.futures.Future()
@@ -415,6 +436,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 loop=target_loop,
                 handle=handle,
                 completion=completion,
+                kind=kind,
             )
             handle.add_done_callback(cancel_target_task)
         return registered
@@ -921,6 +943,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         完成定时任务
         """
+        # 业务函数返回前提交的进度回调可能仍在等待 Redis I/O；先收敛它们，
+        # 避免迟到的 running 快照覆盖 success/failed 终态。
+        await self._await_progress_handles(job_id, generation)
         finished_at = self._format_time()
         with self._lock:
             current_job = self._jobs.get(job_id)
@@ -1126,6 +1151,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 _update(),
                 job_id=job_id,
                 generation=job.get("_generation", 0),
+                kind="progress",
             )
 
         return update_progress
@@ -1360,6 +1386,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             job_id: str,
             generation: int = 0,
             on_unstarted_cancel: Optional[Callable[[], None]] = None,
+            kind: str = "job",
     ) -> bool:
         """
         把协程提交到事件循环执行，兼容以下调用环境：
@@ -1390,6 +1417,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                     generation=generation,
                     loop=running_loop,
                     handle=handle,
+                    kind=kind,
                 )
                 if on_unstarted_cancel:
                     handle.add_done_callback(
@@ -1407,6 +1435,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 job_id=job_id,
                 generation=generation,
                 on_unstarted_cancel=on_unstarted_cancel,
+                kind=kind,
             )
         elif self._lifecycle_state in {"stopping", "stopped"}:
             coro.close()
