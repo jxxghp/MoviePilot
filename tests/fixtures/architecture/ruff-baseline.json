@@ -11,9 +11,6 @@
   "app/adapters/external/wechat_crypt.py": {
     "I001": 1
   },
-  "app/adapters/network/browser.py": {
-    "I001": 1
-  },
   "app/adapters/network/http.py": {
     "F841": 2,
     "I001": 1
@@ -358,9 +355,6 @@
     "I001": 1
   },
   "app/application/security/auth.py": {
-    "I001": 1
-  },
-  "app/application/security/cookie.py": {
     "I001": 1
   },
   "app/application/security/passkey.py": {
@@ -1257,9 +1251,6 @@
     "F401": 1
   },
   "tests/test_bluray.py": {
-    "I001": 1
-  },
-  "tests/test_browser_helper.py": {
     "I001": 1
   },
   "tests/test_builtin_skill_boundaries.py": {
