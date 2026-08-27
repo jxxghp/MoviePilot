@@ -99,7 +99,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S1-L1.5 E3 全链收口 | `DELIVERED` | S1-L1.4 | `e9de149db`、`a2e249f20`：崩溃矩阵、3.0.17 升降级、重复回放和插件 ABI 验收完整；旧 fail-open、重复状态与兼容层外旧入口删除；Unit Tests `33092427327`、Pylint `33092427348` 全绿，ARCH-102 债务归零 |
 | S1-L2 Workflow typed query | `DELIVERED` | S0 | `b4f873654`、`a01a35bcb`：Workflow Application Port 不返回 `Any`/ORM，Session 内投影冻结 DTO，正式调用方全部切换；Unit Tests `33098869736`、Pylint `33098869837` 全绿，覆盖率低水位提升至 Application `78.78%` |
 | S1-L3 Chain/Agent typed data ports | `ACTIVE` | S1-L2 | `ChainDataPorts`/`AgentDataPorts` 的 raw Oper/`Any` factory 全部清零，兼容调用进入 Legacy 层 |
-| S1-L3.1 Workflow typed execution | `VERIFIED` | S1-L2 | Chain 直连类型化事务服务且单次执行只取一个 port；canonical Oper 删除旧 writer/无 Session 写方法，旧 ABI 只在 `_legacy/workflow.py` 与 Compat overlay |
+| S1-L3.1 Workflow typed execution | `DELIVERED` | S1-L2 | `17d8be2af`、`b33b29876`：Chain 直连类型化事务服务且单次执行只取一个 port；canonical Oper 删除旧 writer/无 Session 写方法，旧 ABI 只在 `_legacy/workflow.py` 与 Compat overlay；Unit Tests `33103913838`、Pylint `33103913935` 全绿，Application 覆盖率低水位提升至 `78.79%` |
 | S1-L3.2 Chain registry/DI | `PLANNED` | S1-L3.1 | 显式类型化 factory，删除 PortProxy 与失效的双重注入，构造器注入真实控制调用 |
 | S1-L3.3 DownloadFailure/MediaServer | `PLANNED` | S1-L3.2 | 两组窄 DTO/Port/adapter 清零 raw Oper，不跨远端 I/O 持有 Session |
 | S1-L3.4 User | `PLANNED` | S1-L3.3 | 认证、偏好与渠道绑定投影冻结快照，User Chain/Agent 不接收 ORM |
