@@ -348,6 +348,36 @@ def test_bound_online_and_local_candidates_choose_higher_version() -> None:
     assert local_higher.candidate is local
 
 
+def test_explicit_local_candidate_bypasses_bound_online_version_comparison() -> None:
+    """本地开发同步明确指定的候选不受绑定仓库版本号阻断。"""
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?version=v3",
+        package_generation="v3",
+        plugin_version="1.0.0",
+    )
+    selection = select_plugin_candidate(
+        _inventory(
+            MarketRead.present(
+                "market-a",
+                (_online(THIRD_PARTY_SOURCE, version="9.0.0"),),
+            ),
+            local=(local,),
+        ),
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=_identity(
+            TrustedPluginSourceType.THIRD_PARTY,
+            THIRD_PARTY_SOURCE,
+        ),
+        local_candidates=(local,),
+        explicit_source=True,
+    )
+
+    assert selection.status is PluginSelectionStatus.SELECTED
+    assert selection.candidate is local
+
+
 def test_equal_bound_and_local_versions_keep_current_payload_source() -> None:
     """相同版本保持当前载荷来源，避免每次启动在本地与在线之间切换。"""
     local = PluginLocalCandidate(

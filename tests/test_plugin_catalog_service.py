@@ -8,12 +8,18 @@ from packaging.version import Version
 from app.application.plugin.catalog import PluginCatalogService
 
 
-def _plugin(plugin_id: str, version: str, repo_url: str):
+def _plugin(
+        plugin_id: str,
+        version: str,
+        repo_url: str,
+        package_version: str | None = "v3",
+):
     """构造目录合并测试使用的最小插件 DTO。"""
     return SimpleNamespace(
         id=plugin_id,
         plugin_version=version,
         repo_url=repo_url,
+        package_version=package_version,
     )
 
 
@@ -78,19 +84,34 @@ def test_merge_treats_plugin_id_casing_as_one_physical_plugin():
     assert result == [local]
 
 
-def test_merge_by_source_treats_plugin_id_casing_as_one_physical_plugin():
-    """同一仓库跨代际大小写不一致时只保留最高版本候选。"""
+def test_merge_by_source_deduplicates_plugin_id_casing_within_generation():
+    """同一仓库和代际内的 ID 大小写差异不能产生重复候选。"""
     service = _service()
     old = _plugin("DownloadCenter", "3.2.1", "https://market-a")
     new = _plugin("downloadcenter", "3.3.2", "https://market-a")
 
     result = service.merge_by_source(
-        [new],
-        [old],
+        [old, new],
+        [],
         ["https://market-a"],
     )
 
     assert result == [new]
+
+
+def test_merge_by_source_preserves_candidates_across_generations():
+    """跨代际候选必须保留，由来源准入按代际优先级继续决策。"""
+    service = _service()
+    v3 = _plugin("DownloadCenter", "3.2.1", "https://market-a", "v3")
+    v2 = _plugin("downloadcenter", "9.0.0", "https://market-a", "v2")
+
+    result = service.merge_by_source(
+        [v3, v2],
+        [],
+        ["https://market-a"],
+    )
+
+    assert result == [v3, v2]
 
 
 def test_load_maps_market_entries_with_installed_snapshot():
