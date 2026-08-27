@@ -200,7 +200,9 @@ uvx --from pip-audit==2.10.1 pip-audit \
    并启动 4 个独立 pytest 进程；GitHub Actions 使用同一入口的 `--shard N/TOTAL`
    参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。Coverage job
    会在 `v3` 的 PR / push 中串行运行同一全量入口，并检查 Application 与 Domain 的
-   已提交低水位；它不是只在手工触发时运行的建议性报告。
+   已提交低水位；它不是只在手工触发时运行的建议性报告。该 job 总预算为 20 分钟，
+   其中全量测试及报告生成 step 预算为 15 分钟，用于容纳 Ubuntu Runner 的性能波动，
+   不得通过跳过测试文件或覆盖率产物规避超时。
 
 4. **运行架构与静态门禁**：主仓架构检查不依赖独立插件仓；官方插件兼容观察单独运行，
    任何检查命令都不会写入 fixture。

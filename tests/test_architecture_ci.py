@@ -92,6 +92,7 @@ def test_coverage_job_runs_full_suite_and_read_only_ratchet() -> None:
     assert workflow["on"]["push"]["branches"] == ["v3"]
     assert "workflow_dispatch" in workflow["on"]
     assert coverage_job["runs-on"] == "ubuntu-latest"
+    assert coverage_job["timeout-minutes"] == 20
     assert "if" not in coverage_job
 
     setup_step = next(step for step in steps if step.get("name") == "Set up uv")
@@ -101,6 +102,7 @@ def test_coverage_job_runs_full_suite_and_read_only_ratchet() -> None:
     generate_step = next(
         step for step in steps if step.get("name") == "Generate coverage reports"
     )
+    assert generate_step["timeout-minutes"] == 15
     upload_step = next(
         step for step in steps if step.get("name") == "Upload coverage report"
     )
