@@ -6,7 +6,7 @@ from typing import Any, Generic, Optional, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.common import JsonData
-from app.schemas.media import OptionalMediaIdentityMixin, normalize_media_source
+from app.schemas.media import normalize_media_source
 from app.schemas.types import MediaSource, MediaType
 
 T = TypeVar("T")
@@ -36,14 +36,18 @@ class QuerySortDirection(str, Enum):
 
 
 class QuerySort(_QueryInput):
-    """声明公开查询的稳定排序字段与方向。"""
+    """声明公开查询的稳定排序字段与方向。
+
+    日期排序将空日期置于升序开头、降序末尾，并以同方向 ID 打破日期并列；ID
+    本身唯一，因此按 ID 排序不依赖数据库的隐式行顺序。
+    """
 
     field: QuerySortField = QuerySortField.DATE
     direction: QuerySortDirection = QuerySortDirection.DESC
 
 
 class QueryPageRequest(_QueryInput):
-    """限制插件单次读取规模，并为跨页扫描提供稳定顺序。"""
+    """限制单次读取规模，并通过显式排序为跨页扫描提供稳定顺序。"""
 
     page: int = Field(default=1, ge=1)
     count: int = Field(
@@ -72,14 +76,24 @@ class QueryPage(BaseModel, Generic[T]):  # type: ignore[misc]  # Pydantic import
         return self.page * self.count < self.total
 
 
-class MediaIdentityQuery(
-    OptionalMediaIdentityMixin,
-    _QueryInput,
-):
+class MediaIdentityQuery(_QueryInput):
     """允许省略身份，但显式筛选时要求来源与原生 ID 成对有效。"""
 
     media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    def _validate_media_identity(self) -> "MediaIdentityQuery":
+        """规范化 ID，并拒绝显式半对、空白或零值身份。"""
+        source_provided = "media_source" in self.model_fields_set
+        id_provided = "media_id" in self.model_fields_set
+        normalized_id = str(self.media_id).strip() if self.media_id is not None else None
+        if source_provided != id_provided or bool(self.media_source) != bool(normalized_id):
+            raise ValueError("media_source 和 media_id 必须同时提供")
+        if normalized_id == "0":
+            raise ValueError("media_id 不能为 0")
+        object.__setattr__(self, "media_id", normalized_id)
+        return self
 
 
 class _QuerySnapshot(BaseModel):  # type: ignore[misc]  # Pydantic imports are skipped by strict mypy
@@ -279,7 +293,11 @@ class TransferHistorySnapshot(_QuerySnapshot):
 
 
 class SubscriptionFilter(MediaIdentityQuery):
-    """订阅查询允许组合的稳定业务字段。"""
+    """当前订阅的组合筛选合同。
+
+    所有非空字段按 AND 组合，tuple 字段内部按 IN 匹配，其余字段均精确匹配；
+    ``music_type=recording`` 同时匹配未标注音乐类型的旧单曲记录。
+    """
 
     ids: tuple[int, ...] = ()
     names: tuple[str, ...] = ()
@@ -292,7 +310,11 @@ class SubscriptionFilter(MediaIdentityQuery):
 
 
 class SubscriptionHistoryFilter(MediaIdentityQuery):
-    """订阅完成历史查询允许组合的稳定业务字段。"""
+    """订阅完成历史的组合筛选合同。
+
+    所有非空字段按 AND 组合，tuple 字段内部按 IN 匹配，其余字段均精确匹配；
+    ``music_type=recording`` 同时匹配未标注音乐类型的旧单曲记录。
+    """
 
     ids: tuple[int, ...] = ()
     names: tuple[str, ...] = ()
@@ -304,7 +326,12 @@ class SubscriptionHistoryFilter(MediaIdentityQuery):
 
 
 class DownloadHistoryFilter(MediaIdentityQuery):
-    """下载历史查询允许组合的稳定业务字段。"""
+    """下载历史的组合筛选合同。
+
+    所有非空字段按 AND 组合，tuple 字段内部按 IN 匹配；除 ``text`` 外的字符串
+    字段均精确匹配。``text`` 对标题和路径执行转义后的字面包含查询，不把 ``%``
+    或 ``_`` 解释为通配符。``music_type=recording`` 同时匹配旧 NULL 记录。
+    """
 
     ids: tuple[int, ...] = ()
     media_types: tuple[MediaType, ...] = ()
@@ -322,7 +349,13 @@ class DownloadHistoryFilter(MediaIdentityQuery):
 
 
 class TransferHistoryFilter(MediaIdentityQuery):
-    """整理历史查询允许组合的稳定业务字段。"""
+    """整理历史的组合筛选合同。
+
+    所有非空字段按 AND 组合，tuple 字段内部按 IN 匹配；除 ``text`` 外的字符串
+    字段均精确匹配。``text`` 对标题、源路径和目标路径执行转义后的字面包含查询。
+    ``require_media_identity`` 只保留来源可解析且原生 ID 非空、非零的记录；
+    ``status=False`` 包含旧 NULL 状态，``music_type=recording`` 包含旧 NULL 类型。
+    """
 
     ids: tuple[int, ...] = ()
     media_types: tuple[MediaType, ...] = ()

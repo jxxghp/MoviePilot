@@ -467,16 +467,10 @@
   "app/db/models/workflow.py": {
     "I001": 1
   },
-  "app/db/oper/downloadhistory.py": {
-    "I001": 1
-  },
   "app/db/oper/message.py": {
     "I001": 1
   },
   "app/db/oper/site.py": {
-    "I001": 1
-  },
-  "app/db/oper/subscribe.py": {
     "I001": 1
   },
   "app/db/oper/systemconfig.py": {
@@ -1127,9 +1121,6 @@
   },
   "tests/test_agent_lazy_runtime_boundary.py": {
     "F401": 1
-  },
-  "tests/test_agent_lifecycle.py": {
-    "I001": 1
   },
   "tests/test_agent_llm_capability.py": {
     "I001": 1

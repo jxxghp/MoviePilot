@@ -4,18 +4,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.agent.orchestrator as agent_module
-from app.application.messaging.agent import (
-    create_web_agent_background_task,
-    shutdown_web_agent_background_tasks,
-)
+from app.agent.memory import MemoryManager
 from app.agent.orchestrator import (
     AGENT_SESSION_QUEUE_MAX_SIZE,
     AgentManager,
     AgentManagerQueueFullError,
     AgentManagerUnavailableError,
 )
-from app.agent.memory import MemoryManager
 from app.agent.tools.base import reopen_blocking_executors
+from app.application.messaging.agent import (
+    create_web_agent_background_task,
+    shutdown_web_agent_background_tasks,
+)
+from app.application.query import get_configured_data_query_service
 from app.startup.initializers import agent as agent_initializer
 from app.startup.initializers import modules as modules_initializer
 
@@ -202,6 +203,9 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
         assert runtime.workflow.system_config() is (
             modules_initializer.get_configured_system_config()
         )
+        query_page = get_configured_data_query_service().list_subscriptions({"ids": [-1]})
+        assert query_page.items == []
+        assert query_page.total == 0
     finally:
         await modules_initializer.stop_database_worker()
 

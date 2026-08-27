@@ -118,7 +118,7 @@ class _DataQueryBackend(Protocol):
 
 def _service() -> _DataQueryBackend:
     """获取启动阶段登记的查询服务，避免把应用服务暴露为 SDK 合同。"""
-    from app.application.data_query import (
+    from app.application.query import (
         get_configured_data_query_service,
     )
 

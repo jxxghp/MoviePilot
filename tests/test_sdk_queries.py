@@ -61,9 +61,9 @@ class _RecordingExecutor:
 @pytest.fixture
 def query_sdk(db, monkeypatch):
     """装配真实数据查询适配器，并把 SDK 绑定到本用例的 SQLite 服务。"""
-    from app.application import data_query as data_query_module
-    from app.application.data_query import DataQueryService
-    from app.db.adapters.data_query import SqlAlchemyDataQueryAdapter
+    from app.application import query as data_query_module
+    from app.application.query import DataQueryService
+    from app.db.adapters.query import SqlAlchemyDataQueryAdapter
     from app.db.session import SessionFactory
     from app.sdk import queries as sdk
 
@@ -180,7 +180,7 @@ def _transfer_history(
     episodes: str | None = "E01",
     download_hash: str | None = "hash-1",
     episode_group: str | None = None,
-    status: bool = True,
+    status: bool | None = True,
     date: str = "2026-08-27 10:00:00",
     mtype: str = MediaType.TV.value,
 ) -> TransferHistoryModel:
@@ -628,6 +628,67 @@ def test_snapshots_normalize_legacy_identity_and_transfer_status():
     assert snapshot.media_source is None
     assert snapshot.media_id is None
     assert snapshot.status is False
+
+
+def test_transfer_failure_filter_includes_legacy_null_status(db, query_sdk):
+    """失败筛选与快照语义一致，包含状态尚未回填的旧整理记录。"""
+    sdk, _executor = query_sdk
+    legacy_row = db.add(
+        _transfer_history(
+            "Legacy null status",
+            media_id="legacy-status",
+            src="/legacy/status-src.mkv",
+            dest="/legacy/status-dest.mkv",
+            status=None,
+        )
+    )
+    legacy_row.status = None
+    db.session.commit()
+
+    page = sdk.list_transfer_history(
+        TransferHistoryFilter(
+            media_source=TMDB,
+            media_id="legacy-status",
+            status=False,
+        )
+    )
+
+    assert [item.id for item in page.items] == [legacy_row.id]
+    assert page.items[0].status is False
+
+
+def test_transfer_required_identity_excludes_unparseable_legacy_source(db, query_sdk):
+    """有效身份筛选不得返回随后会被快照降级为空身份的脏来源。"""
+    sdk, _executor = query_sdk
+    valid_row = db.add(
+        _transfer_history(
+            "Valid dynamic source",
+            media_id="valid-dynamic",
+            src="/valid/source.mkv",
+            dest="/valid/dest.mkv",
+        )
+    )
+    invalid_row = db.add(
+        _transfer_history(
+            "Invalid legacy source",
+            media_id="invalid-source",
+            src="/invalid/source.mkv",
+            dest="/invalid/dest.mkv",
+        )
+    )
+    valid_row.media_source = "plugin-source"
+    invalid_row.media_source = "invalid!"
+    db.session.commit()
+
+    page = sdk.list_transfer_history(
+        TransferHistoryFilter(
+            ids=(valid_row.id, invalid_row.id),
+            require_media_identity=True,
+        )
+    )
+
+    assert [item.id for item in page.items] == [valid_row.id]
+    assert page.items[0].media_source == MediaSource("plugin-source")
 
 
 def test_query_snapshots_are_owned_by_the_sdk_contract_module():

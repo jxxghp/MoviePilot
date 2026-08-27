@@ -60,10 +60,6 @@ from app.application.configuration import (
     configure_transfer_retry_config,
     get_configured_system_config,
 )
-from app.application.data_query import (
-    DataQueryService,
-    configure_data_query_service,
-)
 from app.application.database import configure_database_governance
 from app.application.history import configure_transfer_history_provider
 from app.application.image import configure_wallpaper_providers
@@ -92,6 +88,10 @@ from app.application.outbox import (
     validate_durable_event_handlers,
 )
 from app.application.plugin.runtime import configure_plugin_runtime
+from app.application.query import (
+    DataQueryService,
+    configure_data_query_service,
+)
 from app.application.security.auth import AuthService, build_superuser_token_payload, configure_auth_service
 from app.application.security.passkey import PasskeyService, configure_passkey_service
 from app.application.security.url import close_image_proxy_block_log_coalescer
@@ -109,9 +109,9 @@ from app.application.subscription.write import configure_subscribe_writer
 from app.application.workflow import WorkflowQueryService, configure_workflow_query
 from app.command import CommandChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
-from app.db.adapters.data_query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
+from app.db.adapters.query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.site import TransactionalSiteRepository
 from app.db.adapters.subscription import TransactionalSubscribeWriter
 from app.db.adapters.transaction import TransactionalWriteRunner

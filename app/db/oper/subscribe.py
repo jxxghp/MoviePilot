@@ -9,9 +9,10 @@
 """
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any, Tuple, List, Optional
+from typing import Any, List, Optional, Tuple, cast
 
 from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,14 @@ from app.application.subscription.delete import SubscribeDeletionCandidate
 from app.db.base import DbOper
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
+from app.db.oper.query import (
+    descending,
+    enum_values,
+    execute_page,
+    media_identity_conditions,
+    music_type_condition,
+)
+from app.schemas.query import QueryPageRequest, QuerySortField, SubscriptionFilter
 from app.schemas.types import MediaSource
 
 INTEGER_FLAG_FIELDS = ("best_version", "best_version_full", "search_imdbid", "manual_total_episode")
@@ -276,7 +285,77 @@ class SubscribeOper(DbOper):
         """
         获取订阅
         """
-        return self._execute_sync_query(lambda session: Subscribe.get(session, sid))
+        return self.get_by_id(sid)
+
+    def get_by_id(self, record_id: int) -> Optional[Subscribe]:
+        """按稳定记录 ID 读取单条订阅。"""
+        return cast(
+            Optional[Subscribe],
+            self._execute_sync_query(
+                lambda session: session.execute(
+                    select(Subscribe).where(Subscribe.id == record_id)
+                ).scalars().first()
+            ),
+        )
+
+    def query(
+        self,
+        filters: SubscriptionFilter,
+        page: QueryPageRequest,
+    ) -> tuple[list[Subscribe], int]:
+        """按稳定筛选和分页合同读取订阅记录及总数。"""
+        def execute(session: Session) -> tuple[list[Subscribe], int]:
+            """在同一会话中构造并执行订阅 count/page 查询。"""
+            conditions = media_identity_conditions(Subscribe, filters)
+            ids = enum_values(filters.ids)
+            names = enum_values(filters.names)
+            states = enum_values(filters.states)
+            usernames = enum_values(filters.usernames)
+            media_types = enum_values(filters.media_types)
+            if ids:
+                conditions.append(Subscribe.id.in_(ids))
+            if names:
+                conditions.append(Subscribe.name.in_(names))
+            if states:
+                conditions.append(Subscribe.state.in_(states))
+            if usernames:
+                conditions.append(Subscribe.username.in_(usernames))
+            if media_types:
+                conditions.append(Subscribe.type.in_(media_types))
+            if filters.season is not None:
+                conditions.append(Subscribe.season == filters.season)
+            if filters.episode_group is not None:
+                conditions.append(Subscribe.episode_group == filters.episode_group)
+            music_condition = music_type_condition(
+                Subscribe.music_type,
+                filters.music_type,
+            )
+            if music_condition is not None:
+                conditions.append(music_condition)
+
+            count_statement = select(func.count(Subscribe.id))
+            page_statement = select(Subscribe)
+            if conditions:
+                count_statement = count_statement.where(*conditions)
+                page_statement = page_statement.where(*conditions)
+            descending_order = descending(page)
+            if page.sort.field == QuerySortField.ID:
+                primary = Subscribe.id.desc() if descending_order else Subscribe.id.asc()
+                secondary = Subscribe.date.desc() if descending_order else Subscribe.date.asc()
+            else:
+                primary = (
+                    Subscribe.date.desc().nullslast()
+                    if descending_order
+                    else Subscribe.date.asc().nullsfirst()
+                )
+                secondary = Subscribe.id.desc() if descending_order else Subscribe.id.asc()
+            page_statement = page_statement.order_by(primary, secondary)
+            return cast(
+                tuple[list[Subscribe], int],
+                execute_page(session, count_statement, page_statement, page),
+            )
+
+        return self._execute_sync_query(execute)
 
     async def async_get(self, sid: int) -> Optional[Subscribe]:
         """
