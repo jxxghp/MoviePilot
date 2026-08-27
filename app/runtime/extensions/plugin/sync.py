@@ -44,10 +44,16 @@ class PluginSyncService:
         if self._frozen():
             return []
 
-        installed = self._installed_plugins()
+        installed = {
+            plugin_id.lower()
+            for plugin_id in self._installed_plugins()
+        }
         online = self._online_plugins()
         local = self._local_plugins()
-        local_plugin_ids = {plugin.id.lower() for plugin in local}
+        local_plugin_ids = {
+            plugin.id.lower()
+            for plugin in local
+        }
         restore_plugin_ids = {
             plugin_id.lower()
             for plugin_id in (online_restore_plugins or set())
@@ -56,7 +62,7 @@ class PluginSyncService:
         targets = [
             plugin
             for plugin in candidates
-            if plugin.id in installed
+            if plugin.id.lower() in installed
             and (
                 plugin.id.lower() in restore_plugin_ids
                 or (
@@ -134,7 +140,12 @@ class LocalPluginSyncService:
 
     def sync(self, plugin_id: str, candidate: Optional[dict] = None) -> bool:
         """同步已安装且兼容的本地插件，成功后记录短时事件抑制标记。"""
-        if plugin_id not in self._installed_plugins():
+        normalized_plugin_id = plugin_id.lower()
+        installed = {
+            installed_id.lower()
+            for installed_id in self._installed_plugins()
+        }
+        if normalized_plugin_id not in installed:
             self._logger.info(f"本地插件 {plugin_id} 尚未安装，跳过自动同步和热重载")
             return False
         candidate = candidate or self._candidate(plugin_id)

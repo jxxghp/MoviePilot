@@ -63,6 +63,36 @@ def test_merge_prefers_newer_version_and_remote_source():
     assert result == [new_remote]
 
 
+def test_merge_treats_plugin_id_casing_as_one_physical_plugin():
+    """同一物理插件的市场与本地 ID 大小写差异不能产生两个目录条目。"""
+    service = _service()
+    online = _plugin("DownloadCenter", "3.2.1", "https://market-a")
+    local = _plugin("downloadcenter", "3.3.2", "local://DownloadCenter")
+
+    result = service.merge(
+        [online, local],
+        [],
+        ["https://market-a"],
+    )
+
+    assert result == [local]
+
+
+def test_merge_by_source_treats_plugin_id_casing_as_one_physical_plugin():
+    """同一仓库跨代际大小写不一致时只保留最高版本候选。"""
+    service = _service()
+    old = _plugin("DownloadCenter", "3.2.1", "https://market-a")
+    new = _plugin("downloadcenter", "3.3.2", "https://market-a")
+
+    result = service.merge_by_source(
+        [new],
+        [old],
+        ["https://market-a"],
+    )
+
+    assert result == [new]
+
+
 def test_load_maps_market_entries_with_installed_snapshot():
     """单市场读取只获取一次已安装快照并按索引顺序映射 DTO。"""
     mapper = Mock(side_effect=lambda plugin_id, *_args: plugin_id)
@@ -94,7 +124,8 @@ async def test_async_collect_isolates_failure_and_completes_progress():
         if market == "https://market-a" and package_version == "v3":
             raise RuntimeError("unavailable")
         version = "2.0.0" if package_version else "1.0.0"
-        return [_plugin(market, version, market)]
+        plugin_id = "MarketA" if market.endswith("market-a") else "MarketB"
+        return [_plugin(plugin_id, version, market)]
 
     result = await service.async_collect(
         markets=["https://market-a", "https://market-b"],
@@ -105,8 +136,8 @@ async def test_async_collect_isolates_failure_and_completes_progress():
     )
 
     assert {plugin.id for plugin in result} == {
-        "https://market-a",
-        "https://market-b",
+        "MarketA",
+        "MarketB",
     }
     error.assert_called_once()
     assert progress.call_args_list[0].kwargs["value"] == 0

@@ -633,38 +633,10 @@ def select_plugin_candidate(
                 ),
             )
     if allowed_source is not None:
-        if identity is None:
-            raise PluginSourceSelectionError("已绑定来源选择缺少插件身份")
-        source_type, source_key = allowed_source
-        allowed_online = tuple(
-            candidate
-            for candidate in online
-            if candidate.source_type is source_type and candidate.source_key == source_key
-        )
-        if not allowed_online:
-            if (
-                local_selection is not None
-                and local_selection.status is PluginSelectionStatus.SELECTED
-            ):
-                return local_selection
-            return PluginSelection(
-                status=PluginSelectionStatus.UNAVAILABLE,
-                reason="已绑定仓库中暂无可用插件包",
-            )
-        selected_online = _select_best(allowed_online, generation_order)
-        if selected_online is None:
-            if (
-                local_selection is not None
-                and local_selection.status is PluginSelectionStatus.SELECTED
-            ):
-                return local_selection
-            return PluginSelection(
-                status=PluginSelectionStatus.UNAVAILABLE,
-                reason="已绑定仓库没有适用于当前 MoviePilot 版本的插件包",
-            )
-        return _select_bound_or_local_candidate(
+        return _select_bound_source_candidate(
+            online=online,
+            allowed_source=allowed_source,
             local_selection=local_selection,
-            online_candidate=selected_online,
             identity=identity,
             generation_order=generation_order,
         )
@@ -704,6 +676,52 @@ def select_plugin_candidate(
         status=PluginSelectionStatus.SELECTED,
         candidate=selected_online,
         reason="已找到唯一可用仓库",
+    )
+
+
+def _select_bound_source_candidate(
+    *,
+    online: tuple[PluginMarketCandidate, ...],
+    allowed_source: tuple[TrustedPluginSourceType, str],
+    local_selection: PluginSelection | None,
+    identity: PluginIdentity | None,
+    generation_order: tuple[str, ...],
+) -> PluginSelection:
+    """只在已绑定仓库范围内选取在线候选，并与可用本地载荷协调。"""
+    if identity is None:
+        raise PluginSourceSelectionError("已绑定来源选择缺少插件身份")
+    source_type, source_key = allowed_source
+    allowed_online = tuple(
+        candidate
+        for candidate in online
+        if candidate.source_type is source_type and candidate.source_key == source_key
+    )
+    if not allowed_online:
+        if (
+            local_selection is not None
+            and local_selection.status is PluginSelectionStatus.SELECTED
+        ):
+            return local_selection
+        return PluginSelection(
+            status=PluginSelectionStatus.UNAVAILABLE,
+            reason="已绑定仓库中暂无可用插件包",
+        )
+    selected_online = _select_best(allowed_online, generation_order)
+    if selected_online is None:
+        if (
+            local_selection is not None
+            and local_selection.status is PluginSelectionStatus.SELECTED
+        ):
+            return local_selection
+        return PluginSelection(
+            status=PluginSelectionStatus.UNAVAILABLE,
+            reason="已绑定仓库没有适用于当前 MoviePilot 版本的插件包",
+        )
+    return _select_bound_or_local_candidate(
+        local_selection=local_selection,
+        online_candidate=selected_online,
+        identity=identity,
+        generation_order=generation_order,
     )
 
 

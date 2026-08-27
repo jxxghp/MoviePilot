@@ -6,7 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from packaging.version import Version
 
+from app.application.plugin.catalog import PluginCatalogService
 from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.gateway import PluginInstallGateway
 from app.application.plugin.identity import (
@@ -25,10 +27,27 @@ from app.application.plugin.source import (
     PluginMarketCandidate,
 )
 from app.runtime.config import global_vars
-from app.runtime.extensions.plugin.sync import PluginSyncService
+from app.runtime.extensions.plugin.sync import LocalPluginSyncService, PluginSyncService
 from app.startup.initializers import plugins as plugins_initializer
 
 REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
+
+
+def _merge_catalog_plugins(higher, base, markets):
+    """通过生产目录服务合并启动同步候选。"""
+    service = PluginCatalogService(
+        market_loader=Mock(return_value={}),
+        async_market_loader=AsyncMock(return_value={}),
+        installed_plugins_provider=Mock(return_value=[]),
+        plugin_mapper=Mock(),
+        is_local_repo=lambda value: str(value).startswith("local://"),
+        version_compare=lambda left, operator, right: (
+            operator == ">" and Version(left) > Version(right)
+        ),
+        warning=Mock(),
+        error=Mock(),
+    )
+    return service.merge(higher, base, markets)
 
 
 def test_market_sync_keeps_install_rollback_enabled() -> None:
@@ -140,13 +159,43 @@ def test_market_sync_passes_selected_local_source_to_install() -> None:
     install.assert_called_once_with(local.id, local.repo_url, False, None)
 
 
+def test_local_sync_matches_installed_plugin_id_case_insensitively() -> None:
+    """本地热同步应把大小写不同的索引 ID 识别为同一已安装插件。"""
+    candidate = {
+        "repo_url": "local://downloadcenter?package_version=v3",
+        "package_version": "v3",
+        "compatible": True,
+    }
+    system = Mock()
+    system.install_plugin.return_value = (True, "")
+    recent_sync: dict[str, float] = {}
+    service = LocalPluginSyncService(
+        installed_plugins=lambda: ["DownloadCenter"],
+        candidate=Mock(return_value=candidate),
+        system=lambda: system,
+        recent_sync=recent_sync,
+        log=Mock(),
+    )
+
+    assert service.sync("downloadcenter", candidate)
+    system.install_plugin.assert_called_once_with(
+        plugin_id="downloadcenter",
+        repo_url=candidate["repo_url"],
+        package_version="v3",
+        force=True,
+        local_sync=True,
+        explicit_source=True,
+    )
+    assert "downloadcenter" in recent_sync
+
+
 @pytest.mark.asyncio
 async def test_market_sync_delivers_newer_local_candidate_through_gateway(
     monkeypatch,
 ) -> None:
     """启动同步选中的本地高版本必须完整传递到 Gateway 执行器。"""
     online = PluginMarketCandidate(
-        plugin_id="DemoPlugin",
+        plugin_id="DownloadCenter",
         source_key="github:jxxghp/moviepilot-plugins",
         source_type=TrustedPluginSourceType.OFFICIAL,
         repo_url=REPO_URL,
@@ -155,15 +204,15 @@ async def test_market_sync_delivers_newer_local_candidate_through_gateway(
         dto={"v3": True},
     )
     local = PluginLocalCandidate(
-        plugin_id="DemoPlugin",
-        repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
+        plugin_id="downloadcenter",
+        repo_url="local://downloadcenter?path=/private/plugins&version=v3",
         package_generation="v3",
         plugin_version="3.3.2",
         dto={"v3": True},
     )
     identity = PluginIdentity(
-        plugin_id="DemoPlugin",
-        normalized_plugin_id="demoplugin",
+        plugin_id="DownloadCenter",
+        normalized_plugin_id="downloadcenter",
         trusted_source_type=TrustedPluginSourceType.OFFICIAL,
         trusted_source_key=online.source_key,
         binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
@@ -230,12 +279,19 @@ async def test_market_sync_delivers_newer_local_candidate_through_gateway(
         plugin_version=local.plugin_version,
         system_version_compatible=True,
     )
+    merged_online = SimpleNamespace(
+        id=online.plugin_id,
+        repo_url=online.repo_url,
+        plugin_name="Download Center",
+        plugin_version=online.plugin_version,
+        system_version_compatible=True,
+    )
     service = PluginSyncService(
         frozen=lambda: False,
-        installed_plugins=lambda: [local.plugin_id],
-        online_plugins=lambda: [],
+        installed_plugins=lambda: [online.plugin_id],
+        online_plugins=lambda: [merged_online],
         local_plugins=lambda: [merged_local],
-        merge_plugins=lambda items, *_args: items,
+        merge_plugins=_merge_catalog_plugins,
         plugin_exists=lambda *_args: False,
         install=install,
         log=Mock(),
