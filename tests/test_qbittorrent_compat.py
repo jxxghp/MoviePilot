@@ -417,6 +417,43 @@ def test_completed_status_includes_qbittorrent_finished_upload_states():
     server.get_torrents.assert_called_once_with(tags="moviepilot-tag")
 
 
+def test_list_torrents_normalizes_parsed_year_to_string(monkeypatch):
+    """种子名称解析出的整数年份应按下载任务契约转换为字符串。"""
+    server = MagicMock()
+    server.get_torrents.return_value = (
+        [
+            {
+                "name": "Movie.Name.2026.1080p",
+                "content_path": "/downloads/Movie.Name.2026.1080p",
+                "hash": "hash-with-year",
+                "total_size": 1024,
+                "completed": 1024,
+                "progress": 1,
+                "state": "stalledUP",
+                "dlspeed": 0,
+                "upspeed": 0,
+            }
+        ],
+        False,
+    )
+    monkeypatch.setattr(
+        qbittorrent_package_module,
+        "MetaInfo",
+        lambda _name: types.SimpleNamespace(
+            name="Movie Name",
+            year=2026,
+            season_episode="",
+        ),
+    )
+    module = QbittorrentModule.__new__(QbittorrentModule)
+    module.get_instances = MagicMock(return_value={"qb": server})
+    module.normalize_return_path = MagicMock(side_effect=lambda path, _name: str(path))
+
+    torrents = module.list_torrents(include_all_tags=True)
+
+    assert torrents[0].year == "2026"
+
+
 def test_get_completed_torrents_includes_finished_stopped_tasks():
     """
     已完成但不再做种的 qBittorrent 任务仍应进入待整理列表。

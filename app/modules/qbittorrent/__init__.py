@@ -273,7 +273,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                 downloader=downloader_name,
                 title=torrent_data.get('name'),
                 name=meta.name,
-                year=meta.year,
+                year=str(meta.year) if meta.year is not None else None,
                 season_episode=meta.season_episode,
                 path=Path(self.normalize_return_path(torrent_path, downloader_name)),
                 save_path=self.normalize_return_path(
