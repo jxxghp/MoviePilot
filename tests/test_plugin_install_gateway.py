@@ -176,6 +176,81 @@ async def test_local_only_requires_explicit_online_binding() -> None:
 
 
 @pytest.mark.asyncio
+async def test_explicit_local_sync_uses_local_candidate_and_execution_mode() -> None:
+    """文件监控明确指定本地候选时必须同步本地载荷。"""
+    online = PluginMarketCandidate(
+        plugin_id="DemoPlugin",
+        source_key="github:jxxghp/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.OFFICIAL,
+        repo_url=REPO_URL,
+        package_generation="v3",
+        plugin_version="9.0.0",
+        dto={"v3": True},
+    )
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?version=v3",
+        package_generation="v3",
+        plugin_version="1.0.0",
+        dto={"v3": True},
+    )
+    identity = PluginIdentity(
+        plugin_id="DemoPlugin",
+        normalized_plugin_id="demoplugin",
+        trusted_source_type=TrustedPluginSourceType.OFFICIAL,
+        trusted_source_key="github:jxxghp/moviepilot-plugins",
+        binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT,
+        payload_source_type=PluginPayloadSourceType.OFFICIAL,
+        payload_source_key="github:jxxghp/moviepilot-plugins",
+        declared_version="9.0.0",
+        package_generation="v3",
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo online", "v3": True},
+            declaration_version="9.0.0",
+            manifest_matches_payload=True,
+        ),
+        payload_receipt="sha256:" + "1" * 64,
+        revision=2,
+        created_at=NOW,
+        updated_at=NOW,
+        bound_at=NOW,
+        payload_applied_at=NOW,
+    )
+    executor = AsyncMock()
+    executor.execute.return_value = type(
+        "Result",
+        (),
+        {"success": True, "message": ""},
+    )()
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(
+            return_value=CandidateInventory(
+                (MarketRead.present(REPO_URL, (online,)),),
+                (local,),
+                local_read=LocalCandidateRead.present((local,)),
+            )
+        ),
+        identity=AsyncMock(return_value=identity),
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: NOW,
+    )
+
+    result = await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url=local.repo_url,
+        package_version="v3",
+        force=True,
+        local_sync=True,
+        explicit_source=True,
+    )
+
+    assert result.success is True
+    assert executor.execute.await_args.kwargs["admission"].candidate is local
+    assert executor.execute.await_args.kwargs["local_sync"] is True
+
+
+@pytest.mark.asyncio
 async def test_gateway_rejects_source_conflict_before_package_execution() -> None:
     """来源准入失败时不进入文件和数据库事务。"""
     other = PluginMarketCandidate(

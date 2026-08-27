@@ -586,6 +586,12 @@ def select_plugin_candidate(
             and local_selection.status is PluginSelectionStatus.INCOMPLETE
         ):
             return local_selection
+        # 精确本地来源用于开发同步；未指定来源的启动与更新才参与在线版本协调。
+        if explicit_source and local_candidates is not None:
+            return local_selection or PluginSelection(
+                status=PluginSelectionStatus.UNAVAILABLE,
+                reason="所选本地仓库中没有该插件",
+            )
 
     online = inventory.candidates_for(plugin_id)
     if not online:

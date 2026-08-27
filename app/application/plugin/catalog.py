@@ -332,7 +332,7 @@ class PluginCatalogService:
             base_plugins: list[Any],
             markets: list[str],
     ) -> list[Any]:
-        """每个仓库保留同一插件的最高兼容版本，供来源准入继续决策。"""
+        """每个仓库和代际保留同一插件的最高版本，供来源准入继续决策。"""
         higher_keys = {
             (
                 plugin.repo_url,
@@ -357,9 +357,13 @@ class PluginCatalogService:
                 return markets.index(plugin.repo_url)
             return len(markets)
 
-        result_by_source: dict[tuple[Optional[str], str], Any] = {}
+        result_by_source: dict[tuple[Optional[str], str, Optional[str]], Any] = {}
         for plugin in sorted(all_plugins, key=repo_order):
-            key = (plugin.repo_url, normalize_physical_plugin_id(plugin.id))
+            key = (
+                plugin.repo_url,
+                normalize_physical_plugin_id(plugin.id),
+                plugin.package_version,
+            )
             exists = result_by_source.get(key)
             if not exists or self._version_compare(
                 plugin.plugin_version,
