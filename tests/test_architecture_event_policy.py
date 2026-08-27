@@ -137,7 +137,7 @@ def test_current_event_consumer_policy_matches_exact_reviewed_set() -> None:
     ]
     assert dynamic_entries == [{
         "caller": "app.workflow",
-        "qualname": "WorkFlowManager.register_workflow_event",
+        "qualname": "WorkflowManager.register_workflow_event",
         "method": "add_event_listener",
         "receiver_kind": "canonical_singleton",
         "events": [],
@@ -147,7 +147,7 @@ def test_current_event_consumer_policy_matches_exact_reviewed_set() -> None:
         "registration_kind": "listener",
         "priority": "<default>",
         "fingerprint": (
-            "042068d816db7e46ab4da6e96f8549af97b57bd9d75ba710cc1ff4fec7e5e188"
+            "b99f557080a8ddb6dc9d2870d02c4cabc4b265b0daac086369c3bf1d51073c09"
         ),
         "classification": DYNAMIC_CLASSIFICATION,
         "owner": "app.workflow",

@@ -61,8 +61,7 @@ def get_workflow_definition_command(
 
 
 def get_workflow_query_service(
-    db: AsyncSession = Depends(get_async_session),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> WorkflowQueryService:
-    """组装工作流只读查询用例，避免端点直接持有数据库操作器。"""
-    return WorkflowQueryService(repository=runtime.workflow.repository(db))
+    """返回组合根装配的工作流只读查询用例。"""
+    return runtime.workflow.query

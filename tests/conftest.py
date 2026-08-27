@@ -214,8 +214,8 @@ def configure_plugin_system_services():
         configure_workflow_query,
         configure_workflow_runtime,
     )
-    from app.workflow import WorkFlowManager
-    configure_workflow_runtime(lambda: WorkFlowManager())
+    from app.workflow import WorkflowManager
+    configure_workflow_runtime(lambda: WorkflowManager())
     from app.application.agentdata import configure_agent_data_ports
     from app.application.agenttask import (
         AgentTaskExecutionService,
@@ -229,7 +229,10 @@ def configure_plugin_system_services():
     from app.db.adapters.transfer.execution import (
         TransactionalTransferExecutionRepository,
     )
-    from app.db.adapters.workflow import TransactionalWorkflowExecutionService
+    from app.db.adapters.workflow import (
+        TransactionalWorkflowExecutionService,
+        TransactionalWorkflowQueryRepository,
+    )
     from app.db.oper.agentchat import AgentChatOper
     from app.db.oper.downloadhistory import DownloadHistoryOper
     from app.db.oper.mediaserver import MediaServerOper
@@ -332,7 +335,12 @@ def configure_plugin_system_services():
     ))
     configure_site_query_service(SiteQueryService(repository=site_repository()))
     configure_site_health_service(SiteHealthService(repository=site_repository()))
-    configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
+    configure_workflow_query(WorkflowQueryService(
+        repository=TransactionalWorkflowQueryRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+    ))
     from app.db.oper.agenttask import AgentTaskOper
     from app.db.oper.plugindata import PluginDataOper
     configure_agent_data_ports(
@@ -344,7 +352,6 @@ def configure_plugin_system_services():
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         download_history=lambda: DownloadHistoryOper(),
-        workflow=lambda: WorkflowOper(),
         plugin_data=lambda: PluginDataOper(),
     )
     configure_agent_task_execution(AgentTaskExecutionService(

@@ -774,6 +774,13 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 }
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.workflow": {
+        "WorkFlowManager": SymbolAlias(
+            target_module="app.workflow",
+            target_name="WorkflowManager",
+            replacement="app.workflow.WorkflowManager",
+        ),
+    },
     "app.application.transfer": {
         name: SymbolAlias(
             target_module="app.sdk._legacy.transfer",

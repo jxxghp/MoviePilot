@@ -114,7 +114,10 @@ from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRep
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
-from app.db.adapters.workflow import TransactionalWorkflowExecutionService
+from app.db.adapters.workflow import (
+    TransactionalWorkflowExecutionService,
+    TransactionalWorkflowQueryRepository,
+)
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.downloadhistory import DownloadHistoryOper
@@ -239,11 +242,6 @@ async def _async_get_subscribe(subscribe_id: int):
     return await SubscribeOper().async_get(subscribe_id)
 
 
-async def _async_get_workflow(workflow_id: int):
-    """通过数据库操作器异步读取工作流，供服务端共享用例使用。"""
-    return await WorkflowOper().async_get(workflow_id)
-
-
 def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
     """把旧 Chain ABI 延迟转入唯一 TransferChain durable command。"""
     from app.chain.transfer import TransferChain
@@ -273,7 +271,7 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
     )
 
 
-def configure_runtime_data_providers() -> None:
+def configure_runtime_data_providers(workflow_query: WorkflowQueryService) -> None:
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
     configure_module_runtime(lambda: ModuleManager())
@@ -309,8 +307,8 @@ def configure_runtime_data_providers() -> None:
                 subscribe_id
             ),
             async_subscribe_provider=_async_get_subscribe,
-            workflow_provider=lambda workflow_id: WorkflowOper().get(workflow_id),
-            async_workflow_provider=_async_get_workflow,
+            workflow_provider=workflow_query.get_sync,
+            async_workflow_provider=workflow_query.get,
             user_uuid_provider=MoviePilotServerHelper.get_user_uuid,
             subscribe_sender=MoviePilotServerHelper.subscribe_share,
             async_subscribe_sender=MoviePilotServerHelper.async_subscribe_share,
@@ -799,6 +797,13 @@ async def init_modules() -> HostRuntime:
         chain=lambda: build_chain_runtime_config(legacy_settings),
     )
     runtime_settings = _build_runtime_settings_service()
+    workflow_query = WorkflowQueryService(
+        repository=TransactionalWorkflowQueryRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+    )
+    configure_workflow_query(workflow_query)
     agent_chat_persistence = AgentChatPersistenceService(
         repository=lambda session: AgentChatOper(session),
         async_executor=database_worker,
@@ -839,6 +844,7 @@ async def init_modules() -> HostRuntime:
             outbox=SqlAlchemyAsyncOutboxStager,
         ),
         workflow=WorkflowRuntime(
+            query=workflow_query,
             repository=WorkflowOper,
             system_config=get_configured_system_config,
         ),
@@ -853,7 +859,7 @@ async def init_modules() -> HostRuntime:
     configure_token_runtime_config(lambda: build_token_runtime_config(legacy_settings))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
-    configure_runtime_data_providers()
+    configure_runtime_data_providers(workflow_query)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_legacy_writer(workflow_execution)
     configure_chain_data_ports(
@@ -908,7 +914,6 @@ async def init_modules() -> HostRuntime:
         sync_session=SessionFactory,
         async_session=async_session_scope,
     )))
-    configure_workflow_query(WorkflowQueryService(repository=WorkflowOper()))
     configure_agent_data_ports(
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
@@ -921,7 +926,6 @@ async def init_modules() -> HostRuntime:
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         download_history=lambda: DownloadHistoryOper(),
-        workflow=lambda: WorkflowOper(),
         plugin_data=lambda: PluginDataOper(),
     )
     configure_agent_task_execution(AgentTaskExecutionService(

@@ -8,6 +8,7 @@ from app.application.workflow import (
     WorkflowExecutionCommand,
     WorkflowMutationCommand,
     WorkflowQueryService,
+    WorkflowSnapshot,
 )
 
 
@@ -18,6 +19,30 @@ def _workflow(trigger_type="timer", timer="0 0 * * *", event_type="DownloadAdded
         trigger_type=trigger_type,
         timer=timer,
         event_type=event_type,
+    )
+
+
+def _snapshot() -> WorkflowSnapshot:
+    """构造查询服务返回的冻结工作流快照。"""
+    return WorkflowSnapshot(
+        id=7,
+        name="query",
+        description=None,
+        timer="0 0 * * *",
+        trigger_type="timer",
+        event_type=None,
+        event_conditions={},
+        state="W",
+        current_action=None,
+        result=None,
+        run_count=0,
+        actions=(),
+        flows=(),
+        context={},
+        execution_config={},
+        execution_state={},
+        add_time=None,
+        last_time=None,
     )
 
 
@@ -96,8 +121,9 @@ def test_execution_commit_failure_rolls_back():
 async def test_workflow_query_service_delegates_list_and_get_to_repository():
     """工作流查询服务只调用读取端口，不持有数据库会话或事务。"""
     repository = Mock()
-    repository.async_list = AsyncMock(return_value=[_workflow()])
-    repository.async_get = AsyncMock(return_value=_workflow())
+    snapshot = _snapshot()
+    repository.async_list = AsyncMock(return_value=[snapshot])
+    repository.async_get = AsyncMock(return_value=snapshot)
     service = WorkflowQueryService(repository)
 
     listed = await service.list()
@@ -105,6 +131,8 @@ async def test_workflow_query_service_delegates_list_and_get_to_repository():
 
     assert listed == repository.async_list.return_value
     assert fetched == repository.async_get.return_value
+    assert all(isinstance(item, WorkflowSnapshot) for item in listed)
+    assert isinstance(fetched, WorkflowSnapshot)
     repository.async_list.assert_awaited_once_with()
     repository.async_get.assert_awaited_once_with(7)
 

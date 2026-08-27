@@ -1,8 +1,34 @@
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from app.application.server.share import ServerSharingService
+from app.application.workflow import WorkflowSnapshot
+
+
+def _workflow(*, actions=(), flows=()) -> WorkflowSnapshot:
+    """构造中心服务分享使用的真实工作流快照。"""
+    return WorkflowSnapshot(
+        id=1,
+        name="Demo Workflow",
+        description="demo",
+        timer=None,
+        trigger_type="manual",
+        event_type=None,
+        event_conditions={},
+        state="W",
+        current_action=None,
+        result=None,
+        run_count=0,
+        actions=actions,
+        flows=flows,
+        context={"private": True},
+        execution_config={},
+        execution_state={},
+        add_time=None,
+        last_time=None,
+    )
 
 
 def _service(**overrides) -> ServerSharingService:
@@ -66,7 +92,7 @@ def test_subscribe_share_builds_public_payload_and_clears_cache_after_success():
 def test_workflow_validation_stops_before_transport():
     """缺少动作或流程的工作流不会进入中心服务传输。"""
     sender = Mock()
-    workflow = SimpleNamespace(actions=[], flows=[{"id": 1}])
+    workflow = _workflow(flows=({"id": 1},))
     service = _service(
         workflow_provider=Mock(return_value=workflow),
         workflow_sender=sender,
@@ -82,6 +108,36 @@ def test_workflow_validation_stops_before_transport():
 
     assert result == (False, "请分享有动作和流程的工作流")
     sender.assert_not_called()
+
+
+def test_workflow_share_serializes_snapshot_without_local_fields():
+    """同步工作流分享从冻结快照生成兼容载荷并剔除本地上下文。"""
+    sender = Mock(return_value=SimpleNamespace(status_code=200))
+    workflow = _workflow(
+        actions=({"id": "action-1"},),
+        flows=({"source": "action-1", "target": "end"},),
+    )
+    service = _service(
+        workflow_provider=Mock(return_value=workflow),
+        workflow_sender=sender,
+    )
+
+    result = service.share_workflow(
+        enabled=True,
+        workflow_id=1,
+        share_title="Title",
+        share_comment="Comment",
+        share_user="User",
+    )
+
+    assert result == (True, "")
+    payload = sender.call_args.args[0]
+    assert "id" not in payload
+    assert "context" not in payload
+    assert json.loads(payload["actions"]) == [{"id": "action-1"}]
+    assert json.loads(payload["flows"]) == [
+        {"source": "action-1", "target": "end"}
+    ]
 
 
 def test_async_subscribe_share_uses_async_reader_and_transport():
@@ -102,6 +158,32 @@ def test_async_subscribe_share_uses_async_reader_and_transport():
     result = asyncio.run(service.async_share_subscribe(
         enabled=True,
         subscribe_id=1,
+        share_title="Title",
+        share_comment="Comment",
+        share_user="User",
+    ))
+
+    assert result == (True, "")
+    reader.assert_awaited_once_with(1)
+    sender.assert_awaited_once()
+
+
+def test_async_workflow_share_uses_snapshot_reader_and_transport():
+    """异步工作流分享复用同一快照契约且不回退同步端口。"""
+    workflow = _workflow(
+        actions=({"id": "action-1"},),
+        flows=({"source": "action-1", "target": "end"},),
+    )
+    reader = AsyncMock(return_value=workflow)
+    sender = AsyncMock(return_value=SimpleNamespace(status_code=200))
+    service = _service(
+        async_workflow_provider=reader,
+        async_workflow_sender=sender,
+    )
+
+    result = asyncio.run(service.async_share_workflow(
+        enabled=True,
+        workflow_id=1,
         share_title="Title",
         share_comment="Comment",
         share_user="User",

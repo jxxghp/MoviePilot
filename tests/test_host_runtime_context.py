@@ -14,6 +14,13 @@ from app.api.context import (
     get_agent_chat_transaction,
 )
 from app.api.dependencies.agent import get_agent_chat_persistence
+from app.application.configuration import (
+    ApiRuntimeConfig,
+    ChainRuntimeConfig,
+    RuntimeConfiguration,
+    RuntimeSettingsService,
+    SchedulerRuntimeConfig,
+)
 from app.startup import lifecycle
 from app.startup.composition.context import (
     AgentChatRuntime,
@@ -26,14 +33,6 @@ from app.startup.composition.context import (
     SubscriptionRuntime,
     WorkflowRuntime,
 )
-from app.application.configuration import (
-    ApiRuntimeConfig,
-    ChainRuntimeConfig,
-    RuntimeConfiguration,
-    RuntimeSettingsService,
-    SchedulerRuntimeConfig,
-)
-
 
 PROJECT_ROOT = Path(__file__).parents[1]
 
@@ -153,6 +152,7 @@ def _runtime() -> HostRuntime:
             outbox=_Outbox,
         ),
         workflow=WorkflowRuntime(
+            query=SimpleNamespace(),
             repository=_Repository,
             system_config=lambda: _Repository(object()),
         ),

@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 844 / 6,898 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 844 / 6,901 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -77,8 +77,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 11,820 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 888 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 全量 mypy 历史债务 | 11,809 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
+| Ruff 历史诊断 | 881 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 78.71%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -272,16 +272,18 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   `app/application/agentdata.py:91-120` 还通过 `__dict__.update()` 动态组装端口。
 - `app/startup/initializers/modules.py:848-863,896-910` 仍向生产 Chain/Agent 注入多个无 Session Oper。
 - 无 Session Oper 会为单次调用独立创建事务；一个业务操作的“查询后更新”可能被拆成多个事务。
-- Workflow query 和 Chain/Agent raw data port 仍返回 `Any`/ORM，Subscription mutation 内部也消费 ORM，
-  因而存在 Session 生命周期外 detached/lazy-load 的潜在风险。公开 Subscription、Site、History
-  QueryService 已经投影 DTO，属于完成项，不应重做。
+- Workflow query 已在 S1-L2 迁入冻结 DTO 和 adapter-owned Session 投影；其余 Chain/Agent raw data port
+  仍返回 `Any`/ORM，Subscription mutation 内部也消费 ORM，因而仍存在 Session 生命周期外
+  detached/lazy-load 的潜在风险。公开 Subscription、Site、History QueryService 已经投影 DTO，
+  属于完成项，不应重做。
 
 **目标与步骤**
 
 - [ ] 按领域定义 Query/Command Protocol，不再使用通用 `OperFactory = Callable[[], Any]`。
 - [ ] 写 Port 由 `db/adapters` 创建单操作 Session/UoW；Oper 的 canonical 写方法只 stage/flush，
   读取方法仍可在调用方 Session 中查询。
-- [ ] 查询 Port 在 adapter Session 内映射为冻结 DTO/Projection，Application 和 API 不接收 ORM。
+- [x] Workflow 查询 Port 在 adapter Session 内映射为冻结 DTO/Projection，API、Agent、Chain、Scheduler、
+  Workflow runtime 和中心服务分享均不接收 ORM。
 - [ ] `ChainDataPorts`/`AgentDataPorts` 可暂时保留为兼容聚合器，但字段必须显式、可类型检查。
 - [ ] 以一个业务纵切面迁移并验证后，再迁移下一组，禁止一次替换所有 Oper。
 - [ ] 增加 AST 门禁，禁止向 `ChainDataPorts`、`AgentDataPorts` 和新的 canonical use-case service

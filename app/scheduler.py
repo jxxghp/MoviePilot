@@ -33,6 +33,7 @@ from app.application.outbox import dispatch_pending_outbox
 from app.application.plugin.routes import register_plugin_api
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.workflow import WorkflowSnapshot
 from app.chain import ChainBase
 from app.chain.mediaserver import MediaServerChain
 from app.chain.recommend import RecommendChain
@@ -56,7 +57,6 @@ from app.schemas.dashboard import ScheduleProgress as _SchemaScheduleProgress
 from app.schemas.message import Message, MessageType
 from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
 from app.schemas.types import EventType, SystemConfigKey
-from app.schemas.workflow import Workflow
 
 lock = threading.Lock()
 SCHEDULER_PROGRESS_PREFIX = "scheduler"
@@ -1703,7 +1703,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         for workflow in WorkflowChain().get_timer_workflows() or []:
             self.update_workflow_job(workflow)
 
-    def remove_workflow_job(self, workflow: Workflow):
+    def remove_workflow_job(self, workflow: WorkflowSnapshot):
         """
         移除工作流服务
         """
@@ -1787,7 +1787,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                         role="system",
                     )
 
-    def update_workflow_job(self, workflow: Workflow):
+    def update_workflow_job(self, workflow: WorkflowSnapshot):
         """
         更新工作流定时服务
         """
