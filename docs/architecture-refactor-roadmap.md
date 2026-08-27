@@ -102,7 +102,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S1-L3.1 Workflow typed execution | `DELIVERED` | S1-L2 | `17d8be2af`、`b33b29876`：Chain 直连类型化事务服务且单次执行只取一个 port；canonical Oper 删除旧 writer/无 Session 写方法，旧 ABI 只在 `_legacy/workflow.py` 与 Compat overlay；Unit Tests `33103913838`、Pylint `33103913935` 全绿，Application 覆盖率低水位提升至 `78.79%` |
 | S1-L3.2 Chain registry/DI | `ACTIVE` | S1-L3.1 | 显式类型化 factory，删除 PortProxy 与失效的双重注入，构造器注入真实控制调用 |
 | S1-L3.2.1 Registry hygiene | `DELIVERED` | S1-L3.1 | `ac7a20132`：删除零消费者 PortProxy/动态转发和 `ChainRuntimeContext.data_ports` 伪注入；Workflow 退出 Chain registry，只保留 Application owner 单一配置入口；Unit Tests `33120205586`、Pylint `33120205581` 全绿 |
-| S1-L3.3 DownloadFailure/MediaServer | `VERIFIED` | S1-L3.2 | 两组 raw factory 已替换为冻结 DTO/typed Port；失败冷却在 Session 内投影，媒体库查询只返回标量且每个 upsert/cleanup 独立短事务，远端枚举不持有 Session；旧 Oper 与插件可见 Chain ABI 保持不变 |
+| S1-L3.3 DownloadFailure/MediaServer | `DELIVERED` | S1-L3.2 | `5fb62108a`：两组 raw factory 已替换为冻结 DTO/typed Port；失败冷却在 Session 内投影，媒体库查询只返回标量且每个 upsert/cleanup 独立短事务，远端枚举不持有 Session；旧 Oper 与插件可见 Chain ABI 保持不变；Unit Tests `33127544925`、Pylint `33127544927` 全绿，Application 覆盖率低水位提升至 `78.95%` |
 | S1-L3.4 User | `PLANNED` | S1-L3.3 | 认证、偏好与渠道绑定投影冻结快照，User Chain/Agent 不接收 ORM |
 | S1-L3.5 History | `PLANNED` | S1-L3.4 | Download/Transfer history 统一 typed query/mutation，删除下载历史双事务 fail-open |
 | S1-L3.6 Site | `PLANNED` | S1-L3.5 | 复用 Site query/health，补齐同步 typed command，Session 内完成 DTO 投影 |
