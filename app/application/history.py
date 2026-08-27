@@ -40,6 +40,7 @@ class TransferHistoryRecord(Protocol):
     src: Optional[str]
     src_storage: Optional[str]
     src_fileitem: Optional[dict]
+    transfer_task_id: Optional[str]
 
 
 class TransferHistoryWriter(Protocol):
@@ -414,6 +415,11 @@ class TransferHistoryMutationCommand:
         history = self._repository.get(history_id)
         if not history:
             return HistoryMutationResult(False, "记录不存在")
+        if getattr(history, "transfer_task_id", None):
+            return HistoryMutationResult(
+                False,
+                "持久整理失败记录不可删除，请使用重试或人工复核入口",
+            )
 
         if delete_destination and history.dest_fileitem:
             destination = self._file_item_factory(history.dest_fileitem)
@@ -440,10 +446,10 @@ class TransferHistoryMutationCommand:
         return HistoryMutationResult(True)
 
     def truncate(self) -> HistoryMutationResult:
-        """在单一事务中清空全部整理历史。"""
+        """在单一事务中清空旧历史，并保留当前失败任务记录。"""
         self._repository.stage_truncate()
         self._commit()
-        return HistoryMutationResult(True)
+        return HistoryMutationResult(True, "已清空旧整理记录，失败任务记录已保留")
 
     def _commit(self) -> None:
         """提交历史事务，失败时回滚且不发布事件或清缓存。"""

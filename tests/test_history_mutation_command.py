@@ -37,6 +37,7 @@ def _history():
         download_hash="abc",
         src_fileitem={"path": "/downloads/demo.mkv"},
         dest_fileitem={"path": "/media/demo.mkv"},
+        transfer_task_id=None,
     )
 
 
@@ -119,5 +120,21 @@ def test_transfer_truncate_uses_single_transaction():
     result = command.truncate()
 
     assert result.success is True
+    assert result.message == "已清空旧整理记录，失败任务记录已保留"
     dependencies["repository"].stage_truncate.assert_called_once_with()
     dependencies["unit_of_work"].commit.assert_called_once_with()
+
+
+def test_transfer_delete_rejects_durable_receipt_before_file_side_effects():
+    """durable 回执不能被历史 API 连同源或目标文件一起删除。"""
+    history = _history()
+    history.transfer_task_id = "task-durable"
+    command, dependencies = _transfer_command(history=history)
+
+    result = command.delete(7, delete_source=True, delete_destination=True)
+
+    assert result.success is False
+    assert result.message == "持久整理失败记录不可删除，请使用重试或人工复核入口"
+    dependencies["delete_media_file"].assert_not_called()
+    dependencies["repository"].stage_delete.assert_not_called()
+    dependencies["unit_of_work"].commit.assert_not_called()

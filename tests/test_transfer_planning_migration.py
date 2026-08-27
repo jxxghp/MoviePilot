@@ -26,6 +26,24 @@ except ModuleNotFoundError:
 
 PLANNING_MIGRATION = "database.versions.c2f8a4d6e1b3_3_0_14"
 LEASE_MIGRATION = "database.versions.d3a9e5f7b2c4_3_0_15"
+POST_LEASE_EXECUTION_COLUMNS = {
+    "execution_state",
+    "execution_version",
+    "execution_payload",
+    "execution_fingerprint",
+    "retry_generation",
+    "retry_count",
+    "retry_due_at",
+    "retry_requested_by",
+    "retry_reason",
+    "settlement_revision",
+    "terminal_history_id",
+    "manual_review_revision",
+    "reviewed_at",
+    "reviewed_by",
+    "review_reason",
+    "review_decision",
+}
 
 
 def _bind_migration(monkeypatch, connection, module_name=PLANNING_MIGRATION):
@@ -104,7 +122,11 @@ def _assert_upgrade_downgrade_reupgrade(connection, monkeypatch) -> None:
     assert {
         column["name"]
         for column in inspector.get_columns("transferpending")
-    } == {column.name for column in TransferPending.__table__.columns}
+    } == {
+        column.name
+        for column in TransferPending.__table__.columns
+        if column.name not in POST_LEASE_EXECUTION_COLUMNS
+    }
     upgraded = _planning_row(connection)
     planning_payload = upgraded["planning_input"]
     if isinstance(planning_payload, str):
@@ -168,7 +190,11 @@ def _assert_upgrade_downgrade_reupgrade(connection, monkeypatch) -> None:
     assert {
         column["name"]
         for column in sa.inspect(connection).get_columns("transferpending")
-    } == {column.name for column in TransferPending.__table__.columns}
+    } == {
+        column.name
+        for column in TransferPending.__table__.columns
+        if column.name not in POST_LEASE_EXECUTION_COLUMNS
+    }
 
 
 def test_transfer_planning_upgrade_downgrade_reupgrade(monkeypatch) -> None:

@@ -2,6 +2,7 @@ import time
 from typing import Any, List, Optional
 
 from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -114,6 +115,19 @@ class TransferHistoryOper(DbOper):
         """
         return self._execute_sync_query(
             lambda session: TransferHistory.get_by_src(session, src, storage)
+        )
+
+    def get_by_transfer_task_id(
+            self,
+            *,
+            task_id: str,
+    ) -> Optional[TransferHistory]:
+        """按稳定整理任务标识读取终态历史。"""
+        return self._execute_sync_query(
+            lambda session: TransferHistory.get_by_transfer_task_id(
+                session,
+                task_id=task_id,
+            )
         )
 
     def get_success_by_src(
@@ -264,33 +278,60 @@ class TransferHistoryOper(DbOper):
 
     def delete(self, historyid):
         """
-        删除转移记录
+        删除旧转移记录，失败任务历史由状态机独占。
         """
-        self._stage_delete(TransferHistory, historyid)
+        self._execute_sync_write(
+            lambda session: session.execute(
+                sqlalchemy_delete(TransferHistory).where(
+                    TransferHistory.id == historyid,
+                    TransferHistory.transfer_task_id.is_(None),
+                )
+            )
+        )
 
     def stage_delete(self, historyid: int) -> None:
         """暂存整理记录删除，事务由调用方统一提交。"""
         self._db.execute(
             sqlalchemy_delete(TransferHistory).where(
-                TransferHistory.id == historyid
+                TransferHistory.id == historyid,
+                TransferHistory.transfer_task_id.is_(None),
             )
         )
 
     def stage_truncate(self) -> None:
-        """暂存全部整理记录删除，由请求级事务统一提交。"""
-        self._db.execute(sqlalchemy_delete(TransferHistory))
+        """暂存旧整理记录删除，只保留当前失败任务历史。"""
+        self._db.execute(
+            sqlalchemy_delete(TransferHistory).where(
+                TransferHistory.transfer_task_id.is_(None)
+            )
+        )
 
     async def async_delete(self, historyid):
         """
-        异步删除转移记录。
+        异步删除旧转移记录，失败任务历史由状态机独占。
         """
-        await self._stage_async_delete(TransferHistory, historyid)
+        async def stage(session: AsyncSession) -> None:
+            """在异步事务内只删除没有任务回执的历史。"""
+            await session.execute(
+                sqlalchemy_delete(TransferHistory).where(
+                    TransferHistory.id == historyid,
+                    TransferHistory.transfer_task_id.is_(None),
+                )
+            )
+
+        await self._execute_async_write(stage)
 
     def truncate(self):
         """
-        清空转移记录
+        清空旧转移记录，只保留当前失败任务历史。
         """
-        self._stage_truncate(TransferHistory)
+        self._execute_sync_write(
+            lambda session: session.execute(
+                sqlalchemy_delete(TransferHistory).where(
+                    TransferHistory.transfer_task_id.is_(None)
+                )
+            )
+        )
 
     def add_force(self, **kwargs) -> Optional[TransferHistory]:
         """
@@ -327,11 +368,53 @@ class TransferHistoryOper(DbOper):
             sqlalchemy_delete(TransferHistory).where(
                 TransferHistory.src == kwargs.get("src"),
                 TransferHistory.src_storage == kwargs["src_storage"],
+                TransferHistory.transfer_task_id.is_(None),
             )
         )
         self._db.flush()
         history = TransferHistory(**kwargs)
         self._db.add(history)
+        self._db.flush()
+        return history
+
+    def stage_upsert_by_transfer_task_id(
+            self,
+            *,
+            task_id: str,
+            settlement_revision: int,
+            retain_task_mapping: bool,
+            payload: dict[str, Any],
+    ) -> TransferHistory:
+        """在调用方事务内按任务标识幂等暂存终态历史。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("整理历史任务结算需要调用方提供同步 Session")
+        payload = dict(payload)
+        payload["src_storage"] = payload.get("src_storage") or "local"
+        payload["date"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        return TransferHistory.upsert_by_transfer_task_id(
+            self._db,
+            task_id=task_id,
+            settlement_revision=settlement_revision,
+            retain_task_mapping=retain_task_mapping,
+            payload=payload,
+        )
+
+    def stage_bind_settlement(
+            self,
+            *,
+            task_id: str,
+            settlement_revision: int,
+            src: str,
+            storage: Optional[str] = None,
+    ) -> Optional[TransferHistory]:
+        """复用已有成功历史且清除失败任务映射，不改写业务字段。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("整理历史任务回执绑定需要调用方提供同步 Session")
+        history = TransferHistory.get_success_by_src(self._db, src, storage)
+        if history is None:
+            return None
+        history.transfer_task_id = None
+        history.transfer_settlement_revision = None
         self._db.flush()
         return history
 

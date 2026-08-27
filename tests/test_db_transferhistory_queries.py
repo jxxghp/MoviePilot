@@ -5,7 +5,6 @@
 来的）、统计。查重误判会重复整理或永久漏件——挂载故障那一类问题最终就落在这张表上；
 溯源查错会让「重新整理」把不相干的文件搬走。
 """
-import asyncio
 import time as _time
 
 import pytest
@@ -513,6 +512,65 @@ def test_delete_before_is_batched_and_keeps_recent(db):
     assert TransferHistory.delete_before(db.session, before_time="2026-08-01", limit=100) == 0
 
     assert TransferHistory.get_by_src(db.session, "/data/recent.mkv") is not None
+
+
+def test_delete_before_preserves_current_failed_task_history(db):
+    """过期维护不得删除当前失败 pending 映射使用的历史。"""
+    durable = _hist(
+        "durable-old",
+        src="/data/durable-old.mkv",
+        date="2026-01-01 10:00:00",
+        status=False,
+    )
+    durable.transfer_task_id = "task-durable-old"
+    durable.transfer_settlement_revision = 1
+    db.add(durable)
+
+    assert TransferHistory.delete_before(
+        db.session,
+        before_time="2026-08-01",
+        limit=100,
+    ) == 0
+    assert TransferHistory.get_by_transfer_task_id(
+        db.session,
+        task_id="task-durable-old",
+    ) is not None
+
+
+def test_upsert_durable_projection_advances_to_new_same_source_task(db):
+    """同源历史只表达最新任务投影，旧任务重放身份由独立回执持有。"""
+    durable = _hist(
+        "old-task",
+        src="/data/reused.mkv",
+        date="2026-08-01 10:00:00",
+    )
+    durable.transfer_task_id = "old-task"
+    durable.transfer_settlement_revision = 1
+    db.add(durable)
+
+    projected = TransferHistory.upsert_by_transfer_task_id(
+        db.session,
+        task_id="new-task",
+        settlement_revision=1,
+        retain_task_mapping=False,
+        payload={
+            "src": "/data/reused.mkv",
+            "src_storage": "local",
+            "status": True,
+        },
+    )
+
+    assert TransferHistory.get_by_transfer_task_id(
+        db.session,
+        task_id="old-task",
+    ) is None
+    assert TransferHistory.get_by_transfer_task_id(
+        db.session,
+        task_id="new-task",
+    ) is None
+    assert projected is durable
+    assert projected.transfer_task_id is None
+    assert projected.transfer_settlement_revision is None
 
 
 def test_delete_before_keeps_the_row_exactly_at_the_boundary(db):

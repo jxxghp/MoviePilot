@@ -149,9 +149,6 @@
   "app/agent/tools/impl/delete_rule_group.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/delete_transfer_history.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/execute_command.py": {
     "I001": 1
   },
@@ -411,9 +408,6 @@
   "app/db/__init__.py": {
     "I001": 1
   },
-  "app/db/adapters/chain.py": {
-    "I001": 1
-  },
   "app/db/adapters/outbox.py": {
     "I001": 1
   },
@@ -475,9 +469,6 @@
     "I001": 1
   },
   "app/db/models/systemconfig.py": {
-    "I001": 1
-  },
-  "app/db/models/transferhistory.py": {
     "I001": 1
   },
   "app/db/models/user.py": {
@@ -1265,9 +1256,6 @@
   "tests/test_capability_runtime.py": {
     "I001": 1
   },
-  "tests/test_chain_durable_events.py": {
-    "I001": 1
-  },
   "tests/test_chain_layering.py": {
     "I001": 1
   },
@@ -1333,9 +1321,6 @@
   },
   "tests/test_db_session_lifecycle.py": {
     "I001": 1
-  },
-  "tests/test_db_transferhistory_queries.py": {
-    "F401": 1
   },
   "tests/test_delete_transfer_history_tool.py": {
     "I001": 1

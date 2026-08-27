@@ -1,8 +1,9 @@
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Literal, List, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MusicTargetEntityType
 
@@ -155,6 +156,75 @@ class TransferInfo(BaseModel):
         dicts["fileitem"] = self.fileitem.model_dump() if self.fileitem else None
         dicts["target_item"] = self.target_item.model_dump() if self.target_item else None
         return dicts
+
+
+class TransferManualReviewRequest(BaseModel):  # type: ignore[misc]
+    """人工判定外部结果不确定整理步骤的请求。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    operation_id: str = Field(min_length=1, description="待判定的稳定操作标识")
+    decision: Literal["not_applied", "applied"] = Field(
+        description="人工判定；不公开 failed，失败终态只能由 durable 结算写入",
+    )
+    reason: str = Field(min_length=1, max_length=2000, description="人工判定理由")
+    result_payload: Optional[dict[str, JsonData]] = Field(
+        default=None,
+        description="判定为 applied 时必填的外部结果证据",
+    )
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    def validate_result_payload(self) -> "TransferManualReviewRequest":
+        """要求已发生判定携带可持久化的结果证据。"""
+        if self.decision == "applied" and self.result_payload is None:
+            raise ValueError("判定为 applied 时必须提供 result_payload")
+        return self
+
+
+class TransferManualReviewData(BaseModel):  # type: ignore[misc]
+    """人工复核提交后的公开状态投影。"""
+
+    task_id: str
+    operation_id: str
+    decision: Literal["not_applied", "applied"]
+    state: str
+    review_revision: int
+
+
+class TransferManualReviewSourceData(BaseModel):  # type: ignore[misc]
+    """人工复核任务的源文件身份。"""
+
+    storage: str
+    path: str
+
+
+class TransferManualReviewStepData(BaseModel):  # type: ignore[misc]
+    """人工复核步骤的公开意图与事实证据。"""
+
+    operation_id: str
+    kind: str
+    intent: dict[str, JsonData]
+    evidence: Optional[dict[str, JsonData]] = None
+    error: Optional[str] = None
+
+
+class TransferManualReviewTaskData(BaseModel):  # type: ignore[misc]
+    """可由管理员发现和判定的 durable 整理任务。"""
+
+    task_id: str
+    source: TransferManualReviewSourceData
+    state: Literal["manual_review", "retry_wait"]
+    step: TransferManualReviewStepData
+    review_revision: int
+
+
+class TransferManualReviewPageData(BaseModel):  # type: ignore[misc]
+    """人工复核任务分页结果。"""
+
+    items: list[TransferManualReviewTaskData] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 30
 
 
 class EpisodeFormat(BaseModel):

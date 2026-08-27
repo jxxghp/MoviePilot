@@ -1,13 +1,18 @@
 """下载与整理 durable 事件的原子写入和对象恢复测试。"""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
 from sqlalchemy import create_engine, delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.application.chain.durable_events import (
+    TransferResultSettlement,
     download_added_event_key,
     restore_download_added,
     restore_transfer_result,
@@ -15,16 +20,26 @@ from app.application.chain.durable_events import (
     snapshot_transfer_result,
     transfer_result_event_key,
 )
+from app.application.history import TransferHistoryMutationCommand
+from app.application.transfer_execution import (
+    TransferExecutionLeaseLostError,
+    TransferSettlementResult,
+)
+from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.base import Base
 from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.models.outbox import OutboxMessage
+from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
+from app.db.models.transferpending import TransferPending
+from app.db.models.transfersettlementreceipt import TransferSettlementReceipt
+from app.db.oper.transferhistory import TransferHistoryOper
+from app.db.uow import SqlAlchemyUnitOfWork
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource, MediaType
-from app.db.adapters.chain import TransactionalChainDurableEventWriter
 
 
 def _session_factory():
@@ -64,6 +79,79 @@ def _objects():
         transfer_type="copy",
     )
     return meta, media, context, fileitem, transferinfo
+
+
+def _add_settling_pending(
+    factory,
+    *,
+    task_id: str = "task-1",
+    lease_token: str = "lease-1",
+    execution_fingerprint: str = "execution-1",
+    settlement_revision: int = 0,
+    src_path: str | None = None,
+) -> None:
+    """写入具备有效长租约和执行检查点的待结算任务。"""
+    with factory() as session:
+        session.add(TransferPending(
+            task_id=task_id,
+            storage="local",
+            src_path=src_path or f"/downloads/{task_id}.mkv",
+            created_at="2026-08-27 09:00:00",
+            state="planned",
+            updated_at="2026-08-27 09:00:00",
+            input_version=1,
+            planning_input={"schema_version": 1, "source": task_id},
+            input_fingerprint=f"input-{task_id}",
+            checkpoint_version=1,
+            checkpoint_payload={"schema_version": 1, "task_id": task_id},
+            planned_at="2026-08-27 09:00:00",
+            lease_owner="worker-1",
+            lease_token=lease_token,
+            lease_expires_at="2099-01-01 00:00:00.000000",
+            heartbeat_at="2026-08-27 01:00:00.000000",
+            attempt_count=1,
+            execution_state="settling",
+            execution_version=1,
+            execution_payload={"schema_version": 1},
+            execution_fingerprint=execution_fingerprint,
+            retry_generation=0,
+            retry_count=0,
+            settlement_revision=settlement_revision,
+        ))
+        session.commit()
+
+
+def _settlement(
+    *,
+    outcome: str,
+    task_id: str = "task-1",
+    lease_token: str = "lease-1",
+    execution_fingerprint: str = "execution-1",
+) -> TransferResultSettlement:
+    """构造测试使用的稳定终态结算身份。"""
+    return TransferResultSettlement(
+        task_id=task_id,
+        lease_token=lease_token,
+        execution_fingerprint=execution_fingerprint,
+        outcome=outcome,
+        error="目标文件校验失败" if outcome == "failed" else None,
+    )
+
+
+def _stage_result_history(
+    repository,
+    *,
+    task_id: str,
+    succeeded: bool,
+    src_path: str | None = None,
+):
+    """通过兼容历史端口暂存一条最小任务结算记录。"""
+    return repository.add_force(
+        src=src_path or f"/downloads/{task_id}.mkv",
+        src_storage="local",
+        status=succeeded,
+        errmsg=None if succeeded else "目标文件校验失败",
+    )
 
 
 def _assert_event_key(
@@ -213,6 +301,71 @@ def test_event_keys_distinguish_reused_history_ids():
         _assert_event_key(event_key, "transfer.completed", 7)
 
 
+def test_task_settlement_event_key_is_deterministic_and_revision_scoped():
+    """任务结算按稳定任务、修订号和结果生成可重放的唯一事件键。"""
+    succeeded = TransferResultSettlement(
+        task_id="task-1",
+        lease_token="lease-1",
+        execution_fingerprint="execution-1",
+        outcome="succeeded",
+    )
+    failed = TransferResultSettlement(
+        task_id="task-1",
+        lease_token="lease-1",
+        execution_fingerprint="execution-1",
+        outcome="failed",
+        error="目标文件校验失败",
+    )
+
+    assert transfer_result_event_key(
+        "transfer.completed", 7, settlement=succeeded, settlement_revision=2
+    ) == "transfer.result:task-1:2:succeeded:v1"
+    assert transfer_result_event_key(
+        "transfer.completed", 99, settlement=succeeded, settlement_revision=2
+    ) == "transfer.result:task-1:2:succeeded:v1"
+    assert transfer_result_event_key(
+        "transfer.failed", 7, settlement=failed, settlement_revision=3
+    ) == "transfer.result:task-1:3:failed:v1"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"task_id": ""}, "缺少任务"),
+        ({"outcome": "unknown"}, "不支持的整理终态"),
+        ({"outcome": "failed", "error": None}, "必须包含可诊断原因"),
+    ],
+)
+def test_task_settlement_rejects_incomplete_identity(kwargs, message):
+    """任务结算在进入数据库适配器前拒绝不完整的 fencing 身份。"""
+    values = {
+        "task_id": "task-1",
+        "lease_token": "lease-1",
+        "execution_fingerprint": "execution-1",
+        "outcome": "succeeded",
+        "error": None,
+    }
+    values.update(kwargs)
+    with pytest.raises(ValueError, match=message):
+        TransferResultSettlement(**values)
+
+
+def test_task_settlement_event_key_requires_transaction_revision():
+    """任务结算事件键只能使用持久层已取得的正向修订号。"""
+    settlement = TransferResultSettlement(
+        task_id="task-1",
+        lease_token="lease-1",
+        execution_fingerprint="execution-1",
+        outcome="succeeded",
+    )
+    with pytest.raises(ValueError, match="缺少有效结算修订号"):
+        transfer_result_event_key(
+            "transfer.completed",
+            7,
+            settlement=settlement,
+        )
+
+
 def test_transfer_succeeds_when_history_id_is_reused_with_retained_outbox():
     """整理历史删除而 outbox 保留时，复用主键不得阻断新整理记录。"""
     factory = _session_factory()
@@ -302,3 +455,724 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
     assert history.status is True
     assert outbox.status == "pending"
     _assert_event_key(outbox.event_key, "transfer.completed", history.id)
+
+
+def test_task_success_settlement_atomically_deletes_pending_and_steps():
+    """成功终态原子提交历史、pending、步骤和待异步投递的 intent。"""
+    factory = _session_factory()
+    _add_settling_pending(factory)
+    with factory() as session:
+        session.add(TransferExecutionStep(
+            task_id="task-1",
+            operation_id="operation-1",
+            checkpoint_fingerprint="plan-1",
+            ordinal=0,
+            phase="transfer",
+            kind="copy",
+            state="succeeded",
+            attempt_count=1,
+            intent_version=1,
+            intent_payload={"src": "/downloads/task-1.mkv"},
+            result_version=1,
+            result_payload={"dest": "/library/task-1.mkv"},
+            prepared_at="2026-08-27 09:00:00",
+            completed_at="2026-08-27 09:01:00",
+            updated_at="2026-08-27 09:01:00",
+        ))
+        session.commit()
+    writer = TransactionalChainDurableEventWriter(factory)
+    published = []
+
+    def publish(payload):
+        """验证即时发布只能观察到已提交的完整终态。"""
+        with factory() as session:
+            assert session.execute(select(TransferPending)).scalar_one_or_none() is None
+            assert session.execute(select(TransferHistory)).scalar_one().status is True
+            assert session.execute(select(OutboxMessage)).scalar_one().status == "pending"
+        published.append(dict(payload))
+
+    result = writer.transfer_result(
+        topic="transfer.completed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="task-1",
+            succeeded=True,
+        ),
+        event_payload={},
+        publish=publish,
+        settlement=_settlement(outcome="succeeded"),
+    )
+
+    assert result == TransferSettlementResult(
+        history_id=1,
+        settlement_revision=1,
+        pending_deleted=True,
+    )
+    with factory() as session:
+        history = session.execute(select(TransferHistory)).scalar_one()
+        receipt = session.execute(select(TransferSettlementReceipt)).scalar_one()
+        outbox = session.execute(select(OutboxMessage)).scalar_one()
+        assert session.execute(select(TransferPending)).scalar_one_or_none() is None
+        assert session.execute(select(TransferExecutionStep)).scalar_one_or_none() is None
+    assert history.transfer_task_id is None
+    assert history.transfer_settlement_revision is None
+    assert receipt.task_id == "task-1"
+    assert receipt.history_id == history.id
+    assert receipt.outcome == "succeeded"
+    assert receipt.execution_fingerprint == "execution-1"
+    assert receipt.lease_token == "lease-1"
+    assert receipt.history_status is True
+    assert receipt.src == "/downloads/task-1.mkv"
+    assert receipt.src_storage == "local"
+    assert receipt.pending_deleted is True
+    assert outbox.event_key == "transfer.result:task-1:1:succeeded:v1"
+    assert outbox.status == "pending"
+    assert outbox.payload["idempotency_key"] == outbox.event_key
+    assert "task_id" not in outbox.payload
+    assert published == []
+
+
+def test_task_success_replay_reads_history_without_new_event():
+    """成功删除 pending 后重复结算只回读历史，不重复登记或发布事件。"""
+    factory = _session_factory()
+    _add_settling_pending(factory)
+    writer = TransactionalChainDurableEventWriter(factory)
+    settlement = _settlement(outcome="succeeded")
+    calls = []
+
+    first = writer.transfer_result(
+        topic="transfer.completed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="task-1",
+            succeeded=True,
+        ),
+        event_payload={},
+        publish=lambda _payload: calls.append("first"),
+        settlement=settlement,
+    )
+    replay = writer.transfer_result(
+        topic="transfer.completed",
+        stage_history=lambda _repository: pytest.fail("幂等回读不得重写历史"),
+        event_payload={},
+        publish=lambda _payload: pytest.fail("幂等回读不得重复发布"),
+        settlement=settlement,
+    )
+
+    assert isinstance(first, TransferSettlementResult)
+    assert replay == TransferSettlementResult(
+        history_id=first.history_id,
+        settlement_revision=1,
+        pending_deleted=True,
+        already_settled=True,
+    )
+    with factory() as session:
+        assert len(session.execute(select(TransferHistory)).scalars().all()) == 1
+        assert len(session.execute(select(OutboxMessage)).scalars().all()) == 1
+    assert calls == []
+
+
+def test_multiple_same_source_tasks_keep_independent_replay_receipts():
+    """同源多代任务可依次完成，旧任务仍由独立回执幂等回读。"""
+    factory = _session_factory()
+    writer = TransactionalChainDurableEventWriter(factory)
+    shared_src = "/downloads/shared-generation.mkv"
+    _add_settling_pending(
+        factory,
+        task_id="old-task",
+        src_path=shared_src,
+    )
+    old_settlement = _settlement(outcome="succeeded", task_id="old-task")
+    old_result = writer.transfer_result(
+        topic="transfer.completed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="old-task",
+            succeeded=True,
+            src_path=shared_src,
+        ),
+        event_payload={},
+        publish=None,
+        settlement=old_settlement,
+    )
+    _add_settling_pending(
+        factory,
+        task_id="new-task",
+        lease_token="lease-2",
+        execution_fingerprint="execution-2",
+        src_path=shared_src,
+    )
+
+    new_result = writer.transfer_result(
+        topic="transfer.completed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="new-task",
+            succeeded=True,
+            src_path=shared_src,
+        ),
+        event_payload={},
+        publish=None,
+        settlement=_settlement(
+            outcome="succeeded",
+            task_id="new-task",
+            lease_token="lease-2",
+            execution_fingerprint="execution-2",
+        ),
+    )
+    old_replay = writer.transfer_result(
+        topic="transfer.completed",
+        stage_history=lambda _repository: pytest.fail("旧任务不得改写最新投影"),
+        event_payload={},
+        publish=None,
+        settlement=old_settlement,
+    )
+
+    with factory() as session:
+        history = session.execute(select(TransferHistory)).scalar_one()
+        receipts = session.execute(
+            select(TransferSettlementReceipt).order_by(TransferSettlementReceipt.id)
+        ).scalars().all()
+        assert session.execute(select(TransferPending)).scalar_one_or_none() is None
+    assert isinstance(old_result, TransferSettlementResult)
+    assert isinstance(new_result, TransferSettlementResult)
+    assert old_replay == TransferSettlementResult(
+        history_id=old_result.history_id,
+        settlement_revision=1,
+        pending_deleted=True,
+        already_settled=True,
+    )
+    assert history.transfer_task_id is None
+    assert history.transfer_settlement_revision is None
+    assert [receipt.task_id for receipt in receipts] == ["old-task", "new-task"]
+    assert [receipt.history_id for receipt in receipts] == [history.id, history.id]
+
+
+def test_task_settlement_without_public_topic_commits_no_outbox():
+    """无公共事件的文件仍原子结算历史和 pending，且不登记或发布事件。"""
+    factory = _session_factory()
+    _add_settling_pending(factory, task_id="lyrics-task")
+    writer = TransactionalChainDurableEventWriter(factory)
+
+    result = writer.transfer_result(
+        topic=None,
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="lyrics-task",
+            succeeded=True,
+        ),
+        event_payload={"unexpected": "must-not-publish"},
+        publish=lambda _payload: pytest.fail("无公共 topic 不得发布"),
+        settlement=_settlement(
+            outcome="succeeded",
+            task_id="lyrics-task",
+        ),
+    )
+
+    assert result == TransferSettlementResult(
+        history_id=1,
+        settlement_revision=1,
+        pending_deleted=True,
+    )
+    with factory() as session:
+        history = session.execute(select(TransferHistory)).scalar_one()
+        assert history.transfer_task_id is None
+        assert session.execute(select(TransferPending)).scalar_one_or_none() is None
+        assert session.execute(select(OutboxMessage)).scalar_one_or_none() is None
+
+
+def test_task_settlement_binds_receipt_without_overwriting_success_history():
+    """不覆盖裁决只绑定任务回执，保留旧成功历史的全部业务字段。"""
+    factory = _session_factory()
+    _add_settling_pending(factory, task_id="declined-task")
+    with factory() as session:
+        session.add(TransferHistory(
+            src="/downloads/declined-task.mkv",
+            src_storage="local",
+            dest="/library/original.mkv",
+            title="Original",
+            status=True,
+            date="2026-08-26 20:00:00",
+        ))
+        session.commit()
+    writer = TransactionalChainDurableEventWriter(factory)
+    settlement = _settlement(
+        outcome="succeeded",
+        task_id="declined-task",
+    )
+
+    first = writer.transfer_result(
+        topic=None,
+        stage_history=lambda repository: repository.get_success_by_src(
+            "/downloads/declined-task.mkv",
+            "local",
+        ),
+        event_payload={},
+        publish=None,
+        settlement=settlement,
+    )
+    replay = writer.transfer_result(
+        topic=None,
+        stage_history=lambda _repository: pytest.fail("回执重放不得重新查写历史"),
+        event_payload={},
+        publish=None,
+        settlement=settlement,
+    )
+
+    assert isinstance(first, TransferSettlementResult)
+    assert replay == TransferSettlementResult(
+        history_id=first.history_id,
+        settlement_revision=1,
+        pending_deleted=True,
+        already_settled=True,
+    )
+    with factory() as session:
+        history = session.execute(select(TransferHistory)).scalar_one()
+        assert session.execute(select(TransferPending)).scalar_one_or_none() is None
+        assert session.execute(select(OutboxMessage)).scalar_one_or_none() is None
+    assert history.dest == "/library/original.mkv"
+    assert history.title == "Original"
+    assert history.status is True
+    assert history.date == "2026-08-26 20:00:00"
+    assert history.transfer_task_id is None
+    assert history.transfer_settlement_revision is None
+
+
+@pytest.mark.parametrize("cleanup", ["delete", "truncate"])
+def test_receipt_replay_survives_real_history_command_cleanup(cleanup):
+    """真实历史删除或清空命令执行后，独立回执仍可重放成功终态。"""
+    factory = _session_factory()
+    _add_settling_pending(factory, task_id="cleanup-task")
+    writer = TransactionalChainDurableEventWriter(factory)
+    settlement = _settlement(outcome="succeeded", task_id="cleanup-task")
+    first = writer.transfer_result(
+        topic=None,
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="cleanup-task",
+            succeeded=True,
+        ),
+        event_payload={},
+        publish=None,
+        settlement=settlement,
+    )
+    with factory() as session:
+        command = TransferHistoryMutationCommand(
+            repository=TransferHistoryOper(session),
+            download_repository=Mock(),
+            unit_of_work=SqlAlchemyUnitOfWork(session),
+            file_item_factory=Mock(),
+            delete_media_file=Mock(return_value=True),
+            publish_download_file_deleted=Mock(),
+            clear_failures=Mock(),
+        )
+        cleanup_result = (
+            command.delete(first.history_id)
+            if cleanup == "delete"
+            else command.truncate()
+        )
+        assert cleanup_result.success is True
+
+    replay = writer.transfer_result(
+        topic=None,
+        stage_history=lambda _repository: pytest.fail("清理后重放不得重建历史"),
+        event_payload={},
+        publish=None,
+        settlement=settlement,
+    )
+
+    with factory() as session:
+        assert session.execute(select(TransferHistory)).scalar_one_or_none() is None
+        receipts = session.execute(
+            select(TransferSettlementReceipt)
+            .order_by(TransferSettlementReceipt.settlement_revision)
+        ).scalars().all()
+    assert isinstance(first, TransferSettlementResult)
+    assert replay == TransferSettlementResult(
+        history_id=first.history_id,
+        settlement_revision=1,
+        pending_deleted=True,
+        already_settled=True,
+    )
+    assert len(receipts) == 1
+    assert receipts[0].task_id == "cleanup-task"
+    assert receipts[0].history_id == first.history_id
+
+
+def test_success_receipt_allows_expiry_and_legacy_same_source_replace():
+    """成功回执不锁死业务历史，过期清理和旧兼容替换仍按原契约工作。"""
+    factory = _session_factory()
+    shared_src = "/downloads/cleanup-compatible.mkv"
+    _add_settling_pending(
+        factory,
+        task_id="compatible-task",
+        src_path=shared_src,
+    )
+    writer = TransactionalChainDurableEventWriter(factory)
+    settlement = _settlement(outcome="succeeded", task_id="compatible-task")
+    first = writer.transfer_result(
+        topic=None,
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="compatible-task",
+            succeeded=True,
+            src_path=shared_src,
+        ),
+        event_payload={},
+        publish=None,
+        settlement=settlement,
+    )
+
+    with factory() as session:
+        assert TransferHistory.delete_before(
+            session,
+            before_time="9999-12-31 23:59:59",
+            limit=100,
+        ) == 1
+        session.commit()
+        legacy = TransferHistoryOper(session).stage_replace_by_src(
+            src=shared_src,
+            src_storage="local",
+            status=True,
+        )
+        session.commit()
+        assert legacy.transfer_task_id is None
+
+    replay = writer.transfer_result(
+        topic=None,
+        stage_history=lambda _repository: pytest.fail("旧兼容替换后不得重写历史"),
+        event_payload={},
+        publish=None,
+        settlement=settlement,
+    )
+    assert isinstance(first, TransferSettlementResult)
+    assert replay == TransferSettlementResult(
+        history_id=first.history_id,
+        settlement_revision=1,
+        pending_deleted=True,
+        already_settled=True,
+    )
+
+
+def test_task_failure_settlement_is_replayable_and_retry_advances_revision():
+    """失败保留终态证据，重复调用幂等，显式重试后才递增修订号。"""
+    factory = _session_factory()
+    _add_settling_pending(factory)
+    writer = TransactionalChainDurableEventWriter(factory)
+    calls = []
+    first_settlement = _settlement(outcome="failed")
+
+    first = writer.transfer_result(
+        topic="transfer.failed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="task-1",
+            succeeded=False,
+        ),
+        event_payload={},
+        publish=lambda _payload: calls.append("first"),
+        settlement=first_settlement,
+    )
+    replay = writer.transfer_result(
+        topic="transfer.failed",
+        stage_history=lambda _repository: pytest.fail("失败回读不得重写历史"),
+        event_payload={},
+        publish=lambda _payload: pytest.fail("失败回读不得重复发布"),
+        settlement=first_settlement,
+    )
+    assert isinstance(first, TransferSettlementResult)
+    assert replay.already_settled is True
+    assert replay.settlement_revision == 1
+
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        assert pending.execution_state == "failed"
+        assert pending.lease_token is None
+        assert pending.settlement_revision == 1
+        assert pending.terminal_history_id == first.history_id
+        pending.execution_state = "settling"
+        pending.execution_fingerprint = "execution-2"
+        pending.lease_owner = "worker-2"
+        pending.lease_token = "lease-2"
+        pending.lease_expires_at = "2099-01-01 00:00:00.000000"
+        session.commit()
+
+    retried = writer.transfer_result(
+        topic="transfer.failed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="task-1",
+            succeeded=False,
+        ),
+        event_payload={},
+        publish=lambda _payload: calls.append("retry"),
+        settlement=_settlement(
+            outcome="failed",
+            lease_token="lease-2",
+            execution_fingerprint="execution-2",
+        ),
+    )
+
+    assert retried == TransferSettlementResult(
+        history_id=first.history_id,
+        settlement_revision=2,
+        pending_deleted=False,
+    )
+    stale_replay = writer.transfer_result(
+        topic="transfer.failed",
+        stage_history=lambda _repository: pytest.fail(
+            "旧修订延迟重放不得覆盖最新历史"
+        ),
+        event_payload={},
+        publish=None,
+        settlement=first_settlement,
+    )
+    assert stale_replay == TransferSettlementResult(
+        history_id=first.history_id,
+        settlement_revision=1,
+        pending_deleted=False,
+        already_settled=True,
+    )
+    with factory() as session:
+        histories = session.execute(select(TransferHistory)).scalars().all()
+        outboxes = session.execute(
+            select(OutboxMessage).order_by(OutboxMessage.id)
+        ).scalars().all()
+        pending = session.execute(select(TransferPending)).scalar_one()
+        receipts = session.execute(
+            select(TransferSettlementReceipt)
+            .order_by(TransferSettlementReceipt.settlement_revision)
+        ).scalars().all()
+    assert len(histories) == 1
+    assert histories[0].transfer_settlement_revision == 2
+    assert pending.settlement_revision == 2
+    assert [receipt.settlement_revision for receipt in receipts] == [1, 2]
+    assert all(receipt.task_id == "task-1" for receipt in receipts)
+    assert all(receipt.history_id == first.history_id for receipt in receipts)
+    assert receipts[0].execution_fingerprint == "execution-1"
+    assert receipts[0].lease_token == "lease-1"
+    assert receipts[1].outcome == "failed"
+    assert receipts[1].execution_fingerprint == "execution-2"
+    assert receipts[1].lease_token == "lease-2"
+    assert receipts[1].pending_deleted is False
+    assert receipts[1].error == "目标文件校验失败"
+    assert [item.event_key for item in outboxes] == [
+        "transfer.result:task-1:1:failed:v1",
+        "transfer.result:task-1:2:failed:v1",
+    ]
+    assert calls == []
+
+
+def test_failed_revision_replays_after_later_success_deleted_pending():
+    """后续重试成功删除 pending 后，旧失败修订仍按原执行身份幂等回读。"""
+    factory = _session_factory()
+    _add_settling_pending(factory)
+    writer = TransactionalChainDurableEventWriter(factory)
+    failed_settlement = _settlement(outcome="failed")
+    failed = writer.transfer_result(
+        topic="transfer.failed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="task-1",
+            succeeded=False,
+        ),
+        event_payload={},
+        publish=None,
+        settlement=failed_settlement,
+    )
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        pending.execution_state = "settling"
+        pending.execution_fingerprint = "execution-2"
+        pending.lease_owner = "worker-2"
+        pending.lease_token = "lease-2"
+        pending.lease_expires_at = "2099-01-01 00:00:00.000000"
+        session.commit()
+    succeeded_settlement = _settlement(
+        outcome="succeeded",
+        lease_token="lease-2",
+        execution_fingerprint="execution-2",
+    )
+    succeeded = writer.transfer_result(
+        topic="transfer.completed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="task-1",
+            succeeded=True,
+        ),
+        event_payload={},
+        publish=None,
+        settlement=succeeded_settlement,
+    )
+
+    stale_replay = writer.transfer_result(
+        topic="transfer.failed",
+        stage_history=lambda _repository: pytest.fail("旧失败回执不得重写历史"),
+        event_payload={},
+        publish=None,
+        settlement=failed_settlement,
+    )
+    success_replay = writer.transfer_result(
+        topic="transfer.completed",
+        stage_history=lambda _repository: pytest.fail("成功回执不得重写历史"),
+        event_payload={},
+        publish=None,
+        settlement=succeeded_settlement,
+    )
+
+    assert isinstance(failed, TransferSettlementResult)
+    assert isinstance(succeeded, TransferSettlementResult)
+    assert stale_replay == TransferSettlementResult(
+        history_id=failed.history_id,
+        settlement_revision=1,
+        pending_deleted=False,
+        already_settled=True,
+    )
+    assert success_replay == TransferSettlementResult(
+        history_id=succeeded.history_id,
+        settlement_revision=2,
+        pending_deleted=True,
+        already_settled=True,
+    )
+    with factory() as session:
+        history = session.execute(select(TransferHistory)).scalar_one()
+        receipts = session.execute(
+            select(TransferSettlementReceipt)
+            .order_by(TransferSettlementReceipt.settlement_revision)
+        ).scalars().all()
+        assert session.execute(select(TransferPending)).scalar_one_or_none() is None
+    assert history.transfer_task_id is None
+    assert history.transfer_settlement_revision is None
+    assert [receipt.outcome for receipt in receipts] == ["failed", "succeeded"]
+
+
+def test_task_settlement_outbox_conflict_rolls_back_history_and_pending():
+    """intent 唯一键冲突时回滚此前已暂存的历史与 pending 终态。"""
+    factory = _session_factory()
+    _add_settling_pending(factory)
+    event_key = "transfer.result:task-1:1:succeeded:v1"
+    with factory() as session:
+        session.add(OutboxMessage(
+            event_key=event_key,
+            topic="transfer.completed",
+            payload_version=1,
+            payload={},
+            status="completed",
+            attempt=0,
+            next_retry_at="2026-08-27T01:00:00+00:00",
+            created_at="2026-08-27T01:00:00+00:00",
+        ))
+        session.commit()
+    writer = TransactionalChainDurableEventWriter(factory)
+
+    with pytest.raises(IntegrityError):
+        writer.transfer_result(
+            topic="transfer.completed",
+            stage_history=lambda repository: _stage_result_history(
+                repository,
+                task_id="task-1",
+                succeeded=True,
+            ),
+            event_payload={},
+            publish=lambda _payload: pytest.fail("事务失败不得发布"),
+            settlement=_settlement(outcome="succeeded"),
+        )
+
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        histories = session.execute(select(TransferHistory)).scalars().all()
+        receipts = session.execute(select(TransferSettlementReceipt)).scalars().all()
+        outboxes = session.execute(select(OutboxMessage)).scalars().all()
+    assert pending.execution_state == "settling"
+    assert pending.settlement_revision == 0
+    assert pending.lease_token == "lease-1"
+    assert histories == []
+    assert receipts == []
+    assert len(outboxes) == 1
+    assert outboxes[0].event_key == event_key
+
+
+def test_task_settlement_rejects_stale_lease_without_business_writes():
+    """陈旧 lease 在历史回调前即被 fencing，不能留下历史或 intent。"""
+    factory = _session_factory()
+    _add_settling_pending(factory)
+    writer = TransactionalChainDurableEventWriter(factory)
+
+    with pytest.raises(TransferExecutionLeaseLostError):
+        writer.transfer_result(
+            topic="transfer.completed",
+            stage_history=lambda _repository: pytest.fail("陈旧 lease 不得写历史"),
+            event_payload={},
+            publish=lambda _payload: pytest.fail("陈旧 lease 不得发布"),
+            settlement=_settlement(
+                outcome="succeeded",
+                lease_token="stale-lease",
+            ),
+        )
+
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        assert session.execute(select(TransferHistory)).scalar_one_or_none() is None
+        assert session.execute(
+            select(TransferSettlementReceipt)
+        ).scalar_one_or_none() is None
+        assert session.execute(select(OutboxMessage)).scalar_one_or_none() is None
+    assert pending.execution_state == "settling"
+    assert pending.lease_token == "lease-1"
+
+
+def test_concurrent_duplicate_settlement_returns_one_commit_and_one_replay(
+        tmp_path,
+        monkeypatch,
+):
+    """并发重复结算只有一个事务写入，竞争输家回读同一不可变回执。"""
+    engine = create_engine(
+        f"sqlite+pysqlite:///{tmp_path / 'settlement-race.db'}",
+        connect_args={"check_same_thread": False, "timeout": 10},
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    _add_settling_pending(factory)
+    writer = TransactionalChainDurableEventWriter(factory)
+    settlement = _settlement(outcome="succeeded")
+    barrier = Barrier(2)
+    original_read = TransactionalChainDurableEventWriter._read_settlement_result
+
+    def synchronized_read(**kwargs):
+        """让两个调用都先观察到未结算，再同时进入事务竞争。"""
+        result = original_read(**kwargs)
+        if result is None:
+            barrier.wait(timeout=10)
+        return result
+
+    monkeypatch.setattr(
+        TransactionalChainDurableEventWriter,
+        "_read_settlement_result",
+        staticmethod(synchronized_read),
+    )
+
+    def settle_once():
+        """用相同 fencing 身份提交同一成功终态。"""
+        return writer.transfer_result(
+            topic=None,
+            stage_history=lambda repository: _stage_result_history(
+                repository,
+                task_id="task-1",
+                succeeded=True,
+            ),
+            event_payload={},
+            publish=None,
+            settlement=settlement,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: settle_once(), range(2)))
+
+    assert sorted(result.already_settled for result in results) == [False, True]
+    assert {result.history_id for result in results} == {1}
+    with factory() as session:
+        assert len(session.execute(select(TransferHistory)).scalars().all()) == 1
+        assert len(
+            session.execute(select(TransferSettlementReceipt)).scalars().all()
+        ) == 1
+        assert session.execute(select(TransferPending)).scalar_one_or_none() is None

@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer import TransferAdmission, TransferQueueService
 from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.schemas.file import FileItem
 from tests.test_transfer_job_manager import make_task, make_transfer_chain
@@ -117,6 +118,7 @@ def test_transfer_queue_service_cleans_up_when_batch_registration_fails():
 def test_transfer_queue_service_commits_admission_before_failed_enqueue(tmp_path):
     """真实仓储已提交后即使内存入队失败，任务也必须带原因留待恢复。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'durable-admission.db'}")
+    TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
     factory = sessionmaker(bind=engine)
     repository = TransactionalTransferAdmissionRepository(factory)

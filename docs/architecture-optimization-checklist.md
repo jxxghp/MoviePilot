@@ -69,16 +69,16 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 837 / 6,834 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 843 / 6,883 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
-| Module Contract | 217 specs / 215 methods / 265 calls | 动态方法名为 0；内部 planning 合同不进入插件调度，旧 transfer 只保留 provider ABI |
+| Module Contract | 217 specs / 215 methods / 266 calls | 动态方法名为 0；内部 planning 合同不进入插件调度，旧 transfer 只保留 provider ABI |
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,983 / 601 文件 | strict frontier 当前只覆盖 41 个文件，且 ratchet 已新增 2 个错误 |
-| Ruff 历史诊断 | 934 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Ruff 历史诊断 | 929 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 78.24%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -194,8 +194,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   返回空后再以第二次 CAS 提交 `planned`；planned 重放只消费冻结上下文和目标。
 - `S1-L1.3 Lease 与恢复调度`：`VERIFIED`。已交付 token fencing 的
   claim/lease/heartbeat/attempt、过期接管、固定退避的唯一恢复入口和有界关闭 owner。
-- `S1-L1.4 幂等执行与终态结算`：`PLANNED`。交付文件/历史幂等、唯一 retry owner 和
-  `manual_review` 语义。
+- `S1-L1.4 幂等执行与终态结算`：`VERIFIED`。已交付稳定 operation ledger、严格结果探测、
+  唯一 retry owner、`manual_review` 人工判定和 history/pending/outbox 同 UoW 终态结算。
 - `S1-L1.5 E3 全链收口`：`PLANNED`。完成崩溃矩阵、兼容验收与旧路径删除。此叶交付前，
   ARCH-102 父项保持“执行中”，不得以局部绿色宣称 E3 完成。
 
@@ -216,10 +216,18 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   fencing。启动和同进程恢复共享唯一 scheduler，确定性失败按固定轮询退避，关闭时 worker、replay、
   lease release 和 heartbeat 都由有界生命周期 owner 持有。损坏投影以无有效租约 CAS 留痕，同错不
   重复刷写，且不会阻塞后续健康任务。
-- `TransferPending` 仍缺少逐步骤执行结果和 `manual_review`，因此还不能判定“文件已移动、历史未提交”
-  等外部结果未知的后续中间态。
-- 这与 `docs/adr/0007-background-action-reliability.md:123-139` 对 E3 的稳定身份、步骤状态、
-  lease/heartbeat 和人工恢复要求不一致。
+- `S1-L1.4` 已增加 `TransferExecutionStep` 独立账本：每一步在副作用前冻结 intent 和稳定
+  operation ID，以 lease + attempt 双 CAS 提交结果；重启遇到遗留 `STARTED` 时必须先严格探测，
+  只有 `NOT_APPLIED` 能轮换 attempt 自动重试，`UNKNOWN/CONFLICT` 进入 `manual_review`。
+- 文件 cleanup、目录创建、版本发现/删除、覆盖目标删除、目标物化和跨存储 move 的源删除均已拆为
+  可重放步骤；本地复制使用完整内容比较，远端结果证据不足时不会伪造 exactly-once。
+- 成功、失败及覆盖拒绝均通过 task-aware writer 在一个 UoW 内提交 history、pending、step cleanup
+  与可选 outbox；revision 和确定性 occurrence key 使“文件已移动、历史未提交”在恢复后只补历史，
+  不重复文件副作用。历史/API/Agent 重试只登记 durable retry intent，由唯一 scheduler 重新 claim。
+- 管理员人工判定 API 只公开 `not_applied` 与带结果证据的 `applied`，并持久记录操作者、理由、结论
+  和 revision；无租约人工路径不能直接伪造失败终态。
+- 以上实现已满足 `docs/adr/0007-background-action-reliability.md:123-139` 对 E3 稳定身份、步骤状态、
+  lease/heartbeat 和人工恢复的阶段性要求；完整崩溃矩阵与兼容收口仍由 `S1-L1.5` 验收。
 
 **目标与步骤**
 
@@ -228,9 +236,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [x] 初始登记保存稳定源身份、版本化请求和状态；目标与有序操作在纯规划完成后以 planning
   checkpoint 原子更新，任何文件副作用不得早于该提交。
 - [x] 增加 claim/lease/heartbeat/attempt 与过期接管，同一任务同时只能有一个 worker owner。
-- [ ] 设计幂等文件操作和历史提交；只有所有必要步骤达到持久终态后才能删除记录。
-- [ ] 在持久状态机与现有失败历史/AI retry 之间指定唯一 retry owner，定义旧记录迁移和兼容规则。
-- [ ] E3 失败使用持久 `failed/manual_review`、最后稳定 checkpoint 和补偿边界，不直接套用 E2
+- [x] 设计幂等文件操作和历史提交；只有所有必要步骤达到持久终态后才能删除记录。
+- [x] 在持久状态机与现有失败历史/AI retry 之间指定唯一 retry owner，定义旧记录迁移和兼容规则。
+- [x] E3 失败使用持久 `failed/manual_review`、最后稳定 checkpoint 和补偿边界，不直接套用 E2
   Outbox 的 dead-letter 语义；禁止按年龄通用清理 pending。
 - [x] 当前 admission/planning 数据模型变更均配套 Alembic migration，并验证升级、降级和中断重跑。
 
@@ -238,10 +246,10 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 - [x] 登记后、内存入队前崩溃，重启可继续。
 - [x] 持久登记成功但内存入队失败，重启可继续。
-- [ ] 文件移动后、历史提交前崩溃，在支持稳定身份/幂等操作的存储上不重复移动且可补齐历史。
-- [ ] worker 未知异常和 lease 超时后保留可诊断状态。
-- [ ] 重复回放、重复消息和人工重试都保持幂等。
-- [ ] 外部存储返回结果未知时进入 `manual_review`，不得伪装成 exactly-once 成功。
+- [x] 文件移动后、历史提交前崩溃，在支持稳定身份/幂等操作的存储上不重复移动且可补齐历史。
+- [x] worker 未知异常和 lease 超时后保留可诊断状态。
+- [x] 重复回放、重复消息和人工重试都保持幂等。
+- [x] 外部存储返回结果未知时进入 `manual_review`，不得伪装成 exactly-once 成功。
 
 ```bash
 .venv/bin/python -m pytest \

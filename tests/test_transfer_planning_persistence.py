@@ -20,6 +20,7 @@ from app.application.transfer import (
     TransferProviderReference,
 )
 from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 
 
@@ -27,6 +28,7 @@ from app.db.models.transferpending import TransferPending
 def repository(tmp_path):
     """创建只服务单个测试的 SQLite 整理计划仓储。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'transfer-planning.db'}")
+    TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
     return TransactionalTransferAdmissionRepository(sessionmaker(bind=engine))
 
@@ -347,6 +349,30 @@ def test_admit_reuses_identical_input_and_rejects_conflict(repository) -> None:
         )
 
 
+def test_admit_allows_new_generation_when_history_has_previous_task(repository) -> None:
+    """历史保留上一代任务投影时，同源新事实仍可形成新任务世代。"""
+    with repository._session_factory() as session:  # noqa: SLF001
+        session.add(TransferHistory(
+            transfer_task_id="settled-task",
+            transfer_settlement_revision=1,
+            src="/downloads/Movie.2026.mkv",
+            src_storage="local",
+            status=True,
+        ))
+        session.commit()
+
+    admission = repository.admit(
+        storage="local",
+        src_path="/downloads/Movie.2026.mkv",
+        planning_input=_planning_input(),
+    )
+
+    with repository._session_factory() as session:  # noqa: SLF001
+        pending = session.execute(select(TransferPending)).scalar_one()
+    assert admission.task_id == pending.task_id
+    assert admission.task_id != "settled-task"
+
+
 def test_checkpoint_atomically_advances_and_is_idempotent(repository) -> None:
     """完整计划和 planned 状态应同事务提交且允许相同检查点重试。"""
     planning_input = _planning_input()
@@ -556,6 +582,7 @@ def test_projection_rejects_input_version_and_fingerprint_corruption(tmp_path) -
     """列版本、JSON 和指纹任一不一致时都不得返回伪冻结 DTO。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'input-corruption.db'}")
     factory = sessionmaker(bind=engine)
+    TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
     repository = TransactionalTransferAdmissionRepository(factory)
     planning_input = _planning_input()
@@ -601,6 +628,7 @@ def test_projection_rejects_checkpoint_version_corruption(tmp_path) -> None:
     """planned 行的列版本与自包含 checkpoint JSON 必须严格一致。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'checkpoint-corruption.db'}")
     factory = sessionmaker(bind=engine)
+    TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
     repository = TransactionalTransferAdmissionRepository(factory)
     planning_input = _planning_input()

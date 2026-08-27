@@ -116,6 +116,8 @@
     "会话不存在或无权访问": "The conversation does not exist or you do not have access",
     "会话保存失败": "Failed to save conversation",
     "后台服务不存在": "Background service does not exist",
+    "当前管理用户缺少可审计身份": "The current administrator does not have an auditable identity",
+    "人工复核任务不存在": "The manual review task does not exist",
     "任务添加失败": "Failed to add task",
     "无法识别媒体信息": "Unable to recognize media information",
     "未识别到媒体信息": "Unable to recognize media information",

@@ -1,3 +1,4 @@
+import filecmp
 import re
 from copy import deepcopy
 from pathlib import Path
@@ -13,6 +14,12 @@ from app.application.transfer import (
     TransferPlanCheckpoint,
     TransferPlanItem,
     TransferPlanningInput,
+)
+from app.application.transfer_execution import (
+    TransferOperationObservation,
+    TransferOperationObservationState,
+    TransferStepResult,
+    TransferStepRunner,
 )
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
@@ -625,6 +632,456 @@ class TransHandler:
             )
         return False, False, None
 
+    @staticmethod
+    def __serialize_step_item(fileitem: Optional[FileItem]) -> Optional[dict[str, Any]]:
+        """把步骤结果中的文件投影冻结为 JSON 对象。"""
+        return fileitem.model_dump(mode="json") if fileitem else None
+
+    @staticmethod
+    def __restore_step_item(result: TransferStepResult) -> Optional[FileItem]:
+        """从已持久成功证据恢复目标文件，不再次访问外部存储。"""
+        payload = result.payload.get("item")
+        return FileItem.model_validate(payload) if isinstance(payload, dict) else None
+
+    @staticmethod
+    def __observe_item_presence(
+            storage_oper: StorageBase,
+            path: Path,
+            *,
+            applied_when_present: bool,
+    ) -> TransferOperationObservation:
+        """以严格查询判断目标存在性，查询异常一律视为未知。"""
+        try:
+            item = storage_oper.get_item_strict(path)
+        except Exception as error:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=TransferStepResult(payload={
+                    "path": path.as_posix(),
+                    "query_error": str(error),
+                }),
+            )
+        exists = item is not None
+        applied = exists if applied_when_present else not exists
+        return TransferOperationObservation(
+            state=(
+                TransferOperationObservationState.APPLIED
+                if applied
+                else TransferOperationObservationState.NOT_APPLIED
+            ),
+            evidence=TransferStepResult(payload={
+                "path": path.as_posix(),
+                "exists": exists,
+                "item": TransHandler.__serialize_step_item(item),
+            }),
+        )
+
+    @staticmethod
+    def __run_persisted_step(
+            step_runner: Optional[TransferStepRunner],
+            *,
+            phase: str,
+            kind: str,
+            payload: dict[str, Any],
+            execute: Callable[[], TransferStepResult],
+            observe: Callable[[], TransferOperationObservation],
+    ) -> TransferStepResult:
+        """在持久任务中委托步骤账本，旧同步调用则直接执行。"""
+        if step_runner is None:
+            return execute()
+        return step_runner.run(
+            phase=phase,
+            kind=kind,
+            payload=payload,
+            execute=execute,
+            observe=observe,
+        )
+
+    @staticmethod
+    def __observe_transfer_operation(
+            *,
+            fileitem: FileItem,
+            target_storage: str,
+            source_oper: StorageBase,
+            target_oper: StorageBase,
+            target_file: Path,
+            transfer_type: str,
+    ) -> TransferOperationObservation:
+        """对遗留传输尝试作保守判定，证据不足时禁止自动重放。"""
+        try:
+            source_item = source_oper.get_item_strict(Path(cast(str, fileitem.path)))
+            target_item = target_oper.get_item_strict(target_file)
+        except Exception as error:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=TransferStepResult(payload={"query_error": str(error)}),
+            )
+
+        source_exists = source_item is not None
+        target_exists = target_item is not None
+        evidence = TransferStepResult(payload={
+            "source_exists": source_exists,
+            "target_exists": target_exists,
+            "item": TransHandler.__serialize_step_item(target_item),
+        })
+        if transfer_type == "move":
+            if not source_exists and target_exists:
+                return TransferOperationObservation(
+                    state=TransferOperationObservationState.APPLIED,
+                    evidence=evidence,
+                )
+            if source_exists and not target_exists:
+                return TransferOperationObservation(
+                    state=TransferOperationObservationState.NOT_APPLIED,
+                    evidence=evidence,
+                )
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.CONFLICT,
+                evidence=evidence,
+            )
+
+        if not target_exists:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.NOT_APPLIED,
+                evidence=evidence,
+            )
+        if fileitem.storage != "local" or target_storage != "local":
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=evidence,
+            )
+        source_path = Path(cast(str, fileitem.path))
+        try:
+            if transfer_type == "copy":
+                applied = source_path.is_file() and filecmp.cmp(
+                    source_path, target_file, shallow=False
+                )
+            elif transfer_type == "link":
+                applied = source_path.is_file() and target_file.samefile(source_path)
+            elif transfer_type == "softlink":
+                applied = target_file.is_symlink() and target_file.resolve() == source_path.resolve()
+            else:
+                return TransferOperationObservation(
+                    state=TransferOperationObservationState.UNKNOWN,
+                    evidence=evidence,
+                )
+        except OSError as error:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=TransferStepResult(payload={
+                    **evidence.payload,
+                    "verification_error": str(error),
+                }),
+            )
+        return TransferOperationObservation(
+            state=(
+                TransferOperationObservationState.APPLIED
+                if applied
+                else TransferOperationObservationState.CONFLICT
+            ),
+            evidence=evidence,
+        )
+
+    @classmethod
+    def __execute_transfer_with_steps(
+            cls,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            fileitem: FileItem,
+            target_storage: str,
+            source_oper: StorageBase,
+            target_oper: StorageBase,
+            target_file: Path,
+            transfer_type: str,
+    ) -> tuple[Optional[FileItem], str]:
+        """执行稳定传输步骤，并把跨存储 move 拆为落地与源删除。"""
+        cross_storage_move = (
+            transfer_type == "move" and fileitem.storage != target_storage
+        )
+        materialize_type = "copy" if cross_storage_move else transfer_type
+        intent_payload = {
+            "source": fileitem.model_dump(mode="json"),
+            "target_storage": target_storage,
+            "target_path": target_file.as_posix(),
+            "transfer_type": materialize_type,
+        }
+
+        def execute_materialize() -> TransferStepResult:
+            """执行一次目标落地并冻结其返回对象。"""
+            new_item, error = cls.__transfer_command(
+                fileitem=fileitem,
+                target_storage=target_storage,
+                source_oper=source_oper,
+                target_oper=target_oper,
+                target_file=target_file,
+                transfer_type=materialize_type,
+            )
+            if not new_item:
+                raise RuntimeError(error or f"{fileitem.path} 整理失败")
+            return TransferStepResult(payload={
+                "item": cls.__serialize_step_item(new_item),
+                "message": error,
+            })
+
+        materialized = cls.__run_persisted_step(
+            step_runner,
+            phase="transfer",
+            kind="materialize_target",
+            payload=intent_payload,
+            execute=execute_materialize,
+            observe=lambda: cls.__observe_transfer_operation(
+                fileitem=fileitem,
+                target_storage=target_storage,
+                source_oper=source_oper,
+                target_oper=target_oper,
+                target_file=target_file,
+                transfer_type=materialize_type,
+            ),
+        )
+        new_item = cls.__restore_step_item(materialized)
+        if not new_item:
+            return None, "整理步骤成功证据缺少目标文件"
+        if not cross_storage_move:
+            return new_item, str(materialized.payload.get("message") or "")
+
+        def execute_source_delete() -> TransferStepResult:
+            """在目标已落地后单独删除跨存储 move 的源文件。"""
+            if not source_oper.delete(fileitem):
+                raise RuntimeError(f"{fileitem.path} 源文件删除失败")
+            return TransferStepResult(payload={
+                "source_path": fileitem.path,
+                "deleted": True,
+            })
+
+        cls.__run_persisted_step(
+            step_runner,
+            phase="transfer",
+            kind="delete_move_source",
+            payload={
+                "source": fileitem.model_dump(mode="json"),
+                "target_storage": target_storage,
+                "target_path": target_file.as_posix(),
+            },
+            execute=execute_source_delete,
+            observe=lambda: cls.__observe_item_presence(
+                source_oper,
+                Path(cast(str, fileitem.path)),
+                applied_when_present=False,
+            ),
+        )
+        return new_item, str(materialized.payload.get("message") or "")
+
+    @classmethod
+    def __ensure_directory_with_step(
+            cls,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            target_oper: StorageBase,
+            target_storage: str,
+            path: Path,
+    ) -> Optional[FileItem]:
+        """持久记录可能创建目录的 get_folder 操作并恢复其结果。"""
+        def execute() -> TransferStepResult:
+            """获取或创建目标目录并冻结目录对象。"""
+            directory = target_oper.get_folder(path)
+            if not directory:
+                raise RuntimeError(f"目标目录 {path} 获取失败")
+            return TransferStepResult(payload={
+                "item": cls.__serialize_step_item(directory),
+            })
+
+        result = cls.__run_persisted_step(
+            step_runner,
+            phase="prepare",
+            kind="ensure_target_directory",
+            payload={"storage": target_storage, "path": path.as_posix()},
+            execute=execute,
+            observe=lambda: cls.__observe_item_presence(
+                target_oper,
+                path,
+                applied_when_present=True,
+            ),
+        )
+        return cls.__restore_step_item(result)
+
+    @classmethod
+    def __cleanup_with_step(
+            cls,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            cleanup: Optional[Callable[[], None]],
+            observe_cleanup: Optional[Callable[[], bool]],
+            source_path: str,
+    ) -> None:
+        """把兼容清理能力纳入步骤账本，未知遗留结果必须人工复核。"""
+        if cleanup is None:
+            return
+
+        def execute() -> TransferStepResult:
+            """执行统一旧目标清理能力。"""
+            cleanup()
+            return TransferStepResult(payload={"cleaned": True})
+
+        def observe() -> TransferOperationObservation:
+            """通过只读兼容能力确认旧目标是否已经消失。"""
+            if observe_cleanup is None:
+                return TransferOperationObservation(
+                    state=TransferOperationObservationState.UNKNOWN,
+                    evidence=TransferStepResult(payload={
+                        "reason": "cleanup observer unavailable",
+                    }),
+                )
+            try:
+                cleaned = observe_cleanup()
+            except Exception as error:
+                return TransferOperationObservation(
+                    state=TransferOperationObservationState.UNKNOWN,
+                    evidence=TransferStepResult(payload={"query_error": str(error)}),
+                )
+            return TransferOperationObservation(
+                state=(
+                    TransferOperationObservationState.APPLIED
+                    if cleaned
+                    else TransferOperationObservationState.NOT_APPLIED
+                ),
+                evidence=TransferStepResult(payload={"cleaned": cleaned}),
+            )
+
+        cls.__run_persisted_step(
+            step_runner,
+            phase="prepare",
+            kind="cleanup_previous_destination",
+            payload={"source_path": source_path},
+            execute=execute,
+            observe=observe,
+        )
+
+    @classmethod
+    def __delete_target_with_step(
+            cls,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            target_oper: StorageBase,
+            target_storage: str,
+            target_file: Path,
+    ) -> None:
+        """幂等删除覆盖目标，并持久记录删除意图和严格存在性证据。"""
+        def execute() -> TransferStepResult:
+            """只删除当前冻结目标，目标已不存在视为成功。"""
+            current = target_oper.get_item_strict(target_file)
+            if current is not None and not target_oper.delete(current):
+                raise RuntimeError(f"【{target_storage}】{target_file} 删除失败")
+            return TransferStepResult(payload={"deleted": True})
+
+        cls.__run_persisted_step(
+            step_runner,
+            phase="prepare",
+            kind="delete_overwrite_target",
+            payload={"storage": target_storage, "path": target_file.as_posix()},
+            execute=execute,
+            observe=lambda: cls.__observe_item_presence(
+                target_oper,
+                target_file,
+                applied_when_present=False,
+            ),
+        )
+
+    def __resolve_overwrite_with_step(
+            self,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            fileitem: FileItem,
+            meta: MetaBase,
+            mediainfo: MediaInfo | MusicInfo,
+            target_oper: StorageBase,
+            target_storage: str,
+            target_file: Path,
+            transfer_type: str,
+            overwrite_mode: Optional[str],
+            need_notify: bool,
+    ) -> tuple[bool, bool, Optional[TransferInfo]]:
+        """冻结覆盖策略判定，避免目标变化后重启得到不同步骤序列。"""
+        def execute() -> TransferStepResult:
+            """执行一次覆盖策略判定并冻结完整裁决。"""
+            over_flag, delete_versions, failure = self.__resolve_overwrite(
+                fileitem=fileitem,
+                meta=meta,
+                mediainfo=mediainfo,
+                target_oper=target_oper,
+                target_storage=target_storage,
+                target_file=target_file,
+                transfer_type=transfer_type,
+                overwrite_mode=overwrite_mode,
+                need_notify=need_notify,
+            )
+            return TransferStepResult(payload={
+                "over_flag": over_flag,
+                "delete_versions": delete_versions,
+                "failure": failure.model_dump(mode="json") if failure else None,
+            })
+
+        result = self.__run_persisted_step(
+            step_runner,
+            phase="decision",
+            kind="resolve_overwrite",
+            payload={
+                "source": fileitem.model_dump(mode="json"),
+                "target_storage": target_storage,
+                "target_path": target_file.as_posix(),
+                "transfer_type": transfer_type,
+                "overwrite_mode": overwrite_mode,
+                "need_notify": need_notify,
+            },
+            execute=execute,
+            observe=lambda: TransferOperationObservation(
+                state=TransferOperationObservationState.NOT_APPLIED,
+                evidence=TransferStepResult(payload={
+                    "reason": "read-only overwrite decision may be repeated",
+                }),
+            ),
+        )
+        failure_payload = result.payload.get("failure")
+        return (
+            bool(result.payload.get("over_flag")),
+            bool(result.payload.get("delete_versions")),
+            (
+                TransferInfo.model_validate(failure_payload)
+                if isinstance(failure_payload, dict)
+                else None
+            ),
+        )
+
+    def __intercept_with_step(
+            self,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            payload: dict[str, Any],
+            invoke: Callable[[], tuple[bool, str]],
+    ) -> tuple[bool, str]:
+        """冻结插件拦截裁决；遗留未回执调用因插件不透明而转人工复核。"""
+        def execute() -> TransferStepResult:
+            """执行插件拦截并冻结允许标记与原因。"""
+            allowed, reason = invoke()
+            return TransferStepResult(payload={
+                "allowed": allowed,
+                "reason": reason,
+            })
+
+        result = self.__run_persisted_step(
+            step_runner,
+            phase="decision",
+            kind="plugin_transfer_intercept",
+            payload=payload,
+            execute=execute,
+            observe=lambda: TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=TransferStepResult(payload={
+                    "reason": "plugin intercept has no stable invocation receipt",
+                }),
+            ),
+        )
+        return bool(result.payload.get("allowed")), str(result.payload.get("reason") or "")
+
     def execute_transfer_plan(
         self,
         checkpoint: TransferPlanCheckpoint,
@@ -634,6 +1091,8 @@ class TransHandler:
         source_oper: StorageBase,
         target_oper: StorageBase,
         cleanup_before_transfer: Optional[Callable[[], None]] = None,
+        observe_cleanup_before_transfer: Optional[Callable[[], bool]] = None,
+        step_runner: Optional[TransferStepRunner] = None,
     ) -> TransferInfo:
         """只消费冻结目标和有序操作，并在执行期处理覆盖与插件拦截。"""
         fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
@@ -684,7 +1143,7 @@ class TransHandler:
             )
 
         if fileitem.type == "dir":
-            stream_path = Path(fileitem.path) / "BDMV" / "STREAM"
+            stream_path = Path(cast(str, fileitem.path)) / "BDMV" / "STREAM"
             stream_sizes = [
                 FileItem(**item.source_fileitem).size or 0
                 for item in checkpoint.items
@@ -693,13 +1152,22 @@ class TransHandler:
             ]
             if stream_sizes:
                 fileitem.size = sum(stream_sizes)
-            allowed, reason = self.__intercept_transfer(
-                fileitem=fileitem,
-                meta=meta,
-                mediainfo=mediainfo,
-                target_storage=target_storage,
-                target_path=target_path,
-                transfer_type=transfer_type,
+            allowed, reason = self.__intercept_with_step(
+                step_runner=step_runner,
+                payload={
+                    "source": fileitem.model_dump(mode="json"),
+                    "target_storage": target_storage,
+                    "target_path": target_path.as_posix(),
+                    "transfer_type": transfer_type,
+                },
+                invoke=lambda: self.__intercept_transfer(
+                    fileitem=fileitem,
+                    meta=meta,
+                    mediainfo=mediainfo,
+                    target_storage=target_storage,
+                    target_path=target_path,
+                    transfer_type=transfer_type,
+                ),
             )
             if not allowed:
                 return TransferInfo(
@@ -709,9 +1177,18 @@ class TransHandler:
                     transfer_type=transfer_type,
                     need_notify=checkpoint.need_notify,
                 )
-            if cleanup_before_transfer:
-                cleanup_before_transfer()
-            target_diritem = target_oper.get_folder(target_path)
+            self.__cleanup_with_step(
+                step_runner=step_runner,
+                cleanup=cleanup_before_transfer,
+                observe_cleanup=observe_cleanup_before_transfer,
+                source_path=cast(str, fileitem.path),
+            )
+            target_diritem = self.__ensure_directory_with_step(
+                step_runner=step_runner,
+                target_oper=target_oper,
+                target_storage=target_storage,
+                path=target_path,
+            )
             if not target_diritem:
                 return TransferInfo(
                     success=False,
@@ -733,7 +1210,8 @@ class TransHandler:
                         need_notify=checkpoint.need_notify,
                     )
                 source_item = FileItem(**planned_item.source_fileitem)
-                new_item, error = self.__transfer_command(
+                new_item, error = self.__execute_transfer_with_steps(
+                    step_runner=step_runner,
                     fileitem=source_item,
                     target_storage=planned_item.target_storage,
                     source_oper=source_oper,
@@ -790,7 +1268,8 @@ class TransHandler:
                 need_notify=checkpoint.need_notify,
             )
         target_file = Path(planned_item.target_path)
-        over_flag, delete_versions, overwrite_failure = self.__resolve_overwrite(
+        over_flag, delete_versions, overwrite_failure = self.__resolve_overwrite_with_step(
+            step_runner=step_runner,
             fileitem=fileitem,
             meta=meta,
             mediainfo=mediainfo,
@@ -803,14 +1282,24 @@ class TransHandler:
         )
         if overwrite_failure:
             return overwrite_failure
-        allowed, reason = self.__intercept_transfer(
-            fileitem=fileitem,
-            meta=meta,
-            mediainfo=mediainfo,
-            target_storage=target_storage,
-            target_path=target_file,
-            transfer_type=transfer_type,
-            over_flag=over_flag,
+        allowed, reason = self.__intercept_with_step(
+            step_runner=step_runner,
+            payload={
+                "source": fileitem.model_dump(mode="json"),
+                "target_storage": target_storage,
+                "target_path": target_file.as_posix(),
+                "transfer_type": transfer_type,
+                "over_flag": over_flag,
+            },
+            invoke=lambda: self.__intercept_transfer(
+                fileitem=fileitem,
+                meta=meta,
+                mediainfo=mediainfo,
+                target_storage=target_storage,
+                target_path=target_file,
+                transfer_type=transfer_type,
+                over_flag=over_flag,
+            ),
         )
         if not allowed:
             return TransferInfo(
@@ -822,9 +1311,18 @@ class TransHandler:
                 need_notify=checkpoint.need_notify,
             )
 
-        if cleanup_before_transfer:
-            cleanup_before_transfer()
-        target_diritem = target_oper.get_folder(target_file.parent)
+        self.__cleanup_with_step(
+            step_runner=step_runner,
+            cleanup=cleanup_before_transfer,
+            observe_cleanup=observe_cleanup_before_transfer,
+            source_path=cast(str, fileitem.path),
+        )
+        target_diritem = self.__ensure_directory_with_step(
+            step_runner=step_runner,
+            target_oper=target_oper,
+            target_storage=target_storage,
+            path=target_file.parent,
+        )
         if not target_diritem:
             return TransferInfo(
                 success=False,
@@ -835,17 +1333,51 @@ class TransHandler:
                 need_notify=checkpoint.need_notify,
             )
         if delete_versions:
-            self.__delete_version_files(target_oper, target_file)
-        new_item, error = self.__transfer_file(
-            fileitem=fileitem,
-            target_storage=target_storage,
-            target_file=target_file,
-            transfer_type=transfer_type,
-            over_flag=over_flag,
-            source_oper=source_oper,
-            target_oper=target_oper,
-            result=result,
-        )
+            if step_runner is None:
+                self.__delete_version_files(target_oper, target_file)
+            else:
+                self.__delete_version_files_with_steps(
+                    step_runner=step_runner,
+                    storage_oper=target_oper,
+                    target_storage=target_storage,
+                    path=target_file,
+                )
+        if step_runner is None:
+            new_item, error = self.__transfer_file(
+                fileitem=fileitem,
+                target_storage=target_storage,
+                target_file=target_file,
+                transfer_type=transfer_type,
+                over_flag=over_flag,
+                source_oper=source_oper,
+                target_oper=target_oper,
+                result=result,
+            )
+        else:
+            if over_flag:
+                self.__delete_target_with_step(
+                    step_runner=step_runner,
+                    target_oper=target_oper,
+                    target_storage=target_storage,
+                    target_file=target_file,
+                )
+            new_item, error = self.__execute_transfer_with_steps(
+                step_runner=step_runner,
+                fileitem=fileitem,
+                target_storage=target_storage,
+                source_oper=source_oper,
+                target_oper=target_oper,
+                target_file=target_file,
+                transfer_type=transfer_type,
+            )
+            if new_item:
+                self.__update_result(
+                    result=result,
+                    file_list=[fileitem.path],
+                    file_list_new=[new_item.path],
+                    file_count=1,
+                    total_size=fileitem.size,
+                )
         if not new_item:
             error = error or f"{fileitem.path} 整理后未获取到目标文件信息"
             return TransferInfo(
@@ -1285,6 +1817,98 @@ class TransHandler:
         naming_context.pop("media_source", None)
         naming_context.pop("media_id", None)
         return naming_context
+
+    @staticmethod
+    def __find_version_files(
+            storage_oper: StorageBase,
+            path: Path,
+    ) -> list[FileItem]:
+        """稳定列出与冻结目标相同季集和 Part 的其它视频版本。"""
+        meta = MetaInfoPath(path)
+        parent_item = storage_oper.get_item_strict(path.parent)
+        if not parent_item:
+            return []
+        media_files = storage_oper.list(parent_item) or []
+        result: list[FileItem] = []
+        for media_file in media_files:
+            media_path = Path(media_file.path)
+            if media_path == path or media_file.type != "file":
+                continue
+            if f".{cast(str, media_file.extension).lower()}" not in get_runtime_setting('RMT_MEDIAEXT'):
+                continue
+            filemeta = MetaInfoPath(media_path)
+            if filemeta.season != meta.season or filemeta.episode != meta.episode:
+                continue
+            if meta.part and filemeta.part and filemeta.part != meta.part:
+                continue
+            result.append(media_file)
+        return sorted(result, key=lambda item: (item.path, item.fileid or ""))
+
+    @classmethod
+    def __delete_version_files_with_steps(
+            cls,
+            *,
+            step_runner: TransferStepRunner,
+            storage_oper: StorageBase,
+            target_storage: str,
+            path: Path,
+    ) -> None:
+        """先冻结版本清单，再把每一个删除作为独立稳定步骤执行。"""
+        def discover() -> TransferStepResult:
+            """读取并冻结当前版本删除候选，读失败不产生副作用。"""
+            candidates = cls.__find_version_files(storage_oper, path)
+            return TransferStepResult(payload={
+                "items": [item.model_dump(mode="json") for item in candidates],
+            })
+
+        discovery = cls.__run_persisted_step(
+            step_runner,
+            phase="prepare",
+            kind="discover_version_targets",
+            payload={"storage": target_storage, "path": path.as_posix()},
+            execute=discover,
+            observe=lambda: TransferOperationObservation(
+                state=TransferOperationObservationState.NOT_APPLIED,
+                evidence=TransferStepResult(payload={
+                    "reason": "read-only discovery may be repeated",
+                }),
+            ),
+        )
+        raw_items = discovery.payload.get("items")
+        if not isinstance(raw_items, list):
+            raise RuntimeError("版本删除候选检查点格式无效")
+        for raw_item in raw_items:
+            candidate = FileItem.model_validate(raw_item)
+
+            def delete_candidate(item: FileItem = candidate) -> TransferStepResult:
+                """删除一个冻结版本候选，已不存在时保持幂等成功。"""
+                current = storage_oper.get_item_strict(Path(cast(str, item.path)))
+                if current is not None and not storage_oper.delete(current):
+                    raise RuntimeError(f"版本文件 {item.path} 删除失败")
+                return TransferStepResult(payload={
+                    "path": item.path,
+                    "deleted": True,
+                })
+
+            def observe_candidate(item: FileItem = candidate) -> TransferOperationObservation:
+                """查询一个冻结版本候选是否已经删除。"""
+                return cls.__observe_item_presence(
+                    storage_oper,
+                    Path(cast(str, item.path)),
+                    applied_when_present=False,
+                )
+
+            cls.__run_persisted_step(
+                step_runner,
+                phase="prepare",
+                kind="delete_version_target",
+                payload={
+                    "storage": target_storage,
+                    "item": candidate.model_dump(mode="json"),
+                },
+                execute=delete_candidate,
+                observe=observe_candidate,
+            )
 
     @staticmethod
     def __delete_version_files(storage_oper: StorageBase, path: Path) -> bool:

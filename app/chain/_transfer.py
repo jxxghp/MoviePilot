@@ -9,12 +9,13 @@ TransferChain 中。mixin 方法运行时经 MRO 解析，共享 TransferChain �
 """
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.adapters.system.host import SystemUtils
 from app.application.agent import build_manual_redo_prompt, get_running_agent_manager
 from app.application.chain.data import (
     get_chain_download_history_port,
+    get_chain_transfer_execution_port,
     get_chain_transfer_history_port,
 )
 from app.application.configuration import (
@@ -24,6 +25,7 @@ from app.application.configuration import (
 from app.application.formatting import EpisodeFormatRuleHelper
 from app.application.history import clear_transfer_failures, resolve_history
 from app.application.transfer import TransferTask, job_lock
+from app.application.transfer_execution import TransferExecutionCommand
 from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -60,6 +62,34 @@ from app.schemas.workflow import FileItem
 DownloadFiles = Any
 DownloadHistory = Any
 TransferHistory = Any
+
+
+def _request_durable_transfer_retry(
+        history: TransferHistory,
+        *,
+        requested_by: str,
+) -> Optional[Tuple[bool, str]]:
+    """将 durable 历史重试交还持久调度器，旧历史返回 ``None``。"""
+    task_id = getattr(history, "transfer_task_id", None)
+    if not task_id:
+        return None
+    try:
+        result = TransferExecutionCommand(
+            get_chain_transfer_execution_port()
+        ).request_retry(
+            task_id=task_id,
+            reason=f"用户请求重试整理历史 #{history.id}",
+            requested_by=requested_by,
+        )
+    except (RuntimeError, ValueError) as error:
+        logger.warning(
+            "登记 durable 整理重试失败：history_id=%s task_id=%s error=%s",
+            history.id,
+            task_id,
+            error,
+        )
+        return False, str(error)
+    return result.accepted, result.message
 
 # 字幕文件常见的语言/默认/强制标记，整理同名字幕时只允许剥离这些字幕专属尾缀。
 SUBTITLE_STEM_TAGS = {
@@ -1233,12 +1263,40 @@ class ManualHistoryMixin:
                 histories[history.id] = history
         return list(histories.values())
 
-    @staticmethod
+    def _request_durable_transfer_retry(
+            self,
+            history: TransferHistory,
+            *,
+            requested_by: str,
+    ) -> Optional[Tuple[bool, str]]:
+        """将 durable 历史重试交还持久调度器，旧历史返回 ``None``。
+
+        durable 任务的历史、目标文件和步骤证据共同描述一次可恢复执行。任何历史
+        入口都只能登记重试意图，不能删除这些证据后重新准入一条并行任务。
+
+        :param history: 整理历史
+        :param requested_by: 发起重试的稳定入口身份
+        :return: durable 请求结果；旧历史返回 ``None`` 继续兼容流程
+        """
+        return _request_durable_transfer_retry(
+            history,
+            requested_by=requested_by,
+        )
+
     def _delete_manual_transfer_history(
+            self,
             history: TransferHistory,
             transfer_history_oper: Any,
     ) -> Tuple[bool, str]:
         """删除手动重整历史；非成功移动记录同时清理可能存在的旧目标。"""
+        durable_retry = self._request_durable_transfer_retry(
+            history,
+            requested_by="manual_reorganize",
+        )
+        if durable_retry is not None:
+            _, message = durable_retry
+            # 返回 False 阻止旧 caller 把“已登记”误当成“历史已删除”并继续执行。
+            return False, message
         if (
                 history.dest_fileitem
                 and not ManualHistoryMixin._is_successful_move_history(history)
@@ -1365,7 +1423,7 @@ class FailedRetryMixin:
                     source=source,
                     userid=userid,
                     username=username,
-                    title=f"整理记录 #{history_id} 已重新整理",
+                    title=errmsg or f"整理记录 #{history_id} 已重新整理",
                     link=self.runtime_config.history_url,
                     save_history=False,
                 )
@@ -1397,6 +1455,47 @@ class FailedRetryMixin:
         由智能助手接管一条失败的整理记录。
         """
 
+        history = get_chain_transfer_history_port().get(history_id)
+        if not history:
+            host = cast(TransferMixinHost, self)
+            host.post_message(
+                Message(
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    title="重新整理失败",
+                    text=f"整理记录 #{history_id} 不存在",
+                    link=host.runtime_config.history_url,
+                    save_history=False,
+                )
+            )
+            return
+
+        durable_retry = _request_durable_transfer_retry(
+            history,
+            requested_by="ai_retry_button",
+        )
+        if durable_retry is not None:
+            accepted, message = durable_retry
+            self.post_message(
+                Message(
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    title=(
+                        message
+                        if accepted
+                        else "重新整理失败"
+                    ),
+                    text=None if accepted else message,
+                    link=self.runtime_config.history_url,
+                    save_history=False,
+                )
+            )
+            return
+
         if not self.runtime_config.ai_agent_enable:
             self.post_message(
                 Message(
@@ -1405,22 +1504,6 @@ class FailedRetryMixin:
                     userid=userid,
                     username=username,
                     title="MoviePilot智能助手未启用，请在系统设置中启用",
-                    save_history=False,
-                )
-            )
-            return
-
-        history = get_chain_transfer_history_port().get(history_id)
-        if not history:
-            self.post_message(
-                Message(
-                    channel=channel,
-                    source=source,
-                    userid=userid,
-                    username=username,
-                    title="重新整理失败",
-                    text=f"整理记录 #{history_id} 不存在",
-                    link=self.runtime_config.history_url,
                     save_history=False,
                 )
             )
@@ -1528,6 +1611,12 @@ class FailedRetryMixin:
         if not history:
             logger.error(f"整理记录不存在，ID：{logid}")
             return False, "整理记录不存在"
+        durable_retry = _request_durable_transfer_retry(
+            history,
+            requested_by="history_redo",
+        )
+        if durable_retry is not None:
+            return durable_retry
         # 按源目录路径重新整理
         src_path = Path(history.src)
         if not src_path.exists():

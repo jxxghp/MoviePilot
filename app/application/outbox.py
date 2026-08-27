@@ -167,16 +167,18 @@ class DurableEventCommand:
     def execute(
         self,
         *,
-        intent: OutboxIntent | Callable[[T], OutboxIntent],
+        intent: OutboxIntent | Callable[[T], OutboxIntent] | None,
         stage_business: Callable[[], T],
-        publish: Callable[[], None],
+        publish: Callable[[], None] | None,
         after_commit: Callable[[], None] | None = None,
     ) -> T:
-        """先原子提交业务与 intent，再保持原顺序执行提交后动作和即时广播。"""
+        """原子提交业务与可选 intent，再执行可选提交后动作和广播。"""
+        resolved_intent: OutboxIntent | None = None
         try:
             result = stage_business()
-            resolved_intent = intent(result) if callable(intent) else intent
-            self._outbox.stage(resolved_intent, datetime.now(timezone.utc))
+            if intent is not None:
+                resolved_intent = intent(result) if callable(intent) else intent
+                self._outbox.stage(resolved_intent, datetime.now(timezone.utc))
             self._unit_of_work.commit()
         except Exception:
             self._unit_of_work.rollback()
@@ -184,11 +186,13 @@ class DurableEventCommand:
 
         if after_commit:
             after_commit()
-        publish()
-        self._outbox.complete_by_event_key(
-            resolved_intent.event_key,
-            datetime.now(timezone.utc),
-        )
+        if publish:
+            publish()
+        if resolved_intent is not None and publish is not None:
+            self._outbox.complete_by_event_key(
+                resolved_intent.event_key,
+                datetime.now(timezone.utc),
+            )
         return result
 
 

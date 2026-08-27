@@ -1,13 +1,47 @@
 """兼容旧 ``app.db.transferpending_oper`` 的无 Session 数据访问接口。"""
 
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import column, delete, exists, select, table
 
 from app.db.base import DbOper, execute_dml
 from app.db.models.transferpending import TransferPending as _TransferPending
+
+_TRANSFER_EXECUTION_STEP = table("transferexecutionstep", column("task_id"))
+_TRANSFER_HISTORY = table("transferhistory", column("transfer_task_id"))
+
+
+def _safe_legacy_delete_predicates() -> tuple[Any, ...]:
+    """只允许旧接口删除从未 claim、执行或结算的新鲜登记。"""
+    return (
+        _TransferPending.lease_owner.is_(None),
+        _TransferPending.lease_token.is_(None),
+        _TransferPending.lease_expires_at.is_(None),
+        _TransferPending.heartbeat_at.is_(None),
+        _TransferPending.attempt_count == 0,
+        _TransferPending.execution_state == "not_started",
+        _TransferPending.execution_version.is_(None),
+        _TransferPending.execution_payload.is_(None),
+        _TransferPending.execution_fingerprint.is_(None),
+        _TransferPending.retry_generation == 0,
+        _TransferPending.retry_count == 0,
+        _TransferPending.retry_due_at.is_(None),
+        _TransferPending.settlement_revision == 0,
+        _TransferPending.terminal_history_id.is_(None),
+        _TransferPending.last_error.is_(None),
+        ~exists(
+            select(_TRANSFER_EXECUTION_STEP.c.task_id).where(
+                _TRANSFER_EXECUTION_STEP.c.task_id == _TransferPending.task_id
+            )
+        ),
+        ~exists(
+            select(_TRANSFER_HISTORY.c.transfer_task_id).where(
+                _TRANSFER_HISTORY.c.transfer_task_id == _TransferPending.task_id
+            )
+        ),
+    )
 
 
 class TransferPendingOper(DbOper):
@@ -15,7 +49,7 @@ class TransferPendingOper(DbOper):
     保留旧待整理登记 ABI，并对执行租约实施兼容写 fencing。
 
     本类只由精确旧导入映射加载。宿主整理链仍使用 Application Port 和显式
-    Session 的 canonical Oper；旧删除入口只能处理从未取得租约的记录。
+    Session 的 canonical Oper；旧删除入口只能处理无任何执行证据的新鲜登记。
     """
 
     def register(self, storage: str, src_path: str) -> Optional[_TransferPending]:
@@ -123,10 +157,10 @@ class TransferPendingOper(DbOper):
 
     def discard(self, storage: str, src_path: str) -> int:
         """
-        按旧签名删除未 claim 的指定登记。
+        按旧签名删除从未 claim 且没有执行证据的指定登记。
 
-        任何带 token 的记录都由当前租约拥有者通过 fenced canonical API 收口；
-        即使租约已经过期，旧插件也不得越权代替恢复调度器删除。
+        任何租约、重试、步骤或终态证据都归 canonical 状态机所有；即使租约
+        已经过期，旧插件也不得越权代替恢复调度器删除。
         :param storage: 存储
         :param src_path: 源文件路径
         :return: 删除的记录数
@@ -139,7 +173,7 @@ class TransferPendingOper(DbOper):
                 delete(_TransferPending).where(
                     _TransferPending.storage == storage,
                     _TransferPending.src_path == src_path,
-                    _TransferPending.lease_token.is_(None),
+                    *_safe_legacy_delete_predicates(),
                 ),
                 execution_options={"synchronize_session": False},
             )
@@ -167,7 +201,7 @@ class TransferPendingOper(DbOper):
 
     def clear(self) -> int:
         """
-        清空全部未 claim 登记，保留任何带租约 token 的任务。
+        清空从未 claim 且没有执行证据的登记，保留状态机拥有的任务。
 
         :return: 删除的记录数
         """
@@ -175,7 +209,7 @@ class TransferPendingOper(DbOper):
             lambda session: execute_dml(
                 session,
                 delete(_TransferPending).where(
-                    _TransferPending.lease_token.is_(None),
+                    *_safe_legacy_delete_predicates(),
                 ),
                 execution_options={"synchronize_session": False},
             )

@@ -482,6 +482,8 @@ def test_transfer_pending_oper_import_is_confined_to_database_boundary():
     """宿主仅允许事务适配器和兼容导出直接导入整理待处理 Oper。"""
     allowed_paths = {
         "app/db/adapters/transfer.py",
+        "app/db/adapters/chain.py",
+        "app/db/adapters/transfer_execution.py",
         "app/db/oper/__init__.py",
     }
     violations: list[str] = []

@@ -14,8 +14,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.application import transfer as transfer_application
 from app.application.transfer import TransferTask
+from app.application.transfer_execution import (
+    TransferExecutionCheckpoint,
+    TransferSettlementResult,
+)
 from app.chain.transfer import TransferChain
 from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
@@ -831,7 +836,7 @@ def test_provider_pending_crash_replay_executes_snapshot_without_host_planning()
 
 
 def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
-    """旧同步调用必须经过 admission、checkpoint、执行和终态注销。"""
+    """旧同步调用必须经过 admission、checkpoint、执行和原子终态结算。"""
     calls = []
     repository = Mock()
     repository.admit.side_effect = (
@@ -845,18 +850,47 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
         return SimpleNamespace(checkpoint=kwargs["checkpoint"])
 
     repository.checkpoint_plan.side_effect = checkpoint_plan
-    repository.discard_claimed.side_effect = (
-        lambda **_kwargs: calls.append("discard") or 1
-    )
     result = TransferInfo(
         success=True,
         fileitem=_task().fileitem,
         transfer_type="copy",
     )
     chain = _chain(repository=repository, checkpoint=_checkpoint(), result=result)
-    chain.execute_transfer_plan.side_effect = (
-        lambda *_args, **_kwargs: calls.append("execute") or result
+    execution_checkpoint = TransferExecutionCheckpoint.create(
+        payload={
+            "outcome": "succeeded",
+            "transferinfo": result.model_dump(mode="json"),
+        },
+        operation_ids=("operation-legacy-command",),
     )
+    step_runner = Mock()
+    step_runner.checkpoint.return_value = execution_checkpoint
+    chain._TransferChain__build_durable_step_runner = Mock(return_value=step_runner)
+    chain.run_module = Mock(
+        side_effect=lambda *_args, **_kwargs: calls.append("execute") or result
+    )
+    chain.durable_event_writer = Mock()
+
+    def settle_result(**kwargs):
+        """执行历史暂存并模拟 writer 返回 task-aware 结算投影。"""
+        staging = Mock()
+        staging.add_force.return_value = SimpleNamespace(
+            id=31,
+            status=True,
+            src=result.fileitem.path,
+            src_storage=result.fileitem.storage,
+            src_fileitem=result.fileitem.model_dump(mode="json"),
+        )
+        history = kwargs["stage_history"](staging)
+        assert history.status is True
+        calls.append("settle")
+        return TransferSettlementResult(
+            history_id=history.id,
+            settlement_revision=1,
+            pending_deleted=True,
+        )
+
+    chain.durable_event_writer.transfer_result.side_effect = settle_result
     meta = MetaBase("Movie.2026.mkv")
     mediainfo = MediaInfo()
 
@@ -870,11 +904,13 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
     )
 
     assert returned is result
-    assert calls == ["admit", "checkpoint", "execute", "discard"]
-    repository.discard_claimed.assert_called_once_with(
-        task_id="task-legacy-command",
-        lease_token="lease-task-legacy-command",
-    )
+    assert calls == ["admit", "checkpoint", "execute", "settle"]
+    repository.discard_claimed.assert_not_called()
+    writer_call = chain.durable_event_writer.transfer_result.call_args.kwargs
+    assert writer_call["topic"] is None
+    assert writer_call["publish"] is None
+    assert writer_call["settlement"].task_id == "task-legacy-command"
+    assert writer_call["settlement"].outcome == "succeeded"
 
 
 def test_cleanup_destination_is_idempotent_and_uses_storage_safety_policy():
@@ -932,6 +968,7 @@ def test_planning_payload_round_trip_is_self_contained_and_stable():
 def test_repository_rejects_checkpoint_with_mismatched_planning_fingerprint(tmp_path):
     """checkpoint 内嵌输入与 accepted 指纹不一致时必须拒绝状态跃迁。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'fingerprint.db'}")
+    TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
     repository = TransactionalTransferAdmissionRepository(sessionmaker(bind=engine))
     accepted_input = _planning_input(target_path="/library/A")
@@ -975,6 +1012,7 @@ def test_repository_rejects_checkpoint_with_mismatched_planning_fingerprint(tmp_
 def test_repository_round_trips_accepted_and_planned_recovery_states(tmp_path):
     """仓储必须同时恢复 accepted 输入和 planned 自包含 checkpoint。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'recoverable.db'}")
+    TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
     repository = TransactionalTransferAdmissionRepository(sessionmaker(bind=engine))
     planning_input = _planning_input()

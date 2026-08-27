@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from app.db.oper.systemconfig import SystemConfigOper
     from app.db.oper.transferhistory import TransferHistoryOper
     from app.db.oper.transferpending import TransferPendingOper
+    from app.db.oper.transfersettlementreceipt import TransferSettlementReceiptOper
     from app.db.oper.user import UserOper
     from app.db.oper.userconfig import UserConfigOper
     from app.db.oper.workflow import WorkflowOper
@@ -52,6 +53,7 @@ _OPER_MODULES = {
     "SystemConfigOper": "systemconfig",
     "TransferHistoryOper": "transferhistory",
     "TransferPendingOper": "transferpending",
+    "TransferSettlementReceiptOper": "transfersettlementreceipt",
     "UserConfigOper": "userconfig",
     "UserOper": "user",
     "WorkflowOper": "workflow",
@@ -94,6 +96,7 @@ __all__ = [
     "SystemConfigOper",
     "TransferHistoryOper",
     "TransferPendingOper",
+    "TransferSettlementReceiptOper",
     "UserConfigOper",
     "UserOper",
     "WorkflowOper",

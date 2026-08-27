@@ -1,9 +1,9 @@
 import re
 import time
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, cast
 
-from sqlalchemy import Boolean, Index, Integer, JSON, String, delete, func, or_, select, update
+from sqlalchemy import JSON, Boolean, Index, Integer, String, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -24,6 +24,10 @@ class TransferHistory(Base):
     整理记录
     """
     id = get_id_column()
+    # 失败 pending 当前映射使用的稳定整理任务标识
+    transfer_task_id: Mapped[Optional[str]] = mapped_column(String(64))
+    # 失败 pending 当前映射对应的结算版本
+    transfer_settlement_revision: Mapped[Optional[int]] = mapped_column(Integer)
     # 源路径
     src: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 源存储
@@ -90,6 +94,11 @@ class TransferHistory(Base):
         Index('ix_transferhistory_date_id', 'date', 'id'),
         Index('ix_transferhistory_media_identity', 'media_source', 'media_id'),
         Index('ux_transferhistory_src_storage', 'src', 'src_storage', unique=True),
+        Index(
+            'ux_transferhistory_transfer_task_id',
+            'transfer_task_id',
+            unique=True,
+        ),
     )
 
     @classmethod
@@ -207,6 +216,82 @@ class TransferHistory(Base):
         if storage:
             statement = statement.where(cls.src_storage == storage)
         return db.execute(statement.order_by(cls.id.desc())).scalars().first()
+
+    @classmethod
+    def get_by_transfer_task_id(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+    ) -> Optional["TransferHistory"]:
+        """按稳定整理任务标识读取终态结算历史。"""
+        if not task_id:
+            return None
+        return cast(
+            Optional["TransferHistory"],
+            db.execute(
+                select(cls).where(cls.transfer_task_id == task_id)
+            ).scalars().first(),
+        )
+
+    @classmethod
+    def upsert_by_transfer_task_id(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            settlement_revision: int,
+            retain_task_mapping: bool,
+            payload: dict[str, Any],
+    ) -> "TransferHistory":
+        """按任务幂等写历史，并维持同源存储仅保留一条的既有约束。"""
+        if not task_id or settlement_revision <= 0:
+            raise ValueError("整理历史结算缺少稳定任务或正向版本")
+        column_names = {column.name for column in cls.__table__.columns}
+        values = {
+            key: value
+            for key, value in payload.items()
+            if key in column_names and key not in {
+                "id",
+                "transfer_task_id",
+                "transfer_settlement_revision",
+            }
+        }
+        src = values.get("src")
+        if not src:
+            raise ValueError("整理历史结算缺少源路径")
+        src_storage = values.get("src_storage") or "local"
+        values["src_storage"] = src_storage
+        history = cls.get_by_transfer_task_id(db, task_id=task_id)
+        if history is None:
+            history = db.execute(
+                select(cls).where(
+                    cls.src == src,
+                    cls.src_storage == src_storage,
+                )
+            ).scalars().first()
+        if history is None:
+            history = cls(
+                transfer_task_id=(task_id if retain_task_mapping else None),
+                transfer_settlement_revision=(
+                    settlement_revision if retain_task_mapping else None
+                ),
+                **values,
+            )
+            db.add(history)
+        else:
+            if (history.transfer_task_id == task_id
+                    and history.transfer_settlement_revision is not None
+                    and settlement_revision <= history.transfer_settlement_revision):
+                raise ValueError("整理历史结算版本必须单调递增")
+            history.transfer_task_id = task_id if retain_task_mapping else None
+            history.transfer_settlement_revision = (
+                settlement_revision if retain_task_mapping else None
+            )
+            for key, value in values.items():
+                setattr(history, key, value)
+        db.flush()
+        return history
 
     @classmethod
     def get_success_by_src(
@@ -557,10 +642,20 @@ class TransferHistory(Base):
         src_storage = kwargs.get("src_storage") or "local"
         kwargs["src_storage"] = src_storage
         if src:
+            durable = db.execute(
+                select(cls.id).where(
+                    cls.src == src,
+                    cls.src_storage == src_storage,
+                    cls.transfer_task_id.is_not(None),
+                )
+            ).scalar_one_or_none()
+            if durable is not None:
+                raise ValueError("持久整理回执不能由旧历史写入口覆盖")
             db.execute(
                 delete(cls).where(
                     cls.src == src,
                     cls.src_storage == src_storage,
+                    cls.transfer_task_id.is_(None),
                 ),
                 execution_options={"synchronize_session": False},
             )
@@ -590,7 +685,10 @@ class TransferHistory(Base):
         """
         ids = db.execute(
             select(cls.id)
-            .where(cls.date < before_time)
+            .where(
+                cls.date < before_time,
+                cls.transfer_task_id.is_(None),
+            )
             .order_by(cls.id.asc())
             .limit(limit)
         ).scalars().all()

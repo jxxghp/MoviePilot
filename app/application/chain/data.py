@@ -11,10 +11,12 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from app.application.transfer import TransferAdmissionRepository
+from app.application.transfer_execution import TransferExecutionRepository
 
 
 OperFactory = Callable[[], Any]
 TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]
+TransferExecutionRepositoryFactory = Callable[[], TransferExecutionRepository]
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +29,7 @@ class ChainDataPorts:
     download_history: OperFactory
     transfer_history: OperFactory
     transfer_pending: TransferAdmissionRepositoryFactory
+    transfer_execution: TransferExecutionRepositoryFactory
     media_server: OperFactory
     download_failure: OperFactory
     user: OperFactory
@@ -110,6 +113,7 @@ def configure_chain_data_ports(**factories: OperFactory) -> None:
         "download_history",
         "transfer_history",
         "transfer_pending",
+        "transfer_execution",
         "media_server",
         "download_failure",
         "user",
@@ -156,6 +160,11 @@ def get_chain_transfer_history_port() -> Any:
 def get_chain_transfer_pending_port() -> TransferAdmissionRepository:
     """创建类型化的整理任务 durable admission 仓储。"""
     return get_chain_data_ports().transfer_pending()
+
+
+def get_chain_transfer_execution_port() -> TransferExecutionRepository:
+    """创建类型化的整理步骤执行与终态结算仓储。"""
+    return get_chain_data_ports().transfer_execution()
 
 
 def get_chain_media_server_port() -> Any:

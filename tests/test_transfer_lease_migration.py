@@ -16,6 +16,24 @@ LEASE_COLUMNS = {
     "heartbeat_at",
     "attempt_count",
 }
+TRANSFER_EXECUTION_COLUMNS = {
+    "execution_state",
+    "execution_version",
+    "execution_payload",
+    "execution_fingerprint",
+    "retry_generation",
+    "retry_count",
+    "retry_due_at",
+    "retry_requested_by",
+    "retry_reason",
+    "settlement_revision",
+    "terminal_history_id",
+    "manual_review_revision",
+    "reviewed_at",
+    "reviewed_by",
+    "review_reason",
+    "review_decision",
+}
 
 
 def _bind_migration(monkeypatch, connection):
@@ -105,7 +123,11 @@ def test_transfer_lease_upgrade_downgrade_reupgrade(monkeypatch) -> None:
         assert {
             column["name"]
             for column in inspector.get_columns("transferpending")
-        } == {column.name for column in TransferPending.__table__.columns}
+        } == {
+            column.name
+            for column in TransferPending.__table__.columns
+            if column.name not in TRANSFER_EXECUTION_COLUMNS
+        }
         assert "ix_transferpending_recovery_lease" in {
             index["name"]
             for index in inspector.get_indexes("transferpending")

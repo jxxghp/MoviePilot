@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from app.adapters.system.host import SystemUtils
 from app.application.agent import get_prompt_manager, get_running_agent_manager
+from app.application.transfer_execution import TransferExecutionCheckpoint
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
@@ -668,6 +669,8 @@ class TransferTask(OptionalMediaIdentityMixin, BaseModel):
     _admission_task_id: Optional[str] = PrivateAttr(default=None)
     _planning_input: Optional[TransferPlanningInput] = PrivateAttr(default=None)
     _plan_checkpoint: Optional[TransferPlanCheckpoint] = PrivateAttr(default=None)
+    _execution_checkpoint: Optional[TransferExecutionCheckpoint] = PrivateAttr(default=None)
+    _terminal_settled: bool = PrivateAttr(default=False)
     _planning_context_restored: bool = PrivateAttr(default=False)
     _lease_owner: Optional[str] = PrivateAttr(default=None)
     _lease_token: Optional[str] = PrivateAttr(default=None)
@@ -698,6 +701,26 @@ class TransferTask(OptionalMediaIdentityMixin, BaseModel):
     def bind_plan_checkpoint(self, checkpoint: TransferPlanCheckpoint) -> None:
         """绑定持久执行检查点，不改变插件可见序列化字段。"""
         self._plan_checkpoint = checkpoint
+
+    @property
+    def execution_checkpoint(self) -> Optional[TransferExecutionCheckpoint]:
+        """返回仅供宿主终态结算使用的内部执行检查点。"""
+        return self._execution_checkpoint
+
+    def bind_execution_checkpoint(
+            self, checkpoint: TransferExecutionCheckpoint
+    ) -> None:
+        """绑定执行结果检查点，不改变插件可见的旧任务序列化字段。"""
+        self._execution_checkpoint = checkpoint
+
+    @property
+    def terminal_settled(self) -> bool:
+        """返回历史、事件与 pending 是否已由同一 UoW 提交。"""
+        return self._terminal_settled
+
+    def mark_terminal_settled(self) -> None:
+        """仅在 task-aware writer 成功返回后标记终态已经提交。"""
+        self._terminal_settled = True
 
     @property
     def planning_context_restored(self) -> bool:

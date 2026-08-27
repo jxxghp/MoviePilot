@@ -3,6 +3,7 @@ import importlib
 import pytest
 
 from app.application.transfer import TransferTask as CanonicalTransferTask
+from app.db.models.transferhistory import TransferHistory
 from app.schemas.file import FileItem
 
 
@@ -134,6 +135,50 @@ def test_legacy_transfer_history_writes_delegate_to_application_service(
 
     assert getattr(oper, method_name)(**arguments) == "history"
     assert captured == {**arguments, "transfer_history_oper": oper}
+
+
+def test_legacy_transfer_history_mutations_preserve_durable_receipts(db):
+    """旧插件 delete/truncate/add_force 不能删除或覆盖 durable 终态回执。"""
+    legacy = importlib.import_module("app.db.transferhistory_oper")
+    durable = TransferHistory(
+        src="/downloads/durable.mkv",
+        src_storage="local",
+        status=True,
+        transfer_task_id="task-durable",
+        transfer_settlement_revision=1,
+    )
+    legacy_row = TransferHistory(
+        src="/downloads/legacy.mkv",
+        src_storage="local",
+        status=True,
+    )
+    db.add(durable, legacy_row)
+    oper = legacy.TransferHistoryOper(db.session)
+
+    oper.delete(durable.id)
+    oper.truncate()
+
+    assert TransferHistory.get_by_transfer_task_id(
+        db.session,
+        task_id="task-durable",
+    ) is not None
+    assert TransferHistory.get_by_src(
+        db.session,
+        "/downloads/legacy.mkv",
+        "local",
+    ) is None
+    with pytest.raises(ValueError, match="持久整理回执"):
+        oper.add_force(
+            src="/downloads/durable.mkv",
+            src_storage="local",
+            status=False,
+        )
+    receipt = TransferHistory.get_by_transfer_task_id(
+        db.session,
+        task_id="task-durable",
+    )
+    assert receipt is not None
+    assert receipt.status is True
 
 
 class LegacyPydanticValue:

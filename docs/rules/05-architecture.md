@@ -68,6 +68,7 @@ to make the directory tree look symmetrical.
 | `app/application/chain/` | Injectable Chain runtime context and compatibility provider |
 | `app/application/agentdata.py` | Named Agent data ports; canonical Agent consumers use `get_agent_*_port()` and do not alias legacy proxies to Oper classes |
 | `app/application/outbox.py` | Durable intent and Outbox repository/dispatcher contracts for post-commit side effects |
+| `app/application/transfer_execution.py` | Durable transfer execution contracts: stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs; contains no SQLAlchemy or external I/O |
 | `app/application/plugin/` | Plugin market catalog, installation command, installed-plugin identity contract, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `identity.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
@@ -148,6 +149,23 @@ must not be reintroduced as Oper aliases in canonical Agent modules.
 Monitor history checks use `get_transfer_history_port()` from
 `app/application/history.py`; the constructible `TransferHistoryPort` facade is
 retained only for compatibility and is not a canonical Oper substitute.
+
+Durable transfer execution follows one explicit boundary. The Chain freezes each
+external file operation into the Application-owned contract in
+`app/application/transfer_execution.py`; `app/db/adapters/transfer_execution.py`
+uses short transactions to persist the task ledger and fences every state change
+with the current lease and attempt token. `app/db/oper/transferexecutionstep.py`
+remains table-oriented and never owns retry or recovery policy. External file I/O
+runs outside those transactions. A legacy or remote operation whose result cannot
+be proven as applied or not applied enters `manual_review` and must not be replayed
+automatically. Terminal history, pending state, execution-step cleanup and the
+optional outbox intent are committed only by the task-aware implementation in
+`app/db/adapters/chain.py`; canonical callers must not add a second settlement or
+direct pending-deletion path. Task-aware settlement never performs synchronous
+event publication inside the worker callback; the committed outbox owns delivery.
+History mutation and maintenance paths may delete or replace only legacy rows with
+no `transfer_task_id`, because durable receipts are recovery evidence rather than
+ordinary user-maintained history.
 Canonical Chain, API, Scheduler and Agent consumers read notification and media
 server configuration through the named helpers in `app/application/notification.py`
 and `app/application/mediaserver.py`. `ServiceConfigHelper` remains the parser at

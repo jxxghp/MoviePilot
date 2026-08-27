@@ -145,6 +145,8 @@ class TransactionalTransferAdmissionRepository:
             planning_input: Optional[TransferPlanningInput] = None,
     ) -> TransferAdmission:
         """按输入指纹幂等持久化准入事实，并返回跨重启稳定身份。"""
+        if not storage or not src_path:
+            raise ValueError("整理任务的存储与源路径不能为空")
         effective_input = planning_input or TransferPlanningInput.legacy(
             storage=storage,
             src_path=src_path,
@@ -170,7 +172,9 @@ class TransactionalTransferAdmissionRepository:
                         input_fingerprint=effective_input.fingerprint,
                     )
                     if pending is None:
-                        raise ValueError("整理任务的存储与源路径不能为空")
+                        raise TransferAdmissionConflictError(
+                            f"整理源文件已有持久终态回执: {storage}:{src_path}"
+                        )
                     session.flush()
                     self._assert_input_match(pending, effective_input)
                     admission = self._project(pending)

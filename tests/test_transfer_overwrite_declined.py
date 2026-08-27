@@ -11,6 +11,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.application.transfer_execution import (
+    TransferExecutionCheckpoint,
+    TransferSettlementResult,
+)
 from app.chain.transfer import TransferChain
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType
@@ -121,6 +125,60 @@ def test_overwrite_declined_false_when_query_raises():
     assert result is False
 
 
+def test_overwrite_declined_uses_successful_durable_settlement():
+    """覆盖拒绝保留旧成功历史时，durable 终态必须按成功结算。"""
+    task = make_task(1)
+    task.bind_admission_task_id("task-overwrite-declined")
+    task.bind_execution_lease(owner_id="worker", lease_token="lease")
+    task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
+        payload={"outcome": "overwrite_skipped"},
+        operation_ids=(),
+        skip_reason="overwrite_declined",
+    ))
+    transferinfo = TransferInfo(
+        success=False,
+        overwrite_skipped=True,
+        message="目标已存在，按覆盖策略跳过覆盖",
+    )
+
+    settlement = TransferChain._TransferChain__build_transfer_result_settlement(
+        task,
+        transferinfo,
+        overwrite_declined=True,
+    )
+
+    assert settlement is not None
+    assert settlement.outcome == "succeeded"
+    assert settlement.error is None
+
+
+def test_overwrite_skip_without_success_history_uses_failed_settlement():
+    """未核实既有成功历史时，覆盖跳过标志不能伪造成功终态。"""
+    task = make_task(1)
+    task.bind_admission_task_id("task-overwrite-missing-history")
+    task.bind_execution_lease(owner_id="worker", lease_token="lease")
+    task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
+        payload={"outcome": "failed"},
+        operation_ids=(),
+        skip_reason="overwrite_without_history",
+    ))
+    transferinfo = TransferInfo(
+        success=False,
+        overwrite_skipped=True,
+        message="目标已存在，按覆盖策略跳过覆盖",
+    )
+
+    settlement = TransferChain._TransferChain__build_transfer_result_settlement(
+        task,
+        transferinfo,
+        overwrite_declined=False,
+    )
+
+    assert settlement is not None
+    assert settlement.outcome == "failed"
+    assert settlement.error == transferinfo.message
+
+
 # ---------------------------------------------------------------------------
 # __default_callback 失败分支
 # ---------------------------------------------------------------------------
@@ -228,6 +286,65 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
         if call.args[0] == EventType.TransferFailed
     ]
     assert len(transfer_failed_events) == 1
+
+
+def test_durable_callback_settles_overwrite_skip_without_history_as_failed():
+    """durable 回调没有既有成功历史时必须原子提交失败历史和失败终态。"""
+    chain = make_transfer_chain()
+    chain.eventmanager = MagicMock()
+    chain.post_message = MagicMock()
+    chain.durable_event_writer = MagicMock()
+    task = _make_failed_task()
+    task.bind_admission_task_id("task-overwrite-no-history")
+    task.bind_execution_lease(owner_id="worker", lease_token="lease")
+    task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
+        payload={"outcome": "failed"},
+        operation_ids=(),
+        skip_reason="overwrite_without_history",
+    ))
+    add_fail_calls = []
+    transfer_history_oper = make_history_oper(history=None)
+    transferinfo = TransferInfo(
+        success=False,
+        fileitem=task.fileitem,
+        message="目标已存在，按覆盖策略跳过覆盖",
+        transfer_type="copy",
+        overwrite_skipped=True,
+        need_notify=False,
+    )
+
+    def durable_transfer_result(**kwargs):
+        """执行失败历史暂存并返回 task-aware 结算回执。"""
+        history = kwargs["stage_history"](SimpleNamespace())
+        assert kwargs["settlement"].outcome == "failed"
+        return TransferSettlementResult(
+            history_id=history.id,
+            settlement_revision=1,
+            pending_deleted=False,
+        )
+
+    chain.durable_event_writer.transfer_result.side_effect = durable_transfer_result
+    with patch(
+        "app.chain.transfer.get_chain_transfer_history_port",
+        return_value=transfer_history_oper,
+    ), patch(
+        "app.chain.transfer.add_transfer_fail",
+        make_fail_recorder(add_fail_calls),
+    ), patch(
+        "app.runtime.config.settings.AI_AGENT_ENABLE", False
+    ), patch(
+        "app.runtime.config.settings.AI_AGENT_RETRY_TRANSFER", False
+    ):
+        state, errmsg = chain._TransferChain__default_callback(task, transferinfo)
+
+    assert state is False
+    assert errmsg == transferinfo.message
+    assert len(add_fail_calls) == 1
+    settlement = chain.durable_event_writer.transfer_result.call_args.kwargs[
+        "settlement"
+    ]
+    assert settlement.outcome == "failed"
+    assert settlement.error == transferinfo.message
 
 
 def test_default_callback_delegates_primary_failure_to_durable_writer():

@@ -37,6 +37,14 @@ _MODEL_EXPORTS = {
     ),
     "SystemConfig": ("app.db.models.systemconfig", "SystemConfig"),
     "TransferHistory": ("app.db.models.transferhistory", "TransferHistory"),
+    "TransferExecutionStep": (
+        "app.db.models.transferexecutionstep",
+        "TransferExecutionStep",
+    ),
+    "TransferSettlementReceipt": (
+        "app.db.models.transfersettlementreceipt",
+        "TransferSettlementReceipt",
+    ),
     "TransferPending": ("app.db.models.transferpending", "TransferPending"),
     "User": ("app.db.models.user", "User"),
     "UserConfig": ("app.db.models.userconfig", "UserConfig"),

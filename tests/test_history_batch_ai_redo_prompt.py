@@ -45,3 +45,22 @@ def test_batch_manual_redo_job_definition_contains_plain_text_rules():
 
     assert any("plain text only" in rule for rule in task_rules)
     assert any("Markdown formatting" in rule for rule in task_rules)
+
+
+def test_manual_redo_tasks_stop_after_durable_retry_result():
+    """系统任务必须禁止 durable 历史在登记重试后继续直接整理。"""
+    definition = prompt_manager.load_system_tasks_definition()
+
+    for task_name in (
+        "transfer_failed_retry",
+        "batch_transfer_failed_retry",
+        "manual_transfer_redo",
+        "batch_manual_transfer_redo",
+    ):
+        task = definition.task_types[task_name]
+        instructions = [*task.steps, *task.task_rules]
+        assert any("persistent retry scheduler" in item for item in instructions)
+        assert any(
+            "do not call `transfer_file`" in item.lower()
+            for item in instructions
+        )

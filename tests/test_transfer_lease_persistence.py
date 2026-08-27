@@ -20,6 +20,7 @@ from app.application.transfer import (
     TransferProviderReference,
 )
 from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferpending import TransferPendingOper
 
@@ -90,6 +91,7 @@ def repository_factory(tmp_path):
         f"sqlite:///{tmp_path / 'transfer-lease.db'}",
         connect_args={"check_same_thread": False, "timeout": 10},
     )
+    TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
     factory = sessionmaker(bind=engine)
     yield lambda: TransactionalTransferAdmissionRepository(factory)

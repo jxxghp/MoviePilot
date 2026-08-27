@@ -11,6 +11,7 @@ from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from app.application.history import TransferHistoryRecord, TransferHistoryWriter
+from app.application.transfer_execution import TransferSettlementResult
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -37,12 +38,33 @@ class ChainDurableEventWriter(Protocol):
     def transfer_result(
         self,
         *,
-        topic: str,
+        topic: str | None,
         stage_history: Callable[[TransferHistoryWriter], TransferHistoryRecord | None],
         event_payload: dict[str, Any],
-        publish: Callable[[dict[str, Any]], None],
-    ) -> TransferHistoryRecord | None:
-        """提交整理历史与结果 intent，并在提交后广播兼容事件。"""
+        publish: Callable[[dict[str, Any]], None] | None,
+        settlement: "TransferResultSettlement | None" = None,
+    ) -> TransferHistoryRecord | TransferSettlementResult | None:
+        """提交历史、可选任务终态和结果 intent，再按 topic 广播事件。"""
+
+
+@dataclass(frozen=True, slots=True)
+class TransferResultSettlement:
+    """描述一次受 lease fencing 保护的整理任务终态结算。"""
+
+    task_id: str
+    lease_token: str
+    execution_fingerprint: str
+    outcome: str
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        """拒绝缺少稳定身份、非法结果或不可诊断的失败终态。"""
+        if not self.task_id or not self.lease_token or not self.execution_fingerprint:
+            raise ValueError("整理终态结算缺少任务、租约或执行检查点身份")
+        if self.outcome not in {"succeeded", "failed"}:
+            raise ValueError(f"不支持的整理终态：{self.outcome}")
+        if self.outcome == "failed" and not self.error:
+            raise ValueError("整理失败终态必须包含可诊断原因")
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,8 +83,23 @@ def download_added_event_key(history_id: int) -> str:
     return f"download.added:{history_id}:{uuid4().hex}:v1"
 
 
-def transfer_result_event_key(topic: str, history_id: int) -> str:
-    """由结果 topic、整理历史 ID 与本次事实标识构造幂等键。"""
+def transfer_result_event_key(
+    topic: str,
+    history_id: int,
+    *,
+    settlement: TransferResultSettlement | None = None,
+    settlement_revision: int | None = None,
+) -> str:
+    """为旧结果事实生成 occurrence key，为任务结算生成确定性幂等键。"""
+    if settlement is not None:
+        if settlement_revision is None or settlement_revision <= 0:
+            raise ValueError("整理终态事件键缺少有效结算修订号")
+        return (
+            f"transfer.result:{settlement.task_id}:{settlement_revision}:"
+            f"{settlement.outcome}:v1"
+        )
+    if settlement_revision is not None:
+        raise ValueError("旧整理结果事件键不能单独指定结算修订号")
     return f"{topic}:{history_id}:{uuid4().hex}:v1"
 
 

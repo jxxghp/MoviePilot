@@ -1,15 +1,25 @@
 from pathlib import Path
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any, List, Literal, Optional, cast
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, Query, status
 
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.dependencies.auth import get_current_active_manage_user
 from app.api.dependencies.history import get_transfer_history_lookup_service
 from app.api.response import ResponseAPIRouter
+from app.application.chain.data import get_chain_transfer_execution_port
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.directory import DirectoryHelper
 from app.application.history import TransferHistoryLookupService
+from app.application.transfer_execution import (
+    TransferExecutionCommand,
+    TransferExecutionConflictError,
+    TransferExecutionState,
+    TransferManualReviewDecision,
+    TransferManualReviewQuery,
+    TransferManualReviewTaskView,
+    TransferStepResult,
+)
 from app.chain.media import MediaChain
 from app.chain.transfer import TransferChain
 from app.runtime.log import logger
@@ -25,11 +35,152 @@ from app.schemas.transfer import ManualTransferHistoryInfo as _SchemaManualTrans
 from app.schemas.transfer import ManualTransferResultData as _SchemaManualTransferResultData
 from app.schemas.transfer import ManualTransferTargetPath as _SchemaManualTransferTargetPath
 from app.schemas.transfer import TransferJob as _SchemaTransferJob
+from app.schemas.transfer import TransferManualReviewData as _SchemaTransferManualReviewData
+from app.schemas.transfer import TransferManualReviewPageData as _SchemaTransferManualReviewPageData
+from app.schemas.transfer import TransferManualReviewRequest as _SchemaTransferManualReviewRequest
+from app.schemas.transfer import TransferManualReviewTaskData as _SchemaTransferManualReviewTaskData
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
 from app.schemas.workflow import FileItem
 from app.schemas.workflow import FileItem as _SchemaFileItem
 
 router = ResponseAPIRouter()
+
+
+def _manual_review_actor(current_user: object) -> str:
+    """按名称、用户名和用户 ID 的稳定顺序提取人工复核操作者。"""
+    for attribute in ("name", "username", "id"):
+        value = getattr(current_user, attribute, None)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="当前管理用户缺少可审计身份",
+    )
+
+
+def _manual_review_task_data(
+    task: TransferManualReviewTaskView,
+) -> _SchemaTransferManualReviewTaskData:
+    """把 Application 人工复核投影映射为严格公开响应。"""
+    return cast(
+        _SchemaTransferManualReviewTaskData,
+        _SchemaTransferManualReviewTaskData.model_validate({
+            "task_id": task.task_id,
+            "source": {
+                "storage": task.source.storage,
+                "path": task.source.path,
+            },
+            "state": task.state.value,
+            "step": {
+                "operation_id": task.step.operation_id,
+                "kind": task.step.kind,
+                "intent": task.step.intent,
+                "evidence": task.step.evidence,
+                "error": task.step.error,
+            },
+            "review_revision": task.review_revision,
+        }),
+    )
+
+
+@router.get(  # type: ignore[misc]
+    "/tasks/manual-reviews",
+    summary="分页查询 durable 整理人工复核任务",
+    response_model=_SchemaResponse[_SchemaTransferManualReviewPageData],
+)
+def list_transfer_manual_reviews(
+    state_filter: Literal["manual_review", "retry_wait"] = Query(
+        default="manual_review",
+        alias="state",
+    ),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=30, ge=1, le=100),
+    current_user: object = Depends(get_current_active_manage_user),
+) -> Any:
+    """分页返回待复核或已判定等待 durable 恢复的任务。"""
+    del current_user
+    result = TransferManualReviewQuery(
+        get_chain_transfer_execution_port()
+    ).list(
+        state=TransferExecutionState(state_filter),
+        page=page,
+        page_size=page_size,
+    )
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaTransferManualReviewPageData(
+            items=[_manual_review_task_data(item) for item in result.items],
+            total=result.total,
+            page=result.page,
+            page_size=result.page_size,
+        ),
+    )
+
+
+@router.get(  # type: ignore[misc]
+    "/tasks/{task_id}/manual-review",
+    summary="查询 durable 整理人工复核详情",
+    response_model=_SchemaResponse[_SchemaTransferManualReviewTaskData],
+)
+def get_transfer_manual_review(
+    task_id: str,
+    current_user: object = Depends(get_current_active_manage_user),
+) -> Any:
+    """按任务标识返回严格裁剪的人工复核详情。"""
+    del current_user
+    task = TransferManualReviewQuery(
+        get_chain_transfer_execution_port()
+    ).get(task_id=task_id)
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="人工复核任务不存在",
+        )
+    return _SchemaResponse(success=True, data=_manual_review_task_data(task))
+
+
+@router.post(  # type: ignore[misc]
+    "/tasks/{task_id}/manual-review",
+    summary="人工判定整理步骤的外部执行结果",
+    response_model=_SchemaResponse[_SchemaTransferManualReviewData],
+)
+def resolve_transfer_manual_review(
+    task_id: str,
+    review: _SchemaTransferManualReviewRequest,
+    current_user: object = Depends(get_current_active_manage_user),
+) -> Any:
+    """提交无租约人工判定，并返回不含 attempt 与 lease 的公开状态。"""
+    result = (
+        TransferStepResult(payload=dict(review.result_payload))
+        if review.result_payload is not None
+        else None
+    )
+    try:
+        resolved = TransferExecutionCommand(
+            get_chain_transfer_execution_port()
+        ).resolve_manual_review(
+            task_id=task_id,
+            operation_id=review.operation_id,
+            decision=TransferManualReviewDecision(review.decision),
+            actor=_manual_review_actor(current_user),
+            reason=review.reason,
+            result=result,
+        )
+    except TransferExecutionConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaTransferManualReviewData(
+            task_id=resolved.task_id,
+            operation_id=resolved.operation_id,
+            decision=resolved.decision.value,
+            state=resolved.state.value,
+            review_revision=resolved.review_revision,
+        ),
+    )
 
 
 @router.get(

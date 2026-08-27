@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import base as db_base
 from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferpending import TransferPendingOper
 
@@ -143,6 +144,7 @@ def test_oper_staging_reuses_explicit_write_session(db, monkeypatch):
 def test_transactional_repository_commits_frozen_projections(tmp_path):
     """适配器应独立提交 UoW，并在会话关闭前冻结应用 DTO。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'transfer.db'}")
+    TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
     factory = sessionmaker(bind=engine)
     repository = TransactionalTransferAdmissionRepository(factory)

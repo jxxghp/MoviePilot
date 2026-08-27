@@ -328,3 +328,210 @@ class TransferPendingOper(DbOper):
                 now_time=now_time,
             )
         )
+
+    def stage_execution_running(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以有效租约暂存任务执行状态为 running。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.stage_execution_running(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                now_utc=now_utc,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_defer_execution(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: str,
+            retry_due_at: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """暂存重试世代和到期时间，并原子释放当前租约。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.defer_execution(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                error=error,
+                retry_due_at=retry_due_at,
+                now_utc=now_utc,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_mark_execution_manual_review(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """暂存人工复核隔离状态，并原子释放当前租约。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.mark_execution_manual_review(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                error=error,
+                now_utc=now_utc,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_checkpoint_execution(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            execution_version: int,
+            execution_payload: dict[str, Any],
+            execution_fingerprint: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以有效租约暂存聚合执行检查点并进入 settling。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.checkpoint_execution(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                execution_version=execution_version,
+                execution_payload=execution_payload,
+                execution_fingerprint=execution_fingerprint,
+                now_utc=now_utc,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_checkpoint_exhausted_failure(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            execution_version: int,
+            execution_payload: dict[str, Any],
+            execution_fingerprint: str,
+            error: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """暂存预算耗尽失败检查点，并保留有效 lease 进入 settling。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.checkpoint_exhausted_failure(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                execution_version=execution_version,
+                execution_payload=execution_payload,
+                execution_fingerprint=execution_fingerprint,
+                error=error,
+                now_utc=now_utc,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_request_execution_retry(
+            self,
+            *,
+            task_id: str,
+            reason: str,
+            requested_by: str,
+            retry_due_at: str,
+            updated_at: str,
+    ) -> int:
+        """仅将 FAILED 任务暂存为立即到期的 retry_wait。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.request_execution_retry(
+                session,
+                task_id=task_id,
+                reason=reason,
+                requested_by=requested_by,
+                retry_due_at=retry_due_at,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_resolve_manual_review(
+            self,
+            *,
+            task_id: str,
+            decision: str,
+            actor: str,
+            reason: str,
+            retry_due_at: str,
+            updated_at: str,
+    ) -> int:
+        """无 lease 地暂存人工判定审计并交回 retry_wait 调度。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.resolve_manual_review(
+                session,
+                task_id=task_id,
+                decision=decision,
+                actor=actor,
+                reason=reason,
+                retry_due_at=retry_due_at,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_terminal_failure(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            execution_fingerprint: str,
+            expected_revision: int,
+            history_id: int,
+            error: Optional[str],
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以执行指纹和结算版本暂存失败终态。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.stage_terminal_failure(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                execution_fingerprint=execution_fingerprint,
+                expected_revision=expected_revision,
+                history_id=history_id,
+                error=error,
+                now_utc=now_utc,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_delete_terminal_success(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            execution_fingerprint: str,
+            expected_revision: int,
+            now_utc: str,
+    ) -> int:
+        """以执行指纹和结算版本暂存成功 pending 删除。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.delete_terminal_success(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                execution_fingerprint=execution_fingerprint,
+                expected_revision=expected_revision,
+                now_utc=now_utc,
+            )
+        )

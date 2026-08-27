@@ -111,6 +111,9 @@ from app.db.adapters.site import TransactionalSiteRepository
 from app.db.adapters.subscription import TransactionalSubscribeWriter
 from app.db.adapters.transaction import TransactionalWriteRunner
 from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
+from app.db.adapters.transfer_execution import (
+    TransactionalTransferExecutionRepository,
+)
 from app.db.adapters.workflow import TransactionalWorkflowExecutionService
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.agenttask import AgentTaskOper
@@ -863,6 +866,9 @@ async def init_modules() -> HostRuntime:
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(
+            SessionFactory
+        ),
+        transfer_execution=lambda: TransactionalTransferExecutionRepository(
             SessionFactory
         ),
         media_server=lambda: MediaServerOper(),

@@ -5,6 +5,7 @@ from app.adapters.system.host import SystemUtils
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import MessageHelper
 from app.application.transfer import TransferPlanCheckpoint, TransferPlanningInput
+from app.application.transfer_execution import TransferStepRunner
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -542,10 +543,13 @@ class FileManagerModule(_ModuleBase):
             source_oper: Optional[StorageBase] = None,
             target_oper: Optional[StorageBase] = None,
             cleanup_media_file: Optional[Callable[[FileItem], bool]] = None,
+            observe_cleanup_media_file: Optional[Callable[[FileItem], bool]] = None,
+            step_runner: Optional[TransferStepRunner] = None,
     ) -> TransferInfo:
         """解析存储适配器并通过统一删除能力执行已冻结计划。"""
         source_fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
         cleanup_before_transfer = None
+        observe_cleanup_before_transfer = None
         cleanup_payload = checkpoint.planning_input.options.get(
             "cleanup_dest_fileitem"
         )
@@ -564,6 +568,11 @@ class FileManagerModule(_ModuleBase):
                     raise RuntimeError(
                         f"{cleanup_fileitem.path} 删除失败，整理计划保留待重试"
                     )
+
+            if observe_cleanup_media_file:
+                def observe_cleanup_before_transfer() -> bool:
+                    """只读确认旧目标是否已经由统一能力清理。"""
+                    return observe_cleanup_media_file(cleanup_fileitem)
 
         source_storage = source_fileitem.storage or "local"
         if not source_oper:
@@ -595,6 +604,8 @@ class FileManagerModule(_ModuleBase):
             source_oper=source_oper,
             target_oper=target_oper,
             cleanup_before_transfer=cleanup_before_transfer,
+            observe_cleanup_before_transfer=observe_cleanup_before_transfer,
+            step_runner=step_runner,
         )
 
     @staticmethod

@@ -7,8 +7,13 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.storage import StorageChain
 from app.application.agentdata import get_agent_transfer_history_port
+from app.application.chain.data import get_chain_transfer_execution_port
+from app.application.transfer_execution import (
+    TransferExecutionCommand,
+    TransferRetryRequestResult,
+)
+from app.chain.storage import StorageChain
 from app.runtime.log import logger
 from app.schemas.workflow import FileItem
 
@@ -29,6 +34,22 @@ def _delete_history_destination_file(fileitem: FileItem) -> tuple[bool, bool]:
     return True, bool(storage_chain.delete_media_file(fileitem))
 
 
+def _request_transfer_retry(
+    *,
+    history_id: int,
+    task_id: str,
+    user_id: str,
+) -> TransferRetryRequestResult:
+    """在线程池中登记 durable 重试，避免 Agent 事件循环执行同步数据库 I/O。"""
+    return TransferExecutionCommand(
+        get_chain_transfer_execution_port()
+    ).request_retry(
+        task_id=task_id,
+        reason=f"Agent 请求重试整理历史 #{history_id}",
+        requested_by=f"agent:{user_id or 'unknown'}",
+    )
+
+
 class DeleteTransferHistoryTool(MoviePilotTool):
     name: str = "delete_transfer_history"
     tags: list[str] = [
@@ -37,9 +58,10 @@ class DeleteTransferHistoryTool(MoviePilotTool):
         ToolTag.Admin,
     ]
     description: str = (
-        "Delete a specific transfer history record by its ID. For non-successful-move records with an old "
-        "destination file, the tool removes that media-library file before deleting the history record. This is "
-        "useful before retrying or re-organizing because the system skips files that already have transfer history."
+        "Request a safe retry for durable transfer history, or delete a legacy transfer history record by its ID. "
+        "Durable records keep their files and history and are retried only by the persistent scheduler. For legacy "
+        "non-successful-move records, the tool removes the old destination before deleting the history. If a durable "
+        "retry is accepted or rejected, stop and report that result; do not call transfer_file for the same record."
     )
     args_schema: Type[BaseModel] = DeleteTransferHistoryInput
     require_admin: bool = True
@@ -57,6 +79,22 @@ class DeleteTransferHistoryTool(MoviePilotTool):
             history = await transferhis.async_get(history_id)
             if not history:
                 return f"错误：整理历史记录不存在，ID={history_id}"
+
+            task_id = getattr(history, "transfer_task_id", None)
+            if task_id:
+                retry = await self.run_blocking(
+                    "db",
+                    _request_transfer_retry,
+                    history_id=history_id,
+                    task_id=task_id,
+                    user_id=self._user_id,
+                )
+                outcome = "已登记" if retry.accepted else "未登记"
+                return (
+                    f"durable 整理任务{outcome}重试：ID={history_id}，"
+                    f"task_id={task_id}，state={retry.state.value}，{retry.message}。"
+                    "已保留目标文件、历史记录和失败计数；不要调用 transfer_file。"
+                )
 
             title = history.title or "未知"
             src = history.src or "未知"

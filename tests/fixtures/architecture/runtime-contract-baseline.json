@@ -7974,7 +7974,7 @@
     }
   },
   "run_module": {
-    "call_count": 265,
+    "call_count": 266,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
     "method_count": 215,
@@ -8799,6 +8799,11 @@
       "execute_transfer_plan": [
         {
           "caller": "app.chain",
+          "count": 1,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.transfer",
           "count": 1,
           "mode": "sync"
         }

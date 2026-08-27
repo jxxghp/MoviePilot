@@ -69,6 +69,8 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
 
     # ID
     id: int
+    # durable 整理任务标识仅供宿主入口选择重试协议，不属于公开历史响应
+    transfer_task_id: Optional[str] = Field(default=None, exclude=True)
     # 源存储类型
     src_storage: Optional[str] = None
     # 目标存储类型

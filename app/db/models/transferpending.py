@@ -134,6 +134,42 @@ class TransferPending(Base):
     heartbeat_at: Mapped[Optional[str]] = mapped_column(String(40))
     # 真正取得新 token 的累计次数
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 与规划状态正交的执行状态
+    execution_state: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="not_started"
+    )
+    # 聚合执行检查点格式版本
+    execution_version: Mapped[Optional[int]] = mapped_column(Integer)
+    # 可独立重放终态结算的聚合执行结果
+    execution_payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+    # 聚合执行结果规范 JSON 的 SHA-256 指纹
+    execution_fingerprint: Mapped[Optional[str]] = mapped_column(String(64))
+    # 每次进入 retry_wait 都递增的调度世代
+    retry_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 已持久提交的步骤重试次数
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 下一次允许 claim 的 UTC 时间
+    retry_due_at: Mapped[Optional[str]] = mapped_column(String(40))
+    # 最近一次终态失败重试请求身份
+    retry_requested_by: Mapped[Optional[str]] = mapped_column(String(128))
+    # 最近一次终态失败重试请求原因
+    retry_reason: Mapped[Optional[str]] = mapped_column(Text)
+    # 已完成终态结算的单调版本
+    settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 失败终态保留的整理历史标识
+    terminal_history_id: Mapped[Optional[int]] = mapped_column(Integer)
+    # 人工判定的单调审计版本
+    manual_review_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    # 最近一次人工判定时间
+    reviewed_at: Mapped[Optional[str]] = mapped_column(String(40))
+    # 最近一次人工判定操作者
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(128))
+    # 最近一次人工判定原因
+    review_reason: Mapped[Optional[str]] = mapped_column(Text)
+    # 最近一次人工判定结论
+    review_decision: Mapped[Optional[str]] = mapped_column(String(32))
 
     __table_args__ = (
         # 同一个文件重复入队只保留一条，回放时不会重复送入整理链
@@ -150,6 +186,14 @@ class TransferPending(Base):
             "ix_transferpending_recovery_lease",
             "state",
             "lease_expires_at",
+            "created_at",
+            "id",
+        ),
+        Index(
+            "ix_transferpending_execution_due",
+            "execution_state",
+            "retry_due_at",
+            "state",
             "created_at",
             "id",
         ),
@@ -264,6 +308,19 @@ class TransferPending(Base):
         cursor_created_at = func.coalesce(cls.created_at, "")
         statement = select(cls.task_id, cursor_created_at, cls.id).where(
             cls.state.in_(states),
+            cls.execution_state.in_((
+                "not_started",
+                "running",
+                "retry_wait",
+                "settling",
+            )),
+            or_(
+                cls.execution_state != "retry_wait",
+                and_(
+                    cls.retry_due_at.is_not(None),
+                    cls.retry_due_at <= now_time,
+                ),
+            ),
             or_(
                 cls.lease_token.is_(None),
                 cls.lease_expires_at.is_(None),
@@ -331,6 +388,19 @@ class TransferPending(Base):
             .where(
                 cls.task_id == task_id,
                 cls.state.in_(states),
+                cls.execution_state.in_((
+                    "not_started",
+                    "running",
+                    "retry_wait",
+                    "settling",
+                )),
+                or_(
+                    cls.execution_state != "retry_wait",
+                    and_(
+                        cls.retry_due_at.is_not(None),
+                        cls.retry_due_at <= now_time,
+                    ),
+                ),
                 or_(
                     cls.lease_token.is_(None),
                     cls.lease_expires_at.is_(None),
@@ -344,6 +414,345 @@ class TransferPending(Base):
                 heartbeat_at=now_time,
                 attempt_count=cls.attempt_count + 1,
                 updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def stage_execution_running(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            lease_token: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以有效租约把可执行任务推进或保持为 running。"""
+        if not all((task_id, lease_token, now_utc, updated_at)):
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.lease_token == lease_token,
+                cls.lease_expires_at.is_not(None),
+                cls.lease_expires_at > now_utc,
+                cls.execution_state.in_(("not_started", "running", "retry_wait")),
+            )
+            .values(
+                execution_state="running",
+                retry_due_at=None,
+                last_error=None,
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def defer_execution(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: str,
+            retry_due_at: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以有效租约进入 retry_wait，并原子释放当前租约。"""
+        if not all((task_id, lease_token, error, retry_due_at, now_utc, updated_at)):
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.state == "planned",
+                cls.checkpoint_version.is_not(None),
+                cls.checkpoint_payload.is_not(None),
+                cls.execution_state == "running",
+                cls.lease_token == lease_token,
+                cls.lease_expires_at.is_not(None),
+                cls.lease_expires_at > now_utc,
+            )
+            .values(
+                execution_state="retry_wait",
+                retry_generation=cls.retry_generation + 1,
+                retry_count=cls.retry_count + 1,
+                retry_due_at=retry_due_at,
+                lease_owner=None,
+                lease_token=None,
+                lease_expires_at=None,
+                heartbeat_at=None,
+                last_error=error,
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def mark_execution_manual_review(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以有效租约隔离执行结果未知的任务，并释放自动调度租约。"""
+        if not all((task_id, lease_token, error, now_utc, updated_at)):
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.execution_state.in_(("not_started", "running", "retry_wait")),
+                cls.lease_token == lease_token,
+                cls.lease_expires_at.is_not(None),
+                cls.lease_expires_at > now_utc,
+            )
+            .values(
+                execution_state="manual_review",
+                lease_owner=None,
+                lease_token=None,
+                lease_expires_at=None,
+                heartbeat_at=None,
+                last_error=error,
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def checkpoint_execution(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            lease_token: str,
+            execution_version: int,
+            execution_payload: dict[str, Any],
+            execution_fingerprint: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以有效租约保存可重放执行检查点并进入 settling。"""
+        if not all((
+                task_id,
+                lease_token,
+                execution_version,
+                execution_payload,
+                execution_fingerprint,
+                now_utc,
+                updated_at,
+        )):
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.state == "planned",
+                cls.checkpoint_version.is_not(None),
+                cls.checkpoint_payload.is_not(None),
+                cls.execution_state == "running",
+                cls.lease_token == lease_token,
+                cls.lease_expires_at.is_not(None),
+                cls.lease_expires_at > now_utc,
+            )
+            .values(
+                execution_state="settling",
+                execution_version=execution_version,
+                execution_payload=execution_payload,
+                execution_fingerprint=execution_fingerprint,
+                retry_due_at=None,
+                last_error=None,
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def checkpoint_exhausted_failure(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            lease_token: str,
+            execution_version: int,
+            execution_payload: dict[str, Any],
+            execution_fingerprint: str,
+            error: str,
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以有效 lease 保存预算耗尽失败检查点并保持租约进入 settling。"""
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.state == "planned",
+                cls.checkpoint_version.is_not(None),
+                cls.checkpoint_payload.is_not(None),
+                cls.execution_state == "running",
+                cls.lease_token == lease_token,
+                cls.lease_expires_at.is_not(None),
+                cls.lease_expires_at > now_utc,
+            )
+            .values(
+                execution_state="settling",
+                execution_version=execution_version,
+                execution_payload=execution_payload,
+                execution_fingerprint=execution_fingerprint,
+                retry_due_at=None,
+                last_error=error,
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def request_execution_retry(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            reason: str,
+            requested_by: str,
+            retry_due_at: str,
+            updated_at: str,
+    ) -> int:
+        """仅将无租约 FAILED 任务 CAS 为立即到期的 retry_wait。"""
+        if not all((task_id, reason, requested_by, retry_due_at, updated_at)):
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.execution_state == "failed",
+                cls.lease_token.is_(None),
+            )
+            .values(
+                execution_state="retry_wait",
+                retry_generation=cls.retry_generation + 1,
+                retry_due_at=retry_due_at,
+                retry_requested_by=requested_by,
+                retry_reason=reason,
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def resolve_manual_review(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            decision: str,
+            actor: str,
+            reason: str,
+            retry_due_at: str,
+            updated_at: str,
+    ) -> int:
+        """无 lease 地 CAS 提交人工判定审计并交回 retry_wait 调度。"""
+        if decision not in {"not_applied", "applied"}:
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.execution_state == "manual_review",
+                cls.lease_token.is_(None),
+                cls.lease_owner.is_(None),
+            )
+            .values(
+                execution_state="retry_wait",
+                retry_generation=cls.retry_generation + 1,
+                retry_due_at=retry_due_at,
+                manual_review_revision=cls.manual_review_revision + 1,
+                reviewed_at=updated_at,
+                reviewed_by=actor,
+                review_reason=reason,
+                review_decision=decision,
+                last_error=(reason if decision == "not_applied" else None),
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def stage_terminal_failure(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            lease_token: str,
+            execution_fingerprint: str,
+            expected_revision: int,
+            history_id: int,
+            error: Optional[str],
+            now_utc: str,
+            updated_at: str,
+    ) -> int:
+        """以执行指纹和结算版本 CAS 保留失败终态及其历史。"""
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.execution_state == "settling",
+                cls.execution_fingerprint == execution_fingerprint,
+                cls.settlement_revision == expected_revision,
+                cls.lease_token == lease_token,
+                cls.lease_expires_at.is_not(None),
+                cls.lease_expires_at > now_utc,
+            )
+            .values(
+                execution_state="failed",
+                settlement_revision=cls.settlement_revision + 1,
+                terminal_history_id=history_id,
+                lease_owner=None,
+                lease_token=None,
+                lease_expires_at=None,
+                heartbeat_at=None,
+                last_error=error,
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def delete_terminal_success(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            lease_token: str,
+            execution_fingerprint: str,
+            expected_revision: int,
+            now_utc: str,
+    ) -> int:
+        """以执行指纹和结算版本 CAS 删除已成功结算的 pending。"""
+        return execute_dml(
+            db,
+            delete(cls).where(
+                cls.task_id == task_id,
+                cls.execution_state == "settling",
+                cls.execution_fingerprint == execution_fingerprint,
+                cls.settlement_revision == expected_revision,
+                cls.lease_token == lease_token,
+                cls.lease_expires_at.is_not(None),
+                cls.lease_expires_at > now_utc,
             ),
             execution_options={"synchronize_session": False},
         )

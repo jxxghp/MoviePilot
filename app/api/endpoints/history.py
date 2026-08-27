@@ -1,3 +1,4 @@
+import asyncio
 import time
 from collections.abc import Coroutine
 from typing import Any, Callable, List, Optional
@@ -27,11 +28,16 @@ from app.api.dependencies.history import (
 )
 from app.api.response import ResponseAPIRouter
 from app.application.agent import get_running_agent_manager
+from app.application.chain.data import get_chain_transfer_execution_port
 from app.application.configuration import ApiRuntimeConfig
 from app.application.history import (
     DownloadHistoryMutationCommand,
     HistoryQueryService,
     TransferHistoryMutationCommand,
+)
+from app.application.transfer_execution import (
+    TransferExecutionCommand,
+    TransferRetryRequestResult,
 )
 from app.runtime.config import global_vars
 from app.runtime.log import logger
@@ -56,6 +62,120 @@ def normalize_history_ids(history_ids: list[int]) -> list[int]:
         if history_id not in normalized_ids:
             normalized_ids.append(history_id)
     return normalized_ids
+
+
+def _request_durable_transfer_retry(
+    *,
+    history_id: int,
+    task_id: str,
+    requested_by: str,
+) -> TransferRetryRequestResult:
+    """把 durable 历史重试交给唯一持久调度器，不在请求线程执行整理。"""
+    return TransferExecutionCommand(
+        get_chain_transfer_execution_port()
+    ).request_retry(
+        task_id=task_id,
+        reason=f"AI REST 请求重试整理历史 #{history_id}",
+        requested_by=requested_by,
+    )
+
+
+def _format_retry_rejections(
+    rejections: list[tuple[int, TransferRetryRequestResult]],
+) -> str:
+    """把批量 durable 重试拒绝原因格式化为可审计的接口提示。"""
+    return "；".join(
+        f"#{history_id} [{result.state.value}]: {result.message}"
+        for history_id, result in rejections
+    )
+
+
+def _partition_durable_histories(
+    histories: list[_SchemaTransferHistory],
+) -> tuple[list[_SchemaTransferHistory], list[_SchemaTransferHistory]]:
+    """按是否绑定持久任务回执分离 durable 与旧整理历史。"""
+    return (
+        [history for history in histories if history.transfer_task_id],
+        [history for history in histories if not history.transfer_task_id],
+    )
+
+
+async def _request_batch_durable_retries(
+    histories: list[_SchemaTransferHistory],
+) -> tuple[int, list[tuple[int, TransferRetryRequestResult]]]:
+    """逐任务登记 durable 重试并保留每条拒绝的稳定状态。"""
+    accepted_count = 0
+    rejections: list[tuple[int, TransferRetryRequestResult]] = []
+    for history in histories:
+        retry = await asyncio.to_thread(
+            _request_durable_transfer_retry,
+            history_id=history.id,
+            task_id=history.transfer_task_id or "",
+            requested_by="history_ai_redo_batch",
+        )
+        if retry.accepted:
+            accepted_count += 1
+        else:
+            rejections.append((history.id, retry))
+    return accepted_count, rejections
+
+
+def _durable_retry_messages(
+    *,
+    accepted_count: int,
+    rejections: list[tuple[int, TransferRetryRequestResult]],
+) -> list[str]:
+    """构造 durable 批量登记结果消息，供纯 durable 和混合请求复用。"""
+    messages: list[str] = []
+    if accepted_count:
+        messages.append(f"已登记 {accepted_count} 个持久整理任务重试")
+    if rejections:
+        messages.append("以下任务未登记重试：" + _format_retry_rejections(rejections))
+    return messages
+
+
+async def _complete_durable_retry_batch(
+    *,
+    histories: list[_SchemaTransferHistory],
+    messages: list[str],
+    rejections: list[tuple[int, TransferRetryRequestResult]],
+) -> Any:
+    """完成纯 durable 批量响应；存在拒绝时不伪造成功进度。"""
+    message = "；".join(messages)
+    if rejections:
+        return _SchemaResponse(success=False, message=message)
+    progress_key = f"transfer_retry_batch_{int(time.time() * 1000)}"
+    history_ids = [history.id for history in histories]
+    await _complete_durable_retry_progress(
+        progress_key=progress_key,
+        text=message,
+        history_ids=history_ids,
+    )
+    return _SchemaResponse(
+        success=True,
+        message=message,
+        data={"progress_key": progress_key, "history_ids": history_ids},
+    )
+
+
+async def _complete_durable_retry_progress(
+    *,
+    progress_key: str,
+    text: str,
+    history_ids: list[int],
+) -> None:
+    """写入可被现有 SSE 客户端立即消费的 durable 重试完成进度。"""
+    progress = AsyncProgressHelper(progress_key)
+    await progress.start()
+    await progress.end(
+        text=text,
+        data={
+            "history_ids": history_ids,
+            "success": True,
+            "completed": True,
+            "message": text,
+        },
+    )
 
 
 def _build_progress_output_callback(
@@ -285,12 +405,33 @@ async def ai_redo_transfer_history(
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
     """
     runtime_config = resolve_api_runtime_config(runtime_config)
-    if not runtime_config.ai_agent_enable:
-        return _SchemaResponse(success=False, message="MoviePilot智能助手未启用")
-
     history = await query.get_transfer(history_id)
     if not history:
         return _SchemaResponse(success=False, message="整理记录不存在")
+
+    if history.transfer_task_id:
+        retry = await asyncio.to_thread(
+            _request_durable_transfer_retry,
+            history_id=history.id,
+            task_id=history.transfer_task_id,
+            requested_by="history_ai_redo",
+        )
+        if not retry.accepted:
+            return _SchemaResponse(success=False, message=retry.message)
+        progress_key = f"transfer_retry_{history_id}_{int(time.time() * 1000)}"
+        await _complete_durable_retry_progress(
+            progress_key=progress_key,
+            text=retry.message,
+            history_ids=[history.id],
+        )
+        return _SchemaResponse(
+            success=True,
+            message=retry.message,
+            data={"progress_key": progress_key},
+        )
+
+    if not runtime_config.ai_agent_enable:
+        return _SchemaResponse(success=False, message="MoviePilot智能助手未启用")
 
     prompt = build_manual_redo_prompt(history)
     progress_key = f"ai_redo_transfer_{history_id}_{int(time.time() * 1000)}"
@@ -320,9 +461,6 @@ async def batch_ai_redo_transfer_history(
     手动触发多条历史记录的 AI 批量重新整理，并返回进度键。
     """
     runtime_config = resolve_api_runtime_config(runtime_config)
-    if not runtime_config.ai_agent_enable:
-        return _SchemaResponse(success=False, message="MoviePilot智能助手未启用")
-
     history_ids = normalize_history_ids(payload.history_ids)
     if not history_ids:
         return _SchemaResponse(success=False, message="未提供有效的整理记录")
@@ -336,18 +474,59 @@ async def batch_ai_redo_transfer_history(
             + ", ".join(str(history_id) for history_id in missing_ids),
         )
 
-    prompt = build_batch_manual_redo_prompt(histories)
+    durable_histories, legacy_histories = _partition_durable_histories(histories)
+    accepted_count, rejections = await _request_batch_durable_retries(
+        durable_histories
+    )
+    response_message_parts = _durable_retry_messages(
+        accepted_count=accepted_count,
+        rejections=rejections,
+    )
+
+    if not legacy_histories:
+        return await _complete_durable_retry_batch(
+            histories=durable_histories,
+            messages=response_message_parts,
+            rejections=rejections,
+        )
+
+    if rejections:
+        response_message_parts.append(
+            f"{len(legacy_histories)} 条旧历史未提交：批量请求包含被拒绝的持久任务"
+        )
+        return _SchemaResponse(
+            success=False,
+            message="；".join(response_message_parts),
+        )
+
+    if not runtime_config.ai_agent_enable:
+        response_message_parts.append(
+            f"{len(legacy_histories)} 条旧历史未处理：MoviePilot智能助手未启用"
+        )
+        return _SchemaResponse(
+            success=False,
+            message="；".join(response_message_parts),
+        )
+
+    prompt = build_batch_manual_redo_prompt(legacy_histories)
     progress_key = f"ai_redo_transfer_batch_{int(time.time() * 1000)}"
     _start_batch_ai_redo_task(
-        history_ids=history_ids,
+        history_ids=[history.id for history in legacy_histories],
         prompt=prompt,
         progress_key=progress_key,
         task_registry=task_registry,
     )
 
+    response_message_parts.append(
+        f"已提交 {len(legacy_histories)} 条旧历史给智能助手处理"
+    )
     return _SchemaResponse(
-        success=True,
-        data={"progress_key": progress_key, "history_ids": history_ids},
+        success=not rejections,
+        message="；".join(response_message_parts),
+        data={
+            "progress_key": progress_key,
+            "history_ids": [history.id for history in histories],
+        },
     )
 
 
