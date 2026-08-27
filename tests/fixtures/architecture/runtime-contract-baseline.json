@@ -249,9 +249,9 @@
       "app.db.transferpending_oper": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "db",
-        "replacement": "app.db.oper.transferpending",
-        "target": "app.db.oper.transferpending"
+        "owner": "sdk",
+        "replacement": "app.application.transfer",
+        "target": "app.sdk._legacy.transferpending"
       },
       "app.db.user_oper": {
         "introduced": "v3.0.0",

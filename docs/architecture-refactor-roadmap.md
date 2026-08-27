@@ -94,7 +94,7 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 |---|---|---|---|
 | S1-L1.1 Durable admission | `VERIFIED` | S0 | Application-owned typed Port + DB adapter + migration 落地；先持久 commit 再入队，入队失败保留可恢复记录；宿主不再通过 raw/`Any` `TransferPendingOper` 处理 admission |
 | S1-L1.2 Planning checkpoint | `VERIFIED` | S1-L1.1 | 版本化输入与指纹先持久化；无 legacy provider 时以 `accepted -> planned` CAS 提交完整计划，有 provider 时先提交 `provider_pending`，全部返回空后再以第二次 CAS 提交 `planned`；重放只执行冻结目标，所有文件副作用晚于对应 checkpoint commit |
-| S1-L1.3 Lease 与恢复调度 | `PLANNED` | S1-L1.2 | claim/lease/heartbeat/attempt 与过期接管规则落地；启动回放和同进程恢复共用唯一调度入口，同一任务同时只有一个 worker owner |
+| S1-L1.3 Lease 与恢复调度 | `VERIFIED` | S1-L1.2 | claim/lease/heartbeat/attempt 与过期接管规则落地；启动回放和同进程恢复共用唯一调度入口，同一任务同时只有一个 worker owner |
 | S1-L1.4 幂等执行与终态结算 | `PLANNED` | S1-L1.3 | 文件操作、历史提交和 checkpoint 可重放；唯一 retry owner 生效，未知外部结果进入 `manual_review`，仅完整终态删除 pending |
 | S1-L1.5 E3 全链收口 | `PLANNED` | S1-L1.4 | 崩溃矩阵、升级/降级、重复回放和插件 ABI 验收完整；旧 fail-open、重复状态与兼容层外旧入口删除，ARCH-102 债务归零 |
 | S1-L2 Workflow typed query | `PLANNED` | S0 | Workflow Application Port 不返回 `Any`/ORM，Session 内投影 DTO，正式调用方全部切换 |
@@ -274,3 +274,83 @@ git diff --check
 - failure injection 覆盖 commit 前零文件副作用、commit 后崩溃重放、离线 resolved context 恢复、
   配置漂移仍使用冻结 target storage、规划失败留痕、旧 provider 提交后短路、严格异常、空结果两阶段
   fallback、缺失引用零 cleanup，以及 cleanup 顺序/幂等/瞬时失败。
+
+### S1-L1.3 Lease 与恢复调度
+
+**Status:** `VERIFIED`
+
+**Outcome**
+
+为 durable transfer 增加可过期、可接管且带 fencing token 的执行租约。`owner` 只用于标识执行者，
+每次有效 claim 生成的新 token 才是后续 heartbeat、checkpoint、失败留痕和终态删除的授权；所有写入
+必须同时匹配当前且未过期的 token，过期 worker 即使稍后恢复也不能修改新 owner 的记录。
+
+`accepted`、`provider_pending`、`planned` 仍是业务 planning phase，lease 与其正交：claim、heartbeat
+和 takeover 不改变 phase，恢复 worker 继续按冻结 checkpoint 决定执行路径。启动回放与同进程恢复共用
+唯一调度入口：恢复任务在入队前完成原子 claim 并绑定 token，新 admission 由 worker 在任何副作用前
+claim。已经 claim 的恢复任务不在 worker 内二次 claim。
+
+**State machine**
+
+| 当前租约 | 操作 | 结果与 fencing 约束 |
+|---|---|---|
+| 无租约 | `claim` | 生成新 token、设置 owner/到期时间并递增 attempt；phase 不变 |
+| 当前租约未过期 | 同 token `heartbeat` | 只延长当前租约；owner、token、attempt 和 phase 不变 |
+| 当前租约未过期 | 任意再次 `claim`，包括同 owner | 原子拒绝，不递增 attempt、不入队、不执行副作用 |
+| 当前租约已过期 | `heartbeat` 或旧 token 写入 | 原子拒绝；旧租约不可复活 |
+| 当前租约已过期 | 新 worker `claim` | 生成新 token 并递增 attempt；旧 token 永久失效，phase 不变 |
+| 当前 token 有效 | checkpoint、失败留痕或终态删除 | 仅精确 token CAS 成功；状态提交后不得由旧 worker 覆盖 |
+
+任意时刻一条 pending 记录最多只有一个数据库认可的有效 fencing owner。该保证不等同于外部文件、
+插件或历史副作用 exactly-once；租约在不可中断调用期间过期时，旧调用的外部结果仍可能未知。
+
+**Scheduling and shutdown**
+
+- 启动回放和同进程恢复只调用一个 claim-and-schedule 入口；禁止另建 list-then-enqueue 回放路径或
+  第二个 retry owner。批量恢复必须先原子 claim，再把已绑定 token 的任务交给唯一 worker 队列。
+- heartbeat 由 Transfer worker 生命周期拥有，不创建游离后台 owner；停止时先封口新 claim 和调度，
+  再通知并有限等待 worker，heartbeat 在 worker 存活期间继续维持其租约。worker 收敛后才停止
+  heartbeat；超时时保留仍存活的 worker/heartbeat owner 并返回失败。
+- checkpoint、失败留痕和 pending 删除在同次持久化写入中执行 token CAS；租约丢失后 worker 停止
+  继续提交状态，不以预查询替代 fencing，也不把 stale mutation 伪装成成功。
+- 确定性失败只确保唯一 scheduler 存在，不即时唤醒；新建的失败恢复 owner 首次扫描先等待固定轮询
+  周期。损坏持久投影按单任务事务回滚，再以无有效租约 CAS 留下去重诊断，不能饿死后续健康记录。
+- 精确旧 `app.db.transferpending_oper` 导入只解析到 `app/sdk/_legacy` 门面；canonical Model、Oper、
+  Application Port 不保留旧 list-then-act 或无 fencing mutation。兼容 `discard/clear` 也不得删除任何
+  带 token 的有效或过期 claim。
+
+**Excluded**
+
+- 本叶不承诺文件、legacy provider、历史写入或其他外部副作用 exactly-once，也不以延长 lease
+  掩盖不可判定结果。
+- 文件步骤幂等键、逐步结果 checkpoint、崩溃后未知结果判定、唯一 retry owner 和
+  `manual_review` 终态由 `S1-L1.4` 完整交付。
+- 不增加 `processing` 等与 planning phase 重复的业务状态；不修改插件公开 Transfer ABI，不扫描或
+  修改 `app/plugins/**`，不恢复宿主旧 pending 入口或重复导出。
+
+**Acceptance matrix**
+
+| 场景 | 必须证明 |
+|---|---|
+| 新 admission 与恢复记录竞争 | 只有 claim 成功者入队并执行；失败者零文件副作用 |
+| 两进程同时 claim 同一记录 | 仅一个新 token 成功，attempt 只按真实新 claim 增长 |
+| heartbeat 与 takeover 竞争 | 未过期 heartbeat 可续租；过期租约不可复活，接管 token 唯一有效 |
+| 旧 worker 延迟提交 | checkpoint、失败留痕和删除均被 token CAS 拒绝，不覆盖新 owner |
+| 三种 planning phase 恢复 | claim/续租/接管保持 phase，并消费各自冻结输入或 checkpoint |
+| 启动与同进程恢复同时触发 | 只经过唯一 scheduler 入口，同一任务只有一个 worker owner |
+| 正常与超时关闭 | 先封口后有限等待；存活 scheduler/heartbeat/worker 不丢失 owner、不报告成功 |
+
+**Failure injection matrix**
+
+| 注入点 | 预期持久结果 |
+|---|---|
+| claim commit 前崩溃 | 无新 token、attempt 不变，可由后续 worker claim |
+| claim commit 后、入队前崩溃 | 租约到期后可接管，新 token fencing 旧 worker |
+| worker 执行前 lease 丢失 | 不执行文件副作用，不提交失败或终态状态 |
+| heartbeat commit 前后崩溃 | 仅已提交到期时间生效；过期后不可用旧 token 续租 |
+| checkpoint/失败留痕提交时被接管 | stale CAS 失败，新 owner 的 phase、错误和 token 不被覆盖 |
+| 终态删除提交时被接管 | stale delete 为零行，pending 保留给当前 owner |
+| shutdown 时 scheduler、worker 或 lease release 阻塞 | 有限等待返回失败并保留 owner/heartbeat，禁止清句柄后重建重复 owner |
+
+本叶验收还必须运行 lease persistence、replay/worker、startup lifecycle、migration、架构与兼容聚焦
+测试，以及锁定全量测试和 scoped Pylint；插件 ABI 只经统一 Compat/SDK 验证。

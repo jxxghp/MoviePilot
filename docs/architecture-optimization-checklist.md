@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 836 / 6,832 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 837 / 6,836 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -192,7 +192,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - `S1-L1.2 Planning checkpoint`：`VERIFIED`。版本化请求与指纹先准入；无 legacy provider 时通过
   `accepted -> planned` CAS 提交完整目标和有序操作，有 provider 时先提交 `provider_pending`，全部
   返回空后再以第二次 CAS 提交 `planned`；planned 重放只消费冻结上下文和目标。
-- `S1-L1.3 Lease 与恢复调度`：`PLANNED`。交付 claim/lease/heartbeat/attempt、过期接管与唯一恢复入口。
+- `S1-L1.3 Lease 与恢复调度`：`VERIFIED`。已交付 token fencing 的
+  claim/lease/heartbeat/attempt、过期接管、固定退避的唯一恢复入口和有界关闭 owner。
 - `S1-L1.4 幂等执行与终态结算`：`PLANNED`。交付文件/历史幂等、唯一 retry owner 和
   `manual_review` 语义。
 - `S1-L1.5 E3 全链收口`：`PLANNED`。完成崩溃矩阵、兼容验收与旧路径删除。此叶交付前，
@@ -210,9 +211,13 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   解析并严格执行，缺失或异常不 fallback。全部返回空后才生成宿主计划，并以第二次 CAS 提升为
   `planned` 后执行。旧 caller 只经 `ChainBase.transfer` 注入式兼容门面进入同一 durable command，
   宿主 FileManager/TransHandler 的旧执行入口已删除。
-- `TransferPending` 现在可区分 `accepted/provider_pending/planned`，但尚无
-  claim/lease/heartbeat/attempt、逐步骤执行结果和 `manual_review`，仍无法判定“文件已移动、历史未提交”
-  等后续中间态。
+- `S1-L1.3` 已把执行所有权与 planning phase 正交：恢复任务入队前原子 claim，普通任务在任何业务
+  副作用前 claim；heartbeat、checkpoint、失败留痕、release 和终态删除均受当前未过期 token
+  fencing。启动和同进程恢复共享唯一 scheduler，确定性失败按固定轮询退避，关闭时 worker、replay、
+  lease release 和 heartbeat 都由有界生命周期 owner 持有。损坏投影以无有效租约 CAS 留痕，同错不
+  重复刷写，且不会阻塞后续健康任务。
+- `TransferPending` 仍缺少逐步骤执行结果和 `manual_review`，因此还不能判定“文件已移动、历史未提交”
+  等外部结果未知的后续中间态。
 - 这与 `docs/adr/0007-background-action-reliability.md:123-139` 对 E3 的稳定身份、步骤状态、
   lease/heartbeat 和人工恢复要求不一致。
 
@@ -222,7 +227,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   原子提交，入队失败时必须保留 pending 供重放。
 - [x] 初始登记保存稳定源身份、版本化请求和状态；目标与有序操作在纯规划完成后以 planning
   checkpoint 原子更新，任何文件副作用不得早于该提交。
-- [ ] 增加 claim/lease/heartbeat/attempt 与过期接管，同一任务同时只能有一个 worker owner。
+- [x] 增加 claim/lease/heartbeat/attempt 与过期接管，同一任务同时只能有一个 worker owner。
 - [ ] 设计幂等文件操作和历史提交；只有所有必要步骤达到持久终态后才能删除记录。
 - [ ] 在持久状态机与现有失败历史/AI retry 之间指定唯一 retry owner，定义旧记录迁移和兼容规则。
 - [ ] E3 失败使用持久 `failed/manual_review`、最后稳定 checkpoint 和补偿边界，不直接套用 E2

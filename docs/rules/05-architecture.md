@@ -484,8 +484,30 @@ result permits host planning and a second CAS to `planned`. Host-only `plan_tran
 is the sole legacy caller facade and delegates the startup-injected durable
 command; `FileManagerModule.transfer` and `TransHandler.transfer_media` must not
 be recreated.
-Canonical host chains never obtain `TransferPendingOper`; its no-Session API
-remains only for the exact legacy plugin import contract.
+
+Transfer execution ownership is orthogonal to those planning phases.
+`app/application/transfer.py` defines the claim, heartbeat, release and fenced
+mutation Port; `app/db/adapters/transfer.py` implements each operation in a
+short UoW with a unique lease token. Any active lease rejects another claim,
+including one from the same process owner. Expired leases may be taken over with
+a new token and incremented attempt count, while the stale token cannot renew,
+checkpoint, record failure, release or delete the task. Startup replay and
+same-process recovery use the single scheduler owned by `TransferChain`; the
+scheduler claims before enqueueing, and queued or executing claims are renewed
+by one lifecycle-managed heartbeat owner. Lease ownership guarantees one
+database-authorized worker, not physical exactly-once behavior for an already
+issued file or legacy-plugin side effect; step idempotency and unknown outcomes
+remain explicit execution concerns.
+
+Canonical host chains never obtain `TransferPendingOper`. The canonical Model,
+Oper and Application Port do not retain the historical `register`, `list_all`,
+`discard`, `clear` or `list_by_*` surface. The exact
+`app.db.transferpending_oper` mapping resolves instead to the private
+`app/sdk/_legacy/transferpending.py` facade, which preserves the old no-Session
+query ABI without becoming a host implementation. Its `register` delegates to
+canonical durable admission without overwriting an existing row, while
+`discard` and `clear` delete only rows whose `lease_token` is null; an active or
+expired claimed task remains exclusively owned by fenced recovery APIs.
 
 ## Composition and Compatibility Boundaries
 

@@ -1,12 +1,15 @@
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
-from app.chain.transfer import JobManager, TransferChain
+from app.chain.transfer import TransferChain
 from app.domain.meta.metabase import MetaBase
-from app.runtime.config import settings
 from app.schemas.file import FileItem
 from app.schemas.transfer import EpisodeFormat
 from app.schemas.types import MediaType
+from tests.test_transfer_job_manager import (
+    make_transfer_chain as make_base_transfer_chain,
+)
 
 
 class FakeMeta(MetaBase):
@@ -46,16 +49,8 @@ def make_transfer_chain() -> TransferChain:
     """
     构造不启动后台线程的整理链实例。
     """
-    chain = object.__new__(TransferChain)
-    chain.jobview = JobManager()
-    chain._media_exts = settings.RMT_MEDIAEXT
-    chain._subtitle_exts = settings.RMT_SUBEXT
-    chain._audio_exts = settings.RMT_AUDIOEXT
-    chain._allowed_exts = (
-        chain._media_exts + chain._audio_exts + chain._subtitle_exts
-    )
-    chain._success_target_files = {}
-    chain._scrape_batches = {}
+    chain = make_base_transfer_chain()
+    chain._TransferChain__ensure_recovery_scheduler = MagicMock()
     return chain
 
 

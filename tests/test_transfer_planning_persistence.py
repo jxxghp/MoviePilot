@@ -11,6 +11,7 @@ from app.application.transfer import (
     TRANSFER_ADMISSION_PLANNED,
     TRANSFER_ADMISSION_PROVIDER_PENDING,
     TransferAdmissionConflictError,
+    TransferAdmissionProjectionError,
     TransferPlanCheckpoint,
     TransferPlanItem,
     TransferPlanningInput,
@@ -28,6 +29,31 @@ def repository(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'transfer-planning.db'}")
     TransferPending.__table__.create(engine)
     return TransactionalTransferAdmissionRepository(sessionmaker(bind=engine))
+
+
+def _claim(repository, task_id: str):
+    """为需要变更规划状态的测试取得独占租约。"""
+    claimed = repository.claim_task(
+        task_id=task_id,
+        owner_id="planning-test-worker",
+        lease_seconds=3600,
+    )
+    assert claimed is not None
+    assert claimed.lease_token
+    return claimed
+
+
+def _pending_snapshot(repository, task_id: str) -> dict[str, object]:
+    """使用隔离 Session 冻结测试所需的持久状态字段。"""
+    with repository._session_factory() as session:  # noqa: SLF001
+        pending = session.execute(
+            select(TransferPending).where(TransferPending.task_id == task_id)
+        ).scalar_one()
+        return {
+            "state": pending.state,
+            "last_error": pending.last_error,
+            "checkpoint_payload": pending.checkpoint_payload,
+        }
 
 
 def _planning_input(*, target_path: str = "/library/Movies") -> TransferPlanningInput:
@@ -264,6 +290,7 @@ def test_resolved_context_does_not_change_admission_fingerprint(repository) -> N
         src_path="/downloads/Movie.2026.mkv",
         planning_input=planning_input,
     )
+    claimed = _claim(repository, admitted.task_id)
     checkpoint = replace(
         _checkpoint(planning_input),
         resolved_meta={"name": "Resolved Movie", "year": 2026},
@@ -275,6 +302,7 @@ def test_resolved_context_does_not_change_admission_fingerprint(repository) -> N
 
     planned = repository.checkpoint_plan(
         task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=checkpoint,
     )
@@ -287,6 +315,7 @@ def test_resolved_context_does_not_change_admission_fingerprint(repository) -> N
     with pytest.raises(TransferPlanningStateError):
         repository.checkpoint_plan(
             task_id=admitted.task_id,
+            lease_token=claimed.lease_token,
             input_fingerprint=planning_input.fingerprint,
             checkpoint=replace(
                 checkpoint,
@@ -326,15 +355,18 @@ def test_checkpoint_atomically_advances_and_is_idempotent(repository) -> None:
         src_path="/downloads/Movie.2026.mkv",
         planning_input=planning_input,
     )
+    claimed = _claim(repository, admitted.task_id)
     checkpoint = _checkpoint(planning_input)
 
     planned = repository.checkpoint_plan(
         task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=checkpoint,
     )
     repeated = repository.checkpoint_plan(
         task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=checkpoint,
     )
@@ -350,8 +382,9 @@ def test_checkpoint_atomically_advances_and_is_idempotent(repository) -> None:
         "plugin-provider-a",
     )
     assert repeated == planned
-    assert repository.list_accepted() == []
-    assert repository.list_recoverable() == [planned]
+    assert _pending_snapshot(repository, admitted.task_id)["state"] == (
+        TRANSFER_ADMISSION_PLANNED
+    )
 
 
 def test_provider_pending_checkpoint_atomically_upgrades_to_host_plan(repository) -> None:
@@ -362,23 +395,34 @@ def test_provider_pending_checkpoint_atomically_upgrades_to_host_plan(repository
         src_path="/downloads/Movie.2026.mkv",
         planning_input=planning_input,
     )
+    claimed = _claim(repository, admitted.task_id)
     provider_checkpoint = _provider_checkpoint(planning_input)
 
     provider_pending = repository.checkpoint_plan(
         task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=provider_checkpoint,
     )
 
     assert provider_pending.state == TRANSFER_ADMISSION_PROVIDER_PENDING
     assert provider_pending.checkpoint == provider_checkpoint
-    assert repository.list_recoverable() == [provider_pending]
 
     repository.record_planning_failure(
         task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
         error="host planning unavailable",
     )
-    failed = repository.list_recoverable()[0]
+    assert repository.release_claim(
+        task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
+        error="host planning unavailable",
+    )
+    failed = repository.claim_recoverable(
+        owner_id="planning-recovery-worker",
+        limit=1,
+        lease_seconds=3600,
+    )[0]
     assert failed.state == TRANSFER_ADMISSION_PROVIDER_PENDING
     assert failed.checkpoint == provider_checkpoint
     assert failed.last_error == "host planning unavailable"
@@ -386,11 +430,13 @@ def test_provider_pending_checkpoint_atomically_upgrades_to_host_plan(repository
     host_checkpoint = _checkpoint(planning_input)
     planned = repository.checkpoint_plan(
         task_id=admitted.task_id,
+        lease_token=failed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=host_checkpoint,
     )
     repeated = repository.checkpoint_plan(
         task_id=admitted.task_id,
+        lease_token=failed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=host_checkpoint,
     )
@@ -402,6 +448,7 @@ def test_provider_pending_checkpoint_atomically_upgrades_to_host_plan(repository
     with pytest.raises(TransferPlanningStateError):
         repository.checkpoint_plan(
             task_id=admitted.task_id,
+            lease_token=failed.lease_token,
             input_fingerprint=planning_input.fingerprint,
             checkpoint=provider_checkpoint,
         )
@@ -415,18 +462,19 @@ def test_checkpoint_rejects_fingerprint_without_partial_state(repository) -> Non
         src_path="/downloads/Movie.2026.mkv",
         planning_input=planning_input,
     )
+    claimed = _claim(repository, admitted.task_id)
 
     with pytest.raises(TransferAdmissionConflictError):
         repository.checkpoint_plan(
             task_id=admitted.task_id,
+            lease_token=claimed.lease_token,
             input_fingerprint="0" * 64,
             checkpoint=_checkpoint(planning_input),
         )
 
-    recovered = repository.list_recoverable()
-    assert len(recovered) == 1
-    assert recovered[0].state == TRANSFER_ADMISSION_ACCEPTED
-    assert recovered[0].checkpoint is None
+    recovered = _pending_snapshot(repository, admitted.task_id)
+    assert recovered["state"] == TRANSFER_ADMISSION_ACCEPTED
+    assert recovered["checkpoint_payload"] is None
 
 
 def test_planning_failure_stays_accepted_until_success(repository) -> None:
@@ -437,15 +485,21 @@ def test_planning_failure_stays_accepted_until_success(repository) -> None:
         src_path="/downloads/Movie.2026.mkv",
         planning_input=planning_input,
     )
+    claimed = _claim(repository, admitted.task_id)
 
-    repository.record_planning_failure(task_id=admitted.task_id, error="rename failed")
-    failed = repository.list_recoverable()[0]
-    assert failed.state == TRANSFER_ADMISSION_ACCEPTED
-    assert failed.last_error == "rename failed"
-    assert failed.checkpoint is None
+    repository.record_planning_failure(
+        task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
+        error="rename failed",
+    )
+    failed = _pending_snapshot(repository, admitted.task_id)
+    assert failed["state"] == TRANSFER_ADMISSION_ACCEPTED
+    assert failed["last_error"] == "rename failed"
+    assert failed["checkpoint_payload"] is None
 
     planned = repository.checkpoint_plan(
         task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=_checkpoint(planning_input),
     )
@@ -459,6 +513,7 @@ def test_checkpoint_rejects_missing_task(repository) -> None:
     with pytest.raises(TransferPlanningStateError):
         repository.checkpoint_plan(
             task_id="missing",
+            lease_token="missing-token",
             input_fingerprint=planning_input.fingerprint,
             checkpoint=_checkpoint(planning_input),
         )
@@ -470,17 +525,25 @@ def test_direct_orm_defaults_create_valid_legacy_projection(tmp_path) -> None:
     factory = sessionmaker(bind=engine)
     TransferPending.__table__.create(engine)
     with factory() as session:
-        session.add(TransferPending(
+        pending = TransferPending(
             storage="local",
             src_path="/downloads/legacy.mkv",
             state=TRANSFER_ADMISSION_ACCEPTED,
             created_at="2026-08-27 10:00:00",
             updated_at="2026-08-27 10:00:00",
-        ))
+        )
+        session.add(pending)
         session.commit()
+        task_id = pending.task_id
 
-    admitted = TransactionalTransferAdmissionRepository(factory).list_accepted()[0]
+    repository = TransactionalTransferAdmissionRepository(factory)
+    admitted = repository.claim_task(
+        task_id=task_id,
+        owner_id="legacy-projection-worker",
+        lease_seconds=3600,
+    )
 
+    assert admitted is not None
     assert admitted.planning_input == TransferPlanningInput.legacy(
         storage="local",
         src_path="/downloads/legacy.mkv",
@@ -508,8 +571,12 @@ def test_projection_rejects_input_version_and_fingerprint_corruption(tmp_path) -
         row.input_version = 2
         session.commit()
 
-    with pytest.raises(TransferPlanningStateError, match="版本"):
-        repository.list_accepted()
+    with pytest.raises(TransferAdmissionProjectionError, match="版本"):
+        repository.claim_task(
+            task_id=admitted.task_id,
+            owner_id="corruption-worker",
+            lease_seconds=3600,
+        )
 
     with factory() as session:
         row = session.execute(
@@ -521,8 +588,12 @@ def test_projection_rejects_input_version_and_fingerprint_corruption(tmp_path) -
         row.planning_input = corrupted
         session.commit()
 
-    with pytest.raises(TransferAdmissionConflictError, match="指纹"):
-        repository.list_accepted()
+    with pytest.raises(TransferAdmissionProjectionError, match="指纹"):
+        repository.claim_task(
+            task_id=admitted.task_id,
+            owner_id="corruption-worker",
+            lease_seconds=3600,
+        )
     engine.dispose()
 
 
@@ -538,8 +609,10 @@ def test_projection_rejects_checkpoint_version_corruption(tmp_path) -> None:
         src_path="/downloads/Movie.2026.mkv",
         planning_input=planning_input,
     )
+    claimed = _claim(repository, admitted.task_id)
     repository.checkpoint_plan(
         task_id=admitted.task_id,
+        lease_token=claimed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=_checkpoint(planning_input),
     )
@@ -548,8 +621,18 @@ def test_projection_rejects_checkpoint_version_corruption(tmp_path) -> None:
             select(TransferPending).where(TransferPending.task_id == admitted.task_id)
         ).scalar_one()
         row.checkpoint_version = 2
+        row.lease_expires_at = "2000-01-01 00:00:00.000000"
         session.commit()
 
-    with pytest.raises(TransferPlanningStateError, match="版本"):
-        repository.list_recoverable()
+    with pytest.raises(TransferAdmissionProjectionError, match="版本"):
+        repository.claim_task(
+            task_id=admitted.task_id,
+            owner_id="direct-corruption-test-worker",
+            lease_seconds=3600,
+        )
+    assert repository.claim_recoverable(
+        owner_id="batch-corruption-test-worker",
+        limit=1,
+        lease_seconds=3600,
+    ) == []
     engine.dispose()

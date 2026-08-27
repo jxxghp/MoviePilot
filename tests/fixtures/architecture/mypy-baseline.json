@@ -1594,7 +1594,7 @@
     "misc": 2,
     "no-any-return": 3,
     "no-untyped-call": 8,
-    "no-untyped-def": 14,
+    "no-untyped-def": 12,
     "operator": 3,
     "return-value": 2,
     "truthy-function": 5,

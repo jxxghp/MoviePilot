@@ -828,15 +828,19 @@ def test_models_and_base_require_explicit_database_sessions():
 
 
 def test_plugin_sdk_does_not_import_or_export_host_models():
-    """插件 SDK 只能暴露 Oper，不得把宿主 ORM Model 作为插件接口。"""
+    """插件 SDK 不得暴露 ORM Model，只有精确旧 ABI 门面可在内部访问。"""
+    internal_compat_imports = {
+        ("app/sdk/_legacy/transferpending.py", "app.db.models.transferpending"),
+    }
     violations: list[str] = []
     for path in (APP_ROOT / "sdk").rglob("*.py"):
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module and (
                 node.module == "app.db.models"
                 or node.module.startswith("app.db.models.")
-            ):
+            ) and (relative, node.module) not in internal_compat_imports:
                 violations.append(
                     f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}:{node.module}"
                 )

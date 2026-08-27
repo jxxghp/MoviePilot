@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -8,7 +9,11 @@ from app.application.history import (
     failed_retry_count,
     record_transfer_failure,
 )
-from app.application.transfer import TransferPlanningInput, TransferTask
+from app.application.transfer import (
+    TransferAdmission,
+    TransferPlanningInput,
+    TransferTask,
+)
 from app.chain.transfer import JobManager, TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
@@ -151,6 +156,7 @@ def make_task(episode: int, season: int = 1) -> TransferTask:
 
 
 def make_transfer_chain() -> TransferChain:
+    """构造带内存 durable admission 契约的整理链测试骨架。"""
     chain = object.__new__(TransferChain)
     chain.jobview = JobManager()
     chain._media_exts = settings.RMT_MEDIAEXT
@@ -161,6 +167,66 @@ def make_transfer_chain() -> TransferChain:
     )
     chain._success_target_files = {}
     chain._scrape_batches = {}
+    admissions = MagicMock()
+    admissions_by_identity = {}
+    admissions_by_id = {}
+
+    def admit(*, storage, src_path, planning_input=None):
+        """按源身份幂等返回测试用 durable admission。"""
+        identity = storage, src_path
+        existing = admissions_by_identity.get(identity)
+        if existing is not None:
+            return existing
+        admission = TransferAdmission(
+            task_id=f"test-task-{len(admissions_by_id) + 1}",
+            storage=storage,
+            src_path=src_path,
+            state="accepted",
+            created_at="2026-08-27 10:00:00",
+            updated_at="2026-08-27 10:00:00",
+            planning_input=planning_input,
+        )
+        admissions_by_identity[identity] = admission
+        admissions_by_id[admission.task_id] = admission
+        return admission
+
+    def claim_task(*, task_id, owner_id, lease_seconds):
+        """为测试任务返回唯一 token，并保留正式 claim 的参数约束。"""
+        assert lease_seconds > 0
+        admission = admissions_by_id[task_id]
+        claimed = replace(
+            admission,
+            lease_owner=owner_id,
+            lease_token=f"lease-{task_id}",
+            lease_expires_at="2026-08-27 10:02:00.000000",
+            heartbeat_at="2026-08-27 10:00:00.000000",
+            attempt_count=admission.attempt_count + 1,
+        )
+        admissions_by_identity[(claimed.storage, claimed.src_path)] = claimed
+        admissions_by_id[task_id] = claimed
+        return claimed
+
+    def checkpoint_plan(*, task_id, lease_token, input_fingerprint, checkpoint):
+        """回读带检查点的持久投影，供同步整理测试执行真实编排。"""
+        del input_fingerprint
+        admission = admissions_by_id[task_id]
+        assert admission.lease_token == lease_token
+        planned = replace(
+            admission,
+            state="provider_pending" if checkpoint.is_provider_pending else "planned",
+            checkpoint=checkpoint,
+        )
+        admissions_by_identity[(planned.storage, planned.src_path)] = planned
+        admissions_by_id[task_id] = planned
+        return planned
+
+    admissions.admit.side_effect = admit
+    admissions.claim_task.side_effect = claim_task
+    admissions.checkpoint_plan.side_effect = checkpoint_plan
+    admissions.discard_claimed.return_value = 1
+    admissions.release_claim.return_value = True
+    chain._transfer_admissions = admissions
+    chain._TransferChain__ensure_lease_heartbeat_owner = MagicMock()
     return chain
 
 

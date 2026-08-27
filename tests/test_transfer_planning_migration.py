@@ -24,12 +24,13 @@ except ModuleNotFoundError:
 
     POSTGRESQL_DIALECT = "postgresql+psycopg"
 
-MIGRATION = "database.versions.c2f8a4d6e1b3_3_0_14"
+PLANNING_MIGRATION = "database.versions.c2f8a4d6e1b3_3_0_14"
+LEASE_MIGRATION = "database.versions.d3a9e5f7b2c4_3_0_15"
 
 
-def _bind_migration(monkeypatch, connection):
+def _bind_migration(monkeypatch, connection, module_name=PLANNING_MIGRATION):
     """把迁移绑定到隔离数据库连接。"""
-    migration = importlib.import_module(MIGRATION)
+    migration = importlib.import_module(module_name)
     monkeypatch.setattr(
         migration,
         "op",
@@ -91,10 +92,13 @@ def _planning_row(connection) -> dict[str, object]:
 def _assert_upgrade_downgrade_reupgrade(connection, monkeypatch) -> None:
     """断言规划迁移在当前隔离连接上的完整可逆生命周期。"""
     _create_admission_table(connection)
-    migration = _bind_migration(monkeypatch, connection)
+    planning_migration = _bind_migration(monkeypatch, connection)
+    lease_migration = _bind_migration(monkeypatch, connection, LEASE_MIGRATION)
 
-    migration.upgrade()
-    migration.upgrade()
+    planning_migration.upgrade()
+    planning_migration.upgrade()
+    lease_migration.upgrade()
+    lease_migration.upgrade()
 
     inspector = sa.inspect(connection)
     assert {
@@ -133,7 +137,9 @@ def _assert_upgrade_downgrade_reupgrade(connection, monkeypatch) -> None:
             planned_at="2026-08-27 11:00:00",
         )
     )
-    migration.downgrade()
+    lease_migration.downgrade()
+    lease_migration.downgrade()
+    planning_migration.downgrade()
 
     downgraded = sa.inspect(connection)
     assert {
@@ -152,12 +158,17 @@ def _assert_upgrade_downgrade_reupgrade(connection, monkeypatch) -> None:
         for index in downgraded.get_indexes("transferpending")
     } == {"ix_transferpending_state_created", "ux_transferpending_storage_path"}
 
-    migration.upgrade()
+    planning_migration.upgrade()
+    lease_migration.upgrade()
     reupgraded = _planning_row(connection)
     assert reupgraded["task_id"] == "stable-task"
     assert reupgraded["state"] == "accepted"
     assert reupgraded["checkpoint_payload"] is None
     assert reupgraded["input_fingerprint"] == planning_input.fingerprint
+    assert {
+        column["name"]
+        for column in sa.inspect(connection).get_columns("transferpending")
+    } == {column.name for column in TransferPending.__table__.columns}
 
 
 def test_transfer_planning_upgrade_downgrade_reupgrade(monkeypatch) -> None:

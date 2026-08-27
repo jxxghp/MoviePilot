@@ -8,6 +8,8 @@
 这些测试固定三项不变量：入队即落盘登记、终态即注销、重启能回放。
 """
 import threading
+import time
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -24,6 +26,17 @@ def _build_chain(admissions) -> TransferChain:
     """
     chain = object.__new__(TransferChain)
     chain._transfer_admissions = admissions
+    chain._worker_owner_id = "test-owner"
+    chain._owned_leases = {}
+    chain._queued_lease_tokens = set()
+    chain._worker_state_lock = threading.RLock()
+    chain._closing = False
+    chain._recovery_wakeup_event = threading.Event()
+    chain._replay_stop_event = threading.Event()
+    chain._lease_heartbeat_stop_event = threading.Event()
+    chain._lease_heartbeat_thread = None
+    chain._TransferChain__ensure_lease_heartbeat_owner = MagicMock()
+    chain._TransferChain__ensure_recovery_scheduler = MagicMock()
     return chain
 
 
@@ -36,6 +49,11 @@ def _admission(path: str, task_id: str = "task-1") -> TransferAdmission:
         state="accepted",
         created_at="2026-08-27 10:00:00",
         updated_at="2026-08-27 10:00:00",
+        lease_owner="test-owner",
+        lease_token=f"lease-{task_id}",
+        lease_expires_at="2026-08-27 10:02:00.000000",
+        heartbeat_at="2026-08-27 10:00:00.000000",
+        attempt_count=1,
     )
 
 
@@ -87,10 +105,19 @@ def test_discard_pending_on_terminal_state():
     chain = _build_chain(admissions)
     task = _task("/mnt/cd2/downloads/Movie.2024.mkv")
     task.bind_admission_task_id("task-1")
+    task.bind_execution_lease(owner_id="test-owner", lease_token="lease-task-1")
+    chain._worker_owner_id = "test-owner"
+    chain._owned_leases = {
+        "task-1": ("lease-task-1", time.monotonic() + 120)
+    }
+    admissions.discard_claimed.return_value = 1
 
-    chain._TransferChain__discard_pending(task)
+    assert chain._TransferChain__discard_pending(task) is True
 
-    admissions.discard_task.assert_called_once_with(task_id="task-1")
+    admissions.discard_claimed.assert_called_once_with(
+        task_id="task-1",
+        lease_token="lease-task-1",
+    )
 
 
 def test_replay_resends_pending_files_to_transfer(tmp_path, monkeypatch):
@@ -101,7 +128,7 @@ def test_replay_resends_pending_files_to_transfer(tmp_path, monkeypatch):
     media.write_bytes(b"x" * 10)
 
     admissions = MagicMock()
-    admissions.list_recoverable.return_value = [_admission(str(media))]
+    admissions.claim_recoverable.return_value = [_admission(str(media))]
     chain = _build_chain(admissions)
 
     transferred = []
@@ -128,14 +155,18 @@ def test_replay_discards_vanished_files(tmp_path):
     """
     admissions = MagicMock()
     missing = tmp_path / "gone.mkv"
-    admissions.list_recoverable.return_value = [_admission(str(missing))]
+    admissions.claim_recoverable.return_value = [_admission(str(missing))]
+    admissions.discard_claimed.return_value = 1
     chain = _build_chain(admissions)
     chain._execute_transfer = MagicMock()
 
     chain._TransferChain__replay_pending()
 
     chain._execute_transfer.assert_not_called()
-    admissions.discard_task.assert_called_once_with(task_id="task-1")
+    admissions.discard_claimed.assert_called_once_with(
+        task_id="task-1",
+        lease_token="lease-task-1",
+    )
 
 
 def test_replay_keeps_registration_when_mount_unreadable(tmp_path, monkeypatch):
@@ -148,7 +179,8 @@ def test_replay_keeps_registration_when_mount_unreadable(tmp_path, monkeypatch):
     media.write_bytes(b"x")
 
     admissions = MagicMock()
-    admissions.list_recoverable.return_value = [_admission(str(media))]
+    admissions.claim_recoverable.return_value = [_admission(str(media))]
+    admissions.release_claim.return_value = True
     chain = _build_chain(admissions)
     chain._execute_transfer = MagicMock()
 
@@ -163,7 +195,12 @@ def test_replay_keeps_registration_when_mount_unreadable(tmp_path, monkeypatch):
     chain._TransferChain__replay_pending()
 
     chain._execute_transfer.assert_not_called()
-    admissions.discard_task.assert_not_called()
+    admissions.discard_claimed.assert_not_called()
+    admissions.release_claim.assert_called_once_with(
+        task_id="task-1",
+        lease_token="lease-task-1",
+        error="恢复源文件暂时不可读取",
+    )
 
 
 def test_replay_restores_bluray_directory_type(tmp_path, monkeypatch):
@@ -175,7 +212,7 @@ def test_replay_restores_bluray_directory_type(tmp_path, monkeypatch):
     src_path = f"{bluray.as_posix()}/"
 
     admissions = MagicMock()
-    admissions.list_recoverable.return_value = [_admission(src_path)]
+    admissions.claim_recoverable.return_value = [_admission(src_path)]
     chain = _build_chain(admissions)
 
     transferred = []
@@ -197,7 +234,7 @@ def test_replay_is_noop_without_registrations():
     没有登记时回放不应触碰整理链。
     """
     admissions = MagicMock()
-    admissions.list_recoverable.return_value = []
+    admissions.claim_recoverable.return_value = []
     chain = _build_chain(admissions)
     chain._execute_transfer = MagicMock()
 
@@ -211,7 +248,7 @@ def test_replay_survives_db_failure():
     读取登记失败不能让启动流程报错。
     """
     admissions = MagicMock()
-    admissions.list_recoverable.side_effect = RuntimeError("db gone")
+    admissions.claim_recoverable.side_effect = RuntimeError("db gone")
     chain = _build_chain(admissions)
     chain._execute_transfer = MagicMock()
 
@@ -230,7 +267,7 @@ def test_replay_continues_after_single_file_failure(tmp_path, monkeypatch):
         item.write_bytes(b"x")
 
     admissions = MagicMock()
-    admissions.list_recoverable.return_value = [
+    admissions.claim_recoverable.return_value = [
         _admission(str(first), "task-1"),
         _admission(str(second), "task-2"),
     ]
@@ -261,7 +298,7 @@ def test_replay_stop_keeps_unprocessed_registrations(tmp_path, monkeypatch):
     first.write_bytes(b"x")
     missing_second = tmp_path / "gone.mkv"
     admissions = MagicMock()
-    admissions.list_recoverable.return_value = [
+    admissions.claim_recoverable.return_value = [
         _admission(str(first), "task-1"),
         _admission(str(missing_second), "task-2"),
     ]
@@ -279,4 +316,94 @@ def test_replay_stop_keeps_unprocessed_registrations(tmp_path, monkeypatch):
     chain._TransferChain__replay_pending(stop_event)
 
     assert transferred == [first.as_posix()]
-    admissions.discard_task.assert_not_called()
+    admissions.discard_claimed.assert_not_called()
+    assert admissions.release_claim.call_count == 2
+
+
+def test_replay_registers_entire_claimed_batch_before_first_source_stat(
+        tmp_path,
+        monkeypatch,
+):
+    """批量 claim 返回后必须先把全部 token 交给 heartbeat，再做逐条同步 I/O。"""
+    first = _admission(str(tmp_path / "A.mkv"), "task-1")
+    second = _admission(str(tmp_path / "B.mkv"), "task-2")
+    admissions = MagicMock()
+    admissions.claim_recoverable.return_value = [first, second]
+    admissions.release_claim.return_value = True
+    chain = _build_chain(admissions)
+
+    def observe_owned_batch(*_args, **_kwargs):
+        """首个 stat 前观察两个 token 已同时进入续期集合。"""
+        assert set(chain._owned_leases) == {"task-1", "task-2"}
+        return None, False
+
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__build_replay_fileitem",
+        observe_owned_batch,
+    )
+
+    chain._TransferChain__replay_pending()
+
+    assert admissions.release_claim.call_count == 2
+    assert chain._owned_leases == {}
+
+
+def test_replay_releases_claim_when_jobview_rejects_recovered_task(
+        tmp_path,
+        monkeypatch,
+):
+    """恢复任务未进入队列时必须立即 release，不能靠租约自然过期。"""
+    media = tmp_path / "Movie.2024.mkv"
+    media.write_bytes(b"x")
+    admission = _admission(str(media))
+    admission = replace(admission, checkpoint=MagicMock())
+    admissions = MagicMock()
+    admissions.claim_recoverable.return_value = [admission]
+    admissions.release_claim.return_value = True
+    chain = _build_chain(admissions)
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__queue_planned_replay",
+        MagicMock(return_value=False),
+    )
+
+    chain._TransferChain__replay_pending()
+
+    admissions.release_claim.assert_called_once_with(
+        task_id="task-1",
+        lease_token="lease-task-1",
+        error="恢复任务未进入内存队列",
+    )
+    assert chain._owned_leases == {}
+
+
+def test_claimed_enqueue_failure_never_uses_unfenced_error_writer() -> None:
+    """陈旧 token 入队失败只能 release_claim，不能覆盖新 owner 的 last_error。"""
+    admissions = MagicMock()
+    admissions.release_claim.return_value = False
+    chain = _build_chain(admissions)
+    chain._finish_scrape_batch_task = MagicMock()
+    chain.replay_pending = MagicMock()
+    task = _task("/downloads/stale-enqueue.mkv")
+    task.bind_admission_task_id("stale-task")
+    task.bind_execution_lease(
+        owner_id="test-owner",
+        lease_token="stale-token",
+    )
+    chain._owned_leases = {
+        "stale-task": ("stale-token", time.monotonic() + 120)
+    }
+
+    chain._TransferChain__record_enqueue_failure(
+        task,
+        RuntimeError("queue closed"),
+    )
+
+    admissions.record_enqueue_failure.assert_not_called()
+    admissions.release_claim.assert_called_once_with(
+        task_id="stale-task",
+        lease_token="stale-token",
+        error="queue closed",
+    )
+    assert chain._owned_leases == {}

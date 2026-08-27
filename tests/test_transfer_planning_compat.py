@@ -57,6 +57,8 @@ def test_transfer_task_to_dict_keeps_exact_legacy_fields():
     task.bind_admission_task_id("task-stable")
 
     values = task.to_dict()
+    task.bind_execution_lease(owner_id="worker-owner", lease_token="lease-token")
+    leased_values = task.to_dict()
 
     assert set(values) == {
         "fileitem",
@@ -84,9 +86,12 @@ def test_transfer_task_to_dict_keeps_exact_legacy_fields():
     }
     assert values["fileitem"] == task.fileitem.model_dump()
     assert values["target_path"] == Path("/library/Movie (2026)")
+    assert leased_values == values
     assert "admission_task_id" not in values
     assert "planning_input" not in values
     assert "plan_checkpoint" not in values
+    assert "lease_owner" not in values
+    assert "lease_token" not in values
 
 
 def test_transfer_chain_do_transfer_keeps_legacy_signature():

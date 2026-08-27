@@ -1,7 +1,9 @@
 """整理任务持久准入端口的 SQLAlchemy 适配器。"""
 
+import logging
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from json import JSONDecodeError
 from typing import Optional
 from uuid import uuid4
 
@@ -14,6 +16,8 @@ from app.application.transfer import (
     TRANSFER_ADMISSION_PROVIDER_PENDING,
     TransferAdmission,
     TransferAdmissionConflictError,
+    TransferAdmissionProjectionError,
+    TransferLeaseLostError,
     TransferPlanCheckpoint,
     TransferPlanningInput,
     TransferPlanningStateError,
@@ -22,9 +26,13 @@ from app.db.models.transferpending import TransferPending
 from app.db.oper.transferpending import TransferPendingOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
+_diagnostic_logger = logging.getLogger(__name__)
+
 
 class TransactionalTransferAdmissionRepository:
     """以短生命周期 Session 实现整理任务持久准入端口。"""
+
+    _MAX_RECOVERY_SCAN_TASKS = 5000
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         """保存由组合根提供的同步会话工厂。"""
@@ -34,6 +42,33 @@ class TransactionalTransferAdmissionRepository:
     def _now() -> str:
         """生成与历史登记时间可按字典序比较的当前时间。"""
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    @staticmethod
+    def _lease_now() -> datetime:
+        """生成不受宿主时区影响的当前 UTC 租约时间。"""
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _format_lease_time(value: datetime) -> str:
+        """把 UTC 时间编码为可稳定排序的固定宽度字符串。"""
+        return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+
+    @staticmethod
+    def _validate_claim_arguments(*, owner_id: str, lease_seconds: int) -> None:
+        """拒绝无法建立有效租约身份或正向期限的调用。"""
+        if not owner_id:
+            raise ValueError("整理任务 claim 缺少 owner_id")
+        if lease_seconds <= 0:
+            raise ValueError("整理任务 lease_seconds 必须大于零")
+
+    @staticmethod
+    def _recoverable_states() -> tuple[str, ...]:
+        """返回允许被 worker claim 的稳定业务状态。"""
+        return (
+            TRANSFER_ADMISSION_ACCEPTED,
+            TRANSFER_ADMISSION_PROVIDER_PENDING,
+            TRANSFER_ADMISSION_PLANNED,
+        )
 
     @staticmethod
     def _project(pending: TransferPending) -> TransferAdmission:
@@ -84,6 +119,11 @@ class TransactionalTransferAdmissionRepository:
             input_fingerprint=pending.input_fingerprint,
             planning_input=planning_input,
             checkpoint=checkpoint,
+            lease_owner=pending.lease_owner,
+            lease_token=pending.lease_token,
+            lease_expires_at=pending.lease_expires_at,
+            heartbeat_at=pending.heartbeat_at,
+            attempt_count=pending.attempt_count,
         )
 
     @staticmethod
@@ -151,27 +191,225 @@ class TransactionalTransferAdmissionRepository:
                 self._assert_input_match(pending, effective_input)
                 return self._project(pending)
 
-    def list_accepted(self, limit: int = 5000) -> list[TransferAdmission]:
-        """在独立只读会话中投影等待恢复或执行的准入记录。"""
+    def claim_task(
+            self,
+            *,
+            task_id: str,
+            owner_id: str,
+            lease_seconds: int,
+    ) -> Optional[TransferAdmission]:
+        """原子 claim 指定任务，任何已存在的有效租约都拒绝重复领取。"""
+        self._validate_claim_arguments(
+            owner_id=owner_id,
+            lease_seconds=lease_seconds,
+        )
+        if not task_id:
+            raise ValueError("整理任务 claim 缺少 task_id")
+        now = self._lease_now()
+        now_time = self._format_lease_time(now)
+        lease_expires_at = self._format_lease_time(
+            now + timedelta(seconds=lease_seconds)
+        )
         with self._session_factory() as session:
-            pending_items = TransferPendingOper(db=session).list_by_state(
-                state=TRANSFER_ADMISSION_ACCEPTED,
-                limit=limit,
-            )
-            return [self._project(pending) for pending in pending_items]
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                oper = TransferPendingOper(db=session)
+                lease_token = uuid4().hex
+                updated = oper.stage_claim_task(
+                    task_id=task_id,
+                    states=self._recoverable_states(),
+                    owner_id=owner_id,
+                    lease_token=lease_token,
+                    now_time=now_time,
+                    lease_expires_at=lease_expires_at,
+                    updated_at=self._now(),
+                )
+                session.flush()
+                session.expire_all()
+                try:
+                    pending = oper.get_by_task_id(task_id=task_id)
+                except JSONDecodeError as error:
+                    raise TransferAdmissionProjectionError(
+                        f"整理任务持久 JSON 无法解码: {task_id} - {error}"
+                    ) from error
+                if updated:
+                    if pending is None:
+                        raise TransferPlanningStateError(
+                            f"claim 后未找到整理任务: {task_id}"
+                        )
+                    try:
+                        admission = self._project(pending)
+                    except (
+                            TransferAdmissionConflictError,
+                            TransferPlanningStateError,
+                            TypeError,
+                            ValueError,
+                    ) as error:
+                        raise TransferAdmissionProjectionError(
+                            f"整理任务持久投影损坏: {task_id} - {error}"
+                        ) from error
+                    transaction.commit()
+                    return admission
+                transaction.commit()
+                return None
+            except Exception:
+                transaction.rollback()
+                raise
 
-    def list_recoverable(self, limit: int = 5000) -> list[TransferAdmission]:
-        """投影接纳、provider 待执行或已规划的全部可恢复任务。"""
-        with self._session_factory() as session:
-            pending_items = TransferPendingOper(db=session).list_by_states(
-                states=(
-                    TRANSFER_ADMISSION_ACCEPTED,
-                    TRANSFER_ADMISSION_PROVIDER_PENDING,
-                    TRANSFER_ADMISSION_PLANNED,
-                ),
-                limit=limit,
+    def claim_recoverable(
+            self,
+            *,
+            owner_id: str,
+            limit: int,
+            lease_seconds: int,
+    ) -> list[TransferAdmission]:
+        """按登记顺序逐条 CAS claim 未租用或租约已过期的恢复任务。"""
+        self._validate_claim_arguments(
+            owner_id=owner_id,
+            lease_seconds=lease_seconds,
+        )
+        if limit <= 0:
+            return []
+        claimed: list[TransferAdmission] = []
+        after_cursor: Optional[tuple[str, int]] = None
+        scanned_count = 0
+        scan_limit = self._MAX_RECOVERY_SCAN_TASKS
+        while len(claimed) < limit and scanned_count < scan_limit:
+            candidate_limit = min(
+                limit - len(claimed),
+                scan_limit - scanned_count,
             )
-            return [self._project(pending) for pending in pending_items]
+            now_time = self._format_lease_time(self._lease_now())
+            with self._session_factory() as session:
+                candidates = TransferPendingOper(db=session).list_claimable_candidates(
+                    states=self._recoverable_states(),
+                    now_time=now_time,
+                    limit=candidate_limit,
+                    after_cursor=after_cursor,
+                )
+            if not candidates:
+                break
+            scanned_count += len(candidates)
+            _, cursor_created_at, cursor_id = candidates[-1]
+            after_cursor = (cursor_created_at, cursor_id)
+            for task_id, _, _ in candidates:
+                try:
+                    admission = self.claim_task(
+                        task_id=task_id,
+                        owner_id=owner_id,
+                        lease_seconds=lease_seconds,
+                    )
+                except TransferAdmissionProjectionError as error:
+                    self._record_projection_failure(
+                        task_id=task_id,
+                        error=error,
+                    )
+                    continue
+                if admission is not None:
+                    claimed.append(admission)
+                if len(claimed) >= limit:
+                    break
+        return claimed
+
+    def _record_projection_failure(
+            self,
+            *,
+            task_id: str,
+            error: TransferAdmissionProjectionError,
+    ) -> bool:
+        """以独立 CAS 留存变化后的投影错误，并仅为新诊断记一次运行日志。"""
+        diagnostic = f"恢复投影失败: {error}"
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                recorded = TransferPendingOper(
+                    db=session
+                ).stage_record_projection_failure(
+                    task_id=task_id,
+                    states=self._recoverable_states(),
+                    error=diagnostic,
+                    now_time=self._format_lease_time(self._lease_now()),
+                    updated_at=self._now(),
+                )
+                transaction.commit()
+            except Exception:
+                transaction.rollback()
+                raise
+        if recorded:
+            _diagnostic_logger.error(
+                f"整理恢复任务投影损坏：task_id={task_id}, error={error}"
+            )
+        return bool(recorded)
+
+    def heartbeat(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            lease_seconds: int,
+    ) -> Optional[TransferAdmission]:
+        """仅以当前且未过期的 token 续租，禁止陈旧 worker 复活租约。"""
+        if not task_id or not lease_token:
+            raise ValueError("整理任务 heartbeat 缺少任务或租约身份")
+        if lease_seconds <= 0:
+            raise ValueError("整理任务 lease_seconds 必须大于零")
+        now = self._lease_now()
+        now_time = self._format_lease_time(now)
+        lease_expires_at = self._format_lease_time(
+            now + timedelta(seconds=lease_seconds)
+        )
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                oper = TransferPendingOper(db=session)
+                updated = oper.stage_heartbeat(
+                    task_id=task_id,
+                    lease_token=lease_token,
+                    now_time=now_time,
+                    lease_expires_at=lease_expires_at,
+                )
+                if not updated:
+                    transaction.commit()
+                    return None
+                session.flush()
+                session.expire_all()
+                pending = oper.get_by_task_id(task_id=task_id)
+                if pending is None:
+                    raise TransferPlanningStateError(
+                        f"heartbeat 后未找到整理任务: {task_id}"
+                    )
+                admission = self._project(pending)
+                transaction.commit()
+                return admission
+            except Exception:
+                transaction.rollback()
+                raise
+
+    def release_claim(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: Optional[str] = None,
+    ) -> bool:
+        """仅以当前未过期 token 释放租约，陈旧 worker 不得改变任务。"""
+        if not task_id or not lease_token:
+            return False
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                released = TransferPendingOper(db=session).stage_release_claim(
+                    task_id=task_id,
+                    lease_token=lease_token,
+                    error=error,
+                    now_time=self._format_lease_time(self._lease_now()),
+                    updated_at=self._now(),
+                )
+                transaction.commit()
+                return bool(released)
+            except Exception:
+                transaction.rollback()
+                raise
 
     def record_enqueue_failure(self, *, task_id: str, error: str) -> None:
         """独立提交最近一次入队失败，保留准入记录供后续恢复。"""
@@ -192,6 +430,7 @@ class TransactionalTransferAdmissionRepository:
             self,
             *,
             task_id: str,
+            lease_token: str,
             input_fingerprint: str,
             checkpoint: TransferPlanCheckpoint,
     ) -> TransferAdmission:
@@ -223,7 +462,9 @@ class TransactionalTransferAdmissionRepository:
                     checkpoint_payload=checkpoint_payload,
                     source_states=source_states,
                     target_state=target_state,
-                    now_time=self._now(),
+                    lease_token=lease_token,
+                    now_time=self._format_lease_time(self._lease_now()),
+                    updated_at=self._now(),
                 )
                 session.flush()
                 session.expire_all()
@@ -232,6 +473,13 @@ class TransactionalTransferAdmissionRepository:
                     raise TransferPlanningStateError(f"未找到整理任务: {task_id}")
                 if pending.input_fingerprint != input_fingerprint:
                     raise TransferAdmissionConflictError("整理任务输入指纹已经改变")
+                now_time = self._format_lease_time(self._lease_now())
+                if (
+                        pending.lease_token != lease_token
+                        or not pending.lease_expires_at
+                        or pending.lease_expires_at <= now_time
+                ):
+                    raise TransferLeaseLostError("整理任务租约已过期或已被其他 worker 接管")
                 if not updated and not (
                         pending.state == target_state
                         and pending.checkpoint_payload == checkpoint_payload
@@ -246,28 +494,44 @@ class TransactionalTransferAdmissionRepository:
                 transaction.rollback()
                 raise
 
-    def record_planning_failure(self, *, task_id: str, error: str) -> None:
+    def record_planning_failure(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: str,
+    ) -> None:
         """独立提交规划错误并保持任务处于接纳态供恢复重试。"""
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
             try:
-                TransferPendingOper(db=session).stage_record_planning_failure(
+                updated = TransferPendingOper(db=session).stage_record_planning_failure(
                     task_id=task_id,
+                    lease_token=lease_token,
                     error=error,
-                    now_time=self._now(),
+                    now_time=self._format_lease_time(self._lease_now()),
+                    updated_at=self._now(),
                 )
+                if not updated:
+                    raise TransferLeaseLostError(
+                        "整理任务租约已过期或已被其他 worker 接管"
+                    )
                 transaction.commit()
             except Exception:
                 transaction.rollback()
                 raise
 
-    def discard_task(self, *, task_id: str) -> int:
-        """在独立事务中按稳定任务标识删除已到终态的准入记录。"""
+    def discard_claimed(self, *, task_id: str, lease_token: str) -> int:
+        """仅以当前未过期 token 删除终态任务，拒绝陈旧 worker 变更。"""
+        if not task_id or not lease_token:
+            return 0
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
             try:
-                deleted = TransferPendingOper(db=session).stage_discard_task(
+                deleted = TransferPendingOper(db=session).stage_discard_claimed(
                     task_id=task_id,
+                    lease_token=lease_token,
+                    now_time=self._format_lease_time(self._lease_now()),
                 )
                 transaction.commit()
                 return deleted

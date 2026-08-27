@@ -1441,8 +1441,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 6832,
-  "edge_sha256": "eb4b2f9b9689496a7821aeb151c64430cc8654b186aba50f2b7873ae09b71b39",
+  "edge_count": 6836,
+  "edge_sha256": "3709e09a49257075f48a44aba353be1f25db610471ec756e09cbbfd7070acb9a",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -7625,6 +7625,10 @@
     "app.sdk._legacy.subscribe -> app.domain.context",
     "app.sdk._legacy.transfer -> app.application",
     "app.sdk._legacy.transfer -> app.application.transfer",
+    "app.sdk._legacy.transferpending -> app.db",
+    "app.sdk._legacy.transferpending -> app.db.base",
+    "app.sdk._legacy.transferpending -> app.db.models",
+    "app.sdk._legacy.transferpending -> app.db.models.transferpending",
     "app.sdk._legacy.user -> app.api",
     "app.sdk._legacy.user -> app.api.deps",
     "app.sdk._legacy.user -> app.db",
@@ -8277,7 +8281,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 836,
+  "module_count": 837,
   "modules": [
     "app",
     "app.adapters",
@@ -9058,6 +9062,7 @@
     "app.sdk._legacy.history",
     "app.sdk._legacy.subscribe",
     "app.sdk._legacy.transfer",
+    "app.sdk._legacy.transferpending",
     "app.sdk._legacy.user",
     "app.sdk.browser",
     "app.sdk.cache",

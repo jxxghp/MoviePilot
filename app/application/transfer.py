@@ -627,6 +627,14 @@ class TransferPlanningStateError(RuntimeError):
     """计划检查点无法从当前持久状态推进时抛出的状态错误。"""
 
 
+class TransferAdmissionProjectionError(RuntimeError):
+    """持久登记无法安全恢复为应用层整理准入投影时抛出的错误。"""
+
+
+class TransferLeaseLostError(TransferPlanningStateError):
+    """整理 worker 已失去持久租约、不得继续推进任务时抛出的错误。"""
+
+
 class TransferTask(OptionalMediaIdentityMixin, BaseModel):
     """
     文件整理任务。
@@ -661,6 +669,8 @@ class TransferTask(OptionalMediaIdentityMixin, BaseModel):
     _planning_input: Optional[TransferPlanningInput] = PrivateAttr(default=None)
     _plan_checkpoint: Optional[TransferPlanCheckpoint] = PrivateAttr(default=None)
     _planning_context_restored: bool = PrivateAttr(default=False)
+    _lease_owner: Optional[str] = PrivateAttr(default=None)
+    _lease_token: Optional[str] = PrivateAttr(default=None)
 
     @property
     def admission_task_id(self) -> Optional[str]:
@@ -697,6 +707,23 @@ class TransferTask(OptionalMediaIdentityMixin, BaseModel):
     def mark_planning_context_restored(self) -> None:
         """标记领域上下文已离线恢复，禁止旧流程再次在线补充。"""
         self._planning_context_restored = True
+
+    @property
+    def lease_owner(self) -> Optional[str]:
+        """返回当前任务绑定的进程级 worker owner。"""
+        return self._lease_owner
+
+    @property
+    def lease_token(self) -> Optional[str]:
+        """返回当前任务绑定的持久租约令牌。"""
+        return self._lease_token
+
+    def bind_execution_lease(self, *, owner_id: str, lease_token: str) -> None:
+        """绑定持久 claim 结果，且不改变插件可见的旧任务序列化字段。"""
+        if not owner_id or not lease_token:
+            raise ValueError("整理执行租约缺少 owner 或 token")
+        self._lease_owner = owner_id
+        self._lease_token = lease_token
 
     def to_dict(self):
         """
@@ -743,6 +770,11 @@ class TransferAdmission:
     input_fingerprint: Optional[str] = None
     planning_input: Optional[TransferPlanningInput] = None
     checkpoint: Optional[TransferPlanCheckpoint] = None
+    lease_owner: Optional[str] = None
+    lease_token: Optional[str] = None
+    lease_expires_at: Optional[str] = None
+    heartbeat_at: Optional[str] = None
+    attempt_count: int = 0
 
 
 class TransferAdmissionRepository(Protocol):
@@ -758,10 +790,6 @@ class TransferAdmissionRepository(Protocol):
         """按规划输入幂等登记源文件并返回稳定任务身份。"""
         ...
 
-    def list_accepted(self, limit: int = 5000) -> list[TransferAdmission]:
-        """按登记顺序返回等待恢复或执行的任务。"""
-        ...
-
     def record_enqueue_failure(self, *, task_id: str, error: str) -> None:
         """记录内存队列接收失败，保留任务供后续恢复。"""
         ...
@@ -770,22 +798,61 @@ class TransferAdmissionRepository(Protocol):
             self,
             *,
             task_id: str,
+            lease_token: str,
             input_fingerprint: str,
             checkpoint: TransferPlanCheckpoint,
     ) -> TransferAdmission:
-        """原子保存完整计划并将匹配输入的任务推进到已规划。"""
+        """按有效租约原子保存完整计划并推进匹配输入的任务。"""
         ...
 
-    def record_planning_failure(self, *, task_id: str, error: str) -> None:
-        """记录规划失败但保留接纳状态供下次恢复重试。"""
+    def record_planning_failure(
+            self, *, task_id: str, lease_token: str, error: str
+    ) -> None:
+        """按有效租约记录规划失败，保留业务状态供恢复重试。"""
         ...
 
-    def list_recoverable(self, limit: int = 5000) -> list[TransferAdmission]:
-        """按登记顺序返回接纳或已规划的可恢复任务。"""
+    def claim_task(
+            self,
+            *,
+            task_id: str,
+            owner_id: str,
+            lease_seconds: int,
+    ) -> Optional[TransferAdmission]:
+        """为指定任务取得唯一执行租约；已有有效租约时返回 None。"""
         ...
 
-    def discard_task(self, *, task_id: str) -> int:
-        """按稳定任务身份删除已经到达终态的登记。"""
+    def claim_recoverable(
+            self,
+            *,
+            owner_id: str,
+            limit: int,
+            lease_seconds: int,
+    ) -> list[TransferAdmission]:
+        """按登记顺序原子取得可恢复任务的唯一执行租约。"""
+        ...
+
+    def heartbeat(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            lease_seconds: int,
+    ) -> Optional[TransferAdmission]:
+        """仅为当前且未过期的 token 延长租约；过期 token 不得复活。"""
+        ...
+
+    def release_claim(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: Optional[str] = None,
+    ) -> bool:
+        """按 token 释放当前 claim，并可记录可恢复错误。"""
+        ...
+
+    def discard_claimed(self, *, task_id: str, lease_token: str) -> int:
+        """仅允许当前 lease owner 删除已经到达终态的登记。"""
         ...
 
 

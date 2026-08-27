@@ -2,13 +2,14 @@
 
 import ast
 import inspect
+import threading
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.application import transfer as transfer_application
@@ -202,6 +203,31 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
     """构造只保留规划编排依赖的 TransferChain 骨架。"""
     chain = object.__new__(TransferChain)
     chain._transfer_admissions = repository or Mock()
+    chain._worker_owner_id = "planning-owner"
+    chain._owned_leases = {}
+    chain._queued_lease_tokens = set()
+    chain._worker_state_lock = threading.RLock()
+    chain._closing = False
+    chain._recovery_wakeup_event = threading.Event()
+    chain._TransferChain__ensure_lease_heartbeat_owner = Mock()
+
+    def claim_task(**kwargs):
+        """为规划测试返回与进程 owner 匹配的稳定 claim。"""
+        return transfer_application.TransferAdmission(
+            task_id=kwargs["task_id"],
+            storage="local",
+            src_path="/downloads/Movie.2026.mkv",
+            state="accepted",
+            created_at="2026-08-27 10:00:00",
+            updated_at="2026-08-27 10:00:00",
+            lease_owner=kwargs["owner_id"],
+            lease_token=f"lease-{kwargs['task_id']}",
+            lease_expires_at="2026-08-27 10:02:00.000000",
+            heartbeat_at="2026-08-27 10:00:00.000000",
+            attempt_count=1,
+        )
+
+    chain._transfer_admissions.claim_task.side_effect = claim_task
     chain._module_dispatcher = Mock()
     chain._module_dispatcher.freeze_plugin_providers.return_value = ()
     chain.eventmanager = Mock()
@@ -214,6 +240,20 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
             transfer_type="copy",
         )
     )
+    return chain
+
+
+def _replay_chain(repository) -> TransferChain:
+    """构造绑定固定恢复 owner 且不启动真实 heartbeat 线程的测试链。"""
+    chain = object.__new__(TransferChain)
+    chain._transfer_admissions = repository
+    chain._worker_owner_id = "replay-owner"
+    chain._owned_leases = {}
+    chain._queued_lease_tokens = set()
+    chain._worker_state_lock = threading.RLock()
+    chain._closing = False
+    chain._recovery_wakeup_event = threading.Event()
+    chain._TransferChain__ensure_lease_heartbeat_owner = Mock()
     return chain
 
 
@@ -725,6 +765,7 @@ def test_provider_empty_fallback_cas_failure_blocks_host_execution():
     chain.execute_transfer_plan.assert_not_called()
     repository.record_planning_failure.assert_called_once_with(
         task_id="task-provider-cas-failure",
+        lease_token="lease-task-provider-cas-failure",
         error="CAS failed",
     )
 
@@ -804,7 +845,7 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
         return SimpleNamespace(checkpoint=kwargs["checkpoint"])
 
     repository.checkpoint_plan.side_effect = checkpoint_plan
-    repository.discard_task.side_effect = (
+    repository.discard_claimed.side_effect = (
         lambda **_kwargs: calls.append("discard") or 1
     )
     result = TransferInfo(
@@ -830,8 +871,9 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
 
     assert returned is result
     assert calls == ["admit", "checkpoint", "execute", "discard"]
-    repository.discard_task.assert_called_once_with(
-        task_id="task-legacy-command"
+    repository.discard_claimed.assert_called_once_with(
+        task_id="task-legacy-command",
+        lease_token="lease-task-legacy-command",
     )
 
 
@@ -898,16 +940,32 @@ def test_repository_rejects_checkpoint_with_mismatched_planning_fingerprint(tmp_
         src_path="/downloads/Movie.2026.mkv",
         planning_input=accepted_input,
     )
+    claimed = repository.claim_task(
+        task_id=admission.task_id,
+        owner_id="fingerprint-test",
+        lease_seconds=120,
+    )
+    assert claimed is not None
+    assert claimed.lease_token is not None
     mismatched = _checkpoint(target_path="/library/B/Movie.mkv")
 
     with pytest.raises(ValueError, match="指纹|fingerprint|规划输入"):
         repository.checkpoint_plan(
             task_id=admission.task_id,
+            lease_token=claimed.lease_token,
             input_fingerprint=accepted_input.fingerprint,
             checkpoint=mismatched,
         )
 
-    recovered = repository.list_recoverable()
+    assert repository.release_claim(
+        task_id=admission.task_id,
+        lease_token=claimed.lease_token,
+    ) is True
+    recovered = repository.claim_recoverable(
+        owner_id="fingerprint-recovery",
+        limit=10,
+        lease_seconds=120,
+    )
     assert len(recovered) == 1
     assert recovered[0].state == "accepted"
     assert recovered[0].checkpoint is None
@@ -926,23 +984,35 @@ def test_repository_round_trips_accepted_and_planned_recovery_states(tmp_path):
         planning_input=planning_input,
     )
 
-    accepted = repository.list_recoverable()
-    assert len(accepted) == 1
-    assert accepted[0].state == "accepted"
-    assert accepted[0].planning_input == planning_input
-    assert accepted[0].checkpoint is None
+    claimed = repository.claim_task(
+        task_id=admission.task_id,
+        owner_id="roundtrip-owner",
+        lease_seconds=120,
+    )
+    assert claimed is not None
+    assert claimed.lease_token is not None
+    assert claimed.state == "accepted"
+    assert claimed.planning_input == planning_input
+    assert claimed.checkpoint is None
 
     repository.record_planning_failure(
         task_id=admission.task_id,
+        lease_token=claimed.lease_token,
         error="rename unavailable",
     )
-    retryable = repository.list_recoverable()[0]
-    assert retryable.state == "accepted"
-    assert retryable.last_error == "rename unavailable"
+    with sessionmaker(bind=engine)() as session:
+        retryable = session.execute(
+            select(TransferPending).where(
+                TransferPending.task_id == admission.task_id
+            )
+        ).scalar_one()
+        assert retryable.state == "accepted"
+        assert retryable.last_error == "rename unavailable"
 
     checkpoint = _checkpoint()
     planned = repository.checkpoint_plan(
         task_id=admission.task_id,
+        lease_token=claimed.lease_token,
         input_fingerprint=planning_input.fingerprint,
         checkpoint=checkpoint,
     )
@@ -950,7 +1020,18 @@ def test_repository_round_trips_accepted_and_planned_recovery_states(tmp_path):
     assert planned.state == "planned"
     assert planned.checkpoint == checkpoint
     assert planned.last_error is None
-    assert repository.list_recoverable() == [planned]
+    assert repository.release_claim(
+        task_id=admission.task_id,
+        lease_token=claimed.lease_token,
+    ) is True
+    recovered = repository.claim_recoverable(
+        owner_id="roundtrip-recovery",
+        limit=10,
+        lease_seconds=120,
+    )
+    assert len(recovered) == 1
+    assert recovered[0].state == "planned"
+    assert recovered[0].checkpoint == checkpoint
     engine.dispose()
 
 
@@ -982,6 +1063,10 @@ def test_checkpoint_commit_precedes_executor_and_sync_task_is_admitted():
     repository.admit.side_effect = admit
     repository.checkpoint_plan.side_effect = checkpoint_plan
     chain = _chain(repository=repository, checkpoint=checkpoint, result=result)
+    claim_task = repository.claim_task.side_effect
+    repository.claim_task.side_effect = lambda **kwargs: (
+        order.append("claim") or claim_task(**kwargs)
+    )
     chain.plan_transfer.side_effect = lambda *_args, **_kwargs: (
         order.append("plan") or checkpoint
     )
@@ -992,12 +1077,13 @@ def test_checkpoint_commit_precedes_executor_and_sync_task_is_admitted():
     returned = chain._plan_checkpoint_and_execute(task)
 
     assert returned is result
-    assert order == ["admit", "plan", "commit-checkpoint", "execute"]
+    assert order == ["admit", "claim", "plan", "commit-checkpoint", "execute"]
     assert task.admission_task_id == "task-sync"
     repository.admit.assert_called_once()
     assert repository.admit.call_args.kwargs["planning_input"] is planning_input
     repository.checkpoint_plan.assert_called_once_with(
         task_id="task-sync",
+        lease_token="lease-task-sync",
         input_fingerprint=planning_input.fingerprint,
         checkpoint=checkpoint,
     )
@@ -1192,11 +1278,15 @@ def test_accepted_replay_restores_explicit_context_without_online_lookup(
         updated_at="2026-08-27 10:00:00",
         input_fingerprint=planning_input.fingerprint,
         planning_input=planning_input,
+        lease_owner="replay-owner",
+        lease_token="lease-task-accepted-offline",
+        lease_expires_at="2026-08-27 10:02:00.000000",
+        heartbeat_at="2026-08-27 10:00:00.000000",
+        attempt_count=1,
     )
     replay_repository = Mock()
-    replay_repository.list_recoverable.return_value = [admission]
-    replay_chain = object.__new__(TransferChain)
-    replay_chain._transfer_admissions = replay_repository
+    replay_repository.claim_recoverable.return_value = [admission]
+    replay_chain = _replay_chain(replay_repository)
     replay_chain._execute_transfer = Mock()
     queued_tasks = []
     replay_chain.put_to_queue = Mock(
@@ -1230,6 +1320,10 @@ def test_accepted_replay_restores_explicit_context_without_online_lookup(
         repository=execution_repository,
         checkpoint=checkpoint,
     )
+    execution_chain._worker_owner_id = "replay-owner"
+    execution_chain._owned_leases = {
+        admission.task_id: (str(admission.lease_token), float("inf"))
+    }
     execution_chain.jobview = Mock()
     execution_chain.eventmanager = Mock()
     execution_chain.eventmanager.send_event.return_value = None
@@ -1292,11 +1386,15 @@ def test_accepted_replay_with_explicit_empty_episodes_stays_offline(
         created_at="2026-08-27 10:00:00",
         updated_at="2026-08-27 10:00:00",
         planning_input=planning_input,
+        lease_owner="replay-owner",
+        lease_token="lease-task-accepted-empty-episodes",
+        lease_expires_at="2026-08-27 10:02:00.000000",
+        heartbeat_at="2026-08-27 10:00:00.000000",
+        attempt_count=1,
     )
     replay_repository = Mock()
-    replay_repository.list_recoverable.return_value = [admission]
-    replay_chain = object.__new__(TransferChain)
-    replay_chain._transfer_admissions = replay_repository
+    replay_repository.claim_recoverable.return_value = [admission]
+    replay_chain = _replay_chain(replay_repository)
     queued_tasks = []
     replay_chain.put_to_queue = Mock(
         side_effect=lambda task: queued_tasks.append(task) or True
@@ -1319,6 +1417,10 @@ def test_accepted_replay_with_explicit_empty_episodes_stays_offline(
         repository=execution_repository,
         checkpoint=checkpoint,
     )
+    execution_chain._worker_owner_id = "replay-owner"
+    execution_chain._owned_leases = {
+        admission.task_id: (str(admission.lease_token), float("inf"))
+    }
     execution_chain.jobview = Mock()
     execution_chain.eventmanager = Mock()
     execution_chain.eventmanager.send_event.return_value = None
@@ -1425,8 +1527,20 @@ def test_pre_checkpoint_recognition_failure_records_retryable_error(monkeypatch)
     task = _task()
     task.meta = MetaBase("Unrecognized.Movie.2026.mkv")
     task.bind_admission_task_id("task-before-checkpoint")
+    task.bind_execution_lease(
+        owner_id="recognition-owner",
+        lease_token="lease-task-before-checkpoint",
+    )
     chain = object.__new__(TransferChain)
     chain._transfer_admissions = Mock()
+    chain._worker_owner_id = "recognition-owner"
+    chain._owned_leases = {
+        "task-before-checkpoint": (
+            "lease-task-before-checkpoint",
+            float("inf"),
+        )
+    }
+    chain._worker_state_lock = threading.RLock()
     chain.jobview = Mock()
     chain.queue_failed_transfer_notification = Mock()
     chain.runtime_config = SimpleNamespace(
@@ -1449,6 +1563,7 @@ def test_pre_checkpoint_recognition_failure_records_retryable_error(monkeypatch)
     assert result == (False, "未识别到媒体信息")
     chain._transfer_admissions.record_planning_failure.assert_called_once_with(
         task_id="task-before-checkpoint",
+        lease_token="lease-task-before-checkpoint",
         error="未识别到媒体信息",
     )
 

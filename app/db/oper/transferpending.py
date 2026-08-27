@@ -1,5 +1,4 @@
-from datetime import datetime
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 
 from app.db.base import DbOper
 from app.db.models.transferpending import TransferPending
@@ -10,26 +9,8 @@ class TransferPendingOper(DbOper):
     待整理文件登记管理。
 
     保存稳定任务身份、存储、源文件路径和准入状态，用于在进程重启后把没走完
-    整理链的文件重新送回去，避免挂载故障重启后永久漏件。旧版路径登记接口继续
-    保留，供插件和兼容调用方使用。
+    整理链的文件重新送回去，避免挂载故障重启后永久漏件。
     """
-
-    def register(self, storage: str, src_path: str) -> Optional[TransferPending]:
-        """
-        登记一个待整理文件。
-        :param storage: 存储
-        :param src_path: 源文件路径
-        :return: 登记记录
-        """
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return self._execute_sync_write(
-            lambda session: TransferPending.register(
-                session,
-                storage=storage,
-                src_path=src_path,
-                now_time=now_time,
-            )
-        )
 
     def stage_admit(self, *, task_id: str, storage: str, src_path: str,
                     state: str, now_time: str, input_version: int = 1,
@@ -62,38 +43,6 @@ class TransferPendingOper(DbOper):
                 input_fingerprint=input_fingerprint,
             )
         )
-
-    def list_by_state(self, *, state: str,
-                      limit: Optional[int] = 5000) -> List[TransferPending]:
-        """
-        使用当前会话列出指定状态记录。
-        :param state: 持久状态
-        :param limit: 单次读取上限
-        :return: ORM 接纳记录列表
-        """
-        return self._execute_sync_query(
-            lambda session: TransferPending.list_by_state(
-                session,
-                state=state,
-                limit=limit,
-            )
-        ) or []
-
-    def list_by_states(self, *, states: tuple[str, ...],
-                       limit: Optional[int] = 5000) -> List[TransferPending]:
-        """
-        使用当前会话列出多个可恢复状态的记录。
-        :param states: 允许恢复的状态集合
-        :param limit: 单次读取上限
-        :return: ORM 接纳记录列表
-        """
-        return self._execute_sync_query(
-            lambda session: TransferPending.list_by_states(
-                session,
-                states=states,
-                limit=limit,
-            )
-        ) or []
 
     def get_by_identity(self, *, storage: str,
                         src_path: str) -> Optional[TransferPending]:
@@ -133,7 +82,9 @@ class TransferPendingOper(DbOper):
             checkpoint_payload: dict[str, Any],
             source_states: tuple[str, ...],
             target_state: str,
+            lease_token: str,
             now_time: str,
+            updated_at: str,
     ) -> int:
         """
         在当前会话中以输入指纹为条件暂存完整计划检查点。
@@ -143,7 +94,9 @@ class TransferPendingOper(DbOper):
         :param checkpoint_payload: 完整有序计划 JSON
         :param source_states: 允许执行 CAS 的起始状态
         :param target_state: 检查点提交后的目标状态
-        :param now_time: 当前时间
+        :param lease_token: 当前且未过期的租约令牌
+        :param now_time: 用于租约 fencing 的当前 UTC 时间
+        :param updated_at: 与既有业务审计字段一致的宿主本地时间
         :return: 更新的记录数
         """
         return self._execute_sync_write(
@@ -155,24 +108,205 @@ class TransferPendingOper(DbOper):
                 checkpoint_payload=checkpoint_payload,
                 source_states=source_states,
                 target_state=target_state,
+                lease_token=lease_token,
                 now_time=now_time,
+                updated_at=updated_at,
             )
         )
 
-    def stage_record_planning_failure(self, *, task_id: str, error: str,
-                                      now_time: str) -> int:
+    def stage_record_planning_failure(self, *, task_id: str, lease_token: str,
+                                      error: str, now_time: str,
+                                      updated_at: str) -> int:
         """
         在当前会话中记录规划失败并保持任务处于接纳态。
         :param task_id: 稳定任务标识
+        :param lease_token: 当前且未过期的租约令牌
         :param error: 失败原因
-        :param now_time: 当前时间
+        :param now_time: 用于租约 fencing 的当前 UTC 时间
+        :param updated_at: 与既有业务审计字段一致的宿主本地时间
         :return: 更新的记录数
         """
         return self._execute_sync_write(
             lambda session: TransferPending.record_planning_failure(
                 session,
                 task_id=task_id,
+                lease_token=lease_token,
                 error=error,
+                now_time=now_time,
+                updated_at=updated_at,
+            )
+        )
+
+    def list_claimable_candidates(
+            self,
+            *,
+            states: tuple[str, ...],
+            now_time: str,
+            limit: int,
+            after_cursor: Optional[tuple[str, int]] = None,
+    ) -> list[tuple[str, str, int]]:
+        """
+        使用当前会话按稳定游标读取未租用或已过期的恢复候选。
+
+        :param states: 可恢复业务状态
+        :param now_time: 当前 UTC 时间
+        :param limit: 候选数量上限
+        :param after_cursor: 上一页最后一条的规范登记时间与主键
+        :return: 任务标识、规范登记时间与主键组成的稳定游标列表
+        """
+        return self._execute_sync_query(
+            lambda session: TransferPending.list_claimable_candidates(
+                session,
+                states=states,
+                now_time=now_time,
+                limit=limit,
+                after_cursor=after_cursor,
+            )
+        ) or []
+
+    def stage_claim_task(
+            self,
+            *,
+            task_id: str,
+            states: tuple[str, ...],
+            owner_id: str,
+            lease_token: str,
+            now_time: str,
+            lease_expires_at: str,
+            updated_at: str,
+    ) -> int:
+        """
+        使用当前会话以未租或过期条件竞争一个新租约。
+
+        :param task_id: 稳定任务标识
+        :param states: 可恢复业务状态
+        :param owner_id: 新租约拥有者
+        :param lease_token: 新租约唯一令牌
+        :param now_time: 当前 UTC 时间
+        :param lease_expires_at: 新租约到期时间
+        :param updated_at: 与既有业务审计字段一致的宿主本地时间
+        :return: 更新的记录数
+        """
+        return self._execute_sync_write(
+            lambda session: TransferPending.claim_task(
+                session,
+                task_id=task_id,
+                states=states,
+                owner_id=owner_id,
+                lease_token=lease_token,
+                now_time=now_time,
+                lease_expires_at=lease_expires_at,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_record_projection_failure(
+            self,
+            *,
+            task_id: str,
+            states: tuple[str, ...],
+            error: str,
+            now_time: str,
+            updated_at: str,
+    ) -> int:
+        """
+        使用当前会话按无有效租约和诊断变化条件记录投影损坏。
+
+        :param task_id: 稳定任务标识
+        :param states: 可恢复业务状态
+        :param error: 可持久化的稳定诊断文本
+        :param now_time: 当前 UTC 租约时间
+        :param updated_at: 宿主本地业务审计时间
+        :return: 更新的记录数
+        """
+        return self._execute_sync_write(
+            lambda session: TransferPending.record_projection_failure(
+                session,
+                task_id=task_id,
+                states=states,
+                error=error,
+                now_time=now_time,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_heartbeat(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            now_time: str,
+            lease_expires_at: str,
+    ) -> int:
+        """
+        使用当前会话以当前未过期 token 延长租约。
+
+        :param task_id: 稳定任务标识
+        :param lease_token: 当前租约令牌
+        :param now_time: 当前 UTC 时间
+        :param lease_expires_at: 新租约到期时间
+        :return: 更新的记录数
+        """
+        return self._execute_sync_write(
+            lambda session: TransferPending.heartbeat(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                now_time=now_time,
+                lease_expires_at=lease_expires_at,
+            )
+        )
+
+    def stage_release_claim(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: Optional[str],
+            now_time: str,
+            updated_at: str,
+    ) -> int:
+        """
+        使用当前会话按未过期 token 释放租约并记录本次错误。
+
+        :param task_id: 稳定任务标识
+        :param lease_token: 当前租约令牌
+        :param error: 本次执行错误，成功释放时为空
+        :param now_time: 当前 UTC 时间
+        :param updated_at: 与既有业务审计字段一致的宿主本地时间
+        :return: 更新的记录数
+        """
+        return self._execute_sync_write(
+            lambda session: TransferPending.release_claim(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
+                error=error,
+                now_time=now_time,
+                updated_at=updated_at,
+            )
+        )
+
+    def stage_discard_claimed(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            now_time: str,
+    ) -> int:
+        """
+        使用当前会话按当前未过期 token 删除终态任务。
+
+        :param task_id: 稳定任务标识
+        :param lease_token: 当前租约令牌
+        :param now_time: 当前 UTC 时间
+        :return: 删除的记录数
+        """
+        return self._execute_sync_write(
+            lambda session: TransferPending.discard_claimed(
+                session,
+                task_id=task_id,
+                lease_token=lease_token,
                 now_time=now_time,
             )
         )
@@ -194,56 +328,3 @@ class TransferPendingOper(DbOper):
                 now_time=now_time,
             )
         )
-
-    def stage_discard_task(self, *, task_id: str) -> int:
-        """
-        在当前会话中暂存按任务标识删除接纳记录。
-        :param task_id: 任务标识
-        :return: 删除的记录数
-        """
-        return self._execute_sync_write(
-            lambda session: TransferPending.discard_task(
-                session,
-                task_id=task_id,
-            )
-        )
-
-    def discard(self, storage: str, src_path: str) -> int:
-        """
-        注销一个待整理文件登记。
-        :param storage: 存储
-        :param src_path: 源文件路径
-        :return: 删除的记录数
-        """
-        return self._execute_sync_write(
-            lambda session: TransferPending.discard(
-                session,
-                storage=storage,
-                src_path=src_path,
-            )
-        )
-
-    def list_all(self, limit: Optional[int] = 5000) -> List[Tuple[str, str]]:
-        """
-        列出全部待整理登记，供启动回放使用。
-
-        返回纯元组而不是 ORM 实例：回放发生在会话之外，ORM 实例脱离 session
-        后访问属性会触发 DetachedInstanceError。
-        :param limit: 单次回放上限
-        :return: (存储, 源文件路径) 列表
-        """
-        items = self._execute_sync_query(
-            lambda session: TransferPending.list_all(session, limit=limit)
-        )
-        return [
-            (item.storage, item.src_path)
-            for item in items or []
-            if item and item.storage and item.src_path
-        ]
-
-    def clear(self) -> int:
-        """
-        清空全部待整理登记。
-        :return: 删除的记录数
-        """
-        return self._execute_sync_write(TransferPending.clear)

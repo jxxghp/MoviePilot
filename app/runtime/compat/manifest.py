@@ -135,10 +135,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="sdk",
     ),
     "app.db.transferpending_oper": ModuleAlias(
-        target="app.db.oper.transferpending",
-        replacement="app.db.oper.transferpending",
+        target="app.sdk._legacy.transferpending",
+        replacement="app.application.transfer",
         introduced="v3.0.0",
-        owner="db",
+        owner="sdk",
     ),
     "app.db.user_oper": ModuleAlias(
         target="app.sdk._legacy.user",

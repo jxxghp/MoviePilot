@@ -305,10 +305,16 @@ def test_legacy_transfer_task_hides_internal_admission_identity():
     public_fields = set(task.to_dict())
 
     task.bind_admission_task_id("internal-task-id")
+    task.bind_execution_lease(
+        owner_id="internal-worker",
+        lease_token="internal-lease-token",
+    )
 
     assert set(task.to_dict()) == public_fields
     assert "task_id" not in task.to_dict()
     assert "admission_task_id" not in task.to_dict()
+    assert "lease_owner" not in task.to_dict()
+    assert "lease_token" not in task.to_dict()
 
 
 def test_chain_media_legacy_scraping_symbols_resolve_to_scraping_chain():

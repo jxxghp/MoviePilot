@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer import TransferAdmission, TransferQueueService
@@ -118,7 +118,8 @@ def test_transfer_queue_service_commits_admission_before_failed_enqueue(tmp_path
     """真实仓储已提交后即使内存入队失败，任务也必须带原因留待恢复。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'durable-admission.db'}")
     TransferPending.__table__.create(engine)
-    repository = TransactionalTransferAdmissionRepository(sessionmaker(bind=engine))
+    factory = sessionmaker(bind=engine)
+    repository = TransactionalTransferAdmissionRepository(factory)
     task = make_task(1)
     service, _ = _service(
         admit_task=lambda item: repository.admit(
@@ -135,10 +136,13 @@ def test_transfer_queue_service_commits_admission_before_failed_enqueue(tmp_path
     with pytest.raises(RuntimeError, match="queue closed"):
         service.put(task, Mock())
 
-    admissions = repository.list_accepted()
-    assert len(admissions) == 1
-    assert admissions[0].task_id == task.admission_task_id
-    assert admissions[0].last_error == "queue closed"
+    with factory() as session:
+        pending = session.execute(
+            select(TransferPending).where(
+                TransferPending.task_id == task.admission_task_id
+            )
+        ).scalar_one()
+        assert pending.last_error == "queue closed"
     engine.dispose()
 
 

@@ -46,6 +46,7 @@ from app.application.transfer import (
     TransferAdmission,
     TransferFailureNotification,
     TransferFailureNotificationAggregator,
+    TransferLeaseLostError,
     TransferPlanCheckpoint,
     TransferPlanningInput,
     TransferPlanningStateError,
@@ -146,6 +147,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
     _WORKER_RESTART_TIMEOUT_SECONDS = 30.0
     _WORKER_CLOSE_TIMEOUT_SECONDS = 30.0
     _QUEUE_STOP_SENTINEL = object()
+    _WORKER_LEASE_SECONDS = 120
+    _LEASE_HEARTBEAT_INTERVAL_SECONDS = 30.0
+    _RECOVERY_POLL_INTERVAL_SECONDS = 15.0
+    _RECOVERY_CLAIM_LIMIT = 100
 
     @staticmethod
     def _transfer_result_payload(
@@ -254,9 +259,16 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         self._worker_lifecycle_lock = threading.RLock()
         self._worker_state_lock = threading.RLock()
         self._closing = False
-        # pending 回放同样由整理链持有，关闭时可阻止继续处理下一条登记
+        # 恢复调度与租约续期均由整理链持有，关闭时与 worker 一并收敛。
+        self._worker_owner_id = uuid.uuid4().hex
+        self._owned_leases: Dict[str, Tuple[str, float]] = {}
+        self._queued_lease_tokens: set[Tuple[str, str]] = set()
         self._replay_thread: Optional[threading.Thread] = None
         self._replay_stop_event = threading.Event()
+        self._recovery_wakeup_event = threading.Event()
+        self._lease_heartbeat_thread: Optional[threading.Thread] = None
+        self._lease_heartbeat_stop_event = threading.Event()
+        self._lease_release_thread: Optional[threading.Thread] = None
         self._active_tasks = 0
         self._processed_num = 0
         self._fail_num = 0
@@ -366,6 +378,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         :param timeout_seconds: 生命周期锁、worker 与回放线程共享的最大等待秒数
         :return: 全部后台线程均已收敛时返回 True，否则返回 False
         """
+        self.__ensure_lease_runtime_state()
         deadline = time.monotonic() + max(0.0, timeout_seconds)
         if not self.__acquire_worker_lifecycle_lock(deadline):
             logger.error(
@@ -378,7 +391,9 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 self._closing = True
                 worker_threads = self.__request_worker_stop()
                 replay_thread = self._replay_thread
+                heartbeat_thread = self._lease_heartbeat_thread
                 self._replay_stop_event.set()
+                self._recovery_wakeup_event.set()
 
             alive_workers = self.__join_threads(worker_threads, deadline)
             alive_replays = self.__join_threads(
@@ -387,7 +402,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             with self._worker_state_lock:
                 self._threads = []
                 self._retiring_threads = alive_workers
-                if replay_thread and not alive_replays and self._replay_thread is replay_thread:
+                if (
+                        replay_thread
+                        and replay_thread not in alive_replays
+                        and self._replay_thread is replay_thread
+                ):
                     self._replay_thread = None
 
             alive_threads = [*alive_workers, *alive_replays]
@@ -396,6 +415,38 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     "整理后台线程未在 %.1f 秒内收敛，仍由 TransferChain 持有：%s",
                     max(0.0, timeout_seconds),
                     ", ".join(thread.name for thread in alive_threads),
+                )
+                return False
+            with self._worker_state_lock:
+                release_thread = self.__start_lease_release_owner_locked(
+                    error="整理宿主关闭，释放未结算任务租约"
+                )
+            alive_releases = self.__join_threads(
+                [release_thread] if release_thread else [], deadline
+            )
+            if alive_releases:
+                logger.error(
+                    "整理租约释放线程未在 %.1f 秒内收敛，heartbeat 保持运行：%s",
+                    max(0.0, timeout_seconds),
+                    ", ".join(thread.name for thread in alive_releases),
+                )
+                return False
+            with self._worker_state_lock:
+                if self._lease_release_thread is release_thread:
+                    self._lease_release_thread = None
+            self._lease_heartbeat_stop_event.set()
+            alive_heartbeats = self.__join_threads(
+                [heartbeat_thread] if heartbeat_thread else [], deadline
+            )
+            if heartbeat_thread and not alive_heartbeats:
+                with self._worker_state_lock:
+                    if self._lease_heartbeat_thread is heartbeat_thread:
+                        self._lease_heartbeat_thread = None
+            if alive_heartbeats:
+                logger.error(
+                    "整理租约续期线程未在 %.1f 秒内收敛：%s",
+                    max(0.0, timeout_seconds),
+                    ", ".join(thread.name for thread in alive_heartbeats),
                 )
                 return False
             logger.info("文件整理 worker 与待处理回放线程已关闭")
@@ -885,6 +936,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             if self._closing:
                 logger.warning("文件整理链已关闭，拒绝新的队列任务")
                 return False
+            if isinstance(task.lease_token, str) and task.lease_token:
+                return self.__enqueue_claimed_task(task)
             return self._transfer_queue_service().put(task, self.__default_callback)
 
     def _transfer_queue_service(self) -> TransferQueueService:
@@ -902,38 +955,368 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
     def replay_pending(self) -> None:
         """
-        回放上次进程退出时仍未整理完的文件。
+        启动唯一恢复调度 owner，并唤醒一次即时恢复扫描。
 
-        在后台线程执行：回放要 stat 源文件，而启动期挂载可能尚未就绪甚至处于
-        挂死状态，同步执行会把整个启动流程堵住。
+        启动回放、同进程入队补偿和租约过期接管都经由这个入口。调度线程只负责
+        claim 和重新入队；实际业务仍由普通整理 worker 执行。
         """
+        self.__ensure_recovery_scheduler(immediate=True)
+
+    def __ensure_recovery_scheduler(self, *, immediate: bool) -> None:
+        """确保唯一恢复调度 owner 存在，并只为显式请求执行即时扫描。"""
+        self.__ensure_lease_runtime_state()
         with self._worker_state_lock:
             if self._closing:
                 logger.info("文件整理链正在关闭，跳过待处理文件回放")
                 return
+            self.__start_lease_heartbeat_owner_locked()
             if self._replay_thread and self._replay_thread.is_alive():
-                logger.info("待处理文件回放已在运行，跳过重复启动")
+                if immediate:
+                    self._recovery_wakeup_event.set()
                 return
-            stop_event = threading.Event()
             thread = threading.Thread(
                 target=self.__run_replay_pending,
-                args=(stop_event,),
+                args=(self._replay_stop_event, immediate),
                 name="MoviePilot-TransferReplay",
                 daemon=True,
             )
-            self._replay_stop_event = stop_event
             self._replay_thread = thread
+            if immediate:
+                self._recovery_wakeup_event.set()
             # 在状态锁内启动，避免 close_workers 看到尚未 start 的线程后错误 join。
             thread.start()
 
-    def __run_replay_pending(self, stop_event: threading.Event) -> None:
-        """执行一次受控回放，并在自然结束后释放当前线程句柄。"""
+    def __run_replay_pending(
+            self,
+            stop_event: threading.Event,
+            initial_immediate: bool = True,
+    ) -> None:
+        """按初次扫描意图持续恢复，失败兜底新建 owner 时先等待固定轮询。"""
         try:
-            self.__replay_pending(stop_event)
+            if not initial_immediate:
+                self._recovery_wakeup_event.wait(
+                    timeout=self._RECOVERY_POLL_INTERVAL_SECONDS
+                )
+            while not stop_event.is_set():
+                self._recovery_wakeup_event.clear()
+                self.__replay_pending(stop_event)
+                self._recovery_wakeup_event.wait(
+                    timeout=self._RECOVERY_POLL_INTERVAL_SECONDS
+                )
         finally:
             with self._worker_state_lock:
                 if self._replay_thread is threading.current_thread():
                     self._replay_thread = None
+
+    def __ensure_lease_runtime_state(self) -> None:
+        """为绕过构造器的兼容调用补齐进程 owner 与租约线程状态。"""
+        if not hasattr(self, "_worker_owner_id"):
+            self._worker_owner_id = uuid.uuid4().hex
+        if not hasattr(self, "_owned_leases"):
+            self._owned_leases = {}
+        if not hasattr(self, "_queued_lease_tokens"):
+            self._queued_lease_tokens = set()
+        if not hasattr(self, "_recovery_wakeup_event"):
+            self._recovery_wakeup_event = threading.Event()
+        if not hasattr(self, "_lease_heartbeat_thread"):
+            self._lease_heartbeat_thread = None
+        if not hasattr(self, "_lease_heartbeat_stop_event"):
+            self._lease_heartbeat_stop_event = threading.Event()
+        if not hasattr(self, "_lease_release_thread"):
+            self._lease_release_thread = None
+        if not hasattr(self, "_replay_thread"):
+            self._replay_thread = None
+        if not hasattr(self, "_replay_stop_event"):
+            self._replay_stop_event = threading.Event()
+        if not hasattr(self, "_worker_state_lock"):
+            self._worker_state_lock = threading.RLock()
+        if not hasattr(self, "_closing"):
+            self._closing = False
+
+    def __start_lease_heartbeat_owner_locked(self) -> None:
+        """在状态锁内确保当前进程只有一个租约续期线程。"""
+        heartbeat_thread = self._lease_heartbeat_thread
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            return
+        heartbeat_thread = threading.Thread(
+            target=self.__run_lease_heartbeat,
+            args=(self._lease_heartbeat_stop_event,),
+            name="MoviePilot-TransferLeaseHeartbeat",
+            daemon=True,
+        )
+        self._lease_heartbeat_thread = heartbeat_thread
+        heartbeat_thread.start()
+
+    def __ensure_lease_heartbeat_owner(self) -> None:
+        """按需启动进程级租约续期 owner，供启动前到达的普通任务使用。"""
+        self.__ensure_lease_runtime_state()
+        with self._worker_state_lock:
+            if not self._closing:
+                self.__start_lease_heartbeat_owner_locked()
+
+    def __run_lease_heartbeat(self, stop_event: threading.Event) -> None:
+        """按固定周期续期本进程已 claim 且尚未结算的任务。"""
+        try:
+            while not stop_event.wait(self._LEASE_HEARTBEAT_INTERVAL_SECONDS):
+                self.__heartbeat_owned_leases()
+        finally:
+            with self._worker_state_lock:
+                if self._lease_heartbeat_thread is threading.current_thread():
+                    self._lease_heartbeat_thread = None
+
+    def __heartbeat_owned_leases(self) -> None:
+        """经 Application Port 续期所有排队中或执行中的任务租约。"""
+        self.__ensure_lease_runtime_state()
+        with self._worker_state_lock:
+            owned_leases = list(self._owned_leases.items())
+        for task_id, (lease_token, deadline) in owned_leases:
+            try:
+                admission = self._transfer_admissions.heartbeat(
+                    task_id=task_id,
+                    lease_token=lease_token,
+                    lease_seconds=self._WORKER_LEASE_SECONDS,
+                )
+            except Exception as err:
+                if time.monotonic() >= deadline:
+                    self.__forget_owned_lease(task_id, lease_token)
+                    logger.error(
+                        "整理任务租约续期持续失败并已超过本地期限：%s - %s",
+                        task_id,
+                        err,
+                    )
+                else:
+                    logger.error(f"整理任务租约续期失败：{task_id} - {err}")
+                continue
+            if (
+                    admission is None
+                    or admission.lease_owner != self._worker_owner_id
+                    or admission.lease_token != lease_token
+            ):
+                self.__forget_owned_lease(task_id, lease_token)
+                logger.error(f"整理任务租约已失效或被接管：{task_id}")
+                continue
+            with self._worker_state_lock:
+                current = self._owned_leases.get(task_id)
+                if current and current[0] == lease_token:
+                    self._owned_leases[task_id] = (
+                        lease_token,
+                        time.monotonic() + self._WORKER_LEASE_SECONDS,
+                    )
+
+    def __bind_claimed_admission(
+            self,
+            task: TransferTask,
+            admission: TransferAdmission,
+    ) -> None:
+        """校验仓储 claim 投影并把 token 私有绑定到执行任务。"""
+        if (
+                admission.task_id != task.admission_task_id
+        ):
+            raise TransferLeaseLostError(
+                f"整理任务 claim 投影无效：{admission.task_id}"
+            )
+        self.__register_claimed_admission(admission)
+        assert admission.lease_owner is not None
+        assert admission.lease_token is not None
+        task.bind_execution_lease(
+            owner_id=admission.lease_owner,
+            lease_token=admission.lease_token,
+        )
+
+    def __register_claimed_admission(
+            self,
+            admission: TransferAdmission,
+    ) -> None:
+        """把仓储 claim 加入续期集合，覆盖恢复构造阶段可能发生的同步 I/O。"""
+        if (
+                admission.lease_owner != self._worker_owner_id
+                or not admission.lease_token
+        ):
+            raise TransferLeaseLostError(
+                f"整理任务 claim 投影无效：{admission.task_id}"
+            )
+        with self._worker_state_lock:
+            self._owned_leases[admission.task_id] = (
+                admission.lease_token,
+                time.monotonic() + self._WORKER_LEASE_SECONDS,
+            )
+        self.__ensure_lease_heartbeat_owner()
+
+    def __forget_owned_lease(self, task_id: str, lease_token: str) -> None:
+        """仅在 token 仍匹配时移除本进程租约镜像，避免删掉新接管记录。"""
+        with self._worker_state_lock:
+            current = self._owned_leases.get(task_id)
+            if current and current[0] == lease_token:
+                self._owned_leases.pop(task_id, None)
+            self._queued_lease_tokens.discard((task_id, lease_token))
+
+    def __is_claimed_task_enqueued(self, task_id: str, lease_token: str) -> bool:
+        """返回指定 claim 是否已经成功进入普通 worker 队列。"""
+        with self._worker_state_lock:
+            return (task_id, lease_token) in self._queued_lease_tokens
+
+    def __owns_lease(self, task_id: str, lease_token: Optional[str]) -> bool:
+        """返回本地续期镜像是否仍持有指定 token。"""
+        if not lease_token:
+            return False
+        with self._worker_state_lock:
+            current = self._owned_leases.get(task_id)
+            return bool(current and current[0] == lease_token)
+
+    def __assert_owned_lease(self, task: TransferTask) -> None:
+        """拒绝无 token、已过本地期限或已被 heartbeat 判失效的任务推进。"""
+        if task.preview:
+            return
+        task_id = task.admission_task_id
+        lease_token = task.lease_token
+        if (
+                not task_id
+                or not lease_token
+                or task.lease_owner != self._worker_owner_id
+        ):
+            raise TransferLeaseLostError("整理任务缺少当前进程的有效执行租约")
+        with self._worker_state_lock:
+            current = self._owned_leases.get(task_id)
+            if (
+                    current is None
+                    or current[0] != lease_token
+                    or current[1] <= time.monotonic()
+            ):
+                if current and current[0] == lease_token:
+                    self._owned_leases.pop(task_id, None)
+                raise TransferLeaseLostError(f"整理任务租约已经失效：{task_id}")
+
+    def __claim_task_for_execution(self, task: TransferTask) -> None:
+        """让普通队列任务在业务执行前取得唯一租约，恢复任务复用既有 token。"""
+        if task.preview:
+            return
+        self.__ensure_lease_runtime_state()
+        if task.lease_token:
+            self.__assert_owned_lease(task)
+            return
+        if not task.admission_task_id:
+            admitted = self.__admit_transfer(task)
+            task.bind_admission_task_id(admitted.task_id)
+        task_id = task.admission_task_id
+        if task_id is None:
+            raise TransferLeaseLostError("整理任务准入后仍缺少 durable 身份")
+        claimed = self._transfer_admissions.claim_task(
+            task_id=task_id,
+            owner_id=self._worker_owner_id,
+            lease_seconds=self._WORKER_LEASE_SECONDS,
+        )
+        if claimed is None:
+            raise TransferLeaseLostError(
+                f"整理任务已由其他 worker claim：{task_id}"
+            )
+        try:
+            self.__bind_claimed_admission(task, claimed)
+        except Exception as err:
+            self.__release_admission_claim(claimed, error=str(err))
+            raise
+
+    def __release_task_claim(
+            self,
+            task: TransferTask,
+            *,
+            error: Optional[str] = None,
+    ) -> bool:
+        """按 task token 释放未到终态的 claim，并按固定轮询等待恢复。"""
+        task_id = task.admission_task_id if task else None
+        lease_token = task.lease_token if task else None
+        if not task_id or not lease_token:
+            return False
+        try:
+            return self._transfer_admissions.release_claim(
+                task_id=task_id,
+                lease_token=lease_token,
+                error=error,
+            )
+        except Exception as err:
+            logger.error(f"释放整理任务租约失败：{task_id} - {err}")
+            return False
+        finally:
+            self.__forget_owned_lease(task_id, lease_token)
+            self.__ensure_recovery_scheduler(immediate=False)
+
+    def __release_admission_claim(
+            self,
+            admission: TransferAdmission,
+            *,
+            error: Optional[str] = None,
+    ) -> None:
+        """释放尚未绑定或成功入队的恢复 claim。"""
+        if not admission.lease_token:
+            return
+        try:
+            self._transfer_admissions.release_claim(
+                task_id=admission.task_id,
+                lease_token=admission.lease_token,
+                error=error,
+            )
+        except Exception as err:
+            logger.error(f"释放恢复任务租约失败：{admission.task_id} - {err}")
+        finally:
+            self.__forget_owned_lease(admission.task_id, admission.lease_token)
+
+    def __release_all_owned_leases(self, *, error: str) -> None:
+        """在执行 owner 全部收敛后释放剩余 claim，避免关停后等待租约自然过期。"""
+        with self._worker_state_lock:
+            owned_leases = list(self._owned_leases.items())
+        for task_id, (lease_token, _deadline) in owned_leases:
+            try:
+                self._transfer_admissions.release_claim(
+                    task_id=task_id,
+                    lease_token=lease_token,
+                    error=error,
+                )
+            except Exception as err:
+                logger.error(f"关闭时释放整理任务租约失败：{task_id} - {err}")
+            finally:
+                self.__forget_owned_lease(task_id, lease_token)
+
+    def __start_lease_release_owner_locked(
+            self, *, error: str
+    ) -> Optional[threading.Thread]:
+        """启动并持有唯一租约释放线程，使同步数据库阻塞不突破关闭预算。"""
+        release_thread = self._lease_release_thread
+        if release_thread is not None:
+            return release_thread
+        if not self._owned_leases:
+            return None
+        release_thread = threading.Thread(
+            target=self.__release_all_owned_leases,
+            kwargs={"error": error},
+            name="MoviePilot-TransferLeaseRelease",
+            daemon=True,
+        )
+        self._lease_release_thread = release_thread
+        release_thread.start()
+        return release_thread
+
+    def __enqueue_claimed_task(self, task: TransferTask) -> bool:
+        """把已 claim 的恢复任务送入普通队列，禁止再次准入或二次 claim。"""
+        self.__assert_owned_lease(task)
+        if not self.__put_to_jobview(task):
+            return False
+        try:
+            self._register_scrape_batch_task(task)
+            assert task.admission_task_id is not None
+            assert task.lease_token is not None
+            with self._worker_state_lock:
+                self._queued_lease_tokens.add(
+                    (task.admission_task_id, task.lease_token)
+                )
+            self._queue.put(
+                TransferQueue(task=task, callback=self.__default_callback)
+            )
+        except Exception as err:
+            try:
+                self.__record_enqueue_failure(task, err)
+            finally:
+                self.jobview.remove_task(task.fileitem)
+            raise
+        return True
 
     def __replay_pending(
             self, stop_event: Optional[threading.Event] = None
@@ -948,17 +1331,35 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         stop_event = stop_event or threading.Event()
         if stop_event.is_set():
             return
+        self.__ensure_lease_runtime_state()
         try:
-            pendings = self._transfer_admissions.list_recoverable()
+            pendings = self._transfer_admissions.claim_recoverable(
+                owner_id=self._worker_owner_id,
+                limit=self._RECOVERY_CLAIM_LIMIT,
+                lease_seconds=self._WORKER_LEASE_SECONDS,
+            )
         except Exception as err:
             logger.error(f"读取待整理文件登记失败：{err}")
             return
         if not pendings:
             return
+        try:
+            for admission in pendings:
+                self.__register_claimed_admission(admission)
+        except Exception as err:
+            logger.error(f"登记恢复任务租约失败：{err}")
+            for claimed in pendings:
+                self.__release_admission_claim(claimed, error=str(err))
+            return
         logger.info(f"发现 {len(pendings)} 个上次未整理完的文件，正在重新送入整理链 ...")
         replayed = 0
-        for admission in pendings:
+        for index, admission in enumerate(pendings):
             if stop_event.is_set():
+                for unprocessed in pendings[index:]:
+                    self.__release_admission_claim(
+                        unprocessed,
+                        error="整理宿主关闭，恢复任务尚未入队",
+                    )
                 break
             storage = admission.storage
             src_path = admission.src_path
@@ -970,17 +1371,50 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 )
                 # stat 等同步 I/O 返回后重新检查，关闭期间不得注销尚未完成的登记。
                 if stop_event.is_set():
+                    self.__release_admission_claim(
+                        admission,
+                        error="整理宿主关闭，恢复任务尚未入队",
+                    )
+                    for unprocessed in pendings[index + 1:]:
+                        self.__release_admission_claim(
+                            unprocessed,
+                            error="整理宿主关闭，恢复任务尚未入队",
+                        )
                     break
                 if not fileitem:
                     if should_discard:
                         # 源文件确认已消失，注销登记避免每次启动重复回放
-                        self._transfer_admissions.discard_task(
-                            task_id=admission.task_id
+                        lease_token = admission.lease_token
+                        if lease_token is None:
+                            raise TransferLeaseLostError(
+                                f"恢复任务缺少 lease token：{admission.task_id}"
+                            )
+                        discarded = self._transfer_admissions.discard_claimed(
+                            task_id=admission.task_id,
+                            lease_token=lease_token,
+                        )
+                        if not discarded:
+                            logger.warning(
+                                f"恢复任务终态注销被 CAS 拒绝：{admission.task_id}"
+                            )
+                        self.__forget_owned_lease(
+                            admission.task_id,
+                            lease_token,
+                        )
+                    else:
+                        self.__release_admission_claim(
+                            admission,
+                            error="恢复源文件暂时不可读取",
                         )
                     continue
                 if admission.checkpoint:
                     if self.__queue_planned_replay(fileitem, admission):
                         replayed += 1
+                    else:
+                        self.__release_admission_claim(
+                            admission,
+                            error="恢复任务未进入内存队列",
+                        )
                     continue
                 planning_input = admission.planning_input
                 if planning_input and (
@@ -990,6 +1424,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 ):
                     if self.__queue_accepted_replay(fileitem, admission):
                         replayed += 1
+                    else:
+                        self.__release_admission_claim(
+                            admission,
+                            error="恢复任务未进入内存队列",
+                        )
                     continue
                 replay_kwargs = self.__build_replay_kwargs(planning_input)
                 self._execute_transfer(
@@ -997,9 +1436,21 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     recovery_admission=admission,
                     **replay_kwargs,
                 )
-                replayed += 1
+                assert admission.lease_token is not None
+                if self.__is_claimed_task_enqueued(
+                        admission.task_id,
+                        admission.lease_token,
+                ):
+                    replayed += 1
+                else:
+                    self.__release_admission_claim(
+                        admission,
+                        error="旧恢复入口未产生可执行队列任务",
+                    )
             except Exception as err:
                 logger.error(f"回放待整理文件失败：{storage}:{src_path} - {err}")
+                if self.__owns_lease(admission.task_id, admission.lease_token):
+                    self.__release_admission_claim(admission, error=str(err))
         if stop_event.is_set():
             logger.info(
                 "待整理文件回放收到关闭请求，已送入 %s 个文件，其余登记保持待处理",
@@ -1116,6 +1567,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             preview=False,
         )
         task.bind_admission_task_id(admission.task_id)
+        self.__bind_claimed_admission(task, admission)
         task.bind_planning_input(planning_input)
         if planning_input.mediainfo:
             task.mark_planning_context_restored()
@@ -1168,6 +1620,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             preview=False,
         )
         task.bind_admission_task_id(admission.task_id)
+        self.__bind_claimed_admission(task, admission)
         task.bind_planning_input(checkpoint.planning_input)
         task.bind_plan_checkpoint(checkpoint)
         self.__restore_planned_task(task)
@@ -1442,11 +1895,17 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             error: object,
     ) -> None:
         """记录 checkpoint 前失败，保留 accepted 任务供后续重新规划。"""
-        if task.preview or task.plan_checkpoint or not task.admission_task_id:
+        if (
+                task.preview
+                or task.plan_checkpoint
+                or not task.admission_task_id
+                or not task.lease_token
+        ):
             return
         try:
             self._transfer_admissions.record_planning_failure(
                 task_id=task.admission_task_id,
+                lease_token=task.lease_token,
                 error=str(error),
             )
         except Exception as record_error:
@@ -1488,9 +1947,9 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """先提交冻结 provider 调用，空结果时再提交并执行宿主计划。"""
         planning_input = task.planning_input or self.__build_planning_input(task)
         task.bind_planning_input(planning_input)
-        if not task.preview and not task.admission_task_id:
-            admission = self.__admit_transfer(task)
-            task.bind_admission_task_id(admission.task_id)
+        if not task.preview:
+            self.__claim_task_for_execution(task)
+            self.__assert_owned_lease(task)
 
         checkpoint = task.plan_checkpoint
         if checkpoint is None:
@@ -1540,6 +1999,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 raise
 
         self.__restore_planned_task(task)
+        self.__assert_owned_lease(task)
 
         legacy_result = self.__execute_legacy_transfer_providers(
             task,
@@ -1571,6 +2031,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 self.__record_checkpoint_failure(task, error)
                 raise
 
+        self.__assert_owned_lease(task)
         result = self.execute_transfer_plan(
             checkpoint,
             meta=task.meta,
@@ -1623,8 +2084,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             return checkpoint
         if not task.admission_task_id:
             raise RuntimeError("整理计划提交前缺少持久任务身份")
+        self.__assert_owned_lease(task)
+        assert task.lease_token is not None
         persisted = self._transfer_admissions.checkpoint_plan(
             task_id=task.admission_task_id,
+            lease_token=task.lease_token,
             input_fingerprint=planning_input.fingerprint,
             checkpoint=checkpoint,
         )
@@ -1638,11 +2102,12 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             error: Exception,
     ) -> None:
         """记录当前 checkpoint 阶段失败并保留原状态供重启恢复。"""
-        if task.preview or not task.admission_task_id:
+        if task.preview or not task.admission_task_id or not task.lease_token:
             return
         try:
             self._transfer_admissions.record_planning_failure(
                 task_id=task.admission_task_id,
+                lease_token=task.lease_token,
                 error=str(error),
             )
             setattr(error, "_transfer_planning_failure_recorded", True)
@@ -1790,6 +2255,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             )
         except Exception as error:
             logger.error(f"旧整理兼容命令执行失败：{error}")
+            self.__release_task_claim(task, error=str(error))
             return TransferInfo(
                 success=False,
                 message=str(error),
@@ -1797,7 +2263,16 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 fail_list=[fileitem.path],
                 transfer_type=transfer_type,
             )
-        self.__discard_pending(task)
+        if not self.__discard_pending(task):
+            message = "旧整理兼容命令已执行，但 durable 终态结算失去租约"
+            logger.error(message)
+            return TransferInfo(
+                success=False,
+                message=message,
+                fileitem=fileitem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+            )
         return result
 
     def __record_enqueue_failure(
@@ -1805,9 +2280,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             task: TransferTask,
             error: Exception,
     ) -> None:
-        """记录内存入队失败并撤销该任务的批次占位。"""
+        """按是否已经 claim 选择 fencing 失败记录，并撤销批次占位。"""
         try:
-            if task.admission_task_id:
+            if task.lease_token:
+                self.__release_task_claim(task, error=str(error))
+            elif task.admission_task_id:
                 self._transfer_admissions.record_enqueue_failure(
                     task_id=task.admission_task_id,
                     error=str(error),
@@ -1819,8 +2296,9 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             )
         finally:
             self._finish_scrape_batch_task(task)
+            self.__ensure_recovery_scheduler(immediate=False)
 
-    def __discard_pending(self, task: TransferTask):
+    def __discard_pending(self, task: TransferTask) -> bool:
         """
         注销一个待整理文件登记，整理到达终态（成功或失败）时调用。
 
@@ -1829,16 +2307,34 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         :param task: 任务信息
         """
         if not task or not task.admission_task_id:
-            return
-        try:
-            self._transfer_admissions.discard_task(
-                task_id=task.admission_task_id
+            return True
+        if not task.lease_token:
+            logger.error(
+                f"整理任务缺少 lease token，拒绝伪装 durable 终态："
+                f"{task.admission_task_id}"
             )
+            return False
+        discarded = 0
+        try:
+            discarded = self._transfer_admissions.discard_claimed(
+                task_id=task.admission_task_id,
+                lease_token=task.lease_token,
+            )
+            if not discarded:
+                logger.error(
+                    f"整理任务终态注销被 CAS 拒绝：{task.admission_task_id}"
+                )
         except Exception as err:
             logger.error(
                 "注销整理任务 durable admission 失败: "
                 f"{task.admission_task_id} - {err}"
             )
+        finally:
+            self.__forget_owned_lease(
+                task.admission_task_id,
+                task.lease_token,
+            )
+        return bool(discarded)
 
     def __put_to_jobview(self, task: TransferTask) -> bool:
         """
@@ -1905,13 +2401,23 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         if marker:
             marker(task)
 
-    def __finish_job_execution(self, task: TransferTask, *, terminal: bool = True):
-        """结束内存执行；仅确定到达业务终态时注销 durable 记录。"""
+    def __finish_job_execution(
+            self,
+            task: TransferTask,
+            *,
+            terminal: bool = True,
+            terminal_settlement: Optional[bool] = None,
+    ) -> bool:
+        """结束内存执行，并复用成功回调前已经提交的 durable 终态结果。"""
         marker = getattr(self.jobview, "finish_execution", None)
         if marker:
             marker(task)
         if terminal:
-            self.__discard_pending(task)
+            if terminal_settlement is not None:
+                return terminal_settlement
+            return self.__discard_pending(task)
+        self.__release_task_claim(task)
+        return True
 
     def __expire_stale_transfer_tasks(self):
         """清理外部接管后失去状态心跳的运行中整理任务。"""
@@ -2001,6 +2507,32 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     self.__settle_transfer_progress_if_idle()
                     continue
 
+                if task.admission_task_id and task.lease_token:
+                    with self._worker_state_lock:
+                        self._queued_lease_tokens.discard(
+                            (task.admission_task_id, task.lease_token)
+                        )
+                try:
+                    self.__claim_task_for_execution(task)
+                except TransferLeaseLostError as err:
+                    logger.info(f"跳过未取得执行租约的整理任务：{err}")
+                    self.__release_task_claim(task, error=str(err))
+                    self.jobview.try_remove_job(task)
+                    self._finish_scrape_batch_task(task)
+                    self._queue.task_done()
+                    self.__settle_transfer_progress_if_idle()
+                    continue
+                except Exception as err:
+                    logger.error(
+                        f"整理任务 claim 失败，保留 durable admission：{err}"
+                    )
+                    self.jobview.try_remove_job(task)
+                    self._finish_scrape_batch_task(task)
+                    self._queue.task_done()
+                    self.__settle_transfer_progress_if_idle()
+                    self.__ensure_recovery_scheduler(immediate=False)
+                    continue
+
                 # 文件信息
                 fileitem = task.fileitem
 
@@ -2030,6 +2562,29 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     self._active_tasks += 1
 
                 terminal = False
+                terminal_settlement: Optional[bool] = None
+                state = False
+                err_msg = ""
+
+                def callback_after_terminal_settlement(
+                        callback_task: TransferTask,
+                        transferinfo: TransferInfo,
+                ) -> Tuple[bool, str]:
+                    """成功结果先提交 durable 终态，再执行历史、事件和通知回调。"""
+                    nonlocal terminal_settlement
+                    if transferinfo.success and not callback_task.preview:
+                        terminal_settlement = self.__discard_pending(callback_task)
+                        if not terminal_settlement:
+                            self.__fail_transfer_task(callback_task)
+                            return False, "整理任务 durable 终态结算失去租约"
+                    if item.callback:
+                        callback_result: Tuple[bool, str] = item.callback(
+                            callback_task,
+                            transferinfo,
+                        )
+                        return callback_result
+                    return transferinfo.success, transferinfo.message or ""
+
                 try:
                     self.__start_job_execution(task)
                     # 更新进度
@@ -2044,7 +2599,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         )
                     # 整理
                     state, err_msg = self.__handle_transfer(
-                        task=task, callback=item.callback
+                        task=task,
+                        callback=callback_after_terminal_settlement,
                     )
                     terminal = task.plan_checkpoint is not None
 
@@ -2063,6 +2619,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             text=__process_msg,
                         )
                 except Exception as e:
+                    if terminal_settlement is not None:
+                        terminal = True
                     logger.error(
                         f"{fileitem.name} 整理任务处理出现错误：{e} - {traceback.format_exc()}"
                     )
@@ -2071,12 +2629,25 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         self._processed_num += 1
                         self._fail_num += 1
                 finally:
-                    self.__finish_job_execution(task, terminal=terminal)
-                    self._queue.task_done()
-                    with task_lock:
-                        # 减少运行中的任务数
-                        self._active_tasks -= 1
-                    self.__settle_transfer_progress_if_idle()
+                    durable_settled = False
+                    try:
+                        durable_settled = self.__finish_job_execution(
+                            task,
+                            terminal=terminal,
+                            terminal_settlement=terminal_settlement,
+                        )
+                    except Exception as err:
+                        logger.error(
+                            f"整理任务终态结算异常：{task.admission_task_id} - {err}"
+                        )
+                    finally:
+                        self._queue.task_done()
+                        with task_lock:
+                            # 减少运行中的任务数
+                            self._active_tasks -= 1
+                            if terminal and state and not durable_settled:
+                                self._fail_num += 1
+                        self.__settle_transfer_progress_if_idle()
 
             except queue.Empty:
                 # 即使队列空了，如果还有任务在运行，也不应该结束进度
@@ -3548,6 +4119,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         and file_item.path == recovery_admission.src_path
                 ):
                     transfer_task.bind_admission_task_id(recovery_admission.task_id)
+                    self.__bind_claimed_admission(
+                        transfer_task,
+                        recovery_admission,
+                    )
                     if recovery_admission.planning_input:
                         transfer_task.bind_planning_input(
                             recovery_admission.planning_input
@@ -3651,14 +4226,37 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             },
                         )
                     terminal = False
+                    terminal_settlement: Optional[bool] = None
+
+                    def callback_after_terminal_settlement(
+                            callback_task: TransferTask,
+                            transferinfo: TransferInfo,
+                    ) -> Tuple[bool, str]:
+                        """同步成功结果先结算 durable 行，再执行兼容回调副作用。"""
+                        nonlocal terminal_settlement
+                        if transferinfo.success and not callback_task.preview:
+                            terminal_settlement = self.__discard_pending(callback_task)
+                            if not terminal_settlement:
+                                self.__fail_transfer_task(callback_task)
+                                return False, "整理任务 durable 终态结算失去租约"
+                        callback = (
+                            _preview_callback
+                            if preview
+                            else self.__default_callback
+                        )
+                        return callback(callback_task, transferinfo)
+
                     try:
+                        self.__claim_task_for_execution(transfer_task)
                         self.__start_job_execution(transfer_task)
                         state, err_msg = self.__handle_transfer(
                             task=transfer_task,
-                            callback=_preview_callback if preview else self.__default_callback,
+                            callback=callback_after_terminal_settlement,
                         )
                         terminal = bool(preview or transfer_task.plan_checkpoint is not None)
                     except Exception as e:
+                        if terminal_settlement is not None:
+                            terminal = True
                         logger.error(
                             f"{transfer_task.fileitem.name} 整理任务处理出现错误："
                             f"{e} - {traceback.format_exc()}"
@@ -3667,10 +4265,14 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             self.__fail_transfer_task(transfer_task)
                         state, err_msg = False, str(e)
                     finally:
-                        self.__finish_job_execution(
+                        durable_settled = self.__finish_job_execution(
                             transfer_task,
                             terminal=terminal,
+                            terminal_settlement=terminal_settlement,
                         )
+                    if terminal and not durable_settled:
+                        state = False
+                        err_msg = "整理任务 durable 终态结算失去租约"
                     if not state:
                         all_success = False
                         logger.warn(f"{transfer_task.fileitem.name} {err_msg}")

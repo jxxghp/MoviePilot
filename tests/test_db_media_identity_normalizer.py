@@ -158,8 +158,18 @@ def test_tables_without_identity_columns_are_untouched(db):
     不带身份列的表不受影响——事件挂在 Mapper 上覆盖全部映射，必须靠列名检查收窄，
     否则会去动一张根本没有这两列的表。
     """
-    TransferPending.register(db.session, storage="local", src_path="/mnt/a.mkv",
-                             now_time="2026-08-14 10:00:00")
+    TransferPending.stage_admit(
+        db.session,
+        task_id="identity-free-table",
+        storage="local",
+        src_path="/mnt/a.mkv",
+        state="accepted",
+        now_time="2026-08-14 10:00:00",
+    )
 
-    rows = [r for r in TransferPending.list_all(db.session) if r.src_path == "/mnt/a.mkv"]
-    assert len(rows) == 1
+    row = TransferPending.get_by_identity(
+        db.session,
+        storage="local",
+        src_path="/mnt/a.mkv",
+    )
+    assert row.task_id == "identity-free-table"
