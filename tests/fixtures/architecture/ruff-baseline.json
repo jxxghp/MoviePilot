@@ -401,9 +401,6 @@
   "app/application/torrent_cache.py": {
     "I001": 1
   },
-  "app/application/transfer.py": {
-    "I001": 1
-  },
   "app/application/workflow.py": {
     "I001": 1
   },
@@ -1450,9 +1447,6 @@
   "tests/test_interaction_router.py": {
     "E402": 5
   },
-  "tests/test_legacy_import_compat.py": {
-    "I001": 1
-  },
   "tests/test_lifecycle_shutdown.py": {
     "F841": 1
   },
@@ -1873,16 +1867,10 @@
   "tests/test_transfer_movie_collection.py": {
     "I001": 1
   },
-  "tests/test_transfer_pending_replay.py": {
-    "I001": 1
-  },
   "tests/test_transfer_preview.py": {
     "I001": 1
   },
   "tests/test_transfer_queue_count.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_queue_service.py": {
     "I001": 1
   },
   "tests/test_transfer_rename_build_event.py": {
@@ -1892,9 +1880,6 @@
     "I001": 1
   },
   "tests/test_transfer_tmdb_category.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_worker_lifecycle.py": {
     "I001": 1
   },
   "tests/test_transferhistory_media_source_migration.py": {

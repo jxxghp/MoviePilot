@@ -478,6 +478,95 @@ def test_transfer_chains_use_explicit_data_port_getters():
     assert violations == []
 
 
+def test_transfer_pending_oper_import_is_confined_to_database_boundary():
+    """宿主仅允许事务适配器和兼容导出直接导入整理待处理 Oper。"""
+    allowed_paths = {
+        "app/db/adapters/transfer.py",
+        "app/db/oper/__init__.py",
+    }
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
+        if relative.startswith("app/plugins/") or relative in allowed_paths:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                if any(
+                    alias.name == "app.db.oper.transferpending"
+                    for alias in node.names
+                ):
+                    violations.append(f"{relative}:{node.lineno}")
+            elif isinstance(node, ast.ImportFrom) and (
+                node.module == "app.db.oper.transferpending"
+                or (
+                    node.module == "app.db.oper"
+                    and any(
+                        alias.name in {"transferpending", "TransferPendingOper"}
+                        for alias in node.names
+                    )
+                )
+            ):
+                violations.append(f"{relative}:{node.lineno}")
+
+    assert violations == []
+
+
+def test_startup_injects_transactional_transfer_admission_repository():
+    """启动组合根必须向 Chain 注入事务型整理准入仓储。"""
+    path = APP_ROOT / "startup" / "initializers" / "modules.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    imports_repository = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "app.db.adapters.transfer"
+        and any(
+            alias.name == "TransactionalTransferAdmissionRepository"
+            for alias in node.names
+        )
+        for node in ast.walk(tree)
+    )
+    transfer_pending_factories = [
+        keyword.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "configure_chain_data_ports"
+        for keyword in node.keywords
+        if keyword.arg == "transfer_pending"
+    ]
+
+    assert imports_repository is True
+    assert len(transfer_pending_factories) == 1
+    assert any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "TransactionalTransferAdmissionRepository"
+        for node in ast.walk(transfer_pending_factories[0])
+    )
+
+
+def test_transfer_pending_chain_port_is_typed_without_legacy_proxy():
+    """整理准入端口必须返回明确 Protocol，且旧 Proxy 不得重新出现。"""
+    path = APP_ROOT / "application" / "chain" / "data.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    class_names = {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    getters = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "get_chain_transfer_pending_port"
+    ]
+
+    assert "TransferPendingPortProxy" not in class_names
+    assert len(getters) == 1
+    assert getters[0].returns is not None
+    assert ast.unparse(getters[0].returns) == "TransferAdmissionRepository"
+
+
 def test_agent_consumers_use_explicit_data_port_getters():
     """Agent 生产模块不得把兼容数据端口代理重新伪装成数据库 Oper。"""
     forbidden = {

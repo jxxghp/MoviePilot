@@ -19,14 +19,10 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Protocol, Tuple, Union
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from app.schemas.transfer import MetaInfo as _SchemaMetaInfo
-from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
-from app.schemas.transfer import MusicMeta as _SchemaMusicMeta
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.adapters.system.host import SystemUtils
 from app.application.agent import get_prompt_manager, get_running_agent_manager
 from app.domain.context import MediaInfo, MusicInfo
@@ -40,6 +36,9 @@ from app.schemas.history import DownloadHistory
 from app.schemas.media import OptionalMediaIdentityMixin, resolve_media_identity
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
+from app.schemas.transfer import MetaInfo as _SchemaMetaInfo
+from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
+from app.schemas.transfer import MusicMeta as _SchemaMusicMeta
 from app.schemas.transfer import TransferInfo, TransferJob, TransferJobTask
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -48,7 +47,7 @@ from app.schemas.types import (
     MediaType,
     ReplyMode,
 )
-
+from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 
 class TransferTask(OptionalMediaIdentityMixin, BaseModel):
@@ -81,6 +80,16 @@ class TransferTask(OptionalMediaIdentityMixin, BaseModel):
     manual: Optional[bool] = False
     background: Optional[bool] = True
     preview: Optional[bool] = False
+    _admission_task_id: Optional[str] = PrivateAttr(default=None)
+
+    @property
+    def admission_task_id(self) -> Optional[str]:
+        """返回仅供宿主持久准入和终态结算使用的内部任务标识。"""
+        return self._admission_task_id
+
+    def bind_admission_task_id(self, task_id: str) -> None:
+        """绑定持久准入生成的稳定身份，不改变插件可见序列化字段。"""
+        self._admission_task_id = task_id
 
     def to_dict(self):
         """
@@ -113,6 +122,42 @@ class TransferQueue(BaseModel):
     result: Optional[TransferInfo] = None
 
 
+TRANSFER_ADMISSION_ACCEPTED = "accepted"
+
+
+@dataclass(frozen=True, slots=True)
+class TransferAdmission:
+    """描述已经持久化、可在进程退出后恢复的整理任务准入事实。"""
+
+    task_id: str
+    storage: str
+    src_path: str
+    state: str
+    created_at: str
+    updated_at: str
+    last_error: Optional[str] = None
+
+
+class TransferAdmissionRepository(Protocol):
+    """整理任务 durable admission 所需的类型化持久化端口。"""
+
+    def admit(self, *, storage: str, src_path: str) -> TransferAdmission:
+        """幂等登记源文件并返回稳定任务身份。"""
+        ...
+
+    def list_accepted(self, limit: int = 5000) -> list[TransferAdmission]:
+        """按登记顺序返回等待恢复或执行的任务。"""
+        ...
+
+    def record_enqueue_failure(self, *, task_id: str, error: str) -> None:
+        """记录内存队列接收失败，保留任务供后续恢复。"""
+        ...
+
+    def discard_task(self, *, task_id: str) -> int:
+        """按稳定任务身份删除已经到达终态的登记。"""
+        ...
+
+
 class TransferQueueService:
     """协调整理任务登记、入队、移除和队列视图查询。"""
 
@@ -120,29 +165,43 @@ class TransferQueueService:
             self,
             *,
             register_task: Callable[[TransferTask], bool],
+            admit_task: Callable[[TransferTask], TransferAdmission],
             enqueue: Callable[[TransferQueue], None],
             before_enqueue: Callable[[TransferTask], None],
-            after_enqueue: Callable[[TransferTask], None],
+            enqueue_failed: Callable[[TransferTask, Exception], None],
             remove_task: Callable[[FileItem], None],
             list_tasks: Callable[[], List[TransferJob]],
             expire_tasks: Callable[[], None],
     ) -> None:
         """保存队列用例依赖，避免 Application 服务绑定具体线程队列实现。"""
         self._register_task = register_task
+        self._admit_task = admit_task
         self._enqueue = enqueue
         self._before_enqueue = before_enqueue
-        self._after_enqueue = after_enqueue
+        self._enqueue_failed = enqueue_failed
         self._remove_task = remove_task
         self._list_tasks = list_tasks
         self._expire_tasks = expire_tasks
 
     def put(self, task: TransferTask, callback: Callable) -> bool:
-        """登记并入队一个整理任务，保持原有副作用顺序。"""
+        """先持久化准入事实再入队；任何前置失败都撤销内存作业视图。"""
         if not task or not self._register_task(task):
             return False
-        self._before_enqueue(task)
-        self._enqueue(TransferQueue(task=task, callback=callback))
-        self._after_enqueue(task)
+        try:
+            admission = self._admit_task(task)
+            task.bind_admission_task_id(admission.task_id)
+        except Exception:
+            self._remove_task(task.fileitem)
+            raise
+        try:
+            self._before_enqueue(task)
+            self._enqueue(TransferQueue(task=task, callback=callback))
+        except Exception as err:
+            try:
+                self._enqueue_failed(task, err)
+            finally:
+                self._remove_task(task.fileitem)
+            raise
         return True
 
     def remove(self, fileitem: FileItem) -> None:

@@ -705,7 +705,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 835 |
-| 内部导入边 | 6,817 |
+| 内部导入边 | 6,827 |
 | 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
 | Direct egress | 66（12 条待迁移债务，54 条精确 containment） |
 | Module Contract V2 spec | 215（其中 214 个进入 `run_module` 观察面） |

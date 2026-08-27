@@ -6,8 +6,11 @@
 因此这里对着真实数据库断言查回的内容，而不是断言调用了什么。
 """
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.db import base as db_base
+from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferpending import TransferPendingOper
 
@@ -195,3 +198,174 @@ def test_oper_discard_and_clear_report_counts(db):
     assert oper.discard(storage="local", src_path="/mnt/a.mkv") == 1
     assert oper.clear() >= 1
     assert oper.list_all() == []
+
+
+def test_stage_admit_is_idempotent_and_keeps_stable_task_id(db):
+    """显式准入重复执行时必须复用首个稳定任务标识。"""
+    first = TransferPending.stage_admit(
+        db.session,
+        task_id="task-first",
+        storage="local",
+        src_path="/mnt/durable.mkv",
+        state="accepted",
+        now_time="2026-08-27 10:00:00",
+    )
+    second = TransferPending.stage_admit(
+        db.session,
+        task_id="task-second",
+        storage="local",
+        src_path="/mnt/durable.mkv",
+        state="accepted",
+        now_time="2026-08-27 11:00:00",
+    )
+
+    assert first is second
+    assert second.task_id == "task-first"
+    assert second.updated_at == "2026-08-27 10:00:00"
+
+
+def test_state_queries_failure_record_and_task_discard(db):
+    """状态查询、失败留痕和按任务删除应共享同一稳定身份。"""
+    TransferPending.stage_admit(
+        db.session,
+        task_id="task-accepted",
+        storage="local",
+        src_path="/mnt/accepted.mkv",
+        state="accepted",
+        now_time="2026-08-27 10:00:00",
+    )
+    db.add(TransferPending(
+        task_id="task-other",
+        storage="local",
+        src_path="/mnt/other.mkv",
+        state="other",
+        created_at="2026-08-27 10:00:01",
+        updated_at="2026-08-27 10:00:01",
+    ))
+    db.session.flush()
+
+    accepted = TransferPending.list_by_state(
+        db.session,
+        state="accepted",
+    )
+    assert [item.task_id for item in accepted] == ["task-accepted"]
+    assert TransferPending.record_enqueue_failure(
+        db.session,
+        task_id="task-accepted",
+        error="queue full",
+        now_time="2026-08-27 10:01:00",
+    ) == 1
+    db.session.expire_all()
+    failed = TransferPending.get_by_identity(
+        db.session,
+        storage="local",
+        src_path="/mnt/accepted.mkv",
+    )
+    assert failed.last_error == "queue full"
+    assert failed.updated_at == "2026-08-27 10:01:00"
+    assert TransferPending.discard_task(
+        db.session,
+        task_id="task-accepted",
+    ) == 1
+
+
+def test_oper_staging_reuses_explicit_write_session(db, monkeypatch):
+    """Oper 的新暂存入口必须服从调用方 Session，不得隐式提交。"""
+    monkeypatch.setattr(
+        db_base,
+        "run_sync_transaction",
+        lambda _operation: (_ for _ in ()).throw(
+            AssertionError("不应创建额外同步事务")
+        ),
+    )
+    oper = TransferPendingOper(db.session)
+
+    pending = oper.stage_admit(
+        task_id="task-explicit",
+        storage="local",
+        src_path="/mnt/explicit-stage.mkv",
+        state="accepted",
+        now_time="2026-08-27 10:00:00",
+    )
+    assert pending.task_id == "task-explicit"
+    assert [item.task_id for item in oper.list_by_state(state="accepted")] == [
+        "task-explicit"
+    ]
+    assert oper.stage_record_enqueue_failure(
+        task_id="task-explicit",
+        error="queue full",
+        now_time="2026-08-27 10:01:00",
+    ) == 1
+    assert oper.stage_discard_task(task_id="task-explicit") == 1
+
+
+def test_transactional_repository_commits_frozen_projections(tmp_path):
+    """适配器应独立提交 UoW，并在会话关闭前冻结应用 DTO。"""
+    engine = create_engine(f"sqlite:///{tmp_path / 'transfer.db'}")
+    TransferPending.__table__.create(engine)
+    factory = sessionmaker(bind=engine)
+    repository = TransactionalTransferAdmissionRepository(factory)
+
+    admitted = repository.admit(
+        storage="local",
+        src_path="/mnt/repository.mkv",
+    )
+    repeated = repository.admit(
+        storage="local",
+        src_path="/mnt/repository.mkv",
+    )
+    assert repeated == admitted
+    assert admitted.task_id
+    assert admitted.state == "accepted"
+    assert repository.list_accepted() == [admitted]
+
+    repository.record_enqueue_failure(
+        task_id=admitted.task_id,
+        error="queue full",
+    )
+    failed = repository.list_accepted()[0]
+    assert failed.last_error == "queue full"
+    assert repository.discard_task(task_id=admitted.task_id) == 1
+    assert repository.list_accepted() == []
+    engine.dispose()
+
+
+def test_transactional_repository_rolls_back_failed_write(monkeypatch):
+    """适配器写入异常时必须回滚自身 UoW 并传播原异常。"""
+    class SessionContext:
+        """为回滚断言提供最小 Session 上下文。"""
+
+        def __init__(self):
+            """初始化提交与回滚计数。"""
+            self.commits = 0
+            self.rollbacks = 0
+
+        def __enter__(self):
+            """返回当前伪会话。"""
+            return self
+
+        def __exit__(self, _exc_type, _exc_value, _traceback):
+            """不吞掉被测异常。"""
+            return False
+
+        def commit(self):
+            """记录提交调用。"""
+            self.commits += 1
+
+        def rollback(self):
+            """记录回滚调用。"""
+            self.rollbacks += 1
+
+    session = SessionContext()
+    repository = TransactionalTransferAdmissionRepository(lambda: session)
+    monkeypatch.setattr(
+        TransferPendingOper,
+        "stage_record_enqueue_failure",
+        lambda self, **_kwargs: (_ for _ in ()).throw(ValueError("write failed")),
+    )
+
+    with pytest.raises(ValueError, match="write failed"):
+        repository.record_enqueue_failure(task_id="task", error="failure")
+
+    assert session.rollbacks == 1
+    assert session.commits == 0

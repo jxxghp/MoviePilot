@@ -52,6 +52,7 @@ from app.application.outbox import (
 from app.application.transfer import (
     FailedRetryScheduler,
     JobManager,
+    TransferAdmission,
     TransferFailureNotification,
     TransferFailureNotificationAggregator,
     TransferQueue,
@@ -225,8 +226,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         self.retry_scheduler = FailedRetryScheduler()
         # 整理失败通知聚合器
         self.failure_notification_aggregator = TransferFailureNotificationAggregator()
-        # 待整理文件落盘登记，用于进程重启后回放内存队列里未完成的任务
-        self._pendingoper = get_chain_transfer_pending_port()
+        # durable admission 仓储先于内存入队保存任务，进程退出后仍可恢复。
+        self._transfer_admissions = get_chain_transfer_pending_port()
         # 转移成功的文件清单
         self._success_target_files: Dict[Tuple, List[str]] = {}
         # 批次级刮削缓冲，避免同一批多文件入库重复触发目录刮削
@@ -867,7 +868,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """
         添加到待整理队列
         :param task: 任务信息
-        :return: True表示任务已添加到队列，False表示任务无效或已存在（重复）
+        :return: True表示任务已添加，False表示链已关闭或任务无效/重复
+        :raises Exception: 持久准入、批次登记或内存入队失败
         """
         with self._worker_state_lock:
             if self._closing:
@@ -879,9 +881,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """构建保持旧队列对象和私有兼容接缝的应用服务。"""
         return TransferQueueService(
             register_task=self.__put_to_jobview,
+            admit_task=self.__admit_transfer,
             enqueue=self._queue.put,
             before_enqueue=self._register_scrape_batch_task,
-            after_enqueue=self.__register_pending,
+            enqueue_failed=self.__record_enqueue_failure,
             remove_task=self.jobview.remove_task,
             list_tasks=self.jobview.list_jobs,
             expire_tasks=self.__expire_stale_transfer_tasks,
@@ -936,7 +939,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         if stop_event.is_set():
             return
         try:
-            pendings = self._pendingoper.list_all()
+            pendings = self._transfer_admissions.list_accepted()
         except Exception as err:
             logger.error(f"读取待整理文件登记失败：{err}")
             return
@@ -944,9 +947,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             return
         logger.info(f"发现 {len(pendings)} 个上次未整理完的文件，正在重新送入整理链 ...")
         replayed = 0
-        for storage, src_path in pendings:
+        for admission in pendings:
             if stop_event.is_set():
                 break
+            storage = admission.storage
+            src_path = admission.src_path
             try:
                 fileitem, should_discard = self.__build_replay_fileitem(storage, src_path)
                 # stat 等同步 I/O 返回后重新检查，关闭期间不得注销尚未完成的登记。
@@ -955,7 +960,9 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 if not fileitem:
                     if should_discard:
                         # 源文件确认已消失，注销登记避免每次启动重复回放
-                        self._pendingoper.discard(storage=storage, src_path=src_path)
+                        self._transfer_admissions.discard_task(
+                            task_id=admission.task_id
+                        )
                     continue
                 self.do_transfer(fileitem=fileitem)
                 replayed += 1
@@ -1009,19 +1016,35 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             modify_time=modify_time,
         ), False
 
-    def __register_pending(self, task: TransferTask):
-        """
-        落盘登记一个待整理文件，登记失败不影响正常入队。
-        :param task: 任务信息
-        """
+    def __admit_transfer(self, task: TransferTask) -> TransferAdmission:
+        """在内存入队前持久化源文件并返回稳定任务身份。"""
         fileitem = task.fileitem if task else None
-        if not fileitem or not fileitem.path:
-            return
+        if not fileitem or not fileitem.storage or not fileitem.path:
+            raise ValueError("整理任务缺少源文件身份")
+        return self._transfer_admissions.admit(
+            storage=fileitem.storage,
+            src_path=fileitem.path,
+        )
+
+    def __record_enqueue_failure(
+            self,
+            task: TransferTask,
+            error: Exception,
+    ) -> None:
+        """记录内存入队失败并撤销该任务的批次占位。"""
         try:
-            self._pendingoper.register(storage=fileitem.storage, src_path=fileitem.path)
-        except Exception as err:
-            # 登记只是重启后的补救手段，失败不能阻断正常整理
-            logger.debug(f"登记待整理文件失败: {fileitem.path} - {err}")
+            if task.admission_task_id:
+                self._transfer_admissions.record_enqueue_failure(
+                    task_id=task.admission_task_id,
+                    error=str(error),
+                )
+        except Exception as record_error:
+            logger.error(
+                "记录整理任务入队失败原因异常："
+                f"{task.admission_task_id} - {record_error}"
+            )
+        finally:
+            self._finish_scrape_batch_task(task)
 
     def __discard_pending(self, task: TransferTask):
         """
@@ -1031,13 +1054,17 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         重试预算重新送入整理链；留在本表反而会每次重启都重复回放。
         :param task: 任务信息
         """
-        fileitem = task.fileitem if task else None
-        if not fileitem or not fileitem.path:
+        if not task or not task.admission_task_id:
             return
         try:
-            self._pendingoper.discard(storage=fileitem.storage, src_path=fileitem.path)
+            self._transfer_admissions.discard_task(
+                task_id=task.admission_task_id
+            )
         except Exception as err:
-            logger.debug(f"注销待整理文件登记失败: {fileitem.path} - {err}")
+            logger.error(
+                "注销整理任务 durable admission 失败: "
+                f"{task.admission_task_id} - {err}"
+            )
 
     def __put_to_jobview(self, task: TransferTask) -> bool:
         """
@@ -2751,7 +2778,15 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     preview=preview,
                 )
                 if background:
-                    if self.put_to_queue(task=transfer_task):
+                    try:
+                        queued = self.put_to_queue(task=transfer_task)
+                    except Exception as err:
+                        all_success = False
+                        message = f"{file_path.name} 加入整理队列失败：{err}"
+                        err_msgs.append(message)
+                        logger.error(message)
+                        continue
+                    if queued:
                         logger.info(f"{file_path.name} 已添加到整理队列")
                     else:
                         logger.debug(f"{file_path.name} 已在整理队列中，跳过")

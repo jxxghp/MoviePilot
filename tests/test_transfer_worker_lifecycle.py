@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.application.transfer import TransferAdmission, TransferQueue, TransferTask
 from app.chain.transfer import TransferChain
 from app.foundation.singleton import Singleton
 from app.runtime.config import global_vars
-from app.application.transfer import TransferQueue, TransferTask
 from app.schemas.file import FileItem
 from app.startup.initializers import transfer as transfer_initializer
 
@@ -409,6 +409,62 @@ def test_worker_settles_progress_when_only_stop_sentinel_remains(monkeypatch) ->
     assert chain._fail_num == 0
     with chain._queue.mutex:
         assert list(chain._queue.queue) == [chain._QUEUE_STOP_SENTINEL]
+
+
+def test_durable_task_identity_flows_from_queue_to_terminal_discard(monkeypatch) -> None:
+    """准入生成的稳定身份必须随队列任务到 worker 终态并准确注销。"""
+    chain = _build_chain()
+    chain.runtime_config.transfer_task_timeout = 0
+    task = TransferTask(fileitem=FileItem(
+        storage="local",
+        path="/downloads/durable.mkv",
+        type="file",
+        name="durable.mkv",
+        basename="durable",
+        extension="mkv",
+    ))
+    discarded = threading.Event()
+    admissions = MagicMock()
+    admissions.admit.return_value = TransferAdmission(
+        task_id="durable-task-id",
+        storage="local",
+        src_path=task.fileitem.path,
+        state="accepted",
+        created_at="2026-08-27 10:00:00",
+        updated_at="2026-08-27 10:00:00",
+    )
+    admissions.discard_task.side_effect = (
+        lambda **_kwargs: discarded.set() or 1
+    )
+    chain._transfer_admissions = admissions
+    chain.jobview = MagicMock()
+    chain.jobview.add_task.return_value = True
+    chain.jobview.pending_total.return_value = 1
+    chain._register_scrape_batch_task = MagicMock()
+    chain._finish_scrape_batch_task = MagicMock()
+    chain._progress = MagicMock()
+    chain._active_tasks = 0
+    chain._processed_num = 0
+    chain._fail_num = 0
+    chain._total_num = 0
+    chain._TransferChain__handle_transfer = MagicMock(return_value=(True, ""))
+    monkeypatch.setattr(global_vars, "STOP_EVENT", threading.Event())
+
+    assert chain.put_to_queue(task) is True
+    stop_event = threading.Event()
+    worker = threading.Thread(
+        target=chain._TransferChain__start_transfer,
+        args=(stop_event,),
+        daemon=True,
+    )
+    worker.start()
+    assert discarded.wait(timeout=1)
+    stop_event.set()
+    worker.join(timeout=1)
+
+    assert worker.is_alive() is False
+    assert task.admission_task_id == "durable-task-id"
+    admissions.discard_task.assert_called_once_with(task_id="durable-task-id")
 
 
 def test_claimed_task_prevents_progress_settlement_before_active_registration() -> None:

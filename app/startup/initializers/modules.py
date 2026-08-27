@@ -110,6 +110,7 @@ from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutbox
 from app.db.adapters.site import TransactionalSiteRepository
 from app.db.adapters.subscription import TransactionalSubscribeWriter
 from app.db.adapters.transaction import TransactionalWriteRunner
+from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
 from app.db.adapters.workflow import TransactionalWorkflowExecutionService
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.agenttask import AgentTaskOper
@@ -123,7 +124,6 @@ from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.transferhistory import TransferHistoryOper
-from app.db.oper.transferpending import TransferPendingOper
 from app.db.oper.user import UserOper
 from app.db.oper.userconfig import UserConfigOper
 from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
@@ -854,7 +854,9 @@ async def init_modules() -> HostRuntime:
         workflow=lambda: WorkflowOper(),
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
-        transfer_pending=lambda: TransferPendingOper(),
+        transfer_pending=lambda: TransactionalTransferAdmissionRepository(
+            SessionFactory
+        ),
         media_server=lambda: MediaServerOper(),
         download_failure=lambda: TransactionalDownloadFailureRepository(
             SessionFactory

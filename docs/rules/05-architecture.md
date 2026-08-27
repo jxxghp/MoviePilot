@@ -465,6 +465,13 @@ Durable post-commit side effects have a separate boundary:
   cancellation and bounded shutdown waiting, but it is not a durable queue and
   must not replace an Outbox or persistent task table.
 
+Transfer durable admission follows the same ownership direction without using
+the Outbox as an execution queue: `app/application/transfer.py` owns the typed
+admission contract and persist-before-enqueue orchestration, while
+`app/db/adapters/transfer.py` commits it in a short Session/UoW. Canonical host
+chains never obtain `TransferPendingOper`; its no-Session API remains only for
+the exact legacy plugin import contract.
+
 ## Composition and Compatibility Boundaries
 
 - Startup registers concrete cache factories before decorated business modules
@@ -597,6 +604,8 @@ driven workflow registration.
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
 | `app/application/outbox.py` | Durable intent, topic handler and Outbox repository contracts |
 | `app/db/adapters/outbox.py` | SQLAlchemy Outbox persistence, claim/lease and retry state adapter |
+| `app/application/transfer.py` | Transfer task, durable admission contract and persist-before-enqueue use case |
+| `app/db/adapters/transfer.py` | SQLAlchemy durable admission persistence and detached snapshot adapter |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
 | `app/application/workflow.py` | Workflow use cases plus the runtime port consumed by API and Chain; `WorkFlowManager` is registered by `app/startup/initializers/workflow.py` |

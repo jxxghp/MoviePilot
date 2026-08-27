@@ -79,16 +79,24 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S0-L2.4 Adapter zero-growth | `DELIVERED` | S0-L2.3 | `2553226f3`：冻结 28 条直连及 owner，收缩/新增/stale policy 门禁生效，远端 `0/0` |
 | S0-L2.4b HTTP/Egress 事实与政策 | `DELIVERED` | S0-L2.4 | `47f0de745`、`43d52a35b`、`8d602149f`：冻结 66 条出口事实，消除 CI 类型/覆盖率漂移；远端全绿且 `0/0` |
 | S0-L2.5 Event consumer 识别 | `DELIVERED` | S0-L2.1 | `86157be2a`：consumer 只识别可静态证明的 EventManager 注册；全量 6,459 passed / 6 skipped，CI `33029645165`/`33029645254` 全绿，远端 `0/0` |
-| S0-L2.6 事实源与 CI 投影 | `VERIFIED` | S0-L2.2,S0-L2.4b,S0-L2.5 | 99/17 条逐调用事实、17 条 consumer policy 与 CI 分层本地通过；全量 6,481 passed / 6 skipped，待推送 CI |
+| S0-L2.6 事实源与 CI 投影 | `DELIVERED` | S0-L2.2,S0-L2.4b,S0-L2.5 | `113355784`：99/17 条逐调用事实、17 条 consumer policy 与 CI 分层交付；Unit Tests `33031697902`、Pylint `33031697785` 全绿，远端 `0/0` |
 
 ### S1：可靠性、事务与数据合同
 
 退出条件：Transfer 达到 E3；正式数据 Port 类型化；跨表业务操作有单一 UoW；post-commit/Outbox
 竞争、失败呈现、at-least-once 和幂等语义全部闭环。
 
+`S1-L1` 是 ARCH-102 的 Transfer E3 父项，当前状态为**执行中**。只有 `S1-L1.1` 至
+`S1-L1.5` 全部 `DELIVERED`，真实调用链完成迁移且旧 fail-open 路径退出 canonical 主程序后，
+父项和 ARCH-102 才能标记已交付。
+
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S1-L1 Transfer E3 状态机 | `PLANNED` | S0 | `ARCH-102` 全部完成：migration、持久状态、checkpoint、lease、唯一 retry owner、重放和 manual review 一次交付 |
+| S1-L1.1 Durable admission | `VERIFIED` | S0 | Application-owned typed Port + DB adapter + migration 落地；先持久 commit 再入队，入队失败保留可恢复记录；宿主不再通过 raw/`Any` `TransferPendingOper` 处理 admission |
+| S1-L1.2 Planning checkpoint | `PLANNED` | S1-L1.1 | 稳定任务身份、整理模式和 planning 状态持久化；目标路径只在规划完成后写入 checkpoint，任何文件副作用前已有可判定状态 |
+| S1-L1.3 Lease 与恢复调度 | `PLANNED` | S1-L1.2 | claim/lease/heartbeat/attempt 与过期接管规则落地；启动回放和同进程恢复共用唯一调度入口，同一任务同时只有一个 worker owner |
+| S1-L1.4 幂等执行与终态结算 | `PLANNED` | S1-L1.3 | 文件操作、历史提交和 checkpoint 可重放；唯一 retry owner 生效，未知外部结果进入 `manual_review`，仅完整终态删除 pending |
+| S1-L1.5 E3 全链收口 | `PLANNED` | S1-L1.4 | 崩溃矩阵、升级/降级、重复回放和插件 ABI 验收完整；旧 fail-open、重复状态与兼容层外旧入口删除，ARCH-102 债务归零 |
 | S1-L2 Workflow typed query | `PLANNED` | S0 | Workflow Application Port 不返回 `Any`/ORM，Session 内投影 DTO，正式调用方全部切换 |
 | S1-L3 Chain/Agent typed data ports | `PLANNED` | S1-L2 | `ChainDataPorts`/`AgentDataPorts` 的 raw Oper/`Any` factory 全部清零，兼容调用进入 Legacy 层 |
 | S1-L4 Subscription mutation UoW | `PLANNED` | S1-L3 | Subscription mutation 不跨 Session 传 ORM，正式写路径一个 UoW，旧自动事务入口退出 canonical 路径 |
@@ -103,10 +111,10 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
 | S2-L1 日志/消息资源显式生命周期 | `PLANNED` | S0 | import 和非消息 Chain 构造零新增线程；bootstrap 显式创建，失败和正常关闭均收口 |
-| S2-L2 ChainBase 与 SCC 清零 | `PLANNED` | S0-L3 | canonical `app.chain.base` 落地，包根无 eager/重复导出，宿主包根导入清零，Chain SCC 消失 |
+| S2-L2 ChainBase 与 SCC 清零 | `PLANNED` | S0-L2.2 | canonical `app.chain.base` 落地，包根无 eager/重复导出，宿主包根导入清零，Chain SCC 消失 |
 | S2-L3 GlobalVar/provider 注册收口 | `PLANNED` | S2-L1 | `global_vars` canonical 消费清零，provider 注册进入显式装配阶段并可 reset；Legacy 入口精确保留 |
-| S2-L4 Passkey 缓存边界 | `PLANNED` | S0-L4 | Application 不识别 Redis；原子 consume 由 runtime cache contract + backend 实现 |
-| S2-L5 Backup artifact Port | `PLANNED` | S0-L4 | Application 不构造 `BackupFiles`，文件 I/O 由注入 Adapter 拥有 |
+| S2-L4 Passkey 缓存边界 | `PLANNED` | S0-L2.4 | Application 不识别 Redis；原子 consume 由 runtime cache contract + backend 实现 |
+| S2-L5 Backup artifact Port | `PLANNED` | S0-L2.4 | Application 不构造 `BackupFiles`，文件 I/O 由注入 Adapter 拥有 |
 | S2-L6 Application Adapter/DNS 债务清零 | `PLANNED` | S2-L4,S2-L5 | Application 到具体 Adapter 的未批准边归零，SSRF DNS I/O 进入注入 Port，批准通用机制有精确规则和门禁 |
 | S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `PLANNED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 归零；SDK/stream/vendor 例外保持精确 containment |
 
@@ -133,10 +141,10 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
 | S4-L1 Module strict contract | `PLANNED` | S2-L7 | 宿主 provider `ANY` 结果归零，宿主 admission strict，官方/第三方插件分级兼容 |
-| S4-L2 Event strict contract | `PLANNED` | S0-L5,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
+| S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 972 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 967 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口
@@ -154,57 +162,68 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 
 ## 4. 当前活动叶子
 
-### S0-L2.6 事实源与 CI 投影
+### S1-L1.1 Durable admission
 
-**Status:** `VERIFIED`（本地验收完成，等待提交、推送和远端 CI 确认）
+**Status:** `VERIFIED`
 
 **Outcome**
 
-统一 Event producer/consumer 的 AST 事实源，完整解析 positional/keyword 参数、别名、重绑定和
-有限条件表达式。生成快照保存逐调用 line-free 事实及 multiplicity；consumer 由独立人工 policy
-按 exact fingerprint set 准入，任何刷新快照的操作都不能自动接受新消费注册。
+把“接受整理任务”变成真正的 durable admission：Application 先通过类型化 Port 在独立事务中
+commit pending，再尝试写入进程内队列。队列写入失败或进程在 commit 后退出时，持久记录仍能成为
+后续恢复起点；持久化失败则不允许任务进入队列。该叶只结清 admission 所有权和顺序，不预先宣称
+planning、lease、幂等执行或终态恢复已经完成。
 
 **Ownership**
 
-- `scripts/architecture/event_facts.py` 的统一 producer/consumer provenance collector。
-- `scripts/architecture/event_policy.py` 与 `runtime-contract-policy.json` 的只读人工 consumer policy。
-- `scripts/architecture/baseline.py` 的 runtime schema v3、迁移链、事实索引与 diagnostics。
-- producer/consumer、policy、baseline/CLI 和 CI 分层测试。
-- 架构规范、总览、优化清单与本路线图的单一事实说明。
+- `app/application/transfer.py` 拥有 admission DTO、Protocol、结果语义与 persist-before-enqueue 编排。
+- `app/db/adapters/` 提供短 Session/UoW 的 Transfer pending 持久化实现；`app/db/oper/` 只接收
+  adapter 拥有的 Session 并 stage/flush。
+- `app/startup/` 负责构造并注入 adapter，宿主 Chain 不再取得 raw/`Any` `TransferPendingOper`。
+- `app/db/models/transferpending.py` 与配套 Alembic migration 只承载该叶需要的 durable admission
+  schema，并验证既有记录升级及 downgrade。
+- Transfer queue、pending repository、migration、架构边界及兼容回归测试。
 
 **Excluded**
 
-- 不修改生产 EventManager、事件 ABI、handler 执行顺序或插件消费者。
-- 不把 `app/plugins/**` 副本纳入宿主扫描。
-- 不使用源码行号、通配符或自动写入 policy 接受新 consumer。
+- 不在本叶实现 planning checkpoint、lease/heartbeat、文件操作幂等、历史结算或 `manual_review`；
+  这些分别由 `S1-L1.2` 至 `S1-L1.4` 完整交付。
+- 不修改插件公开 Transfer ABI、旧插件导入路径或第三方插件行为；必要兼容只通过统一 Compat/Legacy
+  层委托新的 canonical admission 实现。
+- 不修改或扫描 `app/plugins/**` 插件副本。
+- 不保留宿主 canonical raw/`Any` pending port 与新 typed Port 两套正式入口。
 
 **Acceptance**
 
 ```bash
 .venv/bin/python -m pytest \
-  tests/test_architecture_event_facts.py \
-  tests/test_architecture_event_policy.py \
+  tests/test_transfer_queue_service.py \
+  tests/test_transfer_pending_replay.py \
+  tests/test_transfer_admission_migration.py \
+  tests/test_db_transferpending_queries.py \
+  tests/test_database_migration_startup.py \
   tests/test_architecture_dependencies.py \
-  tests/test_architecture_contract_baseline.py \
-  tests/test_architecture_baseline_cli.py \
-  tests/test_architecture_ci.py -q
-.venv/bin/python scripts/architecture/event_policy.py
+  tests/test_legacy_import_compat.py -q
+.venv/bin/mypy --config-file mypy.ini
 .venv/bin/python scripts/architecture/baseline.py --check-host --diagnostics
 .venv/bin/python scripts/architecture/ruff_ratchet.py
 .venv/bin/python scripts/architecture/mypy_ratchet.py
-.venv/bin/pylint scripts/architecture/baseline.py \
-  scripts/architecture/event_facts.py \
-  scripts/architecture/event_policy.py \
-  tests/test_architecture_event_facts.py \
-  tests/test_architecture_event_policy.py \
-  tests/test_architecture_dependencies.py \
-  tests/test_architecture_contract_baseline.py \
-  tests/test_architecture_baseline_cli.py \
-  tests/test_architecture_ci.py
+uv run --locked --no-sync python tests/run.py
 git diff --check
 ```
 
 **Delivery**
 
-- 单一提交主题：统一 Event facts、锁定 consumer policy 并拆分 CI 语义/快照投影。
+- 单一提交主题：交付 Transfer durable admission、类型化持久化边界及可逆 migration。
+- 提交前证明 pending commit 发生在 enqueue 之前；持久化失败不入队，enqueue 失败或 commit 后崩溃
+  均保留可恢复记录；宿主 canonical 路径不再导入或取得 raw/`Any` `TransferPendingOper`。
+- 运行锁定全量测试与 scoped Pylint；插件公开 Transfer ABI 和统一兼容导入测试必须保持通过。
 - 推送 `origin/v3` 后确认提交祖先关系、远端 SHA 和 ahead/behind `0/0`。
+
+**Local verification (2026-08-27)**
+
+- 锁定全量：`6,496 passed, 7 skipped`；跳过项包含本机未配置隔离库的 PostgreSQL migration
+  用例，SQLite upgrade/downgrade/re-upgrade 已真实执行。
+- scoped Pylint：`10.00/10`；host dependency baseline、Ruff ratchet、mypy ratchet 与
+  `git diff --check` 全部通过。
+- failure injection 已覆盖 admission 失败不入队、batch/enqueue 失败保留记录、批次返回失败、
+  queue -> worker -> terminal discard 稳定身份，以及 Legacy TransferTask 序列化字段不变。

@@ -9,8 +9,9 @@ class TransferPendingOper(DbOper):
     """
     待整理文件登记管理。
 
-    只保存「存储 + 源文件路径」这一最小事实，用于在进程重启后把没走完整理链的
-    文件重新送回去，避免挂载故障重启后永久漏件。
+    保存稳定任务身份、存储、源文件路径和准入状态，用于在进程重启后把没走完
+    整理链的文件重新送回去，避免挂载故障重启后永久漏件。旧版路径登记接口继续
+    保留，供插件和兼容调用方使用。
     """
 
     def register(self, storage: str, src_path: str) -> Optional[TransferPending]:
@@ -27,6 +28,93 @@ class TransferPendingOper(DbOper):
                 storage=storage,
                 src_path=src_path,
                 now_time=now_time,
+            )
+        )
+
+    def stage_admit(self, *, task_id: str, storage: str, src_path: str,
+                    state: str, now_time: str) -> Optional[TransferPending]:
+        """
+        在当前会话中暂存一条持久接纳记录。
+
+        适配器应传入显式 Session，使提交与回滚仍由应用用例对应的 UoW 管理。
+        :param task_id: 任务标识
+        :param storage: 存储
+        :param src_path: 源文件路径
+        :param state: 持久状态
+        :param now_time: 当前时间
+        :return: 接纳记录
+        """
+        return self._execute_sync_write(
+            lambda session: TransferPending.stage_admit(
+                session,
+                task_id=task_id,
+                storage=storage,
+                src_path=src_path,
+                state=state,
+                now_time=now_time,
+            )
+        )
+
+    def list_by_state(self, *, state: str,
+                      limit: Optional[int] = 5000) -> List[TransferPending]:
+        """
+        使用当前会话列出指定状态记录。
+        :param state: 持久状态
+        :param limit: 单次读取上限
+        :return: ORM 接纳记录列表
+        """
+        return self._execute_sync_query(
+            lambda session: TransferPending.list_by_state(
+                session,
+                state=state,
+                limit=limit,
+            )
+        ) or []
+
+    def get_by_identity(self, *, storage: str,
+                        src_path: str) -> Optional[TransferPending]:
+        """
+        使用当前会话按存储与源路径查询接纳记录。
+        :param storage: 存储
+        :param src_path: 源文件路径
+        :return: 接纳记录
+        """
+        return self._execute_sync_query(
+            lambda session: TransferPending.get_by_identity(
+                session,
+                storage=storage,
+                src_path=src_path,
+            )
+        )
+
+    def stage_record_enqueue_failure(self, *, task_id: str, error: str,
+                                     now_time: str) -> int:
+        """
+        在当前会话中暂存最近一次入队失败。
+        :param task_id: 任务标识
+        :param error: 失败原因
+        :param now_time: 当前时间
+        :return: 更新的记录数
+        """
+        return self._execute_sync_write(
+            lambda session: TransferPending.record_enqueue_failure(
+                session,
+                task_id=task_id,
+                error=error,
+                now_time=now_time,
+            )
+        )
+
+    def stage_discard_task(self, *, task_id: str) -> int:
+        """
+        在当前会话中暂存按任务标识删除接纳记录。
+        :param task_id: 任务标识
+        :return: 删除的记录数
+        """
+        return self._execute_sync_write(
+            lambda session: TransferPending.discard_task(
+                session,
+                task_id=task_id,
             )
         )
 

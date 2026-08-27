@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 835 / 6,817 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 836 / 6,827 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,7 +78,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,983 / 601 文件 | strict frontier 当前只覆盖 41 个文件，且 ratchet 已新增 2 个错误 |
-| Ruff 历史诊断 | 972 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Ruff 历史诊断 | 967 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 77.82%，Domain 79.24% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -106,8 +106,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ID | 优先级 | 状态 | 事项 | 目标结果 |
 |---|---|---|---|---|
 | ARCH-001 | P0 | 已交付 | 恢复 mypy ratchet | `5df388719` 已推送，主线既有 CI gate 通过 |
-| ARCH-101 | P1 | 执行中 | 统一规则、总览、基线和语义门禁 | 文档声明与机器拒绝条件一一对应 |
-| ARCH-102 | P1 | 待执行 | 将 Transfer pending 升级为真实 E3 状态机 | 崩溃窗口可判定恢复，结果未知时进入人工确认 |
+| ARCH-101 | P1 | 已交付 | 统一规则、总览、基线和语义门禁 | `113355784` 已推送，Unit Tests `33031697902`、Pylint `33031697785` 全绿，远端 `0/0` |
+| ARCH-102 | P1 | 执行中 | 将 Transfer pending 升级为真实 E3 状态机 | `S1-L1.1` 至 `S1-L1.5` 全部交付后，崩溃窗口可判定恢复，结果未知时进入人工确认 |
 | ARCH-103 | P1 | 待执行 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
 | ARCH-104 | P1 | 待执行 | 收口跨多次写入的业务事务 | 站点/规则引用清理可整体回滚或幂等恢复 |
 | ARCH-105 | P1 | 待执行 | 明确 post-commit 与 Outbox 完成语义 | “业务已提交、后置效果 pending”可被调用方正确识别 |
@@ -184,11 +184,23 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 ### ARCH-102 将 Transfer pending 升级为真实 E3 状态机
 
+**分叶状态**
+
+- `S1-L1.1 Durable admission`：`VERIFIED`。已交付 persist-before-enqueue、Application-owned typed Port、
+  DB adapter 与可逆 migration，宿主退出 raw/`Any` `TransferPendingOper` admission 路径。
+- `S1-L1.2 Planning checkpoint`：`PLANNED`。持久化稳定任务身份、整理模式、规划状态和目标 checkpoint。
+- `S1-L1.3 Lease 与恢复调度`：`PLANNED`。交付 claim/lease/heartbeat/attempt、过期接管与唯一恢复入口。
+- `S1-L1.4 幂等执行与终态结算`：`PLANNED`。交付文件/历史幂等、唯一 retry owner 和
+  `manual_review` 语义。
+- `S1-L1.5 E3 全链收口`：`PLANNED`。完成崩溃矩阵、兼容验收与旧路径删除。此叶交付前，
+  ARCH-102 父项保持“执行中”，不得以局部绿色宣称 E3 完成。
+
 **问题与证据**
 
-- `app/application/transfer.py:139-145` 当前先把任务接受到内存结构，再执行持久登记回调。
-- `app/chain/transfer.py:1012-1024` 吞掉登记失败并继续执行；
-  `tests/test_transfer_pending_replay.py:62-71` 固化了这一 fail-open 行为。
+- `S1-L1.1` 已将任务准入改为独立事务先 commit、后写内存队列；admission、batch 或 enqueue
+  异常均不会伪装成重复任务成功，失败记录可供恢复。
+- 宿主 canonical Chain 只取得类型化 `TransferAdmissionRepository`；旧 Oper API 仅保留给统一兼容层，
+  插件公开 `TransferTask.to_dict()` 字段未增加内部任务标识。
 - worker 未知异常最终也会在 `app/chain/transfer.py:1107-1113,1262-1272` 删除 pending。
 - `app/db/models/transferpending.py:9-34` 只有 `storage/src_path/created_at`，没有目标、模式、
   step、lease、attempt、last_error，无法判定“文件已移动、历史未提交”等中间态。

@@ -14,15 +14,14 @@ from app.runtime.compat.diagnostics import (
 )
 from app.runtime.compat.imports import install_legacy_import_hook
 from app.runtime.compat.manifest import (
+    _MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
     MODULE_ALIASES,
     PACKAGE_ALIASES,
     PACKAGE_EXPORTS,
     SYMBOL_ALIASES,
     VIRTUAL_PACKAGES,
     ModuleAlias,
-    _MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
 )
-
 
 LEGACY_PACKAGE = "legacy_compat_test"
 LEGACY_MODULE = f"{LEGACY_PACKAGE}.target"
@@ -293,6 +292,23 @@ def test_physical_modules_resolve_moved_symbols_without_reverse_imports():
     assert legacy_logging.LoggerManager is runtime_logging.LoggerManager
     assert schemas_package.TransferTask is legacy_transfer.TransferTask
     assert schemas_package.TransferQueue is legacy_transfer.TransferQueue
+
+
+def test_legacy_transfer_task_hides_internal_admission_identity():
+    """持久准入身份不得改变插件旧任务字典的公开字段集合。"""
+    legacy_transfer = importlib.import_module("app.sdk._legacy.transfer")
+    task = legacy_transfer.TransferTask(fileitem={
+        "storage": "local",
+        "path": "/downloads/movie.mkv",
+        "type": "file",
+    })
+    public_fields = set(task.to_dict())
+
+    task.bind_admission_task_id("internal-task-id")
+
+    assert set(task.to_dict()) == public_fields
+    assert "task_id" not in task.to_dict()
+    assert "admission_task_id" not in task.to_dict()
 
 
 def test_chain_media_legacy_scraping_symbols_resolve_to_scraping_chain():

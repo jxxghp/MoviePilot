@@ -230,7 +230,7 @@ def configure_plugin_system_services():
     from app.db.oper.subscribe import SubscribeOper
     from app.db.oper.subscribehistory import SubscribeHistoryOper
     from app.db.oper.transferhistory import TransferHistoryOper
-    from app.db.oper.transferpending import TransferPendingOper
+    from app.db.adapters.transfer import TransactionalTransferAdmissionRepository
     from app.db.oper.user import UserOper
     from app.db.oper.workflow import WorkflowOper, configure_workflow_legacy_writer
     from app.db.oper.message import MessageOper
@@ -303,7 +303,9 @@ def configure_plugin_system_services():
         workflow=lambda: WorkflowOper(),
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
-        transfer_pending=lambda: TransferPendingOper(),
+        transfer_pending=lambda: TransactionalTransferAdmissionRepository(
+            SessionFactory
+        ),
         media_server=lambda: MediaServerOper(),
         download_failure=lambda: TransactionalDownloadFailureRepository(
             SessionFactory

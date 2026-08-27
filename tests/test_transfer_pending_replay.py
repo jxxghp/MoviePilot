@@ -7,24 +7,36 @@
 
 这些测试固定三项不变量：入队即落盘登记、终态即注销、重启能回放。
 """
-from pathlib import Path
 import threading
+from pathlib import Path
 from unittest.mock import MagicMock
 
+from app.application.transfer import TransferAdmission, TransferTask
 from app.chain.transfer import TransferChain
-from app.application.transfer import TransferTask
 from app.schemas.file import FileItem
 
 
-def _build_chain(pendingoper) -> TransferChain:
+def _build_chain(admissions) -> TransferChain:
     """
     构造绕过单例初始化的 TransferChain 骨架。
-    :param pendingoper: 待整理登记管理替身
+    :param admissions: durable admission 仓储替身
     :return: TransferChain 骨架
     """
     chain = object.__new__(TransferChain)
-    chain._pendingoper = pendingoper
+    chain._transfer_admissions = admissions
     return chain
+
+
+def _admission(path: str, task_id: str = "task-1") -> TransferAdmission:
+    """构造一条可脱离数据库会话使用的准入快照。"""
+    return TransferAdmission(
+        task_id=task_id,
+        storage="local",
+        src_path=path,
+        state="accepted",
+        created_at="2026-08-27 10:00:00",
+        updated_at="2026-08-27 10:00:00",
+    )
 
 
 def _task(path: str, storage: str = "local") -> TransferTask:
@@ -45,44 +57,38 @@ def _task(path: str, storage: str = "local") -> TransferTask:
     ))
 
 
-def test_register_pending_records_storage_and_path():
+def test_admit_transfer_records_storage_and_path():
     """
     入队时必须落盘登记「存储 + 源路径」这一最小事实。
     """
-    pendingoper = MagicMock()
-    chain = _build_chain(pendingoper)
+    admissions = MagicMock()
+    admissions.admit.return_value = _admission(
+        "/mnt/cd2/downloads/Movie.2024.mkv"
+    )
+    chain = _build_chain(admissions)
 
-    chain._TransferChain__register_pending(_task("/mnt/cd2/downloads/Movie.2024.mkv"))
-
-    pendingoper.register.assert_called_once_with(
-        storage="local", src_path="/mnt/cd2/downloads/Movie.2024.mkv"
+    result = chain._TransferChain__admit_transfer(
+        _task("/mnt/cd2/downloads/Movie.2024.mkv")
     )
 
-
-def test_register_pending_failure_does_not_break_enqueue():
-    """
-    落盘登记只是重启后的补救手段，登记失败绝不能阻断正常整理。
-    """
-    pendingoper = MagicMock()
-    pendingoper.register.side_effect = RuntimeError("db locked")
-    chain = _build_chain(pendingoper)
-
-    # 不抛异常即为通过
-    chain._TransferChain__register_pending(_task("/mnt/cd2/downloads/Movie.2024.mkv"))
+    admissions.admit.assert_called_once_with(
+        storage="local", src_path="/mnt/cd2/downloads/Movie.2024.mkv"
+    )
+    assert result.task_id == "task-1"
 
 
 def test_discard_pending_on_terminal_state():
     """
     整理到达终态后必须注销登记，否则每次重启都会重复回放。
     """
-    pendingoper = MagicMock()
-    chain = _build_chain(pendingoper)
+    admissions = MagicMock()
+    chain = _build_chain(admissions)
+    task = _task("/mnt/cd2/downloads/Movie.2024.mkv")
+    task.bind_admission_task_id("task-1")
 
-    chain._TransferChain__discard_pending(_task("/mnt/cd2/downloads/Movie.2024.mkv"))
+    chain._TransferChain__discard_pending(task)
 
-    pendingoper.discard.assert_called_once_with(
-        storage="local", src_path="/mnt/cd2/downloads/Movie.2024.mkv"
-    )
+    admissions.discard_task.assert_called_once_with(task_id="task-1")
 
 
 def test_replay_resends_pending_files_to_transfer(tmp_path, monkeypatch):
@@ -92,9 +98,9 @@ def test_replay_resends_pending_files_to_transfer(tmp_path, monkeypatch):
     media = tmp_path / "Movie.2024.mkv"
     media.write_bytes(b"x" * 10)
 
-    pendingoper = MagicMock()
-    pendingoper.list_all.return_value = [("local", str(media))]
-    chain = _build_chain(pendingoper)
+    admissions = MagicMock()
+    admissions.list_accepted.return_value = [_admission(str(media))]
+    chain = _build_chain(admissions)
 
     transferred = []
     monkeypatch.setattr(chain, "do_transfer", lambda **kw: transferred.append(kw["fileitem"]))
@@ -114,16 +120,16 @@ def test_replay_discards_vanished_files(tmp_path):
     """
     源文件已消失的登记要注销，否则每次启动都会重复回放一个不存在的文件。
     """
-    pendingoper = MagicMock()
+    admissions = MagicMock()
     missing = tmp_path / "gone.mkv"
-    pendingoper.list_all.return_value = [("local", str(missing))]
-    chain = _build_chain(pendingoper)
+    admissions.list_accepted.return_value = [_admission(str(missing))]
+    chain = _build_chain(admissions)
     chain.do_transfer = MagicMock()
 
     chain._TransferChain__replay_pending()
 
     chain.do_transfer.assert_not_called()
-    pendingoper.discard.assert_called_once_with(storage="local", src_path=str(missing))
+    admissions.discard_task.assert_called_once_with(task_id="task-1")
 
 
 def test_replay_keeps_registration_when_mount_unreadable(tmp_path, monkeypatch):
@@ -135,9 +141,9 @@ def test_replay_keeps_registration_when_mount_unreadable(tmp_path, monkeypatch):
     media = tmp_path / "Movie.2024.mkv"
     media.write_bytes(b"x")
 
-    pendingoper = MagicMock()
-    pendingoper.list_all.return_value = [("local", str(media))]
-    chain = _build_chain(pendingoper)
+    admissions = MagicMock()
+    admissions.list_accepted.return_value = [_admission(str(media))]
+    chain = _build_chain(admissions)
     chain.do_transfer = MagicMock()
 
     def unreadable(self, *_args, **_kwargs):
@@ -151,7 +157,7 @@ def test_replay_keeps_registration_when_mount_unreadable(tmp_path, monkeypatch):
     chain._TransferChain__replay_pending()
 
     chain.do_transfer.assert_not_called()
-    pendingoper.discard.assert_not_called()
+    admissions.discard_task.assert_not_called()
 
 
 def test_replay_restores_bluray_directory_type(tmp_path, monkeypatch):
@@ -162,9 +168,9 @@ def test_replay_restores_bluray_directory_type(tmp_path, monkeypatch):
     bluray.mkdir()
     src_path = f"{bluray.as_posix()}/"
 
-    pendingoper = MagicMock()
-    pendingoper.list_all.return_value = [("local", src_path)]
-    chain = _build_chain(pendingoper)
+    admissions = MagicMock()
+    admissions.list_accepted.return_value = [_admission(src_path)]
+    chain = _build_chain(admissions)
 
     transferred = []
     monkeypatch.setattr(chain, "do_transfer", lambda **kw: transferred.append(kw["fileitem"]))
@@ -180,9 +186,9 @@ def test_replay_is_noop_without_registrations():
     """
     没有登记时回放不应触碰整理链。
     """
-    pendingoper = MagicMock()
-    pendingoper.list_all.return_value = []
-    chain = _build_chain(pendingoper)
+    admissions = MagicMock()
+    admissions.list_accepted.return_value = []
+    chain = _build_chain(admissions)
     chain.do_transfer = MagicMock()
 
     chain._TransferChain__replay_pending()
@@ -194,9 +200,9 @@ def test_replay_survives_db_failure():
     """
     读取登记失败不能让启动流程报错。
     """
-    pendingoper = MagicMock()
-    pendingoper.list_all.side_effect = RuntimeError("db gone")
-    chain = _build_chain(pendingoper)
+    admissions = MagicMock()
+    admissions.list_accepted.side_effect = RuntimeError("db gone")
+    chain = _build_chain(admissions)
     chain.do_transfer = MagicMock()
 
     chain._TransferChain__replay_pending()
@@ -213,9 +219,12 @@ def test_replay_continues_after_single_file_failure(tmp_path, monkeypatch):
     for item in (first, second):
         item.write_bytes(b"x")
 
-    pendingoper = MagicMock()
-    pendingoper.list_all.return_value = [("local", str(first)), ("local", str(second))]
-    chain = _build_chain(pendingoper)
+    admissions = MagicMock()
+    admissions.list_accepted.return_value = [
+        _admission(str(first), "task-1"),
+        _admission(str(second), "task-2"),
+    ]
+    chain = _build_chain(admissions)
 
     handled = []
 
@@ -241,12 +250,12 @@ def test_replay_stop_keeps_unprocessed_registrations(tmp_path, monkeypatch):
     first = tmp_path / "A.mkv"
     first.write_bytes(b"x")
     missing_second = tmp_path / "gone.mkv"
-    pendingoper = MagicMock()
-    pendingoper.list_all.return_value = [
-        ("local", str(first)),
-        ("local", str(missing_second)),
+    admissions = MagicMock()
+    admissions.list_accepted.return_value = [
+        _admission(str(first), "task-1"),
+        _admission(str(missing_second), "task-2"),
     ]
-    chain = _build_chain(pendingoper)
+    chain = _build_chain(admissions)
     stop_event = threading.Event()
     transferred = []
 
@@ -260,4 +269,4 @@ def test_replay_stop_keeps_unprocessed_registrations(tmp_path, monkeypatch):
     chain._TransferChain__replay_pending(stop_event)
 
     assert transferred == [first.as_posix()]
-    pendingoper.discard.assert_not_called()
+    admissions.discard_task.assert_not_called()

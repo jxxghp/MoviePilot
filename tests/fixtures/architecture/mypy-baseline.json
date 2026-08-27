@@ -1595,7 +1595,7 @@
     "no-any-return": 3,
     "no-redef": 2,
     "no-untyped-call": 8,
-    "no-untyped-def": 16,
+    "no-untyped-def": 15,
     "operator": 3,
     "return-value": 2,
     "truthy-function": 5,
@@ -1703,9 +1703,6 @@
     "no-any-return": 3,
     "no-untyped-def": 20,
     "type-arg": 1
-  },
-  "app/db/models/transferpending.py": {
-    "no-any-return": 1
   },
   "app/db/models/user.py": {
     "no-untyped-def": 10

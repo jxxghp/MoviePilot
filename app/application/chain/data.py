@@ -10,8 +10,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from app.application.transfer import TransferAdmissionRepository
+
 
 OperFactory = Callable[[], Any]
+TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,7 +26,7 @@ class ChainDataPorts:
     workflow: OperFactory
     download_history: OperFactory
     transfer_history: OperFactory
-    transfer_pending: OperFactory
+    transfer_pending: TransferAdmissionRepositoryFactory
     media_server: OperFactory
     download_failure: OperFactory
     user: OperFactory
@@ -75,12 +78,6 @@ class TransferHistoryPortProxy(_ChainDataPortProxy):
     """整理历史数据端口代理。"""
 
     port_name = "transfer_history"
-
-
-class TransferPendingPortProxy(_ChainDataPortProxy):
-    """待整理数据端口代理。"""
-
-    port_name = "transfer_pending"
 
 
 class MediaServerPortProxy(_ChainDataPortProxy):
@@ -156,8 +153,8 @@ def get_chain_transfer_history_port() -> Any:
     return get_chain_data_ports().transfer_history()
 
 
-def get_chain_transfer_pending_port() -> Any:
-    """创建待整理数据端口实例。"""
+def get_chain_transfer_pending_port() -> TransferAdmissionRepository:
+    """创建类型化的整理任务 durable admission 仓储。"""
     return get_chain_data_ports().transfer_pending()
 
 
