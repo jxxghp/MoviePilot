@@ -453,6 +453,8 @@ async def _sync_plugins_admitted(
         ),
         "插件同步到本地",
     )
+    if sync_result is None:
+        return False
     dependency_result = await (
         plugin_manager.async_install_plugin_missing_dependencies_with_status()
     )
@@ -471,7 +473,7 @@ async def _sync_plugins_admitted(
         lambda: _activate_ready_plugins(
             plugin_manager,
             classification.ready,
-            sync_result or [],
+            sync_result,
             previous_statuses,
         ),
         "插件运行态激活",
@@ -502,14 +504,18 @@ def _activate_ready_plugins(
 ) -> list[str]:
     """在线程池中完成插件导入和初始化，避免阻塞 Web 事件循环。"""
     running_ids = set(plugin_manager.running_plugins)
-    synced = set(synced_ids)
+    synced = {
+        _plugin_source_id(plugin_manager, plugin_id)
+        for plugin_id in synced_ids
+    }
     changed_ids: list[str] = []
     for plugin_id in ready_ids:
+        source_id = _plugin_source_id(plugin_manager, plugin_id)
         dependency_recovered = (
             previous_statuses.get(plugin_id)
             is PluginRuntimeStatus.DEPENDENCY_PENDING
         )
-        if plugin_id in running_ids and (plugin_id in synced or dependency_recovered):
+        if plugin_id in running_ids and (source_id in synced or dependency_recovered):
             plugin_manager.reload_plugin(plugin_id)
             changed_ids.append(plugin_id)
             continue
@@ -517,6 +523,35 @@ def _activate_ready_plugins(
             plugin_manager.start(plugin_id)
             changed_ids.append(plugin_id)
     return changed_ids
+
+
+def _plugin_source_id(plugin_manager: PluginManager, plugin_id: str) -> str:
+    """把物理插件和虚拟实例归一到同一个源码身份。"""
+    source_id = plugin_manager.get_plugin_source_id(plugin_id)
+    try:
+        return normalize_physical_plugin_id(source_id)
+    except ValueError:
+        return source_id.lower()
+
+
+def _local_plugin_sources(plugin_manager: PluginManager) -> set[str]:
+    """返回安装清单中存在本地仓候选的物理插件身份。"""
+    installed = {
+        normalize_physical_plugin_id(plugin_id)
+        for plugin_id in (
+            get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins)
+            or []
+        )
+    }
+    candidates: set[str] = set()
+    for plugin in plugin_manager.get_local_repo_plugins():
+        try:
+            source_id = normalize_physical_plugin_id(plugin.id)
+        except ValueError:
+            continue
+        if source_id in installed:
+            candidates.add(source_id)
+    return candidates
 
 
 async def quiesce_plugins(timeout: float = 240.0) -> bool:
@@ -579,13 +614,20 @@ def init_plugins():
     classification = plugin_manager.classify_plugins()
     plugin_manager.apply_plugin_dependency_classification(classification)
     plugin_manager.set_plugin_settling(True)
-    for plugin_id in classification.ready:
+    deferred_sources = _local_plugin_sources(plugin_manager)
+    immediate_ready = [
+        plugin_id
+        for plugin_id in classification.ready
+        if _plugin_source_id(plugin_manager, plugin_id) not in deferred_sources
+    ]
+    for plugin_id in immediate_ready:
         plugin_manager.start(plugin_id)
     register_plugin_api()
     plugin_manager.start_monitor(reopen=True)
     logger.info(
-        "插件启动分类：立即加载=%s，等待依赖=%s，等待源码=%s",
-        len(classification.ready),
+        "插件启动分类：立即加载=%s，等待本地同步=%s，等待依赖=%s，等待源码=%s",
+        len(immediate_ready),
+        len(classification.ready) - len(immediate_ready),
         len(classification.missing_dependencies),
         len(classification.missing_source),
     )

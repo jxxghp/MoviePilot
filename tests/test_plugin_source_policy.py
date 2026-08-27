@@ -6,6 +6,7 @@ from app.application.plugin.identity import (
     PluginIdentity,
     PluginPayloadSourceType,
     TrustedPluginSourceType,
+    normalize_physical_plugin_id,
 )
 from app.application.plugin.source import (
     CandidateInventory,
@@ -20,6 +21,11 @@ from app.application.plugin.source import (
 OFFICIAL_SOURCE = "github:jxxghp/moviepilot-plugins"
 THIRD_PARTY_SOURCE = "github:example/moviepilot-plugins"
 OTHER_SOURCE = "github:other/moviepilot-plugins"
+
+
+def test_plugin_identity_normalization_keeps_existing_underscore_ids() -> None:
+    """来源身份必须兼容市场中已经存在的下划线插件 ID。"""
+    assert normalize_physical_plugin_id("Nullbr_Search") == "nullbr_search"
 
 
 def _online(

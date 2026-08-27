@@ -159,6 +159,30 @@ def test_market_sync_passes_selected_local_source_to_install() -> None:
     install.assert_called_once_with(local.id, local.repo_url, False, None)
 
 
+def test_market_sync_reports_local_install_failure() -> None:
+    """本地载荷安装失败必须阻止启动编排继续激活旧代码。"""
+    local = SimpleNamespace(
+        id="DemoPlugin",
+        repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
+        plugin_name="Demo Local",
+        plugin_version="3.3.2",
+        system_version_compatible=True,
+    )
+    service = PluginSyncService(
+        frozen=lambda: False,
+        installed_plugins=lambda: [local.id],
+        online_plugins=lambda: [],
+        local_plugins=lambda: [local],
+        merge_plugins=lambda items, *_args: items,
+        plugin_exists=lambda *_args: False,
+        install=Mock(return_value=(False, "copy failed")),
+        log=Mock(),
+    )
+
+    with pytest.raises(RuntimeError, match="本地插件同步未完成：DemoPlugin"):
+        service.sync()
+
+
 def test_local_sync_matches_installed_plugin_id_case_insensitively() -> None:
     """本地热同步应把大小写不同的索引 ID 识别为同一已安装插件。"""
     candidate = {
@@ -177,9 +201,9 @@ def test_local_sync_matches_installed_plugin_id_case_insensitively() -> None:
         log=Mock(),
     )
 
-    assert service.sync("downloadcenter", candidate)
+    assert service.sync("DownloadCenter", candidate)
     system.install_plugin.assert_called_once_with(
-        plugin_id="downloadcenter",
+        plugin_id="DownloadCenter",
         repo_url=candidate["repo_url"],
         package_version="v3",
         force=True,
