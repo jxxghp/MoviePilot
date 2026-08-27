@@ -3,7 +3,11 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 
 from app.application.chain.data import get_chain_media_server_port
-from app.application.mediaserver import get_mediaserver_configs
+from app.application.mediaserver import (
+    MediaServerRepository,
+    MediaServerSyncItem,
+    get_mediaserver_configs,
+)
 from app.application.security.url import SecurityUtils
 from app.chain import ChainBase
 from app.runtime.log import logger
@@ -271,6 +275,7 @@ class MediaServerChain(ChainBase):
         self,
         mediaservers: List[Any],
         server: Optional[str],
+        repository: MediaServerRepository,
     ) -> Tuple[List[Any], int, Dict[str, Any], Optional[int]]:
         """
         准备启用媒体服务器的同步库和进度总量。
@@ -281,8 +286,7 @@ class MediaServerChain(ChainBase):
             item.name for item in mediaservers
             if item and item.enabled and item.name
         ]
-        dboper = get_chain_media_server_port()
-        dboper.delete_excluded_servers(enabled_servers)
+        repository.delete_excluded_servers(enabled_servers)
         selected_servers = [
             item for item in mediaservers
             if item and item.enabled and (not server or item.name == server)
@@ -332,7 +336,7 @@ class MediaServerChain(ChainBase):
         server_name: str,
         selected_libraries: List[Any],
         library_media_counts: Dict[str, Optional[int]],
-        dboper: Any,
+        repository: MediaServerRepository,
         sync_time: str,
         progress_callback: Optional[Callable[..., None]],
         server_index: int,
@@ -363,14 +367,17 @@ class MediaServerChain(ChainBase):
                 item_type = self._normalize_item_type(item.item_type)
                 if item_type == MediaType.TV.value:
                     for episode in self.episodes(server_name, item.item_id) or []:
-                        seasoninfo[episode.season] = episode.episodes
-                item_dict = item.model_dump()
-                item_dict.update({
-                    "seasoninfo": seasoninfo,
-                    "item_type": item_type,
-                    "lst_mod_date": sync_time,
-                })
-                dboper.upsert(**item_dict)
+                        if episode.season is None:
+                            continue
+                        seasoninfo[episode.season] = episode.episodes or []
+                repository.upsert(
+                    MediaServerSyncItem.from_item(
+                        item,
+                        item_type=item_type,
+                        seasoninfo=seasoninfo,
+                        sync_time=sync_time,
+                    )
+                )
                 if progress_callback:
                     if global_media_total:
                         progress_value = min(global_media_finished / global_media_total, 1) * 100
@@ -423,7 +430,10 @@ class MediaServerChain(ChainBase):
                         "media_finished": global_media_finished,
                     },
                 )
-        stale_count = dboper.delete_stale(server=server_name, sync_time=sync_time)
+        stale_count = repository.delete_stale(
+            server=server_name,
+            sync_time=sync_time,
+        )
         logger.info(f"媒体服务器 {server_name} 清理陈旧数据完成，删除数量：{stale_count}")
         return total_count, global_media_finished
 
@@ -463,9 +473,9 @@ class MediaServerChain(ChainBase):
         with lock:
             # 汇总统计
             total_count = 0
-            dboper = get_chain_media_server_port()
+            repository = get_chain_media_server_port()
             mediaservers, total_servers, server_sync_contexts, global_media_total = (
-                self._prepare_sync_contexts(mediaservers, server)
+                self._prepare_sync_contexts(mediaservers, server, repository)
             )
             if progress_callback:
                 progress_callback(
@@ -543,7 +553,7 @@ class MediaServerChain(ChainBase):
                     server_name=server_name,
                     selected_libraries=selected_libraries,
                     library_media_counts=library_media_counts,
-                    dboper=dboper,
+                    repository=repository,
                     sync_time=sync_time,
                     progress_callback=progress_callback,
                     server_index=server_index,

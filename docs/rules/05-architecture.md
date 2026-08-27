@@ -63,7 +63,7 @@ to make the directory tree look symmetrical.
 | `app/application/*.py` | Established single-module application services and compatibility facades |
 | `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
 | `app/application/search/` | Search state and later search-plan use cases |
-| `app/application/download/` | Download task querying/control and later submission use cases |
+| `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
 | `app/application/music/` | Multi-source music catalog orchestration |
 | `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the runtime dependency aggregate, `data.py` owns named persistence ports, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agentdata.py` | Named Agent data ports; canonical Agent consumers use `get_agent_*_port()` and do not alias legacy proxies to Oper classes |
@@ -143,6 +143,9 @@ Chain consumers temporarily use the named `get_chain_*_port()` functions from
 The retired migration-time `*PortProxy` classes and dynamic `__getattr__` forwarding must not
 be recreated; they had no host, SDK or plugin consumers. Workflow execution uses its owning
 `app.application.workflow` service directly and must not be registered again in `ChainDataPorts`.
+Download-failure cooldown and media-server cache consumers use their typed Application DTO/Port
+contracts. Their DB adapters project ORM values before Session close and commit each local write
+in a separate short UoW, so remote media enumeration never holds a database transaction.
 Agent orchestration, memory and tool implementations follow the same rule via
 the named `get_agent_*_port()` functions from `app/application/agentdata.py`.
 The legacy Agent `*Port` proxy classes remain import-compatible boundaries and
@@ -671,6 +674,9 @@ driven workflow registration.
 | `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
+| `app/application/download/failures.py` | Frozen download-failure cooldown write/query DTOs and Chain persistence Port |
+| `app/db/adapters/download.py` | Short-session download-failure snapshot and mutation adapter |
+| `app/db/adapters/mediaserver.py` | Per-operation media-server cache query/upsert/cleanup transaction adapter |
 | `app/application/outbox.py` | Durable intent, topic handler and Outbox repository contracts |
 | `app/db/adapters/outbox.py` | SQLAlchemy Outbox persistence, claim/lease and retry state adapter |
 | `app/application/chain/events.py` | Chain durable-event write port, settlement projection and replayable payload conversion |

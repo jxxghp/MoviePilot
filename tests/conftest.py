@@ -223,6 +223,7 @@ def configure_plugin_system_services():
         configure_agent_task_execution,
     )
     from app.db.adapters.download import TransactionalDownloadFailureRepository
+    from app.db.adapters.mediaserver import TransactionalMediaServerRepository
     from app.db.adapters.site import TransactionalSiteRepository
     from app.db.adapters.subscription import TransactionalSubscribeWriter
     from app.db.adapters.transaction import TransactionalWriteRunner
@@ -312,7 +313,7 @@ def configure_plugin_system_services():
         transfer_execution=lambda: TransactionalTransferExecutionRepository(
             SessionFactory
         ),
-        media_server=lambda: MediaServerOper(),
+        media_server=lambda: TransactionalMediaServerRepository(SessionFactory),
         download_failure=lambda: TransactionalDownloadFailureRepository(
             SessionFactory
         ),

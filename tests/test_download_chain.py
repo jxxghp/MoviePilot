@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -5,10 +6,14 @@ from unittest.mock import MagicMock
 import pytest
 
 import app.chain.download as download_module
+from app.application.download.failures import (
+    DownloadFailureSnapshot,
+    DownloadFailureWrite,
+)
 from app.chain.download import DownloadChain
-from app.runtime.config import settings
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
+from app.runtime.config import settings
 from app.schemas.file import FileItem
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.system import TransferDirectoryConf
@@ -804,12 +809,11 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
         捕获下载失败冷却记录，避免测试写入数据库。
         """
 
-        def record_failure(self, **kwargs: object) -> SimpleNamespace:
+        def record_failure(self, failure: DownloadFailureWrite) -> None:
             """
             保存写入字段供断言使用。
             """
-            captured.update(kwargs)
-            return SimpleNamespace(id=1)
+            captured.update(asdict(failure))
 
     monkeypatch.setattr(
         "app.application.directory.DirectoryHelper.get_download_dirs",
@@ -858,11 +862,95 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
 
     assert download_id is None
     assert returned_error == error_msg
-    assert captured["fingerprint"] == DownloadChain._build_download_failure_fingerprint(context)
+    assert captured["fingerprint"] == DownloadChain._build_download_failure_fingerprint(
+        context
+    )
     assert captured["torrent_id"] == "example.com:id=484660"
     assert captured["site"] == 12
     assert captured["error_message"] == error_msg
-    assert captured["next_retry_at"] > captured["now_time"]
+    assert captured["next_retry_at"] > captured["failed_at"]
+
+
+def test_download_failure_query_skips_non_subscribe_sources(monkeypatch):
+    """非订阅下载不得读取失败冷却，避免改变手工下载行为。"""
+    get_repository = MagicMock(side_effect=AssertionError("unexpected query"))
+    monkeypatch.setattr(
+        download_module,
+        "get_chain_download_failure_port",
+        get_repository,
+    )
+
+    chain = DownloadChain.__new__(DownloadChain)
+
+    assert chain._active_download_failure_fingerprints(
+        contexts=[_build_tv_context()],
+        source="Manual",
+    ) == {}
+    get_repository.assert_not_called()
+
+
+def test_download_failure_query_failure_is_fail_open(monkeypatch):
+    """冷却查询失败时继续下载候选，并记录一次明确错误。"""
+
+    class _FailingDownloadFailureRepository:
+        """模拟失败的下载冷却查询端口。"""
+
+        def get_active_by_fingerprints(
+            self,
+            fingerprints: list[str],
+            now_time: str,
+        ) -> dict[str, DownloadFailureSnapshot]:
+            """拒绝查询以验证 Chain 的 fail-open 语义。"""
+            assert fingerprints
+            assert now_time
+            raise RuntimeError("query failed")
+
+    error = MagicMock()
+    monkeypatch.setattr(
+        download_module,
+        "get_chain_download_failure_port",
+        _FailingDownloadFailureRepository,
+    )
+    monkeypatch.setattr(download_module.logger, "error", error)
+
+    chain = DownloadChain.__new__(DownloadChain)
+
+    assert chain._active_download_failure_fingerprints(
+        contexts=[_build_tv_context()],
+        source="Subscribe|{}",
+    ) == {}
+    error.assert_called_once_with("查询下载失败冷却失败：query failed")
+
+
+def test_download_failure_write_failure_is_fail_open(monkeypatch):
+    """冷却写入失败不得覆盖原下载结果，并记录一次明确错误。"""
+
+    class _FailingDownloadFailureRepository:
+        """模拟失败的下载冷却写入端口。"""
+
+        def record_failure(self, failure: DownloadFailureWrite) -> None:
+            """拒绝写入以验证 Chain 的 fail-open 语义。"""
+            assert failure.fingerprint
+            raise RuntimeError("write failed")
+
+    error = MagicMock()
+    monkeypatch.setattr(
+        download_module,
+        "get_chain_download_failure_port",
+        _FailingDownloadFailureRepository,
+    )
+    monkeypatch.setattr(download_module.logger, "error", error)
+    context = _build_tv_context()
+    chain = DownloadChain.__new__(DownloadChain)
+
+    fingerprint = chain._record_download_failure(
+        context=context,
+        error_msg="下载失败",
+        source="Subscribe|{}",
+    )
+
+    assert fingerprint == DownloadChain._build_download_failure_fingerprint(context)
+    error.assert_called_once_with("记录下载失败冷却失败：write failed")
 
 
 def test_download_failure_fingerprint_distinguishes_special_season_zero():
@@ -943,17 +1031,23 @@ def test_batch_download_skips_failed_subscription_resource_and_tries_next(monkey
         返回第一个候选的活跃失败冷却记录。
         """
 
-        def get_active_by_fingerprints(self, fingerprints: list[str], now_time: str) -> dict:
+        def get_active_by_fingerprints(
+            self,
+            fingerprints: list[str],
+            now_time: str,
+        ) -> dict[str, DownloadFailureSnapshot]:
             """
             模拟数据库批量查询活跃失败记录。
             """
             assert now_time
             assert failed_fingerprint in fingerprints
-            return {failed_fingerprint: SimpleNamespace(
-                fingerprint=failed_fingerprint,
-                error_message="无法读取种子文件",
-                next_retry_at="2026-01-02 03:04:05",
-            )}
+            return {
+                failed_fingerprint: DownloadFailureSnapshot(
+                    fingerprint=failed_fingerprint,
+                    error_message="无法读取种子文件",
+                    next_retry_at="2026-01-02 03:04:05",
+                )
+            }
 
     monkeypatch.setattr(
         download_module,

@@ -444,6 +444,53 @@ def test_chain_registry_has_no_dynamic_proxies_or_dead_context_injection():
     assert "data_ports=" not in startup_source
 
 
+def test_download_failure_and_mediaserver_ports_are_typed_and_detached():
+    """下载失败与媒体库缓存端口不得退回 raw Oper、Any 或 ORM 投影。"""
+    data_path = APP_ROOT / "application" / "chain" / "data.py"
+    data_tree = ast.parse(
+        data_path.read_text(encoding="utf-8"),
+        filename=str(data_path),
+    )
+    data_class = next(
+        node
+        for node in data_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "ChainDataPorts"
+    )
+    annotations = {
+        node.target.id: ast.unparse(node.annotation)
+        for node in data_class.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+    }
+    returns = {
+        node.name: ast.unparse(node.returns)
+        for node in data_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.returns is not None
+    }
+    assert annotations["download_failure"] == "DownloadFailureRepositoryFactory"
+    assert annotations["media_server"] == "MediaServerRepositoryFactory"
+    assert returns["get_chain_download_failure_port"] == "DownloadFailureRepository"
+    assert returns["get_chain_media_server_port"] == "MediaServerRepository"
+
+    download_source = (APP_ROOT / "chain" / "download.py").read_text(
+        encoding="utf-8"
+    )
+    mediaserver_source = (APP_ROOT / "chain" / "mediaserver.py").read_text(
+        encoding="utf-8"
+    )
+    application_source = (
+        APP_ROOT / "application" / "mediaserver.py"
+    ).read_text(encoding="utf-8")
+    startup_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    assert "DownloadFailure = Any" not in download_source
+    assert "dboper" not in mediaserver_source
+    assert "async def async_get_item_id(" in application_source
+    assert "TransactionalMediaServerRepository(SessionFactory)" in startup_source
+
+
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
     """工作流旧写入口只能存在于 SDK Legacy facade。"""
     oper_path = APP_ROOT / "db" / "oper" / "workflow.py"

@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 850 / 6,944 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 852 / 6,962 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -77,9 +77,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 11,809 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 875 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 78.89%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 全量 mypy 历史债务 | 11,808 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
+| Ruff 历史诊断 | 872 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 78.95%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -291,6 +291,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   `WorkflowOper` 只保留显式 Session query/stage，旧无 Session 五方法只存在于 SDK Legacy/Compat。
 - [x] 删除 Chain registry 中零消费者 `*PortProxy`/动态转发和 `ChainRuntimeContext.data_ports`
   伪注入；Workflow 执行服务只在 Application owner 配置一次，不再重复注册到 `ChainDataPorts`。
+- [x] DownloadFailure/MediaServer 两个 registry 字段改用冻结 DTO 与 typed Repository factory；
+  ORM 不越过短 Session，媒体库远端枚举期间不持有事务，旧 Oper/Compat 与公开 Chain ABI 保持不变。
 - [ ] `ChainDataPorts`/`AgentDataPorts` 可暂时保留为兼容聚合器，但字段必须显式、可类型检查。
 - [ ] 以一个业务纵切面迁移并验证后，再迁移下一组，禁止一次替换所有 Oper。
 - [ ] 增加 AST 门禁，禁止向 `ChainDataPorts`、`AgentDataPorts` 和新的 canonical use-case service

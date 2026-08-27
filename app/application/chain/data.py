@@ -10,10 +10,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from app.application.download.failures import DownloadFailureRepository
+from app.application.mediaserver import MediaServerRepository
 from app.application.transfer.execution import TransferExecutionRepository
 from app.application.transfer.workflow import TransferAdmissionRepository
 
 OperFactory = Callable[[], Any]
+DownloadFailureRepositoryFactory = Callable[[], DownloadFailureRepository]
+MediaServerRepositoryFactory = Callable[[], MediaServerRepository]
 TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]
 TransferExecutionRepositoryFactory = Callable[[], TransferExecutionRepository]
 
@@ -28,8 +32,8 @@ class ChainDataPorts:
     transfer_history: OperFactory
     transfer_pending: TransferAdmissionRepositoryFactory
     transfer_execution: TransferExecutionRepositoryFactory
-    media_server: OperFactory
-    download_failure: OperFactory
+    media_server: MediaServerRepositoryFactory
+    download_failure: DownloadFailureRepositoryFactory
     user: OperFactory
 
 
@@ -44,8 +48,8 @@ def configure_chain_data_ports(
         transfer_history: OperFactory,
         transfer_pending: TransferAdmissionRepositoryFactory,
         transfer_execution: TransferExecutionRepositoryFactory,
-        media_server: OperFactory,
-        download_failure: OperFactory,
+        media_server: MediaServerRepositoryFactory,
+        download_failure: DownloadFailureRepositoryFactory,
         user: OperFactory,
 ) -> None:
     """由启动组合根登记显式命名的 Chain 数据端口实现。"""
@@ -100,13 +104,13 @@ def get_chain_transfer_execution_port() -> TransferExecutionRepository:
     return get_chain_data_ports().transfer_execution()
 
 
-def get_chain_media_server_port() -> Any:
-    """创建媒体服务器数据端口实例。"""
+def get_chain_media_server_port() -> MediaServerRepository:
+    """创建类型化的媒体服务器本地缓存端口实例。"""
     return get_chain_data_ports().media_server()
 
 
-def get_chain_download_failure_port() -> Any:
-    """创建下载失败数据端口实例。"""
+def get_chain_download_failure_port() -> DownloadFailureRepository:
+    """创建类型化的下载失败冷却持久化端口实例。"""
     return get_chain_data_ports().download_failure()
 
 

@@ -1,16 +1,17 @@
+import json
 import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Protocol
+from typing import Any, Optional, Protocol, Union
 
-from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
-from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
+from app.application.service import ServiceBaseHelper
 from app.domain.context import MusicInfo
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source, resolve_media_identity
-from app.application.service import ServiceBaseHelper
-from app.schemas.system import MediaServerConf
-from app.schemas.system import ServiceInfo
+from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
+from app.schemas.system import MediaServerConf, ServiceInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MediaSource,
@@ -19,16 +20,106 @@ from app.schemas.types import (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class MediaServerSyncItem:
+    """媒体库同步写端使用的脱离远端响应与数据库会话的冻结条目。"""
+
+    server: str
+    library: Optional[str]
+    item_id: str
+    item_type: Optional[str]
+    title: Optional[str]
+    original_title: Optional[str]
+    year: Optional[Union[str, int]]
+    media_source: Optional[MediaSource]
+    media_id: Optional[str]
+    path: Optional[str]
+    seasoninfo: tuple[tuple[int, tuple[int, ...]], ...]
+    note_json: Optional[str]
+    lst_mod_date: str
+
+    @classmethod
+    def from_item(
+        cls,
+        item: _SchemaMediaServerItem,
+        *,
+        item_type: Optional[str],
+        seasoninfo: Mapping[int, Optional[list[int]]],
+        sync_time: str,
+    ) -> "MediaServerSyncItem":
+        """冻结远端媒体条目和本轮剧集快照，供短事务持久化。"""
+        return cls(
+            server=str(item.server or ""),
+            library=str(item.library) if item.library is not None else None,
+            item_id=str(item.item_id or ""),
+            item_type=item_type,
+            title=item.title,
+            original_title=item.original_title,
+            year=item.year,
+            media_source=item.media_source,
+            media_id=item.media_id,
+            path=item.path,
+            seasoninfo=tuple(
+                (season, tuple(episodes or ()))
+                for season, episodes in seasoninfo.items()
+            ),
+            note_json=(
+                json.dumps(item.note, ensure_ascii=False)
+                if item.note is not None
+                else None
+            ),
+            lst_mod_date=sync_time,
+        )
+
+
+class MediaServerRepository(Protocol):
+    """Chain 查询与同步媒体服务器本地缓存所需的最小持久化端口。"""
+
+    def get_item_id(
+        self,
+        *,
+        title: Optional[str] = None,
+        year: Optional[Union[str, int]] = None,
+        mtype: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        season: Optional[int] = None,
+    ) -> Optional[str]:
+        """返回匹配条目的服务器 item_id，未命中时返回 None。"""
+        ...
+
+    def upsert(self, item: MediaServerSyncItem) -> bool:
+        """在短事务中新增或更新一个冻结媒体条目。"""
+        ...
+
+    def delete_stale(self, *, server: str, sync_time: str) -> int:
+        """删除指定服务器本轮同步未更新的本地条目。"""
+        ...
+
+    def delete_excluded_servers(self, servers: list[str]) -> int:
+        """删除已停用或已移除服务器的本地条目。"""
+        ...
+
+
 class AsyncMediaServerQueryRepository(Protocol):
     """媒体服务器本地条目查询所需的异步持久化端口。"""
 
-    async def async_exists(self, **kwargs: Any) -> Any | None:
-        """按标题或统一媒体身份查找已同步条目。"""
+    async def async_get_item_id(
+        self,
+        *,
+        title: Optional[str] = None,
+        year: Optional[Union[str, int]] = None,
+        mtype: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        season: Optional[int] = None,
+    ) -> Optional[str]:
+        """按标题或统一媒体身份返回已同步条目的标量 ID。"""
         ...
 
 
 class MediaServerQueryService:
-    """封装媒体服务器本地存在性查询与 ORM 投影。"""
+    """封装媒体服务器本地存在性标量查询。"""
 
     def __init__(self, repository: AsyncMediaServerQueryRepository):
         """使用显式媒体服务器查询端口初始化服务。"""
@@ -38,14 +129,14 @@ class MediaServerQueryService:
             self,
             *,
             title: Optional[str] = None,
-            year: Optional[str] = None,
+            year: Optional[Union[str, int]] = None,
             mtype: Optional[str] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             season: Optional[int] = None,
     ) -> Optional[str]:
         """返回匹配条目的服务器 item_id，未命中时返回 None。"""
-        item = await self._repository.async_exists(
+        return await self._repository.async_get_item_id(
             title=title,
             year=year,
             mtype=mtype,
@@ -53,7 +144,6 @@ class MediaServerQueryService:
             media_id=media_id,
             season=season,
         )
-        return item.item_id if item else None
 
 
 class MediaServerIdentityHelper:

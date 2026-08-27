@@ -114,6 +114,7 @@ from app.application.workflow import (
 from app.command import CommandChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
+from app.db.adapters.mediaserver import TransactionalMediaServerRepository
 from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
 from app.db.adapters.query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.site import TransactionalSiteRepository
@@ -892,7 +893,7 @@ async def init_modules() -> HostRuntime:
         transfer_execution=lambda: TransactionalTransferExecutionRepository(
             SessionFactory
         ),
-        media_server=lambda: MediaServerOper(),
+        media_server=lambda: TransactionalMediaServerRepository(SessionFactory),
         download_failure=lambda: TransactionalDownloadFailureRepository(
             SessionFactory
         ),

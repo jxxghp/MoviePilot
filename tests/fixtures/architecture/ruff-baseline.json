@@ -312,9 +312,6 @@
   "app/application/maintenance.py": {
     "I001": 1
   },
-  "app/application/mediaserver.py": {
-    "I001": 1
-  },
   "app/application/messaging/agent.py": {
     "I001": 1
   },
@@ -1276,9 +1273,6 @@
   "tests/test_douban_recognition.py": {
     "I001": 1
   },
-  "tests/test_download_chain.py": {
-    "I001": 1
-  },
   "tests/test_download_paths_endpoint.py": {
     "I001": 1
   },
@@ -1408,9 +1402,6 @@
     "I001": 2
   },
   "tests/test_mediaserver_image_signing.py": {
-    "I001": 1
-  },
-  "tests/test_mediaserver_sync_incremental.py": {
     "I001": 1
   },
   "tests/test_mediaserver_sync_scheduler.py": {

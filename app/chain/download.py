@@ -6,7 +6,7 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from app.adapters.network.http import RequestUtils
@@ -19,6 +19,11 @@ from app.application.chain.data import (
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.application.download import selection as _selection
+from app.application.download.failures import (
+    DownloadFailureRepository,
+    DownloadFailureSnapshot,
+    DownloadFailureWrite,
+)
 from app.application.download.tasks import DownloadTaskService
 from app.application.torrent import TorrentHelper
 from app.chain import ChainBase
@@ -62,12 +67,6 @@ from app.schemas.types import (
     TorrentStatus,
 )
 from app.schemas.workflow import FileItem as _SchemaFileItem
-
-if TYPE_CHECKING:
-    from typing import Any
-
-    DownloadFailure = Any
-
 
 DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS = 24 * 60 * 60
 DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS = 60 * 60
@@ -880,25 +879,40 @@ class DownloadChain(ChainBase):
         torrent = context.torrent_info
         site = getattr(torrent, "site", None)
         try:
-            get_chain_download_failure_port().record_failure(
-                fingerprint=fingerprint,
-                now_time=now_time,
-                next_retry_at=next_retry_at,
-                type=getattr(getattr(media, "type", None), "value", getattr(media, "type", None)),
-                title=getattr(media, "title", None),
-                year=getattr(media, "year", None),
-                media_source=media_source,
-                media_id=media_id,
-                seasons=getattr(meta, "season", None),
-                episodes=episode_rules.format_ranges(list(episodes)) if episodes else self._format_failure_episodes(meta),
-                site=site if isinstance(site, int) else None,
-                site_name=getattr(torrent, "site_name", None),
-                torrent_id=self._torrent_resource_key(torrent),
-                torrent_name=getattr(torrent, "title", None),
-                torrent_size=getattr(torrent, "size", None),
-                downloader=downloader,
-                source=str(source)[:1000] if source else None,
-                error_message=str(error_msg or "")[:1000],
+            repository: DownloadFailureRepository = get_chain_download_failure_port()
+            repository.record_failure(
+                DownloadFailureWrite(
+                    fingerprint=fingerprint,
+                    failed_at=now_time,
+                    next_retry_at=next_retry_at,
+                    media_type=getattr(
+                        getattr(media, "type", None),
+                        "value",
+                        getattr(media, "type", None),
+                    ),
+                    title=getattr(media, "title", None),
+                    year=getattr(media, "year", None),
+                    media_source=media_source,
+                    media_id=media_id,
+                    seasons=(
+                        str(getattr(meta, "season", None))
+                        if getattr(meta, "season", None) is not None
+                        else None
+                    ),
+                    episodes=(
+                        episode_rules.format_ranges(list(episodes))
+                        if episodes
+                        else self._format_failure_episodes(meta)
+                    ),
+                    site=site if isinstance(site, int) else None,
+                    site_name=getattr(torrent, "site_name", None),
+                    torrent_id=self._torrent_resource_key(torrent),
+                    torrent_name=getattr(torrent, "title", None),
+                    torrent_size=getattr(torrent, "size", None),
+                    downloader=downloader,
+                    source=str(source)[:1000] if source else None,
+                    error_message=str(error_msg or "")[:1000],
+                )
             )
         except Exception as err:
             logger.error(f"记录下载失败冷却失败：{str(err)}")
@@ -908,7 +922,7 @@ class DownloadChain(ChainBase):
             self,
             contexts: List[Context],
             source: Optional[str],
-    ) -> Dict[str, "DownloadFailure"]:
+    ) -> Dict[str, DownloadFailureSnapshot]:
         """
         查询当前订阅候选中仍处于冷却期的失败记录，返回指纹到失败记录的映射。
         """
@@ -926,7 +940,8 @@ class DownloadChain(ChainBase):
             return {}
         now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         try:
-            return get_chain_download_failure_port().get_active_by_fingerprints(
+            repository: DownloadFailureRepository = get_chain_download_failure_port()
+            return repository.get_active_by_fingerprints(
                 fingerprints=fingerprints, now_time=now_time,
             )
         except Exception as err:
@@ -936,7 +951,7 @@ class DownloadChain(ChainBase):
     @staticmethod
     def _log_download_failure_cooldown(
             context: Context,
-            failure: Optional["DownloadFailure"],
+            failure: Optional[DownloadFailureSnapshot],
     ) -> None:
         """记录候选资源处于失败冷却期时的跳过原因和下次重试时间。"""
         reason = getattr(failure, "error_message", None) or "未知原因"
@@ -957,7 +972,7 @@ class DownloadChain(ChainBase):
         contexts: List[Context],
         downloader: Optional[str],
         source: Optional[str],
-    ) -> Tuple[List[Context], Dict[str, "DownloadFailure"]]:
+    ) -> Tuple[List[Context], Dict[str, Optional[DownloadFailureSnapshot]]]:
         """
         执行批量下载前的资源选择、排序和失败冷却准备。
 
@@ -979,16 +994,20 @@ class DownloadChain(ChainBase):
                 )
                 contexts = event_data.updated_contexts
         contexts = TorrentHelper().sort_torrents(contexts)
-        return contexts, self._active_download_failure_fingerprints(
-            contexts=contexts,
-            source=source,
-        )
+        active_failures: Dict[str, Optional[DownloadFailureSnapshot]] = {
+            fingerprint: failure
+            for fingerprint, failure in self._active_download_failure_fingerprints(
+                contexts=contexts,
+                source=source,
+            ).items()
+        }
+        return contexts, active_failures
 
     def _download_movie_music_candidates(
         self,
         contexts: List[Context],
         downloaded_list: List[Context],
-        active_failure_records: Dict[str, "DownloadFailure"],
+        active_failure_records: Dict[str, Optional[DownloadFailureSnapshot]],
         save_path: Optional[str],
         channel: Optional[NotificationChannel],
         source: Optional[str],

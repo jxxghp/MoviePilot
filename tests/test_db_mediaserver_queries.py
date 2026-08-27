@@ -158,6 +158,32 @@ def test_exists_by_title_matches_async_twin(db):
         assert (sync_found is None) == (async_found is None)
 
 
+def test_oper_season_lookup_accepts_json_string_keys(db):
+    """跨 Session 后的 JSON 季号键为字符串，查询仍应按整数季号命中。"""
+    item = _item("emby", "season-json", item_type="电视剧", media_id="season-1")
+    item.seasoninfo = {"1": [1, 2]}
+    db.add(item)
+
+    assert MediaServerOper(db.session).get_item_id(
+        media_source=MediaSource.TMDB,
+        media_id="season-1",
+        mtype="电视剧",
+        season=1,
+    ) == "season-json"
+
+    async def check() -> None:
+        """验证异步查询与同步查询采用相同的 JSON 季号兼容规则。"""
+        async with async_session_scope() as session:
+            assert await MediaServerOper(session).async_get_item_id(
+                media_source=MediaSource.TMDB,
+                media_id="season-1",
+                mtype="电视剧",
+                season=1,
+            ) == "season-json"
+
+    asyncio.run(check())
+
+
 def test_empty_clears_only_the_given_server(db):
     """
     指定服务器时只清空该服务器的条目，不给则清空全表。

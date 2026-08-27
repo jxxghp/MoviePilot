@@ -1422,7 +1422,7 @@
     "call-overload": 1,
     "comparison-overlap": 1,
     "misc": 1,
-    "no-any-return": 4,
+    "no-any-return": 3,
     "no-redef": 1,
     "no-untyped-call": 7,
     "no-untyped-def": 6,
