@@ -1007,9 +1007,6 @@
   "app/schemas/message.py": {
     "I001": 1
   },
-  "app/schemas/plugin.py": {
-    "I001": 1
-  },
   "app/schemas/response.py": {
     "I001": 1
   },

@@ -907,8 +907,11 @@ def test_monitor_reload_refreshes_source_and_instance_routes(monkeypatch) -> Non
     ]
 
 
-def test_plugin_monitor_suppression_is_reference_counted(monkeypatch) -> None:
-    """同一插件的重叠写入必须等最后一个事务退出后才解除监控抑制。"""
+def test_plugin_monitor_suppression_covers_delayed_write_events(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """重叠写入退出后的延迟批次不重复重载，后续真实修改仍可重载。"""
     _reset_plugin_manager()
     reset_plugin_system()
     _patch_runtime_settings(
@@ -917,7 +920,26 @@ def test_plugin_monitor_suppression_is_reference_counted(monkeypatch) -> None:
         PLUGIN_AUTO_RELOAD=False,
         ROOT_PATH=MagicMock(),
     )
+    now = [100.0]
+    monkeypatch.setattr(plugin_manager_module.time, "monotonic", lambda: now[0])
     manager = PluginManager()
+    reload_plugin = MagicMock()
+    monitor = PluginChangeMonitor(
+        runtime_root=tmp_path,
+        local_roots=lambda: [],
+        stop_event=threading.Event(),
+        recent_sync={},
+        federated_change=lambda _path: None,
+        runtime_plugin=lambda _path: "DemoPlugin",
+        local_candidate=lambda _path: None,
+        sync_local=MagicMock(),
+        reload_plugin=reload_plugin,
+        dependency_manifest_status=lambda _path: None,
+        watch=lambda *_args, **_kwargs: (),
+        log=MagicMock(),
+        monitor_suppressed=manager.is_plugin_monitor_suppressed,
+    )
+    changes = {("modified", str(tmp_path / "demo" / "plugin.py"))}
 
     with manager.suppress_plugin_monitor("DemoPlugin"):
         assert manager.is_plugin_monitor_suppressed("demoplugin") is True
@@ -925,7 +947,12 @@ def test_plugin_monitor_suppression_is_reference_counted(monkeypatch) -> None:
             assert manager.is_plugin_monitor_suppressed("DemoPlugin") is True
         assert manager.is_plugin_monitor_suppressed("DemoPlugin") is True
 
-    assert manager.is_plugin_monitor_suppressed("DemoPlugin") is False
+    monitor._process_changes(changes)
+    reload_plugin.assert_not_called()
+
+    now[0] += manager.MONITOR_SETTLE_SECONDS
+    monitor._process_changes(changes)
+    reload_plugin.assert_called_once_with("DemoPlugin")
     _reset_plugin_manager()
 
 
