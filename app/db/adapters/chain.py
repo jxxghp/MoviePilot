@@ -26,6 +26,7 @@ from app.application.outbox import (
     OutboxIntent,
 )
 from app.application.transfer.execution import (
+    TransferExecutionCheckpoint,
     TransferExecutionConflictError,
     TransferExecutionLeaseLostError,
     TransferExecutionState,
@@ -403,6 +404,13 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                 != settlement.execution_fingerprint
         ):
             raise TransferExecutionConflictError("整理终态与执行检查点不匹配")
+        checkpoint = TransferExecutionCheckpoint.from_payload(
+            pending.execution_payload,
+            fingerprint=settlement.execution_fingerprint,
+        )
+        if pending.execution_version != checkpoint.version:
+            raise TransferExecutionConflictError("整理执行检查点列版本与内容不一致")
+        checkpoint.validate_settlement_outcome(settlement.outcome)
         return int(pending.settlement_revision)
 
     @staticmethod

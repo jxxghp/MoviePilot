@@ -3,6 +3,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from app.runtime.compat.manifest import SYMBOL_ALIASES
 from scripts.architecture.baseline import (
     collect_current_event_facts as _collect_current_event_facts,
 )
@@ -200,6 +201,58 @@ def _legacy_imports(path: Path) -> set[str]:
     return imports
 
 
+def _attribute_parts(node: ast.Attribute) -> list[str]:
+    """将静态属性访问还原为从根名称开始的完整路径片段。"""
+    parts = [node.attr]
+    value = node.value
+    while isinstance(value, ast.Attribute):
+        parts.append(value.attr)
+        value = value.value
+    if not isinstance(value, ast.Name):
+        return []
+    parts.append(value.id)
+    return list(reversed(parts))
+
+
+def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
+    """收集显式导入或静态属性访问命中的兼容符号。"""
+    compatibility_symbols = {
+        (module_name, symbol_name)
+        for module_name, symbols in SYMBOL_ALIASES.items()
+        for symbol_name in symbols
+    }
+    module_bindings: dict[str, str] = {}
+    references: set[tuple[int, str]] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                binding = alias.asname or alias.name.split(".", maxsplit=1)[0]
+                module_bindings[binding] = alias.name if alias.asname else binding
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                if (node.module, alias.name) in compatibility_symbols:
+                    references.add((node.lineno, f"{node.module}.{alias.name}"))
+                    continue
+                binding = alias.asname or alias.name
+                module_bindings[binding] = f"{node.module}.{alias.name}"
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute):
+            continue
+        parts = _attribute_parts(node)
+        if len(parts) < 2:
+            continue
+        resolved_root = module_bindings.get(parts[0], parts[0])
+        resolved = [*resolved_root.split("."), *parts[1:]]
+        module_name = ".".join(resolved[:-1])
+        symbol_name = resolved[-1]
+        if (module_name, symbol_name) in compatibility_symbols:
+            references.add((node.lineno, f"{module_name}.{symbol_name}"))
+
+    return references
+
+
 def test_legacy_roots_contain_no_python_sources():
     """旧目录只能作为运行时虚拟包存在，仓库中不得重新出现源码。"""
     leftovers = sorted(
@@ -268,6 +321,48 @@ def test_host_code_does_not_import_legacy_roots():
         if imports:
             violations[str(relative)] = imports
     assert violations == {}
+
+
+def test_compat_symbol_scanner_covers_static_import_shapes() -> None:
+    """兼容符号扫描必须覆盖显式导入、模块别名和完整属性链。"""
+    tree = ast.parse(
+        """
+from app.schemas import TransferTask
+import app.schemas as schema_alias
+schema_alias.TransferQueue
+import app.schemas
+app.schemas.TransferTask
+from app.application import transfer as transfer_package
+transfer_package.TransferQueue
+"""
+    )
+
+    assert _compat_symbol_references(tree) == {
+        (2, "app.schemas.TransferTask"),
+        (4, "app.schemas.TransferQueue"),
+        (6, "app.schemas.TransferTask"),
+        (8, "app.application.transfer.TransferQueue"),
+    }
+
+
+def test_host_code_does_not_use_compat_symbol_aliases() -> None:
+    """宿主必须导入 canonical 符号，不得反向消费插件兼容覆盖。"""
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(APP_ROOT)
+        if (
+            relative.parts[0] == "plugins"
+            or relative.parts[:2] == ("runtime", "compat")
+            or relative.parts[:2] == ("sdk", "_legacy")
+        ):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        violations.extend(
+            f"{relative.as_posix()}:{line}:{symbol}"
+            for line, symbol in sorted(_compat_symbol_references(tree))
+        )
+
+    assert violations == []
 
 
 def test_host_code_uses_explicit_runtime_facade_getters():

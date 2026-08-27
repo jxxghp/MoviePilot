@@ -1,5 +1,6 @@
 """验证整理执行证据、CAS fencing 与终态结算持久化。"""
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -19,6 +20,13 @@ from app.application.transfer.execution import (
     TransferStepState,
     build_transfer_checkpoint_fingerprint,
     build_transfer_operation_id,
+)
+from app.application.transfer.workflow import (
+    TransferPlanCheckpoint,
+    TransferPlanItem,
+    TransferPlanningInput,
+    TransferProviderInvocationSnapshot,
+    TransferProviderReference,
 )
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
@@ -48,22 +56,70 @@ def execution_store():
         engine.dispose()
 
 
-def _seed_pending(factory, *, task_id: str = "task-1", lease_token: str = "lease-1"):
+def _planning_input(task_id: str) -> TransferPlanningInput:
+    """构造与测试源文件一致的持久规划输入。"""
+    return TransferPlanningInput(
+        source_fileitem={
+            "storage": "local",
+            "path": f"/{task_id}.mkv",
+            "type": "file",
+        },
+        target_storage="local",
+        target_path="/media",
+        requested_transfer_type="copy",
+    )
+
+
+def _plan_checkpoint(task_id: str) -> TransferPlanCheckpoint:
+    """构造包含一个叶子文件计划的完整宿主检查点。"""
+    planning_input = _planning_input(task_id)
+    return TransferPlanCheckpoint(
+        planning_input=planning_input,
+        target_storage="local",
+        root_target_path="/media",
+        final_target_path=f"/media/{task_id}.mkv",
+        resolved_transfer_type="copy",
+        items=(TransferPlanItem(
+            sequence=0,
+            source_fileitem=planning_input.source_fileitem,
+            target_storage="local",
+            target_path=f"/media/{task_id}.mkv",
+        ),),
+    )
+
+
+def _plan_fingerprint(task_id: str) -> str:
+    """返回测试冻结计划使用的 canonical 指纹。"""
+    return build_transfer_checkpoint_fingerprint(
+        _plan_checkpoint(task_id).to_payload()
+    )
+
+
+def _seed_pending(
+        factory,
+        *,
+        task_id: str = "task-1",
+        lease_token: str = "lease-1",
+        state: str = "planned",
+        with_checkpoint: bool = True,
+):
     """写入一条带有效租约与合法 planning checkpoint 的待执行任务。"""
+    planning_input = _planning_input(task_id)
+    checkpoint = _plan_checkpoint(task_id) if with_checkpoint else None
     with factory() as session:
         session.add(TransferPending(
             task_id=task_id,
             storage="local",
             src_path=f"/{task_id}.mkv",
             created_at="2026-08-27 09:00:00",
-            state="planned",
+            state=state,
             updated_at="2026-08-27 09:00:00",
             input_version=1,
-            planning_input={"schema_version": 1, "source": task_id},
-            input_fingerprint="input-fingerprint",
-            checkpoint_version=1,
-            checkpoint_payload={"schema_version": 1, "task_id": task_id},
-            planned_at="2026-08-27 09:00:00",
+            planning_input=planning_input.to_payload(),
+            input_fingerprint=planning_input.fingerprint,
+            checkpoint_version=checkpoint.schema_version if checkpoint else None,
+            checkpoint_payload=checkpoint.to_payload() if checkpoint else None,
+            planned_at="2026-08-27 09:00:00" if checkpoint else None,
             lease_owner="worker-1",
             lease_token=lease_token,
             lease_expires_at="2099-01-01 00:00:00.000000",
@@ -93,13 +149,19 @@ def _repository(factory, token_values: list[str] | None = None):
 
 def _intent(*, task_id: str = "task-1", ordinal: int = 0) -> TransferStepIntent:
     """构造稳定且可重复计算身份的测试步骤意图。"""
+    planning_input = _planning_input(task_id)
     return TransferStepIntent.create(
         task_id=task_id,
-        checkpoint_fingerprint="plan-fingerprint",
+        checkpoint_fingerprint=_plan_fingerprint(task_id),
         ordinal=ordinal,
         phase="transfer",
-        kind="copy",
-        payload={"src": f"/{task_id}.mkv", "dest": f"/media/{task_id}.mkv"},
+        kind="materialize_target",
+        payload={
+            "source": planning_input.source_fileitem,
+            "target_storage": "local",
+            "target_path": f"/media/{task_id}.mkv",
+            "transfer_type": "copy",
+        },
     )
 
 
@@ -138,6 +200,143 @@ def test_stable_operation_and_checkpoint_identities_are_canonical():
     assert intent.payload == {"path": "/original"}
 
 
+@pytest.mark.parametrize(
+    ("state", "with_checkpoint"),
+    (("accepted", False), ("planned", False)),
+)
+def test_prepare_rejects_task_without_executable_plan(
+        execution_store,
+        state,
+        with_checkpoint,
+):
+    """接纳态或缺失完整 checkpoint 的任务不得进入外部步骤准备。"""
+    _seed_pending(
+        execution_store,
+        state=state,
+        with_checkpoint=with_checkpoint,
+    )
+    _, command = _repository(execution_store)
+    with pytest.raises(TransferExecutionConflictError):
+        command.prepare(
+            task_id="task-1",
+            lease_token="lease-1",
+            intent=_intent(),
+        )
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending is not None
+        assert pending.execution_state == "not_started"
+        assert session.scalar(select(TransferExecutionStep)) is None
+
+
+def test_prepare_rejects_noncanonical_plan_fingerprint(execution_store):
+    """步骤 intent 必须精确绑定当前持久计划的 canonical 指纹。"""
+    _seed_pending(execution_store)
+    _, command = _repository(execution_store)
+    intent = TransferStepIntent.create(
+        task_id="task-1",
+        checkpoint_fingerprint="0" * 64,
+        ordinal=0,
+        phase="transfer",
+        kind="materialize_target",
+        payload=_intent().payload,
+    )
+    with pytest.raises(TransferExecutionConflictError, match="当前冻结计划指纹"):
+        command.prepare(
+            task_id="task-1",
+            lease_token="lease-1",
+            intent=intent,
+        )
+
+
+def test_prepare_rejects_forged_operation_id(execution_store):
+    """调用方手工构造的伪 operation ID 不得绕过稳定身份计算。"""
+    _seed_pending(execution_store)
+    _, command = _repository(execution_store)
+    valid = _intent()
+    forged = TransferStepIntent(
+        operation_id="f" * 64,
+        checkpoint_fingerprint=valid.checkpoint_fingerprint,
+        ordinal=valid.ordinal,
+        phase=valid.phase,
+        kind=valid.kind,
+        payload=valid.payload,
+    )
+    with pytest.raises(TransferExecutionConflictError, match="operation ID 不可信"):
+        command.prepare(
+            task_id="task-1",
+            lease_token="lease-1",
+            intent=forged,
+        )
+
+
+def test_prepare_rejects_arbitrary_intent_with_known_plan_fingerprint(
+        execution_store,
+):
+    """已知计划指纹也不能构造计划未授权的操作类型或参数。"""
+    _seed_pending(execution_store)
+    _, command = _repository(execution_store)
+    arbitrary = TransferStepIntent.create(
+        task_id="task-1",
+        checkpoint_fingerprint=_plan_fingerprint("task-1"),
+        ordinal=0,
+        phase="transfer",
+        kind="delete_move_source",
+        payload={
+            "source": _planning_input("task-1").source_fileitem,
+            "target_storage": "local",
+            "target_path": "/media/task-1.mkv",
+        },
+    )
+    with pytest.raises(TransferExecutionConflictError, match="冻结计划导出"):
+        command.prepare(
+            task_id="task-1",
+            lease_token="lease-1",
+            intent=arbitrary,
+        )
+
+
+def test_prepare_rejects_noncontiguous_ordinal(execution_store):
+    """新步骤只能在完整既有序列尾部连续追加。"""
+    _seed_pending(execution_store)
+    _, command = _repository(execution_store)
+    with pytest.raises(TransferExecutionConflictError, match="连续追加"):
+        command.prepare(
+            task_id="task-1",
+            lease_token="lease-1",
+            intent=_intent(ordinal=1),
+        )
+
+
+def test_stage_execution_running_cas_binds_exact_plan_identity(execution_store):
+    """running CAS 必须拒绝读取后已变化的准入状态或 checkpoint payload。"""
+    _seed_pending(execution_store)
+    checkpoint = _plan_checkpoint("task-1")
+    with execution_store() as session:
+        stale = TransferPending.stage_execution_running(
+            session,
+            task_id="task-1",
+            lease_token="lease-1",
+            admission_state="planned",
+            checkpoint_version=checkpoint.schema_version,
+            checkpoint_payload={"schema_version": checkpoint.schema_version},
+            now_utc="2026-08-27 01:30:00.000000",
+            updated_at="2026-08-27 09:30:00",
+        )
+        assert stale == 0
+        current = TransferPending.stage_execution_running(
+            session,
+            task_id="task-1",
+            lease_token="lease-1",
+            admission_state="planned",
+            checkpoint_version=checkpoint.schema_version,
+            checkpoint_payload=checkpoint.to_payload(),
+            now_utc="2026-08-27 01:30:00.000000",
+            updated_at="2026-08-27 09:30:00",
+        )
+        assert current == 1
+
+
 def test_success_path_persists_steps_and_execution_checkpoint(execution_store):
     """成功路径应保留每步证据，并提交可供唯一 durable writer 结算的检查点。"""
     _seed_pending(execution_store)
@@ -161,7 +360,7 @@ def test_success_path_persists_steps_and_execution_checkpoint(execution_store):
         result=TransferStepResult(payload={"dest_exists": True}),
     )
     checkpoint = TransferExecutionCheckpoint.create(
-        payload={"dest": "/media/task-1.mkv"},
+        payload={"outcome": "succeeded", "dest": "/media/task-1.mkv"},
         operation_ids=(succeeded.operation_id,),
     )
     snapshot = command.checkpoint(
@@ -176,6 +375,244 @@ def test_success_path_persists_steps_and_execution_checkpoint(execution_store):
         assert pending.execution_fingerprint == checkpoint.fingerprint
         step = session.scalar(select(TransferExecutionStep))
         assert step is not None and step.state == "succeeded"
+
+
+def test_provider_predecessor_remains_owned_after_host_plan_promotion(
+        execution_store,
+):
+    """provider 回退升级宿主计划后，序号零证据仍应被严格重建并纳入 checkpoint。"""
+    task_id = "task-1"
+    planning_input = _planning_input(task_id)
+    provider = TransferProviderReference(
+        plugin_id="provider-a",
+        plugin_name="Provider A",
+    )
+    invocation = TransferProviderInvocationSnapshot(
+        fileitem=planning_input.source_fileitem,
+        meta={"title": "Movie"},
+        meta_kind="MetaVideo",
+        mediainfo={"title": "Movie"},
+        mediainfo_kind="MediaInfo",
+    )
+    provider_checkpoint = TransferPlanCheckpoint(
+        planning_input=planning_input,
+        target_storage="",
+        root_target_path="",
+        final_target_path="",
+        resolved_transfer_type="",
+        items=(),
+        resolved_meta=invocation.meta,
+        resolved_meta_kind=invocation.meta_kind,
+        resolved_mediainfo=invocation.mediainfo,
+        resolved_mediainfo_kind=invocation.mediainfo_kind,
+        legacy_transfer_providers=(provider,),
+        provider_invocation=invocation,
+    )
+    _seed_pending(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending is not None
+        pending.state = "provider_pending"
+        pending.checkpoint_payload = provider_checkpoint.to_payload()
+        session.commit()
+    _, command = _repository(execution_store)
+    provider_intent = TransferStepIntent.create(
+        task_id=task_id,
+        checkpoint_fingerprint=build_transfer_checkpoint_fingerprint(
+            provider_checkpoint.to_payload()
+        ),
+        ordinal=0,
+        phase="provider",
+        kind="legacy_transfer_provider_sequence",
+        payload={
+            "providers": [provider.to_payload()],
+            "invocation": invocation.to_payload(),
+        },
+    )
+    prepared = command.prepare(
+        task_id=task_id,
+        lease_token="lease-1",
+        intent=provider_intent,
+    )
+    started = command.begin(
+        task_id=task_id,
+        lease_token="lease-1",
+        operation_id=prepared.operation_id,
+    )
+    provider_succeeded = command.complete(
+        task_id=task_id,
+        lease_token="lease-1",
+        step=started,
+        result=TransferStepResult(payload={"handled": False}),
+    )
+    promoted_checkpoint = replace(
+        _plan_checkpoint(task_id),
+        pre_execution_cleanup_completed=True,
+    )
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending is not None
+        pending.state = "planned"
+        pending.checkpoint_payload = promoted_checkpoint.to_payload()
+        session.commit()
+    promoted_fingerprint = build_transfer_checkpoint_fingerprint(
+        promoted_checkpoint.to_payload()
+    )
+    host_intent = TransferStepIntent.create(
+        task_id=task_id,
+        checkpoint_fingerprint=promoted_fingerprint,
+        ordinal=1,
+        phase="transfer",
+        kind="materialize_target",
+        payload=_intent().payload,
+    )
+    host_prepared = command.prepare(
+        task_id=task_id,
+        lease_token="lease-1",
+        intent=host_intent,
+    )
+    host_started = command.begin(
+        task_id=task_id,
+        lease_token="lease-1",
+        operation_id=host_prepared.operation_id,
+    )
+    host_succeeded = command.complete(
+        task_id=task_id,
+        lease_token="lease-1",
+        step=host_started,
+        result=TransferStepResult(payload={"dest_exists": True}),
+    )
+    execution_checkpoint = TransferExecutionCheckpoint.create(
+        payload={"outcome": "succeeded", "dest": "/media/task-1.mkv"},
+        operation_ids=(
+            provider_succeeded.operation_id,
+            host_succeeded.operation_id,
+        ),
+    )
+    snapshot = command.checkpoint(
+        task_id=task_id,
+        lease_token="lease-1",
+        checkpoint=execution_checkpoint,
+    )
+    assert snapshot.state is TransferExecutionState.SETTLING
+    assert tuple(step.ordinal for step in snapshot.steps) == (0, 1)
+
+
+def test_checkpoint_rejects_operation_ids_out_of_ordinal_order(execution_store):
+    """执行检查点必须按严格 ordinal 保存操作身份，集合相同也不能乱序。"""
+    _seed_pending(execution_store)
+    _, command = _repository(execution_store)
+    completed = []
+    for ordinal in range(2):
+        prepared = command.prepare(
+            task_id="task-1",
+            lease_token="lease-1",
+            intent=_intent(ordinal=ordinal),
+        )
+        started = command.begin(
+            task_id="task-1",
+            lease_token="lease-1",
+            operation_id=prepared.operation_id,
+        )
+        completed.append(command.complete(
+            task_id="task-1",
+            lease_token="lease-1",
+            step=started,
+            result=TransferStepResult(payload={"ordinal": ordinal}),
+        ))
+    checkpoint = TransferExecutionCheckpoint.create(
+        payload={"outcome": "succeeded", "dest": "/media/task-1.mkv"},
+        operation_ids=tuple(step.operation_id for step in reversed(completed)),
+    )
+    with pytest.raises(TransferExecutionConflictError, match="步骤顺序"):
+        command.checkpoint(
+            task_id="task-1",
+            lease_token="lease-1",
+            checkpoint=checkpoint,
+        )
+
+
+def test_checkpoint_rejects_corrupted_persisted_operation_id(execution_store):
+    """checkpoint 前必须重新计算每个持久步骤的 operation ID。"""
+    _seed_pending(execution_store)
+    _, command = _repository(execution_store)
+    prepared = command.prepare(
+        task_id="task-1",
+        lease_token="lease-1",
+        intent=_intent(),
+    )
+    started = command.begin(
+        task_id="task-1",
+        lease_token="lease-1",
+        operation_id=prepared.operation_id,
+    )
+    command.complete(
+        task_id="task-1",
+        lease_token="lease-1",
+        step=started,
+        result=TransferStepResult(payload={"dest_exists": True}),
+    )
+    with execution_store() as session:
+        step = session.scalar(select(TransferExecutionStep))
+        assert step is not None
+        step.operation_id = "e" * 64
+        session.commit()
+    checkpoint = TransferExecutionCheckpoint.create(
+        payload={"outcome": "succeeded", "dest": "/media/task-1.mkv"},
+        operation_ids=("e" * 64,),
+    )
+    with pytest.raises(TransferExecutionConflictError, match="冻结意图"):
+        command.checkpoint(
+            task_id="task-1",
+            lease_token="lease-1",
+            checkpoint=checkpoint,
+        )
+
+
+def test_checkpoint_rejects_noncontiguous_persisted_ordinals(execution_store):
+    """checkpoint 前必须拒绝缺口或从非零开始的持久步骤序列。"""
+    _seed_pending(execution_store)
+    _, command = _repository(execution_store)
+    prepared = command.prepare(
+        task_id="task-1",
+        lease_token="lease-1",
+        intent=_intent(),
+    )
+    started = command.begin(
+        task_id="task-1",
+        lease_token="lease-1",
+        operation_id=prepared.operation_id,
+    )
+    command.complete(
+        task_id="task-1",
+        lease_token="lease-1",
+        step=started,
+        result=TransferStepResult(payload={"dest_exists": True}),
+    )
+    with execution_store() as session:
+        step = session.scalar(select(TransferExecutionStep))
+        assert step is not None
+        step.ordinal = 2
+        step.operation_id = build_transfer_operation_id(
+            task_id=step.task_id,
+            checkpoint_fingerprint=step.checkpoint_fingerprint,
+            ordinal=step.ordinal,
+            phase=step.phase,
+            kind=step.kind,
+            intent_payload=step.intent_payload,
+        )
+        corrupted_operation_id = step.operation_id
+        session.commit()
+    checkpoint = TransferExecutionCheckpoint.create(
+        payload={"outcome": "succeeded", "dest": "/media/task-1.mkv"},
+        operation_ids=(corrupted_operation_id,),
+    )
+    with pytest.raises(TransferExecutionConflictError, match="全局序号不连续"):
+        command.checkpoint(
+            task_id="task-1",
+            lease_token="lease-1",
+            checkpoint=checkpoint,
+        )
 
 
 def test_retry_wait_resumes_same_failed_operation_with_new_attempt(execution_store):
@@ -264,7 +701,7 @@ def test_zero_side_effect_checkpoint_is_vacuously_complete(execution_store):
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     checkpoint = TransferExecutionCheckpoint.create(
-        payload={"preview": True, "accepted": False},
+        payload={"outcome": "failed", "preview": True, "accepted": False},
         operation_ids=(),
         skip_reason="preview",
     )

@@ -5,9 +5,9 @@ Revises: d3a9e5f7b2c4
 Create Date: 2026-08-27
 """
 
-from collections.abc import Callable
 import hashlib
 import json
+from collections.abc import Callable
 
 import sqlalchemy as sa
 from alembic import op
@@ -21,6 +21,7 @@ _PENDING_TABLE = "transferpending"
 _HISTORY_TABLE = "transferhistory"
 _STEP_TABLE = "transferexecutionstep"
 _RECEIPT_TABLE = "transfersettlementreceipt"
+_RECEIPT_ARCHIVE_TABLE = "transfersettlementreceipt_3_0_16_archive"
 _PENDING_INDEX = "ix_transferpending_execution_due"
 _HISTORY_INDEX = "ux_transferhistory_transfer_task_id"
 _STEP_OPERATION_UNIQUE = "uq_transferexecutionstep_operation_id"
@@ -245,6 +246,35 @@ def _repair_indexes(
                 list(columns),
                 unique=False,
             )
+
+
+def _repair_owned_index(
+        *,
+        table_name: str,
+        index_name: str,
+        columns: tuple[str, ...],
+        unique: bool,
+) -> None:
+    """按列顺序和唯一性精确修复宿主表上的迁移自有索引。"""
+    indexes = {
+        item["name"]: item
+        for item in sa.inspect(op.get_bind()).get_indexes(table_name)
+        if item.get("name") and not item.get("duplicates_constraint")
+    }
+    current = indexes.get(index_name)
+    if current is not None and (
+            tuple(current.get("column_names") or ()) != columns
+            or bool(current.get("unique")) != unique
+    ):
+        op.drop_index(index_name, table_name=table_name)
+        current = None
+    if current is None:
+        op.create_index(
+            index_name,
+            table_name,
+            list(columns),
+            unique=unique,
+        )
 
 
 def _column_type_signature(column_type: sa.types.TypeEngine) -> tuple[str, object]:
@@ -554,6 +584,27 @@ def _create_receipt_table() -> None:
     )
 
 
+def _restore_receipt_archive() -> None:
+    """在重升时原子恢复降级保留的 append-only 结算证据。"""
+    tables = _table_names()
+    if _RECEIPT_ARCHIVE_TABLE not in tables:
+        return
+    if _RECEIPT_TABLE not in tables:
+        op.rename_table(_RECEIPT_ARCHIVE_TABLE, _RECEIPT_TABLE)
+        return
+    archive_count = _table_row_count(_RECEIPT_ARCHIVE_TABLE)
+    live_count = _table_row_count(_RECEIPT_TABLE)
+    if archive_count > 0 and live_count > 0:
+        raise RuntimeError(
+            "结算回执现表与降级归档同时含数据，无法自动判定恢复顺序"
+        )
+    if archive_count > 0:
+        op.drop_table(_RECEIPT_TABLE)
+        op.rename_table(_RECEIPT_ARCHIVE_TABLE, _RECEIPT_TABLE)
+    else:
+        op.drop_table(_RECEIPT_ARCHIVE_TABLE)
+
+
 def _create_or_repair_receipt_table() -> None:
     """创建结算回执表，并只对空的残缺表执行无损重建。"""
     if _RECEIPT_TABLE not in _table_names():
@@ -704,30 +755,29 @@ def upgrade() -> None:
     tables = _table_names()
     if _PENDING_TABLE not in tables:
         return
+    _restore_receipt_archive()
     _add_pending_columns()
     _backfill_pending()
-    if _PENDING_INDEX not in _index_names(_PENDING_TABLE):
-        op.create_index(
-            _PENDING_INDEX,
-            _PENDING_TABLE,
-            [
-                "execution_state",
-                "retry_due_at",
-                "state",
-                "created_at",
-                "id",
-            ],
-            unique=False,
-        )
+    _repair_owned_index(
+        table_name=_PENDING_TABLE,
+        index_name=_PENDING_INDEX,
+        columns=(
+            "execution_state",
+            "retry_due_at",
+            "state",
+            "created_at",
+            "id",
+        ),
+        unique=False,
+    )
     if _HISTORY_TABLE in tables:
         _add_history_columns()
-        if _HISTORY_INDEX not in _index_names(_HISTORY_TABLE):
-            op.create_index(
-                _HISTORY_INDEX,
-                _HISTORY_TABLE,
-                ["transfer_task_id"],
-                unique=True,
-            )
+        _repair_owned_index(
+            table_name=_HISTORY_TABLE,
+            index_name=_HISTORY_INDEX,
+            columns=("transfer_task_id",),
+            unique=True,
+        )
     _create_or_repair_receipt_table()
     _create_or_repair_step_table()
     _backfill_legacy_review_steps()
@@ -817,8 +867,24 @@ def downgrade() -> None:
     _mark_downgrade_uncertain()
     if _STEP_TABLE in _table_names():
         op.drop_table(_STEP_TABLE)
-    if _RECEIPT_TABLE in _table_names():
-        op.drop_table(_RECEIPT_TABLE)
+    tables = _table_names()
+    if _RECEIPT_TABLE in tables:
+        live_count = _table_row_count(_RECEIPT_TABLE)
+        if _RECEIPT_ARCHIVE_TABLE in tables:
+            archive_count = _table_row_count(_RECEIPT_ARCHIVE_TABLE)
+            if live_count > 0 and archive_count > 0:
+                raise RuntimeError(
+                    "结算回执现表与降级归档同时含数据，拒绝覆盖恢复证据"
+                )
+            if archive_count > 0:
+                op.drop_table(_RECEIPT_TABLE)
+                live_count = 0
+            else:
+                op.drop_table(_RECEIPT_ARCHIVE_TABLE)
+        if live_count > 0:
+            op.rename_table(_RECEIPT_TABLE, _RECEIPT_ARCHIVE_TABLE)
+        elif _RECEIPT_TABLE in _table_names():
+            op.drop_table(_RECEIPT_TABLE)
     if _HISTORY_TABLE in _table_names():
         history_columns = _column_names(_HISTORY_TABLE)
         if _HISTORY_INDEX in _index_names(_HISTORY_TABLE):

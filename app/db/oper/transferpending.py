@@ -13,9 +13,9 @@ class TransferPendingOper(DbOper):
     """
 
     def stage_admit(self, *, task_id: str, storage: str, src_path: str,
-                    state: str, now_time: str, input_version: int = 1,
-                    planning_input: Optional[dict[str, Any]] = None,
-                    input_fingerprint: Optional[str] = None) -> Optional[TransferPending]:
+                    state: str, now_time: str, input_version: int,
+                    planning_input: dict[str, Any],
+                    input_fingerprint: str) -> Optional[TransferPending]:
         """
         在当前会话中暂存一条持久接纳记录。
 
@@ -287,7 +287,7 @@ class TransferPendingOper(DbOper):
             )
         )
 
-    def stage_discard_claimed(
+    def stage_abandon_unstarted(
             self,
             *,
             task_id: str,
@@ -295,7 +295,7 @@ class TransferPendingOper(DbOper):
             now_time: str,
     ) -> int:
         """
-        使用当前会话按当前未过期 token 删除终态任务。
+        使用当前会话按当前未过期 token 删除确认从未执行的缺失源任务。
 
         :param task_id: 稳定任务标识
         :param lease_token: 当前租约令牌
@@ -303,7 +303,7 @@ class TransferPendingOper(DbOper):
         :return: 删除的记录数
         """
         return self._execute_sync_write(
-            lambda session: TransferPending.discard_claimed(
+            lambda session: TransferPending.abandon_unstarted(
                 session,
                 task_id=task_id,
                 lease_token=lease_token,
@@ -334,6 +334,9 @@ class TransferPendingOper(DbOper):
             *,
             task_id: str,
             lease_token: str,
+            admission_state: str,
+            checkpoint_version: int,
+            checkpoint_payload: dict[str, Any],
             now_utc: str,
             updated_at: str,
     ) -> int:
@@ -343,6 +346,9 @@ class TransferPendingOper(DbOper):
                 session,
                 task_id=task_id,
                 lease_token=lease_token,
+                admission_state=admission_state,
+                checkpoint_version=checkpoint_version,
+                checkpoint_payload=checkpoint_payload,
                 now_utc=now_utc,
                 updated_at=updated_at,
             )

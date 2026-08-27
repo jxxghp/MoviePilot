@@ -15,6 +15,12 @@ from app.application.transfer.execution import (
     TransferOperationObservationState,
     TransferStepIntent,
     TransferStepResult,
+    build_transfer_checkpoint_fingerprint,
+)
+from app.application.transfer.workflow import (
+    TransferPlanCheckpoint,
+    TransferPlanItem,
+    TransferPlanningInput,
 )
 from app.chain import transfer as transfer_chain_module
 from app.db.adapters.transfer.execution import (
@@ -26,6 +32,33 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.workflow import FileItem
+
+
+def _runner_plan_checkpoint() -> TransferPlanCheckpoint:
+    """构造 runner fixture 使用的完整冻结计划。"""
+    planning_input = TransferPlanningInput(
+        source_fileitem={
+            "storage": "local",
+            "path": "/source.mkv",
+            "type": "file",
+        },
+        target_storage="local",
+        target_path="/target.mkv",
+        requested_transfer_type="copy",
+    )
+    return TransferPlanCheckpoint(
+        planning_input=planning_input,
+        target_storage="local",
+        root_target_path="/",
+        final_target_path="/target.mkv",
+        resolved_transfer_type="copy",
+        items=(TransferPlanItem(
+            sequence=0,
+            source_fileitem=planning_input.source_fileitem,
+            target_storage="local",
+            target_path="/target.mkv",
+        ),),
+    )
 
 
 @pytest.fixture
@@ -41,6 +74,8 @@ def execution_repository():
         ],
     )
     factory = sessionmaker(bind=engine, expire_on_commit=False)
+    plan_checkpoint = _runner_plan_checkpoint()
+    planning_input = plan_checkpoint.planning_input
     with factory() as session:
         session.add(TransferPending(
             task_id="task-runner",
@@ -50,10 +85,10 @@ def execution_repository():
             state="planned",
             updated_at="2026-08-27 09:00:00",
             input_version=1,
-            planning_input={"schema_version": 1},
-            input_fingerprint="input",
+            planning_input=planning_input.to_payload(),
+            input_fingerprint=planning_input.fingerprint,
             checkpoint_version=1,
-            checkpoint_payload={"schema_version": 1},
+            checkpoint_payload=plan_checkpoint.to_payload(),
             planned_at="2026-08-27 09:00:00",
             lease_owner="worker",
             lease_token="lease",
@@ -82,9 +117,28 @@ def _runner(repository):
     return transfer_chain_module._DurableTransferStepRunner(
         task_id="task-runner",
         lease_token="lease",
-        checkpoint_fingerprint="plan",
+        checkpoint_fingerprint=_runner_plan_fingerprint(),
         repository=repository,
     )
+
+
+def _runner_plan_fingerprint() -> str:
+    """返回 runner fixture 中完整冻结计划的 canonical 指纹。"""
+    return build_transfer_checkpoint_fingerprint(
+        _runner_plan_checkpoint().to_payload()
+    )
+
+
+def _runner_step_payload() -> dict:
+    """返回由 runner 冻结计划唯一叶操作导出的目标落地参数。"""
+    checkpoint = _runner_plan_checkpoint()
+    item = checkpoint.items[0]
+    return {
+        "source": item.source_fileitem,
+        "target_storage": item.target_storage,
+        "target_path": item.target_path,
+        "transfer_type": checkpoint.resolved_transfer_type,
+    }
 
 
 def test_runner_replay_returns_persisted_result_without_repeating_side_effect(
@@ -94,8 +148,8 @@ def test_runner_replay_returns_persisted_result_without_repeating_side_effect(
     calls = []
     first = _runner(execution_repository).run(
         phase="transfer",
-        kind="copy",
-        payload={"source": "/source.mkv", "target": "/target.mkv"},
+        kind="materialize_target",
+        payload=_runner_step_payload(),
         execute=lambda: calls.append("executed") or TransferStepResult(
             payload={"item": {"path": "/target.mkv"}}
         ),
@@ -103,8 +157,8 @@ def test_runner_replay_returns_persisted_result_without_repeating_side_effect(
     )
     second = _runner(execution_repository).run(
         phase="transfer",
-        kind="copy",
-        payload={"source": "/source.mkv", "target": "/target.mkv"},
+        kind="materialize_target",
+        payload=_runner_step_payload(),
         execute=lambda: pytest.fail("已成功步骤不得重复执行"),
         observe=lambda: pytest.fail("已成功步骤不得执行恢复探测"),
     )
@@ -122,11 +176,11 @@ def test_runner_routes_unknown_orphaned_attempt_to_manual_review(
         lease_token="lease",
         intent=TransferStepIntent.create(
             task_id="task-runner",
-            checkpoint_fingerprint="plan",
-            ordinal=0,
-            phase="provider",
-            kind="opaque",
-            payload={"provider": "legacy"},
+                checkpoint_fingerprint=_runner_plan_fingerprint(),
+                ordinal=0,
+                phase="transfer",
+                kind="materialize_target",
+                payload=_runner_step_payload(),
         ),
     )
     command.begin(
@@ -140,9 +194,9 @@ def test_runner_routes_unknown_orphaned_attempt_to_manual_review(
         match="禁止自动重放",
     ):
         _runner(execution_repository).run(
-            phase="provider",
-            kind="opaque",
-            payload={"provider": "legacy"},
+            phase="transfer",
+            kind="materialize_target",
+            payload=_runner_step_payload(),
             execute=lambda: pytest.fail("未知遗留步骤不得重放"),
             observe=lambda: TransferOperationObservation(
                 state=TransferOperationObservationState.UNKNOWN,
@@ -152,6 +206,138 @@ def test_runner_routes_unknown_orphaned_attempt_to_manual_review(
     snapshot = execution_repository.get_snapshot(task_id="task-runner")
     assert snapshot is not None
     assert snapshot.state is TransferExecutionState.MANUAL_REVIEW
+
+
+def test_runner_observes_applied_after_execute_error_and_completes_step(
+        execution_repository,
+) -> None:
+    """execute 抛错后若外部事实已生效，必须以观察证据完成而非重放。"""
+    evidence = TransferStepResult(payload={"target": "/target.mkv"})
+
+    def execute() -> TransferStepResult:
+        """模拟副作用成功后调用方在返回前崩溃。"""
+        raise OSError("connection reset after apply")
+
+    result = _runner(execution_repository).run(
+        phase="transfer",
+        kind="materialize_target",
+        payload=_runner_step_payload(),
+        execute=execute,
+        observe=lambda: TransferOperationObservation(
+            state=TransferOperationObservationState.APPLIED,
+            evidence=evidence,
+        ),
+    )
+
+    snapshot = execution_repository.get_snapshot(task_id="task-runner")
+    assert result == evidence
+    assert snapshot is not None
+    assert snapshot.state is TransferExecutionState.RUNNING
+    assert snapshot.steps[0].result == evidence
+    assert snapshot.steps[0].state.value == "succeeded"
+
+
+def test_runner_defers_after_execute_error_observed_not_applied(
+        execution_repository,
+) -> None:
+    """execute 抛错且确认未生效时只能进入持久退避，不得误判成功。"""
+    evidence = TransferStepResult(payload={"target_exists": False})
+
+    def execute() -> TransferStepResult:
+        """模拟外部操作在应用前失败。"""
+        raise OSError("write rejected")
+
+    with pytest.raises(transfer_chain_module._TransferRetryDeferred):
+        _runner(execution_repository).run(
+            phase="transfer",
+            kind="materialize_target",
+            payload=_runner_step_payload(),
+            execute=execute,
+            observe=lambda: TransferOperationObservation(
+                state=TransferOperationObservationState.NOT_APPLIED,
+                evidence=evidence,
+            ),
+        )
+
+    snapshot = execution_repository.get_snapshot(task_id="task-runner")
+    assert snapshot is not None
+    assert snapshot.state is TransferExecutionState.RETRY_WAIT
+    assert snapshot.steps[0].result == evidence
+    assert snapshot.steps[0].state.value == "failed"
+
+
+@pytest.mark.parametrize(
+    "observation_state",
+    [
+        TransferOperationObservationState.UNKNOWN,
+        TransferOperationObservationState.CONFLICT,
+    ],
+)
+def test_runner_freezes_uncertain_execute_error_for_manual_review(
+        execution_repository,
+        observation_state,
+) -> None:
+    """execute 异常后的未知或冲突结果必须冻结，禁止自动重放。"""
+    evidence = TransferStepResult(payload={"receipt": "ambiguous"})
+
+    def execute() -> TransferStepResult:
+        """模拟外部结果未知的执行异常。"""
+        raise TimeoutError("provider timeout")
+
+    with pytest.raises(
+        transfer_chain_module._TransferManualReviewRequired,
+        match=observation_state.value,
+    ):
+        _runner(execution_repository).run(
+            phase="transfer",
+            kind="materialize_target",
+            payload=_runner_step_payload(),
+            execute=execute,
+            observe=lambda: TransferOperationObservation(
+                state=observation_state,
+                evidence=evidence,
+            ),
+        )
+
+    snapshot = execution_repository.get_snapshot(task_id="task-runner")
+    assert snapshot is not None
+    assert snapshot.state is TransferExecutionState.MANUAL_REVIEW
+    assert snapshot.steps[0].result == evidence
+    assert snapshot.steps[0].state.value == "manual_review"
+
+
+def test_runner_freezes_when_observer_errors_after_execute_error(
+        execution_repository,
+) -> None:
+    """execute 与 observer 同时失败时必须保留双重证据并进入人工复核。"""
+    def execute() -> TransferStepResult:
+        """模拟调用结果未知的执行超时。"""
+        raise TimeoutError("execute timeout")
+
+    def observe() -> TransferOperationObservation:
+        """模拟外部状态查询端点同时不可用。"""
+        raise ConnectionError("observer unavailable")
+
+    with pytest.raises(
+        transfer_chain_module._TransferManualReviewRequired,
+        match="unknown",
+    ):
+        _runner(execution_repository).run(
+            phase="transfer",
+            kind="materialize_target",
+            payload=_runner_step_payload(),
+            execute=execute,
+            observe=observe,
+        )
+
+    snapshot = execution_repository.get_snapshot(task_id="task-runner")
+    assert snapshot is not None
+    assert snapshot.state is TransferExecutionState.MANUAL_REVIEW
+    assert snapshot.steps[0].result is not None
+    assert snapshot.steps[0].result.payload == {
+        "execute_error": "execute timeout",
+        "observe_error": "observer unavailable",
+    }
 
 
 class _ImmediateStepRunner:

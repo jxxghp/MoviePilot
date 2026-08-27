@@ -132,10 +132,11 @@ def _assert_upgrade_downgrade_reupgrade(connection, monkeypatch) -> None:
     if isinstance(planning_payload, str):
         planning_payload = json.loads(planning_payload)
     planning_input = TransferPlanningInput.from_payload(planning_payload)
-    assert planning_input == TransferPlanningInput.legacy(
-        storage="local",
-        src_path="/downloads/Movie.mkv",
-    )
+    assert planning_input.source_fileitem == {
+        "storage": "local",
+        "path": "/downloads/Movie.mkv",
+    }
+    assert planning_input.options == {"legacy_replan": True}
     assert upgraded["input_version"] == 1
     assert upgraded["input_fingerprint"] == planning_input.fingerprint
     assert upgraded["checkpoint_payload"] is None
@@ -280,6 +281,58 @@ def test_partial_upgrade_preserves_existing_planning_json(monkeypatch) -> None:
         assert connection.execute(sa.text(
             "SELECT state FROM transferpending WHERE id = 1"
         )).scalar_one() == "future-state"
+
+
+def test_partial_upgrade_recomputes_inconsistent_planning_identity(monkeypatch) -> None:
+    """部分升级留下的版本和指纹必须按最终 JSON 重算，不能保留伪身份。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        _create_admission_table(connection)
+        connection.execute(sa.text(
+            "ALTER TABLE transferpending ADD COLUMN input_version INTEGER"
+        ))
+        connection.execute(sa.text(
+            "ALTER TABLE transferpending ADD COLUMN input_fingerprint VARCHAR(64)"
+        ))
+        connection.execute(sa.text(
+            "UPDATE transferpending SET input_version = 99, "
+            "input_fingerprint = 'bogus' WHERE id = 1"
+        ))
+
+        migration = _bind_migration(monkeypatch, connection)
+        migration.upgrade()
+        upgraded = _planning_row(connection)
+        payload = upgraded["planning_input"]
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        planning_input = TransferPlanningInput.from_payload(payload)
+
+        assert upgraded["input_version"] == planning_input.schema_version == 1
+        assert upgraded["input_fingerprint"] == planning_input.fingerprint
+        assert upgraded["input_fingerprint"] != "bogus"
+
+
+def test_replayed_upgrade_repairs_complete_but_mismatched_identity(monkeypatch) -> None:
+    """重复执行升级也必须修复完整三元组中与 payload 不一致的旧值。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        _create_admission_table(connection)
+        migration = _bind_migration(monkeypatch, connection)
+        migration.upgrade()
+        connection.execute(sa.text(
+            "UPDATE transferpending SET input_version = 7, "
+            "input_fingerprint = 'stale' WHERE id = 1"
+        ))
+
+        migration.upgrade()
+        upgraded = _planning_row(connection)
+        payload = upgraded["planning_input"]
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        planning_input = TransferPlanningInput.from_payload(payload)
+
+        assert upgraded["input_version"] == 1
+        assert upgraded["input_fingerprint"] == planning_input.fingerprint
 
 
 def test_transfer_planning_migration_runs_on_postgresql(monkeypatch) -> None:

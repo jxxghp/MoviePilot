@@ -142,18 +142,14 @@ class TransactionalTransferAdmissionRepository:
             *,
             storage: str,
             src_path: str,
-            planning_input: Optional[TransferPlanningInput] = None,
+            planning_input: TransferPlanningInput,
     ) -> TransferAdmission:
         """按输入指纹幂等持久化准入事实，并返回跨重启稳定身份。"""
         if not storage or not src_path:
             raise ValueError("整理任务的存储与源路径不能为空")
-        effective_input = planning_input or TransferPlanningInput.legacy(
-            storage=storage,
-            src_path=src_path,
-        )
         if (
-                effective_input.source_fileitem.get("storage") != storage
-                or effective_input.source_fileitem.get("path") != src_path
+                planning_input.source_fileitem.get("storage") != storage
+                or planning_input.source_fileitem.get("path") != src_path
         ):
             raise ValueError("整理规划输入的源文件身份与准入参数不一致")
         now_time = self._now()
@@ -167,16 +163,16 @@ class TransactionalTransferAdmissionRepository:
                         src_path=src_path,
                         state=TRANSFER_ADMISSION_ACCEPTED,
                         now_time=now_time,
-                        input_version=effective_input.schema_version,
-                        planning_input=effective_input.to_payload(),
-                        input_fingerprint=effective_input.fingerprint,
+                        input_version=planning_input.schema_version,
+                        planning_input=planning_input.to_payload(),
+                        input_fingerprint=planning_input.fingerprint,
                     )
                     if pending is None:
                         raise TransferAdmissionConflictError(
                             f"整理源文件已有持久终态回执: {storage}:{src_path}"
                         )
                     session.flush()
-                    self._assert_input_match(pending, effective_input)
+                    self._assert_input_match(pending, planning_input)
                     admission = self._project(pending)
                     transaction.commit()
                     return admission
@@ -192,7 +188,7 @@ class TransactionalTransferAdmissionRepository:
                 )
                 if pending is None:
                     raise RuntimeError("并发准入冲突后未找到已提交记录") from error
-                self._assert_input_match(pending, effective_input)
+                self._assert_input_match(pending, planning_input)
                 return self._project(pending)
 
     def claim_task(
@@ -525,14 +521,14 @@ class TransactionalTransferAdmissionRepository:
                 transaction.rollback()
                 raise
 
-    def discard_claimed(self, *, task_id: str, lease_token: str) -> int:
-        """仅以当前未过期 token 删除终态任务，拒绝陈旧 worker 变更。"""
+    def abandon_unstarted(self, *, task_id: str, lease_token: str) -> int:
+        """仅以当前 token 删除无执行证据的缺失源任务，拒绝陈旧 worker。"""
         if not task_id or not lease_token:
             return 0
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
             try:
-                deleted = TransferPendingOper(db=session).stage_discard_claimed(
+                deleted = TransferPendingOper(db=session).stage_abandon_unstarted(
                     task_id=task_id,
                     lease_token=lease_token,
                     now_time=self._format_lease_time(self._lease_now()),

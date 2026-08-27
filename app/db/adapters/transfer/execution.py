@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +28,14 @@ from app.application.transfer.execution import (
     TransferStepIntent,
     TransferStepResult,
     TransferStepState,
+    build_transfer_operation_id,
+)
+from app.application.transfer.workflow import (
+    TRANSFER_ADMISSION_PLANNED,
+    TRANSFER_ADMISSION_PROVIDER_PENDING,
+    TransferPlanCheckpoint,
+    TransferProviderInvocationSnapshot,
+    TransferProviderReference,
 )
 from app.db.models.transferexecutionstep import (
     TransferExecutionStep as TransferExecutionStepModel,
@@ -229,14 +238,332 @@ class TransactionalTransferExecutionRepository:
         ))
 
     @staticmethod
-    def _raise_fenced_failure(
+    def _plan_identity(
+            pending: TransferPending,
+    ) -> tuple[TransferPlanCheckpoint, str]:
+        """恢复完整冻结计划，并返回其规范 payload 的稳定指纹。"""
+        if pending.state not in {
+            TRANSFER_ADMISSION_PLANNED,
+            TRANSFER_ADMISSION_PROVIDER_PENDING,
+        }:
+            raise TransferExecutionConflictError("整理任务尚未进入可执行规划状态")
+        if (
+                pending.checkpoint_version is None
+                or pending.checkpoint_payload is None
+                or pending.planned_at is None
+        ):
+            raise TransferExecutionConflictError("整理任务缺少完整计划检查点")
+        try:
+            checkpoint = TransferPlanCheckpoint.from_payload(
+                pending.checkpoint_payload
+            )
+        except (TypeError, ValueError) as error:
+            raise TransferExecutionConflictError(
+                "整理任务计划检查点无法恢复"
+            ) from error
+        if pending.checkpoint_version != checkpoint.schema_version:
+            raise TransferExecutionConflictError("整理任务计划检查点版本不一致")
+        if checkpoint.planning_input.fingerprint != pending.input_fingerprint:
+            raise TransferExecutionConflictError("整理任务计划与准入输入指纹不一致")
+        expected_state = (
+            TRANSFER_ADMISSION_PROVIDER_PENDING
+            if checkpoint.is_provider_pending
+            else TRANSFER_ADMISSION_PLANNED
+        )
+        if pending.state != expected_state:
+            raise TransferExecutionConflictError("整理任务计划类型与准入状态不一致")
+        return checkpoint, checkpoint.fingerprint
+
+    @staticmethod
+    def _provider_predecessor_checkpoint(
+            checkpoint: TransferPlanCheckpoint,
+            step: TransferExecutionStepModel,
+    ) -> Optional[TransferPlanCheckpoint]:
+        """重建 provider 回退前的冻结计划，证明序号零步骤的历史归属。"""
+        if (
+                not checkpoint.pre_execution_cleanup_completed
+                or step.ordinal != 0
+                or step.phase != "provider"
+                or step.kind != "legacy_transfer_provider_sequence"
+        ):
+            return None
+        providers_payload = step.intent_payload.get("providers")
+        invocation_payload = step.intent_payload.get("invocation")
+        if (
+                not isinstance(providers_payload, list)
+                or not providers_payload
+                or not all(isinstance(item, dict) for item in providers_payload)
+                or not isinstance(invocation_payload, dict)
+        ):
+            return None
+        try:
+            providers = tuple(
+                TransferProviderReference.from_payload(item)
+                for item in providers_payload
+            )
+            invocation = TransferProviderInvocationSnapshot.from_payload(
+                invocation_payload
+            )
+            if invocation.fileitem != checkpoint.planning_input.source_fileitem:
+                return None
+            predecessor = TransferPlanCheckpoint(
+                planning_input=checkpoint.planning_input,
+                target_storage="",
+                root_target_path="",
+                final_target_path="",
+                resolved_transfer_type="",
+                items=(),
+                resolved_meta=invocation.meta,
+                resolved_meta_kind=invocation.meta_kind,
+                resolved_mediainfo=invocation.mediainfo,
+                resolved_mediainfo_kind=invocation.mediainfo_kind,
+                resolved_episodes_info=invocation.episodes_info,
+                legacy_transfer_providers=providers,
+                provider_invocation=invocation,
+                preview=invocation.preview,
+            )
+        except (TypeError, ValueError):
+            return None
+        return predecessor
+
+    @staticmethod
+    def _intent_belongs_to_checkpoint(
+            checkpoint: TransferPlanCheckpoint,
+            *,
+            phase: str,
+            kind: str,
+            payload: dict[str, Any],
+            previous_steps: list[TransferExecutionStepModel],
+    ) -> bool:
+        """校验步骤类型及稳定参数由冻结计划或其已提交发现证据导出。"""
+        if checkpoint.rejection_error:
+            return (
+                phase == "planning"
+                and kind == "reject"
+                and payload == {"error": checkpoint.rejection_error}
+            )
+        if checkpoint.is_provider_pending:
+            invocation = checkpoint.provider_invocation
+            if invocation is None:
+                return False
+            return (
+                phase == "provider"
+                and kind == "legacy_transfer_provider_sequence"
+                and payload == {
+                    "providers": [
+                        provider.to_payload()
+                        for provider in checkpoint.legacy_transfer_providers
+                    ],
+                    "invocation": invocation.to_payload(),
+                }
+            )
+        plan_items = tuple(checkpoint.items)
+        if phase == "transfer" and kind == checkpoint.resolved_transfer_type:
+            return any(payload == {
+                "source": item.source_fileitem.get("path"),
+                "target": item.target_path,
+            } for item in plan_items)
+        if phase == "transfer" and kind == "materialize_target":
+            return any(payload == {
+                "source": item.source_fileitem,
+                "target_storage": item.target_storage,
+                "target_path": item.target_path,
+                "transfer_type": (
+                    "copy"
+                    if (
+                        checkpoint.resolved_transfer_type == "move"
+                        and item.source_fileitem.get("storage")
+                        != item.target_storage
+                    )
+                    else checkpoint.resolved_transfer_type
+                ),
+            } for item in plan_items)
+        if phase == "transfer" and kind == "delete_move_source":
+            return (
+                checkpoint.resolved_transfer_type == "move"
+                and any(
+                    item.source_fileitem.get("storage") != item.target_storage
+                    and payload == {
+                        "source": item.source_fileitem,
+                        "target_storage": item.target_storage,
+                        "target_path": item.target_path,
+                    }
+                    for item in plan_items
+                )
+            )
+        source = checkpoint.planning_input.source_fileitem
+        if phase == "prepare" and kind == "cleanup_previous_destination":
+            return payload == {"source_path": source.get("path")}
+        if phase == "prepare" and kind == "ensure_target_directory":
+            target_path = Path(checkpoint.final_target_path)
+            directory_path = (
+                target_path
+                if source.get("type") == "dir"
+                else target_path.parent
+            )
+            return payload == {
+                "storage": checkpoint.target_storage,
+                "path": directory_path.as_posix(),
+            }
+        if phase == "prepare" and kind == "delete_overwrite_target":
+            return payload == {
+                "storage": checkpoint.target_storage,
+                "path": checkpoint.final_target_path,
+            }
+        if phase == "decision" and kind == "resolve_overwrite":
+            return payload == {
+                "source": source,
+                "target_storage": checkpoint.target_storage,
+                "target_path": checkpoint.final_target_path,
+                "transfer_type": checkpoint.resolved_transfer_type,
+                "overwrite_mode": checkpoint.overwrite_mode,
+                "need_notify": checkpoint.need_notify,
+            }
+        if phase == "decision" and kind == "plugin_transfer_intercept":
+            stable_payload = {
+                "source": source,
+                "target_storage": checkpoint.target_storage,
+                "target_path": checkpoint.final_target_path,
+                "transfer_type": checkpoint.resolved_transfer_type,
+            }
+            return payload == stable_payload or (
+                set(payload) == {*stable_payload, "over_flag"}
+                and all(payload[key] == value for key, value in stable_payload.items())
+                and isinstance(payload.get("over_flag"), bool)
+            )
+        if phase == "prepare" and kind == "discover_version_targets":
+            return payload == {
+                "storage": checkpoint.target_storage,
+                "path": checkpoint.final_target_path,
+            }
+        if phase == "prepare" and kind == "delete_version_target":
+            candidate = payload.get("item")
+            if (
+                    set(payload) != {"storage", "item"}
+                    or payload.get("storage") != checkpoint.target_storage
+                    or not isinstance(candidate, dict)
+            ):
+                return False
+            return any(
+                step.phase == "prepare"
+                and step.kind == "discover_version_targets"
+                and step.state == TransferStepState.SUCCEEDED.value
+                and isinstance(step.result_payload, dict)
+                and candidate in step.result_payload.get("items", [])
+                for step in previous_steps
+            )
+        return False
+
+    @classmethod
+    def _validate_plan_steps(
+            cls,
+            *,
+            task_id: str,
+            checkpoint: TransferPlanCheckpoint,
+            checkpoint_fingerprint: str,
+            steps: list[TransferExecutionStepModel],
+    ) -> None:
+        """验证全部持久步骤属于冻结计划演进且身份与全局顺序未被篡改。"""
+        if tuple(step.ordinal for step in steps) != tuple(range(len(steps))):
+            raise TransferExecutionConflictError("整理步骤全局序号不连续")
+        for index, step in enumerate(steps):
+            if step.task_id != task_id:
+                raise TransferExecutionConflictError("整理步骤绑定了错误任务")
+            step_checkpoint = checkpoint
+            if step.checkpoint_fingerprint != checkpoint_fingerprint:
+                predecessor = cls._provider_predecessor_checkpoint(
+                    checkpoint,
+                    step,
+                )
+                if (
+                        predecessor is None
+                        or step.checkpoint_fingerprint != predecessor.fingerprint
+                ):
+                    raise TransferExecutionConflictError(
+                        "整理步骤不属于当前冻结计划或合法 provider 前驱计划"
+                    )
+                step_checkpoint = predecessor
+            if not cls._intent_belongs_to_checkpoint(
+                    step_checkpoint,
+                    phase=step.phase,
+                    kind=step.kind,
+                    payload=step.intent_payload,
+                    previous_steps=steps[:index],
+            ):
+                raise TransferExecutionConflictError(
+                    "整理步骤类型或参数不能由冻结计划导出"
+                )
+            expected_operation_id = build_transfer_operation_id(
+                task_id=task_id,
+                checkpoint_fingerprint=step.checkpoint_fingerprint,
+                ordinal=step.ordinal,
+                phase=step.phase,
+                kind=step.kind,
+                intent_payload=step.intent_payload,
+            )
+            if step.operation_id != expected_operation_id:
+                raise TransferExecutionConflictError("整理步骤 operation ID 与冻结意图不一致")
+
+    @classmethod
+    def _validate_new_intent(
+            cls,
+            *,
+            task_id: str,
+            checkpoint: TransferPlanCheckpoint,
+            checkpoint_fingerprint: str,
+            steps: list[TransferExecutionStepModel],
+            intent: TransferStepIntent,
+    ) -> None:
+        """验证待准备意图属于当前冻结计划，并且只追加或幂等重放既有序号。"""
+        cls._validate_plan_steps(
+            task_id=task_id,
+            checkpoint=checkpoint,
+            checkpoint_fingerprint=checkpoint_fingerprint,
+            steps=steps,
+        )
+        if intent.checkpoint_fingerprint != checkpoint_fingerprint:
+            raise TransferExecutionConflictError("整理步骤意图未绑定当前冻结计划指纹")
+        if not cls._intent_belongs_to_checkpoint(
+                checkpoint,
+                phase=intent.phase,
+                kind=intent.kind,
+                payload=intent.payload,
+                previous_steps=steps,
+        ):
+            raise TransferExecutionConflictError(
+                "整理步骤意图类型或参数不能由冻结计划导出"
+            )
+        expected_operation_id = build_transfer_operation_id(
+            task_id=task_id,
+            checkpoint_fingerprint=intent.checkpoint_fingerprint,
+            ordinal=intent.ordinal,
+            phase=intent.phase,
+            kind=intent.kind,
+            intent_payload=intent.payload,
+        )
+        if intent.operation_id != expected_operation_id:
+            raise TransferExecutionConflictError("整理步骤意图 operation ID 不可信")
+        existing = next(
+            (step for step in steps if step.operation_id == intent.operation_id),
+            None,
+        )
+        if existing is not None:
+            if not cls._intent_matches(existing, task_id=task_id, intent=intent):
+                raise TransferExecutionConflictError(
+                    "稳定 operation ID 已绑定不同步骤意图"
+                )
+            return
+        if intent.ordinal != len(steps):
+            raise TransferExecutionConflictError("整理步骤意图必须按全局序号连续追加")
+
+    @staticmethod
+    def _require_active_lease(
             pending: Optional[TransferPending],
             *,
             lease_token: str,
             now_utc: str,
-            detail: str,
-    ) -> None:
-        """区分租约丢失与同租约内的状态或 attempt 冲突。"""
+    ) -> TransferPending:
+        """返回仍由调用方持有的任务，并优先报告 lease fencing 失败。"""
         if (
                 pending is None
                 or pending.lease_token != lease_token
@@ -244,6 +571,23 @@ class TransactionalTransferExecutionRepository:
                 or pending.lease_expires_at <= now_utc
         ):
             raise TransferExecutionLeaseLostError("整理任务租约已失效或被接管")
+        return pending
+
+    @classmethod
+    def _raise_fenced_failure(
+            cls,
+            pending: Optional[TransferPending],
+            *,
+            lease_token: str,
+            now_utc: str,
+            detail: str,
+    ) -> None:
+        """区分租约丢失与同租约内的状态或 attempt 冲突。"""
+        cls._require_active_lease(
+            pending,
+            lease_token=lease_token,
+            now_utc=now_utc,
+        )
         raise TransferExecutionConflictError(detail)
 
     def _times(self) -> tuple[str, str]:
@@ -354,9 +698,29 @@ class TransactionalTransferExecutionRepository:
             try:
                 pending_oper = TransferPendingOper(session)
                 pending = pending_oper.get_by_task_id(task_id=task_id)
+                pending = self._require_active_lease(
+                    pending,
+                    lease_token=lease_token,
+                    now_utc=now_utc,
+                )
+                checkpoint, checkpoint_fingerprint = self._plan_identity(pending)
+                oper = TransferExecutionStepOper(session)
+                steps = self._execution_steps(
+                    oper.list_by_task_id(task_id=task_id)
+                )
+                self._validate_new_intent(
+                    task_id=task_id,
+                    checkpoint=checkpoint,
+                    checkpoint_fingerprint=checkpoint_fingerprint,
+                    steps=steps,
+                    intent=intent,
+                )
                 updated = pending_oper.stage_execution_running(
                     task_id=task_id,
                     lease_token=lease_token,
+                    admission_state=pending.state,
+                    checkpoint_version=checkpoint.schema_version,
+                    checkpoint_payload=checkpoint.to_payload(),
                     now_utc=now_utc,
                     updated_at=updated_at,
                 )
@@ -367,7 +731,6 @@ class TransactionalTransferExecutionRepository:
                         now_utc=now_utc,
                         detail="整理任务当前状态不能准备外部步骤",
                     )
-                oper = TransferExecutionStepOper(session)
                 step = oper.get_by_operation_id(operation_id=intent.operation_id)
                 if step is None:
                     step = oper.stage_prepare(
@@ -498,9 +861,32 @@ class TransactionalTransferExecutionRepository:
             try:
                 pending_oper = TransferPendingOper(session)
                 pending = pending_oper.get_by_task_id(task_id=task_id)
+                pending = self._require_active_lease(
+                    pending,
+                    lease_token=lease_token,
+                    now_utc=now_utc,
+                )
+                checkpoint, checkpoint_fingerprint = self._plan_identity(pending)
+                oper = TransferExecutionStepOper(session)
+                steps = self._execution_steps(
+                    oper.list_by_task_id(task_id=task_id)
+                )
+                self._validate_plan_steps(
+                    task_id=task_id,
+                    checkpoint=checkpoint,
+                    checkpoint_fingerprint=checkpoint_fingerprint,
+                    steps=steps,
+                )
+                if operation_id not in {step.operation_id for step in steps}:
+                    raise TransferExecutionConflictError(
+                        "待恢复步骤不属于冻结计划"
+                    )
                 pending_updated = pending_oper.stage_execution_running(
                     task_id=task_id,
                     lease_token=lease_token,
+                    admission_state=pending.state,
+                    checkpoint_version=checkpoint.schema_version,
+                    checkpoint_payload=checkpoint.to_payload(),
                     now_utc=now_utc,
                     updated_at=updated_at,
                 )
@@ -511,7 +897,6 @@ class TransactionalTransferExecutionRepository:
                         now_utc=now_utc,
                         detail="重试任务未到期或当前状态不能恢复",
                     )
-                oper = TransferExecutionStepOper(session)
                 updated = oper.stage_resume_failed_attempt(
                     task_id=task_id,
                     lease_token=lease_token,
@@ -973,24 +1358,39 @@ class TransactionalTransferExecutionRepository:
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
             try:
+                pending_oper = TransferPendingOper(session)
+                pending = pending_oper.get_by_task_id(task_id=task_id)
+                pending = self._require_active_lease(
+                    pending,
+                    lease_token=lease_token,
+                    now_utc=now_utc,
+                )
+                plan_checkpoint, plan_fingerprint = self._plan_identity(pending)
                 step_oper = TransferExecutionStepOper(session)
                 steps = self._execution_steps(
                     step_oper.list_by_task_id(task_id=task_id)
                 )
-                step_ids = {step.operation_id for step in steps}
-                if step_ids != set(checkpoint.operation_ids):
+                self._validate_plan_steps(
+                    task_id=task_id,
+                    checkpoint=plan_checkpoint,
+                    checkpoint_fingerprint=plan_fingerprint,
+                    steps=steps,
+                )
+                step_ids = tuple(step.operation_id for step in steps)
+                if step_ids != checkpoint.operation_ids:
                     raise TransferExecutionConflictError(
-                        "执行检查点引用的步骤集合与持久步骤不一致"
+                        "执行检查点引用的步骤顺序与持久步骤不一致"
                     )
                 if any(step.state != TransferStepState.SUCCEEDED.value for step in steps):
                     raise TransferExecutionConflictError(
                         "存在未成功步骤，不能提交执行检查点"
                     )
-                pending_oper = TransferPendingOper(session)
-                pending = pending_oper.get_by_task_id(task_id=task_id)
                 running = pending_oper.stage_execution_running(
                     task_id=task_id,
                     lease_token=lease_token,
+                    admission_state=pending.state,
+                    checkpoint_version=plan_checkpoint.schema_version,
+                    checkpoint_payload=plan_checkpoint.to_payload(),
                     now_utc=now_utc,
                     updated_at=updated_at,
                 )

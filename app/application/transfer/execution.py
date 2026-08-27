@@ -43,6 +43,14 @@ class TransferTerminalState(StrEnum):
     FAILED = "failed"
 
 
+class TransferExecutionOutcome(StrEnum):
+    """描述执行检查点可裁决的业务结果。"""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    OVERWRITE_SKIPPED = "overwrite_skipped"
+
+
 class TransferOperationObservationState(StrEnum):
     """描述重启后对遗留 STARTED 外部操作的严格探测结论。"""
 
@@ -249,6 +257,29 @@ class TransferExecutionCheckpoint:
             raise ValueError("整理执行检查点包含无效操作标识")
         if not self.operation_ids and not self.skip_reason:
             raise ValueError("零副作用整理执行检查点必须记录 skip_reason")
+        raw_outcome = self.payload.get("outcome")
+        try:
+            outcome = TransferExecutionOutcome(
+                raw_outcome if isinstance(raw_outcome, str) else ""
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError("整理执行检查点 outcome 无效") from error
+        transferinfo = self.payload.get("transferinfo")
+        if transferinfo is not None:
+            if not isinstance(transferinfo, dict):
+                raise ValueError("整理执行检查点 TransferInfo 必须是 JSON 对象")
+            expected_success = outcome is TransferExecutionOutcome.SUCCEEDED
+            expected_overwrite_skip = (
+                outcome is TransferExecutionOutcome.OVERWRITE_SKIPPED
+            )
+            if (
+                    bool(transferinfo.get("success")) != expected_success
+                    or bool(transferinfo.get("overwrite_skipped"))
+                    != expected_overwrite_skip
+            ):
+                raise ValueError("整理执行 checkpoint outcome 与 TransferInfo 不一致")
+        elif outcome is TransferExecutionOutcome.OVERWRITE_SKIPPED:
+            raise ValueError("覆盖跳过执行检查点缺少冻结 TransferInfo")
         _canonical_json(self.payload)
         if build_transfer_checkpoint_fingerprint(self.to_payload()) != self.fingerprint:
             raise ValueError("整理执行检查点内容与指纹不一致")
@@ -285,6 +316,35 @@ class TransferExecutionCheckpoint:
             "skip_reason": self.skip_reason,
         }
 
+    def validate_settlement_outcome(
+            self,
+            settlement_outcome: str,
+    ) -> TransferTerminalState:
+        """解析执行事实，并校验同事务历史裁决给出的结算方向。"""
+        raw_outcome = self.payload.get("outcome")
+        try:
+            outcome = TransferExecutionOutcome(
+                raw_outcome if isinstance(raw_outcome, str) else ""
+            )
+        except (TypeError, ValueError) as error:
+            raise TransferExecutionConflictError(
+                "整理执行检查点 outcome 无效"
+            ) from error
+        try:
+            terminal_state = TransferTerminalState(settlement_outcome)
+        except (TypeError, ValueError) as error:
+            raise TransferExecutionConflictError(
+                "整理结算 outcome 无效"
+            ) from error
+        if (
+                outcome != TransferExecutionOutcome.OVERWRITE_SKIPPED
+                and outcome.value != terminal_state.value
+        ):
+            raise TransferExecutionConflictError(
+                "整理结算 outcome 与执行检查点不一致"
+            )
+        return terminal_state
+
     @classmethod
     def from_payload(
             cls,
@@ -293,6 +353,8 @@ class TransferExecutionCheckpoint:
             fingerprint: str,
     ) -> "TransferExecutionCheckpoint":
         """解析并校验数据库中的执行检查点版本与稳定指纹。"""
+        if not isinstance(payload, Mapping):
+            raise TransferExecutionConflictError("整理执行检查点 JSON 结构无效")
         serialized = dict(payload)
         if build_transfer_checkpoint_fingerprint(serialized) != fingerprint:
             raise TransferExecutionConflictError("整理执行检查点 JSON 与指纹不一致")
@@ -308,13 +370,18 @@ class TransferExecutionCheckpoint:
         skip_reason = serialized.get("skip_reason")
         if skip_reason is not None and not isinstance(skip_reason, str):
             raise TransferExecutionConflictError("整理执行跳过原因类型无效")
-        return cls(
-            fingerprint=fingerprint,
-            payload=result_payload,
-            operation_ids=tuple(operation_ids),
-            skip_reason=skip_reason,
-            version=version,
-        )
+        try:
+            return cls(
+                fingerprint=fingerprint,
+                payload=result_payload,
+                operation_ids=tuple(operation_ids),
+                skip_reason=skip_reason,
+                version=version,
+            )
+        except ValueError as error:
+            raise TransferExecutionConflictError(
+                "整理执行检查点内容无效"
+            ) from error
 
 
 @dataclass(frozen=True, slots=True)

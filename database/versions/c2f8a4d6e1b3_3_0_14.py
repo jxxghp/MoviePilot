@@ -97,27 +97,26 @@ def _backfill_planning_input() -> None:
         )
     ).mappings().all()
     for row in rows:
-        if (
-                row["input_version"] is not None
-                and row["planning_input"] is not None
-                and row["input_fingerprint"]
-        ):
-            continue
         payload = row["planning_input"]
         if not isinstance(payload, dict):
             payload = _legacy_planning_payload(row["storage"], row["src_path"])
         payload_version = payload.get("schema_version")
-        input_version = row["input_version"]
-        if input_version is None:
-            input_version = payload_version if isinstance(payload_version, int) else 1
-        input_fingerprint = row["input_fingerprint"] or _fingerprint(payload)
+        if (
+                not isinstance(payload_version, int)
+                or isinstance(payload_version, bool)
+                or payload_version != 1
+        ):
+            raise RuntimeError(
+                f"transferpending {row['id']} 的规划输入版本不受支持: "
+                f"{payload_version}"
+            )
         connection.execute(
             pending.update()
             .where(pending.c.id == row["id"])
             .values(
-                input_version=input_version,
+                input_version=payload_version,
                 planning_input=payload,
-                input_fingerprint=input_fingerprint,
+                input_fingerprint=_fingerprint(payload),
             )
         )
 

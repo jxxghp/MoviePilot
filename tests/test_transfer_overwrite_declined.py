@@ -15,11 +15,12 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer import TransferChain, _DurableTransferStepRunner
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType
 from tests.test_transfer_job_manager import (
     FakeMedia,
+    bind_terminal_checkpoint,
     make_fileitem,
     make_task,
     make_transfer_chain,
@@ -130,16 +131,19 @@ def test_overwrite_declined_uses_successful_durable_settlement():
     task = make_task(1)
     task.bind_admission_task_id("task-overwrite-declined")
     task.bind_execution_lease(owner_id="worker", lease_token="lease")
-    task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
-        payload={"outcome": "overwrite_skipped"},
-        operation_ids=(),
-        skip_reason="overwrite_declined",
-    ))
     transferinfo = TransferInfo(
         success=False,
         overwrite_skipped=True,
         message="目标已存在，按覆盖策略跳过覆盖",
     )
+    task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
+        payload={
+            "outcome": "overwrite_skipped",
+            "transferinfo": transferinfo.model_dump(mode="json"),
+        },
+        operation_ids=(),
+        skip_reason="overwrite_declined",
+    ))
 
     settlement = TransferChain._TransferChain__build_transfer_result_settlement(
         task,
@@ -150,6 +154,27 @@ def test_overwrite_declined_uses_successful_durable_settlement():
     assert settlement is not None
     assert settlement.outcome == "succeeded"
     assert settlement.error is None
+
+
+def test_durable_step_runner_records_overwrite_skip_as_explicit_outcome():
+    """生产 runner 必须冻结覆盖跳过事实，不能提前把它记成普通失败。"""
+    runner = object.__new__(_DurableTransferStepRunner)
+    runner._task_id = "task-overwrite-skipped"
+    runner._lease_token = "lease"
+    runner._operation_ids = []
+    runner._command = MagicMock()
+    runner._command.checkpoint.side_effect = lambda **kwargs: SimpleNamespace(
+        checkpoint=kwargs["checkpoint"]
+    )
+    transferinfo = TransferInfo(
+        success=False,
+        overwrite_skipped=True,
+        message="目标已存在，按覆盖策略跳过覆盖",
+    )
+
+    checkpoint = runner.checkpoint(transferinfo)
+
+    assert checkpoint.payload["outcome"] == "overwrite_skipped"
 
 
 def test_overwrite_skip_without_success_history_uses_failed_settlement():
@@ -216,6 +241,7 @@ def test_default_callback_skips_history_and_notification_when_overwrite_declined
         overwrite_skipped=True,
         need_notify=False,
     )
+    bind_terminal_checkpoint(task, transferinfo)
 
     with patch(
         "app.chain.transfer.get_chain_transfer_history_port",
@@ -262,6 +288,7 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
         overwrite_skipped=True,
         need_notify=False,
     )
+    bind_terminal_checkpoint(task, transferinfo)
 
     with patch(
         "app.chain.transfer.get_chain_transfer_history_port",
@@ -312,7 +339,6 @@ def test_durable_callback_settles_overwrite_skip_without_history_as_failed():
         overwrite_skipped=True,
         need_notify=False,
     )
-
     def durable_transfer_result(**kwargs):
         """执行失败历史暂存并返回 task-aware 结算回执。"""
         history = kwargs["stage_history"](SimpleNamespace())
@@ -363,6 +389,7 @@ def test_default_callback_delegates_primary_failure_to_durable_writer():
         transfer_type="copy",
         need_notify=False,
     )
+    bind_terminal_checkpoint(task, transferinfo)
 
     def durable_transfer_result(**kwargs):
         """执行 writer 收到的历史暂存与提交后发布回调。"""
@@ -371,7 +398,11 @@ def test_default_callback_delegates_primary_failure_to_durable_writer():
         payload["transfer_history_id"] = history.id
         payload["idempotency_key"] = f"transfer.failed:{history.id}:v1"
         kwargs["publish"](payload)
-        return history
+        return TransferSettlementResult(
+            history_id=history.id,
+            settlement_revision=1,
+            pending_deleted=True,
+        )
 
     chain.durable_event_writer.transfer_result.side_effect = durable_transfer_result
     with patch(

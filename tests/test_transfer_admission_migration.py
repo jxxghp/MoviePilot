@@ -170,6 +170,46 @@ def test_transfer_admission_upgrade_downgrade_reupgrade(
         }
 
 
+def test_replayed_upgrade_repairs_named_constraint_and_index(monkeypatch) -> None:
+    """同名但列或唯一性错误的准入约束与索引必须精确重建。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        _create_legacy_table(connection)
+        migration = _bind_migration(monkeypatch, connection)
+        migration.upgrade()
+        with migration.op.batch_alter_table("transferpending") as batch_op:
+            batch_op.drop_constraint(
+                "uq_transferpending_task_id",
+                type_="unique",
+            )
+            batch_op.create_unique_constraint(
+                "uq_transferpending_task_id",
+                ["src_path"],
+            )
+        connection.execute(sa.text(
+            "DROP INDEX ix_transferpending_state_created"
+        ))
+        connection.execute(sa.text(
+            "CREATE UNIQUE INDEX ix_transferpending_state_created "
+            "ON transferpending (task_id)"
+        ))
+
+        migration.upgrade()
+
+        inspector = sa.inspect(connection)
+        constraint = next(
+            item for item in inspector.get_unique_constraints("transferpending")
+            if item["name"] == "uq_transferpending_task_id"
+        )
+        index = next(
+            item for item in inspector.get_indexes("transferpending")
+            if item["name"] == "ix_transferpending_state_created"
+        )
+        assert constraint["column_names"] == ["task_id"]
+        assert index["column_names"] == ["state", "created_at", "id"]
+        assert index["unique"] == 0
+
+
 def test_transfer_admission_migration_runs_on_postgresql(monkeypatch) -> None:
     """隔离 PostgreSQL 应真实执行准入字段、约束、索引和可逆回滚。"""
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"

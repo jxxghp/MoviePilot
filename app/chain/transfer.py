@@ -1,6 +1,4 @@
 import asyncio
-import hashlib
-import json
 import queue
 import re
 import threading
@@ -8,8 +6,6 @@ import time
 import traceback
 import uuid
 from collections import Counter
-from concurrent.futures import CancelledError as FutureCancelledError
-from concurrent.futures import Future
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -50,6 +46,7 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferExecutionCommand,
     TransferExecutionConflictError,
+    TransferExecutionOutcome,
     TransferExecutionRepository,
     TransferExecutionSnapshot,
     TransferExecutionState,
@@ -61,7 +58,6 @@ from app.application.transfer.execution import (
     TransferStepState,
 )
 from app.application.transfer.workflow import (
-    FailedRetryScheduler,
     JobManager,
     TransferAdmission,
     TransferFailureNotification,
@@ -200,11 +196,45 @@ class _DurableTransferStepRunner:
             *,
             step: Any,
             execute: Callable[[], TransferStepResult],
+            observe: Callable[[], TransferOperationObservation],
     ) -> TransferStepResult:
-        """在事务外执行副作用，并把失败交给持久重试或终态结算。"""
+        """在事务外执行副作用，异常后先探测结果再决定重试或人工复核。"""
         try:
             result = execute()
         except Exception as error:
+            try:
+                observation = observe()
+            except Exception as observe_error:
+                observation = TransferOperationObservation(
+                    state=TransferOperationObservationState.UNKNOWN,
+                    evidence=TransferStepResult(payload={
+                        "execute_error": str(error),
+                        "observe_error": str(observe_error),
+                    }),
+                )
+            if observation.state is TransferOperationObservationState.APPLIED:
+                completed = self._command.complete(
+                    task_id=self._task_id,
+                    lease_token=self._lease_token,
+                    step=step,
+                    result=observation.evidence,
+                )
+                if completed.result is None:
+                    raise RuntimeError("探测完成的整理步骤缺少结果证据") from error
+                return completed.result
+            if observation.state is not TransferOperationObservationState.NOT_APPLIED:
+                reason = (
+                    f"整理步骤 {step.operation_id} 执行异常后外部结果为 "
+                    f"{observation.state.value}，禁止自动重放：{error}"
+                )
+                self._command.manual_review(
+                    task_id=self._task_id,
+                    lease_token=self._lease_token,
+                    step=step,
+                    error=reason,
+                    evidence=observation.evidence,
+                )
+                raise _TransferManualReviewRequired(reason) from error
             snapshot = self._repository.get_snapshot(task_id=self._task_id)
             if snapshot is None:
                 raise RuntimeError("整理执行快照在步骤失败后丢失") from error
@@ -214,6 +244,7 @@ class _DurableTransferStepRunner:
                     lease_token=self._lease_token,
                     step=step,
                     error=str(error),
+                    evidence=observation.evidence,
                 )
                 raise _TransferRetryExhausted(str(error), exhausted) from error
             self._command.defer(
@@ -222,6 +253,7 @@ class _DurableTransferStepRunner:
                 step=step,
                 error=str(error),
                 retry_due_at=self._retry_due_at(),
+                evidence=observation.evidence,
             )
             raise _TransferRetryDeferred(str(error)) from error
         completed = self._command.complete(
@@ -313,14 +345,18 @@ class _DurableTransferStepRunner:
                 raise _TransferManualReviewRequired(reason)
         else:
             raise RuntimeError(f"不支持的整理步骤状态：{step.state}")
-        return self._execute_attempt(step=step, execute=execute)
+        return self._execute_attempt(step=step, execute=execute, observe=observe)
 
     def checkpoint(self, transferinfo: TransferInfo) -> TransferExecutionCheckpoint:
         """提交足以独立重放终态结算的聚合执行结果。"""
-        successful_outcome = bool(transferinfo.success)
+        outcome = (
+            "overwrite_skipped"
+            if transferinfo.overwrite_skipped
+            else "succeeded" if transferinfo.success else "failed"
+        )
         checkpoint = TransferExecutionCheckpoint.create(
             payload={
-                "outcome": "succeeded" if successful_outcome else "failed",
+                "outcome": outcome,
                 "transferinfo": transferinfo.model_dump(mode="json"),
             },
             operation_ids=tuple(self._operation_ids),
@@ -382,14 +418,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
     @staticmethod
     def __transfer_plan_fingerprint(checkpoint: TransferPlanCheckpoint) -> str:
         """由完整冻结计划生成执行步骤使用的稳定 SHA-256 身份。"""
-        canonical = json.dumps(
-            checkpoint.to_payload(),
-            ensure_ascii=True,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return checkpoint.fingerprint
 
     @staticmethod
     def _transfer_result_payload(
@@ -444,15 +473,27 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """由执行结果与已核实的覆盖裁决构造受 lease fencing 保护的终态命令。"""
         checkpoint = task.execution_checkpoint
         if checkpoint is None:
-            return None
+            if task.preview:
+                return None
+            raise RuntimeError("非预览整理终态缺少持久执行检查点")
         if not task.admission_task_id or not task.lease_token:
             raise TransferLeaseLostError("整理终态缺少持久任务身份或租约")
         successful_outcome = bool(transferinfo.success or overwrite_declined)
+        settlement_outcome = "succeeded" if successful_outcome else "failed"
+        checkpoint.validate_settlement_outcome(settlement_outcome)
+        frozen_transferinfo = checkpoint.payload.get("transferinfo")
+        if (
+                isinstance(frozen_transferinfo, dict)
+                and frozen_transferinfo != transferinfo.model_dump(mode="json")
+        ):
+            raise TransferExecutionConflictError(
+                "整理终态与冻结 TransferInfo 不一致"
+            )
         return TransferResultSettlement(
             task_id=task.admission_task_id,
             lease_token=task.lease_token,
             execution_fingerprint=checkpoint.fingerprint,
-            outcome="succeeded" if successful_outcome else "failed",
+            outcome=settlement_outcome,
             error=(
                 None
                 if successful_outcome
@@ -586,7 +627,6 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         # 事件管理器
         self.jobview = JobManager()
         # Agent重试管理器
-        self.retry_scheduler = FailedRetryScheduler()
         # 整理失败通知聚合器
         self.failure_notification_aggregator = TransferFailureNotificationAggregator()
         # durable admission 仓储先于内存入队保存任务，进程退出后仍可恢复。
@@ -805,11 +845,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
     async def close(self, timeout_seconds: float = _WORKER_CLOSE_TIMEOUT_SECONDS) -> bool:
         """
-        收口整理线程、失败通知和 AI 重试，并返回依赖是否可以安全释放。
+        收口整理线程和失败通知，并返回依赖是否可以安全释放。
 
         同步文件 I/O 在线程内无法被 asyncio 取消，因此先在线程池中执行有界
         ``close_workers``。只有 worker 与 replay 全部退出后才关闭通知和重试；若
-        超时则保留这些依赖，供仍在运行的整理回调继续使用。
+        超时则保留通知依赖，供仍在运行的整理回调继续使用。
         :param timeout_seconds: worker 与 replay 共享的最大等待秒数
         :return: 所有整理后台 owner 均已收敛时返回 True
         """
@@ -820,40 +860,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         if not workers_closed:
             return False
         self.failure_notification_aggregator.close()
-        await self.retry_scheduler.close()
         return True
-
-    @staticmethod
-    def _observe_failed_retry_schedule(future: Future[None]) -> None:
-        """观察跨线程 AI 重试调度的完成结果，避免关闭竞态变成静默异常。"""
-        try:
-            future.result()
-        except FutureCancelledError:
-            return
-        except Exception as err:
-            logger.error(f"触发AI智能体重试整理失败: {err}")
-
-    def _schedule_failed_transfer_retry(
-            self,
-            history_id: int,
-            group_key: str,
-    ) -> None:
-        """把失败历史提交到主事件循环，并持续持有和观察调度结果。"""
-        retry_coroutine = self.retry_scheduler.schedule_retry(
-            history_id,
-            group_key=group_key,
-        )
-        try:
-            future = asyncio.run_coroutine_threadsafe(
-                retry_coroutine,
-                global_vars.loop,
-            )
-        except Exception as err:
-            retry_coroutine.close()
-            logger.error(f"触发AI智能体重试整理失败: {err}")
-            return
-        future.add_done_callback(self._observe_failed_retry_schedule)
-        logger.info(f"已触发AI智能体重试整理历史记录 #{history_id}")
 
     def on_config_changed(self) -> None:
         """配置变更时重启文件整理线程。"""
@@ -927,6 +934,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             transferinfo,
             overwrite_declined=overwrite_declined,
         )
+        if settlement is None:
+            raise RuntimeError("非预览整理终态无法建立 durable 结算命令")
+        durable_writer = getattr(self, "durable_event_writer", None)
+        if durable_writer is None:
+            raise RuntimeError("非预览整理终态缺少 durable 原子写入端口")
 
         # 转移失败
         if not transferinfo.success:
@@ -939,142 +951,29 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 logger.info(
                     f"{task.fileitem.name} 未入库并保留原整理记录：{transferinfo.message}"
                 )
-                if settlement is not None:
-                    writer = getattr(self, "durable_event_writer", None)
-                    if writer is None:
-                        raise RuntimeError("覆盖跳过的 durable 终态缺少原子写入端口")
-                    history = writer.transfer_result(
-                        topic=None,
-                        stage_history=lambda staging: staging.get_success_by_src(
-                            task.fileitem.path,
-                            task.fileitem.storage,
-                        ),
-                        event_payload=self._transfer_result_payload(task, transferinfo),
-                        publish=None,
-                        settlement=settlement,
-                    )
-                    if not isinstance(history, TransferSettlementResult):
-                        raise RuntimeError("覆盖跳过的 durable 终态没有返回结算结果")
-                    task.mark_terminal_settled()
+                history = durable_writer.transfer_result(
+                    topic=None,
+                    stage_history=lambda staging: staging.get_success_by_src(
+                        task.fileitem.path,
+                        task.fileitem.storage,
+                    ),
+                    event_payload=self._transfer_result_payload(task, transferinfo),
+                    publish=None,
+                    settlement=settlement,
+                )
+                if not isinstance(history, TransferSettlementResult):
+                    raise RuntimeError("覆盖跳过的 durable 终态没有返回结算结果")
+                task.mark_terminal_settled()
             else:
                 logger.warn(f"{task.fileitem.name} 入库失败：{transferinfo.message}")
 
-                # 累计失败次数，达到上限后查重闸不再自动放行重试
-                record_transfer_failure(
-                    task.fileitem.path if task.fileitem else None,
-                    task.fileitem.storage if task.fileitem else None,
-                    file_size=task.fileitem.size if task.fileitem else None,
-                    file_modify_time=task.fileitem.modify_time if task.fileitem else None,
-                    fileid=task.fileitem.fileid if task.fileitem else None,
-                )
-
                 durable_event = self._durable_transfer_event(task, success=False)
-                durable_transfer_failed = bool(
-                    getattr(self, "durable_event_writer", None)
-                    and (durable_event or settlement)
-                )
-                if durable_transfer_failed:
-                    topic = durable_event[0] if durable_event else None
-                    event_type = durable_event[1] if durable_event else None
-                    event_payload = self._transfer_result_payload(task, transferinfo)
-                    history = self.durable_event_writer.transfer_result(
-                        topic=topic,
-                        stage_history=lambda writer: add_transfer_fail(
-                            fileitem=task.fileitem,
-                            mode=transferinfo.transfer_type if transferinfo else "",
-                            downloader=task.downloader,
-                            download_hash=task.download_hash,
-                            meta=task.meta,
-                            mediainfo=task.mediainfo,
-                            transferinfo=transferinfo,
-                            transfer_history_oper=writer,
-                        ),
-                        event_payload=event_payload,
-                        publish=(
-                            lambda payload: self._publish_transfer_result(
-                                event_type, payload
-                            )
-                            if event_type is not None
-                            else None
-                        ),
-                        settlement=settlement,
-                    )
-                    if settlement is not None:
-                        if not isinstance(history, TransferSettlementResult):
-                            raise RuntimeError("整理失败 durable 终态没有返回结算结果")
-                        task.mark_terminal_settled()
-                else:
-                    history = add_transfer_fail(
-                        fileitem=task.fileitem,
-                        mode=transferinfo.transfer_type if transferinfo else "",
-                        downloader=task.downloader,
-                        download_hash=task.download_hash,
-                        meta=task.meta,
-                        mediainfo=task.mediainfo,
-                        transferinfo=transferinfo,
-                        transfer_history_oper=transferhis,
-                    )
-
-                if durable_event and not durable_transfer_failed:
-                    # 显式旧测试上下文仍走原始发送；正式上下文由 outbox writer 发布。
-                    self._publish_transfer_result(
-                        durable_event[1],
-                        self._transfer_result_payload(
-                            task,
-                            transferinfo,
-                            self.__transfer_history_id(history),
-                        ),
-                    )
-
-                self.queue_failed_transfer_notification(
-                    task=task,
-                    transferinfo=transferinfo,
-                    history_id=self.__transfer_history_id(history),
-                )
-
-            # 设置任务失败
-            self.jobview.fail_task(task)
-
-            # AI智能体自动重试整理
-            if (
-                    history
-                    and settlement is None
-                    and self.runtime_config.ai_agent_enable
-                    and self.runtime_config.ai_agent_retry_transfer
-            ):
-                # 使用 download_hash 或源文件父目录作为分组键，
-                # 同一批次（如同一个种子）的失败记录会被合并为一次agent调用
-                self._schedule_failed_transfer_retry(
-                    cast(int, self.__transfer_history_id(history)),
-                    build_transfer_failure_group_key(task),
-                )
-
-            # 返回失败
-            ret_status = False
-            ret_message = transferinfo.message
-
-        else:
-            # 转移成功
-            logger.info(f"{task.fileitem.name} 入库成功：{target_dir_path or ''}")
-
-            # 整理成功即认为此前的连续失败已恢复，重置计数让后续故障重新获得完整重试额度
-            clear_transfer_failures(
-                task.fileitem.path if task.fileitem else None,
-                task.fileitem.storage if task.fileitem else None,
-            )
-
-            durable_event = self._durable_transfer_event(task, success=True)
-            durable_transfer_complete = bool(
-                getattr(self, "durable_event_writer", None)
-                and (durable_event or settlement)
-            )
-            if durable_transfer_complete:
                 topic = durable_event[0] if durable_event else None
                 event_type = durable_event[1] if durable_event else None
                 event_payload = self._transfer_result_payload(task, transferinfo)
-                history = self.durable_event_writer.transfer_result(
+                history = durable_writer.transfer_result(
                     topic=topic,
-                    stage_history=lambda writer: add_transfer_success(
+                    stage_history=lambda writer: add_transfer_fail(
                         fileitem=task.fileitem,
                         mode=transferinfo.transfer_type if transferinfo else "",
                         downloader=task.downloader,
@@ -1094,12 +993,43 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     ),
                     settlement=settlement,
                 )
-                if settlement is not None:
-                    if not isinstance(history, TransferSettlementResult):
-                        raise RuntimeError("整理成功 durable 终态没有返回结算结果")
-                    task.mark_terminal_settled()
-            else:
-                history = add_transfer_success(
+                if not isinstance(history, TransferSettlementResult):
+                    raise RuntimeError("整理失败 durable 终态没有返回结算结果")
+                task.mark_terminal_settled()
+
+                # 失败计数不是终态真相，只能在原子历史与 pending 结算成功后更新。
+                record_transfer_failure(
+                    task.fileitem.path if task.fileitem else None,
+                    task.fileitem.storage if task.fileitem else None,
+                    file_size=task.fileitem.size if task.fileitem else None,
+                    file_modify_time=task.fileitem.modify_time if task.fileitem else None,
+                    fileid=task.fileitem.fileid if task.fileitem else None,
+                )
+
+                self.queue_failed_transfer_notification(
+                    task=task,
+                    transferinfo=transferinfo,
+                    history_id=self.__transfer_history_id(history),
+                )
+
+            # 设置任务失败
+            self.jobview.fail_task(task)
+
+            # 返回失败
+            ret_status = False
+            ret_message = transferinfo.message
+
+        else:
+            # 转移成功
+            logger.info(f"{task.fileitem.name} 入库成功：{target_dir_path or ''}")
+
+            durable_event = self._durable_transfer_event(task, success=True)
+            topic = durable_event[0] if durable_event else None
+            event_type = durable_event[1] if durable_event else None
+            event_payload = self._transfer_result_payload(task, transferinfo)
+            history = durable_writer.transfer_result(
+                topic=topic,
+                stage_history=lambda writer: add_transfer_success(
                     fileitem=task.fileitem,
                     mode=transferinfo.transfer_type if transferinfo else "",
                     downloader=task.downloader,
@@ -1107,19 +1037,27 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     meta=task.meta,
                     mediainfo=task.mediainfo,
                     transferinfo=transferinfo,
-                    transfer_history_oper=transferhis,
-                )
+                    transfer_history_oper=writer,
+                ),
+                event_payload=event_payload,
+                publish=(
+                    lambda payload: self._publish_transfer_result(
+                        event_type, payload
+                    )
+                    if event_type is not None
+                    else None
+                ),
+                settlement=settlement,
+            )
+            if not isinstance(history, TransferSettlementResult):
+                raise RuntimeError("整理成功 durable 终态没有返回结算结果")
+            task.mark_terminal_settled()
 
-            if durable_event and not durable_transfer_complete:
-                # 显式旧测试上下文仍走原始发送；正式上下文由 outbox writer 发布。
-                self._publish_transfer_result(
-                    durable_event[1],
-                    self._transfer_result_payload(
-                        task,
-                        transferinfo,
-                        self.__transfer_history_id(history),
-                    ),
-                )
+            # 失败预算同样只能在 durable 成功终态提交后重置。
+            clear_transfer_failures(
+                task.fileitem.path if task.fileitem else None,
+                task.fileitem.storage if task.fileitem else None,
+            )
 
             # task登记转移成功文件清单
             target_files = transferinfo.file_list_new
@@ -1758,12 +1696,17 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             storage = admission.storage
             src_path = admission.src_path
             try:
-                settling_checkpoint = self.__settling_replay_checkpoint(admission)
-                if settling_checkpoint is not None:
+                execution_snapshot = self.__execution_replay_snapshot(admission)
+                use_frozen_source = bool(
+                    admission.checkpoint is not None
+                    or execution_snapshot.state is not TransferExecutionState.NOT_STARTED
+                    or execution_snapshot.steps
+                )
+                if use_frozen_source:
                     planning_input = admission.planning_input
                     if planning_input is None:
                         raise TransferPlanningStateError(
-                            "settling 回放缺少整理规划输入"
+                            "执行态回放缺少整理规划输入"
                         )
                     fileitem = FileItem.model_validate(
                         planning_input.source_fileitem
@@ -1795,7 +1738,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             raise TransferLeaseLostError(
                                 f"恢复任务缺少 lease token：{admission.task_id}"
                             )
-                        discarded = self._transfer_admissions.discard_claimed(
+                        discarded = self._transfer_admissions.abandon_unstarted(
                             task_id=admission.task_id,
                             lease_token=lease_token,
                         )
@@ -1803,10 +1746,15 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             logger.warning(
                                 f"恢复任务终态注销被 CAS 拒绝：{admission.task_id}"
                             )
-                        self.__forget_owned_lease(
-                            admission.task_id,
-                            lease_token,
-                        )
+                            self.__release_admission_claim(
+                                admission,
+                                error="源已消失但任务状态已变化，保留登记供恢复",
+                            )
+                        else:
+                            self.__forget_owned_lease(
+                                admission.task_id,
+                                lease_token,
+                            )
                     else:
                         self.__release_admission_claim(
                             admission,
@@ -1817,7 +1765,12 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     if self.__queue_planned_replay(
                             fileitem,
                             admission,
-                            execution_checkpoint=settling_checkpoint,
+                            execution_checkpoint=(
+                                execution_snapshot.checkpoint
+                                if execution_snapshot.state
+                                is TransferExecutionState.SETTLING
+                                else None
+                            ),
                     ):
                         replayed += 1
                     else:
@@ -1869,26 +1822,29 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         else:
             logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")
 
-    def __settling_replay_checkpoint(
+    def __execution_replay_snapshot(
             self,
             admission: TransferAdmission,
-    ) -> Optional[TransferExecutionCheckpoint]:
-        """读取已 claim 的 settling 检查点，避免终态恢复再次探测源文件。"""
+    ) -> TransferExecutionSnapshot:
+        """读取已 claim 的执行快照，确保任何步骤证据都先于源文件探测。"""
         repository: Optional[TransferExecutionRepository] = getattr(
             self,
             "_transfer_executions",
             None,
         )
         if repository is None:
-            return None
+            raise RuntimeError("整理恢复缺少 execution repository")
         snapshot = repository.get_snapshot(task_id=admission.task_id)
-        if snapshot is None or snapshot.state is not TransferExecutionState.SETTLING:
-            return None
-        if snapshot.checkpoint is None:
+        if snapshot is None:
+            raise TransferExecutionConflictError("整理恢复任务缺少执行状态投影")
+        if (
+                snapshot.state is TransferExecutionState.SETTLING
+                and snapshot.checkpoint is None
+        ):
             raise TransferExecutionConflictError(
                 "settling 整理任务缺少可重放终态检查点"
             )
-        return snapshot.checkpoint
+        return snapshot
 
     @staticmethod
     def __build_replay_kwargs(
@@ -2293,14 +2249,14 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 checkpoint.resolved_meta,
                 checkpoint.resolved_meta_kind,
             )
-        elif task.meta is None:
+        elif task.meta is None and checkpoint.rejection_error is None:
             raise TransferPlanningStateError("整理计划检查点缺少已解析元数据")
         if checkpoint.resolved_mediainfo:
             task.mediainfo = self.__restore_mediainfo_snapshot(
                 checkpoint.resolved_mediainfo,
                 checkpoint.resolved_mediainfo_kind,
             )
-        elif task.mediainfo is None:
+        elif task.mediainfo is None and checkpoint.rejection_error is None:
             raise TransferPlanningStateError("整理计划检查点缺少已识别媒体信息")
         task.episodes_info = [
             TmdbEpisode.model_validate(item)
@@ -2346,6 +2302,97 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         except Exception as record_error:
             logger.error(f"记录整理规划前失败原因出错：{record_error}")
 
+    def __checkpoint_planning_rejection(
+            self,
+            task: TransferTask,
+            error: str,
+    ) -> TransferInfo:
+        """把确定性规划拒绝冻结为零文件副作用计划并走统一终态结算。"""
+        if task.preview:
+            return TransferInfo(
+                success=False,
+                message=error,
+                fileitem=task.fileitem,
+                fail_list=[task.fileitem.path],
+                transfer_type=task.transfer_type,
+                need_notify=False,
+            )
+        self.__claim_task_for_execution(task)
+        self.__assert_owned_lease(task)
+        if getattr(self, "durable_event_writer", None) is None:
+            raise RuntimeError(
+                "非预览整理缺少 durable 原子写入端口，拒绝提交规划终态"
+            )
+        planning_input = task.planning_input or self.__build_planning_input(task)
+        task.bind_planning_input(planning_input)
+        source_path = task.fileitem.path
+        resolved_transfer_type = (
+            task.transfer_type
+            or planning_input.requested_transfer_type
+            or "copy"
+        )
+        checkpoint = TransferPlanCheckpoint(
+            planning_input=planning_input,
+            target_storage=task.fileitem.storage,
+            root_target_path=source_path,
+            final_target_path=source_path,
+            resolved_transfer_type=resolved_transfer_type,
+            items=(),
+            resolved_meta=self.__json_snapshot(task.meta),
+            resolved_meta_kind=(type(task.meta).__name__ if task.meta else None),
+            resolved_mediainfo=self.__json_snapshot(task.mediainfo),
+            resolved_mediainfo_kind=(
+                type(task.mediainfo).__name__ if task.mediainfo else None
+            ),
+            resolved_episodes_info=tuple(
+                self.__json_snapshot(item) for item in (task.episodes_info or [])
+            ),
+            need_notify=planning_input.need_notify,
+            overwrite_mode=planning_input.overwrite_mode,
+            rejection_error=error,
+        )
+        persisted = self.__persist_transfer_checkpoint(
+            task,
+            planning_input=planning_input,
+            checkpoint=checkpoint,
+        )
+        task.bind_plan_checkpoint(persisted)
+        return self._plan_checkpoint_and_execute(task)
+
+    def __execute_planning_rejection(
+            self,
+            task: TransferTask,
+            checkpoint: TransferPlanCheckpoint,
+    ) -> TransferInfo:
+        """以可重放内部步骤确认冻结拒绝，并建立统一 execution checkpoint。"""
+        error = checkpoint.rejection_error
+        if not error:
+            raise TransferPlanningStateError("整理拒绝计划缺少失败原因")
+        step_runner = self.__build_durable_step_runner(task, checkpoint)
+        if step_runner is None:
+            raise RuntimeError("非预览整理拒绝缺少 durable 步骤 runner")
+        evidence = TransferStepResult(payload={"error": error})
+        step_runner.run(
+            phase="planning",
+            kind="reject",
+            payload={"error": error},
+            execute=lambda: evidence,
+            observe=lambda: TransferOperationObservation(
+                state=TransferOperationObservationState.APPLIED,
+                evidence=evidence,
+            ),
+        )
+        transferinfo = TransferInfo(
+            success=False,
+            message=error,
+            fileitem=task.fileitem,
+            fail_list=[task.fileitem.path],
+            transfer_type=checkpoint.resolved_transfer_type,
+            need_notify=checkpoint.need_notify,
+        )
+        task.bind_execution_checkpoint(step_runner.checkpoint(transferinfo))
+        return transferinfo
+
     def __handle_planned_transfer(
             self,
             task: TransferTask,
@@ -2382,36 +2429,59 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             task: TransferTask,
     ) -> Optional[TransferInfo]:
         """从 execution checkpoint 恢复终态结果，禁止再次执行外部步骤。"""
-        checkpoint = task.execution_checkpoint
-        if checkpoint is None:
-            repository: Optional[TransferExecutionRepository] = getattr(
-                self,
-                "_transfer_executions",
-                None,
+        repository: Optional[TransferExecutionRepository] = getattr(
+            self,
+            "_transfer_executions",
+            None,
+        )
+        task_id = task.admission_task_id
+        if repository is None or not task_id:
+            if task.execution_checkpoint is not None:
+                raise TransferExecutionConflictError(
+                    "绑定执行检查点的整理任务缺少持久状态仓储"
+                )
+            return None
+        snapshot = repository.get_snapshot(task_id=task_id)
+        if snapshot is None:
+            if task.execution_checkpoint is not None:
+                raise TransferExecutionConflictError(
+                    "绑定执行检查点的整理任务缺少持久执行状态"
+                )
+            return None
+        if snapshot.state is not TransferExecutionState.SETTLING:
+            return None
+        checkpoint = snapshot.checkpoint
+        bound_checkpoint = task.execution_checkpoint
+        if (
+                bound_checkpoint is not None
+                and checkpoint is not None
+                and bound_checkpoint.fingerprint != checkpoint.fingerprint
+        ):
+            raise TransferExecutionConflictError(
+                "内存整理任务与持久结算检查点不一致"
             )
-            task_id = task.admission_task_id
-            if repository is None or not task_id:
-                return None
-            snapshot = repository.get_snapshot(task_id=task_id)
-            if snapshot is None or snapshot.state is not TransferExecutionState.SETTLING:
-                return None
-            checkpoint = snapshot.checkpoint
         if checkpoint is None:
             raise TransferExecutionConflictError(
                 "settling 整理任务缺少可重放终态检查点"
             )
         self.__assert_owned_lease(task)
         payload = checkpoint.payload
-        outcome = payload.get("outcome")
-        if outcome not in {"succeeded", "failed"}:
-            raise TransferExecutionConflictError("整理执行检查点缺少确定终态")
+        raw_outcome = payload.get("outcome")
+        try:
+            outcome = TransferExecutionOutcome(
+                raw_outcome if isinstance(raw_outcome, str) else ""
+            )
+        except (TypeError, ValueError) as error:
+            raise TransferExecutionConflictError(
+                "整理执行检查点缺少确定终态"
+            ) from error
         transfer_payload = payload.get("transferinfo")
         if isinstance(transfer_payload, dict):
             transferinfo = cast(
                 TransferInfo,
                 TransferInfo.model_validate(transfer_payload),
             )
-        elif outcome == "failed":
+        elif outcome is TransferExecutionOutcome.FAILED:
             plan_checkpoint = task.plan_checkpoint
             transferinfo = TransferInfo(
                 success=False,
@@ -2433,8 +2503,14 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             raise TransferExecutionConflictError(
                 "成功整理执行检查点缺少可重放 TransferInfo"
             )
-        successful_outcome = bool(transferinfo.success)
-        if successful_outcome != (outcome == "succeeded"):
+        expected_success = outcome is TransferExecutionOutcome.SUCCEEDED
+        expected_overwrite_skip = (
+            outcome is TransferExecutionOutcome.OVERWRITE_SKIPPED
+        )
+        if (
+                bool(transferinfo.success) != expected_success
+                or bool(transferinfo.overwrite_skipped) != expected_overwrite_skip
+        ):
             raise TransferExecutionConflictError(
                 "整理执行检查点终态与 TransferInfo 不一致"
             )
@@ -2451,7 +2527,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             return None
         repository = getattr(self, "_transfer_executions", None)
         if repository is None:
-            return None
+            raise RuntimeError("非预览整理缺少 execution repository")
         if not task.admission_task_id or not task.lease_token:
             raise TransferLeaseLostError("整理执行缺少持久任务身份或租约")
         return _DurableTransferStepRunner(
@@ -2508,6 +2584,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         if not task.preview:
             self.__claim_task_for_execution(task)
             self.__assert_owned_lease(task)
+            if getattr(self, "durable_event_writer", None) is None:
+                raise RuntimeError(
+                    "非预览整理缺少 durable 原子写入端口，拒绝开始外部执行"
+                )
 
         checkpoint = task.plan_checkpoint
         if checkpoint is None:
@@ -2558,6 +2638,9 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
         self.__restore_planned_task(task)
         self.__assert_owned_lease(task)
+
+        if checkpoint.rejection_error:
+            return self.__execute_planning_rejection(task, checkpoint)
 
         step_runner = self.__build_durable_step_runner(task, checkpoint)
         try:
@@ -2905,6 +2988,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         except Exception as error:
             message = f"旧整理兼容命令 durable 终态结算失败：{error}"
             logger.error(message)
+            self.__release_task_claim(task, error=message)
             return TransferInfo(
                 success=False,
                 message=message,
@@ -2936,44 +3020,6 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         finally:
             self._finish_scrape_batch_task(task)
             self.__ensure_recovery_scheduler(immediate=False)
-
-    def __discard_pending(self, task: TransferTask) -> bool:
-        """
-        注销一个待整理文件登记，整理到达终态（成功或失败）时调用。
-
-        失败的文件不靠本表回放：整理历史里已有失败记录，分发器的历史门控会按
-        重试预算重新送入整理链；留在本表反而会每次重启都重复回放。
-        :param task: 任务信息
-        """
-        if not task or not task.admission_task_id:
-            return True
-        if not task.lease_token:
-            logger.error(
-                f"整理任务缺少 lease token，拒绝伪装 durable 终态："
-                f"{task.admission_task_id}"
-            )
-            return False
-        discarded = 0
-        try:
-            discarded = self._transfer_admissions.discard_claimed(
-                task_id=task.admission_task_id,
-                lease_token=task.lease_token,
-            )
-            if not discarded:
-                logger.error(
-                    f"整理任务终态注销被 CAS 拒绝：{task.admission_task_id}"
-                )
-        except Exception as err:
-            logger.error(
-                "注销整理任务 durable admission 失败: "
-                f"{task.admission_task_id} - {err}"
-            )
-        finally:
-            self.__forget_owned_lease(
-                task.admission_task_id,
-                task.lease_token,
-            )
-        return bool(discarded)
 
     def __put_to_jobview(self, task: TransferTask) -> bool:
         """
@@ -3047,23 +3093,25 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             terminal: bool = True,
             terminal_settlement: Optional[bool] = None,
     ) -> bool:
-        """结束内存执行，并复用成功回调前已经提交的 durable 终态结果。"""
+        """结束内存执行，只接受原子终态回执并保留未结算任务供恢复。"""
         marker = getattr(self.jobview, "finish_execution", None)
         if marker:
             marker(task)
+        if task.preview:
+            return True
         if terminal:
-            if terminal_settlement is not None:
-                if (
-                        terminal_settlement
-                        and task.admission_task_id
-                        and task.lease_token
-                ):
+            if terminal_settlement:
+                if task.admission_task_id and task.lease_token:
                     self.__forget_owned_lease(
                         task.admission_task_id,
                         task.lease_token,
                     )
-                return terminal_settlement
-            return self.__discard_pending(task)
+                return True
+            self.__release_task_claim(
+                task,
+                error="整理终态未完成 durable 原子结算",
+            )
+            return False
         self.__release_task_claim(task)
         return True
 
@@ -3220,23 +3268,16 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 ) -> Tuple[bool, str]:
                     """由默认回调原子提交历史、事件与 durable 终态。"""
                     nonlocal terminal_settlement
-                    if (
-                            transferinfo.success
-                            and not callback_task.preview
-                            and callback_task.execution_checkpoint is None
-                    ):
-                        terminal_settlement = self.__discard_pending(callback_task)
-                        if not terminal_settlement:
-                            self.__fail_transfer_task(callback_task)
-                            return False, "整理任务 durable 终态结算失去租约"
                     if item.callback:
-                        callback_result: Tuple[bool, str] = item.callback(
-                            callback_task,
-                            transferinfo,
-                        )
-                        if callback_task.execution_checkpoint is not None:
-                            terminal_settlement = callback_task.terminal_settled
-                        return callback_result
+                        try:
+                            callback_result: Tuple[bool, str] = item.callback(
+                                callback_task,
+                                transferinfo,
+                            )
+                            return callback_result
+                        finally:
+                            if not callback_task.preview:
+                                terminal_settlement = callback_task.terminal_settled
                     return transferinfo.success, transferinfo.message or ""
 
                 try:
@@ -3412,54 +3453,13 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 if not mediainfo:
                     if task.preview:
                         return False, "未识别到媒体信息"
-                    # 未识别同样是整理失败，计入重试次数：TMDB 瞬断属于可恢复故障，
-                    # 但文件名永远识别不出时不能无限重试刷通知
-                    record_transfer_failure(
-                        task.fileitem.path if task.fileitem else None,
-                        task.fileitem.storage if task.fileitem else None,
-                        file_size=task.fileitem.size if task.fileitem else None,
-                        file_modify_time=task.fileitem.modify_time if task.fileitem else None,
-                        fileid=task.fileitem.fileid if task.fileitem else None,
+                    transferinfo = self.__checkpoint_planning_rejection(
+                        task,
+                        "未识别到媒体信息",
                     )
-                    # 新增整理失败历史记录
-                    his = add_transfer_fail(
-                        fileitem=task.fileitem,
-                        mode=task.transfer_type,
-                        meta=task.meta,
-                        downloader=task.downloader,
-                        download_hash=task.download_hash,
-                        transfer_history_oper=transferhis,
-                    )
-                    self.queue_failed_transfer_notification(
-                        task=task,
-                        transferinfo=TransferInfo(
-                            success=False,
-                            fileitem=task.fileitem,
-                            message="未识别到媒体信息",
-                            transfer_type=task.transfer_type,
-                        ),
-                        history_id=his.id if his else None,
-                        manual_identity=True,
-                    )
-                    # 任务失败，直接移除task
-                    self.jobview.remove_task(task.fileitem)
-                    self.__mark_torrent_completed_if_done(
-                        task.download_hash, task.downloader
-                    )
-
-                    # AI智能体自动重试整理
-                    if (
-                            his
-                            and self.runtime_config.ai_agent_enable
-                            and self.runtime_config.ai_agent_retry_transfer
-                    ):
-                        # 使用 download_hash 或源文件父目录作为分组键
-                        self._schedule_failed_transfer_retry(
-                            his.id,
-                            build_transfer_failure_group_key(task),
-                        )
-
-                    return False, "未识别到媒体信息"
+                    if callback:
+                        return cast(Tuple[bool, str], callback(task, transferinfo))
+                    return transferinfo.success, transferinfo.message or ""
 
                 mediainfo_changed = True
 
@@ -3538,17 +3538,15 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 else:
                     error_message = "未识别到 TMDB 辅助信息，无法按媒体类别整理"
                 logger.error(f"{task.fileitem.name} {error_message}")
+                if task.preview:
+                    return False, error_message
+                transferinfo = self.__checkpoint_planning_rejection(
+                    task,
+                    error_message,
+                )
                 if callback:
-                    return callback(
-                        task,
-                        TransferInfo(
-                            success=False,
-                            fileitem=task.fileitem,
-                            transfer_type=task.transfer_type,
-                            message=error_message,
-                        ),
-                    )
-                return False, error_message
+                    return cast(Tuple[bool, str], callback(task, transferinfo))
+                return transferinfo.success, transferinfo.message or ""
 
             # 正在处理
             self.jobview.running_task(task)
@@ -4902,24 +4900,16 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     ) -> Tuple[bool, str]:
                         """同步路径也由默认回调原子提交历史、事件与 durable 终态。"""
                         nonlocal terminal_settlement
-                        if (
-                                transferinfo.success
-                                and not callback_task.preview
-                                and callback_task.execution_checkpoint is None
-                        ):
-                            terminal_settlement = self.__discard_pending(callback_task)
-                            if not terminal_settlement:
-                                self.__fail_transfer_task(callback_task)
-                                return False, "整理任务 durable 终态结算失去租约"
                         callback = (
                             _preview_callback
                             if preview
                             else self.__default_callback
                         )
-                        callback_result = callback(callback_task, transferinfo)
-                        if callback_task.execution_checkpoint is not None:
-                            terminal_settlement = callback_task.terminal_settled
-                        return callback_result
+                        try:
+                            return callback(callback_task, transferinfo)
+                        finally:
+                            if not callback_task.preview:
+                                terminal_settlement = callback_task.terminal_settled
 
                     try:
                         self.__claim_task_for_execution(transfer_task)

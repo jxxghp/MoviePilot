@@ -33,22 +33,49 @@ def _column_names() -> set[str]:
     }
 
 
-def _has_task_id_constraint() -> bool:
-    """判断稳定任务标识唯一约束是否已经存在。"""
-    inspector = sa.inspect(op.get_bind())
-    return any(
-        constraint.get("name") == _TASK_ID_CONSTRAINT
-        for constraint in inspector.get_unique_constraints(_TABLE_NAME)
-    )
+def _repair_task_id_constraint() -> None:
+    """把稳定任务身份约束修复为 task_id 单列唯一约束。"""
+    constraints = {
+        constraint.get("name"): tuple(constraint.get("column_names") or ())
+        for constraint in sa.inspect(op.get_bind()).get_unique_constraints(
+            _TABLE_NAME
+        )
+        if constraint.get("name")
+    }
+    current = constraints.get(_TASK_ID_CONSTRAINT)
+    if current is not None and current != ("task_id",):
+        with op.batch_alter_table(_TABLE_NAME) as batch_op:
+            batch_op.drop_constraint(_TASK_ID_CONSTRAINT, type_="unique")
+        current = None
+    if current is None:
+        with op.batch_alter_table(_TABLE_NAME) as batch_op:
+            batch_op.create_unique_constraint(
+                _TASK_ID_CONSTRAINT,
+                ["task_id"],
+            )
 
 
-def _has_state_created_index() -> bool:
-    """判断恢复主查询的复合索引是否已经存在。"""
-    inspector = sa.inspect(op.get_bind())
-    return any(
-        index.get("name") == _STATE_CREATED_INDEX
-        for index in inspector.get_indexes(_TABLE_NAME)
-    )
+def _repair_state_created_index() -> None:
+    """按列顺序和非唯一语义修复恢复扫描索引。"""
+    indexes = {
+        index.get("name"): index
+        for index in sa.inspect(op.get_bind()).get_indexes(_TABLE_NAME)
+        if index.get("name")
+    }
+    current = indexes.get(_STATE_CREATED_INDEX)
+    if current is not None and (
+            tuple(current.get("column_names") or ()) != ("state", "created_at", "id")
+            or bool(current.get("unique"))
+    ):
+        op.drop_index(_STATE_CREATED_INDEX, table_name=_TABLE_NAME)
+        current = None
+    if current is None:
+        op.create_index(
+            _STATE_CREATED_INDEX,
+            _TABLE_NAME,
+            ["state", "created_at", "id"],
+            unique=False,
+        )
 
 
 def _backfill_admission_state() -> None:
@@ -135,19 +162,8 @@ def upgrade() -> None:
         batch_op.alter_column(
             "updated_at", existing_type=sa.String(length=40), nullable=False
         )
-    if not _has_task_id_constraint():
-        with op.batch_alter_table(_TABLE_NAME) as batch_op:
-            batch_op.create_unique_constraint(
-                _TASK_ID_CONSTRAINT,
-                ["task_id"],
-            )
-    if not _has_state_created_index():
-        op.create_index(
-            _STATE_CREATED_INDEX,
-            _TABLE_NAME,
-            ["state", "created_at", "id"],
-            unique=False,
-        )
+    _repair_task_id_constraint()
+    _repair_state_created_index()
 
 
 def downgrade() -> None:
@@ -155,10 +171,20 @@ def downgrade() -> None:
     columns = _column_names()
     if not columns or not (_NEW_COLUMNS & columns):
         return
-    if _has_state_created_index():
+    index_names = {
+        index.get("name")
+        for index in sa.inspect(op.get_bind()).get_indexes(_TABLE_NAME)
+    }
+    if _STATE_CREATED_INDEX in index_names:
         op.drop_index(_STATE_CREATED_INDEX, table_name=_TABLE_NAME)
+    constraint_names = {
+        constraint.get("name")
+        for constraint in sa.inspect(op.get_bind()).get_unique_constraints(
+            _TABLE_NAME
+        )
+    }
     with op.batch_alter_table(_TABLE_NAME) as batch_op:
-        if "task_id" in columns and _has_task_id_constraint():
+        if "task_id" in columns and _TASK_ID_CONSTRAINT in constraint_names:
             batch_op.drop_constraint(_TASK_ID_CONSTRAINT, type_="unique")
         for column_name in ("last_error", "updated_at", "state", "task_id"):
             if column_name in columns:

@@ -22,8 +22,11 @@ from app.application.chain.events import (
 )
 from app.application.history import TransferHistoryMutationCommand
 from app.application.transfer.execution import (
+    TransferExecutionCheckpoint,
+    TransferExecutionConflictError,
     TransferExecutionLeaseLostError,
     TransferSettlementResult,
+    build_transfer_checkpoint_fingerprint,
 )
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.base import Base
@@ -81,16 +84,44 @@ def _objects():
     return meta, media, context, fileitem, transferinfo
 
 
+def _execution_checkpoint(
+    *,
+    outcome: str,
+    identity: str = "execution-1",
+) -> TransferExecutionCheckpoint:
+    """构造 outcome 与完整指纹一致的测试执行检查点。"""
+    overwrite_skipped = outcome == "overwrite_skipped"
+    transferinfo = (
+        TransferInfo(success=False, overwrite_skipped=True).model_dump(mode="json")
+        if overwrite_skipped
+        else None
+    )
+    return TransferExecutionCheckpoint.create(
+        payload={
+            "outcome": outcome,
+            "test_identity": identity,
+            **({"transferinfo": transferinfo} if transferinfo else {}),
+        },
+        operation_ids=() if overwrite_skipped else ("operation-1",),
+        skip_reason="overwrite_skipped" if overwrite_skipped else None,
+    )
+
+
 def _add_settling_pending(
     factory,
     *,
     task_id: str = "task-1",
     lease_token: str = "lease-1",
-    execution_fingerprint: str = "execution-1",
+    execution_outcome: str = "succeeded",
+    execution_identity: str = "execution-1",
     settlement_revision: int = 0,
     src_path: str | None = None,
-) -> None:
+) -> TransferExecutionCheckpoint:
     """写入具备有效长租约和执行检查点的待结算任务。"""
+    checkpoint = _execution_checkpoint(
+        outcome=execution_outcome,
+        identity=execution_identity,
+    )
     with factory() as session:
         session.add(TransferPending(
             task_id=task_id,
@@ -111,14 +142,15 @@ def _add_settling_pending(
             heartbeat_at="2026-08-27 01:00:00.000000",
             attempt_count=1,
             execution_state="settling",
-            execution_version=1,
-            execution_payload={"schema_version": 1},
-            execution_fingerprint=execution_fingerprint,
+            execution_version=checkpoint.version,
+            execution_payload=checkpoint.to_payload(),
+            execution_fingerprint=checkpoint.fingerprint,
             retry_generation=0,
             retry_count=0,
             settlement_revision=settlement_revision,
         ))
         session.commit()
+    return checkpoint
 
 
 def _settlement(
@@ -126,13 +158,18 @@ def _settlement(
     outcome: str,
     task_id: str = "task-1",
     lease_token: str = "lease-1",
-    execution_fingerprint: str = "execution-1",
+    checkpoint_outcome: str | None = None,
+    execution_identity: str = "execution-1",
 ) -> TransferResultSettlement:
     """构造测试使用的稳定终态结算身份。"""
+    checkpoint = _execution_checkpoint(
+        outcome=checkpoint_outcome or outcome,
+        identity=execution_identity,
+    )
     return TransferResultSettlement(
         task_id=task_id,
         lease_token=lease_token,
-        execution_fingerprint=execution_fingerprint,
+        execution_fingerprint=checkpoint.fingerprint,
         outcome=outcome,
         error="目标文件校验失败" if outcome == "failed" else None,
     )
@@ -519,7 +556,9 @@ def test_task_success_settlement_atomically_deletes_pending_and_steps():
     assert receipt.task_id == "task-1"
     assert receipt.history_id == history.id
     assert receipt.outcome == "succeeded"
-    assert receipt.execution_fingerprint == "execution-1"
+    assert receipt.execution_fingerprint == _execution_checkpoint(
+        outcome="succeeded"
+    ).fingerprint
     assert receipt.lease_token == "lease-1"
     assert receipt.history_status is True
     assert receipt.src == "/downloads/task-1.mkv"
@@ -599,7 +638,7 @@ def test_multiple_same_source_tasks_keep_independent_replay_receipts():
         factory,
         task_id="new-task",
         lease_token="lease-2",
-        execution_fingerprint="execution-2",
+        execution_identity="execution-2",
         src_path=shared_src,
     )
 
@@ -617,7 +656,7 @@ def test_multiple_same_source_tasks_keep_independent_replay_receipts():
             outcome="succeeded",
             task_id="new-task",
             lease_token="lease-2",
-            execution_fingerprint="execution-2",
+            execution_identity="execution-2",
         ),
     )
     old_replay = writer.transfer_result(
@@ -684,7 +723,11 @@ def test_task_settlement_without_public_topic_commits_no_outbox():
 def test_task_settlement_binds_receipt_without_overwriting_success_history():
     """不覆盖裁决只绑定任务回执，保留旧成功历史的全部业务字段。"""
     factory = _session_factory()
-    _add_settling_pending(factory, task_id="declined-task")
+    _add_settling_pending(
+        factory,
+        task_id="declined-task",
+        execution_outcome="overwrite_skipped",
+    )
     with factory() as session:
         session.add(TransferHistory(
             src="/downloads/declined-task.mkv",
@@ -699,6 +742,7 @@ def test_task_settlement_binds_receipt_without_overwriting_success_history():
     settlement = _settlement(
         outcome="succeeded",
         task_id="declined-task",
+        checkpoint_outcome="overwrite_skipped",
     )
 
     first = writer.transfer_result(
@@ -736,6 +780,170 @@ def test_task_settlement_binds_receipt_without_overwriting_success_history():
     assert history.date == "2026-08-26 20:00:00"
     assert history.transfer_task_id is None
     assert history.transfer_settlement_revision is None
+
+
+def test_task_overwrite_skip_without_success_history_settles_failed():
+    """覆盖跳过找不到成功历史时，显式执行事实仍可裁决为失败。"""
+    factory = _session_factory()
+    _add_settling_pending(factory, execution_outcome="overwrite_skipped")
+    writer = TransactionalChainDurableEventWriter(factory)
+
+    result = writer.transfer_result(
+        topic="transfer.failed",
+        stage_history=lambda repository: _stage_result_history(
+            repository,
+            task_id="task-1",
+            succeeded=False,
+        ),
+        event_payload={},
+        publish=None,
+        settlement=_settlement(
+            outcome="failed",
+            checkpoint_outcome="overwrite_skipped",
+        ),
+    )
+
+    assert isinstance(result, TransferSettlementResult)
+    assert result.pending_deleted is False
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        history = session.execute(select(TransferHistory)).scalar_one()
+        receipt = session.execute(select(TransferSettlementReceipt)).scalar_one()
+    assert pending.execution_state == "failed"
+    assert history.status is False
+    assert receipt.outcome == "failed"
+
+
+@pytest.mark.parametrize(
+    ("checkpoint_outcome", "settlement_outcome"),
+    [
+        ("failed", "succeeded"),
+        ("succeeded", "failed"),
+    ],
+)
+def test_task_settlement_rejects_checkpoint_outcome_conflicts_before_writes(
+    checkpoint_outcome,
+    settlement_outcome,
+):
+    """执行证据与结算方向冲突或未知时，不得进入历史暂存。"""
+    factory = _session_factory()
+    _add_settling_pending(
+        factory,
+        execution_outcome=checkpoint_outcome,
+    )
+    writer = TransactionalChainDurableEventWriter(factory)
+
+    with pytest.raises(TransferExecutionConflictError):
+        writer.transfer_result(
+            topic="transfer.completed",
+            stage_history=lambda _repository: pytest.fail("冲突结算不得写历史"),
+            event_payload={},
+            publish=lambda _payload: pytest.fail("冲突结算不得发布"),
+            settlement=_settlement(
+                outcome=settlement_outcome,
+                checkpoint_outcome=checkpoint_outcome,
+            ),
+        )
+
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        assert session.execute(select(TransferHistory)).scalar_one_or_none() is None
+        assert session.execute(
+            select(TransferSettlementReceipt)
+        ).scalar_one_or_none() is None
+        assert session.execute(select(OutboxMessage)).scalar_one_or_none() is None
+    assert pending.execution_state == "settling"
+    assert pending.settlement_revision == 0
+
+
+def test_task_settlement_rejects_corrupted_checkpoint_outcome_before_writes():
+    """持久层出现未知执行 outcome 时必须隔离，不得构造历史或事件。"""
+    factory = _session_factory()
+    _add_settling_pending(factory)
+    corrupted_payload = {
+        "schema_version": 1,
+        "payload": {"outcome": "unknown", "test_identity": "execution-1"},
+        "operation_ids": ["operation-1"],
+        "skip_reason": None,
+    }
+    corrupted_fingerprint = build_transfer_checkpoint_fingerprint(
+        corrupted_payload
+    )
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        pending.execution_payload = corrupted_payload
+        pending.execution_fingerprint = corrupted_fingerprint
+        session.commit()
+    writer = TransactionalChainDurableEventWriter(factory)
+    settlement = TransferResultSettlement(
+        task_id="task-1",
+        lease_token="lease-1",
+        execution_fingerprint=corrupted_fingerprint,
+        outcome="succeeded",
+    )
+
+    with pytest.raises(TransferExecutionConflictError):
+        writer.transfer_result(
+            topic="transfer.completed",
+            stage_history=lambda _repository: pytest.fail("损坏检查点不得写历史"),
+            event_payload={},
+            publish=lambda _payload: pytest.fail("损坏检查点不得发布"),
+            settlement=settlement,
+        )
+
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        assert session.execute(select(TransferHistory)).scalar_one_or_none() is None
+        assert session.execute(
+            select(TransferSettlementReceipt)
+        ).scalar_one_or_none() is None
+        assert session.execute(select(OutboxMessage)).scalar_one_or_none() is None
+    assert pending.execution_state == "settling"
+    assert pending.settlement_revision == 0
+
+
+def test_task_settlement_rejects_malformed_checkpoint_before_writes():
+    """指纹自洽但结构损坏的数据库检查点也不得驱动终态写入。"""
+    factory = _session_factory()
+    _add_settling_pending(factory)
+    malformed_payload = {
+        "schema_version": 1,
+        "payload": {"outcome": "succeeded"},
+        "operation_ids": "operation-1",
+        "skip_reason": None,
+    }
+    fingerprint = build_transfer_checkpoint_fingerprint(malformed_payload)
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        pending.execution_payload = malformed_payload
+        pending.execution_fingerprint = fingerprint
+        session.commit()
+    writer = TransactionalChainDurableEventWriter(factory)
+    settlement = TransferResultSettlement(
+        task_id="task-1",
+        lease_token="lease-1",
+        execution_fingerprint=fingerprint,
+        outcome="succeeded",
+    )
+
+    with pytest.raises(TransferExecutionConflictError):
+        writer.transfer_result(
+            topic="transfer.completed",
+            stage_history=lambda _repository: pytest.fail("损坏检查点不得写历史"),
+            event_payload={},
+            publish=lambda _payload: pytest.fail("损坏检查点不得发布"),
+            settlement=settlement,
+        )
+
+    with factory() as session:
+        pending = session.execute(select(TransferPending)).scalar_one()
+        assert session.execute(select(TransferHistory)).scalar_one_or_none() is None
+        assert session.execute(
+            select(TransferSettlementReceipt)
+        ).scalar_one_or_none() is None
+        assert session.execute(select(OutboxMessage)).scalar_one_or_none() is None
+    assert pending.execution_state == "settling"
+    assert pending.settlement_revision == 0
 
 
 @pytest.mark.parametrize("cleanup", ["delete", "truncate"])
@@ -857,7 +1065,7 @@ def test_success_receipt_allows_expiry_and_legacy_same_source_replace():
 def test_task_failure_settlement_is_replayable_and_retry_advances_revision():
     """失败保留终态证据，重复调用幂等，显式重试后才递增修订号。"""
     factory = _session_factory()
-    _add_settling_pending(factory)
+    _add_settling_pending(factory, execution_outcome="failed")
     writer = TransactionalChainDurableEventWriter(factory)
     calls = []
     first_settlement = _settlement(outcome="failed")
@@ -890,8 +1098,14 @@ def test_task_failure_settlement_is_replayable_and_retry_advances_revision():
         assert pending.lease_token is None
         assert pending.settlement_revision == 1
         assert pending.terminal_history_id == first.history_id
+        retry_checkpoint = _execution_checkpoint(
+            outcome="failed",
+            identity="execution-2",
+        )
         pending.execution_state = "settling"
-        pending.execution_fingerprint = "execution-2"
+        pending.execution_version = retry_checkpoint.version
+        pending.execution_payload = retry_checkpoint.to_payload()
+        pending.execution_fingerprint = retry_checkpoint.fingerprint
         pending.lease_owner = "worker-2"
         pending.lease_token = "lease-2"
         pending.lease_expires_at = "2099-01-01 00:00:00.000000"
@@ -909,7 +1123,7 @@ def test_task_failure_settlement_is_replayable_and_retry_advances_revision():
         settlement=_settlement(
             outcome="failed",
             lease_token="lease-2",
-            execution_fingerprint="execution-2",
+            execution_identity="execution-2",
         ),
     )
 
@@ -949,10 +1163,15 @@ def test_task_failure_settlement_is_replayable_and_retry_advances_revision():
     assert [receipt.settlement_revision for receipt in receipts] == [1, 2]
     assert all(receipt.task_id == "task-1" for receipt in receipts)
     assert all(receipt.history_id == first.history_id for receipt in receipts)
-    assert receipts[0].execution_fingerprint == "execution-1"
+    assert receipts[0].execution_fingerprint == _execution_checkpoint(
+        outcome="failed"
+    ).fingerprint
     assert receipts[0].lease_token == "lease-1"
     assert receipts[1].outcome == "failed"
-    assert receipts[1].execution_fingerprint == "execution-2"
+    assert receipts[1].execution_fingerprint == _execution_checkpoint(
+        outcome="failed",
+        identity="execution-2",
+    ).fingerprint
     assert receipts[1].lease_token == "lease-2"
     assert receipts[1].pending_deleted is False
     assert receipts[1].error == "目标文件校验失败"
@@ -966,7 +1185,7 @@ def test_task_failure_settlement_is_replayable_and_retry_advances_revision():
 def test_failed_revision_replays_after_later_success_deleted_pending():
     """后续重试成功删除 pending 后，旧失败修订仍按原执行身份幂等回读。"""
     factory = _session_factory()
-    _add_settling_pending(factory)
+    _add_settling_pending(factory, execution_outcome="failed")
     writer = TransactionalChainDurableEventWriter(factory)
     failed_settlement = _settlement(outcome="failed")
     failed = writer.transfer_result(
@@ -982,8 +1201,14 @@ def test_failed_revision_replays_after_later_success_deleted_pending():
     )
     with factory() as session:
         pending = session.execute(select(TransferPending)).scalar_one()
+        retry_checkpoint = _execution_checkpoint(
+            outcome="succeeded",
+            identity="execution-2",
+        )
         pending.execution_state = "settling"
-        pending.execution_fingerprint = "execution-2"
+        pending.execution_version = retry_checkpoint.version
+        pending.execution_payload = retry_checkpoint.to_payload()
+        pending.execution_fingerprint = retry_checkpoint.fingerprint
         pending.lease_owner = "worker-2"
         pending.lease_token = "lease-2"
         pending.lease_expires_at = "2099-01-01 00:00:00.000000"
@@ -991,7 +1216,7 @@ def test_failed_revision_replays_after_later_success_deleted_pending():
     succeeded_settlement = _settlement(
         outcome="succeeded",
         lease_token="lease-2",
-        execution_fingerprint="execution-2",
+        execution_identity="execution-2",
     )
     succeeded = writer.transfer_result(
         topic="transfer.completed",

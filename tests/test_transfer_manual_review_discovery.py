@@ -15,6 +15,11 @@ from app.application.transfer.execution import (
     TransferStepIntent,
     TransferStepResult,
 )
+from app.application.transfer.workflow import (
+    TransferPlanCheckpoint,
+    TransferPlanItem,
+    TransferPlanningInput,
+)
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
@@ -58,19 +63,44 @@ def _put_in_manual_review(factory, *, task_id: str) -> tuple[
     str,
 ]:
     """建立一个外部结果 UNKNOWN 且已释放租约的人工复核任务。"""
+    source_path = f"/downloads/{task_id}.mkv"
+    target_path = f"/library/{task_id}.mkv"
+    planning_input = TransferPlanningInput(
+        source_fileitem={
+            "storage": "local",
+            "path": source_path,
+            "type": "file",
+        },
+        target_storage="local",
+        target_path=target_path,
+        requested_transfer_type="copy",
+    )
+    checkpoint = TransferPlanCheckpoint(
+        planning_input=planning_input,
+        target_storage="local",
+        root_target_path="/library",
+        final_target_path=target_path,
+        resolved_transfer_type="copy",
+        items=(TransferPlanItem(
+            sequence=0,
+            source_fileitem=planning_input.source_fileitem,
+            target_storage="local",
+            target_path=target_path,
+        ),),
+    )
     with factory() as session:
         session.add(TransferPending(
             task_id=task_id,
             storage="local",
-            src_path=f"/downloads/{task_id}.mkv",
+            src_path=source_path,
             created_at="2026-08-27 09:00:00",
             state="planned",
             updated_at="2026-08-27 09:00:00",
             input_version=1,
-            planning_input={"schema_version": 1, "source": task_id},
-            input_fingerprint=f"input-{task_id}",
+            planning_input=planning_input.to_payload(),
+            input_fingerprint=planning_input.fingerprint,
             checkpoint_version=1,
-            checkpoint_payload={"schema_version": 1, "task_id": task_id},
+            checkpoint_payload=checkpoint.to_payload(),
             planned_at="2026-08-27 09:00:00",
             lease_owner="worker-secret",
             lease_token=f"lease-{task_id}",
@@ -90,13 +120,15 @@ def _put_in_manual_review(factory, *, task_id: str) -> tuple[
     )
     intent = TransferStepIntent.create(
         task_id=task_id,
-        checkpoint_fingerprint=f"checkpoint-{task_id}",
+        checkpoint_fingerprint=checkpoint.fingerprint,
         ordinal=0,
         phase="transfer",
         kind="materialize_target",
         payload={
-            "source": f"/downloads/{task_id}.mkv",
-            "target": f"/library/{task_id}.mkv",
+            "source": planning_input.source_fileitem,
+            "target_storage": "local",
+            "target_path": target_path,
+            "transfer_type": "copy",
         },
     )
     prepared = command.prepare(
@@ -189,7 +221,10 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
     }
     assert discovered.step.operation_id == operation_id
     assert discovered.step.kind == "materialize_target"
-    assert discovered.step.intent["target"] == f"/library/task-{decision}.mkv"
+    assert (
+        discovered.step.intent["target_path"]
+        == f"/library/task-{decision}.mkv"
+    )
     assert discovered.step.evidence == {
         "observation": "unknown",
         "target_exists": True,

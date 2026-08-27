@@ -35,16 +35,28 @@ def _column_names() -> set[str]:
     }
 
 
-def _index_names() -> set[str]:
-    """返回当前待整理登记表的索引名称集合。"""
-    inspector = sa.inspect(op.get_bind())
-    if _TABLE_NAME not in inspector.get_table_names():
-        return set()
-    return {
-        index["name"]
-        for index in inspector.get_indexes(_TABLE_NAME)
+def _repair_lease_index() -> None:
+    """按列顺序和非唯一语义修复租约接管索引。"""
+    indexes = {
+        index.get("name"): index
+        for index in sa.inspect(op.get_bind()).get_indexes(_TABLE_NAME)
         if index.get("name")
     }
+    current = indexes.get(_LEASE_INDEX)
+    if current is not None and (
+            tuple(current.get("column_names") or ())
+            != ("state", "lease_expires_at", "created_at", "id")
+            or bool(current.get("unique"))
+    ):
+        op.drop_index(_LEASE_INDEX, table_name=_TABLE_NAME)
+        current = None
+    if current is None:
+        op.create_index(
+            _LEASE_INDEX,
+            _TABLE_NAME,
+            ["state", "lease_expires_at", "created_at", "id"],
+            unique=False,
+        )
 
 
 def upgrade() -> None:
@@ -96,13 +108,7 @@ def upgrade() -> None:
                 nullable=False,
             )
 
-    if _LEASE_INDEX not in _index_names():
-        op.create_index(
-            _LEASE_INDEX,
-            _TABLE_NAME,
-            ["state", "lease_expires_at", "created_at", "id"],
-            unique=False,
-        )
+    _repair_lease_index()
 
 
 def downgrade() -> None:
@@ -110,7 +116,11 @@ def downgrade() -> None:
     columns = _column_names()
     if not columns or not (_LEASE_COLUMNS & columns):
         return
-    if _LEASE_INDEX in _index_names():
+    index_names = {
+        index.get("name")
+        for index in sa.inspect(op.get_bind()).get_indexes(_TABLE_NAME)
+    }
+    if _LEASE_INDEX in index_names:
         op.drop_index(_LEASE_INDEX, table_name=_TABLE_NAME)
     with op.batch_alter_table(_TABLE_NAME) as batch_op:
         for column_name in (
