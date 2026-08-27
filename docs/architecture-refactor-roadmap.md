@@ -153,7 +153,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 878 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 875 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口

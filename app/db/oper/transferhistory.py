@@ -1,12 +1,27 @@
 import time
-from typing import Any, List, Optional
+from typing import Any, List, Optional, cast
 
 from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.transferhistory import TransferHistory
+from app.db.oper.query import (
+    descending,
+    enum_values,
+    execute_page,
+    literal_contains,
+    media_identity_conditions,
+    music_type_condition,
+    required_media_identity_conditions,
+)
+from app.schemas.query import (
+    QueryPageRequest,
+    QuerySortField,
+    TransferHistoryFilter,
+)
 from app.schemas.types import MediaSource
 
 
@@ -20,9 +35,110 @@ class TransferHistoryOper(DbOper):
         获取转移历史
         :param historyid: 转移历史id
         """
-        return self._execute_sync_query(
-            lambda session: TransferHistory.get(session, historyid)
+        return self.get_by_id(historyid)
+
+    def get_by_id(self, record_id: int) -> Optional[TransferHistory]:
+        """按稳定记录 ID 读取单条整理历史。"""
+        return cast(
+            Optional[TransferHistory],
+            self._execute_sync_query(
+                lambda session: session.execute(
+                    select(TransferHistory).where(TransferHistory.id == record_id)
+                ).scalars().first()
+            ),
         )
+
+    def query(
+        self,
+        filters: TransferHistoryFilter,
+        page: QueryPageRequest,
+    ) -> tuple[list[TransferHistory], int]:
+        """按稳定筛选和分页合同读取整理历史记录及总数。"""
+        def execute(session: Session) -> tuple[list[TransferHistory], int]:
+            """在同一会话中构造并执行整理历史 count/page 查询。"""
+            conditions = media_identity_conditions(TransferHistory, filters)
+            ids = enum_values(filters.ids)
+            media_types = enum_values(filters.media_types)
+            media_sources = enum_values(filters.media_sources)
+            if ids:
+                conditions.append(TransferHistory.id.in_(ids))
+            if media_types:
+                conditions.append(TransferHistory.type.in_(media_types))
+            if media_sources:
+                conditions.append(TransferHistory.media_source.in_(media_sources))
+            if filters.require_media_identity:
+                conditions.extend(required_media_identity_conditions(TransferHistory))
+            if filters.title:
+                conditions.append(TransferHistory.title == filters.title)
+            if filters.text:
+                conditions.append(
+                    literal_contains(TransferHistory.title, filters.text)
+                    | literal_contains(TransferHistory.src, filters.text)
+                    | literal_contains(TransferHistory.dest, filters.text)
+                )
+            for column, value in (
+                (TransferHistory.year, filters.year),
+                (TransferHistory.seasons, filters.seasons),
+                (TransferHistory.episodes, filters.episodes),
+                (TransferHistory.src, filters.src),
+                (TransferHistory.dest, filters.dest),
+                (TransferHistory.download_hash, filters.download_hash),
+                (TransferHistory.episode_group, filters.episode_group),
+            ):
+                if value is not None and value != "":
+                    conditions.append(column == value)
+            if filters.status is not None:
+                if filters.status:
+                    conditions.append(TransferHistory.status.is_(True))
+                else:
+                    conditions.append(
+                        or_(
+                            TransferHistory.status.is_(False),
+                            TransferHistory.status.is_(None),
+                        )
+                    )
+            music_condition = music_type_condition(
+                TransferHistory.music_type,
+                filters.music_type,
+            )
+            if music_condition is not None:
+                conditions.append(music_condition)
+
+            count_statement = select(func.count(TransferHistory.id))
+            page_statement = select(TransferHistory)
+            if conditions:
+                count_statement = count_statement.where(*conditions)
+                page_statement = page_statement.where(*conditions)
+            descending_order = descending(page)
+            if page.sort.field == QuerySortField.ID:
+                primary = (
+                    TransferHistory.id.desc()
+                    if descending_order
+                    else TransferHistory.id.asc()
+                )
+                secondary = (
+                    TransferHistory.date.desc()
+                    if descending_order
+                    else TransferHistory.date.asc()
+                )
+            else:
+                primary = (
+                    TransferHistory.date.desc().nullslast()
+                    if descending_order
+                    else TransferHistory.date.asc().nullsfirst()
+                )
+                secondary = (
+                    TransferHistory.id.desc()
+                    if descending_order
+                    else TransferHistory.id.asc()
+                )
+            page_statement = page_statement.order_by(primary, secondary)
+            return cast(
+                tuple[list[TransferHistory], int],
+                execute_page(session, count_statement, page_statement, page),
+            )
+
+        return self._execute_sync_query(execute)
 
     async def async_get(self, historyid: int) -> Optional[TransferHistory]:
         """

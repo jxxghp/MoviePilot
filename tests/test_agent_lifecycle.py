@@ -4,18 +4,20 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.agent.orchestrator as agent_module
-from app.application.messaging.agent import (
-    create_web_agent_background_task,
-    shutdown_web_agent_background_tasks,
-)
+from app.agent.memory import MemoryManager
 from app.agent.orchestrator import (
     AGENT_SESSION_QUEUE_MAX_SIZE,
     AgentManager,
     AgentManagerQueueFullError,
     AgentManagerUnavailableError,
 )
-from app.agent.memory import MemoryManager
 from app.agent.tools.base import reopen_blocking_executors
+from app.application import query as query_application
+from app.application.messaging.agent import (
+    create_web_agent_background_task,
+    shutdown_web_agent_background_tasks,
+)
+from app.sdk import queries as query_sdk
 from app.startup.initializers import agent as agent_initializer
 from app.startup.initializers import modules as modules_initializer
 
@@ -196,12 +198,16 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
     check_auth = MagicMock()
     monkeypatch.setattr(modules_initializer, "start_frontend", start_frontend)
     monkeypatch.setattr(modules_initializer, "check_auth", check_auth)
+    monkeypatch.setattr(query_application, "_configured_data_query_service", None)
 
     try:
         runtime = await modules_initializer.init_modules()
         assert runtime.workflow.system_config() is (
             modules_initializer.get_configured_system_config()
         )
+        query_page = await query_sdk.async_list_subscriptions({"ids": [-1]})
+        assert query_page.items == []
+        assert query_page.total == 0
     finally:
         await modules_initializer.stop_database_worker()
 

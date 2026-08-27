@@ -10188,6 +10188,168 @@
         "target": "app.runtime.extensions.plugin_manager.PluginManager"
       }
     ],
+    "app.sdk.queries": [
+      {
+        "kind": "import",
+        "name": "DEFAULT_QUERY_PAGE_SIZE",
+        "target": "app.schemas.query.DEFAULT_QUERY_PAGE_SIZE"
+      },
+      {
+        "kind": "import",
+        "name": "DownloadHistoryFilter",
+        "target": "app.schemas.query.DownloadHistoryFilter"
+      },
+      {
+        "kind": "import",
+        "name": "DownloadHistorySnapshot",
+        "target": "app.schemas.query.DownloadHistorySnapshot"
+      },
+      {
+        "kind": "import",
+        "name": "MAX_QUERY_PAGE_SIZE",
+        "target": "app.schemas.query.MAX_QUERY_PAGE_SIZE"
+      },
+      {
+        "kind": "import",
+        "name": "MediaIdentityQuery",
+        "target": "app.schemas.query.MediaIdentityQuery"
+      },
+      {
+        "kind": "import",
+        "name": "QueryPage",
+        "target": "app.schemas.query.QueryPage"
+      },
+      {
+        "kind": "import",
+        "name": "QueryPageRequest",
+        "target": "app.schemas.query.QueryPageRequest"
+      },
+      {
+        "kind": "import",
+        "name": "QuerySort",
+        "target": "app.schemas.query.QuerySort"
+      },
+      {
+        "kind": "import",
+        "name": "QuerySortDirection",
+        "target": "app.schemas.query.QuerySortDirection"
+      },
+      {
+        "kind": "import",
+        "name": "QuerySortField",
+        "target": "app.schemas.query.QuerySortField"
+      },
+      {
+        "kind": "import",
+        "name": "SubscriptionFilter",
+        "target": "app.schemas.query.SubscriptionFilter"
+      },
+      {
+        "kind": "import",
+        "name": "SubscriptionHistoryFilter",
+        "target": "app.schemas.query.SubscriptionHistoryFilter"
+      },
+      {
+        "kind": "import",
+        "name": "SubscriptionHistorySnapshot",
+        "target": "app.schemas.query.SubscriptionHistorySnapshot"
+      },
+      {
+        "kind": "import",
+        "name": "SubscriptionSnapshot",
+        "target": "app.schemas.query.SubscriptionSnapshot"
+      },
+      {
+        "kind": "import",
+        "name": "TransferHistoryFilter",
+        "target": "app.schemas.query.TransferHistoryFilter"
+      },
+      {
+        "kind": "import",
+        "name": "TransferHistorySnapshot",
+        "target": "app.schemas.query.TransferHistorySnapshot"
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "async_get_download_history",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "async_get_subscription",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "async_get_subscription_history",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "async_get_transfer_history",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "async_list_download_history",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "async_list_subscription_history",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "async_list_subscriptions",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "async_list_transfer_history",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "get_download_history",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "get_subscription",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "get_subscription_history",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "get_transfer_history",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "list_download_history",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "list_subscription_history",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "list_subscriptions",
+        "target": ""
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "list_transfer_history",
+        "target": ""
+      }
+    ],
     "app.sdk.security": [
       {
         "kind": "import",

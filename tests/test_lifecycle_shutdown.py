@@ -396,13 +396,20 @@ def test_plugin_settlement_cannot_bypass_task_registry_shutdown_budget(
     lifecycle.init_extra.side_effect = settle_plugins
 
     async def run_lifespan() -> None:
-        """确认 context 能由 TaskRegistry 的失败结果立即结束。"""
-        async with lifecycle.lifespan(FastAPI()):
+        """仅对关闭阶段计时，避免覆盖率启动开销污染停机预算断言。"""
+        lifespan_context = lifecycle.lifespan(FastAPI())
+        await lifespan_context.__aenter__()
+        try:
             await started.wait()
-        release.set()
-        await asyncio.sleep(0)
+            await asyncio.wait_for(
+                lifespan_context.__aexit__(None, None, None),
+                timeout=0.5,
+            )
+        finally:
+            release.set()
+            await asyncio.sleep(0)
 
-    asyncio.run(asyncio.wait_for(run_lifespan(), timeout=0.5))
+    asyncio.run(run_lifespan())
 
     shutdown.assert_awaited_once_with(timeout_seconds=30.0)
     for name, step in shutdown_steps.items():

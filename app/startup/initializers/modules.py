@@ -88,6 +88,10 @@ from app.application.outbox import (
     validate_durable_event_handlers,
 )
 from app.application.plugin.runtime import configure_plugin_runtime
+from app.application.query import (
+    DataQueryService,
+    configure_data_query_service,
+)
 from app.application.security.auth import AuthService, build_superuser_token_payload, configure_auth_service
 from app.application.security.passkey import PasskeyService, configure_passkey_service
 from app.application.security.url import close_image_proxy_block_log_coalescer
@@ -111,6 +115,7 @@ from app.command import CommandChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
+from app.db.adapters.query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.site import TransactionalSiteRepository
 from app.db.adapters.subscription import TransactionalSubscribeWriter
 from app.db.adapters.transaction import TransactionalWriteRunner
@@ -758,6 +763,14 @@ async def init_modules() -> HostRuntime:
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
+    data_query_adapter = SqlAlchemyDataQueryAdapter(SessionFactory)
+    configure_data_query_service(
+        DataQueryService(
+            subscriptions=data_query_adapter,
+            histories=data_query_adapter,
+            async_executor=database_worker,
+        )
+    )
     configure_plugin_persistence(
         PluginPersistenceService(
             executor=database_worker,

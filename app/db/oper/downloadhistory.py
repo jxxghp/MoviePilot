@@ -1,10 +1,25 @@
 from typing import Dict, List, Optional, cast
 
-from sqlalchemy import delete as sqlalchemy_delete, update as sqlalchemy_update
+from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy import func, select
+from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
-from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
+from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
+from app.db.oper.query import (
+    descending,
+    enum_values,
+    execute_page,
+    literal_contains,
+    media_identity_conditions,
+    music_type_condition,
+)
+from app.schemas.query import (
+    DownloadHistoryFilter,
+    QueryPageRequest,
+    QuerySortField,
+)
 from app.schemas.types import MediaSource
 
 
@@ -12,6 +27,95 @@ class DownloadHistoryOper(DbOper):
     """
     下载历史管理
     """
+
+    def get_by_id(self, record_id: int) -> Optional[DownloadHistory]:
+        """按稳定记录 ID 读取单条下载历史。"""
+        return cast(
+            Optional[DownloadHistory],
+            self._execute_sync_query(
+                lambda session: session.execute(
+                    select(DownloadHistory).where(DownloadHistory.id == record_id)
+                ).scalars().first()
+            ),
+        )
+
+    def query(
+        self,
+        filters: DownloadHistoryFilter,
+        page: QueryPageRequest,
+    ) -> tuple[list[DownloadHistory], int]:
+        """按稳定筛选和分页合同读取下载历史记录及总数。"""
+        def execute(session: Session) -> tuple[list[DownloadHistory], int]:
+            """在同一会话中构造并执行下载历史 count/page 查询。"""
+            conditions = media_identity_conditions(DownloadHistory, filters)
+            ids = enum_values(filters.ids)
+            media_types = enum_values(filters.media_types)
+            usernames = enum_values(filters.usernames)
+            if ids:
+                conditions.append(DownloadHistory.id.in_(ids))
+            if media_types:
+                conditions.append(DownloadHistory.type.in_(media_types))
+            for column, value in (
+                (DownloadHistory.title, filters.title),
+                (DownloadHistory.year, filters.year),
+                (DownloadHistory.seasons, filters.seasons),
+                (DownloadHistory.episodes, filters.episodes),
+                (DownloadHistory.path, filters.path),
+                (DownloadHistory.download_hash, filters.download_hash),
+                (DownloadHistory.username, filters.username),
+                (DownloadHistory.episode_group, filters.episode_group),
+            ):
+                if value is not None and value != "":
+                    conditions.append(column == value)
+            if filters.text:
+                conditions.append(
+                    literal_contains(DownloadHistory.title, filters.text)
+                    | literal_contains(DownloadHistory.path, filters.text)
+                )
+            if usernames:
+                conditions.append(DownloadHistory.username.in_(usernames))
+            music_condition = music_type_condition(
+                DownloadHistory.music_type,
+                filters.music_type,
+            )
+            if music_condition is not None:
+                conditions.append(music_condition)
+
+            count_statement = select(func.count(DownloadHistory.id))
+            page_statement = select(DownloadHistory)
+            if conditions:
+                count_statement = count_statement.where(*conditions)
+                page_statement = page_statement.where(*conditions)
+            descending_order = descending(page)
+            if page.sort.field == QuerySortField.ID:
+                primary = (
+                    DownloadHistory.id.desc()
+                    if descending_order
+                    else DownloadHistory.id.asc()
+                )
+                secondary = (
+                    DownloadHistory.date.desc()
+                    if descending_order
+                    else DownloadHistory.date.asc()
+                )
+            else:
+                primary = (
+                    DownloadHistory.date.desc().nullslast()
+                    if descending_order
+                    else DownloadHistory.date.asc().nullsfirst()
+                )
+                secondary = (
+                    DownloadHistory.id.desc()
+                    if descending_order
+                    else DownloadHistory.id.asc()
+                )
+            page_statement = page_statement.order_by(primary, secondary)
+            return cast(
+                tuple[list[DownloadHistory], int],
+                execute_page(session, count_statement, page_statement, page),
+            )
+
+        return self._execute_sync_query(execute)
 
     def get_by_path(self, path: str) -> Optional[DownloadHistory]:
         """
