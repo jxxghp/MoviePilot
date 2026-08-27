@@ -54,7 +54,7 @@ def valid_preflight(variant: str) -> dict:
                 "gil_disabled": False,
                 "gil_enabled": True,
                 "thread_inherit_context": 0,
-                "has_zhconv_fast": False,
+                "has_zhconv_fast": True,
                 "gil_enabled_after_imports": True,
                 "packages": {
                     "bcrypt": "4.3.0",
@@ -65,7 +65,7 @@ def valid_preflight(variant: str) -> dict:
                     "orjson": "3.12.0",
                     "psycopg": None,
                     "psycopg2-binary": "2.9.12",
-                    "zhconv-rs": "0.4.1",
+                    "zhconv-rs": None,
                 },
                 "native": {
                     "crcmod_extension": True,
@@ -123,7 +123,7 @@ def valid_preflight(variant: str) -> dict:
         "zstandard",
     }
     expected_imports.update(
-        {"psycopg2-binary", "zhconv-rs"} if variant == "v3" else {"psycopg"}
+        {"psycopg2-binary"} if variant == "v3" else {"psycopg"}
     )
     common["imports"] = {
         name: {"imported": True, "gil_after": variant == "v3"}
@@ -341,9 +341,12 @@ def test_preflight_enforces_runtime_and_native_profiles() -> None:
     assert harness.validate_preflight("v3", valid_preflight("v3")) == []
     assert harness.validate_preflight("v3t", valid_preflight("v3t")) == []
 
-    leaked = valid_preflight("v3")
-    leaked["has_zhconv_fast"] = True
-    assert any("has_zhconv_fast" in item for item in harness.validate_preflight("v3", leaked))
+    incomplete_text = valid_preflight("v3")
+    incomplete_text["has_zhconv_fast"] = False
+    assert any(
+        "has_zhconv_fast" in item
+        for item in harness.validate_preflight("v3", incomplete_text)
+    )
 
     unsafe = valid_preflight("v3t")
     unsafe["gil_enabled_after_imports"] = True

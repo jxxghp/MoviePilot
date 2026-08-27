@@ -6,15 +6,6 @@ from typing import Generator, List, Optional, Union
 
 import moviepilot_rust
 
-from app.foundation.environment import is_free_threaded_runtime
-
-if is_free_threaded_runtime():
-    _zhconv = moviepilot_rust.zhconv_fast
-else:
-    import zhconv_rs
-
-    _zhconv = zhconv_rs.zhconv
-
 
 def cut(text: str, HMM: bool = True, cut_all: bool = False) -> list[str]:
     """通过统一原生入口执行中文分词。"""
@@ -23,7 +14,7 @@ def cut(text: str, HMM: bool = True, cut_all: bool = False) -> list[str]:
 
 def convert(text: str, target: str) -> str:
     """通过统一入口执行 MediaWiki 中文简繁转换。"""
-    return _zhconv(text, target)
+    return moviepilot_rust.zhconv_fast(text, target)
 
 
 def contains_chinese(value: Union[str, list]) -> bool:

@@ -46,7 +46,7 @@ dependencies = [
     "langgraph~=1.2.11",
     "langgraph-checkpoint~=4.2.0",
     "lark-oapi~=1.6.8",
-    "moviepilot-rust~=0.3.2",
+    "moviepilot-rust~=0.3.3",
     "mutagen~=1.47.0",
     "openai~=2.41.1",
     "orjson==3.12.0",
@@ -117,7 +117,6 @@ runtime-standard = [
     "bcrypt~=4.3.0",
     "lxml~=6.1.2",
     "psycopg2-binary~=2.9.12",
-    "zhconv-rs~=0.4.1",
 ]
 runtime-free-threaded = [
     "Brotli==1.2.0",
