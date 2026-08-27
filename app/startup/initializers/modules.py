@@ -43,7 +43,7 @@ from app.application.chain.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
 )
-from app.application.chain.data import configure_chain_data_ports, get_chain_data_ports
+from app.application.chain.data import configure_chain_data_ports
 from app.application.chain.events import (
     restore_download_added,
     restore_transfer_result,
@@ -269,7 +269,6 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
         module_dispatcher_factory=ModuleInvocationDispatcher,
         legacy_transfer_command=_execute_legacy_transfer_command,
         configuration=build_chain_runtime_config(legacy_settings),
-        data_ports=get_chain_data_ports(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
         stop_state=runtime_stop_state,
     )
@@ -872,7 +871,6 @@ async def init_modules() -> HostRuntime:
             async_session=async_session_scope,
         ),
         subscribe=lambda: SubscribeOper(),
-        workflow=lambda: workflow_execution,
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(

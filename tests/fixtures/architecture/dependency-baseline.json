@@ -1441,8 +1441,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 6907,
-  "edge_sha256": "8b3bb489cfc9573e377d0ee21337633b842b9969fc69fe99b86f547613b86a2a",
+  "edge_count": 6902,
+  "edge_sha256": "e2adb079d1df7415b81cbfa8358536e29e06276c2cb5af3a6f6c634e6f58fb20",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3979,7 +3979,6 @@
     "app.application.backup -> app.runtime.log",
     "app.application.chain.context -> app.application",
     "app.application.chain.context -> app.application.chain",
-    "app.application.chain.context -> app.application.chain.data",
     "app.application.chain.context -> app.application.chain.events",
     "app.application.chain.context -> app.application.configuration",
     "app.application.chain.context -> app.runtime",
@@ -3988,7 +3987,6 @@
     "app.application.chain.data -> app.application.transfer",
     "app.application.chain.data -> app.application.transfer.execution",
     "app.application.chain.data -> app.application.transfer.workflow",
-    "app.application.chain.data -> app.application.workflow",
     "app.application.chain.events -> app.application",
     "app.application.chain.events -> app.application.history",
     "app.application.chain.events -> app.application.transfer",
@@ -4480,7 +4478,6 @@
     "app.chain -> app.application",
     "app.chain -> app.application.chain",
     "app.chain -> app.application.chain.context",
-    "app.chain -> app.application.chain.data",
     "app.chain -> app.application.configuration",
     "app.chain -> app.chain._messaging",
     "app.chain -> app.chain._recognition",
@@ -5065,8 +5062,6 @@
     "app.chain.webhook -> app.schemas",
     "app.chain.webhook -> app.schemas.types",
     "app.chain.workflow -> app.application",
-    "app.chain.workflow -> app.application.chain",
-    "app.chain.workflow -> app.application.chain.data",
     "app.chain.workflow -> app.application.workflow",
     "app.chain.workflow -> app.chain",
     "app.chain.workflow -> app.runtime",

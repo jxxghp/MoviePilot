@@ -643,7 +643,11 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
         return fake_oper
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
-    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", get_execution_port)
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_execution",
+        get_execution_port,
+    )
     monkeypatch.setattr(
         workflow_module,
         "get_configured_workflow_query",
@@ -952,7 +956,11 @@ def test_workflow_chain_rejects_execution_before_persisting_running_state(monkey
     workflowoper = _FakeWorkflowOper(workflow)
     manager = RejectingWorkflowManager([])
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
-    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: workflowoper)
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_execution",
+        lambda: workflowoper,
+    )
     monkeypatch.setattr(
         workflow_module,
         "get_configured_workflow_query",
@@ -995,7 +1003,11 @@ def test_workflow_chain_releases_admitted_owner_when_start_fails(monkeypatch):
     manager._executions = {}
     workflowoper = FailingWorkflowOper(_build_workflow())
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: manager)
-    monkeypatch.setattr(workflow_module, "get_chain_workflow_port", lambda: workflowoper)
+    monkeypatch.setattr(
+        workflow_module,
+        "get_configured_workflow_execution",
+        lambda: workflowoper,
+    )
     monkeypatch.setattr(
         workflow_module,
         "get_configured_workflow_query",

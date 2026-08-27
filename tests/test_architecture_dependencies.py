@@ -347,8 +347,8 @@ def test_workflow_query_adapter_owns_projection_sessions():
     assert "_project_workflow(record)" in source
 
 
-def test_workflow_execution_chain_uses_typed_transaction_port():
-    """工作流 Chain 写端不得再经过 raw Oper 或重复获取全局端口。"""
+def test_workflow_execution_chain_uses_single_application_owned_port():
+    """工作流 Chain 写端必须只使用 Application owner 的唯一配置入口。"""
     contract_path = APP_ROOT / "application" / "workflow.py"
     contract_tree = ast.parse(
         contract_path.read_text(encoding="utf-8"),
@@ -384,29 +384,64 @@ def test_workflow_execution_chain_uses_typed_transaction_port():
         for node in data_tree.body
         if isinstance(node, ast.ClassDef) and node.name == "ChainDataPorts"
     )
-    workflow_field = next(
-        node
+    data_fields = {
+        node.target.id
         for node in data_class.body
         if isinstance(node, ast.AnnAssign)
         and isinstance(node.target, ast.Name)
-        and node.target.id == "workflow"
-    )
-    workflow_getter = next(
-        node
+    }
+    data_functions = {
+        node.name
         for node in data_tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name == "get_chain_workflow_port"
-    )
-    assert ast.unparse(workflow_field.annotation) == "WorkflowExecutionPortFactory"
-    assert ast.unparse(workflow_getter.returns) == "WorkflowExecutionPort"
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert "workflow" not in data_fields
+    assert "get_chain_workflow_port" not in data_functions
 
     chain_source = (APP_ROOT / "chain" / "workflow.py").read_text(encoding="utf-8")
     startup_source = (
         APP_ROOT / "startup" / "initializers" / "modules.py"
     ).read_text(encoding="utf-8")
-    assert chain_source.count("get_chain_workflow_port()") == 1
-    assert "workflow=lambda: workflow_execution" in startup_source
-    assert "workflow=lambda: WorkflowOper()" not in startup_source
+    assert chain_source.count("get_configured_workflow_execution()") == 1
+    assert "get_chain_workflow_port" not in chain_source
+    assert "configure_workflow_execution(workflow_execution)" in startup_source
+    assert "workflow=lambda:" not in startup_source
+
+
+def test_chain_registry_has_no_dynamic_proxies_or_dead_context_injection():
+    """Chain registry 不得恢复零消费者动态代理或失效 data_ports 伪注入。"""
+    data_path = APP_ROOT / "application" / "chain" / "data.py"
+    data_tree = ast.parse(
+        data_path.read_text(encoding="utf-8"),
+        filename=str(data_path),
+    )
+    proxy_classes = {
+        node.name
+        for node in data_tree.body
+        if isinstance(node, ast.ClassDef)
+        and (node.name.endswith("PortProxy") or node.name == "_PortProxyMeta")
+    }
+    dynamic_getters = {
+        node.name
+        for node in ast.walk(data_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "__getattr__"
+    }
+    assert proxy_classes == set()
+    assert dynamic_getters == set()
+
+    context_source = (
+        APP_ROOT / "application" / "chain" / "context.py"
+    ).read_text(encoding="utf-8")
+    chain_base_source = (APP_ROOT / "chain" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    startup_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    assert "data_ports" not in context_source
+    assert "self.data_ports" not in chain_base_source
+    assert "data_ports=" not in startup_source
 
 
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():

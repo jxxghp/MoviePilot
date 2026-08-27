@@ -1213,9 +1213,6 @@
     "E402": 4,
     "I001": 1
   },
-  "tests/test_chain_runtime_context.py": {
-    "I001": 1
-  },
   "tests/test_cli_auto_update.py": {
     "I001": 1
   },

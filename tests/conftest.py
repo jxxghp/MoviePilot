@@ -304,7 +304,6 @@ def configure_plugin_system_services():
     configure_chain_data_ports(
         site=site_repository,
         subscribe=lambda: SubscribeOper(),
-        workflow=lambda: workflow_execution,
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(

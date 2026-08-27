@@ -13,9 +13,9 @@ from typing import Any, Callable, List, Optional, Tuple
 
 from pydantic import BaseModel
 
-from app.application.chain.data import get_chain_workflow_port
 from app.application.workflow import (
     WorkflowSnapshot,
+    get_configured_workflow_execution,
     get_configured_workflow_query,
     get_workflow_manager,
 )
@@ -1286,7 +1286,7 @@ class WorkflowChain(ChainBase):
         :param from_begin: 是否从头开始，默认为True
         :param progress_callback: 定时服务进度更新回调
         """
-        workflow_execution = get_chain_workflow_port()
+        workflow_execution = get_configured_workflow_execution()
 
         # 重置工作流
         if from_begin:
