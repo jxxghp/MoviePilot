@@ -75,9 +75,10 @@ class PluginSyncService:
         def install_one(plugin: Any) -> None:
             """安装一个插件并记录结果。"""
             started = time.time()
+            repo_url = plugin.repo_url if plugin.repo_url.startswith("local://") else None
             state, message = self._install(
                 plugin.id,
-                None,
+                repo_url,
                 False,
                 startup_token,
             )

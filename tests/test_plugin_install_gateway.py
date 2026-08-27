@@ -77,6 +77,105 @@ async def test_gateway_freezes_admission_before_executing_transaction() -> None:
 
 
 @pytest.mark.asyncio
+async def test_local_only_requires_explicit_online_binding() -> None:
+    """本地专属身份即使发现唯一在线来源，也只能由管理员显式绑定。"""
+    online = PluginMarketCandidate(
+        plugin_id="DemoPlugin",
+        source_key="github:jxxghp/moviepilot-plugins",
+        source_type=TrustedPluginSourceType.OFFICIAL,
+        repo_url=REPO_URL,
+        package_generation="v3",
+        plugin_version="9.0.0",
+        dto={"v3": True},
+    )
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?version=v3",
+        package_generation="v3",
+        plugin_version="1.0.0",
+        dto={"v3": True},
+    )
+    identity = PluginIdentity(
+        plugin_id="DemoPlugin",
+        normalized_plugin_id="demoplugin",
+        trusted_source_type=TrustedPluginSourceType.UNKNOWN,
+        trusted_source_key=None,
+        binding_basis=PluginBindingBasis.LOCAL_ONLY,
+        payload_source_type=PluginPayloadSourceType.LOCAL,
+        payload_source_key=None,
+        declared_version="1.0.0",
+        package_generation="v3",
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo local", "v3": True},
+            declaration_version="1.0.0",
+            manifest_matches_payload=True,
+        ),
+        payload_receipt="sha256:" + "1" * 64,
+        revision=2,
+        created_at=NOW,
+        updated_at=NOW,
+        bound_at=None,
+        payload_applied_at=NOW,
+    )
+    executor = AsyncMock()
+    executor.execute.return_value = type(
+        "Result",
+        (),
+        {"success": True, "message": ""},
+    )()
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(
+            return_value=CandidateInventory(
+                (MarketRead.present(REPO_URL, (online,)),),
+                (local,),
+                local_read=LocalCandidateRead.present((local,)),
+            )
+        ),
+        identity=AsyncMock(return_value=identity),
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: NOW,
+    )
+
+    automatic = await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url=None,
+        package_version="v3",
+    )
+
+    assert automatic.success is True
+    automatic_admission = executor.execute.await_args.kwargs["admission"]
+    assert automatic_admission.candidate is local
+    assert automatic_admission.binding_basis is PluginBindingBasis.LOCAL_ONLY
+    assert automatic_admission.trusted_source_key is None
+
+    hinted = await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url=REPO_URL,
+        package_version="v3",
+    )
+
+    assert hinted.success is True
+    hinted_admission = executor.execute.await_args.kwargs["admission"]
+    assert hinted_admission.candidate is local
+    assert hinted_admission.binding_basis is PluginBindingBasis.LOCAL_ONLY
+    assert hinted_admission.trusted_source_key is None
+
+    explicit = await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url=REPO_URL,
+        package_version="v3",
+        explicit_source=True,
+    )
+
+    assert explicit.success is True
+    explicit_admission = executor.execute.await_args.kwargs["admission"]
+    assert explicit_admission.candidate is online
+    assert explicit_admission.binding_basis is PluginBindingBasis.EXPLICIT_INSTALL
+    assert explicit_admission.trusted_source_key == online.source_key
+
+
+@pytest.mark.asyncio
 async def test_gateway_rejects_source_conflict_before_package_execution() -> None:
     """来源准入失败时不进入文件和数据库事务。"""
     other = PluginMarketCandidate(

@@ -1,5 +1,6 @@
 """插件候选事实与来源选择策略测试。"""
 
+from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
     PluginIdentity,
@@ -47,7 +48,13 @@ def _inventory(*reads: MarketRead, local=()) -> CandidateInventory:
     return CandidateInventory(tuple(reads), tuple(local))
 
 
-def _identity(source_type: TrustedPluginSourceType, source_key: str) -> PluginIdentity:
+def _identity(
+    source_type: TrustedPluginSourceType,
+    source_key: str,
+    *,
+    payload_source_type: PluginPayloadSourceType = PluginPayloadSourceType.UNKNOWN,
+    payload_version: str = "1.0.0",
+) -> PluginIdentity:
     """构造已绑定在线来源身份。"""
     from datetime import datetime, timezone
 
@@ -60,17 +67,77 @@ def _identity(source_type: TrustedPluginSourceType, source_key: str) -> PluginId
         binding_basis=PluginBindingBasis.OFFICIAL_DEFAULT
         if source_type is TrustedPluginSourceType.OFFICIAL
         else PluginBindingBasis.TOFU,
-        payload_source_type=PluginPayloadSourceType.UNKNOWN,
-        payload_source_key=None,
-        declared_version=None,
-        package_generation=None,
-        declared_metadata=None,
-        payload_receipt=None,
+        payload_source_type=payload_source_type,
+        payload_source_key=(
+            source_key
+            if payload_source_type in {
+                PluginPayloadSourceType.OFFICIAL,
+                PluginPayloadSourceType.THIRD_PARTY,
+            }
+            else None
+        ),
+        declared_version=(
+            payload_version
+            if payload_source_type is not PluginPayloadSourceType.UNKNOWN
+            else None
+        ),
+        package_generation=(
+            "v3"
+            if payload_source_type is not PluginPayloadSourceType.UNKNOWN
+            else None
+        ),
+        declared_metadata=(
+            PluginDeclaredMetadata.from_package(
+                {"name": "Demo", "v3": True},
+                declaration_version=payload_version,
+                manifest_matches_payload=True,
+            )
+            if payload_source_type is not PluginPayloadSourceType.UNKNOWN
+            else None
+        ),
+        payload_receipt=(
+            "sha256:" + "1" * 64
+            if payload_source_type is not PluginPayloadSourceType.UNKNOWN
+            else None
+        ),
         revision=1,
         created_at=now,
         updated_at=now,
         bound_at=now,
-        payload_applied_at=None,
+        payload_applied_at=(
+            now
+            if payload_source_type is not PluginPayloadSourceType.UNKNOWN
+            else None
+        ),
+    )
+
+
+def _local_only_identity(version: str = "3.0.0") -> PluginIdentity:
+    """构造只能由用户显式绑定在线仓库的本地身份。"""
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 8, 25, tzinfo=timezone.utc)
+    return PluginIdentity(
+        plugin_id="DemoPlugin",
+        normalized_plugin_id="demoplugin",
+        trusted_source_type=TrustedPluginSourceType.UNKNOWN,
+        trusted_source_key=None,
+        binding_basis=PluginBindingBasis.LOCAL_ONLY,
+        payload_source_type=PluginPayloadSourceType.LOCAL,
+        payload_source_key=None,
+        declared_version=version,
+        package_generation="v3",
+        declared_metadata=PluginDeclaredMetadata.from_package(
+            {"name": "Demo local", "v3": True},
+            declaration_version=version,
+            manifest_matches_payload=True,
+        ),
+        payload_receipt="sha256:" + "2" * 64,
+        revision=1,
+        created_at=now,
+        updated_at=now,
+        bound_at=None,
+        payload_applied_at=now,
     )
 
 
@@ -230,6 +297,128 @@ def test_non_explicit_source_hint_cannot_bypass_local_state() -> None:
     assert with_local.status is PluginSelectionStatus.SELECTED
     assert with_local.candidate is local
     assert failed_local_read.status is PluginSelectionStatus.INCOMPLETE
+
+
+def test_bound_online_and_local_candidates_choose_higher_version() -> None:
+    """已绑定在线来源与本地候选并存时，插件版本决定实际载荷。"""
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?version=v3",
+        package_generation="v3",
+        plugin_version="3.0.0",
+    )
+    identity = _identity(
+        TrustedPluginSourceType.THIRD_PARTY,
+        THIRD_PARTY_SOURCE,
+    )
+
+    online_higher = select_plugin_candidate(
+        _inventory(
+            MarketRead.present(
+                "market-a",
+                (_online(THIRD_PARTY_SOURCE, version="3.2.0"),),
+            ),
+            local=(local,),
+        ),
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=identity,
+    )
+    local_higher = select_plugin_candidate(
+        _inventory(
+            MarketRead.present(
+                "market-a",
+                (_online(THIRD_PARTY_SOURCE, version="2.9.0"),),
+            ),
+            local=(local,),
+        ),
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=identity,
+    )
+
+    assert isinstance(online_higher.candidate, PluginMarketCandidate)
+    assert online_higher.candidate.plugin_version == "3.2.0"
+    assert local_higher.candidate is local
+
+
+def test_equal_bound_and_local_versions_keep_current_payload_source() -> None:
+    """相同版本保持当前载荷来源，避免每次启动在本地与在线之间切换。"""
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?version=v3",
+        package_generation="v3",
+        plugin_version="3.0.0",
+    )
+    inventory = _inventory(
+        MarketRead.present(
+            "market-a",
+            (_online(THIRD_PARTY_SOURCE, version="3.0.0"),),
+        ),
+        local=(local,),
+    )
+
+    local_current = select_plugin_candidate(
+        inventory,
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=_identity(
+            TrustedPluginSourceType.THIRD_PARTY,
+            THIRD_PARTY_SOURCE,
+            payload_source_type=PluginPayloadSourceType.LOCAL,
+            payload_version="3.0.0",
+        ),
+    )
+    online_current = select_plugin_candidate(
+        inventory,
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=_identity(
+            TrustedPluginSourceType.THIRD_PARTY,
+            THIRD_PARTY_SOURCE,
+            payload_source_type=PluginPayloadSourceType.THIRD_PARTY,
+            payload_version="3.0.0",
+        ),
+    )
+
+    assert local_current.candidate is local
+    assert isinstance(online_current.candidate, PluginMarketCandidate)
+
+
+def test_local_only_identity_never_uses_online_candidate_implicitly() -> None:
+    """本地专属身份只能由用户显式确认后建立在线绑定。"""
+    local = PluginLocalCandidate(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?version=v3",
+        package_generation="v3",
+        plugin_version="3.0.0",
+    )
+    inventory = _inventory(
+        MarketRead.present(
+            "market-a",
+            (_online(THIRD_PARTY_SOURCE, version="9.0.0"),),
+        ),
+        local=(local,),
+    )
+
+    automatic = select_plugin_candidate(
+        inventory,
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=_local_only_identity(),
+    )
+    explicit = select_plugin_candidate(
+        inventory,
+        plugin_id="DemoPlugin",
+        generations=("v3", "v2", "v1"),
+        identity=_local_only_identity(),
+        requested_source_key=THIRD_PARTY_SOURCE,
+        explicit_source=True,
+    )
+
+    assert automatic.candidate is local
+    assert isinstance(explicit.candidate, PluginMarketCandidate)
+    assert explicit.candidate.plugin_version == "9.0.0"
 
 
 def test_uninstalled_unique_and_multiple_sources_are_distinct() -> None:
