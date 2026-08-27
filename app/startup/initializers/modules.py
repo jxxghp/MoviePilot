@@ -89,7 +89,7 @@ from app.application.outbox import (
 )
 from app.application.plugin.runtime import configure_plugin_runtime
 from app.application.security.auth import AuthService, build_superuser_token_payload, configure_auth_service
-from app.application.security.passkeys import PasskeyService, configure_passkey_service
+from app.application.security.passkey import PasskeyService, configure_passkey_service
 from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.security.user import configure_user_lookups
 from app.application.security.userconfig import (

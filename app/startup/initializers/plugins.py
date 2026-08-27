@@ -30,7 +30,7 @@ from app.application.plugin.identity import (
     TrustedPluginSourceType,
     normalize_physical_plugin_id,
 )
-from app.application.plugin.identity_migration import (
+from app.application.plugin.migration import (
     PluginIdentityMigrationService,
     configure_plugin_identity_migration,
     get_plugin_identity_migration,

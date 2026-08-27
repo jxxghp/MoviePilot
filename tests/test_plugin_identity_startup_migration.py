@@ -18,7 +18,7 @@ from app.application.plugin.identity import (
     PluginPayloadSourceType,
     TrustedPluginSourceType,
 )
-from app.application.plugin.identity_migration import PluginIdentityMigrationService
+from app.application.plugin.migration import PluginIdentityMigrationService
 from app.application.plugin.source import (
     CandidateInventory,
     LocalCandidateRead,

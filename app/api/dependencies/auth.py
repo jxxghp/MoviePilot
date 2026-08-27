@@ -14,7 +14,7 @@ from app.application.security.auth import (
     AuthService,
     AuthUserRepository,
 )
-from app.application.security.passkeys import PasskeyRepository, PasskeyService
+from app.application.security.passkey import PasskeyRepository, PasskeyService
 from app.application.security.user import (
     AsyncUnitOfWork,
     UserRepository,
