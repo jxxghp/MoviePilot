@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+import app.application.workflow as workflow_application
 from app.application.workflow import (
     WorkflowDefinitionCommand,
     WorkflowExecutionCommand,
@@ -87,6 +88,23 @@ def _execution_command(commit_error=None):
     ), repository, unit_of_work
 
 
+def test_workflow_execution_port_requires_explicit_configuration(monkeypatch):
+    """执行状态端口必须显式装配，并原样返回组合根登记的服务。"""
+    monkeypatch.setattr(
+        workflow_application,
+        "_configured_workflow_execution",
+        None,
+    )
+
+    with pytest.raises(RuntimeError, match="工作流执行状态事务服务尚未配置"):
+        workflow_application.get_configured_workflow_execution()
+
+    service = Mock()
+    workflow_application.configure_workflow_execution(service)
+
+    assert workflow_application.get_configured_workflow_execution() is service
+
+
 def test_execution_step_is_staged_before_unit_of_work_commit():
     """工作流进度写入必须由应用命令暂存后统一提交。"""
     command, repository, unit_of_work = _execution_command()
@@ -149,6 +167,18 @@ def test_start_timer_workflow_commits_before_registering_job():
     assert result.success is True
     assert calls == ["commit", "timer"]
     dependencies["repository"].stage_state.assert_called_once_with(7, "W")
+
+
+def test_start_rejects_missing_workflow_without_transaction():
+    """工作流不存在时不得暂存状态或触发事务。"""
+    command, dependencies = _command()
+
+    result = command.start(7)
+
+    assert result.success is False
+    assert result.message == "工作流不存在"
+    dependencies["repository"].stage_state.assert_not_called()
+    dependencies["unit_of_work"].commit.assert_not_called()
 
 
 def test_start_rejects_invalid_trigger_without_transaction():
