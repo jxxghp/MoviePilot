@@ -447,7 +447,14 @@ def test_durable_task_identity_flows_from_queue_to_terminal_discard(monkeypatch)
     chain._processed_num = 0
     chain._fail_num = 0
     chain._total_num = 0
-    chain._TransferChain__handle_transfer = MagicMock(return_value=(True, ""))
+    def complete_with_checkpoint(*, task, callback):
+        """模拟真实 worker 只有提交 checkpoint 后才返回终态成功。"""
+        task.bind_plan_checkpoint(MagicMock())
+        return True, ""
+
+    chain._TransferChain__handle_transfer = MagicMock(
+        side_effect=complete_with_checkpoint
+    )
     monkeypatch.setattr(global_vars, "STOP_EVENT", threading.Event())
 
     assert chain.put_to_queue(task) is True

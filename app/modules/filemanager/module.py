@@ -1,28 +1,28 @@
 from pathlib import Path
-from typing import Any, Optional, List, Tuple, Union, Dict, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.system.host import SystemUtils
+from app.application.directory import DirectoryHelper
+from app.application.messaging.message import MessageHelper
+from app.application.transfer import TransferPlanCheckpoint, TransferPlanningInput
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.application.directory import DirectoryHelper
-from app.application.messaging.message import MessageHelper
+from app.foundation import text as text_tools
 from app.foundation.reflection import ModuleHelper
-from app.runtime.log import logger
 from app.modules import _ModuleBase
 from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
-from app.schemas.transfer import TransferInfo
-from app.schemas.mediaserver import ExistMediaInfo
-from app.schemas.tmdb import TmdbEpisode
-from app.schemas.system import TransferDirectoryConf
-from app.schemas.workflow import FileItem
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.file import StorageUsage
+from app.schemas.mediaserver import ExistMediaInfo
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.tmdb import TmdbEpisode
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType, StorageAction
-from app.adapters.system.host import SystemUtils
-from app.foundation import text as text_tools
+from app.schemas.workflow import FileItem
 
 
 class FileManagerModule(_ModuleBase):
@@ -345,7 +345,7 @@ class FileManagerModule(_ModuleBase):
 
     def get_file_item(self, storage: str, path: Path) -> Optional[FileItem]:
         """
-        根据路径获取文件项
+        根据路径严格获取文件项；普通兼容调度仍会隔离异常并投影为空结果。
         """
         if storage not in self._support_storages:
             return None
@@ -353,7 +353,7 @@ class FileManagerModule(_ModuleBase):
         if not storage_oper:
             logger.error(f"不支持 {storage} 的文件获取")
             return None
-        return storage_oper.get_item(path)
+        return storage_oper.get_item_strict(path)
 
     def get_parent_item(self, fileitem: FileItem) -> Optional[FileItem]:
         """
@@ -391,16 +391,24 @@ class FileManagerModule(_ModuleBase):
             previous_snapshot=previous_snapshot
         )
 
-    def transfer(self, fileitem: FileItem, meta: MetaBase, mediainfo: MediaInfo,
-                 target_directory: TransferDirectoryConf = None,
-                 target_storage: Optional[str] = None, target_path: Path = None,
-                 transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
-                 library_type_folder: Optional[bool] = None, library_category_folder: Optional[bool] = None,
-                 episodes_info: List[TmdbEpisode] = None,
-                 source_oper: Callable = None, target_oper: Callable = None,
-                 preview: Optional[bool] = False) -> TransferInfo:
+    def plan_transfer(
+            self,
+            fileitem: FileItem,
+            meta: MetaBase,
+            mediainfo: Union[MediaInfo, MusicInfo],
+                      target_directory: Optional[TransferDirectoryConf] = None,
+                      target_storage: Optional[str] = None,
+                      target_path: Optional[Path] = None,
+                      transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
+                      library_type_folder: Optional[bool] = None,
+                      library_category_folder: Optional[bool] = None,
+                      episodes_info: Optional[List[TmdbEpisode]] = None,
+                      source_oper: Optional[StorageBase] = None,
+                      preview: Optional[bool] = False,
+                      planning_input: Optional[TransferPlanningInput] = None,
+                      ) -> TransferPlanCheckpoint:
         """
-        文件整理
+        解析整理策略并生成零写副作用的冻结计划。
         :param fileitem:  文件信息
         :param meta: 预识别的元数据
         :param mediainfo:  识别的媒体信息
@@ -413,29 +421,26 @@ class FileManagerModule(_ModuleBase):
         :param library_category_folder: 是否按媒体类别创建目录
         :param episodes_info: 当前季的全部集信息
         :param source_oper: 源存储操作对象
-        :param target_oper: 目标存储操作对象
-        :return: {path, target_path, message}
+        :param planning_input: admission 阶段冻结的原始请求，传入时不得改写
+        :return: 可持久化的整理计划检查点
         """
         handler = TransHandler()
         # 检查目录路径
-        if fileitem.storage == "local" and not Path(fileitem.path).exists():
-            return TransferInfo(success=False,
-                                fileitem=fileitem,
-                                message=f"{fileitem.path} 不存在")
+        if (
+                fileitem.storage == "local"
+                and (not fileitem.path or not Path(fileitem.path).exists())
+        ):
+            raise ValueError(f"{fileitem.path} 不存在")
         # 目标路径不能是文件
         if target_path and target_path.is_file():
             logger.error(f"整理目标路径 {target_path} 是一个文件")
-            return TransferInfo(success=False,
-                                fileitem=fileitem,
-                                message=f"{target_path} 不是有效目录")
+            raise ValueError(f"{target_path} 不是有效目录")
         # 获取目标路径
         if target_directory:
             # 目标媒体库目录未设置
             if not target_directory.library_path:
                 logger.error(f"目标媒体库目录未设置，无法整理文件，源路径：{fileitem.path}")
-                return TransferInfo(success=False,
-                                    fileitem=fileitem,
-                                    message="目标媒体库目录未设置")
+                raise ValueError("目标媒体库目录未设置")
             # 整理方式
             if not transfer_type:
                 transfer_type = target_directory.transfer_type
@@ -467,56 +472,141 @@ class FileManagerModule(_ModuleBase):
             # 未找到有效的媒体库目录
             logger.error(
                 f"{mediainfo.type.value if mediainfo.type else '未知类型'} {mediainfo.title_year} 未找到有效的媒体库目录，无法整理文件，源路径：{fileitem.path}")
-            return TransferInfo(success=False,
-                                fileitem=fileitem,
-                                message="未找到有效的媒体库目录")
+            raise ValueError("未找到有效的媒体库目录")
         # 整理方式
         if not transfer_type:
-            logger.error(f"{target_directory.name} 未设置整理方式")
-            return TransferInfo(success=False,
-                                fileitem=fileitem,
-                                message=f"{target_directory.name} 未设置整理方式")
+            directory_name = target_directory.name if target_directory else "目标目录"
+            logger.error(f"{directory_name} 未设置整理方式")
+            raise ValueError(f"{directory_name} 未设置整理方式")
+        if target_path is None:
+            raise ValueError("整理规划缺少目标路径")
 
         # 源操作对象
+        source_storage = fileitem.storage or "local"
         if not source_oper:
-            source_oper = self.__get_storage_oper(fileitem.storage)
+            source_oper = self.__get_storage_oper(source_storage)
         if not source_oper:
-            return TransferInfo(success=False,
-                                message=f"不支持的存储类型：{fileitem.storage}",
-                                fileitem=fileitem,
-                                fail_list=[fileitem.path],
-                                transfer_type=transfer_type,
-                                need_notify=need_notify
-                                )
-        # 目的操作对象
-        if not target_oper:
-            if not target_storage:
-                target_storage = fileitem.storage
-            target_oper = self.__get_storage_oper(target_storage)
-        if not target_oper:
-            return TransferInfo(success=False,
-                                message=f"不支持的存储类型：{target_storage}",
-                                fileitem=fileitem,
-                                fail_list=[fileitem.path],
-                                transfer_type=transfer_type,
-                                need_notify=need_notify)
+            raise ValueError(f"不支持的存储类型：{source_storage}")
 
-        # 整理
+        if not target_storage:
+            target_storage = source_storage
+        if planning_input is None:
+            planning_input = TransferPlanningInput(
+                source_fileitem=fileitem.model_dump(mode="json"),
+                meta=self._serialize_transfer_model(meta) if meta else None,
+                mediainfo=(
+                    self._serialize_transfer_model(mediainfo) if mediainfo else None
+                ),
+                target_directory=(
+                    target_directory.model_dump(mode="json")
+                    if target_directory
+                    else None
+                ),
+                target_storage=target_storage,
+                target_path=target_path.as_posix(),
+                requested_transfer_type=transfer_type,
+                media_type=mediainfo.type.value if mediainfo.type else None,
+                need_scrape=bool(need_scrape),
+                need_rename=bool(need_rename),
+                need_notify=bool(need_notify),
+                overwrite_mode=overwrite_mode,
+                episodes_info=tuple(
+                    episode.model_dump(mode="json") for episode in episodes_info or []
+                ),
+                preview=bool(preview),
+            )
+
         logger.info(f"获取整理目标路径：【{target_storage}】{target_path}")
-        return handler.transfer_media(fileitem=fileitem,
-                                      in_meta=meta,
-                                      mediainfo=mediainfo,
-                                      target_storage=target_storage,
-                                      target_path=target_path,
-                                      transfer_type=transfer_type,
-                                      need_scrape=need_scrape,
-                                      need_rename=need_rename,
-                                      need_notify=need_notify,
-                                      overwrite_mode=overwrite_mode,
-                                      episodes_info=episodes_info,
-                                      preview=preview,
-                                      source_oper=source_oper,
-                                      target_oper=target_oper)
+        return handler.plan_transfer(
+            planning_input,
+            meta=meta,
+            mediainfo=mediainfo,
+            source_oper=source_oper,
+            target_storage=target_storage,
+            target_path=target_path,
+            transfer_type=transfer_type,
+            need_scrape=bool(need_scrape),
+            need_rename=bool(need_rename),
+            need_notify=bool(need_notify),
+            overwrite_mode=overwrite_mode,
+            episodes_info=episodes_info,
+            preview=bool(preview),
+        )
+
+    def execute_transfer_plan(
+            self,
+            checkpoint: TransferPlanCheckpoint,
+            *,
+            meta: MetaBase,
+            mediainfo: Union[MediaInfo, MusicInfo],
+            source_oper: Optional[StorageBase] = None,
+            target_oper: Optional[StorageBase] = None,
+            cleanup_media_file: Optional[Callable[[FileItem], bool]] = None,
+    ) -> TransferInfo:
+        """解析存储适配器并通过统一删除能力执行已冻结计划。"""
+        source_fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
+        cleanup_before_transfer = None
+        cleanup_payload = checkpoint.planning_input.options.get(
+            "cleanup_dest_fileitem"
+        )
+        if (
+                isinstance(cleanup_payload, dict)
+                and not checkpoint.preview
+                and not checkpoint.pre_execution_cleanup_completed
+        ):
+            cleanup_fileitem = FileItem.model_validate(cleanup_payload)
+            if not cleanup_media_file:
+                raise RuntimeError("整理计划缺少统一媒体删除兼容能力")
+
+            def cleanup_before_transfer() -> None:
+                """拦截通过后委托统一能力治理旧目标及父空目录。"""
+                if not cleanup_media_file(cleanup_fileitem):
+                    raise RuntimeError(
+                        f"{cleanup_fileitem.path} 删除失败，整理计划保留待重试"
+                    )
+
+        source_storage = source_fileitem.storage or "local"
+        if not source_oper:
+            source_oper = self.__get_storage_oper(source_storage)
+        if not source_oper:
+            return TransferInfo(
+                success=False,
+                message=f"不支持的存储类型：{source_storage}",
+                fileitem=source_fileitem,
+                fail_list=[source_fileitem.path],
+                transfer_type=checkpoint.resolved_transfer_type,
+                need_notify=checkpoint.need_notify,
+            )
+        if not target_oper:
+            target_oper = self.__get_storage_oper(checkpoint.target_storage)
+        if not target_oper:
+            return TransferInfo(
+                success=False,
+                message=f"不支持的存储类型：{checkpoint.target_storage}",
+                fileitem=source_fileitem,
+                fail_list=[source_fileitem.path],
+                transfer_type=checkpoint.resolved_transfer_type,
+                need_notify=checkpoint.need_notify,
+            )
+        return TransHandler().execute_transfer_plan(
+            checkpoint,
+            meta=meta,
+            mediainfo=mediainfo,
+            source_oper=source_oper,
+            target_oper=target_oper,
+            cleanup_before_transfer=cleanup_before_transfer,
+        )
+
+    @staticmethod
+    def _serialize_transfer_model(value: object) -> dict[str, Any]:
+        """校验旧领域对象的动态序列化结果，避免 Any 穿透规划边界。"""
+        serializer = getattr(value, "to_dict", None)
+        if not callable(serializer):
+            raise TypeError(f"{type(value).__name__} 不支持整理快照序列化")
+        payload = serializer()
+        if not isinstance(payload, dict):
+            raise TypeError(f"{type(value).__name__} 返回了无效整理快照")
+        return payload
 
     @staticmethod
     def _build_library_lookup_meta(

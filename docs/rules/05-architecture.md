@@ -467,10 +467,25 @@ Durable post-commit side effects have a separate boundary:
 
 Transfer durable admission follows the same ownership direction without using
 the Outbox as an execution queue: `app/application/transfer.py` owns the typed
-admission contract and persist-before-enqueue orchestration, while
-`app/db/adapters/transfer.py` commits it in a short Session/UoW. Canonical host
-chains never obtain `TransferPendingOper`; its no-Session API remains only for
-the exact legacy plugin import contract.
+admission and versioned planning-checkpoint contracts, while
+`app/db/adapters/transfer.py` commits admission and the
+`accepted -> provider_pending -> planned` compare-and-set transitions in short
+Session/UoW scopes. `app/modules/filemanager/` owns the
+single pure-plan and checkpoint-execution implementation: all file writes occur
+after checkpoint commit, and planned recovery consumes frozen resolved context,
+target storage and ordered operations without online recognition or renaming.
+Legacy plugin `transfer` providers are frozen by exact identity, order, and ABI
+arguments in a provider-only checkpoint, then executed by the unified module
+dispatcher only after commit. The dispatcher resolves every frozen reference
+before the compatibility cleanup hook and propagates provider failures. Missing
+or failing providers therefore remain `provider_pending`; only an all-empty
+result permits host planning and a second CAS to `planned`. Host-only `plan_transfer` and
+`execute_transfer_plan` contracts never dispatch to plugins. `ChainBase.transfer`
+is the sole legacy caller facade and delegates the startup-injected durable
+command; `FileManagerModule.transfer` and `TransHandler.transfer_media` must not
+be recreated.
+Canonical host chains never obtain `TransferPendingOper`; its no-Session API
+remains only for the exact legacy plugin import contract.
 
 ## Composition and Compatibility Boundaries
 
@@ -604,8 +619,8 @@ driven workflow registration.
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
 | `app/application/outbox.py` | Durable intent, topic handler and Outbox repository contracts |
 | `app/db/adapters/outbox.py` | SQLAlchemy Outbox persistence, claim/lease and retry state adapter |
-| `app/application/transfer.py` | Transfer task, durable admission contract and persist-before-enqueue use case |
-| `app/db/adapters/transfer.py` | SQLAlchemy durable admission persistence and detached snapshot adapter |
+| `app/application/transfer.py` | Transfer task, durable admission, versioned planning input/checkpoint contracts and queue use case |
+| `app/db/adapters/transfer.py` | SQLAlchemy admission/checkpoint persistence, CAS state transition and detached snapshot adapter |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
 | `app/application/workflow.py` | Workflow use cases plus the runtime port consumed by API and Chain; `WorkFlowManager` is registered by `app/startup/initializers/workflow.py` |
@@ -626,7 +641,7 @@ driven workflow registration.
 | `app/runtime/event/snapshot.py` | Read-only typed payload snapshots for the plugin SDK; never mutates or replaces the event ABI |
 | `app/runtime/extensions/module/dispatcher.py` | Plugin-first invocation, short-circuit, list merge, signature relay and sync/async execution |
 | `app/runtime/extensions/module/contracts.py` | High-frequency method families and frozen legacy fallback contract |
-| `app/application/chain/context.py` | Injectable Chain dependencies and no-argument compatibility provider |
+| `app/application/chain/context.py` | Injectable Chain dependencies, no-argument compatibility provider and legacy Transfer command Port |
 | `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |

@@ -9,26 +9,17 @@ from collections import Counter
 from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+
+from pydantic_core import to_jsonable_python
 
 from app.application.chain.data import (
     get_chain_download_history_port,
     get_chain_transfer_history_port,
     get_chain_transfer_pending_port,
 )
-from app.chain import ChainBase
-from app.chain.media import MediaChain
-from app.chain.storage import StorageChain
-from app.chain.tmdb import TmdbChain
-from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
-from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.metainfo import MetaInfoPath
-from app.runtime.config import global_vars
-from app.runtime.stop import runtime_stop_state
-
-DownloadHistory = Any
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
 from app.application.formatting import FormatParser
@@ -55,12 +46,18 @@ from app.application.transfer import (
     TransferAdmission,
     TransferFailureNotification,
     TransferFailureNotificationAggregator,
+    TransferPlanCheckpoint,
+    TransferPlanningInput,
+    TransferPlanningStateError,
+    TransferProviderInvocationSnapshot,
+    TransferProviderReference,
     TransferQueue,
     TransferQueueService,
     TransferTask,
     build_transfer_failure_group_key,
     job_lock,
 )
+from app.chain import ChainBase
 from app.chain._transfer import (
     EpisodeFormatMixin,
     FailedRetryMixin,
@@ -70,11 +67,22 @@ from app.chain._transfer import (
     ManualHistoryMixin,
     ScrapeBatchMixin,
 )
+from app.chain.media import MediaChain
+from app.chain.storage import StorageChain
+from app.chain.tmdb import TmdbChain
 from app.domain import episode as episode_rules
+from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
+from app.domain.meta.metaanime import MetaAnime
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metavideo import MetaVideo
+from app.domain.metainfo import MetaInfoPath
 from app.foundation.singleton import Singleton
+from app.runtime.config import global_vars
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.reload import ConfigReloadMixin
+from app.runtime.stop import runtime_stop_state
 from app.schemas.event import StorageOperSelectionEventData
 from app.schemas.exception import OperationInterrupted
 from app.schemas.media import resolve_media_identity
@@ -96,6 +104,8 @@ from app.schemas.types import (
 )
 from app.schemas.workflow import FileItem
 
+DownloadHistory = Any
+
 # 下载器锁
 downloader_lock = threading.Lock()
 # 任务锁
@@ -115,7 +125,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         return (_transfer_mixin.MediaChain or MediaChain)()
 
     @classmethod
-    def _transfer_storage_chain(cls):
+    def _transfer_storage_chain(cls) -> StorageChain:
         """为整理 mixin 提供可替换的存储构造点。"""
         from app.chain import _transfer as _transfer_mixin
         return (_transfer_mixin.StorageChain or StorageChain)()
@@ -931,15 +941,15 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         """
         把落盘登记的待整理文件重新送回整理入口。
 
-        只回放「存储 + 源路径」这一最小事实，重新走完整的识别与整理流程，
-        已经整理完成的由整理历史查重挡掉，因此不存在重复整理的问题。
+        accepted 记录按原始请求重新规划；planned 记录绑定已提交检查点，重新识别
+        领域对象后只执行冻结路径，不再次触发重命名或目标计算。
         :param stop_event: 宿主关闭信号；只阻止处理下一条登记，不取消运行中的同步 I/O
         """
         stop_event = stop_event or threading.Event()
         if stop_event.is_set():
             return
         try:
-            pendings = self._transfer_admissions.list_accepted()
+            pendings = self._transfer_admissions.list_recoverable()
         except Exception as err:
             logger.error(f"读取待整理文件登记失败：{err}")
             return
@@ -953,7 +963,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             storage = admission.storage
             src_path = admission.src_path
             try:
-                fileitem, should_discard = self.__build_replay_fileitem(storage, src_path)
+                fileitem, should_discard = self.__build_replay_fileitem(
+                    storage,
+                    src_path,
+                    admission.planning_input,
+                )
                 # stat 等同步 I/O 返回后重新检查，关闭期间不得注销尚未完成的登记。
                 if stop_event.is_set():
                     break
@@ -964,7 +978,25 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             task_id=admission.task_id
                         )
                     continue
-                self.do_transfer(fileitem=fileitem)
+                if admission.checkpoint:
+                    if self.__queue_planned_replay(fileitem, admission):
+                        replayed += 1
+                    continue
+                planning_input = admission.planning_input
+                if planning_input and (
+                        planning_input.meta
+                        or planning_input.mediainfo
+                        or planning_input.episodes_info
+                ):
+                    if self.__queue_accepted_replay(fileitem, admission):
+                        replayed += 1
+                    continue
+                replay_kwargs = self.__build_replay_kwargs(planning_input)
+                self._execute_transfer(
+                    fileitem=fileitem,
+                    recovery_admission=admission,
+                    **replay_kwargs,
+                )
                 replayed += 1
             except Exception as err:
                 logger.error(f"回放待整理文件失败：{storage}:{src_path} - {err}")
@@ -977,7 +1009,176 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")
 
     @staticmethod
-    def __build_replay_fileitem(storage: str, src_path: str) -> Tuple[Optional[FileItem], bool]:
+    def __build_replay_kwargs(
+            planning_input: Optional[TransferPlanningInput],
+    ) -> dict[str, Any]:
+        """从持久请求快照恢复公开整理入口可接受的稳定参数。"""
+        if planning_input is None:
+            return {}
+        options = planning_input.options
+        target_directory_payload = planning_input.target_directory
+        cleanup_payload = options.get("cleanup_dest_fileitem")
+        try:
+            media_source = (
+                MediaSource(planning_input.media_source)
+                if planning_input.media_source
+                else None
+            )
+        except ValueError:
+            media_source = None
+        try:
+            media_type = (
+                MediaType(planning_input.media_type)
+                if planning_input.media_type
+                else None
+            )
+        except ValueError:
+            media_type = None
+        return {
+            "mtype": media_type,
+            "media_source": media_source,
+            "media_id": planning_input.media_id,
+            "target_directory": (
+                TransferDirectoryConf.model_validate(target_directory_payload)
+                if target_directory_payload
+                else None
+            ),
+            "target_storage": planning_input.target_storage,
+            "target_path": (
+                Path(planning_input.target_path)
+                if planning_input.target_path
+                else None
+            ),
+            "transfer_type": planning_input.requested_transfer_type,
+            "scrape": options.get("scrape"),
+            "library_type_folder": options.get("library_type_folder"),
+            "library_category_folder": options.get("library_category_folder"),
+            "downloader": options.get("downloader"),
+            "download_hash": options.get("download_hash"),
+            "background": True,
+            "manual": bool(options.get("manual")),
+            "preview": False,
+            "cleanup_dest_fileitem": (
+                FileItem.model_validate(cleanup_payload)
+                if isinstance(cleanup_payload, dict)
+                else None
+            ),
+        }
+
+    def __queue_accepted_replay(
+            self,
+            fileitem: FileItem,
+            admission: TransferAdmission,
+    ) -> bool:
+        """从 accepted 输入离线恢复显式领域上下文并送入单任务队列。"""
+        planning_input = admission.planning_input
+        if planning_input is None:
+            raise TransferPlanningStateError("accepted 回放缺少整理规划输入")
+        options = planning_input.options
+        replay_kwargs = self.__build_replay_kwargs(planning_input)
+        task = TransferTask(
+            fileitem=fileitem,
+            meta=(
+                self.__restore_meta_snapshot(
+                    planning_input.meta,
+                    options.get("_meta_kind"),
+                )
+                if planning_input.meta
+                else None
+            ),
+            mediainfo=(
+                self.__restore_mediainfo_snapshot(
+                    planning_input.mediainfo,
+                    options.get("_mediainfo_kind"),
+                )
+                if planning_input.mediainfo
+                else None
+            ),
+            mtype=replay_kwargs["mtype"],
+            media_source=replay_kwargs["media_source"],
+            media_id=replay_kwargs["media_id"],
+            target_directory=replay_kwargs["target_directory"],
+            target_storage=replay_kwargs["target_storage"],
+            target_path=replay_kwargs["target_path"],
+            transfer_type=replay_kwargs["transfer_type"],
+            scrape=replay_kwargs["scrape"],
+            library_type_folder=replay_kwargs["library_type_folder"],
+            library_category_folder=replay_kwargs["library_category_folder"],
+            episodes_info=[
+                TmdbEpisode.model_validate(item)
+                for item in planning_input.episodes_info
+            ],
+            username=options.get("username"),
+            downloader=replay_kwargs["downloader"],
+            download_hash=replay_kwargs["download_hash"],
+            manual=replay_kwargs["manual"],
+            background=True,
+            preview=False,
+        )
+        task.bind_admission_task_id(admission.task_id)
+        task.bind_planning_input(planning_input)
+        if planning_input.mediainfo:
+            task.mark_planning_context_restored()
+        return self.put_to_queue(task)
+
+    def __queue_planned_replay(
+            self,
+            fileitem: FileItem,
+            admission: TransferAdmission,
+    ) -> bool:
+        """把已提交检查点直接恢复为单个任务，避免重新扫描、识别和规划。"""
+        checkpoint = admission.checkpoint
+        if checkpoint is None:
+            raise TransferPlanningStateError("planned 回放缺少整理计划检查点")
+        options = checkpoint.planning_input.options
+        invocation = checkpoint.provider_invocation
+        task = TransferTask(
+            fileitem=fileitem,
+            target_storage=(
+                invocation.target_storage if invocation else checkpoint.target_storage
+            ),
+            target_path=(
+                Path(invocation.target_path)
+                if invocation and invocation.target_path
+                else Path(checkpoint.root_target_path)
+                if checkpoint.root_target_path
+                else None
+            ),
+            transfer_type=(
+                invocation.transfer_type
+                if invocation
+                else checkpoint.resolved_transfer_type
+            ),
+            scrape=invocation.scrape if invocation else checkpoint.need_scrape,
+            library_type_folder=(
+                invocation.library_type_folder
+                if invocation
+                else bool(options.get("library_type_folder"))
+            ),
+            library_category_folder=(
+                invocation.library_category_folder
+                if invocation
+                else bool(options.get("library_category_folder"))
+            ),
+            username=options.get("username"),
+            downloader=options.get("downloader"),
+            download_hash=options.get("download_hash"),
+            manual=bool(options.get("manual")),
+            background=True,
+            preview=False,
+        )
+        task.bind_admission_task_id(admission.task_id)
+        task.bind_planning_input(checkpoint.planning_input)
+        task.bind_plan_checkpoint(checkpoint)
+        self.__restore_planned_task(task)
+        return self.put_to_queue(task)
+
+    @staticmethod
+    def __build_replay_fileitem(
+            storage: str,
+            src_path: str,
+            planning_input: Optional[TransferPlanningInput] = None,
+    ) -> Tuple[Optional[FileItem], bool]:
         """
         为回放构造文件项。
 
@@ -987,6 +1188,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         ——那等于在故障期间主动丢件，正是本表要防的事。
         :param storage: 存储
         :param src_path: 源文件路径，以 / 结尾表示蓝光原盘目录
+        :param planning_input: 准入时保存的完整源文件身份快照
         :return: (文件项, 是否应注销登记)。文件项为 None 表示本次不回放；
                  只有确认源文件已经消失时才注销登记
         """
@@ -1005,26 +1207,598 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 # 挂载未就绪或无响应属于暂时性故障，保留登记等下次启动再回放
                 logger.warn(f"读取待整理文件失败，保留登记等待下次回放：{src_path} - {err}")
                 return None, False
-        return FileItem(
-            storage=storage,
-            path=src_path if is_dir else path.as_posix(),
-            type="dir" if is_dir else "file",
-            name=path.name,
-            basename=path.stem,
-            extension=path.suffix[1:] if not is_dir else None,
-            size=size,
-            modify_time=modify_time,
-        ), False
+        snapshot = (
+            planning_input.source_fileitem
+            if planning_input and planning_input.source_fileitem
+            else {}
+        )
+        fileitem = FileItem.model_validate({
+            **snapshot,
+            "storage": storage,
+            "path": src_path if is_dir else path.as_posix(),
+            "type": "dir" if is_dir else snapshot.get("type") or "file",
+            "name": snapshot.get("name") or path.name,
+            "basename": snapshot.get("basename") or path.stem,
+            "extension": (
+                snapshot.get("extension")
+                if snapshot.get("extension") is not None
+                else path.suffix[1:] if not is_dir else None
+            ),
+            "size": size if size is not None else snapshot.get("size"),
+            "modify_time": (
+                modify_time
+                if modify_time is not None
+                else snapshot.get("modify_time")
+            ),
+        })
+        return fileitem, False
 
     def __admit_transfer(self, task: TransferTask) -> TransferAdmission:
         """在内存入队前持久化源文件并返回稳定任务身份。"""
         fileitem = task.fileitem if task else None
         if not fileitem or not fileitem.storage or not fileitem.path:
             raise ValueError("整理任务缺少源文件身份")
+        planning_input = task.planning_input or self.__build_planning_input(task)
+        task.bind_planning_input(planning_input)
         return self._transfer_admissions.admit(
             storage=fileitem.storage,
             src_path=fileitem.path,
+            planning_input=planning_input,
         )
+
+    @staticmethod
+    def __json_snapshot(value: Any) -> Any:
+        """把受控领域对象投影为可持久化 JSON 值。"""
+        if value is None:
+            return None
+        return to_jsonable_python(value, serialize_unknown=True)
+
+    def __build_planning_input(
+            self,
+            task: TransferTask,
+            *,
+            cleanup_dest_fileitem: Optional[FileItem] = None,
+    ) -> TransferPlanningInput:
+        """冻结准入时已知的请求参数，供 accepted 任务跨重启重新规划。"""
+        target_directory = task.target_directory
+        options = {
+            "scrape": task.scrape,
+            "library_type_folder": task.library_type_folder,
+            "library_category_folder": task.library_category_folder,
+            "manual": task.manual,
+            "background": task.background,
+            "username": task.username,
+            "downloader": task.downloader,
+            "download_hash": task.download_hash,
+            "cleanup_dest_fileitem": self.__json_snapshot(cleanup_dest_fileitem),
+            "_meta_kind": type(task.meta).__name__ if task.meta else None,
+            "_mediainfo_kind": (
+                type(task.mediainfo).__name__ if task.mediainfo else None
+            ),
+        }
+        return TransferPlanningInput(
+            source_fileitem=self.__json_snapshot(task.fileitem),
+            meta=self.__json_snapshot(task.meta),
+            mediainfo=self.__json_snapshot(task.mediainfo),
+            target_directory=self.__json_snapshot(target_directory),
+            target_storage=task.target_storage,
+            target_path=task.target_path.as_posix() if task.target_path else None,
+            requested_transfer_type=task.transfer_type,
+            media_source=task.media_source.value if task.media_source else None,
+            media_id=task.media_id,
+            media_type=task.mtype.value if task.mtype else None,
+            need_scrape=bool(task.scrape),
+            need_rename=bool(target_directory.renaming) if target_directory else True,
+            need_notify=bool(target_directory.notify) if target_directory else False,
+            overwrite_mode=(target_directory.overwrite_mode if target_directory else None),
+            episodes_info=tuple(
+                self.__json_snapshot(episode) for episode in (task.episodes_info or [])
+            ),
+            preview=bool(task.preview),
+            options=options,
+        )
+
+    def __build_provider_invocation_snapshot(
+            self,
+            task: TransferTask,
+    ) -> TransferProviderInvocationSnapshot:
+        """冻结目录解析后的旧 ABI 参数，并保留 None 与 False 的原值差异。"""
+        return TransferProviderInvocationSnapshot(
+            fileitem=self.__json_snapshot(task.fileitem),
+            meta=self.__json_snapshot(task.meta),
+            meta_kind=type(task.meta).__name__ if task.meta else None,
+            mediainfo=self.__json_snapshot(task.mediainfo),
+            mediainfo_kind=(
+                type(task.mediainfo).__name__ if task.mediainfo else None
+            ),
+            target_directory=self.__json_snapshot(task.target_directory),
+            target_storage=task.target_storage,
+            target_path=task.target_path.as_posix() if task.target_path else None,
+            transfer_type=task.transfer_type,
+            scrape=task.scrape,
+            library_type_folder=task.library_type_folder,
+            library_category_folder=task.library_category_folder,
+            episodes_info=tuple(
+                self.__json_snapshot(episode) for episode in (task.episodes_info or [])
+            ),
+            preview=bool(task.preview),
+        )
+
+    @staticmethod
+    def __restore_meta_snapshot(
+            payload: Optional[dict[str, Any]],
+            kind: object,
+    ) -> MetaBase:
+        """从持久快照恢复元数据对象，不重新运行文件名解析。"""
+        if not payload:
+            raise TransferPlanningStateError("整理持久快照缺少已解析元数据")
+        if kind == "MetaMusic" or payload.get("type") == MediaType.MUSIC.value:
+            return MetaMusic.from_dict(payload)
+        meta_class = (
+            MetaAnime
+            if kind == "MetaAnime"
+            else MetaVideo
+        )
+        meta = meta_class("")
+        for key, value in payload.items():
+            descriptor = getattr(meta_class, key, None)
+            if isinstance(descriptor, property) and descriptor.fset is None:
+                continue
+            if key == "type" and isinstance(value, str):
+                value = MediaType(value)
+            elif key == "media_source" and isinstance(value, str):
+                value = MediaSource(value)
+            setattr(meta, key, value)
+        return meta
+
+    @staticmethod
+    def __restore_mediainfo_snapshot(
+            payload: Optional[dict[str, Any]],
+            kind: object,
+    ) -> Union[MediaInfo, MusicInfo]:
+        """从持久快照恢复媒体信息，不访问任何在线数据源。"""
+        if not payload:
+            raise TransferPlanningStateError("整理持久快照缺少已识别媒体信息")
+        if kind == "MusicInfo" or payload.get("type") == MediaType.MUSIC.value:
+            return MusicInfo.from_dict(payload)
+        mediainfo = MediaInfo()
+        mediainfo.from_dict(payload)
+        return mediainfo
+
+    def __restore_planned_task(self, task: TransferTask) -> None:
+        """用冻结检查点覆盖易受配置和在线识别变化影响的任务字段。"""
+        checkpoint = task.plan_checkpoint
+        if checkpoint is None:
+            raise TransferPlanningStateError("planned 任务缺少整理计划检查点")
+        if checkpoint.provider_invocation is not None:
+            invocation = checkpoint.provider_invocation
+            task.fileitem = FileItem.model_validate(invocation.fileitem)
+            task.meta = self.__restore_meta_snapshot(
+                invocation.meta,
+                invocation.meta_kind,
+            )
+            task.mediainfo = self.__restore_mediainfo_snapshot(
+                invocation.mediainfo,
+                invocation.mediainfo_kind,
+            )
+            task.target_directory = (
+                TransferDirectoryConf.model_validate(invocation.target_directory)
+                if invocation.target_directory
+                else None
+            )
+            task.target_storage = invocation.target_storage
+            task.target_path = (
+                Path(invocation.target_path) if invocation.target_path else None
+            )
+            task.transfer_type = invocation.transfer_type
+            task.scrape = invocation.scrape
+            task.library_type_folder = invocation.library_type_folder
+            task.library_category_folder = invocation.library_category_folder
+            task.episodes_info = [
+                TmdbEpisode.model_validate(item)
+                for item in invocation.episodes_info
+            ]
+            task.mark_planning_context_restored()
+            return
+        if checkpoint.resolved_meta:
+            task.meta = self.__restore_meta_snapshot(
+                checkpoint.resolved_meta,
+                checkpoint.resolved_meta_kind,
+            )
+        elif task.meta is None:
+            raise TransferPlanningStateError("整理计划检查点缺少已解析元数据")
+        if checkpoint.resolved_mediainfo:
+            task.mediainfo = self.__restore_mediainfo_snapshot(
+                checkpoint.resolved_mediainfo,
+                checkpoint.resolved_mediainfo_kind,
+            )
+        elif task.mediainfo is None:
+            raise TransferPlanningStateError("整理计划检查点缺少已识别媒体信息")
+        task.episodes_info = [
+            TmdbEpisode.model_validate(item)
+            for item in checkpoint.resolved_episodes_info
+        ]
+        task.target_storage = checkpoint.target_storage
+        task.target_path = Path(checkpoint.root_target_path)
+        task.transfer_type = checkpoint.resolved_transfer_type
+        task.scrape = checkpoint.need_scrape
+        task.mark_planning_context_restored()
+
+    def __select_storage_oper(self, storage: Optional[str]) -> Any:
+        """按冻结存储标识请求插件存储适配器，未接管时返回空值。"""
+        event_data = StorageOperSelectionEventData(storage=storage)
+        event = self.eventmanager.send_event(
+            ChainEventType.StorageOperSelection,
+            event_data,
+        )
+        if event and event.event_data:
+            resolved = event.event_data
+            return resolved.storage_oper
+        return None
+
+    def __record_uncheckpointed_failure(
+            self,
+            task: TransferTask,
+            error: object,
+    ) -> None:
+        """记录 checkpoint 前失败，保留 accepted 任务供后续重新规划。"""
+        if task.preview or task.plan_checkpoint or not task.admission_task_id:
+            return
+        try:
+            self._transfer_admissions.record_planning_failure(
+                task_id=task.admission_task_id,
+                error=str(error),
+            )
+        except Exception as record_error:
+            logger.error(f"记录整理规划前失败原因出错：{record_error}")
+
+    def __handle_planned_transfer(
+            self,
+            task: TransferTask,
+            callback: Optional[Callable[[TransferTask, TransferInfo], Tuple[bool, str]]],
+    ) -> Tuple[bool, str]:
+        """直接执行已提交检查点，不再触发识别、分类、选目录或重命名。"""
+        self.__restore_planned_task(task)
+        self.jobview.running_task(task)
+        checkpoint = task.plan_checkpoint
+        assert checkpoint is not None
+        target_storage = (
+            checkpoint.provider_invocation.target_storage
+            if checkpoint.provider_invocation
+            else checkpoint.target_storage
+        )
+        transferinfo = self._plan_checkpoint_and_execute(
+            task,
+            source_oper=self.__select_storage_oper(task.fileitem.storage),
+            target_oper=self.__select_storage_oper(target_storage),
+        )
+        if not transferinfo:
+            raise RuntimeError("文件整理模块未返回检查点执行结果")
+        if callback:
+            return callback(task, transferinfo)
+        return transferinfo.success, transferinfo.message or ""
+
+    def _plan_checkpoint_and_execute(
+            self,
+            task: TransferTask,
+            *,
+            source_oper: Any = None,
+            target_oper: Any = None,
+    ) -> TransferInfo:
+        """先提交冻结 provider 调用，空结果时再提交并执行宿主计划。"""
+        planning_input = task.planning_input or self.__build_planning_input(task)
+        task.bind_planning_input(planning_input)
+        if not task.preview and not task.admission_task_id:
+            admission = self.__admit_transfer(task)
+            task.bind_admission_task_id(admission.task_id)
+
+        checkpoint = task.plan_checkpoint
+        if checkpoint is None:
+            try:
+                frozen_providers = tuple(
+                    TransferProviderReference(
+                        plugin_id=provider.plugin_id,
+                        plugin_name=provider.plugin_name,
+                        method=provider.method,
+                    )
+                    for provider in self._module_dispatcher.freeze_plugin_providers(
+                        "transfer"
+                    )
+                )
+                if frozen_providers:
+                    invocation = self.__build_provider_invocation_snapshot(task)
+                    checkpoint = TransferPlanCheckpoint(
+                        planning_input=planning_input,
+                        target_storage="",
+                        root_target_path="",
+                        final_target_path="",
+                        resolved_transfer_type="",
+                        items=(),
+                        resolved_meta=invocation.meta,
+                        resolved_meta_kind=invocation.meta_kind,
+                        resolved_mediainfo=invocation.mediainfo,
+                        resolved_mediainfo_kind=invocation.mediainfo_kind,
+                        resolved_episodes_info=invocation.episodes_info,
+                        legacy_transfer_providers=frozen_providers,
+                        provider_invocation=invocation,
+                        preview=invocation.preview,
+                    )
+                else:
+                    checkpoint = self.__plan_host_transfer(
+                        task,
+                        planning_input=planning_input,
+                        source_oper=source_oper,
+                    )
+                checkpoint = self.__persist_transfer_checkpoint(
+                    task,
+                    planning_input=planning_input,
+                    checkpoint=checkpoint,
+                )
+                task.bind_plan_checkpoint(checkpoint)
+            except Exception as error:
+                self.__record_checkpoint_failure(task, error)
+                raise
+
+        self.__restore_planned_task(task)
+
+        legacy_result = self.__execute_legacy_transfer_providers(
+            task,
+            checkpoint=checkpoint,
+            source_oper=source_oper,
+            target_oper=target_oper,
+        )
+        if legacy_result is not None:
+            return legacy_result
+
+        if checkpoint.is_provider_pending:
+            try:
+                checkpoint = replace(
+                    self.__plan_host_transfer(
+                        task,
+                        planning_input=planning_input,
+                        source_oper=source_oper,
+                    ),
+                    pre_execution_cleanup_completed=True,
+                )
+                checkpoint = self.__persist_transfer_checkpoint(
+                    task,
+                    planning_input=planning_input,
+                    checkpoint=checkpoint,
+                )
+                task.bind_plan_checkpoint(checkpoint)
+                self.__restore_planned_task(task)
+            except Exception as error:
+                self.__record_checkpoint_failure(task, error)
+                raise
+
+        result = self.execute_transfer_plan(
+            checkpoint,
+            meta=task.meta,
+            mediainfo=task.mediainfo,
+            source_oper=source_oper,
+            target_oper=target_oper,
+            cleanup_media_file=self.__cleanup_transfer_destination,
+        )
+        if result is None:
+            raise RuntimeError("文件整理模块未返回检查点执行结果")
+        return result
+
+    def __plan_host_transfer(
+            self,
+            task: TransferTask,
+            *,
+            planning_input: TransferPlanningInput,
+            source_oper: Any,
+    ) -> TransferPlanCheckpoint:
+        """在 provider 未接管时生成纯宿主计划，不执行任何文件写入。"""
+        checkpoint = self.plan_transfer(
+            fileitem=task.fileitem,
+            meta=cast(MetaBase, task.meta),
+            mediainfo=cast(Union[MediaInfo, MusicInfo], task.mediainfo),
+            target_directory=task.target_directory,
+            target_storage=task.target_storage,
+            target_path=task.target_path,
+            transfer_type=task.transfer_type,
+            episodes_info=task.episodes_info,
+            scrape=task.scrape,
+            library_type_folder=task.library_type_folder,
+            library_category_folder=task.library_category_folder,
+            source_oper=source_oper,
+            preview=bool(task.preview),
+            planning_input=planning_input,
+        )
+        if checkpoint is None:
+            raise RuntimeError("文件整理模块未返回规划检查点")
+        return checkpoint
+
+    def __persist_transfer_checkpoint(
+            self,
+            task: TransferTask,
+            *,
+            planning_input: TransferPlanningInput,
+            checkpoint: TransferPlanCheckpoint,
+    ) -> TransferPlanCheckpoint:
+        """提交当前阶段检查点，并只消费仓储回读的持久投影。"""
+        if task.preview:
+            return checkpoint
+        if not task.admission_task_id:
+            raise RuntimeError("整理计划提交前缺少持久任务身份")
+        persisted = self._transfer_admissions.checkpoint_plan(
+            task_id=task.admission_task_id,
+            input_fingerprint=planning_input.fingerprint,
+            checkpoint=checkpoint,
+        )
+        if persisted.checkpoint is None:
+            raise TransferPlanningStateError("持久投影缺少整理检查点")
+        return persisted.checkpoint
+
+    def __record_checkpoint_failure(
+            self,
+            task: TransferTask,
+            error: Exception,
+    ) -> None:
+        """记录当前 checkpoint 阶段失败并保留原状态供重启恢复。"""
+        if task.preview or not task.admission_task_id:
+            return
+        try:
+            self._transfer_admissions.record_planning_failure(
+                task_id=task.admission_task_id,
+                error=str(error),
+            )
+            setattr(error, "_transfer_planning_failure_recorded", True)
+        except Exception as record_error:
+            logger.error(f"记录整理规划失败原因出错：{record_error}")
+
+    def __execute_legacy_transfer_providers(
+            self,
+            task: TransferTask,
+            *,
+            checkpoint: TransferPlanCheckpoint,
+            source_oper: Any,
+            target_oper: Any,
+    ) -> Optional[TransferInfo]:
+        """在 checkpoint 提交后按冻结身份执行旧插件 transfer provider。"""
+        providers = checkpoint.legacy_transfer_providers
+        if not providers:
+            return None
+        invocation = checkpoint.provider_invocation
+        if invocation is None:
+            raise TransferPlanningStateError(
+                "冻结旧 transfer provider 缺少调用快照"
+            )
+        target_directory = (
+            TransferDirectoryConf.model_validate(invocation.target_directory)
+            if invocation.target_directory
+            else None
+        )
+        provider_meta = (
+            self.__restore_meta_snapshot(invocation.meta, invocation.meta_kind)
+            if invocation.meta
+            else task.meta
+        )
+        provider_mediainfo = (
+            self.__restore_mediainfo_snapshot(
+                invocation.mediainfo,
+                invocation.mediainfo_kind,
+            )
+            if invocation.mediainfo
+            else task.mediainfo
+        )
+        provider_episodes = [
+            TmdbEpisode.model_validate(item)
+            for item in invocation.episodes_info
+        ]
+        result = self._module_dispatcher.execute_frozen_plugin_providers(
+            "transfer",
+            providers,
+            before_invoke=lambda: self.__prepare_legacy_provider_execution(
+                checkpoint=checkpoint
+            ),
+            fileitem=FileItem.model_validate(invocation.fileitem),
+            meta=provider_meta,
+            mediainfo=provider_mediainfo,
+            target_directory=target_directory,
+            target_storage=invocation.target_storage,
+            target_path=(Path(invocation.target_path) if invocation.target_path else None),
+            transfer_type=invocation.transfer_type,
+            scrape=invocation.scrape,
+            library_type_folder=invocation.library_type_folder,
+            library_category_folder=invocation.library_category_folder,
+            episodes_info=provider_episodes,
+            source_oper=source_oper,
+            target_oper=target_oper,
+            preview=invocation.preview,
+        )
+        if result is None or isinstance(result, TransferInfo):
+            return result
+        raise TypeError("旧插件 transfer provider 返回了不支持的结果类型")
+
+    def __prepare_legacy_provider_execution(
+            self,
+            *,
+            checkpoint: TransferPlanCheckpoint,
+    ) -> None:
+        """按旧批次语义在 provider 副作用前执行冻结 cleanup intent。"""
+        invocation = checkpoint.provider_invocation
+        if invocation is None:
+            raise TransferPlanningStateError("旧 provider 执行缺少调用快照")
+        if invocation.preview:
+            return
+
+        cleanup_payload = checkpoint.planning_input.options.get(
+            "cleanup_dest_fileitem"
+        )
+        if isinstance(cleanup_payload, dict):
+            cleanup_fileitem = FileItem.model_validate(cleanup_payload)
+            if not self.__cleanup_transfer_destination(cleanup_fileitem):
+                raise RuntimeError(
+                    f"{cleanup_fileitem.path} 删除失败，整理计划保留待重试"
+                )
+
+    def __cleanup_transfer_destination(self, fileitem: FileItem) -> bool:
+        """经插件兼容的 StorageChain 幂等删除旧目标并治理父空目录。"""
+        storage_chain = self._transfer_storage_chain()
+        if not fileitem.path:
+            return False
+        current_item = storage_chain.get_file_item_strict(
+            storage=fileitem.storage,
+            path=Path(fileitem.path),
+        )
+        if current_item is None:
+            return True
+        return bool(storage_chain.delete_media_file(current_item))
+
+    def execute_legacy_transfer_command(
+            self,
+            fileitem: FileItem,
+            meta: MetaBase,
+            mediainfo: Union[MediaInfo, MusicInfo],
+            target_directory: Optional[TransferDirectoryConf] = None,
+            target_storage: Optional[str] = None,
+            target_path: Optional[Path] = None,
+            transfer_type: Optional[str] = None,
+            scrape: Optional[bool] = None,
+            library_type_folder: Optional[bool] = None,
+            library_category_folder: Optional[bool] = None,
+            episodes_info: Optional[List[TmdbEpisode]] = None,
+            source_oper: Any = None,
+            target_oper: Any = None,
+            preview: bool = False,
+    ) -> TransferInfo:
+        """把旧同步 ABI 适配为准入、检查点和终态结算共用的唯一命令。"""
+        task = TransferTask(
+            fileitem=fileitem,
+            meta=meta,
+            mediainfo=mediainfo,
+            target_directory=target_directory,
+            target_storage=target_storage,
+            target_path=target_path,
+            transfer_type=transfer_type,
+            scrape=scrape,
+            library_type_folder=library_type_folder,
+            library_category_folder=library_category_folder,
+            episodes_info=episodes_info,
+            manual=True,
+            background=False,
+            preview=preview,
+        )
+        try:
+            result = self._plan_checkpoint_and_execute(
+                task,
+                source_oper=source_oper,
+                target_oper=target_oper,
+            )
+        except Exception as error:
+            logger.error(f"旧整理兼容命令执行失败：{error}")
+            return TransferInfo(
+                success=False,
+                message=str(error),
+                fileitem=fileitem,
+                fail_list=[fileitem.path],
+                transfer_type=transfer_type,
+            )
+        self.__discard_pending(task)
+        return result
 
     def __record_enqueue_failure(
             self,
@@ -1131,13 +1905,13 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         if marker:
             marker(task)
 
-    def __finish_job_execution(self, task: TransferTask):
-        """在作业视图支持执行租约时标记主程序任务结束执行。"""
+    def __finish_job_execution(self, task: TransferTask, *, terminal: bool = True):
+        """结束内存执行；仅确定到达业务终态时注销 durable 记录。"""
         marker = getattr(self.jobview, "finish_execution", None)
         if marker:
             marker(task)
-        # 任务已到终态，落盘登记到此作废（未登记过的实时整理路径为无害空操作）
-        self.__discard_pending(task)
+        if terminal:
+            self.__discard_pending(task)
 
     def __expire_stale_transfer_tasks(self):
         """清理外部接管后失去状态心跳的运行中整理任务。"""
@@ -1255,6 +2029,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     # 增加运行中的任务数
                     self._active_tasks += 1
 
+                terminal = False
                 try:
                     self.__start_job_execution(task)
                     # 更新进度
@@ -1271,6 +2046,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     state, err_msg = self.__handle_transfer(
                         task=task, callback=item.callback
                     )
+                    terminal = task.plan_checkpoint is not None
 
                     with task_lock:
                         if not state:
@@ -1295,7 +2071,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         self._processed_num += 1
                         self._fail_num += 1
                 finally:
-                    self.__finish_job_execution(task)
+                    self.__finish_job_execution(task, terminal=terminal)
                     self._queue.task_done()
                     with task_lock:
                         # 减少运行中的任务数
@@ -1313,10 +2089,26 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
     def __handle_transfer(
             self, task: TransferTask, callback: Optional[Callable] = None
     ) -> Optional[Tuple[bool, str]]:
+        """执行整理并统一记录 checkpoint 前的返回失败或异常。"""
+        try:
+            result = self.__perform_transfer(task, callback)
+        except Exception as error:
+            if not getattr(error, "_transfer_planning_failure_recorded", False):
+                self.__record_uncheckpointed_failure(task, error)
+            raise
+        if result and not result[0]:
+            self.__record_uncheckpointed_failure(task, result[1])
+        return result
+
+    def __perform_transfer(
+            self, task: TransferTask, callback: Optional[Callable] = None
+    ) -> Optional[Tuple[bool, str]]:
         """
         处理整理任务
         """
         try:
+            if task.plan_checkpoint is not None:
+                return self.__handle_planned_transfer(task, callback)
             # 识别
             transferhis = get_chain_transfer_history_port()
             # 显式标注联合：下面既会赋回音乐识别结果（MusicInfo），也会赋回影视识别
@@ -1446,8 +2238,9 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
                 mediainfo_changed = True
 
-            # TMDB 仅作为辅助信息合并，不能改变原识别源的主身份和标题。
-            mediainfo = MediaChain().supplement_tmdb_info(mediainfo, task.meta)
+            # accepted/planned 恢复使用持久快照；在线补充会让首次执行与重放产生漂移。
+            if not task.planning_context_restored:
+                mediainfo = MediaChain().supplement_tmdb_info(mediainfo, task.meta)
             task.mediainfo = mediainfo
 
             # 只有 TMDB 主源沿用历史 TMDB 标题，避免辅助 ID 改写其它识别源标题。
@@ -1477,6 +2270,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     task.mediainfo.type == MediaType.TV
                     and task.mediainfo.tmdb_id
                     and not task.episodes_info
+                    and not task.planning_context_restored
             ):
                 # 判断注意season为0的情况
                 season_num = task.mediainfo.season
@@ -1534,54 +2328,15 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             # 正在处理
             self.jobview.running_task(task)
 
-            # 广播事件，请示额外的源存储支持
-            source_oper = None
-            source_event_data = StorageOperSelectionEventData(
-                storage=task.fileitem.storage,
-            )
-            source_event = self.eventmanager.send_event(
-                ChainEventType.StorageOperSelection, source_event_data
-            )
-            # 使用事件返回的上下文数据
-            if source_event and source_event.event_data:
-                source_event_data: StorageOperSelectionEventData = (
-                    source_event.event_data
-                )
-                if source_event_data.storage_oper:
-                    source_oper = source_event_data.storage_oper
+            # 广播事件，请示额外的源、目标存储支持。
+            source_oper = self.__select_storage_oper(task.fileitem.storage)
+            target_oper = self.__select_storage_oper(task.target_storage)
 
-            # 广播事件，请示额外的目标存储支持
-            target_oper = None
-            target_event_data = StorageOperSelectionEventData(
-                storage=task.target_storage,
-            )
-            target_event = self.eventmanager.send_event(
-                ChainEventType.StorageOperSelection, target_event_data
-            )
-            # 使用事件返回的上下文数据
-            if target_event and target_event.event_data:
-                target_event_data: StorageOperSelectionEventData = (
-                    target_event.event_data
-                )
-                if target_event_data.storage_oper:
-                    target_oper = target_event_data.storage_oper
-
-            # 执行整理
-            transferinfo: TransferInfo = self.transfer(
-                fileitem=task.fileitem,
-                meta=task.meta,
-                mediainfo=task.mediainfo,
-                target_directory=task.target_directory,
-                target_storage=task.target_storage,
-                target_path=task.target_path,
-                transfer_type=task.transfer_type,
-                episodes_info=task.episodes_info,
-                scrape=task.scrape,
-                library_type_folder=task.library_type_folder,
-                library_category_folder=task.library_category_folder,
+            # 纯规划先提交 durable checkpoint，任何文件副作用只能发生在提交之后。
+            transferinfo = self._plan_checkpoint_and_execute(
+                task,
                 source_oper=source_oper,
                 target_oper=target_oper,
-                preview=task.preview,
             )
             if not transferinfo:
                 logger.error("文件整理模块运行失败")
@@ -2144,6 +2899,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             cleanup_dest_fileitem: Optional[FileItem] = None,
             continue_callback: Callable = None,
             reorganize: Optional[bool] = False,
+            recovery_admission: Optional[TransferAdmission] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         执行一个复杂目录的整理操作
@@ -2173,6 +2929,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         :param sync_extra_files: 是否在整理主视频文件时同步整理同媒体附加文件
         :param cleanup_dest_fileitem: 确认存在待整理任务后需要清理的旧目标文件
         :param continue_callback: 继续处理回调
+        :param recovery_admission: 内部恢复调用绑定的既有 durable 记录
         返回：成功标识，错误信息
         """
         mediainfo, media_source, media_id, identity_error = (
@@ -2601,10 +3358,6 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         file_items, inherited_meta_map = _plan_file_items(file_items)
 
         planned_file_count = len(file_items)
-        if cleanup_dest_fileitem and planned_file_count and not preview:
-            state = StorageChain().delete_media_file(cleanup_dest_fileitem)
-            if not state:
-                return False, f"{cleanup_dest_fileitem.path} 删除失败"
 
         if preview:
             logger.info(f"正在预览 {planned_file_count} 个文件的整理路径...")
@@ -2615,6 +3368,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         transfer_tasks: List[TransferTask] = []
         skipped_history_count = 0
         skipped_torrents = set()
+        cleanup_intent_assigned = False
         try:
             for file_item, bluray_dir in file_items:
                 if runtime_stop_state.is_system_stopped:
@@ -2777,6 +3531,31 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     background=background,
                     preview=preview,
                 )
+                cleanup_intent = (
+                    cleanup_dest_fileitem
+                    if not preview and not cleanup_intent_assigned
+                    else None
+                )
+                transfer_task.bind_planning_input(
+                    self.__build_planning_input(
+                        transfer_task,
+                        cleanup_dest_fileitem=cleanup_intent,
+                    )
+                )
+                if (
+                        recovery_admission
+                        and file_item.storage == recovery_admission.storage
+                        and file_item.path == recovery_admission.src_path
+                ):
+                    transfer_task.bind_admission_task_id(recovery_admission.task_id)
+                    if recovery_admission.planning_input:
+                        transfer_task.bind_planning_input(
+                            recovery_admission.planning_input
+                        )
+                    if recovery_admission.checkpoint:
+                        transfer_task.bind_plan_checkpoint(
+                            recovery_admission.checkpoint
+                        )
                 if background:
                     try:
                         queued = self.put_to_queue(task=transfer_task)
@@ -2787,6 +3566,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         logger.error(message)
                         continue
                     if queued:
+                        if cleanup_intent:
+                            cleanup_intent_assigned = True
                         logger.info(f"{file_path.name} 已添加到整理队列")
                     else:
                         logger.debug(f"{file_path.name} 已在整理队列中，跳过")
@@ -2795,6 +3576,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     if self.__put_to_jobview(transfer_task):
                         self._register_scrape_batch_task(transfer_task)
                         transfer_tasks.append(transfer_task)
+                        if cleanup_intent:
+                            cleanup_intent_assigned = True
                     else:
                         logger.debug(f"{file_path.name} 已在整理列表中，跳过")
         except OperationInterrupted:
@@ -2805,7 +3588,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             self._close_scrape_batch(transfer_batch_id)
 
         # 实时整理
-        preview_items: List[dict] = []
+        preview_items: List[dict[str, Any]] = []
 
         def _preview_callback(task: TransferTask, transferinfo: TransferInfo) -> Tuple[bool, str]:
             item_meta = task.meta
@@ -2867,12 +3650,14 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                                 "finished": finished_files,
                             },
                         )
+                    terminal = False
                     try:
                         self.__start_job_execution(transfer_task)
                         state, err_msg = self.__handle_transfer(
                             task=transfer_task,
                             callback=_preview_callback if preview else self.__default_callback,
                         )
+                        terminal = bool(preview or transfer_task.plan_checkpoint is not None)
                     except Exception as e:
                         logger.error(
                             f"{transfer_task.fileitem.name} 整理任务处理出现错误："
@@ -2882,7 +3667,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             self.__fail_transfer_task(transfer_task)
                         state, err_msg = False, str(e)
                     finally:
-                        self.__finish_job_execution(transfer_task)
+                        self.__finish_job_execution(
+                            transfer_task,
+                            terminal=terminal,
+                        )
                     if not state:
                         all_success = False
                         logger.warn(f"{transfer_task.fileitem.name} {err_msg}")

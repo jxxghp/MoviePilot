@@ -435,17 +435,17 @@ def test_event_contract_baseline_covers_every_public_event_enum() -> None:
 
     assert set(events["event_index"]) == expected
     assert events["event_count"] == len(expected)
-    assert events["producer_call_count"] == 99
-    assert events["static_producer_call_count"] == 98
+    assert events["producer_call_count"] == 97
+    assert events["static_producer_call_count"] == 96
     assert events["dynamic_producer_count"] == 1
     assert events["invalid_producer_count"] == 0
-    assert events["producer_event_reference_count"] == 100
+    assert events["producer_event_reference_count"] == 98
     assert events["consumer_registration_count"] == 17
     assert events["static_consumer_count"] == 16
     assert events["dynamic_consumer_count"] == 1
     assert events["invalid_consumer_count"] == 0
     assert events["consumer_event_reference_count"] == 16
-    assert events["fact_count"] == 116
+    assert events["fact_count"] == 114
     assert len({fact["fingerprint"] for fact in events["consumers"]}) == 17
     assert all(
         not fact["caller"].startswith("app.plugins")

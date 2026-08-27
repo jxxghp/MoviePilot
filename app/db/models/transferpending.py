@@ -1,11 +1,64 @@
+import hashlib
+import json
 from datetime import datetime
-from typing import List, Optional, cast
+from typing import Any, List, Optional, cast
 from uuid import uuid4
 
-from sqlalchemy import Index, String, Text, UniqueConstraint, delete, select, update
+from sqlalchemy import JSON, Index, Integer, String, Text, UniqueConstraint, delete, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
+
+
+def _legacy_planning_payload(storage: str, src_path: str) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "source_fileitem": {"storage": storage, "path": src_path},
+        "meta": None,
+        "mediainfo": None,
+        "target_directory": None,
+        "target_storage": None,
+        "target_path": None,
+        "requested_transfer_type": None,
+        "media_source": None,
+        "media_id": None,
+        "media_type": None,
+        "need_scrape": False,
+        "need_rename": True,
+        "need_notify": True,
+        "overwrite_mode": None,
+        "episodes_info": [],
+        "preview": False,
+        "options": {"legacy_replan": True},
+    }
+
+
+def _planning_fingerprint(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _default_planning_payload(context: Any) -> dict[str, Any]:
+    params = context.get_current_parameters()
+    return _legacy_planning_payload(
+        params.get("storage", ""),
+        params.get("src_path", ""),
+    )
+
+
+def _default_planning_fingerprint(context: Any) -> str:
+    params = context.get_current_parameters()
+    payload = params.get("planning_input") or _legacy_planning_payload(
+        params.get("storage", ""),
+        params.get("src_path", ""),
+    )
+    return _planning_fingerprint(payload)
 
 
 class TransferPending(Base):
@@ -17,9 +70,9 @@ class TransferPending(Base):
     蒸发。而已经稳定落地的文件不会再产生任何监控事件，也不会有新的补偿扫描起点
     ——结果就是永久漏件，只能靠人工比对补整理。
 
-    这里只落盘恢复所需的最小事实：稳定任务身份、存储、源文件路径、准入状态和
-    最近入队错误。重启后重新走一遍整理入口，由整理历史查重挡掉已经完成的，
-    因此不需要序列化 meta/mediainfo 这些重对象，也不存在识别结果陈旧的问题。
+    准入时保存版本化规划输入和指纹；纯规划完成后以同一行原子保存完整有序计划并
+    推进到 planned。重启恢复可直接消费已规划路径，避免再次触发 rename 等插件事件。
+    旧路径登记接口仍生成最小 legacy_replan 输入，供插件兼容调用方继续使用。
     """
 
     id = get_id_column()
@@ -42,6 +95,22 @@ class TransferPending(Base):
     )
     # 最近一次入队失败原因
     last_error: Mapped[Optional[str]] = mapped_column(Text)
+    # 规划输入格式版本
+    input_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # 版本化规划输入 JSON
+    planning_input: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=_default_planning_payload
+    )
+    # 规划输入规范 JSON 的 SHA-256 指纹
+    input_fingerprint: Mapped[str] = mapped_column(
+        String(64), nullable=False, default=_default_planning_fingerprint
+    )
+    # 完整计划格式版本，尚未规划时为空
+    checkpoint_version: Mapped[Optional[int]] = mapped_column(Integer)
+    # 完整有序计划 JSON，尚未规划时为空
+    checkpoint_payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+    # 规划完成时间
+    planned_at: Mapped[Optional[str]] = mapped_column(String(40))
 
     __table_args__ = (
         # 同一个文件重复入队只保留一条，回放时不会重复送入整理链
@@ -74,12 +143,16 @@ class TransferPending(Base):
         ).scalars().first()
         if pending:
             return cast("TransferPending", pending)
+        planning_input = _legacy_planning_payload(storage, src_path)
         pending = cls(
             storage=storage,
             src_path=src_path,
             state="accepted",
             created_at=now_time,
             updated_at=now_time,
+            input_version=1,
+            planning_input=planning_input,
+            input_fingerprint=_planning_fingerprint(planning_input),
         )
         db.add(pending)
         return pending
@@ -87,7 +160,9 @@ class TransferPending(Base):
     @classmethod
     def stage_admit(cls, db: Session, *, task_id: str, storage: str,
                     src_path: str, state: str,
-                    now_time: str) -> Optional["TransferPending"]:
+                    now_time: str, input_version: int = 1,
+                    planning_input: Optional[dict[str, Any]] = None,
+                    input_fingerprint: Optional[str] = None) -> Optional["TransferPending"]:
         """
         在调用方会话中暂存一条持久接纳记录。
 
@@ -98,6 +173,9 @@ class TransferPending(Base):
         :param src_path: 源文件路径
         :param state: 持久状态
         :param now_time: 当前时间
+        :param input_version: 规划输入格式版本
+        :param planning_input: 版本化规划输入 JSON
+        :param input_fingerprint: 规划输入规范 JSON 指纹
         :return: 接纳记录
         """
         if not task_id or not storage or not src_path or not state:
@@ -107,6 +185,8 @@ class TransferPending(Base):
         ).scalars().first()
         if pending:
             return cast("TransferPending", pending)
+        effective_input = planning_input or _legacy_planning_payload(storage, src_path)
+        effective_fingerprint = input_fingerprint or _planning_fingerprint(effective_input)
         pending = cls(
             task_id=task_id,
             storage=storage,
@@ -114,6 +194,9 @@ class TransferPending(Base):
             state=state,
             created_at=now_time,
             updated_at=now_time,
+            input_version=input_version,
+            planning_input=effective_input,
+            input_fingerprint=effective_fingerprint,
         )
         db.add(pending)
         return pending
@@ -138,6 +221,25 @@ class TransferPending(Base):
         ).scalars().all())
 
     @classmethod
+    def list_by_states(cls, db: Session, *, states: tuple[str, ...],
+                       limit: Optional[int] = 5000) -> List["TransferPending"]:
+        """
+        按登记顺序列出多个可恢复持久状态的记录。
+        :param db: 数据库会话
+        :param states: 允许恢复的状态集合
+        :param limit: 单次读取上限
+        :return: 接纳记录列表
+        """
+        if not states:
+            return []
+        return list(db.execute(
+            select(cls)
+            .where(cls.state.in_(states))
+            .order_by(cls.created_at.asc(), cls.id.asc())
+            .limit(limit)
+        ).scalars().all())
+
+    @classmethod
     def get_by_identity(cls, db: Session, *, storage: str,
                         src_path: str) -> Optional["TransferPending"]:
         """
@@ -157,6 +259,90 @@ class TransferPending(Base):
                     cls.src_path == src_path,
                 )
             ).scalars().first(),
+        )
+
+    @classmethod
+    def get_by_task_id(cls, db: Session, *, task_id: str) -> Optional["TransferPending"]:
+        """
+        按稳定任务标识查询一条持久登记。
+        :param db: 数据库会话
+        :param task_id: 稳定任务标识
+        :return: 接纳记录
+        """
+        if not task_id:
+            return None
+        return cast(
+            Optional["TransferPending"],
+            db.execute(select(cls).where(cls.task_id == task_id)).scalars().first(),
+        )
+
+    @classmethod
+    def checkpoint_plan(cls, db: Session, *, task_id: str,
+                        input_fingerprint: str, checkpoint_version: int,
+                        checkpoint_payload: dict[str, Any],
+                        source_states: tuple[str, ...], target_state: str,
+                        now_time: str) -> int:
+        """
+        以输入指纹为 CAS 条件原子保存计划并推进到已规划。
+        :param db: 数据库会话
+        :param task_id: 稳定任务标识
+        :param input_fingerprint: 规划输入规范 JSON 指纹
+        :param checkpoint_version: 检查点格式版本
+        :param checkpoint_payload: 完整有序计划 JSON
+        :param source_states: 允许推进检查点的起始状态
+        :param target_state: 检查点提交后的目标状态
+        :param now_time: 当前时间
+        :return: 更新的记录数
+        """
+        if (
+                not task_id
+                or not input_fingerprint
+                or not checkpoint_payload
+                or not source_states
+                or not target_state
+        ):
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.state.in_(source_states),
+                cls.input_fingerprint == input_fingerprint,
+            )
+            .values(
+                state=target_state,
+                checkpoint_version=checkpoint_version,
+                checkpoint_payload=checkpoint_payload,
+                planned_at=now_time,
+                last_error=None,
+                updated_at=now_time,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def record_planning_failure(cls, db: Session, *, task_id: str,
+                                error: str, now_time: str) -> int:
+        """
+        为接纳态或 provider 待执行任务记录规划失败，不改变其恢复状态。
+        :param db: 数据库会话
+        :param task_id: 稳定任务标识
+        :param error: 失败原因
+        :param now_time: 当前时间
+        :return: 更新的记录数
+        """
+        if not task_id:
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.task_id == task_id,
+                cls.state.in_(("accepted", "provider_pending")),
+            )
+            .values(last_error=error, updated_at=now_time),
+            execution_options={"synchronize_session": False},
         )
 
     @classmethod

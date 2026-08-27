@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.filemanager import FileManagerModule
@@ -78,14 +77,21 @@ def test_cloud_storage_preview_only_calculates_target_path():
     )
     guarded_storage = GuardedStorage()
 
-    transferinfo = FileManagerModule().transfer(
+    module = FileManagerModule()
+    checkpoint = module.plan_transfer(
         fileitem=fileitem,
         meta=meta,
         mediainfo=mediainfo,
         target_directory=target_directory,
         source_oper=guarded_storage,
-        target_oper=guarded_storage,
         preview=True,
+    )
+    transferinfo = module.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=guarded_storage,
+        target_oper=guarded_storage,
     )
 
     assert transferinfo.success is True
@@ -131,14 +137,21 @@ def test_local_storage_preview_skips_target_conflict_checks(tmp_path):
     )
     guarded_storage = GuardedStorage()
 
-    transferinfo = FileManagerModule().transfer(
+    module = FileManagerModule()
+    checkpoint = module.plan_transfer(
         fileitem=fileitem,
         meta=meta,
         mediainfo=mediainfo,
         target_directory=target_directory,
         source_oper=guarded_storage,
-        target_oper=guarded_storage,
         preview=True,
+    )
+    transferinfo = module.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=guarded_storage,
+        target_oper=guarded_storage,
     )
 
     assert transferinfo.success is True
@@ -188,14 +201,23 @@ def _build_bluray_dir_preview(
         notify=True,
     )
 
-    return FileManagerModule().transfer(
+    module = FileManagerModule()
+    source_oper = GuardedStorage()
+    target_oper = GuardedStorage()
+    checkpoint = module.plan_transfer(
         fileitem=fileitem,
         meta=meta,
         mediainfo=mediainfo,
         target_directory=target_directory,
-        source_oper=GuardedStorage(),
-        target_oper=GuardedStorage(),
+        source_oper=source_oper,
         preview=True,
+    )
+    return module.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=source_oper,
+        target_oper=target_oper,
     )
 
 

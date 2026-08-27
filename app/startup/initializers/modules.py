@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import sys
-from typing import Callable
+from typing import Any, Callable
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 from app.application.plugin.transaction import (
@@ -241,6 +241,13 @@ async def _async_get_workflow(workflow_id: int):
     return await WorkflowOper().async_get(workflow_id)
 
 
+def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
+    """把旧 Chain ABI 延迟转入唯一 TransferChain durable command。"""
+    from app.chain.transfer import TransferChain
+
+    return TransferChain().execute_legacy_transfer_command(**kwargs)
+
+
 def _build_chain_runtime_context() -> ChainRuntimeContext:
     """在启动组合根创建 Chain 所需的运行时对象和数据端口。"""
     return ChainRuntimeContext(
@@ -255,6 +262,7 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
             send_callback=callback
         ),
         module_dispatcher_factory=ModuleInvocationDispatcher,
+        legacy_transfer_command=_execute_legacy_transfer_command,
         configuration=build_chain_runtime_config(legacy_settings),
         data_ports=get_chain_data_ports(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),

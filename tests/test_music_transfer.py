@@ -4,16 +4,16 @@ from unittest.mock import Mock
 
 from jinja2 import Template
 
+from app.application.messaging.message import TemplateHelper
+from app.application.transfer import TransferTask
 from app.chain.media import MediaChain
 from app.chain.transfer import JobManager, TransferChain
-from app.runtime.config import settings
-from app.domain.meta.metamusic import MetaMusic
 from app.domain.context import MusicInfo
-from app.application.messaging.message import TemplateHelper
+from app.domain.meta.metamusic import MetaMusic
+from app.runtime.config import settings
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import TransferInfo, TransferTorrent
-from app.application.transfer import TransferTask
 from app.schemas.types import EventType, MediaType
 
 
@@ -601,7 +601,7 @@ def test_automatic_audio_transfer_runs_music_recognition(tmp_path, monkeypatch):
     monkeypatch.setattr(chain, "_resolve_download_history", Mock(return_value=None))
     monkeypatch.setattr(
         chain,
-        "transfer",
+        "_plan_checkpoint_and_execute",
         Mock(
             return_value=TransferInfo(
                 success=True,
@@ -704,7 +704,7 @@ def test_explicit_music_batch_excludes_video_from_mixed_directory(tmp_path, monk
     monkeypatch.setattr(MediaChain, "recognize_by_meta", Mock(return_value=recognized))
     monkeypatch.setattr(
         chain,
-        "transfer",
+        "_plan_checkpoint_and_execute",
         Mock(
             return_value=TransferInfo(
                 success=True,
@@ -727,7 +727,7 @@ def test_explicit_music_batch_excludes_video_from_mixed_directory(tmp_path, monk
 
     assert state is True
     assert [item["source"] for item in preview["items"]] == [audio_item.path]
-    assert chain.transfer.call_count == 1
+    assert chain._plan_checkpoint_and_execute.call_count == 1
 
 
 def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):

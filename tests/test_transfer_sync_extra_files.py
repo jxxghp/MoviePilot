@@ -688,12 +688,11 @@ def test_single_matching_subtitle_uses_unmatched_video_only_as_context(monkeypat
     assert planned == [(subtitle_fileitem.path, 2)]
 
 
-def test_cleanup_dest_fileitem_is_deleted_only_after_allowed_items_exist(monkeypatch):
+def test_cleanup_dest_fileitem_is_checkpointed_only_after_allowed_items_exist(monkeypatch):
     """
-    旧目标文件只应在模板筛选后确实存在待整理任务时清理。
+    旧目标清理意图只应在模板筛选后确实存在待整理任务时进入规划输入。
     """
     chain = make_transfer_chain()
-    delete_calls = []
     planned = []
     main_fileitem = make_fileitem(
         "/downloads/Test Show (2026)/Show - 01.mkv"
@@ -721,9 +720,14 @@ def test_cleanup_dest_fileitem_is_deleted_only_after_allowed_items_exist(monkeyp
 
     def fake_handle_transfer(task, callback=None):
         """
-        记录旧目标清理后的整理任务。
+        记录实际任务携带的冻结 cleanup intent。
         """
-        planned.append(task.fileitem.path)
+        planned.append(
+            (
+                task.fileitem.path,
+                task.planning_input.options.get("cleanup_dest_fileitem"),
+            )
+        )
         return True, ""
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
@@ -752,15 +756,6 @@ def test_cleanup_dest_fileitem_is_deleted_only_after_allowed_items_exist(monkeyp
         lambda: SimpleNamespace(get=lambda key: None),
     )
     monkeypatch.setattr("app.chain._transfer.get_configured_system_config", lambda: SimpleNamespace(get=lambda key: None))
-    monkeypatch.setattr(
-        "app.chain.transfer.StorageChain",
-        lambda: SimpleNamespace(
-            delete_media_file=lambda fileitem: delete_calls.append(fileitem.path) or True,
-        ),
-    )
-    monkeypatch.setattr("app.chain._transfer.StorageChain", lambda: SimpleNamespace(
-            delete_media_file=lambda fileitem: delete_calls.append(fileitem.path) or True,
-        ))
     monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda path, custom_words=None, **kwargs: FakeMeta(1))
 
     state, errmsg = TransferChain.do_transfer(
@@ -773,8 +768,12 @@ def test_cleanup_dest_fileitem_is_deleted_only_after_allowed_items_exist(monkeyp
 
     assert state is True
     assert errmsg == ""
-    assert delete_calls == [old_dest_fileitem.path]
-    assert planned == [main_fileitem.path]
+    assert planned == [
+        (
+            main_fileitem.path,
+            old_dest_fileitem.model_dump(mode="json"),
+        )
+    ]
 
 
 def test_cleanup_dest_fileitem_is_kept_when_episode_format_matches_nothing(monkeypatch):

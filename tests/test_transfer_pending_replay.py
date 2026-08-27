@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from app.application.transfer import TransferAdmission, TransferTask
+from app.application.transfer import TransferAdmission, TransferPlanningInput, TransferTask
 from app.chain.transfer import TransferChain
 from app.schemas.file import FileItem
 
@@ -71,9 +71,11 @@ def test_admit_transfer_records_storage_and_path():
         _task("/mnt/cd2/downloads/Movie.2024.mkv")
     )
 
-    admissions.admit.assert_called_once_with(
-        storage="local", src_path="/mnt/cd2/downloads/Movie.2024.mkv"
-    )
+    call = admissions.admit.call_args.kwargs
+    assert call["storage"] == "local"
+    assert call["src_path"] == "/mnt/cd2/downloads/Movie.2024.mkv"
+    assert isinstance(call["planning_input"], TransferPlanningInput)
+    assert call["planning_input"].source_fileitem["path"] == call["src_path"]
     assert result.task_id == "task-1"
 
 
@@ -99,11 +101,15 @@ def test_replay_resends_pending_files_to_transfer(tmp_path, monkeypatch):
     media.write_bytes(b"x" * 10)
 
     admissions = MagicMock()
-    admissions.list_accepted.return_value = [_admission(str(media))]
+    admissions.list_recoverable.return_value = [_admission(str(media))]
     chain = _build_chain(admissions)
 
     transferred = []
-    monkeypatch.setattr(chain, "do_transfer", lambda **kw: transferred.append(kw["fileitem"]))
+    monkeypatch.setattr(
+        chain,
+        "_execute_transfer",
+        lambda **kw: transferred.append(kw["fileitem"]),
+    )
 
     chain._TransferChain__replay_pending()
 
@@ -122,13 +128,13 @@ def test_replay_discards_vanished_files(tmp_path):
     """
     admissions = MagicMock()
     missing = tmp_path / "gone.mkv"
-    admissions.list_accepted.return_value = [_admission(str(missing))]
+    admissions.list_recoverable.return_value = [_admission(str(missing))]
     chain = _build_chain(admissions)
-    chain.do_transfer = MagicMock()
+    chain._execute_transfer = MagicMock()
 
     chain._TransferChain__replay_pending()
 
-    chain.do_transfer.assert_not_called()
+    chain._execute_transfer.assert_not_called()
     admissions.discard_task.assert_called_once_with(task_id="task-1")
 
 
@@ -142,9 +148,9 @@ def test_replay_keeps_registration_when_mount_unreadable(tmp_path, monkeypatch):
     media.write_bytes(b"x")
 
     admissions = MagicMock()
-    admissions.list_accepted.return_value = [_admission(str(media))]
+    admissions.list_recoverable.return_value = [_admission(str(media))]
     chain = _build_chain(admissions)
-    chain.do_transfer = MagicMock()
+    chain._execute_transfer = MagicMock()
 
     def unreadable(self, *_args, **_kwargs):
         """
@@ -156,7 +162,7 @@ def test_replay_keeps_registration_when_mount_unreadable(tmp_path, monkeypatch):
 
     chain._TransferChain__replay_pending()
 
-    chain.do_transfer.assert_not_called()
+    chain._execute_transfer.assert_not_called()
     admissions.discard_task.assert_not_called()
 
 
@@ -169,11 +175,15 @@ def test_replay_restores_bluray_directory_type(tmp_path, monkeypatch):
     src_path = f"{bluray.as_posix()}/"
 
     admissions = MagicMock()
-    admissions.list_accepted.return_value = [_admission(src_path)]
+    admissions.list_recoverable.return_value = [_admission(src_path)]
     chain = _build_chain(admissions)
 
     transferred = []
-    monkeypatch.setattr(chain, "do_transfer", lambda **kw: transferred.append(kw["fileitem"]))
+    monkeypatch.setattr(
+        chain,
+        "_execute_transfer",
+        lambda **kw: transferred.append(kw["fileitem"]),
+    )
 
     chain._TransferChain__replay_pending()
 
@@ -187,13 +197,13 @@ def test_replay_is_noop_without_registrations():
     没有登记时回放不应触碰整理链。
     """
     admissions = MagicMock()
-    admissions.list_accepted.return_value = []
+    admissions.list_recoverable.return_value = []
     chain = _build_chain(admissions)
-    chain.do_transfer = MagicMock()
+    chain._execute_transfer = MagicMock()
 
     chain._TransferChain__replay_pending()
 
-    chain.do_transfer.assert_not_called()
+    chain._execute_transfer.assert_not_called()
 
 
 def test_replay_survives_db_failure():
@@ -201,13 +211,13 @@ def test_replay_survives_db_failure():
     读取登记失败不能让启动流程报错。
     """
     admissions = MagicMock()
-    admissions.list_accepted.side_effect = RuntimeError("db gone")
+    admissions.list_recoverable.side_effect = RuntimeError("db gone")
     chain = _build_chain(admissions)
-    chain.do_transfer = MagicMock()
+    chain._execute_transfer = MagicMock()
 
     chain._TransferChain__replay_pending()
 
-    chain.do_transfer.assert_not_called()
+    chain._execute_transfer.assert_not_called()
 
 
 def test_replay_continues_after_single_file_failure(tmp_path, monkeypatch):
@@ -220,7 +230,7 @@ def test_replay_continues_after_single_file_failure(tmp_path, monkeypatch):
         item.write_bytes(b"x")
 
     admissions = MagicMock()
-    admissions.list_accepted.return_value = [
+    admissions.list_recoverable.return_value = [
         _admission(str(first), "task-1"),
         _admission(str(second), "task-2"),
     ]
@@ -236,7 +246,7 @@ def test_replay_continues_after_single_file_failure(tmp_path, monkeypatch):
             raise RuntimeError("boom")
         handled.append(kw["fileitem"].name)
 
-    monkeypatch.setattr(chain, "do_transfer", flaky)
+    monkeypatch.setattr(chain, "_execute_transfer", flaky)
 
     chain._TransferChain__replay_pending()
 
@@ -251,7 +261,7 @@ def test_replay_stop_keeps_unprocessed_registrations(tmp_path, monkeypatch):
     first.write_bytes(b"x")
     missing_second = tmp_path / "gone.mkv"
     admissions = MagicMock()
-    admissions.list_accepted.return_value = [
+    admissions.list_recoverable.return_value = [
         _admission(str(first), "task-1"),
         _admission(str(missing_second), "task-2"),
     ]
@@ -264,7 +274,7 @@ def test_replay_stop_keeps_unprocessed_registrations(tmp_path, monkeypatch):
         transferred.append(kwargs["fileitem"].path)
         stop_event.set()
 
-    monkeypatch.setattr(chain, "do_transfer", transfer_first)
+    monkeypatch.setattr(chain, "_execute_transfer", transfer_first)
 
     chain._TransferChain__replay_pending(stop_event)
 

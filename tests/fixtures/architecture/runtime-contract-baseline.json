@@ -1518,8 +1518,7 @@
       "ChainEventType.StorageOperSelection": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "e5cfe4cabe945282695a3490147ee73acb3c6f8a4889fe510e8c0d3d2044e476",
-          "e5cfe4cabe945282695a3490147ee73acb3c6f8a4889fe510e8c0d3d2044e476"
+          "76a388b1caf87a51cacf9d7534f64576f7c98e0af6b604d30114dab893066d96"
         ]
       },
       "ChainEventType.SubscribeCompletionCheck": {
@@ -1538,14 +1537,13 @@
       "ChainEventType.TransferIntercept": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "144f9ffac815b2f58ade53881df0ce43381a7b1adff62f53a019794b801a0cd7",
-          "d7ee7c450874ea4bf6ea97c903b9cd3ebeab7266834c22e1a699d067205e8912"
+          "410f9308657c3c228e5357acf2e9a083c4fe6476c3b4ddaf240cab385d8bd4af"
         ]
       },
       "ChainEventType.TransferOverwriteCheck": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "e761a75952ab6835e67b2c43c671f6361f1977690cfd7724f79439229408af40"
+          "be3334d20e9aa1fd641fe67f0bc3abd3ef48433728ddb76538cfbb475b4dc92b"
         ]
       },
       "ChainEventType.TransferRename": {
@@ -1809,11 +1807,11 @@
         ]
       }
     },
-    "fact_count": 116,
+    "fact_count": 114,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
-    "producer_call_count": 99,
-    "producer_event_reference_count": 100,
+    "producer_call_count": 97,
+    "producer_event_reference_count": 98,
     "producers": [
       {
         "caller": "app.agent.orchestrator",
@@ -2495,22 +2493,10 @@
         "events": [
           "ChainEventType.StorageOperSelection"
         ],
-        "fingerprint": "e5cfe4cabe945282695a3490147ee73acb3c6f8a4889fe510e8c0d3d2044e476",
+        "fingerprint": "76a388b1caf87a51cacf9d7534f64576f7c98e0af6b604d30114dab893066d96",
         "invalid": false,
         "method": "send_event",
-        "qualname": "TransferChain.__handle_transfer",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain.transfer",
-        "dynamic": false,
-        "events": [
-          "ChainEventType.StorageOperSelection"
-        ],
-        "fingerprint": "e5cfe4cabe945282695a3490147ee73acb3c6f8a4889fe510e8c0d3d2044e476",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "TransferChain.__handle_transfer",
+        "qualname": "TransferChain.__select_storage_oper",
         "receiver_kind": "injected_event_manager"
       },
       {
@@ -2673,22 +2659,22 @@
         "events": [
           "ChainEventType.TransferIntercept"
         ],
-        "fingerprint": "d7ee7c450874ea4bf6ea97c903b9cd3ebeab7266834c22e1a699d067205e8912",
+        "fingerprint": "410f9308657c3c228e5357acf2e9a083c4fe6476c3b4ddaf240cab385d8bd4af",
         "invalid": false,
         "method": "send_event",
-        "qualname": "TransHandler.__transfer_dir",
+        "qualname": "TransHandler.__intercept_transfer",
         "receiver_kind": "canonical_singleton"
       },
       {
         "caller": "app.modules.filemanager.transhandler",
         "dynamic": false,
         "events": [
-          "ChainEventType.TransferIntercept"
+          "ChainEventType.TransferOverwriteCheck"
         ],
-        "fingerprint": "144f9ffac815b2f58ade53881df0ce43381a7b1adff62f53a019794b801a0cd7",
+        "fingerprint": "be3334d20e9aa1fd641fe67f0bc3abd3ef48433728ddb76538cfbb475b4dc92b",
         "invalid": false,
         "method": "send_event",
-        "qualname": "TransHandler.__transfer_file",
+        "qualname": "TransHandler.__resolve_overwrite",
         "receiver_kind": "canonical_singleton"
       },
       {
@@ -2713,18 +2699,6 @@
         "invalid": false,
         "method": "send_event",
         "qualname": "TransHandler.get_rename_path",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.modules.filemanager.transhandler",
-        "dynamic": false,
-        "events": [
-          "ChainEventType.TransferOverwriteCheck"
-        ],
-        "fingerprint": "e761a75952ab6835e67b2c43c671f6361f1977690cfd7724f79439229408af40",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "TransHandler.transfer_media",
         "receiver_kind": "canonical_singleton"
       },
       {
@@ -3005,7 +2979,7 @@
       }
     ],
     "static_consumer_count": 16,
-    "static_producer_call_count": 98
+    "static_producer_call_count": 96
   },
   "event_specs": {
     "ChainEventType.AgentLLMProvider": {
@@ -5825,6 +5799,28 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "execute_transfer_plan": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "storage",
+      "input_contract": "TransferPlanCheckpoint",
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "checkpoint",
+        "mediainfo",
+        "meta",
+        "source_oper",
+        "target_oper"
+      ],
+      "result_contract": "TransferInfo | None",
+      "result_shape": "any",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "filter_torrents": {
       "aggregation": "ordered_list_merge",
       "error_policy": "isolate_provider",
@@ -6859,6 +6855,37 @@
       ],
       "result_contract": "str | None",
       "result_shape": "string",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "plan_transfer": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "storage",
+      "input_contract": "TransferPlanningInput",
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "episodes_info",
+        "fileitem",
+        "library_category_folder",
+        "library_type_folder",
+        "mediainfo",
+        "meta",
+        "planning_input",
+        "preview",
+        "scrape",
+        "source_oper",
+        "target_directory",
+        "target_path",
+        "target_storage",
+        "transfer_type"
+      ],
+      "result_contract": "TransferPlanCheckpoint | None",
+      "result_shape": "any",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -7947,10 +7974,10 @@
     }
   },
   "run_module": {
-    "call_count": 264,
+    "call_count": 265,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 214,
+    "method_count": 215,
     "methods": {
       "anilist_credits": [
         {
@@ -8769,6 +8796,13 @@
           "mode": "sync"
         }
       ],
+      "execute_transfer_plan": [
+        {
+          "caller": "app.chain",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "filter_torrents": [
         {
           "caller": "app.chain",
@@ -9190,6 +9224,13 @@
           "mode": "sync"
         }
       ],
+      "plan_transfer": [
+        {
+          "caller": "app.chain",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "recognize_media": [
         {
           "caller": "app.chain._recognition",
@@ -9508,13 +9549,6 @@
         }
       ],
       "torrent_files": [
-        {
-          "caller": "app.chain",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
-      "transfer": [
         {
           "caller": "app.chain",
           "count": 1,

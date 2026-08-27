@@ -306,9 +306,6 @@
   "app/application/agenttask.py": {
     "I001": 1
   },
-  "app/application/chain/context.py": {
-    "I001": 1
-  },
   "app/application/chain/data.py": {
     "I001": 1
   },
@@ -413,9 +410,6 @@
   },
   "app/chain/media.py": {
     "E731": 2
-  },
-  "app/chain/transfer.py": {
-    "E402": 21
   },
   "app/command.py": {
     "I001": 1
@@ -674,13 +668,6 @@
     "I001": 1
   },
   "app/modules/filemanager/__init__.py": {
-    "I001": 1
-  },
-  "app/modules/filemanager/module.py": {
-    "I001": 1
-  },
-  "app/modules/filemanager/transhandler.py": {
-    "F541": 2,
     "I001": 1
   },
   "app/modules/filter/__init__.py": {
@@ -994,9 +981,6 @@
     "I001": 1
   },
   "app/runtime/extensions/managed_resource_adapter.py": {
-    "I001": 1
-  },
-  "app/runtime/extensions/module/dispatcher.py": {
     "I001": 1
   },
   "app/runtime/extensions/module_manager.py": {
@@ -1607,9 +1591,6 @@
   "tests/test_music_torrents.py": {
     "I001": 1
   },
-  "tests/test_music_transfer.py": {
-    "I001": 1
-  },
   "tests/test_music_workflows.py": {
     "F401": 1
   },
@@ -1855,9 +1836,6 @@
   "tests/test_transfer_history_write_path.py": {
     "I001": 1
   },
-  "tests/test_transfer_job_manager.py": {
-    "I001": 1
-  },
   "tests/test_transfer_mark_torrent_completed.py": {
     "I001": 1
   },
@@ -1865,9 +1843,6 @@
     "I001": 1
   },
   "tests/test_transfer_movie_collection.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_preview.py": {
     "I001": 1
   },
   "tests/test_transfer_queue_count.py": {

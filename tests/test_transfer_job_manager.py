@@ -1,21 +1,21 @@
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from app.runtime.config import settings
-from app.domain.context import MediaInfo
-from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metavideo import MetaVideo
-from app.chain.transfer import JobManager, TransferChain
 from app.application.history import (
     clear_transfer_failures,
     failed_retry_count,
     record_transfer_failure,
 )
+from app.application.transfer import TransferPlanningInput, TransferTask
+from app.chain.transfer import JobManager, TransferChain
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metavideo import MetaVideo
 from app.modules.filemanager.transhandler import TransHandler
+from app.runtime.config import settings
 from app.schemas import EpisodeFormat, FileItem, TransferInfo
-from app.application.transfer import TransferTask
 from app.schemas.types import EventType, MediaSource, MediaType
 
 
@@ -179,6 +179,58 @@ def make_fileitem(path: str, size: int = 1024) -> FileItem:
     )
 
 
+def execute_transfer_plan(
+        handler: TransHandler,
+        *,
+        fileitem: FileItem,
+        meta: MetaBase,
+        mediainfo: MediaInfo,
+        target_storage: str,
+        target_path: Path,
+        transfer_type: str,
+        source_oper: object,
+        target_oper: object,
+        need_scrape: bool = False,
+        need_notify: bool = True,
+) -> TransferInfo:
+    """在测试中显式规划并执行单文件整理。"""
+    planning_input = TransferPlanningInput(
+        source_fileitem=fileitem.model_dump(mode="json"),
+        meta=meta.to_dict(),
+        mediainfo=mediainfo.to_dict(),
+        target_storage=target_storage,
+        target_path=target_path.as_posix(),
+        requested_transfer_type=transfer_type,
+        media_type=mediainfo.type.value if mediainfo.type else None,
+        need_scrape=need_scrape,
+        need_rename=True,
+        need_notify=need_notify,
+        preview=False,
+    )
+    checkpoint = handler.plan_transfer(
+        planning_input,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=source_oper,
+        target_storage=target_storage,
+        target_path=target_path,
+        transfer_type=transfer_type,
+        need_scrape=need_scrape,
+        need_rename=True,
+        need_notify=need_notify,
+        overwrite_mode=None,
+        episodes_info=None,
+        preview=False,
+    )
+    return handler.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=source_oper,
+        target_oper=target_oper,
+    )
+
+
 def migrate_to_media_job(jobview: JobManager, task: TransferTask):
     task.mediainfo = FakeMedia()
     jobview.migrate_task(task)
@@ -238,7 +290,7 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertEqual("file", new_item.type)
         self.assertEqual(1024, new_item.size)
 
-    def test_transfer_media_uses_target_folder_returned_by_storage(self):
+    def test_transfer_plan_uses_target_folder_returned_by_storage(self):
         """
         整理成功时直接使用存储层返回的目标目录项，回调和事件不再二次拼装。
         """
@@ -294,9 +346,10 @@ class TransferJobManagerTest(unittest.TestCase):
                 return_value=(target_item, ""),
         ), patch("app.modules.filemanager.transhandler.eventmanager") as eventmanager_mock:
             eventmanager_mock.send_event.return_value = None
-            transferinfo = handler.transfer_media(
+            transferinfo = execute_transfer_plan(
+                handler,
                 fileitem=source_item,
-                in_meta=MetaVideo("Test.Show.S01E01"),
+                meta=MetaVideo("Test.Show.S01E01"),
                 mediainfo=make_media_info(),
                 target_storage="alist",
                 target_path=target_path,
@@ -368,9 +421,10 @@ class TransferJobManagerTest(unittest.TestCase):
                 "app.modules.filemanager.transhandler.eventmanager.send_event",
                 return_value=None,
         ) as send_event:
-            transferinfo = handler.transfer_media(
+            transferinfo = execute_transfer_plan(
+                handler,
                 fileitem=source_item,
-                in_meta=in_meta,
+                meta=in_meta,
                 mediainfo=make_media_info(),
                 target_storage="alist",
                 target_path=target_path,

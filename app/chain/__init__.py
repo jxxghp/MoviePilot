@@ -5,7 +5,7 @@ import traceback
 from abc import ABCMeta
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 from app.application.chain.context import ChainRuntimeContext, get_chain_runtime_context
 from app.application.chain.data import get_chain_data_ports
@@ -15,7 +15,7 @@ from app.application.configuration import (
 )
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._recognition import RecognitionMixin
-from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
+from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.category import CategoryConfig
@@ -34,6 +34,9 @@ from app.schemas.types import (
     TorrentStatus,
 )
 from app.schemas.workflow import FileItem
+
+if TYPE_CHECKING:
+    from app.application.transfer import TransferPlanCheckpoint, TransferPlanningInput
 
 
 class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
@@ -65,6 +68,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             system_error_handler=self.__handle_system_error,
             rate_limit_handler=self.__handle_rate_limit_error,
         )
+        self._legacy_transfer_command = context.legacy_transfer_command
         self.messagequeue = context.message_queue_factory(self.run_module)
 
     @property
@@ -215,6 +219,15 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         :param method: 模块方法名称
         """
         return self._module_dispatcher.dispatch(method, *args, **kwargs)
+
+    def run_module_strict(
+            self,
+            method: str,
+            *args: Any,
+            **kwargs: Any,
+    ) -> Any:
+        """运行模块并传播 provider 异常，供必须区分空结果与查询失败的能力使用。"""
+        return self._module_dispatcher.dispatch_strict(method, *args, **kwargs)
 
     async def async_run_module(
             self,
@@ -854,7 +867,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             self,
             fileitem: FileItem,
             meta: MetaBase,
-            mediainfo: MediaInfo,
+            mediainfo: Union[MediaInfo, MusicInfo],
             target_directory: TransferDirectoryConf = None,
             target_storage: Optional[str] = None,
             target_path: Path = None,
@@ -868,7 +881,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             preview: bool = False,
     ) -> Optional[TransferInfo]:
         """
-        文件转移
+        经启动组合根注入的 canonical durable command 执行旧整理 ABI。
         :param fileitem:  文件信息
         :param meta: 预识别的元数据
         :param mediainfo:  识别的媒体信息
@@ -885,8 +898,9 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         :param preview: 是否仅预览，不执行实际转移
         :return: {path, target_path, message}
         """
-        return self.run_module(
-            "transfer",
+        if self._legacy_transfer_command is None:
+            raise RuntimeError("旧整理兼容命令尚未由启动组合根配置")
+        return self._legacy_transfer_command(
             fileitem=fileitem,
             meta=meta,
             mediainfo=mediainfo,
@@ -901,6 +915,69 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             source_oper=source_oper,
             target_oper=target_oper,
             preview=preview,
+        )
+
+    def plan_transfer(
+            self,
+            fileitem: FileItem,
+            meta: MetaBase,
+            mediainfo: Union[MediaInfo, MusicInfo],
+            target_directory: Optional[TransferDirectoryConf] = None,
+            target_storage: Optional[str] = None,
+            target_path: Optional[Path] = None,
+            transfer_type: Optional[str] = None,
+            scrape: Optional[bool] = None,
+            library_type_folder: Optional[bool] = None,
+            library_category_folder: Optional[bool] = None,
+            episodes_info: Optional[List[TmdbEpisode]] = None,
+            source_oper: Any = None,
+            preview: bool = False,
+            planning_input: Optional[TransferPlanningInput] = None,
+    ) -> Optional[TransferPlanCheckpoint]:
+        """调用文件管理模块生成无文件写入的冻结整理计划。"""
+        return cast(
+            "Optional[TransferPlanCheckpoint]",
+            self.run_module(
+                "plan_transfer",
+                fileitem=fileitem,
+                meta=meta,
+                mediainfo=mediainfo,
+                target_directory=target_directory,
+                target_path=target_path,
+                target_storage=target_storage,
+                transfer_type=transfer_type,
+                scrape=scrape,
+                library_type_folder=library_type_folder,
+                library_category_folder=library_category_folder,
+                episodes_info=episodes_info,
+                source_oper=source_oper,
+                preview=preview,
+                planning_input=planning_input,
+            ),
+        )
+
+    def execute_transfer_plan(
+            self,
+            checkpoint: TransferPlanCheckpoint,
+            *,
+            meta: MetaBase,
+            mediainfo: Union[MediaInfo, MusicInfo],
+            source_oper: Any = None,
+            target_oper: Any = None,
+            cleanup_media_file: Optional[Callable[[FileItem], bool]] = None,
+    ) -> Optional[TransferInfo]:
+        """调用文件管理模块执行已冻结计划，并注入统一安全删除能力。"""
+        return cast(
+            Optional[TransferInfo],
+            self.run_module(
+                "execute_transfer_plan",
+                checkpoint=checkpoint,
+                meta=meta,
+                mediainfo=mediainfo,
+                source_oper=source_oper,
+                target_oper=target_oper,
+                cleanup_media_file=cleanup_media_file,
+            ),
         )
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:

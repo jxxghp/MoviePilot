@@ -1587,15 +1587,14 @@
     "union-attr": 2
   },
   "app/chain/transfer.py": {
-    "arg-type": 65,
-    "assignment": 26,
+    "arg-type": 57,
+    "assignment": 25,
     "attr-defined": 4,
     "func-returns-value": 1,
     "misc": 2,
     "no-any-return": 3,
-    "no-redef": 2,
     "no-untyped-call": 8,
-    "no-untyped-def": 15,
+    "no-untyped-def": 14,
     "operator": 3,
     "return-value": 2,
     "truthy-function": 5,
@@ -2105,15 +2104,14 @@
     "union-attr": 8
   },
   "app/modules/filemanager/module.py": {
-    "arg-type": 21,
-    "assignment": 9,
+    "arg-type": 19,
+    "assignment": 4,
     "attr-defined": 1,
     "empty-body": 1,
     "no-any-return": 2,
-    "no-untyped-call": 6,
+    "no-untyped-call": 3,
     "no-untyped-def": 6,
-    "truthy-function": 4,
-    "type-arg": 4,
+    "type-arg": 3,
     "var-annotated": 3
   },
   "app/modules/filemanager/storages/__init__.py": {
@@ -2203,15 +2201,14 @@
     "union-attr": 32
   },
   "app/modules/filemanager/transhandler.py": {
-    "arg-type": 19,
-    "assignment": 8,
+    "arg-type": 18,
+    "assignment": 2,
     "attr-defined": 1,
-    "misc": 1,
     "no-any-return": 1,
     "no-redef": 1,
     "no-untyped-call": 1,
-    "no-untyped-def": 4,
-    "operator": 7,
+    "no-untyped-def": 3,
+    "operator": 6,
     "type-arg": 2,
     "union-attr": 2
   },

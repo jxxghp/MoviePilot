@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from app.application.directory import DirectoryHelper
 from app.chain import ChainBase
@@ -98,6 +98,21 @@ class StorageChain(ChainBase):
         根据路径获取文件项
         """
         return self.run_module("get_file_item", storage=storage, path=path)
+
+    def get_file_item_strict(
+            self,
+            storage: str,
+            path: Path,
+    ) -> Optional[_SchemaFileItem]:
+        """严格查询文件项：确认不存在返回空，provider 或 I/O 失败直接抛出。"""
+        return cast(
+            Optional[_SchemaFileItem],
+            self.run_module_strict(
+                "get_file_item",
+                storage=storage,
+                path=path,
+            ),
+        )
 
     def get_parent_item(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """

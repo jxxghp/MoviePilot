@@ -69,14 +69,15 @@ def test_contract_v2_freezes_every_observed_host_method() -> None:
     contracts = list_explicit_module_contracts()
 
     assert len(contracts) >= 211
-    for contract in contracts.values():
+    host_internal_methods = {"plan_transfer", "execute_transfer_plan"}
+    for method_name, contract in contracts.items():
         assert contract.version == 1
         assert contract.input_contract != "legacy_args"
         assert contract.result_contract
         assert contract.execution is ModuleExecutionMode.SYNC_OR_ASYNC
         assert contract.timeout_policy == "caller_budget"
         assert contract.error_policy is ModuleErrorPolicy.ISOLATE_PROVIDER
-        assert contract.public_to_plugins is True
+        assert contract.public_to_plugins is (method_name not in host_internal_methods)
 
 
 def test_signature_diagnostics_do_not_reject_legacy_callable() -> None:

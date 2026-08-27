@@ -93,7 +93,7 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
 | S1-L1.1 Durable admission | `VERIFIED` | S0 | Application-owned typed Port + DB adapter + migration 落地；先持久 commit 再入队，入队失败保留可恢复记录；宿主不再通过 raw/`Any` `TransferPendingOper` 处理 admission |
-| S1-L1.2 Planning checkpoint | `PLANNED` | S1-L1.1 | 稳定任务身份、整理模式和 planning 状态持久化；目标路径只在规划完成后写入 checkpoint，任何文件副作用前已有可判定状态 |
+| S1-L1.2 Planning checkpoint | `VERIFIED` | S1-L1.1 | 版本化输入与指纹先持久化；无 legacy provider 时以 `accepted -> planned` CAS 提交完整计划，有 provider 时先提交 `provider_pending`，全部返回空后再以第二次 CAS 提交 `planned`；重放只执行冻结目标，所有文件副作用晚于对应 checkpoint commit |
 | S1-L1.3 Lease 与恢复调度 | `PLANNED` | S1-L1.2 | claim/lease/heartbeat/attempt 与过期接管规则落地；启动回放和同进程恢复共用唯一调度入口，同一任务同时只有一个 worker owner |
 | S1-L1.4 幂等执行与终态结算 | `PLANNED` | S1-L1.3 | 文件操作、历史提交和 checkpoint 可重放；唯一 retry owner 生效，未知外部结果进入 `manual_review`，仅完整终态删除 pending |
 | S1-L1.5 E3 全链收口 | `PLANNED` | S1-L1.4 | 崩溃矩阵、升级/降级、重复回放和插件 ABI 验收完整；旧 fail-open、重复状态与兼容层外旧入口删除，ARCH-102 债务归零 |
@@ -144,7 +144,7 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 967 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 937 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口
@@ -227,3 +227,50 @@ git diff --check
   `git diff --check` 全部通过。
 - failure injection 已覆盖 admission 失败不入队、batch/enqueue 失败保留记录、批次返回失败、
   queue -> worker -> terminal discard 稳定身份，以及 Legacy TransferTask 序列化字段不变。
+
+### S1-L1.2 Planning checkpoint
+
+**Status:** `VERIFIED`
+
+**Outcome**
+
+把 durable admission 推进为可独立恢复的 `accepted -> provider_pending -> planned` 状态：准入时冻结
+版本化请求 JSON 和 SHA-256 指纹；存在旧插件 provider 时先 CAS 提交精确身份、顺序和原始 ABI 参数，
+全部返回空后才由 FileManager 只读规划目标及有序叶操作，并通过第二次 CAS 提交宿主 checkpoint。
+任何对应 checkpoint 提交前都不允许进入其文件副作用；`provider_pending` 重放只消费冻结调用，
+`planned` 重放只消费冻结 resolved 上下文、目标和操作，不重新访问在线识别、目录选择或重命名配置。
+
+**Ownership and compatibility**
+
+- `app/application/transfer.py` 拥有 planning input、plan item、checkpoint 和状态错误合同；JSON 版本、
+  指纹及 resolved 上下文均可跨进程 round-trip。
+- `app/modules/filemanager/transhandler.py` 是唯一目标规划与文件执行实现；`FileManagerModule.transfer`
+  与 `TransHandler.transfer_media` 已删除，不保留第二套重命名、覆盖或目录递归逻辑。
+- `app/db/adapters/transfer.py` 通过短 Session/UoW 提交 checkpoint；Oper 只负责带状态和指纹条件的
+  stage，3.0.14 migration 可升级、降级并在中断后重跑。
+- cleanup intent 随准入输入冻结。宿主路径由 FileManager 在 `TransferIntercept` 放行后、任何文件写入前
+  执行；legacy provider 路径为保持旧 ABI 顺序，在全部冻结引用解析成功后、调用 provider 前执行。
+  strict 查询确认目标不存在才视为幂等成功，查询或删除失败抛错并保留对应 checkpoint 供重试；provider
+  全空后提升的宿主 checkpoint 会记录 cleanup 已完成，禁止二次查询或删除。
+- 插件公开 Transfer 方法签名、事件类型和 payload 不变；旧 provider 身份和顺序随 checkpoint
+  冻结，提交后由统一 dispatcher 精确解析并严格执行，缺失或异常时明确失败而不静默换路；全部返回空
+  才生成宿主 plan，并以第二次 CAS 提交 `planned` checkpoint 后执行。`ChainBase.transfer` 仅委托启动
+  组合根注入的 canonical durable
+  command，内部 plan/execute 合同不向插件调度；新 DTO 不从包根重复导出，`app/plugins/**` 插件
+  副本不参与改造。
+
+**Excluded**
+
+- 本叶不引入 claim、lease、heartbeat、attempt、执行步骤幂等或 `manual_review`；这些由
+  `S1-L1.3` 和 `S1-L1.4` 交付。
+- 文件操作成功后到历史结算前的未知结果仍未达到 E3，ARCH-102 父项继续保持执行中。
+
+**Local verification (2026-08-27)**
+
+- planning、持久化、迁移、兼容、replay 和 worker 聚焦回归：`224 passed, 2 skipped`；跳过项仅为
+  本机未配置隔离 PostgreSQL，SQLite upgrade/downgrade/re-upgrade 已覆盖。
+- 完整本地套件：`6,578 passed, 8 skipped`；架构回归：`174 passed`；scoped Pylint `10.00/10`；
+  host baseline、Ruff/mypy ratchet 与 `git diff --check` 通过。
+- failure injection 覆盖 commit 前零文件副作用、commit 后崩溃重放、离线 resolved context 恢复、
+  配置漂移仍使用冻结 target storage、规划失败留痕、旧 provider 提交后短路、严格异常、空结果两阶段
+  fallback、缺失引用零 cleanup，以及 cleanup 顺序/幂等/瞬时失败。

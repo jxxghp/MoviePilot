@@ -69,17 +69,17 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 836 / 6,827 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 836 / 6,832 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
-| Module Contract | 215 specs / 214 methods / 264 calls | 动态方法名为 0；仍有 50 个结果形状为 `ANY` |
+| Module Contract | 217 specs / 215 methods / 265 calls | 动态方法名为 0；内部 planning 合同不进入插件调度，旧 transfer 只保留 provider ABI |
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,983 / 601 文件 | strict frontier 当前只覆盖 41 个文件，且 ratchet 已新增 2 个错误 |
-| Ruff 历史诊断 | 967 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 77.85%，Domain 79.24% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| Ruff 历史诊断 | 937 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 78.06%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -160,7 +160,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - 架构总览此前仍记录 811 模块、6,572 条边和 1 个 SCC，已经落后于当前基线。
 - Event consumer 扫描曾把任意同名 `.register()` 调用当成事件注册；S0-L2.5 已改为证明
   canonical EventManager receiver，10 个动态误报归零并保留唯一 workflow 动态注册。
-- S0-L2.6 已将 producer/consumer 合并为逐调用事实源：99 个 producer（98 静态、1 动态）与
+- S0-L2.6 已将 producer/consumer 合并为逐调用事实源；本轮统一 Transfer 事件发送点后为
+  97 个 producer（96 静态、1 动态）与
   17 个 consumer（16 静态、1 动态）；consumer 由不可自动写入的精确人工 policy 管理。
 
 **目标与步骤**
@@ -188,7 +189,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 - `S1-L1.1 Durable admission`：`VERIFIED`。已交付 persist-before-enqueue、Application-owned typed Port、
   DB adapter 与可逆 migration，宿主退出 raw/`Any` `TransferPendingOper` admission 路径。
-- `S1-L1.2 Planning checkpoint`：`PLANNED`。持久化稳定任务身份、整理模式、规划状态和目标 checkpoint。
+- `S1-L1.2 Planning checkpoint`：`VERIFIED`。版本化请求与指纹先准入；无 legacy provider 时通过
+  `accepted -> planned` CAS 提交完整目标和有序操作，有 provider 时先提交 `provider_pending`，全部
+  返回空后再以第二次 CAS 提交 `planned`；planned 重放只消费冻结上下文和目标。
 - `S1-L1.3 Lease 与恢复调度`：`PLANNED`。交付 claim/lease/heartbeat/attempt、过期接管与唯一恢复入口。
 - `S1-L1.4 幂等执行与终态结算`：`PLANNED`。交付文件/历史幂等、唯一 retry owner 和
   `manual_review` 语义。
@@ -201,28 +204,35 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   异常均不会伪装成重复任务成功，失败记录可供恢复。
 - 宿主 canonical Chain 只取得类型化 `TransferAdmissionRepository`；旧 Oper API 仅保留给统一兼容层，
   插件公开 `TransferTask.to_dict()` 字段未增加内部任务标识。
-- worker 未知异常最终也会在 `app/chain/transfer.py:1107-1113,1262-1272` 删除 pending。
-- `app/db/models/transferpending.py:9-34` 只有 `storage/src_path/created_at`，没有目标、模式、
-  step、lease、attempt、last_error，无法判定“文件已移动、历史未提交”等中间态。
+- `S1-L1.2` 已消除 checkpoint 前的文件副作用：目标路径、操作顺序及 resolved 识别上下文原子落库后，
+  执行器才允许触发 cleanup、建目录和复制/移动；规划失败保留 `accepted` 并记录 `last_error`。
+- 旧插件 `transfer` provider 的身份、顺序和原始 ABI 参数先冻结为 `provider_pending`；提交后才精确
+  解析并严格执行，缺失或异常不 fallback。全部返回空后才生成宿主计划，并以第二次 CAS 提升为
+  `planned` 后执行。旧 caller 只经 `ChainBase.transfer` 注入式兼容门面进入同一 durable command，
+  宿主 FileManager/TransHandler 的旧执行入口已删除。
+- `TransferPending` 现在可区分 `accepted/provider_pending/planned`，但尚无
+  claim/lease/heartbeat/attempt、逐步骤执行结果和 `manual_review`，仍无法判定“文件已移动、历史未提交”
+  等后续中间态。
 - 这与 `docs/adr/0007-background-action-reliability.md:123-139` 对 E3 的稳定身份、步骤状态、
   lease/heartbeat 和人工恢复要求不一致。
 
 **目标与步骤**
 
-- [ ] 先在独立持久事务中 commit pending，再尝试放入内存队列；数据库事务不能与 `queue.Queue`
+- [x] 先在独立持久事务中 commit pending，再尝试放入内存队列；数据库事务不能与 `queue.Queue`
   原子提交，入队失败时必须保留 pending 供重放。
-- [ ] 初始登记保存稳定源身份、模式、状态和 attempt/lease；目标在规划完成后以 planning checkpoint
-  更新，不能要求任务刚入队时已经具备尚未计算的目标路径。
+- [x] 初始登记保存稳定源身份、版本化请求和状态；目标与有序操作在纯规划完成后以 planning
+  checkpoint 原子更新，任何文件副作用不得早于该提交。
+- [ ] 增加 claim/lease/heartbeat/attempt 与过期接管，同一任务同时只能有一个 worker owner。
 - [ ] 设计幂等文件操作和历史提交；只有所有必要步骤达到持久终态后才能删除记录。
 - [ ] 在持久状态机与现有失败历史/AI retry 之间指定唯一 retry owner，定义旧记录迁移和兼容规则。
 - [ ] E3 失败使用持久 `failed/manual_review`、最后稳定 checkpoint 和补偿边界，不直接套用 E2
   Outbox 的 dead-letter 语义；禁止按年龄通用清理 pending。
-- [ ] 数据模型变更必须配套 Alembic migration，并验证升级与降级路径。
+- [x] 当前 admission/planning 数据模型变更均配套 Alembic migration，并验证升级、降级和中断重跑。
 
 **故障注入验收**
 
-- [ ] 登记后、内存入队前崩溃，重启可继续。
-- [ ] 持久登记成功但内存入队失败，重启可继续。
+- [x] 登记后、内存入队前崩溃，重启可继续。
+- [x] 持久登记成功但内存入队失败，重启可继续。
 - [ ] 文件移动后、历史提交前崩溃，在支持稳定身份/幂等操作的存储上不重复移动且可补齐历史。
 - [ ] worker 未知异常和 lease 超时后保留可诊断状态。
 - [ ] 重复回放、重复消息和人工重试都保持幂等。

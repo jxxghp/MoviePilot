@@ -9,8 +9,6 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from app.db.models.transferpending import TransferPending
-
 try:
     import psycopg2 as postgres_driver
     from psycopg2 import sql
@@ -23,6 +21,16 @@ except ModuleNotFoundError:
     POSTGRESQL_DIALECT = "postgresql+psycopg"
 
 MIGRATION = "database.versions.b1e7d3f5a9c2_3_0_13"
+ADMISSION_COLUMNS = {
+    "id",
+    "task_id",
+    "storage",
+    "src_path",
+    "created_at",
+    "state",
+    "updated_at",
+    "last_error",
+}
 
 
 def _bind_migration(monkeypatch, connection):
@@ -105,7 +113,7 @@ def test_transfer_admission_upgrade_downgrade_reupgrade(
         assert {
             column["name"]
             for column in inspector.get_columns("transferpending")
-        } == {column.name for column in TransferPending.__table__.columns}
+        } == ADMISSION_COLUMNS
         constraints = {
             constraint["name"]
             for constraint in inspector.get_unique_constraints("transferpending")

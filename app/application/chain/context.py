@@ -11,9 +11,9 @@ from app.application.chain.durable_events import ChainDurableEventWriter
 from app.application.configuration import ChainRuntimeConfig
 from app.runtime.stop import StopState, runtime_stop_state
 
-
 MessageQueueFactory = Callable[[Callable[..., Any]], Any]
 ModuleDispatcherFactory = Callable[..., Any]
+LegacyTransferCommand = Callable[..., Any]
 ChainRuntimeContextProvider = Callable[[], "ChainRuntimeContext"]
 
 
@@ -30,6 +30,7 @@ class ChainRuntimeContext:
     async_file_cache: Any
     message_queue_factory: MessageQueueFactory
     module_dispatcher_factory: ModuleDispatcherFactory
+    legacy_transfer_command: Optional[LegacyTransferCommand] = None
     data_ports: Optional[ChainDataPorts] = None
     durable_event_writer: Optional[ChainDurableEventWriter] = None
     configuration: ChainRuntimeConfig = field(

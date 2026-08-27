@@ -7,7 +7,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.runtime.extensions.module.dispatcher import (
+    FrozenModuleProviderMissingError,
+    FrozenPluginProviderRef,
+    ModuleInvocationDispatcher,
+)
 
 
 class _PluginCatalog:
@@ -92,6 +96,253 @@ def test_plugin_scalar_short_circuits_system_modules() -> None:
 
     assert dispatcher.dispatch("execute") == "plugin"
     system_call.assert_not_called()
+
+
+def test_strict_dispatch_propagates_plugin_failure_before_host_fallback() -> None:
+    """严格查询不得把插件 provider 异常吞成空结果后继续宿主 fallback。"""
+    system_call = Mock(return_value=None)
+    module = _Module("系统", 10, system_call)
+    setattr(module, "get_file_item", module.execute)
+
+    def failed_provider(**_kwargs):
+        """模拟插件存储查询发生网络或 I/O 故障。"""
+        raise RuntimeError("provider lookup failed")
+
+    dispatcher, plugin_error, _, _ = _dispatcher(
+        plugins={("P1", "插件一"): {"get_file_item": failed_provider}},
+        modules=[module],
+    )
+
+    with pytest.raises(RuntimeError, match="provider lookup failed"):
+        dispatcher.dispatch_strict(
+            "get_file_item",
+            storage="plugin",
+            path="/library/old.mkv",
+        )
+
+    plugin_error.assert_called_once()
+    system_call.assert_not_called()
+
+
+def test_strict_dispatch_preserves_confirmed_absence() -> None:
+    """全部 provider 正常返回空值时，严格查询仍以 None 表示确认不存在。"""
+    module = _Module("系统", 10, lambda **_kwargs: None)
+    setattr(module, "get_file_item", module.execute)
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={("P1", "插件一"): {"get_file_item": lambda **_kwargs: None}},
+        modules=[module],
+    )
+
+    assert (
+        dispatcher.dispatch_strict(
+            "get_file_item",
+            storage="plugin",
+            path="/library/missing.mkv",
+        )
+        is None
+    )
+
+
+def test_strict_dispatch_propagates_host_io_failure() -> None:
+    """严格查询也必须传播宿主存储适配器的 I/O 故障。"""
+    def failed_host(**_kwargs):
+        """模拟宿主存储 stat 或远端请求失败。"""
+        raise RuntimeError("host io failed")
+
+    module = _Module("系统", 10, failed_host)
+    setattr(module, "get_file_item", module.execute)
+    dispatcher, _, system_error, _ = _dispatcher(modules=[module])
+
+    with pytest.raises(RuntimeError, match="host io failed"):
+        dispatcher.dispatch_strict(
+            "get_file_item",
+            storage="local",
+            path="/library/old.mkv",
+        )
+
+    system_error.assert_called_once()
+
+
+def test_frozen_plugin_providers_preserve_original_order_after_catalog_reorder() -> None:
+    """冻结执行必须采用持久化顺序，不受当前插件目录重排影响。"""
+    calls = []
+    plugins = {
+        ("P1", "插件一"): {"transfer": lambda: calls.append("P1")},
+        ("P2", "插件二"): {"transfer": lambda: calls.append("P2")},
+    }
+    dispatcher, _, _, _ = _dispatcher(plugins=plugins)
+
+    providers = dispatcher.freeze_plugin_providers("transfer")
+    payloads = [provider.to_payload() for provider in providers]
+    restored = tuple(FrozenPluginProviderRef.from_payload(item) for item in payloads)
+    plugins.clear()
+    plugins.update(
+        {
+            ("P2", "插件二"): {"transfer": lambda: calls.append("new-P2")},
+            ("P1", "插件一"): {"transfer": lambda: calls.append("new-P1")},
+        }
+    )
+
+    assert dispatcher.execute_frozen_plugin_providers("transfer", restored) is None
+    assert payloads == [
+        {"plugin_id": "P1", "plugin_name": "插件一", "method": "transfer"},
+        {"plugin_id": "P2", "plugin_name": "插件二", "method": "transfer"},
+    ]
+    assert calls == ["new-P1", "new-P2"]
+
+
+def test_frozen_plugin_provider_propagates_failure_and_stops() -> None:
+    """冻结序列中的插件异常必须向上抛出，不能伪装成空结果。"""
+    calls = []
+
+    def fail() -> None:
+        """记录调用后模拟旧插件执行失败。"""
+        calls.append("P1")
+        raise RuntimeError("provider failed")
+
+    dispatcher, plugin_error, _, _ = _dispatcher(
+        plugins={
+            ("P1", "插件一"): {"transfer": fail},
+            ("P2", "插件二"): {
+                "transfer": lambda: calls.append("P2") or "success"
+            },
+        }
+    )
+    providers = dispatcher.freeze_plugin_providers("transfer")
+
+    with pytest.raises(RuntimeError, match="provider failed"):
+        dispatcher.execute_frozen_plugin_providers("transfer", providers)
+
+    assert calls == ["P1"]
+    plugin_error.assert_called_once()
+    assert plugin_error.call_args.args[1:4] == ("P1", "插件一", "transfer")
+
+
+def test_frozen_plugin_provider_first_non_empty_short_circuits() -> None:
+    """冻结 transfer 序列仍应在首个非空结果后停止。"""
+    second_provider = Mock(return_value="second")
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={
+            ("P1", "插件一"): {"transfer": lambda: "first"},
+            ("P2", "插件二"): {"transfer": second_provider},
+        }
+    )
+    providers = dispatcher.freeze_plugin_providers("transfer")
+
+    assert (
+        dispatcher.execute_frozen_plugin_providers("transfer", providers) == "first"
+    )
+    second_provider.assert_not_called()
+
+
+def test_frozen_plugin_provider_missing_fails_before_any_execution() -> None:
+    """任一冻结 provider 缺失时必须显式失败且不得产生部分执行。"""
+    first_provider = Mock(return_value=None)
+    plugins = {
+        ("P1", "插件一"): {"transfer": first_provider},
+        ("P2", "插件二"): {"transfer": Mock(return_value=None)},
+    }
+    dispatcher, _, _, _ = _dispatcher(plugins=plugins)
+    providers = dispatcher.freeze_plugin_providers("transfer")
+    plugins.pop(("P2", "插件二"))
+
+    with pytest.raises(
+        FrozenModuleProviderMissingError,
+        match=r"P2/插件二\.transfer",
+    ):
+        dispatcher.execute_frozen_plugin_providers("transfer", providers)
+
+    first_provider.assert_not_called()
+
+
+def test_frozen_plugin_provider_missing_fails_before_pre_invoke_hook() -> None:
+    """全部冻结引用解析成功前不得触发 cleanup 等前置副作用。"""
+    first_provider = Mock(return_value=None)
+    before_invoke = Mock()
+    plugins = {
+        ("P1", "插件一"): {"transfer": first_provider},
+        ("P2", "插件二"): {"transfer": Mock(return_value=None)},
+    }
+    dispatcher, _, _, _ = _dispatcher(plugins=plugins)
+    providers = dispatcher.freeze_plugin_providers("transfer")
+    plugins.pop(("P2", "插件二"))
+
+    with pytest.raises(FrozenModuleProviderMissingError):
+        dispatcher.execute_frozen_plugin_providers(
+            "transfer",
+            providers,
+            before_invoke=before_invoke,
+        )
+
+    before_invoke.assert_not_called()
+    first_provider.assert_not_called()
+
+
+def test_empty_frozen_plugin_provider_sequence_skips_pre_invoke_hook() -> None:
+    """没有冻结 provider 时不得执行仅服务于 provider 的前置副作用。"""
+    before_invoke = Mock()
+    dispatcher, _, _, _ = _dispatcher()
+
+    assert (
+        dispatcher.execute_frozen_plugin_providers(
+            "transfer",
+            (),
+            before_invoke=before_invoke,
+        )
+        is None
+    )
+    before_invoke.assert_not_called()
+
+
+def test_ordinary_transfer_dispatch_remains_dynamic_and_compatible() -> None:
+    """普通 transfer 调度仍按当前目录动态发现并采用既有短路语义。"""
+    system_call = Mock(return_value="system")
+    module = _Module("系统", 10, system_call)
+    setattr(module, "transfer", module.execute)
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={("P1", "插件一"): {"transfer": lambda: "plugin"}},
+        modules=[module],
+    )
+
+    assert dispatcher.dispatch("transfer") == "plugin"
+    system_call.assert_not_called()
+
+
+def test_host_internal_contract_skips_plugin_provider() -> None:
+    """宿主内部两阶段协议不得暴露给同名第三方 provider。"""
+    plugin_call = Mock(return_value="plugin")
+    system_call = Mock(return_value="system")
+    module = _Module("系统", 10, system_call)
+    setattr(module, "plan_transfer", module.execute)
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={
+            ("P1", "插件一"): {"plan_transfer": plugin_call},
+        },
+        modules=[module],
+    )
+
+    assert dispatcher.dispatch("plan_transfer") == "system"
+    plugin_call.assert_not_called()
+    system_call.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_async_host_internal_contract_skips_plugin_provider() -> None:
+    """异步调度同样只允许宿主执行内部检查点协议。"""
+    plugin_call = Mock(return_value="plugin")
+    system_call = Mock(return_value="system")
+    module = _Module("系统", 10, system_call)
+    setattr(module, "execute_transfer_plan", module.execute)
+    dispatcher, _, _, _ = _dispatcher(
+        plugins={
+            ("P1", "插件一"): {"execute_transfer_plan": plugin_call},
+        },
+        modules=[module],
+    )
+
+    assert await dispatcher.async_dispatch("execute_transfer_plan") == "system"
+    plugin_call.assert_not_called()
+    system_call.assert_called_once()
 
 
 def test_fan_out_contract_runs_every_provider_and_ignores_results() -> None:

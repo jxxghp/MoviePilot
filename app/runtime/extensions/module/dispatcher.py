@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol, cast
 
 from app.foundation.reflection import ObjectUtils
 from app.runtime.execution import run_in_threadpool_to_completion
-from app.runtime.log import logger
-from app.runtime.observability import observe_duration, record_metric
 from app.runtime.extensions.module.contracts import (
     ModuleResultAggregation,
     diagnose_module_callable,
@@ -18,6 +17,8 @@ from app.runtime.extensions.module.contracts import (
     get_module_method_contract,
     is_explicit_module_method,
 )
+from app.runtime.log import logger
+from app.runtime.observability import observe_duration, record_metric
 from app.schemas.exception import RateLimitExceededException
 
 
@@ -39,6 +40,50 @@ class PluginModuleCatalog(Protocol):
 
 ModuleErrorHandler = Callable[..., None]
 AsyncFunctionRunner = Callable[..., Any]
+
+
+class FrozenModuleProviderMissingError(LookupError):
+    """表示冻结插件 provider 已无法在当前精确目录中解析。"""
+
+
+@dataclass(frozen=True, slots=True)
+class FrozenPluginProviderRef:
+    """保存可持久化的插件 provider 身份及其冻结方法。"""
+
+    plugin_id: str
+    plugin_name: str
+    method: str
+
+    def __post_init__(self) -> None:
+        """拒绝无法精确解析的空 provider 身份。"""
+        if not self.plugin_id or not self.plugin_name or not self.method:
+            raise ValueError("冻结插件 provider 缺少 id、名称或方法")
+
+    def to_payload(self) -> dict[str, str]:
+        """生成可直接写入 JSON 的稳定 provider 引用。"""
+        return {
+            "plugin_id": self.plugin_id,
+            "plugin_name": self.plugin_name,
+            "method": self.method,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "FrozenPluginProviderRef":
+        """从持久化映射恢复并校验 provider 引用。"""
+        return cls(
+            plugin_id=str(payload.get("plugin_id") or ""),
+            plugin_name=str(payload.get("plugin_name") or ""),
+            method=str(payload.get("method") or ""),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _PluginProvider:
+    """绑定一次目录解析得到的插件身份和可调用对象。"""
+
+    plugin_id: str
+    plugin_name: str
+    func: Callable[..., Any]
 
 
 class _ProviderCallMode(StrEnum):
@@ -77,14 +122,72 @@ class ModuleInvocationDispatcher:
             return all(value is None for value in result)
         return result is None
 
+    def freeze_plugin_providers(
+        self,
+        method: str,
+    ) -> tuple[FrozenPluginProviderRef, ...]:
+        """按当前插件目录顺序冻结实现指定方法的精确 provider 引用。"""
+        return tuple(
+            FrozenPluginProviderRef(
+                plugin_id=provider.plugin_id,
+                plugin_name=provider.plugin_name,
+                method=method,
+            )
+            for provider in self._collect_plugin_providers(method, error_kwargs={})
+        )
+
+    def execute_frozen_plugin_providers(
+        self,
+        method: str,
+        providers: tuple[FrozenPluginProviderRef, ...],
+        *args: Any,
+        initial_result: Any = None,
+        before_invoke: Callable[[], None] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """解析全部冻结引用后运行前置钩子，并严格执行原顺序 provider。"""
+        resolved = self._resolve_frozen_plugin_providers(method, providers)
+        if resolved and before_invoke is not None:
+            before_invoke()
+        return self._execute_plugin_provider_sequence(
+            method,
+            initial_result,
+            resolved,
+            *args,
+            strict_errors=True,
+            **kwargs,
+        )
+
     def dispatch(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """先执行插件模块，再按优先级执行宿主模块。"""
+        return self._dispatch(method, *args, strict_errors=False, **kwargs)
+
+    def dispatch_strict(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        """执行模块并传播 provider 异常，使空结果与查询失败保持可区分。"""
+        return self._dispatch(method, *args, strict_errors=True, **kwargs)
+
+    def _dispatch(
+        self,
+        method: str,
+        *args: Any,
+        strict_errors: bool,
+        **kwargs: Any,
+    ) -> Any:
+        """按统一聚合规则调度，并由调用方选择是否隔离 provider 异常。"""
         contract = get_module_method_contract(method)
         logger.debug("模块方法契约：%s -> %s", method, contract.family)
-        with observe_duration(
-            "module.provider.duration", method=method, provider_type="plugin"
-        ):
-            result = self.execute_plugin_modules(method, None, *args, **kwargs)
+        result = None
+        if contract.public_to_plugins:
+            with observe_duration(
+                "module.provider.duration", method=method, provider_type="plugin"
+            ):
+                result = self.execute_plugin_modules(
+                    method,
+                    None,
+                    *args,
+                    strict_errors=strict_errors,
+                    **kwargs,
+                )
         if (
             contract.plugin_short_circuit
             and not self.is_valid_empty(result)
@@ -94,21 +197,29 @@ class ModuleInvocationDispatcher:
         with observe_duration(
             "module.provider.duration", method=method, provider_type="system"
         ):
-            return self.execute_system_modules(method, result, *args, **kwargs)
+            return self.execute_system_modules(
+                method,
+                result,
+                *args,
+                strict_errors=strict_errors,
+                **kwargs,
+            )
 
     async def async_dispatch(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """以与同步路径相同的聚合规则执行同步或异步模块方法。"""
         contract = get_module_method_contract(method)
         logger.debug("异步模块方法契约：%s -> %s", method, contract.family)
-        with observe_duration(
-            "module.provider.duration", method=method, provider_type="plugin"
-        ):
-            result = await self.async_execute_plugin_modules(
-                method,
-                None,
-                *args,
-                **kwargs,
-            )
+        result = None
+        if contract.public_to_plugins:
+            with observe_duration(
+                "module.provider.duration", method=method, provider_type="plugin"
+            ):
+                result = await self.async_execute_plugin_modules(
+                    method,
+                    None,
+                    *args,
+                    **kwargs,
+                )
         if (
             contract.plugin_short_circuit
             and not self.is_valid_empty(result)
@@ -130,37 +241,130 @@ class ModuleInvocationDispatcher:
         method: str,
         result: Any,
         *args: Any,
+        strict_errors: bool = False,
         **kwargs: Any,
     ) -> Any:
         """同步执行插件方法，保留插件顺序、短路和列表合并语义。"""
-        aggregation = get_module_method_contract(method).aggregation
+        providers = self._collect_plugin_providers(
+            method,
+            error_kwargs=kwargs,
+            strict_errors=strict_errors,
+        )
+        return self._execute_plugin_provider_sequence(
+            method,
+            result,
+            providers,
+            *args,
+            strict_errors=strict_errors,
+            **kwargs,
+        )
+
+    def _collect_plugin_providers(
+        self,
+        method: str,
+        *,
+        error_kwargs: Mapping[str, Any],
+        strict_errors: bool = False,
+    ) -> tuple[_PluginProvider, ...]:
+        """从同一插件目录快照收集 provider，并隔离损坏的方法表。"""
+        providers = []
         for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
             plugin_id, plugin_name = plugin
             try:
-                # 防御坏插件把方法表声明成非映射类型，避免击穿整个模块调度
                 if not isinstance(module_dict, Mapping):
                     raise TypeError(
-                        f"插件 {plugin_id} 的模块声明必须是映射，实际是 {type(module_dict).__name__}"
+                        f"插件 {plugin_id} 的模块声明必须是映射，实际是 "
+                        f"{type(module_dict).__name__}"
                     )
                 func = module_dict.get(method)
                 if not func:
                     continue
+                providers.append(
+                    _PluginProvider(
+                        plugin_id=plugin_id,
+                        plugin_name=plugin_name,
+                        func=func,
+                    )
+                )
+            except Exception as err:
+                self._record_timeout(method, "plugin", err)
+                self._plugin_error_handler(
+                    err,
+                    plugin_id,
+                    plugin_name,
+                    method,
+                    **error_kwargs,
+                )
+                if strict_errors:
+                    raise
+        return tuple(providers)
+
+    def _resolve_frozen_plugin_providers(
+        self,
+        method: str,
+        providers: tuple[FrozenPluginProviderRef, ...],
+    ) -> tuple[_PluginProvider, ...]:
+        """一次性精确解析全部冻结引用，缺失时在执行任何副作用前失败。"""
+        module_catalog = self._plugin_catalog.get_plugin_modules()
+        resolved = []
+        for provider in providers:
+            if provider.method != method:
+                raise FrozenModuleProviderMissingError(
+                    f"冻结插件 provider 方法不匹配："
+                    f"{provider.plugin_id}/{provider.plugin_name} "
+                    f"冻结为 {provider.method}，请求执行 {method}"
+                )
+            module_dict = module_catalog.get(
+                (provider.plugin_id, provider.plugin_name)
+            )
+            func = module_dict.get(method) if isinstance(module_dict, Mapping) else None
+            if not callable(func):
+                raise FrozenModuleProviderMissingError(
+                    f"冻结插件 provider 已缺失："
+                    f"{provider.plugin_id}/{provider.plugin_name}.{method}"
+                )
+            resolved.append(
+                _PluginProvider(
+                    plugin_id=provider.plugin_id,
+                    plugin_name=provider.plugin_name,
+                    func=func,
+                )
+            )
+        return tuple(resolved)
+
+    def _execute_plugin_provider_sequence(
+        self,
+        method: str,
+        result: Any,
+        providers: tuple[_PluginProvider, ...],
+        *args: Any,
+        strict_errors: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """按统一契约执行已解析插件序列，并按调用模式处理 provider 故障。"""
+        aggregation = get_module_method_contract(method).aggregation
+        for provider in providers:
+            try:
                 self._record_legacy_hit(
                     method,
                     caller_type="plugin",
                     abi_source="third_party_plugin",
                 )
-                self._diagnose_callable(method, func, f"插件 {plugin_id}")
-                logger.info("请求插件 %s 执行：%s ...", plugin_name, method)
+                self._diagnose_callable(
+                    method,
+                    provider.func,
+                    f"插件 {provider.plugin_id}",
+                )
+                logger.info("请求插件 %s 执行：%s ...", provider.plugin_name, method)
                 call_mode = self._provider_call_mode(
                     aggregation,
                     result,
-                    func,
+                    provider.func,
                     allow_relay=False,
                 )
                 if call_mode is _ProviderCallMode.STOP:
                     break
-                provider_result = func(*args, **kwargs)
+                provider_result = provider.func(*args, **kwargs)
                 self._diagnose_result(method, provider_result, "plugin")
                 result = self._aggregate_provider_result(
                     result,
@@ -172,19 +376,23 @@ class ModuleInvocationDispatcher:
                 self._rate_limit_handler(
                     err,
                     "插件",
-                    plugin_id,
+                    provider.plugin_id,
                     method,
                     **kwargs,
                 )
+                if strict_errors:
+                    raise
             except Exception as err:
                 self._record_timeout(method, "plugin", err)
                 self._plugin_error_handler(
                     err,
-                    plugin_id,
-                    plugin_name,
+                    provider.plugin_id,
+                    provider.plugin_name,
                     method,
                     **kwargs,
                 )
+                if strict_errors:
+                    raise
         return result
 
     async def async_execute_plugin_modules(
@@ -254,6 +462,7 @@ class ModuleInvocationDispatcher:
         method: str,
         result: Any,
         *args: Any,
+        strict_errors: bool = False,
         **kwargs: Any,
     ) -> Any:
         """同步执行按优先级排序的宿主模块，并支持签名接力。"""
@@ -301,6 +510,8 @@ class ModuleInvocationDispatcher:
                     method,
                     **kwargs,
                 )
+                if strict_errors:
+                    raise
             except Exception as err:
                 self._record_timeout(method, "system", err)
                 self._system_error_handler(
@@ -310,6 +521,8 @@ class ModuleInvocationDispatcher:
                     method,
                     **kwargs,
                 )
+                if strict_errors:
+                    raise
         return result
 
     async def async_execute_system_modules(
