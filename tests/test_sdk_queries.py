@@ -733,6 +733,74 @@ def test_sdk_get_returns_none_for_missing_records(query_sdk):
     assert sdk.get_transfer_history(missing_id) is None
 
 
+def test_sdk_get_projects_records_and_async_uses_executor(db, query_sdk):
+    """四类 getter 均返回 DTO，异步入口与同步一致且经过数据库 executor。"""
+    sdk, executor = query_sdk
+    subscribe = db.add(_subscribe("Getter subscribe", media_id="getter-subscription"))
+    subscribe_history = db.add(
+        _subscribe_history(
+            "Getter subscription history",
+            media_id="getter-subscription-history",
+        )
+    )
+    download = db.add(
+        _download_history(
+            "Getter download history",
+            media_id="getter-download",
+            path="/getter/download",
+        )
+    )
+    transfer = db.add(
+        _transfer_history(
+            "Getter transfer history",
+            media_id="getter-transfer",
+            src="/getter/src",
+            dest="/getter/dest",
+        )
+    )
+    caller_thread_id = threading.get_ident()
+    cases = (
+        (
+            sdk.get_subscription,
+            sdk.async_get_subscription,
+            subscribe,
+            SubscriptionSnapshot,
+        ),
+        (
+            sdk.get_subscription_history,
+            sdk.async_get_subscription_history,
+            subscribe_history,
+            SubscriptionHistorySnapshot,
+        ),
+        (
+            sdk.get_download_history,
+            sdk.async_get_download_history,
+            download,
+            DownloadHistorySnapshot,
+        ),
+        (
+            sdk.get_transfer_history,
+            sdk.async_get_transfer_history,
+            transfer,
+            TransferHistorySnapshot,
+        ),
+    )
+
+    for sync_call, async_call, model, snapshot_type in cases:
+        sync_item = sync_call(model.id)
+        calls_before = executor.calls
+        async_item = asyncio.run(async_call(model.id))
+
+        assert async_item == sync_item
+        assert isinstance(sync_item, snapshot_type)
+        assert not isinstance(sync_item, type(model))
+        assert sync_item.id == model.id
+        assert executor.calls == calls_before + 1
+
+    assert executor.worker_thread_ids
+    assert all(thread_id != caller_thread_id for thread_id in executor.worker_thread_ids)
+
+
 def test_sdk_sync_async_semantics_match_and_async_uses_executor(db, query_sdk):
     """四个查询门面的异步结果与同步一致，并交给 executor 线程。"""
     sdk, executor = query_sdk
