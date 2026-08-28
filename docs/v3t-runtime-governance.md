@@ -200,10 +200,12 @@ GIL、working set、RSS/PSS/USS、API p50/p95、SQLite 同步/异步结果和 1/
 arm64 和 Windows x64 的结论一致：安装器能够把磁盘扩展替换为 v2，原进程仍执行已加载的 v1，
 新进程才执行 v2。这是原生模块的进程激活边界，不是 Windows 独有的文件锁问题。
 
-`Dependency Compatibility` workflow 使用生产安装入口运行三平台专项任务，并把包含宿主平台、
-解释器 ABI、安装器版本、wheel SHA-256、在线阶段分类和恢复阶段结果的 JSON 上传为 artifact。探针
-同时保留 `pip` 对照入口，用于复核历史安装器差异；长期 CI 默认只验证 MoviePilot 实际使用的
-`PluginHelper`。一次性扩展矩阵的原始结果按候选运行独立留存，仓库只维护可复用脚本、测试和结论。
+`Native Dependency Update Probe` workflow 使用生产安装入口运行三平台专项任务，并把包含宿主平台、
+解释器 ABI、安装器版本、wheel SHA-256、在线阶段分类和恢复阶段结果的 JSON 上传为 artifact。自动运行
+只跟随探针及生产插件安装、uv 执行和依赖健康边界变化；Python ABI、free-threaded profile 或安装器
+升级前通过手工入口复验，不因普通依赖锁、Dockerfile 或业务代码变化消耗三平台 Runner。探针同时保留
+`pip` 对照入口，用于复核历史安装器差异；长期 CI 默认只验证 MoviePilot 实际使用的 `PluginHelper`。
+一次性扩展矩阵的原始结果按候选运行独立留存，仓库只维护可复用脚本、测试和结论。
 
 ## 7. 上游能力的渐进式接入
 

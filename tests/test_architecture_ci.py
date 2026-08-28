@@ -172,8 +172,26 @@ def test_upload_artifact_actions_share_node24_major():
 
     assert actions_by_workflow == {
         "architecture-observe.yml": ["actions/upload-artifact@v7"],
-        "dependency-compat.yml": ["actions/upload-artifact@v7"],
+        "native-dependency-update.yml": ["actions/upload-artifact@v7"],
         "pylint.yml": ["actions/upload-artifact@v7"],
         "site-adapter-collector.yml": ["actions/upload-artifact@v7"],
         "test.yml": ["actions/upload-artifact@v7"],
     }
+
+
+def test_native_dependency_update_probe_has_narrow_automatic_triggers():
+    """昂贵的三平台探针只跟随生产安装边界变化，并保留手工验收入口。"""
+    workflow = _load_workflow("native-dependency-update.yml")
+    expected_paths = [
+        "app/adapters/external/market.py",
+        "app/adapters/system/host.py",
+        "app/adapters/system/package.py",
+        "app/runtime/dependencies.py",
+        "scripts/probe_native_dependency_update.py",
+        ".github/workflows/native-dependency-update.yml",
+    ]
+
+    assert workflow["on"]["pull_request"]["paths"] == expected_paths
+    assert workflow["on"]["push"]["paths"] == expected_paths
+    assert "workflow_dispatch" in workflow["on"]
+    assert set(workflow["jobs"]) == {"probe"}
