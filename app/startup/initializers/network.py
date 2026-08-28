@@ -6,7 +6,7 @@ from typing import Any, Optional, Union, cast
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
-from app.chain.download import (
+from app.chain.download.ports import (
     DownloadArchivePort,
     DownloadHttpPort,
     DownloadResponsePort,

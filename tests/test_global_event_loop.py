@@ -1,4 +1,5 @@
 import asyncio
+from unittest.mock import patch
 
 import pytest
 
@@ -90,6 +91,19 @@ def test_global_var_loop_property_is_only_a_compatibility_facade() -> None:
         assert global_vars.CURRENT_EVENT_LOOP is loop
     finally:
         global_vars.CURRENT_EVENT_LOOP = previous
+        loop.close()
+
+
+def test_global_var_loop_patch_can_restore_an_empty_compatibility_value() -> None:
+    """兼容属性原值为空时，patch 清理应通过 deleter 恢复空投递目标。"""
+    runtime = GlobalVar()
+    loop = asyncio.new_event_loop()
+    try:
+        with patch.object(runtime, "CURRENT_EVENT_LOOP", loop):
+            assert runtime.CURRENT_EVENT_LOOP is loop
+
+        assert runtime.CURRENT_EVENT_LOOP is None
+    finally:
         loop.close()
 
 

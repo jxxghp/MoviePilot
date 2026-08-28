@@ -12,7 +12,6 @@ from app import factory, main
 from app.runtime.topology import UnsupportedProcessTopologyError
 from app.startup import lifecycle
 
-
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
@@ -135,7 +134,7 @@ def test_reload_and_multiple_workers_are_rejected_together(monkeypatch):
 def test_request_shutdown_is_safe_before_server_creation(monkeypatch):
     """数据库准备或 reload supervisor 阶段收到退出请求时不依赖 Server 已创建。"""
     stop_system = MagicMock()
-    monkeypatch.setattr(main.global_vars, "stop_system", stop_system)
+    monkeypatch.setattr(main.runtime_stop_state, "stop_system", stop_system)
     monkeypatch.setattr(main, "Server", None)
 
     main.request_shutdown()
@@ -147,9 +146,7 @@ def test_production_server_preserves_shutdown_requested_before_creation(
     monkeypatch,
 ):
     """数据库准备期间收到的停止请求必须传递给随后创建的生产 Server。"""
-    stop_event = threading.Event()
-    stop_event.set()
-    monkeypatch.setattr(main.global_vars, "STOP_EVENT", stop_event)
+    monkeypatch.setattr(type(main.runtime_stop_state), "is_system_stopped", True)
 
     server = main.create_server()
 

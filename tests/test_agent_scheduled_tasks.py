@@ -3,6 +3,7 @@
 import asyncio
 import json
 import threading
+from collections.abc import Generator
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,6 +44,7 @@ from app.db.adapters.agent import TransactionalAgentTaskRepository
 from app.db.models.agenttask import AgentTask
 from app.db.oper.agenttask import AgentTaskOper
 from app.runtime.config import settings
+from app.runtime.loop import main_loop_registry
 from app.runtime.scheduling import TimerUtils
 from app.scheduler.facade import Scheduler
 from app.scheduler.registry import ExecutionRegistry
@@ -87,6 +89,17 @@ def anyio_backend() -> str:
 def enable_ai_agent(monkeypatch) -> None:
     """在当前测试模块中启用 Agent 调度能力并在用例后自动还原。"""
     monkeypatch.setattr(settings, "AI_AGENT_ENABLE", True)
+
+
+@pytest.fixture(autouse=True)
+def isolate_scheduler_main_loop() -> Generator[None, None, None]:
+    """隔离主循环登记，避免前序兼容层假循环改变 Scheduler 投递路径。"""
+    previous = main_loop_registry.current
+    main_loop_registry.replace_compat(None)
+    try:
+        yield
+    finally:
+        main_loop_registry.replace_compat(previous)
 
 
 def _future_time(minutes: int = 10) -> str:

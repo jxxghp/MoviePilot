@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from collections.abc import Generator
 from uuid import uuid4
 
 import pytest
@@ -10,11 +11,14 @@ from app.scheduler.registry import ExecutionRegistry
 
 
 @pytest.fixture(autouse=True)
-def _restore_main_loop_registry():
-    """每个用例后恢复主循环 registry，避免失败路径污染后续任务。"""
+def _restore_main_loop_registry() -> Generator[None, None, None]:
+    """隔离并恢复主循环登记，避免前序兼容层假循环改变投递路径。"""
     previous = main_loop_registry.current
-    yield
-    main_loop_registry.replace_compat(previous)
+    main_loop_registry.replace_compat(None)
+    try:
+        yield
+    finally:
+        main_loop_registry.replace_compat(previous)
 
 
 def _build_scheduler(job_id, func):

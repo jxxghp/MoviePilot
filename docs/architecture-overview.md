@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *Last Updated: 2026-08-27*
+> *Last Updated: 2026-08-29*
 
 ---
 
@@ -359,6 +359,8 @@ flowchart TB
   插件若实现了同名方法可获得优先响应。
 - `runtime/extensions/module/contracts.py` 为宿主已观察到的方法提供显式参数与返回合同；兼容期只诊断
   旧插件签名差异，不改变插件优先级、短路和自由返回语义。
+- 大型稳定 Chain 使用同名目录包治理：包根只保留稳定公开类，Facade 只组合职责 owner；
+  `TransferChain`、`SubscribeChain` 与 `DownloadChain` 的旧单体文件均不得复活或以 `source.py` 留存。
 - `app/chain/` 中下划线前缀文件（`_recognition.py`、`_messaging.py`、`_interaction.py`、
   `_music.py`、`_transfer.py`）是 `ChainBase` 的功能域 Mixin，不是独立 Chain。
 - 需要斜杠命令交互的 Chain 继承 `InteractionChainMixin`，只实现 `_interaction_handler`。
@@ -715,15 +717,15 @@ flowchart LR
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。
 
-### 10.1 2026-08-28 当前收口状态与后续边界
+### 10.1 2026-08-29 当前收口状态与后续边界
 
 当前宿主架构基线（排除 `app/plugins/**`）如下；数字来自
 `tests/fixtures/architecture/`，更新基线前必须先审查语义变化：
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 907 |
-| 内部导入边 | 7,618 |
+| Python 模块 | 919 |
+| 内部导入边 | 7,746 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 55（债务已清零，55 条精确 containment） |

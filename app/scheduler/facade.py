@@ -116,7 +116,7 @@ class Scheduler(
         """
         return "定时服务"
 
-    @eventmanager.register(EventType.PluginReload)  # type: ignore[misc]
+    @eventmanager.register(EventType.PluginReload)
     @_public_handler
     def on_plugin_reload(self, event: Event) -> None:
         """插件重载后按当前实例重新注册全部定时服务"""

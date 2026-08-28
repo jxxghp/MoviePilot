@@ -1,6 +1,8 @@
 from enum import Enum as _Enum
+from typing import Annotated as _Annotated
 from typing import Dict, List, Literal, Optional, Union
 
+from pydantic import AfterValidator as _AfterValidator
 from pydantic import BaseModel, Field, RootModel, field_validator
 from pydantic import PrivateAttr as _PrivateAttr
 
@@ -38,25 +40,29 @@ class PluginUpdateCandidate(BaseModel):  # type: ignore[misc]
     is_bound: bool = Field(description="候选仓库是否为插件当前已绑定仓库")
 
 
+def _validate_plugin_id(value: str) -> str:
+    """限制插件实例标识为可安全用作 Python 类名和路由段的格式。"""
+    if not value or not value[0].isalpha() or not value.isalnum():
+        raise ValueError("插件 ID 必须以字母开头且只能包含字母和数字")
+    if len(value) > 128:
+        raise ValueError("插件 ID 长度不能超过 128 个字符")
+    return value
+
+
+_PluginId = _Annotated[str, _AfterValidator(_validate_plugin_id)]
+
+
 class PluginInstance(BaseModel):
     """持久化一个共享源码插件的独立运行实例。"""
 
-    instance_id: str = Field(description="运行实例 ID，也是配置、数据和路由命名空间")
-    source_plugin_id: str = Field(description="提供代码与前端资源的源插件 ID")
+    instance_id: _PluginId = Field(
+        description="运行实例 ID，也是配置、数据和路由命名空间"
+    )
+    source_plugin_id: _PluginId = Field(description="提供代码与前端资源的源插件 ID")
     plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
     mode: Literal["virtual"] = Field(default="virtual", description="实例实现模式")
-
-    @field_validator("instance_id", "source_plugin_id")
-    @classmethod
-    def validate_plugin_id(cls, value: str) -> str:
-        """限制实例标识为可安全用作 Python 类名和路由段的格式。"""
-        if not value or not value[0].isalpha() or not value.isalnum():
-            raise ValueError("插件 ID 必须以字母开头且只能包含字母和数字")
-        if len(value) > 128:
-            raise ValueError("插件 ID 长度不能超过 128 个字符")
-        return value
 
 
 class Plugin(BaseModel):

@@ -9,14 +9,14 @@ import pytest
 
 from app.agent import (  # pylint: disable=no-name-in-module
     AgentManager,
-    _MessageTask,
     _async_start_processing_status,
+    _MessageTask,
 )
 from app.chain.message import MessageChain
 from app.command import Command, _finish_command_processing_status
 from app.modules.telegram import TelegramModule  # pylint: disable=no-name-in-module
 from app.modules.telegram.telegram import Telegram
-from app.runtime.config import global_vars
+from app.runtime.loop import main_loop_registry
 from app.schemas.types import NotificationChannel
 
 
@@ -366,7 +366,7 @@ def test_async_agent_leaves_processing_status_to_worker():
     )
 
     loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
-    with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+    with patch.object(main_loop_registry, "require", return_value=loop), patch.object(
             chain, "_record_user_message"
     ), patch.object(
             chain, "_mark_message_processing_started"

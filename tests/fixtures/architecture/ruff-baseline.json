@@ -1,7 +1,4 @@
 {
-  "app/adapters/external/market.py": {
-    "I001": 1
-  },
   "app/adapters/external/server.py": {
     "I001": 1
   },
@@ -10,12 +7,6 @@
   },
   "app/adapters/system/host.py": {
     "I001": 2
-  },
-  "app/adapters/system/plugin/manifest.py": {
-    "I001": 1
-  },
-  "app/adapters/system/plugin/package.py": {
-    "I001": 1
   },
   "app/adapters/system/rust.py": {
     "I001": 1
@@ -741,9 +732,6 @@
   "app/runtime/extensions/plugin/storage.py": {
     "I001": 1
   },
-  "app/runtime/extensions/plugin_manager.py": {
-    "I001": 1
-  },
   "app/runtime/extensions/service_config.py": {
     "I001": 1
   },
@@ -887,17 +875,10 @@
   "tests/test_agent_chat_persistence.py": {
     "I001": 1
   },
-  "tests/test_agent_image_support.py": {
-    "F401": 1,
-    "I001": 1
-  },
   "tests/test_agent_lazy_runtime_boundary.py": {
     "F401": 1
   },
   "tests/test_agent_llm_capability.py": {
-    "I001": 1
-  },
-  "tests/test_agent_message_routing.py": {
     "I001": 1
   },
   "tests/test_agent_recognize_captcha_tool.py": {
@@ -939,9 +920,6 @@
   "tests/test_api_authorization.py": {
     "I001": 1
   },
-  "tests/test_api_background_task_registry.py": {
-    "I001": 1
-  },
   "tests/test_api_response.py": {
     "I001": 1
   },
@@ -961,9 +939,6 @@
     "I001": 1
   },
   "tests/test_capability_runtime.py": {
-    "I001": 1
-  },
-  "tests/test_chain_layering.py": {
     "I001": 1
   },
   "tests/test_cli_auto_update.py": {
@@ -1024,9 +999,6 @@
     "I001": 1
   },
   "tests/test_download_paths_endpoint.py": {
-    "I001": 1
-  },
-  "tests/test_download_save_path_allowlist.py": {
     "I001": 1
   },
   "tests/test_episode_format_helper.py": {
@@ -1301,9 +1273,6 @@
     "E402": 6,
     "I001": 1
   },
-  "tests/test_storage_download_path.py": {
-    "I001": 1
-  },
   "tests/test_string_compat.py": {
     "I001": 1
   },
@@ -1333,9 +1302,6 @@
     "I001": 1
   },
   "tests/test_telegram.py": {
-    "I001": 1
-  },
-  "tests/test_telegram_typing_lifecycle.py": {
     "I001": 1
   },
   "tests/test_template_context_builder.py": {
@@ -1384,9 +1350,6 @@
     "I001": 1
   },
   "tests/test_transfer_rename_build_event.py": {
-    "I001": 1
-  },
-  "tests/test_uvicorn_entrypoint.py": {
     "I001": 1
   },
   "tests/test_webpush_helper.py": {

@@ -9,7 +9,7 @@ import sys
 from dataclasses import dataclass
 from importlib.metadata import Distribution, PackageNotFoundError, distribution, distributions
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Callable, Iterable, Protocol, cast
 
 from packaging.utils import canonicalize_name
 
@@ -19,6 +19,33 @@ _NATIVE_FILE_PATTERN = re.compile(
     r"(?:\.pyd|\.dll|\.dylib|\.so(?:\.\d+)*)$",
     re.IGNORECASE,
 )
+
+
+class _WindowsKernel32Api(Protocol):
+    """描述原生依赖探针使用的 Kernel32 调用。"""
+
+    GetCurrentProcess: Callable[[], int]
+
+
+class _WindowsPsapiApi(Protocol):
+    """描述原生依赖探针使用的 PSAPI 调用。"""
+
+    EnumProcessModulesEx: Callable[[int, Any, int, Any, int], int]
+    GetModuleFileNameExW: Callable[[int, Any, Any, int], int]
+
+
+class _WindowsLibraries(Protocol):
+    """描述 ctypes.windll 下本探针需要的系统动态库。"""
+
+    kernel32: _WindowsKernel32Api
+    psapi: _WindowsPsapiApi
+
+
+class _WindowsCtypesApi(Protocol):
+    """描述仅在 Windows 运行时由 ctypes 暴露的平台入口。"""
+
+    windll: _WindowsLibraries
+    get_last_error: Callable[[], int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +160,7 @@ def _distribution_state(
     for relative_path in installed_distribution.files or ():
         if not _is_native_file(str(relative_path)):
             continue
-        path = Path(installed_distribution.locate_file(relative_path))
+        path = Path(str(installed_distribution.locate_file(relative_path)))
         state = _artifact_state(path)
         if state is not None:
             artifacts.append(state)
@@ -220,19 +247,23 @@ def _windows_loaded_library_paths() -> set[str]:
     """通过 PSAPI 查询 Windows 当前进程已装载模块。"""
     from ctypes import wintypes
 
-    process = ctypes.windll.kernel32.GetCurrentProcess()
+    windows_ctypes = cast(_WindowsCtypesApi, ctypes)
+    process = windows_ctypes.windll.kernel32.GetCurrentProcess()
     module_count = 256
     while True:
         modules = (wintypes.HMODULE * module_count)()
         needed = wintypes.DWORD()
-        if not ctypes.windll.psapi.EnumProcessModulesEx(
+        if not windows_ctypes.windll.psapi.EnumProcessModulesEx(
             process,
             modules,
             ctypes.sizeof(modules),
             ctypes.byref(needed),
             0x03,
         ):
-            raise OSError(ctypes.get_last_error(), "EnumProcessModulesEx failed")
+            raise OSError(
+                windows_ctypes.get_last_error(),
+                "EnumProcessModulesEx failed",
+            )
         required_count = needed.value // ctypes.sizeof(wintypes.HMODULE)
         if required_count <= module_count:
             break
@@ -241,7 +272,7 @@ def _windows_loaded_library_paths() -> set[str]:
     paths = set()
     for module in modules[:required_count]:
         buffer = ctypes.create_unicode_buffer(32768)
-        length = ctypes.windll.psapi.GetModuleFileNameExW(
+        length = windows_ctypes.windll.psapi.GetModuleFileNameExW(
             process,
             module,
             buffer,

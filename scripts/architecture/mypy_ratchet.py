@@ -38,6 +38,10 @@ MYPY_PATH_MIGRATIONS = {
         ("app/scheduler.py",),
         ("app/scheduler/",),
     ),
+    "download-package": (
+        ("app/chain/download.py",),
+        ("app/chain/download/",),
+    ),
 }
 
 # 形如 app/foo.py:12: error: 消息说明 [error-code]；个别错误可能缺代码。

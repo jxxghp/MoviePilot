@@ -3,7 +3,6 @@
 import ast
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CHAIN_ROOT = PROJECT_ROOT / "app" / "chain"
 LEGACY_MUSIC_SCAN_ROOTS = (
@@ -46,6 +45,14 @@ def _inherited_recognize_calls(path: Path) -> list[tuple[int, str]]:
         ):
             calls.append((node.lineno, node.func.attr))
     return calls
+
+
+def _chain_sources(name: str) -> tuple[Path, ...]:
+    """返回单文件或同名职责包中的全部 Chain 源码。"""
+    package = CHAIN_ROOT / name
+    if package.is_dir():
+        return tuple(sorted(package.rglob("*.py")))
+    return (CHAIN_ROOT / f"{name}.py",)
 
 
 def test_chain_base_does_not_import_concrete_chains() -> None:
@@ -130,9 +137,10 @@ def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
 def test_business_chains_delegate_recognition_to_media_chain() -> None:
     """搜索、订阅、下载和转移链必须显式委托媒体识别编排层。"""
     violations = {
-        name: calls
-        for name in ("search.py", "subscribe.py", "download.py", "transfer.py")
-        if (calls := _inherited_recognize_calls(CHAIN_ROOT / name))
+        str(path.relative_to(CHAIN_ROOT)): calls
+        for name in ("search", "subscribe", "download", "transfer")
+        for path in _chain_sources(name)
+        if (calls := _inherited_recognize_calls(path))
     }
 
     assert not violations

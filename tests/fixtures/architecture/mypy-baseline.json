@@ -328,10 +328,8 @@
     "override": 1
   },
   "app/agent/tools/impl/add_download_tasks.py": {
-    "arg-type": 1,
     "misc": 1,
-    "no-untyped-def": 2,
-    "return-value": 1
+    "no-untyped-def": 2
   },
   "app/agent/tools/impl/add_rule_group.py": {
     "arg-type": 1,
@@ -478,7 +476,7 @@
     "no-untyped-def": 2
   },
   "app/agent/tools/impl/query_download_tasks.py": {
-    "arg-type": 6,
+    "arg-type": 1,
     "misc": 1,
     "no-any-return": 1,
     "no-untyped-def": 2
@@ -742,11 +740,9 @@
   },
   "app/agent/tools/impl/update_download_tasks.py": {
     "arg-type": 1,
-    "assignment": 1,
     "misc": 1,
     "no-untyped-def": 3,
-    "override": 1,
-    "var-annotated": 1
+    "override": 1
   },
   "app/agent/tools/impl/update_persona_definition.py": {
     "misc": 1,
@@ -920,7 +916,7 @@
     "attr-defined": 1,
     "misc": 8,
     "type-arg": 2,
-    "union-attr": 2
+    "union-attr": 1
   },
   "app/api/endpoints/message.py": {
     "arg-type": 4,
@@ -1307,8 +1303,7 @@
     "arg-type": 6,
     "assignment": 1,
     "attr-defined": 8,
-    "no-untyped-call": 1,
-    "union-attr": 8
+    "no-untyped-call": 1
   },
   "app/chain/_recognition.py": {
     "arg-type": 6,
@@ -1341,29 +1336,12 @@
   "app/chain/douban.py": {
     "no-any-return": 28
   },
-  "app/chain/download.py": {
-    "arg-type": 36,
-    "assignment": 29,
-    "attr-defined": 7,
-    "call-overload": 1,
-    "comparison-overlap": 1,
-    "misc": 1,
-    "no-any-return": 2,
-    "no-redef": 1,
-    "no-untyped-call": 7,
-    "no-untyped-def": 6,
-    "operator": 1,
-    "return-value": 1,
-    "type-arg": 10,
-    "union-attr": 37,
-    "valid-type": 1
-  },
   "app/chain/interaction.py": {
-    "arg-type": 14,
-    "assignment": 3,
+    "arg-type": 4,
+    "assignment": 1,
     "no-untyped-call": 1,
     "return-value": 1,
-    "union-attr": 18,
+    "union-attr": 16,
     "var-annotated": 1
   },
   "app/chain/media.py": {
@@ -1410,7 +1388,7 @@
     "attr-defined": 2,
     "call-arg": 1,
     "index": 1,
-    "misc": 2,
+    "misc": 1,
     "no-any-return": 1,
     "no-untyped-def": 14,
     "return-value": 1,
@@ -1423,7 +1401,6 @@
     "attr-defined": 2,
     "call-overload": 1,
     "index": 1,
-    "misc": 1,
     "no-any-return": 6,
     "no-redef": 3,
     "no-untyped-call": 19,
@@ -1437,7 +1414,7 @@
     "arg-type": 2,
     "assignment": 6,
     "attr-defined": 1,
-    "misc": 6,
+    "misc": 3,
     "no-any-return": 1,
     "no-untyped-def": 7,
     "return-value": 2,
@@ -1467,8 +1444,8 @@
   "app/chain/subscribe/facade.py": {
     "arg-type": 2,
     "attr-defined": 3,
-    "misc": 6,
-    "truthy-function": 3
+    "misc": 4,
+    "truthy-function": 2
   },
   "app/chain/subscribe/interaction.py": {
     "arg-type": 2
@@ -1484,9 +1461,7 @@
     "union-attr": 6
   },
   "app/chain/subscribe/policy.py": {
-    "arg-type": 3,
-    "assignment": 1,
-    "return-value": 1,
+    "arg-type": 1,
     "union-attr": 1
   },
   "app/chain/subscribe/query.py": {
@@ -1499,9 +1474,7 @@
   "app/chain/subscribe/refresh.py": {
     "arg-type": 3,
     "assignment": 2,
-    "dict-item": 2,
     "no-redef": 2,
-    "return-value": 3,
     "var-annotated": 2
   },
   "app/chain/subscribe/search.py": {
@@ -1618,7 +1591,6 @@
     "assignment": 1,
     "call-arg": 1,
     "index": 4,
-    "misc": 1,
     "no-any-return": 7,
     "no-untyped-def": 2,
     "truthy-function": 2,
@@ -1636,7 +1608,7 @@
   "app/command.py": {
     "arg-type": 3,
     "assignment": 5,
-    "misc": 6,
+    "misc": 4,
     "no-untyped-call": 4,
     "no-untyped-def": 4,
     "type-arg": 7,
@@ -3116,8 +3088,8 @@
     "misc": 1,
     "no-any-return": 2,
     "no-untyped-call": 3,
-    "no-untyped-def": 19,
-    "type-arg": 23,
+    "no-untyped-def": 17,
+    "type-arg": 22,
     "var-annotated": 3
   },
   "app/runtime/execution.py": {
@@ -3442,7 +3414,7 @@
     "var-annotated": 1
   },
   "app/workflow/actions/add_download.py": {
-    "arg-type": 3,
+    "arg-type": 2,
     "attr-defined": 1,
     "type-arg": 1,
     "union-attr": 9,

@@ -6,7 +6,6 @@ import pytest
 
 from app.application.configuration import configure_runtime_settings
 from app.startup.initializers import modules as modules_initializer
-from app.startup.lifecycle import initialize_modules_component
 
 
 class _InlineWorker:
@@ -140,16 +139,18 @@ async def test_configuration_load_failure_does_not_publish_partial_service(
 
 @pytest.mark.asyncio
 async def test_modules_startup_failure_stops_database_worker(monkeypatch) -> None:
-    """模块启动失败时立即关闭已创建的数据库 worker。"""
+    """模块组合根启动失败时立即关闭已创建的数据库 worker。"""
     monkeypatch.setattr(
-        "app.startup.lifecycle.init_modules",
+        modules_initializer,
+        "_initialize_modules",
         AsyncMock(side_effect=RuntimeError("startup failed")),
     )
+    monkeypatch.setattr(modules_initializer, "stop_message", lambda: True)
     stop_worker = AsyncMock()
     monkeypatch.setattr(modules_initializer, "stop_database_worker", stop_worker)
 
     with pytest.raises(RuntimeError, match="startup failed"):
-        await initialize_modules_component(object())
+        await modules_initializer.init_modules()
 
     stop_worker.assert_awaited_once_with()
 
@@ -159,18 +160,23 @@ async def test_modules_startup_failure_preserves_original_error_when_cleanup_fai
         monkeypatch,
 ) -> None:
     """数据库任务清理失败时仍向上层保留原始启动异常。"""
+    startup_error = RuntimeError("startup failed")
     monkeypatch.setattr(
-        "app.startup.lifecycle.init_modules",
-        AsyncMock(side_effect=RuntimeError("startup failed")),
+        modules_initializer,
+        "_initialize_modules",
+        AsyncMock(side_effect=startup_error),
     )
+    monkeypatch.setattr(modules_initializer, "stop_message", lambda: True)
     monkeypatch.setattr(
         modules_initializer,
         "stop_database_worker",
         AsyncMock(side_effect=RuntimeError("cleanup failed")),
     )
 
-    with pytest.raises(RuntimeError, match="startup failed"):
-        await initialize_modules_component(object())
+    with pytest.raises(RuntimeError) as raised:
+        await modules_initializer.init_modules()
+
+    assert raised.value is startup_error
 
 
 @pytest.mark.asyncio

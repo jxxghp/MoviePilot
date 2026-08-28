@@ -1418,6 +1418,11 @@ class GlobalVar(object):
         """兼容旧测试和插件直接替换主循环投递目标。"""
         self._loop_registry.replace_compat(loop)
 
+    @CURRENT_EVENT_LOOP.deleter
+    def CURRENT_EVENT_LOOP(self) -> None:
+        """兼容属性 patch 清理，删除时仅清空当前投递目标。"""
+        self._loop_registry.replace_compat(None)
+
     @property
     def SUBSCRIPTIONS(self) -> List[dict]:
         """兼容旧代码在持锁后直接访问订阅列表。"""

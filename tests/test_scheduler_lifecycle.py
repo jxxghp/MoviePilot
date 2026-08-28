@@ -5,10 +5,12 @@ import gc
 import inspect
 import threading
 import warnings
+from collections.abc import Generator
 from types import SimpleNamespace
 
 import pytest
 
+from app.runtime.loop import main_loop_registry
 from app.scheduler import bridge as scheduler_bridge
 from app.scheduler import execution as scheduler_execution
 from app.scheduler import progress as scheduler_progress
@@ -48,6 +50,17 @@ class _AsyncProgressStub:
 
     async def end(self, **_kwargs) -> None:
         """记录终态但不访问外部缓存。"""
+
+
+@pytest.fixture(autouse=True)
+def isolate_scheduler_main_loop() -> Generator[None, None, None]:
+    """隔离主循环登记，避免前序兼容层假循环改变 Scheduler 投递路径。"""
+    previous = main_loop_registry.current
+    main_loop_registry.replace_compat(None)
+    try:
+        yield
+    finally:
+        main_loop_registry.replace_compat(previous)
 
 
 def _patch_progress(

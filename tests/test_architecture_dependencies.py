@@ -424,8 +424,9 @@ def test_chain_runtime_context_owns_typed_repository_instances():
     for field_name in expected:
         assert f"self.{field_name} = context.{field_name}" in chain_base_source
 
-    download_source = (APP_ROOT / "chain" / "download.py").read_text(
-        encoding="utf-8"
+    download_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((APP_ROOT / "chain" / "download").glob("*.py"))
     )
     mediaserver_source = (APP_ROOT / "chain" / "mediaserver.py").read_text(
         encoding="utf-8"
@@ -569,7 +570,7 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
     assert agent_annotations["download_history"] == "DownloadHistoryRepository"
 
     consumer_paths = (
-        APP_ROOT / "chain" / "download.py",
+        *sorted((APP_ROOT / "chain" / "download").glob("*.py")),
         *sorted((APP_ROOT / "chain" / "transfer").glob("*.py")),
         APP_ROOT / "agent" / "tools" / "impl" / "query_download_tasks.py",
         APP_ROOT / "agent" / "tools" / "impl" / "delete_download_history.py",

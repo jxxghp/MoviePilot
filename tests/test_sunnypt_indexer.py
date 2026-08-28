@@ -474,11 +474,11 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
         fake_post_res,
     )
     monkeypatch.setattr(
-        "app.chain.download.TorrentHelper.download_torrent",
+            "app.chain.download.submission.TorrentHelper.download_torrent",
         fake_download_torrent,
     )
     monkeypatch.setattr(
-        "app.chain.download.logger",
+            "app.chain.download.submission.logger",
         SimpleNamespace(info=capture_log, error=capture_log),
     )
     enclosure = SunnyPTSpider(_build_indexer())._build_download_url(123)

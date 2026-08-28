@@ -137,7 +137,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S3-L1 TransferChain | `VERIFIED` | S1-L1 | 旧 `transfer.py`/`_transfer.py` 单体退役，由 `app.chain.transfer` 同名职责包承接；queue/recovery、plan、execute、settle、history/notify 各有唯一 owner，原 836 行执行方法消失，包根只保留稳定 ABI |
 | S3-L2 SubscribeChain | `VERIFIED` | S1-L5 | 旧 `subscribe.py` 单体退役，由 `app.chain.subscribe` 同名职责包承接；search、match、refresh、completion、reference reconciliation、notification 各有唯一 owner，包根只保留稳定 `SubscribeChain` |
 | S3-L3 Scheduler | `VERIFIED` | S2-L3 | 旧 `app/scheduler.py` 已退役并迁入 `app.scheduler` 同名包；catalog、execution/bridge/progress、`ExecutionRegistry`、reconciler、lifecycle 与 maintenance 已分离，业务 callable 由 startup 经 `SchedulerServices` 注入，包内无参 Chain 构造清零；功能/生命周期 215 项、架构/兼容/文档 189 项通过，官方插件基线语义未变化 |
-| S3-L4 DownloadChain | `PLANNED` | S1-L6 | selection、submission、history、post-processing 分离，提交后动作遵守新完成语义 |
+| S3-L4 DownloadChain | `VERIFIED` | S1-L6 | 旧单体退役；selection、submission、batch、history、post-processing 等职责进入同名包单一 owner，提交后动作遵守新完成语义 |
 | S3-L5 SearchChain | `PLANNED` | S2-L7 | plan、provider fan-out、result state、pagination 分离，状态 owner 唯一 |
 | S3-L6 MediaChain | `PLANNED` | S2-L2 | recognition、source projection、music alignment、cache 分离，兼容仅经统一层 |
 | S3-L7 Agent/System/Plugin API | `PLANNED` | S2,S1-L6 | WebAgent SSE/file/audio、nettest/log/update/market 用例进入 Application，endpoint 只做传输适配 |
@@ -153,7 +153,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 700 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 687 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口
@@ -170,6 +170,28 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S5-L6 最终兼容与交付 | `PLANNED` | 全部 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、类型、覆盖率全部通过并推送 |
 
 ## 4. 当前活动叶子
+
+### S3-L4 DownloadChain
+
+**Status:** `VERIFIED`
+
+**Outcome**
+
+退役 `app/chain/download.py` 单体，由同名 `app.chain.download` 包分别承接选择、提交、批量执行、
+缺集判断、失败冷却、历史结算、提交后处理、字幕和任务控制。包根只惰性保留稳定
+`DownloadChain`，Facade 只组合 owner 与稳定事件入口；主程序不保留 `source.py`、旧实现或内部
+owner/port 重复导出。
+
+下载成功时，历史、文件和 durable Outbox intent 必须在同一事务内提交；通知、后台后处理和即时
+事件只能在 commit 成功后执行。提交失败不得留下业务历史、通知或事件副作用。
+
+**Acceptance**
+
+- 公开 `DownloadChain` 类身份、方法签名、MRO、pickle 身份和官方插件调用形态不变。
+- `app/plugins/**` 不扫描、不修改；官方插件仓通过独立宿主兼容基线验证。
+- 事件事实扫描完整识别包内 producer/consumer，不得以刷新 baseline 丢弃合法事实。
+- Download 专项、事务/Outbox、架构/兼容、mypy/Ruff/complexity、scoped Pylint 全部通过。
+- 本叶提交推送后确认远端 SHA、祖先关系和 ahead/behind `0/0`。
 
 ### S1-L1.1 Durable admission
 

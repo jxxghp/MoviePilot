@@ -3,7 +3,7 @@
 import copy
 import re
 from pathlib import Path
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Type, Union, cast
 
 from pydantic import BaseModel, Field
 
@@ -227,12 +227,15 @@ class AddDownloadTasksTool(MoviePilotTool):
         """同步提交带上下文的下载任务，避免站点下载与下载器调用阻塞事件循环。"""
         if save_path is not None:
             save_path = validate_download_save_path(save_path)
-        return DownloadChain().download_single(
-            context=context,
-            downloader=downloader,
-            save_path=save_path,
-            label=merged_labels,
-            return_detail=True,
+        return cast(
+            tuple[Optional[str], Optional[str]],
+            DownloadChain().download_single(
+                context=context,
+                downloader=downloader,
+                save_path=save_path,
+                label=merged_labels,
+                return_detail=True,
+            ),
         )
 
     async def run(self, torrent_url: Optional[List[str]] = None,

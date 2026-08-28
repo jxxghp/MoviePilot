@@ -7,7 +7,7 @@ import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
 from queue import Empty, PriorityQueue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 from app.foundation.singleton import Singleton
 from app.runtime.correlation import get_correlation_id
@@ -40,6 +40,14 @@ _CURRENT_EVENT_HANDLER_OWNER: ContextVar[object | None] = ContextVar(
     "current_event_handler_owner",
     default=None,
 )
+_EventHandler = TypeVar("_EventHandler", bound=Callable[..., Any])
+_EventKind = Union[EventType, ChainEventType]
+_EventRegistration = Union[
+    _EventKind,
+    List[_EventKind],
+    Type[EventType],
+    Type[ChainEventType],
+]
 
 
 @dataclass(slots=True)
@@ -820,8 +828,11 @@ class EventManager(metaclass=Singleton):
             error=e,
         )
 
-    def register(self, etype: Union[EventType, ChainEventType, List[Union[EventType, ChainEventType]], type],
-                 priority: Optional[int] = DEFAULT_EVENT_PRIORITY):
+    def register(
+            self,
+            etype: _EventRegistration,
+            priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
+    ) -> Callable[[_EventHandler], _EventHandler]:
         """
         事件注册装饰器，用于将函数注册为事件的处理器
         :param etype:
@@ -831,7 +842,7 @@ class EventManager(metaclass=Singleton):
         :param priority: 可选，链式事件的优先级，默认为 DEFAULT_EVENT_PRIORITY
         """
 
-        def decorator(f: Callable):
+        def decorator(f: _EventHandler) -> _EventHandler:
             # 将输入的事件类型统一转换为列表格式
             if isinstance(etype, list):
                 # 传入的已经是列表，直接使用
@@ -844,7 +855,7 @@ class EventManager(metaclass=Singleton):
             for event in event_list:
                 if isinstance(event, (EventType, ChainEventType)):
                     self.add_event_listener(event, f, priority)
-                elif isinstance(event, type) and issubclass(event, (EventType, ChainEventType)):
+                elif event is EventType or event is ChainEventType:
                     # 如果是 EventType 或 ChainEventType 类，提取该类中的所有成员
                     for et in event.__members__.values():
                         self.add_event_listener(et, f, priority)

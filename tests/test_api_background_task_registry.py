@@ -4,10 +4,10 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from app.api.endpoints import anthropic, history, message, openai, site, subscribe, webhook
 from app.api.dependencies import subscription as subscription_dependencies
+from app.api.endpoints import anthropic, history, message, openai, site, subscribe, webhook
 from app.application.subscription.search import SubscribeSearchActor
-from app.runtime.config import global_vars
+from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import TaskRegistry
 
 
@@ -233,7 +233,7 @@ def test_history_ai_redo_uses_task_registry() -> None:
     registry = _TaskRegistry()
     loop = SimpleNamespace(is_running=lambda: True, is_closed=lambda: False)
 
-    with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+    with patch.object(main_loop_registry, "require", return_value=loop), patch.object(
         history,
         "_build_progress_output_callback",
         return_value=lambda _text: None,
@@ -285,7 +285,7 @@ def test_history_batch_ai_redo_uses_task_registry() -> None:
     registry = _TaskRegistry()
     loop = SimpleNamespace(is_running=lambda: True, is_closed=lambda: False)
 
-    with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
+    with patch.object(main_loop_registry, "require", return_value=loop), patch.object(
         history,
         "_build_progress_output_callback",
         return_value=lambda _text: None,

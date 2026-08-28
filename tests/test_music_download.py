@@ -1,5 +1,6 @@
 from unittest.mock import Mock, patch
 
+import app.chain.download.submission as download_submission
 from app.api.endpoints.download import add, download
 from app.chain.download import DownloadChain
 from app.domain.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo
@@ -130,9 +131,9 @@ def test_download_single_stops_before_client_when_album_pack_is_incomplete():
         ["叶惠美/整轨.flac", "叶惠美/整轨.cue"],
     )
 
-    with patch("app.chain.download.MediaChain", return_value=media_chain), \
-            patch("app.chain.download.TorrentHelper", return_value=torrent_helper), \
-            patch("app.chain.download.eventmanager.send_event", return_value=None):
+    with patch.object(download_submission, "MediaChain", return_value=media_chain), \
+            patch.object(download_submission, "TorrentHelper", return_value=torrent_helper), \
+            patch.object(download_submission.eventmanager, "send_event", return_value=None):
         task_id, error = chain.download_single(
             context,
             torrent_content=b"torrent",

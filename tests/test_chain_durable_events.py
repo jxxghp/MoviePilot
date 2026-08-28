@@ -328,6 +328,43 @@ def test_download_history_and_event_intent_share_one_transaction():
     assert outboxes[0].event_key != outboxes[1].event_key
 
 
+def test_download_post_commit_effects_do_not_run_when_commit_fails(monkeypatch):
+    """下载历史提交失败时不得执行通知、后处理或即时事件。"""
+    factory = _session_factory()
+    writer = TransactionalChainDurableEventWriter(factory)
+    _, _, context, _, _ = _objects()
+    calls: list[str] = []
+
+    def fail_commit(_unit_of_work) -> None:
+        """模拟历史与 outbox intent 的原子提交失败。"""
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(SqlAlchemyUnitOfWork, "commit", fail_commit)
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        writer.download_added(
+            history=DownloadHistoryWrite(
+                path="/downloads/Failed.mkv",
+                type=MediaType.MOVIE.value,
+                title="Failed",
+                download_hash="hash-failed",
+            ),
+            files=(),
+            event_payload={
+                "hash": "hash-failed",
+                "context": context,
+                "episodes": [],
+            },
+            after_commit=lambda: calls.append("after_commit"),
+            publish=lambda _payload: calls.append("event"),
+        )
+
+    with factory() as session:
+        assert session.execute(select(DownloadHistory)).scalar_one_or_none() is None
+        assert session.execute(select(OutboxMessage)).scalar_one_or_none() is None
+    assert calls == []
+
+
 def test_event_keys_distinguish_reused_history_ids():
     """历史主键被数据库复用时，每次业务事实仍获得不同的幂等键。"""
     download_keys = {download_added_event_key(7) for _ in range(2)}

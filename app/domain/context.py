@@ -2084,6 +2084,8 @@ class Context:
     media_info_is_target: bool = False
     # 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集。
     allowed_episodes: Optional[Set[int]] = None
+    # 下载链实际提交的剧集集合；None 表示尚未执行下载选择。
+    selected_episodes: Optional[List[int]] = None
     # 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源。
     confirmed_full_coverage: bool = False
 
@@ -2102,5 +2104,6 @@ class Context:
             "media_info_is_target": self.media_info_is_target,
             # 保留 None / 空集 / 非空集 三态语义，避免下游误把"显式拒绝"当成"不限制"。
             "allowed_episodes": sorted(self.allowed_episodes) if self.allowed_episodes is not None else None,
+            "selected_episodes": self.selected_episodes,
             "confirmed_full_coverage": self.confirmed_full_coverage,
         }

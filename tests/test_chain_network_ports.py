@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.chain import download as download_module
+import app.chain.download.ports as download_ports
 from app.chain import message as message_module
 from app.chain import scraping as scraping_module
 from app.chain import system as system_module
@@ -15,13 +15,13 @@ from app.startup.initializers import network as network_initializer
 @pytest.fixture(autouse=True)
 def isolate_chain_network_ports():
     """每个用例从未装配状态开始，并恢复全局测试运行时。"""
-    download_http, download_archive = download_module._download_ports_snapshot()
+    download_http, download_archive = download_ports._download_ports_snapshot()
     message_http = message_module._message_http_snapshot()
     scraping_http = scraping_module._scraping_http_snapshot()
     system_http, system_environment = system_module._system_ports_snapshot()
     network_initializer.reset_chain_network_ports()
     yield
-    download_module.configure_download_ports(
+    download_ports.configure_download_ports(
         http=download_http,
         archive=download_archive,
     )
@@ -69,7 +69,7 @@ class _FakeHttp:
 def test_reset_makes_all_chain_ports_fail_explicitly() -> None:
     """未装配时四个 Chain 都应明确失败，不得隐式构造 Adapter。"""
     with pytest.raises(RuntimeError, match="下载链技术端口"):
-        download_module._download_ports_snapshot()
+        download_ports._download_ports_snapshot()
     with pytest.raises(RuntimeError, match="消息附件 HTTP 端口"):
         message_module._message_http_snapshot()
     with pytest.raises(RuntimeError, match="刮削 HTTP 端口"):
@@ -82,14 +82,14 @@ def test_initializer_supports_repeated_init_and_reset() -> None:
     """重复启动应替换完整端口快照，重复关闭应保持幂等。"""
     network_initializer.init_chain_network_ports()
     first = (
-        download_module._download_ports_snapshot(),
+        download_ports._download_ports_snapshot(),
         message_module._message_http_snapshot(),
         scraping_module._scraping_http_snapshot(),
         system_module._system_ports_snapshot(),
     )
     network_initializer.init_chain_network_ports()
     second = (
-        download_module._download_ports_snapshot(),
+        download_ports._download_ports_snapshot(),
         message_module._message_http_snapshot(),
         scraping_module._scraping_http_snapshot(),
         system_module._system_ports_snapshot(),
@@ -112,7 +112,7 @@ def test_initializer_rolls_back_partial_configuration(monkeypatch) -> None:
     with pytest.raises(RuntimeError, match="boom"):
         network_initializer.init_chain_network_ports()
     with pytest.raises(RuntimeError):
-        download_module._download_ports_snapshot()
+        download_ports._download_ports_snapshot()
     with pytest.raises(RuntimeError):
         message_module._message_http_snapshot()
     with pytest.raises(RuntimeError):

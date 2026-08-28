@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 907 / 7,618 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 919 / 7,746 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,9 +78,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 11,179 / 600 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 700 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 79.83%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 全量 mypy 历史债务 | 10,982 / 599 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
+| Ruff 历史诊断 | 687 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 80.75%，Domain 79.32% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -93,7 +93,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `app/chain/transfer/`（已治理） | Facade 82 行 | 队列/恢复、规划、执行、结算、历史/通知已拆至单一 owner；旧 `transfer.py` 与 `_transfer.py` 已删除 |
 | `app/chain/search.py` | 2,970 | 搜索计划、并发 fan-out、状态、分页和结果处理 |
 | `app/api/endpoints/agent.py` | 2,346 | HTTP/SSE、文件/音频、Agent 会话和事件编排 |
-| `app/chain/download.py` | 2,230 | 选择、提交、历史、通知、模块后处理和批量执行 |
+| `app/chain/download/`（已治理） | Facade 47 行 | 选择、提交、批量、历史、提交后处理、字幕和任务控制已拆至单一 owner；原 2,413 行单文件已删除 |
 | `app/chain/media.py` | 2,191 | 识别、来源投影、缓存、音乐匹配和兼容入口 |
 | `app/scheduler/` | Facade 128 行 | 原 2,111 行单体已退役；catalog、execution、bridge、progress、registry、reconcile、lifecycle、maintenance 与注入合同已有独立 owner |
 
@@ -115,7 +115,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-106 | P1 | 进行中 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志与消息 owner 已收口；GlobalVar/provider 继续治理 |
 | ARCH-107 | P1 | 已验证 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
 | ARCH-108 | P1 | 执行中 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Application Adapter/DNS 债务已清零；Chain Adapter 与宿主 HTTP 债务继续迁移 |
-| ARCH-109 | P1 | 执行中 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler 已验证；Download/Search 与厚 API 尚待执行 |
+| ARCH-109 | P1 | 执行中 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler、Download 已验证；Search、Media 与厚 API 尚待执行 |
 | ARCH-110 | P1 | 待执行 | Module/Event Contract 分可信级执行 | 宿主 provider 严格，第三方插件仍兼容诊断 |
 | ARCH-111 | P1 | 待执行 | 升级复杂度、类型、覆盖率和并发原语门禁 | 高风险私有路径也进入只降不增的治理面 |
 | ARCH-201 | P2 | 渐进 | 收窄 PluginHelper/PluginManager 与 SDK 暴露面 | ABI Facade 只委托，构造和具体服务归组合根 |
@@ -558,6 +558,12 @@ Chain 构造点；队列/恢复、规划、执行、结算、历史/通知、请
 `app/startup/initializers/scheduler.py` 统一构造 Chain 与 `SchedulerServices`，Scheduler 包内不再无参
 构造业务 Chain；新插件使用 `app.sdk.scheduler` 的窄函数门面，内部 owner 不进入 SDK 或包根 ABI。
 功能、生命周期、架构、兼容和文档批次均通过，官方插件基线语义未变化。
+
+`DownloadChain` 切片已完成验证：旧 `app/chain/download.py` 已删除，包根只惰性保留稳定
+`DownloadChain`；选择、提交、批量、缺集、失败冷却、历史结算、提交后处理、字幕、任务控制和
+技术端口分别由同名 package 的单词文件拥有，Facade 只组合 owner 与稳定删除事件入口。历史、文件和
+durable Outbox intent 在一个事务内提交，通知、后台处理和即时事件仅在 commit 成功后执行；提交失败
+不会留下历史或后置副作用。主程序不保留 `source.py`、旧实现或内部 owner/port 重复导出。
 
 ### ARCH-110 分可信级执行 Module/Event Contract
 

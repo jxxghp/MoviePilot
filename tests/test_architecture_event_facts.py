@@ -953,6 +953,117 @@ class TransferChain(SettlementOwner, ChainBase):
     assert producer["receiver_kind"] == "injected_event_manager"
 
 
+def test_collect_event_facts_tracks_runtime_type_checking_base_alias(
+    tmp_path: Path,
+) -> None:
+    """Owner 经 TYPE_CHECKING 的运行期基类别名仍应继承事件端口。"""
+    base_path = tmp_path / "base.py"
+    contract_path = tmp_path / "contract.py"
+    owner_path = tmp_path / "owner.py"
+    base_path.write_text(
+        '''
+class ChainBase:
+    def __init__(self, context):
+        self.eventmanager = context.event_manager
+''',
+        encoding="utf-8",
+    )
+    contract_path.write_text(
+        '''
+from typing import TYPE_CHECKING
+from app.chain.base import ChainBase
+
+_RuntimeBase = ChainBase
+
+if TYPE_CHECKING:
+    class _OwnerBase(_RuntimeBase):
+        pass
+else:
+    _OwnerBase = _RuntimeBase
+''',
+        encoding="utf-8",
+    )
+    owner_path.write_text(
+        '''
+from app.schemas.types import EventType
+from .contract import _OwnerBase
+
+class SettlementOwner(_OwnerBase):
+    def publish(self):
+        self.eventmanager.send_event(EventType.Alpha)
+''',
+        encoding="utf-8",
+    )
+
+    facts = collect_event_facts(
+        {
+            "app.chain.base": base_path,
+            "app.chain.sample.contract": contract_path,
+            "app.chain.sample.owner": owner_path,
+        },
+        EVENT_MEMBERS,
+    )
+
+    assert len(facts["producers"]) == 1
+    producer = facts["producers"][0]
+    assert producer["caller"] == "app.chain.sample.owner"
+    assert producer["qualname"] == "SettlementOwner.publish"
+    assert producer["events"] == ["EventType.Alpha"]
+    assert producer["receiver_kind"] == "injected_event_manager"
+
+
+def test_collect_event_facts_rejects_shadowed_type_checking_base_alias(
+    tmp_path: Path,
+) -> None:
+    """被重绑定的 TYPE_CHECKING 分支不能作为静态继承证据。"""
+    base_path = tmp_path / "base.py"
+    contract_path = tmp_path / "contract.py"
+    owner_path = tmp_path / "owner.py"
+    base_path.write_text(
+        '''
+class ChainBase:
+    def __init__(self, context):
+        self.eventmanager = context.event_manager
+''',
+        encoding="utf-8",
+    )
+    contract_path.write_text(
+        '''
+from typing import TYPE_CHECKING
+from app.chain.base import ChainBase
+
+TYPE_CHECKING = True
+if TYPE_CHECKING:
+    _OwnerBase = ChainBase
+else:
+    _OwnerBase = object
+''',
+        encoding="utf-8",
+    )
+    owner_path.write_text(
+        '''
+from app.schemas.types import EventType
+from .contract import _OwnerBase
+
+class SettlementOwner(_OwnerBase):
+    def publish(self):
+        self.eventmanager.send_event(EventType.Alpha)
+''',
+        encoding="utf-8",
+    )
+
+    facts = collect_event_facts(
+        {
+            "app.chain.base": base_path,
+            "app.chain.sample.contract": contract_path,
+            "app.chain.sample.owner": owner_path,
+        },
+        EVENT_MEMBERS,
+    )
+
+    assert facts["producers"] == []
+
+
 def test_collect_event_facts_consumer_schema_and_fingerprint_are_stable(
     tmp_path: Path,
 ) -> None:

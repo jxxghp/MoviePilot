@@ -421,6 +421,19 @@ A concrete chain that exposes slash-command interaction inherits
 implements only `_interaction_handler`; it must not re-export application-layer
 interaction managers.
 
+Download orchestration is owned by the same-named `app.chain.download` package.
+Its root lazily exposes only the stable `DownloadChain`; `facade.py` composes the
+owner classes and keeps the `DownloadFileDeleted` event wrapper on that stable
+class identity. Selection, submission, batch execution, existence checks, failure
+cooldown, history settlement, post-processing, subtitle handling, task control and
+technical ports each have one focused single-word child module. Startup imports
+the download ports directly from `ports.py`; canonical callers must not obtain
+owners or ports from the package root. The retired `app/chain/download.py`
+monolith must not return, and no `source.py` copy or duplicate implementation may
+remain. Download history, file rows and the durable Outbox intent commit in one
+transaction; notifications, background post-processing and immediate event
+publication run only after that commit succeeds.
+
 ### Module layer
 
 `app/modules/` contains pluggable downloaders, media servers, metadata sources,
@@ -772,6 +785,7 @@ driven workflow registration.
 | `app/db/adapters/mediaserver.py` | Per-operation media-server cache query/upsert/cleanup transaction adapter |
 | `app/application/history.py` | History use cases; deeply frozen DownloadHistory/TransferHistory DTOs and typed query/write/staging ports |
 | `app/db/adapters/history/download.py` | DownloadHistory short-session snapshot, query and mutation adapter |
+| `app/chain/download/` | Stable DownloadChain facade plus single-owner selection, submission, batch, existence, failure, history, post-processing, subtitle, task and technical-port modules |
 | `app/db/adapters/history/transfer.py` | TransferHistory short-session snapshot/query/mutation adapter and caller-owned transaction stager |
 | `app/application/security/user.py` | Frozen user/auth projections and atomic user aggregate service contracts |
 | `app/db/adapters/user.py` | User projection plus request-UoW mutation adapter |

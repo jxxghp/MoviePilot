@@ -1,6 +1,6 @@
 """删除下载任务工具"""
 
-from typing import Optional, Type
+from typing import Optional, Type, cast
 
 from pydantic import BaseModel, Field
 
@@ -58,8 +58,11 @@ class DeleteDownloadTasksTool(MoviePilotTool):
         hash_value: str, downloader: Optional[str] = None, delete_files: bool = False
     ) -> bool:
         """同步删除下载任务，避免下载器客户端阻塞事件循环。"""
-        return DownloadChain().remove_torrents(
-            hashs=[hash_value], downloader=downloader, delete_file=delete_files
+        return cast(
+            bool,
+            DownloadChain().remove_torrents(
+                hashs=[hash_value], downloader=downloader, delete_file=delete_files
+            ),
         )
 
     async def run(

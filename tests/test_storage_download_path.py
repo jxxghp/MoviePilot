@@ -9,7 +9,6 @@ from app.modules.filemanager.storages.alipan import AliPan
 from app.modules.filemanager.storages.rclone import Rclone
 from app.modules.filemanager.storages.u115 import U115Pan
 
-
 PAYLOAD = b"safe-download\n"
 
 
@@ -51,7 +50,7 @@ class _FakeU115Stream:
         """模拟响应状态检查。"""
         return None
 
-    def iter_bytes(self, chunk_size: int) -> Iterator[bytes]:
+    def iter_content(self, chunk_size: int) -> Iterator[bytes]:
         """返回下载内容分块。"""
         yield self._payload
 
@@ -68,14 +67,21 @@ class _FakeU115Stream:
         return None
 
 
-class _FakeU115Session:
-    """模拟 115 HTTP 会话。"""
+class _FakeU115RequestUtils:
+    """模拟 115 存储持有的统一 HTTP 请求边界。"""
 
     def __init__(self, payload: bytes) -> None:
         self._payload = payload
+        self.requests: list[tuple[str, bool]] = []
 
-    def stream(self, method: str, url: str) -> _FakeU115Stream:
+    def get_stream(
+        self,
+        url: str,
+        *,
+        raise_exception: bool,
+    ) -> _FakeU115Stream:
         """返回伪造的下载流。"""
+        self.requests.append((url, raise_exception))
         return _FakeU115Stream(self._payload)
 
 
@@ -165,7 +171,8 @@ def test_u115_download_writes_sanitized_filename(tmp_path: Path) -> None:
     """115 下载应将路径穿越文件名写入目标目录内。"""
     u115 = U115Pan.__new__(U115Pan)
     u115.chunk_size = 8192
-    u115.session = _FakeU115Session(PAYLOAD)
+    request_utils = _FakeU115RequestUtils(PAYLOAD)
+    u115._request_utils = request_utils
     detail = schemas.FileItem(size=len(PAYLOAD), pickcode="pick-code")
     fileitem = schemas.FileItem(
         storage="u115",
@@ -197,6 +204,9 @@ def test_u115_download_writes_sanitized_filename(tmp_path: Path) -> None:
     assert result == expected_path
     assert expected_path.read_bytes() == PAYLOAD
     assert not (tmp_path.parent / "proof.txt").exists()
+    assert request_utils.requests == [
+        ("https://example.invalid/proof.txt", True),
+    ]
 
 
 def test_rclone_download_uses_sanitized_target_path(tmp_path: Path) -> None:

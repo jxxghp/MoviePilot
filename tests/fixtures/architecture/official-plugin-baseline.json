@@ -3909,6 +3909,12 @@
         "plugins.v3/courseorganizer/__init__.py"
       ]
     },
+    "app.api.endpoints": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/lunatvsource/__init__.py"
+      ]
+    },
     "app.api.endpoints.plugin": {
       "file_count": 4,
       "files": [
@@ -5617,9 +5623,9 @@
     }
   },
   "provenance": {
-    "head": "8af03a0ff0af05d64ba748833bb87ba68a6bffad",
-    "python_file_count": 283,
-    "source_sha256": "5a08a3bde3f00793f64b7b4bb6d40d18bf523d8202bae1711ea1807959eb2f58"
+    "head": "aa69b3a5bd21148bf443cb69eb3095d4f557ea62",
+    "python_file_count": 284,
+    "source_sha256": "4c87d1625dffc8e84dbd8eb5c3fc75eb7457e64afaf43509af652461afa3e817"
   },
   "schema_version": 3,
   "scope": {

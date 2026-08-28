@@ -11,7 +11,7 @@
     "match_mode": "exact_fingerprint_set",
     "entries": [
       {
-        "caller": "app.chain.download",
+        "caller": "app.chain.download.facade",
         "qualname": "DownloadChain",
         "method": "register",
         "receiver_kind": "canonical_singleton",
@@ -23,9 +23,9 @@
         "handler": "DownloadChain.download_file_deleted",
         "registration_kind": "decorator",
         "priority": "<default>",
-        "fingerprint": "eb33287636f1bb928cb221c64dfb9663fb20b87ad699c41182a673f5af19ab27",
+        "fingerprint": "b21a96beb9e6c37b7ab8878fb39dd00a19e9b4ff8ed7e5b0d20a51e597ffe27b",
         "classification": "approved_static_registration",
-        "owner": "app.chain.download",
+        "owner": "app.chain.download.facade",
         "reason": "下载文件删除事件由 DownloadChain 处理关联状态清理。"
       },
       {

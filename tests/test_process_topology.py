@@ -81,8 +81,8 @@ def test_asgi_lifespan_rejects_topology_before_runtime_initialization(monkeypatc
     """外部 ASGI supervisor 也必须在生命周期副作用前执行同一校验。"""
     monkeypatch.setattr(settings, "API_WORKERS", 2)
     monkeypatch.setattr(settings, "MOVIEPILOT_SAFE_MODE", False)
-    set_loop = MagicMock()
-    monkeypatch.setattr(lifecycle.global_vars, "set_loop", set_loop)
+    register_loop = MagicMock()
+    monkeypatch.setattr(lifecycle.main_loop_registry, "register", register_loop)
 
     async def run_lifespan() -> None:
         async with lifecycle.lifespan(FastAPI()):
@@ -91,7 +91,7 @@ def test_asgi_lifespan_rejects_topology_before_runtime_initialization(monkeypatc
     with pytest.raises(UnsupportedProcessTopologyError):
         asyncio.run(run_lifespan())
 
-    set_loop.assert_not_called()
+    register_loop.assert_not_called()
 
 
 def test_doctor_fails_unsupported_full_runtime_topology(monkeypatch):

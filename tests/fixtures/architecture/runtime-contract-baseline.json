@@ -1238,12 +1238,12 @@
     "consumer_registration_count": 17,
     "consumers": [
       {
-        "caller": "app.chain.download",
+        "caller": "app.chain.download.facade",
         "dynamic": false,
         "events": [
           "EventType.DownloadFileDeleted"
         ],
-        "fingerprint": "eb33287636f1bb928cb221c64dfb9663fb20b87ad699c41182a673f5af19ab27",
+        "fingerprint": "b21a96beb9e6c37b7ab8878fb39dd00a19e9b4ff8ed7e5b0d20a51e597ffe27b",
         "handler": "DownloadChain.download_file_deleted",
         "invalid": false,
         "method": "register",
@@ -1580,13 +1580,13 @@
       "ChainEventType.ResourceDownload": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "978801b5e15eec04066d20fa54a7d8ed6578cf81670a35d2e0019497879d2453"
+          "aac2e9ac03b43fd89c42f3efba186365152568edc05881f24204a88fbd74bdbf"
         ]
       },
       "ChainEventType.ResourceSelection": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "7b34b828057205e095f61731bea737412e194a8e364dcd3c90cc3df6812fc826"
+          "8121a37b3badc8940c2f1c5bbc563845cf342bc073c20af63113c6989aa01255"
         ]
       },
       "ChainEventType.StorageOperSelection": {
@@ -1686,20 +1686,20 @@
       "EventType.DownloadAdded": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "912f9d1ffc673cab43f157ea3674122c84591b695761275cee39cc74ced7011d",
-          "f2e4ec70164d8ccb46a0f032c57c6c0452bee9ee55a2aa69e4f770e7d2c855b3",
-          "f2e4ec70164d8ccb46a0f032c57c6c0452bee9ee55a2aa69e4f770e7d2c855b3"
+          "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554",
+          "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554",
+          "912f9d1ffc673cab43f157ea3674122c84591b695761275cee39cc74ced7011d"
         ]
       },
       "EventType.DownloadDeleted": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "359fa893dc518c4fa6ca1cc7a91ab2360aab44ed23793efa0d1ccf1e02979680"
+          "9a28736962c31881240e5a70ff6e37113e87c0aecb2f06da468ffa81df5aa235"
         ]
       },
       "EventType.DownloadFileDeleted": {
         "consumer_fingerprints": [
-          "eb33287636f1bb928cb221c64dfb9663fb20b87ad699c41182a673f5af19ab27"
+          "b21a96beb9e6c37b7ab8878fb39dd00a19e9b4ff8ed7e5b0d20a51e597ffe27b"
         ],
         "producer_fingerprints": [
           "7802616f8618b6328d856c94c08fdcb6271254e3958491e12ca9a194013e31b7"
@@ -2236,63 +2236,63 @@
         "receiver_kind": "injected_event_manager"
       },
       {
-        "caller": "app.chain.download",
+        "caller": "app.chain.download.history",
         "dynamic": false,
         "events": [
-          "ChainEventType.ResourceDownload"
+          "EventType.DownloadAdded"
         ],
-        "fingerprint": "978801b5e15eec04066d20fa54a7d8ed6578cf81670a35d2e0019497879d2453",
+        "fingerprint": "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554",
         "invalid": false,
         "method": "send_event",
-        "qualname": "DownloadChain._apply_resource_download_event",
-        "receiver_kind": "canonical_singleton"
+        "qualname": "DownloadHistoryOwner._settle_download_success",
+        "receiver_kind": "injected_event_manager"
       },
       {
-        "caller": "app.chain.download",
+        "caller": "app.chain.download.history",
+        "dynamic": false,
+        "events": [
+          "EventType.DownloadAdded"
+        ],
+        "fingerprint": "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554",
+        "invalid": false,
+        "method": "send_event",
+        "qualname": "DownloadHistoryOwner._settle_download_success",
+        "receiver_kind": "injected_event_manager"
+      },
+      {
+        "caller": "app.chain.download.selection",
         "dynamic": false,
         "events": [
           "ChainEventType.ResourceSelection"
         ],
-        "fingerprint": "7b34b828057205e095f61731bea737412e194a8e364dcd3c90cc3df6812fc826",
+        "fingerprint": "8121a37b3badc8940c2f1c5bbc563845cf342bc073c20af63113c6989aa01255",
         "invalid": false,
         "method": "send_event",
-        "qualname": "DownloadChain._prepare_batch_download_contexts",
+        "qualname": "DownloadSelectionOwner._prepare_batch_download_contexts",
         "receiver_kind": "injected_event_manager"
       },
       {
-        "caller": "app.chain.download",
+        "caller": "app.chain.download.submission",
         "dynamic": false,
         "events": [
-          "EventType.DownloadAdded"
+          "ChainEventType.ResourceDownload"
         ],
-        "fingerprint": "f2e4ec70164d8ccb46a0f032c57c6c0452bee9ee55a2aa69e4f770e7d2c855b3",
+        "fingerprint": "aac2e9ac03b43fd89c42f3efba186365152568edc05881f24204a88fbd74bdbf",
         "invalid": false,
         "method": "send_event",
-        "qualname": "DownloadChain._settle_download_success",
-        "receiver_kind": "injected_event_manager"
+        "qualname": "DownloadSubmissionOwner._apply_resource_download_event",
+        "receiver_kind": "canonical_singleton"
       },
       {
-        "caller": "app.chain.download",
-        "dynamic": false,
-        "events": [
-          "EventType.DownloadAdded"
-        ],
-        "fingerprint": "f2e4ec70164d8ccb46a0f032c57c6c0452bee9ee55a2aa69e4f770e7d2c855b3",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "DownloadChain._settle_download_success",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain.download",
+        "caller": "app.chain.download.tasks",
         "dynamic": false,
         "events": [
           "EventType.DownloadDeleted"
         ],
-        "fingerprint": "359fa893dc518c4fa6ca1cc7a91ab2360aab44ed23793efa0d1ccf1e02979680",
+        "fingerprint": "9a28736962c31881240e5a70ff6e37113e87c0aecb2f06da468ffa81df5aa235",
         "invalid": false,
         "method": "send_event",
-        "qualname": "DownloadChain.download_file_deleted",
+        "qualname": "DownloadTaskOwner._download_file_deleted",
         "receiver_kind": "injected_event_manager"
       },
       {
@@ -9437,7 +9437,7 @@
       ],
       "site_subtitle_links": [
         {
-          "caller": "app.chain.download",
+          "caller": "app.chain.download.subtitle",
           "count": 1,
           "mode": "sync"
         }

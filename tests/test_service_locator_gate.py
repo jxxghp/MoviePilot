@@ -51,6 +51,10 @@ def test_initializer_provider_registration_requires_explicit_stage() -> None:
     """冷导入 initializer 不得注册 provider；configure/reset 必须成对生效。"""
     root = Path(__file__).resolve().parents[1]
     script = r'''
+from app.testing.bootstrap import ensure_sites_stub
+
+ensure_sites_stub()
+
 import app.application.agent as agent
 import app.application.commands as commands
 import app.application.messaging.skill as skill
