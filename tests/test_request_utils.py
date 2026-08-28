@@ -174,3 +174,24 @@ def test_request_utils_preserves_default_and_explicit_tls_verification() -> None
 
     assert default_session.calls[0][2]["verify"] is False
     assert secure_session.calls[0][2]["verify"] is True
+
+
+def test_request_utils_normalizes_per_request_cookie_string(monkeypatch) -> None:
+    """单次请求传入 Cookie 字符串时应先转换为 requests 支持的字典。"""
+    response = _make_response()
+    session = requests.Session()
+    prepared_requests = []
+
+    def fake_send(request, **_kwargs):
+        prepared_requests.append(request)
+        return response
+
+    monkeypatch.setattr(session, "send", fake_send)
+
+    result = RequestUtils(session=session).get_res(
+        "https://example.com/data",
+        cookies="sid=1; token=two",
+    )
+
+    assert result is response
+    assert prepared_requests[0].headers["Cookie"] == "sid=1; token=two"

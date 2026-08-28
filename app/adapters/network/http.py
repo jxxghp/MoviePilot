@@ -462,7 +462,7 @@ class RequestUtils:
         :param method: HTTP方法，如 get, post, put 等
         :param url: 请求的URL
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
-        :param kwargs: 其他请求参数，如headers, cookies, proxies等
+        :param kwargs: 其他请求参数，如headers、cookies（字符串或字典）、proxies等
         :return: HTTP响应对象
         :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
         """
@@ -473,7 +473,12 @@ class RequestUtils:
         kwargs["headers"] = with_correlation_header(
             kwargs.get("headers", self._headers)
         )
-        kwargs.setdefault("cookies", self._cookies)
+        request_cookies = kwargs.get("cookies")
+        if isinstance(request_cookies, str):
+            # requests 的请求准备阶段仅支持字典或 CookieJar，站点配置仍以字符串保存。
+            kwargs["cookies"] = cookie_parse(request_cookies)
+        else:
+            kwargs.setdefault("cookies", self._cookies)
         kwargs.setdefault("proxies", self._proxies)
         kwargs.setdefault("timeout", self._timeout)
         kwargs.setdefault("verify", self._verify)
