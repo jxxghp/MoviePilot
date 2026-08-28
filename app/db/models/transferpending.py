@@ -10,6 +10,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     and_,
+    cast as sql_cast,
     column,
     delete,
     exists,
@@ -19,7 +20,9 @@ from sqlalchemy import (
     table,
     update,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import Base, execute_dml, get_id_column
 
@@ -389,7 +392,11 @@ class TransferPending(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """仅以有效租约和完整冻结计划把任务推进或保持为 running。"""
+        """仅以有效租约和完整冻结计划把任务推进或保持为 running。
+
+        PostgreSQL 的 JSON 类型不支持直接等值比较，计划匹配条件会在该方言下
+        临时转换为 JSONB，避免执行 CAS 时触发数据库操作符错误。
+        """
         if not all((
                 task_id,
                 lease_token,
@@ -400,6 +407,10 @@ class TransferPending(Base):
                 updated_at,
         )):
             return 0
+        checkpoint_payload_match = cls._checkpoint_payload_match(
+            db,
+            checkpoint_payload,
+        )
         return execute_dml(
             db,
             update(cls)
@@ -408,7 +419,7 @@ class TransferPending(Base):
                 cls.state == admission_state,
                 cls.state.in_(("planned", "provider_pending")),
                 cls.checkpoint_version == checkpoint_version,
-                cls.checkpoint_payload == checkpoint_payload,
+                checkpoint_payload_match,
                 cls.planned_at.is_not(None),
                 cls.lease_token == lease_token,
                 cls.lease_expires_at.is_not(None),
@@ -423,6 +434,20 @@ class TransferPending(Base):
             ),
             execution_options={"synchronize_session": False},
         )
+
+    @classmethod
+    def _checkpoint_payload_match(
+            cls,
+            db: Session,
+            checkpoint_payload: dict[str, Any],
+    ) -> ColumnElement[bool]:
+        """构造跨数据库的冻结计划匹配条件。"""
+        if db.get_bind(mapper=cls).dialect.name == "postgresql":
+            return sql_cast(cls.checkpoint_payload, JSONB) == sql_cast(
+                checkpoint_payload,
+                JSONB,
+            )
+        return cls.checkpoint_payload == checkpoint_payload
 
     @classmethod
     def defer_execution(

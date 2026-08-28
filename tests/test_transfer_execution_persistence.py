@@ -4,8 +4,9 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, create_mock_engine, select
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -335,6 +336,46 @@ def test_stage_execution_running_cas_binds_exact_plan_identity(execution_store):
             updated_at="2026-08-27 09:30:00",
         )
         assert current == 1
+
+
+def test_stage_execution_running_casts_postgresql_json_before_comparison(
+        monkeypatch,
+):
+    """PostgreSQL 的 JSON 计划比较必须转为 JSONB，避免缺少 json 等值操作符。"""
+    engine = create_mock_engine(
+        "postgresql+psycopg://",
+        lambda *_args, **_kwargs: None,
+    )
+    statements = []
+
+    def capture_statement(_db, statement, execution_options=None):
+        """捕获模型生成的 DML，检查生产 PostgreSQL 方言的 SQL。"""
+        del execution_options
+        statements.append(statement)
+        return 1
+
+    monkeypatch.setattr(
+        "app.db.models.transferpending.execute_dml",
+        capture_statement,
+    )
+    payload = {"schema_version": 1, "items": []}
+    with Session(engine) as session:
+        updated = TransferPending.stage_execution_running(
+            session,
+            task_id="task-1",
+            lease_token="lease-1",
+            admission_state="planned",
+            checkpoint_version=1,
+            checkpoint_payload=payload,
+            now_utc="2026-08-27 01:30:00.000000",
+            updated_at="2026-08-27 09:30:00",
+        )
+
+    assert updated == 1
+    assert len(statements) == 1
+    sql = str(statements[0].compile(dialect=postgresql.dialect()))
+    assert "CAST(transferpending.checkpoint_payload AS JSONB)" in sql
+    assert "CAST(%(param_1)s::JSONB AS JSONB)" in sql
 
 
 def test_success_path_persists_steps_and_execution_checkpoint(execution_store):
