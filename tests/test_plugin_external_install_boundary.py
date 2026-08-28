@@ -438,7 +438,11 @@ async def test_http_install_forwards_repo_url_without_granting_source_authority(
     """普通更新保留绑定仓库提示，但不能把它升级为选源授权。"""
     gateway = Mock()
     gateway.install = AsyncMock(
-        return_value=SimpleNamespace(success=True, message="")
+        return_value=SimpleNamespace(
+            success=True,
+            message="installed",
+            restart_required=True,
+        )
     )
     monkeypatch.setattr(
         plugin_endpoint,
@@ -455,6 +459,7 @@ async def test_http_install_forwards_repo_url_without_granting_source_authority(
     )
 
     assert result.success is True
+    assert result.data.restart_required is True
     gateway.install.assert_awaited_once_with(
         plugin_id="DemoPlugin",
         repo_url=REPO_URL,
@@ -471,7 +476,11 @@ async def test_http_explicit_source_install_uses_explicit_gateway_mode(
     """专用来源安装入口必须把管理员选择传给统一 Gateway。"""
     gateway = Mock()
     gateway.install = AsyncMock(
-        return_value=SimpleNamespace(success=True, message="")
+        return_value=SimpleNamespace(
+            success=True,
+            message="installed",
+            restart_required=True,
+        )
     )
     monkeypatch.setattr(
         plugin_endpoint,
@@ -490,6 +499,7 @@ async def test_http_explicit_source_install_uses_explicit_gateway_mode(
     )
 
     assert result.success is True
+    assert result.data.restart_required is True
     gateway.install.assert_awaited_once_with(
         plugin_id="DemoPlugin",
         repo_url=REPO_URL,
@@ -506,7 +516,11 @@ async def test_http_source_change_requires_revision_and_explicit_gateway_mode(
     """管理员换源入口必须把目标仓库和精确 revision 交给统一 Gateway。"""
     gateway = Mock()
     gateway.install = AsyncMock(
-        return_value=SimpleNamespace(success=True, message="")
+        return_value=SimpleNamespace(
+            success=True,
+            message="installed",
+            restart_required=True,
+        )
     )
     monkeypatch.setattr(
         plugin_endpoint,
@@ -525,6 +539,7 @@ async def test_http_source_change_requires_revision_and_explicit_gateway_mode(
     )
 
     assert result.success is True
+    assert result.data.restart_required is True
     gateway.install.assert_awaited_once_with(
         plugin_id="DemoPlugin",
         repo_url=REPO_URL,
@@ -662,10 +677,14 @@ def test_source_api_openapi_uses_structured_contracts() -> None:
 
     change_schema = change_operation["requestBody"]["content"]["application/json"]["schema"]
     install_schema = install_operation["requestBody"]["content"]["application/json"]["schema"]
+    change_response_schema = change_operation["responses"]["200"]["content"]["application/json"]["schema"]
+    install_response_schema = install_operation["responses"]["200"]["content"]["application/json"]["schema"]
     options_schema = options_operation["responses"]["200"]["content"]["application/json"]["schema"]
 
     assert change_schema["$ref"].endswith("/PluginSourceChangeRequest")
     assert install_schema["$ref"].endswith("/PluginSourceInstallRequest")
+    assert change_response_schema["$ref"].endswith("/Response_PluginInstallOutcome_")
+    assert install_response_schema["$ref"].endswith("/Response_PluginInstallOutcome_")
     assert options_schema["$ref"].endswith("/Response_PluginSourceOptions_")
 
 

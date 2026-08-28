@@ -482,7 +482,7 @@ class PluginInstallCommand:
             ),
         )
         if state.native_dependency_changes:
-            result_message = "插件已安装，更新的原生依赖将在重启后完整生效"
+            result_message = "插件已安装，重启 MoviePilot 后完成依赖更新"
         else:
             result_message = message or "插件安装成功"
         if checkpoint_cleanup_error:

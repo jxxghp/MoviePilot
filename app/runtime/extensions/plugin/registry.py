@@ -109,13 +109,21 @@ class PluginRegistry:
         """同时移除指定插件类、运行实例和状态。"""
         self._classes.pop(plugin_id, None)
         self._running.pop(plugin_id, None)
-        if self._runtime_statuses.pop(plugin_id, None) is not None:
+        status_removed = self._runtime_statuses.pop(plugin_id, None) is not None
+        restart_requirement_removed = (
+            self._restart_required_plugins.pop(plugin_id, None) is not None
+        )
+        if status_removed or restart_requirement_removed:
             self._generation += 1
 
     def clear(self) -> None:
         """原地清空注册表，保持外部持有的兼容字典引用有效。"""
         self._classes.clear()
         self._running.clear()
-        if self._runtime_statuses:
-            self._runtime_statuses.clear()
+        had_runtime_state = bool(
+            self._runtime_statuses or self._restart_required_plugins
+        )
+        self._runtime_statuses.clear()
+        self._restart_required_plugins.clear()
+        if had_runtime_state:
             self._generation += 1

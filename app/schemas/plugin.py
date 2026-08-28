@@ -145,12 +145,17 @@ class PluginRuntimeSummary(BaseModel):
     generation: int = Field(description="插件运行状态变化代次")
     pending_count: int = Field(description="仍处于准备阶段的插件数量")
     failed_count: int = Field(description="加载失败或被策略阻止的插件数量")
-    restart_required: bool = Field(
-        description="当前进程是否仍持有安装前的原生依赖载荷"
-    )
     restart_required_plugin_ids: List[str] = Field(
         default_factory=list,
         description="重启后才能完整激活新原生依赖的物理插件 ID",
+    )
+
+
+class PluginInstallOutcome(BaseModel):
+    """插件载荷写入成功后的前端反馈依据。"""
+
+    restart_required: bool = Field(
+        description="本次依赖更新是否需要重启 MoviePilot 才能完成"
     )
 
 

@@ -79,6 +79,14 @@ def test_registry_tracks_restart_requirement_independently_from_runtime_status()
 
     registry.remove("Demo")
 
-    assert registry.restart_required_snapshot() == {
-        "Demo": ("native-a", "native-b"),
-    }
+    assert registry.restart_required_snapshot() == {}
+
+
+def test_registry_clear_removes_restart_requirements():
+    """整体清空注册表时不能保留已卸载插件的重启要求。"""
+    registry = PluginRegistry()
+    registry.mark_restart_required("Demo", ("native-demo",))
+
+    registry.clear()
+
+    assert registry.restart_required_snapshot() == {}
