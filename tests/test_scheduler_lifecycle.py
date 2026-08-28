@@ -5,12 +5,15 @@ import gc
 import inspect
 import threading
 import warnings
+from types import SimpleNamespace
 
 import pytest
 
-from app import scheduler as scheduler_module
-from app.runtime.config import global_vars
-from app.scheduler import Scheduler
+from app.scheduler import bridge as scheduler_bridge
+from app.scheduler import execution as scheduler_execution
+from app.scheduler import progress as scheduler_progress
+from app.scheduler.facade import Scheduler
+from app.scheduler.registry import ExecutionRegistry
 
 
 class _ProgressStub:
@@ -47,6 +50,26 @@ class _AsyncProgressStub:
         """记录终态但不访问外部缓存。"""
 
 
+def _patch_progress(
+        monkeypatch: pytest.MonkeyPatch,
+        async_progress: type = _AsyncProgressStub,
+) -> None:
+    """替换执行启动与进度 owner 各自持有的缓存边界。"""
+    monkeypatch.setattr(scheduler_execution, "ProgressHelper", _ProgressStub)
+    monkeypatch.setattr(scheduler_progress, "ProgressHelper", _ProgressStub)
+    monkeypatch.setattr(scheduler_progress, "AsyncProgressHelper", async_progress)
+
+
+def _patch_main_loop(
+        monkeypatch: pytest.MonkeyPatch,
+        loop: asyncio.AbstractEventLoop,
+) -> None:
+    """让执行与桥接 owner 共享同一个测试事件循环登记。"""
+    registry = SimpleNamespace(current=loop)
+    monkeypatch.setattr(scheduler_execution, "main_loop_registry", registry)
+    monkeypatch.setattr(scheduler_bridge, "main_loop_registry", registry)
+
+
 def _scheduler(job_id: str, func) -> Scheduler:
     """构造已启动但不拥有 APScheduler 线程的实例。"""
     scheduler = object.__new__(Scheduler)
@@ -63,10 +86,8 @@ def _scheduler(job_id: str, func) -> Scheduler:
         }
     }
     scheduler._lifecycle_state = "running"
-    scheduler._handles = {}
-    scheduler._job_generations = {job_id: 1}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
+    scheduler._registry.assign_generation(job_id, scheduler._jobs[job_id])
     return scheduler
 
 
@@ -91,20 +112,19 @@ async def test_stop_async_cancels_and_awaits_scheduler_owned_job(monkeypatch) ->
         finally:
             cleaned.set()
 
-    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
-    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
+    _patch_progress(monkeypatch)
     scheduler = _scheduler("lifecycle-job", job)
 
     assert scheduler.start("lifecycle-job") is True
     await asyncio.wait_for(started.wait(), timeout=1)
-    assert scheduler._handles
+    assert scheduler._registry.handles()
 
     await scheduler.stop_async()
 
     assert cleaned.is_set()
     assert scheduler._jobs["lifecycle-job"]["running"] is False
     assert scheduler._jobs["lifecycle-job"]["last_error"] == "任务已取消"
-    assert scheduler._handles == {}
+    assert scheduler._registry.handles() == ()
     assert scheduler._lifecycle_state == "stopped"
 
 
@@ -125,12 +145,7 @@ async def test_stop_during_final_progress_does_not_mark_completed_job_unsubmitte
     async def job() -> None:
         return None
 
-    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
-    monkeypatch.setattr(
-        scheduler_module,
-        "AsyncProgressHelper",
-        BlockingFinishProgress,
-    )
+    _patch_progress(monkeypatch, BlockingFinishProgress)
     scheduler = _scheduler("final-progress-stop", job)
 
     assert scheduler.start("final-progress-stop") is True
@@ -140,19 +155,18 @@ async def test_stop_during_final_progress_does_not_mark_completed_job_unsubmitte
 
     assert scheduler._jobs["final-progress-stop"]["running"] is False
     assert scheduler._jobs["final-progress-stop"]["last_error"] is None
-    assert scheduler._handles == {}
-    assert scheduler._active_job_generations == {}
+    assert scheduler._registry.handles() == ()
+    assert scheduler._registry.is_active("final-progress-stop") is False
 
-    monkeypatch.setattr(
-        scheduler_module,
-        "AsyncProgressHelper",
-        _AsyncProgressStub,
-    )
+    _patch_progress(monkeypatch)
     scheduler._lifecycle_state = "running"
     assert scheduler.start("final-progress-stop") is True
 
     async def wait_until_finished() -> None:
-        while scheduler._handles or scheduler._active_job_generations:
+        while (
+                scheduler._registry.handles()
+                or scheduler._registry.is_active("final-progress-stop")
+        ):
             await asyncio.sleep(0)
 
     await asyncio.wait_for(wait_until_finished(), timeout=1)
@@ -180,9 +194,8 @@ async def test_foreign_loop_submission_runs_on_main_loop_and_finishes_before_sto
             await cleanup_release.wait()
             raise
 
-    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
-    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
-    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", main_loop)
+    _patch_progress(monkeypatch)
+    _patch_main_loop(monkeypatch, main_loop)
     scheduler = _scheduler("foreign-loop-job", job)
 
     def submit_from_foreign_loop() -> bool:
@@ -204,18 +217,18 @@ async def test_foreign_loop_submission_runs_on_main_loop_and_finishes_before_sto
     stop_task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await stop_task
-    assert scheduler._handles
+    assert scheduler._registry.handles()
     assert scheduler._lifecycle_state == "stopping"
 
     cleanup_release.set()
 
     async def wait_until_released() -> None:
-        while scheduler._handles:
+        while scheduler._registry.handles():
             await asyncio.sleep(0)
 
     await asyncio.wait_for(wait_until_released(), timeout=1)
     await scheduler.stop_async()
-    assert scheduler._handles == {}
+    assert scheduler._registry.handles() == ()
     assert scheduler._lifecycle_state == "stopped"
 
 
@@ -231,9 +244,8 @@ async def test_cross_thread_submission_is_registered_before_stop_snapshot(
     async def job() -> None:
         await asyncio.Event().wait()
 
-    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
-    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
-    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", main_loop)
+    _patch_progress(monkeypatch)
+    _patch_main_loop(monkeypatch, main_loop)
     scheduler = _scheduler("atomic-submit", job)
     register_handle = scheduler._register_handle
 
@@ -287,12 +299,12 @@ async def test_submit_to_loop_tracks_internal_progress_or_finish_tasks() -> None
     )
 
     await asyncio.wait_for(started.wait(), timeout=1)
-    assert len(scheduler._handles) == 1
+    assert len(scheduler._registry.handles()) == 1
 
     await scheduler.stop_async()
 
     assert cancelled.is_set()
-    assert scheduler._handles == {}
+    assert scheduler._registry.handles() == ()
 
 
 @pytest.mark.anyio
@@ -331,9 +343,8 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
         async def end(self, **_kwargs) -> None:
             pass
 
-    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
-    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", BlockingProgress)
-    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", asyncio.get_running_loop())
+    _patch_progress(monkeypatch, BlockingProgress)
+    _patch_main_loop(monkeypatch, asyncio.get_running_loop())
 
     def job(progress_callback) -> None:
         progress_callback(value=50)
@@ -343,13 +354,13 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
     await asyncio.wait_for(update_started.wait(), timeout=1)
     await asyncio.sleep(0)
 
-    assert len(scheduler._handles) == 2
+    assert len(scheduler._registry.handles()) == 2
     assert not finish_started.is_set()
 
     await scheduler.stop_async()
 
     assert cancelled == 1
-    assert scheduler._handles == {}
+    assert scheduler._registry.handles() == ()
 
 
 @pytest.mark.anyio
@@ -364,10 +375,10 @@ async def test_stale_progress_cannot_update_replaced_job(monkeypatch) -> None:
         async def update(self, **kwargs) -> None:
             updates.append(kwargs)
 
-    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", RecordingProgress)
+    monkeypatch.setattr(scheduler_progress, "AsyncProgressHelper", RecordingProgress)
     scheduler = _scheduler("generation-progress", lambda: None)
     old_job = scheduler._jobs["generation-progress"]
-    callback = scheduler._Scheduler__build_progress_callback(
+    callback = scheduler._build_progress_callback(
         "generation-progress",
         old_job,
     )
@@ -383,7 +394,7 @@ async def test_stale_progress_cannot_update_replaced_job(monkeypatch) -> None:
     await asyncio.sleep(0)
 
     assert updates == []
-    assert scheduler._handles == {}
+    assert scheduler._registry.handles() == ()
 
 
 @pytest.mark.anyio
@@ -409,8 +420,7 @@ async def test_final_progress_waits_for_pending_update(monkeypatch) -> None:
     async def job(progress_callback) -> None:
         progress_callback(value=100, text="业务处理完成")
 
-    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
-    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", BlockingProgress)
+    _patch_progress(monkeypatch, BlockingProgress)
     scheduler = _scheduler("progress-order", job)
 
     assert scheduler.start("progress-order") is True
@@ -451,14 +461,15 @@ async def test_replaced_job_keeps_active_state_without_stale_progress(monkeypatc
         async def get(self):
             return detail
 
-    monkeypatch.setattr(scheduler_module, "ProgressHelper", RecordingProgress)
+    monkeypatch.setattr(scheduler_execution, "ProgressHelper", RecordingProgress)
+    monkeypatch.setattr(scheduler_progress, "ProgressHelper", RecordingProgress)
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_progress,
         "AsyncProgressHelper",
         RecordingAsyncProgress,
     )
     scheduler = _scheduler("generation-cache", lambda: None)
-    old_job = scheduler._Scheduler__prepare_job("generation-cache")
+    old_job = scheduler._prepare_job("generation-cache")
     assert old_job is not None
     assert detail["data"]["_generation"] == 1
 
@@ -486,7 +497,7 @@ async def test_replaced_job_keeps_active_state_without_stale_progress(monkeypatc
 @pytest.mark.anyio
 async def test_stale_generation_cannot_finish_replaced_job(monkeypatch) -> None:
     """旧 generation 收尾不得改写同 ID 的新任务状态或进度。"""
-    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
+    monkeypatch.setattr(scheduler_progress, "AsyncProgressHelper", _AsyncProgressStub)
     scheduler = _scheduler("generation-job", lambda: None)
     old_job = scheduler._jobs["generation-job"]
     old_job["running"] = True
@@ -498,7 +509,7 @@ async def test_stale_generation_cannot_finish_replaced_job(monkeypatch) -> None:
     }
     scheduler._jobs["generation-job"] = new_job
 
-    await scheduler._Scheduler__finish_job(
+    await scheduler._finish_job(
         job_id="generation-job",
         job=old_job,
         generation=1,
@@ -539,7 +550,7 @@ def test_agent_task_manual_start_has_single_reservation() -> None:
 
     assert second is False
     assert results == [True]
-    assert scheduler._agent_task_reservations == {}
+    assert scheduler._registry.reservation_owner("agent-task-1") is None
 
 
 def test_scheduler_rejects_new_submission_after_stop() -> None:
@@ -624,8 +635,7 @@ async def test_config_reload_preserves_overlap_guard_across_job_generations(
             await release.wait()
             finished.set()
 
-    monkeypatch.setattr(scheduler_module, "ProgressHelper", _ProgressStub)
-    monkeypatch.setattr(scheduler_module, "AsyncProgressHelper", _AsyncProgressStub)
+    _patch_progress(monkeypatch)
     scheduler = _scheduler("reload-overlap", job)
 
     class ActiveScheduler:
@@ -666,20 +676,26 @@ async def test_config_reload_preserves_overlap_guard_across_job_generations(
     assert listed[0].status == "正在运行"
     assert scheduler.start("reload-overlap") is False
     assert run_count == 1
-    assert len(scheduler._handles) == 1
+    assert len(scheduler._registry.handles()) == 1
 
     release.set()
     await asyncio.wait_for(finished.wait(), timeout=1)
 
     async def wait_until_released() -> None:
-        while scheduler._active_job_generations or scheduler._handles:
+        while (
+                scheduler._registry.is_active("reload-overlap")
+                or scheduler._registry.handles()
+        ):
             await asyncio.sleep(0)
 
     await asyncio.wait_for(wait_until_released(), timeout=1)
     assert scheduler.start("reload-overlap") is True
 
     async def wait_until_second_run_finishes() -> None:
-        while scheduler._active_job_generations or scheduler._handles:
+        while (
+                scheduler._registry.is_active("reload-overlap")
+                or scheduler._registry.handles()
+        ):
             await asyncio.sleep(0)
 
     await asyncio.wait_for(wait_until_second_run_finishes(), timeout=1)
@@ -698,27 +714,27 @@ def test_stop_between_prepare_and_submission_releases_active_generation(
         calls += 1
 
     scheduler._jobs["stop-race"]["func"] = job
-    original_prepare = scheduler._Scheduler__prepare_job
+    original_prepare = scheduler._prepare_job
 
     def prepare_then_stop(job_id: str):
         prepared = original_prepare(job_id)
         scheduler._begin_stop()
         return prepared
 
-    monkeypatch.setattr(scheduler, "_Scheduler__prepare_job", prepare_then_stop)
+    monkeypatch.setattr(scheduler, "_prepare_job", prepare_then_stop)
 
     assert scheduler.start("stop-race") is False
     assert calls == 0
-    assert scheduler._handles == {}
-    assert scheduler._active_job_generations == {}
+    assert scheduler._registry.handles() == ()
+    assert scheduler._registry.is_active("stop-race") is False
     assert scheduler._jobs["stop-race"]["running"] is False
     assert scheduler._jobs["stop-race"]["last_error"] == "任务未提交"
 
-    monkeypatch.setattr(scheduler, "_Scheduler__prepare_job", original_prepare)
+    monkeypatch.setattr(scheduler, "_prepare_job", original_prepare)
     scheduler._lifecycle_state = "running"
     assert scheduler.start("stop-race") is True
     assert calls == 1
-    assert scheduler._active_job_generations == {}
+    assert scheduler._registry.is_active("stop-race") is False
 
 
 @pytest.mark.anyio
@@ -737,8 +753,8 @@ async def test_cross_thread_rejection_closes_unstarted_business_coroutine(
         calls += 1
 
     scheduler._jobs["cross-thread-stop-race"]["func"] = job
-    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", main_loop)
-    original_prepare = scheduler._Scheduler__prepare_job
+    _patch_main_loop(monkeypatch, main_loop)
+    original_prepare = scheduler._prepare_job
 
     def prepare_then_wait(job_id: str):
         result = original_prepare(job_id)
@@ -746,7 +762,7 @@ async def test_cross_thread_rejection_closes_unstarted_business_coroutine(
         release.wait(timeout=1)
         return result
 
-    monkeypatch.setattr(scheduler, "_Scheduler__prepare_job", prepare_then_wait)
+    monkeypatch.setattr(scheduler, "_prepare_job", prepare_then_wait)
 
     with warnings.catch_warnings(record=True) as captured:
         warnings.simplefilter("always", RuntimeWarning)
@@ -760,8 +776,8 @@ async def test_cross_thread_rejection_closes_unstarted_business_coroutine(
         gc.collect()
 
     assert calls == 0
-    assert scheduler._active_job_generations == {}
-    assert scheduler._handles == {}
+    assert scheduler._registry.is_active("cross-thread-stop-race") is False
+    assert scheduler._registry.handles() == ()
     assert not any("was never awaited" in str(item.message) for item in captured)
 
 
@@ -795,13 +811,13 @@ def test_cancelled_cross_thread_proxy_waits_for_target_loop_cleanup(
         calls += 1
 
     scheduler._jobs["cancel-before-start"]["func"] = business
-    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", target_loop)
+    _patch_main_loop(monkeypatch, target_loop)
 
     with warnings.catch_warnings(record=True) as captured:
         warnings.simplefilter("always", RuntimeWarning)
         try:
             assert scheduler.start("cancel-before-start") is True
-            scheduler_handle = next(iter(scheduler._handles.values()))
+            scheduler_handle = scheduler._registry.handles()[0]
             scheduler._cancel_handle(scheduler_handle)
             assert not scheduler_handle.completion.done()
 
@@ -817,6 +833,6 @@ def test_cancelled_cross_thread_proxy_waits_for_target_loop_cleanup(
 
     assert calls == 0
     assert loop_errors == []
-    assert scheduler._active_job_generations == {}
-    assert scheduler._handles == {}
+    assert scheduler._registry.is_active("cancel-before-start") is False
+    assert scheduler._registry.handles() == ()
     assert not any("was never awaited" in str(item.message) for item in captured)

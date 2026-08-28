@@ -11,10 +11,12 @@ from watchfiles import Change
 from app.adapters.external.market import PluginHelper
 from app.foundation.singleton import Singleton
 from app.runtime.events import Event, eventmanager
-from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.plugin.paths import PluginPathResolver
 from app.runtime.extensions.plugin.system import get_plugin_system
-from app.scheduler import Scheduler
+from app.runtime.extensions.plugin_manager import PluginManager
+from app.scheduler import reconcile as scheduler_reconcile
+from app.scheduler.facade import Scheduler
+from app.scheduler.registry import ExecutionRegistry
 from app.schemas.types import EventType, SystemConfigKey
 
 
@@ -188,10 +190,7 @@ def _build_scheduler_for_plugin_reload(jobs: dict, backend) -> Scheduler:
     scheduler._jobs = jobs
     scheduler._scheduler = backend
     scheduler._lifecycle_state = "running"
-    scheduler._handles = {}
-    scheduler._job_generations = {}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
     return scheduler
 
 
@@ -835,7 +834,7 @@ def test_plugin_reload_refreshes_scheduler_services_idempotently(monkeypatch):
         }
     ]
     plugin_manager.get_plugin_attr.return_value = "测试插件"
-    monkeypatch.setattr("app.scheduler.get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(scheduler_reconcile, "get_plugin_manager", lambda: plugin_manager)
     backend = _FakeSchedulerBackend(["DemoPlugin_old"])
     scheduler = _build_scheduler_for_plugin_reload(
         jobs={

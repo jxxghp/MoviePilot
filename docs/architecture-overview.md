@@ -73,7 +73,7 @@ flowchart TB
         AgentPkg["app/agent<br/>AI Agent 运行时"]
         Monitor["app/monitor<br/>目录监控"]
         Workflow["app/workflow<br/>工作流"]
-        Scheduler["app/scheduler<br/>定时任务"]
+        Scheduler["app/scheduler/<br/>定时任务职责包"]
         CLI["app/cli<br/>命令行"]
         PluginPkg["插件运行时目录<br/>app/plugins/*（副本/覆盖层）"]
     end
@@ -283,6 +283,14 @@ sequenceDiagram
   `HostRuntime.settings` 的窄服务读写可变部署设置，业务域不接触 Settings 实例；生产与测试组合根统一
   复用 `startup/composition/configuration.py` 的映射。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
+- **Scheduler 同名职责包**：旧 `app/scheduler.py` 单体已退役；`catalog.py` 负责作业目录和计划投影，
+  `execution.py`、`bridge.py`、`progress.py` 分别负责执行、跨循环句柄和进度终态，`registry.py`
+  唯一持有 generation、active generation、reservation 与 handle，`reconcile.py` 和 `lifecycle.py`
+  分别负责动态任务协调与启动/重载/关闭。
+- **Scheduler 显式装配**：`startup/initializers/scheduler.py` 构造业务 Chain 一次，将绑定 callable
+  组成 frozen `SchedulerServices` 后注入 Scheduler；Scheduler 包内不再构造业务 Chain。
+  `app.scheduler` 包根只惰性保留 `Scheduler`/`SchedulerChain` 旧 ABI，新插件经 `app.sdk.scheduler`
+  使用窄调度服务，内部 owner 不重复导出。
 - **进程拓扑**：全功能 V3 强制 `API_WORKERS=1`，避免每个 worker 重复启动插件和后台控制面；安全模式可临时使用多 worker 诊断，但不是正式扩容方案。
 - **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
   到达当前 head 且生命周期完成后返回 200，启动失败或关停阶段返回 503。两者不公开路径、
@@ -714,8 +722,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 893 |
-| 内部导入边 | 7,532 |
+| Python 模块 | 906 |
+| 内部导入边 | 7,612 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 55（债务已清零，55 条精确 containment） |
@@ -748,6 +756,8 @@ flowchart LR
   订阅关键副作用经 `app/application/outbox.py` 与 `app/db/adapters/outbox.py` 进入同事务 Outbox；
   搜索逐页任务、Agent/消息事件和插件市场子任务均遵守请求或生命周期 owner，不再由入口模块维护
   无法追踪的裸任务集合。
+- Scheduler 已从单体迁入 `app.scheduler` 同名职责包，startup 是业务 callable 的唯一构造与注入边界；
+  功能、生命周期、架构、兼容、文档与官方插件基线均已完成独立验证。
 - 判断是否需要新增 manifest 映射的标准：只有当旧物理模块被删除、改名或公开符号迁移时才登记；
   物理文件仍是稳定入口的，不应为了目录规整新增“自己映射自己”的别名，也不应在 canonical 包中
   保留多余导出。

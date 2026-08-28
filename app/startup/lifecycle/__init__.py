@@ -529,7 +529,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_scheduler,
-            stop=offload_shutdown_callback(stop_scheduler),
+            stop=stop_scheduler,
             start_order=100,
             stop_order=50,
             start_timeout_seconds=120,

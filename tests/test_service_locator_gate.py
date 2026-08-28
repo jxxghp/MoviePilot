@@ -17,7 +17,7 @@ def test_host_runtime_consumers_use_application_facades() -> None:
 def test_service_locator_gate_detects_each_concrete_runtime_family() -> None:
     """单一扫描器必须覆盖五类运行时，并保留明确兼容边界。"""
     graph = {
-        "app.api.scheduler_bypass": {"app.scheduler"},
+        "app.api.scheduler_bypass": {"app.scheduler.facade"},
         "app.api.module_bypass": {"app.runtime.extensions.module_manager"},
         "app.api.plugin_bypass": {"app.runtime.extensions.plugin_manager"},
         "app.api.command_bypass": {"app.command"},
@@ -30,7 +30,7 @@ def test_service_locator_gate_detects_each_concrete_runtime_family() -> None:
             "app.command",
             "app.runtime.extensions.module_manager",
             "app.runtime.extensions.plugin_manager",
-            "app.scheduler",
+            "app.scheduler.facade",
         },
         "app.workflow.manager": {"app.workflow"},
     }

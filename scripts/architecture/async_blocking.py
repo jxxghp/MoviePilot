@@ -32,7 +32,7 @@ SCAN_ROOTS = (
     "app/command.py",
     "app/factory.py",
     "app/main.py",
-    "app/scheduler.py",
+    "app/scheduler",
 )
 
 _SYNC_HTTP_METHODS = {

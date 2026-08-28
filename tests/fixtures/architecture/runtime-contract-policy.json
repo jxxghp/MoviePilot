@@ -245,7 +245,7 @@
         "reason": "配置重载 Mixin 为声明式宿主类型安装统一刷新处理器。"
       },
       {
-        "caller": "app.scheduler",
+        "caller": "app.scheduler.facade",
         "qualname": "Scheduler",
         "method": "register",
         "receiver_kind": "canonical_singleton",
@@ -257,9 +257,9 @@
         "handler": "Scheduler.on_plugin_reload",
         "registration_kind": "decorator",
         "priority": "<default>",
-        "fingerprint": "055c11260c15adabe65ddf1c9fd39000a7c1b7e255848e3c028e3985731e0778",
+        "fingerprint": "8780e71625cff4efebb1e39c32cff3c8cfd29c3cdf5eb1922d5e0d240ebd477a",
         "classification": "approved_static_registration",
-        "owner": "app.scheduler",
+        "owner": "app.scheduler.facade",
         "reason": "插件重载后由 Scheduler 对齐插件提供的定时任务。"
       },
       {

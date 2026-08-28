@@ -436,7 +436,7 @@ def configure_plugin_system_services():
     configure_agent_chat_persistence(agent_chat_persistence)
     configure_agent_chat_service(agent_chat_service)
     from app.agent.tools.manager import moviepilot_tool_manager
-    from app.scheduler import Scheduler
+    from app.scheduler.facade import Scheduler
 
     moviepilot_tool_manager.set_data_context(agent_data_context)
     Scheduler().configure_agent_tasks(agent_task_repository)

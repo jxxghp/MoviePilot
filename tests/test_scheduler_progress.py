@@ -5,7 +5,8 @@ from uuid import uuid4
 import pytest
 
 from app.runtime.loop import main_loop_registry
-from app.scheduler import Scheduler
+from app.scheduler.facade import Scheduler
+from app.scheduler.registry import ExecutionRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -31,10 +32,7 @@ def _build_scheduler(job_id, func):
         }
     }
     scheduler._lifecycle_state = "running"
-    scheduler._handles = {}
-    scheduler._job_generations = {}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
     return scheduler
 
 
@@ -77,7 +75,7 @@ def test_scheduler_failure_preserves_last_progress(monkeypatch):
     scheduler = _build_scheduler(job_id, task)
     monkeypatch.setattr(
         scheduler,
-        "_Scheduler__handle_job_error",
+        "_handle_job_error",
         lambda **kwargs: None,
     )
 
@@ -147,7 +145,10 @@ def test_scheduler_runs_async_job_from_current_event_loop(monkeypatch):
 
         async def wait_until_finished() -> None:
             """等待任务及其异步进度句柄全部收敛。"""
-            while scheduler._handles or scheduler._active_job_generations:
+            while (
+                    scheduler._registry.handles()
+                    or scheduler._registry.is_active(job_id)
+            ):
                 await asyncio.sleep(0)
 
         await asyncio.wait_for(wait_until_finished(), timeout=1)
@@ -176,9 +177,9 @@ def test_scheduler_records_cancelled_async_job_as_failed():
         raise asyncio.CancelledError
 
     async def run_task():
-        job = scheduler._Scheduler__prepare_job(job_id)
+        job = scheduler._prepare_job(job_id)
         with pytest.raises(asyncio.CancelledError):
-            await scheduler._Scheduler__run_coro_job(task, job_id, job)
+            await scheduler._run_coro_job(task, job_id, job)
 
     scheduler = _build_scheduler(job_id, task)
     asyncio.run(run_task())
@@ -211,13 +212,13 @@ def test_scheduler_stop_async_cancels_owned_async_jobs():
         """在当前事件循环启动并收口异步作业。"""
         scheduler.start(job_id)
         await started.wait()
-        assert len(scheduler._handles) == 1
+        assert len(scheduler._registry.handles()) == 1
         await scheduler.stop_async()
 
     asyncio.run(run_task())
 
     assert cancelled.is_set()
-    assert scheduler._handles == {}
+    assert scheduler._registry.handles() == ()
 
 
 def test_scheduler_returns_none_for_unknown_job():
@@ -227,9 +228,6 @@ def test_scheduler_returns_none_for_unknown_job():
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
     scheduler._lifecycle_state = "running"
-    scheduler._handles = {}
-    scheduler._job_generations = {}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
 
     assert scheduler.get_progress(job_id) is None

@@ -371,6 +371,29 @@ _ORDERED_SHUTDOWN_STEPS = (
 )
 
 
+def test_scheduler_shutdown_callback_is_awaited_on_lifecycle_loop(monkeypatch) -> None:
+    """定时器关闭必须在生命周期主循环等待异步句柄收口。"""
+    awaited = False
+
+    async def stop_scheduler_async() -> None:
+        """记录 manifest 回调返回的协程已被生命周期等待。"""
+        nonlocal awaited
+        awaited = True
+
+    monkeypatch.setattr(lifecycle, "stop_scheduler", stop_scheduler_async)
+    component = next(
+        item
+        for item in lifecycle.build_lifecycle_components(FastAPI())
+        if item.name == "定时器"
+    )
+
+    assert component.stop is stop_scheduler_async
+    assert asyncio.run(
+        lifecycle.run_shutdown_step("定时器", component.stop)
+    ) is True
+    assert awaited is True
+
+
 @pytest.mark.parametrize(
     "failing_step",
     (

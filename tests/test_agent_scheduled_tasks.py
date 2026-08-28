@@ -44,7 +44,8 @@ from app.db.models.agenttask import AgentTask
 from app.db.oper.agenttask import AgentTaskOper
 from app.runtime.config import settings
 from app.runtime.scheduling import TimerUtils
-from app.scheduler import Scheduler
+from app.scheduler.facade import Scheduler
+from app.scheduler.registry import ExecutionRegistry
 from app.schemas import ScheduleInfo
 
 
@@ -135,10 +136,7 @@ def _build_agent_task_scheduler(reconcile: bool = False) -> Scheduler:
     scheduler._jobs = {}
     scheduler._scheduler = BackgroundScheduler(timezone=settings.TZ)
     scheduler._lifecycle_state = "running"
-    scheduler._handles = {}
-    scheduler._job_generations = {}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
     scheduler._agent_task_interruptions_reconciled = False
     scheduler._agent_tasks = TransactionalAgentTaskRepository(SessionFactory)
     if reconcile:
@@ -334,10 +332,7 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
     scheduler._jobs = {}
     scheduler._scheduler = BackgroundScheduler(timezone=settings.TZ)
     scheduler._lifecycle_state = "running"
-    scheduler._handles = {}
-    scheduler._job_generations = {}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
     scheduler._agent_tasks = TransactionalAgentTaskRepository(SessionFactory)
 
     next_run_at = scheduler.update_agent_task_job(task.id)
@@ -422,7 +417,7 @@ async def test_date_task_reload_job_is_removed_after_run_finishes(
     release.set()
 
     async def wait_until_released() -> None:
-        while scheduler._handles:
+        while scheduler._registry.handles():
             await asyncio.sleep(0)
 
     await asyncio.wait_for(wait_until_released(), timeout=1)
@@ -811,12 +806,12 @@ async def test_scheduler_config_reload_preserves_active_agent_task(
 
     await scheduler.on_config_changed()
     assert AgentTaskOper().get(task.id).last_status == "running"
-    assert scheduler._handles
+    assert scheduler._registry.handles()
 
     release.set()
 
     async def wait_until_released() -> None:
-        while scheduler._handles:
+        while scheduler._registry.handles():
             await asyncio.sleep(0)
 
     await asyncio.wait_for(wait_until_released(), timeout=1)
@@ -884,10 +879,7 @@ def test_scheduler_starts_registered_agent_task_without_waiting() -> None:
         }
     }
     scheduler._lifecycle_state = "running"
-    scheduler._handles = {}
-    scheduler._job_generations = {}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
     scheduler.start = Mock()
 
     assert scheduler.start_agent_task(7) is True

@@ -660,7 +660,7 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
     from app.chain.subscribe.facade import SubscribeChain
     from app.chain.workflow import WorkflowChain
     from app.command import Command
-    from app.scheduler import Scheduler
+    from app.scheduler.facade import Scheduler
 
     return {
         Command: Command,

@@ -190,7 +190,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
     # 交互处理器类注入，供 InteractionChainMixin 的 parse_callback 委托
     _interaction_handler_type = SiteInteractionHandler
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化站点管理处理链及特殊站点测试器"""
         super().__init__()
 

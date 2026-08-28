@@ -960,7 +960,13 @@ def test_transfer_admission_chain_context_field_is_typed():
 
 def test_scheduler_does_not_depend_on_database_implementation():
     """Scheduler 只能消费应用端口，不得重新直连 app.db 实现。"""
-    dependencies = _build_module_graph().get("app.scheduler", set())
+    dependencies = set().union(
+        *(
+            module_dependencies
+            for module_name, module_dependencies in _build_module_graph().items()
+            if module_name == "app.scheduler" or module_name.startswith("app.scheduler.")
+        )
+    )
     assert {
         dependency
         for dependency in dependencies
@@ -989,7 +995,7 @@ def test_canonical_service_config_consumers_use_application_directory():
         APP_ROOT / "chain" / "_messaging.py",
         APP_ROOT / "chain" / "mediaserver.py",
         APP_ROOT / "api" / "endpoints" / "message.py",
-        APP_ROOT / "scheduler.py",
+        *(APP_ROOT / "scheduler").glob("*.py"),
         APP_ROOT / "agent" / "llm" / "capability.py",
         APP_ROOT / "agent" / "tools" / "base.py",
         APP_ROOT / "agent" / "tools" / "impl" / "query_library_latest.py",

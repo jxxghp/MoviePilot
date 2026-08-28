@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.application.maintenance import CleanupPolicy, DataCleanupService
-from app.scheduler import SchedulerChain
+from app.scheduler import chain as scheduler_chain
+from app.scheduler.chain import SchedulerChain
 
 
 class FakeCleanupRepository:
@@ -168,7 +169,7 @@ def test_scheduler_cleanup_is_a_compatibility_delegate() -> None:
     governance.cleanup.return_value = {"enabled": True}
     progress = MagicMock()
 
-    with patch("app.scheduler.get_database_governance", return_value=governance):
+    with patch.object(scheduler_chain, "get_database_governance", return_value=governance):
         result = SchedulerChain().cleanup(batch_size=7, progress_callback=progress)
 
     assert result == {"enabled": True}
@@ -180,10 +181,14 @@ def test_scheduler_cleanup_is_a_compatibility_delegate() -> None:
 
 def test_scheduler_does_not_reclaim_database_cleanup_ownership() -> None:
     """调度模块不得重新导入清理模型或数据库会话。"""
-    scheduler_path = Path(__file__).parents[1] / "app" / "scheduler.py"
-    tree = ast.parse(scheduler_path.read_text(encoding="utf-8"))
+    scheduler_root = Path(__file__).parents[1] / "app" / "scheduler"
+    trees = [
+        ast.parse(path.read_text(encoding="utf-8"))
+        for path in scheduler_root.glob("*.py")
+    ]
     imports = {
         node.module
+        for tree in trees
         for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom) and node.module
     }

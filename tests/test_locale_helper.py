@@ -429,7 +429,7 @@ def test_scheduler_progress_texts_have_english_translations():
     """定时任务相关进度文案应有英文翻译，避免前端切英文后回退中文。"""
     untranslated = []
     progress_paths = [
-        Path("app/scheduler.py"),
+        *sorted(Path("app/scheduler").glob("*.py")),
         Path("app/chain/torrents.py"),
         Path("app/chain/mediaserver.py"),
         Path("app/chain/site.py"),

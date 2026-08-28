@@ -125,6 +125,20 @@ API, Scheduler and Chain deployment values are exposed as frozen snapshots from
 `HostRuntime.configuration`; canonical callers must not add a fresh direct
 `settings` import when the required field belongs to an existing snapshot.
 
+The historical `app/scheduler.py` monolith must not be recreated. Scheduler
+implementation lives in the same-named `app/scheduler/` package: `catalog.py`
+owns built-in job declarations and APScheduler projection, `execution.py`,
+`bridge.py` and `progress.py` own execution and completion mechanics,
+`registry.py` is the sole owner of generations, active ownership, reservations
+and handles, `reconcile.py` owns dynamic Agent/Workflow/plugin job projection,
+and `lifecycle.py` owns init, reload and shutdown. Business Chain instances are
+constructed only by `app/startup/initializers/scheduler.py` and injected as the
+frozen callable-only `SchedulerServices`; files under `app/scheduler/` must not
+construct a business Chain. The `app.scheduler` package root lazily preserves
+only the historical `Scheduler` and `SchedulerChain` identities. New plugins use
+the narrow `app.sdk.scheduler` facade; internal Scheduler owners must not be
+re-exported from the package root, SDK or Compat.
+
 `app.schemas` and the `app.db` package root are compatibility facades, not
 implementation dependency hubs. Host code imports concrete schema submodules; the schema root
 resolves its generated export manifest lazily for plugins and legacy callers.
@@ -768,6 +782,9 @@ driven workflow registration.
 | `app/application/transfer/workflow.py` | Transfer task, durable admission, versioned planning input/checkpoint contracts and queue use case |
 | `app/db/adapters/transfer/admission.py` | SQLAlchemy admission/checkpoint persistence, CAS state transition and detached snapshot adapter |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
+| `app/scheduler/` | Scheduler implementation package: stable facade plus catalog, execution/bridge/progress, registry, reconcile, lifecycle and maintenance owners; no business Chain construction |
+| `app/startup/initializers/scheduler.py` | Registers the concrete Scheduler and injects the AgentTask repository plus frozen callable-only `SchedulerServices` before lifecycle start |
+| `app/sdk/scheduler.py` | Narrow scheduling facade for new plugins; does not expose concrete Scheduler owners or lifecycle state |
 | `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
 | `app/application/workflow.py` | Workflow use cases, frozen query snapshot and typed runtime ports consumed by API, Agent, Chain and Scheduler; `WorkflowManager` is registered by `app/startup/initializers/workflow.py` |
 | `app/db/adapters/workflow.py` | Short-session Workflow query projection and execution-state transaction adapters |

@@ -7,19 +7,19 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.application.database import DatabaseGovernance, configure_database_governance
+from app.application.maintenance import (
+    DataCleanupService,
+    read_cleanup_policy,
+)
 from app.db import Base
-from app.db.models.downloadhistory import DownloadHistory, DownloadFiles
+from app.db.maintenance import DatabaseCleanupRepository
+from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
 from app.runtime.config import settings
 from app.scheduler import SchedulerChain
-from app.application.maintenance import (
-    DataCleanupService,
-    read_cleanup_policy,
-)
-from app.application.database import DatabaseGovernance, configure_database_governance
-from app.db.maintenance import DatabaseCleanupRepository
 
 
 class DataCleanupChainTest(unittest.TestCase):

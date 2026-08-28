@@ -17,8 +17,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 1. **边界有形、合同偏弱**：部分 Application Port 仍是 `Callable[[], Any]`，返回 ORM 或
    动态代理；生产路径因此继续依赖无 Session Oper、全局 provider 和隐式构造。
-2. **用例编排过度集中**：Chain、Scheduler、Plugin、Agent、LLM 和部分 API 文件同时承担决策、
-   I/O、状态、生命周期与兼容职责，私有长方法又处于复杂度门禁盲区。
+2. **用例编排过度集中**：部分 Chain、Plugin、Agent、LLM 和 API 文件仍同时承担决策、I/O、
+   状态、生命周期与兼容职责；Scheduler 已完成生产代码拆包和综合验收，其他私有长方法仍可能
+   处于复杂度门禁盲区。
 3. **可靠性声明强于实现**：整理 pending 目前只能做最小重放，尚不满足 ADR 中声明的 E3
    状态机语义；部分 commit 后副作用仍存在“业务已提交但调用方收到失败”或进程退出后丢失的窗口。
 4. **治理事实源不一致**：架构规则、总览、AST 基线和 CI 语义存在漂移；快照门禁能证明“没有变化”，
@@ -62,14 +63,14 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `db/oper` | Model/Oper 已不自建 Session、不自行提交 | 无 Session Facade 仍被宿主组合根注入，业务操作可能拆成多个事务 |
 | `db/adapters` | 已有显式 Session/UoW 的参考切片 | Port 返回类型不够稳定；Outbox 的 stage 与自提交 dispatcher store 混在一个类型 |
 | `startup` | 已是 HostRuntime 和生命周期组合根 | `initializers/modules.py` 高扇出，仍有导入期 provider 注册和具体对象目录装配 |
-| API/Command/Scheduler | 多数入口已转向 Chain/Application | Agent/System/Plugin 等入口仍承担较多业务与 I/O 编排 |
+| API/Command/Scheduler | 多数入口已转向 Chain/Application；Scheduler 单体已拆为同名职责包并由 startup 注入业务 callable | Agent/System/Plugin 等入口仍承担较多业务与 I/O 编排 |
 | `sdk`/`compat` | 精确映射、稳定插件 ABI 和宿主 canonical 路径已落地 | SDK 仍暴露部分可变全局对象/具体 Manager，只能渐进收窄，不能直接删除 |
 
 ### 3.2 量化快照
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 893 / 7,532 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 906 / 7,612 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -77,8 +78,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 11,734 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 706 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 全量 mypy 历史债务 | 11,179 / 600 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
+| Ruff 历史诊断 | 700 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 79.83%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -94,7 +95,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `app/api/endpoints/agent.py` | 2,346 | HTTP/SSE、文件/音频、Agent 会话和事件编排 |
 | `app/chain/download.py` | 2,230 | 选择、提交、历史、通知、模块后处理和批量执行 |
 | `app/chain/media.py` | 2,191 | 识别、来源投影、缓存、音乐匹配和兼容入口 |
-| `app/scheduler.py` | 2,111 | 作业目录、执行状态、恢复、生命周期和领域任务 |
+| `app/scheduler/` | Facade 128 行 | 原 2,111 行单体已退役；catalog、execution、bridge、progress、registry、reconcile、lifecycle、maintenance 与注入合同已有独立 owner |
 
 热点不是按行数机械拆文件的依据。只有在提取出稳定合同、保留旧入口委托并有行为测试时，拆分才算
 降低复杂度；把长方法原样移动到新目录不算完成。
@@ -114,7 +115,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-106 | P1 | 进行中 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志与消息 owner 已收口；GlobalVar/provider 继续治理 |
 | ARCH-107 | P1 | 已验证 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
 | ARCH-108 | P1 | 执行中 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Application Adapter/DNS 债务已清零；Chain Adapter 与宿主 HTTP 债务继续迁移 |
-| ARCH-109 | P1 | 待执行 | 按用例拆分超大 Chain、Scheduler 和厚 API | 稳定 Facade 保留，决策/I/O/状态/生命周期各有 owner |
+| ARCH-109 | P1 | 执行中 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler 已验证；Download/Search 与厚 API 尚待执行 |
 | ARCH-110 | P1 | 待执行 | Module/Event Contract 分可信级执行 | 宿主 provider 严格，第三方插件仍兼容诊断 |
 | ARCH-111 | P1 | 待执行 | 升级复杂度、类型、覆盖率和并发原语门禁 | 高风险私有路径也进入只降不增的治理面 |
 | ARCH-201 | P2 | 渐进 | 收窄 PluginHelper/PluginManager 与 SDK 暴露面 | ABI Facade 只委托，构造和具体服务归组合根 |
@@ -550,6 +551,13 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 Chain 构造点；队列/恢复、规划、执行、结算、历史/通知、请求构建及原 `_transfer.py` mixin
 分别进入同名 package 的单词文件。包根只保留 `TransferChain` 与插件已使用的 `task_lock` 身份，
 不重复导出 `JobManager`、durable runner 或内部 owner；旧 `transfer.py` 和 `_transfer.py` 均已删除。
+
+`Scheduler` 切片已完成验证：旧 `app/scheduler.py` 已删除，稳定 Facade 与
+`SchedulerChain` 兼容类型由 `app.scheduler` 包根惰性导出；catalog、执行、事件循环桥接、进度、
+`ExecutionRegistry`、领域 reconcile、生命周期和维护任务分别位于同名 package 的单词文件。
+`app/startup/initializers/scheduler.py` 统一构造 Chain 与 `SchedulerServices`，Scheduler 包内不再无参
+构造业务 Chain；新插件使用 `app.sdk.scheduler` 的窄函数门面，内部 owner 不进入 SDK 或包根 ABI。
+功能、生命周期、架构、兼容和文档批次均通过，官方插件基线语义未变化。
 
 ### ARCH-110 分可信级执行 Module/Event Contract
 

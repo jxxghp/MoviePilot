@@ -708,7 +708,6 @@
   "app/agent/tools/impl/test_site.py": {
     "misc": 1,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "override": 1
   },
@@ -775,7 +774,6 @@
   "app/agent/tools/impl/update_site_cookie.py": {
     "misc": 1,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "override": 1
   },
@@ -988,7 +986,7 @@
     "assignment": 2,
     "attr-defined": 3,
     "misc": 26,
-    "no-untyped-call": 4,
+    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "return-value": 3,
     "type-arg": 6,
@@ -1389,7 +1387,7 @@
     "arg-type": 21,
     "assignment": 2,
     "no-any-return": 11,
-    "no-untyped-call": 10,
+    "no-untyped-call": 8,
     "no-untyped-def": 6,
     "type-arg": 2,
     "union-attr": 1,
@@ -1441,7 +1439,7 @@
     "attr-defined": 1,
     "misc": 6,
     "no-any-return": 1,
-    "no-untyped-def": 8,
+    "no-untyped-def": 7,
     "return-value": 2,
     "type-arg": 5
   },
@@ -1639,7 +1637,7 @@
     "arg-type": 3,
     "assignment": 5,
     "misc": 6,
-    "no-untyped-call": 5,
+    "no-untyped-call": 4,
     "no-untyped-def": 4,
     "type-arg": 7,
     "valid-type": 1,
@@ -3236,18 +3234,6 @@
   "app/runtime/thread.py": {
     "unused-ignore": 1
   },
-  "app/scheduler.py": {
-    "arg-type": 7,
-    "attr-defined": 1,
-    "import-untyped": 1,
-    "misc": 1,
-    "no-any-return": 3,
-    "no-untyped-call": 6,
-    "no-untyped-def": 13,
-    "return-value": 1,
-    "type-arg": 7,
-    "union-attr": 1
-  },
   "app/schemas/agent.py": {
     "misc": 26
   },
@@ -3417,10 +3403,6 @@
   },
   "app/startup/initializers/routers.py": {
     "no-untyped-def": 1
-  },
-  "app/startup/initializers/scheduler.py": {
-    "no-untyped-call": 5,
-    "no-untyped-def": 4
   },
   "app/startup/initializers/workflow.py": {
     "no-untyped-def": 1

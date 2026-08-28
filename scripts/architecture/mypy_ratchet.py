@@ -34,6 +34,10 @@ MYPY_PATH_MIGRATIONS = {
         ("app/chain/transfer.py", "app/chain/_transfer.py"),
         ("app/chain/transfer/",),
     ),
+    "scheduler-package": (
+        ("app/scheduler.py",),
+        ("app/scheduler/",),
+    ),
 }
 
 # 形如 app/foo.py:12: error: 消息说明 [error-code]；个别错误可能缺代码。

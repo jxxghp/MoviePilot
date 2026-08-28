@@ -975,13 +975,7 @@
   "tests/test_dashboard_system_info.py": {
     "I001": 1
   },
-  "tests/test_data_cleanup_chain.py": {
-    "I001": 1
-  },
   "tests/test_database_backup_cli_sdk.py": {
-    "I001": 1
-  },
-  "tests/test_database_backup_scheduler.py": {
     "I001": 1
   },
   "tests/test_database_index_migration.py": {
@@ -1143,9 +1137,6 @@
   "tests/test_mediaserver_image_signing.py": {
     "I001": 1
   },
-  "tests/test_mediaserver_sync_scheduler.py": {
-    "I001": 1
-  },
   "tests/test_message_channel_permissions.py": {
     "I001": 1
   },
@@ -1242,9 +1233,6 @@
   "tests/test_plugin_lifecycle_status.py": {
     "F401": 1
   },
-  "tests/test_plugin_local_sync.py": {
-    "I001": 1
-  },
   "tests/test_plugin_market_default.py": {
     "I001": 1
   },
@@ -1285,12 +1273,6 @@
     "I001": 1
   },
   "tests/test_rust_accel_toggle.py": {
-    "I001": 1
-  },
-  "tests/test_scheduler_cache_expiry.py": {
-    "I001": 1
-  },
-  "tests/test_scheduler_contracts.py": {
     "I001": 1
   },
   "tests/test_search_ai_recommend.py": {

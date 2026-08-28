@@ -1433,12 +1433,12 @@
         "registration_kind": "listener"
       },
       {
-        "caller": "app.scheduler",
+        "caller": "app.scheduler.facade",
         "dynamic": false,
         "events": [
           "EventType.PluginReload"
         ],
-        "fingerprint": "055c11260c15adabe65ddf1c9fd39000a7c1b7e255848e3c028e3985731e0778",
+        "fingerprint": "8780e71625cff4efebb1e39c32cff3c8cfd29c3cdf5eb1922d5e0d240ebd477a",
         "handler": "Scheduler.on_plugin_reload",
         "invalid": false,
         "method": "register",
@@ -1752,7 +1752,7 @@
       },
       "EventType.PluginReload": {
         "consumer_fingerprints": [
-          "055c11260c15adabe65ddf1c9fd39000a7c1b7e255848e3c028e3985731e0778"
+          "8780e71625cff4efebb1e39c32cff3c8cfd29c3cdf5eb1922d5e0d240ebd477a"
         ],
         "producer_fingerprints": []
       },
@@ -1839,7 +1839,7 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "8b725b957d7699c989b20606ab2ed4df85768a16096eba922b9ddf1232f3a9fd",
-          "a812b122b031e0ed33df0300292fad84360bd09223de07f3d13d0bd3d1a59429",
+          "b11f2671831e389e6c6ce0ee2d47da41d4ff088376e85ae8350a46a3b48315b5",
           "b80e0452e3c7ad08b2c5a83cd7bea4185e0ed3f3012d20f2f1688597e6cefe57",
           "dcfe851d124af4d4c3781b65b0c0115934a9c2422ee20aca53d625dda3190289"
         ]
@@ -2786,15 +2786,15 @@
         "receiver_kind": "canonical_singleton"
       },
       {
-        "caller": "app.scheduler",
+        "caller": "app.scheduler.execution",
         "dynamic": false,
         "events": [
           "EventType.SystemError"
         ],
-        "fingerprint": "a812b122b031e0ed33df0300292fad84360bd09223de07f3d13d0bd3d1a59429",
+        "fingerprint": "b11f2671831e389e6c6ce0ee2d47da41d4ff088376e85ae8350a46a3b48315b5",
         "invalid": false,
         "method": "send_event",
-        "qualname": "Scheduler.__handle_job_error",
+        "qualname": "SchedulerExecutionOwner._handle_job_error",
         "receiver_kind": "canonical_singleton"
       },
       {
@@ -10361,6 +10361,58 @@
         "kind": "FunctionDef",
         "name": "list_transfer_history",
         "target": ""
+      }
+    ],
+    "app.sdk.scheduler": [
+      {
+        "kind": "import",
+        "name": "ScheduleInfo",
+        "target": "app.schemas.dashboard.ScheduleInfo"
+      },
+      {
+        "kind": "import",
+        "name": "ScheduleProgress",
+        "target": "app.schemas.dashboard.ScheduleProgress"
+      },
+      {
+        "kind": "import",
+        "name": "get_agent_task_next_run",
+        "target": "app.application.scheduling.get_agent_task_next_run"
+      },
+      {
+        "kind": "import",
+        "name": "list_scheduler_jobs",
+        "target": "app.application.scheduling.list_scheduler_jobs"
+      },
+      {
+        "kind": "import",
+        "name": "remove_agent_task_job",
+        "target": "app.application.scheduling.remove_agent_task_job"
+      },
+      {
+        "kind": "import",
+        "name": "remove_plugin_job",
+        "target": "app.application.scheduling.remove_plugin_job"
+      },
+      {
+        "kind": "import",
+        "name": "start_agent_task",
+        "target": "app.application.scheduling.start_agent_task"
+      },
+      {
+        "kind": "import",
+        "name": "start_scheduler_job",
+        "target": "app.application.scheduling.start_scheduler_job"
+      },
+      {
+        "kind": "import",
+        "name": "update_agent_task_job",
+        "target": "app.application.scheduling.update_agent_task_job"
+      },
+      {
+        "kind": "import",
+        "name": "update_plugin_job",
+        "target": "app.application.scheduling.update_plugin_job"
       }
     ],
     "app.sdk.security": [

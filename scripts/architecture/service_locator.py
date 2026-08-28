@@ -33,10 +33,9 @@ class RuntimeFacadePolicy:
 RUNTIME_FACADE_POLICIES = (
     RuntimeFacadePolicy(
         name="scheduler",
-        dependency="app.scheduler",
+        dependency="app.scheduler.facade",
         exact_consumers=frozenset(
             {
-                "app.scheduler",
                 "app.startup.initializers.modules",
                 "app.startup.initializers.scheduler",
             }

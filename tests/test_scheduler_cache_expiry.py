@@ -4,9 +4,12 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app import scheduler as scheduler_module
-from app.scheduler import Scheduler
 from app.application.configuration import SchedulerRuntimeConfig
+from app.scheduler import catalog as scheduler_catalog
+from app.scheduler import lifecycle as scheduler_lifecycle
+from app.scheduler import reconcile as scheduler_reconcile
+from app.scheduler.facade import Scheduler
+from app.scheduler.registry import ExecutionRegistry
 from app.startup.initializers import scheduler as scheduler_initializer
 
 
@@ -78,26 +81,15 @@ def test_scheduler_initializer_stop_awaits_in_running_loop(monkeypatch):
 def test_clear_cache_is_manual_only(monkeypatch):
     """缓存清理任务应仅手动执行，不注册到调度器自动运行。"""
     background_scheduler = _BackgroundSchedulerStub()
-    generic_chain = Mock()
-    for name in [
-        "MediaServerChain",
-        "RecommendChain",
-        "SchedulerChain",
-        "SiteChain",
-        "SubscribeChain",
-        "TransferChain",
-        "WallpaperHelper",
-        "WorkflowChain",
-        "get_plugin_manager",
-    ]:
-        monkeypatch.setattr(scheduler_module, name, lambda: generic_chain)
+    services = Mock()
+    monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_catalog,
         "get_mediaserver_configs",
         lambda **_kwargs: [],
     )
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_catalog,
         "BackgroundScheduler",
         lambda **kwargs: background_scheduler,
     )
@@ -106,7 +98,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
     monkeypatch.setattr(Scheduler, "init_agent_task_jobs", lambda self: None)
     monkeypatch.setattr(Scheduler, "init_plugin_jobs", lambda self: None)
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_lifecycle,
         "get_scheduler_runtime_config",
         lambda: SchedulerRuntimeConfig(
             False, "Asia/Shanghai", 1, False, "", 0, None, False, 24,
@@ -120,13 +112,11 @@ def test_clear_cache_is_manual_only(monkeypatch):
     scheduler._lock = threading.RLock()
     scheduler._jobs = {}
     scheduler._lifecycle_state = "new"
-    scheduler._handles = {}
-    scheduler._job_generations = {}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
     scheduler._agent_task_interruptions_reconciled = True
     scheduler._auth_count = 0
     scheduler._auth_message = False
+    scheduler._services = services
 
     scheduler.init()
 
@@ -148,28 +138,28 @@ def test_user_auth_refreshes_plugin_routes_after_runtime_reinitialization(monkey
     refresh_routes = Mock()
     message_chain = Mock()
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_reconcile,
         "get_scheduler_runtime_config",
         lambda: Mock(site_link="https://example.invalid"),
     )
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_reconcile,
         "SitesHelper",
         lambda: Mock(auth_level=0, check_user=Mock(return_value=(True, "demo"))),
     )
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_reconcile,
         "get_configured_system_config",
         lambda: Mock(get=Mock(return_value=None)),
     )
-    monkeypatch.setattr(scheduler_module, "SchedulerChain", lambda: message_chain)
+    scheduler._services = Mock(post_message=message_chain.post_message)
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_reconcile,
         "get_plugin_manager",
         lambda: plugin_manager,
     )
     monkeypatch.setattr(scheduler, "init_plugin_jobs", plugin_jobs)
-    monkeypatch.setattr(scheduler_module, "register_plugin_api", refresh_routes)
+    monkeypatch.setattr(scheduler_reconcile, "register_plugin_api", refresh_routes)
 
     scheduler.user_auth()
 
@@ -191,24 +181,24 @@ def test_user_auth_retries_pending_plugin_route_projection(monkeypatch):
     message_chain = Mock()
     sites = Mock(auth_level=0, check_user=Mock(return_value=(True, "demo")))
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_reconcile,
         "get_scheduler_runtime_config",
         lambda: Mock(site_link="https://example.invalid"),
     )
-    monkeypatch.setattr(scheduler_module, "SitesHelper", lambda: sites)
+    monkeypatch.setattr(scheduler_reconcile, "SitesHelper", lambda: sites)
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_reconcile,
         "get_configured_system_config",
         lambda: Mock(get=Mock(return_value=None)),
     )
-    monkeypatch.setattr(scheduler_module, "SchedulerChain", lambda: message_chain)
+    scheduler._services = Mock(post_message=message_chain.post_message)
     monkeypatch.setattr(
-        scheduler_module,
+        scheduler_reconcile,
         "get_plugin_manager",
         lambda: plugin_manager,
     )
     monkeypatch.setattr(scheduler, "init_plugin_jobs", plugin_jobs)
-    monkeypatch.setattr(scheduler_module, "register_plugin_api", refresh_routes)
+    monkeypatch.setattr(scheduler_reconcile, "register_plugin_api", refresh_routes)
 
     with pytest.raises(RuntimeError, match="loop unavailable"):
         scheduler.user_auth()

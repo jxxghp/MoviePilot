@@ -6,9 +6,11 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
-from app import scheduler as scheduler_module
-from app.scheduler import Scheduler
 from app.application.configuration import SchedulerRuntimeConfig
+from app.scheduler import catalog as scheduler_catalog
+from app.scheduler import maintenance as scheduler_maintenance
+from app.scheduler.facade import Scheduler
+from app.scheduler.registry import ExecutionRegistry
 
 
 class _SchedulerStub:
@@ -30,10 +32,7 @@ def _scheduler() -> Scheduler:
     scheduler._jobs = {}
     scheduler._lock = threading.RLock()
     scheduler._lifecycle_state = "running"
-    scheduler._handles = {}
-    scheduler._job_generations = {}
-    scheduler._active_job_generations = {}
-    scheduler._agent_task_reservations = {}
+    scheduler._registry = ExecutionRegistry(scheduler._lock)
     return scheduler
 
 
@@ -93,7 +92,7 @@ def test_enabled_database_backup_without_cron_does_not_register_job() -> None:
 def test_enabled_database_backup_registers_single_replaceable_job(monkeypatch) -> None:
     scheduler = _scheduler()
     trigger = object()
-    monkeypatch.setattr(scheduler_module.TimerUtils, "build_schedule_trigger", Mock(return_value=trigger))
+    monkeypatch.setattr(scheduler_catalog.TimerUtils, "build_schedule_trigger", Mock(return_value=trigger))
     config = _config(db_backup_enable=True, db_backup_cron="0 3 * * *")
 
     scheduler._register_database_backup_job(config)
@@ -105,7 +104,7 @@ def test_enabled_database_backup_registers_single_replaceable_job(monkeypatch) -
 
 def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> None:
     governance = Mock()
-    monkeypatch.setattr(scheduler_module, "get_database_governance", lambda: governance)
+    monkeypatch.setattr(scheduler_maintenance, "get_database_governance", lambda: governance)
 
     result = Scheduler.database_backup()
 
@@ -114,11 +113,11 @@ def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> No
 
 
 def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:
-    tree = ast.parse(
-        (Path(__file__).parents[1] / "app" / "scheduler.py").read_text(encoding="utf-8")
-    )
+    scheduler_root = Path(__file__).parents[1] / "app" / "scheduler"
+    trees = [ast.parse(path.read_text(encoding="utf-8")) for path in scheduler_root.glob("*.py")]
     function_imports = [
         node
+        for tree in trees
         for function in ast.walk(tree)
         if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
         for node in ast.walk(function)

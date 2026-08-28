@@ -86,7 +86,7 @@ def get_scoped_session() -> scoped_session:
 #
 # 做成 __dict__ 里真实存在的函数就两头都成立：导入它不碰引擎，调用它才创建。全仓库对这三个
 # 名字的用法都是 `X()` 取一个会话，这一形式的语义与原先的 sessionmaker / scoped_session 实例
-# 完全一致；patch("app.scheduler.SessionFactory", ...) 这类既有测试替身也照旧生效。
+# 完全一致；测试应在实际数据库 owner 边界替换 SessionFactory。
 #
 # 但仅限 `X()` 这一形式：它们不再是 sessionmaker / scoped_session 实例，因此实例上的其余接口
 # （ScopedSession.remove()、SessionFactory.configure()、AsyncSessionFactory.begin()、
