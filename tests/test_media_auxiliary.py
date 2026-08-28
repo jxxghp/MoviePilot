@@ -97,10 +97,10 @@ def test_site_search_keywords_include_aggregated_aliases() -> None:
     )
 
     with patch(
-        "app.chain.search.get_chain_runtime_config_snapshot",
+        "app.chain.search.plan.get_chain_runtime_config_snapshot",
         return_value=SimpleNamespace(max_search_name_limit=3),
     ):
-        _, keywords = SearchChain._SearchChain__prepare_params(media)
+        _, keywords = SearchChain._prepare_params(media)
 
     assert keywords == [
         "葬送的芙莉莲",

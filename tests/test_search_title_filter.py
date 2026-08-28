@@ -8,10 +8,10 @@ ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)
 ensure_optional_stub("transmission_rpc", File=object)
 ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil", loader=None))
 
-from app.chain import search as search_module
-from app.chain.search import SearchChain
-from app.domain.context import TorrentInfo
-from app.schemas.types import SystemConfigKey
+from app.chain.search import SearchChain  # noqa: E402
+from app.chain.search import title as search_module  # noqa: E402
+from app.domain.context import TorrentInfo  # noqa: E402
+from app.schemas.types import SystemConfigKey  # noqa: E402
 
 
 def _make_chain() -> SearchChain:

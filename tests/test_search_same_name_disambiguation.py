@@ -1,10 +1,10 @@
 from unittest.mock import Mock
 
-from app.chain import search as search_module
 from app.chain.search import SearchChain
+from app.chain.search import result as search_module
 from app.domain.context import MediaInfo, TorrentInfo
-from app.schemas.types import MediaSource, MediaType
 from app.runtime.correlation import correlation_scope, get_correlation_id
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_exact_search_rejects_no_year_alias_recognized_as_different_work(monkeypatch):
@@ -46,7 +46,7 @@ def test_exact_search_rejects_no_year_alias_recognized_as_different_work(monkeyp
     )
     chain = object.__new__(SearchChain)
 
-    contexts = chain._SearchChain__parse_result(
+    contexts = chain._parse_result(
         torrents=[torrent],
         mediainfo=target,
         rule_groups=[],
@@ -95,7 +95,7 @@ def test_exact_search_reuses_disambiguation_for_same_parsed_title(monkeypatch):
     )
     chain = object.__new__(SearchChain)
 
-    contexts = chain._SearchChain__parse_result(
+    contexts = chain._parse_result(
         torrents=torrents,
         mediainfo=target,
         rule_groups=[],
@@ -143,7 +143,7 @@ def test_parallel_filter_propagates_request_context(monkeypatch):
     chain = object.__new__(SearchChain)
 
     with correlation_scope("filter-request"):
-        contexts = chain._SearchChain__parse_result(
+        contexts = chain._parse_result(
             torrents=torrents,
             mediainfo=target,
             rule_groups=[],

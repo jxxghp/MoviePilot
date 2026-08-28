@@ -47,7 +47,7 @@
         "reason": "元数据刮削事件由 ScrapingChain 执行宿主刮削流程。"
       },
       {
-        "caller": "app.chain.search",
+        "caller": "app.chain.search.facade",
         "qualname": "SearchChain",
         "method": "register",
         "receiver_kind": "canonical_singleton",
@@ -59,9 +59,9 @@
         "handler": "SearchChain.remove_site",
         "registration_kind": "decorator",
         "priority": "<default>",
-        "fingerprint": "5a7967a84e5716f1939530b1f5d561dbf97130d22330ad7c282d2924e0743fe5",
+        "fingerprint": "7884f6aa0b02400cc69dbd75fd6eeeb88f0b429415bdf584cf91e6a64d7625d1",
         "classification": "approved_static_registration",
-        "owner": "app.chain.search",
+        "owner": "app.chain.search.facade",
         "reason": "站点删除后由 SearchChain 清理搜索侧站点状态。"
       },
       {

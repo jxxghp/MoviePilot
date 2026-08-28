@@ -1166,9 +1166,6 @@
   "tests/test_music_scrape.py": {
     "I001": 1
   },
-  "tests/test_music_search.py": {
-    "I001": 1
-  },
   "tests/test_music_torrents.py": {
     "I001": 1
   },
@@ -1247,18 +1244,8 @@
   "tests/test_rust_accel_toggle.py": {
     "I001": 1
   },
-  "tests/test_search_ai_recommend.py": {
-    "E402": 8,
-    "I001": 1
-  },
   "tests/test_search_media_sources.py": {
     "I001": 1
-  },
-  "tests/test_search_same_name_disambiguation.py": {
-    "I001": 1
-  },
-  "tests/test_search_title_filter.py": {
-    "E402": 4
   },
   "tests/test_security_image_url_log.py": {
     "I001": 1
@@ -1277,9 +1264,6 @@
     "I001": 1
   },
   "tests/test_subtitle_rename.py": {
-    "I001": 1
-  },
-  "tests/test_subtitle_search.py": {
     "I001": 1
   },
   "tests/test_subtitle_signed_download.py": {

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.chain.search as search_module
+import app.chain.search.provider as search_module
 from app.chain.search import SearchChain
 
 
@@ -96,24 +96,15 @@ async def test_subtitle_list_and_stream_share_page_continuation(monkeypatch) -> 
         lambda: SimpleNamespace(get=lambda _key: [7]),
     )
     chain._build_search_pages = lambda _page: [0, 1, 2]
-    chain._should_continue_subtitle_search_pages = (
-        lambda *, site, page_results: len(page_results) == 2
-    )
+    chain._should_continue_subtitle_search_pages = lambda *, site, page_results: len(page_results) == 2
     chain.async_search_subtitles = search_subtitles
 
-    listed = await chain._SearchChain__async_search_subtitles_all_sites(
-        keyword="demo"
-    )
+    listed = await chain._async_search_subtitles_all_sites(keyword="demo")
     assert listed == ["one", "two", "three"]
     assert calls == [0, 1]
 
     calls.clear()
-    events = [
-        event
-        async for event in chain._SearchChain__async_search_subtitles_all_sites_stream(
-            keyword="demo"
-        )
-    ]
+    events = [event async for event in chain._async_search_subtitles_all_sites_stream(keyword="demo")]
     appended = [event for event in events if event["type"] == "append"]
 
     assert [event["page"] for event in appended] == [0, 1]
@@ -122,3 +113,140 @@ async def test_subtitle_list_and_stream_share_page_continuation(monkeypatch) -> 
         ["three"],
     ]
     assert calls == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_torrent_list_and_stream_share_provider_facts(monkeypatch) -> None:
+    """列表与流式入口必须消费同一批 provider 事实并保持插件事件顺序。"""
+    chain = _make_chain()
+    site = {"id": 8, "name": "TorrentSite"}
+    plugin_calls: list[dict] = []
+    site_calls: list[dict] = []
+
+    class _Sites:
+        """返回固定资源站点的异步索引替身。"""
+
+        async def async_get_indexers(self) -> list[dict]:
+            """返回唯一启用的资源站点。"""
+            return [site]
+
+    async def search_plugins(**kwargs) -> list[str]:
+        """记录插件搜索次数并返回稳定资源。"""
+        plugin_calls.append(kwargs)
+        return ["plugin"]
+
+    async def search_site(**kwargs) -> list[str]:
+        """记录站点搜索次数并返回稳定资源。"""
+        site_calls.append(kwargs)
+        return ["site"]
+
+    monkeypatch.setattr(search_module, "SitesHelper", _Sites)
+    monkeypatch.setattr(search_module, "AsyncProgressHelper", _Progress)
+    monkeypatch.setattr(
+        search_module,
+        "get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda _key: [8]),
+    )
+    chain._build_search_pages = lambda _page: [2]
+    chain._should_continue_search_pages = lambda **_kwargs: False
+    chain.async_search_plugin_torrents = search_plugins
+    chain.async_search_site_torrents = search_site
+
+    listed = await chain._SearchChain__async_search_all_sites(
+        keyword="demo",
+        page=2,
+    )
+    events = [
+        event
+        async for event in chain._SearchChain__async_search_all_sites_stream(
+            keyword="demo",
+            page=2,
+        )
+    ]
+
+    assert listed == ["plugin", "site"]
+    assert [event["type"] for event in events] == [
+        "append",
+        "progress",
+        "append",
+    ]
+    assert events[0]["items"] == ["plugin"]
+    assert events[0]["page"] == 2
+    assert [item for event in events if event["type"] == "append" for item in event["items"]] == listed
+    assert len(plugin_calls) == 2
+    assert len(site_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_provider_stream_close_always_ends_progress(monkeypatch) -> None:
+    """调用方在初始进度后关闭流时也必须终结异步进度。"""
+    chain = _make_chain()
+    ended: list[bool] = []
+
+    class _TrackedProgress(_Progress):
+        """记录进度终结次数的替身。"""
+
+        async def end(self) -> None:
+            """记录进度已进入唯一终态。"""
+            ended.append(True)
+
+    monkeypatch.setattr(search_module, "AsyncProgressHelper", _TrackedProgress)
+
+    async def search_page(_site: dict, _page: int) -> list[str]:
+        """关闭发生在首个站点请求前，本函数不应执行。"""
+        raise AssertionError("站点请求不应在初始进度消费前执行")
+
+    iterator = chain._iter_provider_events(
+        keyword="demo",
+        indexer_sites=[{"id": 1, "name": "Site"}],
+        search_pages=[0],
+        initial_items=[],
+        initial_page=None,
+        search_page=search_page,
+        should_continue=lambda _site, _items: False,
+        task_owner="test.search.provider.close",
+        subtitle=False,
+    )
+
+    assert (await anext(iterator))["type"] == "progress"
+    await iterator.aclose()
+
+    assert ended == [True]
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_always_ends_progress(monkeypatch) -> None:
+    """站点异常向调用方传播时必须先收口任务和异步进度。"""
+    chain = _make_chain()
+    ended: list[bool] = []
+
+    class _TrackedProgress(_Progress):
+        """记录异常路径进度终结次数的替身。"""
+
+        async def end(self) -> None:
+            """记录异常路径已进入唯一终态。"""
+            ended.append(True)
+
+    monkeypatch.setattr(search_module, "AsyncProgressHelper", _TrackedProgress)
+
+    async def search_page(_site: dict, _page: int) -> list[str]:
+        """模拟 provider 边界异常。"""
+        raise RuntimeError("provider failed")
+
+    iterator = chain._iter_provider_events(
+        keyword="demo",
+        indexer_sites=[{"id": 1, "name": "Site"}],
+        search_pages=[0],
+        initial_items=[],
+        initial_page=None,
+        search_page=search_page,
+        should_continue=lambda _site, _items: False,
+        task_owner="test.search.provider.failure",
+        subtitle=False,
+    )
+
+    with pytest.raises(RuntimeError, match="provider failed"):
+        async for _event in iterator:
+            pass
+
+    assert ended == [True]

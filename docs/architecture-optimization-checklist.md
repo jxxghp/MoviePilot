@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 919 / 7,746 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 932 / 7,886 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -79,7 +79,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 10,982 / 599 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 687 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Ruff 历史诊断 | 671 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 80.75%，Domain 79.32% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -564,6 +564,14 @@ Chain 构造点；队列/恢复、规划、执行、结算、历史/通知、请
 技术端口分别由同名 package 的单词文件拥有，Facade 只组合 owner 与稳定删除事件入口。历史、文件和
 durable Outbox intent 在一个事务内提交，通知、后台处理和即时事件仅在 commit 成功后执行；提交失败
 不会留下历史或后置副作用。主程序不保留 `source.py`、旧实现或内部 owner/port 重复导出。
+
+`SearchChain` 切片已完成验证：旧 `app/chain/search.py` 已删除，包根只惰性保留稳定
+`SearchChain`；plan、provider、pagination、result、cache、title、media、music、subtitle、site 与
+recommendation 各有单一 owner。列表和流式 provider 入口共享同一批次事实，分页任务纳入统一
+TaskRegistry，结果状态只由 `app.application.search.state` 持久化；Facade 保持直接 MRO、事件身份、
+LunaTV 三个私有补丁点和 HRBlocker 八个公开补丁点。主程序无 `source.py`、旧实现或内部 owner
+重复导出；Search 专项 223 项、架构/兼容 188 项、官方 LunaTV 6 项和锁定全量
+`7222 passed, 9 skipped` 均通过。
 
 ### ARCH-110 分可信级执行 Module/Event Contract
 

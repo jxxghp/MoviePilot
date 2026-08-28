@@ -106,7 +106,10 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
     assert f"Ruff 历史诊断 | {ruff_count}" in checklist
     assert f"Application {application_coverage:.2f}%" in checklist
     assert f"Domain {domain_coverage:.2f}%" in checklist
-    assert f"当前受控 {ruff_count} 条诊断归零" in roadmap
+    if "**阶段状态：`CANCELLED`" in roadmap:
+        assert "| S4-L5 Ruff 治理债务清零 | `CANCELLED` |" in roadmap
+    else:
+        assert f"当前受控 {ruff_count} 条诊断归零" in roadmap
     assert (
         f"当前宿主有 {event_facts['producer_call_count']} 个\n"
         f"生产调用，其中 {event_facts['static_producer_call_count']} 个静态解析为 "

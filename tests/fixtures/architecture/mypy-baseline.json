@@ -668,7 +668,6 @@
     "override": 1
   },
   "app/agent/tools/impl/search_torrents.py": {
-    "arg-type": 2,
     "misc": 1,
     "no-untyped-def": 2,
     "override": 1
@@ -969,11 +968,10 @@
     "no-redef": 1
   },
   "app/api/endpoints/search.py": {
-    "arg-type": 14,
-    "assignment": 1,
+    "arg-type": 2,
     "attr-defined": 4,
     "misc": 11,
-    "no-untyped-call": 8,
+    "no-untyped-call": 3,
     "no-untyped-def": 4,
     "type-arg": 14
   },
@@ -1007,9 +1005,8 @@
   },
   "app/api/endpoints/system.py": {
     "arg-type": 2,
-    "attr-defined": 6,
+    "attr-defined": 5,
     "import-untyped": 1,
-    "list-item": 1,
     "misc": 34,
     "no-untyped-call": 7,
     "no-untyped-def": 27,
@@ -1395,21 +1392,6 @@
     "type-arg": 2,
     "var-annotated": 1
   },
-  "app/chain/search.py": {
-    "arg-type": 32,
-    "assignment": 67,
-    "attr-defined": 2,
-    "call-overload": 1,
-    "index": 1,
-    "no-any-return": 6,
-    "no-redef": 3,
-    "no-untyped-call": 19,
-    "no-untyped-def": 5,
-    "return-value": 1,
-    "type-arg": 26,
-    "type-var": 4,
-    "valid-type": 2
-  },
   "app/chain/site.py": {
     "arg-type": 2,
     "assignment": 6,
@@ -1442,10 +1424,9 @@
     "union-attr": 11
   },
   "app/chain/subscribe/facade.py": {
-    "arg-type": 2,
     "attr-defined": 3,
     "misc": 4,
-    "truthy-function": 2
+    "truthy-function": 1
   },
   "app/chain/subscribe/interaction.py": {
     "arg-type": 2
@@ -1478,7 +1459,6 @@
     "var-annotated": 2
   },
   "app/chain/subscribe/search.py": {
-    "arg-type": 1,
     "assignment": 3
   },
   "app/chain/system.py": {
@@ -3445,9 +3425,8 @@
     "var-annotated": 1
   },
   "app/workflow/actions/fetch_torrents.py": {
-    "arg-type": 6,
     "type-arg": 1,
-    "union-attr": 4,
+    "union-attr": 2,
     "var-annotated": 1
   },
   "app/workflow/actions/filter_medias.py": {

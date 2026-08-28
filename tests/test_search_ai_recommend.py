@@ -11,32 +11,27 @@ ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)
 ensure_optional_stub("transmission_rpc", File=object)
 ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil", loader=None))
 
-from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent.contracts import ReplyMode
-from app.agent.orchestrator import agent_manager
-from app.chain.search import SearchChain
-from app.runtime.config import settings
-from app.runtime.tasks import TaskRegistry
-from app.modules.indexer import IndexerModule
-from app.schemas.types import MediaType
+from app.agent.contracts import ReplyMode  # noqa: E402
+from app.agent.orchestrator import agent_manager  # noqa: E402
+from app.agent.tools.factory import MoviePilotToolFactory  # noqa: E402
+from app.chain.search import SearchChain  # noqa: E402
+from app.chain.search.recommend import recommend_coordinator  # noqa: E402
+from app.modules.indexer import IndexerModule  # noqa: E402
+from app.runtime.config import settings  # noqa: E402
+from app.runtime.tasks import TaskRegistry  # noqa: E402
+from app.schemas.types import MediaType  # noqa: E402
 
 
 def _make_result(title: str, size: int, seeders: int):
-    return SimpleNamespace(
-        torrent_info=SimpleNamespace(title=title, size=size, seeders=seeders)
-    )
+    return SimpleNamespace(torrent_info=SimpleNamespace(title=title, size=size, seeders=seeders))
 
 
 class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        SearchChain._ai_recommend_running = False
-        SearchChain._ai_recommend_task = None
-        SearchChain._current_recommend_request_hash = None
-        SearchChain._ai_recommend_result = None
-        SearchChain._ai_recommend_error = None
+        recommend_coordinator.cancel()
 
     async def asyncTearDown(self):
-        task = SearchChain._ai_recommend_task
+        task = recommend_coordinator.cancel()
         if task and not task.done():
             task.cancel()
             try:
@@ -44,17 +39,12 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             except asyncio.CancelledError:
                 pass
 
-        SearchChain._ai_recommend_running = False
-        SearchChain._ai_recommend_task = None
-        SearchChain._current_recommend_request_hash = None
-        SearchChain._ai_recommend_result = None
-        SearchChain._ai_recommend_error = None
-
     @staticmethod
     def _make_chain() -> SearchChain:
         chain = object.__new__(SearchChain)
         chain.load_cache = lambda _filename: None
         chain.save_cache = lambda _cache, _filename: None
+        chain.async_save_cache = AsyncMock()
         chain.remove_cache = lambda _filename: None
         chain.get_search_page_size = IndexerModule.get_search_page_size
         chain.search_plugin_torrents = lambda **_kwargs: []
@@ -68,7 +58,12 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
     async def test_start_recommend_task_restores_original_indices(self):
         chain = self._make_chain()
         saved = []
-        chain.save_cache = lambda cache, filename: saved.append((filename, cache))
+
+        async def save_cache(cache, filename):
+            """记录推荐结果的异步缓存写入。"""
+            saved.append((filename, cache))
+
+        chain.async_save_cache = save_cache
         results = [_make_result(f"item-{index}", 1024 * (index + 1), index) for index in range(7)]
 
         with (
@@ -92,16 +87,26 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 search_results_count=len(results),
                 results=results,
             )
-            self.assertIsNotNone(SearchChain._ai_recommend_task)
-            await SearchChain._ai_recommend_task
+            task = recommend_coordinator.snapshot().task
+            self.assertIsNotNone(task)
+            await task
 
-        self.assertEqual([4, 2], SearchChain._ai_recommend_result)
+        state = recommend_coordinator.snapshot()
+        self.assertEqual([4, 2], state.result)
         self.assertEqual(
-            [("__ai_recommend_indices__", [4, 2])],
+            [
+                (
+                    "__ai_recommend_indices__",
+                    {
+                        "request_hash": state.request_hash,
+                        "results": [4, 2],
+                    },
+                )
+            ],
             saved,
         )
-        self.assertFalse(SearchChain._ai_recommend_running)
-        self.assertIsNone(SearchChain._ai_recommend_task)
+        self.assertFalse(state.running)
+        self.assertIsNone(state.task)
 
     async def test_recommend_task_is_owned_by_runtime_registry(self):
         """搜索推荐必须登记稳定 owner，并在宿主关停时取消阻塞中的 LLM 调用。"""
@@ -126,7 +131,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(side_effect=blocked_recommend),
             ),
             patch(
-                "app.chain.search.get_task_registry",
+                "app.chain.search.recommend.get_task_registry",
                 return_value=registry,
             ),
         ):
@@ -136,7 +141,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
                 results=[_make_result("item-0", 1024, 1)],
             )
             await asyncio.wait_for(started.wait(), timeout=1)
-            task = SearchChain._ai_recommend_task
+            task = recommend_coordinator.snapshot().task
 
             self.assertEqual(
                 [record.owner for record in registry.records],
@@ -146,8 +151,9 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(task)
         self.assertTrue(task.done())
-        self.assertFalse(SearchChain._ai_recommend_running)
-        self.assertIsNone(SearchChain._ai_recommend_task)
+        state = recommend_coordinator.snapshot()
+        self.assertFalse(state.running)
+        self.assertIsNone(state.task)
 
     async def test_invoke_recommend_llm_disables_output_message_persistence(self):
         chain = self._make_chain()
@@ -195,9 +201,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             SimpleNamespace(title="Test Title", description="Test Desc")
         ]
 
-        SearchChain._current_recommend_request_hash = "stale-hash"
-        SearchChain._ai_recommend_result = [3, 1]
-        SearchChain._ai_recommend_error = "stale-error"
+        recommend_coordinator.restore("stale-hash", [3, 1])
 
         results = chain.search_by_title("keyword", cache_local=True)
 
@@ -205,9 +209,10 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["__ai_recommend_indices__"], removed)
         self.assertTrue(any(filename == "__search_result__" for filename, _ in cached))
         self.assertTrue(any(filename == "__search_params__" for filename, _ in cached))
-        self.assertIsNone(SearchChain._current_recommend_request_hash)
-        self.assertIsNone(SearchChain._ai_recommend_result)
-        self.assertIsNone(SearchChain._ai_recommend_error)
+        state = recommend_coordinator.snapshot()
+        self.assertIsNone(state.request_hash)
+        self.assertIsNone(state.result)
+        self.assertIsNone(state.error)
 
     def test_build_search_pages_uses_search_resource_pages_setting(self):
         with patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True):
@@ -233,23 +238,18 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             page = kwargs["page"]
             requested_pages.append(page)
             count = 100 if page in (0, 1) else 1
-            return [
-                SimpleNamespace(title=f"Result Page {page}-{index}", description="")
-                for index in range(count)
-            ]
+            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
 
         chain.search_site_torrents = search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
-            patch("app.chain.search.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+            patch("app.chain.search.provider.SitesHelper") as sites_helper,
+            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.get_indexers.return_value = [
-                {"id": 1, "name": "测试站点"}
-            ]
+            sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点"}]
             progress_helper.return_value = SimpleNamespace(
                 start=lambda: None,
                 update=lambda **_kwargs: None,
@@ -279,23 +279,18 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             page = kwargs["page"]
             requested_pages.append(page)
             count = 50 if page == 0 else 49
-            return [
-                SimpleNamespace(title=f"Result Page {page}-{index}", description="")
-                for index in range(count)
-            ]
+            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
 
         chain.search_site_torrents = search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+            patch("app.chain.search.provider.SitesHelper") as sites_helper,
+            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.get_indexers.return_value = [
-                {"id": 1, "name": "测试站点", "result_num": 50}
-            ]
+            sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点", "result_num": 50}]
             progress_helper.return_value = SimpleNamespace(
                 start=lambda: None,
                 update=lambda **_kwargs: None,
@@ -325,23 +320,18 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             page = kwargs["page"]
             requested_pages.append(page)
             count = 40 if page == 0 else 39
-            return [
-                SimpleNamespace(title=f"Result Page {page}-{index}", description="")
-                for index in range(count)
-            ]
+            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
 
         chain.search_site_torrents = search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+            patch("app.chain.search.provider.SitesHelper") as sites_helper,
+            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.get_indexers.return_value = [
-                {"id": 1, "name": "测试站点", "parser": "Yema"}
-            ]
+            sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点", "parser": "Yema"}]
             progress_helper.return_value = SimpleNamespace(
                 start=lambda: None,
                 update=lambda **_kwargs: None,
@@ -361,20 +351,10 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
         """
         验证站点单页容量由索引器模块统一读取，避免搜索链写死 parser 容量。
         """
-        self.assertEqual(
-            40,
-            IndexerModule.get_search_page_size({"parser": "Yema"}, keyword="keyword")
-        )
-        self.assertEqual(
-            50,
-            IndexerModule.get_search_page_size({"result_num": 50}, keyword="keyword")
-        )
-        self.assertIsNone(
-            IndexerModule.get_search_page_size({"parser": "Haidan"}, keyword="keyword")
-        )
-        self.assertIsNone(
-            IndexerModule.get_search_page_size({"parser": "TorrentLeech"}, keyword="keyword")
-        )
+        self.assertEqual(40, IndexerModule.get_search_page_size({"parser": "Yema"}, keyword="keyword"))
+        self.assertEqual(50, IndexerModule.get_search_page_size({"result_num": 50}, keyword="keyword"))
+        self.assertIsNone(IndexerModule.get_search_page_size({"parser": "Haidan"}, keyword="keyword"))
+        self.assertIsNone(IndexerModule.get_search_page_size({"parser": "TorrentLeech"}, keyword="keyword"))
 
     async def test_async_search_all_sites_stops_after_empty_page(self):
         """
@@ -390,23 +370,18 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             page = kwargs["page"]
             requested_pages.append(page)
             count = 100 if page == 0 else 0
-            return [
-                SimpleNamespace(title=f"Result Page {page}-{index}", description="")
-                for index in range(count)
-            ]
+            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
 
         chain.async_search_site_torrents = async_search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
-            patch("app.chain.search.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+            patch("app.chain.search.provider.SitesHelper") as sites_helper,
+            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.async_get_indexers = AsyncMock(
-                return_value=[{"id": 1, "name": "测试站点"}]
-            )
+            sites_helper.return_value.async_get_indexers = AsyncMock(return_value=[{"id": 1, "name": "测试站点"}])
             progress_helper.return_value = SimpleNamespace(
                 start=lambda: None,
                 update=lambda **_kwargs: None,
@@ -436,23 +411,18 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             page = kwargs["page"]
             requested_pages.append(page)
             count = 100 if page == 0 else 99
-            return [
-                SimpleNamespace(title=f"Result Page {page}-{index}", description="")
-                for index in range(count)
-            ]
+            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
 
         chain.async_search_site_torrents = async_search_torrents
 
         with (
             patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
-            patch("app.chain.search.ProgressHelper") as progress_helper,
+            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+            patch("app.chain.search.provider.SitesHelper") as sites_helper,
+            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
         ):
             system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.async_get_indexers = AsyncMock(
-                return_value=[{"id": 1, "name": "测试站点"}]
-            )
+            sites_helper.return_value.async_get_indexers = AsyncMock(return_value=[{"id": 1, "name": "测试站点"}])
             progress_helper.return_value = SimpleNamespace(
                 start=lambda: None,
                 update=lambda **_kwargs: None,
@@ -480,10 +450,8 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
         chain.process = lambda **_kwargs: [SimpleNamespace(title="Result")]
 
         with patch(
-                "app.chain.search.MediaChain",
-                return_value=SimpleNamespace(
-                    recognize_media=lambda **_kwargs: SimpleNamespace(title="Test")
-                ),
+            "app.chain.search.media.MediaChain",
+            return_value=SimpleNamespace(recognize_media=lambda **_kwargs: SimpleNamespace(title="Test")),
         ):
             chain.search_by_id(
                 media_source="themoviedb",
@@ -518,9 +486,7 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
 
     def test_search_params_preserve_special_season_zero(self):
         """最近搜索参数必须把显式季 0 保存为字符串 0，供页面刷新后重放。"""
-        params = SearchChain._normalize_search_params(
-            {"keyword": "tmdb:123", "season": 0}
-        )
+        params = SearchChain._normalize_search_params({"keyword": "tmdb:123", "season": 0})
 
         self.assertEqual(params["season"], "0")
 

@@ -24,8 +24,8 @@ def test_search_returns_plugin_results_without_indexer_sites():
     chain.search_plugin_torrents = lambda **kwargs: calls.append(kwargs) or [plugin_item]
 
     with (
-        patch("app.chain.search.get_configured_system_config") as system_config_oper,
-        patch("app.chain.search.SitesHelper") as sites_helper,
+        patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.provider.SitesHelper") as sites_helper,
     ):
         system_config_oper.return_value.get.return_value = []
         sites_helper.return_value.get_indexers.return_value = []
@@ -50,9 +50,9 @@ def test_search_invokes_plugin_once_with_multiple_indexers():
 
     with (
         patch.object(settings, "SEARCH_RESOURCE_PAGES", 1, create=True),
-        patch("app.chain.search.get_configured_system_config") as system_config_oper,
-        patch("app.chain.search.SitesHelper") as sites_helper,
-        patch("app.chain.search.ProgressHelper") as progress_helper,
+        patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.provider.SitesHelper") as sites_helper,
+        patch("app.chain.search.provider.ProgressHelper") as progress_helper,
     ):
         system_config_oper.return_value.get.return_value = [1, 2]
         sites_helper.return_value.get_indexers.return_value = [
@@ -88,9 +88,9 @@ def test_sync_site_search_propagates_request_context():
     with (
         patch.object(settings, "SEARCH_RESOURCE_PAGES", 1, create=True),
         patch("app.adapters.network.http.requests.request", side_effect=request),
-        patch("app.chain.search.get_configured_system_config") as system_config_oper,
-        patch("app.chain.search.SitesHelper") as sites_helper,
-        patch("app.chain.search.ProgressHelper") as progress_helper,
+        patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.provider.SitesHelper") as sites_helper,
+        patch("app.chain.search.provider.ProgressHelper") as progress_helper,
     ):
         system_config_oper.return_value.get.return_value = [1, 2]
         sites_helper.return_value.get_indexers.return_value = [
@@ -122,8 +122,8 @@ def test_async_search_returns_plugin_results_without_indexers():
     chain.async_search_plugin_torrents = plugin_search
     async def run_search():
         with (
-            patch("app.chain.search.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
+            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+            patch("app.chain.search.provider.SitesHelper") as sites_helper,
         ):
             system_config_oper.return_value.get.return_value = []
             sites_helper.return_value.async_get_indexers = AsyncMock(return_value=[])
@@ -146,8 +146,8 @@ def test_async_search_stream_emits_plugin_results_once_without_indexers():
     chain.async_search_plugin_torrents = plugin_search
     async def collect_events():
         with (
-            patch("app.chain.search.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.SitesHelper") as sites_helper,
+            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+            patch("app.chain.search.provider.SitesHelper") as sites_helper,
         ):
             system_config_oper.return_value.get.return_value = []
             sites_helper.return_value.async_get_indexers = AsyncMock(return_value=[])

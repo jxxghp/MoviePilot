@@ -360,7 +360,9 @@ flowchart TB
 - `runtime/extensions/module/contracts.py` 为宿主已观察到的方法提供显式参数与返回合同；兼容期只诊断
   旧插件签名差异，不改变插件优先级、短路和自由返回语义。
 - 大型稳定 Chain 使用同名目录包治理：包根只保留稳定公开类，Facade 只组合职责 owner；
-  `TransferChain`、`SubscribeChain` 与 `DownloadChain` 的旧单体文件均不得复活或以 `source.py` 留存。
+  `TransferChain`、`SubscribeChain`、`DownloadChain` 与 `SearchChain` 的旧单体文件均不得复活或以
+  `source.py` 留存。`SearchChain` 的 provider 列表和流式入口共享同一批次事实，搜索状态仍由
+  `application/search/state.py` 唯一拥有。
 - `app/chain/` 中下划线前缀文件（`_recognition.py`、`_messaging.py`、`_interaction.py`、
   `_music.py`、`_transfer.py`）是 `ChainBase` 的功能域 Mixin，不是独立 Chain。
 - 需要斜杠命令交互的 Chain 继承 `InteractionChainMixin`，只实现 `_interaction_handler`。
@@ -724,8 +726,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 919 |
-| 内部导入边 | 7,746 |
+| Python 模块 | 932 |
+| 内部导入边 | 7,886 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 55（债务已清零，55 条精确 containment） |

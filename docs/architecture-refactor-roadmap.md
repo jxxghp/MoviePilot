@@ -1,6 +1,7 @@
 # MoviePilot V3 架构重构路线图
 
-> 战略目标：完成 `docs/architecture-optimization-checklist.md` 的全部宿主架构重构与治理任务。
+> 战略目标：完成 S0-S3 与 S5 的宿主架构重构和最终收口；S4 按维护者决定取消，
+> S3 完成后直接进入 S5，S5 完成即结束本轮战略任务。
 >
 > 执行分支：`v3`；每个叶子完成后独立验证、提交、推送并确认远端 SHA。
 >
@@ -28,6 +29,7 @@
 | `VERIFIED` | 本地验收完成，尚未推送或尚未确认远端 |
 | `DELIVERED` | 已提交、推送，远端 SHA 与本地交付一致 |
 | `COMPLETE` | 叶子验收和后续依赖均已结清 |
+| `CANCELLED` | 经维护者明确取消，不进入执行、验收或完成计数 |
 
 任何时刻只允许一个 `ACTIVE` 叶子。子代理可以并行做只读审计、测试设计和下一叶准备；只有当前
 叶子的明确文件所有者可以写入源码。共享工作树中发现的并发改动必须先确认归属，不能覆盖。
@@ -50,7 +52,7 @@
 
 ## 2. 最终停止条件
 
-G-ARCH 只有在以下条件全部满足后才可完成：
+G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属于本轮完成范围：
 
 - [ ] `ARCH-001`、`ARCH-101` 至 `ARCH-111`、`ARCH-201` 至 `ARCH-204` 全部完成。
 - [ ] 宿主依赖图没有未解释 SCC；只允许精确 containment 的 TMDB 移植包例外，成员不能增长。
@@ -58,9 +60,7 @@ G-ARCH 只有在以下条件全部满足后才可完成：
 - [ ] Chain/Agent 正式数据入口不再注入无 Session Oper，不再以 `Any`/ORM 作为跨层合同。
 - [ ] 正式业务写入均有单一事务 owner；E2/E3 动作完成语义、幂等、恢复与人工决策路径一致。
 - [ ] import、普通对象构造不启动进程资源；资源由 bootstrap/lifecycle 显式创建、发布、关闭和重试收口。
-- [ ] 宿主 Module/Event 高风险合同 strict；宿主已知 `ANY` 结果形状归零，第三方插件保持诊断兼容。
-- [ ] 全量 mypy 历史错误、当前 Ruff 治理规则诊断和所有新增 complexity-v2 超限归零。
-- [ ] 高风险 Chain、Agent、Runtime、Startup、Adapter 纳入类型、复杂度、覆盖率和并发原语门禁。
+- [ ] S3、S5 各叶子定义的类型、复杂度、覆盖率和并发债务清零，现有全局 ratchet 不发生回退。
 - [ ] canonical 主程序无旧实现、重复导出和 legacy import；插件兼容检查基于同步后的官方插件仓 SHA 通过。
 - [ ] 锁定全量测试、Pylint、依赖一致性/漏洞审计（若涉及依赖）和最终远端一致性全部通过。
 
@@ -138,23 +138,26 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S3-L2 SubscribeChain | `VERIFIED` | S1-L5 | 旧 `subscribe.py` 单体退役，由 `app.chain.subscribe` 同名职责包承接；search、match、refresh、completion、reference reconciliation、notification 各有唯一 owner，包根只保留稳定 `SubscribeChain` |
 | S3-L3 Scheduler | `VERIFIED` | S2-L3 | 旧 `app/scheduler.py` 已退役并迁入 `app.scheduler` 同名包；catalog、execution/bridge/progress、`ExecutionRegistry`、reconciler、lifecycle 与 maintenance 已分离，业务 callable 由 startup 经 `SchedulerServices` 注入，包内无参 Chain 构造清零；功能/生命周期 215 项、架构/兼容/文档 189 项通过，官方插件基线语义未变化 |
 | S3-L4 DownloadChain | `DELIVERED` | S1-L6 | `7941fd921`：旧单体退役；selection、submission、batch、history、post-processing 等职责进入同名包单一 owner，提交后动作遵守新完成语义；锁定全量 `7162 passed, 9 skipped`，远端 `0/0` |
-| S3-L5 SearchChain | `ACTIVE` | S2-L7 | plan、provider fan-out、result state、pagination 分离，状态 owner 唯一 |
+| S3-L5 SearchChain | `VERIFIED` | S2-L7 | 旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、类型/复杂度门禁和锁定全量均通过 |
+| S3-L5.1 Runtime dependencies 命名治理 | `PLANNED` | S3-L5 | `dependencies.py` 与 `native_dependencies.py` 退役为 `runtime/dependencies/` 同名包；单词子模块、无包根重复导出，并把规则写入 `docs/rules/07-naming-conventions.md` 及机器门禁 |
 | S3-L6 MediaChain | `PLANNED` | S2-L2 | recognition、source projection、music alignment、cache 分离，兼容仅经统一层 |
 | S3-L7 Agent/System/Plugin API | `PLANNED` | S2,S1-L6 | WebAgent SSE/file/audio、nettest/log/update/market 用例进入 Application，endpoint 只做传输适配 |
 
 ### S4：可执行合同与质量债务清零
 
-退出条件：高风险动态合同按信任级执行；所有 Python 源码进入一致的类型、复杂度、覆盖率和并发治理面；
-历史 mypy/Ruff/复杂度债务为零。
+**阶段状态：`CANCELLED`（2026-08-28 维护者决定）**
+
+本阶段不再执行，也不作为 S5 或父目标完成的依赖。S4 原定义保留为取消记录，
+不得把 `CANCELLED` 写成 `COMPLETE` 或用 S5 顺带扩张为全宿主质量债务清零。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S4-L1 Module strict contract | `PLANNED` | S2-L7 | 宿主 provider `ANY` 结果归零，宿主 admission strict，官方/第三方插件分级兼容 |
-| S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
-| S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
-| S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 687 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
-| S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
+| S4-L1 Module strict contract | `CANCELLED` | — | 原计划取消 |
+| S4-L2 Event strict contract | `CANCELLED` | — | 原计划取消 |
+| S4-L3 Complexity v2 | `CANCELLED` | — | 原计划取消 |
+| S4-L4 全量 mypy 清零 | `CANCELLED` | — | 原计划取消 |
+| S4-L5 Ruff 治理债务清零 | `CANCELLED` | — | 原计划取消 |
+| S4-L6 Coverage/并发/质量证据 | `CANCELLED` | — | 原计划取消 |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口
 
@@ -162,18 +165,18 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S5-L1 PluginHelper/PluginManager | `PLANNED` | S2,S4 | 市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
-| S5-L2 Agent/LLM provider | `PLANNED` | S3-L7,S4 | catalog、发现、认证、session、runtime 分离；Manager 只保留稳定 API |
-| S5-L3 Domain projection | `PLANNED` | S3-L6,S4 | `MediaInfo` canonical 路径保留，来源投影规则拆分，重复 DTO/业务语义清零 |
+| S5-L1 PluginHelper/PluginManager | `PLANNED` | S2,S3 | 市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
+| S5-L2 Agent/LLM provider | `PLANNED` | S3-L7 | catalog、发现、认证、session、runtime 分离；Manager 只保留稳定 API |
+| S5-L3 Domain projection | `PLANNED` | S3-L6 | `MediaInfo` canonical 路径保留，来源投影规则拆分，重复 DTO/业务语义清零 |
 | S5-L4 Startup composition | `PLANNED` | S2,S3,S5-L1,S5-L2 | `initializers/modules.py` 仅负责顺序/注册/重启决策，构造按领域进入 composition |
 | S5-L5 Sync/async 重复清零 | `PLANNED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
-| S5-L6 最终兼容与交付 | `PLANNED` | 全部 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、类型、覆盖率全部通过并推送 |
+| S5-L6 最终兼容与交付 | `PLANNED` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、现有类型/覆盖率门禁全部通过并推送；完成后结束本轮战略任务 |
 
 ## 4. 当前活动叶子
 
 ### S3-L5 SearchChain
 
-**Status:** `ACTIVE`
+**Status:** `VERIFIED`
 
 **Outcome**
 

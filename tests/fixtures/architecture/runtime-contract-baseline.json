@@ -1268,12 +1268,12 @@
         "registration_kind": "decorator"
       },
       {
-        "caller": "app.chain.search",
+        "caller": "app.chain.search.facade",
         "dynamic": false,
         "events": [
           "EventType.SiteDeleted"
         ],
-        "fingerprint": "5a7967a84e5716f1939530b1f5d561dbf97130d22330ad7c282d2924e0743fe5",
+        "fingerprint": "7884f6aa0b02400cc69dbd75fd6eeeb88f0b429415bdf584cf91e6a64d7625d1",
         "handler": "SearchChain.remove_site",
         "invalid": false,
         "method": "register",
@@ -1763,7 +1763,7 @@
       "EventType.SiteDeleted": {
         "consumer_fingerprints": [
           "26a42e4bd34260584bd0363d2bac213084d07c6811a3812d12c7ba208b31a029",
-          "5a7967a84e5716f1939530b1f5d561dbf97130d22330ad7c282d2924e0743fe5"
+          "7884f6aa0b02400cc69dbd75fd6eeeb88f0b429415bdf584cf91e6a64d7625d1"
         ],
         "producer_fingerprints": [
           "3bac61d18a4f1be93888bb5465331df26ea1eff5df8b7da45116e0005fdae678"

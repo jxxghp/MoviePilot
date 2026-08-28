@@ -1,0 +1,263 @@
+"""标题搜索入口与标题候选过滤 owner。"""
+
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, cast
+
+from app.application.configuration import (
+    get_configured_system_config,
+)
+from app.chain.search.contract import _SearchOwnerBase as _SearchOwnerBase
+from app.domain.context import Context, TorrentInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
+from app.runtime.execution import run_in_threadpool
+from app.runtime.log import logger
+from app.schemas.types import (
+    MediaType,
+    SystemConfigKey,
+)
+
+
+class SearchTitleOwner(_SearchOwnerBase):
+    """标题搜索入口与标题候选过滤 owner。"""
+
+    def search_by_title(
+        self,
+        title: str,
+        page: Optional[int] = 0,
+        sites: Optional[List[int]] = None,
+        cache_local: Optional[bool] = False,
+        mtype: Optional[MediaType] = None,
+        rule_groups: Optional[List[str]] = None,
+    ) -> List[Context]:
+        """
+        根据标题搜索资源，不识别媒体信息，按默认搜索过滤规则返回站点内容
+        :param title: 标题，为空时返回所有站点首页内容
+        :param page: 页码
+        :param sites: 站点ID列表
+        :param cache_local: 是否缓存到本地
+        :param mtype: 限定站点资源分类
+        :param rule_groups: 指定过滤规则组，为空时使用默认搜索过滤规则
+        """
+        if cache_local:
+            self.cancel_ai_recommend()
+            self.save_last_search_params(
+                keyword=title,
+                mtype=mtype,
+                area="title",
+                sites=sites,
+            )
+        if title:
+            logger.info(f"开始搜索资源，关键词：{title} ...")
+        else:
+            logger.info(f"开始浏览资源，站点：{sites} ...")
+        # 搜索
+        search_kwargs: Dict[str, Any] = {
+            "keyword": title,
+            "sites": sites,
+            "page": page,
+        }
+        if mtype is not None:
+            search_kwargs["mtype"] = mtype
+        torrents = self._SearchChain__search_all_sites(**search_kwargs) or []
+        if not torrents:
+            logger.warning(f"{title} 未搜索到资源")
+            return []
+        torrents = self._filter_title_search_torrents(
+            torrents=torrents,
+            rule_groups=rule_groups,
+        )
+        if not torrents:
+            logger.warning(f"{title} 没有符合过滤规则的资源")
+            return []
+        # 组装上下文
+        contexts = [
+            Context(
+                meta_info=self._build_title_search_meta(torrent, mtype),
+                torrent_info=torrent,
+                resource_source="search",
+            )
+            for torrent in torrents
+        ]
+        # 保存到本地文件
+        if cache_local:
+            self._save_results(contexts)
+        return contexts
+
+    async def async_search_by_title(
+        self,
+        title: str,
+        page: Optional[int] = 0,
+        sites: Optional[List[int]] = None,
+        cache_local: Optional[bool] = False,
+        mtype: Optional[MediaType] = None,
+        rule_groups: Optional[List[str]] = None,
+    ) -> List[Context]:
+        """
+        根据标题异步搜索资源，不识别媒体信息，按默认搜索过滤规则返回站点内容
+        :param title: 标题，为空时返回所有站点首页内容
+        :param page: 页码
+        :param sites: 站点ID列表
+        :param cache_local: 是否缓存到本地
+        :param mtype: 限定站点资源分类
+        :param rule_groups: 指定过滤规则组，为空时使用默认搜索过滤规则
+        """
+        if cache_local:
+            self.cancel_ai_recommend()
+            await self.async_save_last_search_params(
+                keyword=title,
+                mtype=mtype,
+                area="title",
+                sites=sites,
+            )
+        if title:
+            logger.info(f"开始搜索资源，关键词：{title} ...")
+        else:
+            logger.info(f"开始浏览资源，站点：{sites} ...")
+        # 搜索
+        search_kwargs: Dict[str, Any] = {
+            "keyword": title,
+            "sites": sites,
+            "page": page,
+        }
+        if mtype is not None:
+            search_kwargs["mtype"] = mtype
+        torrents = await self._SearchChain__async_search_all_sites(**search_kwargs) or []
+        if not torrents:
+            logger.warning(f"{title} 未搜索到资源")
+            return []
+        torrents = await run_in_threadpool(
+            self._filter_title_search_torrents,
+            torrents=torrents,
+            rule_groups=rule_groups,
+        )
+        if not torrents:
+            logger.warning(f"{title} 没有符合过滤规则的资源")
+            return []
+        # 组装上下文
+        contexts = [
+            Context(
+                meta_info=self._build_title_search_meta(torrent, mtype),
+                torrent_info=torrent,
+                resource_source="search",
+            )
+            for torrent in torrents
+        ]
+        # 保存到本地文件
+        if cache_local:
+            await self._async_save_results(contexts)
+        return contexts
+
+    async def async_search_by_title_stream(
+        self,
+        title: str,
+        page: Optional[int] = 0,
+        sites: Optional[List[int]] = None,
+        cache_local: Optional[bool] = False,
+        mtype: Optional[MediaType] = None,
+        rule_groups: Optional[List[str]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        根据标题渐进式搜索资源，不识别媒体信息，按默认搜索过滤规则返回结果
+        """
+        if cache_local:
+            self.cancel_ai_recommend()
+            await self.async_save_last_search_params(
+                keyword=title,
+                mtype=mtype,
+                area="title",
+                sites=sites,
+            )
+        if title:
+            logger.info(f"开始渐进式搜索资源，关键词：{title} ...")
+        else:
+            logger.info(f"开始渐进式浏览资源，站点：{sites} ...")
+
+        contexts: List[Context] = []
+        # 记录过滤前的候选资源数，供前端在全部被过滤时给出友好提示
+        candidate_count = 0
+        if rule_groups is None:
+            rule_groups = get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or []
+        async for event in self._SearchChain__async_search_all_sites_stream(
+            keyword=title, sites=sites, page=page, mtype=mtype
+        ):
+            result = event.pop("items", []) or []
+            candidate_count += len(result)
+            result = await run_in_threadpool(
+                self._filter_title_search_torrents,
+                torrents=result,
+                rule_groups=rule_groups,
+            )
+            batch_contexts = [
+                Context(
+                    meta_info=self._build_title_search_meta(torrent, mtype),
+                    torrent_info=torrent,
+                    resource_source="search",
+                )
+                for torrent in result
+            ]
+            if batch_contexts:
+                contexts.extend(batch_contexts)
+            yield {
+                **event,
+                "type": "append",
+                "items": [cast(Any, context).to_dict() for context in batch_contexts],
+                "total_items": len(contexts),
+            }
+
+        if cache_local:
+            await self._async_save_results(contexts)
+
+        if not contexts:
+            logger.warning(f"{title} 未搜索到资源")
+        yield {
+            "type": "done",
+            "text": f"搜索完成，共 {len(contexts)} 个资源",
+            "items": [cast(Any, context).to_dict() for context in contexts],
+            "total_items": len(contexts),
+            "candidate_items": candidate_count,
+        }
+
+    @staticmethod
+    def _build_title_search_meta(
+        torrent: TorrentInfo,
+        mtype: Optional[MediaType],
+    ) -> Any:
+        """根据限定媒体类型构造模糊搜索结果的上下文元数据。"""
+        if mtype == MediaType.MUSIC:
+            meta = MetaMusic(
+                org_string=torrent.title,
+                title=torrent.title,
+            )
+            meta.apply_audio_quality(f"{torrent.title} {torrent.description or ''}")
+            return meta
+        return MetaInfo(title=torrent.title, subtitle=torrent.description)
+
+    def _filter_title_search_torrents(
+        self, torrents: List[TorrentInfo], rule_groups: Optional[List[str]] = None
+    ) -> List[TorrentInfo]:
+        """
+        对标题搜索结果应用默认搜索过滤规则，不执行媒体识别和标题精确匹配。
+        """
+        if not torrents:
+            return []
+
+        if rule_groups is None:
+            rule_groups = get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or []
+        if not rule_groups:
+            return torrents
+
+        logger.info(f"开始过滤标题搜索结果，使用规则组：{rule_groups} ...")
+        filter_torrents = cast(
+            Callable[..., List[TorrentInfo]],
+            self.filter_torrents,
+        )
+        filtered_torrents = (
+            filter_torrents(
+                rule_groups=rule_groups,
+                torrent_list=torrents,
+                mediainfo=None,
+            )
+            or []
+        )
+        logger.info(f"标题搜索过滤完成，剩余 {len(filtered_torrents)} 个资源")
+        return filtered_torrents

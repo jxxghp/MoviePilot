@@ -76,7 +76,7 @@ result = await self.async_run_module("method_name", kwarg1=val1)
 
 **Chain-to-chain calls:** A chain may call another chain to reuse stable domain logic. Avoid introducing new circular dependencies between chains.
 
-**File convention:** `app/chain/<domain>.py`, class name `<Domain>Chain` (e.g., `DownloadChain`, `SearchChain`, `SubscribeChain`).
+**File convention:** small workflows use `app/chain/<domain>.py`; a stable workflow with several independently owned responsibilities uses the same-named `app/chain/<domain>/` package. The package root lazily exposes only `<Domain>Chain`, `facade.py` preserves its public identity, and focused child modules use single-word responsibility names. The retired monolith and `source.py` copies must not coexist with the package.
 
 ---
 

@@ -1,13 +1,12 @@
 import pytest
 
+from app.adapters.system import rust as rust_accel
 from app.api.endpoints.search import _parse_media_type, _resolve_media_season
 from app.chain.search import SearchChain
 from app.domain.context import MediaInfo, SubtitleInfo
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import MediaType
-from app.adapters.system import rust as rust_accel
-
 
 AUDIENCES_SUBTITLE_HTML = """
 <table width="940" border="1" cellspacing="0" cellpadding="5">
@@ -195,7 +194,7 @@ def test_exact_subtitle_match_keeps_same_tv_episode(monkeypatch):
         SubtitleInfo(site_name="SiteA", title="Other Show S01E03 1080p WEB-DL CHS", subtitle_id="4"),
     ]
 
-    result = chain._SearchChain__parse_subtitle_result(
+    result = chain._parse_subtitle_result(
         subtitles=subtitles,
         mediainfo=mediainfo,
         season_episodes={1: [3]},
@@ -235,7 +234,7 @@ def test_exact_subtitle_match_uses_file_name_candidate():
         ),
     ]
 
-    result = chain._SearchChain__parse_subtitle_result(
+    result = chain._parse_subtitle_result(
         subtitles=subtitles,
         mediainfo=mediainfo,
         season_episodes={1: [3]},
@@ -496,7 +495,7 @@ def test_exact_subtitle_match_uses_torrent_helper_for_media_names():
         ),
     ]
 
-    result = chain._SearchChain__parse_subtitle_result(
+    result = chain._parse_subtitle_result(
         subtitles=subtitles,
         mediainfo=mediainfo,
         season_episodes={1: []},
@@ -528,7 +527,7 @@ def test_exact_subtitle_match_rejects_partial_name_match():
         ),
     ]
 
-    result = chain._SearchChain__parse_subtitle_result(
+    result = chain._parse_subtitle_result(
         subtitles=subtitles,
         mediainfo=mediainfo,
         season_episodes={1: []},

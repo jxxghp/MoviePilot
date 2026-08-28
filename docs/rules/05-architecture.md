@@ -434,6 +434,19 @@ remain. Download history, file rows and the durable Outbox intent commit in one
 transaction; notifications, background post-processing and immediate event
 publication run only after that commit succeeds.
 
+Search orchestration is owned by the same-named `app.chain.search` package. Its
+root lazily exposes only the stable `SearchChain`; `facade.py` preserves the
+direct `SearchChain -> ChainBase` MRO, event identity and the three exact private
+provider hooks used by official plugins. Search planning, provider fan-out,
+pagination, result projection, result-state adaptation, title/media/music/subtitle
+workflows and AI recommendation coordination each have one focused single-word
+owner. Provider list and stream APIs consume the same batch/event facts, pending
+page tasks belong to the runtime task registry, and progress always converges in
+`finally`. Canonical callers must not import owner classes through the package root.
+The retired `app/chain/search.py` monolith, internal root re-exports and `source.py`
+copies must not return. Search state normalization and persistence remain owned by
+`app.application.search.state`; the Chain package only adapts its cache ports.
+
 ### Module layer
 
 `app/modules/` contains pluggable downloaders, media servers, metadata sources,
@@ -786,6 +799,7 @@ driven workflow registration.
 | `app/application/history.py` | History use cases; deeply frozen DownloadHistory/TransferHistory DTOs and typed query/write/staging ports |
 | `app/db/adapters/history/download.py` | DownloadHistory short-session snapshot, query and mutation adapter |
 | `app/chain/download/` | Stable DownloadChain facade plus single-owner selection, submission, batch, existence, failure, history, post-processing, subtitle, task and technical-port modules |
+| `app/chain/search/` | Stable SearchChain facade plus single-owner plan, provider, pagination, result, cache, title, media, music, subtitle, site and recommendation modules |
 | `app/db/adapters/history/transfer.py` | TransferHistory short-session snapshot/query/mutation adapter and caller-owned transaction stager |
 | `app/application/security/user.py` | Frozen user/auth projections and atomic user aggregate service contracts |
 | `app/db/adapters/user.py` | User projection plus request-UoW mutation adapter |

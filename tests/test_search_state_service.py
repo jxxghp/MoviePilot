@@ -26,21 +26,26 @@ def test_search_state_normalizes_identity_and_preserves_cache_contract():
         mtype=MediaType.MOVIE,
         sites=[1, 2],
     )
-
-    assert saved == [("params", {
-        "keyword": "",
-        "media_source": str(MediaSource.TMDB),
-        "media_id": "123",
-        "type": MediaType.MOVIE.value,
-        "area": "title",
-        "title": "",
-        "year": "",
-        "season": "",
-        "episode": "",
-        "sites": "1,2",
-        "result_type": "torrent",
-    })]
+    assert saved[0] == (
+        "params",
+        {
+            "keyword": "",
+            "media_source": str(MediaSource.TMDB),
+            "media_id": "123",
+            "type": MediaType.MOVIE.value,
+            "area": "title",
+            "title": "",
+            "year": "",
+            "season": "",
+            "episode": "",
+            "sites": "1,2",
+            "result_type": "torrent",
+        },
+    )
     assert service.load_params() == saved[0][1]
+
+    service.save_results(["sync-result"])
+    assert saved[1] == ("results", ["sync-result"])
 
 
 def test_search_state_async_paths_use_injected_ports():
@@ -66,4 +71,8 @@ def test_search_state_async_paths_use_injected_ports():
     )
 
     asyncio.run(service.async_save_params(keyword="hello"))
+    asyncio.run(service.async_save_results(["resource"]))
+    asyncio.run(service.async_save_subtitle_results(["subtitle"]))
     assert asyncio.run(service.async_load_params())["keyword"] == "hello"
+    assert asyncio.run(service.async_load_results()) == ["resource"]
+    assert asyncio.run(service.async_load_subtitle_results()) == ["subtitle"]

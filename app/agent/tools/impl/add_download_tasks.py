@@ -12,7 +12,9 @@ from app.agent.tools.tags import ToolTag
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.chain.search import SearchChain
+
+# SearchChain 由包根惰性公开，Pylint 无法静态解析 __getattr__ 映射。
+from app.chain.search import SearchChain  # pylint: disable=no-name-in-module
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo
 from app.foundation.crypto import HashUtils
@@ -105,7 +107,7 @@ class AddDownloadTasksTool(MoviePilotTool):
         if index < 1:
             return None
 
-        results = SearchChain().last_search_results() or []
+        results = cast(List[Context], SearchChain().last_search_results() or [])
         if index > len(results):
             return None
         context = results[index - 1]
@@ -128,7 +130,10 @@ class AddDownloadTasksTool(MoviePilotTool):
         if index < 1:
             return None
 
-        results = await SearchChain().async_last_search_results() or []
+        results = cast(
+            List[Context],
+            await SearchChain().async_last_search_results() or [],
+        )
         if index > len(results):
             return None
         context = results[index - 1]

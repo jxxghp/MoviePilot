@@ -12,7 +12,7 @@ def stringify_sites(sites: Optional[List[int]]) -> str:
 
 
 def normalize_search_params(
-        params: Optional[Dict[str, Any]],
+    params: Optional[Dict[str, Any]],
 ) -> Optional[Dict[str, str]]:
     """把搜索缓存归一为前端重新搜索使用的稳定字段。"""
     if not isinstance(params, dict):
@@ -133,3 +133,15 @@ class SearchStateService:
     async def async_load_subtitle_results(self) -> Any:
         """异步读取最后一次字幕搜索结果。"""
         return await self._async_load_cache(self._subtitle_result_key)
+
+    def save_results(self, results: Any) -> None:
+        """同步保存最后一次资源搜索结果。"""
+        self._save_cache(results, self._result_key)
+
+    async def async_save_results(self, results: Any) -> None:
+        """异步保存最后一次资源搜索结果。"""
+        await self._async_save_cache(results, self._result_key)
+
+    async def async_save_subtitle_results(self, results: Any) -> None:
+        """异步保存最后一次字幕搜索结果。"""
+        await self._async_save_cache(results, self._subtitle_result_key)
