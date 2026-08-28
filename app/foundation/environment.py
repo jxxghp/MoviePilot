@@ -7,6 +7,8 @@ import sysconfig
 from pathlib import Path
 from typing import Optional
 
+_windows_dll_directory_handles: list[object] = []
+
 
 def is_docker() -> bool:
     """判断当前进程是否运行在约定的 Docker 环境中。"""
@@ -57,6 +59,17 @@ def is_x86_64() -> bool:
 def is_x86_32() -> bool:
     """判断当前 CPU 是否属于 32 位 x86 架构。"""
     return platform.machine().lower() in {"i386", "i686", "x86", "386", "x86_32"}
+
+
+def register_windows_dll_directory(path: Optional[str]) -> bool:
+    """注册可信 DLL 目录，并保留句柄使其在进程生命周期内持续生效。"""
+    if not is_windows() or not path:
+        return False
+    directory = Path(path)
+    if not directory.is_dir():
+        return False
+    _windows_dll_directory_handles.append(getattr(os, "add_dll_directory")(str(directory)))
+    return True
 
 
 def cpu_arch() -> str:

@@ -25,6 +25,37 @@ def test_gil_status_tracks_current_interpreter_state(monkeypatch):
     assert environment.is_gil_enabled() is False
 
 
+def test_windows_dll_directory_registration_retains_handle(tmp_path, monkeypatch):
+    """Windows DLL 搜索路径句柄必须在进程生命周期内保留。"""
+    handle = object()
+    registered = []
+    monkeypatch.setattr(environment, "is_windows", lambda: True)
+    monkeypatch.setattr(
+        environment.os,
+        "add_dll_directory",
+        lambda path: registered.append(path) or handle,
+        raising=False,
+    )
+    monkeypatch.setattr(environment, "_windows_dll_directory_handles", [])
+
+    assert environment.register_windows_dll_directory(str(tmp_path)) is True
+    assert registered == [str(tmp_path)]
+    assert environment._windows_dll_directory_handles == [handle]
+
+
+def test_windows_dll_directory_registration_ignores_other_platforms(tmp_path, monkeypatch):
+    """非 Windows 运行时不得调用平台专属 DLL 注册 API。"""
+    monkeypatch.setattr(environment, "is_windows", lambda: False)
+    monkeypatch.setattr(
+        environment.os,
+        "add_dll_directory",
+        lambda _path: pytest.fail("must not register a DLL directory"),
+        raising=False,
+    )
+
+    assert environment.register_windows_dll_directory(str(tmp_path)) is False
+
+
 def test_runtime_dependency_group_tracks_interpreter_abi(monkeypatch):
     monkeypatch.setattr(dependencies, "is_free_threaded_runtime", lambda: False)
     assert dependencies.runtime_dependency_group() == "runtime-standard"
@@ -76,6 +107,26 @@ def test_runtime_profiles_share_gil_safe_crcmod_distribution():
     assert {
         "package": {"name": "oss2"},
         "dependencies": ["crcmod"],
+    } in document["tool"]["uv"]["exclude-dependencies"]
+
+
+def test_windows_runtime_profiles_isolate_pywin32_dependency():
+    """标准 Windows 保留 named-pipe 依赖，free-threaded profile 不解析 pywin32。"""
+    project_file = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    with project_file.open("rb") as file:
+        document = tomllib.load(file)
+
+    dependencies = document["project"]["dependencies"]
+    groups = document["dependency-groups"]
+    assert not any(requirement.lower().startswith("pympler") for requirement in dependencies)
+    assert "pywin32==312 ; sys_platform == 'win32'" in groups["runtime-standard"]
+    assert not any(
+        requirement.lower().startswith("pywin32")
+        for requirement in groups["runtime-free-threaded"]
+    )
+    assert {
+        "package": {"name": "docker"},
+        "dependencies": ["pywin32"],
     } in document["tool"]["uv"]["exclude-dependencies"]
 
 

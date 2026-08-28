@@ -195,3 +195,31 @@ def test_native_dependency_update_probe_has_narrow_automatic_triggers():
     assert workflow["on"]["push"]["paths"] == expected_paths
     assert "workflow_dispatch" in workflow["on"]
     assert set(workflow["jobs"]) == {"probe"}
+
+
+def test_dependency_compatibility_covers_windows_free_threaded_profile():
+    """依赖门禁必须真实安装并检查 Windows free-threaded profile。"""
+    workflow = _load_workflow("dependency-compat.yml")
+    matrix = workflow["jobs"]["install"]["strategy"]["matrix"]["include"]
+    free_threaded = next(item for item in matrix if item["expected-profile"] == "free-threaded")
+
+    assert free_threaded == {
+        "name": "Windows x64 free-threaded",
+        "runner": "windows-2025",
+        "python-version": "3.14t",
+        "runtime-group": "runtime-free-threaded",
+        "expected-profile": "free-threaded",
+        "expected-system": "Windows",
+        "expected-machine": "AMD64",
+    }
+    install = _step_commands(workflow, "install")
+    assert "--group ${{ matrix.runtime-group }}" in install
+    assert "dependencies.main(full=True)" in install
+    assert "docker.transport.npipesocket" in install
+    postgres_step = next(
+        step
+        for step in workflow["jobs"]["install"]["steps"]
+        if step.get("name") == "Expose PostgreSQL build tools"
+    )
+    assert postgres_step["if"] == "matrix.expected-profile == 'free-threaded'"
+    assert "Test-Path -LiteralPath $env:PGBIN -PathType Container" in postgres_step["run"]

@@ -46,26 +46,43 @@ jobs:
           - name: Linux x64
             runner: ubuntu-24.04
             python-version: '3.14'
+            runtime-group: runtime-standard
+            expected-profile: standard
             expected-system: Linux
             expected-machine: x86_64
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
             python-version: '3.14'
+            runtime-group: runtime-standard
+            expected-profile: standard
             expected-system: Linux
             expected-machine: aarch64
           - name: macOS Intel
             runner: macos-15-intel
             python-version: '3.14'
+            runtime-group: runtime-standard
+            expected-profile: standard
             expected-system: Darwin
             expected-machine: x86_64
           - name: macOS ARM
             runner: macos-15
             python-version: '3.14'
+            runtime-group: runtime-standard
+            expected-profile: standard
             expected-system: Darwin
             expected-machine: arm64
           - name: Windows x64
             runner: windows-2025
             python-version: '3.14'
+            runtime-group: runtime-standard
+            expected-profile: standard
+            expected-system: Windows
+            expected-machine: AMD64
+          - name: Windows x64 free-threaded
+            runner: windows-2025
+            python-version: '3.14t'
+            runtime-group: runtime-free-threaded
+            expected-profile: free-threaded
             expected-system: Windows
             expected-machine: AMD64
 
@@ -82,22 +99,47 @@ jobs:
             pyproject.toml
             uv.lock
 
+      - name: Expose PostgreSQL build tools
+        if: matrix.expected-profile == 'free-threaded'
+        shell: pwsh
+        run: |
+          if (-not $env:PGBIN -or -not (Test-Path -LiteralPath $env:PGBIN -PathType Container)) {
+            throw 'Windows free-threaded profile requires a valid PGBIN directory'
+          }
+          "$env:PGBIN" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Install locked runtime dependencies
-        run: uv sync --locked --inexact --no-dev --python ${{ matrix.python-version }}
+        run: >-
+          uv sync --locked --inexact --no-default-groups
+          --group ${{ matrix.runtime-group }}
+          --python ${{ matrix.python-version }}
 
       - name: Verify environment and core imports
         env:
           EXPECTED_SYSTEM: ${{ matrix.expected-system }}
           EXPECTED_MACHINE: ${{ matrix.expected-machine }}
+          EXPECTED_PROFILE: ${{ matrix.expected-profile }}
+          CONFIG_DIR: ${{ runner.temp }}/moviepilot-runtime-smoke
         run: >-
           uv run --locked --no-sync python -c
           "import os, platform;
           assert platform.system() == os.environ['EXPECTED_SYSTEM'], (platform.system(), os.environ['EXPECTED_SYSTEM']);
           assert platform.machine() == os.environ['EXPECTED_MACHINE'], (platform.machine(), os.environ['EXPECTED_MACHINE']);
-          import alembic, fastapi, pydantic, pydantic_settings, sqlalchemy, starlette, uvicorn"
+          import sys, sysconfig;
+          expected_free_threaded = os.environ['EXPECTED_PROFILE'] == 'free-threaded';
+          assert (sysconfig.get_config_var('Py_GIL_DISABLED') == 1) is expected_free_threaded;
+          assert sys._is_gil_enabled() is (not expected_free_threaded);
+          import importlib;
+          importlib.import_module('docker');
+          importlib.import_module('docker.transport.npipesocket') if os.name == 'nt' and not expected_free_threaded else None;
+          from app.doctor import dependencies;
+          dependencies.main(full=True)"
 
       - name: Verify locked project consistency
-        run: uv sync --locked --offline --inexact --no-dev --check --python ${{ matrix.python-version }}
+        run: >-
+          uv sync --locked --offline --inexact --no-default-groups
+          --group ${{ matrix.runtime-group }}
+          --check --python ${{ matrix.python-version }}
 
   docker-dependencies:
     name: Docker dependencies / ${{ matrix.platform }}

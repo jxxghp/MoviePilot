@@ -62,7 +62,6 @@ dependencies = [
     "pydantic>=2.13.4,<3.0.0",
     "pydantic-settings>=2.14.2,<3.0.0",
     "pyjwt~=2.13.0",
-    "pympler~=1.1",
     "pyotp~=2.9.0",
     "pyparsing~=3.3.2",
     "pyquery~=2.0.1",
@@ -74,7 +73,6 @@ dependencies = [
     "pytz~=2026.2",
     "pyvirtualdisplay~=3.0",
     "pywebpush~=2.3.0",
-    "pywin32==312 ; sys_platform == 'win32'",
     "pyyaml~=6.0.3",
     "qbittorrent-api==2026.6.0",
     "redis~=8.1.0",
@@ -117,6 +115,7 @@ runtime-standard = [
     "bcrypt~=4.3.0",
     "lxml~=6.1.2",
     "psycopg2-binary~=2.9.12",
+    "pywin32==312 ; sys_platform == 'win32'",
 ]
 runtime-free-threaded = [
     "Brotli==1.2.0",
@@ -144,6 +143,7 @@ conflicts = [
     ],
 ]
 exclude-dependencies = [
+    { package = { name = "docker" }, dependencies = ["pywin32"] },
     { package = { name = "oss2" }, dependencies = ["crcmod"] },
 ]
 environments = [
