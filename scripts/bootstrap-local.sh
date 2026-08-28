@@ -16,7 +16,7 @@ SUPERUSER=""
 SUPERUSER_PASSWORD=""
 OS_NAME="Unknown"
 PYTHON_BIN=""
-UV_VERSION="0.12.5"
+MIN_UV_VERSION="0.12.5"
 BREW_BIN=""
 PACKAGE_MANAGER=""
 PACKAGE_INDEX_UPDATED="false"
@@ -384,20 +384,43 @@ ensure_base_tools() {
   fi
 }
 
+uv_version_supported() {
+  local actual="$1"
+  local minimum="$2"
+  local -a actual_parts minimum_parts
+  local index actual_part minimum_part
+
+  IFS=. read -r -a actual_parts <<< "$actual"
+  IFS=. read -r -a minimum_parts <<< "$minimum"
+  for index in 0 1 2; do
+    actual_part="${actual_parts[$index]:-0}"
+    minimum_part="${minimum_parts[$index]:-0}"
+    [[ "$actual_part" =~ ^[0-9]+$ ]] || return 1
+    [[ "$minimum_part" =~ ^[0-9]+$ ]] || return 1
+    if (( 10#$actual_part > 10#$minimum_part )); then
+      return 0
+    fi
+    if (( 10#$actual_part < 10#$minimum_part )); then
+      return 1
+    fi
+  done
+  return 0
+}
+
 ensure_uv() {
   if command -v uv >/dev/null 2>&1 \
-    && [[ "$(uv --version 2>/dev/null | awk '{print $2}')" == "${UV_VERSION}" ]]; then
+    && uv_version_supported "$(uv --version 2>/dev/null | awk '{print $2}')" "${MIN_UV_VERSION}"; then
     return 0
   fi
 
-  echo "==> 自动安装 uv ${UV_VERSION}"
-  env UV_INSTALL_DIR="$HOME/.local/bin" sh -c "$(curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh")"
+  echo "==> 自动安装最新稳定版 uv"
+  env UV_INSTALL_DIR="$HOME/.local/bin" sh -c "$(curl -LsSf https://astral.sh/uv/install.sh)"
   export PATH="$HOME/.local/bin:$PATH"
   hash -r
 
   if ! command -v uv >/dev/null 2>&1 \
-    || [[ "$(uv --version 2>/dev/null | awk '{print $2}')" != "${UV_VERSION}" ]]; then
-    echo "uv ${UV_VERSION} 安装失败，无法继续自动安装 Python。" >&2
+    || ! uv_version_supported "$(uv --version 2>/dev/null | awk '{print $2}')" "${MIN_UV_VERSION}"; then
+    echo "uv ${MIN_UV_VERSION}+ 安装失败，无法继续自动安装 Python。" >&2
     return 1
   fi
 }

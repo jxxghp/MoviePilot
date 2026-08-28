@@ -56,7 +56,7 @@ uv run --locked --no-sync pylint app/
 ```bash
 uv export --quiet --locked --no-dev --no-emit-project \
   --output-file /tmp/moviepilot-audit-requirements.txt
-uvx --from pip-audit==2.10.1 pip-audit \
+uvx --from pip-audit pip-audit \
   --require-hashes --disable-pip --strict --progress-spinner off \
   --requirement /tmp/moviepilot-audit-requirements.txt
 ```

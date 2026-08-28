@@ -217,16 +217,36 @@ class LocalSetupConfigDirTests(unittest.TestCase):
         self.assertIn("https://mirror.example/simple?token=abc", redacted)
         self.assertNotIn("user:pass", " ".join(redacted))
 
-    def test_require_uv_accepts_repository_version(self):
+    def test_require_uv_accepts_minimum_version(self):
         module = load_local_setup_module()
         uv_bin = Path("/opt/moviepilot/bin/uv")
 
         with patch.object(module.shutil, "which", return_value=str(uv_bin)), patch.object(
-            module, "capture", return_value=f"uv {module.UV_VERSION} (test-target)"
+            module, "capture", return_value=f"uv {module.MIN_UV_VERSION_TEXT} (test-target)"
         ):
             result = module.require_uv()
 
         self.assertEqual(result, uv_bin.resolve())
+
+    def test_require_uv_accepts_newer_version(self):
+        module = load_local_setup_module()
+        uv_bin = Path("/opt/moviepilot/bin/uv")
+
+        with patch.object(module.shutil, "which", return_value=str(uv_bin)), patch.object(
+            module, "capture", return_value="uv 1.0.0 (test-target)"
+        ):
+            result = module.require_uv()
+
+        self.assertEqual(result, uv_bin.resolve())
+
+    def test_require_uv_rejects_older_version(self):
+        module = load_local_setup_module()
+        uv_bin = Path("/opt/moviepilot/bin/uv")
+
+        with patch.object(module.shutil, "which", return_value=str(uv_bin)), patch.object(
+            module, "capture", return_value="uv 0.12.4 (test-target)"
+        ), self.assertRaisesRegex(RuntimeError, "需要 uv 0.12.5\\+"):
+            module.require_uv()
 
     def test_windows_expose_uv_keeps_existing_source_when_target_is_same(self):
         module = load_local_setup_module()

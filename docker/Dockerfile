@@ -3,7 +3,7 @@
 ARG MOVIEPILOT_PYTHON_VARIANT="standard"
 ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"
 
-FROM ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv
+FROM ghcr.io/astral-sh/uv:latest AS uv
 
 
 FROM rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548 AS rclone

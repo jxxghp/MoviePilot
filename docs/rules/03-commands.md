@@ -34,7 +34,7 @@ uv sync --locked --offline --inexact --no-dev --check
 - Test, coverage, lint, and explicit build tooling belong in `[dependency-groups].dev`.
 - Commit the updated `uv.lock`; do not maintain or generate main-program requirements files.
 - `uv pip check` is diagnostic only because unmaintained third-party metadata may name a compatible superseded distribution.
-- Use uv 0.12.5 and Python 3.14+.
+- Use uv 0.12.5+ and Python 3.14+; prefer the latest stable uv release.
 
 ---
 
@@ -82,7 +82,7 @@ uv run --locked --no-sync pylint app/chain/download.py
 ```bash
 uv export --quiet --locked --no-dev --no-emit-project \
   --output-file /tmp/moviepilot-audit-requirements.txt
-uvx --from pip-audit==2.10.1 pip-audit \
+uvx --from pip-audit pip-audit \
   --require-hashes --disable-pip --strict --progress-spinner off \
   --requirement /tmp/moviepilot-audit-requirements.txt
 ```

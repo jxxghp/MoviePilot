@@ -30,11 +30,7 @@ def _write_bundle(path: Path, label: str, *, extra_files: tuple[str, ...] = ()) 
 def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
 
-    assert (
-        "FROM ghcr.io/astral-sh/uv:0.12.5@sha256:"
-        "e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 AS uv"
-        in dockerfile
-    )
+    assert "FROM ghcr.io/astral-sh/uv:latest AS uv" in dockerfile
     assert "COPY --from=uv /uv /usr/local/bin/uv" in dockerfile
     assert "COPY pyproject.toml uv.lock ./" in dockerfile
     assert "python3 -m venv --without-pip ${VENV_PATH}" in dockerfile

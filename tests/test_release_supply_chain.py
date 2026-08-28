@@ -1,5 +1,8 @@
 """正式镜像发布的供应链门禁合同。"""
 
+import os
+import shutil
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -8,12 +11,30 @@ from ruamel.yaml import YAML
 
 from scripts.normalize_audit_requirements import normalize_requirements
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "docker" / "Dockerfile"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "build-v3.yml"
 BETA_WORKFLOW = ROOT / ".github" / "workflows" / "beta.yml"
+PR_AGENT_WORKFLOW = ROOT / ".github" / "workflows" / "pr-agent.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore.yaml"
+WORKFLOW_ROOT = ROOT / ".github" / "workflows"
+
+ALLOWED_ACTION_REFS = {
+    "actions/checkout@v7",
+    "actions/setup-python@v7",
+    "actions/github-script@v9",
+    "actions/stale@v11",
+    "astral-sh/setup-uv@v10.0.1",
+    "docker/metadata-action@v6",
+    "docker/setup-qemu-action@v4",
+    "docker/setup-buildx-action@v4",
+    "docker/build-push-action@v7",
+    "docker/login-action@v4",
+    "aquasecurity/trivy-action@v0.36.0",
+    "actions/upload-artifact@v7",
+    "actions/download-artifact@v8",
+    "docker://ghcr.io/infinitypacer/pr-review-runner:latest",
+}
 
 
 def _load_workflow(path: Path = RELEASE_WORKFLOW) -> dict:
@@ -29,6 +50,66 @@ def _steps_by_name(workflow: dict) -> dict[str, dict]:
         for step in workflow["jobs"]["Docker-build"]["steps"]
         if "name" in step
     }
+
+
+def _write_fake_gh(tmp_path: Path) -> Path:
+    """创建可控制响应和退出状态的 gh 测试替身。"""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_LOG"
+cat "$GH_RESPONSE_FILE"
+cat "$GH_ERROR_FILE" >&2
+exit "$GH_EXIT_CODE"
+""",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    return bin_dir
+
+
+def _run_release_script(
+    script: str,
+    tmp_path: Path,
+    *,
+    response: str = "",
+    error: str = "",
+    exit_code: int = 0,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """在隔离的 gh 替身环境中执行发布 workflow 脚本。"""
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("release workflow contract requires Bash")
+    response_file = tmp_path / "response.txt"
+    error_file = tmp_path / "error.txt"
+    response_file.write_text(response, encoding="utf-8")
+    error_file.write_text(error, encoding="utf-8")
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{_write_fake_gh(tmp_path)}:{env['PATH']}",
+            "GH_RESPONSE_FILE": str(response_file),
+            "GH_ERROR_FILE": str(error_file),
+            "GH_EXIT_CODE": str(exit_code),
+            "GH_LOG": str(tmp_path / "gh.log"),
+            "GITHUB_REPOSITORY": "jxxghp/MoviePilot",
+            "GITHUB_ENV": str(tmp_path / "github.env"),
+            "GITHUB_OUTPUT": str(tmp_path / "github.output"),
+            "CHANGELOG": "generated changelog",
+        }
+    )
+    env.update(extra_env or {})
+    return subprocess.run(
+        [bash, "-euo", "pipefail", "-c", script],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> None:
@@ -62,7 +143,8 @@ def test_release_audits_locked_runtime_dependencies_before_building() -> None:
         assert "--group runtime-standard" in audit
         assert "--group runtime-free-threaded" in audit
         assert "scripts/normalize_audit_requirements.py" in audit
-        assert "pip-audit==2.10.1" in audit
+        assert "uvx --from pip-audit pip-audit" in audit
+        assert "pip-audit==" not in audit
         for option in ("--require-hashes", "--no-deps", "--disable-pip", "--strict"):
             assert option in audit
 
@@ -142,12 +224,9 @@ def test_release_scans_both_architectures_before_registry_login_and_publish() ->
     ):
         scan = indexed[name]
         assert scan["with"]["cache-dir"] == "${{ runner.temp }}/trivy"
-        assert scan["uses"] == (
-            "aquasecurity/trivy-action@"
-            "a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8"
-        )
+        assert scan["uses"] == "aquasecurity/trivy-action@v0.36.0"
         assert scan["with"].items() >= {
-            "version": "v0.70.0",
+            "version": "latest",
             "scanners": "vuln",
             "vuln-type": "os,library",
             "severity": "HIGH,CRITICAL",
@@ -169,6 +248,158 @@ def test_release_scans_both_architectures_before_registry_login_and_publish() ->
     assert last_scan < names.index("Login GitHub Container Registry")
     assert last_scan < names.index("Publish multi-architecture image")
     assert last_scan < names.index("Publish free-threaded multi-architecture image")
+
+
+def test_workflows_follow_maintained_action_channels() -> None:
+    """官方工具使用批准的稳定引用，不引入未知来源或手工 commit SHA。"""
+    for workflow_path in sorted(WORKFLOW_ROOT.glob("*.yml")):
+        workflow = _load_workflow(workflow_path)
+        for job_name, job in workflow.get("jobs", {}).items():
+            for step in job.get("steps", []):
+                uses = step.get("uses")
+                if uses:
+                    assert uses in ALLOWED_ACTION_REFS, (
+                        f"{workflow_path}:{job_name}:{step.get('name', '<unnamed>')}: {uses}"
+                    )
+                    if uses == "astral-sh/setup-uv@v10.0.1":
+                        assert "version" not in step.get("with", {})
+
+
+def test_all_workflows_are_valid_yaml() -> None:
+    """所有 GitHub Actions 工作流都必须能被 YAML 1.2 解析。"""
+    for workflow_path in sorted(WORKFLOW_ROOT.glob("*.yml")):
+        workflow = _load_workflow(workflow_path)
+        assert isinstance(workflow, dict), workflow_path
+        assert isinstance(workflow.get("jobs"), dict), workflow_path
+
+
+def test_pr_agent_keeps_pull_request_target_api_only_boundary() -> None:
+    """带凭据的 PR 审查只读 GitHub API，不 checkout 或执行 PR 分支代码。"""
+    workflow = _load_workflow(PR_AGENT_WORKFLOW)
+    assert "pull_request_target" in workflow["on"]
+    assert workflow["permissions"] == {
+        "contents": "read",
+        "pull-requests": "write",
+        "issues": "write",
+    }
+    steps = workflow["jobs"]["pr-agent"]["steps"]
+    assert len(steps) == 1
+    review_step = steps[0]
+    assert review_step["uses"] == "docker://ghcr.io/infinitypacer/pr-review-runner:latest"
+    assert "run" not in review_step
+
+
+def test_release_uses_github_cli_for_tag_and_release_lifecycle() -> None:
+    """正式发布复用 GitHub CLI，并只把明确不存在识别为新 Release。"""
+    workflow = _load_workflow()
+    indexed = _steps_by_name(workflow)
+    serialized = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "dev-drprasad/delete-tag-and-release" not in serialized
+    assert "softprops/action-gh-release" not in serialized
+    release_query = indexed["Get existing release body"]["run"]
+    assert "gh api --include" in release_query
+    assert 'if [ "$status_code" = "404" ]' in release_query
+    assert "cat \"$error_file\" >&2\n    exit 1" in release_query
+    assert "gh release delete" not in serialized
+    assert 'git tag -f "$tag_name" "$RELEASE_COMMIT"' in indexed["Publish Release Tag"]["run"]
+    assert 'git push --force origin "refs/tags/${tag_name}"' in indexed["Publish Release Tag"]["run"]
+    publish_release = indexed["Publish Release"]["run"]
+    assert 'if [ "$RELEASE_EXISTS" = "true" ]' in publish_release
+    assert "gh release edit" in publish_release
+    assert "gh release create" in publish_release
+    assert '--notes-file "$notes_file"' in publish_release
+    assert "--draft=false" in publish_release
+    assert "--prerelease=false" in publish_release
+    assert "--latest" in publish_release
+    names = [step.get("name") for step in workflow["jobs"]["Docker-build"]["steps"]]
+    assert names.index("Get existing release body") < names.index("Publish Release Tag")
+    assert names.index("Publish Release Tag") < names.index("Publish Release")
+
+
+@pytest.mark.parametrize(
+    ("response", "exit_code", "expected_exists", "expected_body"),
+    [
+        ("HTTP/2.0 200 OK\nHeader: value\n\nmanual body\n", 0, "true", "manual body"),
+        ("HTTP/2.0 404 Not Found\n\n", 1, "false", "generated changelog"),
+    ],
+)
+def test_release_query_preserves_existing_body_or_handles_explicit_404(
+    tmp_path: Path,
+    response: str,
+    exit_code: int,
+    expected_exists: str,
+    expected_body: str,
+) -> None:
+    """已有 Release 保留正文，只有明确 404 才使用自动变更记录。"""
+    script = _steps_by_name(_load_workflow())["Get existing release body"]["run"]
+    script = script.replace("v${{ env.app_version }}", "v3.0.0")
+
+    result = _run_release_script(script, tmp_path, response=response, exit_code=exit_code)
+
+    assert result.returncode == 0, result.stderr
+    output = (tmp_path / "github.output").read_text(encoding="utf-8")
+    environment = (tmp_path / "github.env").read_text(encoding="utf-8")
+    assert f"exists={expected_exists}" in output
+    assert expected_body in environment
+
+
+def test_release_query_fails_closed_on_non_404_error(tmp_path: Path) -> None:
+    """网络或服务端错误不得伪装成 Release 不存在。"""
+    script = _steps_by_name(_load_workflow())["Get existing release body"]["run"]
+    script = script.replace("v${{ env.app_version }}", "v3.0.0")
+
+    result = _run_release_script(
+        script,
+        tmp_path,
+        response="HTTP/2.0 500 Internal Server Error\n\n",
+        error="GitHub API unavailable\n",
+        exit_code=1,
+    )
+
+    assert result.returncode != 0
+    assert "GitHub API unavailable" in result.stderr
+    assert not (tmp_path / "github.env").exists()
+
+
+@pytest.mark.parametrize(
+    ("release_exists", "expected_command"),
+    [("true", "release edit"), ("false", "release create")],
+)
+def test_release_publish_selects_edit_or_create(
+    tmp_path: Path,
+    release_exists: str,
+    expected_command: str,
+) -> None:
+    """发布阶段按查询结果原位更新或创建 Release。"""
+    script = _steps_by_name(_load_workflow())["Publish Release"]["run"]
+    script = script.replace("v${{ env.app_version }}", "v3.0.0")
+
+    result = _run_release_script(
+        script,
+        tmp_path,
+        extra_env={"RELEASE_EXISTS": release_exists, "RELEASE_BODY": "release notes"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "gh.log").read_text(encoding="utf-8")
+    assert expected_command in log
+    if release_exists == "true":
+        assert "--draft=false" in log
+        assert "--prerelease=false" in log
+
+
+def test_dependency_compat_checks_minimum_uv_version() -> None:
+    """依赖兼容 job 必须断言 uv 满足最低版本，而不是只打印版本。"""
+    workflow = _load_workflow(ROOT / ".github" / "workflows" / "dependency-compat.yml")
+    steps = workflow["jobs"]["docker-dependencies"]["steps"]
+    verify = next(step for step in steps if step.get("name") == "Verify minimum uv version")
+    command = verify["run"]
+
+    assert "['uv', '--version']" in command
+    assert "Version(version) >= Version('0.12.5')" in command
+    assert "assert" in command
+
 
 def test_vulnerability_ignores_are_scoped_justified_and_time_bounded() -> None:
     """漏洞豁免必须限定制品范围，并保留复查期限和接受理由。"""
