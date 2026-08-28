@@ -277,6 +277,7 @@ SCHEMA_EXPORTS = {
     'PluginDataResetEventData': ('app.schemas.event', 'PluginDataResetEventData'),
     'PluginFolderConfigData': ('app.schemas.plugin', 'PluginFolderConfigData'),
     'PluginFoldersData': ('app.schemas.plugin', 'PluginFoldersData'),
+    'PluginInstallOutcome': ('app.schemas.plugin', 'PluginInstallOutcome'),
     'PluginInstance': ('app.schemas.plugin', 'PluginInstance'),
     'PluginMarketSyncData': ('app.schemas.system', 'PluginMarketSyncData'),
     'PluginMarketSyncRequest': ('app.schemas.system', 'PluginMarketSyncRequest'),

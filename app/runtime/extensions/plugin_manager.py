@@ -20,49 +20,47 @@ from typing import (
 
 from watchfiles import watch
 
-from app.schemas.plugin import Plugin as _SchemaPlugin
-from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
-from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.foundation.crypto import RSAUtils
 from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 from app.foundation.singleton import Singleton
 from app.foundation.version import compare_version
-from app.runtime.execution import run_in_threadpool_to_completion
-from app.runtime.log import logger
-from app.runtime.observability import observe_compat_facade
-from app.runtime.settings import get_runtime_setting
-from app.runtime.thread import ThreadHelper
-
 from app.runtime.events import EventHandlerBinding, eventmanager
-from app.runtime.reload import ConfigReloadMixin
-from app.runtime.extensions.plugin.loader import PluginLoader
-from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
-from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
-from app.runtime.extensions.plugin.monitor import (
-    PluginChangeMonitor,
-    PluginMonitorController,
-)
-from app.runtime.extensions.plugin.projection import PluginProjection
-from app.runtime.extensions.plugin.registry import PluginRegistry
-from app.runtime.extensions.plugin.storage import get_plugin_storage
-from app.runtime.extensions.plugin.system import get_plugin_system
-from app.runtime.extensions.plugin.tools import PluginToolCatalog
-from app.runtime.extensions.plugin.sync import (
-    LocalPluginSyncService,
-    PluginSyncService,
-)
-from app.runtime.extensions.plugin.clone import PluginCloneService
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
-from app.runtime.extensions.plugin.paths import PluginPathResolver
+from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
     PluginDependencyService,
 )
-from app.runtime.extensions.plugin.storage import PluginConfigStore, PluginInstanceStore
+from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
+from app.runtime.extensions.plugin.loader import PluginLoader
+from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
+from app.runtime.extensions.plugin.monitor import (
+    PluginChangeMonitor,
+    PluginMonitorController,
+)
+from app.runtime.extensions.plugin.paths import PluginPathResolver
+from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.plugin.registry import PluginRegistry
+from app.runtime.extensions.plugin.storage import PluginConfigStore, PluginInstanceStore, get_plugin_storage
+from app.runtime.extensions.plugin.sync import (
+    LocalPluginSyncService,
+    PluginSyncService,
+)
+from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.plugin.tools import PluginToolCatalog
+from app.runtime.log import logger
+from app.runtime.observability import observe_compat_facade
+from app.runtime.reload import ConfigReloadMixin
+from app.runtime.settings import get_runtime_setting
+from app.runtime.thread import ThreadHelper
 from app.schemas.exception import PluginMutationRejectedError
+from app.schemas.plugin import Plugin as _SchemaPlugin
+from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import EventType, SystemConfigKey
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
@@ -950,6 +948,18 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def get_plugin_runtime_generation(self) -> int:
         """返回插件状态变化代次。"""
         return self._plugin_registry.generation
+
+    def mark_plugin_restart_required(
+        self,
+        plugin_id: str,
+        distributions: tuple[str, ...],
+    ) -> None:
+        """记录已落盘但尚未由当前进程完整激活的原生依赖。"""
+        self._plugin_registry.mark_restart_required(plugin_id, distributions)
+
+    def get_plugin_restart_requirements(self) -> Dict[str, tuple[str, ...]]:
+        """返回当前进程的插件原生依赖重启要求。"""
+        return self._plugin_registry.restart_required_snapshot()
 
     def is_plugin_settling(self) -> bool:
         """返回插件源码和依赖是否仍在后台恢复。"""

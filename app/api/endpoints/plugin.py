@@ -58,6 +58,7 @@ from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginFoldersData as _SchemaPluginFoldersData
+from app.schemas.plugin import PluginInstallOutcome as _SchemaPluginInstallOutcome
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
 from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
 from app.schemas.plugin import PluginRatingRequest as _SchemaPluginRatingRequest
@@ -446,6 +447,22 @@ async def runtime_status(
     """返回插件页轮询所需的轻量状态摘要。"""
     plugin_manager = get_plugin_manager()
     statuses = plugin_manager.get_plugin_runtime_statuses()
+    installed_plugin_ids = {
+        plugin_id.lower()
+        for plugin_id in (
+            get_configured_system_config().get(
+                SystemConfigKey.UserInstalledPlugins
+            )
+            or []
+        )
+    }
+    restart_requirements = {
+        plugin_id: distributions
+        for plugin_id, distributions in (
+            plugin_manager.get_plugin_restart_requirements().items()
+        )
+        if plugin_id.lower() in installed_plugin_ids
+    }
     pending = {
         _SchemaPluginRuntimeStatus.SOURCE_MISSING,
         _SchemaPluginRuntimeStatus.DEPENDENCY_PENDING,
@@ -460,6 +477,7 @@ async def runtime_status(
         generation=plugin_manager.get_plugin_runtime_generation(),
         pending_count=sum(status in pending for status in statuses.values()),
         failed_count=sum(status in failed for status in statuses.values()),
+        restart_required_plugin_ids=sorted(restart_requirements),
     )
 
 
@@ -656,7 +674,11 @@ def reload_plugin(
     )
 
 
-@router.get("/install/{plugin_id}", summary="安装插件", response_model=_SchemaResponse[None])
+@router.get(
+    "/install/{plugin_id}",
+    summary="安装插件",
+    response_model=_SchemaResponse[_SchemaPluginInstallOutcome],
+)
 async def install(
     plugin_id: str,
     repo_url: Optional[str] = "",
@@ -676,7 +698,13 @@ async def install(
     )
     if not result.success:
         return _SchemaResponse(success=False, message=result.message)
-    return _SchemaResponse(success=True)
+    return _SchemaResponse(
+        success=True,
+        message=result.message,
+        data=_SchemaPluginInstallOutcome(
+            restart_required=result.restart_required,
+        ),
+    )
 
 
 @router.get(
@@ -743,7 +771,7 @@ async def get_plugin_source_options(
 @router.post(
     "/source/{plugin_id}/install",
     summary="按明确来源安装插件",
-    response_model=_SchemaResponse[None],
+    response_model=_SchemaResponse[_SchemaPluginInstallOutcome],
 )
 async def install_plugin_from_source(
     plugin_id: str,
@@ -760,13 +788,19 @@ async def install_plugin_from_source(
     )
     if not result.success:
         return _SchemaResponse(success=False, message=result.message)
-    return _SchemaResponse(success=True)
+    return _SchemaResponse(
+        success=True,
+        message=result.message,
+        data=_SchemaPluginInstallOutcome(
+            restart_required=result.restart_required,
+        ),
+    )
 
 
 @router.post(
     "/source/{plugin_id}",
     summary="切换插件来源",
-    response_model=_SchemaResponse[None],
+    response_model=_SchemaResponse[_SchemaPluginInstallOutcome],
 )
 async def change_plugin_source(
     plugin_id: str,
@@ -785,7 +819,13 @@ async def change_plugin_source(
     )
     if not result.success:
         return _SchemaResponse(success=False, message=result.message)
-    return _SchemaResponse(success=True)
+    return _SchemaResponse(
+        success=True,
+        message=result.message,
+        data=_SchemaPluginInstallOutcome(
+            restart_required=result.restart_required,
+        ),
+    )
 
 
 @router.get(

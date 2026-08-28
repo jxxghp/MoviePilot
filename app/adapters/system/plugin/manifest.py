@@ -11,7 +11,6 @@ from packaging.requirements import Requirement
 
 from app.runtime.log import logger
 
-
 PYPROJECT_FILENAME = "pyproject.toml"
 REQUIREMENTS_FILENAME = "requirements.txt"
 DEPENDENCY_MANIFEST_PRIORITY = (
@@ -79,6 +78,28 @@ def load_dependency_file(path: Path) -> PluginDependencyManifest:
     return PluginDependencyManifest(
         path=path,
         dependencies=dependencies,
+    )
+
+
+def dependency_manifest_declares_installation(
+    manifest: PluginDependencyManifest,
+) -> bool:
+    """判断清单是否声明了可能改变共享 Python 环境的安装内容。"""
+    if manifest.dependencies:
+        return True
+    if manifest.path.name == PYPROJECT_FILENAME:
+        return False
+    try:
+        lines = manifest.path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        ).splitlines()
+    except OSError:
+        # 安装器随后会报告文件错误；观察边界按可能发生写入处理。
+        return True
+    return any(
+        line.strip() and not line.lstrip().startswith("#")
+        for line in lines
     )
 
 

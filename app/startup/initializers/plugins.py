@@ -165,6 +165,7 @@ def configure_plugin_services() -> None:
         registration_refresher=refresh_plugin_registrations,
         mutation=plugin_manager.mutation,
         package_write_guard=plugin_manager.suppress_plugin_monitor,
+        restart_required_recorder=plugin_manager.mark_plugin_restart_required,
         clock=lambda: datetime.now(timezone.utc),
         transaction_id_factory=lambda: uuid.uuid4().hex,
     )

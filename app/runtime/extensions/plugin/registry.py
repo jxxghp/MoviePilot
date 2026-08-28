@@ -13,6 +13,7 @@ class PluginRegistry:
         self._classes: Dict[str, Any] = {}
         self._running: Dict[str, Any] = {}
         self._runtime_statuses: Dict[str, PluginRuntimeStatus] = {}
+        self._restart_required_plugins: Dict[str, tuple[str, ...]] = {}
         self._settling = False
         self._generation = 0
 
@@ -69,6 +70,24 @@ class PluginRegistry:
         """复制插件状态表，避免后台加载期间迭代失效。"""
         return dict(self._runtime_statuses)
 
+    def mark_restart_required(
+        self,
+        plugin_id: str,
+        distributions: tuple[str, ...],
+    ) -> None:
+        """记录当前进程仍持有旧原生载荷的插件和发行包。"""
+        normalized = tuple(sorted(set(distributions)))
+        previous = self._restart_required_plugins.get(plugin_id, ())
+        merged = tuple(sorted(set(previous).union(normalized)))
+        if previous == merged:
+            return
+        self._restart_required_plugins[plugin_id] = merged
+        self._generation += 1
+
+    def restart_required_snapshot(self) -> Dict[str, tuple[str, ...]]:
+        """返回重启后才能完整激活的插件及原生发行包。"""
+        return dict(self._restart_required_plugins)
+
     def set_settling(self, settling: bool) -> None:
         """标记启动后的插件源码与依赖收敛任务是否仍在执行。"""
         if self._settling == settling:
@@ -90,13 +109,21 @@ class PluginRegistry:
         """同时移除指定插件类、运行实例和状态。"""
         self._classes.pop(plugin_id, None)
         self._running.pop(plugin_id, None)
-        if self._runtime_statuses.pop(plugin_id, None) is not None:
+        status_removed = self._runtime_statuses.pop(plugin_id, None) is not None
+        restart_requirement_removed = (
+            self._restart_required_plugins.pop(plugin_id, None) is not None
+        )
+        if status_removed or restart_requirement_removed:
             self._generation += 1
 
     def clear(self) -> None:
         """原地清空注册表，保持外部持有的兼容字典引用有效。"""
         self._classes.clear()
         self._running.clear()
-        if self._runtime_statuses:
-            self._runtime_statuses.clear()
+        had_runtime_state = bool(
+            self._runtime_statuses or self._restart_required_plugins
+        )
+        self._runtime_statuses.clear()
+        self._restart_required_plugins.clear()
+        if had_runtime_state:
             self._generation += 1

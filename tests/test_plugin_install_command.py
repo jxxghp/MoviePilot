@@ -5,7 +5,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
 
@@ -33,6 +33,7 @@ from app.application.plugin.transaction import (
     PluginInstallationPhase,
     PluginInstallationRecord,
 )
+from app.runtime.native_dependencies import NativeDependencyChange
 from app.schemas.exception import (
     DatabaseWorkerClosedError,
     PersistenceUnavailableError,
@@ -247,12 +248,14 @@ def _command(
     package_finalize_backup=None,
     package_commit=None,
     payload_receipt=None,
+    native_dependency_changes=None,
     reporter=None,
     target_reloader=None,
     rollback_reloader=None,
     registration_refresher=None,
     mutation=None,
     package_write_guard=None,
+    restart_required_recorder=None,
     transaction_id: str = "txn-demo",
 ) -> tuple[PluginInstallCommand, _PersistenceSpy, list[str]]:
     """构造只含窄端口的安装命令，并返回可观测调用记录。"""
@@ -293,6 +296,8 @@ def _command(
         async_finalize_persistent_backup=package_finalize_backup or AsyncMock(),
         async_commit=package_commit or AsyncMock(),
         async_payload_receipt=payload_receipt or default_receipt,
+        async_native_dependency_changes=native_dependency_changes
+        or AsyncMock(return_value=()),
     )
     command = PluginInstallCommand(
         persistence=persistence,
@@ -307,6 +312,7 @@ def _command(
         mutation=mutation or (lambda _operation: nullcontext()),
         package_write_guard=package_write_guard
         or (lambda _plugin_id: nullcontext()),
+        restart_required_recorder=restart_required_recorder or Mock(),
         clock=lambda: NOW,
         transaction_id_factory=lambda: transaction_id,
     )
@@ -454,6 +460,128 @@ async def test_non_active_runtime_status_compensates_before_database_commit():
     reporter.assert_not_awaited()
     assert "journal_commit" not in calls
     assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_native_dependency_change_commits_payload_when_reload_waits_for_restart():
+    """原生依赖已经落盘后，重载失败不得恢复为与新依赖不匹配的旧插件。"""
+    change = NativeDependencyChange(
+        distribution="native-demo",
+        previous_version="1.0.0",
+        current_version="2.0.0",
+        artifacts=("native_demo.so",),
+    )
+    package_restore = AsyncMock()
+    package_cleanup = AsyncMock()
+    rollback_reloader = AsyncMock()
+    registration_refresher = AsyncMock()
+    restart_required_recorder = Mock()
+    command, persistence, calls = _command(
+        native_dependency_changes=AsyncMock(return_value=(change,)),
+        package_restore=package_restore,
+        package_cleanup=package_cleanup,
+        target_reloader=AsyncMock(return_value=PluginRuntimeStatus.LOAD_FAILED),
+        rollback_reloader=rollback_reloader,
+        registration_refresher=registration_refresher,
+        restart_required_recorder=restart_required_recorder,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is True
+    assert result.package_installed is True
+    assert result.installed_list_persisted is True
+    assert result.runtime_reloaded is False
+    assert result.registrations_refreshed is False
+    assert result.restart_required is True
+    assert persistence.identity is not None
+    assert persistence.records == {}
+    assert "journal_commit" in calls
+    package_restore.assert_not_awaited()
+    package_cleanup.assert_not_awaited()
+    rollback_reloader.assert_not_awaited()
+    registration_refresher.assert_not_awaited()
+    restart_required_recorder.assert_called_once_with(
+        "DemoPlugin",
+        ("native-demo",),
+    )
+
+
+@pytest.mark.asyncio
+async def test_native_dependency_change_keeps_active_plugin_available():
+    """当前进程仍可重载时，插件保持 ACTIVE 并独立记录重启要求。"""
+    change = NativeDependencyChange(
+        distribution="native-demo",
+        previous_version="1.0.0",
+        current_version="2.0.0",
+        artifacts=("native_demo.pyd",),
+    )
+    registration_refresher = AsyncMock()
+    restart_required_recorder = Mock()
+    command, _, _ = _command(
+        native_dependency_changes=AsyncMock(return_value=(change,)),
+        target_reloader=AsyncMock(return_value=PluginRuntimeStatus.ACTIVE),
+        registration_refresher=registration_refresher,
+        restart_required_recorder=restart_required_recorder,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is True
+    assert result.runtime_reloaded is True
+    assert result.registrations_refreshed is True
+    assert result.restart_required is True
+    registration_refresher.assert_awaited_once_with("DemoPlugin")
+    restart_required_recorder.assert_called_once_with(
+        "DemoPlugin",
+        ("native-demo",),
+    )
+
+
+@pytest.mark.asyncio
+async def test_native_dependency_detection_failure_keeps_normal_install_result():
+    """原生依赖诊断不可用时应保持普通插件安装语义。"""
+    restart_required_recorder = Mock()
+    command, _, _ = _command(
+        native_dependency_changes=AsyncMock(side_effect=OSError("probe unavailable")),
+        restart_required_recorder=restart_required_recorder,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is True
+    assert result.runtime_reloaded is True
+    assert result.restart_required is False
+    restart_required_recorder.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_failed_package_install_keeps_detected_native_restart_requirement():
+    """依赖部分落盘后安装失败，文件补偿不能清除进程级激活要求。"""
+    change = NativeDependencyChange(
+        distribution="native-demo",
+        previous_version="1.0.0",
+        current_version="2.0.0",
+        artifacts=("native_demo.so",),
+    )
+    package_restore = AsyncMock()
+    restart_required_recorder = Mock()
+    command, _, _ = _command(
+        installer=AsyncMock(return_value=(False, "dependency failed")),
+        native_dependency_changes=AsyncMock(return_value=(change,)),
+        package_restore=package_restore,
+        restart_required_recorder=restart_required_recorder,
+    )
+
+    result = await _execute(command)
+
+    assert result.success is False
+    assert result.failure_stage == "package_install"
+    package_restore.assert_awaited_once()
+    restart_required_recorder.assert_called_once_with(
+        "DemoPlugin",
+        ("native-demo",),
+    )
 
 
 @pytest.mark.asyncio
@@ -847,6 +975,7 @@ async def test_force_install_replaces_matching_payload_and_local_sync_skips_repo
         package_version="v3",
         release_version=None,
         force_install=True,
+        checkpoint=ANY,
     )
     reporter.assert_not_awaited()
 
@@ -900,6 +1029,43 @@ async def test_cancelled_package_install_waits_for_compensation():
     package_restore.assert_awaited_once()
     package_cleanup.assert_awaited_once()
     assert persistence.records == {}
+
+
+@pytest.mark.asyncio
+async def test_cancelled_package_install_keeps_detected_native_restart_requirement():
+    """取消传播前完成依赖检测，已替换的共享原生载荷仍要求重启。"""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    change = NativeDependencyChange(
+        distribution="native-demo",
+        previous_version="1.0.0",
+        current_version="2.0.0",
+        artifacts=("native_demo.pyd",),
+    )
+    restart_required_recorder = Mock()
+
+    async def installer(**_kwargs):
+        started.set()
+        await release.wait()
+        return True, "installed"
+
+    command, _, _ = _command(
+        installer=installer,
+        native_dependency_changes=AsyncMock(return_value=(change,)),
+        restart_required_recorder=restart_required_recorder,
+    )
+    task = asyncio.create_task(_execute(command))
+    await started.wait()
+    task.cancel()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    restart_required_recorder.assert_called_once_with(
+        "DemoPlugin",
+        ("native-demo",),
+    )
 
 
 @pytest.mark.asyncio

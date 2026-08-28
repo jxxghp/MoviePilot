@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.adapters.system.plugin.package import PluginPackageManager
+from app.runtime.native_dependencies import LoadedNativeDependencySnapshot
 
 
 def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:
@@ -18,6 +19,10 @@ def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.get_runtime_setting",
         lambda key: getattr(settings, key),
+    )
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.capture_loaded_native_dependencies",
+        LoadedNativeDependencySnapshot,
     )
     return PluginPackageManager(helper=Mock())
 
@@ -38,6 +43,22 @@ def test_checkpoint_rollback_restores_existing_package(monkeypatch, tmp_path):
     assert source_file.read_text(encoding="utf-8") == "old"
     assert not (plugin_dir / "partial.py").exists()
     assert not checkpoint.transaction_dir.exists()
+
+
+def test_checkpoint_does_not_scan_native_dependencies(monkeypatch, tmp_path):
+    """普通插件文件快照不应枚举宿主全部原生发行包。"""
+    manager = _manager(monkeypatch, tmp_path)
+    capture = Mock()
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.capture_loaded_native_dependencies",
+        capture,
+    )
+
+    checkpoint = manager.checkpoint("DemoPlugin")
+
+    assert checkpoint.native_dependencies is None
+    capture.assert_not_called()
+    assert manager.native_dependency_changes(checkpoint) == ()
 
 
 def test_checkpoint_rollback_removes_new_package(monkeypatch, tmp_path):
