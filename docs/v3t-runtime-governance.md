@@ -192,6 +192,21 @@ GIL、working set、RSS/PSS/USS、API p50/p95、SQLite 同步/异步结果和 1/
 插件仍为单实例 `active`，V3t GIL 仍关闭。该路径的价值是让受污染共享环境能够恢复启动，不是性能
 优化；它只在核心导入失败时执行，正常重启不会承担这段解析成本。
 
+### 6.6 已加载原生依赖的在线更新边界
+
+`scripts/probe_native_dependency_update.py` 使用最小 C 扩展构建具有相同模块名的 v1/v2 wheel，分别
+通过历史 `requirements.txt` 和现代 `pyproject.toml` 插件清单执行三阶段验证：先安装并加载 v1，
+在该进程内调用生产 `PluginHelper` 更新到 v2，再由独立解释器读取磁盘载荷。Linux x86_64、macOS
+arm64 和 Windows x64 的结论一致：安装器能够把磁盘扩展替换为 v2，原进程仍执行已加载的 v1，
+新进程才执行 v2。这是原生模块的进程激活边界，不是 Windows 独有的文件锁问题。
+
+`Native Dependency Update Probe` workflow 使用生产安装入口运行三平台专项任务，并把包含宿主平台、
+解释器 ABI、安装器版本、wheel SHA-256、在线阶段分类和恢复阶段结果的 JSON 上传为 artifact。自动运行
+只跟随探针及生产插件安装、uv 执行和依赖健康边界变化；Python ABI、free-threaded profile 或安装器
+升级前通过手工入口复验，不因普通依赖锁、Dockerfile 或业务代码变化消耗三平台 Runner。探针同时保留
+`pip` 对照入口，用于复核历史安装器差异；长期 CI 默认只验证 MoviePilot 实际使用的 `PluginHelper`。
+一次性扩展矩阵的原始结果按候选运行独立留存，仓库只维护可复用脚本、测试和结论。
+
 ## 7. 上游能力的渐进式接入
 
 第三方上游发布新版本或新 wheel 后，按以下顺序处理，不能看到文件名包含 `cp314t` 就直接删除本地兼容：
@@ -240,5 +255,6 @@ V3 `3.0.0` 的依赖集合随镜像交付。相同版本 Tag 的 `release` 自�
 - [ ] amd64、arm64 的 Python、Rust 和站点资源 ABI 匹配。
 - [ ] SQLite、PostgreSQL、插件安装/恢复、源码升级/回滚和启动自愈通过。
 - [ ] 动态 GIL API、启动日志、插件归因和前端告警保持一致。
+- [ ] 已加载原生依赖的更新探针在目标平台通过，JSON artifact 的平台和解释器 ABI 与矩阵一致。
 - [ ] 安全扫描结果已按实际安装制品、利用面和上游修复状态审计。
 - [ ] 上游已成熟的临时兼容已删除，仍保留的例外在本文有明确解除条件。
