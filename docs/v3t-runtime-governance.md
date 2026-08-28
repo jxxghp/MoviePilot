@@ -47,6 +47,8 @@ profile，依赖名称、版本和 source 语义全部由 `pyproject.toml` 与 `
 | CRC 加速 | `crcmod-plus` 2.3.1 | `crcmod-plus` 2.3.1 | 两套镜像统一使用继续维护且兼容 `crcmod` 导入接口的实现。`oss2` 的陈旧元数据仍声明不再维护的 `crcmod`，由 uv 在解析时排除该传递依赖；宿主不在运行时映射、卸载或替插件兼容旧分发包。 |
 | `lxml` | 6.1.2 | 7.0.0b1 | V3t 暂用提供目标 ABI 的预发布版本，是当前最高风险项。稳定版提供 `cp314t` wheel 后，需通过 XML、HTML、RSS、站点解析、并发和内存验证再替换。 |
 | PostgreSQL 同步驱动 | `psycopg2-binary` 2.x | `psycopg[c]` 3.3.4 | 当前分叉同时受 ABI 与实测性能影响，不要求仅为版本统一而收敛。若上游能力或性能变化，必须重跑三方案 PostgreSQL A/B 后再决策。异步路径继续使用 `asyncpg`。 |
+| Windows PostgreSQL 客户端 | `psycopg2-binary` 自包含 libpq | `psycopg[c]` 链接本机 libpq | Windows 3.14t 源码环境必须安装 PostgreSQL 客户端开发工具并提供有效 `PGBIN`；启动时只为 free-threaded 解释器注册该 DLL 目录。上游发布自包含的 `cp314t` Windows wheel 后，应优先移除此宿主前提。 |
+| Windows Docker SDK | `pywin32` 312 | 不安装 `pywin32` | 标准 Windows 保留 Docker named-pipe transport；V3t 仅提供不依赖 pywin32 的 Docker SDK 路径。Docker 或 pywin32 提供兼容 `cp314t` 的组合后，重新验证 named-pipe 再解除排除。 |
 | `orjson` | 3.12.0 wheel | 同版本源码构建 | V3t 使用同一锁定版本并启用 free-threaded 构建变量。上游发布覆盖 Linux amd64/arm64 的稳定 `cp314t` wheel 后可删除本地构建要求。 |
 | 中文转换 | `moviepilot-rust.zhconv_fast()` | `moviepilot-rust.zhconv_fast()` | 从 0.3.3 起两套 ABI 使用同一 MediaWiki 转换实现；主程序统一经 `app.foundation.text.convert()`，插件统一经 SDK，不再安装独立 `zhconv-rs`。 |
 | 站点资源 | `cpython-314` | `cpython-314t` | 资源文件必须按解释器 ABI 独立构建和选取，不能让 V3t 复用普通 CPython 扩展，也不能影响 V2 的历史 ABI 制品。 |

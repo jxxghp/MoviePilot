@@ -1,6 +1,59 @@
 import warnings
 
+import pytest
+
 import app
+
+
+def test_app_registers_pg_bin_for_windows_free_threaded(tmp_path, monkeypatch):
+    """Windows free-threaded 启动时应注册 PostgreSQL DLL 目录。"""
+    handle = object()
+    registered = []
+    monkeypatch.setattr(app, "is_windows", lambda: True)
+    monkeypatch.setattr(app, "is_free_threaded_runtime", lambda: True)
+    monkeypatch.setattr(
+        app.os,
+        "add_dll_directory",
+        lambda path: registered.append(path) or handle,
+        raising=False,
+    )
+    monkeypatch.setattr(app, "_windows_dll_directory_handles", [])
+    monkeypatch.setenv("PGBIN", str(tmp_path))
+
+    app._configure_free_threaded_windows_native_dependencies()
+
+    assert registered == [str(tmp_path)]
+    assert app._windows_dll_directory_handles == [handle]
+
+
+def test_app_skips_pg_bin_for_standard_runtime(monkeypatch):
+    """标准 Windows 运行时不应执行 free-threaded 专属 DLL 注册。"""
+    monkeypatch.setattr(app, "is_windows", lambda: True)
+    monkeypatch.setattr(app, "is_free_threaded_runtime", lambda: False)
+    monkeypatch.setattr(
+        app.os,
+        "add_dll_directory",
+        lambda _path: pytest.fail("must not register a DLL directory"),
+        raising=False,
+    )
+    monkeypatch.setenv("PGBIN", "C:/PostgreSQL/bin")
+
+    app._configure_free_threaded_windows_native_dependencies()
+
+
+def test_app_skips_missing_pg_bin_for_windows_free_threaded(monkeypatch):
+    """无效外部目录不能污染 Windows DLL 搜索路径。"""
+    monkeypatch.setattr(app, "is_windows", lambda: True)
+    monkeypatch.setattr(app, "is_free_threaded_runtime", lambda: True)
+    monkeypatch.setattr(
+        app.os,
+        "add_dll_directory",
+        lambda _path: pytest.fail("must not register a missing DLL directory"),
+        raising=False,
+    )
+    monkeypatch.setenv("PGBIN", "Z:/missing/postgresql/bin")
+
+    app._configure_free_threaded_windows_native_dependencies()
 
 
 def test_app_installs_known_oss2_invalid_escape_warning_filter():

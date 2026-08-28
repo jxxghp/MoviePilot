@@ -28,7 +28,10 @@ conflicts = [[
 ]]
 
 [manifest]
-excludes = [{ package = { name = "oss2" }, dependencies = ["crcmod"] }]
+excludes = [
+    { package = { name = "docker" }, dependencies = ["pywin32"] },
+    { package = { name = "oss2" }, dependencies = ["crcmod"] },
+]
 
 [[package]]
 name = "aiofiles"
@@ -842,7 +845,6 @@ name = "docker"
 version = "7.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
     { name = "requests" },
     { name = "urllib3" },
 ]
@@ -1701,7 +1703,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
-    { name = "pympler" },
     { name = "pyotp" },
     { name = "pyparsing" },
     { name = "pyquery" },
@@ -1713,7 +1714,6 @@ dependencies = [
     { name = "pytz" },
     { name = "pyvirtualdisplay" },
     { name = "pywebpush" },
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
     { name = "pyyaml" },
     { name = "qbittorrent-api" },
     { name = "redis" },
@@ -1762,6 +1762,7 @@ runtime-standard = [
     { name = "brotli", version = "1.2.0", source = { registry = "https://pypi.org/simple" } },
     { name = "lxml", version = "6.1.2", source = { registry = "https://pypi.org/simple" } },
     { name = "psycopg2-binary" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
 ]
 
 [package.metadata]
@@ -1821,7 +1822,6 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4,<3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.14.2,<3.0.0" },
     { name = "pyjwt", specifier = "~=2.13.0" },
-    { name = "pympler", specifier = "~=1.1" },
     { name = "pyotp", specifier = "~=2.9.0" },
     { name = "pyparsing", specifier = "~=3.3.2" },
     { name = "pyquery", specifier = "~=2.0.1" },
@@ -1833,7 +1833,6 @@ requires-dist = [
     { name = "pytz", specifier = "~=2026.2" },
     { name = "pyvirtualdisplay", specifier = "~=3.0" },
     { name = "pywebpush", specifier = "~=2.3.0" },
-    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = "==312" },
     { name = "pyyaml", specifier = "~=6.0.3" },
     { name = "qbittorrent-api", specifier = "==2026.6.0" },
     { name = "redis", specifier = "~=8.1.0" },
@@ -1882,6 +1881,7 @@ runtime-standard = [
     { name = "brotli", specifier = "==1.2.0" },
     { name = "lxml", specifier = "~=6.1.2" },
     { name = "psycopg2-binary", specifier = "~=2.9.12" },
+    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = "==312" },
 ]
 
 [[package]]
@@ -2502,18 +2502,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/de/92/98dace02f2d11b88160354c53944f77ea7327aa78bce1c75971e7aaa4347/pylint-4.0.7.tar.gz", hash = "sha256:9b2d1d15791c84b77a4fe2aafe8f0d9570717e2dea06d53b19c105cf60275a52", size = 1594770, upload-time = "2026-08-09T19:13:23.289Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/b0/3a8040e53df6c5c1e04b0e23ed53fdbeb64f333723a334d313fba2f581ce/pylint-4.0.7-py3-none-any.whl", hash = "sha256:be4a3111557a614411ed1fc89347ce4a8e1013a59e1f33d11485227a02e3304d", size = 539710, upload-time = "2026-08-09T19:13:21.228Z" },
-]
-
-[[package]]
-name = "pympler"
-version = "1.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/37/c384631908029676d8e7213dd956bb686af303a80db7afbc9be36bc49495/pympler-1.1.tar.gz", hash = "sha256:1eaa867cb8992c218430f1708fdaccda53df064144d1c5656b1e6f1ee6000424", size = 179954, upload-time = "2024-06-28T19:56:06.563Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/4f/a6a2e2b202d7fd97eadfe90979845b8706676b41cbd3b42ba75adf329d1f/Pympler-1.1-py3-none-any.whl", hash = "sha256:5b223d6027d0619584116a0cbc28e8d2e378f7a79c1e5e024f9ff3b673c58506", size = 165766, upload-time = "2024-06-28T19:56:05.087Z" },
 ]
 
 [[package]]

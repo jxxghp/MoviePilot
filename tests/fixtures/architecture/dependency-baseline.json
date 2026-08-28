@@ -1119,9 +1119,11 @@
       "runtime_only": true
     }
   },
-  "edge_count": 7612,
-  "edge_sha256": "15b211a9bc9400fa8a28480223372039344ae8e584bd1ac769359a808e4610be",
+  "edge_count": 7618,
+  "edge_sha256": "be924b781df81299b96c7580034b5c27bebeb97285871586b6f0b51f51a83d9b",
   "edges": [
+    "app -> app.foundation",
+    "app -> app.foundation.environment",
     "app -> app.runtime",
     "app -> app.runtime.compat",
     "app -> app.runtime.compat.imports",
@@ -1267,6 +1269,7 @@
     "app.adapters.system.plugin.package -> app.runtime",
     "app.adapters.system.plugin.package -> app.runtime.execution",
     "app.adapters.system.plugin.package -> app.runtime.log",
+    "app.adapters.system.plugin.package -> app.runtime.native_dependencies",
     "app.adapters.system.plugin.package -> app.runtime.settings",
     "app.adapters.system.resource -> app.adapters",
     "app.adapters.system.resource -> app.adapters.network",
@@ -3918,6 +3921,7 @@
     "app.application.plugin.install -> app.runtime",
     "app.application.plugin.install -> app.runtime.execution",
     "app.application.plugin.install -> app.runtime.log",
+    "app.application.plugin.install -> app.runtime.native_dependencies",
     "app.application.plugin.install -> app.schemas",
     "app.application.plugin.install -> app.schemas.exception",
     "app.application.plugin.install -> app.schemas.plugin",
@@ -7699,6 +7703,8 @@
     "app.runtime.extensions.service_config -> app.schemas",
     "app.runtime.extensions.service_config -> app.schemas.system",
     "app.runtime.extensions.service_config -> app.schemas.types",
+    "app.runtime.native_dependencies -> app.runtime",
+    "app.runtime.native_dependencies -> app.runtime.log",
     "app.runtime.observability -> app.runtime",
     "app.runtime.observability -> app.runtime.deprecation",
     "app.runtime.observability -> app.runtime.deprecation.policy",
@@ -8735,7 +8741,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 906,
+  "module_count": 907,
   "modules": [
     "app",
     "app.adapters",
@@ -9505,6 +9511,7 @@
     "app.runtime.localization",
     "app.runtime.log",
     "app.runtime.loop",
+    "app.runtime.native_dependencies",
     "app.runtime.observability",
     "app.runtime.progress",
     "app.runtime.rate",
