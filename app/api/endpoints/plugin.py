@@ -446,6 +446,7 @@ async def runtime_status(
     """返回插件页轮询所需的轻量状态摘要。"""
     plugin_manager = get_plugin_manager()
     statuses = plugin_manager.get_plugin_runtime_statuses()
+    restart_requirements = plugin_manager.get_plugin_restart_requirements()
     pending = {
         _SchemaPluginRuntimeStatus.SOURCE_MISSING,
         _SchemaPluginRuntimeStatus.DEPENDENCY_PENDING,
@@ -460,6 +461,8 @@ async def runtime_status(
         generation=plugin_manager.get_plugin_runtime_generation(),
         pending_count=sum(status in pending for status in statuses.values()),
         failed_count=sum(status in failed for status in statuses.values()),
+        restart_required=bool(restart_requirements),
+        restart_required_plugin_ids=sorted(restart_requirements),
     )
 
 

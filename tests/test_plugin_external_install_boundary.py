@@ -46,6 +46,7 @@ def test_package_manager_sync_preserves_external_install_contract() -> None:
         package_version="v3",
         release_version="1.2.3",
         force_install=False,
+        before_dependency_install=None,
     )
     helper.install.assert_not_called()
 
@@ -72,8 +73,225 @@ async def test_package_manager_async_preserves_external_install_contract() -> No
         package_version="v3",
         release_version="1.2.3",
         force_install=False,
+        before_dependency_install=None,
     )
     helper.async_install.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_package_manager_captures_native_state_only_when_dependency_install_starts(
+    monkeypatch,
+) -> None:
+    """包适配器只在安装器确认存在依赖清单后记录原生载荷。"""
+    helper = Mock()
+    checkpoint = SimpleNamespace(native_dependencies=None)
+    baseline = object()
+    capture = Mock(return_value=baseline)
+
+    async def install_with_dependency(**kwargs):
+        kwargs["before_dependency_install"]()
+        return True, "installed"
+
+    helper._PluginHelper__async_install_package = AsyncMock(
+        side_effect=install_with_dependency
+    )
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.capture_loaded_native_dependencies",
+        capture,
+    )
+    manager = PluginPackageManager(helper=helper)
+
+    result = await manager.async_install(
+        plugin_id="DemoPlugin",
+        repo_url=REPO_URL,
+        checkpoint=checkpoint,
+    )
+
+    assert result == (True, "installed")
+    assert checkpoint.native_dependencies is baseline
+    capture.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        ("requirements.txt", "demo>=1\n"),
+        (
+            "pyproject.toml",
+            '[project]\nname = "demo"\nversion = "1.0.0"\n'
+            'dependencies = ["demo>=1"]\n',
+        ),
+    ],
+)
+async def test_dependency_manifest_is_observed_before_install(
+    tmp_path,
+    monkeypatch,
+    filename,
+    content,
+) -> None:
+    """两类插件依赖清单共用同一安装前观察边界。"""
+    plugin_root = tmp_path / "plugins"
+    plugin_dir = plugin_root / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    manifest = plugin_dir / filename
+    manifest.write_text(content, encoding="utf-8")
+    helper = PluginHelper()
+    calls = []
+
+    async def install(path, _find_links=None):
+        calls.append(("install", path))
+        return True, ""
+
+    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_install_packages_with_fallback",
+        install,
+    )
+
+    result = await helper._PluginHelper__async_install_dependencies_if_required(
+        "DemoPlugin",
+        lambda: calls.append(("observe", None)),
+    )
+
+    assert result == (True, True, "")
+    assert calls == [("observe", None), ("install", manifest)]
+
+
+@pytest.mark.asyncio
+async def test_dependency_observer_failure_does_not_block_install(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """原生状态观察异常不应改变插件依赖安装结果。"""
+    plugin_root = tmp_path / "plugins"
+    plugin_dir = plugin_root / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    requirements_file = plugin_dir / "requirements.txt"
+    requirements_file.write_text("demo>=1\n", encoding="utf-8")
+    helper = PluginHelper()
+    install = AsyncMock(return_value=(True, ""))
+
+    def failing_observer():
+        raise OSError("probe unavailable")
+
+    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_install_packages_with_fallback",
+        install,
+    )
+
+    result = await helper._PluginHelper__async_install_dependencies_if_required(
+        "DemoPlugin",
+        failing_observer,
+    )
+
+    assert result == (True, True, "")
+    install.assert_awaited_once_with(requirements_file)
+
+
+@pytest.mark.asyncio
+async def test_dependency_observer_is_not_called_without_manifest(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """未声明依赖的插件不承担原生环境快照成本。"""
+    plugin_root = tmp_path / "plugins"
+    (plugin_root / "demoplugin").mkdir(parents=True)
+    helper = PluginHelper()
+    observer = Mock()
+    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
+
+    result = await helper._PluginHelper__async_install_dependencies_if_required(
+        "DemoPlugin",
+        observer,
+    )
+
+    assert result == (False, False, "不存在依赖")
+    observer.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        ("requirements.txt", "\n# no dependencies\n"),
+        (
+            "pyproject.toml",
+            '[project]\nname = "demo"\nversion = "1.0.0"\n'
+            "dependencies = []\n",
+        ),
+    ],
+)
+async def test_empty_dependency_manifest_does_not_trigger_native_snapshot(
+    tmp_path,
+    monkeypatch,
+    filename,
+    content,
+) -> None:
+    """空清单保持既有安装兼容，但不枚举宿主原生发行包。"""
+    plugin_root = tmp_path / "plugins"
+    plugin_dir = plugin_root / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    manifest = plugin_dir / filename
+    manifest.write_text(content, encoding="utf-8")
+    helper = PluginHelper()
+    observer = Mock()
+    install = AsyncMock(return_value=(True, ""))
+    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_install_packages_with_fallback",
+        install,
+    )
+
+    result = await helper._PluginHelper__async_install_dependencies_if_required(
+        "DemoPlugin",
+        observer,
+    )
+
+    assert result == (True, True, "")
+    observer.assert_not_called()
+    install.assert_awaited_once_with(manifest)
+
+
+@pytest.mark.asyncio
+async def test_legacy_unparsed_requirement_still_triggers_native_snapshot(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """历史 VCS 或选项式依赖不能因结构化解析为空而漏过观察。"""
+    plugin_root = tmp_path / "plugins"
+    plugin_dir = plugin_root / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    manifest = plugin_dir / "requirements.txt"
+    manifest.write_text(
+        "git+https://example.invalid/demo.git@fixed\n",
+        encoding="utf-8",
+    )
+    helper = PluginHelper()
+    calls = []
+
+    async def install(path, _find_links=None):
+        calls.append(("install", path))
+        return True, ""
+
+    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
+    monkeypatch.setattr(
+        helper,
+        "_PluginHelper__async_install_packages_with_fallback",
+        install,
+    )
+
+    result = await helper._PluginHelper__async_install_dependencies_if_required(
+        "DemoPlugin",
+        lambda: calls.append(("observe", None)),
+    )
+
+    assert result == (True, True, "")
+    assert calls == [("observe", None), ("install", manifest)]
 
 
 def test_external_sync_helper_rejects_until_gateway_is_configured(

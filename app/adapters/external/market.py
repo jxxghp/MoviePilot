@@ -1,6 +1,4 @@
 import asyncio
-from collections import deque
-from dataclasses import dataclass
 import importlib
 import io
 import json
@@ -15,8 +13,11 @@ import time
 import traceback
 import uuid
 import zipfile
+from collections import deque
+from dataclasses import dataclass
+from importlib.metadata import distributions
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Dict, List, Optional, Tuple, Set, Callable, Awaitable, Iterator, Sequence
+from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, Sequence, Set, Tuple
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlsplit
 
 import aiofiles
@@ -25,20 +26,13 @@ import httpx2
 from anyio import Path as AsyncPath
 from packaging.markers import default_environment
 from packaging.requirements import InvalidRequirement, Requirement
-from packaging.specifiers import SpecifierSet, InvalidSpecifier
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
-from packaging.version import Version, InvalidVersion
-from importlib.metadata import distributions
+from packaging.version import InvalidVersion, Version
 from requests import Response
 
-from app.runtime.cache import cached, is_fresh
-from app.foundation.environment import is_free_threaded_runtime
-from app.runtime.dependencies import (
-    iter_runtime_profile_requirement_strings,
-    iter_runtime_requirement_strings,
-    runtime_excluded_dependency_pairs,
-)
-from app.runtime.settings import get_runtime_setting
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.adapters.system.host import SystemUtils
 from app.adapters.system.package import (
     PackageInstallRequest,
     build_package_install_strategies,
@@ -47,22 +41,30 @@ from app.adapters.system.package import (
 )
 from app.adapters.system.plugin.manifest import (
     PluginDependencyManifestError,
+    dependency_manifest_declares_installation,
     load_dependency_file,
     load_dependency_manifest,
 )
-from app.runtime.log import logger
-from app.runtime.observability import observe_compat_facade
+from app.foundation.environment import is_free_threaded_runtime
+from app.foundation.singleton import WeakSingleton
+from app.foundation.url import UrlUtils
+from app.foundation.version import compare_version
+from app.runtime.cache import cached, is_fresh
+from app.runtime.dependencies import (
+    iter_runtime_profile_requirement_strings,
+    iter_runtime_requirement_strings,
+    runtime_excluded_dependency_pairs,
+)
 from app.runtime.execution import (
     await_task_to_terminal,
+)
+from app.runtime.execution import (
     run_in_threadpool_to_completion as _await_thread_operation,
 )
+from app.runtime.log import logger
+from app.runtime.observability import observe_compat_facade
+from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.foundation.singleton import WeakSingleton
-
-from app.foundation.version import compare_version
-from app.adapters.system.host import SystemUtils
-from app.foundation.url import UrlUtils
 from app.runtime.version import get_app_version
 
 # 插件市场只通过 runtime 读取端口消费组合根的最新配置。
@@ -1059,7 +1061,8 @@ class PluginHelper(metaclass=WeakSingleton):
         )
 
     def __install_package(self, pid: str, repo_url: str, package_version: Optional[str] = None,
-                          release_version: Optional[str] = None, force_install: bool = False) \
+                          release_version: Optional[str] = None, force_install: bool = False,
+                          before_dependency_install: Optional[Callable[[], None]] = None) \
             -> Tuple[bool, str]:
         """执行已通过来源准入的同步包安装，不负责身份或运行态提交。"""
         if self.is_local_repo_url(repo_url):
@@ -1067,6 +1070,7 @@ class PluginHelper(metaclass=WeakSingleton):
                 pid=pid,
                 repo_url=repo_url,
                 force_install=force_install,
+                before_dependency_install=before_dependency_install,
             )
 
         if SystemUtils.is_frozen():
@@ -1124,7 +1128,13 @@ class PluginHelper(metaclass=WeakSingleton):
                     release_tag,
                 )
 
-            return self.__install_flow_sync(pid, force_install, prepare_selected_release, repo_url)
+            return self.__install_flow_sync(
+                pid,
+                force_install,
+                prepare_selected_release,
+                repo_url,
+                before_dependency_install,
+            )
 
         if release_tag:
             # 当前索引 Release 失败时回退文件列表，避免发布产物短暂滞后阻断安装。
@@ -1140,12 +1150,24 @@ class PluginHelper(metaclass=WeakSingleton):
                 self.__remove_old_plugin(pid)
                 return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
 
-            return self.__install_flow_sync(pid, force_install, prepare_release, repo_url)
+            return self.__install_flow_sync(
+                pid,
+                force_install,
+                prepare_release,
+                repo_url,
+                before_dependency_install,
+            )
         # 未声明 release 打包的插件继续使用文件列表方式安装。
         def prepare_filelist() -> Tuple[bool, str]:
             return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
 
-        return self.__install_flow_sync(pid, force_install, prepare_filelist, repo_url)
+        return self.__install_flow_sync(
+            pid,
+            force_install,
+            prepare_filelist,
+            repo_url,
+            before_dependency_install,
+        )
 
     def install_local(self, pid: str, repo_url: str = "", force_install: bool = False) -> Tuple[bool, str]:
         """通过宿主统一 Gateway 安装本地插件。"""
@@ -1163,6 +1185,7 @@ class PluginHelper(metaclass=WeakSingleton):
         pid: str,
         repo_url: str = "",
         force_install: bool = False,
+        before_dependency_install: Optional[Callable[[], None]] = None,
     ) -> Tuple[bool, str]:
         """
         执行已通过来源准入的本地插件包安装。
@@ -1214,7 +1237,8 @@ class PluginHelper(metaclass=WeakSingleton):
                 pid,
                 candidate.get("repo_path"),
                 candidate.get("package_version")
-            )
+            ),
+            before_dependency_install=before_dependency_install,
         )
 
     def __get_file_list(self, pid: str, user_repo: str, package_version: Optional[str] = None) -> \
@@ -1302,7 +1326,11 @@ class PluginHelper(metaclass=WeakSingleton):
 
         return True, ""
 
-    def __install_dependencies_if_required(self, pid: str) -> Tuple[bool, bool, str]:
+    def __install_dependencies_if_required(
+        self,
+        pid: str,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> Tuple[bool, bool, str]:
         """
         安装插件依赖。
         :param pid: 插件 ID
@@ -1315,6 +1343,14 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.error(f"{pid} 依赖清单无效：{error}")
             return True, False, str(error)
         if manifest is not None:
+            if (
+                before_dependency_install is not None
+                and dependency_manifest_declares_installation(manifest)
+            ):
+                try:
+                    before_dependency_install()
+                except Exception as error:  # noqa: BLE001 - 观察失败不能阻断安装
+                    logger.warning(f"{pid} 依赖安装前状态记录失败：{error}")
             logger.info(f"{pid} 存在依赖，开始尝试安装依赖")
             success, error_message = self.install_packages_with_fallback(manifest.path)
             return True, success, "" if success else error_message
@@ -2244,9 +2280,14 @@ class PluginHelper(metaclass=WeakSingleton):
         compatible, message = self.check_plugin_system_version(meta)
         return None if compatible else message
 
-    def __install_flow_sync(self, pid: str, force_install: bool,
-                            prepare_content: Callable[[], Tuple[bool, str]],
-                            repo_url: Optional[str] = None) -> Tuple[bool, str]:
+    def __install_flow_sync(
+        self,
+        pid: str,
+        force_install: bool,
+        prepare_content: Callable[[], Tuple[bool, str]],
+        repo_url: Optional[str] = None,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> Tuple[bool, str]:
         """
         同步安装统一流程：备份→清理→准备内容→安装依赖→上报
         prepare_content 负责把插件文件放到 app/plugins/{pid}
@@ -2268,7 +2309,14 @@ class PluginHelper(metaclass=WeakSingleton):
                 logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return False, message
 
-        dependencies_exist, dep_ok, dep_msg = self.__install_dependencies_if_required(pid)
+        dependencies_exist, dep_ok, dep_msg = (
+            self.__install_dependencies_if_required(
+                pid,
+                before_dependency_install,
+            )
+            if before_dependency_install is not None
+            else self.__install_dependencies_if_required(pid)
+        )
         if dependencies_exist and not dep_ok:
             logger.error(f"{pid} 依赖安装失败：{dep_msg}")
             if backup_dir:
@@ -3145,7 +3193,11 @@ class PluginHelper(metaclass=WeakSingleton):
                 async with aiofiles.open(dst_item, 'wb') as dst_file:
                     await dst_file.write(content)
 
-    async def __async_install_dependencies_if_required(self, pid: str) -> Tuple[bool, bool, str]:
+    async def __async_install_dependencies_if_required(
+        self,
+        pid: str,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> Tuple[bool, bool, str]:
         """
         异步安装插件依赖。
         :param pid: 插件 ID
@@ -3158,6 +3210,14 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.error(f"{pid} 依赖清单无效：{error}")
             return True, False, str(error)
         if manifest is not None:
+            if (
+                before_dependency_install is not None
+                and dependency_manifest_declares_installation(manifest)
+            ):
+                try:
+                    await _await_thread_operation(before_dependency_install)
+                except Exception as error:  # noqa: BLE001 - 观察失败不能阻断安装
+                    logger.warning(f"{pid} 依赖安装前状态记录失败：{error}")
             logger.info(f"{pid} 存在依赖，开始尝试安装依赖")
             success, error_message = await self.__async_install_packages_with_fallback(manifest.path)
             return True, success, "" if success else error_message
@@ -3213,6 +3273,7 @@ class PluginHelper(metaclass=WeakSingleton):
             package_version: Optional[str] = None,
             release_version: Optional[str] = None,
             force_install: bool = False,
+            before_dependency_install: Optional[Callable[[], None]] = None,
     ) -> Tuple[bool, str]:
         """执行已通过来源准入的异步包安装，不负责身份或运行态提交。"""
         if self.is_local_repo_url(repo_url):
@@ -3221,6 +3282,7 @@ class PluginHelper(metaclass=WeakSingleton):
                 pid,
                 repo_url,
                 force_install,
+                before_dependency_install,
             )
 
         if SystemUtils.is_frozen():
@@ -3278,7 +3340,13 @@ class PluginHelper(metaclass=WeakSingleton):
                     release_tag,
                 )
 
-            return await self.__install_flow_async(pid, force_install, prepare_selected_release, repo_url)
+            return await self.__install_flow_async(
+                pid,
+                force_install,
+                prepare_selected_release,
+                repo_url,
+                before_dependency_install,
+            )
 
         if release_tag:
             # 当前索引 Release 失败时回退文件列表，保持同步与异步安装一致。
@@ -3294,12 +3362,24 @@ class PluginHelper(metaclass=WeakSingleton):
                 await self.__async_remove_old_plugin(pid)
                 return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
 
-            return await self.__install_flow_async(pid, force_install, prepare_release, repo_url)
+            return await self.__install_flow_async(
+                pid,
+                force_install,
+                prepare_release,
+                repo_url,
+                before_dependency_install,
+            )
         # 未声明 release 打包的插件继续使用文件列表方式安装。
         async def prepare_filelist() -> Tuple[bool, str]:
             return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
 
-        return await self.__install_flow_async(pid, force_install, prepare_filelist, repo_url)
+        return await self.__install_flow_async(
+            pid,
+            force_install,
+            prepare_filelist,
+            repo_url,
+            before_dependency_install,
+        )
 
     async def __async_get_plugin_meta(self, pid: str, repo_url: str,
                                       package_version: Optional[str]) -> dict:
@@ -3315,9 +3395,14 @@ class PluginHelper(metaclass=WeakSingleton):
             logger.warn(f"获取插件 {pid} 元数据失败：{e}")
             return {}
 
-    async def __install_flow_async(self, pid: str, force_install: bool,
-                                   prepare_content: Callable[[], Awaitable[Tuple[bool, str]]],
-                                   repo_url: Optional[str] = None) -> Tuple[bool, str]:
+    async def __install_flow_async(
+        self,
+        pid: str,
+        force_install: bool,
+        prepare_content: Callable[[], Awaitable[Tuple[bool, str]]],
+        repo_url: Optional[str] = None,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> Tuple[bool, str]:
         """
         异步安装流程，处理插件内容准备、依赖安装和注册
         """
@@ -3340,7 +3425,12 @@ class PluginHelper(metaclass=WeakSingleton):
                 return False, message
 
             dependencies_exist, dep_ok, dep_msg = (
-                await self.__async_install_dependencies_if_required(pid)
+                await self.__async_install_dependencies_if_required(
+                    pid,
+                    before_dependency_install,
+                )
+                if before_dependency_install is not None
+                else await self.__async_install_dependencies_if_required(pid)
             )
             if dependencies_exist and not dep_ok:
                 logger.error(f"{pid} 依赖安装失败：{dep_msg}")

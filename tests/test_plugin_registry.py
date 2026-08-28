@@ -58,3 +58,27 @@ def test_registry_tracks_runtime_status_generation_and_settling():
     registry.remove("Demo")
 
     assert registry.runtime_status("Demo") is None
+
+
+def test_registry_tracks_restart_requirement_independently_from_runtime_status():
+    """重启激活是正交维度，重复记录只合并发行包并推进真实变化。"""
+    registry = PluginRegistry()
+    registry.set_runtime_status("Demo", PluginRuntimeStatus.ACTIVE)
+    baseline_generation = registry.generation
+
+    registry.mark_restart_required("Demo", ("native-b", "native-a"))
+    changed_generation = registry.generation
+    registry.mark_restart_required("Demo", ("native-a",))
+
+    assert registry.runtime_status("Demo") is PluginRuntimeStatus.ACTIVE
+    assert registry.restart_required_snapshot() == {
+        "Demo": ("native-a", "native-b"),
+    }
+    assert changed_generation == baseline_generation + 1
+    assert registry.generation == changed_generation
+
+    registry.remove("Demo")
+
+    assert registry.restart_required_snapshot() == {
+        "Demo": ("native-a", "native-b"),
+    }

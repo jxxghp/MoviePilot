@@ -16,9 +16,16 @@ from app.runtime.execution import (
     run_in_threadpool_to_completion as _await_thread_operation,
 )
 from app.runtime.log import logger
+from app.runtime.native_dependencies import (
+    LoadedNativeDependencySnapshot,
+    NativeDependencyChange,
+    capture_loaded_native_dependencies,
+    detect_changed_native_dependencies,
+)
 from app.runtime.settings import get_runtime_setting
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(slots=True)
 class PluginPackageCheckpoint:
     """记录运行目录快照及待提升的容器恢复备份。"""
 
@@ -30,6 +37,7 @@ class PluginPackageCheckpoint:
     transaction_dir: Path
     plugin_existed: bool
     persistent_backup_existed: bool
+    native_dependencies: LoadedNativeDependencySnapshot | None = None
 
     @property
     def existed(self) -> bool:
@@ -186,6 +194,34 @@ class PluginPackageManager:
     async def async_commit(self, checkpoint: PluginPackageCheckpoint) -> None:
         """在线程池中清理已提交的插件包快照。"""
         await _await_thread_operation(self.commit, checkpoint)
+
+    @staticmethod
+    def native_dependency_changes(
+        checkpoint: PluginPackageCheckpoint,
+    ) -> tuple[NativeDependencyChange, ...]:
+        """返回安装中被替换、但当前进程仍持有旧代码的原生发行包。"""
+        if checkpoint.native_dependencies is None:
+            return ()
+        try:
+            return detect_changed_native_dependencies(
+                checkpoint.native_dependencies
+            )
+        except Exception as error:  # noqa: BLE001 - 诊断失败不能改写安装结果
+            logger.warning("检测插件原生依赖变更失败：%s", error)
+            return ()
+
+    async def async_native_dependency_changes(
+        self,
+        checkpoint: PluginPackageCheckpoint,
+    ) -> tuple[NativeDependencyChange, ...]:
+        """在线程池中比较原生发行包，避免文件枚举阻塞事件循环。"""
+        return cast(
+            tuple[NativeDependencyChange, ...],
+            await _await_thread_operation(
+                self.native_dependency_changes,
+                checkpoint,
+            ),
+        )
 
     @staticmethod
     def rollback(checkpoint: PluginPackageCheckpoint) -> None:
@@ -464,6 +500,7 @@ class PluginPackageManager:
         package_version: Optional[str] = None,
         release_version: Optional[str] = None,
         force_install: bool = False,
+        checkpoint: PluginPackageCheckpoint | None = None,
     ) -> tuple[bool, str]:
         """同步安装插件包，下载过程继续复用既有市场兼容策略。"""
         return cast(
@@ -474,6 +511,11 @@ class PluginPackageManager:
                 package_version=package_version,
                 release_version=release_version,
                 force_install=force_install,
+                before_dependency_install=(
+                    (lambda: self.__capture_native_dependencies(checkpoint))
+                    if checkpoint is not None
+                    else None
+                ),
             ),
         )
 
@@ -484,6 +526,7 @@ class PluginPackageManager:
         package_version: Optional[str] = None,
         release_version: Optional[str] = None,
         force_install: bool = False,
+        checkpoint: PluginPackageCheckpoint | None = None,
     ) -> tuple[bool, str]:
         """异步安装插件包，下载过程继续复用既有市场兼容策略。"""
         return cast(
@@ -494,8 +537,25 @@ class PluginPackageManager:
                 package_version=package_version,
                 release_version=release_version,
                 force_install=force_install,
+                before_dependency_install=(
+                    (lambda: self.__capture_native_dependencies(checkpoint))
+                    if checkpoint is not None
+                    else None
+                ),
             ),
         )
+
+    @staticmethod
+    def __capture_native_dependencies(
+        checkpoint: PluginPackageCheckpoint,
+    ) -> None:
+        """仅在插件依赖即将安装时记录当前进程的原生载荷。"""
+        if checkpoint.native_dependencies is not None:
+            return
+        try:
+            checkpoint.native_dependencies = capture_loaded_native_dependencies()
+        except Exception as error:  # noqa: BLE001 - 诊断失败不能阻断插件安装
+            logger.warning("记录插件原生依赖安装前状态失败：%s", error)
 
     def sync_local(self, plugin_id: str, source_dir: Path) -> bool:
         """用本地仓库内容原子替换运行副本，失败时恢复原目录。"""
