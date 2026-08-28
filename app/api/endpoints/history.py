@@ -24,11 +24,11 @@ from app.api.dependencies.auth import (
 from app.api.dependencies.history import (
     get_download_history_mutation_command,
     get_history_query_service,
+    get_transfer_execution_repository,
     get_transfer_history_mutation_command,
 )
 from app.api.response import ResponseAPIRouter
 from app.application.agent import get_running_agent_manager
-from app.application.chain.data import get_chain_transfer_execution_port
 from app.application.configuration import ApiRuntimeConfig
 from app.application.history import (
     DownloadHistoryMutationCommand,
@@ -37,6 +37,7 @@ from app.application.history import (
 )
 from app.application.transfer.execution import (
     TransferExecutionCommand,
+    TransferExecutionRepository,
     TransferRetryRequestResult,
 )
 from app.runtime.config import global_vars
@@ -69,11 +70,10 @@ def _request_durable_transfer_retry(
     history_id: int,
     task_id: str,
     requested_by: str,
+    repository: TransferExecutionRepository,
 ) -> TransferRetryRequestResult:
     """把 durable 历史重试交给唯一持久调度器，不在请求线程执行整理。"""
-    return TransferExecutionCommand(
-        get_chain_transfer_execution_port()
-    ).request_retry(
+    return TransferExecutionCommand(repository).request_retry(
         task_id=task_id,
         reason=f"AI REST 请求重试整理历史 #{history_id}",
         requested_by=requested_by,
@@ -102,6 +102,7 @@ def _partition_durable_histories(
 
 async def _request_batch_durable_retries(
     histories: list[_SchemaTransferHistory],
+    repository: TransferExecutionRepository,
 ) -> tuple[int, list[tuple[int, TransferRetryRequestResult]]]:
     """逐任务登记 durable 重试并保留每条拒绝的稳定状态。"""
     accepted_count = 0
@@ -112,6 +113,7 @@ async def _request_batch_durable_retries(
             history_id=history.id,
             task_id=history.transfer_task_id or "",
             requested_by="history_ai_redo_batch",
+            repository=repository,
         )
         if retry.accepted:
             accepted_count += 1
@@ -400,6 +402,9 @@ async def ai_redo_transfer_history(
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
     task_registry: TaskRegistry = Depends(get_background_task_registry),
+    execution_repository: TransferExecutionRepository = Depends(
+        get_transfer_execution_repository
+    ),
 ) -> Any:
     """
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
@@ -415,6 +420,7 @@ async def ai_redo_transfer_history(
             history_id=history.id,
             task_id=history.transfer_task_id,
             requested_by="history_ai_redo",
+            repository=execution_repository,
         )
         if not retry.accepted:
             return _SchemaResponse(success=False, message=retry.message)
@@ -456,6 +462,9 @@ async def batch_ai_redo_transfer_history(
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
     task_registry: TaskRegistry = Depends(get_background_task_registry),
+    execution_repository: TransferExecutionRepository = Depends(
+        get_transfer_execution_repository
+    ),
 ) -> Any:
     """
     手动触发多条历史记录的 AI 批量重新整理，并返回进度键。
@@ -476,7 +485,8 @@ async def batch_ai_redo_transfer_history(
 
     durable_histories, legacy_histories = _partition_durable_histories(histories)
     accepted_count, rejections = await _request_batch_durable_retries(
-        durable_histories
+        durable_histories,
+        execution_repository,
     )
     response_message_parts = _durable_retry_messages(
         accepted_count=accepted_count,

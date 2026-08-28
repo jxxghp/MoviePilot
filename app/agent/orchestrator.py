@@ -13,22 +13,21 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from langchain.agents import create_agent
 from langchain_core.messages import (  # noqa: F401
-    HumanMessage,
     BaseMessage,
+    HumanMessage,
     SystemMessage,
 )
-
 from langgraph.checkpoint.memory import InMemorySaver
 
-from app.runtime.execution import run_in_threadpool
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.server_tools import ServerToolRegistry
-from app.agent.memory import memory_manager
+from app.agent.mcp import agent_mcp_manager
+from app.agent.memory import MemoryManager, memory_manager
 from app.agent.middleware.activity_log import (
-    ActivityLogMiddleware,
     QUERY_ACTIVITY_LOG_TOOL_NAME,
+    ActivityLogMiddleware,
 )
 from app.agent.middleware.jobs import (
     JobsMiddleware,
@@ -40,59 +39,58 @@ from app.agent.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
 from app.agent.middleware.skills import SKILL_TOOL_NAME, SkillsMiddleware
-from app.agent.middleware.summarization import (
-    ContextPreservingSummarizationMiddleware as SummarizationMiddleware,
-    FinalRequestCompactionMiddleware,
-)
 from app.agent.middleware.subagents import (
     SUBAGENT_CONTROL_TOOL_NAME,
     SUBAGENT_TASK_TOOL_NAME,
     create_subagent_middlewares,
     is_subagent_stream_metadata,
 )
+from app.agent.middleware.summarization import (
+    ContextPreservingSummarizationMiddleware as SummarizationMiddleware,
+)
+from app.agent.middleware.summarization import (
+    FinalRequestCompactionMiddleware,
+)
 from app.agent.middleware.tool_selection import ToolSelectorMiddleware
 from app.agent.middleware.usage import UsageMiddleware
-from app.agent.prompt import prompt_manager
 from app.agent.policy.contracts import (
     AuthSource,
     PrincipalType,
     ToolOrigin,
     ToolPolicyContext,
 )
+from app.agent.prompt import prompt_manager
 from app.agent.runtime import agent_runtime_manager
-from app.agent.mcp import agent_mcp_manager
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.mcp import (
     create_external_mcp_tools,
     select_legacy_mcp_tools,
 )
 from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
-from app.chain.agent import AgentChain
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.events import eventmanager
-from app.runtime.observability import record_metric
+from app.application.agent import AgentDataContext
+from app.application.agenttask import get_agent_task_execution_service
+from app.application.messaging.chat import (
+    get_configured_agent_chat_persistence,
+    get_configured_agent_chat_service,
+    has_custom_agent_chat_title,
+)
 from app.application.plugin.runtime import get_plugin_manager
+from app.chain.agent import AgentChain
+from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
+from app.runtime.events import eventmanager
+from app.runtime.execution import run_in_threadpool
+from app.runtime.log import logger
+from app.runtime.observability import record_metric
+from app.runtime.settings import get_runtime_setting
+from app.schemas.event import AgentLLMProviderEventData, AgentTokensUsageEventData
+from app.schemas.message import Message, MessageType
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+from app.schemas.types import ChainEventType, EventType, NotificationChannel
 
 
 def _get_plugin_tools_revision() -> int:
     """读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。"""
     return get_plugin_manager().get_plugin_agent_tools_revision()
-from app.application.agenttask import get_agent_task_execution_service
-from app.application.agentdata import get_agent_user_port
-from app.application.messaging.chat import (
-    get_configured_agent_chat_service,
-    get_configured_agent_chat_persistence,
-    has_custom_agent_chat_title,
-)
-from app.runtime.log import logger
-from app.schemas.event import AgentLLMProviderEventData
-from app.schemas.event import AgentTokensUsageEventData
-from app.schemas.message import Message
-from app.schemas.message import MessageType
-from app.schemas.notification import ChannelCapabilityManager, ChannelCapability
-from app.schemas.types import ChainEventType, EventType, NotificationChannel
-from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
 
@@ -412,7 +410,10 @@ class MoviePilotAgent:
             allow_message_tools: bool = True,
             output_callback: Optional[Callable[[str], None]] = None,
             protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
+            data: Optional[AgentDataContext] = None,
+            memory: Optional[MemoryManager] = None,
     ):
+        """创建会话 Agent，并保存组合根注入的数据与记忆能力。"""
         self.session_id = session_id
         self.user_id = user_id
         self.channel = channel
@@ -425,6 +426,8 @@ class MoviePilotAgent:
         self.allow_message_tools = allow_message_tools
         self.output_callback = output_callback
         self.protected_output_callback = protected_output_callback
+        self._data = data
+        self._memory = memory or memory_manager
         self._tool_context: Dict[str, object] = {}
         self._pending_secret_confirmation: Optional[_PendingSecretConfirmation] = None
         self._streamed_output = ""
@@ -976,7 +979,9 @@ class MoviePilotAgent:
         if not self.username:
             return False
         try:
-            user = await get_agent_user_port().async_get_by_name(self.username)
+            if self._data is None:
+                return False
+            user = await self._data.users.async_get_by_name(self.username)
         except Exception as e:
             logger.error(f"检查 Agent 用户管理员身份失败: {e}")
             return False
@@ -1620,6 +1625,7 @@ class MoviePilotAgent:
             stream_handler=self.stream_handler,
             agent_context=self._tool_context,
             allow_message_tools=self.allow_message_tools,
+            data=self._data,
         )
 
     def _initialize_local_tool_catalogs(
@@ -1880,6 +1886,7 @@ class MoviePilotAgent:
                 "require_secret_confirmation": True,
             },
             allow_message_tools=False,
+            data=self._data,
         )
 
     async def _initialize_mcp_tools(self, specs=None) -> List:
@@ -2228,7 +2235,7 @@ class MoviePilotAgent:
 
             # 获取历史消息
             messages = list(
-                await memory_manager.async_get_agent_messages(
+                await self._memory.async_get_agent_messages(
                     session_id=self.session_id,
                     user_id=self.user_id,
                 )
@@ -2526,7 +2533,7 @@ class MoviePilotAgent:
             await self._save_assistant_display_message_once(display_text)
 
             if self._should_persist_agent_chat():
-                await memory_manager.async_save_agent_messages(
+                await self._memory.async_save_agent_messages(
                     session_id=self.session_id,
                     user_id=self.user_id,
                     messages=agent.get_state(agent_config).values.get("messages", []),
@@ -2672,7 +2679,16 @@ class AgentManager:
     同一会话的消息按顺序排队处理，不同会话之间互不影响。
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        data: Optional[AgentDataContext] = None,
+        memory: Optional[MemoryManager] = None,
+    ) -> None:
+        """创建管理器，并保存组合根注入的 Agent 数据与记忆能力。"""
+        self._data = data
+        self._memory = memory or memory_manager
+        if data is not None:
+            self._memory.configure(data.chat, data.chat_persistence)
         self.active_agents: Dict[str, MoviePilotAgent] = {}
         # 每个会话的消息队列
         self._session_queues: Dict[str, asyncio.Queue] = {}
@@ -2695,6 +2711,15 @@ class AgentManager:
         # 接收门禁与队列写入共用一把锁，确保关闭开始后不会再创建 worker。
         self._lifecycle_lock = asyncio.Lock()
         self._accepting_tasks = False
+
+    def configure_data_context(self, data: AgentDataContext) -> None:
+        """在服务启动前绑定唯一数据上下文并配置记忆服务。"""
+        if self._data is data:
+            return
+        if self._accepting_tasks or self.active_agents:
+            raise RuntimeError("AgentManager 已运行，不能替换数据上下文")
+        self._data = data
+        self._memory.configure(data.chat, data.chat_persistence)
 
     def get_session_status(self, session_id: str) -> dict[str, Any]:
         """获取会话当前模型与 token 使用状态。"""
@@ -2760,7 +2785,7 @@ class AgentManager:
                 return
             if self._close_finalizer_task and not self._close_finalizer_task.done():
                 raise AgentManagerUnavailableError("AgentManager 仍在完成上一代关闭")
-            memory_manager.initialize()
+            self._memory.initialize()
             if not self._idle_cleanup_task or self._idle_cleanup_task.done():
                 self._idle_cleanup_task = asyncio.create_task(
                     self._cleanup_idle_sessions()
@@ -2848,7 +2873,7 @@ class AgentManager:
                     len(self.active_agents),
                 )
                 return False
-            await memory_manager.close()
+            await self._memory.close()
             self._closed = True
             return True
 
@@ -3170,24 +3195,41 @@ class AgentManager:
             logger.info(
                 f"创建新的AI智能体实例，session_id: {session_id}, user_id: {task.user_id}"
             )
-            agent_factory = task.agent_factory or MoviePilotAgent
-            agent_kwargs = {
-                "session_id": session_id,
-                "user_id": task.user_id,
-                "channel": task.channel,
-                "source": task.source,
-                "username": task.username,
-                "is_channel_admin": task.is_channel_admin,
-                "original_message_id": task.original_message_id,
-                "original_chat_id": task.original_chat_id,
-                "replay_mode": task.reply_mode,
-                "allow_message_tools": task.allow_message_tools,
-                "output_callback": task.output_callback,
-                "protected_output_callback": task.protected_output_callback,
-            }
-            if task.message_callback is not None and task.agent_factory:
-                agent_kwargs["message_callback"] = task.message_callback
-            agent = agent_factory(**agent_kwargs)
+            if task.agent_factory is None:
+                agent = MoviePilotAgent(
+                    session_id=session_id,
+                    user_id=task.user_id,
+                    channel=task.channel,
+                    source=task.source,
+                    username=task.username,
+                    is_channel_admin=task.is_channel_admin,
+                    original_message_id=task.original_message_id,
+                    original_chat_id=task.original_chat_id,
+                    replay_mode=task.reply_mode,
+                    allow_message_tools=task.allow_message_tools,
+                    output_callback=task.output_callback,
+                    protected_output_callback=task.protected_output_callback,
+                    data=self._data,
+                    memory=self._memory,
+                )
+            else:
+                agent_kwargs = {
+                    "session_id": session_id,
+                    "user_id": task.user_id,
+                    "channel": task.channel,
+                    "source": task.source,
+                    "username": task.username,
+                    "is_channel_admin": task.is_channel_admin,
+                    "original_message_id": task.original_message_id,
+                    "original_chat_id": task.original_chat_id,
+                    "replay_mode": task.reply_mode,
+                    "allow_message_tools": task.allow_message_tools,
+                    "output_callback": task.output_callback,
+                    "protected_output_callback": task.protected_output_callback,
+                }
+                if task.message_callback is not None:
+                    agent_kwargs["message_callback"] = task.message_callback
+                agent = task.agent_factory(**agent_kwargs)
             self.active_agents[session_id] = agent
         else:
             agent = self.active_agents[session_id]
@@ -3341,7 +3383,7 @@ class AgentManager:
                 )
                 return
             del self.active_agents[session_id]
-            memory_manager.clear_memory(session_id, user_id)
+            self._memory.clear_memory(session_id, user_id)
             logger.info(f"会话 {session_id} 的记忆已清空")
 
     def _defer_session_cleanup(
@@ -3410,7 +3452,7 @@ class AgentManager:
                     )
                     return
                 self.active_agents.pop(session_id, None)
-                memory_manager.clear_memory(session_id, user_id)
+                self._memory.clear_memory(session_id, user_id)
                 logger.info(f"会话 {session_id} 的记忆已清空")
 
     async def _finish_deferred_close(
@@ -3438,7 +3480,7 @@ class AgentManager:
                         len(self.active_agents),
                     )
                     return
-                await memory_manager.close()
+                await self._memory.close()
                 self._closed = True
         finally:
             self._close_finalizer_task = None

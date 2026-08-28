@@ -1,7 +1,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from app.agent.tools.impl.query_subscribes import QuerySubscribesTool
 from app.db.models.subscribe import Subscribe
@@ -22,17 +22,16 @@ def test_agent_query_subscribes_returns_manual_total_episode():
         state="P",
     )
 
-    with patch(
-        "app.agent.tools.impl.query_subscribes.get_agent_subscribe_port",
-        return_value=SimpleNamespace(
-            async_list=AsyncMock(return_value=[subscribe])
-        ),
-    ):
-        result = asyncio.run(
-            QuerySubscribesTool(session_id="session-1", user_id="10001").run(
-                tmdb_id=224839,
-            )
+    repository = SimpleNamespace(async_list=AsyncMock(return_value=[subscribe]))
+    result = asyncio.run(
+        QuerySubscribesTool(
+            session_id="session-1",
+            user_id="10001",
+            data=SimpleNamespace(subscriptions=repository),
+        ).run(
+            tmdb_id=224839,
         )
+    )
 
     _, result_json = result.split("\n\n", maxsplit=1)
     payload = json.loads(result_json)

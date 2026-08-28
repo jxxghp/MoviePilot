@@ -32,7 +32,7 @@ class _RetryCommand:
 
 
 def _install_retry_port(monkeypatch) -> object:
-    """安装不会接触数据库的 execution 端口与命令替身。"""
+    """构造不会接触数据库的 execution 端口并安装命令替身。"""
     repository = object()
     _RetryCommand.calls = []
     _RetryCommand.result = TransferRetryRequestResult(
@@ -40,10 +40,6 @@ def _install_retry_port(monkeypatch) -> object:
         state=TransferExecutionState.RETRY_WAIT,
         retry_generation=2,
         message="整理任务已登记重试",
-    )
-    monkeypatch.setattr(
-        "app.chain._transfer.get_chain_transfer_execution_port",
-        lambda: repository,
     )
     monkeypatch.setattr(
         "app.chain._transfer.TransferExecutionCommand",
@@ -61,16 +57,16 @@ def test_durable_history_redo_only_requests_persistent_retry(monkeypatch):
         src="/missing/source.mkv",
     )
     monkeypatch.setattr(
-        "app.chain._transfer.get_chain_transfer_history_port",
-        lambda: SimpleNamespace(get=lambda history_id: history),
-    )
-    monkeypatch.setattr(
         "app.chain._transfer.Path.exists",
         lambda _path: (_ for _ in ()).throw(
             AssertionError("durable 重试不应检查源路径")
         ),
     )
     chain = object.__new__(TransferChain)
+    chain.transfer_execution_repository = repository
+    chain.transfer_history_repository = SimpleNamespace(
+        get=lambda history_id: history
+    )
     monkeypatch.setattr(
         chain,
         "do_transfer",
@@ -97,7 +93,7 @@ def test_durable_history_redo_only_requests_persistent_retry(monkeypatch):
 
 def test_durable_manual_cleanup_keeps_target_history_and_failure_budget(monkeypatch):
     """手动重整命中 durable 历史时不得先删目标、历史或失败计数。"""
-    _install_retry_port(monkeypatch)
+    repository = _install_retry_port(monkeypatch)
     history = SimpleNamespace(
         id=82,
         transfer_task_id="transfer-task-82",
@@ -129,6 +125,7 @@ def test_durable_manual_cleanup_keeps_target_history_and_failure_budget(monkeypa
         ),
     )
     chain = object.__new__(TransferChain)
+    chain.transfer_execution_repository = repository
 
     state, message = chain._delete_manual_transfer_history(
         history=history,
@@ -142,12 +139,8 @@ def test_durable_manual_cleanup_keeps_target_history_and_failure_budget(monkeypa
 
 def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
     """AI 按钮命中 durable 历史时也只能登记调度重试。"""
-    _install_retry_port(monkeypatch)
+    repository = _install_retry_port(monkeypatch)
     history = SimpleNamespace(id=83, transfer_task_id="transfer-task-83")
-    monkeypatch.setattr(
-        "app.chain._transfer.get_chain_transfer_history_port",
-        lambda: SimpleNamespace(get=lambda history_id: history),
-    )
     monkeypatch.setattr(
         "app.chain._transfer.build_manual_redo_prompt",
         lambda _history: (_ for _ in ()).throw(
@@ -162,6 +155,10 @@ def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
     )
     messages = []
     chain = object.__new__(TransferChain)
+    chain.transfer_execution_repository = repository
+    chain.transfer_history_repository = SimpleNamespace(
+        get=lambda history_id: history
+    )
     chain.runtime_config = SimpleNamespace(
         ai_agent_enable=False,
         history_url="/history",
@@ -183,7 +180,7 @@ def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
 
 def test_durable_manual_review_rejection_does_not_fall_back_to_legacy(monkeypatch):
     """人工复核任务被拒绝后不得回退到旧识别和重整流程。"""
-    _install_retry_port(monkeypatch)
+    repository = _install_retry_port(monkeypatch)
     _RetryCommand.result = TransferRetryRequestResult(
         accepted=False,
         state=TransferExecutionState.MANUAL_REVIEW,
@@ -196,16 +193,16 @@ def test_durable_manual_review_rejection_does_not_fall_back_to_legacy(monkeypatc
         src="/downloads/source.mkv",
     )
     monkeypatch.setattr(
-        "app.chain._transfer.get_chain_transfer_history_port",
-        lambda: SimpleNamespace(get=lambda history_id: history),
-    )
-    monkeypatch.setattr(
         "app.chain._transfer.Path.exists",
         lambda _path: (_ for _ in ()).throw(
             AssertionError("拒绝后不得回退旧流程")
         ),
     )
     chain = object.__new__(TransferChain)
+    chain.transfer_execution_repository = repository
+    chain.transfer_history_repository = SimpleNamespace(
+        get=lambda history_id: history
+    )
 
     state, message = chain._re_transfer(logid=84)
 

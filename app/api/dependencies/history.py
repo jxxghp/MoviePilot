@@ -14,6 +14,7 @@ from app.application.history import (
     clear_transfer_failures,
 )
 from app.application.mediaserver import MediaServerQueryService
+from app.application.transfer.execution import TransferExecutionRepository
 from app.chain.storage import StorageChain
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
@@ -72,6 +73,13 @@ def get_transfer_history_lookup_service(
     return TransferHistoryLookupService(
         runtime.history.transfer_repository
     )
+
+
+def get_transfer_execution_repository(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> TransferExecutionRepository:
+    """返回 durable 整理任务的显式执行仓储。"""
+    return runtime.history.transfer_execution_repository
 
 
 def get_transfer_history_mutation_command(

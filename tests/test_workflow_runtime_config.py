@@ -107,6 +107,12 @@ def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
     class FakeSubscribeChain:
         """记录订阅新增参数的测试替身。"""
 
+        subscription_repository = SimpleNamespace(get=lambda _sid: SimpleNamespace(to_dict=lambda: {
+            "id": 42,
+            "name": "Example",
+            "type": MediaType.MOVIE.value,
+        }))
+
         def exists(self, _mediainfo):
             return False
 
@@ -121,16 +127,6 @@ def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
         lambda: _runtime_config(superuser="snapshot-owner"),
     )
     monkeypatch.setattr(add_subscribe_module.runtime_stop_state, "is_workflow_stopped", lambda _: False)
-    monkeypatch.setattr(
-        add_subscribe_module,
-        "get_chain_subscribe_port",
-        lambda: SimpleNamespace(get=lambda _sid: SimpleNamespace(to_dict=lambda: {
-            "id": 42,
-            "name": "Example",
-            "type": MediaType.MOVIE.value,
-        })),
-    )
-
     AddSubscribeAction("subscribe").execute(
         workflow_id=1,
         params={},

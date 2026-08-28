@@ -73,10 +73,6 @@
   "app/agent/middleware/utils.py": {
     "I001": 1
   },
-  "app/agent/orchestrator.py": {
-    "E402": 11,
-    "I001": 2
-  },
   "app/agent/policy/__init__.py": {
     "I001": 1
   },
@@ -104,12 +100,6 @@
   "app/agent/skills/metadata.py": {
     "I001": 1
   },
-  "app/agent/tools/base.py": {
-    "I001": 1
-  },
-  "app/agent/tools/factory.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/_command_safety.py": {
     "I001": 1
   },
@@ -131,13 +121,7 @@
   "app/agent/tools/impl/browse_webpage.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/create_agent_task.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/delete_custom_filter_rule.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/delete_rule_group.py": {
     "I001": 1
   },
   "app/agent/tools/impl/execute_command.py": {
@@ -179,22 +163,13 @@
   "app/agent/tools/impl/query_plugin_config.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/query_plugin_data.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/query_popular_subscribes.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_rule_groups.py": {
     "I001": 1
   },
   "app/agent/tools/impl/query_subscribe_shares.py": {
     "I001": 1
   },
   "app/agent/tools/impl/query_system_settings.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_transfer_history.py": {
     "I001": 1
   },
   "app/agent/tools/impl/recognize_captcha.py": {
@@ -245,12 +220,6 @@
   "app/agent/tools/impl/update_plugin_config.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/update_rule_group.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/update_site_cookie.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/update_system_settings.py": {
     "I001": 1
   },
@@ -262,9 +231,6 @@
   },
   "app/api/endpoints/system.py": {
     "F401": 1,
-    "I001": 1
-  },
-  "app/application/agenttask.py": {
     "I001": 1
   },
   "app/application/directory.py": {
@@ -283,9 +249,6 @@
     "I001": 1
   },
   "app/application/messaging/agent.py": {
-    "I001": 1
-  },
-  "app/application/messaging/chat.py": {
     "I001": 1
   },
   "app/application/messaging/session.py": {
@@ -362,9 +325,6 @@
     "I001": 1
   },
   "app/db/models/siteuserdata.py": {
-    "I001": 1
-  },
-  "app/db/models/subscribehistory.py": {
     "I001": 1
   },
   "app/db/models/systemconfig.py": {
@@ -1012,22 +972,10 @@
   "tests/test_agent_message_routing.py": {
     "I001": 1
   },
-  "tests/test_agent_music_tools.py": {
-    "I001": 1
-  },
-  "tests/test_agent_plugin_tools.py": {
-    "I001": 1
-  },
   "tests/test_agent_recognize_captcha_tool.py": {
     "I001": 1
   },
-  "tests/test_agent_resource_flow_permissions.py": {
-    "I001": 1
-  },
   "tests/test_agent_runtime.py": {
-    "I001": 1
-  },
-  "tests/test_agent_scheduled_tasks.py": {
     "I001": 1
   },
   "tests/test_agent_session_status.py": {
@@ -1040,9 +988,6 @@
     "I001": 1
   },
   "tests/test_agent_summarization_streaming.py": {
-    "I001": 1
-  },
-  "tests/test_agent_task_runs.py": {
     "I001": 1
   },
   "tests/test_agent_tokens_events.py": {
@@ -1081,9 +1026,6 @@
   "tests/test_bangumi_media_type.py": {
     "F401": 1
   },
-  "tests/test_bluray.py": {
-    "I001": 1
-  },
   "tests/test_builtin_skill_boundaries.py": {
     "I001": 1
   },
@@ -1094,10 +1036,6 @@
     "I001": 1
   },
   "tests/test_chain_layering.py": {
-    "I001": 1
-  },
-  "tests/test_chain_rate_limit.py": {
-    "E402": 4,
     "I001": 1
   },
   "tests/test_cli_auto_update.py": {
@@ -1145,9 +1083,6 @@
     "I001": 1
   },
   "tests/test_db_session_lifecycle.py": {
-    "I001": 1
-  },
-  "tests/test_delete_transfer_history_tool.py": {
     "I001": 1
   },
   "tests/test_docker_bootstrap.py": {
@@ -1434,9 +1369,6 @@
   "tests/test_recommend_chain.py": {
     "I001": 1
   },
-  "tests/test_release_group.py": {
-    "I001": 1
-  },
   "tests/test_reliability_adr.py": {
     "I001": 1
   },
@@ -1494,10 +1426,6 @@
   },
   "tests/test_skills_command.py": {
     "E402": 6,
-    "I001": 1
-  },
-  "tests/test_slash_command_interactions.py": {
-    "E402": 8,
     "I001": 1
   },
   "tests/test_storage_download_path.py": {
@@ -1581,10 +1509,6 @@
   },
   "tests/test_transfer_failed_retry_budget.py": {
     "I001": 1
-  },
-  "tests/test_transfer_failed_retry_buttons.py": {
-    "E402": 6,
-    "I001": 2
   },
   "tests/test_transfer_history_gate.py": {
     "I001": 1

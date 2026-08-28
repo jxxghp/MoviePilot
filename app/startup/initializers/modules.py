@@ -34,7 +34,7 @@ from app.adapters.system.resource import (
 )
 from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.api.data import ApiDataPorts, configure_api_data_runtime
-from app.application.agentdata import configure_agent_data_ports
+from app.application.agent import AgentDataContext
 from app.application.agenttask import (
     AgentTaskExecutionService,
     configure_agent_task_execution,
@@ -43,7 +43,6 @@ from app.application.chain.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
 )
-from app.application.chain.data import configure_chain_data_ports
 from app.application.chain.events import (
     restore_download_added,
     restore_transfer_result,
@@ -119,6 +118,11 @@ from app.application.workflow import (
     configure_workflow_query,
 )
 from app.command import CommandChain
+from app.db.adapters.agent import (
+    SessionAgentTaskRepository,
+    TransactionalAgentTaskRepository,
+    TransactionalPluginDataRepository,
+)
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.configuration import TransactionalUserConfigurationRepository
 from app.db.adapters.download import TransactionalDownloadFailureRepository
@@ -158,11 +162,9 @@ from app.db.adapters.workflow import (
     TransactionalWorkflowQueryRepository,
 )
 from app.db.oper.agentchat import AgentChatOper
-from app.db.oper.agenttask import AgentTaskOper
 from app.db.oper.mediaserver import MediaServerOper
 from app.db.oper.message import MessageOper
 from app.db.oper.passkey import PassKeyOper
-from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
@@ -223,11 +225,12 @@ from app.startup.composition.database import build_database_governance
 from app.startup.composition.subscription import (
     configure_transactional_subscription_scopes,
 )
-from app.startup.initializers.agent import init_agent
+from app.startup.initializers.agent import configure_agent_data_context, init_agent
 from app.startup.initializers.resources import (
     init_managed_resources,
     stop_managed_resources,
 )
+from app.startup.initializers.scheduler import configure_scheduler_agent_tasks
 
 _database_worker: DatabaseWorker | None = None
 
@@ -284,7 +287,13 @@ def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
     return TransferChain().execute_legacy_transfer_command(**kwargs)
 
 
-def _build_chain_runtime_context() -> ChainRuntimeContext:
+def _build_chain_runtime_context(
+    *,
+    site: TransactionalSiteRepository,
+    subscription: TransactionalSubscriptionRepository,
+    download_history: TransactionalDownloadHistoryRepository,
+    transfer_history: TransactionalTransferHistoryRepository,
+) -> ChainRuntimeContext:
     """在启动组合根创建 Chain 所需的运行时对象和数据端口。"""
     return ChainRuntimeContext(
         module_manager=ModuleManager(),
@@ -296,6 +305,15 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
         async_file_cache=AsyncFileCache(),
         message_queue_factory=lambda callback: MessageQueueManager(send_callback=callback),
         module_dispatcher_factory=ModuleInvocationDispatcher,
+        site_repository=site,
+        subscription_repository=subscription,
+        download_history_repository=download_history,
+        transfer_history_repository=transfer_history,
+        transfer_admission_repository=TransactionalTransferAdmissionRepository(SessionFactory),
+        transfer_execution_repository=TransactionalTransferExecutionRepository(SessionFactory),
+        media_server_repository=TransactionalMediaServerRepository(SessionFactory),
+        download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
+        user_repository=_build_transactional_user_repository(),
         legacy_transfer_command=_execute_legacy_transfer_command,
         configuration=build_chain_runtime_config(legacy_settings),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
@@ -861,6 +879,25 @@ async def init_modules() -> HostRuntime:
     subscription_history_repository = TransactionalSubscriptionHistoryRepository(
         async_session=async_session_scope,
     )
+    agent_chat_service = AgentChatService(repository=AgentChatOper())
+    agent_task_repository = TransactionalAgentTaskRepository(SessionFactory)
+    plugin_data_repository = TransactionalPluginDataRepository(async_session_scope)
+    transfer_execution_repository = TransactionalTransferExecutionRepository(
+        SessionFactory
+    )
+    agent_data = AgentDataContext(
+        chat=agent_chat_service,
+        chat_persistence=agent_chat_persistence,
+        tasks=agent_task_repository,
+        users=_build_transactional_user_repository(),
+        sites=site_repository,
+        subscriptions=subscription_repository,
+        subscription_history=subscription_history_repository,
+        transfer_history=transfer_history_repository,
+        transfer_execution=transfer_execution_repository,
+        download_history=download_history_repository,
+        plugin_data=plugin_data_repository,
+    )
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
@@ -868,6 +905,7 @@ async def init_modules() -> HostRuntime:
             transaction=SqlAlchemyAsyncUnitOfWork,
             persistence=agent_chat_persistence,
         ),
+        agent=agent_data,
         persistence=PersistenceRuntime(
             sync_session=get_db,
             async_session=get_async_db,
@@ -886,6 +924,7 @@ async def init_modules() -> HostRuntime:
             transfer_repository=transfer_history_repository,
             transfer_mutation_repository=SessionTransferHistoryRepository,
             media_server_repository=MediaServerOper,
+            transfer_execution_repository=transfer_execution_repository,
         ),
         site=SiteRuntime(
             repository=SessionSiteRepository,
@@ -918,17 +957,6 @@ async def init_modules() -> HostRuntime:
     configure_runtime_data_providers(workflow_query, subscription_repository)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_execution(workflow_execution)
-    configure_chain_data_ports(
-        site=lambda: site_repository,
-        subscribe=lambda: subscription_repository,
-        download_history=lambda: download_history_repository,
-        transfer_history=lambda: transfer_history_repository,
-        transfer_pending=lambda: TransactionalTransferAdmissionRepository(SessionFactory),
-        transfer_execution=lambda: TransactionalTransferExecutionRepository(SessionFactory),
-        media_server=lambda: TransactionalMediaServerRepository(SessionFactory),
-        download_failure=lambda: TransactionalDownloadFailureRepository(SessionFactory),
-        user=_build_transactional_user_repository,
-    )
     configure_outbox_dispatcher(_build_outbox_dispatcher)
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
@@ -936,7 +964,7 @@ async def init_modules() -> HostRuntime:
         )
     )
     configure_database_governance(build_database_governance())
-    configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
+    configure_agent_chat_service(agent_chat_service)
     configure_agent_chat_persistence(agent_chat_persistence)
     configure_user_lookups(
         by_id=lambda user_id: _build_transactional_user_repository().get_by_id(user_id),
@@ -961,20 +989,14 @@ async def init_modules() -> HostRuntime:
     configure_transfer_history_repository(lambda: transfer_history_repository)
     configure_site_query_service(SiteQueryService(repository=site_repository))
     configure_site_health_service(SiteHealthService(repository=site_repository))
-    configure_agent_data_ports(
-        agent_chat=lambda: AgentChatOper(),
-        agent_task=lambda: AgentTaskOper(),
-        user=_build_transactional_user_repository,
-        site=lambda: site_repository,
-        subscribe=lambda: subscription_repository,
-        subscribe_history=lambda: subscription_history_repository,
-        transfer_history=lambda: transfer_history_repository,
-        download_history=lambda: download_history_repository,
-        plugin_data=lambda: PluginDataOper(),
-    )
+    configure_agent_data_context(agent_data)
+    from app.agent.tools.manager import moviepilot_tool_manager
+
+    moviepilot_tool_manager.set_data_context(agent_data)
+    configure_scheduler_agent_tasks(agent_task_repository)
     configure_agent_task_execution(
         AgentTaskExecutionService(
-            repository=lambda session: AgentTaskOper(session),
+            repository=SessionAgentTaskRepository,
             async_executor=database_worker,
             sync_transaction=transaction_runner.sync,
         )
@@ -986,7 +1008,14 @@ async def init_modules() -> HostRuntime:
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
     configure_wallpaper_services()
     # Chain 无参兼容入口由组合根明确提供依赖上下文；测试和新代码可直接注入替代上下文。
-    configure_chain_runtime_context_provider(_build_chain_runtime_context)
+    configure_chain_runtime_context_provider(
+        lambda: _build_chain_runtime_context(
+            site=site_repository,
+            subscription=subscription_repository,
+            download_history=download_history_repository,
+            transfer_history=transfer_history_repository,
+        )
+    )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     set_superuser_token_payload_provider(build_superuser_token_payload)
     # DoH

@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_subscribe_history_port
 from app.domain.media import normalize_music_type
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaType, media_type_to_agent
@@ -106,7 +105,7 @@ class QuerySubscribeHistoryTool(MoviePilotTool):
                 if MediaType.MUSIC.value not in requested_types:
                     return "错误：music_type 仅能与 media_type='music' 或 'all' 一起使用"
 
-            repository = get_agent_subscribe_history_port()
+            repository = self.data.subscription_history
             if name:
                 # 有名称过滤时，获取足够多的记录在内存中过滤，不分页
                 fetch_count = 500

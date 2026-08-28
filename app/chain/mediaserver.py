@@ -2,7 +2,6 @@ import threading
 from datetime import datetime
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 
-from app.application.chain.data import get_chain_media_server_port
 from app.application.mediaserver import (
     MediaServerRepository,
     MediaServerSyncItem,
@@ -473,7 +472,7 @@ class MediaServerChain(ChainBase):
         with lock:
             # 汇总统计
             total_count = 0
-            repository = get_chain_media_server_port()
+            repository = self.media_server_repository
             mediaservers, total_servers, server_sync_contexts, global_media_total = (
                 self._prepare_sync_contexts(mediaservers, server, repository)
             )

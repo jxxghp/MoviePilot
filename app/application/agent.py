@@ -9,7 +9,40 @@ chain 层需要触发 Agent 后台任务、渲染提示词、查询模型能力�
 本模块禁止静态或函数内导入 app.agent，否则会重新形成跨层循环依赖。
 """
 
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
+
+from app.application.agenttask import AgentTaskRepository
+from app.application.history import DownloadHistoryRepository, TransferHistoryRepository
+from app.application.messaging.chat import (
+    AgentChatPersistenceService,
+    AgentChatService,
+)
+from app.application.plugin.data import PluginDataQueryRepository
+from app.application.security.user import ChainUserRepository
+from app.application.site.contract import SiteRepository
+from app.application.subscription.contract import (
+    SubscriptionHistoryQueryPort,
+    SubscriptionRepository,
+)
+from app.application.transfer.execution import TransferExecutionRepository
+
+
+@dataclass(frozen=True, slots=True)
+class AgentDataContext:
+    """由启动组合根构造并注入 Agent 运行面的类型化数据能力。"""
+
+    chat: AgentChatService
+    chat_persistence: AgentChatPersistenceService
+    tasks: AgentTaskRepository
+    users: ChainUserRepository
+    sites: SiteRepository
+    subscriptions: SubscriptionRepository
+    subscription_history: SubscriptionHistoryQueryPort
+    transfer_history: TransferHistoryRepository
+    transfer_execution: TransferExecutionRepository
+    download_history: DownloadHistoryRepository
+    plugin_data: PluginDataQueryRepository
 
 Provider = Callable[[], Any]
 

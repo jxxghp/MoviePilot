@@ -199,17 +199,12 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
         review_store,
         task_id=f"task-{decision}",
     )
-    monkeypatch.setattr(
-        transfer_endpoint,
-        "get_chain_transfer_execution_port",
-        lambda: repository,
-    )
-
     listed = transfer_endpoint.list_transfer_manual_reviews(
         state_filter="manual_review",
         page=1,
         page_size=10,
         current_user=object(),
+        repository=repository,
     )
     assert listed.data is not None
     assert listed.data.total == 1
@@ -239,6 +234,7 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
     detail = transfer_endpoint.get_transfer_manual_review(
         task_id=f"task-{decision}",
         current_user=object(),
+        repository=repository,
     )
     assert detail.data == discovered
 
@@ -251,6 +247,7 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
             result_payload=result_payload,
         ),
         current_user=SimpleNamespace(name="admin"),
+        repository=repository,
     )
     assert resolved.data is not None
     assert resolved.data.state == "retry_wait"
@@ -259,6 +256,7 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
     waiting = transfer_endpoint.get_transfer_manual_review(
         task_id=f"task-{decision}",
         current_user=object(),
+        repository=repository,
     )
     assert waiting.data is not None
     assert waiting.data.state == "retry_wait"
@@ -268,6 +266,7 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
         page=1,
         page_size=10,
         current_user=object(),
+        repository=repository,
     )
     assert retry_page.data is not None
     assert [item.task_id for item in retry_page.data.items] == [f"task-{decision}"]

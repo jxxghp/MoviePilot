@@ -4,11 +4,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from app.application.chain.events import ChainDurableEventWriter
 from app.application.configuration import ChainRuntimeConfig
 from app.runtime.stop import StopState, runtime_stop_state
+
+if TYPE_CHECKING:
+    from app.application.download.failures import DownloadFailureRepository
+    from app.application.history import (
+        DownloadHistoryRepository,
+        TransferHistoryRepository,
+    )
+    from app.application.mediaserver import MediaServerRepository
+    from app.application.security.user import ChainUserRepository
+    from app.application.site.contract import SiteRepository
+    from app.application.subscription.contract import SubscriptionRepository
+    from app.application.transfer.execution import TransferExecutionRepository
+    from app.application.transfer.workflow import TransferAdmissionRepository
 
 MessageQueueFactory = Callable[[Callable[..., Any]], Any]
 ModuleDispatcherFactory = Callable[..., Any]
@@ -29,6 +42,15 @@ class ChainRuntimeContext:
     async_file_cache: Any
     message_queue_factory: MessageQueueFactory
     module_dispatcher_factory: ModuleDispatcherFactory
+    site_repository: SiteRepository
+    subscription_repository: SubscriptionRepository
+    download_history_repository: DownloadHistoryRepository
+    transfer_history_repository: TransferHistoryRepository
+    transfer_admission_repository: TransferAdmissionRepository
+    transfer_execution_repository: TransferExecutionRepository
+    media_server_repository: MediaServerRepository
+    download_failure_repository: DownloadFailureRepository
+    user_repository: ChainUserRepository
     legacy_transfer_command: Optional[LegacyTransferCommand] = None
     durable_event_writer: Optional[ChainDurableEventWriter] = None
     configuration: ChainRuntimeConfig = field(

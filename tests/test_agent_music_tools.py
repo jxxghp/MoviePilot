@@ -19,8 +19,8 @@ from app.agent.tools.impl.query_media_detail import (
     QueryMediaDetailInput,
     QueryMediaDetailTool,
 )
-from app.agent.tools.impl.query_subscribe_shares import QuerySubscribeSharesTool
 from app.agent.tools.impl.query_subscribe_history import QuerySubscribeHistoryTool
+from app.agent.tools.impl.query_subscribe_shares import QuerySubscribeSharesTool
 from app.agent.tools.impl.recognize_media import RecognizeMediaTool
 from app.agent.tools.impl.scrape_metadata import ScrapeMetadataTool
 from app.agent.tools.impl.search_media import SearchMediaTool
@@ -422,16 +422,18 @@ def test_add_download_preserves_album_context_and_full_coverage_marker():
         submitted_contexts.append(context)
         return "download-1", None
 
-    tool = AddDownloadTasksTool(session_id="session-1", user_id="10001")
+    site_repository = SimpleNamespace(
+        async_get_by_name=AsyncMock(return_value=site)
+    )
+    tool = AddDownloadTasksTool(
+        session_id="session-1",
+        user_id="10001",
+        data=SimpleNamespace(sites=site_repository),
+    )
     with patch.object(
         AddDownloadTasksTool,
         "_async_resolve_cached_context",
         new=AsyncMock(return_value=cached_context),
-    ), patch(
-        "app.agent.tools.impl.add_download_tasks.get_agent_site_port",
-        return_value=SimpleNamespace(
-            async_get_by_name=AsyncMock(return_value=site)
-        ),
     ), patch.object(
         AddDownloadTasksTool,
         "_download_single_sync",
@@ -480,11 +482,11 @@ def test_query_subscribe_history_uses_database_media_values_and_music_fields(mon
             calls.append((mtype, page, count))
             return [record] if mtype == MediaType.MUSIC.value else []
 
-    monkeypatch.setattr(
-        "app.agent.tools.impl.query_subscribe_history.get_agent_subscribe_history_port",
-        FakeHistoryOper,
+    tool = QuerySubscribeHistoryTool(
+        session_id="session-1",
+        user_id="10001",
+        data=SimpleNamespace(subscription_history=FakeHistoryOper()),
     )
-    tool = QuerySubscribeHistoryTool(session_id="session-1", user_id="10001")
 
     result = asyncio.run(tool.run(media_type="all"))
 
@@ -514,11 +516,11 @@ def test_music_history_filter_excludes_video_records(monkeypatch):
             """仅为电影类型返回记录。"""
             return [movie_record] if mtype == MediaType.MOVIE.value else []
 
-    monkeypatch.setattr(
-        "app.agent.tools.impl.query_subscribe_history.get_agent_subscribe_history_port",
-        FakeHistoryOper,
+    tool = QuerySubscribeHistoryTool(
+        session_id="session-1",
+        user_id="10001",
+        data=SimpleNamespace(subscription_history=FakeHistoryOper()),
     )
-    tool = QuerySubscribeHistoryTool(session_id="session-1", user_id="10001")
 
     result = asyncio.run(
         tool.run(media_type="all", music_type="recording")

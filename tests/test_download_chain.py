@@ -163,14 +163,10 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "ThreadHelper", _FakeThreadHelper)
-    monkeypatch.setattr(
-        download_module,
-        "get_chain_download_history_port",
-        _FakeDownloadHistoryOper,
-    )
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = _FakeDownloadHistoryOper()
     chain.download = MagicMock(return_value=("qb", "hash123", "Original", "添加下载成功"))
     chain.download_added = MagicMock()
     chain.download_site_subtitles = MagicMock()
@@ -289,14 +285,10 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "ThreadHelper", _FakeThreadHelper)
-    monkeypatch.setattr(
-        download_module,
-        "get_chain_download_history_port",
-        _CapturingDownloadHistoryOper,
-    )
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = _CapturingDownloadHistoryOper()
     chain.download = MagicMock(return_value=("qb", "hash123", "Original", "添加下载成功"))
     chain.download_added = MagicMock()
     chain.download_site_subtitles = MagicMock()
@@ -829,14 +821,10 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
         lambda _self: _download_dirs(),
     )
     monkeypatch.setattr(download_module, "TorrentHelper", _FakeTorrentHelper)
-    monkeypatch.setattr(
-        download_module,
-        "get_chain_download_failure_port",
-        _CapturingDownloadFailureOper,
-    )
     monkeypatch.setattr(download_module.eventmanager, "send_event", lambda *args, **kwargs: None)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.download_failure_repository = _CapturingDownloadFailureOper()
     chain.eventmanager = MagicMock()
     chain.eventmanager.send_event.return_value = None
     error_msg = "添加种子任务失败：无法读取种子文件"
@@ -882,20 +870,19 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
 
 def test_download_failure_query_skips_non_subscribe_sources(monkeypatch):
     """非订阅下载不得读取失败冷却，避免改变手工下载行为。"""
-    get_repository = MagicMock(side_effect=AssertionError("unexpected query"))
-    monkeypatch.setattr(
-        download_module,
-        "get_chain_download_failure_port",
-        get_repository,
+    query = MagicMock(side_effect=AssertionError("unexpected query"))
+    repository = SimpleNamespace(
+        get_active_by_fingerprints=query,
     )
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.download_failure_repository = repository
 
     assert chain._active_download_failure_fingerprints(
         contexts=[_build_tv_context()],
         source="Manual",
     ) == {}
-    get_repository.assert_not_called()
+    query.assert_not_called()
 
 
 def test_download_failure_query_failure_is_fail_open(monkeypatch):
@@ -915,14 +902,10 @@ def test_download_failure_query_failure_is_fail_open(monkeypatch):
             raise RuntimeError("query failed")
 
     error = MagicMock()
-    monkeypatch.setattr(
-        download_module,
-        "get_chain_download_failure_port",
-        _FailingDownloadFailureRepository,
-    )
     monkeypatch.setattr(download_module.logger, "error", error)
 
     chain = DownloadChain.__new__(DownloadChain)
+    chain.download_failure_repository = _FailingDownloadFailureRepository()
 
     assert chain._active_download_failure_fingerprints(
         contexts=[_build_tv_context()],
@@ -943,14 +926,10 @@ def test_download_failure_write_failure_is_fail_open(monkeypatch):
             raise RuntimeError("write failed")
 
     error = MagicMock()
-    monkeypatch.setattr(
-        download_module,
-        "get_chain_download_failure_port",
-        _FailingDownloadFailureRepository,
-    )
     monkeypatch.setattr(download_module.logger, "error", error)
     context = _build_tv_context()
     chain = DownloadChain.__new__(DownloadChain)
+    chain.download_failure_repository = _FailingDownloadFailureRepository()
 
     fingerprint = chain._record_download_failure(
         context=context,
@@ -1058,13 +1037,8 @@ def test_batch_download_skips_failed_subscription_resource_and_tries_next(monkey
                 )
             }
 
-    monkeypatch.setattr(
-        download_module,
-        "get_chain_download_failure_port",
-        _ActiveDownloadFailureOper,
-    )
-
     chain = DownloadChain.__new__(DownloadChain)
+    chain.download_failure_repository = _ActiveDownloadFailureOper()
     chain.eventmanager = MagicMock()
     chain.eventmanager.send_event.return_value = None
     chain.download_single = MagicMock(return_value="hash")
@@ -1309,10 +1283,8 @@ def test_downloading_includes_media_type_and_source_site(monkeypatch):
     )
     chain = DownloadChain.__new__(DownloadChain)
     monkeypatch.setattr(chain, "list_torrents", lambda **_kwargs: [torrent])
-    monkeypatch.setattr(
-        download_module,
-        "get_chain_download_history_port",
-        lambda: SimpleNamespace(get_by_hashes=lambda _hashes: {torrent.hash: history}),
+    chain.download_history_repository = SimpleNamespace(
+        get_by_hashes=lambda _hashes: {torrent.hash: history}
     )
 
     result = chain.downloading(name="qb-main")

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_task_port
+from app.application.agenttask import agent_task_run_to_dict, agent_task_to_dict
 from app.runtime.settings import get_runtime_setting
 
 
@@ -46,26 +46,26 @@ class QueryAgentTasksTool(MoviePilotTool):
             self,
             task_id: Optional[int],
             enabled: Optional[bool],
-    ) -> list[dict]:
+    ) -> list[dict[str, object]]:
         """读取当前用户的任务及运行时下一次触发时间。"""
         from app.application.scheduling import get_agent_task_next_run
 
-        oper = get_agent_task_port()
+        oper = self.data.tasks
         if task_id:
             task = oper.get(task_id=task_id, user_id=str(self._user_id))
             tasks = [task] if task else []
         else:
             tasks = oper.list(user_id=str(self._user_id), enabled=enabled)
-        result = []
+        result: list[dict[str, object]] = []
         for task in tasks:
-            data = oper.to_dict(
+            data = agent_task_to_dict(
                 task,
                 next_run_at=get_agent_task_next_run(task.id),
                 timezone=get_runtime_setting('TZ'),
             )
             if task_id:
                 data["recent_runs"] = [
-                    oper.run_to_dict(run)
+                    agent_task_run_to_dict(run)
                     for run in oper.list_runs(
                         task_id=task.id,
                         user_id=str(self._user_id),

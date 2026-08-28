@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from collections.abc import Callable
-from typing import Any, Optional, Protocol
+from dataclasses import dataclass
+from typing import Any, List, Optional, Protocol
 from weakref import WeakValueDictionary
 
 from app.application.database import (
     AsyncDatabaseExecutor,
 )
+from app.runtime.observability import record_metric
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
 from app.schemas.exception import AgentChatPersistenceUnavailableError
-from app.runtime.observability import record_metric
-
 
 DEFAULT_AGENT_CHAT_WRITE_CAPACITY = 32
 DEFAULT_AGENT_CHAT_SESSION_CAPACITY = 4
@@ -245,10 +244,27 @@ class AgentChatService:
             await self._unit_of_work.rollback()
             raise
 
-    def get_sync(self, session_id: str) -> Optional[AgentChatRecord]:
+    def get_sync(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[AgentChatRecord]:
         """同步读取会话投影，供同步 Agent 编排路径使用。"""
-        record = self._repository.get(session_id=session_id)
+        record = self._repository.get(session_id=session_id, user_id=user_id)
         return self._project(record) if record is not None else None
+
+    def save_agent_messages(
+        self,
+        session_id: str,
+        user_id: str,
+        messages: List[dict[str, Any]],
+    ) -> None:
+        """同步保存可恢复消息，兼容非协程 Agent 调用路径。"""
+        sync_repository = self._repository
+        save = getattr(sync_repository, "save_agent_messages", None)
+        if not callable(save):
+            raise RuntimeError("Agent 会话仓储不支持同步消息保存")
+        save(session_id=session_id, user_id=user_id, messages=messages)
 
     @staticmethod
     def can_access(

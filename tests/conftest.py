@@ -185,7 +185,6 @@ def configure_plugin_system_services():
         ChainRuntimeContext,
         configure_chain_runtime_context_provider,
     )
-    from app.application.chain.data import configure_chain_data_ports
     from app.application.messaging.chat import (
         AgentChatPersistenceService,
         AgentChatService,
@@ -220,12 +219,19 @@ def configure_plugin_system_services():
     from app.workflow import WorkflowManager
 
     configure_workflow_runtime(lambda: WorkflowManager())
-    from app.application.agentdata import configure_agent_data_ports
+    from app.application.agent import AgentDataContext
     from app.application.agenttask import (
         AgentTaskExecutionService,
         configure_agent_task_execution,
     )
+    from app.db.adapters.agent import (
+        SessionAgentTaskRepository,
+        TransactionalAgentTaskRepository,
+        TransactionalPluginDataRepository,
+    )
     from app.db.adapters.download import TransactionalDownloadFailureRepository
+    from app.db.adapters.history.download import TransactionalDownloadHistoryRepository
+    from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
     from app.db.adapters.mediaserver import TransactionalMediaServerRepository
     from app.db.adapters.site import TransactionalSiteRepository
     from app.db.adapters.subscription import TransactionalSubscriptionRepository
@@ -318,16 +324,17 @@ def configure_plugin_system_services():
             async_session=async_session_scope,
         )
 
-    configure_chain_data_ports(
-        site=site_repository,
-        subscribe=lambda: SubscribeOper(),
-        download_history=lambda: DownloadHistoryOper(),
-        transfer_history=lambda: TransferHistoryOper(),
-        transfer_pending=lambda: TransactionalTransferAdmissionRepository(SessionFactory),
-        transfer_execution=lambda: TransactionalTransferExecutionRepository(SessionFactory),
-        media_server=lambda: TransactionalMediaServerRepository(SessionFactory),
-        download_failure=lambda: TransactionalDownloadFailureRepository(SessionFactory),
-        user=user_repository,
+    subscription_repository = TransactionalSubscriptionRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+    download_history_repository = TransactionalDownloadHistoryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+    transfer_history_repository = TransactionalTransferHistoryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
     )
     configure_chain_runtime_context_provider(
         lambda: ChainRuntimeContext(
@@ -340,6 +347,15 @@ def configure_plugin_system_services():
             async_file_cache=AsyncFileCache(),
             message_queue_factory=lambda callback: MessageQueueManager(send_callback=callback),
             module_dispatcher_factory=ModuleInvocationDispatcher,
+            site_repository=site_repository(),
+            subscription_repository=subscription_repository,
+            download_history_repository=download_history_repository,
+            transfer_history_repository=transfer_history_repository,
+            transfer_admission_repository=TransactionalTransferAdmissionRepository(SessionFactory),
+            transfer_execution_repository=TransactionalTransferExecutionRepository(SessionFactory),
+            media_server_repository=TransactionalMediaServerRepository(SessionFactory),
+            download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
+            user_repository=user_repository(),
             configuration=build_chain_runtime_config(settings),
         )
     )
@@ -353,35 +369,46 @@ def configure_plugin_system_services():
             )
         )
     )
-    from app.db.oper.agenttask import AgentTaskOper
-    from app.db.oper.plugindata import PluginDataOper
+    from app.db.adapters.subscription import (
+        TransactionalSubscriptionHistoryRepository,
+    )
 
-    configure_agent_data_ports(
-        agent_chat=lambda: AgentChatOper(),
-        agent_task=lambda: AgentTaskOper(),
-        user=user_repository,
-        site=site_repository,
-        subscribe=lambda: SubscribeOper(),
-        subscribe_history=lambda: SubscribeHistoryOper(),
-        transfer_history=lambda: TransferHistoryOper(),
-        download_history=lambda: DownloadHistoryOper(),
-        plugin_data=lambda: PluginDataOper(),
+    agent_chat_persistence = AgentChatPersistenceService(
+        repository=lambda session: AgentChatOper(session),
+        async_executor=database_executor,
+        sync_transaction=transaction_runner.sync,
+    )
+    agent_chat_service = AgentChatService(repository=AgentChatOper())
+    agent_task_repository = TransactionalAgentTaskRepository(SessionFactory)
+    agent_data_context = AgentDataContext(
+        chat=agent_chat_service,
+        chat_persistence=agent_chat_persistence,
+        tasks=agent_task_repository,
+        users=user_repository(),
+        sites=site_repository(),
+        subscriptions=subscription_repository,
+        subscription_history=TransactionalSubscriptionHistoryRepository(
+            async_session=async_session_scope,
+        ),
+        transfer_history=transfer_history_repository,
+        transfer_execution=TransactionalTransferExecutionRepository(SessionFactory),
+        download_history=download_history_repository,
+        plugin_data=TransactionalPluginDataRepository(async_session_scope),
     )
     configure_agent_task_execution(
         AgentTaskExecutionService(
-            repository=lambda session: AgentTaskOper(session),
+            repository=SessionAgentTaskRepository,
             async_executor=database_executor,
             sync_transaction=transaction_runner.sync,
         )
     )
-    configure_agent_chat_persistence(
-        AgentChatPersistenceService(
-            repository=lambda session: AgentChatOper(session),
-            async_executor=database_executor,
-            sync_transaction=transaction_runner.sync,
-        )
-    )
-    configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
+    configure_agent_chat_persistence(agent_chat_persistence)
+    configure_agent_chat_service(agent_chat_service)
+    from app.agent.tools.manager import moviepilot_tool_manager
+    from app.scheduler import Scheduler
+
+    moviepilot_tool_manager.set_data_context(agent_data_context)
+    Scheduler().configure_agent_tasks(agent_task_repository)
     from app.adapters.external.market import (
         VERSION_BACKWARD_COMPATIBLE_FLAGS,
         PluginHelper,

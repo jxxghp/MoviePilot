@@ -14,7 +14,7 @@ from app.agent.runtime_loader import (
 from app.agent.runtime_loader import (
     get_running_agent_manager as get_runtime_running_agent_manager,
 )
-from app.application.agent import register_agent_service_providers
+from app.application.agent import AgentDataContext, register_agent_service_providers
 from app.application.messaging.skill import register_skill_catalog_provider
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
@@ -40,6 +40,35 @@ def _get_llm_provider_runtime() -> Any:
 
 # 嵌入式启动器可显式注入 manager；常规进程使用 Capability Runtime。
 agent_manager: Any = None
+_agent_data_context: AgentDataContext | None = None
+_injected_agent_manager: Any = None
+
+
+def configure_agent_data_context(context: AgentDataContext) -> None:
+    """登记组合根数据上下文，并丢弃未运行的旧 manager 缓存。"""
+    global _agent_data_context, _injected_agent_manager
+    if _agent_data_context is context:
+        return
+    manager = _injected_agent_manager
+    if manager is not None and (
+        getattr(manager, "_accepting_tasks", False)
+        or bool(getattr(manager, "active_agents", {}))
+    ):
+        raise RuntimeError("AgentManager 已运行，不能替换数据上下文")
+    _agent_data_context = context
+    _injected_agent_manager = None
+
+
+def _get_injected_agent_manager() -> Any:
+    """按需构造并缓存显式注入数据上下文的 AgentManager。"""
+    global _injected_agent_manager
+    if _agent_data_context is None:
+        raise RuntimeError("Agent 数据上下文尚未由启动组合根装配")
+    if _injected_agent_manager is None:
+        from app.agent.orchestrator import AgentManager
+
+        _injected_agent_manager = AgentManager(data=_agent_data_context)
+    return _injected_agent_manager
 
 
 def _event_changed_keys(event: Event | None) -> set[str]:
@@ -58,7 +87,11 @@ def _event_changed_keys(event: Event | None) -> set[str]:
 
 def _get_agent_manager() -> Any:
     """兼容显式注入对象，否则按需解析 canonical manager。"""
-    return agent_manager if agent_manager is not None else get_runtime_agent_manager()
+    if agent_manager is not None:
+        return agent_manager
+    if _agent_data_context is not None:
+        return _get_injected_agent_manager()
+    return get_runtime_agent_manager()
 
 
 def _get_running_agent_manager() -> Any | None:
@@ -124,13 +157,17 @@ class AgentInitializer:
         try:
             self._shutdown_started = False
             self._shutdown_complete = False
-            if agent_manager is not None:
+            if agent_manager is not None or _agent_data_context is not None:
                 if not get_runtime_setting('AI_AGENT_ENABLE'):
                     logger.info("AI智能体功能未启用")
                     return True
-                self._manager = agent_manager
+                self._manager = (
+                    agent_manager
+                    if agent_manager is not None
+                    else _get_injected_agent_manager()
+                )
                 self._compat_injected = True
-                await agent_manager.initialize()
+                await self._manager.initialize()
             else:
                 self._manager = await activate_agent_service()
                 self._compat_injected = False

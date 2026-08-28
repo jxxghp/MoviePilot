@@ -1,6 +1,6 @@
-from tests.cases.groups import release_group_cases
 from app.domain.meta import releasegroup as releasegroup_module
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
+from tests.cases.groups import release_group_cases
 
 
 def test_release_group():
@@ -27,3 +27,8 @@ def test_custom_release_group_matches_multiple_adjacent_groups(monkeypatch):
     )
 
     assert release_group == "DMG@VCB-Studio"
+
+
+def test_release_group_ignores_empty_title():
+    """空标题不应进入制作组正则匹配。"""
+    assert ReleaseGroupsMatcher().match("") == ""

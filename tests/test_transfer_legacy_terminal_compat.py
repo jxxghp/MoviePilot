@@ -2,7 +2,7 @@
 
 import threading
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from app.application.history import TransferHistorySnapshot
 from app.application.transfer.execution import (
@@ -55,6 +55,10 @@ def _result(task, *, success: bool, overwrite_skipped: bool = False) -> Transfer
 def _compat_chain(result_factory):
     """构造只执行旧同步命令和 task-aware 结算的 TransferChain 骨架。"""
     chain = object.__new__(TransferChain)
+    chain.transfer_history_repository = SimpleNamespace(
+        get_by_src=lambda _src, storage=None: None
+    )
+    chain.transfer_execution_repository = Mock()
     chain._worker_owner_id = "compat-owner"
     chain._owned_leases = {}
     chain._queued_lease_tokens = set()
@@ -234,11 +238,8 @@ def test_legacy_overwrite_skip_binds_existing_success_in_atomic_writer() -> None
     history_port = SimpleNamespace(
         get_by_src=lambda _src, storage=None: success_history,
     )
-    with patch(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        return_value=history_port,
-    ):
-        returned = _invoke(chain, _fileitem())
+    chain.transfer_history_repository = history_port
+    returned = _invoke(chain, _fileitem())
 
     assert returned.success is False
     assert returned.overwrite_skipped is True
@@ -261,12 +262,8 @@ def test_legacy_overwrite_skip_without_success_history_settles_failed() -> None:
     history_port = SimpleNamespace(
         get_by_src=lambda _src, storage=None: None,
     )
-
-    with patch(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        return_value=history_port,
-    ):
-        returned = _invoke(chain, _fileitem())
+    chain.transfer_history_repository = history_port
+    returned = _invoke(chain, _fileitem())
 
     assert returned.success is False
     assert returned.overwrite_skipped is True

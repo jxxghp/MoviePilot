@@ -1,10 +1,10 @@
 import copy
 from typing import Any, List, Optional, Tuple
 
-from app.application.chain.data import get_chain_subscribe_port
 from app.application.configuration import get_configured_system_config
 from app.application.subscription.contract import (
     SubscriptionPatch,
+    SubscriptionRepository,
     SubscriptionSnapshot,
     build_subscribe_meta,
     subscribe_media_key,
@@ -37,6 +37,7 @@ def _normalize_music_total_tracks(value: Any) -> Optional[int]:
 
 class MusicSubscribeMixin:
     __mixin_host_protocol__ = MusicSubscribeMixinHost
+    subscription_repository: SubscriptionRepository
     """
     音乐订阅功能域 mixin：单曲/专辑目标识别、实体快照同步、候选筛选、
     择优下载与完成推进。
@@ -183,8 +184,8 @@ class MusicSubscribeMixin:
             cover_url=getattr(subscribe, "poster", None) or getattr(subscribe, "backdrop", None),
         )
 
-    @staticmethod
     def _sync_music_subscribe_target(
+            self,
             subscribe: SubscriptionSnapshot,
             mediainfo: MusicInfo,
     ) -> SubscriptionSnapshot:
@@ -202,7 +203,7 @@ class MusicSubscribeMixin:
             update_data["total_tracks"] = total_tracks
         if not update_data:
             return subscribe
-        return get_chain_subscribe_port().update(
+        return self.subscription_repository.update(
             subscribe.id,
             SubscriptionPatch(update_data),
         ) or subscribe
@@ -344,7 +345,7 @@ class MusicSubscribeMixin:
                 context for context in successful
                 if context.confirmed_full_coverage
             ]
-        repository = get_chain_subscribe_port()
+        repository = self.subscription_repository
         current_subscribe = None
         if subscribe.best_version and quality_downloads:
             best_context = max(quality_downloads, key=lambda item: item.torrent_info.pri_order)

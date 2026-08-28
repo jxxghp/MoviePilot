@@ -6,13 +6,13 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from app import schemas
+from app.application.history import TransferHistorySnapshot
 from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.domain.context import MediaInfo
-from app.runtime.events import Event
 from app.domain.metainfo import MetaInfoPath
-from app.db.models.transferhistory import TransferHistory
+from app.runtime.events import Event
 from app.runtime.log import logger
 from app.schemas.types import EventType
 from tests.cases.files import bluray_files
@@ -175,8 +175,7 @@ class BluRayTest(TestCase):
         __test_scrape_metadata("/FOLDER", excepted_nfo_count=2)
 
     @patch("app.chain.scraping.ScrapingChain.metadata_img", return_value=None)  # 避免获取图片
-    @patch("app.chain.ChainBase.__init__", return_value=None)  # 避免不必要的模块初始化
-    @patch("app.db.oper.transferhistory.TransferHistoryOper.get_by_src")
+    @patch("app.chain._transfer.resolve_history")
     @patch("app.chain.storage.StorageChain.list_files")
     @patch("app.chain.storage.StorageChain.get_parent_item")
     @patch("app.chain.storage.StorageChain.get_file_item")
@@ -185,7 +184,7 @@ class BluRayTest(TestCase):
         mock_get_file_item,
         mock_get_parent_item,
         mock_list_files,
-        mock_get_by_src,
+        mock_resolve_history,
         *_,
     ):
         def get_file_item(storage: str, path: Path):
@@ -208,16 +207,18 @@ class BluRayTest(TestCase):
             else:
                 return fileitem.children
 
-        def get_by_src(src: str, storage: Optional[str] = None):
+        def resolve_history(
+            src: str,
+            storage: Optional[str] = None,
+            transfer_history_oper=None,
+        ):
             self.__history.append(src)
-            result = TransferHistory()
-            result.status = True
-            return result
+            return TransferHistorySnapshot(id=1, status=True)
 
         mock_get_file_item.side_effect = get_file_item
         mock_get_parent_item.side_effect = get_parent_item
         mock_list_files.side_effect = list_files
-        mock_get_by_src.side_effect = get_by_src
+        mock_resolve_history.side_effect = resolve_history
 
         self._test_do_transfer()
 

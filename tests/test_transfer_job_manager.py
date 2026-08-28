@@ -162,6 +162,9 @@ def make_task(episode: int, season: int = 1) -> TransferTask:
 def make_transfer_chain() -> TransferChain:
     """构造带内存 durable admission 契约的整理链测试骨架。"""
     chain = object.__new__(TransferChain)
+    chain.transfer_history_repository = MagicMock()
+    chain.download_history_repository = MagicMock()
+    chain.transfer_execution_repository = MagicMock()
     chain.jobview = JobManager()
     chain._media_exts = settings.RMT_MEDIAEXT
     chain._subtitle_exts = settings.RMT_SUBEXT
@@ -617,10 +620,9 @@ class TransferJobManagerTest(unittest.TestCase):
             need_notify=False,
         )
         bind_terminal_checkpoint(task, transferinfo)
+        chain.transfer_history_repository = SimpleNamespace()
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
-        ), patch(
             "app.chain.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),
         ):
@@ -664,10 +666,10 @@ class TransferJobManagerTest(unittest.TestCase):
             get_by_path=lambda path: None,
         )
         system_config_oper = SimpleNamespace(get=lambda key: None)
+        chain.transfer_history_repository = transfer_history_oper
+        chain.download_history_repository = download_history_oper
 
-        with patch("app.chain.transfer.get_chain_transfer_history_port", return_value=transfer_history_oper), \
-                patch("app.chain.transfer.get_chain_download_history_port", return_value=download_history_oper), \
-                patch("app.chain.transfer.get_configured_system_config", return_value=system_config_oper), \
+        with patch("app.chain.transfer.get_configured_system_config", return_value=system_config_oper), \
                 patch("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: FakeMeta(14)):
             state, errmsg = chain.do_transfer(
                 fileitem=source_fileitem,
@@ -838,11 +840,9 @@ class TransferJobManagerTest(unittest.TestCase):
             get_success_by_src=lambda src, storage=None: history,
         )
         system_config_oper = SimpleNamespace(get=lambda key: None)
+        chain.transfer_history_repository = transfer_history_oper
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port",
-            return_value=transfer_history_oper,
-        ), patch(
             "app.chain.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ):
@@ -906,14 +906,10 @@ class TransferJobManagerTest(unittest.TestCase):
         system_config_oper = SimpleNamespace(get=lambda key: None)
 
         _reset_failed_retries(fileitem.path, fileitem.storage)
+        chain.transfer_history_repository = transfer_history_oper
+        chain.download_history_repository = download_history_oper
         try:
             with patch(
-                "app.chain.transfer.get_chain_transfer_history_port",
-                return_value=transfer_history_oper,
-            ), patch(
-                "app.chain.transfer.get_chain_download_history_port",
-                return_value=download_history_oper,
-            ), patch(
                 "app.chain.transfer.get_configured_system_config",
                 return_value=system_config_oper,
             ):
@@ -986,13 +982,9 @@ class TransferJobManagerTest(unittest.TestCase):
                 settings, "TRANSFER_MAX_FAILED_RETRIES", 1,
             ):
                 record_transfer_failure(fileitem.path, fileitem.storage)
+                chain.transfer_history_repository = transfer_history_oper
+                chain.download_history_repository = download_history_oper
                 with patch(
-                    "app.chain.transfer.get_chain_transfer_history_port",
-                    return_value=transfer_history_oper,
-                ), patch(
-                    "app.chain.transfer.get_chain_download_history_port",
-                    return_value=download_history_oper,
-                ), patch(
                     "app.chain.transfer.get_configured_system_config",
                     return_value=system_config_oper,
                 ):
@@ -1043,10 +1035,8 @@ class TransferJobManagerTest(unittest.TestCase):
             )
             bind_terminal_checkpoint(task, failed_transferinfo)
             failed_history_oper = SimpleNamespace()
+            chain.transfer_history_repository = failed_history_oper
             with patch(
-                "app.chain.transfer.get_chain_transfer_history_port",
-                return_value=failed_history_oper,
-            ), patch(
                 "app.chain.transfer.add_transfer_fail",
                 lambda **kwargs: SimpleNamespace(id=1),
             ), patch(
@@ -1084,9 +1074,8 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_notify=False,
             )
             bind_terminal_checkpoint(task, success_transferinfo)
+            chain.transfer_history_repository = SimpleNamespace()
             with patch(
-                "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
-            ), patch(
                 "app.chain.transfer.add_transfer_success",
                 lambda **kwargs: SimpleNamespace(id=2),
             ):
@@ -1114,11 +1103,9 @@ class TransferJobManagerTest(unittest.TestCase):
         self.assertTrue(chain.jobview.add_task(task))
 
         transfer_history_oper = SimpleNamespace()
+        chain.transfer_history_repository = transfer_history_oper
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port",
-            return_value=transfer_history_oper,
-        ), patch(
             "app.chain.transfer.add_transfer_fail",
             lambda **kwargs: SimpleNamespace(id=1),
         ), patch(
@@ -1155,11 +1142,9 @@ class TransferJobManagerTest(unittest.TestCase):
         task.downloader = "qbittorrent"
         task.download_hash = "abc123"
         self.assertTrue(chain.jobview.add_task(task))
+        chain.transfer_history_repository = SimpleNamespace()
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port",
-            return_value=SimpleNamespace(),
-        ), patch(
             "app.chain.transfer.add_transfer_fail",
             lambda **kwargs: None,
         ), patch(
@@ -1190,11 +1175,9 @@ class TransferJobManagerTest(unittest.TestCase):
         task.downloader = "qbittorrent"
         task.download_hash = "abc123"
         self.assertTrue(chain.jobview.add_task(task))
+        chain.transfer_history_repository = SimpleNamespace()
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port",
-            return_value=SimpleNamespace(),
-        ), patch(
             "app.chain.transfer.add_transfer_fail",
             lambda **kwargs: SimpleNamespace(id=77),
         ), patch(
@@ -1252,14 +1235,10 @@ class TransferJobManagerTest(unittest.TestCase):
                 subtitle_fileitem,
             ],
         )
+        chain.transfer_history_repository = transfer_history_oper
+        chain.download_history_repository = download_history_oper
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port",
-            return_value=transfer_history_oper,
-        ), patch(
-            "app.chain.transfer.get_chain_download_history_port",
-            return_value=download_history_oper,
-        ), patch(
             "app.chain.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ), patch(
@@ -1351,14 +1330,10 @@ class TransferJobManagerTest(unittest.TestCase):
         )
         system_config_oper = SimpleNamespace(get=lambda key: None)
         storage_chain = SimpleNamespace(get_item=lambda fileitem: subtitle_fileitem)
+        chain.transfer_history_repository = transfer_history_oper
+        chain.download_history_repository = download_history_oper
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port",
-            return_value=transfer_history_oper,
-        ), patch(
-            "app.chain.transfer.get_chain_download_history_port",
-            return_value=download_history_oper,
-        ), patch(
             "app.chain.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ), patch(
@@ -1432,14 +1407,10 @@ class TransferJobManagerTest(unittest.TestCase):
                 subtitle_fileitem,
             ],
         )
+        chain.transfer_history_repository = transfer_history_oper
+        chain.download_history_repository = download_history_oper
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port",
-            return_value=transfer_history_oper,
-        ), patch(
-            "app.chain.transfer.get_chain_download_history_port",
-            return_value=download_history_oper,
-        ), patch(
             "app.chain.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ), patch(
@@ -1537,14 +1508,10 @@ class TransferJobManagerTest(unittest.TestCase):
             get_parent_item=lambda fileitem: parent_fileitem,
             list_files=fake_list_files,
         )
+        chain.transfer_history_repository = transfer_history_oper
+        chain.download_history_repository = download_history_oper
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port",
-            return_value=transfer_history_oper,
-        ), patch(
-            "app.chain.transfer.get_chain_download_history_port",
-            return_value=download_history_oper,
-        ), patch(
             "app.chain.transfer.get_configured_system_config",
             return_value=system_config_oper,
         ), patch(
@@ -1635,10 +1602,9 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_notify=False,
             ),
         ]
+        chain.transfer_history_repository = SimpleNamespace()
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
-        ), patch(
             "app.chain.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),
         ), patch(
@@ -1703,10 +1669,9 @@ class TransferJobManagerTest(unittest.TestCase):
             need_notify=False,
         )
         bind_terminal_checkpoint(task, transferinfo)
+        chain.transfer_history_repository = SimpleNamespace()
 
         with patch(
-            "app.chain.transfer.get_chain_transfer_history_port", return_value=SimpleNamespace()
-        ), patch(
             "app.chain.transfer.add_transfer_success",
             lambda **kwargs: SimpleNamespace(id=1),
         ), patch(

@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_site_port
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -275,7 +274,7 @@ class AddDownloadTasksTool(MoviePilotTool):
                         failed_messages.append(f"{torrent_input} 缺少站点名称")
                         continue
 
-                    siteinfo = await get_agent_site_port().async_get_by_name(site_name)
+                    siteinfo = await self.data.sites.async_get_by_name(site_name)
                     if not siteinfo:
                         failed_messages.append(f"{torrent_input} 未找到站点信息 {site_name}")
                         continue

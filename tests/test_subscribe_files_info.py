@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.chain.subscribe import SubscribeChain
-from app.modules.filemanager import FileManagerModule
+from app.modules.filemanager.module import FileManagerModule
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.types import MediaType
 
@@ -86,15 +86,15 @@ def test_subscribe_files_info_merges_multiple_mediaservers():
     media_chain.recognize_media.return_value = mediainfo
 
     chain = SubscribeChain()
+    chain.download_history_repository = MagicMock()
+    chain.download_history_repository.get_by_mediaid.return_value = []
     with (
-        patch("app.chain.subscribe.get_chain_download_history_port") as download_oper,
         patch("app.chain.subscribe.MediaChain", return_value=media_chain),
         patch.object(chain, "media_files", return_value=None),
         patch.object(chain, "media_exists", side_effect=_media_exists_side_effect),
         patch("app.chain.subscribe.MediaServerHelper", return_value=helper),
         patch("app.chain.subscribe.MediaServerChain", return_value=mediaserver_chain),
     ):
-        download_oper.return_value.get_by_mediaid.return_value = []
         result = chain.subscribe_files_info(subscribe)
 
     library = result.episodes[1].library
@@ -133,15 +133,15 @@ def test_subscribe_files_info_uses_season_zero_for_tv():
     media_chain.recognize_media.return_value = mediainfo
 
     chain = SubscribeChain()
+    chain.download_history_repository = MagicMock()
+    chain.download_history_repository.get_by_mediaid.return_value = []
     with (
-        patch("app.chain.subscribe.get_chain_download_history_port") as download_oper,
         patch("app.chain.subscribe.MediaChain", return_value=media_chain),
         patch.object(chain, "media_files", return_value=None),
         patch.object(chain, "media_exists", side_effect=_media_exists_side_effect),
         patch("app.chain.subscribe.MediaServerHelper", return_value=helper),
         patch("app.chain.subscribe.MediaServerChain", return_value=mediaserver_chain),
     ):
-        download_oper.return_value.get_by_mediaid.return_value = []
         result = chain.subscribe_files_info(subscribe)
 
     assert captured_seasons == [0]

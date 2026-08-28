@@ -6,29 +6,46 @@ import asyncio
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import List, Optional, Protocol, TypeVar
 from uuid import uuid4
 
 from app.application.database import AsyncDatabaseExecutor
 from app.runtime.execution import await_task_to_terminal
 from app.schemas.exception import DatabaseWorkerOverloadedError
 
-
 T = TypeVar("T")
 SyncTransaction = Callable[[Callable[[object], T]], T]
 
 
-class AgentTaskRecord(Protocol):
-    """执行认领与终态判定所需的任务投影。"""
+@dataclass(frozen=True, slots=True)
+class AgentTaskSnapshot:
+    """脱离数据库 Session 的自主任务完整快照。"""
 
     id: int
+    name: str
+    content: str
+    trigger_type: str
+    cron_expression: str | None
+    run_at: str | None
     enabled: bool
-    last_run_id: str | None
+    user_id: str
+    username: str | None
+    session_id: str
+    channel: str | None
+    source: str | None
+    original_chat_id: str | None
     last_status: str
+    last_run_at: str | None
+    last_result: str | None
+    last_run_id: str | None
+    run_count: int
+    created_at: str
+    updated_at: str
 
 
-class AgentTaskRunRecord(Protocol):
-    """执行期间需要脱离数据库会话持有的运行记录字段。"""
+@dataclass(frozen=True, slots=True)
+class AgentTaskRunSnapshot:
+    """脱离数据库 Session 的自主任务运行快照。"""
 
     run_id: str
     task_id: int
@@ -41,13 +58,54 @@ class AgentTaskRunRecord(Protocol):
     user_id: str
     username: str | None
     session_id: str
+    channel: str | None
+    message_source: str | None
+    original_chat_id: str | None
+    status: str
+    started_at: str
+    finished_at: str | None
+    result: str | None
 
 
 class AgentTaskRepository(Protocol):
-    """AgentTask 执行用例使用的同步短事务仓储合同。"""
+    """调度、工具与执行用例共享的类型化自主任务仓储合同。"""
 
-    def get(self, task_id: int) -> AgentTaskRecord | None:
+    def add(self, **values: object) -> AgentTaskSnapshot | None:
+        """新增任务并返回提交后的冻结快照。"""
+        ...
+
+    def get(
+        self,
+        task_id: int,
+        user_id: Optional[str] = None,
+    ) -> AgentTaskSnapshot | None:
         """读取任务当前投影。"""
+        ...
+
+    def list(
+        self,
+        user_id: Optional[str] = None,
+        enabled: Optional[bool] = None,
+    ) -> list[AgentTaskSnapshot]:
+        """按归属和启用状态读取任务快照。"""
+        ...
+
+    def update(
+        self,
+        task_id: int,
+        payload: dict[str, object],
+        user_id: Optional[str] = None,
+    ) -> bool:
+        """更新非运行中任务。"""
+        ...
+
+    def delete(self, task_id: int, user_id: Optional[str] = None) -> bool:
+        """删除非运行中任务及其运行记录。"""
+        ...
+
+    def mark_interrupted(self, task_id: int, result: str) -> bool:
+        """把遗留运行态收口为结果未知。"""
+        ...
 
     def begin_run(
         self,
@@ -55,8 +113,18 @@ class AgentTaskRepository(Protocol):
         trigger_source: str = "scheduled",
         *,
         run_id: str | None = None,
-    ) -> AgentTaskRunRecord | None:
+    ) -> AgentTaskRunSnapshot | None:
         """原子认领任务并创建运行快照。"""
+        ...
+
+    def list_runs(
+        self,
+        task_id: int,
+        user_id: Optional[str] = None,
+        limit: int = 10,
+    ) -> List[AgentTaskRunSnapshot]:
+        """读取指定任务最近的运行快照。"""
+        ...
 
     def finish_run_outcome(
         self,
@@ -70,30 +138,24 @@ class AgentTaskRepository(Protocol):
 class AgentTaskFinishRecord(Protocol):
     """同步仓储返回的结构化运行终态。"""
 
-    run_finalized: bool
-    task_projection_updated: bool
-    date_task_disabled: bool
+    @property
+    def run_finalized(self) -> bool:
+        """运行记录是否已进入终态。"""
+        ...
+
+    @property
+    def task_projection_updated(self) -> bool:
+        """任务最新运行投影是否由本次执行更新。"""
+        ...
+
+    @property
+    def date_task_disabled(self) -> bool:
+        """一次性任务是否已随本次执行停用。"""
+        ...
 
 
 AgentTaskRepositoryFactory = Callable[[object], AgentTaskRepository]
 AgentTaskScheduleRemover = Callable[[int, int, str], bool]
-
-
-@dataclass(frozen=True, slots=True)
-class AgentTaskRunSnapshot:
-    """任务认领成功后可安全跨越数据库会话的执行快照。"""
-
-    run_id: str
-    task_id: int
-    trigger_source: str
-    name: str
-    content: str
-    trigger_type: str
-    cron_expression: str | None
-    run_at: str | None
-    user_id: str
-    username: str | None
-    session_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +175,51 @@ class AgentTaskFinishOutcome:
     date_task_disabled: bool
 
 
+def agent_task_to_dict(
+    task: AgentTaskSnapshot,
+    *,
+    next_run_at: str | None = None,
+    timezone: str | None = None,
+) -> dict[str, object]:
+    """把自主任务快照转换为 Agent 工具稳定返回结构。"""
+    return {
+        "id": task.id,
+        "name": task.name,
+        "content": task.content,
+        "trigger_type": task.trigger_type,
+        "cron_expression": task.cron_expression,
+        "run_at": task.run_at,
+        "timezone": timezone,
+        "enabled": task.enabled,
+        "last_status": task.last_status,
+        "last_run_at": task.last_run_at,
+        "last_result": task.last_result,
+        "last_run_id": task.last_run_id,
+        "run_count": task.run_count,
+        "next_run_at": next_run_at,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+    }
+
+
+def agent_task_run_to_dict(run: AgentTaskRunSnapshot) -> dict[str, object]:
+    """把自主任务运行快照转换为 Agent 工具稳定返回结构。"""
+    return {
+        "run_id": run.run_id,
+        "task_id": run.task_id,
+        "trigger_source": run.trigger_source,
+        "name": run.name,
+        "content": run.content,
+        "trigger_type": run.trigger_type,
+        "cron_expression": run.cron_expression,
+        "run_at": run.run_at,
+        "status": run.status,
+        "started_at": run.started_at,
+        "finished_at": run.finished_at,
+        "result": run.result,
+    }
+
+
 class AgentTaskExecutionService:
     """通过有界数据库 worker 认领并收口一次 AgentTask 执行。"""
 
@@ -129,21 +236,9 @@ class AgentTaskExecutionService:
         self._sync_transaction = sync_transaction
 
     @staticmethod
-    def _snapshot(run: AgentTaskRunRecord) -> AgentTaskRunSnapshot:
+    def _snapshot(run: AgentTaskRunSnapshot) -> AgentTaskRunSnapshot:
         """在事务内复制运行字段，避免 ORM 对象越过会话边界。"""
-        return AgentTaskRunSnapshot(
-            run_id=run.run_id,
-            task_id=run.task_id,
-            trigger_source=run.trigger_source,
-            name=run.name,
-            content=run.content,
-            trigger_type=run.trigger_type,
-            cron_expression=run.cron_expression,
-            run_at=run.run_at,
-            user_id=run.user_id,
-            username=run.username,
-            session_id=run.session_id,
-        )
+        return run
 
     async def claim(
         self,

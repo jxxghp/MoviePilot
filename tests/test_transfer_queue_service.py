@@ -201,14 +201,10 @@ def test_do_transfer_reports_durable_admission_failure():
         get_files_by_savepath=lambda _path: [],
         get_by_path=lambda _path: None,
     )
+    chain.transfer_history_repository = no_history
+    chain.download_history_repository = no_download
 
     with patch(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        return_value=no_history,
-    ), patch(
-        "app.chain.transfer.get_chain_download_history_port",
-        return_value=no_download,
-    ), patch(
         "app.chain.transfer.get_configured_system_config",
         return_value=SimpleNamespace(get=lambda _key: None),
     ):

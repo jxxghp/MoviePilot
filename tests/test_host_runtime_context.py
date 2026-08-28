@@ -14,6 +14,7 @@ from app.api.context import (
     get_agent_chat_transaction,
 )
 from app.api.dependencies.agent import get_agent_chat_persistence
+from app.application.agent import AgentDataContext
 from app.application.configuration import (
     ApiRuntimeConfig,
     ChainRuntimeConfig,
@@ -133,6 +134,19 @@ def _runtime() -> HostRuntime:
             yield object()
 
     return HostRuntime(
+        agent=AgentDataContext(
+            chat=SimpleNamespace(),
+            chat_persistence=_AgentChatPersistence(),
+            tasks=SimpleNamespace(),
+            users=SimpleNamespace(),
+            sites=SimpleNamespace(),
+            subscriptions=SimpleNamespace(),
+            subscription_history=SimpleNamespace(),
+            transfer_history=SimpleNamespace(),
+            transfer_execution=SimpleNamespace(),
+            download_history=SimpleNamespace(),
+            plugin_data=SimpleNamespace(),
+        ),
         agent_chat=AgentChatRuntime(
             async_session=async_session,
             repository=_Repository,
@@ -157,6 +171,7 @@ def _runtime() -> HostRuntime:
             transfer_repository=_Repository,
             transfer_mutation_repository=_Repository,
             media_server_repository=_Repository,
+            transfer_execution_repository=_Repository(object()),
         ),
         site=SiteRuntime(
             repository=_Repository,

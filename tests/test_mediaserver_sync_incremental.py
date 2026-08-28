@@ -100,12 +100,9 @@ def test_sync_persists_music_without_querying_tv_episodes(database):
         ]
     )
     chain.episodes = lambda *_args, **_kwargs: pytest.fail("音乐条目不应查询电视剧分集")
+    chain.media_server_repository = TransactionalMediaServerRepository(database)
 
     with patch.object(
-        MEDIA_SERVER_CHAIN_MODULE,
-        "get_chain_media_server_port",
-        lambda: TransactionalMediaServerRepository(database),
-    ), patch.object(
         MEDIA_SERVER_CHAIN_MODULE,
         "get_mediaserver_configs",
         return_value=[SimpleNamespace(name="navidrome", enabled=True, sync_libraries=["all"])],
@@ -139,12 +136,9 @@ def test_sync_normalizes_incomplete_tv_episode_rows(database):
         schemas.MediaServerSeasonInfo(season=None, episodes=[99]),
         schemas.MediaServerSeasonInfo(season=1, episodes=None),
     ]
+    chain.media_server_repository = TransactionalMediaServerRepository(database)
 
     with patch.object(
-        MEDIA_SERVER_CHAIN_MODULE,
-        "get_chain_media_server_port",
-        lambda: TransactionalMediaServerRepository(database),
-    ), patch.object(
         MEDIA_SERVER_CHAIN_MODULE,
         "get_mediaserver_configs",
         return_value=[SimpleNamespace(name="plex", enabled=True, sync_libraries=["all"])],
@@ -228,12 +222,9 @@ def test_sync_updates_rows_and_removes_stale_entries(database):
         ]
     )
     chain.episodes = lambda *_args, **_kwargs: []
+    chain.media_server_repository = TransactionalMediaServerRepository(database)
 
     with patch.object(
-        MEDIA_SERVER_CHAIN_MODULE,
-        "get_chain_media_server_port",
-        lambda: TransactionalMediaServerRepository(database),
-    ), patch.object(
         MEDIA_SERVER_CHAIN_MODULE,
         "get_mediaserver_configs",
         return_value=[SimpleNamespace(name="plex", enabled=True, sync_libraries=["movies"])],
@@ -310,12 +301,9 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
     chain.items_count = lambda **_kwargs: pytest.fail("整服同步不应逐库重复计数")
     chain.items = items
     chain.episodes = lambda *_args, **_kwargs: []
+    chain.media_server_repository = TransactionalMediaServerRepository(database)
 
     with patch.object(
-        MEDIA_SERVER_CHAIN_MODULE,
-        "get_chain_media_server_port",
-        lambda: TransactionalMediaServerRepository(database),
-    ), patch.object(
         MEDIA_SERVER_CHAIN_MODULE,
         "get_mediaserver_configs",
         return_value=[
@@ -366,11 +354,7 @@ def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeyp
             excluded_server_calls.append(servers)
 
     chain.librarys = lambda server: library_calls.append(server) or []
-    monkeypatch.setattr(
-        MEDIA_SERVER_CHAIN_MODULE,
-        "get_chain_media_server_port",
-        FakeMediaServerOper,
-    )
+    chain.media_server_repository = FakeMediaServerOper()
     monkeypatch.setattr(
         MEDIA_SERVER_CHAIN_MODULE,
         "get_mediaserver_configs",
@@ -446,11 +430,7 @@ def test_sync_partial_commit_preserves_stale_rows_until_next_run(
     chain.items = lambda **_kwargs: iter(items)
     chain.episodes = lambda *_args, **_kwargs: []
     repository = FailingMediaServerRepository()
-    monkeypatch.setattr(
-        MEDIA_SERVER_CHAIN_MODULE,
-        "get_chain_media_server_port",
-        lambda: repository,
-    )
+    chain.media_server_repository = repository
     monkeypatch.setattr(
         MEDIA_SERVER_CHAIN_MODULE,
         "get_mediaserver_configs",
@@ -468,11 +448,7 @@ def test_sync_partial_commit_preserves_stale_rows_until_next_run(
             item.item_id for item in session.query(MediaServerItem).all()
         } == {"movie-1", "stale"}
 
-    monkeypatch.setattr(
-        MEDIA_SERVER_CHAIN_MODULE,
-        "get_chain_media_server_port",
-        lambda: transactional,
-    )
+    chain.media_server_repository = transactional
     chain.sync()
 
     with database() as session:
@@ -498,11 +474,7 @@ def test_sync_stops_without_emitting_completion_after_stop_signal(monkeypatch):
         global_vars.stop_system()
         return 0, 0
 
-    monkeypatch.setattr(
-        MEDIA_SERVER_CHAIN_MODULE,
-        "get_chain_media_server_port",
-        FakeMediaServerOper,
-    )
+    chain.media_server_repository = FakeMediaServerOper()
     monkeypatch.setattr(
         chain,
         "_prepare_sync_contexts",

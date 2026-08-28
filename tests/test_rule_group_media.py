@@ -115,14 +115,11 @@ def test_reconcile_rule_group_references_removes_all_dangling_bindings(monkeypat
         update=lambda subscribe_id, payload: updates.append((subscribe_id, payload)),
     )
     monkeypatch.setattr(subscribe_module, "_system_config", lambda: Config())
-    monkeypatch.setattr(
-        subscribe_module,
-        "get_chain_subscribe_port",
-        lambda: subscribe_port,
-    )
+    chain = object.__new__(SubscribeChain)
+    chain.subscription_repository = subscribe_port
 
     SubscribeChain.reconcile_rule_group_references(
-        object.__new__(SubscribeChain),
+        chain,
         Event(
             EventType.ConfigChanged,
             ConfigChangeEventData(

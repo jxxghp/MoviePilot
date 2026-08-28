@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from sqlalchemy import Integer, String, Float, JSON, Index, or_, select
+from sqlalchemy import JSON, Float, Index, Integer, String, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 

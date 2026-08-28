@@ -4,8 +4,8 @@ from app.api.endpoints.download import add, download
 from app.chain.download import DownloadChain
 from app.domain.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.schemas import ExistMediaInfo
 from app.schemas.context import TorrentInfo
+from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.music import MusicInfo as MusicInfoSchema
 from app.schemas.types import MediaType
 
@@ -217,14 +217,11 @@ def test_music_library_exists_uses_atomic_album_lookup():
     mediaserver = Mock()
     mediaserver.get_item_id.return_value = "album-item-1"
 
-    with patch(
-        "app.chain.download.get_chain_media_server_port",
-        return_value=mediaserver,
-    ):
-        exists, no_exists = chain.get_no_exists_info(
-            meta=MetaMusic.from_music_info(album),
-            mediainfo=album,
-        )
+    chain.media_server_repository = mediaserver
+    exists, no_exists = chain.get_no_exists_info(
+        meta=MetaMusic.from_music_info(album),
+        mediainfo=album,
+    )
 
     assert exists is True
     assert no_exists == {}

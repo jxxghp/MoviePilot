@@ -84,15 +84,10 @@ def _retry_result(
 
 
 def _install_retry_command(monkeypatch, results: dict[str, TransferRetryRequestResult]) -> object:
-    """安装不会接触真实数据库的 execution 端口和命令替身。"""
+    """构造不会接触真实数据库的 execution 端口并安装命令替身。"""
     repository = object()
     _RetryCommand.calls = []
     _RetryCommand.results = results
-    monkeypatch.setattr(
-        history_endpoint,
-        "get_chain_transfer_execution_port",
-        lambda: repository,
-    )
     monkeypatch.setattr(history_endpoint, "TransferExecutionCommand", _RetryCommand)
     return repository
 
@@ -162,6 +157,7 @@ def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> Non
             query=_HistoryQuery([TransferHistory(id=11, transfer_task_id="task-11")]),
             runtime_config=_runtime(ai_enabled=False),
             task_registry=object(),
+            execution_repository=repository,
             _=object(),
         )
     )
@@ -185,7 +181,7 @@ def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> Non
 
 def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
     """人工复核状态必须原样拒绝，且不得回退到破坏性 Agent 流程。"""
-    _install_retry_command(
+    repository = _install_retry_command(
         monkeypatch,
         {
             "task-12": _retry_result(
@@ -209,6 +205,7 @@ def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
             query=_HistoryQuery([TransferHistory(id=12, transfer_task_id="task-12")]),
             runtime_config=_runtime(),
             task_registry=object(),
+            execution_repository=repository,
             _=object(),
         )
     )
@@ -219,7 +216,7 @@ def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
 
 def test_batch_ai_redo_returns_completed_progress_for_durable_tasks(monkeypatch) -> None:
     """全 durable 批量接受后保留前端既有 progress_key 协议。"""
-    _install_retry_command(
+    repository = _install_retry_command(
         monkeypatch,
         {
             "task-18": _retry_result(
@@ -257,6 +254,7 @@ def test_batch_ai_redo_returns_completed_progress_for_durable_tasks(monkeypatch)
             ]),
             runtime_config=_runtime(ai_enabled=False),
             task_registry=object(),
+            execution_repository=repository,
             _=object(),
         )
     )
@@ -272,7 +270,7 @@ def test_batch_ai_redo_reports_each_rejection_without_starting_legacy_agent(
     monkeypatch,
 ) -> None:
     """混合批量逐 task 返回拒绝，避免同时产生无人监听的旧 Agent 任务。"""
-    _install_retry_command(
+    repository = _install_retry_command(
         monkeypatch,
         {
             "task-21": _retry_result(
@@ -311,6 +309,7 @@ def test_batch_ai_redo_reports_each_rejection_without_starting_legacy_agent(
             query=_HistoryQuery(histories),
             runtime_config=_runtime(),
             task_registry=object(),
+            execution_repository=repository,
             _=object(),
         )
     )
@@ -332,7 +331,7 @@ def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
     monkeypatch,
 ) -> None:
     """混合批量全接受时 durable 只登记重试，旧历史才进入 Agent。"""
-    _install_retry_command(
+    repository = _install_retry_command(
         monkeypatch,
         {
             "task-24": _retry_result(
@@ -364,6 +363,7 @@ def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
             ]),
             runtime_config=_runtime(),
             task_registry=object(),
+            execution_repository=repository,
             _=object(),
         )
     )
@@ -398,12 +398,8 @@ def test_agent_delete_tool_requests_retry_before_any_destructive_action(monkeypa
 
     retry_calls: list[dict] = []
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.get_agent_transfer_history_port",
-        _HistoryPort,
-    )
-    monkeypatch.setattr(
         "app.agent.tools.impl.delete_transfer_history._request_transfer_retry",
-        lambda **kwargs: retry_calls.append(kwargs)
+        lambda _repository, **kwargs: retry_calls.append(kwargs)
         or _retry_result(
             accepted=False,
             state=TransferExecutionState.MANUAL_REVIEW,
@@ -421,6 +417,10 @@ def test_agent_delete_tool_requests_retry_before_any_destructive_action(monkeypa
         DeleteTransferHistoryTool(
             session_id="redo-session",
             user_id="10001",
+            data=SimpleNamespace(
+                transfer_history=_HistoryPort(),
+                transfer_execution=SimpleNamespace(),
+            ),
         ).run(history_id=31)
     )
 

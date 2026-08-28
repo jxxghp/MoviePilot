@@ -6,12 +6,12 @@ from typing import Optional, Type
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
-from app.agent.tools.tags import ToolTag
 from app.agent.tools.impl._filter_rule_utils import (
     get_rule_groups,
     remove_rule_group_references,
     save_system_config,
 )
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
@@ -60,7 +60,10 @@ class DeleteRuleGroupTool(MoviePilotTool):
                 SystemConfigKey.UserFilterRuleGroups,
                 [group.model_dump(exclude_none=True) for group in remaining_groups],
             )
-            reference_changes = await remove_rule_group_references(name)
+            reference_changes = await remove_rule_group_references(
+                self.data.subscriptions,
+                name,
+            )
 
             return json.dumps(
                 {

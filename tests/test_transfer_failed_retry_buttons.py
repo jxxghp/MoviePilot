@@ -1,9 +1,8 @@
-import unittest
 import asyncio
 import sys
+import unittest
 from dataclasses import replace
-from types import ModuleType
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, patch
 
 sys.modules.setdefault("qbittorrentapi", ModuleType("qbittorrentapi"))
@@ -12,12 +11,12 @@ sys.modules.setdefault("transmission_rpc", ModuleType("transmission_rpc"))
 setattr(sys.modules["transmission_rpc"], "File", object)
 sys.modules.setdefault("psutil", ModuleType("psutil"))
 
-from app.chain.message import MessageChain
-from app.chain.transfer import TransferChain
-from app.application.messaging.interaction import InteractionContext
-from app.runtime.config import global_vars, settings
-from app.runtime.tasks import TaskRegistry
-from app.schemas.types import NotificationChannel
+from app.application.messaging.interaction import InteractionContext  # noqa: E402
+from app.chain.message import MessageChain  # noqa: E402
+from app.chain.transfer import TransferChain  # noqa: E402
+from app.runtime.config import global_vars, settings  # noqa: E402
+from app.runtime.tasks import TaskRegistry  # noqa: E402
+from app.schemas.types import NotificationChannel  # noqa: E402
 
 
 class TestTransferFailedRetryButtons(unittest.TestCase):
@@ -128,6 +127,9 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             media_id="123",
             errmsg="未识别到媒体信息",
         )
+        chain.transfer_history_repository = SimpleNamespace(
+            get=lambda history_id: history
+        )
 
         async_messages = []
 
@@ -146,8 +148,6 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             settings, "AI_AGENT_ENABLE", True
         ):
             with patch(
-                "app.chain._transfer.get_chain_transfer_history_port"
-            ) as history_oper_cls, patch(
                 "app.chain._transfer.build_manual_redo_prompt",
                 return_value="retry transfer prompt",
             ), patch(
@@ -156,7 +156,6 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
                 get_registry.return_value.submit_threadsafe.side_effect = (
                     _run_pending_coro
                 )
-                history_oper_cls.return_value.get.return_value = history
                 with patch.object(chain, "async_post_message", side_effect=_capture_message):
                     chain.handle_failed_transfer_callback(
                         callback_data="transfer_ai_retry_34",
@@ -183,6 +182,9 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         chain = TransferChain()
         chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
         history = SimpleNamespace(id=34)
+        chain.transfer_history_repository = SimpleNamespace(
+            get=lambda history_id: history
+        )
         registry = TaskRegistry()
         asyncio.run(registry.shutdown(timeout_seconds=0.01))
         loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
@@ -190,8 +192,6 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch.object(
             settings, "AI_AGENT_ENABLE", True
         ), patch(
-            "app.chain._transfer.get_chain_transfer_history_port"
-        ) as history_port, patch(
             "app.chain._transfer.build_manual_redo_prompt",
             return_value="retry transfer prompt",
         ), patch(
@@ -201,8 +201,6 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         ) as logger, patch.object(
             chain, "post_message"
         ) as post_message:
-            history_port.return_value.get.return_value = history
-
             chain.handle_failed_transfer_callback(
                 callback_data="transfer_ai_retry_34",
                 channel=NotificationChannel.Telegram,
@@ -224,12 +222,13 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         chain = TransferChain()
         chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
         history = SimpleNamespace(id=34)
+        chain.transfer_history_repository = SimpleNamespace(
+            get=lambda history_id: history
+        )
 
         with patch.object(global_vars, "CURRENT_EVENT_LOOP", None), patch.object(
             settings, "AI_AGENT_ENABLE", True
         ), patch(
-            "app.chain._transfer.get_chain_transfer_history_port"
-        ) as history_port, patch(
             "app.chain._transfer.build_manual_redo_prompt",
             return_value="retry transfer prompt",
         ), patch(
@@ -239,8 +238,6 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
         ) as logger, patch.object(
             chain, "post_message"
         ) as post_message:
-            history_port.return_value.get.return_value = history
-
             chain.handle_failed_transfer_callback(
                 callback_data="transfer_ai_retry_34",
                 channel=NotificationChannel.Telegram,
@@ -290,6 +287,9 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             media_id="123",
             errmsg=None,
         )
+        chain.transfer_history_repository = SimpleNamespace(
+            get=lambda history_id: history
+        )
 
         def _run_pending_coro(coro, *args, **kwargs):
             asyncio.run(coro)
@@ -312,8 +312,6 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
             settings, "AI_AGENT_ENABLE", True
         ):
             with patch(
-                "app.chain._transfer.get_chain_transfer_history_port"
-            ) as history_oper_cls, patch(
                 "app.chain._transfer.build_manual_redo_prompt",
                 side_effect=build_manual_redo_prompt,
             ), patch(
@@ -323,7 +321,6 @@ class TestTransferFailedRetryButtons(unittest.TestCase):
                 get_registry.return_value.submit_threadsafe.side_effect = (
                     _run_pending_coro
                 )
-                history_oper_cls.return_value.get.return_value = history
                 with patch.object(chain, "post_message"), patch.object(
                     chain, "async_post_message", side_effect=fake_async_post_message
                 ):

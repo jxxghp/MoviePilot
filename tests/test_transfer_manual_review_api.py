@@ -42,15 +42,10 @@ class _ManualReviewCommand:
 
 
 def _install_command(monkeypatch) -> object:
-    """安装不接触数据库的人工复核命令替身。"""
+    """构造不接触数据库的人工复核仓储并安装命令替身。"""
     repository = object()
     _ManualReviewCommand.calls = []
     _ManualReviewCommand.error = None
-    monkeypatch.setattr(
-        transfer_endpoint,
-        "get_chain_transfer_execution_port",
-        lambda: repository,
-    )
     monkeypatch.setattr(
         transfer_endpoint,
         "TransferExecutionCommand",
@@ -124,6 +119,7 @@ def test_manual_review_applied_wraps_result_and_hides_internal_state(
             result_payload={"dest_exists": True, "hash_match": True},
         ),
         current_user=SimpleNamespace(name=" admin ", username="other", id=7),
+        repository=repository,
     )
 
     assert _ManualReviewCommand.calls == [
@@ -155,7 +151,7 @@ def test_manual_review_applied_wraps_result_and_hides_internal_state(
 
 def test_manual_review_not_applied_uses_username_fallback(monkeypatch) -> None:
     """名称为空时应稳定回退到 username，并允许安全重新调度。"""
-    _install_command(monkeypatch)
+    repository = _install_command(monkeypatch)
     _ManualReviewCommand.result = SimpleNamespace(
         task_id="task-2",
         operation_id="op-2",
@@ -172,6 +168,7 @@ def test_manual_review_not_applied_uses_username_fallback(monkeypatch) -> None:
             reason="确认源文件仍存在",
         ),
         current_user=SimpleNamespace(name="", username="reviewer", id=8),
+        repository=repository,
     )
 
     assert _ManualReviewCommand.calls[0][1]["actor"] == "reviewer"
@@ -182,7 +179,7 @@ def test_manual_review_not_applied_uses_username_fallback(monkeypatch) -> None:
 
 def test_manual_review_conflict_returns_http_409(monkeypatch) -> None:
     """重复或过期人工判定必须返回资源冲突而非伪成功。"""
-    _install_command(monkeypatch)
+    repository = _install_command(monkeypatch)
     _ManualReviewCommand.error = TransferExecutionConflictError("步骤已被判定")
 
     with pytest.raises(HTTPException) as error:
@@ -194,6 +191,7 @@ def test_manual_review_conflict_returns_http_409(monkeypatch) -> None:
                 reason="重复判定",
             ),
             current_user=SimpleNamespace(name=None, username=None, id=11),
+            repository=repository,
         )
 
     assert error.value.status_code == 409

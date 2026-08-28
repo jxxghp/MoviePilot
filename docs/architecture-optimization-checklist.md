@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 859 / 7,089 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 858 / 7,062 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,8 +78,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,734 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 815 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 79.82%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| Ruff 历史诊断 | 760 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 79.83%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -310,14 +310,16 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   ORM 投影，Chain/API/Agent/Workflow/interaction 全部消费 typed contract。
 - [x] `app.db.subscribe_oper`、`app.db.subscribehistory_oper` 和 `app.db.oper` 包根旧符号统一经
   `app/sdk/_legacy/subscribe.py` 与精确 Compat 映射保留；canonical 包根不增加重复 `__all__` 导出。
-- [ ] `ChainDataPorts`/`AgentDataPorts` 可暂时保留为兼容聚合器，但字段必须显式、可类型检查。
-- [ ] 以一个业务纵切面迁移并验证后，再迁移下一组，禁止一次替换所有 Oper。
+- [x] 删除 `ChainDataPorts`/`AgentDataPorts` 及其全局 getter；Chain 使用实例级
+  `ChainRuntimeContext`，Agent manager/memory/tool/scheduler 使用同一 `AgentDataContext`，字段均显式可类型检查。
+- [x] User、History、Site、Subscription、Agent/Transfer locator 按纵切面逐批迁移并各自验证，
+  未通过通用代理一次替换所有 Oper。
 - [x] Subscription 增加 AST 门禁，禁止 canonical consumer 导入 raw Oper/ORM、以 `Any` 伪装
-  Snapshot、复制 CRUD Protocol 或新增多词散落文件；全局 Agent/Transfer locator 清零由 S1-L3.8 继续。
+  Snapshot、复制 CRUD Protocol 或新增多词散落文件；全局 Agent/Transfer locator 已清零并由独立 AST 门禁守护。
 
 **后续顺序**
 
-1. S1-L3.8 清除 Agent/Transfer locator 泄漏，并把全局 raw getter/Oper/`Any` 门禁补齐。
+1. S1-L4 收口 Subscription 新增、修改、删除、完成和批量修改的单一 UoW，删除自动提交写入口。
 2. S1-L4 对 Subscription 新增、修改、删除、完成和批量修改逐用例验证单一 UoW，禁止把逐条短事务
    误当作批量原子事务。
 3. S1-L5 将站点、规则组引用的 SystemConfig 与 Subscription 更新合并为原子命令，并在 commit 后

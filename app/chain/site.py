@@ -11,7 +11,6 @@ from app.adapters.external.cookiecloud import CookieCloudHelper
 from app.adapters.network.browser import PlaywrightHelper
 from app.adapters.network.cloudflare import under_challenge
 from app.adapters.network.http import RequestUtils
-from app.application.chain.data import get_chain_site_port
 from app.application.configuration import get_configured_system_config
 from app.application.messaging.site import SiteInteractionHandler
 from app.application.rss import RssHelper
@@ -77,7 +76,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 str(site.get("domain") or site.get("url") or "")
             )
             name = str(site.get("name") or domain)
-            get_chain_site_port().update_userdata(
+            self.site_repository.update_userdata(
                 domain=domain,
                 name=name,
                 mutation=SiteUserDataMutation(userdata.model_dump()),
@@ -439,7 +438,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 self.messagehelper.put(msg, title="CookieCloud同步失败", role="system")
             return False, msg
         siteshelper = SitesHelper()
-        repository = get_chain_site_port()
+        repository = self.site_repository
         rsshelper = RssHelper()
         total_num = len(cookies)
         update_count = add_count = fail_count = 0
@@ -604,7 +603,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if str(domain).startswith("http"):
             domain = site_rules.extract_domain(domain)
         # 站点信息
-        repository = get_chain_site_port()
+        repository = self.site_repository
         siteshelper = SitesHelper()
         siteinfo = repository.get_by_domain(domain)
         if not siteinfo:
@@ -687,7 +686,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         # 检查域名是否可用
         domain = site_rules.extract_domain(url)
-        repository = get_chain_site_port()
+        repository = self.site_repository
         site_info = repository.get_by_domain(domain)
         if not site_info:
             return False, f"站点【{url}】不存在"
@@ -765,7 +764,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         return SiteInteractionHandler(
             messenger=self,
             cookie_updater=self.update_cookie,
-            repository=get_chain_site_port(),
+            repository=self.site_repository,
         )
 
     def remote_disable(self, arg_str: str, channel: NotificationChannel,
@@ -779,7 +778,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not arg_str.isdigit():
             return
         site_id = int(arg_str)
-        repository = get_chain_site_port()
+        repository = self.site_repository
         site = repository.get(site_id)
         if not site:
             self.post_message(Message(
@@ -801,7 +800,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not arg_str:
             return
         arg_strs = str(arg_str).split()
-        repository = get_chain_site_port()
+        repository = self.site_repository
         for arg_str in arg_strs:
             arg_str = arg_str.strip()
             if not arg_str.isdigit():
@@ -843,7 +842,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             cookie, ua, msg = result
             if not cookie:
                 return False, msg
-            get_chain_site_port().update(site_info.id, SiteMutation({
+            self.site_repository.update(site_info.id, SiteMutation({
                 "cookie": cookie,
                 "ua": ua
             }))
@@ -891,7 +890,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         # 站点ID
         site_id = int(raw_site_id)
         # 站点信息
-        site_info = get_chain_site_port().get(site_id)
+        site_info = self.site_repository.get(site_id)
         if not site_info:
             self.post_message(Message(
                 channel=channel,

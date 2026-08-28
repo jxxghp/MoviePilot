@@ -19,7 +19,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.system.update import system_update_manager
-from app.application.agentdata import get_agent_task_port
+from app.application.agenttask import AgentTaskRepository
 from app.application.configuration import (
     SchedulerRuntimeConfig,
     get_configured_system_config,
@@ -163,6 +163,19 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         self._auth_message = False
         # 插件已按认证结果重建，但动态路由尚未完成投影时保留重试状态。
         self._auth_plugin_routes_pending = False
+        self._agent_tasks: AgentTaskRepository | None = None
+
+    def configure_agent_tasks(self, repository: AgentTaskRepository) -> None:
+        """在调度器启动前绑定唯一自主任务仓储。"""
+        if self._lifecycle_state not in {"new", "stopped"}:
+            raise RuntimeError("Scheduler 已运行，不能替换 AgentTask 仓储")
+        self._agent_tasks = repository
+
+    def _agent_task_repository(self) -> AgentTaskRepository:
+        """返回显式注入仓储；缺少组合根装配时稳定失败。"""
+        if self._agent_tasks is None:
+            raise RuntimeError("Scheduler 的 AgentTask 仓储尚未注入")
+        return self._agent_tasks
 
     async def on_config_changed(self) -> None:
         """
@@ -1479,7 +1492,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         按数据库当前状态注册所有启用的 Agent 自主定时任务。
         """
-        for task in get_agent_task_port().list(enabled=True):
+        for task in self._agent_task_repository().list(enabled=True):
             self.update_agent_task_job(task.id)
 
     def _reconcile_agent_task_interruptions(self) -> None:
@@ -1492,7 +1505,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         with self._lock:
             if self._agent_task_interruptions_reconciled:
                 return
-            oper = get_agent_task_port()
+            oper = self._agent_task_repository()
             for task in oper.list():
                 if task.last_status == "running":
                     oper.mark_interrupted(
@@ -1513,7 +1526,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         """
         config = get_scheduler_runtime_config()
         self.remove_agent_task_job(task_id)
-        task = get_agent_task_port().get(task_id)
+        task = self._agent_task_repository().get(task_id)
         if (
                 not config.ai_agent_enable
                 or not task
@@ -1525,6 +1538,9 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         trigger_value = (
             task.cron_expression if task.trigger_type == "cron" else task.run_at
         )
+        if trigger_value is None:
+            logger.error(f"Agent 定时任务 {task_id} 缺少触发配置")
+            return None
         manual_only = task.trigger_type == "date" and task.last_status == "interrupted"
         trigger = None
         if not manual_only:
@@ -1626,7 +1642,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             if next_run_time:
                 return next_run_time.isoformat(timespec="seconds")
 
-        task = get_agent_task_port().get(task_id)
+        task = self._agent_task_repository().get(task_id)
         if not task or not task.enabled:
             return None
         if task.trigger_type == "date" and task.last_status == "interrupted":
@@ -1634,6 +1650,8 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
         trigger_value = (
             task.cron_expression if task.trigger_type == "cron" else task.run_at
         )
+        if trigger_value is None:
+            return None
         try:
             next_run_time = TimerUtils.get_schedule_next_run_time(
                 trigger_type=task.trigger_type,

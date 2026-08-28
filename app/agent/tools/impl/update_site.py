@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_site_port
 from app.application.site.contract import SiteMutation
 from app.foundation import url as url_tools
 from app.runtime.events import eventmanager
@@ -125,7 +124,7 @@ class UpdateSiteTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: site_id={site_id}")
 
         try:
-            repository = get_agent_site_port()
+            repository = self.data.sites
             site = await repository.async_get(site_id)
             if not site:
                 return json.dumps(

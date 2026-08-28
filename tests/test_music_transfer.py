@@ -550,11 +550,7 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
             need_notify=True,
         )
 
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        lambda: SimpleNamespace(),
-    )
-    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace())
+    chain.transfer_history_repository = SimpleNamespace()
     monkeypatch.setattr(
         "app.chain.transfer.add_transfer_success",
         lambda **kwargs: SimpleNamespace(id=1),
@@ -795,9 +791,8 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
             )
         ],
     )
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_download_history_port",
-        lambda: SimpleNamespace(get_by_hash=lambda download_hash: history),
+    chain.download_history_repository = SimpleNamespace(
+        get_by_hash=lambda download_hash: history
     )
     monkeypatch.setattr(
         chain,

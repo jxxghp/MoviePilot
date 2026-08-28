@@ -2,7 +2,6 @@ import math
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from app.application.chain.data import get_chain_user_port
 from app.application.directory import DirectoryHelper
 from app.application.messaging.media import (
     PendingMediaInteraction,
@@ -669,7 +668,7 @@ class MediaInteractionChain(ChainBase):
                 return
 
         mp_name = (
-            get_chain_user_port().find_name_by_bindings(
+            self.user_repository.find_name_by_bindings(
                 {f"{channel.name.lower()}_userid": userid}
             )
             if channel
@@ -982,7 +981,7 @@ class MediaInteractionChain(ChainBase):
             note = None
 
         mp_name = (
-            get_chain_user_port().find_name_by_bindings(
+            self.user_repository.find_name_by_bindings(
                 {f"{channel.name.lower()}_userid": userid}
             )
             if channel

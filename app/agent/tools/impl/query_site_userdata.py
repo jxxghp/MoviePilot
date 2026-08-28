@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_site_port
 from app.domain import site as site_rules
 from app.runtime.log import logger
 from app.schemas.common import JsonData
@@ -69,7 +68,7 @@ class QuerySiteUserdataTool(MoviePilotTool):
         )
 
         try:
-            repository = get_agent_site_port()
+            repository = self.data.sites
             site = await repository.async_get(site_id)
             if not site:
                 return json.dumps(

@@ -92,7 +92,10 @@ class AddRuleGroupTool(MoviePilotTool):
                 SystemConfigKey.UserFilterRuleGroups,
                 [group.model_dump(exclude_none=True) for group in rule_groups],
             )
-            usage = await collect_rule_group_usages([new_group.name])
+            usage = await collect_rule_group_usages(
+                self.data.subscriptions,
+                [new_group.name],
+            )
 
             return json.dumps(
                 {

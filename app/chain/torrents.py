@@ -3,7 +3,6 @@ import re
 import traceback
 from typing import Callable, Dict, List, Optional, Union
 
-from app.application.chain.data import get_chain_site_port
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -802,7 +801,7 @@ class TorrentsChain(ChainBase):
                     # 获取过期rss除去passkey部分
                     new_rss = re.sub(r'&passkey=([a-zA-Z0-9]+)', f'&passkey={new_passkey}', site.get("rss"))
                     logger.info(f"更新站点 {domain} RSS地址 ...")
-                    get_chain_site_port().update_rss(domain=domain, rss=new_rss)
+                    self.site_repository.update_rss(domain=domain, rss=new_rss)
                 else:
                     # 发送消息
                     self.post_message(

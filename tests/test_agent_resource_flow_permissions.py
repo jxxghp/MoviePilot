@@ -7,6 +7,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.agent import MoviePilotAgent
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.edit_file import EditFileTool
@@ -17,12 +18,10 @@ from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.read_file import ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.agent import MoviePilotAgent
-from app.runtime.config import settings
 from app.modules.feishu import FeishuModule
 from app.modules.telegram import TelegramModule
+from app.runtime.config import settings
 from app.schemas.types import NotificationChannel
-
 
 # 渠道模块在导入时注册管理员解析器，权限回查测试需显式加载对应模块。
 _REGISTERED_CHANNEL_MODULES = (FeishuModule, TelegramModule)
@@ -89,7 +88,6 @@ def test_non_admin_manager_hides_admin_only_send_local_file_tool():
 
 def test_query_sites_hides_only_sensitive_fields_for_non_admin_user():
     """普通用户查询站点时只隐藏 Cookie、API Key、Token 和 RSS。"""
-    tool = QuerySitesTool(session_id="session-1", user_id="10001")
     site = SimpleNamespace(
         id=1,
         name="TestSite",
@@ -114,11 +112,13 @@ def test_query_sites_hides_only_sensitive_fields_for_non_admin_user():
         downloader="qb",
     )
 
-    with patch(
-        "app.agent.tools.impl.query_sites.get_agent_site_port"
-    ) as site_oper:
-        site_oper.return_value.async_list = AsyncMock(return_value=[site])
-        result = asyncio.run(tool.run())
+    repository = SimpleNamespace(async_list=AsyncMock(return_value=[site]))
+    tool = QuerySitesTool(
+        session_id="session-1",
+        user_id="10001",
+        data=SimpleNamespace(sites=repository),
+    )
+    result = asyncio.run(tool.run())
 
     payload = json.loads(result)
     assert payload == [
@@ -150,8 +150,6 @@ def test_query_sites_hides_only_sensitive_fields_for_non_admin_user():
 
 def test_query_sites_keeps_full_fields_for_admin_context():
     """管理员查询站点时保留完整配置视图。"""
-    tool = QuerySitesTool(session_id="session-1", user_id="admin")
-    tool.set_agent_context({"is_admin": True})
     site = SimpleNamespace(
         id=1,
         name="TestSite",
@@ -176,11 +174,14 @@ def test_query_sites_keeps_full_fields_for_admin_context():
         downloader="qb",
     )
 
-    with patch(
-        "app.agent.tools.impl.query_sites.get_agent_site_port"
-    ) as site_oper:
-        site_oper.return_value.async_list = AsyncMock(return_value=[site])
-        result = asyncio.run(tool.run())
+    repository = SimpleNamespace(async_list=AsyncMock(return_value=[site]))
+    tool = QuerySitesTool(
+        session_id="session-1",
+        user_id="admin",
+        data=SimpleNamespace(sites=repository),
+    )
+    tool.set_agent_context({"is_admin": True})
+    result = asyncio.run(tool.run())
 
     payload = json.loads(result)
     assert payload[0]["cookie"] == "uid=1; passkey=secret"
@@ -361,66 +362,58 @@ def test_query_downloaders_keeps_full_fields_for_admin_context():
 
 def test_channel_agent_admin_user_id_does_not_bypass_user_lookup():
     """渠道用户 ID 恰好为 admin 时，不应绕过真实系统用户权限判断。"""
+    users = SimpleNamespace(
+        async_get_by_name=AsyncMock(return_value=SimpleNamespace(is_superuser=False))
+    )
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="admin",
         channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="normal-user",
+        data=SimpleNamespace(users=users),
     )
-
-    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
-        user_oper.return_value.async_get_by_name.return_value = SimpleNamespace(
-            is_superuser=False
-        )
-        context = asyncio.run(
-            agent._build_tool_context(should_dispatch_reply=True)
-        )
+    context = asyncio.run(agent._build_tool_context(should_dispatch_reply=True))
 
     assert context["is_admin"] is False
 
 
 def test_channel_agent_rejects_local_admin_username_without_trusted_principal():
     """外部显示名与本地管理员同名时，不得获得 Agent 管理员权限。"""
+    users = SimpleNamespace(async_get_by_name=AsyncMock())
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="10002",
         channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="admin",
+        data=SimpleNamespace(users=users),
     )
     agent.is_channel_admin = False
 
-    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
-        user_oper.return_value.async_get_by_name = AsyncMock(
-            return_value=SimpleNamespace(is_superuser=True)
-        )
-        context = asyncio.run(
-            agent._build_tool_context(should_dispatch_reply=True)
-        )
+    context = asyncio.run(agent._build_tool_context(should_dispatch_reply=True))
 
     assert context["is_admin"] is False
-    user_oper.return_value.async_get_by_name.assert_not_awaited()
+    users.async_get_by_name.assert_not_awaited()
 
 
 def test_channel_agent_accepts_trusted_admin_principal_without_local_user():
     """宿主确认的渠道管理员应直接获得 Agent 管理员权限。"""
+    users = SimpleNamespace(async_get_by_name=AsyncMock())
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="10001",
         channel=NotificationChannel.Telegram.value,
         source="telegram-main",
         username="renamed-user",
+        data=SimpleNamespace(users=users),
     )
     agent.is_channel_admin = True
 
-    with patch("app.agent.orchestrator.get_agent_user_port") as user_oper:
-        context = asyncio.run(
-            agent._build_tool_context(should_dispatch_reply=True)
-        )
+    context = asyncio.run(agent._build_tool_context(should_dispatch_reply=True))
 
     assert context["is_admin"] is True
-    user_oper.return_value.async_get_by_name.assert_not_called()
+    users.async_get_by_name.assert_not_called()
 
 
 def test_tool_explicit_non_admin_context_does_not_fallback_to_channel_lookup():

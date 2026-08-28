@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_site_port
 from app.runtime.log import logger
 
 
@@ -58,7 +57,7 @@ class QuerySitesTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: status={status}, name={name}")
         try:
             is_admin = await self.is_admin_user()
-            repository = get_agent_site_port()
+            repository = self.data.sites
             # 获取所有站点（按优先级排序）
             sites = await repository.async_list()
             filtered_sites = []

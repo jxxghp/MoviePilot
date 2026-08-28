@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_user_port
 from app.chain.subscribe import SubscribeChain
 from app.domain.media import normalize_music_type
 from app.runtime.log import logger
@@ -154,7 +153,7 @@ class AddSubscribeTool(MoviePilotTool):
 
         mapped_username = await self.run_blocking(
             "db",
-            get_agent_user_port().find_name_by_bindings,
+            self.data.users.find_name_by_bindings,
             {key: self._user_id for key in binding_keys},
         )
         return mapped_username or resolved_username

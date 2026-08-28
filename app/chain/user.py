@@ -2,7 +2,6 @@ import secrets
 from dataclasses import dataclass
 from typing import Literal, Optional, Tuple, Union
 
-from app.application.chain.data import get_chain_user_port
 from app.application.security.otp import OtpUtils
 from app.application.security.token import get_password_hash, verify_password
 from app.application.security.user import AuxiliaryUserCreate, UserAuthSnapshot
@@ -104,8 +103,9 @@ class UserChain(ChainBase):
             logger.debug(f"辅助认证未启用，认证类型 {grant_type} 未实现")
             return False, "不支持的认证类型"
 
-    @staticmethod
+    @classmethod
     def password_authenticate(
+        cls,
         credentials: AuthCredentials,
     ) -> Tuple[bool, Union[UserAuthSnapshot, str]]:
         """
@@ -123,7 +123,7 @@ class UserChain(ChainBase):
             logger.info("密码认证失败，用户名或密码为空")
             return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
 
-        user = get_chain_user_port().get_auth_by_name(name=credentials.username)
+        user = cls().user_repository.get_auth_by_name(name=credentials.username)
         if not user:
             logger.info(f"密码认证失败，用户 {credentials.username} 不存在")
             return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
@@ -154,7 +154,7 @@ class UserChain(ChainBase):
             return False, "认证凭证无效"
 
         # 检查是否因为用户被禁用
-        useroper = get_chain_user_port()
+        useroper = self.user_repository
         if credentials.username:
             user = useroper.get_auth_by_name(name=credentials.username)
             if user and not user.is_active:
@@ -254,7 +254,7 @@ class UserChain(ChainBase):
                 return False
 
         # 检查用户是否存在，如果不存在且当前为密码认证时则创建新用户
-        useroper = get_chain_user_port()
+        useroper = self.user_repository
         user = useroper.get_auth_by_name(name=username)
         if user:
             # 如果用户存在，但是已经被禁用，则直接响应

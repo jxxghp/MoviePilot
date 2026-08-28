@@ -1,6 +1,20 @@
-"""插件持久化数据写用例。"""
+"""插件持久化数据查询与写用例。"""
 
 from typing import Protocol
+
+from app.schemas.common import JsonData
+
+
+class PluginDataQueryRepository(Protocol):
+    """Agent 插件数据查询所需的类型化异步端口。"""
+
+    async def get(self, plugin_id: str, key: str) -> JsonData:
+        """读取插件指定键的数据。"""
+        ...
+
+    async def list(self, plugin_id: str) -> dict[str, JsonData]:
+        """读取插件全部键值并在 Session 内完成投影。"""
+        ...
 
 
 class PluginDataMutationRepository(Protocol):

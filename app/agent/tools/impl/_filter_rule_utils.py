@@ -4,7 +4,6 @@ import copy
 import re
 from typing import Any, Callable, Dict, Iterable, Optional
 
-from app.application.agentdata import get_agent_subscribe_port
 from app.application.configuration import get_configured_system_config
 from app.application.rules import (
     BUILTIN_RULE_SET,
@@ -12,6 +11,7 @@ from app.application.rules import (
     RuleParser,
     replace_group_name_in_list,
 )
+from app.application.subscription.contract import SubscriptionRepository
 from app.runtime.events import eventmanager
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.rule import CustomRule
@@ -252,6 +252,7 @@ def default_rule_group_usage() -> dict:
 
 
 async def collect_rule_group_usages(
+    repository: SubscriptionRepository,
     group_names: Optional[Iterable[str]] = None,
 ) -> Dict[str, dict]:
     """收集规则组在全局配置和订阅上的引用情况。"""
@@ -289,7 +290,7 @@ async def collect_rule_group_usages(
             continue
         ensure_usage(name)["used_in_global_best_version"] = True
 
-    subscribes = await get_agent_subscribe_port().async_list()
+    subscribes = await repository.async_list()
     for subscribe in subscribes:
         filter_groups = [str(name) for name in subscribe.filter_groups] \
             if isinstance(subscribe.filter_groups, list) else []
@@ -456,6 +457,7 @@ async def _publish_rule_config_changed(
 
 
 async def _rewrite_rule_group_references(
+    repository: SubscriptionRepository,
     map_names: Callable[[Iterable[str]], list[str]],
 ) -> dict:
     """按名称映射器更新全局、默认订阅配置和已有订阅引用。"""
@@ -490,7 +492,6 @@ async def _rewrite_rule_group_references(
         await save_system_config(config_key, updated)
         changed["global_settings"][config_key.value] = updated
 
-    repository = get_agent_subscribe_port()
     subscribes = await repository.async_list()
     for subscribe in subscribes:
         original = [str(name) for name in subscribe.filter_groups] \
@@ -511,16 +512,25 @@ async def _rewrite_rule_group_references(
     return changed
 
 
-async def rename_rule_group_references(old_name: str, new_name: str) -> dict:
+async def rename_rule_group_references(
+    repository: SubscriptionRepository,
+    old_name: str,
+    new_name: str,
+) -> dict:
     """规则组改名后，联动更新全部配置和已有订阅引用。"""
     return await _rewrite_rule_group_references(
+        repository,
         lambda values: replace_group_name_in_list(values, old_name, new_name)
     )
 
 
-async def remove_rule_group_references(group_name: str) -> dict:
+async def remove_rule_group_references(
+    repository: SubscriptionRepository,
+    group_name: str,
+) -> dict:
     """删除规则组后，清理全部配置和已有订阅中的悬空引用。"""
     return await _rewrite_rule_group_references(
+        repository,
         lambda values: [value for value in values or [] if value != group_name]
     )
 

@@ -56,6 +56,15 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.pluginmanager = context.plugin_manager
         self.filecache = context.file_cache
         self.async_filecache = context.async_file_cache
+        self.site_repository = context.site_repository
+        self.subscription_repository = context.subscription_repository
+        self.download_history_repository = context.download_history_repository
+        self.transfer_history_repository = context.transfer_history_repository
+        self.transfer_admission_repository = context.transfer_admission_repository
+        self.transfer_execution_repository = context.transfer_execution_repository
+        self.media_server_repository = context.media_server_repository
+        self.download_failure_repository = context.download_failure_repository
+        self.user_repository = context.user_repository
         self.runtime_config = context.configuration
         self.stop_state = context.stop_state
         self.durable_event_writer = context.durable_event_writer

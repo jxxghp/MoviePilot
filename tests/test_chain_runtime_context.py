@@ -5,7 +5,6 @@ from unittest.mock import Mock
 import pytest
 
 from app.application.chain import context as chain_context
-from app.application.chain import data as chain_data
 from app.application.chain.context import ChainRuntimeContext
 from app.application.configuration import ChainRuntimeConfig
 from app.chain import ChainBase
@@ -24,6 +23,15 @@ def _context() -> ChainRuntimeContext:
         async_file_cache=Mock(),
         message_queue_factory=Mock(return_value=Mock()),
         module_dispatcher_factory=ModuleInvocationDispatcher,
+        site_repository=Mock(),
+        subscription_repository=Mock(),
+        download_history_repository=Mock(),
+        transfer_history_repository=Mock(),
+        transfer_admission_repository=Mock(),
+        transfer_execution_repository=Mock(),
+        media_server_repository=Mock(),
+        download_failure_repository=Mock(),
+        user_repository=Mock(),
         configuration=ChainRuntimeConfig(media_extensions=(".mkv",)),
         durable_event_writer=Mock(),
     )
@@ -68,28 +76,13 @@ def test_chain_runtime_context_rejects_unconfigured_provider(monkeypatch) -> Non
         chain_context.get_chain_runtime_context()
 
 
-def test_chain_data_registry_rejects_unconfigured_and_returns_factories(
-    monkeypatch,
-) -> None:
-    """数据 registry 未配置时拒绝访问，配置后按字段返回工厂实例。"""
-    monkeypatch.setattr(chain_data, "_ports", None)
+def test_chain_keeps_explicit_typed_repositories() -> None:
+    """Chain 实例必须直接保存组合根注入的数据端口，不再查找全局注册表。"""
+    context = _context()
 
-    with pytest.raises(RuntimeError, match="Chain 数据端口尚未配置"):
-        chain_data.get_chain_data_ports()
+    chain = ChainBase(context)
 
-    media_server = Mock()
-    user = Mock()
-    chain_data.configure_chain_data_ports(
-        site=Mock,
-        subscribe=Mock,
-        download_history=Mock,
-        transfer_history=Mock,
-        transfer_pending=Mock,
-        transfer_execution=Mock,
-        media_server=lambda: media_server,
-        download_failure=Mock,
-        user=lambda: user,
-    )
-
-    assert chain_data.get_chain_media_server_port() is media_server
-    assert chain_data.get_chain_user_port() is user
+    assert chain.site_repository is context.site_repository
+    assert chain.subscription_repository is context.subscription_repository
+    assert chain.transfer_execution_repository is context.transfer_execution_repository
+    assert chain.user_repository is context.user_repository

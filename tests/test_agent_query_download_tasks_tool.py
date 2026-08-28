@@ -1,9 +1,19 @@
 import asyncio
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.agent.tools.impl.query_download_tasks import QueryDownloadTasksTool
-from app.schemas import DownloaderTorrent
+from app.schemas.transfer import DownloaderTorrent
+
+
+def _tool() -> QueryDownloadTasksTool:
+    """构造带显式下载历史端口的查询工具。"""
+    return QueryDownloadTasksTool(
+        session_id="session-1",
+        user_id="10001",
+        data=SimpleNamespace(download_history=MagicMock()),
+    )
 
 
 def test_completed_status_returns_qbittorrent_and_transmission_completed_states():
@@ -41,7 +51,7 @@ def test_completed_status_returns_qbittorrent_and_transmission_completed_states(
         "_load_history_map",
         return_value={},
     ):
-        result = QueryDownloadTasksTool._query_downloads_sync(status="completed")
+        result = _tool()._query_downloads_sync(status="completed")
 
     assert result["downloads"] == completed_torrents
     download_chain.list_torrents.assert_called_once_with(
@@ -126,7 +136,7 @@ def test_hash_query_loads_trackers_for_matching_task():
         "_load_history_map",
         return_value={},
     ):
-        result = QueryDownloadTasksTool._query_downloads_sync(hash_value="a" * 40)
+        result = _tool()._query_downloads_sync(hash_value="a" * 40)
 
     assert result["downloads"][0].trackers == ["https://tracker.example/announce"]
     download_chain.get_torrent_trackers.assert_called_once_with(
@@ -161,7 +171,7 @@ def test_include_all_tags_passes_scope_to_downloader_query():
         "_load_history_map",
         return_value={},
     ):
-        result = QueryDownloadTasksTool._query_downloads_sync(
+        result = _tool()._query_downloads_sync(
             status="all",
             include_all_tags=True,
         )
@@ -199,7 +209,7 @@ def test_include_all_tags_downloading_status_uses_list_torrents():
         "_load_history_map",
         return_value={},
     ):
-        result = QueryDownloadTasksTool._query_downloads_sync(
+        result = _tool()._query_downloads_sync(
             status="downloading",
             include_all_tags=True,
         )
@@ -238,7 +248,7 @@ def test_include_all_tags_false_string_keeps_builtin_tag_scope():
         "_load_history_map",
         return_value={},
     ):
-        result = QueryDownloadTasksTool._query_downloads_sync(
+        result = _tool()._query_downloads_sync(
             status="completed",
             include_all_tags="false",
         )

@@ -13,10 +13,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.adapters.system.host import SystemUtils
 from app.application.agent import build_manual_redo_prompt, get_running_agent_manager
-from app.application.chain.data import (
-    get_chain_transfer_execution_port,
-    get_chain_transfer_history_port,
-)
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
     get_configured_system_config,
@@ -31,7 +27,10 @@ from app.application.history import (
     clear_transfer_failures,
     resolve_history,
 )
-from app.application.transfer.execution import TransferExecutionCommand
+from app.application.transfer.execution import (
+    TransferExecutionCommand,
+    TransferExecutionRepository,
+)
 from app.application.transfer.workflow import TransferTask, job_lock
 from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
@@ -65,15 +64,14 @@ def _request_durable_transfer_retry(
         history: TransferHistorySnapshot,
         *,
         requested_by: str,
+        repository: TransferExecutionRepository,
 ) -> Optional[Tuple[bool, str]]:
     """将 durable 历史重试交还持久调度器，旧历史返回 ``None``。"""
     task_id = getattr(history, "transfer_task_id", None)
     if not task_id:
         return None
     try:
-        result = TransferExecutionCommand(
-            get_chain_transfer_execution_port()
-        ).request_retry(
+        result = TransferExecutionCommand(repository).request_retry(
             task_id=task_id,
             reason=f"用户请求重试整理历史 #{history.id}",
             requested_by=requested_by,
@@ -1164,6 +1162,9 @@ class FileKeyMixin:
 
 class ManualHistoryMixin:
     __mixin_host_protocol__ = TransferMixinHost
+    transfer_history_repository: TransferHistoryRepository
+    transfer_execution_repository: TransferExecutionRepository
+
     @staticmethod
     def _get_subscribe_custom_words(
             history_record: Optional[DownloadHistorySnapshot],
@@ -1237,7 +1238,7 @@ class ManualHistoryMixin:
         :param fileitems: 待查询的文件或目录项
         :return: 去重后的成功整理记录
         """
-        transfer_history_oper = get_chain_transfer_history_port()
+        transfer_history_oper = self.transfer_history_repository
         histories: Dict[int, TransferHistorySnapshot] = {}
         for fileitem in fileitems or []:
             if not fileitem or not fileitem.path:
@@ -1286,6 +1287,7 @@ class ManualHistoryMixin:
         return _request_durable_transfer_retry(
             history,
             requested_by=requested_by,
+            repository=self.transfer_execution_repository,
         )
 
     def _delete_manual_transfer_history(
@@ -1323,6 +1325,9 @@ class ManualHistoryMixin:
 
 class FailedRetryMixin:
     __mixin_host_protocol__ = TransferMixinHost
+    transfer_history_repository: TransferHistoryRepository
+    transfer_execution_repository: TransferExecutionRepository
+
     @staticmethod
     def build_failed_transfer_buttons(
             history_id: Optional[int],
@@ -1462,7 +1467,7 @@ class FailedRetryMixin:
         由智能助手接管一条失败的整理记录。
         """
 
-        history = get_chain_transfer_history_port().get(history_id)
+        history = self.transfer_history_repository.get(history_id)
         if not history:
             host = cast(TransferMixinHost, self)
             host.post_message(
@@ -1482,6 +1487,7 @@ class FailedRetryMixin:
         durable_retry = _request_durable_transfer_retry(
             history,
             requested_by="ai_retry_button",
+            repository=self.transfer_execution_repository,
         )
         if durable_retry is not None:
             accepted, message = durable_retry
@@ -1614,13 +1620,14 @@ class FailedRetryMixin:
         :param media_id: 数据源原生 ID，必须与 media_source 成对提供
         """
         # 查询历史记录
-        history = get_chain_transfer_history_port().get(logid)
+        history = self.transfer_history_repository.get(logid)
         if not history:
             logger.error(f"整理记录不存在，ID：{logid}")
             return False, "整理记录不存在"
         durable_retry = _request_durable_transfer_retry(
             history,
             requested_by="history_redo",
+            repository=self.transfer_execution_repository,
         )
         if durable_retry is not None:
             return durable_retry

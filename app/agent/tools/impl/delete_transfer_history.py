@@ -7,10 +7,9 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_transfer_history_port
-from app.application.chain.data import get_chain_transfer_execution_port
 from app.application.transfer.execution import (
     TransferExecutionCommand,
+    TransferExecutionRepository,
     TransferRetryRequestResult,
 )
 from app.chain.storage import StorageChain
@@ -35,6 +34,7 @@ def _delete_history_destination_file(fileitem: FileItem) -> tuple[bool, bool]:
 
 
 def _request_transfer_retry(
+    repository: TransferExecutionRepository,
     *,
     history_id: int,
     task_id: str,
@@ -42,7 +42,7 @@ def _request_transfer_retry(
 ) -> TransferRetryRequestResult:
     """在线程池中登记 durable 重试，避免 Agent 事件循环执行同步数据库 I/O。"""
     return TransferExecutionCommand(
-        get_chain_transfer_execution_port()
+        repository
     ).request_retry(
         task_id=task_id,
         reason=f"Agent 请求重试整理历史 #{history_id}",
@@ -75,7 +75,7 @@ class DeleteTransferHistoryTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: history_id={history_id}")
 
         try:
-            transferhis = get_agent_transfer_history_port()
+            transferhis = self.data.transfer_history
             history = await transferhis.async_get(history_id)
             if not history:
                 return f"错误：整理历史记录不存在，ID={history_id}"
@@ -85,6 +85,7 @@ class DeleteTransferHistoryTool(MoviePilotTool):
                 retry = await self.run_blocking(
                     "db",
                     _request_transfer_retry,
+                    self.data.transfer_execution,
                     history_id=history_id,
                     task_id=task_id,
                     user_id=self._user_id,

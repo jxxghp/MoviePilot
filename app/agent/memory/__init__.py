@@ -6,8 +6,9 @@ from typing import Dict, List, Optional
 
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 
-from app.application.agentdata import get_agent_chat_port
 from app.application.messaging.chat import (
+    AgentChatPersistenceService,
+    AgentChatService,
     get_configured_agent_chat_persistence,
     get_configured_agent_chat_service,
 )
@@ -21,11 +22,35 @@ class MemoryManager:
     对话记忆管理器
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        chat: AgentChatService | None = None,
+        persistence: AgentChatPersistenceService | None = None,
+    ):
+        """创建记忆缓存，并保存组合根显式注入的会话能力。"""
+        self._chat = chat
+        self._persistence = persistence
         # 内存中的会话记忆缓存
         self.memory_cache: Dict[str, ConversationMemory] = {}
         # 内存缓存清理任务
         self.cleanup_task: Optional[asyncio.Task] = None
+
+    def configure(
+        self,
+        chat: AgentChatService,
+        persistence: AgentChatPersistenceService,
+    ) -> None:
+        """在 Agent 启动前绑定唯一会话查询与写入服务。"""
+        self._chat = chat
+        self._persistence = persistence
+
+    def _chat_service(self) -> AgentChatService:
+        """返回显式注入服务，兼容测试未装配时使用既有应用服务。"""
+        return self._chat or get_configured_agent_chat_service()
+
+    def _chat_persistence(self) -> AgentChatPersistenceService:
+        """返回显式注入写服务，兼容测试未装配时使用既有应用服务。"""
+        return self._persistence or get_configured_agent_chat_persistence()
 
     def initialize(self):
         """
@@ -84,9 +109,12 @@ class MemoryManager:
             return memory.messages
 
         try:
-            chat = get_agent_chat_port().get(session_id=session_id, user_id=user_id)
+            chat = self._chat_service().get_sync(
+                session_id=session_id,
+                user_id=user_id,
+            )
             if not chat:
-                chat = get_agent_chat_port().get(session_id=session_id)
+                chat = self._chat_service().get_sync(session_id=session_id)
         except Exception as e:
             logger.debug(f"读取持久化Agent会话失败: {e}")
             return []
@@ -116,7 +144,7 @@ class MemoryManager:
             return memory.messages
 
         try:
-            service = get_configured_agent_chat_service()
+            service = self._chat_service()
             chat = await service.get(
                 session_id=session_id,
                 user_id=user_id,
@@ -159,7 +187,7 @@ class MemoryManager:
         # 更新内存缓存
         self.save_memory(memory)
         try:
-            get_agent_chat_port().save_agent_messages(
+            self._chat_service().save_agent_messages(
                 session_id=session_id,
                 user_id=user_id,
                 messages=messages_to_dict(messages),
@@ -179,7 +207,7 @@ class MemoryManager:
         memory.updated_at = datetime.now()
         self.save_memory(memory)
         try:
-            persistence = get_configured_agent_chat_persistence()
+            persistence = self._chat_persistence()
             await persistence.async_save_agent_messages(
                 session_id=session_id,
                 user_id=user_id,

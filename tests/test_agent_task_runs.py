@@ -1,6 +1,7 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Thread, current_thread
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -9,13 +10,13 @@ from sqlalchemy.exc import IntegrityError
 
 from app.agent.orchestrator import AgentManager
 from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
-from app.db.engine import get_engine
 from app.db import base as db_base
-from app.db.oper.agenttask import AgentTaskOper
+from app.db.adapters.agent import TransactionalAgentTaskRepository
+from app.db.engine import get_engine
 from app.db.models.agenttask import AgentTask
 from app.db.models.agenttaskrun import AgentTaskRun
+from app.db.oper.agenttask import AgentTaskOper
 from app.db.session import SessionFactory
-
 
 Engine = get_engine()
 
@@ -40,7 +41,13 @@ def _add_task(prefix: str, *, trigger_type: str = "cron") -> AgentTask:
 
 def _build_query_tool(user_id: str) -> QueryAgentTasksTool:
     """构造绑定当前 owner 的任务查询工具。"""
-    tool = QueryAgentTasksTool(session_id=f"session-{user_id}", user_id=user_id)
+    tool = QueryAgentTasksTool(
+        session_id=f"session-{user_id}",
+        user_id=user_id,
+        data=SimpleNamespace(
+            tasks=TransactionalAgentTaskRepository(SessionFactory)
+        ),
+    )
     tool._message_context = {"username": "admin"}
     return tool
 

@@ -1,4 +1,3 @@
-from app.application.chain.data import get_chain_subscribe_port
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo
@@ -75,7 +74,7 @@ class AddSubscribeAction(BaseAction):
         if self._added_subscribes:
             logger.info(f"已添加 {len(self._added_subscribes)} 个订阅")
             for sid in self._added_subscribes:
-                subscribe = get_chain_subscribe_port().get(sid)
+                subscribe = subscribechain.subscription_repository.get(sid)
                 if subscribe:
                     if context.subscribes is None:
                         context.subscribes = []

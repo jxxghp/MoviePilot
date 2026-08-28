@@ -335,6 +335,8 @@ class _ExecutionRepositoryStub:
 def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
     """构造只保留规划编排依赖的 TransferChain 骨架。"""
     chain = object.__new__(TransferChain)
+    chain.transfer_history_repository = Mock()
+    chain.transfer_execution_repository = Mock()
     chain._transfer_admissions = repository or Mock()
     chain._transfer_executions = _ExecutionRepositoryStub()
     chain.durable_event_writer = Mock()
@@ -1558,10 +1560,7 @@ def test_accepted_replay_restores_explicit_context_without_online_lookup(
     execution_chain.eventmanager.send_event.return_value = None
     execution_chain.runtime_config = SimpleNamespace(scrape_follow_tmdb=True)
     execution_chain._TransferChain__finish_scrape_batch_task = Mock()
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        lambda: Mock(),
-    )
+    execution_chain.transfer_history_repository = Mock()
     monkeypatch.setattr(
         "app.chain.transfer.MediaChain",
         Mock(side_effect=AssertionError("accepted replay 不应重新在线识别")),
@@ -1655,10 +1654,7 @@ def test_accepted_replay_with_explicit_empty_episodes_stays_offline(
     execution_chain.eventmanager.send_event.return_value = None
     execution_chain.runtime_config = SimpleNamespace(scrape_follow_tmdb=True)
     execution_chain._TransferChain__finish_scrape_batch_task = Mock()
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        lambda: Mock(),
-    )
+    execution_chain.transfer_history_repository = Mock()
     monkeypatch.setattr(
         "app.chain.transfer.MediaChain",
         Mock(side_effect=AssertionError("accepted replay 不应重新在线识别")),
@@ -1771,10 +1767,7 @@ def test_pre_checkpoint_recognition_failure_records_retryable_error(monkeypatch)
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
     monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        lambda: SimpleNamespace(),
-    )
+    chain.transfer_history_repository = SimpleNamespace()
     record_transfer_failure = Mock()
     add_transfer_fail = Mock()
     monkeypatch.setattr(
@@ -1820,10 +1813,7 @@ def test_recognition_rejection_without_writer_has_zero_terminal_side_effects(
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
     monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        lambda: SimpleNamespace(),
-    )
+    chain.transfer_history_repository = SimpleNamespace()
     record_transfer_failure = Mock()
     add_transfer_fail = Mock()
     monkeypatch.setattr(

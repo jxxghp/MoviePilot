@@ -242,11 +242,9 @@ def test_default_callback_skips_history_and_notification_when_overwrite_declined
         need_notify=False,
     )
     bind_terminal_checkpoint(task, transferinfo)
+    chain.transfer_history_repository = transfer_history_oper
 
     with patch(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        return_value=transfer_history_oper,
-    ), patch(
         "app.chain.transfer.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
@@ -289,11 +287,9 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
         need_notify=False,
     )
     bind_terminal_checkpoint(task, transferinfo)
+    chain.transfer_history_repository = transfer_history_oper
 
     with patch(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        return_value=transfer_history_oper,
-    ), patch(
         "app.chain.transfer.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
@@ -350,10 +346,8 @@ def test_durable_callback_settles_overwrite_skip_without_history_as_failed():
         )
 
     chain.durable_event_writer.transfer_result.side_effect = durable_transfer_result
+    chain.transfer_history_repository = transfer_history_oper
     with patch(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        return_value=transfer_history_oper,
-    ), patch(
         "app.chain.transfer.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
@@ -405,10 +399,8 @@ def test_default_callback_delegates_primary_failure_to_durable_writer():
         )
 
     chain.durable_event_writer.transfer_result.side_effect = durable_transfer_result
+    chain.transfer_history_repository = transfer_history_oper
     with patch(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        return_value=transfer_history_oper,
-    ), patch(
         "app.chain.transfer.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(

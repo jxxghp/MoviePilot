@@ -70,19 +70,12 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
         get_by_dest=lambda dest, storage=None: None,
         delete=lambda history_id: deleted.append(("history", history_id)),
     )
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        lambda: history_oper,
-    )
-    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: history_oper)
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_download_history_port",
-        lambda: SimpleNamespace(
-            get_by_hash=lambda download_hash: None,
-            get_file_by_fullpath=lambda fullpath: None,
-            get_files_by_savepath=lambda savepath: [],
-            get_by_path=lambda path: None,
-        ),
+    chain.transfer_history_repository = history_oper
+    chain.download_history_repository = SimpleNamespace(
+        get_by_hash=lambda download_hash: None,
+        get_file_by_fullpath=lambda fullpath: None,
+        get_files_by_savepath=lambda savepath: [],
+        get_by_path=lambda path: None,
     )
     monkeypatch.setattr(
         "app.chain.transfer.get_configured_system_config",
@@ -294,8 +287,10 @@ def test_successful_move_history_is_found_by_current_destination():
         status=True,
     ))
     try:
+        chain = make_transfer_chain()
+        chain.transfer_history_repository = transfer_history_oper
         histories = TransferChain.get_manual_transfer_histories(
-            make_transfer_chain(),
+            chain,
             [destination],
         )
 

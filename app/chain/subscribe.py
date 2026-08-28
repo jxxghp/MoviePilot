@@ -8,11 +8,6 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from app.adapters.external.server import MoviePilotServerHelper
-from app.application.chain.data import (
-    get_chain_download_history_port,
-    get_chain_site_port,
-    get_chain_subscribe_port,
-)
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
     get_configured_system_config,
@@ -1170,17 +1165,24 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         await self.__async_finalize_subscribe_create_context(context)
         return await self.__async_persist_subscribe_create(context)
 
-    @staticmethod
-    def _subscription_query() -> SubscriptionQueryService:
+    def _subscription_query(self) -> SubscriptionQueryService:
         """构造绑定订阅 Oper 的查询应用服务。"""
-        return SubscriptionQueryService(get_chain_subscribe_port())
+        return SubscriptionQueryService(self.subscription_repository)
 
     @classmethod
-    def exists(cls, mediainfo: MediaInfo, meta: MetaBase = None):
+    def exists(
+        cls,
+        mediainfo: MediaInfo,
+        meta: MetaBase = None,
+        repository: Optional[SubscriptionRepository] = None,
+    ) -> bool:
         """
         判断订阅是否已存在
         """
-        return cls._subscription_query().exists(mediainfo, meta)
+        chain = cls()
+        if repository is not None:
+            chain.subscription_repository = repository
+        return chain._subscription_query().exists(mediainfo, meta)
 
     def _acquire_run_lock(
         self,
@@ -1248,7 +1250,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             if not lock_acquired:
                 return
 
-            repository = get_chain_subscribe_port()
+            repository = self.subscription_repository
             if sid:
                 subscribe = repository.get(sid)
                 subscribes = [subscribe] if subscribe else []
@@ -1500,8 +1502,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 self._rlock.release()
                 logger.debug(f"search Lock released at {datetime.now()}")
 
-    @staticmethod
     def __update_movie_download_priority(
+        self,
         subscribe: SubscriptionSnapshot,
         mediainfo: MediaInfo,
         downloads: Optional[List[Context]],
@@ -1517,7 +1519,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if subscribe.type != MediaType.MOVIE.value:
             return subscribe
 
-        updated = get_chain_subscribe_port().update(
+        updated = self.subscription_repository.update(
             subscribe.id, SubscriptionPatch({"current_priority": priority, "last_update": now})
         )
         if subscribe.best_version and priority != 100:
@@ -1676,7 +1678,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         :return: 返回[]代表所有站点命中，返回None代表没有订阅
         """
         ret_sites = []
-        subscribes = get_chain_subscribe_port().list()
+        subscribes = self.subscription_repository.list()
         if not subscribes:
             # 没有订阅
             return None
@@ -1796,7 +1798,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             processed_torrents = self._prepare_match_torrents(torrents)
 
             # 所有订阅
-            subscribes = get_chain_subscribe_port().list(self.get_states_for_search("R"))
+            subscribes = self.subscription_repository.list(self.get_states_for_search("R"))
             total_num = len(subscribes)
             if progress_callback:
                 progress_callback(
@@ -1832,7 +1834,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     # 订阅的站点域名列表
                     domains = []
                     if subscribe.sites:
-                        domains = get_chain_site_port().get_domains_by_ids(subscribe.sites)
+                        domains = self.site_repository.get_domains_by_ids(subscribe.sites)
                     # 识别媒体信息
                     mediainfo: MediaInfo = MediaChain().recognize_media(
                         meta=meta,
@@ -2114,7 +2116,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     )
 
                     # 同步外部修改，更新订阅信息
-                    updated_subscribe = get_chain_subscribe_port().get(subscribe.id)
+                    updated_subscribe = self.subscription_repository.get(subscribe.id)
 
                     # 判断是否要完成订阅
                     if updated_subscribe:
@@ -2148,7 +2150,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         :param progress_callback: 定时服务进度更新回调
         """
         # 查询所有订阅
-        repository = get_chain_subscribe_port()
+        repository = self.subscription_repository
         subscribes = repository.list()
         total_num = len(subscribes)
         if progress_callback:
@@ -2284,13 +2286,20 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         """
         return self._subscription_query().get_by_source(self.parse_subscribe_source_keyword(source))
 
-    @staticmethod
-    def follow(progress_callback: Optional[Callable[..., None]] = None) -> None:
+    @classmethod
+    def follow(
+        cls,
+        progress_callback: Optional[Callable[..., None]] = None,
+        repository: Optional[SubscriptionRepository] = None,
+    ) -> None:
         """
         刷新follow的用户分享，并自动添加订阅
 
         :param progress_callback: 定时服务进度更新回调
         """
+        self = cls()
+        if repository is not None:
+            self.subscription_repository = repository
         follow_users: List[str] = _system_config().get(SystemConfigKey.FollowSubscribers)
         if not follow_users:
             if progress_callback:
@@ -2298,7 +2307,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             return
         logger.info("开始刷新follow用户分享订阅 ...")
         success_count = 0
-        repository = get_chain_subscribe_port()
+        repository = self.subscription_repository
         share_subscribes = MoviePilotServerHelper.get_subscribe_shares() or []
         total_num = len(share_subscribes)
         if progress_callback:
@@ -2404,7 +2413,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         :param progress_callback: 定时服务进度更新回调
         """
         logger.info("开始预缓存订阅日历 ...")
-        subscribes = await get_chain_subscribe_port().async_list()
+        subscribes = await self.subscription_repository.async_list()
         total_num = len(subscribes)
         if progress_callback:
             progress_callback(
@@ -2465,8 +2474,11 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if progress_callback:
             progress_callback(value=100, text="订阅日历预缓存完成")
 
-    @staticmethod
-    def __update_subscribe_note(subscribe: SubscriptionSnapshot, downloads: Optional[List[Context]]):
+    def __update_subscribe_note(
+        self,
+        subscribe: SubscriptionSnapshot,
+        downloads: Optional[List[Context]],
+    ) -> None:
         """
         更新已下载信息到note字段
         """
@@ -2505,7 +2517,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             note = list(set(note).union(set(items)))
         # 更新订阅
         if note:
-            get_chain_subscribe_port().update(subscribe.id, SubscriptionPatch({"note": note}))
+            self.subscription_repository.update(subscribe.id, SubscriptionPatch({"note": note}))
 
     @staticmethod
     def __get_downloaded(subscribe: SubscriptionSnapshot) -> List[int]:
@@ -2550,8 +2562,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             touch_last_update=touch_last_update,
         )
 
-    @staticmethod
     def __apply_subscribe_update(
+        self,
         subscribe: SubscriptionSnapshot,
         update_data: Dict[str, Any],
     ) -> SubscriptionSnapshot:
@@ -2561,7 +2573,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if not update_data:
             return subscribe
         return (
-            get_chain_subscribe_port().update(
+            self.subscription_repository.update(
                 subscribe.id,
                 SubscriptionPatch(update_data),
             )
@@ -2908,7 +2920,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         return SubscribeInteractionHandler(
             messenger=self,
             actions=self,
-            repository=get_chain_subscribe_port(),
+            repository=self.subscription_repository,
             delete_subscription=self._delete_subscription,
         )
 
@@ -3090,7 +3102,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         site_id = event_data.get("site_id")
         if not site_id:
             return
-        repository = get_chain_subscribe_port()
+        repository = self.subscription_repository
         if site_id == "*":
             # 站点被重置
             _system_config().set(SystemConfigKey.RssSites, [])
@@ -3139,8 +3151,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         self._reconcile_rule_group_references(valid_names=_rule_group_names(value))
 
-    @staticmethod
     def _reconcile_rule_group_references(
+        self,
         valid_names: set[str],
         repository: Optional[SubscriptionRepository] = None,
         subscribes: Optional[List[SubscriptionSnapshot]] = None,
@@ -3171,7 +3183,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             updated["filter_groups"] = updated_groups
             system_config.set(config_key, updated)
 
-        repository = repository or get_chain_subscribe_port()
+        repository = repository or self.subscription_repository
         target_subscribes = subscribes if subscribes is not None else repository.list()
         for index, subscribe in enumerate(target_subscribes):
             original = getattr(subscribe, "filter_groups", None) or []
@@ -3277,7 +3289,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             episodes[0] = info
 
         # 所有下载记录
-        downloadhis = get_chain_download_history_port()
+        downloadhis = self.download_history_repository
         download_his = []
         if subscribe.media_source and subscribe.media_id:
             download_his = downloadhis.get_by_media_identity(
@@ -3790,7 +3802,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         )
         update_data["last_update"] = now
         subscribe = (
-            get_chain_subscribe_port().update(
+            self.subscription_repository.update(
                 subscribe.id,
                 SubscriptionPatch(update_data),
             )

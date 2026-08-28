@@ -1,18 +1,18 @@
 """查询过滤规则组工具。"""
 
 import json
-from typing import Optional, Type, List
+from typing import List, Optional, Type
 
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
-from app.agent.tools.tags import ToolTag
 from app.agent.tools.impl._filter_rule_utils import (
+    RULE_STRING_SYNTAX,
     collect_rule_group_usages,
     get_rule_groups,
     serialize_rule_group,
-    RULE_STRING_SYNTAX,
 )
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 
 
@@ -69,6 +69,7 @@ class QueryRuleGroupsTool(MoviePilotTool):
             usage_map = {}
             if include_usage:
                 usage_map = await collect_rule_group_usages(
+                    self.data.subscriptions,
                     [group.name for group in rule_groups if group.name]
                 )
 

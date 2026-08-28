@@ -14,12 +14,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union, c
 
 from pydantic_core import to_jsonable_python
 
-from app.application.chain.data import (
-    get_chain_download_history_port,
-    get_chain_transfer_execution_port,
-    get_chain_transfer_history_port,
-    get_chain_transfer_pending_port,
-)
+from app.application.chain.context import ChainRuntimeContext
 from app.application.chain.events import TransferResultSettlement
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
@@ -509,7 +504,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             transferinfo: TransferInfo,
     ) -> None:
         """无公开事件地原子提交旧同步调用的历史回执与任务终态。"""
-        transferhis = get_chain_transfer_history_port()
+        transferhis = self.transfer_history_repository
         overwrite_declined = self._is_overwrite_declined(
             task,
             transferinfo,
@@ -615,9 +610,12 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         else:
             raise ValueError(f"不支持的整理结果事件：{event_type}")
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        runtime_context: Optional[ChainRuntimeContext] = None,
+    ) -> None:
         """初始化文件整理处理链。"""
-        super().__init__()
+        super().__init__(runtime_context=runtime_context)
         # 主要媒体文件后缀
         self._media_exts = self.runtime_config.video_extensions
         # 字幕文件后缀
@@ -640,8 +638,8 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         # 整理失败通知聚合器
         self.failure_notification_aggregator = TransferFailureNotificationAggregator()
         # durable admission 仓储先于内存入队保存任务，进程退出后仍可恢复。
-        self._transfer_admissions = get_chain_transfer_pending_port()
-        self._transfer_executions = get_chain_transfer_execution_port()
+        self._transfer_admissions = self.transfer_admission_repository
+        self._transfer_executions = self.transfer_execution_repository
         # 转移成功的文件清单
         self._success_target_files: Dict[Tuple, List[str]] = {}
         # 批次级刮削缓冲，避免同一批多文件入库重复触发目录刮削
@@ -931,7 +929,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     username=task.username,
                 )
 
-        transferhis = get_chain_transfer_history_port()
+        transferhis = self.transfer_history_repository
         target_dir_path = self.__get_transfer_target_dir_path(transferinfo)
         job_id = self.jobview.get_job_id(task)
         overwrite_declined = False
@@ -3386,7 +3384,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             if task.plan_checkpoint is not None:
                 return self.__handle_planned_transfer(task, callback)
             # 识别
-            transferhis = get_chain_transfer_history_port()
+            transferhis = self.transfer_history_repository
             # 显式标注联合：下面既会赋回音乐识别结果（MusicInfo），也会赋回影视识别
             # 结果（MediaInfo），不标注时会被推断成其中一种，另一种就成了假错误
             mediainfo: Optional[Union[MediaInfo, MusicInfo]] = task.mediainfo
@@ -3689,7 +3687,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
                     # 查询下载记录识别情况
                     downloadhis: Optional[DownloadHistorySnapshot] = (
-                        get_chain_download_history_port().get_by_hash(torrent.hash)
+                        self.download_history_repository.get_by_hash(torrent.hash)
                         if torrent.hash
                         else None
                     )
@@ -4401,7 +4399,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             if not items:
                 return [], {}
 
-            download_history_repository = get_chain_download_history_port()
+            download_history_repository = self.download_history_repository
             inherited_map: Dict[Tuple[str, str], MetaBase] = {}
             main_items_by_dir, extra_items_by_dir = _build_directory_index(items)
             main_items = [
@@ -4616,7 +4614,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                 # 成功但源文件已变化放行交 overwrite_mode 决断）；手动整理可清理失败记录，
                 # 或按用户确认清理成功记录。
                 if (not force or reorganize) and not preview:
-                    transfer_history_oper = get_chain_transfer_history_port()
+                    transfer_history_oper = self.transfer_history_repository
                     transferd = self._get_manual_transfer_history(
                         fileitem=file_item,
                         transfer_history_oper=transfer_history_oper,
@@ -4700,7 +4698,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             continue
 
                 # 提前获取下载历史，以便获取自定义识别词
-                download_history_repository = get_chain_download_history_port()
+                download_history_repository = self.download_history_repository
                 download_history = self._resolve_download_history(
                     repository=download_history_repository,
                     file_path=file_path,

@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator, Callable, Generator
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from app.application.agent import AgentDataContext
 from app.application.configuration import RuntimeConfiguration, RuntimeSettingsService
 from app.application.history import (
     TransferHistoryMutationRepository,
@@ -20,6 +21,7 @@ from app.application.subscription.contract import (
     SubscriptionHistoryStagingPort,
     SubscriptionStagingPort,
 )
+from app.application.transfer.execution import TransferExecutionRepository
 from app.application.workflow import WorkflowCachePort, WorkflowQueryService
 from app.runtime.tasks import TaskRegistry
 
@@ -160,6 +162,7 @@ class HistoryRuntime:
     transfer_repository: TransferHistoryRepository
     transfer_mutation_repository: TransferHistoryRepositoryFactory
     media_server_repository: RepositoryFactory
+    transfer_execution_repository: TransferExecutionRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +199,7 @@ class HostRuntime:
     """宿主组合根构建且在一个 FastAPI lifespan 内共享的运行时对象。"""
 
     agent_chat: AgentChatRuntime
+    agent: AgentDataContext
     persistence: PersistenceRuntime
     authentication: AuthenticationRuntime
     messaging: MessagingRuntime

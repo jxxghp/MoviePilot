@@ -5,15 +5,15 @@ from fastapi import Depends, HTTPException, Query, status
 
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.dependencies.auth import get_current_active_manage_user
-from app.api.dependencies.history import get_transfer_history_lookup_service
+from app.api.dependencies.history import get_transfer_execution_repository, get_transfer_history_lookup_service
 from app.api.response import ResponseAPIRouter
-from app.application.chain.data import get_chain_transfer_execution_port
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.directory import DirectoryHelper
 from app.application.history import TransferHistoryLookupService
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionConflictError,
+    TransferExecutionRepository,
     TransferExecutionState,
     TransferManualReviewDecision,
     TransferManualReviewQuery,
@@ -96,12 +96,13 @@ def list_transfer_manual_reviews(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=30, ge=1, le=100),
     current_user: object = Depends(get_current_active_manage_user),
+    repository: TransferExecutionRepository = Depends(
+        get_transfer_execution_repository
+    ),
 ) -> Any:
     """分页返回待复核或已判定等待 durable 恢复的任务。"""
     del current_user
-    result = TransferManualReviewQuery(
-        get_chain_transfer_execution_port()
-    ).list(
+    result = TransferManualReviewQuery(repository).list(
         state=TransferExecutionState(state_filter),
         page=page,
         page_size=page_size,
@@ -125,12 +126,13 @@ def list_transfer_manual_reviews(
 def get_transfer_manual_review(
     task_id: str,
     current_user: object = Depends(get_current_active_manage_user),
+    repository: TransferExecutionRepository = Depends(
+        get_transfer_execution_repository
+    ),
 ) -> Any:
     """按任务标识返回严格裁剪的人工复核详情。"""
     del current_user
-    task = TransferManualReviewQuery(
-        get_chain_transfer_execution_port()
-    ).get(task_id=task_id)
+    task = TransferManualReviewQuery(repository).get(task_id=task_id)
     if task is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -148,6 +150,9 @@ def resolve_transfer_manual_review(
     task_id: str,
     review: _SchemaTransferManualReviewRequest,
     current_user: object = Depends(get_current_active_manage_user),
+    repository: TransferExecutionRepository = Depends(
+        get_transfer_execution_repository
+    ),
 ) -> Any:
     """提交无租约人工判定，并返回不含 attempt 与 lease 的公开状态。"""
     result = (
@@ -156,9 +161,7 @@ def resolve_transfer_manual_review(
         else None
     )
     try:
-        resolved = TransferExecutionCommand(
-            get_chain_transfer_execution_port()
-        ).resolve_manual_review(
+        resolved = TransferExecutionCommand(repository).resolve_manual_review(
             task_id=task_id,
             operation_id=review.operation_id,
             decision=TransferManualReviewDecision(review.decision),

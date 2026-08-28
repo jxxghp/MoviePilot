@@ -73,11 +73,10 @@ def test_new_subscribe_search_keeps_state_when_recently_created(monkeypatch) -> 
     """
     _SubscribeOper.subscribe = _new_subscribe(datetime.now())
     _SubscribeOper.updates = []
-    monkeypatch.setattr(subscribe_module, "get_chain_subscribe_port", _SubscribeOper)
-
     media_chain_class = Mock()
     with patch.object(subscribe_module, "MediaChain", media_chain_class):
         chain = object.__new__(SubscribeChain)
+        chain.subscription_repository = _SubscribeOper()
         chain.search(state="N", manual=False)
 
     media_chain_class.assert_not_called()
@@ -90,12 +89,11 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
     """
     _SubscribeOper.subscribe = _new_subscribe(datetime.now() - timedelta(minutes=2))
     _SubscribeOper.updates = []
-    monkeypatch.setattr(subscribe_module, "get_chain_subscribe_port", _SubscribeOper)
-
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
     with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
         chain = object.__new__(SubscribeChain)
+        chain.subscription_repository = _SubscribeOper()
         chain.search(state="N", manual=False)
 
     media_chain.recognize_media.assert_called_once()
@@ -118,16 +116,12 @@ def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None
     subscribes = {first.id: first, second.id: second}
     subscribe_oper = Mock()
     subscribe_oper.get.side_effect = subscribes.get
-    monkeypatch.setattr(
-        subscribe_module,
-        "get_chain_subscribe_port",
-        lambda: subscribe_oper,
-    )
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
 
     with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
         chain = object.__new__(SubscribeChain)
+        chain.subscription_repository = subscribe_oper
         chain.search(sids=(31, 32), state=None, manual=False)
 
     assert [item.args for item in subscribe_oper.get.call_args_list] == [(31,), (32,)]
@@ -139,10 +133,10 @@ def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
     """订阅搜索锁超时后必须中止，不能在无锁状态下继续访问订阅。"""
     monkeypatch.setattr(SubscribeChain, "_rlock", _TimedOutLock())
     subscribe_oper = Mock()
-    monkeypatch.setattr(subscribe_module, "get_chain_subscribe_port", subscribe_oper)
     progress = Mock()
 
     chain = object.__new__(SubscribeChain)
+    chain.subscription_repository = subscribe_oper
     chain.search(state="N", progress_callback=progress)
 
     subscribe_oper.assert_not_called()

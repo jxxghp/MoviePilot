@@ -226,36 +226,23 @@ def test_site_adapter_public_surface_has_no_any_annotations() -> None:
     assert violations == []
 
 
-def test_site_chain_and_agent_getters_return_typed_repository() -> None:
-    """Chain 与 Agent 只能通过返回 SiteRepository 的明确 getter 取站点端口。"""
-    paths = (
-        APP_ROOT / "application" / "chain" / "data.py",
-        APP_ROOT / "application" / "agentdata.py",
+def test_chain_runtime_context_owns_typed_site_repository() -> None:
+    """Chain 站点仓储必须由显式运行上下文注入，旧数据 locator 不得存在。"""
+    path = APP_ROOT / "application" / "chain" / "context.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    context = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "ChainRuntimeContext"
     )
-    expected_getters = {"get_chain_site_port", "get_agent_site_port"}
-    returns: dict[str, str] = {}
-    retired_classes: list[str] = []
-
-    for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in tree.body:
-            if isinstance(node, ast.ClassDef) and node.name in {
-                "SitePort",
-                "SitePortProxy",
-            }:
-                retired_classes.append(f"{path.name}:{node.name}:{node.lineno}")
-            if (
-                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name in expected_getters
-            ):
-                assert node.returns is not None
-                returns[node.name] = ast.unparse(node.returns)
-
-    assert retired_classes == []
-    assert returns == {
-        "get_chain_site_port": "SiteRepository",
-        "get_agent_site_port": "SiteRepository",
+    annotations = {
+        node.target.id: ast.unparse(node.annotation)
+        for node in context.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
     }
+
+    assert annotations["site_repository"] == "SiteRepository"
+    assert not (APP_ROOT / "application" / "chain" / "data.py").exists()
 
 
 def test_site_files_use_single_word_owners_without_package_reexports() -> None:

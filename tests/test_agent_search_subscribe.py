@@ -5,7 +5,6 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call
 
-from app.agent.tools.impl import search_subscribe as search_subscribe_module
 from app.agent.tools.impl.search_subscribe import SearchSubscribeTool
 from app.application.subscription.contract import SubscriptionPatch
 
@@ -48,7 +47,6 @@ def test_search_subscribe_uses_async_data_port(monkeypatch) -> None:
             raise AssertionError("async 工具不应调用同步订阅更新")
 
     port = _AsyncSubscribePort()
-    monkeypatch.setattr(search_subscribe_module, "get_agent_subscribe_port", lambda: port)
 
     async def _run_blocking(*_args, **_kwargs):
         await asyncio.sleep(0)
@@ -56,7 +54,11 @@ def test_search_subscribe_uses_async_data_port(monkeypatch) -> None:
     monkeypatch.setattr(SearchSubscribeTool, "run_blocking", _run_blocking)
 
     result = asyncio.run(
-        SearchSubscribeTool(session_id="test", user_id="1").run(
+        SearchSubscribeTool(
+            session_id="test",
+            user_id="1",
+            data=SimpleNamespace(subscriptions=port),
+        ).run(
             subscribe_id=record.id,
             filter_groups=["default"],
         )
@@ -80,12 +82,15 @@ def test_search_subscribe_rejects_paused_subscription_without_search(monkeypatch
         async_update = AsyncMock()
 
     port = _AsyncSubscribePort()
-    monkeypatch.setattr(search_subscribe_module, "get_agent_subscribe_port", lambda: port)
     run_blocking = AsyncMock()
     monkeypatch.setattr(SearchSubscribeTool, "run_blocking", run_blocking)
 
     result = asyncio.run(
-        SearchSubscribeTool(session_id="test", user_id="1").run(
+        SearchSubscribeTool(
+            session_id="test",
+            user_id="1",
+            data=SimpleNamespace(subscriptions=port),
+        ).run(
             subscribe_id=record.id,
         )
     )

@@ -38,13 +38,14 @@ from app.agent.tools.impl.update_agent_task import (
     UpdateAgentTaskTool,
 )
 from app.agent.tools.tags import ToolTag
-from app.runtime.config import settings
 from app.db import SessionFactory
-from app.db.oper.agenttask import AgentTaskOper
+from app.db.adapters.agent import TransactionalAgentTaskRepository
 from app.db.models.agenttask import AgentTask
-from app.schemas import ScheduleInfo
-from app.scheduler import Scheduler
+from app.db.oper.agenttask import AgentTaskOper
+from app.runtime.config import settings
 from app.runtime.scheduling import TimerUtils
+from app.scheduler import Scheduler
+from app.schemas import ScheduleInfo
 
 
 class _FakeAgentTaskScheduler:
@@ -139,6 +140,7 @@ def _build_agent_task_scheduler(reconcile: bool = False) -> Scheduler:
     scheduler._active_job_generations = {}
     scheduler._agent_task_reservations = {}
     scheduler._agent_task_interruptions_reconciled = False
+    scheduler._agent_tasks = TransactionalAgentTaskRepository(SessionFactory)
     if reconcile:
         scheduler._reconcile_agent_task_interruptions()
     return scheduler
@@ -146,7 +148,14 @@ def _build_agent_task_scheduler(reconcile: bool = False) -> Scheduler:
 
 def _build_tool(tool_class, user_id: str):
     """构造带当前用户消息上下文的 Agent 工具。"""
-    tool = tool_class(session_id=f"session-{user_id}", user_id=user_id)
+    tool = tool_class(
+        session_id=f"session-{user_id}",
+        user_id=user_id,
+        data=SimpleNamespace(
+            tasks=TransactionalAgentTaskRepository(SessionFactory),
+            chat=SimpleNamespace(get_sync=lambda **_kwargs: None),
+        ),
+    )
     tool.set_message_attr(
         channel="Telegram",
         source="telegram-test",
@@ -329,6 +338,7 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
     scheduler._job_generations = {}
     scheduler._active_job_generations = {}
     scheduler._agent_task_reservations = {}
+    scheduler._agent_tasks = TransactionalAgentTaskRepository(SessionFactory)
 
     next_run_at = scheduler.update_agent_task_job(task.id)
     job_id = scheduler._get_agent_task_job_id(task.id)

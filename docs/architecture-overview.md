@@ -156,10 +156,11 @@ flowchart TB
         -> db/oper 与 db/models
 ```
 
-`app/application/chain/data.py`、`app/application/agentdata.py` 和
-`app/application/history.py` 的 `get_*_port()` 是宿主生产代码读取组合根能力的现有接缝；其中
-Subscription、Site、History 等已完成迁移，尚未迁移的 Chain/Agent `Any` factory、裸 Oper 和
-locator 仍需进入类型化 Port/DTO，不能把当前 getter 聚合器当作最终合同。
+Chain 的持久化能力由 startup 构造 `ChainRuntimeContext` 并在 `ChainBase` 实例化时显式注入；
+Agent manager、memory、tool 和 scheduler 共享同一个 `AgentDataContext`。原
+`app/application/chain/data.py`、`app/application/agentdata.py` 的进程级 getter 已删除，且不进入
+SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/Port，具体实现只存在于
+`db/adapters`，宿主生产代码不得恢复 raw Oper、`Any` factory 或数据服务 locator。
 需要跨进程恢复或 commit 后可靠执行的
 业务副作用进入 `app/application/outbox.py` 定义的 Outbox 端口，由
 `app/db/adapters/outbox.py` 实现；`app/runtime/tasks.py` 的 TaskRegistry 只负责进程内任务所有权、
@@ -711,7 +712,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 859 |
-| 内部导入边 | 7,089 |
+| 内部导入边 | 7,062 |
 | 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
 | Direct egress | 66（12 条待迁移债务，54 条精确 containment） |
 | Module Contract V2 spec | 217（其中 215 个进入 `run_module` 观察面） |

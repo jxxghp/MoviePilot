@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_download_history_port
 from app.application.history import DownloadHistorySnapshot
 from app.chain.download import DownloadChain
 from app.runtime.log import logger
@@ -164,19 +163,18 @@ class QueryDownloadTasksTool(MoviePilotTool):
         media = music.get("media")
         return media if isinstance(media, dict) else {}
 
-    @classmethod
     def _load_history_map(
-        cls, torrents: List[DownloaderTorrent]
+        self,
+        torrents: List[DownloaderTorrent],
     ) -> Dict[str, DownloadHistorySnapshot]:
         """批量加载下载历史，避免逐条查询形成 N+1。"""
         hashes = [torrent.hash for torrent in torrents if torrent.hash]
         if not hashes:
             return {}
-        return get_agent_download_history_port().get_by_hashes(hashes)
+        return self.data.download_history.get_by_hashes(hashes)
 
-    @classmethod
     def _query_downloads_sync(
-        cls,
+        self,
         downloader: Optional[str] = None,
         status: Optional[str] = "all",
         hash_value: Optional[str] = None,
@@ -189,8 +187,8 @@ class QueryDownloadTasksTool(MoviePilotTool):
         同步查询下载器和下载历史，整个链路放在线程池中执行。
         """
         download_chain = DownloadChain()
-        query_status = cls._normalize_query_status(status)
-        include_all_tags = cls._normalize_include_all_tags(include_all_tags)
+        query_status = self._normalize_query_status(status)
+        include_all_tags = self._normalize_include_all_tags(include_all_tags)
 
         if hash_value:
             torrents = (
@@ -206,17 +204,17 @@ class QueryDownloadTasksTool(MoviePilotTool):
                     "message": f"未找到hash为 {hash_value} 的下载任务（该任务可能已完成、已删除或不存在）"
                 }
 
-            history_map = cls._load_history_map(torrents)
+            history_map = self._load_history_map(torrents)
             for torrent in torrents:
-                cls._apply_download_history(torrent, history_map.get(torrent.hash))
+                self._apply_download_history(torrent, history_map.get(torrent.hash))
             filtered_downloads = list(torrents)
         elif title:
-            all_torrents = cls._get_all_torrents(
+            all_torrents = self._get_all_torrents(
                 download_chain,
                 downloader,
                 include_all_tags=include_all_tags,
             )
-            history_map = cls._load_history_map(all_torrents)
+            history_map = self._load_history_map(all_torrents)
             filtered_downloads = []
             title_lower = title.lower()
 
@@ -231,7 +229,7 @@ class QueryDownloadTasksTool(MoviePilotTool):
                 if not matched:
                     continue
 
-                cls._apply_download_history(torrent, history)
+                self._apply_download_history(torrent, history)
                 filtered_downloads.append(torrent)
 
             if not filtered_downloads:
@@ -252,9 +250,12 @@ class QueryDownloadTasksTool(MoviePilotTool):
                     include_all_tags=include_all_tags,
                 ) or []
 
-                history_map = cls._load_history_map(filtered_downloads)
+                history_map = self._load_history_map(filtered_downloads)
                 for torrent in filtered_downloads:
-                    cls._apply_download_history(torrent, history_map.get(torrent.hash))
+                    self._apply_download_history(
+                        torrent,
+                        history_map.get(torrent.hash),
+                    )
 
         if tag and filtered_downloads:
             tag_lower = tag.lower()

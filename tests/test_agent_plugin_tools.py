@@ -16,13 +16,13 @@ from app.agent.tools.impl.query_market_plugins import QueryMarketPluginsTool
 from app.agent.tools.impl.query_plugin_config import QueryPluginConfigTool
 from app.agent.tools.impl.query_plugin_data import QueryPluginDataTool
 from app.agent.tools.impl.reload_plugin import ReloadPluginTool
-from app.schemas.plugin import PluginRuntimeStatus
 from app.agent.tools.impl.uninstall_plugin import UninstallPluginTool
 from app.agent.tools.impl.update_plugin_config import UpdatePluginConfigTool
 from app.runtime.extensions.plugin.admission import (
     PluginMutationAdmission,
     PluginMutationRejectedError,
 )
+from app.schemas.plugin import PluginRuntimeStatus
 
 
 def _plugin_snapshot(state: bool = True) -> dict:
@@ -439,22 +439,22 @@ def test_query_plugin_data_truncates_large_payload() -> None:
     """
     查询插件数据会截断超长内容并返回预览。
     """
-    tool = QueryPluginDataTool(session_id="session-1", user_id="10001")
     plugin_data_oper = MagicMock()
-    plugin_data_oper.async_get_data_all = AsyncMock(return_value=[
-        SimpleNamespace(key="payload", value={"text": "x" * 5000})
-    ])
+    plugin_data_oper.list = AsyncMock(
+        return_value={"payload": {"text": "x" * 5000}}
+    )
 
     with (
         patch(
             "app.agent.tools.impl.query_plugin_data.get_plugin_snapshot",
             return_value=_plugin_snapshot(),
         ),
-        patch(
-            "app.agent.tools.impl.query_plugin_data.get_agent_plugin_data_port",
-            return_value=plugin_data_oper,
-        ),
     ):
+        tool = QueryPluginDataTool(
+            session_id="session-1",
+            user_id="10001",
+            data=SimpleNamespace(plugin_data=plugin_data_oper),
+        )
         result = asyncio.run(tool.run(plugin_id="DemoPlugin", max_chars=200))
 
     payload = json.loads(result)

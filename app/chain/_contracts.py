@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from app.application.history import TransferHistoryRepository
+    from app.application.transfer.execution import TransferExecutionRepository
 
 
 class ChainRuntimeMixinHost(Protocol):
@@ -98,3 +102,5 @@ class TransferMixinHost(ChainRuntimeMixinHost, Protocol):
     def obtain_images(self, *args: Any, **kwargs: Any) -> Any: ...
 
     def do_transfer(self, *args: Any, **kwargs: Any) -> Any: ...
+    transfer_history_repository: TransferHistoryRepository
+    transfer_execution_repository: TransferExecutionRepository

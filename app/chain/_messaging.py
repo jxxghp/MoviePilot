@@ -8,9 +8,9 @@ import copy
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union, cast
 
-from app.application.chain.data import get_chain_user_port
 from app.application.messaging.message import MessageTemplateHelper
 from app.application.notification import get_notification_switch
+from app.application.security.user import ChainUserRepository
 from app.chain._contracts import ChainRuntimeMixinHost
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
@@ -120,6 +120,7 @@ class MessageProcessingMixin:
 
 class NotificationMixin:
     __mixin_host_protocol__ = ChainRuntimeMixinHost
+    user_repository: ChainUserRepository
     """通知消息发送域：渲染、隔离路由、队列发送与消息编辑。"""
 
     def post_message(
@@ -178,7 +179,7 @@ class NotificationMixin:
                 # 是否已发送管理员标志
                 admin_sended = False
                 send_orignal = False
-                useroper = get_chain_user_port()
+                useroper = self.user_repository
                 for action in actions:
                     send_message = copy.deepcopy(dispatch_message)
                     if action == "admin" and not admin_sended:
@@ -336,7 +337,7 @@ class NotificationMixin:
                 # 是否已发送管理员标志
                 admin_sended = False
                 send_orignal = False
-                useroper = get_chain_user_port()
+                useroper = self.user_repository
                 for action in actions:
                     send_message = copy.deepcopy(dispatch_message)
                     if action == "admin" and not admin_sended:

@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.agentdata import get_agent_subscribe_port
 from app.application.subscription.contract import SubscriptionPatch
 from app.chain.subscribe import SubscribeChain
 from app.runtime.log import logger
@@ -58,7 +57,7 @@ class SearchSubscribeTool(MoviePilotTool):
 
         try:
             # 先验证订阅是否存在
-            repository = get_agent_subscribe_port()
+            repository = self.data.subscriptions
             subscribe = await repository.async_get(subscribe_id)
 
             if not subscribe:

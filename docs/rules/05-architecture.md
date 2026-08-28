@@ -66,8 +66,8 @@ to make the directory tree look symmetrical.
 | `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
 | `app/application/history.py` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
 | `app/application/music/` | Multi-source music catalog orchestration |
-| `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the runtime dependency aggregate, `data.py` owns named persistence ports, and `events.py` owns durable event write contracts plus replayable payload conversion |
-| `app/application/agentdata.py` | Named Agent data ports; canonical Agent consumers use `get_agent_*_port()` and do not alias legacy proxies to Oper classes |
+| `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the typed runtime and persistence dependency aggregate, and `events.py` owns durable event write contracts plus replayable payload conversion |
+| `app/application/agent.py` | Agent orchestration facade and typed `AgentDataContext`; startup injects one explicit data context into the manager, memory, tool and scheduler owners without a process-wide persistence locator |
 | `app/application/outbox.py` | Durable intent, transaction-only stager, short-transaction dispatch store, claim fencing and structured post-commit result contracts |
 | `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns admission/planning/queue behavior; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs |
 | `app/application/plugin/` | Plugin market catalog, installation command, installed-plugin identity contract and startup migration, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `identity.py`, `migration.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
@@ -138,19 +138,20 @@ Session. `app/db/adapters/` is the concrete persistence-adapter layer: it may
 depend on Application-owned Protocols, UoW/Session and Oper implementations.
 This deliberate dependency inversion is the only `DB implementation ->
 Application contract` direction; Application must remain free of DB imports.
-Migrated user, interaction, messaging, music, site, media-server, download, subscribe and transfer
-Chain consumers temporarily use the named `get_chain_*_port()` functions from
-`app/application/chain/data.py` while each owner establishes typed DTO/Port contracts.
-The retired migration-time `*PortProxy` classes and dynamic `__getattr__` forwarding must not
-be recreated; they had no host, SDK or plugin consumers. Workflow execution uses its owning
-`app.application.workflow` service directly and must not be registered again in `ChainDataPorts`.
+User, interaction, messaging, music, site, media-server, download, subscribe and transfer
+Chain consumers receive typed repositories through `ChainRuntimeContext`; `ChainBase` copies the
+context fields to instance-owned capabilities during construction. The deleted process-wide
+`chain/data.py` locator, migration-time `*PortProxy` classes and dynamic `__getattr__` forwarding
+must not be recreated; they had no host, SDK or plugin consumers. Workflow execution uses its
+owning `app.application.workflow` service directly and is not duplicated in the Chain context.
 Download-failure cooldown and media-server cache consumers use their typed Application DTO/Port
 contracts. Their DB adapters project ORM values before Session close and commit each local write
 in a separate short UoW, so remote media enumeration never holds a database transaction.
-Agent orchestration, memory and tool implementations follow the same rule via
-the named `get_agent_*_port()` functions from `app/application/agentdata.py`.
-The legacy Agent `*Port` proxy classes remain import-compatible boundaries and
-must not be reintroduced as Oper aliases in canonical Agent modules.
+Agent orchestration, memory, tools and scheduler receive the single typed `AgentDataContext`
+declared in `app/application/agent.py`. The deleted `agentdata.py` locator and its getter surface
+were host-internal migration scaffolding, never plugin ABI, and must not gain SDK/Compat aliases.
+Legacy public Agent imports remain exact SDK/Compat boundaries and must not be reintroduced as
+Oper aliases in canonical Agent modules.
 Monitor history checks use `get_transfer_history_repository()` from
 `app/application/history.py`; old constructible Oper-style facades are available
 only through the exact SDK Legacy/Compat mapping.
@@ -732,7 +733,8 @@ driven workflow registration.
 
 | Path | Purpose |
 |---|---|
-| `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge |
+| `app/application/agent.py` | Agent orchestration facade plus typed `AgentDataContext`; lightweight service providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge or global persistence locator |
+| `app/db/adapters/agent.py` | Agent task and plugin-data persistence implementations; ORM values are projected to Application snapshots before Session close |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/application/subscription/contract.py` | Deeply frozen Subscription/History DTOs, media identity, write patch and typed query/write/staging Repository contracts |
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-command orchestration |

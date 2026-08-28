@@ -6,7 +6,6 @@ from typing import Optional, Type
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
-from app.agent.tools.tags import ToolTag
 from app.agent.tools.impl._filter_rule_utils import (
     build_custom_rule_map,
     collect_rule_group_usages,
@@ -18,6 +17,7 @@ from app.agent.tools.impl._filter_rule_utils import (
     save_system_config,
     serialize_rule_group,
 )
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
@@ -131,11 +131,15 @@ class UpdateRuleGroupTool(MoviePilotTool):
             reference_changes = {}
             if updated_group.name != current_group.name:
                 reference_changes = await rename_rule_group_references(
+                    self.data.subscriptions,
                     current_group.name,
                     updated_group.name,
                 )
 
-            usage = await collect_rule_group_usages([updated_group.name])
+            usage = await collect_rule_group_usages(
+                self.data.subscriptions,
+                [updated_group.name],
+            )
             return json.dumps(
                 {
                     "success": True,

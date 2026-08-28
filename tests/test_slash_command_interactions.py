@@ -1,3 +1,7 @@
+"""斜杠命令交互路由测试。"""
+
+# ruff: noqa: E402 - 可选运行时依赖必须在导入消息 Chain 前完成隔离。
+
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -10,13 +14,13 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("aioshutil")
 ensure_optional_stub("pyquery", PyQuery=object)
 
-from app.chain.message import MessageChain
 from app.application.messaging.interaction import InteractionContext
-from app.chain.site import SiteChain
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
-from app.chain.subscribe import SubscribeChain
 from app.application.messaging.subscribe import subscribe_interaction_manager
+from app.chain.message import MessageChain
+from app.chain.site import SiteChain
+from app.chain.subscribe import SubscribeChain
 from app.schemas.types import NotificationChannel
 
 
@@ -209,12 +213,8 @@ class TestSlashCommandInteractions(unittest.TestCase):
             )
         ]
 
-        with patch(
-            "app.chain.site.get_chain_site_port",
-            return_value=SimpleNamespace(list=lambda: fake_sites),
-        ), patch.object(
-            chain, "post_message"
-        ) as post_message:
+        chain.site_repository = SimpleNamespace(list=lambda: fake_sites)
+        with patch.object(chain, "post_message") as post_message:
             chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
 
         notification = post_message.call_args[0][0]
@@ -237,10 +237,8 @@ class TestSlashCommandInteractions(unittest.TestCase):
         ]
 
         subscribe_port = SimpleNamespace(list=lambda: fake_subscribes)
-        with patch(
-            "app.chain.subscribe.get_chain_subscribe_port",
-            return_value=subscribe_port,
-        ), patch.object(chain, "post_message") as post_message:
+        chain.subscription_repository = subscribe_port
+        with patch.object(chain, "post_message") as post_message:
             chain.remote_list(channel=NotificationChannel.Web, userid="u1", source="web")
 
         notification = post_message.call_args[0][0]

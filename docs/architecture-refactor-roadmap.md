@@ -98,16 +98,16 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S1-L1.4 幂等执行与终态结算 | `VERIFIED` | S1-L1.3 | 文件操作、历史提交和 checkpoint 可重放；唯一 retry owner 生效，未知外部结果进入 `manual_review`，仅完整终态删除 pending |
 | S1-L1.5 E3 全链收口 | `DELIVERED` | S1-L1.4 | `e9de149db`、`a2e249f20`：崩溃矩阵、3.0.17 升降级、重复回放和插件 ABI 验收完整；旧 fail-open、重复状态与兼容层外旧入口删除；Unit Tests `33092427327`、Pylint `33092427348` 全绿，ARCH-102 债务归零 |
 | S1-L2 Workflow typed query | `DELIVERED` | S0 | `b4f873654`、`a01a35bcb`：Workflow Application Port 不返回 `Any`/ORM，Session 内投影冻结 DTO，正式调用方全部切换；Unit Tests `33098869736`、Pylint `33098869837` 全绿，覆盖率低水位提升至 Application `78.78%` |
-| S1-L3 Chain/Agent typed data ports | `ACTIVE` | S1-L2 | `ChainDataPorts`/`AgentDataPorts` 的 raw Oper/`Any` factory 全部清零，兼容调用进入 Legacy 层 |
+| S1-L3 Chain/Agent typed data ports | `VERIFIED` | S1-L2 | User、History、Site、Subscription 的冻结 DTO/typed Port 已完成；`ChainDataPorts`/`AgentDataPorts` 与 raw Oper/`Any` factory 清零，旧公开 ABI 仅由 Legacy/Compat 承接 |
 | S1-L3.1 Workflow typed execution | `DELIVERED` | S1-L2 | `17d8be2af`、`b33b29876`：Chain 直连类型化事务服务且单次执行只取一个 port；canonical Oper 删除旧 writer/无 Session 写方法，旧 ABI 只在 `_legacy/workflow.py` 与 Compat overlay；Unit Tests `33103913838`、Pylint `33103913935` 全绿，Application 覆盖率低水位提升至 `78.79%` |
-| S1-L3.2 Chain registry/DI | `ACTIVE` | S1-L3.1 | 显式类型化 factory，删除 PortProxy 与失效的双重注入，构造器注入真实控制调用 |
+| S1-L3.2 Chain registry/DI | `VERIFIED` | S1-L3.1 | 显式类型化 context，删除 PortProxy、全局数据 getter 与失效的双重注入，构造器注入真实控制调用 |
 | S1-L3.2.1 Registry hygiene | `DELIVERED` | S1-L3.1 | `ac7a20132`：删除零消费者 PortProxy/动态转发和 `ChainRuntimeContext.data_ports` 伪注入；Workflow 退出 Chain registry，只保留 Application owner 单一配置入口；Unit Tests `33120205586`、Pylint `33120205581` 全绿 |
 | S1-L3.3 DownloadFailure/MediaServer | `DELIVERED` | S1-L3.2 | `5fb62108a`：两组 raw factory 已替换为冻结 DTO/typed Port；失败冷却在 Session 内投影，媒体库查询只返回标量且每个 upsert/cleanup 独立短事务，远端枚举不持有 Session；旧 Oper 与插件可见 Chain ABI 保持不变；Unit Tests `33127544925`、Pylint `33127544927` 全绿，Application 覆盖率低水位提升至 `78.95%` |
 | S1-L3.4 User | `VERIFIED` | S1-L3.3 | User Chain/Agent/认证改用冻结 typed snapshot；创建、更名、删除与最后一个启用超级管理员保护归并到单 UoW；用户名唯一索引及 UserConfig/PassKey 级联迁移落地，UserConfig 在 commit 后持写锁重载数据库事实源并发布内存快照 |
 | S1-L3.5 History | `VERIFIED` | S1-L3.4 | DownloadHistory 与 TransferHistory 均已迁入深度冻结 DTO、typed query/write/staging Port 与短 Session adapter；请求级删除和 durable 结算各自保持单一 UoW，canonical 调用方不再接收 raw Oper/ORM，旧写入 ABI 只由 SDK Legacy/Compat 提供 |
 | S1-L3.6 Site | `VERIFIED` | S1-L3.5 | Site 配置、用户数据、图标和统计统一为深度冻结 DTO 与 typed query/write/staging Port；请求写入复用 AsyncSession，Chain/Agent 使用独立短事务，canonical 不再接收 raw Oper/ORM，旧插件 ABI 只经 SDK Legacy/Compat |
 | S1-L3.7 Subscription | `VERIFIED` | S1-L3.6 | `application/subscription/contract.py` 统一深度冻结 Snapshot/History/Identity/Patch 与 typed query/write/staging Repository；DB adapter 在 Session 内完成 ORM 投影，Chain/API/Agent/Workflow/interaction 不再消费 raw Oper/ORM/`Any`；旧 `SubscribeOper`/`SubscribeHistoryOper` 只经同一 SDK Legacy/Compat 门面保留插件 ABI |
-| S1-L3.8 Agent/Transfer locator gate | `PLANNED` | S1-L3.7 | 删除 AgentDataPorts 与 Chain locator 跨层泄漏，AST 门禁确认 canonical 无 raw getter/Oper/Any |
+| S1-L3.8 Agent/Transfer locator gate | `VERIFIED` | S1-L3.7 | `chain/data.py`、`agentdata.py` 及其 getter 已删除；Chain/Agent 改用显式 typed context，AST 门禁确认 canonical 无 raw getter/Oper/Any；全量有效 `6955 passed, 9 skipped`，Application 覆盖率提升至 `79.83%`，依赖边降至 `7,062` |
 | S1-L4 Subscription mutation UoW | `PLANNED` | S1-L3.8 | 在已完成 typed DTO/Port 的基础上，逐项证明新增、修改、删除、完成及批量修改由用例拥有单一 UoW；禁止把短事务 Repository 当作跨记录原子事务，旧自动事务入口退出 canonical 路径 |
 | S1-L5 站点/规则引用原子清理 | `PLANNED` | S1-L4 | SystemConfig+Subscribe 同事务更新，commit 后快照原子发布，并发/故障注入无部分状态 |
 | S1-L6 Outbox 完成语义 | `VERIFIED` | S0 | 事务内 `OutboxStager` 与独立短事务 `OutboxDispatchStore` 已分离；即时投递与 dispatcher 均先 claim，complete/retry 受 attempt fencing；`PostCommitResult` 区分已提交业务、已完成与 pending effect。事件载荷和宿主 correlation context 携带稳定 event key；旧通知插件保持原签名并承认 at-least-once 重复边界 |
@@ -153,7 +153,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 815 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 760 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口

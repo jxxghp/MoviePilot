@@ -3,7 +3,8 @@ import inspect
 import json
 import threading
 from abc import ABCMeta, abstractmethod
-from concurrent.futures import Future as ConcurrentFuture, ThreadPoolExecutor
+from concurrent.futures import Future as ConcurrentFuture
+from concurrent.futures import ThreadPoolExecutor
 from contextvars import Context, copy_context
 from functools import partial
 from pathlib import Path
@@ -18,14 +19,14 @@ from app.agent.policy.sanitizer import (
     summarize_result,
 )
 from app.agent.tools.tags import ToolTag
-from app.chain import ChainBase
-from app.runtime.settings import get_runtime_setting
-
+from app.application.agent import AgentDataContext
 from app.application.messaging.agent import matches_channel_admin
 from app.application.notification import get_notification_configs
+from app.chain import ChainBase
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.message import Message
-from app.schemas.types import NotificationChannel, MessageType
+from app.schemas.types import MessageType, NotificationChannel
 
 if TYPE_CHECKING:
     from app.agent.callback import StreamingHandler as _StreamingHandlerProtocol
@@ -356,16 +357,32 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
     _stream_handler: Optional[_StreamingHandlerProtocol] = PrivateAttr(default=None)
     _require_admin: bool = PrivateAttr(default=False)
     _agent_context: dict = PrivateAttr(default_factory=dict)
+    _data: Optional[AgentDataContext] = PrivateAttr(default=None)
 
-    def __init__(self, session_id: str, user_id: str, **kwargs):
+    def __init__(
+        self,
+        session_id: str,
+        user_id: str,
+        data: Optional[AgentDataContext] = None,
+        **kwargs,
+    ):
+        """保存会话身份及组合根注入的 Agent 数据上下文。"""
         super().__init__(**kwargs)
         self._session_id = session_id
         self._user_id = user_id
+        self._data = data
         # require_admin 在各工具子类以 pydantic 字段声明，pydantic v2 不在类对象上暴露字段值
         # （getattr(cls, ...) 取不到），必须经实例读取——super().__init__() 已按字段默认填充实例；
         # getattr 兜底兼容未声明该字段的工具，缺省按非管理员（False）处理。
         self._require_admin = getattr(self, "require_admin", False)
         self.tags = self._build_tool_tags()
+
+    @property
+    def data(self) -> AgentDataContext:
+        """返回工具数据上下文；未装配时稳定失败而非回退全局 locator。"""
+        if self._data is None:
+            raise RuntimeError("Agent 工具数据上下文尚未注入")
+        return self._data
 
     @staticmethod
     def _normalize_tag_values(tags: Optional[Any]) -> set[str]:

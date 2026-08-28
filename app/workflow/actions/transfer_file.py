@@ -4,7 +4,6 @@ from typing import Optional
 
 from pydantic import Field
 
-from app.application.chain.data import get_chain_transfer_history_port
 from app.chain.storage import StorageChain
 from app.chain.transfer import TransferChain
 from app.runtime.log import logger
@@ -66,7 +65,7 @@ class TransferFileAction(BaseAction):
         _failed_count = 0
         storagechain = StorageChain()
         transferchain = TransferChain()
-        transferhis = get_chain_transfer_history_port()
+        transferhis = transferchain.transfer_history_repository
         if params.source == "downloads":
             # 从下载任务中整理文件
             for download in context.downloads:

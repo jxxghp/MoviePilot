@@ -11,11 +11,6 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
-from app.application.chain.data import (
-    get_chain_download_failure_port,
-    get_chain_download_history_port,
-    get_chain_media_server_port,
-)
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.application.download import selection as _selection
@@ -880,7 +875,7 @@ class DownloadChain(ChainBase):
         torrent = context.torrent_info
         site = getattr(torrent, "site", None)
         try:
-            repository: DownloadFailureRepository = get_chain_download_failure_port()
+            repository: DownloadFailureRepository = self.download_failure_repository
             repository.record_failure(
                 DownloadFailureWrite(
                     fingerprint=fingerprint,
@@ -941,7 +936,7 @@ class DownloadChain(ChainBase):
             return {}
         now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         try:
-            repository: DownloadFailureRepository = get_chain_download_failure_port()
+            repository: DownloadFailureRepository = self.download_failure_repository
             return repository.get_active_by_fingerprints(
                 fingerprints=fingerprints, now_time=now_time,
             )
@@ -1336,7 +1331,7 @@ class DownloadChain(ChainBase):
                 publish=lambda payload: self.eventmanager.send_event(EventType.DownloadAdded, payload),
             )
             return
-        get_chain_download_history_port().add(history, frozen_files)
+        self.download_history_repository.add(history, frozen_files)
         after_commit()
         self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
 
@@ -2046,7 +2041,7 @@ class DownloadChain(ChainBase):
         if not totals:
             totals = {}
 
-        mediaserver = get_chain_media_server_port()
+        mediaserver = self.media_server_repository
         if mediainfo.type == MediaType.MOVIE:
             # 电影
             itemid = mediaserver.get_item_id(mtype=mediainfo.type.value,
@@ -2234,7 +2229,7 @@ class DownloadChain(ChainBase):
         """构造绑定当前下载器能力与历史仓储的任务服务。"""
         return DownloadTaskService(
             list_torrents=self.list_torrents,
-            get_history_by_hashes=get_chain_download_history_port().get_by_hashes,
+            get_history_by_hashes=self.download_history_repository.get_by_hashes,
             start_torrents=self.start_torrents,
             stop_torrents=self.stop_torrents,
             remove_torrents=self.remove_torrents,

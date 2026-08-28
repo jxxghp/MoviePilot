@@ -116,11 +116,7 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
     chain._TransferChain__build_durable_step_runner = Mock(
         return_value=step_runner
     )
-    monkeypatch.setattr(
-        "app.chain.transfer.get_chain_transfer_history_port",
-        lambda: SimpleNamespace(),
-    )
-    monkeypatch.setattr("app.chain._transfer.get_chain_transfer_history_port", lambda: SimpleNamespace())
+    chain.transfer_history_repository = SimpleNamespace()
     monkeypatch.setattr(
         "app.chain.transfer.MediaChain",
         lambda: SimpleNamespace(

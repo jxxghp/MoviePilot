@@ -219,35 +219,26 @@ def test_subscription_callers_do_not_alias_snapshot_to_any() -> None:
     assert violations == []
 
 
-def test_subscription_getters_return_typed_repositories() -> None:
-    """Chain 与 Agent 订阅 getter 不得保留动态代理或 Any 返回值。"""
-    paths = (
-        APP_ROOT / "application" / "chain" / "data.py",
-        APP_ROOT / "application" / "agentdata.py",
+def test_chain_runtime_context_owns_typed_subscription_repository() -> None:
+    """Chain 订阅仓储必须由显式运行上下文注入，旧数据 locator 不得存在。"""
+    context_path = APP_ROOT / "application" / "chain" / "context.py"
+    tree = ast.parse(
+        context_path.read_text(encoding="utf-8-sig"),
+        filename=str(context_path),
     )
-    expected = {
-        "get_chain_subscribe_port": "SubscriptionRepository",
-        "get_agent_subscribe_port": "SubscriptionRepository",
-        "get_agent_subscribe_history_port": "SubscriptionHistoryQueryPort",
+    context = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "ChainRuntimeContext"
+    )
+    annotations = {
+        node.target.id: ast.unparse(node.annotation)
+        for node in context.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
     }
-    returns: dict[str, str] = {}
-    retired: list[str] = []
 
-    for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in tree.body:
-            if isinstance(node, ast.ClassDef) and node.name in {
-                "SubscribePort",
-                "SubscribeHistoryPort",
-                "SubscriptionPortProxy",
-            }:
-                retired.append(f"{path.name}:{node.name}:{node.lineno}")
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in expected:
-                assert node.returns is not None
-                returns[node.name] = ast.unparse(node.returns)
-
-    assert retired == []
-    assert returns == expected
+    assert annotations["subscription_repository"] == "SubscriptionRepository"
+    assert not (APP_ROOT / "application" / "chain" / "data.py").exists()
 
 
 def test_subscription_adapters_implement_typed_public_surface() -> None:

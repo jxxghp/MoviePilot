@@ -195,8 +195,8 @@
   },
   "app/agent/memory/__init__.py": {
     "arg-type": 1,
-    "no-untyped-call": 2,
-    "no-untyped-def": 8,
+    "no-untyped-call": 1,
+    "no-untyped-def": 7,
     "type-arg": 1
   },
   "app/agent/middleware/activity_log.py": {
@@ -251,13 +251,13 @@
     "no-any-return": 2
   },
   "app/agent/orchestrator.py": {
-    "arg-type": 17,
+    "arg-type": 13,
     "assignment": 14,
     "attr-defined": 7,
     "dict-item": 1,
     "no-any-return": 9,
-    "no-untyped-call": 7,
-    "no-untyped-def": 21,
+    "no-untyped-call": 6,
+    "no-untyped-def": 20,
     "type-arg": 35,
     "union-attr": 3,
     "var-annotated": 1
@@ -384,13 +384,11 @@
     "assignment": 1,
     "import-untyped": 1,
     "misc": 2,
-    "no-any-return": 1,
     "override": 1,
     "type-arg": 1
   },
   "app/agent/tools/impl/delete_agent_task.py": {
     "misc": 1,
-    "no-any-return": 1,
     "override": 1
   },
   "app/agent/tools/impl/delete_custom_filter_rule.py": {
@@ -468,8 +466,7 @@
     "type-arg": 1
   },
   "app/agent/tools/impl/query_agent_tasks.py": {
-    "misc": 1,
-    "type-arg": 1
+    "misc": 1
   },
   "app/agent/tools/impl/query_builtin_filter_rules.py": {
     "misc": 1,
@@ -742,13 +739,9 @@
     "override": 1
   },
   "app/agent/tools/impl/update_agent_task.py": {
-    "assignment": 1,
-    "dict-item": 3,
     "import-untyped": 1,
     "misc": 2,
-    "no-any-return": 2,
-    "override": 1,
-    "type-arg": 1
+    "override": 1
   },
   "app/agent/tools/impl/update_custom_filter_rule.py": {
     "arg-type": 5,
@@ -1505,7 +1498,7 @@
     "no-any-return": 2,
     "no-redef": 2,
     "no-untyped-call": 19,
-    "no-untyped-def": 18,
+    "no-untyped-def": 16,
     "operator": 5,
     "return-value": 5,
     "truthy-function": 3,
@@ -3344,14 +3337,14 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 8,
+    "arg-type": 7,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
     "no-untyped-call": 32,
     "no-untyped-def": 6,
-    "return-value": 4
+    "return-value": 3
   },
   "app/startup/initializers/plugins.py": {
     "arg-type": 5,

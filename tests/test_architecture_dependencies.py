@@ -253,6 +253,21 @@ def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
     return references
 
 
+def _class_annotations(path: Path, class_name: str) -> dict[str, str]:
+    """返回指定类的源码级字段注解。"""
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    class_node = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    return {
+        node.target.id: ast.unparse(node.annotation)
+        for node in class_node.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+    }
+
+
 def test_legacy_roots_contain_no_python_sources():
     """旧目录只能作为运行时虚拟包存在，仓库中不得重新出现源码。"""
     leftovers = sorted(
@@ -374,30 +389,6 @@ def test_workflow_execution_chain_uses_single_application_owned_port():
         "reset": "bool",
     }
 
-    data_path = APP_ROOT / "application" / "chain" / "data.py"
-    data_tree = ast.parse(
-        data_path.read_text(encoding="utf-8"),
-        filename=str(data_path),
-    )
-    data_class = next(
-        node
-        for node in data_tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "ChainDataPorts"
-    )
-    data_fields = {
-        node.target.id
-        for node in data_class.body
-        if isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-    }
-    data_functions = {
-        node.name
-        for node in data_tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    assert "workflow" not in data_fields
-    assert "get_chain_workflow_port" not in data_functions
-
     chain_source = (APP_ROOT / "chain" / "workflow.py").read_text(encoding="utf-8")
     startup_source = (
         APP_ROOT / "startup" / "initializers" / "modules.py"
@@ -408,70 +399,30 @@ def test_workflow_execution_chain_uses_single_application_owned_port():
     assert "workflow=lambda:" not in startup_source
 
 
-def test_chain_registry_has_no_dynamic_proxies_or_dead_context_injection():
-    """Chain registry 不得恢复零消费者动态代理或失效 data_ports 伪注入。"""
-    data_path = APP_ROOT / "application" / "chain" / "data.py"
-    data_tree = ast.parse(
-        data_path.read_text(encoding="utf-8"),
-        filename=str(data_path),
+def test_chain_runtime_context_owns_typed_repository_instances():
+    """Chain 数据能力必须作为明确类型的实例字段进入运行时上下文。"""
+    annotations = _class_annotations(
+        APP_ROOT / "application" / "chain" / "context.py",
+        "ChainRuntimeContext",
     )
-    proxy_classes = {
-        node.name
-        for node in data_tree.body
-        if isinstance(node, ast.ClassDef)
-        and (node.name.endswith("PortProxy") or node.name == "_PortProxyMeta")
+    expected = {
+        "site_repository": "SiteRepository",
+        "subscription_repository": "SubscriptionRepository",
+        "download_history_repository": "DownloadHistoryRepository",
+        "transfer_history_repository": "TransferHistoryRepository",
+        "transfer_admission_repository": "TransferAdmissionRepository",
+        "transfer_execution_repository": "TransferExecutionRepository",
+        "media_server_repository": "MediaServerRepository",
+        "download_failure_repository": "DownloadFailureRepository",
+        "user_repository": "ChainUserRepository",
     }
-    dynamic_getters = {
-        node.name
-        for node in ast.walk(data_tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "__getattr__"
-    }
-    assert proxy_classes == set()
-    assert dynamic_getters == set()
+    assert {name: annotations[name] for name in expected} == expected
 
-    context_source = (
-        APP_ROOT / "application" / "chain" / "context.py"
-    ).read_text(encoding="utf-8")
     chain_base_source = (APP_ROOT / "chain" / "__init__.py").read_text(
-        encoding="utf-8"
+        encoding="utf-8-sig"
     )
-    startup_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
-    assert "data_ports" not in context_source
-    assert "self.data_ports" not in chain_base_source
-    assert "data_ports=" not in startup_source
-
-
-def test_download_failure_and_mediaserver_ports_are_typed_and_detached():
-    """下载失败与媒体库缓存端口不得退回 raw Oper、Any 或 ORM 投影。"""
-    data_path = APP_ROOT / "application" / "chain" / "data.py"
-    data_tree = ast.parse(
-        data_path.read_text(encoding="utf-8"),
-        filename=str(data_path),
-    )
-    data_class = next(
-        node
-        for node in data_tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "ChainDataPorts"
-    )
-    annotations = {
-        node.target.id: ast.unparse(node.annotation)
-        for node in data_class.body
-        if isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-    }
-    returns = {
-        node.name: ast.unparse(node.returns)
-        for node in data_tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.returns is not None
-    }
-    assert annotations["download_failure"] == "DownloadFailureRepositoryFactory"
-    assert annotations["media_server"] == "MediaServerRepositoryFactory"
-    assert returns["get_chain_download_failure_port"] == "DownloadFailureRepository"
-    assert returns["get_chain_media_server_port"] == "MediaServerRepository"
+    for field_name in expected:
+        assert f"self.{field_name} = context.{field_name}" in chain_base_source
 
     download_source = (APP_ROOT / "chain" / "download.py").read_text(
         encoding="utf-8"
@@ -489,6 +440,73 @@ def test_download_failure_and_mediaserver_ports_are_typed_and_detached():
     assert "dboper" not in mediaserver_source
     assert "async def async_get_item_id(" in application_source
     assert "TransactionalMediaServerRepository(SessionFactory)" in startup_source
+
+
+def test_startup_composes_typed_chain_and_agent_data_contexts():
+    """组合根必须一次性构造 Chain 与 Agent 的类型化数据上下文。"""
+    context_specs = {
+        "ChainRuntimeContext": (
+            APP_ROOT / "application" / "chain" / "context.py",
+            {
+                "site_repository",
+                "subscription_repository",
+                "download_history_repository",
+                "transfer_history_repository",
+                "transfer_admission_repository",
+                "transfer_execution_repository",
+                "media_server_repository",
+                "download_failure_repository",
+                "user_repository",
+            },
+        ),
+        "AgentDataContext": (
+            APP_ROOT / "application" / "agent.py",
+            {
+                "chat",
+                "chat_persistence",
+                "tasks",
+                "users",
+                "sites",
+                "subscriptions",
+                "subscription_history",
+                "transfer_history",
+                "transfer_execution",
+                "download_history",
+                "plugin_data",
+            },
+        ),
+    }
+    startup_path = APP_ROOT / "startup" / "initializers" / "modules.py"
+    startup_tree = ast.parse(
+        startup_path.read_text(encoding="utf-8-sig"),
+        filename=str(startup_path),
+    )
+
+    for class_name, (context_path, expected_fields) in context_specs.items():
+        annotations = _class_annotations(context_path, class_name)
+        assert expected_fields <= annotations.keys()
+        assert all(
+            "Any" not in annotations[field_name]
+            and "Oper" not in annotations[field_name]
+            and "Callable" not in annotations[field_name]
+            for field_name in expected_fields
+        )
+
+        constructors = [
+            node
+            for node in ast.walk(startup_tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == class_name
+        ]
+        assert len(constructors) == 1
+        values = {
+            keyword.arg: keyword.value
+            for keyword in constructors[0].keywords
+            if keyword.arg is not None
+        }
+        assert expected_fields <= values.keys()
+        assert all(not isinstance(values[field_name], ast.Lambda) for field_name in expected_fields)
 
 
 def test_download_history_ports_are_typed_detached_and_canonically_injected():
@@ -532,38 +550,16 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
         assert annotations
         assert all("Any" not in annotation for annotation in annotations)
 
-    data_path = APP_ROOT / "application" / "chain" / "data.py"
-    data_tree = ast.parse(data_path.read_text(encoding="utf-8"), filename=str(data_path))
-    data_class = next(
-        node
-        for node in data_tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "ChainDataPorts"
+    chain_annotations = _class_annotations(
+        APP_ROOT / "application" / "chain" / "context.py",
+        "ChainRuntimeContext",
     )
-    annotations = {
-        node.target.id: ast.unparse(node.annotation)
-        for node in data_class.body
-        if isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-    }
-    returns = {
-        node.name: ast.unparse(node.returns)
-        for node in ast.walk(data_tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.returns is not None
-    }
-    agent_tree = ast.parse(
-        (APP_ROOT / "application" / "agentdata.py").read_text(encoding="utf-8")
+    agent_annotations = _class_annotations(
+        APP_ROOT / "application" / "agent.py",
+        "AgentDataContext",
     )
-    agent_return = next(
-        ast.unparse(node.returns)
-        for node in ast.walk(agent_tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "get_agent_download_history_port"
-        and node.returns is not None
-    )
-    assert annotations["download_history"] == "DownloadHistoryRepositoryFactory"
-    assert returns["get_chain_download_history_port"] == "DownloadHistoryRepository"
-    assert agent_return == "DownloadHistoryRepository"
+    assert chain_annotations["download_history_repository"] == "DownloadHistoryRepository"
+    assert agent_annotations["download_history"] == "DownloadHistoryRepository"
 
     consumer_paths = (
         APP_ROOT / "chain" / "_transfer.py",
@@ -672,13 +668,14 @@ def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
 
 
 def test_agent_data_ports_do_not_duplicate_workflow_query_capability():
-    """Agent 数据聚合器不得重新暴露无类型工作流读取入口。"""
-    source = (APP_ROOT / "application" / "agentdata.py").read_text(
-        encoding="utf-8"
+    """Agent 显式数据上下文不得重复拥有工作流查询能力。"""
+    annotations = _class_annotations(
+        APP_ROOT / "application" / "agent.py",
+        "AgentDataContext",
     )
 
-    assert "WorkflowPort" not in source
-    assert "get_agent_workflow_port" not in source
+    assert "workflow" not in annotations
+    assert "workflow_query" not in annotations
 
 
 def test_host_uses_canonical_workflow_manager_name():
@@ -831,80 +828,18 @@ def test_host_code_uses_explicit_runtime_facade_getters():
     assert violations == []
 
 
-def test_workflow_domain_uses_explicit_chain_data_port_getters():
-    """工作流域不得重新使用迁移期 PortProxy 冒充数据库 Oper。"""
-    paths = [APP_ROOT / "chain" / "workflow.py"]
-    paths.extend((APP_ROOT / "workflow").rglob("*.py"))
-    violations: list[str] = []
-    for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            if node.module != "app.application.chain.data":
-                continue
-            for alias in node.names:
-                if alias.name.endswith("PortProxy"):
-                    violations.append(
-                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
-                    )
-
-    assert violations == []
-
-
-def test_user_and_messaging_chains_use_explicit_data_port_getters():
-    """用户、交互和消息链不得把迁移期 UserPortProxy 伪装成 UserOper。"""
-    paths = [
-        APP_ROOT / "chain" / "user.py",
-        APP_ROOT / "chain" / "interaction.py",
-        APP_ROOT / "chain" / "_messaging.py",
-    ]
-    violations: list[str] = []
-    for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            if node.module != "app.application.chain.data":
-                continue
-            for alias in node.names:
-                if alias.name == "UserPortProxy":
-                    violations.append(
-                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-                    )
-
-    assert violations == []
-
-
 def test_user_chain_and_agent_ports_are_typed_and_orm_free():
     """用户 Chain、Agent 与宿主模块只能消费 Application 用户端口。"""
-    chain_data = ast.parse(
-        (APP_ROOT / "application" / "chain" / "data.py").read_text(
-            encoding="utf-8-sig"
-        )
+    chain_annotations = _class_annotations(
+        APP_ROOT / "application" / "chain" / "context.py",
+        "ChainRuntimeContext",
     )
-    agent_data = ast.parse(
-        (APP_ROOT / "application" / "agentdata.py").read_text(
-            encoding="utf-8-sig"
-        )
+    agent_annotations = _class_annotations(
+        APP_ROOT / "application" / "agent.py",
+        "AgentDataContext",
     )
-
-    def return_annotation(tree: ast.AST, function_name: str) -> str | None:
-        """返回指定函数的源码级返回注解。"""
-        function = next(
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == function_name
-        )
-        return ast.unparse(function.returns) if function.returns else None
-
-    assert return_annotation(chain_data, "get_chain_user_port") == "ChainUserRepository"
-    assert return_annotation(agent_data, "get_agent_user_port") == "ChainUserRepository"
-    assert not any(
-        isinstance(node, ast.ClassDef) and node.name == "UserPort"
-        for node in ast.walk(agent_data)
-    )
+    assert chain_annotations["user_repository"] == "ChainUserRepository"
+    assert agent_annotations["users"] == "ChainUserRepository"
 
     production_paths = [
         APP_ROOT / "chain" / "user.py",
@@ -935,122 +870,6 @@ def test_startup_injects_user_adapter_instead_of_raw_oper():
     assert "SqlAlchemyUserRepository" in source
     assert "from app.db.oper.user import UserOper" not in source
     assert "user=lambda: UserOper()" not in source
-
-
-def test_music_chain_uses_explicit_subscribe_data_port_getter():
-    """音乐订阅链不得把 SubscribePortProxy 伪装成 SubscribeOper。"""
-    path = APP_ROOT / "chain" / "_music.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    violations = [
-        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "app.application.chain.data"
-        and any(alias.name == "SubscribePortProxy" for alias in node.names)
-    ]
-
-    assert violations == []
-
-
-def test_site_chains_use_explicit_site_data_port_getter():
-    """站点与种子链不得把 SitePortProxy 伪装成 SiteOper。"""
-    paths = [APP_ROOT / "chain" / "site.py", APP_ROOT / "chain" / "torrents.py"]
-    violations: list[str] = []
-    for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            if node.module != "app.application.chain.data":
-                continue
-            if any(alias.name == "SitePortProxy" for alias in node.names):
-                violations.append(
-                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-                )
-
-    assert violations == []
-
-
-def test_mediaserver_chain_uses_explicit_data_port_getter():
-    """媒体服务器链不得把 MediaServerPortProxy 伪装成 MediaServerOper。"""
-    path = APP_ROOT / "chain" / "mediaserver.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    violations = [
-        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "app.application.chain.data"
-        and any(alias.name == "MediaServerPortProxy" for alias in node.names)
-    ]
-
-    assert violations == []
-
-
-def test_download_chain_uses_explicit_data_port_getters():
-    """下载链不得把三个迁移期 PortProxy 伪装成数据库 Oper。"""
-    path = APP_ROOT / "chain" / "download.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    forbidden = {
-        "DownloadFailurePortProxy",
-        "DownloadHistoryPortProxy",
-        "MediaServerPortProxy",
-    }
-    violations = [
-        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "app.application.chain.data"
-        for alias in node.names
-        if alias.name in forbidden
-    ]
-
-    assert violations == []
-
-
-def test_subscribe_chain_uses_explicit_data_port_getters():
-    """订阅链不得把三个迁移期 PortProxy 伪装成数据库 Oper。"""
-    path = APP_ROOT / "chain" / "subscribe.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    forbidden = {
-        "DownloadHistoryPortProxy",
-        "SitePortProxy",
-        "SubscribePortProxy",
-    }
-    violations = [
-        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "app.application.chain.data"
-        for alias in node.names
-        if alias.name in forbidden
-    ]
-
-    assert violations == []
-
-
-def test_transfer_chains_use_explicit_data_port_getters():
-    """整理主链与 mixin 不得把迁移期 PortProxy 伪装成数据库 Oper。"""
-    paths = [APP_ROOT / "chain" / "transfer.py", APP_ROOT / "chain" / "_transfer.py"]
-    forbidden = {
-        "DownloadHistoryPortProxy",
-        "TransferHistoryPortProxy",
-        "TransferPendingPortProxy",
-    }
-    violations: list[str] = []
-    for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            if node.module != "app.application.chain.data":
-                continue
-            for alias in node.names:
-                if alias.name in forbidden:
-                    violations.append(
-                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
-                    )
-
-    assert violations == []
 
 
 def test_transfer_pending_oper_import_is_confined_to_database_boundary():
@@ -1102,77 +921,35 @@ def test_startup_injects_transactional_transfer_admission_repository():
         )
         for node in ast.walk(tree)
     )
-    transfer_pending_factories = [
-        keyword.value
+    chain_context_calls = [
+        node
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "configure_chain_data_ports"
-        for keyword in node.keywords
-        if keyword.arg == "transfer_pending"
+        and node.func.id == "ChainRuntimeContext"
     ]
 
     assert imports_repository is True
-    assert len(transfer_pending_factories) == 1
-    assert any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "TransactionalTransferAdmissionRepository"
-        for node in ast.walk(transfer_pending_factories[0])
+    assert len(chain_context_calls) == 1
+    keywords = {
+        keyword.arg: keyword.value
+        for keyword in chain_context_calls[0].keywords
+        if keyword.arg is not None
+    }
+    admission = keywords["transfer_admission_repository"]
+    assert isinstance(admission, ast.Call)
+    assert isinstance(admission.func, ast.Name)
+    assert admission.func.id == "TransactionalTransferAdmissionRepository"
+
+
+def test_transfer_admission_chain_context_field_is_typed():
+    """整理准入仓储必须以明确 Protocol 注入 Chain 上下文。"""
+    annotations = _class_annotations(
+        APP_ROOT / "application" / "chain" / "context.py",
+        "ChainRuntimeContext",
     )
 
-
-def test_transfer_pending_chain_port_is_typed_without_legacy_proxy():
-    """整理准入端口必须返回明确 Protocol，且旧 Proxy 不得重新出现。"""
-    path = APP_ROOT / "application" / "chain" / "data.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    class_names = {
-        node.name
-        for node in tree.body
-        if isinstance(node, ast.ClassDef)
-    }
-    getters = [
-        node
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "get_chain_transfer_pending_port"
-    ]
-
-    assert "TransferPendingPortProxy" not in class_names
-    assert len(getters) == 1
-    assert getters[0].returns is not None
-    assert ast.unparse(getters[0].returns) == "TransferAdmissionRepository"
-
-
-def test_agent_consumers_use_explicit_data_port_getters():
-    """Agent 生产模块不得把兼容数据端口代理重新伪装成数据库 Oper。"""
-    forbidden = {
-        "AgentChatPort",
-        "AgentTaskPort",
-        "DownloadHistoryPort",
-        "PluginDataPort",
-        "SitePort",
-        "SubscribeHistoryPort",
-        "SubscribePort",
-        "TransferHistoryPort",
-        "UserPort",
-        "WorkflowPort",
-    }
-    violations: list[str] = []
-    for path in (APP_ROOT / "agent").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            if node.module != "app.application.agentdata":
-                continue
-            for alias in node.names:
-                if alias.name in forbidden:
-                    violations.append(
-                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:{alias.name}"
-                    )
-
-    assert violations == []
+    assert annotations["transfer_admission_repository"] == "TransferAdmissionRepository"
 
 
 def test_scheduler_does_not_depend_on_database_implementation():
@@ -1183,20 +960,6 @@ def test_scheduler_does_not_depend_on_database_implementation():
         for dependency in dependencies
         if dependency == "app.db" or dependency.startswith("app.db.")
     } == set()
-
-
-def test_agent_task_async_execution_uses_application_service():
-    """AgentTask async 执行不得经动态数据端口隐藏同步 Oper 调用。"""
-    path = APP_ROOT / "agent" / "orchestrator.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    violations = [
-        node.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "app.application.agentdata"
-        and any(alias.name == "get_agent_task_port" for alias in node.names)
-    ]
-    assert violations == []
 
 
 def test_monitor_dispatcher_uses_explicit_history_port_getter():
