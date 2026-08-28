@@ -1,6 +1,7 @@
 """正式镜像发布的供应链门禁合同。"""
 
 import os
+import shutil
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -79,6 +80,9 @@ def _run_release_script(
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """在隔离的 gh 替身环境中执行发布 workflow 脚本。"""
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("release workflow contract requires Bash")
     response_file = tmp_path / "response.txt"
     error_file = tmp_path / "error.txt"
     response_file.write_text(response, encoding="utf-8")
@@ -99,7 +103,7 @@ def _run_release_script(
     )
     env.update(extra_env or {})
     return subprocess.run(
-        ["/bin/bash", "-euo", "pipefail", "-c", script],
+        [bash, "-euo", "pipefail", "-c", script],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -305,6 +309,8 @@ def test_release_uses_github_cli_for_tag_and_release_lifecycle() -> None:
     assert "gh release edit" in publish_release
     assert "gh release create" in publish_release
     assert '--notes-file "$notes_file"' in publish_release
+    assert "--draft=false" in publish_release
+    assert "--prerelease=false" in publish_release
     assert "--latest" in publish_release
     names = [step.get("name") for step in workflow["jobs"]["Docker-build"]["steps"]]
     assert names.index("Get existing release body") < names.index("Publish Release Tag")
@@ -378,6 +384,9 @@ def test_release_publish_selects_edit_or_create(
     assert result.returncode == 0, result.stderr
     log = (tmp_path / "gh.log").read_text(encoding="utf-8")
     assert expected_command in log
+    if release_exists == "true":
+        assert "--draft=false" in log
+        assert "--prerelease=false" in log
 
 
 def test_dependency_compat_checks_minimum_uv_version() -> None:

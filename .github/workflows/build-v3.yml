@@ -543,6 +543,8 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "$tag_name" \
               --notes-file "$notes_file" \
+              --draft=false \
+              --prerelease=false \
               --latest
           else
             gh release create "$tag_name" \
