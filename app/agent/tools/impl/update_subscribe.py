@@ -1,7 +1,7 @@
 """更新订阅工具"""
 
 import json
-from typing import Optional, Type, List
+from typing import List, Optional, Type
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,7 @@ from app.application.subscription.mutation import (
     get_subscription_mutation_scope,
 )
 from app.runtime.log import logger
+from app.schemas.common import JsonData
 from app.schemas.types import media_type_to_agent
 
 
@@ -209,7 +210,7 @@ class UpdateSubscribeTool(MoviePilotTool):
                 )
 
             # 构建更新字典
-            subscribe_dict = {}
+            subscribe_dict: dict[str, JsonData] = {}
 
             # 基本信息
             if name is not None:

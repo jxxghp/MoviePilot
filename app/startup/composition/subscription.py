@@ -25,8 +25,10 @@ from app.db.adapters.outbox import (
     SqlAlchemyOutboxDispatchStore,
     SqlAlchemyOutboxStager,
 )
-from app.db.oper.subscribe import SubscribeOper
-from app.db.oper.subscribehistory import SubscribeHistoryOper
+from app.db.adapters.subscription import (
+    SessionSubscriptionHistoryRepository,
+    SessionSubscriptionRepository,
+)
 from app.db.session import SessionFactory, async_session_scope
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.runtime.events import EventManager
@@ -59,7 +61,7 @@ def subscription_completion_scope() -> Iterator[CompleteSubscriptionCommand]:
     session = SessionFactory()
     try:
         yield CompleteSubscriptionCommand(
-            repository=SubscribeOper(session),
+            repository=SessionSubscriptionRepository(session),
             unit_of_work=SqlAlchemyUnitOfWork(session),
             outbox=SqlAlchemyOutboxStager(session),
             dispatch_store=SqlAlchemyOutboxDispatchStore(SessionFactory),
@@ -74,8 +76,8 @@ async def subscription_mutation_scope() -> AsyncIterator[SubscriptionMutationSer
     """为非 HTTP 入口创建独占订阅修改会话、UoW 与 outbox。"""
     async with async_session_scope() as session:
         yield SubscriptionMutationService(
-            repository=SubscribeOper(session),
-            history_repository=SubscribeHistoryOper(session),
+            repository=SessionSubscriptionRepository(session),
+            history_repository=SessionSubscriptionHistoryRepository(session),
             unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
             outbox=SqlAlchemyAsyncOutboxStager(session),
             dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(
@@ -90,7 +92,7 @@ async def delete_subscribe_scope() -> AsyncIterator[DeleteSubscribeCommand]:
     """为非 HTTP 入口创建独占订阅删除会话、UoW 与 outbox。"""
     async with async_session_scope() as session:
         yield DeleteSubscribeCommand(
-            repository=SubscribeOper(session),
+            repository=SessionSubscriptionRepository(session),
             unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
             publish_deleted=_publish_deleted,
             report_deleted=MoviePilotServerHelper.async_sub_done_durable,
@@ -107,7 +109,7 @@ def sync_delete_subscribe_scope() -> Iterator[SyncDeleteSubscribeCommand]:
     session = SessionFactory()
     try:
         yield SyncDeleteSubscribeCommand(
-            repository=SubscribeOper(session),
+            repository=SessionSubscriptionRepository(session),
             unit_of_work=SqlAlchemyUnitOfWork(session),
             publish_deleted=_publish_deleted_sync,
             report_deleted=MoviePilotServerHelper.sub_done_durable,

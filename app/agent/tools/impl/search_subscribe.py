@@ -1,14 +1,15 @@
 """搜索订阅缺失资源工具"""
 
 import json
-from typing import Optional, Type, List
+from typing import List, Optional, Type
 
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.subscribe import SubscribeChain
 from app.application.agentdata import get_agent_subscribe_port
+from app.application.subscription.contract import SubscriptionPatch
+from app.chain.subscribe import SubscribeChain
 from app.runtime.log import logger
 from app.schemas.types import media_type_to_agent
 
@@ -57,8 +58,8 @@ class SearchSubscribeTool(MoviePilotTool):
 
         try:
             # 先验证订阅是否存在
-            subscribe_oper = get_agent_subscribe_port()
-            subscribe = await subscribe_oper.async_get(subscribe_id)
+            repository = get_agent_subscribe_port()
+            subscribe = await repository.async_get(subscribe_id)
 
             if not subscribe:
                 return json.dumps({
@@ -93,9 +94,9 @@ class SearchSubscribeTool(MoviePilotTool):
 
             # 如果提供了 filter_groups 参数，先更新订阅的规则组
             if filter_groups is not None:
-                await subscribe_oper.async_update(
+                await repository.async_update(
                     subscribe_id,
-                    {"filter_groups": filter_groups},
+                    SubscriptionPatch({"filter_groups": filter_groups}),
                 )
                 logger.info(f"更新订阅 #{subscribe_id} 的规则组为: {filter_groups}")
 
@@ -109,7 +110,7 @@ class SearchSubscribeTool(MoviePilotTool):
             )
 
             # 重新获取订阅信息以获取更新后的状态
-            updated_subscribe = await subscribe_oper.async_get(subscribe_id)
+            updated_subscribe = await repository.async_get(subscribe_id)
             if updated_subscribe:
                 subscribe_info.update({
                     "state": updated_subscribe.state,

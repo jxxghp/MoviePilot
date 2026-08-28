@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from app.agent.tools.impl._filter_rule_utils import normalize_media_type
 from app.application.rules import RuleHelper
+from app.application.subscription.contract import SubscriptionPatch
 from app.chain import subscribe as subscribe_module
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
@@ -141,5 +142,5 @@ def test_reconcile_rule_group_references_removes_all_dangling_bindings(monkeypat
     assert values[SystemConfigKey.DefaultTvSubscribeConfig] == {
         "filter_groups": [],
     }
-    assert updates == [(1, {"filter_groups": ["keep"]})]
-    assert subscribes[0].filter_groups == ["keep"]
+    assert updates == [(1, SubscriptionPatch({"filter_groups": ["keep"]}))]
+    assert subscribes[0].filter_groups == ["deleted", "keep"]

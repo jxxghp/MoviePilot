@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app.application.subscription.contract import SubscriptionIdentity, SubscriptionPatch
 from app.chain.subscribe import SubscribeChain, build_subscribe_meta
 from app.domain.context import (
     MUSIC_ENTITY_ALBUM,
@@ -235,7 +236,8 @@ def test_music_best_version_persists_downloaded_rule_priority():
     download_chain = Mock()
     download_chain.batch_download.return_value = ([downloaded], None)
     subscribe_oper = Mock()
-    subscribe_oper.get.return_value = subscribe
+    updated = _subscribe(best_version=1, current_priority=100)
+    subscribe_oper.update.return_value = updated
     chain = SubscribeChain()
     chain.finish_subscribe_or_not = Mock()
 
@@ -245,15 +247,17 @@ def test_music_best_version_persists_downloaded_rule_priority():
 
     subscribe_oper.update.assert_called_once_with(
         subscribe.id,
-        {
+        SubscriptionPatch({
             "current_priority": 100,
             "current_audio_format": "MP3",
             "current_bitrate": 320_000,
             "current_bit_depth": None,
             "current_sample_rate": None,
-        },
+        }),
     )
-    assert subscribe.current_priority == 100
+    assert subscribe.current_priority == 90
+    chain.finish_subscribe_or_not.assert_called_once()
+    assert chain.finish_subscribe_or_not.call_args.kwargs["subscribe"] is updated
     chain.finish_subscribe_or_not.assert_called_once()
 
 
@@ -637,12 +641,18 @@ def test_recording_target_sync_clears_stale_album_track_count():
     """旧单曲订阅若误存所属专辑曲目数，刷新元数据时应主动清空。"""
     subscribe = _subscribe(total_tracks=11)
     subscribe_oper = Mock()
+    updated = _subscribe(total_tracks=None)
+    subscribe_oper.update.return_value = updated
 
     with patch("app.chain._music.get_chain_subscribe_port", return_value=subscribe_oper):
-        SubscribeChain._sync_music_subscribe_target(subscribe, _music_info())
+        result = SubscribeChain._sync_music_subscribe_target(subscribe, _music_info())
 
-    subscribe_oper.update.assert_called_once_with(subscribe.id, {"total_tracks": None})
-    assert subscribe.total_tracks is None
+    subscribe_oper.update.assert_called_once_with(
+        subscribe.id,
+        SubscriptionPatch({"total_tracks": None}),
+    )
+    assert result is updated
+    assert subscribe.total_tracks == 11
 
 
 def test_album_target_sync_does_not_clear_stable_track_count():
@@ -848,7 +858,7 @@ def test_follow_preserves_album_entity_and_track_count():
     }
     subscribe_oper = Mock()
     subscribe_oper.exists.return_value = False
-    subscribe_oper.exist_history.return_value = False
+    subscribe_oper.history_exists.return_value = False
     system_config = Mock()
     system_config.get.return_value = ["follow-user"]
 
@@ -863,8 +873,14 @@ def test_follow_preserves_album_entity_and_track_count():
         SubscribeChain.follow()
 
     video_meta.assert_not_called()
-    assert subscribe_oper.exists.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
-    assert subscribe_oper.exist_history.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
+    identity = SubscriptionIdentity(
+        media_source=MediaSource.MusicBrainz,
+        media_id="release-group-1",
+        type=MediaType.MUSIC.value,
+        music_type=MUSIC_ENTITY_ALBUM,
+    )
+    subscribe_oper.exists.assert_called_once_with(identity)
+    subscribe_oper.history_exists.assert_called_once_with(identity)
     assert add.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
     assert add.call_args.kwargs["total_tracks"] == 11
 

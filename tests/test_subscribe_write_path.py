@@ -68,11 +68,11 @@ def _musicinfo(media_id: str, music_type: str, **kwargs) -> MusicInfo:
                      music_type=music_type, **kwargs)
 
 
-def _add(oper: SubscribeOper, is_async: bool, **kwargs):
-    """按链路分派到同步或异步新增，让同一份字段契约跑两遍。"""
+def _add(_oper: SubscribeOper, is_async: bool, **kwargs):
+    """经组合根配置的 typed 仓储分派同步或异步新增。"""
     if is_async:
-        return asyncio.run(async_add_subscribe(subscribe_oper=oper, **kwargs))
-    return add_subscribe(subscribe_oper=oper, **kwargs)
+        return asyncio.run(async_add_subscribe(**kwargs))
+    return add_subscribe(**kwargs)
 
 
 def _row(db, subscribe_id: int) -> Subscribe:

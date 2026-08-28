@@ -472,6 +472,20 @@ operation. Both adapters project `Site`, `SiteIcon`, `SiteStatistic`, and
 Application, Chain, Agent, API, and Startup code must not import `SiteOper` or
 these ORM models. Historical plugin imports resolve through the exact SDK
 Legacy/Compat manifest only.
+
+Subscription persistence follows the same verified typed boundary.
+`app/application/subscription/contract.py` is the single owner of the deeply
+frozen subscription/history snapshots, media identity, write patch and shared
+query/write/staging repository protocols. `TransactionalSubscriptionRepository`
+owns a short Session/UoW for standalone Chain and Agent operations, while
+`SessionSubscriptionRepository` and `SessionSubscriptionHistoryRepository`
+reuse the request or Application-command Session and never commit it. All ORM
+projection completes before that Session closes. Canonical Application, Chain,
+Agent, API, Workflow and Startup code must not import the subscription Oper or
+ORM models. The historical module paths and package-root Oper symbols resolve
+only through `app/sdk/_legacy/subscribe.py` plus the exact Compat manifest and
+are not added to canonical package `__all__` exports.
+
 Application and Chain code reaches persistence through named Ports/Protocols;
 concrete DB adapters are the only layer that adapts those Ports to Oper/Session
 mechanics. Every schema change requires an Alembic migration under
@@ -720,7 +734,9 @@ driven workflow registration.
 |---|---|
 | `app/application/agent.py` | Agent orchestration facade (`get_agent_manager` / `get_prompt_manager` / capability queries / prompt builders); lightweight providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
-| `app/application/subscription/write.py` | Subscription media translation and sync/async write-port orchestration |
+| `app/application/subscription/contract.py` | Deeply frozen Subscription/History DTOs, media identity, write patch and typed query/write/staging Repository contracts |
+| `app/application/subscription/write.py` | Subscription media translation and sync/async write-command orchestration |
+| `app/db/adapters/subscription.py` | Standalone short-transaction and caller-Session subscription/history adapters; ORM projection remains inside the Session |
 | `app/application/download/failures.py` | Frozen download-failure cooldown write/query DTOs and Chain persistence Port |
 | `app/db/adapters/download.py` | Short-session download-failure snapshot and mutation adapter |
 | `app/db/adapters/mediaserver.py` | Per-operation media-server cache query/upsert/cleanup transaction adapter |

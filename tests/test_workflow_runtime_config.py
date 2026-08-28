@@ -5,16 +5,16 @@ from app.application.configuration import ChainRuntimeConfig
 from app.schemas.context import MediaInfo
 from app.schemas.types import MediaType
 from app.schemas.workflow import ActionContext
-from app.workflow.actions.add_subscribe import AddSubscribeAction
-from app.workflow.actions.fetch_rss import FetchRssAction
-from app.workflow.actions.scan_file import ScanFileAction
-from app.workflow.actions.fetch_medias import FetchMediasAction
-from app.workflow.actions.send_message import SendMessageAction
 from app.workflow.actions import add_subscribe as add_subscribe_module
 from app.workflow.actions import fetch_medias as fetch_medias_module
 from app.workflow.actions import fetch_rss as fetch_rss_module
 from app.workflow.actions import scan_file as scan_file_module
 from app.workflow.actions import send_message as send_message_module
+from app.workflow.actions.add_subscribe import AddSubscribeAction
+from app.workflow.actions.fetch_medias import FetchMediasAction
+from app.workflow.actions.fetch_rss import FetchRssAction
+from app.workflow.actions.scan_file import ScanFileAction
+from app.workflow.actions.send_message import SendMessageAction
 
 
 def _runtime_config(**overrides):
@@ -124,7 +124,11 @@ def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
     monkeypatch.setattr(
         add_subscribe_module,
         "get_chain_subscribe_port",
-        lambda: SimpleNamespace(get=lambda sid: sid),
+        lambda: SimpleNamespace(get=lambda _sid: SimpleNamespace(to_dict=lambda: {
+            "id": 42,
+            "name": "Example",
+            "type": MediaType.MOVIE.value,
+        })),
     )
 
     AddSubscribeAction("subscribe").execute(

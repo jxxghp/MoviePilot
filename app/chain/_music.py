@@ -4,6 +4,8 @@ from typing import Any, List, Optional, Tuple
 from app.application.chain.data import get_chain_subscribe_port
 from app.application.configuration import get_configured_system_config
 from app.application.subscription.contract import (
+    SubscriptionPatch,
+    SubscriptionSnapshot,
     build_subscribe_meta,
     subscribe_media_key,
 )
@@ -12,11 +14,6 @@ from app.chain._contracts import MusicSubscribeMixinHost
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-
-# 旧测试与插件补丁入口；正式依赖通过宿主工厂逐步收敛。
-MediaChain = MediaChain
-DownloadChain = DownloadChain
-SearchChain = SearchChain
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.domain.meta.metamusic import MetaMusic
@@ -27,8 +24,6 @@ from app.schemas.types import (
     MediaType,
     SystemConfigKey,
 )
-
-Subscribe = Any
 
 
 def _normalize_music_total_tracks(value: Any) -> Optional[int]:
@@ -75,7 +70,7 @@ class MusicSubscribeMixin:
 
     @staticmethod
     def _ensure_music_subscribe_entity(
-            subscribe: Subscribe,
+            subscribe: SubscriptionSnapshot,
             mediainfo: Optional[MusicInfo],
     ) -> Optional[MusicInfo]:
         """保持已持久化的单曲/专辑实体边界，拒绝远端详情把订阅类型改写。"""
@@ -110,7 +105,7 @@ class MusicSubscribeMixin:
         return mediainfo
 
     @staticmethod
-    def _recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
+    def _recognize_music_subscribe(subscribe: SubscriptionSnapshot) -> Optional[MusicInfo]:
         """按订阅身份恢复音乐目标，远端暂不可用时使用已持久化的稳定快照。"""
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
@@ -139,7 +134,7 @@ class MusicSubscribeMixin:
         return MusicSubscribeMixin._ensure_music_subscribe_entity(subscribe, mediainfo)
 
     @staticmethod
-    async def _async_recognize_music_subscribe(subscribe: Subscribe) -> Optional[MusicInfo]:
+    async def _async_recognize_music_subscribe(subscribe: SubscriptionSnapshot) -> Optional[MusicInfo]:
         """异步按订阅身份恢复音乐目标，远端暂不可用时使用已持久化的稳定快照。"""
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
@@ -165,7 +160,7 @@ class MusicSubscribeMixin:
         return MusicSubscribeMixin._ensure_music_subscribe_entity(subscribe, mediainfo)
 
     @staticmethod
-    def _music_info_from_subscribe(subscribe: Subscribe) -> MusicInfo:
+    def _music_info_from_subscribe(subscribe: SubscriptionSnapshot) -> MusicInfo:
         """从订阅行恢复不依赖远端请求的最小音乐目标，保留专辑完成判断所需字段。"""
         year_text = str(subscribe.year or "")[:4]
         music_type = getattr(subscribe, "music_type", None)
@@ -189,7 +184,10 @@ class MusicSubscribeMixin:
         )
 
     @staticmethod
-    def _sync_music_subscribe_target(subscribe: Subscribe, mediainfo: MusicInfo) -> None:
+    def _sync_music_subscribe_target(
+            subscribe: SubscriptionSnapshot,
+            mediainfo: MusicInfo,
+    ) -> SubscriptionSnapshot:
         """把远端识别得到的专辑类型和总曲目数同步到订阅，供搜索失败与完成历史复用。"""
         update_data = {}
         if mediainfo.music_type and getattr(subscribe, "music_type", None) != mediainfo.music_type:
@@ -203,14 +201,15 @@ class MusicSubscribeMixin:
         if getattr(subscribe, "total_tracks", None) != total_tracks:
             update_data["total_tracks"] = total_tracks
         if not update_data:
-            return
-        get_chain_subscribe_port().update(subscribe.id, update_data)
-        for key, value in update_data.items():
-            setattr(subscribe, key, value)
+            return subscribe
+        return get_chain_subscribe_port().update(
+            subscribe.id,
+            SubscriptionPatch(update_data),
+        ) or subscribe
 
     @staticmethod
     def _is_music_download_complete(
-            subscribe: Subscribe,
+            subscribe: SubscriptionSnapshot,
             mediainfo: MusicInfo,
             downloads: Optional[List[Context]],
     ) -> bool:
@@ -224,8 +223,8 @@ class MusicSubscribeMixin:
 
     def _prepare_music_subscribe(
             self,
-            subscribe: Subscribe,
-    ) -> Optional[Tuple[MusicInfo, MetaMusic]]:
+            subscribe: SubscriptionSnapshot,
+    ) -> Optional[Tuple[SubscriptionSnapshot, MusicInfo, MetaMusic]]:
         """识别音乐订阅目标、同步实体快照，并在搜索前处理已完整入库的目标。"""
         mediainfo = self._recognize_music_subscribe(subscribe)
         if not mediainfo:
@@ -241,7 +240,7 @@ class MusicSubscribeMixin:
         if validation_error:
             logger.warning(f"音乐订阅 {subscribe.name} 无法继续：{validation_error}")
             return None
-        self._sync_music_subscribe_target(subscribe, mediainfo)
+        subscribe = self._sync_music_subscribe_target(subscribe, mediainfo)
         meta = MetaMusic.from_music_info(mediainfo)
         exists, _ = self.check_and_handle_existing_media(
             subscribe=subscribe,
@@ -251,11 +250,11 @@ class MusicSubscribeMixin:
         )
         if exists:
             return None
-        return mediainfo, meta
+        return subscribe, mediainfo, meta
 
     def _filter_music_subscribe_contexts(
             self,
-            subscribe: Subscribe,
+            subscribe: SubscriptionSnapshot,
             mediainfo: MusicInfo,
             contexts: List[Context],
     ) -> List[Context]:
@@ -320,7 +319,7 @@ class MusicSubscribeMixin:
 
     def _download_music_subscribe(
             self,
-            subscribe: Subscribe,
+            subscribe: SubscriptionSnapshot,
             mediainfo: MusicInfo,
             contexts: List[Context],
     ) -> None:
@@ -345,6 +344,8 @@ class MusicSubscribeMixin:
                 context for context in successful
                 if context.confirmed_full_coverage
             ]
+        repository = get_chain_subscribe_port()
+        current_subscribe = None
         if subscribe.best_version and quality_downloads:
             best_context = max(quality_downloads, key=lambda item: item.torrent_info.pri_order)
             best_meta = best_context.meta_info
@@ -355,10 +356,12 @@ class MusicSubscribeMixin:
                 "current_bit_depth": best_meta.bit_depth,
                 "current_sample_rate": best_meta.sample_rate,
             }
-            get_chain_subscribe_port().update(subscribe.id, quality_data)
-            for key, value in quality_data.items():
-                setattr(subscribe, key, value)
-        current_subscribe = get_chain_subscribe_port().get(subscribe.id)
+            current_subscribe = repository.update(
+                subscribe.id,
+                SubscriptionPatch(quality_data),
+            )
+        if current_subscribe is None:
+            current_subscribe = repository.get(subscribe.id)
         if current_subscribe:
             self.finish_subscribe_or_not(
                 subscribe=current_subscribe,
@@ -367,12 +370,12 @@ class MusicSubscribeMixin:
                 downloads=downloads,
             )
 
-    def _search_music_subscribe(self, subscribe: Subscribe) -> None:
+    def _search_music_subscribe(self, subscribe: SubscriptionSnapshot) -> None:
         """复用站点标题搜索、订阅过滤和批量下载完成单个音乐订阅。"""
         target = self._prepare_music_subscribe(subscribe)
         if not target:
             return
-        mediainfo, _ = target
+        subscribe, mediainfo, _ = target
 
         sites = self.get_sub_sites(subscribe)
         default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
@@ -407,14 +410,14 @@ class MusicSubscribeMixin:
 
     def _match_music_subscribe(
             self,
-            subscribe: Subscribe,
+            subscribe: SubscriptionSnapshot,
             contexts: List[Context],
     ) -> None:
         """直接匹配本轮 RSS 缓存中的音乐资源，避免再次调用站点搜索接口。"""
         target = self._prepare_music_subscribe(subscribe)
         if not target:
             return
-        mediainfo, _ = target
+        subscribe, mediainfo, _ = target
         matched = self._filter_music_subscribe_contexts(
             subscribe=subscribe,
             mediainfo=mediainfo,

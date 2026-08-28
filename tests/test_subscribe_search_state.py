@@ -1,7 +1,8 @@
+from dataclasses import replace
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from app.application.subscription.contract import SubscriptionPatch, SubscriptionSnapshot
 from app.chain import subscribe as subscribe_module
 from app.chain.subscribe import SubscribeChain
 from app.schemas.types import MediaType
@@ -27,11 +28,12 @@ class _SubscribeOper:
         """
         return [self.subscribe] if self.subscribe else []
 
-    def update(self, sid: int, payload: dict) -> None:
+    def update(self, sid: int, payload: SubscriptionPatch) -> SubscriptionSnapshot:
         """
         记录订阅状态更新请求。
         """
         self.updates.append((sid, payload))
+        return replace(self.subscribe, **payload.to_payload())
 
 
 class _TimedOutLock:
@@ -46,19 +48,15 @@ class _TimedOutLock:
         raise AssertionError("未持有的订阅锁不应被释放")
 
 
-def _new_subscribe(created_at: datetime) -> SimpleNamespace:
+def _new_subscribe(created_at: datetime) -> SubscriptionSnapshot:
     """
     构造一个新建电影订阅。
     """
-    return SimpleNamespace(
+    return SubscriptionSnapshot(
         id=31,
         name="测试电影",
         year="2026",
         type=MediaType.MOVIE.value,
-        tmdbid=12345,
-        doubanid=None,
-        bangumiid=None,
-        anilistid=None,
         media_source="themoviedb",
         media_id="12345",
         season=None,
@@ -101,17 +99,22 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
         chain.search(state="N", manual=False)
 
     media_chain.recognize_media.assert_called_once()
-    assert _SubscribeOper.updates == [(31, {"state": "R"})]
+    assert len(_SubscribeOper.updates) == 1
+    subscribe_id, subscription_patch = _SubscribeOper.updates[0]
+    assert subscribe_id == 31
+    assert subscription_patch == SubscriptionPatch({"state": "R"})
 
 
 def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None:
     """用户归属订阅批次只按指定 ID 顺序读取，不扩大为全局状态搜索。"""
     first = _new_subscribe(datetime.now() - timedelta(minutes=2))
-    first.state = "R"
-    second = _new_subscribe(datetime.now() - timedelta(minutes=2))
-    second.id = 32
-    second.name = "测试电影 2"
-    second.state = "R"
+    first = replace(first, state="R")
+    second = replace(
+        _new_subscribe(datetime.now() - timedelta(minutes=2)),
+        id=32,
+        name="测试电影 2",
+        state="R",
+    )
     subscribes = {first.id: first, second.id: second}
     subscribe_oper = Mock()
     subscribe_oper.get.side_effect = subscribes.get

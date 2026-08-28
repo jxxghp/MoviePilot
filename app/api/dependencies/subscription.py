@@ -1,6 +1,7 @@
 """订阅领域的请求级 command/query 依赖。"""
 
-from typing import Any, cast
+from collections.abc import Mapping
+from typing import cast
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,23 +23,20 @@ from app.api.context import (
 from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.scheduling import start_scheduler_job
 from app.application.servarr import ServarrSubscriptionService
+from app.application.subscription.contract import (
+    SubscriptionHistoryStagingPort,
+    SubscriptionStagingPort,
+)
 from app.application.subscription.delete import (
     AsyncUnitOfWork as DeleteUnitOfWork,
 )
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
-    SubscribeDeletionRepository,
 )
 from app.application.subscription.identity import (
     DeleteSubscriptionsByIdentityCommand,
-    SubscribeIdentityDeletionRepository,
 )
 from app.application.subscription.mutation import (
-    AsyncUnitOfWork as MutationUnitOfWork,
-)
-from app.application.subscription.mutation import (
-    SubscriptionHistoryMutationRepository,
-    SubscriptionMutationRepository,
     SubscriptionMutationService,
 )
 from app.application.subscription.query import SubscriptionQueryService
@@ -46,24 +44,30 @@ from app.application.subscription.search import SearchSubscriptionsCommand
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
+from app.schemas.common import JsonData
 from app.schemas.types import EventType
 from app.startup.composition.context import HostRuntime
 
 
 async def _publish_subscribe_deleted(
-    payload: dict[str, Any],
+    payload: Mapping[str, JsonData],
 ) -> None:
     """通过宿主事件总线发布已提交的订阅删除事件。"""
     await eventmanager.async_send_event(EventType.SubscribeDeleted, payload)
 
 
-async def _publish_subscribe_modified(payload: dict[str, Any]) -> None:
+async def _publish_subscribe_modified(payload: Mapping[str, JsonData]) -> None:
     """通过宿主事件总线发布已提交的订阅修改事件。"""
-    await eventmanager.async_send_event(EventType.SubscribeModified, payload)
+    await eventmanager.async_send_event(EventType.SubscribeModified, dict(payload))
+
+
+async def _report_subscribe_deleted(payload: Mapping[str, JsonData]) -> bool:
+    """把只读删除快照复制给远端上报边界。"""
+    return bool(await MoviePilotServerHelper.async_sub_done_durable(dict(payload)))
 
 
 def get_delete_subscribe_command(
-    repository_port: object = Depends(get_subscription_repository),
+    repository_port: SubscriptionStagingPort = Depends(get_subscription_repository),
     unit_of_work: object = Depends(get_subscription_transaction),
     outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
     dispatch_store: AsyncOutboxDispatchStore = Depends(
@@ -72,10 +76,10 @@ def get_delete_subscribe_command(
 ) -> DeleteSubscribeCommand:
     """组装请求级订阅删除用例及其具体适配器。"""
     return DeleteSubscribeCommand(
-        repository=cast(SubscribeDeletionRepository, repository_port),
+        repository=repository_port,
         unit_of_work=cast(DeleteUnitOfWork, unit_of_work),
         publish_deleted=_publish_subscribe_deleted,
-        report_deleted=MoviePilotServerHelper.async_sub_done_durable,
+        report_deleted=_report_subscribe_deleted,
         outbox=outbox,
         dispatch_store=dispatch_store,
     )
@@ -93,7 +97,7 @@ def _log_subscribe_deleted_event_error(
 
 
 def get_delete_subscriptions_by_identity_command(
-    repository_port: object = Depends(get_subscription_repository),
+    repository_port: SubscriptionStagingPort = Depends(get_subscription_repository),
     unit_of_work: object = Depends(get_subscription_transaction),
     outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
     dispatch_store: AsyncOutboxDispatchStore = Depends(
@@ -102,7 +106,7 @@ def get_delete_subscriptions_by_identity_command(
 ) -> DeleteSubscriptionsByIdentityCommand:
     """组装请求级按媒体身份删除订阅用例。"""
     return DeleteSubscriptionsByIdentityCommand(
-        repository=cast(SubscribeIdentityDeletionRepository, repository_port),
+        repository=repository_port,
         unit_of_work=cast(DeleteUnitOfWork, unit_of_work),
         publish_deleted=_publish_subscribe_deleted,
         handle_event_error=_log_subscribe_deleted_event_error,
@@ -169,8 +173,8 @@ def get_subscription_query_service(
 
 
 def get_subscription_mutation_service(
-    repository_port: object = Depends(get_subscription_repository),
-    history_repository: SubscriptionHistoryMutationRepository = Depends(
+    repository_port: SubscriptionStagingPort = Depends(get_subscription_repository),
+    history_repository: SubscriptionHistoryStagingPort = Depends(
         get_subscription_history_repository
     ),
     unit_of_work: object = Depends(get_subscription_transaction),
@@ -181,9 +185,9 @@ def get_subscription_mutation_service(
 ) -> SubscriptionMutationService:
     """组装异步订阅写服务。"""
     return SubscriptionMutationService(
-        repository=cast(SubscriptionMutationRepository, repository_port),
+        repository=repository_port,
         history_repository=history_repository,
-        unit_of_work=cast(MutationUnitOfWork, unit_of_work),
+        unit_of_work=cast(DeleteUnitOfWork, unit_of_work),
         outbox=outbox,
         dispatch_store=dispatch_store,
         publish_modified=_publish_subscribe_modified,
@@ -196,10 +200,7 @@ def get_subscription_sync_mutation_service(
 ) -> SubscriptionMutationService:
     """组装同步订阅查询服务，供文件信息接口使用。"""
     return SubscriptionMutationService(
-        repository=cast(
-            SubscriptionMutationRepository,
-            runtime.subscription.repository(db),
-        )
+        repository=runtime.subscription.repository(db)
     )
 
 

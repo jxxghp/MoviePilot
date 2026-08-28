@@ -11,11 +11,9 @@ from app.application.configuration import (
 )
 from app.application.messaging.chat import AsyncAgentChatRepository, AsyncUnitOfWork
 from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
-from app.application.subscription.delete import SubscribeDeletionRepository
-from app.application.subscription.identity import SubscribeIdentityDeletionRepository
-from app.application.subscription.mutation import (
-    SubscriptionHistoryMutationRepository,
-    SubscriptionMutationRepository,
+from app.application.subscription.contract import (
+    SubscriptionHistoryStagingPort,
+    SubscriptionStagingPort,
 )
 from app.runtime.tasks import TaskRegistry, get_task_registry
 from app.startup.composition.context import (
@@ -133,11 +131,7 @@ async def get_subscription_session(
 def get_subscription_repository(
     session: object = Depends(get_subscription_session),
     runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
-) -> (
-    SubscriptionMutationRepository
-    | SubscribeDeletionRepository
-    | SubscribeIdentityDeletionRepository
-):
+) -> SubscriptionStagingPort:
     """构造绑定当前请求会话的订阅仓储。"""
     return runtime.repository(session)
 
@@ -145,7 +139,7 @@ def get_subscription_repository(
 def get_subscription_history_repository(
     session: object = Depends(get_subscription_session),
     runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
-) -> SubscriptionHistoryMutationRepository:
+) -> SubscriptionHistoryStagingPort:
     """构造绑定当前请求会话的订阅历史仓储。"""
     return runtime.history_repository(session)
 

@@ -8,28 +8,45 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Protocol
 
-from app.application.download.failures import DownloadFailureRepository
-from app.application.history import (
-    DownloadHistoryRepository,
-    TransferHistoryRepository,
-)
-from app.application.mediaserver import MediaServerRepository
-from app.application.security.user import ChainUserRepository
-from app.application.site.contract import SiteRepository
-from app.application.transfer.execution import TransferExecutionRepository
-from app.application.transfer.workflow import TransferAdmissionRepository
+if TYPE_CHECKING:
+    from app.application.download.failures import DownloadFailureRepository
+    from app.application.history import (
+        DownloadHistoryRepository,
+        TransferHistoryRepository,
+    )
+    from app.application.mediaserver import MediaServerRepository
+    from app.application.security.user import ChainUserRepository
+    from app.application.site.contract import SiteRepository
+    from app.application.subscription.contract import SubscriptionRepository
+    from app.application.transfer.execution import TransferExecutionRepository
+    from app.application.transfer.workflow import TransferAdmissionRepository
 
 OperFactory = Callable[[], Any]
-SiteRepositoryFactory = Callable[[], SiteRepository]
-DownloadFailureRepositoryFactory = Callable[[], DownloadFailureRepository]
-DownloadHistoryRepositoryFactory = Callable[[], DownloadHistoryRepository]
-TransferHistoryRepositoryFactory = Callable[[], TransferHistoryRepository]
-MediaServerRepositoryFactory = Callable[[], MediaServerRepository]
-ChainUserRepositoryFactory = Callable[[], ChainUserRepository]
-TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]
-TransferExecutionRepositoryFactory = Callable[[], TransferExecutionRepository]
+SiteRepositoryFactory = Callable[[], "SiteRepository"]
+SubscriptionRepositoryFactory = Callable[[], "SubscriptionRepository"]
+DownloadFailureRepositoryFactory = Callable[[], "DownloadFailureRepository"]
+MediaServerRepositoryFactory = Callable[[], "MediaServerRepository"]
+ChainUserRepositoryFactory = Callable[[], "ChainUserRepository"]
+TransferAdmissionRepositoryFactory = Callable[[], "TransferAdmissionRepository"]
+TransferExecutionRepositoryFactory = Callable[[], "TransferExecutionRepository"]
+
+
+class DownloadHistoryRepositoryFactory(Protocol):
+    """构造下载历史仓储且不在注册表导入时初始化其实现。"""
+
+    def __call__(self) -> "DownloadHistoryRepository":
+        """返回下载历史仓储。"""
+        ...
+
+
+class TransferHistoryRepositoryFactory(Protocol):
+    """构造整理历史仓储且不在注册表导入时初始化其实现。"""
+
+    def __call__(self) -> "TransferHistoryRepository":
+        """返回整理历史仓储。"""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +54,7 @@ class ChainDataPorts:
     """跨领域 Chain 使用的最小持久化端口工厂集合。"""
 
     site: SiteRepositoryFactory
-    subscribe: OperFactory
+    subscribe: SubscriptionRepositoryFactory
     download_history: DownloadHistoryRepositoryFactory
     transfer_history: TransferHistoryRepositoryFactory
     transfer_pending: TransferAdmissionRepositoryFactory
@@ -53,7 +70,7 @@ _ports: Optional[ChainDataPorts] = None
 def configure_chain_data_ports(
         *,
         site: SiteRepositoryFactory,
-        subscribe: OperFactory,
+        subscribe: SubscriptionRepositoryFactory,
         download_history: DownloadHistoryRepositoryFactory,
         transfer_history: TransferHistoryRepositoryFactory,
         transfer_pending: TransferAdmissionRepositoryFactory,
@@ -89,8 +106,8 @@ def get_chain_site_port() -> SiteRepository:
     return get_chain_data_ports().site()
 
 
-def get_chain_subscribe_port() -> Any:
-    """创建订阅数据端口实例。"""
+def get_chain_subscribe_port() -> SubscriptionRepository:
+    """创建类型化订阅查询与写入端口实例。"""
     return get_chain_data_ports().subscribe()
 
 

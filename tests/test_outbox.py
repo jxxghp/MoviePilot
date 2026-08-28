@@ -16,6 +16,10 @@ from app.application.outbox import (
     OutboxIntent,
     OutboxLeaseLostError,
 )
+from app.application.subscription.contract import (
+    SubscriptionIdentity,
+    SubscriptionPatch,
+)
 from app.application.subscription.write import CreateSubscriptionCommand
 from app.db.adapters.outbox import (
     SqlAlchemyOutboxDispatchStore,
@@ -24,6 +28,7 @@ from app.db.adapters.outbox import (
 from app.db.base import Base
 from app.db.maintenance import DatabaseCleanupRepository
 from app.db.models.outbox import OutboxMessage
+from app.schemas.types import MediaSource
 
 
 class _Staged:
@@ -45,7 +50,11 @@ def test_subscription_and_outbox_intent_commit_together() -> None:
     unit_of_work.commit.side_effect = lambda: calls.append("commit")
     command = CreateSubscriptionCommand(repository, unit_of_work, outbox=outbox)
 
-    result = command.execute({}, {"name": "demo"}, "user")
+    result = command.execute(
+        SubscriptionIdentity(media_source=MediaSource.TMDB, media_id="unknown"),
+        SubscriptionPatch({"name": "demo"}),
+        "user",
+    )
 
     assert result == (42, "ok")
     assert calls == ["subscription", "outbox", "outbox", "commit"]
@@ -69,8 +78,8 @@ def test_subscription_notification_snapshot_is_part_of_same_transaction() -> Non
     command = CreateSubscriptionCommand(repository, unit_of_work, outbox=outbox)
 
     command.execute(
-        {},
-        {"name": "demo"},
+        SubscriptionIdentity(media_source=MediaSource.TMDB, media_id="unknown"),
+        SubscriptionPatch({"name": "demo"}),
         "user",
         notification={"title": "订阅成功", "text": "demo"},
     )
@@ -95,7 +104,10 @@ def test_outbox_stage_failure_rolls_back_business_transaction() -> None:
     command = CreateSubscriptionCommand(repository, unit_of_work, outbox=outbox)
 
     with pytest.raises(RuntimeError, match="outbox unavailable"):
-        command.execute({}, {"name": "demo"})
+        command.execute(
+            SubscriptionIdentity(media_source=MediaSource.TMDB, media_id="unknown"),
+            SubscriptionPatch({"name": "demo"}),
+        )
 
     unit_of_work.rollback.assert_called_once_with()
     unit_of_work.commit.assert_not_called()

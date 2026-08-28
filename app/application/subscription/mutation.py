@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional, Protocol
+from typing import Optional
 from uuid import uuid4
 
 from app.application.outbox import (
@@ -14,53 +14,21 @@ from app.application.outbox import (
     OutboxIntent,
     deliver_async_outbox_effect,
 )
+from app.application.subscription.contract import (
+    SubscriptionHistorySnapshot,
+    SubscriptionHistoryStagingPort,
+    SubscriptionMutationPort,
+    SubscriptionPatch,
+    SubscriptionSnapshot,
+)
+from app.application.subscription.delete import AsyncUnitOfWork
+from app.schemas.common import JsonData
 from app.schemas.event import SubscribeModifiedEventData
 
-
-class SubscriptionMutationRepository(Protocol):
-    """订阅写用例需要的异步数据端口。"""
-
-    async def async_get(self, subscribe_id: int) -> Any | None:
-        """按 ID 获取订阅。"""
-
-    async def async_update(self, subscribe_id: int, payload: dict[str, Any]) -> Any | None:
-        """更新订阅。"""
-
-    async def async_stage_update(
-        self,
-        subscribe_id: int,
-        payload: dict[str, Any],
-    ) -> Any | None:
-        """在调用方事务中暂存更新但不提交。"""
-
-    def get(self, subscribe_id: int) -> Any | None:
-        """同步按 ID 获取订阅。"""
+SubscribeModifiedPublisher = Callable[[dict[str, JsonData]], Awaitable[None]]
 
 
-class SubscriptionHistoryMutationRepository(Protocol):
-    """订阅历史删除用例需要的最小数据端口。"""
-
-    async def async_get(self, history_id: int) -> Any | None:
-        """按 ID 获取订阅历史。"""
-
-    async def async_delete(self, history_id: int) -> None:
-        """删除订阅历史。"""
-
-
-class AsyncUnitOfWork(Protocol):
-    """订阅修改用例使用的异步事务端口。"""
-
-    async def commit(self) -> None:
-        """提交当前订阅修改事务。"""
-
-    async def rollback(self) -> None:
-        """回滚当前订阅修改事务。"""
-
-
-SubscribeModifiedPublisher = Callable[[dict[str, Any]], Awaitable[None]]
-
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SubscriptionActor:
     """订阅写操作的权限主体。"""
 
@@ -68,12 +36,12 @@ class SubscriptionActor:
     is_superuser: bool
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SubscriptionMutation:
     """一次订阅变更前后的稳定快照。"""
 
-    old: dict[str, Any]
-    new: dict[str, Any]
+    old: dict[str, JsonData]
+    new: dict[str, JsonData]
     event_published: bool = False
     business_committed: bool = False
     pending_effects: tuple[str, ...] = ()
@@ -84,8 +52,8 @@ class SubscriptionMutationService:
 
     def __init__(
         self,
-        repository: SubscriptionMutationRepository,
-        history_repository: SubscriptionHistoryMutationRepository | None = None,
+        repository: SubscriptionMutationPort,
+        history_repository: SubscriptionHistoryStagingPort | None = None,
         unit_of_work: AsyncUnitOfWork | None = None,
         outbox: Optional[AsyncOutboxStager] = None,
         dispatch_store: Optional[AsyncOutboxDispatchStore] = None,
@@ -103,7 +71,7 @@ class SubscriptionMutationService:
         self,
         subscribe_id: int,
         actor: SubscriptionActor,
-    ) -> Any | None:
+    ) -> SubscriptionSnapshot | None:
         """读取当前主体可访问的订阅。"""
         subscribe = await self._repository.async_get(subscribe_id)
         return subscribe if self.can_access(subscribe, actor) else None
@@ -112,7 +80,7 @@ class SubscriptionMutationService:
         self,
         subscribe_id: int,
         actor: SubscriptionActor,
-    ) -> Any | None:
+    ) -> SubscriptionSnapshot | None:
         """同步读取当前主体可访问的订阅。"""
         subscribe = self._repository.get(subscribe_id)
         return subscribe if self.can_access(subscribe, actor) else None
@@ -120,9 +88,9 @@ class SubscriptionMutationService:
     async def update(
         self,
         subscribe_id: int,
-        payload: dict[str, Any],
+        payload: dict[str, JsonData],
         actor: SubscriptionActor,
-        existing: Any | None = None,
+        existing: SubscriptionSnapshot | None = None,
         scene: str = "update",
     ) -> SubscriptionMutation | None:
         """更新订阅，并在同一事务暂存可恢复的 SubscribeModified 事件。"""
@@ -133,14 +101,20 @@ class SubscriptionMutationService:
             return None
         old = subscribe.to_dict()
         if not self._unit_of_work:
-            updated = await self._repository.async_update(subscribe_id, payload)
+            updated = await self._repository.async_update(
+                subscribe_id,
+                SubscriptionPatch(payload),
+            )
             return SubscriptionMutation(old=old, new=updated.to_dict() if updated else {})
 
         publish_modified = self._publish_modified
         if not self._outbox or not self._dispatch_store or not publish_modified:
             raise RuntimeError("订阅修改事务缺少 outbox stager、store 或事件发布端口")
         try:
-            updated = await self._repository.async_stage_update(subscribe_id, payload)
+            updated = await self._repository.async_stage_update(
+                subscribe_id,
+                SubscriptionPatch(payload),
+            )
             if not updated:
                 return None
             event_payload = SubscribeModifiedEventData(
@@ -204,7 +178,7 @@ class SubscriptionMutationService:
         subscribe = await self.get_accessible(subscribe_id, actor)
         if not subscribe:
             return None
-        payload = {
+        payload: dict[str, JsonData] = {
             "note": [],
             "lack_episode": subscribe.total_episode,
             "current_priority": None,
@@ -235,17 +209,27 @@ class SubscriptionMutationService:
         history = await self._history_repository.async_get(history_id)
         if not self.can_access(history, actor):
             return False
-        await self._history_repository.async_delete(history_id)
+        if self._unit_of_work is None:
+            raise RuntimeError("订阅历史删除缺少事务端口")
+        try:
+            await self._history_repository.stage_delete(history_id)
+            await self._unit_of_work.commit()
+        except Exception:
+            await self._unit_of_work.rollback()
+            raise
         return True
 
     @staticmethod
-    def can_access(subscribe: Any, actor: SubscriptionActor) -> bool:
+    def can_access(
+        subscribe: SubscriptionSnapshot | SubscriptionHistorySnapshot | None,
+        actor: SubscriptionActor,
+    ) -> bool:
         """判断主体是否可访问订阅或订阅历史。"""
         if not subscribe:
             return False
         if actor.is_superuser:
             return True
-        username = getattr(subscribe, "username", None)
+        username = subscribe.username
         return bool(username) and username == actor.name
 
 

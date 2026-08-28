@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.application.outbox import ClaimedOutboxMessage
@@ -530,7 +531,7 @@ async def test_repository_candidate_uses_loaded_orm_snapshot(monkeypatch):
 @pytest.mark.asyncio
 async def test_repository_stage_delete_does_not_commit():
     """真实仓储只登记删除，提交必须由请求级 UnitOfWork 执行。"""
-    session = type("SessionStub", (), {})()
+    session = MagicMock(spec=AsyncSession)
     session.execute = AsyncMock()
     session.commit = AsyncMock()
 

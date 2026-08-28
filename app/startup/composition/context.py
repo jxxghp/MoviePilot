@@ -16,11 +16,9 @@ from app.application.messaging.chat import (
 )
 from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.site.contract import SiteRepository
-from app.application.subscription.delete import SubscribeDeletionRepository
-from app.application.subscription.identity import SubscribeIdentityDeletionRepository
-from app.application.subscription.mutation import (
-    SubscriptionHistoryMutationRepository,
-    SubscriptionMutationRepository,
+from app.application.subscription.contract import (
+    SubscriptionHistoryStagingPort,
+    SubscriptionStagingPort,
 )
 from app.application.workflow import WorkflowCachePort, WorkflowQueryService
 from app.runtime.tasks import TaskRegistry
@@ -56,11 +54,7 @@ class SubscriptionRepositoryFactory(Protocol):
     def __call__(
         self,
         session: object,
-    ) -> (
-        SubscriptionMutationRepository
-        | SubscribeDeletionRepository
-        | SubscribeIdentityDeletionRepository
-    ):
+    ) -> SubscriptionStagingPort:
         """绑定请求会话并返回订阅领域仓储。"""
         ...
 
@@ -68,7 +62,7 @@ class SubscriptionRepositoryFactory(Protocol):
 class SubscriptionHistoryRepositoryFactory(Protocol):
     """由请求会话构造订阅历史写仓储的工厂。"""
 
-    def __call__(self, session: object) -> SubscriptionHistoryMutationRepository:
+    def __call__(self, session: object) -> SubscriptionHistoryStagingPort:
         """绑定请求会话并返回订阅历史仓储。"""
         ...
 

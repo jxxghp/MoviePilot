@@ -158,7 +158,8 @@ flowchart TB
 
 `app/application/chain/data.py`、`app/application/agentdata.py` 和
 `app/application/history.py` 的 `get_*_port()` 是宿主生产代码读取组合根能力的现有接缝；其中
-Chain/Agent 的 `Any` factory 和裸 Oper 仍需迁移为类型化 Port/DTO，不能把当前兼容代理当作最终合同。
+Subscription、Site、History 等已完成迁移，尚未迁移的 Chain/Agent `Any` factory、裸 Oper 和
+locator 仍需进入类型化 Port/DTO，不能把当前 getter 聚合器当作最终合同。
 需要跨进程恢复或 commit 后可靠执行的
 业务副作用进入 `app/application/outbox.py` 定义的 Outbox 端口，由
 `app/db/adapters/outbox.py` 实现；`app/runtime/tasks.py` 的 TaskRegistry 只负责进程内任务所有权、
@@ -201,7 +202,7 @@ Chain/Agent 的 `Any` factory 和裸 Oper 仍需迁移为类型化 Port/DTO，�
 | `app/adapters/observability/` | 可选观测技术适配；核心层只依赖 `runtime/observability` 定义的窄端口 | `otel.py` |
 | `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则、可靠副作用等；同一主题拆成子包 | `recognition.py`、`rules.py`、`rss.py`、`outbox.py`、`site/`、`subscription/`、`plugin/` |
 | `app/application/chain/` | Chain 运行时上下文、跨领域数据端口和 durable event 命令；将组合根注入的能力以命名 getter 暴露给 Chain | `context.py`、`data.py`、`events.py` |
-| `app/application/subscription/` | 订阅新增、查询、变更、删除、媒体身份与搜索契约 | `write.py`、`contract.py`、`mutation.py`、`delete.py`、`identity.py`、`search.py` |
+| `app/application/subscription/` | 订阅深度冻结 DTO、typed query/write/staging Repository，以及新增、查询、变更、删除、媒体身份与搜索用例 | `contract.py`、`write.py`、`mutation.py`、`delete.py`、`identity.py`、`search.py` |
 | `app/application/plugin/` | 插件市场、安装、运行时端口、文件夹操作和动态路由用例；具体 FastAPI 路由适配器在 adapters 层 | `catalog.py`、`install.py`、`runtime.py`、`folders.py`、`routes.py` |
 | `app/application/messaging/` | 渠道回环入口、消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `ingress.py`、`message.py`、`router.py`、`agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、SSRF 与 URL/路径安全 | `auth.py`、`url.py`、`twofactor.py` |
@@ -436,6 +437,11 @@ flowchart LR
   创建、提交、回滚或关闭事务。无会话入口只存在于 Oper，由 `_execute_*` 经组合根事务执行器
   承接；内置插件必须调用 Oper，不得直接导入宿主 Model。AST 门禁同时约束装饰器、可选 Session
   和插件到 Model 的依赖，保证提交权不会被底层抢走。
+- **Subscription typed boundary**：`application/subscription/contract.py` 是 Subscription 与
+  SubscriptionHistory 完整快照、媒体身份、写 Patch 和 Repository Protocol 的唯一 owner；JSON 列在
+  Session 内复制并深度冻结。Chain/Agent 的独立操作使用短事务 adapter，请求/API/Application Command
+  使用绑定当前 Session 的 adapter；两者都不向调用方泄漏 ORM。旧订阅 Oper 模块和包根符号只经同一
+  `sdk/_legacy/subscribe.py` + Compat 门面保留插件 ABI，不进入 canonical `__all__`。
 - **Outbox 可靠副作用**：业务行与 durable intent 在同一 Session/UoW 中提交；提交后由
   Outbox dispatcher 依据 topic、claim/lease、有限重试和 dead-letter 执行。完成通知、事件和统计
   的 post-commit 逻辑必须保持幂等，不能用普通线程或 TaskRegistry 代替持久 intent。终态历史随统一
@@ -705,7 +711,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 859 |
-| 内部导入边 | 7,064 |
+| 内部导入边 | 7,089 |
 | 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
 | Direct egress | 66（12 条待迁移债务，54 条精确 containment） |
 | Module Contract V2 spec | 217（其中 215 个进入 `run_module` 观察面） |
@@ -727,7 +733,8 @@ flowchart LR
 - 已完成的插件边界：插件 API 的动态路由由 application 端口 + web adapter 组成，使用原生
   `APIRoute` 保留插件响应；插件管理器保留 `plugin_manager.py` 的稳定 ABI，内部实现拆在
   `runtime/extensions/plugin/`；`app/plugins/` 仅作为运行时插件副本/覆盖层处理。
-- 已完成的主题收口：订阅写入归入 `app/application/subscription/write.py`；插件动态路由与
+- 已完成的主题收口：订阅 DTO/Port 归入 `app/application/subscription/contract.py`，用例写入归入
+  `app/application/subscription/write.py`，SQLAlchemy 实现只在 `app/db/adapters/subscription.py`；插件动态路由与
   文件夹操作归入 `app/application/plugin/routes.py`、`folders.py`。原
   `app/application/subscribe.py`、`app/application/plugins.py` 未形成插件 ABI，已经直接删除，
   宿主调用统一改为 canonical 路径。

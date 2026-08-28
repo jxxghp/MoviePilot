@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, call
 
 from app.agent.tools.impl import search_subscribe as search_subscribe_module
 from app.agent.tools.impl.search_subscribe import SearchSubscribeTool
+from app.application.subscription.contract import SubscriptionPatch
 
 
 def _subscribe(*, state: str = "R") -> SimpleNamespace:
@@ -66,7 +67,7 @@ def test_search_subscribe_uses_async_data_port(monkeypatch) -> None:
     assert port.async_get.await_args_list == [call(record.id), call(record.id)]
     port.async_update.assert_awaited_once_with(
         record.id,
-        {"filter_groups": ["default"]},
+        SubscriptionPatch({"filter_groups": ["default"]}),
     )
 
 

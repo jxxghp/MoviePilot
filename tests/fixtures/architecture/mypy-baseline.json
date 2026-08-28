@@ -802,7 +802,6 @@
   },
   "app/agent/tools/impl/update_subscribe.py": {
     "arg-type": 1,
-    "assignment": 12,
     "misc": 1,
     "no-untyped-def": 2,
     "override": 1
@@ -1105,9 +1104,6 @@
   "app/application/agent.py": {
     "no-any-return": 4
   },
-  "app/application/agentdata.py": {
-    "attr-defined": 9
-  },
   "app/application/agenttask.py": {
     "type-arg": 1
   },
@@ -1140,7 +1136,6 @@
     "type-arg": 2
   },
   "app/application/history.py": {
-    "attr-defined": 1,
     "no-any-return": 1
   },
   "app/application/image.py": {
@@ -1300,22 +1295,15 @@
     "no-untyped-def": 3,
     "type-arg": 3
   },
-  "app/application/subscription/complete.py": {
-    "arg-type": 2
-  },
   "app/application/subscription/contract.py": {
-    "arg-type": 2,
-    "assignment": 2,
+    "arg-type": 1,
     "misc": 1
   },
   "app/application/subscription/query.py": {
-    "attr-defined": 1,
-    "type-arg": 1
+    "attr-defined": 1
   },
   "app/application/subscription/write.py": {
-    "arg-type": 2,
-    "no-untyped-def": 2,
-    "type-arg": 18
+    "arg-type": 2
   },
   "app/application/torrent.py": {
     "arg-type": 14,
@@ -1507,24 +1495,24 @@
     "type-arg": 2
   },
   "app/chain/subscribe.py": {
-    "arg-type": 60,
+    "arg-type": 58,
     "assignment": 18,
-    "attr-defined": 5,
+    "attr-defined": 4,
     "call-overload": 1,
     "dict-item": 2,
     "index": 1,
     "misc": 7,
     "no-any-return": 2,
-    "no-redef": 3,
+    "no-redef": 2,
     "no-untyped-call": 19,
-    "no-untyped-def": 21,
+    "no-untyped-def": 18,
     "operator": 5,
     "return-value": 5,
     "truthy-function": 3,
-    "type-arg": 15,
+    "type-arg": 14,
     "type-var": 1,
     "union-attr": 45,
-    "var-annotated": 4
+    "var-annotated": 3
   },
   "app/chain/system.py": {
     "attr-defined": 1,
@@ -1700,16 +1688,6 @@
     "no-untyped-def": 6,
     "type-arg": 4,
     "union-attr": 3
-  },
-  "app/db/oper/subscribe.py": {
-    "arg-type": 4,
-    "no-any-return": 3,
-    "no-untyped-def": 3,
-    "type-arg": 13,
-    "union-attr": 1
-  },
-  "app/db/oper/subscribehistory.py": {
-    "no-any-return": 1
   },
   "app/db/oper/systemconfig.py": {
     "no-any-return": 1,
@@ -3366,14 +3344,14 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 11,
+    "arg-type": 8,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
     "no-untyped-call": 32,
-    "no-untyped-def": 7,
-    "return-value": 5
+    "no-untyped-def": 6,
+    "return-value": 4
   },
   "app/startup/initializers/plugins.py": {
     "arg-type": 5,
@@ -3439,7 +3417,7 @@
   },
   "app/workflow/actions/add_subscribe.py": {
     "type-arg": 1,
-    "union-attr": 2,
+    "union-attr": 1,
     "var-annotated": 1
   },
   "app/workflow/actions/fetch_downloads.py": {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, cast
 
 from app.application.history import (
@@ -11,6 +12,10 @@ from app.application.history import (
 )
 from app.application.security.user import ChainUserRepository
 from app.application.site.contract import SiteRepository
+from app.application.subscription.contract import (
+    SubscriptionHistoryQueryPort,
+    SubscriptionRepository,
+)
 
 AgentDataFactory = Callable[[], Any]
 
@@ -46,18 +51,6 @@ class AgentTaskPort(_PortProxy):
     port_name = "agent_task"
 
 
-class SubscribePort(_PortProxy):
-    """订阅数据端口代理。"""
-
-    port_name = "subscribe"
-
-
-class SubscribeHistoryPort(_PortProxy):
-    """订阅历史数据端口代理。"""
-
-    port_name = "subscribe_history"
-
-
 class TransferHistoryPort(_PortProxy):
     """整理历史数据端口代理。"""
 
@@ -76,12 +69,19 @@ class PluginDataPort(_PortProxy):
     port_name = "plugin_data"
 
 
+@dataclass(frozen=True, slots=True)
 class AgentDataPorts:
     """Agent 入口所需的持久化端口集合。"""
 
-    def __init__(self, **factories: AgentDataFactory) -> None:
-        """保存各数据能力的工厂。"""
-        self.__dict__.update(factories)
+    agent_chat: AgentDataFactory
+    agent_task: AgentDataFactory
+    user: AgentDataFactory
+    site: AgentDataFactory
+    subscribe: AgentDataFactory
+    subscribe_history: AgentDataFactory
+    transfer_history: AgentDataFactory
+    download_history: AgentDataFactory
+    plugin_data: AgentDataFactory
 
 
 _ports: AgentDataPorts | None = None
@@ -104,7 +104,17 @@ def configure_agent_data_ports(**factories: AgentDataFactory) -> None:
     if missing:
         raise ValueError(f"Agent 数据端口缺少实现: {', '.join(missing)}")
     global _ports
-    _ports = AgentDataPorts(**{name: factories[name] for name in required})
+    _ports = AgentDataPorts(
+        agent_chat=factories["agent_chat"],
+        agent_task=factories["agent_task"],
+        user=factories["user"],
+        site=factories["site"],
+        subscribe=factories["subscribe"],
+        subscribe_history=factories["subscribe_history"],
+        transfer_history=factories["transfer_history"],
+        download_history=factories["download_history"],
+        plugin_data=factories["plugin_data"],
+    )
 
 
 def get_agent_data_ports() -> AgentDataPorts:
@@ -134,14 +144,17 @@ def get_agent_site_port() -> SiteRepository:
     return cast(SiteRepository, get_agent_data_ports().site())
 
 
-def get_agent_subscribe_port() -> Any:
-    """创建 Agent 订阅数据端口实例。"""
-    return get_agent_data_ports().subscribe()
+def get_agent_subscribe_port() -> SubscriptionRepository:
+    """创建 Agent 类型化订阅查询与写入端口实例。"""
+    return cast(SubscriptionRepository, get_agent_data_ports().subscribe())
 
 
-def get_agent_subscribe_history_port() -> Any:
-    """创建 Agent 订阅历史数据端口实例。"""
-    return get_agent_data_ports().subscribe_history()
+def get_agent_subscribe_history_port() -> SubscriptionHistoryQueryPort:
+    """创建 Agent 类型化订阅历史查询端口实例。"""
+    return cast(
+        SubscriptionHistoryQueryPort,
+        get_agent_data_ports().subscribe_history(),
+    )
 
 
 def get_agent_transfer_history_port() -> TransferHistoryRepository:

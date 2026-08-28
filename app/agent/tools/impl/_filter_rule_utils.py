@@ -291,7 +291,8 @@ async def collect_rule_group_usages(
 
     subscribes = await get_agent_subscribe_port().async_list()
     for subscribe in subscribes:
-        filter_groups = subscribe.filter_groups or []
+        filter_groups = [str(name) for name in subscribe.filter_groups] \
+            if isinstance(subscribe.filter_groups, list) else []
         for name in filter_groups:
             if target_names and name not in target_names:
                 continue
@@ -489,14 +490,15 @@ async def _rewrite_rule_group_references(
         await save_system_config(config_key, updated)
         changed["global_settings"][config_key.value] = updated
 
-    subscribe_port = get_agent_subscribe_port()
-    subscribes = await subscribe_port.async_list()
+    repository = get_agent_subscribe_port()
+    subscribes = await repository.async_list()
     for subscribe in subscribes:
-        original = subscribe.filter_groups or []
+        original = [str(name) for name in subscribe.filter_groups] \
+            if isinstance(subscribe.filter_groups, list) else []
         updated = map_names(original)
         if updated == original:
             continue
-        await subscribe_port.async_update_filter_groups(subscribe.id, updated)
+        await repository.async_update_filter_groups(subscribe.id, updated)
         changed["subscribes"].append(
             {
                 "subscribe_id": subscribe.id,

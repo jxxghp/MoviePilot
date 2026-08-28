@@ -106,9 +106,9 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S1-L3.4 User | `VERIFIED` | S1-L3.3 | User Chain/Agent/认证改用冻结 typed snapshot；创建、更名、删除与最后一个启用超级管理员保护归并到单 UoW；用户名唯一索引及 UserConfig/PassKey 级联迁移落地，UserConfig 在 commit 后持写锁重载数据库事实源并发布内存快照 |
 | S1-L3.5 History | `VERIFIED` | S1-L3.4 | DownloadHistory 与 TransferHistory 均已迁入深度冻结 DTO、typed query/write/staging Port 与短 Session adapter；请求级删除和 durable 结算各自保持单一 UoW，canonical 调用方不再接收 raw Oper/ORM，旧写入 ABI 只由 SDK Legacy/Compat 提供 |
 | S1-L3.6 Site | `VERIFIED` | S1-L3.5 | Site 配置、用户数据、图标和统计统一为深度冻结 DTO 与 typed query/write/staging Port；请求写入复用 AsyncSession，Chain/Agent 使用独立短事务，canonical 不再接收 raw Oper/ORM，旧插件 ABI 只经 SDK Legacy/Compat |
-| S1-L3.7 Subscription | `PLANNED` | S1-L3.6 | Chain/Workflow/interaction 全部消费 typed query/command；完成后进入 S1-L4 原子事务收口 |
+| S1-L3.7 Subscription | `VERIFIED` | S1-L3.6 | `application/subscription/contract.py` 统一深度冻结 Snapshot/History/Identity/Patch 与 typed query/write/staging Repository；DB adapter 在 Session 内完成 ORM 投影，Chain/API/Agent/Workflow/interaction 不再消费 raw Oper/ORM/`Any`；旧 `SubscribeOper`/`SubscribeHistoryOper` 只经同一 SDK Legacy/Compat 门面保留插件 ABI |
 | S1-L3.8 Agent/Transfer locator gate | `PLANNED` | S1-L3.7 | 删除 AgentDataPorts 与 Chain locator 跨层泄漏，AST 门禁确认 canonical 无 raw getter/Oper/Any |
-| S1-L4 Subscription mutation UoW | `PLANNED` | S1-L3 | Subscription mutation 不跨 Session 传 ORM，正式写路径一个 UoW，旧自动事务入口退出 canonical 路径 |
+| S1-L4 Subscription mutation UoW | `PLANNED` | S1-L3.8 | 在已完成 typed DTO/Port 的基础上，逐项证明新增、修改、删除、完成及批量修改由用例拥有单一 UoW；禁止把短事务 Repository 当作跨记录原子事务，旧自动事务入口退出 canonical 路径 |
 | S1-L5 站点/规则引用原子清理 | `PLANNED` | S1-L4 | SystemConfig+Subscribe 同事务更新，commit 后快照原子发布，并发/故障注入无部分状态 |
 | S1-L6 Outbox 完成语义 | `VERIFIED` | S0 | 事务内 `OutboxStager` 与独立短事务 `OutboxDispatchStore` 已分离；即时投递与 dispatcher 均先 claim，complete/retry 受 attempt fencing；`PostCommitResult` 区分已提交业务、已完成与 pending effect。事件载荷和宿主 correlation context 携带稳定 event key；旧通知插件保持原签名并承认 at-least-once 重复边界 |
 
@@ -153,7 +153,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 830 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 815 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口

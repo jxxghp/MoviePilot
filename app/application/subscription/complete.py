@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from datetime import datetime, timezone
-from typing import Any, Optional, Protocol
+from typing import Optional
 
 from app.application.outbox import (
     SUBSCRIBE_COMPLETED_TOPIC,
@@ -15,23 +15,15 @@ from app.application.outbox import (
     SyncUnitOfWork,
     deliver_outbox_effect,
 )
+from app.application.subscription.contract import (
+    SubscriptionHistoryPatch,
+    SubscriptionStagingPort,
+)
 from app.runtime.log import logger
-
-
-class SubscriptionCompletionRepository(Protocol):
-    """订阅完成命令需要的最小同步持久化端口。"""
-
-    def add_history(self, **payload: Any) -> None:
-        """在当前事务中暂存订阅历史。"""
-        ...
-
-    def delete(self, subscribe_id: int) -> None:
-        """在当前事务中暂存订阅删除。"""
-        ...
-
+from app.schemas.common import JsonData
 
 CompletionEffect = Callable[[], None]
-CompletionReporter = Callable[[Mapping[str, Any]], object]
+CompletionReporter = Callable[[Mapping[str, JsonData]], object]
 
 
 class CompleteSubscriptionCommand:
@@ -39,11 +31,11 @@ class CompleteSubscriptionCommand:
 
     def __init__(
         self,
-        repository: SubscriptionCompletionRepository,
+        repository: SubscriptionStagingPort,
         unit_of_work: SyncUnitOfWork,
         outbox: Optional[OutboxStager],
         dispatch_store: Optional[OutboxDispatchStore],
-        publish: Callable[[dict[str, Any]], None],
+        publish: Callable[[dict[str, JsonData]], None],
     ) -> None:
         """注入共享同步会话、事件发布端口和可选 durable outbox。"""
         self._repository = repository
@@ -55,27 +47,28 @@ class CompleteSubscriptionCommand:
     def execute(
         self,
         subscribe_id: int,
-        subscribe_info: Mapping[str, Any],
-        mediainfo: Mapping[str, Any],
+        subscribe_info: Mapping[str, JsonData],
+        mediainfo: Mapping[str, JsonData],
         notify: CompletionEffect,
         report: CompletionReporter,
-        notification: Mapping[str, Any] | None = None,
+        notification: Mapping[str, JsonData] | None = None,
     ) -> None:
         """在同一事务中写历史、删订阅并暂存完成事件、通知与统计意图。"""
         info = dict(subscribe_info)
-        event_payload = {
+        event_key = completion_event_key(subscribe_id, info)
+        event_payload: dict[str, JsonData] = {
             "subscribe_id": subscribe_id,
             "subscribe_info": info,
             "mediainfo": dict(mediainfo),
-            "idempotency_key": completion_event_key(subscribe_id, info),
+            "idempotency_key": event_key,
         }
-        event_key = event_payload["idempotency_key"]
         report_key = completion_report_key(subscribe_id, info)
         notification_key = completion_notification_key(subscribe_id, info)
-        report_payload = {"subscribe_info": _completion_report_payload(info, report_key)}
+        report_info = _completion_report_payload(info, report_key)
+        report_payload: dict[str, JsonData] = {"subscribe_info": report_info}
         try:
-            self._repository.add_history(**info)
-            self._repository.delete(subscribe_id)
+            self._repository.stage_history(SubscriptionHistoryPatch.from_subscription(info))
+            self._repository.stage_delete_sync(subscribe_id)
             if self._outbox:
                 now = datetime.now(timezone.utc)
                 self._outbox.stage(
@@ -135,7 +128,7 @@ class CompleteSubscriptionCommand:
                 report_delivered = deliver_outbox_effect(
                     self._dispatch_store,
                     report_key,
-                    lambda: report(report_payload["subscribe_info"]),
+                    lambda: report(report_info),
                 )
             except Exception as error:
                 logger.warning(f"订阅完成统计上报失败，将由后台重试：{error}")
@@ -144,12 +137,15 @@ class CompleteSubscriptionCommand:
                     logger.warning("订阅完成统计上报未确认，将由后台重试")
         else:
             try:
-                report(report_payload["subscribe_info"])
+                report(report_info)
             except Exception as error:
                 logger.warning(f"订阅完成统计上报失败：{error}")
 
 
-def completion_event_key(subscribe_id: int, subscribe_info: Mapping[str, Any]) -> str:
+def completion_event_key(
+    subscribe_id: int,
+    subscribe_info: Mapping[str, JsonData],
+) -> str:
     """构造跨重试稳定的订阅完成事件幂等键。"""
     return (
         f"subscribe.complete:{subscribe_id}:"
@@ -158,23 +154,26 @@ def completion_event_key(subscribe_id: int, subscribe_info: Mapping[str, Any]) -
     )
 
 
-def completion_report_key(subscribe_id: int, subscribe_info: Mapping[str, Any]) -> str:
+def completion_report_key(
+    subscribe_id: int,
+    subscribe_info: Mapping[str, JsonData],
+) -> str:
     """构造可独立重试的订阅完成统计幂等键。"""
     return f"{completion_event_key(subscribe_id, subscribe_info)}:report"
 
 
 def completion_notification_key(
     subscribe_id: int,
-    subscribe_info: Mapping[str, Any],
+    subscribe_info: Mapping[str, JsonData],
 ) -> str:
     """构造订阅完成通知的稳定幂等键，避免恢复时重复生成不同消息。"""
     return f"{completion_event_key(subscribe_id, subscribe_info)}:notification"
 
 
 def _completion_report_payload(
-    subscribe_info: Mapping[str, Any],
+    subscribe_info: Mapping[str, JsonData],
     report_key: str,
-) -> dict[str, Any]:
+) -> dict[str, JsonData]:
     """保留旧统计接口字段，同时为恢复 handler 固化幂等键。"""
     return {
         "media_source": subscribe_info.get("media_source"),

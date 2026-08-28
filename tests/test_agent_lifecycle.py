@@ -13,6 +13,7 @@ from app.agent.orchestrator import (
 )
 from app.agent.tools.base import reopen_blocking_executors
 from app.application import query as query_application
+from app.application.agentdata import get_agent_subscribe_history_port
 from app.application.messaging.agent import (
     create_web_agent_background_task,
     shutdown_web_agent_background_tasks,
@@ -129,7 +130,7 @@ async def test_agent_manager_background_tasks_share_owner_loop(monkeypatch) -> N
 
 @pytest.mark.anyio
 async def test_agent_entrypoint_reuses_tasks_and_closes_idempotently(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """全局启停入口重复调用时必须复用任务并安全收口。"""
     manager = AgentManager()
@@ -159,7 +160,7 @@ async def test_agent_entrypoint_reuses_tasks_and_closes_idempotently(
 
 @pytest.mark.anyio
 async def test_agent_initialization_failure_does_not_stop_module_startup(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """Agent 初始化异常只关闭该能力，基础模块仍继续完成启动。"""
     manager = AsyncMock()
@@ -202,12 +203,19 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
 
     try:
         runtime = await modules_initializer.init_modules()
-        assert runtime.workflow.system_config() is (
-            modules_initializer.get_configured_system_config()
-        )
+        assert runtime.workflow.system_config() is (modules_initializer.get_configured_system_config())
         query_page = await query_sdk.async_list_subscriptions({"ids": [-1]})
         assert query_page.items == []
         assert query_page.total == 0
+        history_repository = get_agent_subscribe_history_port()
+        assert (
+            await history_repository.async_list_by_type(
+                "不存在的订阅类型",
+                page=1,
+                count=1,
+            )
+            == []
+        )
     finally:
         await modules_initializer.stop_database_worker()
 
@@ -234,7 +242,7 @@ async def test_disabled_agent_does_not_create_background_tasks(monkeypatch) -> N
 
 @pytest.mark.anyio
 async def test_agent_manager_acceptance_gate_rejects_stale_references(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """未启动和关闭后的 manager 引用不得创建队列、worker 或 Agent。"""
     manager = AgentManager()
@@ -246,12 +254,15 @@ async def test_agent_manager_acceptance_gate_rejects_stale_references(
 
     await manager.initialize()
     manager._process_message_internal = AsyncMock(return_value="accepted")
-    assert await manager.process_message(
-        "running",
-        "1",
-        "hello",
-        wait_for_completion=True,
-    ) == "accepted"
+    assert (
+        await manager.process_message(
+            "running",
+            "1",
+            "hello",
+            wait_for_completion=True,
+        )
+        == "accepted"
+    )
     await manager.close()
 
     with pytest.raises(AgentManagerUnavailableError):
@@ -263,7 +274,7 @@ async def test_agent_manager_acceptance_gate_rejects_stale_references(
 
 @pytest.mark.anyio
 async def test_agent_manager_rejects_messages_when_session_queue_is_full(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """会话达到待处理容量后应立即拒绝，不得在生命周期锁内无限等待。"""
     manager = AgentManager()
@@ -334,12 +345,15 @@ async def test_agent_manager_records_queue_wait_time(monkeypatch) -> None:
 
     manager._process_message_internal = process
     await manager.initialize()
-    assert await manager.process_message(
-        "queue-observe",
-        "1",
-        "message",
-        wait_for_completion=True,
-    ) == "done"
+    assert (
+        await manager.process_message(
+            "queue-observe",
+            "1",
+            "message",
+            wait_for_completion=True,
+        )
+        == "done"
+    )
     await asyncio.wait_for(started.wait(), timeout=1)
 
     status = manager.get_session_status("queue-observe")
@@ -349,7 +363,7 @@ async def test_agent_manager_records_queue_wait_time(monkeypatch) -> None:
 
 @pytest.mark.anyio
 async def test_agent_manager_rejects_new_messages_while_worker_shutdown_is_pending(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """worker 未在关停上限内收敛时，同一会话必须保持停止态。"""
     manager = AgentManager()
@@ -401,7 +415,7 @@ async def test_agent_manager_rejects_new_messages_while_worker_shutdown_is_pendi
 
 @pytest.mark.anyio
 async def test_clear_session_defers_agent_cleanup_until_worker_finishes(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """clear_session 超时期间不得清理仍被 worker 使用的 Agent 和记忆。"""
     manager = AgentManager()
@@ -463,7 +477,7 @@ async def test_clear_session_defers_agent_cleanup_until_worker_finishes(
 
 @pytest.mark.anyio
 async def test_close_defers_shared_agent_teardown_after_worker_timeout(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """管理器关闭超时后，旧 worker 收敛前不得拆除共享 Agent 资源。"""
     manager = AgentManager()
@@ -520,7 +534,7 @@ async def test_close_defers_shared_agent_teardown_after_worker_timeout(
 
 @pytest.mark.anyio
 async def test_close_retains_agent_until_detached_subagent_converges(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """Agent cleanup 返回 False 时 manager 必须保留 agent 和共享记忆 owner。"""
     manager = AgentManager()
@@ -560,7 +574,7 @@ async def test_close_retains_agent_until_detached_subagent_converges(
 
 @pytest.mark.anyio
 async def test_agent_manager_close_serializes_racing_enqueue_and_clear(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """关闭、临时会话清理和迟到请求必须串行收口且只清理一次。"""
     manager = AgentManager()
@@ -601,9 +615,7 @@ async def test_agent_manager_close_serializes_racing_enqueue_and_clear(
     await asyncio.wait_for(started.wait(), timeout=1)
     close_task = asyncio.create_task(manager.close())
     await asyncio.wait_for(cleanup_started.wait(), timeout=1)
-    late_enqueue = asyncio.create_task(
-        manager.process_message("late", "1", "hello")
-    )
+    late_enqueue = asyncio.create_task(manager.process_message("late", "1", "hello"))
     request_clear = asyncio.create_task(manager.clear_session("closing", "1"))
     await asyncio.sleep(0)
     assert not late_enqueue.done()
@@ -673,7 +685,7 @@ async def test_clear_session_settles_current_and_queued_waiters(monkeypatch) -> 
 
 @pytest.mark.anyio
 async def test_background_prompt_is_owned_and_cancelled_by_manager_close(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """后台 prompt 必须进入 manager worker，关闭时同步结束且不残留临时会话。"""
     manager = AgentManager()
@@ -738,7 +750,7 @@ async def test_stop_current_task_handles_worker_cancelled_before_first_run() -> 
 
 @pytest.mark.anyio
 async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """clear_session 被调用方取消后必须能重试或已转交延迟清理。"""
     manager = AgentManager()
@@ -784,9 +796,7 @@ async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
         )
         await asyncio.wait_for(started.wait(), timeout=1)
 
-        clear_request = asyncio.create_task(
-            manager.clear_session(session_id, "1")
-        )
+        clear_request = asyncio.create_task(manager.clear_session(session_id, "1"))
         await asyncio.wait_for(cancellation_seen.wait(), timeout=1)
         assert clear_request.done() is False
         clear_request.cancel()
@@ -803,10 +813,7 @@ async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
             timeout=1,
         )
         for _ in range(100):
-            if (
-                session_id not in manager._session_cleanup_pending
-                and session_id not in manager.active_agents
-            ):
+            if session_id not in manager._session_cleanup_pending and session_id not in manager.active_agents:
                 break
             await asyncio.sleep(0)
 
@@ -844,7 +851,7 @@ async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
 
 @pytest.mark.anyio
 async def test_session_worker_restarts_after_idle_timeout_races_with_full_enqueue(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """空闲退出与满队列入队交错时必须保留会话消费者。"""
     manager = AgentManager()
@@ -909,6 +916,8 @@ async def test_session_worker_restarts_after_idle_timeout_races_with_full_enqueu
         if manager._accepting_tasks:
             await manager.clear_session(session_id, "1")
             await manager.close()
+
+
 def _patch_agent_settings(monkeypatch, enabled: bool) -> None:
     """注入 Agent 启动测试所需的只读配置。"""
     monkeypatch.setattr(

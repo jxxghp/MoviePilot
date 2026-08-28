@@ -12,6 +12,7 @@ from app.foundation.text import cut as jieba_cut
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.schemas.common import JsonData
+from app.schemas.file import FileItem
 from app.schemas.history import (
     DownloadHistory,
     TransferHistory,
@@ -20,7 +21,6 @@ from app.schemas.history import (
 from app.schemas.media import resolve_media_identity
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
-from app.schemas.workflow import FileItem
 
 # 失败重试次数的合法区间。下界为 1：一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）
 # 不该让文件永久漏整理，所以不允许关闭重试；上界为 10：永远识别不出的文件重试再多

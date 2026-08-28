@@ -5,6 +5,7 @@
 方法多、每个都很薄——薄封装最容易在参数改名或默认值上出偏差，而调用方拿到的是
 空列表或 None，看起来像「本来就没有数据」。
 """
+
 import asyncio
 
 import pytest
@@ -34,12 +35,24 @@ def _track(db):
 # TransferHistoryOper
 # --------------------------------------------------------------------------- #
 
+
 def _transfer_kwargs(title: str, src: str, **extra) -> dict:
     """构造整理历史的写入参数。"""
-    payload = dict(src=src, src_storage="local", dest=f"/media/{title}.mkv",
-                   dest_storage="local", mode="move", type=MediaType.TV.value,
-                   title=title, year="2026", media_source=TMDB, media_id="3001",
-                   status=True, date="2026-08-13 10:00:00", files=[])
+    payload = dict(
+        src=src,
+        src_storage="local",
+        dest=f"/media/{title}.mkv",
+        dest_storage="local",
+        mode="move",
+        type=MediaType.TV.value,
+        title=title,
+        year="2026",
+        media_source=TMDB,
+        media_id="3001",
+        status=True,
+        date="2026-08-13 10:00:00",
+        files=[],
+    )
     payload.update(extra)
     return payload
 
@@ -67,10 +80,8 @@ def test_transferhistory_oper_recursive_listings(db):
     oper.add(**_transfer_kwargs("子项", "/data/op-dir/a.mkv", dest="/media/op-dir/a.mkv"))
     oper.add(**_transfer_kwargs("兄弟", "/data/op-dir2/b.mkv", dest="/media/op-dir2/b.mkv"))
 
-    assert {h.title for h in oper.list_success_by_src("/data/op-dir", recursive=True)} == \
-        {"自身", "子项"}
-    assert {h.title for h in oper.list_success_move_by_dest("/media/op-dir", recursive=True)} == \
-        {"自身", "子项"}
+    assert {h.title for h in oper.list_success_by_src("/data/op-dir", recursive=True)} == {"自身", "子项"}
+    assert {h.title for h in oper.list_success_move_by_dest("/media/op-dir", recursive=True)} == {"自身", "子项"}
     assert [h.title for h in oper.list_success_by_src("/data/op-dir")] == ["自身"]
     assert [h.title for h in oper.list_success_move_by_dest("/media/op-dir")] == ["自身"]
 
@@ -80,15 +91,14 @@ def test_transferhistory_oper_identity_and_hash_lookups(db):
     按标题、hash、媒体身份查询与按条件组合查询都应命中同一条记录。
     """
     oper = TransferHistoryOper(db=db.session)
-    oper.add(**_transfer_kwargs("身份", "/data/op-id.mkv", media_id="3100",
-                                download_hash="op-th-hash", seasons="S01"))
+    oper.add(**_transfer_kwargs("身份", "/data/op-id.mkv", media_id="3100", download_hash="op-th-hash", seasons="S01"))
 
     assert [h.title for h in oper.get_by_title("身份")] == ["身份"]
     assert [h.title for h in oper.list_by_hash("op-th-hash")] == ["身份"]
-    assert oper.get_by_media_identity(media_source=TMDB, media_id="3100",
-                                      mtype=MediaType.TV.value).title == "身份"
-    assert [h.title for h in oper.get_by(mtype=MediaType.TV.value, media_source=TMDB,
-                                         media_id="3100", season="S01")] == ["身份"]
+    assert oper.get_by_media_identity(media_source=TMDB, media_id="3100", mtype=MediaType.TV.value).title == "身份"
+    assert [
+        h.title for h in oper.get_by(mtype=MediaType.TV.value, media_source=TMDB, media_id="3100", season="S01")
+    ] == ["身份"]
     assert [h.title for h in oper.list_by_date("2026-08-01")] == ["身份"]
     assert oper.statistic(days=36500)
 
@@ -100,9 +110,7 @@ def test_transferhistory_oper_stage_replace_replaces_same_source(db):
     oper = TransferHistoryOper(db=db.session)
     oper.add(**_transfer_kwargs("旧记录", "/data/op-force.mkv"))
 
-    created = oper.stage_replace_by_src(
-        **_transfer_kwargs("新记录", "/data/op-force.mkv")
-    )
+    created = oper.stage_replace_by_src(**_transfer_kwargs("新记录", "/data/op-force.mkv"))
 
     assert created.title == "新记录"
     assert [h.title for h in oper.list_success_by_src("/data/op-force.mkv")] == ["新记录"]
@@ -133,8 +141,7 @@ def test_transferhistory_oper_async_accessors_match_sync(db):
     db.session.commit()
 
     assert asyncio.run(oper.async_get(history.id)).id == history.id
-    assert [h.title for h in asyncio.run(
-        oper.async_list_by_title("AsyncTitle", count=-1))] == ["AsyncTitle"]
+    assert [h.title for h in asyncio.run(oper.async_list_by_title("AsyncTitle", count=-1))] == ["AsyncTitle"]
     assert {h.id for h in asyncio.run(oper.async_list_by_page(page=1, count=100))} >= {history.id}
     assert asyncio.run(oper.async_count()) >= 1
     assert asyncio.run(oper.async_count_by_title("AsyncTitle")) == 1
@@ -159,12 +166,21 @@ def test_transferhistory_oper_truncate_empties_the_table(db):
 # SubscribeOper / SubscribeHistoryOper
 # --------------------------------------------------------------------------- #
 
-def _subscribe(name: str, media_id: str = "2001", state: str = "N",
-               username: str = "op-alice", mtype: str = None) -> Subscribe:
+
+def _subscribe(
+    name: str, media_id: str = "2001", state: str = "N", username: str = "op-alice", mtype: str = None
+) -> Subscribe:
     """构造一条订阅记录。"""
-    return Subscribe(name=name, type=mtype or MediaType.TV.value, state=state,
-                     media_source=TMDB, media_id=media_id, season=1,
-                     username=username, date="2026-08-13 10:00:00")
+    return Subscribe(
+        name=name,
+        type=mtype or MediaType.TV.value,
+        state=state,
+        media_source=TMDB,
+        media_id=media_id,
+        season=1,
+        username=username,
+        date="2026-08-13 10:00:00",
+    )
 
 
 def test_subscribe_oper_read_entry_points(db):
@@ -175,12 +191,10 @@ def test_subscribe_oper_read_entry_points(db):
     oper = SubscribeOper(db=db.session)
 
     assert oper.get(row.id).id == row.id
-    assert oper.get_by(type=MediaType.TV.value, media_source=TMDB,
-                       media_id="2001").id == row.id
+    assert oper.get_by(type=MediaType.TV.value, media_source=TMDB, media_id="2001").id == row.id
     assert {s.id for s in oper.list("N")} >= {row.id}
     assert {s.id for s in oper.list()} >= {row.id}
-    assert [s.name for s in oper.list_by_username("op-alice", state="N",
-                                                  mtype=MediaType.TV.value)] == ["订阅一"]
+    assert [s.name for s in oper.list_by_username("op-alice", state="N", mtype=MediaType.TV.value)] == ["订阅一"]
     assert [s.name for s in oper.list_by_type(MediaType.TV.value, days=36500)] == ["订阅一"]
 
 
@@ -205,8 +219,7 @@ def test_subscribe_oper_async_entry_points(db):
     oper = SubscribeOper(db=db.session)
 
     assert asyncio.run(oper.async_get(row.id)).id == row.id
-    assert asyncio.run(oper.async_get_by(type=MediaType.TV.value, media_source=TMDB,
-                                         media_id="2200")).id == row.id
+    assert asyncio.run(oper.async_get_by(type=MediaType.TV.value, media_source=TMDB, media_id="2200")).id == row.id
     assert {s.id for s in asyncio.run(oper.async_list("N"))} >= {row.id}
     assert asyncio.run(oper.async_update(row.id, {"state": "R"})).state == "R"
     assert asyncio.run(oper.async_update_filter_groups(row.id, ["g1"])).filter_groups == ["g1"]
@@ -221,24 +234,35 @@ def test_subscribe_oper_history_round_trip(db):
 
     历史判定失效会让用户能重复订阅一部已经追完的剧。
     """
-    oper = SubscribeOper(db=db.session)
-    oper.add_history(name="历史剧", type=MediaType.TV.value, media_source=TMDB,
-                     media_id="2300", season=1, date="2026-08-13 10:00:00",
-                     username="op-alice", best_version=False)
+    history_oper = SubscribeHistoryOper(db=db.session)
+    history_oper.add(
+        {
+            "name": "历史剧",
+            "type": MediaType.TV.value,
+            "media_source": TMDB,
+            "media_id": "2300",
+            "season": 1,
+            "date": "2026-08-13 10:00:00",
+            "username": "op-alice",
+            "best_version": False,
+        }
+    )
     db.session.commit()
 
-    assert oper.exist_history(media_source=MediaSource.TMDB, media_id="2300",
-                              season=1) is True
-    assert oper.exist_history(media_source=MediaSource.TMDB, media_id="2999",
-                              season=1) is False
-    assert "历史剧" in {h.name for h in asyncio.run(
-        SubscribeHistoryOper(db=db.session).async_list_by_type(
-            mtype=MediaType.TV.value, page=1, count=100))}
+    assert history_oper.exists(media_source=TMDB, media_id="2300", season=1) is True
+    assert history_oper.exists(media_source=TMDB, media_id="2999", season=1) is False
+    assert "历史剧" in {
+        h.name
+        for h in asyncio.run(
+            SubscribeHistoryOper(db=db.session).async_list_by_type(mtype=MediaType.TV.value, page=1, count=100)
+        )
+    }
 
 
 # --------------------------------------------------------------------------- #
 # MessageOper
 # --------------------------------------------------------------------------- #
+
 
 def test_message_oper_add_returns_persisted_payload(db):
     """
@@ -246,8 +270,7 @@ def test_message_oper_add_returns_persisted_payload(db):
     """
     oper = MessageOper(db=db.session)
 
-    created = oper.add(title="标题", text="正文", source="op-msg-1",
-                       reg_time="2026-08-13 10:00:00")
+    created = oper.add(title="标题", text="正文", source="op-msg-1", reg_time="2026-08-13 10:00:00")
 
     assert created["id"] is not None
     assert created["title"] == "标题"
@@ -260,15 +283,12 @@ def test_message_oper_listing_entry_points(db):
     分页列举的同步与异步入口都应返回刚写入的消息。
     """
     oper = MessageOper(db=db.session)
-    oper.add(title="分页消息", text="正文", source="op-msg-2",
-             reg_time="2026-08-13 10:00:00")
+    oper.add(title="分页消息", text="正文", source="op-msg-2", reg_time="2026-08-13 10:00:00")
     db.session.commit()
 
     assert [m.title for m in oper.list_by_page(page=1, count=1)] == ["分页消息"]
-    assert [m.title for m in asyncio.run(oper.async_list_by_page(page=1, count=1))] == \
-        ["分页消息"]
-    assert [m.title for m in asyncio.run(oper.async_list_sent_by_page(page=1, count=1))] == \
-        ["分页消息"]
+    assert [m.title for m in asyncio.run(oper.async_list_by_page(page=1, count=1))] == ["分页消息"]
+    assert [m.title for m in asyncio.run(oper.async_list_sent_by_page(page=1, count=1))] == ["分页消息"]
 
 
 def test_message_oper_async_add_returns_the_model_not_a_dict(db):
@@ -280,9 +300,9 @@ def test_message_oper_async_add_returns_the_model_not_a_dict(db):
     """
     oper = MessageOper(db=db.session)
 
-    created = asyncio.run(oper.async_add(title="异步消息", text="正文",
-                                         source="op-msg-3",
-                                         reg_time="2026-08-13 10:00:00"))
+    created = asyncio.run(
+        oper.async_add(title="异步消息", text="正文", source="op-msg-3", reg_time="2026-08-13 10:00:00")
+    )
 
     assert isinstance(created, Message)
     assert created.id is not None
@@ -293,19 +313,21 @@ def test_message_oper_async_add_returns_the_model_not_a_dict(db):
 # DownloadFailureOper
 # --------------------------------------------------------------------------- #
 
+
 def test_downloadfailure_oper_round_trip(db):
     """
     记录失败、查询冷却中、清理过期三个入口构成完整闭环。
     """
     oper = DownloadFailureOper(db=db.session)
-    oper.record_failure(fingerprint="op-fp-1", now_time="2026-08-13 10:00:00",
-                        next_retry_at="2026-08-13 20:00:00", title="片名")
-    oper.record_failure(fingerprint="op-fp-old", now_time="2026-01-01 10:00:00",
-                        next_retry_at="2026-01-01 20:00:00", title="旧的")
+    oper.record_failure(
+        fingerprint="op-fp-1", now_time="2026-08-13 10:00:00", next_retry_at="2026-08-13 20:00:00", title="片名"
+    )
+    oper.record_failure(
+        fingerprint="op-fp-old", now_time="2026-01-01 10:00:00", next_retry_at="2026-01-01 20:00:00", title="旧的"
+    )
 
     # Oper 侧返回「指纹 -> 记录」映射，供上层直接按指纹判定是否仍在冷却
-    active = oper.get_active_by_fingerprints(["op-fp-1", "op-fp-old"],
-                                             now_time="2026-08-13 12:00:00")
+    active = oper.get_active_by_fingerprints(["op-fp-1", "op-fp-old"], now_time="2026-08-13 12:00:00")
     assert set(active) == {"op-fp-1"}
     assert active["op-fp-1"].title == "片名"
 

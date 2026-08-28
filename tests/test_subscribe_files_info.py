@@ -3,25 +3,20 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from app.application.subscription.contract import SubscriptionSnapshot
 from app.chain.subscribe import SubscribeChain
 from app.modules.filemanager import FileManagerModule
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.types import MediaType
 
 
-def _build_subscribe(**overrides):
+def _build_subscribe(**overrides) -> SubscriptionSnapshot:
     data = {
         "id": 1,
         "name": "Test Show",
         "year": "2026",
         "type": MediaType.TV.value,
         "season": 1,
-        "tmdbid": None,
-        "doubanid": None,
-        "imdbid": None,
-        "tvdbid": None,
-        "bangumiid": None,
-        "anilistid": None,
         "media_source": None,
         "media_id": None,
         "episode_group": None,
@@ -29,9 +24,7 @@ def _build_subscribe(**overrides):
         "total_episode": 2,
     }
     data.update(overrides)
-    subscribe = SimpleNamespace(**data)
-    subscribe.to_dict = lambda: dict(data)
-    return subscribe
+    return SubscriptionSnapshot(**data)
 
 
 def _build_mediainfo():
@@ -93,13 +86,14 @@ def test_subscribe_files_info_merges_multiple_mediaservers():
     media_chain.recognize_media.return_value = mediainfo
 
     chain = SubscribeChain()
-    with patch("app.chain.subscribe.get_chain_download_history_port") as download_oper, \
-            patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch.object(chain, "media_files", return_value=None), \
-            patch.object(chain, "media_exists", side_effect=_media_exists_side_effect), \
-            patch("app.chain.subscribe.MediaServerHelper", return_value=helper), \
-            patch("app.chain.subscribe.MediaServerChain", return_value=mediaserver_chain), \
-            patch("app.chain.subscribe.Subscribe", side_effect=lambda **kwargs: SimpleNamespace(**kwargs)):
+    with (
+        patch("app.chain.subscribe.get_chain_download_history_port") as download_oper,
+        patch("app.chain.subscribe.MediaChain", return_value=media_chain),
+        patch.object(chain, "media_files", return_value=None),
+        patch.object(chain, "media_exists", side_effect=_media_exists_side_effect),
+        patch("app.chain.subscribe.MediaServerHelper", return_value=helper),
+        patch("app.chain.subscribe.MediaServerChain", return_value=mediaserver_chain),
+    ):
         download_oper.return_value.get_by_mediaid.return_value = []
         result = chain.subscribe_files_info(subscribe)
 
@@ -139,13 +133,14 @@ def test_subscribe_files_info_uses_season_zero_for_tv():
     media_chain.recognize_media.return_value = mediainfo
 
     chain = SubscribeChain()
-    with patch("app.chain.subscribe.get_chain_download_history_port") as download_oper, \
-            patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch.object(chain, "media_files", return_value=None), \
-            patch.object(chain, "media_exists", side_effect=_media_exists_side_effect), \
-            patch("app.chain.subscribe.MediaServerHelper", return_value=helper), \
-            patch("app.chain.subscribe.MediaServerChain", return_value=mediaserver_chain), \
-            patch("app.chain.subscribe.Subscribe", side_effect=lambda **kwargs: SimpleNamespace(**kwargs)):
+    with (
+        patch("app.chain.subscribe.get_chain_download_history_port") as download_oper,
+        patch("app.chain.subscribe.MediaChain", return_value=media_chain),
+        patch.object(chain, "media_files", return_value=None),
+        patch.object(chain, "media_exists", side_effect=_media_exists_side_effect),
+        patch("app.chain.subscribe.MediaServerHelper", return_value=helper),
+        patch("app.chain.subscribe.MediaServerChain", return_value=mediaserver_chain),
+    ):
         download_oper.return_value.get_by_mediaid.return_value = []
         result = chain.subscribe_files_info(subscribe)
 

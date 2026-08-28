@@ -4,7 +4,7 @@ import inspect
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Mapping, Optional, Protocol, cast
+from typing import Awaitable, Callable, Mapping, Optional, Protocol, cast
 from uuid import uuid4
 
 from app.application.outbox import (
@@ -18,55 +18,21 @@ from app.application.outbox import (
     deliver_async_outbox_effect,
     deliver_outbox_effect,
 )
+from app.application.subscription.contract import (
+    SubscribeDeletionCandidate,
+    SubscriptionStagingPort,
+)
 from app.runtime.log import logger
+from app.schemas.common import JsonData
 from app.schemas.event import SubscribeDeletedEventData
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SubscribeDeletionActor:
     """执行订阅删除的用户身份。"""
 
     username: str
     is_superuser: bool
-
-
-@dataclass(frozen=True)
-class SubscribeDeletionCandidate:
-    """删除前读取出的订阅快照，不向应用层暴露 ORM 对象。"""
-
-    subscribe_id: int
-    username: str | None
-    event_payload: Mapping[str, object]
-
-
-class SubscribeDeletionRepository(Protocol):
-    """订阅删除用例需要的最小数据访问端口。"""
-
-    async def get_candidate(
-        self,
-        subscribe_id: int,
-    ) -> SubscribeDeletionCandidate | None:
-        """读取订阅及删除事件所需的稳定快照。"""
-        ...
-
-    async def stage_delete(self, subscribe_id: int) -> None:
-        """把已读取的订阅登记为待删除，但不自行提交事务。"""
-        ...
-
-
-class SyncSubscribeDeletionRepository(Protocol):
-    """同步消息入口执行订阅删除所需的最小数据访问端口。"""
-
-    def get_candidate_sync(
-        self,
-        subscribe_id: int,
-    ) -> SubscribeDeletionCandidate | None:
-        """读取订阅及删除事件所需的稳定快照。"""
-        ...
-
-    def stage_delete_sync(self, subscribe_id: int) -> None:
-        """把已读取的订阅登记为待删除，但不自行提交事务。"""
-        ...
 
 
 class AsyncUnitOfWork(Protocol):
@@ -81,18 +47,18 @@ class AsyncUnitOfWork(Protocol):
         ...
 
 
-SubscribeDeletedPublisher = Callable[[dict[str, Any]], Awaitable[None]]
-SubscribeDeletedReporter = Callable[[Mapping[str, object]], object | Awaitable[object]]
-SyncSubscribeDeletedPublisher = Callable[[dict[str, Any]], None]
-SyncSubscribeDeletedReporter = Callable[[Mapping[str, object]], object]
+SubscribeDeletedPublisher = Callable[[dict[str, JsonData]], Awaitable[None]]
+SubscribeDeletedReporter = Callable[[Mapping[str, JsonData]], object | Awaitable[object]]
+SyncSubscribeDeletedPublisher = Callable[[dict[str, JsonData]], None]
+SyncSubscribeDeletedReporter = Callable[[Mapping[str, JsonData]], object]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _SubscribeDeletionEffects:
     """同步和异步入口共用的删除事件、统计与 outbox 意图。"""
 
-    event_payload: dict[str, Any]
-    report_payload: dict[str, object]
+    event_payload: dict[str, JsonData]
+    report_payload: dict[str, JsonData]
     event_intent: OutboxIntent
     report_intent: OutboxIntent
 
@@ -102,7 +68,7 @@ class DeleteSubscribeCommand:
 
     def __init__(
         self,
-        repository: SubscribeDeletionRepository,
+        repository: SubscriptionStagingPort,
         unit_of_work: AsyncUnitOfWork,
         publish_deleted: SubscribeDeletedPublisher,
         report_deleted: SubscribeDeletedReporter,
@@ -192,7 +158,7 @@ class SyncDeleteSubscribeCommand:
 
     def __init__(
         self,
-        repository: SyncSubscribeDeletionRepository,
+        repository: SubscriptionStagingPort,
         unit_of_work: SyncUnitOfWork,
         publish_deleted: SyncSubscribeDeletedPublisher,
         report_deleted: SyncSubscribeDeletedReporter,
@@ -273,11 +239,11 @@ def can_delete_subscribe(
 
 def _build_deletion_effects(
     subscribe_id: int,
-    subscribe_info: Mapping[str, object],
+    subscribe_info: Mapping[str, JsonData],
 ) -> _SubscribeDeletionEffects:
     """一次性构造两种执行风格共用的事件、上报和 durable intent。"""
     event_payload = build_subscribe_deleted_payload(subscribe_id, subscribe_info)
-    event_key = event_payload["idempotency_key"]
+    event_key = cast(str, event_payload["idempotency_key"])
     report_key = f"{event_key}:report"
     report_payload = dict(subscribe_info)
     report_payload["idempotency_key"] = report_key
@@ -302,12 +268,12 @@ def _build_deletion_effects(
 
 def build_subscribe_deleted_payload(
     subscribe_id: int,
-    subscribe_info: Mapping[str, object],
-) -> dict[str, Any]:
+    subscribe_info: Mapping[str, JsonData],
+) -> dict[str, JsonData]:
     """构造兼容旧字段并携带幂等键的订阅删除事件快照。"""
     event_key = f"subscribe.deleted:{subscribe_id}:{uuid4().hex}:v1"
     return cast(
-        dict[str, Any],
+        dict[str, JsonData],
         SubscribeDeletedEventData(
             subscribe_id=subscribe_id,
             subscribe_info=dict(subscribe_info),

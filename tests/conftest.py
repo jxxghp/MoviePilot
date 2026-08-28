@@ -228,7 +228,7 @@ def configure_plugin_system_services():
     from app.db.adapters.download import TransactionalDownloadFailureRepository
     from app.db.adapters.mediaserver import TransactionalMediaServerRepository
     from app.db.adapters.site import TransactionalSiteRepository
-    from app.db.adapters.subscription import TransactionalSubscribeWriter
+    from app.db.adapters.subscription import TransactionalSubscriptionRepository
     from app.db.adapters.transaction import TransactionalWriteRunner
     from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
     from app.db.adapters.transfer.execution import (
@@ -298,7 +298,7 @@ def configure_plugin_system_services():
         },
     )
     configure_subscribe_writer(
-        lambda: TransactionalSubscribeWriter(
+        lambda: TransactionalSubscriptionRepository(
             sync_session=SessionFactory,
             async_session=async_session_scope,
         )

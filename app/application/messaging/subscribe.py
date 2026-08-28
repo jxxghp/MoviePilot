@@ -11,9 +11,12 @@ from app.application.messaging.interaction import (
     supports_markdown,
     update_or_post_message,
 )
+from app.application.subscription.contract import (
+    SubscriptionQueryPort,
+    SubscriptionSnapshot,
+)
 from app.schemas.message import Message
-from app.schemas.types import NotificationChannel, MediaType
-
+from app.schemas.types import MediaType, NotificationChannel
 
 subscribe_interaction_manager = SlashInteractionManager()
 
@@ -36,24 +39,6 @@ class SubscribeInteractionActions(Protocol):
         ...
 
 
-class SubscribeInteractionRepository(Protocol):
-    """订阅消息交互所需的同步数据端口。"""
-
-    def list(self) -> List[Any]:
-        """返回订阅列表。"""
-
-    def get(self, subscribe_id: int) -> Optional[Any]:
-        """按 ID 返回订阅。"""
-
-    def check(self) -> Any:
-        """执行订阅元数据检查。"""
-        ...
-
-    def search(self, **kwargs: Any) -> Any:
-        """执行订阅搜索。"""
-        ...
-
-
 class SubscribeInteractionHandler:
     """
     管理 /subscribes 交互会话、按钮、文本输入和列表视图。
@@ -66,7 +51,7 @@ class SubscribeInteractionHandler:
             self,
             messenger: MessageGateway,
             actions: SubscribeInteractionActions,
-            repository: SubscribeInteractionRepository,
+            repository: SubscriptionQueryPort,
             delete_subscription: Callable[[int], bool],
     ) -> None:
         """
@@ -505,7 +490,9 @@ class SubscribeInteractionHandler:
         )
 
     def _format_subscribe_list(
-            self, subscribes: List[Any], channel: Optional[NotificationChannel]
+            self,
+            subscribes: List[SubscriptionSnapshot],
+            channel: Optional[NotificationChannel],
     ) -> str:
         """
         根据渠道能力格式化订阅列表。
@@ -551,7 +538,7 @@ class SubscribeInteractionHandler:
         return mapping.get(state or "", state or "-")
 
     @staticmethod
-    def _format_subscribe_progress(subscribe: Any) -> str:
+    def _format_subscribe_progress(subscribe: SubscriptionSnapshot) -> str:
         """
         构造订阅的季和进度说明。
         """

@@ -1,32 +1,21 @@
 """订阅修改 UoW 与 durable outbox 边界测试。"""
 
+from dataclasses import replace
+
 import pytest
 
 from app.application.outbox import ClaimedOutboxMessage
+from app.application.subscription.contract import SubscriptionPatch, SubscriptionSnapshot
 from app.application.subscription.mutation import (
     SubscriptionActor,
     SubscriptionMutationService,
 )
 
 
-class _Subscribe:
-    """提供稳定前后快照的订阅替身。"""
-
-    def __init__(self) -> None:
-        """初始化可修改字段与 owner。"""
-        self.id = 7
-        self.username = "alice"
-        self.name = "旧标题"
-
-    def to_dict(self) -> dict:
-        """返回当前订阅快照。"""
-        return {"id": self.id, "username": self.username, "name": self.name}
-
-
 class _Repository:
     """记录订阅读取、兼容更新和事务内暂存顺序。"""
 
-    def __init__(self, subscribe: _Subscribe, calls: list) -> None:
+    def __init__(self, subscribe: SubscriptionSnapshot, calls: list) -> None:
         """保存订阅对象与共享调用序列。"""
         self.subscribe = subscribe
         self.calls = calls
@@ -36,18 +25,16 @@ class _Repository:
         self.calls.append(("get", subscribe_id))
         return self.subscribe
 
-    async def async_update(self, subscribe_id: int, payload: dict):
+    async def async_update(self, subscribe_id: int, payload: SubscriptionPatch):
         """模拟旧兼容自动提交路径。"""
         self.calls.append(("legacy_update", subscribe_id, payload))
-        for key, value in payload.items():
-            setattr(self.subscribe, key, value)
+        self.subscribe = replace(self.subscribe, **payload.to_payload())
         return self.subscribe
 
-    async def async_stage_update(self, subscribe_id: int, payload: dict):
+    async def async_stage_update(self, subscribe_id: int, payload: SubscriptionPatch) -> SubscriptionSnapshot:
         """模拟调用方事务内的更新暂存。"""
         self.calls.append(("stage_update", subscribe_id, payload))
-        for key, value in payload.items():
-            setattr(self.subscribe, key, value)
+        self.subscribe = replace(self.subscribe, **payload.to_payload())
         return self.subscribe
 
     def get(self, subscribe_id: int):
@@ -110,7 +97,11 @@ class _Outbox:
 
 def _service(calls: list, *, event_error: Exception | None = None, outbox=None):
     """构造拥有请求级 UoW 和 outbox 的订阅修改服务。"""
-    subscribe = _Subscribe()
+    subscribe = SubscriptionSnapshot(
+        id=7,
+        username="alice",
+        name="旧标题",
+    )
 
     async def publish(payload: dict) -> None:
         """记录公开事件并按需失败。"""

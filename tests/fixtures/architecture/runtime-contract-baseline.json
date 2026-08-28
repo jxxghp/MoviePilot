@@ -242,9 +242,9 @@
       "app.db.subscribehistory_oper": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "db",
-        "replacement": "app.db.oper.subscribehistory",
-        "target": "app.db.oper.subscribehistory"
+        "owner": "sdk",
+        "replacement": "app.application.subscription.contract.SubscriptionHistoryQueryPort",
+        "target": "app.sdk._legacy.subscribe"
       },
       "app.db.systemconfig_oper": {
         "introduced": "v3.0.0",
@@ -931,6 +931,16 @@
           "replacement": "app.application.site.contract.SiteRepository",
           "target_module": "app.sdk._legacy.site",
           "target_name": "SiteOper"
+        },
+        "SubscribeHistoryOper": {
+          "replacement": "app.application.subscription.contract.SubscriptionHistoryQueryPort",
+          "target_module": "app.sdk._legacy.subscribe",
+          "target_name": "SubscribeHistoryOper"
+        },
+        "SubscribeOper": {
+          "replacement": "app.application.subscription.contract.SubscriptionRepository",
+          "target_module": "app.sdk._legacy.subscribe",
+          "target_name": "SubscribeOper"
         },
         "TransferHistoryOper": {
           "replacement": "app.application.history.TransferHistoryRepository",

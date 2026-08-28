@@ -111,6 +111,7 @@ from app.application.server.share import ServerSharingService
 from app.application.service import configure_service_directory
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.site.query import SiteQueryService, configure_site_query_service
+from app.application.subscription.contract import SubscriptionRepository
 from app.application.subscription.write import configure_subscribe_writer
 from app.application.workflow import (
     WorkflowQueryService,
@@ -137,7 +138,12 @@ from app.db.adapters.outbox import (
 )
 from app.db.adapters.query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.site import SessionSiteRepository, TransactionalSiteRepository
-from app.db.adapters.subscription import TransactionalSubscribeWriter
+from app.db.adapters.subscription import (
+    SessionSubscriptionHistoryRepository,
+    SessionSubscriptionRepository,
+    TransactionalSubscriptionHistoryRepository,
+    TransactionalSubscriptionRepository,
+)
 from app.db.adapters.transaction import TransactionalWriteRunner
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import (
@@ -157,8 +163,6 @@ from app.db.oper.mediaserver import MediaServerOper
 from app.db.oper.message import MessageOper
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.plugindata import PluginDataOper
-from app.db.oper.subscribe import SubscribeOper
-from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
@@ -273,11 +277,6 @@ def _build_transactional_user_repository() -> TransactionalUserRepository:
     )
 
 
-async def _async_get_subscribe(subscribe_id: int):
-    """通过数据库操作器异步读取订阅，供服务端共享用例使用。"""
-    return await SubscribeOper().async_get(subscribe_id)
-
-
 def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
     """把旧 Chain ABI 延迟转入唯一 TransferChain durable command。"""
     from app.chain.transfer import TransferChain
@@ -295,9 +294,7 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
         message_helper=MessageHelper(),
         file_cache=FileCache(),
         async_file_cache=AsyncFileCache(),
-        message_queue_factory=lambda callback: MessageQueueManager(
-            send_callback=callback
-        ),
+        message_queue_factory=lambda callback: MessageQueueManager(send_callback=callback),
         module_dispatcher_factory=ModuleInvocationDispatcher,
         legacy_transfer_command=_execute_legacy_transfer_command,
         configuration=build_chain_runtime_config(legacy_settings),
@@ -306,42 +303,37 @@ def _build_chain_runtime_context() -> ChainRuntimeContext:
     )
 
 
-def configure_runtime_data_providers(workflow_query: WorkflowQueryService) -> None:
+def configure_runtime_data_providers(
+    workflow_query: WorkflowQueryService,
+    subscription_repository: SubscriptionRepository,
+) -> None:
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
     configure_module_runtime(lambda: ModuleManager())
     configure_plugin_runtime(lambda: PluginManager())
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
-        modules=lambda module_type: ModuleManager().get_running_type_modules(
-            module_type
-        ),
+        modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
     )
     configure_server_application_services(
         report_service=ServerReportService(
             config_reader=lambda key: get_configured_system_config().get(key),
             config_writer=lambda key, value: get_configured_system_config().set(key, value),
-            async_config_writer=lambda key, value: get_configured_system_config().async_set(
-                key, value
+            async_config_writer=lambda key, value: get_configured_system_config().async_set(key, value),
+            installed_plugins_provider=lambda: (
+                get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or []
             ),
-            installed_plugins_provider=lambda: get_configured_system_config().get(
-                SystemConfigKey.UserInstalledPlugins
-            ) or [],
-            subscribes_provider=lambda: SubscribeOper().list(),
-            async_subscribes_provider=lambda: SubscribeOper().async_list(),
+            subscribes_provider=subscription_repository.list,
+            async_subscribes_provider=subscription_repository.async_list,
             plugin_report_sender=MoviePilotServerHelper.plugin_install_report,
-            async_plugin_report_sender=(
-                MoviePilotServerHelper.async_plugin_install_report
-            ),
+            async_plugin_report_sender=(MoviePilotServerHelper.async_plugin_install_report),
             subscribe_report_sender=MoviePilotServerHelper.subscribe_report,
             async_subscribe_report_sender=MoviePilotServerHelper.async_subscribe_report,
             repo_url_sanitizer=MoviePilotServerHelper.sanitize_plugin_repo_url,
         ),
         sharing_service=ServerSharingService(
-            subscribe_provider=lambda subscribe_id: SubscribeOper().get(
-                subscribe_id
-            ),
-            async_subscribe_provider=_async_get_subscribe,
+            subscribe_provider=subscription_repository.get,
+            async_subscribe_provider=subscription_repository.async_get,
             workflow_provider=workflow_query.get_sync,
             async_workflow_provider=workflow_query.get,
             user_uuid_provider=MoviePilotServerHelper.get_user_uuid,
@@ -350,12 +342,8 @@ def configure_runtime_data_providers(workflow_query: WorkflowQueryService) -> No
             workflow_sender=MoviePilotServerHelper.workflow_share,
             async_workflow_sender=MoviePilotServerHelper.async_workflow_share,
             response_handler=MoviePilotServerHelper._handle_response,
-            subscribe_cache_clearer=(
-                MoviePilotServerHelper._clear_subscribe_share_cache
-            ),
-            workflow_cache_clearer=(
-                MoviePilotServerHelper._clear_workflow_share_cache
-            ),
+            subscribe_cache_clearer=(MoviePilotServerHelper._clear_subscribe_share_cache),
+            workflow_cache_clearer=(MoviePilotServerHelper._clear_workflow_share_cache),
         ),
     )
 
@@ -365,28 +353,23 @@ def _build_outbox_handlers() -> dict[
     Callable[[ClaimedOutboxMessage], None],
 ]:
     """构造等待真实执行边界的 at-least-once 通知、事件和统计 handler。"""
+
     def discard_event_receipt(_event: object) -> None:
         """丢弃普通事件 API 的回执，使 outbox handler 仅表达结算成功。"""
 
     def dispatch_subscribe_deleted_report(message: ClaimedOutboxMessage) -> None:
         """重放订阅删除统计；未确认时抛错以进入有限重试。"""
-        if not MoviePilotServerHelper.sub_done_durable(
-            message.payload.get("subscribe_info") or {}
-        ):
+        if not MoviePilotServerHelper.sub_done_durable(message.payload.get("subscribe_info") or {}):
             raise RuntimeError("订阅删除统计上报未确认")
 
     def dispatch_subscribe_added_report(message: ClaimedOutboxMessage) -> None:
         """重放订阅新增统计；未确认时抛错以进入有限重试。"""
-        if not MoviePilotServerHelper.sub_reg_durable(
-            message.payload.get("subscribe_info") or {}
-        ):
+        if not MoviePilotServerHelper.sub_reg_durable(message.payload.get("subscribe_info") or {}):
             raise RuntimeError("订阅新增统计上报未确认")
 
     def dispatch_subscribe_complete_report(message: ClaimedOutboxMessage) -> None:
         """重放订阅完成统计；未确认时抛错以进入有限重试。"""
-        if not MoviePilotServerHelper.sub_done_durable(
-            message.payload.get("subscribe_info") or {}
-        ):
+        if not MoviePilotServerHelper.sub_done_durable(message.payload.get("subscribe_info") or {}):
             raise RuntimeError("订阅完成统计上报未确认")
 
     def dispatch_subscribe_notification(message: ClaimedOutboxMessage) -> None:
@@ -410,9 +393,7 @@ def _build_outbox_handlers() -> dict[
         )
 
     handlers: dict[str, Callable[[ClaimedOutboxMessage], None]] = {
-        durable_event_topic(
-            EventType.SubscribeAdded
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.SubscribeAdded): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.SubscribeAdded,
                 message.payload,
@@ -420,26 +401,20 @@ def _build_outbox_handlers() -> dict[
         ),
         "subscribe.added.report": dispatch_subscribe_added_report,
         "subscribe.added.notification": dispatch_subscribe_added_notification,
-        durable_event_topic(
-            EventType.SubscribeModified
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.SubscribeModified): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.SubscribeModified,
                 message.payload,
             )
         ),
-        durable_event_topic(
-            EventType.SubscribeDeleted
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.SubscribeDeleted): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.SubscribeDeleted,
                 message.payload,
             )
         ),
         "subscribe.deleted.report": dispatch_subscribe_deleted_report,
-        durable_event_topic(
-            EventType.SubscribeComplete
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.SubscribeComplete): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.SubscribeComplete,
                 message.payload,
@@ -447,57 +422,43 @@ def _build_outbox_handlers() -> dict[
         ),
         "subscribe.complete.report": dispatch_subscribe_complete_report,
         "subscribe.complete.notification": dispatch_subscribe_notification,
-        durable_event_topic(
-            EventType.DownloadAdded
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.DownloadAdded): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.DownloadAdded,
                 restore_download_added(message.payload),
             )
         ),
-        durable_event_topic(
-            EventType.TransferComplete
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.TransferComplete): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.TransferComplete,
                 restore_transfer_result(message.payload),
             )
         ),
-        durable_event_topic(
-            EventType.TransferFailed
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.TransferFailed): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.TransferFailed,
                 restore_transfer_result(message.payload),
             )
         ),
-        durable_event_topic(
-            EventType.SubtitleTransferComplete
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.SubtitleTransferComplete): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.SubtitleTransferComplete,
                 restore_transfer_result(message.payload),
             )
         ),
-        durable_event_topic(
-            EventType.SubtitleTransferFailed
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.SubtitleTransferFailed): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.SubtitleTransferFailed,
                 restore_transfer_result(message.payload),
             )
         ),
-        durable_event_topic(
-            EventType.AudioTransferComplete
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.AudioTransferComplete): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.AudioTransferComplete,
                 restore_transfer_result(message.payload),
             )
         ),
-        durable_event_topic(
-            EventType.AudioTransferFailed
-        ): lambda message: discard_event_receipt(
+        durable_event_topic(EventType.AudioTransferFailed): lambda message: discard_event_receipt(
             EventManager().send_event_strict(
                 EventType.AudioTransferFailed,
                 restore_transfer_result(message.payload),
@@ -526,9 +487,7 @@ def configure_wallpaper_services() -> None:
         tmdb_wallpaper=lambda: TmdbChain().get_random_wallpager(),
         tmdb_wallpapers=lambda count: TmdbChain().get_trending_wallpapers(count),
         mediaserver_wallpaper=lambda: MediaServerChain().get_latest_wallpaper(),
-        mediaserver_wallpapers=lambda count: MediaServerChain().get_latest_wallpapers(
-            count=count
-        ),
+        mediaserver_wallpapers=lambda count: MediaServerChain().get_latest_wallpapers(count=count),
     )
 
 
@@ -590,33 +549,31 @@ def start_frontend():
     启动前端服务
     """
     # 仅Windows可执行文件支持内嵌nginx
-    if not SystemUtils.is_frozen() \
-            or not SystemUtils.is_windows():
+    if not SystemUtils.is_frozen() or not SystemUtils.is_windows():
         return
     # 临时Nginx目录
-    nginx_path = get_runtime_setting("ROOT_PATH") / 'nginx'
+    nginx_path = get_runtime_setting("ROOT_PATH") / "nginx"
     if not nginx_path.exists():
         return
     # 配置目录下的Nginx目录
-    run_nginx_dir = get_runtime_setting("CONFIG_PATH").with_name('nginx')
+    run_nginx_dir = get_runtime_setting("CONFIG_PATH").with_name("nginx")
     if not run_nginx_dir.exists():
         # 移动到配置目录
         SystemUtils.move(nginx_path, run_nginx_dir)
     # 启动Nginx
     import subprocess
-    subprocess.Popen("start nginx.exe",
-                     cwd=run_nginx_dir,
-                     shell=True)
+
+    subprocess.Popen("start nginx.exe", cwd=run_nginx_dir, shell=True)
 
 
 def stop_frontend():
     """
     停止前端服务
     """
-    if not SystemUtils.is_frozen() \
-            or not SystemUtils.is_windows():
+    if not SystemUtils.is_frozen() or not SystemUtils.is_windows():
         return
     import subprocess
+
     subprocess.Popen("taskkill /f /im nginx.exe", shell=True)
 
 
@@ -681,7 +638,7 @@ def check_auth():
                 mtype=MessageType.Manual,
                 title="MoviePilot用户认证",
                 text=err_msg,
-                link=get_runtime_setting("MP_DOMAIN")('#/site')
+                link=get_runtime_setting("MP_DOMAIN")("#/site"),
             )
         )
 
@@ -689,9 +646,7 @@ def check_auth():
 def update_resources() -> None:
     """安装可用资源更新，并由组合根统一决定是否重启进程。"""
     sites_helper = SitesHelper()
-    configure_resource_version_provider(
-        lambda: (sites_helper.auth_version, sites_helper.indexer_version)
-    )
+    configure_resource_version_provider(lambda: (sites_helper.auth_version, sites_helper.indexer_version))
     if ResourceHelper().check() is not True:
         return
     restarted, message = SystemHelper.restart()
@@ -774,9 +729,7 @@ async def stop_modules() -> bool:
         record_failure=False,
     )
     if not web_agent_drained:
-        web_agent_drained = await run_step(
-            "Web Agent后台任务收尾", wait_web_agent_background_tasks
-        )
+        web_agent_drained = await run_step("Web Agent后台任务收尾", wait_web_agent_background_tasks)
     if web_agent_drained:
         await run_step(
             "Agent会话持久化准入",
@@ -855,8 +808,8 @@ async def init_modules() -> HostRuntime:
             "message": MessageOper,
             "passkey": PassKeyOper,
             "site": SessionSiteRepository,
-            "subscribe": SubscribeOper,
-            "subscribe_history": SubscribeHistoryOper,
+            "subscribe": SessionSubscriptionRepository,
+            "subscribe_history": SessionSubscriptionHistoryRepository,
             "user": SqlAlchemyUserRepository,
             "workflow": WorkflowOper,
         },
@@ -901,6 +854,13 @@ async def init_modules() -> HostRuntime:
         sync_session=SessionFactory,
         async_session=async_session_scope,
     )
+    subscription_repository = TransactionalSubscriptionRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+    subscription_history_repository = TransactionalSubscriptionHistoryRepository(
+        async_session=async_session_scope,
+    )
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
@@ -933,13 +893,11 @@ async def init_modules() -> HostRuntime:
         ),
         subscription=SubscriptionRuntime(
             async_session=get_async_db,
-            repository=SubscribeOper,
-            history_repository=SubscribeHistoryOper,
+            repository=SessionSubscriptionRepository,
+            history_repository=SessionSubscriptionHistoryRepository,
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
-            dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(
-                async_session_scope
-            ),
+            dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(async_session_scope),
         ),
         workflow=WorkflowRuntime(
             query=workflow_query,
@@ -957,24 +915,18 @@ async def init_modules() -> HostRuntime:
     configure_token_runtime_config(lambda: build_token_runtime_config(legacy_settings))
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
     configure_api_data_runtime(api_data)
-    configure_runtime_data_providers(workflow_query)
+    configure_runtime_data_providers(workflow_query, subscription_repository)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_execution(workflow_execution)
     configure_chain_data_ports(
         site=lambda: site_repository,
-        subscribe=lambda: SubscribeOper(),
+        subscribe=lambda: subscription_repository,
         download_history=lambda: download_history_repository,
         transfer_history=lambda: transfer_history_repository,
-        transfer_pending=lambda: TransactionalTransferAdmissionRepository(
-            SessionFactory
-        ),
-        transfer_execution=lambda: TransactionalTransferExecutionRepository(
-            SessionFactory
-        ),
+        transfer_pending=lambda: TransactionalTransferAdmissionRepository(SessionFactory),
+        transfer_execution=lambda: TransactionalTransferExecutionRepository(SessionFactory),
         media_server=lambda: TransactionalMediaServerRepository(SessionFactory),
-        download_failure=lambda: TransactionalDownloadFailureRepository(
-            SessionFactory
-        ),
+        download_failure=lambda: TransactionalDownloadFailureRepository(SessionFactory),
         user=_build_transactional_user_repository,
     )
     configure_outbox_dispatcher(_build_outbox_dispatcher)
@@ -989,9 +941,7 @@ async def init_modules() -> HostRuntime:
     configure_user_lookups(
         by_id=lambda user_id: _build_transactional_user_repository().get_by_id(user_id),
         by_name=lambda username: _build_transactional_user_repository().get_by_name(username),
-        by_channel=lambda **bindings: (
-            _build_transactional_user_repository().find_name_by_bindings(bindings)
-        ),
+        by_channel=lambda **bindings: _build_transactional_user_repository().find_name_by_bindings(bindings),
     )
     configure_auth_service(
         AuthService(
@@ -1016,23 +966,20 @@ async def init_modules() -> HostRuntime:
         agent_task=lambda: AgentTaskOper(),
         user=_build_transactional_user_repository,
         site=lambda: site_repository,
-        subscribe=lambda: SubscribeOper(),
-        subscribe_history=lambda: SubscribeHistoryOper(),
+        subscribe=lambda: subscription_repository,
+        subscribe_history=lambda: subscription_history_repository,
         transfer_history=lambda: transfer_history_repository,
         download_history=lambda: download_history_repository,
         plugin_data=lambda: PluginDataOper(),
     )
-    configure_agent_task_execution(AgentTaskExecutionService(
-        repository=lambda session: AgentTaskOper(session),
-        async_executor=database_worker,
-        sync_transaction=transaction_runner.sync,
-    ))
-    configure_subscribe_writer(
-        lambda: TransactionalSubscribeWriter(
-            sync_session=SessionFactory,
-            async_session=async_session_scope,
+    configure_agent_task_execution(
+        AgentTaskExecutionService(
+            repository=lambda session: AgentTaskOper(session),
+            async_executor=database_worker,
+            sync_transaction=transaction_runner.sync,
         )
     )
+    configure_subscribe_writer(lambda: subscription_repository)
     configure_transactional_subscription_scopes()
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()

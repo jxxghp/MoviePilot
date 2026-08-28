@@ -126,6 +126,22 @@ adapters; it does not retain reusable repository implementations.
   callbacks. `SubscribeOper.stage_add()` only queries, adds and flushes. Preserve
   `SubscribeOper.add()` only for legacy SDK callers; new host code must not use
   that auto-commit compatibility path.
+- The full Subscription boundary is owned by
+  `app/application/subscription/contract.py`: complete subscription and history
+  records leave the Session only as deeply frozen snapshots, while identity and
+  patch DTOs make query/write inputs explicit. Standalone Chain/Agent work uses
+  `TransactionalSubscriptionRepository`; request and Application commands bind
+  `SessionSubscriptionRepository` or `SessionSubscriptionHistoryRepository` to
+  their existing Session/UoW. The Session-bound adapters stage and project but
+  never commit. Canonical host code must not receive `Subscribe`,
+  `SubscribeHistory`, `SubscribeOper`, or `SubscribeHistoryOper`; the old module
+  paths and package-root symbols are plugin ABI implemented only by the SDK
+  Legacy/Compat facade.
+- A repository method that opens one short transaction per call is not a batch
+  transaction. Subscription workflows that update multiple rows or combine
+  `SystemConfig` and subscription mutations must use a caller-owned Session/UoW
+  and publish process snapshots only after commit; this remains the S1-L4/S1-L5
+  acceptance boundary.
 - The same rule applies to `SiteMutationCommand`, history/workflow commands,
   `AgentChatService.delete()`, and `DeletePluginDataCommand`: bind the repository
   and UoW to one request/operation Session. Legacy plugin-facing Oper methods may

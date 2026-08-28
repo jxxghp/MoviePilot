@@ -135,10 +135,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="sdk",
     ),
     "app.db.subscribehistory_oper": ModuleAlias(
-        target="app.db.oper.subscribehistory",
-        replacement="app.db.oper.subscribehistory",
+        target="app.sdk._legacy.subscribe",
+        replacement="app.application.subscription.contract.SubscriptionHistoryQueryPort",
         introduced="v3.0.0",
-        owner="db",
+        owner="sdk",
     ),
     "app.db.systemconfig_oper": ModuleAlias(
         target="app.db.oper.systemconfig",
@@ -779,6 +779,18 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             target_module="app.sdk._legacy.site",
             target_name="SiteOper",
             replacement="app.application.site.contract.SiteRepository",
+        ),
+        "SubscribeHistoryOper": SymbolAlias(
+            target_module="app.sdk._legacy.subscribe",
+            target_name="SubscribeHistoryOper",
+            replacement=(
+                "app.application.subscription.contract.SubscriptionHistoryQueryPort"
+            ),
+        ),
+        "SubscribeOper": SymbolAlias(
+            target_module="app.sdk._legacy.subscribe",
+            target_name="SubscribeOper",
+            replacement="app.application.subscription.contract.SubscriptionRepository",
         ),
         "TransferHistoryOper": SymbolAlias(
             target_module="app.sdk._legacy.history",
