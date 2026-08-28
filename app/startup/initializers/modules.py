@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import sys
+from functools import partial
 from typing import Any, Callable
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
@@ -111,7 +112,6 @@ from app.application.service import configure_service_directory
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.subscription.contract import SubscriptionRepository
-from app.application.subscription.write import configure_subscribe_writer
 from app.application.workflow import (
     WorkflowQueryService,
     configure_workflow_execution,
@@ -223,7 +223,15 @@ from app.startup.composition.context import (
 )
 from app.startup.composition.database import build_database_governance
 from app.startup.composition.subscription import (
-    configure_transactional_subscription_scopes,
+    async_rule_group_mutation_scope,
+    build_subscription_batch_writer,
+    delete_subscribe_scope,
+    rule_group_mutation_scope,
+    site_reference_mutation_scope,
+    subscription_completion_scope,
+    subscription_mutation_scope,
+    sync_delete_subscribe_scope,
+    sync_subscription_mutation_scope,
 )
 from app.startup.initializers.agent import configure_agent_data_context, init_agent
 from app.startup.initializers.resources import (
@@ -289,6 +297,7 @@ def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
 
 def _build_chain_runtime_context(
     *,
+    system_config: SystemConfigOper,
     site: TransactionalSiteRepository,
     subscription: TransactionalSubscriptionRepository,
     download_history: TransactionalDownloadHistoryRepository,
@@ -307,6 +316,19 @@ def _build_chain_runtime_context(
         module_dispatcher_factory=ModuleInvocationDispatcher,
         site_repository=site,
         subscription_repository=subscription,
+        subscription_mutation_scope=subscription_mutation_scope,
+        sync_subscription_mutation_scope=sync_subscription_mutation_scope,
+        subscription_delete_scope=delete_subscribe_scope,
+        sync_subscription_delete_scope=sync_delete_subscribe_scope,
+        subscription_completion_scope=subscription_completion_scope,
+        rule_group_mutation_scope=partial(
+            rule_group_mutation_scope,
+            system_config.publish_many,
+        ),
+        site_reference_mutation_scope=partial(
+            site_reference_mutation_scope,
+            system_config.publish_many,
+        ),
         download_history_repository=download_history,
         transfer_history_repository=transfer_history,
         transfer_admission_repository=TransactionalTransferAdmissionRepository(SessionFactory),
@@ -892,6 +914,12 @@ async def init_modules() -> HostRuntime:
         users=_build_transactional_user_repository(),
         sites=site_repository,
         subscriptions=subscription_repository,
+        subscription_mutation_scope=subscription_mutation_scope,
+        subscription_delete_scope=delete_subscribe_scope,
+        async_rule_group_mutation_scope=partial(
+            async_rule_group_mutation_scope,
+            system_config.publish_many,
+        ),
         subscription_history=subscription_history_repository,
         transfer_history=transfer_history_repository,
         transfer_execution=transfer_execution_repository,
@@ -937,6 +965,19 @@ async def init_modules() -> HostRuntime:
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
             dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(async_session_scope),
+            batch_writer=build_subscription_batch_writer,
+            rule_group_mutation_scope=partial(
+                rule_group_mutation_scope,
+                system_config.publish_many,
+            ),
+            async_rule_group_mutation_scope=partial(
+                async_rule_group_mutation_scope,
+                system_config.publish_many,
+            ),
+            site_reference_mutation_scope=partial(
+                site_reference_mutation_scope,
+                system_config.publish_many,
+            ),
         ),
         workflow=WorkflowRuntime(
             query=workflow_query,
@@ -1001,8 +1042,6 @@ async def init_modules() -> HostRuntime:
             sync_transaction=transaction_runner.sync,
         )
     )
-    configure_subscribe_writer(lambda: subscription_repository)
-    configure_transactional_subscription_scopes()
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
@@ -1010,6 +1049,7 @@ async def init_modules() -> HostRuntime:
     # Chain 无参兼容入口由组合根明确提供依赖上下文；测试和新代码可直接注入替代上下文。
     configure_chain_runtime_context_provider(
         lambda: _build_chain_runtime_context(
+            system_config=system_config,
             site=site_repository,
             subscription=subscription_repository,
             download_history=download_history_repository,

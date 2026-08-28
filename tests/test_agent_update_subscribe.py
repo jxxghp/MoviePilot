@@ -1,7 +1,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from unittest.mock import patch
+from types import SimpleNamespace
 
 from app.agent.tools.impl.update_subscribe import UpdateSubscribeTool
 from app.application.subscription.mutation import SubscriptionMutation
@@ -16,17 +16,17 @@ def test_agent_update_subscribe_sends_modified_event_payload_with_agent_scene():
     oper = _SubscribeOperStub(subscribe)
 
     mutation = _MutationServiceStub(oper)
-    with patch(
-        "app.agent.tools.impl.update_subscribe.get_subscription_mutation_scope",
-        side_effect=lambda: _mutation_scope(mutation),
-    ):
-        result = asyncio.run(
-            UpdateSubscribeTool(session_id="session-1", user_id="10001").run(
-                subscribe_id=9,
-                name="新标题",
-                state="S",
-            )
+    result = asyncio.run(
+        UpdateSubscribeTool(
+            session_id="session-1",
+            user_id="10001",
+            data=_data(mutation),
+        ).run(
+            subscribe_id=9,
+            name="新标题",
+            state="S",
         )
+    )
 
     payload = json.loads(result)
     assert payload["success"] is True
@@ -48,16 +48,16 @@ def test_agent_update_subscribe_ignores_unchanged_total_episode():
     oper = _SubscribeOperStub(subscribe)
 
     mutation = _MutationServiceStub(oper)
-    with patch(
-        "app.agent.tools.impl.update_subscribe.get_subscription_mutation_scope",
-        side_effect=lambda: _mutation_scope(mutation),
-    ):
-        result = asyncio.run(
-            UpdateSubscribeTool(session_id="session-1", user_id="10001").run(
-                subscribe_id=160,
-                total_episode=175,
-            )
+    result = asyncio.run(
+        UpdateSubscribeTool(
+            session_id="session-1",
+            user_id="10001",
+            data=_data(mutation),
+        ).run(
+            subscribe_id=160,
+            total_episode=175,
         )
+    )
 
     payload = json.loads(result)
     assert payload == {"success": False, "message": "没有提供要更新的字段"}
@@ -80,17 +80,17 @@ def test_agent_update_subscribe_only_updates_other_fields_with_unchanged_total_e
     oper = _SubscribeOperStub(subscribe)
 
     mutation = _MutationServiceStub(oper)
-    with patch(
-        "app.agent.tools.impl.update_subscribe.get_subscription_mutation_scope",
-        side_effect=lambda: _mutation_scope(mutation),
-    ):
-        result = asyncio.run(
-            UpdateSubscribeTool(session_id="session-1", user_id="10001").run(
-                subscribe_id=160,
-                total_episode=175,
-                best_version=1,
-            )
+    result = asyncio.run(
+        UpdateSubscribeTool(
+            session_id="session-1",
+            user_id="10001",
+            data=_data(mutation),
+        ).run(
+            subscribe_id=160,
+            total_episode=175,
+            best_version=1,
         )
+    )
 
     payload = json.loads(result)
     assert payload["success"] is True
@@ -114,16 +114,16 @@ def test_agent_update_subscribe_marks_changed_total_episode_as_manual():
     oper = _SubscribeOperStub(subscribe)
 
     mutation = _MutationServiceStub(oper)
-    with patch(
-        "app.agent.tools.impl.update_subscribe.get_subscription_mutation_scope",
-        side_effect=lambda: _mutation_scope(mutation),
-    ):
-        result = asyncio.run(
-            UpdateSubscribeTool(session_id="session-1", user_id="10001").run(
-                subscribe_id=160,
-                total_episode=190,
-            )
+    result = asyncio.run(
+        UpdateSubscribeTool(
+            session_id="session-1",
+            user_id="10001",
+            data=_data(mutation),
+        ).run(
+            subscribe_id=160,
+            total_episode=190,
         )
+    )
 
     payload = json.loads(result)
     assert payload["success"] is True
@@ -191,6 +191,7 @@ class _MutationServiceStub:
         updated = await self.oper.async_update(subscribe_id, payload)
         self.calls.append((subscribe_id, dict(payload), scene))
         return SubscriptionMutation(
+            snapshot=updated,
             old=old,
             new=updated.to_dict(),
             event_published=True,
@@ -201,3 +202,10 @@ class _MutationServiceStub:
 async def _mutation_scope(service):
     """把测试修改服务包装成 Agent 使用的异步事务作用域。"""
     yield service
+
+
+def _data(mutation):
+    """构造仅暴露订阅修改作用域的工具数据上下文。"""
+    return SimpleNamespace(
+        subscription_mutation_scope=lambda: _mutation_scope(mutation),
+    )

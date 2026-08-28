@@ -238,6 +238,11 @@ def test_chain_runtime_context_owns_typed_subscription_repository() -> None:
     }
 
     assert annotations["subscription_repository"] == "SubscriptionRepository"
+    assert annotations["subscription_mutation_scope"] == "SubscriptionMutationScope"
+    assert annotations["sync_subscription_mutation_scope"] == "SyncSubscriptionMutationScope"
+    assert annotations["subscription_delete_scope"] == "DeleteSubscribeScope"
+    assert annotations["sync_subscription_delete_scope"] == "SyncDeleteSubscribeScope"
+    assert annotations["subscription_completion_scope"] == "CompletionScope"
     assert not (APP_ROOT / "application" / "chain" / "data.py").exists()
 
 

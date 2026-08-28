@@ -10,6 +10,12 @@ RETIRED_MODULES = {
     "app.application.chain.data",
 }
 RETIRED_GETTERS = {
+    "_get_subscribe_writer",
+    "configure_delete_subscribe_scope",
+    "configure_subscribe_writer",
+    "configure_subscription_completion_scope",
+    "configure_subscription_mutation_scope",
+    "configure_sync_delete_subscribe_scope",
     "get_agent_chat_port",
     "get_agent_download_history_port",
     "get_agent_plugin_data_port",
@@ -28,6 +34,10 @@ RETIRED_GETTERS = {
     "get_chain_transfer_history_port",
     "get_chain_transfer_pending_port",
     "get_chain_user_port",
+    "get_delete_subscribe_scope",
+    "get_subscription_completion_scope",
+    "get_subscription_mutation_scope",
+    "get_sync_delete_subscribe_scope",
 }
 
 
@@ -116,6 +126,11 @@ def test_injected_data_contexts_use_owned_typed_ports() -> None:
     expected_chain_fields = {
         "site_repository",
         "subscription_repository",
+        "subscription_mutation_scope",
+        "sync_subscription_mutation_scope",
+        "subscription_delete_scope",
+        "sync_subscription_delete_scope",
+        "subscription_completion_scope",
         "download_history_repository",
         "transfer_history_repository",
         "transfer_admission_repository",
@@ -131,6 +146,8 @@ def test_injected_data_contexts_use_owned_typed_ports() -> None:
         "users",
         "sites",
         "subscriptions",
+        "subscription_mutation_scope",
+        "subscription_delete_scope",
         "subscription_history",
         "transfer_history",
         "transfer_execution",

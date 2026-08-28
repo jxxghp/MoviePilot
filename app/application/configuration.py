@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any, Optional, Protocol, cast
 
 from app.application.database import AsyncDatabaseExecutor
-from app.schemas.types import MediaType
+from app.schemas.common import JsonData
+from app.schemas.types import MediaType, SystemConfigKey
 
 
 class SystemConfigReader(Protocol):
@@ -31,6 +32,22 @@ class SystemConfigWriter(Protocol):
 
 class ConfigurationRepository(SystemConfigReader, SystemConfigWriter, Protocol):
     """兼容同时提供读写能力的旧配置仓储。"""
+
+
+class SystemConfigStagingPort(Protocol):
+    """跨表应用服务在调用方 Session 内读取并暂存系统配置。"""
+
+    def get_for_update(self, key: SystemConfigKey) -> JsonData:
+        """同步锁定并读取一项配置。"""
+
+    def stage_set(self, key: SystemConfigKey, value: JsonData) -> None:
+        """同步暂存一项配置，不提交事务。"""
+
+    async def async_get_for_update(self, key: SystemConfigKey) -> JsonData:
+        """异步锁定并读取一项配置。"""
+
+    async def async_stage_set(self, key: SystemConfigKey, value: JsonData) -> None:
+        """异步暂存一项配置，不提交事务。"""
 
 
 class MutableRuntimeSettings(Protocol):

@@ -1,6 +1,6 @@
 import copy
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Optional, TypeVar, Union
 
 from sqlalchemy import select
@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.systemconfig import SystemConfig
-from app.schemas.types import SystemConfigKey
 from app.foundation.singleton import Singleton
+from app.schemas.types import SystemConfigKey
 
 T = TypeVar("T")
 
@@ -54,6 +54,16 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         """在事务成功后短暂持锁移除单项配置。"""
         with self._snapshot_lock:
             self.__SYSTEMCONF.pop(key, None)
+
+    def publish_many(
+        self,
+        values: Mapping[SystemConfigKey, Any],
+    ) -> None:
+        """在外部事务提交后一次发布多项配置快照。"""
+        with self._snapshot_lock:
+            self._require_loaded()
+            for key, value in values.items():
+                self.__SYSTEMCONF[key.value] = copy.deepcopy(value)
 
     def set(self, key: Union[str, SystemConfigKey], value: Any) -> Optional[bool]:
         """

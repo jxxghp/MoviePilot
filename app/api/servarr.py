@@ -3,9 +3,16 @@ from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.adapters.web.security.access import verify_apikey
-from app.api.dependencies.subscription import get_servarr_subscription_service
+from app.api.dependencies.subscription import (
+    get_servarr_subscription_batch_writer,
+    get_servarr_subscription_service,
+)
 from app.api.response import ERROR_RESPONSES
 from app.application.servarr import ServarrSubscription, ServarrSubscriptionService
+from app.application.subscription.write import (
+    SubscriptionBatchWriteError,
+    SubscriptionBatchWritePort,
+)
 from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tvdb import TvdbChain
@@ -780,6 +787,10 @@ async def arr_add_series(
         ServarrSubscriptionService,
         Depends(get_servarr_subscription_service),
     ],
+    batch_writer: Annotated[
+        SubscriptionBatchWritePort,
+        Depends(get_servarr_subscription_batch_writer),
+    ],
 ) -> _SchemaServarrIdResponse:
     """
     新增Sonarr剧集订阅
@@ -830,24 +841,27 @@ async def arr_add_series(
     # 全部已存在订阅
     if not left_seasons:
         return _SchemaServarrIdResponse(id=1)
-    # 剩下的添加订阅
-    sid = 0
-    message = ""
-    for season in left_seasons:
-        sid, message = await SubscribeChain().async_add(
+
+    try:
+        sid, message = await SubscribeChain().async_add_batch(
             title=tv.title,
             year=tv.year,
-            season=season,
+            seasons=left_seasons,
+            batch_writer=batch_writer,
             media_source=MediaSource.TMDB,
             media_id=str(tv.tmdbId),
             mtype=MediaType.TV,
             username="Seerr",
         )
+    except SubscriptionBatchWriteError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"添加订阅失败：{error}",
+        ) from error
 
     if sid:
         return _SchemaServarrIdResponse(id=sid)
-    else:
-        raise HTTPException(status_code=500, detail=f"添加订阅失败：{message}")
+    raise HTTPException(status_code=500, detail=f"添加订阅失败：{message}")
 
 
 @arr_router.put(
@@ -860,11 +874,20 @@ async def arr_update_series(
         ServarrSubscriptionService,
         Depends(get_servarr_subscription_service),
     ],
+    batch_writer: Annotated[
+        SubscriptionBatchWritePort,
+        Depends(get_servarr_subscription_batch_writer),
+    ],
 ) -> _SchemaServarrIdResponse:
     """
     更新Sonarr剧集订阅
     """
-    return await arr_add_series(tv=tv, _=_, subscriptions=subscriptions)
+    return await arr_add_series(
+        tv=tv,
+        _=_,
+        subscriptions=subscriptions,
+        batch_writer=batch_writer,
+    )
 
 
 @arr_router.delete(

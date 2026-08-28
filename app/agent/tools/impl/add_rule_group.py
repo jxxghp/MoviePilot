@@ -13,7 +13,7 @@ from app.agent.tools.impl._filter_rule_utils import (
     get_custom_rules,
     get_rule_groups,
     normalize_rule_group,
-    save_system_config,
+    publish_rule_config_changed,
     serialize_rule_group,
 )
 from app.agent.tools.tags import ToolTag
@@ -78,6 +78,9 @@ class AddRuleGroupTool(MoviePilotTool):
                 build_custom_rule_map(custom_rules).keys()
             )
             rule_groups = get_rule_groups()
+            expected_definitions = [
+                group.model_dump(exclude_none=True) for group in rule_groups
+            ]
             new_group, _ = normalize_rule_group(
                 name=name,
                 rule_string=rule_string,
@@ -88,9 +91,17 @@ class AddRuleGroupTool(MoviePilotTool):
             )
 
             rule_groups.append(new_group)
-            await save_system_config(
+            definitions = [
+                group.model_dump(exclude_none=True) for group in rule_groups
+            ]
+            async with self.data.async_rule_group_mutation_scope() as mutation:
+                await mutation.apply(
+                    definitions,
+                    expected_rule_groups=expected_definitions,
+                )
+            await publish_rule_config_changed(
                 SystemConfigKey.UserFilterRuleGroups,
-                [group.model_dump(exclude_none=True) for group in rule_groups],
+                definitions,
             )
             usage = await collect_rule_group_usages(
                 self.data.subscriptions,

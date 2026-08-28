@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -17,9 +18,20 @@ if TYPE_CHECKING:
         TransferHistoryRepository,
     )
     from app.application.mediaserver import MediaServerRepository
+    from app.application.rules import SyncRuleGroupMutationService
     from app.application.security.user import ChainUserRepository
     from app.application.site.contract import SiteRepository
+    from app.application.site.mutation import SyncSiteReferenceMutationService
+    from app.application.subscription.complete import CompletionScope
     from app.application.subscription.contract import SubscriptionRepository
+    from app.application.subscription.delete import (
+        DeleteSubscribeScope,
+        SyncDeleteSubscribeScope,
+    )
+    from app.application.subscription.mutation import (
+        SubscriptionMutationScope,
+        SyncSubscriptionMutationScope,
+    )
     from app.application.transfer.execution import TransferExecutionRepository
     from app.application.transfer.workflow import TransferAdmissionRepository
 
@@ -44,6 +56,17 @@ class ChainRuntimeContext:
     module_dispatcher_factory: ModuleDispatcherFactory
     site_repository: SiteRepository
     subscription_repository: SubscriptionRepository
+    subscription_mutation_scope: SubscriptionMutationScope
+    sync_subscription_mutation_scope: SyncSubscriptionMutationScope
+    subscription_delete_scope: DeleteSubscribeScope
+    sync_subscription_delete_scope: SyncDeleteSubscribeScope
+    subscription_completion_scope: CompletionScope
+    rule_group_mutation_scope: Callable[
+        [], AbstractContextManager[SyncRuleGroupMutationService]
+    ]
+    site_reference_mutation_scope: Callable[
+        [], AbstractContextManager[SyncSiteReferenceMutationService]
+    ]
     download_history_repository: DownloadHistoryRepository
     transfer_history_repository: TransferHistoryRepository
     transfer_admission_repository: TransferAdmissionRepository

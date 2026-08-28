@@ -7,10 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.subscription.mutation import (
-    SubscriptionActor,
-    get_subscription_mutation_scope,
-)
+from app.application.subscription.mutation import SubscriptionActor
 from app.runtime.log import logger
 from app.schemas.common import JsonData
 from app.schemas.types import media_type_to_agent
@@ -175,7 +172,7 @@ class UpdateSubscribeTool(MoviePilotTool):
 
         try:
             actor = SubscriptionActor(name="agent", is_superuser=True)
-            async with get_subscription_mutation_scope() as mutation:
+            async with self.data.subscription_mutation_scope() as mutation:
                 subscribe = await mutation.get_accessible(subscribe_id, actor)
             if not subscribe:
                 return json.dumps(
@@ -308,7 +305,7 @@ class UpdateSubscribeTool(MoviePilotTool):
 
             # Agent 工具没有 FastAPI 请求会话，由组合根提供一次独占事务作用域；
             # 更新和 durable intent 必须共享同一 AsyncSession。
-            async with get_subscription_mutation_scope() as mutation:
+            async with self.data.subscription_mutation_scope() as mutation:
                 change = await mutation.update(
                     subscribe_id,
                     subscribe_dict,

@@ -2,16 +2,22 @@ import asyncio
 import importlib.util
 import sys
 import types
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app import schemas
+from app.application.subscription.contract import (
+    SubscriptionPatch,
+    SubscriptionWriteResult,
+)
+from app.application.subscription.mutation import SubscriptionMutation
 from app.schemas.mediaserver import NotExistMediaInfo
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 from app.testing import stub_modules
 
 
@@ -40,8 +46,36 @@ def _load_subscribe_chain_class():
         subscription_repository = SimpleNamespace()
 
         def __init__(self):
+            """装配隔离链依赖和显式同步订阅修改作用域。"""
             self.messagehelper = SimpleNamespace(put=lambda *args, **kwargs: None)
             self.subscription_repository = type(self).subscription_repository
+            self.sync_subscription_mutation_scope = self._subscription_mutation_scope
+
+        @contextmanager
+        def _subscription_mutation_scope(self):
+            """提供委托当前测试 repository 的同步修改命令。"""
+            yield SimpleNamespace(update=self._update_subscription)
+
+        def _update_subscription(
+            self,
+            subscribe_id,
+            payload,
+            _actor,
+            existing=None,
+            scene="update",
+        ):
+            """记录测试写入并返回与生产命令一致的前后快照。"""
+            updated = self.subscription_repository.update(
+                subscribe_id,
+                SubscriptionPatch(payload),
+            )
+            old = existing.to_dict() if existing else {}
+            new = {**old, **payload} if updated else {}
+            return SubscriptionMutation(
+                snapshot=replace(existing, **payload),
+                old=old,
+                new=new,
+            )
 
         def post_message(self, *args, **kwargs):
             return None
@@ -3913,3 +3947,99 @@ class TestSubscribeDownloadFacts:
         assert updates[-1]["current_priority"] == 90
         assert updates[-1]["last_update"]
         assert subscribe.last_update is None
+
+
+def test_async_add_batch_reuses_prepared_defaults_notifications_and_effects():
+    """批量新增把 Chain 准备好的默认字段、通知和原提交后回调逐季交给 writer。"""
+    module, subscribe_chain = _load_subscribe_chain_class()
+    chain = subscribe_chain()
+
+    def context(season: int):
+        """构造已完成识别、季集补齐和默认参数处理的一季上下文。"""
+        mediainfo = SimpleNamespace(
+            title="批量剧集",
+            year="2026",
+            type=MediaType.TV,
+            media_source=MediaSource.TMDB,
+            media_id="batch-chain-1",
+            episode_group=None,
+            seasons={1: [1], 2: [1, 2]},
+            vote_average=8.5,
+            overview="批量准备",
+            get_poster_image=lambda: "poster.jpg",
+            get_backdrop_image=lambda: "backdrop.jpg",
+        )
+        return module._SubscribeCreateContext(
+            title="批量剧集",
+            year="2026",
+            mtype=MediaType.TV,
+            episode_group=None,
+            season=season,
+            channel=None,
+            source=None,
+            userid=None,
+            username="Seerr",
+            message=True,
+            exist_ok=False,
+            options={
+                "media_source": MediaSource.TMDB,
+                "media_id": "batch-chain-1",
+                "filter": "default-filter",
+                "total_episode": season,
+                "lack_episode": season,
+            },
+            explicit_identity=True,
+            media_source=MediaSource.TMDB,
+            media_id="batch-chain-1",
+            requested_music_type=None,
+            metainfo=SimpleNamespace(type=MediaType.TV),
+            mediainfo=mediainfo,
+        )
+
+    prepared = AsyncMock(side_effect=[(context(1), None), (context(2), None)])
+    notification = MagicMock(
+        side_effect=[{"title": "第 1 季"}, {"title": "第 2 季"}]
+    )
+    post_commit = AsyncMock(return_value=True)
+    setattr(chain, "_SubscribeChain__async_prepare_subscribe_create", prepared)
+    setattr(chain, "_SubscribeChain__build_subscribe_notification", notification)
+    setattr(chain, "_SubscribeChain__async_post_subscribe_added", post_commit)
+    batch_writer = MagicMock()
+
+    async def persist(requests):
+        """模拟数据库批量 writer，并在提交点后调用冻结的逐季副作用。"""
+        for subscribe_id, request in zip((31, 32), requests):
+            assert request.after_commit is not None
+            await request.after_commit(subscribe_id)
+        return (
+            SubscriptionWriteResult(31, "新增订阅成功", True),
+            SubscriptionWriteResult(32, "新增订阅成功", True),
+        )
+
+    batch_writer.async_add = AsyncMock(side_effect=persist)
+
+    result = asyncio.run(
+        chain.async_add_batch(
+            title="批量剧集",
+            year="2026",
+            seasons=[1, 2],
+            batch_writer=batch_writer,
+            mtype=MediaType.TV,
+            media_source=MediaSource.TMDB,
+            media_id="batch-chain-1",
+            username="Seerr",
+        )
+    )
+
+    assert result == (32, "新增订阅成功")
+    requests = batch_writer.async_add.await_args.args[0]
+    assert [request.identity.season for request in requests] == [1, 2]
+    assert [request.payload.to_payload()["filter"] for request in requests] == [
+        "default-filter",
+        "default-filter",
+    ]
+    assert [dict(request.notification or {}) for request in requests] == [
+        {"title": "第 1 季"},
+        {"title": "第 2 季"},
+    ]
+    assert [call.args[0] for call in post_commit.await_args_list] == [31, 32]

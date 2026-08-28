@@ -2,15 +2,85 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from typing import Optional, Union
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.db.models.systemconfig import SystemConfig
 from app.db.oper.userconfig import UserConfigOper
 from app.db.uow import SqlAlchemyUnitOfWork
 from app.schemas.common import JsonData
-from app.schemas.types import UserConfigKey
+from app.schemas.types import SystemConfigKey, UserConfigKey
+
+
+class SessionSystemConfigurationRepository:
+    """复用调用方 Session 锁定和暂存 SystemConfig，且不拥有提交。"""
+
+    def __init__(self, session: Session | AsyncSession) -> None:
+        """绑定规则组命令持有的同步或异步 Session。"""
+        self._session = session
+
+    def _sync_session(self) -> Session:
+        """返回同步 Session，并拒绝同步异步混用。"""
+        if not isinstance(self._session, Session):
+            raise RuntimeError("该系统配置操作需要同步 Session")
+        return self._session
+
+    def _async_session(self) -> AsyncSession:
+        """返回异步 Session，并拒绝同步异步混用。"""
+        if not isinstance(self._session, AsyncSession):
+            raise RuntimeError("该系统配置操作需要异步 Session")
+        return self._session
+
+    def get_for_update(self, key: SystemConfigKey) -> JsonData:
+        """同步锁定配置行并返回独立值副本。"""
+        record = self._sync_session().execute(
+            select(SystemConfig)
+            .where(SystemConfig.key == key.value)
+            .with_for_update()
+        ).scalar_one_or_none()
+        return copy.deepcopy(record.value if record is not None else None)
+
+    async def async_get_for_update(self, key: SystemConfigKey) -> JsonData:
+        """异步锁定配置行并返回独立值副本。"""
+        result = await self._async_session().execute(
+            select(SystemConfig)
+            .where(SystemConfig.key == key.value)
+            .with_for_update()
+        )
+        record = result.scalar_one_or_none()
+        return copy.deepcopy(record.value if record is not None else None)
+
+    def stage_set(self, key: SystemConfigKey, value: JsonData) -> None:
+        """在同步 Session 中暂存配置值，不提交事务。"""
+        session = self._sync_session()
+        record = session.execute(
+            select(SystemConfig).where(SystemConfig.key == key.value)
+        ).scalar_one_or_none()
+        if record is None:
+            session.add(SystemConfig(key=key.value, value=copy.deepcopy(value)))
+        else:
+            record.value = copy.deepcopy(value)
+
+    async def async_stage_set(
+        self,
+        key: SystemConfigKey,
+        value: JsonData,
+    ) -> None:
+        """在 AsyncSession 中暂存配置值，不提交事务。"""
+        session = self._async_session()
+        result = await session.execute(
+            select(SystemConfig).where(SystemConfig.key == key.value)
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            session.add(SystemConfig(key=key.value, value=copy.deepcopy(value)))
+        else:
+            record.value = copy.deepcopy(value)
 
 
 class TransactionalUserConfigurationRepository:

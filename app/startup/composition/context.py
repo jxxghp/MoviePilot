@@ -1,6 +1,7 @@
 """宿主启动阶段构建的类型化运行时上下文。"""
 
 from collections.abc import AsyncGenerator, Callable, Generator
+from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -16,10 +17,19 @@ from app.application.messaging.chat import (
     AsyncUnitOfWork,
 )
 from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
+from app.application.rules import AsyncRuleGroupMutationService, SyncRuleGroupMutationService
 from app.application.site.contract import SiteRepository
+from app.application.site.mutation import SyncSiteReferenceMutationService
 from app.application.subscription.contract import (
     SubscriptionHistoryStagingPort,
     SubscriptionStagingPort,
+)
+from app.application.subscription.write import (
+    AsyncSubscriptionOutboxStager,
+    SubscriptionBatchWritePort,
+)
+from app.application.subscription.write import (
+    AsyncUnitOfWork as SubscriptionAsyncUnitOfWork,
 )
 from app.application.transfer.execution import TransferExecutionRepository
 from app.application.workflow import WorkflowCachePort, WorkflowQueryService
@@ -66,6 +76,21 @@ class SubscriptionHistoryRepositoryFactory(Protocol):
 
     def __call__(self, session: object) -> SubscriptionHistoryStagingPort:
         """绑定请求会话并返回订阅历史仓储。"""
+        ...
+
+
+class SubscriptionBatchWriterFactory(Protocol):
+    """由请求事务组件构造原子批量订阅写端口的工厂。"""
+
+    def __call__(
+        self,
+        *,
+        repository: SubscriptionStagingPort,
+        unit_of_work: SubscriptionAsyncUnitOfWork,
+        outbox: AsyncSubscriptionOutboxStager,
+        dispatch_store: AsyncOutboxDispatchStore,
+    ) -> SubscriptionBatchWritePort:
+        """组合共享 Session、UoW 与 outbox 并返回批量写端口。"""
         ...
 
 
@@ -192,6 +217,16 @@ class SubscriptionRuntime:
     transaction: AsyncUnitOfWorkFactory
     outbox: AsyncOutboxFactory
     dispatch_store: AsyncOutboxDispatchStore
+    batch_writer: SubscriptionBatchWriterFactory
+    rule_group_mutation_scope: Callable[
+        [], AbstractContextManager[SyncRuleGroupMutationService]
+    ]
+    async_rule_group_mutation_scope: Callable[
+        [], AbstractAsyncContextManager[AsyncRuleGroupMutationService]
+    ]
+    site_reference_mutation_scope: Callable[
+        [], AbstractContextManager[SyncSiteReferenceMutationService]
+    ]
 
 
 @dataclass(frozen=True, slots=True)

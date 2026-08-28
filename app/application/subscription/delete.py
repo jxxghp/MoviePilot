@@ -284,31 +284,3 @@ def build_subscribe_deleted_payload(
 
 DeleteSubscribeScope = Callable[[], AbstractAsyncContextManager[DeleteSubscribeCommand]]
 SyncDeleteSubscribeScope = Callable[[], AbstractContextManager[SyncDeleteSubscribeCommand]]
-_configured_delete_scope: DeleteSubscribeScope | None = None
-_configured_sync_delete_scope: SyncDeleteSubscribeScope | None = None
-
-
-def configure_delete_subscribe_scope(provider: DeleteSubscribeScope) -> None:
-    """由启动组合根登记非 HTTP 入口使用的订阅删除事务作用域。"""
-    global _configured_delete_scope
-    _configured_delete_scope = provider
-
-
-def get_delete_subscribe_scope() -> AbstractAsyncContextManager[DeleteSubscribeCommand]:
-    """返回一次独占会话的订阅删除命令作用域。"""
-    if _configured_delete_scope is None:
-        raise RuntimeError("订阅删除事务作用域尚未配置")
-    return _configured_delete_scope()
-
-
-def configure_sync_delete_subscribe_scope(provider: SyncDeleteSubscribeScope) -> None:
-    """由启动组合根登记同步消息入口使用的订阅删除事务作用域。"""
-    global _configured_sync_delete_scope
-    _configured_sync_delete_scope = provider
-
-
-def get_sync_delete_subscribe_scope() -> AbstractContextManager[SyncDeleteSubscribeCommand]:
-    """返回一次独占同步会话的订阅删除命令作用域。"""
-    if _configured_sync_delete_scope is None:
-        raise RuntimeError("同步订阅删除事务作用域尚未配置")
-    return _configured_sync_delete_scope()

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +13,6 @@ from app.api.endpoints import system as system_endpoint
 from app.application.plugin import runtime as plugin_runtime
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.schemas.types import SystemConfigKey
-
 
 PLUGIN_RUNTIME_KEYS = (
     SystemConfigKey.UserInstalledPlugins,
@@ -233,7 +233,22 @@ async def test_rule_group_setting_reconciles_stale_references_when_unchanged(
 ) -> None:
     """重复保存规则组也应按有效名称对账，修复旧版本遗留的悬空订阅引用。"""
     config = MagicMock()
-    config.async_set = AsyncMock(return_value=None)
+    definitions = [{"name": "keep", "rule_string": "4K"}]
+    config.get.return_value = definitions
+    config.async_set = AsyncMock()
+    mutation = MagicMock()
+    mutation.apply = AsyncMock()
+
+    @asynccontextmanager
+    async def mutation_scope():
+        """提供可观测的异步规则组事务作用域。"""
+        yield mutation
+
+    runtime = SimpleNamespace(
+        subscription=SimpleNamespace(
+            async_rule_group_mutation_scope=mutation_scope,
+        )
+    )
     monkeypatch.setattr(
         system_endpoint,
         "get_runtime_settings",
@@ -248,11 +263,17 @@ async def test_rule_group_setting_reconciles_stale_references_when_unchanged(
 
     response = await system_endpoint.set_setting(
         SystemConfigKey.UserFilterRuleGroups.value,
-        [{"name": "keep", "rule_string": "4K"}],
+        definitions,
         None,
+        runtime=runtime,
     )
 
     assert response.success is True
+    mutation.apply.assert_awaited_once_with(
+        definitions,
+        expected_rule_groups=definitions,
+    )
+    config.async_set.assert_not_awaited()
     system_endpoint.eventmanager.async_send_event.assert_awaited_once()
 
 

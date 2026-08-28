@@ -42,7 +42,6 @@ from app.api.dependencies.subscription import (
     get_servarr_subscription_service,
     get_subscription_mutation_service,
     get_subscription_query_service,
-    get_subscription_sync_mutation_service,
 )
 from app.api.dependencies.workflow import (
     get_workflow_definition_command,
@@ -78,7 +77,6 @@ __all__ = [
     "get_site_sync_query_service",
     "get_subscription_mutation_service",
     "get_subscription_query_service",
-    "get_subscription_sync_mutation_service",
     "get_transfer_history_lookup_service",
     "get_transfer_history_mutation_command",
     "get_user_service",

@@ -1,14 +1,15 @@
 import copy
-from typing import Any, List, Optional, Tuple
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from app.application.configuration import get_configured_system_config
 from app.application.subscription.contract import (
-    SubscriptionPatch,
     SubscriptionRepository,
     SubscriptionSnapshot,
     build_subscribe_meta,
     subscribe_media_key,
 )
+from app.application.subscription.mutation import SubscriptionActor
 from app.application.torrent import TorrentHelper
 from app.chain._contracts import MusicSubscribeMixinHost
 from app.chain.download import DownloadChain
@@ -18,12 +19,16 @@ from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
+from app.schemas.common import JsonData
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MediaType,
     SystemConfigKey,
 )
+
+if TYPE_CHECKING:
+    from app.application.subscription.mutation import SyncSubscriptionMutationScope
 
 
 def _normalize_music_total_tracks(value: Any) -> Optional[int]:
@@ -38,6 +43,7 @@ def _normalize_music_total_tracks(value: Any) -> Optional[int]:
 class MusicSubscribeMixin:
     __mixin_host_protocol__ = MusicSubscribeMixinHost
     subscription_repository: SubscriptionRepository
+    sync_subscription_mutation_scope: "SyncSubscriptionMutationScope"
     """
     音乐订阅功能域 mixin：单曲/专辑目标识别、实体快照同步、候选筛选、
     择优下载与完成推进。
@@ -203,10 +209,29 @@ class MusicSubscribeMixin:
             update_data["total_tracks"] = total_tracks
         if not update_data:
             return subscribe
-        return self.subscription_repository.update(
-            subscribe.id,
-            SubscriptionPatch(update_data),
-        ) or subscribe
+        return self._update_music_subscription(
+            subscribe,
+            update_data,
+            scene="music_target",
+        )
+
+    def _update_music_subscription(
+        self,
+        subscribe: SubscriptionSnapshot,
+        payload: Mapping[str, JsonData],
+        *,
+        scene: str,
+    ) -> SubscriptionSnapshot:
+        """经显式同步事务作用域更新音乐订阅并返回提交后的快照。"""
+        with self.sync_subscription_mutation_scope() as mutation:
+            change = mutation.update(
+                subscribe.id,
+                dict(payload),
+                SubscriptionActor(name="chain", is_superuser=True),
+                existing=subscribe,
+                scene=scene,
+            )
+        return change.snapshot if change else subscribe
 
     @staticmethod
     def _is_music_download_complete(
@@ -357,9 +382,10 @@ class MusicSubscribeMixin:
                 "current_bit_depth": best_meta.bit_depth,
                 "current_sample_rate": best_meta.sample_rate,
             }
-            current_subscribe = repository.update(
-                subscribe.id,
-                SubscriptionPatch(quality_data),
+            current_subscribe = self._update_music_subscription(
+                subscribe,
+                quality_data,
+                scene="music_download",
             )
         if current_subscribe is None:
             current_subscribe = repository.get(subscribe.id)

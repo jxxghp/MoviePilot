@@ -2,14 +2,13 @@
 
 import copy
 import re
-from typing import Any, Callable, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional
 
 from app.application.configuration import get_configured_system_config
 from app.application.rules import (
     BUILTIN_RULE_SET,
     RuleHelper,
     RuleParser,
-    replace_group_name_in_list,
 )
 from app.application.subscription.contract import SubscriptionRepository
 from app.runtime.events import eventmanager
@@ -437,11 +436,11 @@ async def save_system_config(
 
     success = await get_configured_system_config().async_set(key, normalized_value)
     if success:
-        await _publish_rule_config_changed(key, normalized_value)
+        await publish_rule_config_changed(key, normalized_value)
     return success
 
 
-async def _publish_rule_config_changed(
+async def publish_rule_config_changed(
     key: SystemConfigKey,
     value: Any,
 ) -> None:
@@ -453,85 +452,6 @@ async def _publish_rule_config_changed(
             value=value,
             change_type="update",
         ),
-    )
-
-
-async def _rewrite_rule_group_references(
-    repository: SubscriptionRepository,
-    map_names: Callable[[Iterable[str]], list[str]],
-) -> dict:
-    """按名称映射器更新全局、默认订阅配置和已有订阅引用。"""
-    changed = {
-        "global_settings": {},
-        "subscribes": [],
-    }
-    system_config = get_configured_system_config()
-    for config_key in (
-        SystemConfigKey.SearchFilterRuleGroups,
-        SystemConfigKey.SubscribeFilterRuleGroups,
-        SystemConfigKey.BestVersionFilterRuleGroups,
-    ):
-        original = system_config.get(config_key) or []
-        updated = map_names(original)
-        if updated != original:
-            await save_system_config(config_key, updated)
-            changed["global_settings"][config_key.value] = updated
-
-    for config_key in (
-        SystemConfigKey.DefaultMovieSubscribeConfig,
-        SystemConfigKey.DefaultTvSubscribeConfig,
-        SystemConfigKey.DefaultMusicSubscribeConfig,
-    ):
-        original = system_config.get(config_key) or {}
-        original_groups = original.get("filter_groups") or []
-        updated_groups = map_names(original_groups)
-        if updated_groups == original_groups:
-            continue
-        updated = copy.deepcopy(original)
-        updated["filter_groups"] = updated_groups
-        await save_system_config(config_key, updated)
-        changed["global_settings"][config_key.value] = updated
-
-    subscribes = await repository.async_list()
-    for subscribe in subscribes:
-        original = [str(name) for name in subscribe.filter_groups] \
-            if isinstance(subscribe.filter_groups, list) else []
-        updated = map_names(original)
-        if updated == original:
-            continue
-        await repository.async_update_filter_groups(subscribe.id, updated)
-        changed["subscribes"].append(
-            {
-                "subscribe_id": subscribe.id,
-                "name": subscribe.name,
-                "season": subscribe.season,
-                "filter_groups": updated,
-            }
-        )
-
-    return changed
-
-
-async def rename_rule_group_references(
-    repository: SubscriptionRepository,
-    old_name: str,
-    new_name: str,
-) -> dict:
-    """规则组改名后，联动更新全部配置和已有订阅引用。"""
-    return await _rewrite_rule_group_references(
-        repository,
-        lambda values: replace_group_name_in_list(values, old_name, new_name)
-    )
-
-
-async def remove_rule_group_references(
-    repository: SubscriptionRepository,
-    group_name: str,
-) -> dict:
-    """删除规则组后，清理全部配置和已有订阅中的悬空引用。"""
-    return await _rewrite_rule_group_references(
-        repository,
-        lambda values: [value for value in values or [] if value != group_name]
     )
 
 

@@ -308,14 +308,9 @@
     "type-arg": 3
   },
   "app/agent/tools/impl/_filter_rule_utils.py": {
-    "arg-type": 1,
-    "attr-defined": 2,
-    "call-overload": 1,
-    "index": 2,
+    "attr-defined": 1,
     "no-any-return": 2,
-    "no-untyped-call": 1,
-    "type-arg": 13,
-    "var-annotated": 1
+    "type-arg": 10
   },
   "app/agent/tools/impl/_plugin_tool_utils.py": {
     "arg-type": 2,
@@ -774,7 +769,7 @@
     "override": 1
   },
   "app/agent/tools/impl/update_rule_group.py": {
-    "arg-type": 5,
+    "arg-type": 3,
     "list-item": 1,
     "misc": 1,
     "no-untyped-def": 2,
@@ -836,7 +831,7 @@
     "arg-type": 2
   },
   "app/api/dependencies/subscription.py": {
-    "arg-type": 7
+    "arg-type": 5
   },
   "app/api/dependencies/workflow.py": {
     "arg-type": 3,
@@ -1016,7 +1011,7 @@
     "type-arg": 1
   },
   "app/api/endpoints/subscribe.py": {
-    "arg-type": 13,
+    "arg-type": 12,
     "assignment": 3,
     "attr-defined": 2,
     "misc": 28,
@@ -1079,7 +1074,7 @@
   },
   "app/api/servarr.py": {
     "arg-type": 4,
-    "assignment": 2,
+    "assignment": 1,
     "attr-defined": 1,
     "index": 3,
     "misc": 16,
@@ -1231,10 +1226,7 @@
     "type-arg": 5
   },
   "app/application/rules.py": {
-    "attr-defined": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 1,
-    "type-arg": 7
+    "attr-defined": 1
   },
   "app/application/security/auth.py": {
     "no-untyped-call": 2,
@@ -1488,16 +1480,15 @@
     "type-arg": 2
   },
   "app/chain/subscribe.py": {
-    "arg-type": 58,
-    "assignment": 18,
+    "arg-type": 49,
+    "assignment": 16,
     "attr-defined": 4,
-    "call-overload": 1,
     "dict-item": 2,
     "index": 1,
     "misc": 7,
     "no-any-return": 2,
     "no-redef": 2,
-    "no-untyped-call": 19,
+    "no-untyped-call": 14,
     "no-untyped-def": 16,
     "operator": 5,
     "return-value": 5,
@@ -2138,7 +2129,7 @@
     "assignment": 4,
     "empty-body": 1,
     "index": 1,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 3,
     "operator": 2,
     "return": 1,
@@ -3320,8 +3311,7 @@
     "assignment": 1
   },
   "app/startup/composition/subscription.py": {
-    "arg-type": 2,
-    "no-untyped-call": 4
+    "arg-type": 2
   },
   "app/startup/initializers/agent.py": {
     "no-untyped-call": 2,

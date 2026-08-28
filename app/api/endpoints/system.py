@@ -27,6 +27,7 @@ from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.adapters.system import rust as rust_accel
 from app.adapters.system.update import system_update_manager
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
+from app.api.context import get_host_runtime
 from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_superuser_async,
@@ -64,8 +65,8 @@ from app.runtime.progress import AsyncProgressHelper
 from app.runtime.scheduling import TimerUtils
 from app.runtime.state import SystemHelper
 from app.runtime.stop import runtime_stop_state
-from app.runtime.config import global_vars
 from app.runtime.version import get_app_version, get_frontend_version
+from app.schemas.common import JsonData
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.common import JsonObjectList as _SchemaJsonObjectList
 from app.schemas.common import TimeData as _SchemaTimeData
@@ -85,6 +86,7 @@ from app.schemas.system import SystemUpdateStatus as _SchemaSystemUpdateStatus
 from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import EventType, SystemConfigKey
+from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
 
@@ -1169,6 +1171,7 @@ async def set_setting(
     key: str,
     value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ):
     """
     更新系统设置（仅管理员）
@@ -1191,17 +1194,38 @@ async def set_setting(
             value = value if value else None
         try:
             with plugin_system_config_mutation(key):
-                success = await get_configured_system_config().async_set(key, value)
-                if success or (
-                    success is None
-                    and key == SystemConfigKey.UserFilterRuleGroups.value
-                ):
+                event_value: JsonData
+                if key == SystemConfigKey.UserFilterRuleGroups.value:
+                    current_value = get_configured_system_config().get(
+                        SystemConfigKey.UserFilterRuleGroups
+                    )
+                    expected_definitions = [
+                        dict(item)
+                        for item in current_value or []
+                        if isinstance(item, dict)
+                    ] if isinstance(current_value, list) else []
+                    definitions = [
+                        dict(item) for item in value or [] if isinstance(item, dict)
+                    ] if isinstance(value, list) else []
+                    async with (
+                        runtime.subscription.async_rule_group_mutation_scope()
+                    ) as mutation:
+                        await mutation.apply(
+                            definitions,
+                            expected_rule_groups=expected_definitions,
+                        )
+                    event_value = definitions
+                    success = True
+                else:
+                    success = await get_configured_system_config().async_set(key, value)
+                    event_value = value
+                if success:
                     # 发送配置变更事件
                     await eventmanager.async_send_event(
                         etype=EventType.ConfigChanged,
                         data=ConfigChangeEventData(
                             key=key,
-                            value=value,
+                            value=event_value,
                             change_type="update",
                         ),
                     )

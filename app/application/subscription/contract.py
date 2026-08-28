@@ -470,31 +470,6 @@ class SubscriptionWritePort(Protocol):
         """在独立异步事务中新增订阅。"""
         ...
 
-    def update(
-        self,
-        subscribe_id: int,
-        patch: SubscriptionPatch,
-    ) -> Optional[SubscriptionSnapshot]:
-        """在独立同步事务中更新并返回订阅快照。"""
-        ...
-
-    async def async_update(
-        self,
-        subscribe_id: int,
-        patch: SubscriptionPatch,
-    ) -> Optional[SubscriptionSnapshot]:
-        """在独立异步事务中更新并返回订阅快照。"""
-        ...
-
-    async def async_update_filter_groups(
-        self,
-        subscribe_id: int,
-        filter_groups: builtins.list[str],
-    ) -> Optional[SubscriptionSnapshot]:
-        """在独立异步事务中更新过滤规则组并返回快照。"""
-        ...
-
-
 class SubscriptionStagingPort(Protocol):
     """复用调用方 Session 且不自行提交的订阅写端口。"""
 
@@ -514,14 +489,6 @@ class SubscriptionStagingPort(Protocol):
         username: Optional[str] = None,
     ) -> SubscriptionWriteResult:
         """异步暂存新增订阅。"""
-        ...
-
-    async def async_stage_update(
-        self,
-        subscribe_id: int,
-        patch: SubscriptionPatch,
-    ) -> Optional[SubscriptionSnapshot]:
-        """异步暂存更新并返回事务内快照。"""
         ...
 
     async def get_candidate(self, subscribe_id: int) -> Optional[SubscribeDeletionCandidate]:
@@ -565,22 +532,14 @@ class SubscriptionHistoryStagingPort(SubscriptionHistoryQueryPort, Protocol):
 
 
 class SubscriptionMutationPort(Protocol):
-    """订阅修改服务需要的查询、独立写和事务暂存能力。"""
+    """订阅修改服务在调用方 Session 内暂存更新的最小端口。"""
 
-    def get(self, subscribe_id: int) -> Optional[SubscriptionSnapshot]:
-        """同步按主键读取订阅快照。"""
-        ...
-
-    async def async_get(self, subscribe_id: int) -> Optional[SubscriptionSnapshot]:
-        """异步按主键读取订阅快照。"""
-        ...
-
-    async def async_update(
+    def stage_update(
         self,
         subscribe_id: int,
         patch: SubscriptionPatch,
     ) -> Optional[SubscriptionSnapshot]:
-        """在独立事务中更新并返回订阅快照。"""
+        """同步暂存更新并返回事务内快照。"""
         ...
 
     async def async_stage_update(
@@ -589,6 +548,20 @@ class SubscriptionMutationPort(Protocol):
         patch: SubscriptionPatch,
     ) -> Optional[SubscriptionSnapshot]:
         """在调用方事务中暂存更新并返回订阅快照。"""
+        ...
+
+
+class SubscriptionReferenceStagingPort(SubscriptionMutationPort, Protocol):
+    """跨表引用重写所需的订阅锁定与暂存端口。"""
+
+    def list_for_reference_rewrite(self) -> builtins.list[SubscriptionSnapshot]:
+        """同步锁定并返回全部订阅快照。"""
+        ...
+
+    async def async_list_for_reference_rewrite(
+        self,
+    ) -> builtins.list[SubscriptionSnapshot]:
+        """异步锁定并返回全部订阅快照。"""
         ...
 
 

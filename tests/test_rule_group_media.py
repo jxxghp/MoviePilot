@@ -1,9 +1,8 @@
-from types import SimpleNamespace
+from contextlib import contextmanager
+from unittest.mock import MagicMock
 
 from app.agent.tools.impl._filter_rule_utils import normalize_media_type
 from app.application.rules import RuleHelper
-from app.application.subscription.contract import SubscriptionPatch
-from app.chain import subscribe as subscribe_module
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.modules.filter import FilterModule
@@ -76,47 +75,16 @@ def test_rule_group_category_cannot_cross_media_types(monkeypatch):
 
 
 def test_reconcile_rule_group_references_removes_all_dangling_bindings(monkeypatch):
-    """规则组设置保存后应清理全局默认项、订阅默认值和已有订阅中的悬空名称。"""
-    values = {
-        SystemConfigKey.SearchFilterRuleGroups: ["keep", "deleted"],
-        SystemConfigKey.SubscribeFilterRuleGroups: ["deleted"],
-        SystemConfigKey.BestVersionFilterRuleGroups: ["keep"],
-        SystemConfigKey.DefaultMovieSubscribeConfig: {
-            "quality": "WEB-DL",
-            "filter_groups": ["deleted", "keep"],
-        },
-        SystemConfigKey.DefaultTvSubscribeConfig: {"filter_groups": ["deleted"]},
-        SystemConfigKey.DefaultMusicSubscribeConfig: {},
-    }
+    """规则组事件必须委托单一原子服务处理全部引用。"""
+    mutation = MagicMock()
 
-    class Config:
-        """记录规则引用对账产生的系统配置更新。"""
+    @contextmanager
+    def mutation_scope():
+        """提供可观测的同步规则组事务作用域。"""
+        yield mutation
 
-        def get(self, key):
-            """读取当前测试配置。"""
-            return values.get(key)
-
-        def set(self, key, value):
-            """保存配置并更新测试快照。"""
-            values[key] = value
-            return True
-
-    subscribes = [
-        SimpleNamespace(
-            id=1,
-            name="Example",
-            season=1,
-            filter_groups=["deleted", "keep"],
-        )
-    ]
-    updates = []
-    subscribe_port = SimpleNamespace(
-        list=lambda: subscribes,
-        update=lambda subscribe_id, payload: updates.append((subscribe_id, payload)),
-    )
-    monkeypatch.setattr(subscribe_module, "_system_config", lambda: Config())
     chain = object.__new__(SubscribeChain)
-    chain.subscription_repository = subscribe_port
+    chain.rule_group_mutation_scope = mutation_scope
 
     SubscribeChain.reconcile_rule_group_references(
         chain,
@@ -129,15 +97,28 @@ def test_reconcile_rule_group_references_removes_all_dangling_bindings(monkeypat
         ),
     )
 
-    assert values[SystemConfigKey.SearchFilterRuleGroups] == ["keep"]
-    assert values[SystemConfigKey.SubscribeFilterRuleGroups] == []
-    assert values[SystemConfigKey.BestVersionFilterRuleGroups] == ["keep"]
-    assert values[SystemConfigKey.DefaultMovieSubscribeConfig] == {
-        "quality": "WEB-DL",
-        "filter_groups": ["keep"],
-    }
-    assert values[SystemConfigKey.DefaultTvSubscribeConfig] == {
-        "filter_groups": [],
-    }
-    assert updates == [(1, SubscriptionPatch({"filter_groups": ["keep"]}))]
-    assert subscribes[0].filter_groups == ["deleted", "keep"]
+    definitions = [{"name": "keep", "rule_string": "4K"}]
+    mutation.apply.assert_called_once_with(
+        definitions,
+        expected_rule_groups=definitions,
+    )
+
+
+def test_site_deleted_delegates_reference_cleanup_to_atomic_scope() -> None:
+    """站点删除事件不得分别修改 SystemConfig 和订阅仓储。"""
+    mutation = MagicMock()
+
+    @contextmanager
+    def mutation_scope():
+        """提供可观测的同步站点引用事务作用域。"""
+        yield mutation
+
+    chain = object.__new__(SubscribeChain)
+    chain.site_reference_mutation_scope = mutation_scope
+
+    SubscribeChain.remove_site(
+        chain,
+        Event(EventType.SiteDeleted, {"site_id": 3}),
+    )
+
+    mutation.apply.assert_called_once_with(3)

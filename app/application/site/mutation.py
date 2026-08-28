@@ -1,16 +1,25 @@
 """站点写操作应用用例。"""
 
+import copy
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Optional, TypeAlias
 
+from app.application.configuration import SystemConfigStagingPort
+from app.application.outbox import SyncUnitOfWork
 from app.application.site.contract import (
     SiteMutation,
     SitePriorityMutation,
     SiteStagingPort,
     SiteWriteResult,
 )
+from app.application.subscription.contract import (
+    SubscriptionPatch,
+    SubscriptionReferenceStagingPort,
+)
 from app.application.subscription.delete import AsyncUnitOfWork
 from app.schemas.common import JsonData
+from app.schemas.types import SystemConfigKey
 
 SiteMutationResult: TypeAlias = SiteWriteResult
 SiteIndexerLoader = Callable[
@@ -20,6 +29,80 @@ SiteIndexerLoader = Callable[
 SiteEventPublisher = Callable[[dict[str, JsonData]], Awaitable[None]]
 DomainExtractor = Callable[[str], str]
 UrlNormalizer = Callable[[str], str]
+
+
+@dataclass(frozen=True, slots=True)
+class SiteReferenceMutation:
+    """站点引用在 SystemConfig 和订阅表中原子提交后的结果。"""
+
+    rss_sites: tuple[int, ...]
+    subscription_ids: tuple[int, ...]
+
+
+class SyncSiteReferenceMutationService:
+    """在一个同步 UoW 内原子清理 RSS 和订阅站点引用。"""
+
+    def __init__(
+        self,
+        configuration: SystemConfigStagingPort,
+        subscriptions: SubscriptionReferenceStagingPort,
+        unit_of_work: SyncUnitOfWork,
+        publish: Callable[[Mapping[SystemConfigKey, JsonData]], None],
+    ) -> None:
+        """注入共享 Session 的配置、订阅、UoW 与提交后快照发布器。"""
+        self._configuration = configuration
+        self._subscriptions = subscriptions
+        self._unit_of_work = unit_of_work
+        self._publish = publish
+
+    def apply(self, site_id: int | str) -> SiteReferenceMutation:
+        """清空通配站点或移除指定站点，并在任一步失败时整体回滚。"""
+        if site_id != "*" and not isinstance(site_id, int):
+            raise ValueError("站点引用清理只接受整数 ID 或通配符 *")
+        try:
+            result, changes = self._stage(site_id)
+            self._unit_of_work.commit()
+        except Exception:
+            self._unit_of_work.rollback()
+            raise
+        self._publish(copy.deepcopy(changes))
+        return result
+
+    def _stage(
+        self,
+        site_id: int | str,
+    ) -> tuple[SiteReferenceMutation, dict[SystemConfigKey, JsonData]]:
+        """在锁定的同步事实源中暂存 RSS 和订阅站点变化。"""
+        changes: dict[SystemConfigKey, JsonData] = {}
+        original_rss = self._configuration.get_for_update(SystemConfigKey.RssSites)
+        rss_sites = [
+            int(value)
+            for value in original_rss
+            if isinstance(value, int) and site_id != "*" and value != site_id
+        ] if isinstance(original_rss, list) else []
+        if rss_sites != (original_rss or []):
+            self._configuration.stage_set(SystemConfigKey.RssSites, rss_sites)
+            changes[SystemConfigKey.RssSites] = rss_sites
+
+        subscription_ids = []
+        for subscription in self._subscriptions.list_for_reference_rewrite():
+            original_sites = list(subscription.sites or [])
+            sites = [
+                value
+                for value in original_sites
+                if site_id != "*" and value != site_id
+            ]
+            if sites == original_sites:
+                continue
+            self._subscriptions.stage_update(
+                subscription.id,
+                SubscriptionPatch({"sites": sites}),
+            )
+            subscription_ids.append(subscription.id)
+        return (
+            SiteReferenceMutation(tuple(rss_sites), tuple(subscription_ids)),
+            changes,
+        )
 
 
 class SiteMutationCommand:

@@ -1,8 +1,11 @@
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.application.subscription.contract import SubscriptionPatch, SubscriptionSnapshot
+from app.application.subscription.mutation import SubscriptionMutation
 from app.chain import subscribe as subscribe_module
 from app.chain.subscribe import SubscribeChain
 from app.schemas.types import MediaType
@@ -46,6 +49,27 @@ class _TimedOutLock:
     def release(self):
         """超时路径不应释放未持有的锁。"""
         raise AssertionError("未持有的订阅锁不应被释放")
+
+
+def _configure_subscription_write(chain, repository) -> None:
+    """为绕过构造器的搜索链注入显式同步修改作用域。"""
+    chain.subscription_repository = repository
+
+    @contextmanager
+    def mutation_scope():
+        """把同步修改命令委托给状态测试 repository。"""
+        def update(subscribe_id, payload, _actor, existing=None, scene="update"):
+            """执行测试更新并返回生产命令形状。"""
+            updated = repository.update(subscribe_id, SubscriptionPatch(payload))
+            return SubscriptionMutation(
+                snapshot=updated,
+                old=existing.to_dict() if existing else {},
+                new=updated.to_dict() if updated else {},
+            )
+
+        yield SimpleNamespace(update=update)
+
+    chain.sync_subscription_mutation_scope = mutation_scope
 
 
 def _new_subscribe(created_at: datetime) -> SubscriptionSnapshot:
@@ -93,7 +117,7 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
     media_chain.recognize_media.return_value = None
     with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
         chain = object.__new__(SubscribeChain)
-        chain.subscription_repository = _SubscribeOper()
+        _configure_subscription_write(chain, _SubscribeOper())
         chain.search(state="N", manual=False)
 
     media_chain.recognize_media.assert_called_once()

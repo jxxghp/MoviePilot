@@ -184,17 +184,3 @@ def _completion_report_payload(
 
 
 CompletionScope = Callable[[], AbstractContextManager[CompleteSubscriptionCommand]]
-_configured_completion_scope: CompletionScope | None = None
-
-
-def configure_subscription_completion_scope(provider: CompletionScope) -> None:
-    """由启动组合根登记订阅完成独占事务作用域。"""
-    global _configured_completion_scope
-    _configured_completion_scope = provider
-
-
-def get_subscription_completion_scope() -> AbstractContextManager[CompleteSubscriptionCommand]:
-    """返回一次独占同步订阅完成事务作用域。"""
-    if _configured_completion_scope is None:
-        raise RuntimeError("订阅完成事务作用域尚未配置")
-    return _configured_completion_scope()

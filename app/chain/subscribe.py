@@ -3,6 +3,7 @@ import json
 import random
 import threading
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -16,10 +17,8 @@ from app.application.mediaserver import MediaServerHelper
 from app.application.messaging.message import MessageTemplateHelper
 from app.application.messaging.subscribe import SubscribeInteractionHandler
 from app.application.subscription import priority as _priority
-from app.application.subscription.complete import get_subscription_completion_scope
 from app.application.subscription.contract import (
     SubscriptionIdentity,
-    SubscriptionPatch,
     SubscriptionRepository,
     SubscriptionSnapshot,
     subscribe_media_key,
@@ -30,10 +29,16 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.delete import (
     SubscribeDeletionActor,
-    get_sync_delete_subscribe_scope,
 )
+from app.application.subscription.mutation import SubscriptionActor
 from app.application.subscription.query import SubscriptionQueryService
-from app.application.subscription.write import add_subscribe, async_add_subscribe
+from app.application.subscription.write import (
+    SubscriptionBatchWritePort,
+    SubscriptionCreateRequest,
+    add_subscribe,
+    async_add_subscribe,
+    build_subscription_create_request,
+)
 from app.application.torrent import TorrentHelper
 from app.chain import ChainBase
 from app.chain._interaction import InteractionChainMixin
@@ -56,6 +61,7 @@ from app.domain.metainfo import MetaInfo
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.common import JsonData
 from app.schemas.event import SubscribeCompletionCheckEventData, SubscribeEpisodesRefreshEventData
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
@@ -76,21 +82,6 @@ from app.schemas.types import (
     NotificationChannel,
     SystemConfigKey,
 )
-
-
-def _rule_group_names(rule_groups: Optional[List[Any]]) -> set[str]:
-    """从规则组持久化字典中提取非空名称。"""
-    return {
-        str(group.get("name")).strip() for group in rule_groups or [] if isinstance(group, dict) and group.get("name")
-    }
-
-
-def _retain_rule_group_names(
-    values: Optional[List[str]],
-    valid_names: set[str],
-) -> List[str]:
-    """按当前规则组定义保留有效引用，并维持原有顺序。"""
-    return [value for value in values or [] if value in valid_names]
 
 
 @dataclass(frozen=True, slots=True)
@@ -990,6 +981,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         sid, err_msg = add_subscribe(
             mediainfo=context.mediainfo,
+            subscribe_oper=self.subscription_repository,
             season=context.season,
             username=context.username,
             after_commit=_after_commit,
@@ -1020,6 +1012,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         sid, err_msg = await async_add_subscribe(
             mediainfo=context.mediainfo,
+            subscribe_oper=self.subscription_repository,
             season=context.season,
             username=context.username,
             after_commit=_after_commit,
@@ -1073,10 +1066,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         self,
         title: str,
         year: str,
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         episode_group: Optional[str] = None,
         season: Optional[int] = None,
-        channel: NotificationChannel = None,
+        channel: Optional[NotificationChannel] = None,
         source: Optional[str] = None,
         userid: Optional[str] = None,
         username: Optional[str] = None,
@@ -1100,8 +1093,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             source,
             userid,
             username,
-            message,
-            exist_ok,
+            bool(message),
+            bool(exist_ok),
             media_source,
             media_id,
             kwargs,
@@ -1121,10 +1114,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         self,
         title: str,
         year: str,
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         episode_group: Optional[str] = None,
         season: Optional[int] = None,
-        channel: NotificationChannel = None,
+        channel: Optional[NotificationChannel] = None,
         source: Optional[str] = None,
         userid: Optional[str] = None,
         username: Optional[str] = None,
@@ -1138,6 +1131,44 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         异步识别媒体信息并添加订阅
         """
         logger.info(f"开始添加订阅，标题：{title} ...")
+        context, error = await self.__async_prepare_subscribe_create(
+            title,
+            year,
+            mtype,
+            episode_group,
+            season,
+            channel,
+            source,
+            userid,
+            username,
+            bool(message),
+            bool(exist_ok),
+            media_source,
+            media_id,
+            kwargs,
+        )
+        if error or context is None:
+            return None, error or "订阅准备失败"
+        return await self.__async_persist_subscribe_create(context)
+
+    async def __async_prepare_subscribe_create(
+        self,
+        title: str,
+        year: str,
+        mtype: Optional[MediaType],
+        episode_group: Optional[str],
+        season: Optional[int],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        userid: Optional[str],
+        username: Optional[str],
+        message: bool,
+        exist_ok: bool,
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        options: Dict[str, Any],
+    ) -> Tuple[Optional[_SubscribeCreateContext], Optional[str]]:
+        """执行异步新增的识别、季集补齐和默认配置准备，但不触发持久化。"""
         context, error = self.__build_subscribe_create_context(
             title,
             year,
@@ -1152,9 +1183,9 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             exist_ok,
             media_source,
             media_id,
-            kwargs,
+            options,
         )
-        if error:
+        if error or context is None:
             return None, error
         error = await self.__async_recognize_subscribe_media(context)
         if error:
@@ -1163,7 +1194,82 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if error:
             return None, error
         await self.__async_finalize_subscribe_create_context(context)
-        return await self.__async_persist_subscribe_create(context)
+        return context, None
+
+    async def async_add_batch(
+        self,
+        *,
+        title: str,
+        year: str,
+        seasons: Sequence[int],
+        batch_writer: SubscriptionBatchWritePort,
+        mtype: MediaType = None,
+        episode_group: Optional[str] = None,
+        channel: NotificationChannel = None,
+        source: Optional[str] = None,
+        userid: Optional[str] = None,
+        username: Optional[str] = None,
+        message: Optional[bool] = True,
+        exist_ok: Optional[bool] = False,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        **kwargs: JsonData,
+    ) -> Tuple[Optional[int], str]:
+        """先完整准备各季订阅，再交给共享事务批量写端口原子提交。"""
+        requests: list[SubscriptionCreateRequest] = []
+        for season in seasons:
+            context, error = await self.__async_prepare_subscribe_create(
+                title,
+                year,
+                mtype,
+                episode_group,
+                season,
+                channel,
+                source,
+                userid,
+                username,
+                bool(message),
+                bool(exist_ok),
+                media_source,
+                media_id,
+                dict(kwargs),
+            )
+            if error or context is None:
+                return None, error or "订阅准备失败"
+            assert context.mediainfo is not None
+            notification = self.__build_subscribe_notification(context)
+            post_commit_context = self.__subscribe_post_commit_context(
+                context,
+                notification,
+            )
+
+            async def after_commit(
+                subscribe_id: int,
+                frozen: _SubscribePostCommitContext = post_commit_context,
+            ) -> bool:
+                """按各季准备阶段冻结的上下文复用单条新增副作用。"""
+                return await self.__async_post_subscribe_added(
+                    subscribe_id,
+                    frozen,
+                )
+
+            request = build_subscription_create_request(
+                context.mediainfo,
+                notification=notification,
+                after_commit=after_commit,
+                season=context.season,
+                username=context.username,
+                **context.options,
+            )
+            if request is None:
+                return None, "媒体身份不完整"
+            requests.append(request)
+
+        results = await batch_writer.async_add(requests)
+        if not results:
+            return None, "未提供订阅季"
+        result = results[-1]
+        return result.subscribe_id or None, result.message
 
     def _subscription_query(self) -> SubscriptionQueryService:
         """构造绑定订阅 Oper 的查询应用服务。"""
@@ -1258,11 +1364,6 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                 subscribes = [subscribe for current_id in sids if (subscribe := repository.get(current_id)) is not None]
             else:
                 subscribes = repository.list(self.get_states_for_search(state))
-            self._reconcile_rule_group_references(
-                valid_names=_rule_group_names(_system_config().get(SystemConfigKey.UserFilterRuleGroups)),
-                repository=repository,
-                subscribes=subscribes,
-            )
             total_num = len(subscribes)
             processed_subscribes = []
             # 搜索链在整个订阅循环内复用，避免每轮订阅重复执行链初始化
@@ -1464,9 +1565,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     finally:
                         # 如果状态为N则更新为R
                         if search_attempted and subscribe and subscribe.state == "N":
-                            repository.update(
-                                subscribe.id,
-                                SubscriptionPatch({"state": "R"}),
+                            self.__apply_subscribe_update(
+                                subscribe,
+                                {"state": "R"},
+                                scene="search_reset",
                             )
                         if progress_callback:
                             progress_callback(
@@ -1519,8 +1621,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         if subscribe.type != MediaType.MOVIE.value:
             return subscribe
 
-        updated = self.subscription_repository.update(
-            subscribe.id, SubscriptionPatch({"current_priority": priority, "last_update": now})
+        updated = self.__apply_subscribe_update(
+            subscribe,
+            {"current_priority": priority, "last_update": now},
+            scene="movie_download",
         )
         if subscribe.best_version and priority != 100:
             # 正在洗版，更新资源优先级
@@ -2263,12 +2367,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
                     }
                 )
             update_data.update(progress_update)
-            subscribe = (
-                repository.update(
-                    subscribe.id,
-                    SubscriptionPatch(update_data),
-                )
-                or subscribe
+            subscribe = self.__apply_subscribe_update(
+                subscribe,
+                update_data,
+                scene="metadata_refresh",
             )
             logger.info(f"{subscribe.name} 订阅元数据更新完成")
             if progress_callback:
@@ -2517,7 +2619,11 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             note = list(set(note).union(set(items)))
         # 更新订阅
         if note:
-            self.subscription_repository.update(subscribe.id, SubscriptionPatch({"note": note}))
+            self.__apply_subscribe_update(
+                subscribe,
+                {"note": note},
+                scene="download_note",
+            )
 
     @staticmethod
     def __get_downloaded(subscribe: SubscriptionSnapshot) -> List[int]:
@@ -2565,20 +2671,24 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
     def __apply_subscribe_update(
         self,
         subscribe: SubscriptionSnapshot,
-        update_data: Dict[str, Any],
+        update_data: Mapping[str, JsonData],
+        *,
+        scene: str = "progress",
     ) -> SubscriptionSnapshot:
         """
         写入订阅字段并同步当前内存对象，保证后续事件和判断读取最终快照。
         """
         if not update_data:
             return subscribe
-        return (
-            self.subscription_repository.update(
+        with self.sync_subscription_mutation_scope() as mutation:
+            change = mutation.update(
                 subscribe.id,
-                SubscriptionPatch(update_data),
+                dict(update_data),
+                SubscriptionActor(name="chain", is_superuser=True),
+                existing=subscribe,
+                scene=scene,
             )
-            or subscribe
-        )
+        return change.snapshot if change else subscribe
 
     def __refresh_subscribe_progress_with_no_exists(
         self,
@@ -2905,7 +3015,7 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             or _completion_message
         )
 
-        with get_subscription_completion_scope() as command:
+        with self.subscription_completion_scope() as command:
             command.execute(
                 subscribe_id=subscribe.id,
                 subscribe_info=subscribe.to_dict(),
@@ -2924,10 +3034,9 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             delete_subscription=self._delete_subscription,
         )
 
-    @staticmethod
-    def _delete_subscription(subscribe_id: int) -> bool:
+    def _delete_subscription(self, subscribe_id: int) -> bool:
         """通过统一同步命令删除订阅，保留消息入口原有的全局管理权限。"""
-        with get_sync_delete_subscribe_scope() as command:
+        with self.sync_subscription_delete_scope() as command:
             return command.execute(
                 subscribe_id,
                 SubscribeDeletionActor(username="", is_superuser=True),
@@ -3102,29 +3211,8 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         site_id = event_data.get("site_id")
         if not site_id:
             return
-        repository = self.subscription_repository
-        if site_id == "*":
-            # 站点被重置
-            _system_config().set(SystemConfigKey.RssSites, [])
-            for subscribe in repository.list():
-                if not subscribe.sites:
-                    continue
-                repository.update(subscribe.id, SubscriptionPatch({"sites": []}))
-            return
-        # 从选中的rss站点中移除
-        selected_sites = _system_config().get(SystemConfigKey.RssSites) or []
-        if site_id in selected_sites:
-            selected_sites.remove(site_id)
-            _system_config().set(SystemConfigKey.RssSites, selected_sites)
-        # 查询所有订阅
-        for subscribe in repository.list():
-            if not subscribe.sites:
-                continue
-            sites = list(subscribe.sites or [])
-            if site_id not in sites:
-                continue
-            sites.remove(site_id)
-            repository.update(subscribe.id, SubscriptionPatch({"sites": sites}))
+        with self.site_reference_mutation_scope() as mutation:
+            mutation.apply(site_id)
 
     @eventmanager.register(EventType.ConfigChanged)
     def reconcile_rule_group_references(self, event: Event) -> None:
@@ -3149,52 +3237,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
         ):
             return
 
-        self._reconcile_rule_group_references(valid_names=_rule_group_names(value))
-
-    def _reconcile_rule_group_references(
-        self,
-        valid_names: set[str],
-        repository: Optional[SubscriptionRepository] = None,
-        subscribes: Optional[List[SubscriptionSnapshot]] = None,
-    ) -> None:
-        """持久化清理规则组引用，并同步当前搜索使用的订阅对象。"""
-        system_config = _system_config()
-        for config_key in (
-            SystemConfigKey.SearchFilterRuleGroups,
-            SystemConfigKey.SubscribeFilterRuleGroups,
-            SystemConfigKey.BestVersionFilterRuleGroups,
-        ):
-            original = system_config.get(config_key) or []
-            updated = _retain_rule_group_names(original, valid_names)
-            if updated != original:
-                system_config.set(config_key, updated)
-
-        for config_key in (
-            SystemConfigKey.DefaultMovieSubscribeConfig,
-            SystemConfigKey.DefaultTvSubscribeConfig,
-            SystemConfigKey.DefaultMusicSubscribeConfig,
-        ):
-            original = system_config.get(config_key) or {}
-            original_groups = original.get("filter_groups") or []
-            updated_groups = _retain_rule_group_names(original_groups, valid_names)
-            if updated_groups == original_groups:
-                continue
-            updated = copy.deepcopy(original)
-            updated["filter_groups"] = updated_groups
-            system_config.set(config_key, updated)
-
-        repository = repository or self.subscription_repository
-        target_subscribes = subscribes if subscribes is not None else repository.list()
-        for index, subscribe in enumerate(target_subscribes):
-            original = getattr(subscribe, "filter_groups", None) or []
-            updated = _retain_rule_group_names(original, valid_names)
-            if updated != original:
-                updated_snapshot = repository.update(
-                    subscribe.id,
-                    SubscriptionPatch({"filter_groups": updated}),
-                )
-                if subscribes is not None and updated_snapshot is not None:
-                    subscribes[index] = updated_snapshot
+        definitions = [dict(group) for group in value if isinstance(group, dict)] \
+            if isinstance(value, list) else []
+        with self.rule_group_mutation_scope() as mutation:
+            mutation.apply(definitions, expected_rule_groups=definitions)
 
     @staticmethod
     def __get_default_subscribe_config(mtype: MediaType, default_config_key: str) -> Optional[str]:
@@ -3801,12 +3847,10 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
             old_total_episode=old_total_episode,
         )
         update_data["last_update"] = now
-        subscribe = (
-            self.subscription_repository.update(
-                subscribe.id,
-                SubscriptionPatch(update_data),
-            )
-            or subscribe
+        subscribe = self.__apply_subscribe_update(
+            subscribe,
+            update_data,
+            scene="episode_refresh",
         )
         logger.info(
             f"订阅 {subscribe.name} 第{subscribe.season}季 总集数更新为 {new_total_episode}，"

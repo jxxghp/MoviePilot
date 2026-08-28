@@ -9,8 +9,11 @@ chain 层需要触发 Agent 后台任务、渲染提示词、查询模型能力�
 本模块禁止静态或函数内导入 app.agent，否则会重新形成跨层循环依赖。
 """
 
+from __future__ import annotations
+
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from app.application.agenttask import AgentTaskRepository
 from app.application.history import DownloadHistoryRepository, TransferHistoryRepository
@@ -27,6 +30,11 @@ from app.application.subscription.contract import (
 )
 from app.application.transfer.execution import TransferExecutionRepository
 
+if TYPE_CHECKING:
+    from app.application.rules import AsyncRuleGroupMutationService
+    from app.application.subscription.delete import DeleteSubscribeScope
+    from app.application.subscription.mutation import SubscriptionMutationScope
+
 
 @dataclass(frozen=True, slots=True)
 class AgentDataContext:
@@ -38,6 +46,11 @@ class AgentDataContext:
     users: ChainUserRepository
     sites: SiteRepository
     subscriptions: SubscriptionRepository
+    subscription_mutation_scope: SubscriptionMutationScope
+    subscription_delete_scope: DeleteSubscribeScope
+    async_rule_group_mutation_scope: Callable[
+        [], AbstractAsyncContextManager[AsyncRuleGroupMutationService]
+    ]
     subscription_history: SubscriptionHistoryQueryPort
     transfer_history: TransferHistoryRepository
     transfer_execution: TransferExecutionRepository

@@ -1,9 +1,10 @@
 """Agent 数据上下文与类型化任务适配器测试。"""
 
-from dataclasses import FrozenInstanceError
+from contextlib import asynccontextmanager
+from dataclasses import FrozenInstanceError, replace
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -11,13 +12,17 @@ import app.agent.tools.factory as tool_factory_module
 import app.application.agent as agent_services
 from app.agent.memory import MemoryManager
 from app.agent.tools.factory import MoviePilotToolFactory
+from app.agent.tools.impl.delete_rule_group import DeleteRuleGroupTool
 from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
+from app.agent.tools.impl.update_custom_filter_rule import UpdateCustomFilterRuleTool
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.application.agent import AgentDataContext
 from app.application.agenttask import AgentTaskRepository, AgentTaskSnapshot
 from app.db.adapters.agent import TransactionalAgentTaskRepository
 from app.db.session import SessionFactory
 from app.scheduler import Scheduler
+from app.schemas.rule import CustomRule
+from app.schemas.system import FilterRuleGroup
 from app.startup.initializers import agent as agent_initializer
 
 
@@ -31,6 +36,9 @@ def _context(tasks: AgentTaskRepository) -> AgentDataContext:
         users=cast(object, dependency),
         sites=cast(object, dependency),
         subscriptions=cast(object, dependency),
+        subscription_mutation_scope=cast(object, dependency),
+        subscription_delete_scope=cast(object, dependency),
+        async_rule_group_mutation_scope=cast(object, dependency),
         subscription_history=cast(object, dependency),
         transfer_history=cast(object, dependency),
         transfer_execution=cast(object, dependency),
@@ -47,6 +55,99 @@ def test_agent_tool_receives_exact_data_context() -> None:
 
     assert tool.data is context
     assert tool.data.tasks is repository
+
+
+@pytest.mark.asyncio
+async def test_delete_rule_group_uses_injected_atomic_mutation_scope(monkeypatch) -> None:
+    """Agent 删除规则组必须一次提交定义和全部引用并在释放作用域后广播。"""
+    mutation = MagicMock()
+    mutation.apply = AsyncMock(
+        return_value=SimpleNamespace(to_dict=lambda: {"subscribes": []})
+    )
+
+    @asynccontextmanager
+    async def mutation_scope():
+        """提供可观测的异步规则组事务作用域。"""
+        yield mutation
+
+    context = replace(
+        _context(TransactionalAgentTaskRepository(SessionFactory)),
+        async_rule_group_mutation_scope=mutation_scope,
+    )
+    monkeypatch.setattr(
+        "app.agent.tools.impl.delete_rule_group.get_rule_groups",
+        lambda: [FilterRuleGroup(name="old", rule_string="4K")],
+    )
+    publish = AsyncMock()
+    monkeypatch.setattr(
+        "app.agent.tools.impl.delete_rule_group.publish_rule_config_changed",
+        publish,
+    )
+    tool = DeleteRuleGroupTool(session_id="session", user_id="user", data=context)
+
+    result = await tool.run(name="old")
+
+    assert '"success": true' in result
+    mutation.apply.assert_awaited_once_with(
+        [],
+        expected_rule_groups=[{"name": "old", "rule_string": "4K"}],
+        previous_name="old",
+    )
+    publish.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_custom_rule_rename_commits_rule_and_group_definitions_together(
+    monkeypatch,
+) -> None:
+    """自定义规则改名必须用一个事务同时提交规则本体和规则组表达式。"""
+    mutation = MagicMock()
+    mutation.apply = AsyncMock(return_value=SimpleNamespace())
+
+    @asynccontextmanager
+    async def mutation_scope():
+        """提供可观测的异步组合事务作用域。"""
+        yield mutation
+
+    context = replace(
+        _context(TransactionalAgentTaskRepository(SessionFactory)),
+        async_rule_group_mutation_scope=mutation_scope,
+    )
+    monkeypatch.setattr(
+        "app.agent.tools.impl.update_custom_filter_rule.get_custom_rules",
+        lambda: [CustomRule(id="OLD", name="旧规则", include="old")],
+    )
+    monkeypatch.setattr(
+        "app.agent.tools.impl.update_custom_filter_rule.get_rule_groups",
+        lambda: [FilterRuleGroup(name="group", rule_string="OLD & 4K")],
+    )
+    publish = AsyncMock()
+    save = AsyncMock()
+    monkeypatch.setattr(
+        "app.agent.tools.impl.update_custom_filter_rule.publish_rule_config_changed",
+        publish,
+    )
+    monkeypatch.setattr(
+        "app.agent.tools.impl.update_custom_filter_rule.save_system_config",
+        save,
+    )
+    tool = UpdateCustomFilterRuleTool(
+        session_id="session",
+        user_id="user",
+        data=context,
+    )
+
+    result = await tool.run(current_rule_id="OLD", new_rule_id="NEW")
+
+    assert '"success": true' in result
+    mutation.apply.assert_awaited_once_with(
+        [{"name": "group", "rule_string": "NEW & 4K"}],
+        expected_rule_groups=[{"name": "group", "rule_string": "OLD & 4K"}],
+        custom_rules=[{"id": "NEW", "name": "旧规则", "include": "old"}],
+        expected_custom_rules=[{"id": "OLD", "name": "旧规则", "include": "old"}],
+    )
+    save.assert_not_awaited()
+    assert publish.await_count == 2
 
 
 def test_agent_service_facade_resolves_registered_dependencies(monkeypatch) -> None:

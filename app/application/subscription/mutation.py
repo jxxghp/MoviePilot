@@ -1,23 +1,26 @@
 """订阅写操作用例及其数据端口。"""
 
 from collections.abc import Awaitable, Callable
-from contextlib import AbstractAsyncContextManager
+from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 from uuid import uuid4
 
 from app.application.outbox import (
     SUBSCRIBE_MODIFIED_TOPIC,
     AsyncOutboxDispatchStore,
     AsyncOutboxStager,
+    OutboxDispatchStore,
     OutboxIntent,
+    OutboxStager,
+    SyncUnitOfWork,
     deliver_async_outbox_effect,
+    deliver_outbox_effect,
 )
 from app.application.subscription.contract import (
+    SessionSubscriptionPort,
     SubscriptionHistorySnapshot,
     SubscriptionHistoryStagingPort,
-    SubscriptionMutationPort,
     SubscriptionPatch,
     SubscriptionSnapshot,
 )
@@ -26,6 +29,7 @@ from app.schemas.common import JsonData
 from app.schemas.event import SubscribeModifiedEventData
 
 SubscribeModifiedPublisher = Callable[[dict[str, JsonData]], Awaitable[None]]
+SyncSubscribeModifiedPublisher = Callable[[dict[str, JsonData]], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +44,7 @@ class SubscriptionActor:
 class SubscriptionMutation:
     """一次订阅变更前后的稳定快照。"""
 
+    snapshot: SubscriptionSnapshot
     old: dict[str, JsonData]
     new: dict[str, JsonData]
     event_published: bool = False
@@ -47,17 +52,166 @@ class SubscriptionMutation:
     pending_effects: tuple[str, ...] = ()
 
 
+def _modified_event(
+    subscribe_id: int,
+    scene: str,
+    old: dict[str, JsonData],
+    updated: SubscriptionSnapshot,
+) -> tuple[str, dict[str, JsonData]]:
+    """构造订阅修改 intent 共用的稳定键和事件快照。"""
+    event_payload = SubscribeModifiedEventData(
+        subscribe_id=subscribe_id,
+        old_subscribe_info=old,
+        subscribe_info=updated.to_dict(),
+        scene=scene,
+    ).to_dict()
+    event_key = _modified_event_key(subscribe_id, scene)
+    event_payload["idempotency_key"] = event_key
+    return event_key, event_payload
+
+
+def _reset_payload(subscribe: SubscriptionSnapshot) -> dict[str, JsonData]:
+    """构造同步与异步重置共享的订阅字段补丁。"""
+    return {
+        "note": [],
+        "lack_episode": subscribe.total_episode,
+        "current_priority": None,
+        "current_audio_format": None,
+        "current_bitrate": None,
+        "current_bit_depth": None,
+        "current_sample_rate": None,
+        "episode_priority": {},
+        "manual_total_episode": 0,
+        "state": "R",
+    }
+
+
+class SyncSubscriptionMutationService:
+    """用一个同步 UoW 原子提交订阅修改和 durable 事件 intent。"""
+
+    def __init__(
+        self,
+        repository: SessionSubscriptionPort,
+        unit_of_work: SyncUnitOfWork,
+        outbox: OutboxStager,
+        dispatch_store: OutboxDispatchStore,
+        publish_modified: SyncSubscribeModifiedPublisher,
+    ) -> None:
+        """注入同一 Session 的仓储、事务、outbox 与提交后发布端口。"""
+        self._repository = repository
+        self._unit_of_work = unit_of_work
+        self._outbox = outbox
+        self._dispatch_store = dispatch_store
+        self._publish_modified = publish_modified
+
+    def get_accessible(
+        self,
+        subscribe_id: int,
+        actor: SubscriptionActor,
+    ) -> SubscriptionSnapshot | None:
+        """同步读取当前主体可访问的订阅。"""
+        subscribe = self._repository.get(subscribe_id)
+        return subscribe if SubscriptionMutationService.can_access(subscribe, actor) else None
+
+    def update(
+        self,
+        subscribe_id: int,
+        payload: dict[str, JsonData],
+        actor: SubscriptionActor,
+        existing: SubscriptionSnapshot | None = None,
+        scene: str = "update",
+    ) -> SubscriptionMutation | None:
+        """同步更新订阅，并在同一事务暂存可恢复的修改事件。"""
+        subscribe = existing or self.get_accessible(subscribe_id, actor)
+        if subscribe and not SubscriptionMutationService.can_access(subscribe, actor):
+            return None
+        if not subscribe:
+            return None
+        old = subscribe.to_dict()
+        try:
+            updated = self._repository.stage_update(
+                subscribe_id,
+                SubscriptionPatch(payload),
+            )
+            if not updated:
+                self._unit_of_work.rollback()
+                return None
+            event_key, event_payload = _modified_event(
+                subscribe_id,
+                scene,
+                old,
+                updated,
+            )
+            self._outbox.stage(
+                OutboxIntent(
+                    event_key=event_key,
+                    topic=SUBSCRIBE_MODIFIED_TOPIC,
+                    payload=event_payload,
+                ),
+                datetime.now(timezone.utc),
+            )
+            self._unit_of_work.commit()
+        except Exception:
+            self._unit_of_work.rollback()
+            raise
+
+        delivered = deliver_outbox_effect(
+            self._dispatch_store,
+            event_key,
+            lambda: self._publish_modified(event_payload),
+        )
+        return SubscriptionMutation(
+            snapshot=updated,
+            old=old,
+            new=updated.to_dict(),
+            event_published=delivered,
+            business_committed=True,
+            pending_effects=() if delivered else (event_key,),
+        )
+
+    def update_status(
+        self,
+        subscribe_id: int,
+        state: str,
+        actor: SubscriptionActor,
+    ) -> SubscriptionMutation | None:
+        """同步更新订阅状态并返回前后快照。"""
+        return self.update(
+            subscribe_id,
+            {"state": state},
+            actor,
+            scene="status",
+        )
+
+    def reset(
+        self,
+        subscribe_id: int,
+        actor: SubscriptionActor,
+    ) -> SubscriptionMutation | None:
+        """同步重置订阅进度和手工集数标记。"""
+        subscribe = self.get_accessible(subscribe_id, actor)
+        if not subscribe:
+            return None
+        return self.update(
+            subscribe_id,
+            _reset_payload(subscribe),
+            actor,
+            existing=subscribe,
+            scene="reset",
+        )
+
+
 class SubscriptionMutationService:
     """编排订阅访问控制、更新和历史删除。"""
 
     def __init__(
         self,
-        repository: SubscriptionMutationPort,
+        repository: SessionSubscriptionPort,
+        unit_of_work: AsyncUnitOfWork,
+        outbox: AsyncOutboxStager,
+        dispatch_store: AsyncOutboxDispatchStore,
+        publish_modified: SubscribeModifiedPublisher,
         history_repository: SubscriptionHistoryStagingPort | None = None,
-        unit_of_work: AsyncUnitOfWork | None = None,
-        outbox: Optional[AsyncOutboxStager] = None,
-        dispatch_store: Optional[AsyncOutboxDispatchStore] = None,
-        publish_modified: SubscribeModifiedPublisher | None = None,
     ) -> None:
         """注入订阅数据、事务与 durable 事件端口。"""
         self._repository = repository
@@ -76,15 +230,6 @@ class SubscriptionMutationService:
         subscribe = await self._repository.async_get(subscribe_id)
         return subscribe if self.can_access(subscribe, actor) else None
 
-    def get_accessible_sync(
-        self,
-        subscribe_id: int,
-        actor: SubscriptionActor,
-    ) -> SubscriptionSnapshot | None:
-        """同步读取当前主体可访问的订阅。"""
-        subscribe = self._repository.get(subscribe_id)
-        return subscribe if self.can_access(subscribe, actor) else None
-
     async def update(
         self,
         subscribe_id: int,
@@ -100,31 +245,20 @@ class SubscriptionMutationService:
         if not subscribe:
             return None
         old = subscribe.to_dict()
-        if not self._unit_of_work:
-            updated = await self._repository.async_update(
-                subscribe_id,
-                SubscriptionPatch(payload),
-            )
-            return SubscriptionMutation(old=old, new=updated.to_dict() if updated else {})
-
-        publish_modified = self._publish_modified
-        if not self._outbox or not self._dispatch_store or not publish_modified:
-            raise RuntimeError("订阅修改事务缺少 outbox stager、store 或事件发布端口")
         try:
             updated = await self._repository.async_stage_update(
                 subscribe_id,
                 SubscriptionPatch(payload),
             )
             if not updated:
+                await self._unit_of_work.rollback()
                 return None
-            event_payload = SubscribeModifiedEventData(
-                subscribe_id=subscribe_id,
-                old_subscribe_info=old,
-                subscribe_info=updated.to_dict(),
-                scene=scene,
-            ).to_dict()
-            event_key = _modified_event_key(subscribe_id, scene)
-            event_payload["idempotency_key"] = event_key
+            event_key, event_payload = _modified_event(
+                subscribe_id,
+                scene,
+                old,
+                updated,
+            )
             await self._outbox.stage(
                 OutboxIntent(
                     event_key=event_key,
@@ -140,7 +274,7 @@ class SubscriptionMutationService:
 
         async def publish_event() -> None:
             """发布本次事务已持久化的订阅修改事件。"""
-            await publish_modified(event_payload)
+            await self._publish_modified(event_payload)
 
         delivered = await deliver_async_outbox_effect(
             self._dispatch_store,
@@ -148,8 +282,9 @@ class SubscriptionMutationService:
             publish_event,
         )
         return SubscriptionMutation(
+            snapshot=updated,
             old=old,
-            new=event_payload["subscribe_info"],
+            new=updated.to_dict(),
             event_published=delivered,
             business_committed=True,
             pending_effects=() if delivered else (event_key,),
@@ -178,21 +313,9 @@ class SubscriptionMutationService:
         subscribe = await self.get_accessible(subscribe_id, actor)
         if not subscribe:
             return None
-        payload: dict[str, JsonData] = {
-            "note": [],
-            "lack_episode": subscribe.total_episode,
-            "current_priority": None,
-            "current_audio_format": None,
-            "current_bitrate": None,
-            "current_bit_depth": None,
-            "current_sample_rate": None,
-            "episode_priority": {},
-            "manual_total_episode": 0,
-            "state": "R",
-        }
         return await self.update(
             subscribe_id,
-            payload,
+            _reset_payload(subscribe),
             actor,
             existing=subscribe,
             scene="reset",
@@ -209,8 +332,6 @@ class SubscriptionMutationService:
         history = await self._history_repository.async_get(history_id)
         if not self.can_access(history, actor):
             return False
-        if self._unit_of_work is None:
-            raise RuntimeError("订阅历史删除缺少事务端口")
         try:
             await self._history_repository.stage_delete(history_id)
             await self._unit_of_work.commit()
@@ -242,19 +363,7 @@ SubscriptionMutationScope = Callable[
     [],
     AbstractAsyncContextManager[SubscriptionMutationService],
 ]
-_configured_mutation_scope: SubscriptionMutationScope | None = None
-
-
-def configure_subscription_mutation_scope(
-    provider: SubscriptionMutationScope,
-) -> None:
-    """由启动组合根登记 Agent 等非 HTTP 入口使用的事务作用域。"""
-    global _configured_mutation_scope
-    _configured_mutation_scope = provider
-
-
-def get_subscription_mutation_scope() -> AbstractAsyncContextManager[SubscriptionMutationService]:
-    """返回一次独占会话的订阅修改服务作用域。"""
-    if _configured_mutation_scope is None:
-        raise RuntimeError("订阅修改事务作用域尚未配置")
-    return _configured_mutation_scope()
+SyncSubscriptionMutationScope = Callable[
+    [],
+    AbstractContextManager[SyncSubscriptionMutationService],
+]

@@ -1,11 +1,14 @@
 """订阅写入端口的 SQLAlchemy 事务适配器。"""
 
+from __future__ import annotations
+
 import builtins
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeVar, cast
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -29,11 +32,16 @@ from app.application.subscription.contract import (
     SubscriptionIdentity,
     SubscriptionPatch,
     SubscriptionSnapshot,
+    SubscriptionStagingPort,
     SubscriptionWriteResult,
 )
 from app.application.subscription.write import (
+    AsyncCreateSubscriptionBatchCommand,
     AsyncCreateSubscriptionCommand,
+    AsyncSubscriptionOutboxStager,
+    AsyncUnitOfWork,
     CreateSubscriptionCommand,
+    SubscriptionCreateRequest,
     subscription_added_event_key,
     subscription_added_notification_key,
     subscription_added_report_key,
@@ -264,24 +272,12 @@ class _TransactionalSubscriptionWriter:
 
 
 class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
-    """以独立短 Session 实现订阅查询、修改和历史查询端口。"""
+    """以独立短 Session 实现订阅查询、新增和历史查询端口。"""
 
     def _read(self, operation: Callable[[SubscribeOper], T]) -> T:
         """在独立同步 Session 中执行查询并投影快照。"""
         with self._sync_session() as session:
             return operation(SubscribeOper(session))
-
-    def _write(self, operation: Callable[[SubscribeOper], T]) -> T:
-        """在独立同步 UoW 中执行写入。"""
-        with self._sync_session() as session:
-            unit_of_work = SqlAlchemyUnitOfWork(session)
-            try:
-                result = operation(SubscribeOper(session))
-                unit_of_work.commit()
-                return result
-            except Exception:
-                unit_of_work.rollback()
-                raise
 
     async def _async_read(
         self,
@@ -290,21 +286,6 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         """在独立异步 Session 中执行查询并投影快照。"""
         async with self._async_session() as session:
             return await operation(SubscribeOper(session))
-
-    async def _async_write(
-        self,
-        operation: Callable[[SubscribeOper], Awaitable[T]],
-    ) -> T:
-        """在独立异步 UoW 中执行写入。"""
-        async with self._async_session() as session:
-            unit_of_work = SqlAlchemyAsyncUnitOfWork(session)
-            try:
-                result = await operation(SubscribeOper(session))
-                await unit_of_work.commit()
-                return result
-            except Exception:
-                await unit_of_work.rollback()
-                raise
 
     def exists(self, identity: SubscriptionIdentity) -> bool:
         """同步判断媒体身份是否已有订阅。"""
@@ -374,6 +355,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
 
         return await self._async_read(operation)
 
+
     async def async_list(
         self,
         state: Optional[str] = None,
@@ -437,46 +419,6 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
             return [_project_subscription(record) for record in records]
 
         return await self._async_read(operation)
-
-    def update(
-        self,
-        subscribe_id: int,
-        patch: SubscriptionPatch,
-    ) -> Optional[SubscriptionSnapshot]:
-        """在独立同步事务中更新并返回订阅快照。"""
-        return self._write(
-            lambda repository: (
-                _project_subscription(record)
-                if (record := repository.update(subscribe_id, patch.to_payload())) is not None
-                else None
-            )
-        )
-
-    async def async_update(
-        self,
-        subscribe_id: int,
-        patch: SubscriptionPatch,
-    ) -> Optional[SubscriptionSnapshot]:
-        """在独立异步事务中更新并返回订阅快照。"""
-
-        async def operation(repository: SubscribeOper) -> Optional[SubscriptionSnapshot]:
-            """更新并在当前 Session 中投影订阅。"""
-            record = await repository.async_update(subscribe_id, patch.to_payload())
-            return _project_subscription(record) if record is not None else None
-
-        return await self._async_write(operation)
-
-    async def async_update_filter_groups(
-        self,
-        subscribe_id: int,
-        filter_groups: builtins.list[str],
-    ) -> Optional[SubscriptionSnapshot]:
-        """在独立异步事务中更新过滤规则组并返回快照。"""
-        return await self.async_update(
-            subscribe_id,
-            SubscriptionPatch({"filter_groups": filter_groups}),
-        )
-
 
 class TransactionalSubscriptionHistoryRepository:
     """以独立短 AsyncSession 实现 Agent 等后台入口的订阅历史查询。"""
@@ -612,6 +554,28 @@ class SessionSubscriptionRepository:
         records = await self._async_repository().async_list(state)
         return [_project_subscription(record) for record in records]
 
+    def list_for_reference_rewrite(self) -> builtins.list[SubscriptionSnapshot]:
+        """同步锁定全部订阅，供跨表规则组引用事务稳定重写。"""
+        session = self._session
+        if not isinstance(session, Session):
+            raise RuntimeError("规则组引用重写需要调用方提供同步 Session")
+        records = session.execute(
+            select(Subscribe).order_by(Subscribe.id).with_for_update()
+        ).scalars().all()
+        return [_project_subscription(record) for record in records]
+
+    async def async_list_for_reference_rewrite(
+        self,
+    ) -> builtins.list[SubscriptionSnapshot]:
+        """异步锁定全部订阅，供跨表规则组引用事务稳定重写。"""
+        session = self._session
+        if not isinstance(session, AsyncSession):
+            raise RuntimeError("规则组引用重写需要调用方提供 AsyncSession")
+        result = await session.execute(
+            select(Subscribe).order_by(Subscribe.id).with_for_update()
+        )
+        return [_project_subscription(record) for record in result.scalars().all()]
+
     async def async_list_by_username(
         self,
         username: str,
@@ -661,6 +625,15 @@ class SessionSubscriptionRepository:
         result = await self._async_repository().async_stage_add(identity.to_payload(), payload.to_payload(), username)
         return SubscriptionWriteResult(result.subscribe_id, result.message, result.created)
 
+    def stage_update(
+        self,
+        subscribe_id: int,
+        patch: SubscriptionPatch,
+    ) -> Optional[SubscriptionSnapshot]:
+        """同步暂存更新并返回事务内订阅快照。"""
+        record = self._sync_repository().update(subscribe_id, patch.to_payload())
+        return _project_subscription(record) if record is not None else None
+
     async def async_stage_update(
         self,
         subscribe_id: int,
@@ -669,14 +642,6 @@ class SessionSubscriptionRepository:
         """异步暂存更新并返回事务内订阅快照。"""
         record = await self._async_repository().async_stage_update(subscribe_id, patch.to_payload())
         return _project_subscription(record) if record is not None else None
-
-    async def async_update(
-        self,
-        subscribe_id: int,
-        patch: SubscriptionPatch,
-    ) -> Optional[SubscriptionSnapshot]:
-        """拒绝在请求级 adapter 内隐式拥有提交权。"""
-        raise RuntimeError(f"请求级订阅 {subscribe_id} 更新必须使用 async_stage_update + UoW")
 
     async def get_candidate(
         self,
@@ -779,6 +744,59 @@ class SessionSubscriptionHistoryRepository:
     async def stage_delete(self, history_id: int) -> None:
         """异步暂存删除订阅历史。"""
         await self._repository.async_delete(history_id)
+
+
+class SessionSubscriptionBatchWriter:
+    """使用请求级共享异步 Session 原子新增一组订阅并结算提交后效果。"""
+
+    def __init__(
+        self,
+        *,
+        repository: SubscriptionStagingPort,
+        unit_of_work: AsyncUnitOfWork,
+        outbox: AsyncSubscriptionOutboxStager,
+        dispatch_store: AsyncOutboxDispatchStore,
+    ) -> None:
+        """注入同一请求事务的写端口和 durable intent 结算能力。"""
+        self._command = AsyncCreateSubscriptionBatchCommand(
+            repository=repository,
+            unit_of_work=unit_of_work,
+            outbox=outbox,
+        )
+        self._dispatch_store = dispatch_store
+
+    async def async_add(
+        self,
+        requests: Sequence[SubscriptionCreateRequest],
+    ) -> tuple[SubscriptionWriteResult, ...]:
+        """提交整批订阅后逐条认领并结算与单条新增一致的 intents。"""
+
+        async def settle(
+            subscribe_id: int,
+            request: SubscriptionCreateRequest,
+        ) -> None:
+            """在批量事务提交后结算一条订阅的事件和统计 intents。"""
+            payload = request.payload.to_payload()
+            notification = (
+                dict(request.notification) if request.notification else None
+            )
+
+            async def invoke() -> bool | None:
+                """复用准备阶段冻结的单条新增提交后副作用。"""
+                if request.after_commit is None:
+                    return True
+                delivered = await request.after_commit(subscribe_id)
+                return None if delivered is None else bool(delivered)
+
+            await _deliver_added_effects_async(
+                self._dispatch_store,
+                subscribe_id,
+                payload,
+                notification,
+                invoke,
+            )
+
+        return await self._command.execute(requests, after_commit=settle)
 
 
 def _added_effect_keys(

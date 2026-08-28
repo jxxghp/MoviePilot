@@ -8,8 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl._filter_rule_utils import (
     get_rule_groups,
-    remove_rule_group_references,
-    save_system_config,
+    publish_rule_config_changed,
 )
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
@@ -44,6 +43,9 @@ class DeleteRuleGroupTool(MoviePilotTool):
 
         try:
             rule_groups = get_rule_groups()
+            expected_definitions = [
+                group.model_dump(exclude_none=True) for group in rule_groups
+            ]
             if not any(group.name == name for group in rule_groups):
                 return json.dumps(
                     {
@@ -56,14 +58,20 @@ class DeleteRuleGroupTool(MoviePilotTool):
             remaining_groups = [
                 group for group in rule_groups if group.name != name
             ]
-            await save_system_config(
+            definitions = [
+                group.model_dump(exclude_none=True) for group in remaining_groups
+            ]
+            async with self.data.async_rule_group_mutation_scope() as mutation:
+                result = await mutation.apply(
+                    definitions,
+                    expected_rule_groups=expected_definitions,
+                    previous_name=name,
+                )
+            await publish_rule_config_changed(
                 SystemConfigKey.UserFilterRuleGroups,
-                [group.model_dump(exclude_none=True) for group in remaining_groups],
+                definitions,
             )
-            reference_changes = await remove_rule_group_references(
-                self.data.subscriptions,
-                name,
-            )
+            reference_changes = result.to_dict()
 
             return json.dumps(
                 {

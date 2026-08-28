@@ -3,7 +3,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from app.agent.tools.impl.delete_subscribe import DeleteSubscribeTool
 
@@ -19,19 +19,20 @@ def test_agent_delete_subscribe_uses_transactional_delete_command():
     subscribe = SimpleNamespace(id=7, name="测试订阅", year="2026")
     mutation = SimpleNamespace(get_accessible=AsyncMock(return_value=subscribe))
     command = SimpleNamespace(execute=AsyncMock(return_value=True))
+    data = SimpleNamespace(
+        subscription_mutation_scope=lambda: _scope(mutation),
+        subscription_delete_scope=lambda: _scope(command),
+    )
 
-    with patch(
-        "app.agent.tools.impl.delete_subscribe.get_subscription_mutation_scope",
-        side_effect=lambda: _scope(mutation),
-    ), patch(
-        "app.agent.tools.impl.delete_subscribe.get_delete_subscribe_scope",
-        side_effect=lambda: _scope(command),
-    ):
-        result = asyncio.run(
-            DeleteSubscribeTool(session_id="session-1", user_id="10001").run(
-                subscribe_id=7
-            )
+    result = asyncio.run(
+        DeleteSubscribeTool(
+            session_id="session-1",
+            user_id="10001",
+            data=data,
+        ).run(
+            subscribe_id=7
         )
+    )
 
     assert result == "成功删除订阅：测试订阅 (2026)"
     mutation.get_accessible.assert_awaited_once()
@@ -44,20 +45,21 @@ def test_agent_delete_subscribe_uses_transactional_delete_command():
 def test_agent_delete_subscribe_skips_command_when_record_is_missing():
     """预读未命中时保持原有不存在提示，且不创建删除副作用。"""
     mutation = SimpleNamespace(get_accessible=AsyncMock(return_value=None))
-    delete_scope = AsyncMock()
+    delete_scope = MagicMock()
+    data = SimpleNamespace(
+        subscription_mutation_scope=lambda: _scope(mutation),
+        subscription_delete_scope=delete_scope,
+    )
 
-    with patch(
-        "app.agent.tools.impl.delete_subscribe.get_subscription_mutation_scope",
-        side_effect=lambda: _scope(mutation),
-    ), patch(
-        "app.agent.tools.impl.delete_subscribe.get_delete_subscribe_scope",
-        delete_scope,
-    ):
-        result = asyncio.run(
-            DeleteSubscribeTool(session_id="session-1", user_id="10001").run(
-                subscribe_id=404
-            )
+    result = asyncio.run(
+        DeleteSubscribeTool(
+            session_id="session-1",
+            user_id="10001",
+            data=data,
+        ).run(
+            subscribe_id=404
         )
+    )
 
     assert result == "订阅 ID 404 不存在"
     delete_scope.assert_not_called()

@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.api.endpoints.subscribe import create_subscribe
+from app.application.outbox import ClaimedOutboxMessage
 from app.application.subscription.contract import (
     SubscriptionHistorySnapshot,
     SubscriptionPatch,
@@ -14,6 +15,7 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.mutation import SubscriptionMutationService
 from app.application.subscription.query import SubscriptionQueryService
+from app.runtime.events import eventmanager
 from app.schemas.subscribe import Subscribe
 from app.schemas.types import EventType, MediaSource, MediaType
 
@@ -35,10 +37,56 @@ def _subscription_mutation(
     history_repository: "_SubscriptionHistoryRepositoryFake | None" = None,
 ) -> SubscriptionMutationService:
     """构造使用 typed 内存仓储的订阅写服务。"""
+    outbox = _EndpointOutbox()
+
+    async def publish_modified(payload: dict) -> None:
+        """把测试服务提交后的修改事件交给真实事件边界。"""
+        await eventmanager.async_send_event(EventType.SubscribeModified, payload)
+
     return SubscriptionMutationService(
         repository=repository,
+        unit_of_work=_EndpointUnitOfWork(),
+        outbox=outbox,
+        dispatch_store=outbox,
+        publish_modified=publish_modified,
         history_repository=history_repository,
     )
+
+
+class _EndpointUnitOfWork:
+    """为内存 endpoint 仓储提供无副作用的事务端口。"""
+
+    async def commit(self) -> None:
+        """确认内存更新。"""
+
+    async def rollback(self) -> None:
+        """结束失败的内存更新。"""
+
+
+class _EndpointOutbox:
+    """让 endpoint 测试观察服务层的一次即时 outbox 派发。"""
+
+    async def stage(self, _intent, _now) -> None:
+        """接受内存 intent。"""
+
+    async def claim_by_event_key(self, event_key, _now, _lease_until):
+        """认领当前测试刚暂存的 intent。"""
+        return ClaimedOutboxMessage(
+            message_id=1,
+            event_key=event_key,
+            topic="subscribe.modified",
+            payload={},
+            payload_version=1,
+            attempt=1,
+        )
+
+    async def complete(self, _message_id, _attempt, _completed_at) -> bool:
+        """确认服务只完成一次事件派发。"""
+        return True
+
+    async def retry(self, _message_id, _attempt, **_kwargs) -> bool:
+        """允许失败路径释放内存 lease。"""
+        return True
 
 
 class TestSubscribeEndpoint:
@@ -152,7 +200,7 @@ class TestSubscribeEndpoint:
         ]:
             repository = _SubscriptionRepositoryFake(subscribe)
             with patch(
-                "app.api.endpoints.subscribe.eventmanager.async_send_event",
+                "app.runtime.events.eventmanager.async_send_event",
                 new=AsyncMock(),
             ) as send_event:
                 response = asyncio.run(
@@ -193,7 +241,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ) as send_event:
             response = asyncio.run(
@@ -240,7 +288,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ) as send_event:
             response = asyncio.run(
@@ -278,7 +326,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ):
             response = asyncio.run(
@@ -315,7 +363,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ):
             response = asyncio.run(
@@ -371,7 +419,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ):
             response = asyncio.run(
@@ -402,7 +450,7 @@ class TestSubscribeEndpoint:
         ]:
             repository = _SubscriptionRepositoryFake(subscribe)
             with patch(
-                "app.api.endpoints.subscribe.eventmanager.async_send_event",
+                "app.runtime.events.eventmanager.async_send_event",
                 new=AsyncMock(),
             ) as send_event:
                 response = asyncio.run(
@@ -609,7 +657,7 @@ class TestSubscribeEndpoint:
         with patch("app.api.endpoints.subscribe.SubscribeChain") as subscribe_chain:
             result = subscribe_files(
                 subscribe_id=19,
-                mutation=_subscription_mutation(repository),
+                repository=repository,
                 current_user=_EndpointUser(name="alice", is_superuser=False),
             )
 
@@ -929,7 +977,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ) as send_event:
             response = asyncio.run(
@@ -971,7 +1019,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ) as send_event:
             response = asyncio.run(
@@ -1021,7 +1069,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ) as send_event:
             response = asyncio.run(
@@ -1041,6 +1089,53 @@ class TestSubscribeEndpoint:
         assert payload["fields"] == ["name"]
         assert payload["old_subscribe_info"]["name"] == "旧标题"
         assert payload["subscribe_info"]["name"] == "新标题"
+
+    def test_update_subscribe_does_not_republish_pending_outbox_event(self):
+        """服务返回 pending 时 endpoint 仍只返回业务成功，不得直接二次发布。"""
+        from app.api.endpoints.subscribe import update_subscribe
+
+        subscribe = _EndpointSubscribe(
+            id=70,
+            username="alice",
+            name="旧标题",
+            total_episode=8,
+            lack_episode=2,
+            sites=[],
+            filter_groups=[],
+            start_episode=0,
+        )
+        mutation = SimpleNamespace(
+            get_accessible=AsyncMock(return_value=subscribe),
+            update=AsyncMock(
+                return_value=SimpleNamespace(
+                    old=subscribe.to_dict(),
+                    new={**subscribe.to_dict(), "name": "新标题"},
+                    event_published=False,
+                    business_committed=True,
+                    pending_effects=("subscribe.modified:70:update:test:v1",),
+                )
+            ),
+        )
+
+        with patch(
+            "app.runtime.events.eventmanager.async_send_event",
+            new=AsyncMock(),
+        ) as send_event:
+            response = asyncio.run(
+                update_subscribe(
+                    subscribe_in=Subscribe(
+                        id=70,
+                        name="新标题",
+                        total_episode=8,
+                        lack_episode=2,
+                    ),
+                    mutation=mutation,
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+
+        assert response.success
+        send_event.assert_not_awaited()
 
     def test_update_subscribe_ignores_runtime_fact_fields(self):
         """
@@ -1080,7 +1175,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ):
             response = asyncio.run(
@@ -1125,7 +1220,7 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(subscribe)
 
         with patch(
-            "app.api.endpoints.subscribe.eventmanager.async_send_event",
+            "app.runtime.events.eventmanager.async_send_event",
             new=AsyncMock(),
         ):
             response = asyncio.run(

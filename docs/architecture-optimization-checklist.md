@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 858 / 7,062 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 858 / 7,091 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,7 +78,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,734 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 760 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Ruff 历史诊断 | 754 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 79.83%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -161,7 +161,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - Event consumer 扫描曾把任意同名 `.register()` 调用当成事件注册；S0-L2.5 已改为证明
   canonical EventManager receiver，10 个动态误报归零并保留唯一 workflow 动态注册。
 - S0-L2.6 已将 producer/consumer 合并为逐调用事实源；本轮统一 Transfer 事件发送点后为
-  97 个 producer（96 静态、1 动态）与
+  95 个 producer（94 静态、1 动态）与
   17 个 consumer（16 静态、1 动态）；consumer 由不可自动写入的精确人工 policy 管理。
 
 **目标与步骤**
@@ -317,13 +317,14 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [x] Subscription 增加 AST 门禁，禁止 canonical consumer 导入 raw Oper/ORM、以 `Any` 伪装
   Snapshot、复制 CRUD Protocol 或新增多词散落文件；全局 Agent/Transfer locator 已清零并由独立 AST 门禁守护。
 
-**后续顺序**
+**交付结果**
 
-1. S1-L4 收口 Subscription 新增、修改、删除、完成和批量修改的单一 UoW，删除自动提交写入口。
-2. S1-L4 对 Subscription 新增、修改、删除、完成和批量修改逐用例验证单一 UoW，禁止把逐条短事务
-   误当作批量原子事务。
-3. S1-L5 将站点、规则组引用的 SystemConfig 与 Subscription 更新合并为原子命令，并在 commit 后
-   一次发布配置快照。
+1. S1-L4 已收口 Subscription 新增、修改、删除、完成和批量修改的单一 UoW，canonical 自动提交写入口
+   与运行时 locator 清零；Servarr 多季新增共享一个请求事务和 outbox，任一季失败整批回滚。
+2. S1-L4 已逐用例验证 Session-bound Command 的提交、回滚和 post-commit 语义，不再以逐条短事务
+   冒充批量原子事务。
+3. S1-L5 已将站点、规则组及自定义规则改名涉及的 SystemConfig 与 Subscription 更新合并为原子命令，
+   通过 CAS 拒绝过期快照，并在 commit 后一次发布配置快照。
 
 **验收**
 
@@ -353,15 +354,15 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **目标与步骤**
 
-- [ ] 将引用分析与修改计划提取为纯函数/值对象。
-- [ ] SystemConfig 与 Subscribe 位于同一宿主数据库，首选一个 Application Command/UoW 和批量原子更新；
+- [x] 将引用分析与修改计划提取为纯函数/值对象。
+- [x] SystemConfig 与 Subscribe 位于同一宿主数据库，首选一个 Application Command/UoW 和批量原子更新；
   复用 `SystemConfigOper.update_atomically()` 的锁行能力，而不是预设必须跨存储补偿。
-- [ ] 同一 UoW 内修改配置表后，在 commit 成功时一次性发布全部进程内配置快照，并明确
+- [x] 同一 UoW 内修改配置表后，在 commit 成功时一次性发布全部进程内配置快照，并明确
   `_write_lock`/`_snapshot_lock` 的顺序；读者只能观察完整旧快照或完整新快照。
-- [ ] 仅当未来确有无法共享事务的外部状态时，才使用持久、幂等、带 checkpoint 的 reconciliation job。
-- [ ] 每一步允许安全重试，返回明确的完成/待恢复状态。
-- [ ] 在第 `k` 次写入注入异常，验证整体回滚或下次能恢复到完整状态。
-- [ ] 增加并发触发和并发读取测试，验证没有丢更新、死锁或配置中间组合。
+- [x] 仅当未来确有无法共享事务的外部状态时，才使用持久、幂等、带 checkpoint 的 reconciliation job。
+- [x] 每一步允许安全重试，返回明确的完成/冲突状态。
+- [x] 在第 `k` 次写入注入异常，验证整体回滚或下次能恢复到完整状态。
+- [x] 增加并发触发和并发读取测试，验证没有丢更新、死锁或配置中间组合。
 
 ```bash
 .venv/bin/python -m pytest \

@@ -25,6 +25,13 @@ def _context() -> ChainRuntimeContext:
         module_dispatcher_factory=ModuleInvocationDispatcher,
         site_repository=Mock(),
         subscription_repository=Mock(),
+        subscription_mutation_scope=Mock(),
+        sync_subscription_mutation_scope=Mock(),
+        subscription_delete_scope=Mock(),
+        sync_subscription_delete_scope=Mock(),
+        subscription_completion_scope=Mock(),
+        rule_group_mutation_scope=Mock(),
+        site_reference_mutation_scope=Mock(),
         download_history_repository=Mock(),
         transfer_history_repository=Mock(),
         transfer_admission_repository=Mock(),
@@ -84,5 +91,10 @@ def test_chain_keeps_explicit_typed_repositories() -> None:
 
     assert chain.site_repository is context.site_repository
     assert chain.subscription_repository is context.subscription_repository
+    assert chain.subscription_mutation_scope is context.subscription_mutation_scope
+    assert chain.sync_subscription_mutation_scope is context.sync_subscription_mutation_scope
+    assert chain.subscription_delete_scope is context.subscription_delete_scope
+    assert chain.sync_subscription_delete_scope is context.sync_subscription_delete_scope
+    assert chain.subscription_completion_scope is context.subscription_completion_scope
     assert chain.transfer_execution_repository is context.transfer_execution_repository
     assert chain.user_repository is context.user_repository

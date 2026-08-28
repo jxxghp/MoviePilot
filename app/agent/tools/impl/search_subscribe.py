@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.subscription.contract import SubscriptionPatch
+from app.application.subscription.mutation import SubscriptionActor
 from app.chain.subscribe import SubscribeChain
 from app.runtime.log import logger
 from app.schemas.types import media_type_to_agent
@@ -93,10 +93,14 @@ class SearchSubscribeTool(MoviePilotTool):
 
             # 如果提供了 filter_groups 参数，先更新订阅的规则组
             if filter_groups is not None:
-                await repository.async_update(
-                    subscribe_id,
-                    SubscriptionPatch({"filter_groups": filter_groups}),
-                )
+                async with self.data.subscription_mutation_scope() as mutation:
+                    await mutation.update(
+                        subscribe_id,
+                        {"filter_groups": filter_groups},
+                        SubscriptionActor(name="agent", is_superuser=True),
+                        existing=subscribe,
+                        scene="agent_search",
+                    )
                 logger.info(f"更新订阅 #{subscribe_id} 的规则组为: {filter_groups}")
 
             # 订阅搜索会触发大量同步站点访问，统一走 subscribe 线程池。

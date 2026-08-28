@@ -24,6 +24,7 @@ from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.scheduling import start_scheduler_job
 from app.application.servarr import ServarrSubscriptionService
 from app.application.subscription.contract import (
+    SessionSubscriptionPort,
     SubscriptionHistoryStagingPort,
     SubscriptionStagingPort,
 )
@@ -41,6 +42,9 @@ from app.application.subscription.mutation import (
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.search import SearchSubscriptionsCommand
+from app.application.subscription.write import (
+    SubscriptionBatchWritePort,
+)
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
@@ -173,7 +177,7 @@ def get_subscription_query_service(
 
 
 def get_subscription_mutation_service(
-    repository_port: SubscriptionStagingPort = Depends(get_subscription_repository),
+    repository_port: SessionSubscriptionPort = Depends(get_subscription_repository),
     history_repository: SubscriptionHistoryStagingPort = Depends(
         get_subscription_history_repository
     ),
@@ -194,13 +198,21 @@ def get_subscription_mutation_service(
     )
 
 
-def get_subscription_sync_mutation_service(
-    db: Session = Depends(get_sync_session),
+def get_servarr_subscription_batch_writer(
+    repository_port: SubscriptionStagingPort = Depends(get_subscription_repository),
+    unit_of_work: object = Depends(get_subscription_transaction),
+    outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
+    dispatch_store: AsyncOutboxDispatchStore = Depends(
+        get_subscription_outbox_store
+    ),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> SubscriptionMutationService:
-    """组装同步订阅查询服务，供文件信息接口使用。"""
-    return SubscriptionMutationService(
-        repository=runtime.subscription.repository(db)
+) -> SubscriptionBatchWritePort:
+    """组装 Servarr 多季订阅使用的请求级原子批量写端口。"""
+    return runtime.subscription.batch_writer(
+        repository=repository_port,
+        unit_of_work=cast(DeleteUnitOfWork, unit_of_work),
+        outbox=outbox,
+        dispatch_store=dispatch_store,
     )
 
 

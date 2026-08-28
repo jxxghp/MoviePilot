@@ -13,7 +13,7 @@ from app.application.subscription.mutation import (
 
 
 class _Repository:
-    """记录订阅读取、兼容更新和事务内暂存顺序。"""
+    """记录订阅读取和事务内暂存顺序。"""
 
     def __init__(self, subscribe: SubscriptionSnapshot, calls: list) -> None:
         """保存订阅对象与共享调用序列。"""
@@ -25,12 +25,6 @@ class _Repository:
         self.calls.append(("get", subscribe_id))
         return self.subscribe
 
-    async def async_update(self, subscribe_id: int, payload: SubscriptionPatch):
-        """模拟旧兼容自动提交路径。"""
-        self.calls.append(("legacy_update", subscribe_id, payload))
-        self.subscribe = replace(self.subscribe, **payload.to_payload())
-        return self.subscribe
-
     async def async_stage_update(self, subscribe_id: int, payload: SubscriptionPatch) -> SubscriptionSnapshot:
         """模拟调用方事务内的更新暂存。"""
         self.calls.append(("stage_update", subscribe_id, payload))
@@ -40,6 +34,12 @@ class _Repository:
     def get(self, subscribe_id: int):
         """提供协议要求的同步读取。"""
         return self.subscribe if subscribe_id == self.subscribe.id else None
+
+    def stage_update(self, subscribe_id: int, payload: SubscriptionPatch) -> SubscriptionSnapshot:
+        """模拟同步调用方事务内的更新暂存。"""
+        self.calls.append(("stage_update", subscribe_id, payload))
+        self.subscribe = replace(self.subscribe, **payload.to_payload())
+        return self.subscribe
 
 
 class _UnitOfWork:
@@ -61,10 +61,16 @@ class _UnitOfWork:
 class _Outbox:
     """记录修改事件 intent 暂存和完成。"""
 
-    def __init__(self, calls: list, stage_error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        calls: list,
+        stage_error: Exception | None = None,
+        claim: bool = True,
+    ) -> None:
         """保存共享调用序列与可选暂存异常。"""
         self.calls = calls
         self.stage_error = stage_error
+        self.claim = claim
 
     async def stage(self, intent, _now) -> None:
         """记录 intent 并按需失败。"""
@@ -75,6 +81,8 @@ class _Outbox:
     async def claim_by_event_key(self, event_key, _now, _lease_until):
         """记录并返回当前测试拥有的派发 lease。"""
         self.calls.append(("outbox_claim", event_key))
+        if not self.claim:
+            return None
         return ClaimedOutboxMessage(
             message_id=7,
             event_key=event_key,
@@ -134,6 +142,7 @@ async def test_modified_event_is_staged_with_update_and_completed_after_publish(
 
     assert change is not None
     assert change.event_published is True
+    assert change.snapshot.name == "新标题"
     assert change.old["name"] == "旧标题"
     assert change.new["name"] == "新标题"
     assert [call[0] for call in calls] == [
@@ -197,4 +206,30 @@ async def test_modified_event_failure_keeps_committed_intent_pending():
         "outbox_claim",
         "event",
         "outbox_retry",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_unclaimed_committed_intent_stays_pending_without_second_publish():
+    """即时派发未取得 lease 时只返回 pending，调用方不得绕过 outbox 再发布。"""
+    calls = []
+    service = _service(calls, outbox=_Outbox(calls, claim=False))
+
+    change = await service.update(
+        7,
+        {"name": "新标题"},
+        SubscriptionActor(name="alice", is_superuser=False),
+    )
+
+    assert change is not None
+    assert change.snapshot.name == "新标题"
+    assert change.business_committed is True
+    assert change.event_published is False
+    assert change.pending_effects[0].startswith("subscribe.modified:7:update:")
+    assert [call[0] for call in calls] == [
+        "get",
+        "stage_update",
+        "outbox_stage",
+        "commit",
+        "outbox_claim",
     ]

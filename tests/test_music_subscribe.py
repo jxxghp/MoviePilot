@@ -1,9 +1,16 @@
+from contextlib import contextmanager
+from dataclasses import fields
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
-from app.application.subscription.contract import SubscriptionIdentity, SubscriptionPatch
+from app.application.subscription.contract import (
+    SubscriptionIdentity,
+    SubscriptionPatch,
+    SubscriptionSnapshot,
+)
+from app.application.subscription.mutation import SubscriptionMutation
 from app.chain.subscribe import SubscribeChain, build_subscribe_meta
 from app.domain.context import (
     MUSIC_ENTITY_ALBUM,
@@ -81,7 +88,35 @@ def _subscribe(**overrides) -> SimpleNamespace:
         backdrop=None,
     )
     values.update(overrides)
-    return SimpleNamespace(**values)
+    subscribe = SimpleNamespace(**values)
+    subscribe.to_dict = lambda: dict(values)
+    return subscribe
+
+
+def _configure_subscription_write(chain, repository) -> None:
+    """为音乐测试链注入显式同步修改作用域。"""
+    chain.subscription_repository = repository
+
+    @contextmanager
+    def mutation_scope():
+        """把同步修改命令委托给当前测试 repository。"""
+        def update(subscribe_id, payload, _actor, existing=None, scene="update"):
+            """按生产命令返回结构记录测试写入。"""
+            repository.update(subscribe_id, SubscriptionPatch(payload))
+            old = {
+                field.name: getattr(existing, field.name, None)
+                for field in fields(SubscriptionSnapshot)
+            }
+            new = {**old, **payload}
+            return SubscriptionMutation(
+                snapshot=SubscriptionSnapshot(**new),
+                old=old,
+                new=new,
+            )
+
+        yield SimpleNamespace(update=update)
+
+    chain.sync_subscription_mutation_scope = mutation_scope
 
 
 def test_build_subscribe_meta_returns_music_meta():
@@ -241,7 +276,7 @@ def test_music_best_version_persists_downloaded_rule_priority():
     subscribe_oper.update.return_value = updated
     chain = SubscribeChain()
     chain.finish_subscribe_or_not = Mock()
-    chain.subscription_repository = subscribe_oper
+    _configure_subscription_write(chain, subscribe_oper)
 
     with patch("app.chain._music.DownloadChain", return_value=download_chain):
         chain._download_music_subscribe(subscribe, _music_info(), [downloaded])
@@ -258,7 +293,8 @@ def test_music_best_version_persists_downloaded_rule_priority():
     )
     assert subscribe.current_priority == 90
     chain.finish_subscribe_or_not.assert_called_once()
-    assert chain.finish_subscribe_or_not.call_args.kwargs["subscribe"] is updated
+    persisted = chain.finish_subscribe_or_not.call_args.kwargs["subscribe"]
+    assert persisted.current_priority == updated.current_priority
     chain.finish_subscribe_or_not.assert_called_once()
 
 
@@ -346,7 +382,7 @@ def test_album_best_version_requires_confirmed_full_coverage():
     subscribe_oper = Mock()
     subscribe_oper.get.return_value = subscribe
     chain = SubscribeChain()
-    chain.subscription_repository = subscribe_oper
+    _configure_subscription_write(chain, subscribe_oper)
 
     with patch("app.chain.subscribe.DownloadChain", return_value=download_chain), \
             patch.object(chain, "_SubscribeChain__finish_subscribe") as finish:
@@ -645,14 +681,14 @@ def test_recording_target_sync_clears_stale_album_track_count():
     subscribe_oper.update.return_value = updated
 
     chain = SubscribeChain()
-    chain.subscription_repository = subscribe_oper
+    _configure_subscription_write(chain, subscribe_oper)
     result = chain._sync_music_subscribe_target(subscribe, _music_info())
 
     subscribe_oper.update.assert_called_once_with(
         subscribe.id,
         SubscriptionPatch({"total_tracks": None}),
     )
-    assert result is updated
+    assert result.total_tracks == updated.total_tracks
     assert subscribe.total_tracks == 11
 
 

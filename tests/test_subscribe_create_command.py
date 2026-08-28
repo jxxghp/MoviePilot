@@ -1,20 +1,38 @@
 """订阅新增事务所有权与默认入口集成测试。"""
 
 import asyncio
+from dataclasses import replace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy import select
 
+from app.application.subscription.contract import (
+    SubscriptionIdentity,
+    SubscriptionPatch,
+)
 from app.application.subscription.write import (
+    AsyncCreateSubscriptionBatchCommand,
     AsyncCreateSubscriptionCommand,
     CreateSubscriptionCommand,
+    SubscriptionCreateRequest,
     add_subscribe,
     async_add_subscribe,
+)
+from app.db.adapters.outbox import (
+    SqlAlchemyAsyncOutboxDispatchStore,
+    SqlAlchemyAsyncOutboxStager,
+)
+from app.db.adapters.subscription import (
+    SessionSubscriptionBatchWriter,
+    SessionSubscriptionRepository,
+    TransactionalSubscriptionRepository,
 )
 from app.db.models.outbox import OutboxMessage
 from app.db.models.subscribe import Subscribe
 from app.db.oper.subscribe import SubscribeOper, SubscribeStageResult
+from app.db.session import SessionFactory, async_session_scope
+from app.db.uow import SqlAlchemyAsyncUnitOfWork
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 
@@ -30,6 +48,40 @@ def _media(media_id: str) -> MediaInfo:
     media.vote_average = 8.0
     media.overview = "事务切片"
     return media
+
+
+def _writer() -> TransactionalSubscriptionRepository:
+    """按组合根合同构造显式短事务订阅仓储。"""
+    return TransactionalSubscriptionRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+
+
+def _batch_request(
+    media_id: str,
+    season: int,
+) -> SubscriptionCreateRequest:
+    """构造真实数据库批量写测试使用的一季订阅请求。"""
+    return SubscriptionCreateRequest(
+        identity=SubscriptionIdentity(
+            media_source=MediaSource.TMDB,
+            media_id=media_id,
+            season=season,
+        ),
+        payload=SubscriptionPatch({
+            "name": "批量事务剧集",
+            "year": "2026",
+            "type": MediaType.TV.value,
+            "media_source": str(MediaSource.TMDB),
+            "media_id": media_id,
+            "season": season,
+            "username": "Seerr",
+            "total_episode": 12,
+            "lack_episode": 12,
+        }),
+        notification={"title": f"第 {season} 季订阅"},
+    )
 
 
 def test_sync_command_orders_stage_commit_before_caller_effect() -> None:
@@ -167,14 +219,147 @@ async def test_async_report_failure_happens_after_event_without_rollback() -> No
     unit_of_work.rollback.assert_not_awaited()
 
 
+def test_async_batch_command_commits_once_and_stages_each_added_intent(db) -> None:
+    """真实数据库中的多季订阅与各自事件、通知、统计 intent 只提交一次。"""
+    db.watermark(Subscribe, OutboxMessage)
+    async def execute() -> tuple[tuple[int, ...], list[int]]:
+        """在真实 AsyncSession 中执行批量 writer 并记录提交后回调。"""
+        async with async_session_scope() as session:
+            actual_uow = SqlAlchemyAsyncUnitOfWork(session)
+            unit_of_work = Mock()
+            unit_of_work.commit = AsyncMock(wraps=actual_uow.commit)
+            unit_of_work.rollback = AsyncMock(wraps=actual_uow.rollback)
+            effects: list[int] = []
+
+            async def after_commit(subscribe_id: int) -> bool:
+                """证明冻结在每季请求内的副作用只在唯一提交后执行。"""
+                assert unit_of_work.commit.await_count == 1
+                effects.append(subscribe_id)
+                return True
+
+            requests = [
+                replace(
+                    _batch_request("servarr-batch-success", season),
+                    after_commit=after_commit,
+                )
+                for season in (1, 2)
+            ]
+            writer = SessionSubscriptionBatchWriter(
+                repository=SessionSubscriptionRepository(session),
+                unit_of_work=unit_of_work,
+                outbox=SqlAlchemyAsyncOutboxStager(session),
+                dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(
+                    async_session_scope
+                ),
+            )
+            results = await writer.async_add(requests)
+            unit_of_work.commit.assert_awaited_once_with()
+            unit_of_work.rollback.assert_not_awaited()
+            return tuple(result.subscribe_id for result in results), effects
+
+    subscribe_ids, effects = asyncio.run(execute())
+
+    assert effects == list(subscribe_ids)
+    rows = db.session.execute(
+        select(Subscribe)
+        .where(Subscribe.media_id == "servarr-batch-success")
+        .order_by(Subscribe.season)
+    ).scalars().all()
+    assert [(row.id, row.season) for row in rows] == [
+        (subscribe_ids[0], 1),
+        (subscribe_ids[1], 2),
+    ]
+    intents = db.session.execute(
+        select(OutboxMessage)
+        .where(OutboxMessage.event_key.contains("servarr-batch-success"))
+        .order_by(OutboxMessage.id)
+    ).scalars().all()
+    assert [intent.topic for intent in intents] == [
+        "subscribe.added",
+        "subscribe.added.notification",
+        "subscribe.added.report",
+        "subscribe.added",
+        "subscribe.added.notification",
+        "subscribe.added.report",
+    ]
+    assert all(intent.status == "completed" for intent in intents)
+
+
+def test_async_batch_command_rolls_back_all_rows_when_later_season_fails(db) -> None:
+    """真实数据库中后一季暂存失败时回滚此前季和已经暂存的 outbox intents。"""
+    db.watermark(Subscribe, OutboxMessage)
+    requests = [
+        _batch_request("servarr-batch-rollback", 1),
+        _batch_request("servarr-batch-rollback", 2),
+    ]
+    failure = RuntimeError("second season failed")
+
+    async def execute() -> None:
+        """让第二次暂存失败，并使用真实 UoW 验证完整回滚。"""
+        async with async_session_scope() as session:
+            repository = SessionSubscriptionRepository(session)
+            stage_calls = 0
+
+            async def fail_second(*args, **kwargs):
+                """第一季真实 flush，第二季在同一事务内抛出失败。"""
+                nonlocal stage_calls
+                stage_calls += 1
+                if stage_calls == 2:
+                    raise failure
+                return await repository.async_stage_add(*args, **kwargs)
+
+            failing_repository = Mock()
+            failing_repository.async_stage_add = AsyncMock(side_effect=fail_second)
+            actual_uow = SqlAlchemyAsyncUnitOfWork(session)
+            unit_of_work = Mock()
+            unit_of_work.commit = AsyncMock(wraps=actual_uow.commit)
+            unit_of_work.rollback = AsyncMock(wraps=actual_uow.rollback)
+            command = AsyncCreateSubscriptionBatchCommand(
+                repository=failing_repository,
+                unit_of_work=unit_of_work,
+                outbox=SqlAlchemyAsyncOutboxStager(session),
+            )
+
+            with pytest.raises(RuntimeError) as raised:
+                await command.execute(requests)
+
+            assert raised.value is failure
+            unit_of_work.commit.assert_not_awaited()
+            unit_of_work.rollback.assert_awaited_once_with()
+
+    asyncio.run(execute())
+
+    rows = db.session.execute(
+        select(Subscribe).where(
+            Subscribe.media_id == "servarr-batch-rollback"
+        )
+    ).scalars().all()
+    intents = db.session.execute(
+        select(OutboxMessage).where(
+            OutboxMessage.event_key.contains("servarr-batch-rollback")
+        )
+    ).scalars().all()
+    assert rows == []
+    assert intents == []
+
+
 def test_default_sync_writer_persists_once_and_reuses_duplicate(db) -> None:
     """Chain 默认入口使用独立事务写入，重复媒体身份返回同一订阅。"""
     db.watermark(Subscribe)
     media = _media("arch-221-sync")
     after_commit = Mock()
 
-    first = add_subscribe(mediainfo=media, after_commit=after_commit)
-    second = add_subscribe(mediainfo=media, after_commit=after_commit)
+    writer = _writer()
+    first = add_subscribe(
+        mediainfo=media,
+        subscribe_oper=writer,
+        after_commit=after_commit,
+    )
+    second = add_subscribe(
+        mediainfo=media,
+        subscribe_oper=writer,
+        after_commit=after_commit,
+    )
 
     assert first[0] > 0
     assert first[1] == "新增订阅成功"
@@ -196,6 +381,7 @@ def test_default_sync_writer_keeps_failed_report_pending_without_raising(db) -> 
 
     subscribe_id, message = add_subscribe(
         mediainfo=media,
+        subscribe_oper=_writer(),
         after_commit=lambda _subscribe_id: False,
     )
 
@@ -222,7 +408,11 @@ def test_default_async_writer_keeps_failed_report_pending_without_raising(db) ->
         return False
 
     subscribe_id, message = asyncio.run(
-        async_add_subscribe(mediainfo=media, after_commit=report_failed)
+        async_add_subscribe(
+            mediainfo=media,
+            subscribe_oper=_writer(),
+            after_commit=report_failed,
+        )
     )
 
     assert subscribe_id > 0
@@ -276,7 +466,9 @@ def test_default_async_writer_persists_committed_row(db) -> None:
     db.watermark(Subscribe)
     media = _media("arch-221-async")
 
-    subscribe_id, message = asyncio.run(async_add_subscribe(mediainfo=media))
+    subscribe_id, message = asyncio.run(
+        async_add_subscribe(mediainfo=media, subscribe_oper=_writer())
+    )
 
     assert subscribe_id > 0
     assert message == "新增订阅成功"

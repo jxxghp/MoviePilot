@@ -7,6 +7,7 @@
 import asyncio
 import sys
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import TypeVar
 
 import pytest
@@ -146,6 +147,16 @@ def configure_plugin_system_services():
         build_scheduler_runtime_config,
         build_token_runtime_config,
     )
+    from app.startup.composition.subscription import (
+        async_rule_group_mutation_scope,
+        delete_subscribe_scope,
+        rule_group_mutation_scope,
+        site_reference_mutation_scope,
+        subscription_completion_scope,
+        subscription_mutation_scope,
+        sync_delete_subscribe_scope,
+        sync_subscription_mutation_scope,
+    )
 
     configure_token_codec(create_access_token, decode_access_token)
     configure_runtime_configuration(
@@ -194,7 +205,6 @@ def configure_plugin_system_services():
     from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.application.module import configure_module_runtime
     from app.application.plugin.runtime import configure_plugin_runtime
-    from app.application.subscription.write import configure_subscribe_writer
     from app.runtime.cache import AsyncFileCache, FileCache
     from app.runtime.events import EventManager
     from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
@@ -303,13 +313,6 @@ def configure_plugin_system_services():
             "sync": SqlAlchemyUnitOfWork,
         },
     )
-    configure_subscribe_writer(
-        lambda: TransactionalSubscriptionRepository(
-            sync_session=SessionFactory,
-            async_session=async_session_scope,
-        )
-    )
-
     def site_repository() -> TransactionalSiteRepository:
         """按生产组合根方式创建显式事务站点仓储。"""
         return TransactionalSiteRepository(
@@ -349,6 +352,19 @@ def configure_plugin_system_services():
             module_dispatcher_factory=ModuleInvocationDispatcher,
             site_repository=site_repository(),
             subscription_repository=subscription_repository,
+            subscription_mutation_scope=subscription_mutation_scope,
+            sync_subscription_mutation_scope=sync_subscription_mutation_scope,
+            subscription_delete_scope=delete_subscribe_scope,
+            sync_subscription_delete_scope=sync_delete_subscribe_scope,
+            subscription_completion_scope=subscription_completion_scope,
+            rule_group_mutation_scope=partial(
+                rule_group_mutation_scope,
+                system_config.publish_many,
+            ),
+            site_reference_mutation_scope=partial(
+                site_reference_mutation_scope,
+                system_config.publish_many,
+            ),
             download_history_repository=download_history_repository,
             transfer_history_repository=transfer_history_repository,
             transfer_admission_repository=TransactionalTransferAdmissionRepository(SessionFactory),
@@ -387,6 +403,12 @@ def configure_plugin_system_services():
         users=user_repository(),
         sites=site_repository(),
         subscriptions=subscription_repository,
+        subscription_mutation_scope=subscription_mutation_scope,
+        subscription_delete_scope=delete_subscribe_scope,
+        async_rule_group_mutation_scope=partial(
+            async_rule_group_mutation_scope,
+            system_config.publish_many,
+        ),
         subscription_history=TransactionalSubscriptionHistoryRepository(
             async_session=async_session_scope,
         ),

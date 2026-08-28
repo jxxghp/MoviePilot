@@ -6,16 +6,17 @@ from typing import Optional, Type
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
-from app.agent.tools.tags import ToolTag
 from app.agent.tools.impl._filter_rule_utils import (
     collect_custom_rule_group_refs,
     get_custom_rules,
     get_rule_groups,
     normalize_custom_rule,
+    publish_rule_config_changed,
     replace_rule_id_in_rule_string,
     save_system_config,
     serialize_custom_rule,
 )
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
@@ -121,7 +122,21 @@ class UpdateCustomFilterRuleTool(MoviePilotTool):
                 original_rule_id=current_rule.id,
             )
 
+            expected_custom_rules = [
+                rule.model_dump(exclude_none=True) for rule in custom_rules
+            ]
+            final_rules = [
+                updated_rule if rule.id == current_rule.id else rule
+                for rule in custom_rules
+            ]
+            custom_rule_definitions = [
+                rule.model_dump(exclude_none=True) for rule in final_rules
+            ]
+
             rule_groups = get_rule_groups()
+            expected_rule_groups = [
+                group.model_dump(exclude_none=True) for group in rule_groups
+            ]
             updated_rule_groups = rule_groups
             renamed_group_refs = []
             if updated_rule.id != current_rule.id:
@@ -143,26 +158,30 @@ class UpdateCustomFilterRuleTool(MoviePilotTool):
                         group.model_copy(update={"rule_string": new_rule_string})
                     )
 
-                # 先保存规则组引用，再保存规则自身，避免在过滤模块重载时出现新规则 ID 尚未同步的问题。
-                await save_system_config(
-                    SystemConfigKey.UserFilterRuleGroups,
-                    [
-                        group.model_dump(exclude_none=True)
-                        for group in updated_rule_groups
-                    ],
+                rule_group_definitions = [
+                    group.model_dump(exclude_none=True)
+                    for group in updated_rule_groups
+                ]
+                async with self.data.async_rule_group_mutation_scope() as mutation:
+                    await mutation.apply(
+                        rule_group_definitions,
+                        expected_rule_groups=expected_rule_groups,
+                        custom_rules=custom_rule_definitions,
+                        expected_custom_rules=expected_custom_rules,
+                    )
+                await publish_rule_config_changed(
+                    SystemConfigKey.CustomFilterRules,
+                    custom_rule_definitions,
                 )
-
-            final_rules = []
-            for rule in custom_rules:
-                if rule.id == current_rule.id:
-                    final_rules.append(updated_rule)
-                else:
-                    final_rules.append(rule)
-
-            await save_system_config(
-                SystemConfigKey.CustomFilterRules,
-                [rule.model_dump(exclude_none=True) for rule in final_rules],
-            )
+                await publish_rule_config_changed(
+                    SystemConfigKey.UserFilterRuleGroups,
+                    rule_group_definitions,
+                )
+            else:
+                await save_system_config(
+                    SystemConfigKey.CustomFilterRules,
+                    custom_rule_definitions,
+                )
 
             updated_refs = collect_custom_rule_group_refs(
                 updated_rule_groups,

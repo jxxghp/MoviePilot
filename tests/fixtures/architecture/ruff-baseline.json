@@ -208,9 +208,6 @@
   "app/agent/tools/impl/uninstall_plugin.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/update_custom_filter_rule.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/update_custom_identifiers.py": {
     "I001": 1
   },
@@ -225,13 +222,6 @@
   },
   "app/api/endpoints/agent.py": {
     "F841": 1
-  },
-  "app/api/endpoints/subscribe.py": {
-    "F841": 1
-  },
-  "app/api/endpoints/system.py": {
-    "F401": 1,
-    "I001": 1
   },
   "app/application/directory.py": {
     "I001": 1
@@ -337,9 +327,6 @@
     "I001": 1
   },
   "app/db/oper/site.py": {
-    "I001": 1
-  },
-  "app/db/oper/systemconfig.py": {
     "I001": 1
   },
   "app/db/oper/user.py": {
@@ -1350,9 +1337,6 @@
   },
   "tests/test_plugin_sdk.py": {
     "I001": 3
-  },
-  "tests/test_plugin_system_setting_admission.py": {
-    "I001": 1
   },
   "tests/test_plugin_virtual_instances.py": {
     "E731": 1
