@@ -1,5 +1,7 @@
+from app.adapters.network.resolver import SocketDnsResolver
 from app.adapters.system import rust as rust_accelerator
 from app.application.recognition import RecognitionRuleService
+from app.application.security.url import configure_dns_resolver
 from app.domain.context import configure_tmdb_image_url_builder
 from app.domain.media import configure_search_source_provider
 from app.domain.meta.customization import configure_customization_provider
@@ -13,6 +15,7 @@ from app.runtime.settings import get_runtime_setting
 def configure_domain_dependencies() -> None:
     """在组合根集中注入领域模型需要的配置、持久化规则和加速适配器。"""
     rule_service = RecognitionRuleService()
+    configure_dns_resolver(SocketDnsResolver())
     configure_customization_provider(rule_service.get_customization)
     configure_release_groups_provider(rule_service.get_release_groups)
     configure_custom_words_provider(rule_service.get_custom_words)

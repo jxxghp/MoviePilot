@@ -242,6 +242,7 @@ sequenceDiagram
     Main->>FastAPI: Server.run() 触发 lifespan 启动
 
     Life->>Life: configure_cache_dependencies()<br/>（必须先于业务模块导入）
+    Life->>Life: 显式创建并发布文件日志 writer
     Life->>Init: prepare_database() + revision/head 校验
     Life->>Init: configure_default_user_agent（注入 UA）
     Life->>Init: configure_domain_dependencies（领域层依赖注入）
@@ -250,6 +251,7 @@ sequenceDiagram
     Life->>Init: init_routers(app) 注册 API 路由
     Life->>Init: init_modules()（app/startup/initializers/modules.py）发现并初始化模块，返回 HostRuntime
     Life->>FastAPI: app.state.host_runtime = HostRuntime
+    Life->>Life: 显式启动共享消息队列
     Life->>Init: init_plugins() / init_scheduler() / init_monitor()
     Life->>Init: init_command() / init_workflow()
     Life->>Init: replay_pending_transfers()（后台回放未整理文件）
@@ -257,9 +259,9 @@ sequenceDiagram
     Life->>FastAPI: yield，交还控制权
     Note over Life,FastAPI: 运行期……
     FastAPI->>Life: 收到停止信号
-    Life->>Init: 逆序关停：工作流→命令→监控→定时器→插件→模块
+    Life->>Init: 逆序关停：工作流→命令→监控→定时器→插件→消息队列→模块
     Life->>Life: 关闭共享异步 HTTP 连接池
-    Life->>Life: LoggerManager.shutdown()（最后关日志）
+    Life->>Life: 关闭并释放当前 lifespan 的日志 writer
 ```
 
 关键设计点：
@@ -712,9 +714,9 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 859 |
-| 内部导入边 | 7,091 |
+| 内部导入边 | 7,095 |
 | 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
-| Direct egress | 66（12 条待迁移债务，54 条精确 containment） |
+| Direct egress | 66（11 条待迁移债务，55 条精确 containment） |
 | Module Contract V2 spec | 217（其中 215 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Event producer / consumer | 95（94 静态、1 动态）/ 17（16 静态、1 动态） |

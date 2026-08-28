@@ -1,9 +1,11 @@
 """宿主启动阶段构建的类型化运行时上下文。"""
 
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator, Callable, Generator
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from app.application.agent import AgentDataContext
 from app.application.configuration import RuntimeConfiguration, RuntimeSettingsService
@@ -34,6 +36,9 @@ from app.application.subscription.write import (
 from app.application.transfer.execution import TransferExecutionRepository
 from app.application.workflow import WorkflowCachePort, WorkflowQueryService
 from app.runtime.tasks import TaskRegistry
+
+if TYPE_CHECKING:
+    from app.application.messaging.message import MessageHelper, MessageQueueManager
 
 
 class AgentChatRepositoryFactory(Protocol):
@@ -177,6 +182,8 @@ class MessagingRuntime:
     """消息历史 API 的显式仓储工厂。"""
 
     repository: RepositoryFactory
+    helper: MessageHelper
+    queue: MessageQueueManager
 
 
 @dataclass(frozen=True, slots=True)

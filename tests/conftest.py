@@ -339,6 +339,7 @@ def configure_plugin_system_services():
         sync_session=SessionFactory,
         async_session=async_session_scope,
     )
+    message_queue = MessageQueueManager(auto_start=False)
     configure_chain_runtime_context_provider(
         lambda: ChainRuntimeContext(
             module_manager=ModuleManager(),
@@ -348,7 +349,7 @@ def configure_plugin_system_services():
             message_helper=MessageHelper(),
             file_cache=FileCache(),
             async_file_cache=AsyncFileCache(),
-            message_queue_factory=lambda callback: MessageQueueManager(send_callback=callback),
+            message_queue=message_queue,
             module_dispatcher_factory=ModuleInvocationDispatcher,
             site_repository=site_repository(),
             subscription_repository=subscription_repository,

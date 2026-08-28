@@ -26,9 +26,6 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.modules.plex.plex", "requests"),
         ("app.modules.trimemedia.api", "requests"),
     },
-    "direct_dns": {
-        ("app.application.security.url", "socket.getaddrinfo"),
-    },
     "canonical_transport": {
         ("app.adapters.cache.redis", "redis"),
         ("app.adapters.network.browser", "cloakbrowser"),
@@ -37,6 +34,7 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.adapters.network.http", "httpx2"),
         ("app.adapters.network.http", "requests"),
         ("app.adapters.network.ip", "socket.gethostbyname"),
+        ("app.adapters.network.resolver", "socket.getaddrinfo"),
     },
     "transport_configuration": {
         ("app.adapters.network.http", "urllib3"),
@@ -120,6 +118,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.network.http", "requests"): "95fb4576cec363355f40aa1758d90fbb09242a2b1d029b7ab5ab65e2aaca12f8",
     ("app.adapters.network.http", "urllib3"): "66cbd8ec4e7552bd458db0baada30f1953e6d0493793822d23a2199567bca98a",
     ("app.adapters.network.ip", "socket.gethostbyname"): "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048",
+    ("app.adapters.network.resolver", "socket.getaddrinfo"): "1b1ce6763d730d7aa9c35d32a668560013c939467dcb3087357ffa53653ff306",
     ("app.agent.llm.capability", "openai"): "60160ab01b60be2c9794b9724a50b90f8875c6a10748ff9392a1e4bc7d48c334",
     ("app.agent.llm.helper", "google.genai"): "d41688ecda4c5de296fabb0d0d25c79a7b0f29f67ccdd44569dc1110e1db9b86",
     ("app.agent.llm.helper", "httpx"): "caeccd432f48d9a23948dd5b9220ddbebc57d2b2936bfa499fc7d4876e935ea8",
@@ -136,7 +135,6 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.agent.llm.provider", "openai"): "ffac3b355eb640f6421299cf838cb4e24866a39afabd9dcfd8d0f340925dc1a8",
     ("app.agent.tools.impl.search_web", "ddgs"): "377e73bb3be804b825d60ad6e792344ca633de107f8c4dbb45d50a34a4dfa04b",
     ("app.api.endpoints.message", "pywebpush"): "7d83ca0dc89dfb6af1cdd7bc90d922105de94222e4e3a44bba4f53bbd97bc31b",
-    ("app.application.security.url", "socket.getaddrinfo"): "89c563fdb640259584563fc718f7104a7b4dc6717e97b9c9e449f70f74a9532b",
     ("app.cli", "urllib.request"): "71b3e5be2a7d85fdc7a207d15c0e690d7ab96b335b882a3eaec03a1cb4ec1d1b",
     ("app.doctor.checks", "socket.create_connection"): "dfb34d4710353029dcc06e0e0ce3b299bae1a7e71a5743de1d253ac26380f9b6",
     ("app.doctor.checks", "urllib.request"): "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
@@ -730,10 +728,7 @@ def test_current_egress_facts_are_complete_and_self_consistent() -> None:
         "app.application": len(application_entries),
         "app.chain": len(chain_entries),
     }
-    assert {
-        (entry["source"], entry["target"])
-        for entry in application_entries
-    } <= FROZEN_EGRESS_EDGES_BY_REASON["direct_dns"]
+    assert application_entries == []
     assert chain_entries == []
     assert entries == sorted(
         entries,
@@ -801,7 +796,6 @@ def test_egress_policy_enforces_debt_and_exception_schemas() -> None:
     debt_tracking = {
         "direct_http": "S2-L7",
         "requestutils_session_bridge": "S2-L7",
-        "direct_dns": "S2-L6",
     }
     exception_reasons = {
         "canonical_transport",

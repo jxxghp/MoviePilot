@@ -6,6 +6,7 @@ from app.adapters.system.backup.database import (
     PostgreSQLBackupBackend,
     SQLiteBackupBackend,
 )
+from app.adapters.system.backup.files import BackupFiles
 from app.application.backup import BackupPolicy, DatabaseBackupService
 from app.application.database import (
     DatabaseGovernance,
@@ -42,6 +43,7 @@ def build_database_governance() -> DatabaseGovernance:
         ),
         backup=DatabaseBackupService(
             backend=backup_backend,
+            artifact_store_factory=BackupFiles,
             policy_reader=read_backup_policy,
         ),
     )

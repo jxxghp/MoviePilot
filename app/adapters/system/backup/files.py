@@ -71,6 +71,10 @@ class BackupFiles:
         """删除一个已通过名称约束的备份文件。"""
         self.resolve(name).unlink()
 
+    def size(self, name: str) -> int:
+        """返回一个已通过名称约束的备份文件字节数。"""
+        return self.resolve(name).stat().st_size
+
     def available_name(
         self,
         *,

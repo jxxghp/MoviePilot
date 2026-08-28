@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 858 / 7,091 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 859 / 7,095 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,7 +78,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,734 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 754 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Ruff 历史诊断 | 747 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 79.83%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -111,7 +111,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-103 | P1 | 执行中 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
 | ARCH-104 | P1 | 待执行 | 收口跨多次写入的业务事务 | 站点/规则引用清理可整体回滚或幂等恢复 |
 | ARCH-105 | P1 | 已验证 | 明确 post-commit 与 Outbox 完成语义 | 业务提交、effect 完成/pending 可区分；stager/store 分离且 claim/settlement 受 fencing，外部 sink 仍承担 at-least-once 幂等边界 |
-| ARCH-106 | P1 | 待执行 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 导入或普通 Chain 构造不再启动进程资源 |
+| ARCH-106 | P1 | 进行中 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志与消息 owner 已收口；GlobalVar/provider 继续治理 |
 | ARCH-107 | P1 | 待执行 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
 | ARCH-108 | P1 | 执行中 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Passkey 缓存纵切面已验证，其余 Adapter/HTTP/DNS 债务继续按低水位迁移 |
 | ARCH-109 | P1 | 待执行 | 按用例拆分超大 Chain、Scheduler 和厚 API | 稳定 Facade 保留，决策/I/O/状态/生命周期各有 owner |
@@ -409,8 +409,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- 导入 `app.runtime.config` 会构造日志 handler，并启动 `LogBatchWriter` 线程；普通 import 已有副作用。
-- `ChainBase.__init__` 无条件构造消息队列 manager，任意一个 Chain 都可能启动消息线程。
+- 日志 writer 已退出 `app.runtime.config` 导入路径，由 lifespan 显式创建、关闭并在真实收敛后释放身份。
+- `ChainBase` 只绑定共享消息队列的轻量客户端；队列线程由 lifespan 唯一启动，不再保存首个 Chain 回调。
 - `global_vars` 同时承担停止兼容、WebPush 订阅和主事件循环 owner，多层代码直接消费。
 - 当前 TaskRegistry 门禁只检查 Registry 调用是否带 owner，不会扫描全部原生 `create_task`、
   `Thread`、`Timer`、`Executor`。
@@ -421,10 +421,10 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **目标与步骤**
 
-- [ ] 日志 writer、消息队列及其他长生命周期资源由 bootstrap/lifecycle 显式构造、发布和关闭。
+- [x] 日志 writer、消息队列及消息缓存由 bootstrap/lifecycle 显式构造、发布和关闭。
   现有关闭路径已能收口部分资源，当前要修的是隐式创建权，而不是重新发明 owner。
-- [ ] startup 唯一创建/启动资源；Chain 只接收无生命周期的发送 Port。
-- [ ] 普通模块 import 和构造 `MediaChain` 等非消息用例不得新增线程。
+- [x] startup 唯一启动日志和消息资源；Chain 只接收无生命周期的发送 Port。
+- [x] 普通模块 import 和构造 `MediaChain` 等非消息用例不得新增日志或消息线程。
 - [ ] 将 WebPush registry、主循环 execution gateway 和停止状态拆给各自 owner。
 - [ ] 保留 `global_vars` 作为兼容薄门面，但禁止 canonical 宿主新增依赖。
 - [ ] 将 initializer 的 provider 注册迁入显式 `configure_runtime_ports` 装配阶段并提供测试 reset；
@@ -489,8 +489,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- 当前 `app/application` 有 10 个文件、15 条直接 Adapter 导入，代表路径包括
-  `security/passkey.py`、`backup.py`、`image.py`、`rss.py`、`security/cookie.py`。
+- 当前 `app/application` 有 8 个文件、13 条直接 Adapter 导入，代表路径包括
+  `image.py`、`rss.py`、`security/cookie.py`；Passkey 与 Backup 纵切面已经退出临时 policy。
 - `app/chain` 有 8 个文件、13 条直接 Adapter 导入，使用 `RequestUtils`、Browser、Cloudflare、
   CookieCloud、ServerHelper 等具体能力。
 - Passkey Application 已改为消费启动注入的 `PasskeyChallengeCache`，不再判断 Redis 或导入
@@ -505,9 +505,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [x] 建立 Application/Chain 原始 Adapter 直连事实与精确临时 policy，冻结新增、替换和陈旧条目。
 - [x] 建立全宿主 direct egress 事实；SDK/stream/vendor/local-control 例外精确到 bindings/uses 指纹。
 - [x] 将 Passkey 原子领取提升为 runtime cache contract，由 Memory/Redis backend 分别实现。
-- [ ] 为 Backup 定义 Application-owned artifact store Port，由 startup 注入文件系统实现。
+- [x] 为 Backup 定义 Application-owned artifact store Port，由 startup 注入文件系统实现。
 - [ ] 将 policy 中 11 条普通 HTTP/Session bridge 债务迁移到统一网络能力并把目标收缩为空。
-- [ ] 为 Application SSRF 校验注入 DNS 解析 Port，清除 `socket.getaddrinfo` 直接 I/O。
+- [x] 为 Application SSRF 校验注入 DNS 解析 Port，清除 `socket.getaddrinfo` 直接 I/O。
 - [ ] 命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不在 Application/Chain 保留直连例外。
 - [ ] 最终把基线收缩到零或少量书面化例外，而不是一次性禁止后再大量豁免。
 
@@ -646,7 +646,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 1. ARCH-106 将日志、消息队列和主循环 gateway 纳入 lifecycle。
 2. ARCH-107 拆出 `chain/base.py` 并消除新增 SCC。
-3. ARCH-108 的 Passkey 缓存边界已验证；下一纵切面是 Backup，之后按风险迁移外部调用。
+3. ARCH-108 的 Passkey 缓存与 Backup artifact 边界已验证；后续按风险迁移 DNS 和其余外部调用。
 
 **退出条件**：冷导入不启动线程；SCC 只剩 TMDB 精确豁免；Application/Chain 到 Adapter 的债务只降不增。
 

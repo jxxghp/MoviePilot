@@ -297,6 +297,8 @@ def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
 
 def _build_chain_runtime_context(
     *,
+    message_helper: MessageHelper,
+    message_queue: MessageQueueManager,
     system_config: SystemConfigOper,
     site: TransactionalSiteRepository,
     subscription: TransactionalSubscriptionRepository,
@@ -309,10 +311,10 @@ def _build_chain_runtime_context(
         plugin_manager=PluginManager(),
         event_manager=EventManager(),
         message_oper=MessageOper(),
-        message_helper=MessageHelper(),
+        message_helper=message_helper,
         file_cache=FileCache(),
         async_file_cache=AsyncFileCache(),
-        message_queue_factory=lambda callback: MessageQueueManager(send_callback=callback),
+        message_queue=message_queue,
         module_dispatcher_factory=ModuleInvocationDispatcher,
         site_repository=site,
         subscription_repository=subscription,
@@ -759,7 +761,6 @@ async def stop_modules() -> bool:
     await run_step("托管资源", stop_managed_resources)
     await run_step("DoH服务", lambda: DohHelper().shutdown(), offload=True)
     await run_step("线程池", lambda: ThreadHelper().shutdown(), offload=True)
-    await run_step("消息服务", stop_message, offload=True)
     await run_step("Redis缓存连接", lambda: RedisHelper().close(), offload=True)
     await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
     # Web Agent 的取消 finally 可能还要写入最终展示快照，必须先完成任务收尾，再关闭写入准入。
@@ -795,9 +796,9 @@ async def stop_modules() -> bool:
     return all_converged
 
 
-async def init_modules() -> HostRuntime:
+async def _initialize_modules() -> HostRuntime:
     """
-    启动模块并返回本次 lifespan 唯一的类型化 HostRuntime。
+    构造模块服务并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
     global _database_worker
     # 兼容 Oper 的无 Session 写入口仍由组合根持有事务，避免模型恢复自动提交。
@@ -907,6 +908,8 @@ async def init_modules() -> HostRuntime:
     transfer_execution_repository = TransactionalTransferExecutionRepository(
         SessionFactory
     )
+    message_helper = MessageHelper()
+    message_queue = MessageQueueManager(auto_start=False)
     agent_data = AgentDataContext(
         chat=agent_chat_service,
         chat_persistence=agent_chat_persistence,
@@ -946,7 +949,11 @@ async def init_modules() -> HostRuntime:
             system_config=SystemConfigOper,
             passkey=PassKeyOper,
         ),
-        messaging=MessagingRuntime(repository=MessageOper),
+        messaging=MessagingRuntime(
+            repository=MessageOper,
+            helper=message_helper,
+            queue=message_queue,
+        ),
         history=HistoryRuntime(
             download_repository=SessionDownloadHistoryRepository,
             transfer_repository=transfer_history_repository,
@@ -1049,6 +1056,8 @@ async def init_modules() -> HostRuntime:
     # Chain 无参兼容入口由组合根明确提供依赖上下文；测试和新代码可直接注入替代上下文。
     configure_chain_runtime_context_provider(
         lambda: _build_chain_runtime_context(
+            message_helper=message_helper,
+            message_queue=message_queue,
             system_config=system_config,
             site=site_repository,
             subscription=subscription_repository,
@@ -1091,3 +1100,20 @@ async def init_modules() -> HostRuntime:
     # 检查认证状态
     check_auth()
     return host_runtime
+
+
+async def init_modules() -> HostRuntime:
+    """启动模块服务，并在构造中途失败时回收尚未发布的资源 owner。"""
+    try:
+        return await _initialize_modules()
+    except BaseException:
+        try:
+            if stop_message() is False:
+                logger.error("模块启动失败后的消息资源未完全收敛")
+        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+            logger.error(f"模块启动失败后的消息资源清理失败：{cleanup_error}")
+        try:
+            await stop_database_worker()
+        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+            logger.error(f"模块启动失败后的数据库任务清理失败：{cleanup_error}")
+        raise

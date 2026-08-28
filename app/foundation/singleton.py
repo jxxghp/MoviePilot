@@ -17,6 +17,18 @@ class Singleton(abc.ABCMeta, type):
         with cls._lock:
             return cls._instances.get(key)
 
+    def release_existing_instance(cls, instance: object) -> bool:
+        """仅在身份匹配时释放已收敛实例，供显式生命周期重新创建 owner。"""
+        with cls._lock:
+            keys = [
+                key
+                for key, value in cls._instances.items()
+                if key[0] is cls and value is instance
+            ]
+            for key in keys:
+                cls._instances.pop(key, None)
+            return bool(keys)
+
     def __call__(cls, *args, **kwargs):
         """按类和构造参数创建或复用实例。"""
         key = (cls, args, frozenset(kwargs.items()))
@@ -54,6 +66,14 @@ class SingletonClass(abc.ABCMeta, type):
         """返回已创建实例，不触发初始化"""
         with cls._lock:
             return cls._instances.get(cls)
+
+    def release_existing_instance(cls, instance: object) -> bool:
+        """仅在身份匹配时释放已收敛实例，供显式生命周期重新创建 owner。"""
+        with cls._lock:
+            if cls._instances.get(cls) is not instance:
+                return False
+            cls._instances.pop(cls, None)
+            return True
 
     def __call__(cls, *args, **kwargs):
         """按类创建或复用唯一实例。"""

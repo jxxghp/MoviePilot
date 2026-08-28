@@ -1170,7 +1170,7 @@
     "misc": 1,
     "no-any-return": 5,
     "no-untyped-call": 4,
-    "no-untyped-def": 14,
+    "no-untyped-def": 13,
     "type-arg": 18,
     "union-attr": 2,
     "var-annotated": 2
@@ -1258,7 +1258,7 @@
     "misc": 1,
     "no-any-return": 1,
     "return-value": 1,
-    "type-arg": 8
+    "type-arg": 7
   },
   "app/application/servarr.py": {
     "valid-type": 2
@@ -3307,7 +3307,6 @@
     "type-arg": 1
   },
   "app/startup/composition/database.py": {
-    "arg-type": 1,
     "assignment": 1
   },
   "app/startup/composition/subscription.py": {

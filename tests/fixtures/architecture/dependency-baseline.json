@@ -14,16 +14,12 @@
     "workflow_to_db": []
   },
   "direct_adapter_imports": {
-    "count": 27,
+    "count": 26,
     "counts_by_source_root": {
-      "app.application": 14,
+      "app.application": 13,
       "app.chain": 13
     },
     "edges": [
-      {
-        "source": "app.application.backup",
-        "target": "app.adapters.system.backup.files"
-      },
       {
         "source": "app.application.directory",
         "target": "app.adapters.system.host"
@@ -139,9 +135,8 @@
       ],
       "target_root": "app.adapters"
     },
-    "source_count": 17,
+    "source_count": 16,
     "sources": [
-      "app.application.backup",
       "app.application.directory",
       "app.application.image",
       "app.application.messaging.ingress",
@@ -159,7 +154,7 @@
       "app.chain.subscribe",
       "app.chain.system"
     ],
-    "target_count": 10,
+    "target_count": 9,
     "targets": [
       "app.adapters.external.cookiecloud",
       "app.adapters.external.ocr",
@@ -169,13 +164,12 @@
       "app.adapters.network.http",
       "app.adapters.network.ip",
       "app.adapters.system",
-      "app.adapters.system.backup.files",
       "app.adapters.system.host"
     ]
   },
   "direct_egress": {
     "application_chain_counts": {
-      "app.application": 1,
+      "app.application": 0,
       "app.chain": 0
     },
     "count": 66,
@@ -362,6 +356,18 @@
         "target": "socket.gethostbyname",
         "uses": [
           "IpUtils.is_internal_domain|call:socket.gethostbyname"
+        ]
+      },
+      {
+        "bindings": [
+          "import:socket as socket"
+        ],
+        "fingerprint": "1b1ce6763d730d7aa9c35d32a668560013c939467dcb3087357ffa53653ff306",
+        "kind": "protocol_operation",
+        "source": "app.adapters.network.resolver",
+        "target": "socket.getaddrinfo",
+        "uses": [
+          "SocketDnsResolver.resolve|call:socket.getaddrinfo"
         ]
       },
       {
@@ -591,18 +597,6 @@
         "target": "pywebpush",
         "uses": [
           "send_notification|call:webpush"
-        ]
-      },
-      {
-        "bindings": [
-          "import:socket as socket"
-        ],
-        "fingerprint": "89c563fdb640259584563fc718f7104a7b4dc6717e97b9c9e449f70f74a9532b",
-        "kind": "protocol_operation",
-        "source": "app.application.security.url",
-        "target": "socket.getaddrinfo",
-        "uses": [
-          "SecurityUtils._hostname_addresses|call:socket.getaddrinfo"
         ]
       },
       {
@@ -1435,8 +1429,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 7091,
-  "edge_sha256": "a9ee879767dd76255d903e128fd57d387f3ed3514c8f6e3b4cfd7400f0be86b2",
+  "edge_count": 7095,
+  "edge_sha256": "ab336dee583f3c228431919af5d8f6fbcaca7026752b89cb3701845a3bfc24f7",
   "edges": [
     "app -> app.runtime",
     "app -> app.runtime.compat",
@@ -3970,10 +3964,6 @@
     "app.application.audio -> app.runtime.log",
     "app.application.audio -> app.schemas",
     "app.application.audio -> app.schemas.types",
-    "app.application.backup -> app.adapters",
-    "app.application.backup -> app.adapters.system",
-    "app.application.backup -> app.adapters.system.backup",
-    "app.application.backup -> app.adapters.system.backup.files",
     "app.application.backup -> app.runtime",
     "app.application.backup -> app.runtime.log",
     "app.application.chain.context -> app.application",
@@ -8002,6 +7992,7 @@
     "app.startup.composition.database -> app.adapters.system",
     "app.startup.composition.database -> app.adapters.system.backup",
     "app.startup.composition.database -> app.adapters.system.backup.database",
+    "app.startup.composition.database -> app.adapters.system.backup.files",
     "app.startup.composition.database -> app.application",
     "app.startup.composition.database -> app.application.backup",
     "app.startup.composition.database -> app.application.database",
@@ -8080,10 +8071,14 @@
     "app.startup.initializers.database -> app.startup.composition",
     "app.startup.initializers.database -> app.startup.composition.database",
     "app.startup.initializers.domain -> app.adapters",
+    "app.startup.initializers.domain -> app.adapters.network",
+    "app.startup.initializers.domain -> app.adapters.network.resolver",
     "app.startup.initializers.domain -> app.adapters.system",
     "app.startup.initializers.domain -> app.adapters.system.rust",
     "app.startup.initializers.domain -> app.application",
     "app.startup.initializers.domain -> app.application.recognition",
+    "app.startup.initializers.domain -> app.application.security",
+    "app.startup.initializers.domain -> app.application.security.url",
     "app.startup.initializers.domain -> app.domain",
     "app.startup.initializers.domain -> app.domain.context",
     "app.startup.initializers.domain -> app.domain.media",
@@ -8309,6 +8304,8 @@
     "app.startup.lifecycle -> app.adapters.network",
     "app.startup.lifecycle -> app.adapters.network.http",
     "app.startup.lifecycle -> app.application",
+    "app.startup.lifecycle -> app.application.messaging",
+    "app.startup.lifecycle -> app.application.messaging.message",
     "app.startup.lifecycle -> app.application.plugin",
     "app.startup.lifecycle -> app.application.plugin.lifecycle",
     "app.startup.lifecycle -> app.application.plugin.recovery",
@@ -8326,10 +8323,11 @@
     "app.startup.lifecycle -> app.runtime.log",
     "app.startup.lifecycle -> app.runtime.settings",
     "app.startup.lifecycle -> app.runtime.state",
-    "app.startup.lifecycle -> app.runtime.stop",
     "app.startup.lifecycle -> app.runtime.tasks",
     "app.startup.lifecycle -> app.runtime.topology",
     "app.startup.lifecycle -> app.startup",
+    "app.startup.lifecycle -> app.startup.composition",
+    "app.startup.lifecycle -> app.startup.composition.context",
     "app.startup.lifecycle -> app.startup.initializers",
     "app.startup.lifecycle -> app.startup.initializers.agent",
     "app.startup.lifecycle -> app.startup.initializers.cache",
@@ -8530,7 +8528,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 858,
+  "module_count": 859,
   "modules": [
     "app",
     "app.adapters",
@@ -8552,6 +8550,7 @@
     "app.adapters.network.doh",
     "app.adapters.network.http",
     "app.adapters.network.ip",
+    "app.adapters.network.resolver",
     "app.adapters.observability",
     "app.adapters.observability.otel",
     "app.adapters.system",

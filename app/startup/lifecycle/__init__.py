@@ -31,6 +31,7 @@ from app.adapters.network.http import (
     aclose_shared_async_transports,
     configure_default_user_agent,
 )
+from app.application.messaging.message import stop_message  # noqa: E402
 from app.application.plugin.lifecycle import plugin_lifecycle
 from app.application.plugin.runtime import get_plugin_manager
 from app.chain.system import SystemChain
@@ -39,12 +40,12 @@ from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 from app.runtime.config import global_vars
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.health import get_application_health
-from app.runtime.log import LoggerManager, logger
+from app.runtime.log import logger, shutdown_log_writer, start_log_writer
 from app.runtime.settings import get_runtime_setting
 from app.runtime.state import SystemHelper
-from app.runtime.stop import runtime_stop_state
 from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.runtime.topology import validate_process_topology
+from app.startup.composition.context import HostRuntime  # noqa: E402
 from app.startup.initializers.agent import stop_agent
 from app.startup.initializers.command import init_command, restart_command
 from app.startup.initializers.domain import configure_domain_dependencies
@@ -271,18 +272,48 @@ def select_startup_cleanup_components(
 
 async def initialize_modules_component(app: FastAPI) -> None:
     """启动模块并把其类型化运行时发布到当前 FastAPI AppState。"""
-    try:
-        runtime = await init_modules()
-    except BaseException:
-        from app.startup.initializers.modules import stop_database_worker
-
-        try:
-            await stop_database_worker()
-        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
-            logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
-        raise
+    runtime = await init_modules()
     if runtime is not None:
         app.state.host_runtime = runtime
+
+
+def initialize_log_runtime(app: FastAPI) -> None:
+    """创建并发布当前 lifespan 独占的文件日志 writer。"""
+    app.state.log_shutdown_failed = False
+    app.state.log_writer = start_log_writer(get_runtime_setting("LOG_PATH"))
+
+
+def stop_log_runtime(app: FastAPI) -> bool:
+    """关闭当前 lifespan 的日志 owner，失败时保留句柄供重试。"""
+    writer = getattr(app.state, "log_writer", None)
+    converged = shutdown_log_writer(writer)
+    app.state.log_shutdown_failed = not converged
+    if converged:
+        app.state.log_writer = None
+    return converged
+
+
+def initialize_message_runtime(app: FastAPI) -> None:
+    """显式启动组合根已经构造的共享消息队列。"""
+    runtime = getattr(app.state, "host_runtime", None)
+    if not isinstance(runtime, HostRuntime):
+        raise RuntimeError("HostRuntime 尚未发布，无法启动消息队列")
+    app.state.message_shutdown_failed = False
+    runtime.messaging.queue.start()
+
+
+def stop_message_runtime(app: FastAPI) -> bool:
+    """关闭当前 lifespan 的共享消息队列并传播真实收敛结果。"""
+    runtime = getattr(app.state, "host_runtime", None)
+    if not isinstance(runtime, HostRuntime):
+        converged = stop_message()
+    else:
+        converged = stop_message(
+            queue_manager=runtime.messaging.queue,
+            message_helper=runtime.messaging.helper,
+        )
+    app.state.message_shutdown_failed = not converged
+    return converged
 
 
 def initialize_task_registry(app: FastAPI) -> None:
@@ -335,6 +366,16 @@ def prepare_database_component(app: FastAPI) -> None:
 def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
     """按现有顺序构建应用组件清单，回调在每次 lifespan 启动时重新绑定。"""
     return (
+        LifecycleComponent(
+            name="文件日志",
+            start=lambda: initialize_log_runtime(app),
+            stop=lambda: stop_log_runtime(app),
+            start_order=1,
+            stop_order=100,
+            start_timeout_seconds=30,
+            stop_timeout_seconds=30,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
+        ),
         LifecycleComponent(
             name="后台任务登记器",
             start=lambda: initialize_task_registry(app),
@@ -400,11 +441,22 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         ),
         LifecycleComponent(
             name="插件备份恢复",
-            dependencies=("模块服务",),
+            dependencies=("模块服务", "消息队列"),
             mode=LifecycleMode.NORMAL_ONLY,
             start=prepare_plugin_restore,
             start_order=80,
             start_timeout_seconds=300,
+        ),
+        LifecycleComponent(
+            name="消息队列",
+            dependencies=("模块服务",),
+            start=lambda: initialize_message_runtime(app),
+            stop=lambda: stop_message_runtime(app),
+            start_order=75,
+            stop_order=65,
+            start_timeout_seconds=30,
+            stop_timeout_seconds=30,
+            stop_failure=LifecycleFailurePolicy.FAIL_FAST,
         ),
         LifecycleComponent(
             name="插件",
@@ -625,6 +677,11 @@ async def lifespan(app: FastAPI):
         except Exception as cleanup_error:
             logger.error(f"启动失败后的生命周期清理失败：{cleanup_error}")
         finally:
+            if (
+                getattr(app.state, "log_writer", None) is not None
+                and not getattr(app.state, "log_shutdown_failed", False)
+            ):
+                stop_log_runtime(app)
             if main_loop_owner is not None:
                 global_vars.clear_loop(main_loop_owner)
         raise
@@ -640,10 +697,14 @@ async def lifespan(app: FastAPI):
             # 停止信号与各资源 owner 的释放顺序由组件清单声明。
             await stop_lifecycle_components(enabled_components)
         finally:
-            try:
-                # 日志最后关闭，确保其他组件的收尾信息已写入文件
-                if LoggerManager.shutdown() is False:
-                    raise RuntimeError("日志写入资源未在关停预算内收敛")
-            finally:
-                if main_loop_owner is not None:
-                    global_vars.clear_loop(main_loop_owner)
+            if (
+                getattr(app.state, "log_writer", None) is not None
+                and not getattr(app.state, "log_shutdown_failed", False)
+            ):
+                stop_log_runtime(app)
+            if main_loop_owner is not None:
+                global_vars.clear_loop(main_loop_owner)
+        if getattr(app.state, "message_shutdown_failed", False):
+            raise RuntimeError("消息资源未在关停预算内收敛")
+        if getattr(app.state, "log_shutdown_failed", False):
+            raise RuntimeError("日志写入资源未在关停预算内收敛")

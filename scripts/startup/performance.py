@@ -145,7 +145,6 @@ async def _probe():
     lifecycle.init_extra = _async_noop
     lifecycle.global_vars.set_loop = lambda loop: None
     lifecycle.global_vars.stop_system = lambda: None
-    lifecycle.LoggerManager.shutdown = lambda: None
     probe_app = FastAPI()
     original_components = lifecycle.build_lifecycle_components(probe_app)
     isolated_components = tuple(

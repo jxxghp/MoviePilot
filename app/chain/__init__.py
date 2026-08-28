@@ -83,7 +83,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
             rate_limit_handler=self.__handle_rate_limit_error,
         )
         self._legacy_transfer_command = context.legacy_transfer_command
-        self.messagequeue = context.message_queue_factory(self.run_module)
+        self.messagequeue = context.message_queue.bind(self.run_module)
 
     @property
     def runtime_config(self) -> ChainRuntimeConfig:

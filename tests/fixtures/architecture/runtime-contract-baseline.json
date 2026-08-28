@@ -1461,12 +1461,12 @@
         "events": [
           "EventType.NoticeMessage"
         ],
-        "fingerprint": "59263eddd85e4e5e30606a9d0ab6d02ba6a9483bff7f262a3818495e2c4f6ef5",
+        "fingerprint": "043b1451d0995070b782b4c0e78186cbb1c019c9cfd23500cd9c84c0d1992218",
         "handler": "dispatch_web_agent_message_event",
         "invalid": false,
         "method": "add_event_listener",
         "priority": "<default>",
-        "qualname": "init_modules",
+        "qualname": "_initialize_modules",
         "receiver_kind": "constructed_manager",
         "registration_kind": "listener"
       },
@@ -1730,7 +1730,7 @@
       },
       "EventType.NoticeMessage": {
         "consumer_fingerprints": [
-          "59263eddd85e4e5e30606a9d0ab6d02ba6a9483bff7f262a3818495e2c4f6ef5"
+          "043b1451d0995070b782b4c0e78186cbb1c019c9cfd23500cd9c84c0d1992218"
         ],
         "producer_fingerprints": [
           "233eaefcad5d7635f25d05f7962774aa30890cce9bb2850186d9ac951b20e9be",

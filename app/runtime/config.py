@@ -26,9 +26,7 @@ from app.foundation.environment import (
 from app.foundation.url import UrlUtils
 from app.runtime.log import (
     LogConfigModel,
-    NonBlockingFileHandler,
     configure_log_settings,
-    configure_log_writer,
     log_settings,
     logger,
 )
@@ -1386,7 +1384,6 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
 # 实例化配置
 settings = Settings()
 configure_log_settings(settings)
-configure_log_writer(NonBlockingFileHandler(), settings.LOG_PATH)
 
 
 class GlobalVar(object):

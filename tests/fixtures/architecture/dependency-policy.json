@@ -72,11 +72,6 @@
     },
     "entries": [
       {
-        "source": "app.application.backup",
-        "target": "app.adapters.system.backup.files",
-        "tracking": "S2-L5"
-      },
-      {
         "source": "app.application.directory",
         "target": "app.adapters.system.host",
         "tracking": "S2-L6"
@@ -271,16 +266,6 @@
         ]
       },
       {
-        "classification": "temporary_debt",
-        "reason_code": "direct_dns",
-        "tracking": "S2-L6",
-        "target_state": "empty",
-        "reason": "SSRF 校验仍在 Application 直接执行 DNS I/O；迁移到注入的解析 Port 后清零。",
-        "facts": [
-          {"source": "app.application.security.url", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "89c563fdb640259584563fc718f7104a7b4dc6717e97b9c9e449f70f74a9532b"}
-        ]
-      },
-      {
         "classification": "approved_exception",
         "reason_code": "canonical_transport",
         "owner": "$source",
@@ -292,7 +277,8 @@
           {"source": "app.adapters.network.doh", "target": "urllib.request", "kind": "raw_transport", "fingerprint": "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b"},
           {"source": "app.adapters.network.http", "target": "httpx2", "kind": "raw_transport", "fingerprint": "a70799e9930ff79cd28ebed92836c8108cd2d18bc668e0081f68533d84f69d0d"},
           {"source": "app.adapters.network.http", "target": "requests", "kind": "raw_transport", "fingerprint": "95fb4576cec363355f40aa1758d90fbb09242a2b1d029b7ab5ab65e2aaca12f8"},
-          {"source": "app.adapters.network.ip", "target": "socket.gethostbyname", "kind": "protocol_operation", "fingerprint": "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048"}
+          {"source": "app.adapters.network.ip", "target": "socket.gethostbyname", "kind": "protocol_operation", "fingerprint": "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048"},
+          {"source": "app.adapters.network.resolver", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "1b1ce6763d730d7aa9c35d32a668560013c939467dcb3087357ffa53653ff306"}
         ]
       },
       {

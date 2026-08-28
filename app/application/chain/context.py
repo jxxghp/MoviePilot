@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         TransferHistoryRepository,
     )
     from app.application.mediaserver import MediaServerRepository
+    from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.application.rules import SyncRuleGroupMutationService
     from app.application.security.user import ChainUserRepository
     from app.application.site.contract import SiteRepository
@@ -35,7 +36,6 @@ if TYPE_CHECKING:
     from app.application.transfer.execution import TransferExecutionRepository
     from app.application.transfer.workflow import TransferAdmissionRepository
 
-MessageQueueFactory = Callable[[Callable[..., Any]], Any]
 ModuleDispatcherFactory = Callable[..., Any]
 LegacyTransferCommand = Callable[..., Any]
 ChainRuntimeContextProvider = Callable[[], "ChainRuntimeContext"]
@@ -49,10 +49,10 @@ class ChainRuntimeContext:
     plugin_manager: Any
     event_manager: Any
     message_oper: Any
-    message_helper: Any
+    message_helper: MessageHelper
     file_cache: Any
     async_file_cache: Any
-    message_queue_factory: MessageQueueFactory
+    message_queue: MessageQueueManager
     module_dispatcher_factory: ModuleDispatcherFactory
     site_repository: SiteRepository
     subscription_repository: SubscriptionRepository

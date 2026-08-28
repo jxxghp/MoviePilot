@@ -31,6 +31,36 @@ def test_parameterized_singleton_can_read_matching_instance_without_creating(mon
     assert Example.get_existing_instance("second") is None
 
 
+def test_parameterized_singleton_releases_only_matching_owner(monkeypatch):
+    """迟到的旧 owner 不得释放同类当前已发布的新 owner。"""
+
+    class Example(metaclass=Singleton):
+        """用于验证按参数单例 owner 身份。"""
+
+    monkeypatch.setattr(Singleton, "_instances", {})
+    current = Example()
+
+    assert Example.release_existing_instance(object()) is False
+    assert Example.get_existing_instance() is current
+    assert Example.release_existing_instance(current) is True
+    assert Example.get_existing_instance() is None
+
+
+def test_class_singleton_releases_only_matching_owner(monkeypatch):
+    """按类单例仅允许当前 owner 释放自身身份。"""
+
+    class Example(metaclass=SingletonClass):
+        """用于验证按类单例 owner 身份。"""
+
+    monkeypatch.setattr(SingletonClass, "_instances", {})
+    current = Example()
+
+    assert Example.release_existing_instance(object()) is False
+    assert Example.get_existing_instance() is current
+    assert Example.release_existing_instance(current) is True
+    assert Example.get_existing_instance() is None
+
+
 def test_parameterized_singleton_can_retain_failed_lifecycle_owner(monkeypatch):
     """构造中途失败时，可选 owner 单例必须仍能由启动失败清理读取。"""
 

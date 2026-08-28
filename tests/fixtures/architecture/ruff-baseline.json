@@ -253,9 +253,6 @@
   "app/application/rss.py": {
     "I001": 1
   },
-  "app/application/security/url.py": {
-    "I001": 1
-  },
   "app/application/site/sites.pyi": {
     "I001": 1
   },
@@ -804,10 +801,6 @@
   "app/runtime/gc.py": {
     "I001": 1
   },
-  "app/runtime/log.py": {
-    "E731": 1,
-    "I001": 1
-  },
   "app/runtime/observability/__init__.py": {
     "I001": 1
   },
@@ -881,8 +874,7 @@
     "I001": 1
   },
   "app/startup/lifecycle/__init__.py": {
-    "E402": 27,
-    "F401": 1
+    "E402": 26
   },
   "scripts/architecture/task_ownership.py": {
     "I001": 1
@@ -1143,9 +1135,6 @@
   "tests/test_interaction_router.py": {
     "E402": 5
   },
-  "tests/test_lifecycle_shutdown.py": {
-    "F841": 1
-  },
   "tests/test_llm_provider_bedrock.py": {
     "I001": 1
   },
@@ -1394,9 +1383,6 @@
     "E402": 4
   },
   "tests/test_security_image_url_log.py": {
-    "I001": 1
-  },
-  "tests/test_security_utils.py": {
     "I001": 1
   },
   "tests/test_server_statistic_lifecycle.py": {

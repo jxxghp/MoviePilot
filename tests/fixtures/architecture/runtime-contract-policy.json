@@ -282,7 +282,7 @@
       },
       {
         "caller": "app.startup.initializers.modules",
-        "qualname": "init_modules",
+        "qualname": "_initialize_modules",
         "method": "add_event_listener",
         "receiver_kind": "constructed_manager",
         "events": [
@@ -293,7 +293,7 @@
         "handler": "dispatch_web_agent_message_event",
         "registration_kind": "listener",
         "priority": "<default>",
-        "fingerprint": "59263eddd85e4e5e30606a9d0ab6d02ba6a9483bff7f262a3818495e2c4f6ef5",
+        "fingerprint": "043b1451d0995070b782b4c0e78186cbb1c019c9cfd23500cd9c84c0d1992218",
         "classification": "approved_static_registration",
         "owner": "app.startup.initializers.modules",
         "reason": "模块初始化阶段把通知消息桥接到 WebAgent 消息分发入口。"

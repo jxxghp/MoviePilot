@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, Optional, Protocol, Self
 import click
 from pydantic import BaseModel, ConfigDict
 
+
 # strict mypy 跳过第三方实现导入，因此无法在本文件解析 Pydantic 元类类型。
 class LogConfigModel(BaseModel):  # type: ignore[misc]
     """描述日志级别、格式和文件写入策略。"""
@@ -79,8 +80,16 @@ class LogWriter(Protocol):
 
 
 log_settings = LogSettings()
-_correlation_id_provider: Callable[[], str | None] = lambda: None
+
+
+def _empty_correlation_id() -> str | None:
+    """在启动组合根尚未注入请求上下文时返回空关联 ID。"""
+    return None
+
+
+_correlation_id_provider: Callable[[], str | None] = _empty_correlation_id
 _LOG_STOP_TIMEOUT_SECONDS = 10.0
+_log_lifecycle_lock = threading.RLock()
 
 
 def configure_correlation_id_provider(provider: Callable[[], str | None]) -> None:
@@ -108,6 +117,12 @@ class NonBlockingFileHandler:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
+
+    @classmethod
+    def get_existing_instance(cls) -> Optional["NonBlockingFileHandler"]:
+        """返回尚未释放的 writer owner，不触发创建。"""
+        with cls._lock:
+            return cls._instance
 
     def __init__(self) -> None:
         """初始化文件处理器缓存、异步队列和后台写线程。"""
@@ -318,6 +333,7 @@ class NonBlockingFileHandler:
         deadline = time.monotonic() + max(0.0, timeout)
         with self._state_lock:
             if self._closed:
+                self._release_instance()
                 return True
             if self._running:
                 self._running = False
@@ -333,7 +349,16 @@ class NonBlockingFileHandler:
         self._write_thread.join(timeout=max(0.0, deadline - time.monotonic()))
         if self._write_thread.is_alive():
             return False
-        return self._close_handlers_bounded(deadline)
+        converged = self._close_handlers_bounded(deadline)
+        if converged:
+            self._release_instance()
+        return converged
+
+    def _release_instance(self) -> None:
+        """真实收敛后释放兼容单例身份，允许下一次 lifespan 创建新 owner。"""
+        with type(self)._lock:
+            if type(self)._instance is self:
+                type(self)._instance = None
 
 
 _LEVEL_NAME_COLORS: dict[int, Callable[[str], str]] = {
@@ -552,6 +577,12 @@ class LoggerManager:
         self.logger("critical", msg, *args, **kwargs)
 
     @classmethod
+    def current_writer(cls) -> Optional[LogWriter]:
+        """返回当前已发布的文件 writer，不触发资源创建。"""
+        with cls._lock:
+            return cls._writer
+
+    @classmethod
     def shutdown(cls) -> bool:
         """关闭当前文件写入器，未收敛时保留 owner 供后续重试。"""
         with cls._lock:
@@ -581,3 +612,35 @@ def configure_log_settings(source: object) -> None:
 def configure_log_writer(writer: LogWriter, log_path: Path) -> None:
     """把基础设施文件写入器装配到平台日志门面。"""
     LoggerManager.configure_writer(writer=writer, log_path=log_path)
+
+
+def start_log_writer(log_path: Path) -> LogWriter:
+    """创建并发布当前 lifespan 独占的文件日志 writer。"""
+    with _log_lifecycle_lock:
+        published = LoggerManager.current_writer()
+        retained = NonBlockingFileHandler.get_existing_instance()
+        if published is not None or retained is not None:
+            raise RuntimeError("既有日志 writer 尚未释放，拒绝复用或覆盖资源 owner")
+        writer = NonBlockingFileHandler()
+        try:
+            configure_log_writer(writer, log_path)
+        except BaseException as error:
+            if shutdown_log_writer(writer) is False:
+                raise RuntimeError("日志 writer 装配失败且资源未收敛") from error
+            raise
+        return writer
+
+
+def shutdown_log_writer(writer: Optional[LogWriter] = None) -> bool:
+    """关闭已发布 writer 及未成功发布的候选 owner，并聚合收敛结果。"""
+    with _log_lifecycle_lock:
+        published = LoggerManager.current_writer()
+        writer = writer or NonBlockingFileHandler.get_existing_instance()
+        all_converged = LoggerManager.shutdown()
+        if writer is not None and writer is not published:
+            try:
+                if writer.shutdown() is False:
+                    all_converged = False
+            except Exception:
+                all_converged = False
+        return all_converged

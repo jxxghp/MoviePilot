@@ -108,8 +108,8 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S1-L3.6 Site | `VERIFIED` | S1-L3.5 | Site 配置、用户数据、图标和统计统一为深度冻结 DTO 与 typed query/write/staging Port；请求写入复用 AsyncSession，Chain/Agent 使用独立短事务，canonical 不再接收 raw Oper/ORM，旧插件 ABI 只经 SDK Legacy/Compat |
 | S1-L3.7 Subscription | `VERIFIED` | S1-L3.6 | `application/subscription/contract.py` 统一深度冻结 Snapshot/History/Identity/Patch 与 typed query/write/staging Repository；DB adapter 在 Session 内完成 ORM 投影，Chain/API/Agent/Workflow/interaction 不再消费 raw Oper/ORM/`Any`；旧 `SubscribeOper`/`SubscribeHistoryOper` 只经同一 SDK Legacy/Compat 门面保留插件 ABI |
 | S1-L3.8 Agent/Transfer locator gate | `VERIFIED` | S1-L3.7 | `chain/data.py`、`agentdata.py` 及其 getter 已删除；Chain/Agent 改用显式 typed context，AST 门禁确认 canonical 无 raw getter/Oper/Any；全量有效 `6955 passed, 9 skipped`，Application 覆盖率提升至 `79.83%`，依赖边降至 `7,062` |
-| S1-L4 Subscription mutation UoW | `VERIFIED` | S1-L3.8 | 新增、修改、删除、完成均由显式 Session-bound Command/UoW 拥有事务；Servarr 多季新增在一个请求事务内提交全部订阅和 durable intents，任一季失败整批回滚；canonical 自动提交写入口与 locator 已退出，专项联合测试 327 项通过；当前依赖事实为 7,091 条边 |
-| S1-L5 站点/规则引用原子清理 | `VERIFIED` | S1-L4 | 站点、规则组及自定义规则改名的 SystemConfig+Subscribe 共享一个 UoW，双事实 CAS 防止过期覆盖，commit 后一次发布配置快照；故障注入、通配重置、并发冲突与事件循环心跳测试通过 |
+| S1-L4 Subscription mutation UoW | `DELIVERED` | S1-L3.8 | `d9e4a973c`：新增、修改、删除、完成均由显式 Session-bound Command/UoW 拥有事务；Servarr 多季新增在一个请求事务内提交全部订阅和 durable intents，任一季失败整批回滚；canonical 自动提交写入口与 locator 已退出，专项联合测试 327 项通过；当前依赖事实为 7,091 条边，远端 `0/0` |
+| S1-L5 站点/规则引用原子清理 | `DELIVERED` | S1-L4 | `d9e4a973c`：站点、规则组及自定义规则改名的 SystemConfig+Subscribe 共享一个 UoW，双事实 CAS 防止过期覆盖，commit 后一次发布配置快照；故障注入、通配重置、并发冲突与事件循环心跳测试通过，远端 `0/0` |
 | S1-L6 Outbox 完成语义 | `VERIFIED` | S0 | 事务内 `OutboxStager` 与独立短事务 `OutboxDispatchStore` 已分离；即时投递与 dispatcher 均先 claim，complete/retry 受 attempt fencing；`PostCommitResult` 区分已提交业务、已完成与 pending effect。事件载荷和宿主 correlation context 携带稳定 event key；旧通知插件保持原签名并承认 at-least-once 重复边界 |
 
 ### S2：进程生命周期、循环与 Adapter 边界
@@ -119,12 +119,12 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S2-L1 日志/消息资源显式生命周期 | `PLANNED` | S0 | import 和非消息 Chain 构造零新增线程；bootstrap 显式创建，失败和正常关闭均收口 |
+| S2-L1 日志/消息资源显式生命周期 | `VERIFIED` | S0 | 配置冷导入和非消息 Chain 构造零新增日志/消息线程；lifespan 显式创建共享 owner，启动失败、关闭超时、重试及连续两轮 lifespan 均收口；Chain 轻量客户端不保留首个回调 |
 | S2-L2 ChainBase 与 SCC 清零 | `PLANNED` | S0-L2.2 | canonical `app.chain.base` 落地，包根无 eager/重复导出，宿主包根导入清零，Chain SCC 消失 |
 | S2-L3 GlobalVar/provider 注册收口 | `PLANNED` | S2-L1 | `global_vars` canonical 消费清零，provider 注册进入显式装配阶段并可 reset；Legacy 入口精确保留 |
 | S2-L4 Passkey 缓存边界 | `VERIFIED` | S0-L2.4 | `PasskeyChallengeCache` 由 startup 注入，Application 不识别 Redis；严格 `AtomicCacheBackend.store/consume` 由 Memory/Redis backend 分别实现，challenge 仅能被原子领取一次 |
-| S2-L5 Backup artifact Port | `PLANNED` | S0-L2.4 | Application 不构造 `BackupFiles`，文件 I/O 由注入 Adapter 拥有 |
-| S2-L6 Application Adapter/DNS 债务清零 | `PLANNED` | S2-L4,S2-L5 | Application 到具体 Adapter 的未批准边归零，SSRF DNS I/O 进入注入 Port，批准通用机制有精确规则和门禁 |
+| S2-L5 Backup artifact Port | `VERIFIED` | S0-L2.4 | Application-owned `BackupArtifactStore`/factory 覆盖创建、发布、清理、列举、解析、删除和元数据读取；startup 注入唯一 `BackupFiles` 实现，Application 具体 Adapter 直连由 14 降至 13，完整备份调用链 62 项通过 |
+| S2-L6 Application Adapter/DNS 债务清零 | `IN PROGRESS` | S2-L4,S2-L5 | DNS 子切片已验证：SSRF 校验消费注入 `DnsResolver`，系统 `getaddrinfo` 只由 `adapters/network/resolver.py` 持有；当前依赖事实为 859 个模块、7,095 条边，其余 Application 具体 Adapter 边继续清零 |
 | S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `PLANNED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 归零；SDK/stream/vendor 例外保持精确 containment |
 
 ### S3：大型编排器职责清零
@@ -153,7 +153,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 754 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 747 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口

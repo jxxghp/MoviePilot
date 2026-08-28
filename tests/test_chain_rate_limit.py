@@ -61,6 +61,8 @@ class ChainRateLimitTest(unittest.TestCase):
         module_manager.get_running_modules.return_value = [limited_module]
         message_helper = Mock()
         event_manager = Mock()
+        message_queue = Mock()
+        message_queue.bind.return_value = Mock()
         chain = ChainBase(
             ChainRuntimeContext(
                 module_manager=module_manager,
@@ -70,7 +72,7 @@ class ChainRateLimitTest(unittest.TestCase):
                 message_helper=message_helper,
                 file_cache=Mock(),
                 async_file_cache=Mock(),
-                message_queue_factory=lambda _callback: Mock(),
+                message_queue=message_queue,
                 module_dispatcher_factory=ModuleInvocationDispatcher,
                 site_repository=Mock(),
                 subscription_repository=Mock(),

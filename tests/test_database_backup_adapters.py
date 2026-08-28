@@ -4,6 +4,7 @@ import sqlite3
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -65,10 +66,17 @@ def test_sqlite_restore_replaces_database_and_removes_old_wal_files(tmp_path: Pa
 
 
 class _Runner:
-    def __init__(self) -> None:
-        self.calls: list[tuple[list[str], dict]] = []
+    """记录 PostgreSQL 客户端命令并生成可校验的测试归档。"""
 
-    def __call__(self, command, **kwargs):
+    def __init__(self) -> None:
+        self.calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def __call__(
+        self,
+        command: list[str],
+        **kwargs: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        """记录命令参数并模拟成功的 pg_dump/pg_restore 结果。"""
         command = list(command)
         self.calls.append((command, kwargs))
         if "--file" in command:
@@ -78,7 +86,14 @@ class _Runner:
 
 
 class _FailedRunner:
-    def __call__(self, command, **_kwargs):
+    """模拟 PostgreSQL 客户端返回不可读取归档。"""
+
+    def __call__(
+        self,
+        command: list[str],
+        **_kwargs: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        """返回固定失败结果，供离线校验分支使用。"""
         return subprocess.CompletedProcess(command, 1, "", "invalid archive")
 
 

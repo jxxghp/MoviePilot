@@ -1,6 +1,6 @@
 """Chain 运行上下文注入和无参兼容 provider 测试。"""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -13,6 +13,8 @@ from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 
 def _context() -> ChainRuntimeContext:
     """构造不连接数据库、不启动线程的最小 Chain 上下文。"""
+    message_queue = Mock()
+    message_queue.bind.return_value = Mock()
     return ChainRuntimeContext(
         module_manager=Mock(),
         plugin_manager=Mock(),
@@ -21,7 +23,7 @@ def _context() -> ChainRuntimeContext:
         message_helper=Mock(),
         file_cache=Mock(),
         async_file_cache=Mock(),
-        message_queue_factory=Mock(return_value=Mock()),
+        message_queue=message_queue,
         module_dispatcher_factory=ModuleInvocationDispatcher,
         site_repository=Mock(),
         subscription_repository=Mock(),
@@ -55,7 +57,21 @@ def test_chain_accepts_explicit_runtime_context() -> None:
     assert chain.eventmanager is context.event_manager
     assert chain.messagehelper is context.message_helper
     assert chain.durable_event_writer is context.durable_event_writer
-    context.message_queue_factory.assert_called_once_with(chain.run_module)
+    context.message_queue.bind.assert_called_once_with(chain.run_module)
+
+
+def test_chains_bind_distinct_callbacks_without_starting_queue() -> None:
+    """多个 Chain 只创建轻量客户端，不得启动或覆盖共享队列 owner。"""
+    context = _context()
+
+    first = ChainBase(context)
+    second = ChainBase(context)
+
+    assert context.message_queue.start.call_count == 0
+    assert context.message_queue.bind.call_args_list == [
+        call(first.run_module),
+        call(second.run_module),
+    ]
 
 
 def test_no_arg_chain_uses_compatibility_context_provider(monkeypatch) -> None:

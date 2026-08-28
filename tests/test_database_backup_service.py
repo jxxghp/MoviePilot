@@ -9,7 +9,9 @@ from threading import Event
 
 import pytest
 
+from app.adapters.system.backup.files import BackupFiles
 from app.application.backup import (
+    BackupCheck,
     BackupPolicy,
     DatabaseBackupInProgressError,
     DatabaseBackupService,
@@ -34,7 +36,7 @@ class _Backend:
     def create(self, destination: Path) -> None:
         destination.write_bytes(b"database snapshot")
 
-    def verify(self, artifact: Path) -> _Check:
+    def verify(self, artifact: Path) -> BackupCheck:
         return _Check(self.valid and artifact.read_bytes() == b"database snapshot")
 
     def restore(self, artifact: Path) -> None:
@@ -66,9 +68,32 @@ def _service(
 ) -> DatabaseBackupService:
     return DatabaseBackupService(
         backend=backend or _Backend(),
+        artifact_store_factory=BackupFiles,
         policy_reader=lambda: BackupPolicy(root, retention_days, max_count),
         clock=lambda: now or datetime(2026, 8, 19, 13, 45, 26),
     )
+
+
+def test_service_builds_artifact_store_from_current_policy_root(tmp_path: Path) -> None:
+    """每次操作都应把最新策略根目录交给注入的存储工厂。"""
+    roots: list[Path] = []
+
+    def build_store(root: Path) -> BackupFiles:
+        """记录应用传入的根目录并返回真实受限文件适配器。"""
+        roots.append(root)
+        return BackupFiles(root)
+
+    service = DatabaseBackupService(
+        backend=_Backend(),
+        artifact_store_factory=build_store,
+        policy_reader=lambda: BackupPolicy(tmp_path),
+        clock=lambda: datetime(2026, 8, 19, 13, 45, 26),
+    )
+
+    artifact = service.create()
+
+    assert roots == [tmp_path]
+    assert artifact.path.parent == tmp_path
 
 
 def test_create_publishes_one_readable_private_file(tmp_path: Path) -> None:
@@ -117,7 +142,10 @@ def test_same_second_backups_receive_short_sequence_suffix(tmp_path: Path) -> No
     assert second.name == "moviepilot_v3.0.0_sqlite_20260819_134526_1.db"
 
 
-def test_backup_name_uses_application_release_version(tmp_path: Path, monkeypatch) -> None:
+def test_backup_name_uses_application_release_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         "app.adapters.system.backup.files.get_app_version",
         lambda: "v4.2.1",

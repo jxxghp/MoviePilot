@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.adapters.network import http as http_utils
+from app.runtime.config import settings as runtime_settings
 from app.runtime.tasks import configure_task_registry, get_task_registry
 from app.startup import lifecycle
 from app.startup.initializers import modules as modules_initializer
@@ -22,14 +23,14 @@ def _isolate_task_registry():
 
 def _assert_completed_once(mock: MagicMock) -> None:
     if isinstance(mock, AsyncMock):
-        mock.assert_awaited_once_with()
+        mock.assert_awaited_once()
     else:
-        mock.assert_called_once_with()
+        mock.assert_called_once()
 
 
 def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     """隔离 lifespan 的外部依赖，并按名称注入一个关闭失败"""
-    monkeypatch.setattr(lifecycle.settings, "MOVIEPILOT_SAFE_MODE", False)
+    monkeypatch.setattr(runtime_settings, "MOVIEPILOT_SAFE_MODE", False)
     monkeypatch.setattr(lifecycle.global_vars, "set_loop", MagicMock())
     monkeypatch.setattr(lifecycle.global_vars, "clear_loop", MagicMock())
     monkeypatch.setattr(lifecycle.global_vars, "stop_system", MagicMock())
@@ -53,6 +54,41 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         MagicMock(return_value=plugin_recovery),
     )
     monkeypatch.setattr(lifecycle, "init_modules", AsyncMock())
+    log_owner = object()
+
+    def initialize_log(app: FastAPI) -> None:
+        """发布隔离的日志 owner，覆盖正常启动和失败清理路径。"""
+        app.state.log_writer = log_owner
+        app.state.log_shutdown_failed = False
+
+    logger_shutdown = MagicMock(return_value=True)
+
+    def stop_log(app: FastAPI) -> bool:
+        """按 mock 返回值模拟 owner 收敛并同步生命周期状态。"""
+        converged = logger_shutdown.return_value is not False
+        app.state.log_shutdown_failed = not converged
+        if converged:
+            app.state.log_writer = None
+        return converged
+
+    logger_shutdown.side_effect = stop_log
+    message_shutdown = MagicMock(return_value=True)
+
+    def stop_message(app: FastAPI) -> bool:
+        """按 mock 返回值模拟消息 owner 的明确关闭结果。"""
+        converged = message_shutdown.return_value is not False
+        app.state.message_shutdown_failed = not converged
+        return converged
+
+    message_shutdown.side_effect = stop_message
+    monkeypatch.setattr(
+        lifecycle,
+        "initialize_log_runtime",
+        MagicMock(side_effect=initialize_log),
+    )
+    monkeypatch.setattr(lifecycle, "stop_log_runtime", logger_shutdown)
+    monkeypatch.setattr(lifecycle, "initialize_message_runtime", MagicMock())
+    monkeypatch.setattr(lifecycle, "stop_message_runtime", message_shutdown)
 
     # 启动期的引擎预热与额度核算也要打桩。不打的话这些用例会走真实的引擎创建，在测试
     # 进程里留下一个从此无人释放的全局异步引擎——NullPool 不持连接、无害，但用例就不再
@@ -89,6 +125,8 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "finalize_plugins": MagicMock(return_value=True),
         "stop_modules": AsyncMock(),
         "close_http": AsyncMock(),
+        "message": message_shutdown,
+        "logger": logger_shutdown,
     }
     for name in (
         "stop_workflow",
@@ -132,9 +170,6 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
             f"{failing_step} failed"
         )
 
-    logger_shutdown = MagicMock()
-    monkeypatch.setattr(lifecycle.LoggerManager, "shutdown", logger_shutdown)
-    shutdown_steps["logger"] = logger_shutdown
     return shutdown_steps
 
 
@@ -194,6 +229,26 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
         _assert_completed_once(step)
 
 
+def test_lifespan_can_start_and_stop_resource_owners_twice(monkeypatch) -> None:
+    """同一应用连续两轮 lifespan 必须各自启动并关闭日志和消息 owner。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    app = FastAPI()
+
+    async def run_two_cycles() -> None:
+        """连续运行两轮隔离生命周期。"""
+        async with lifecycle.lifespan(app):
+            pass
+        async with lifecycle.lifespan(app):
+            pass
+
+    asyncio.run(run_two_cycles())
+
+    assert lifecycle.initialize_log_runtime.call_count == 2
+    assert lifecycle.initialize_message_runtime.call_count == 2
+    assert shutdown_steps["message"].call_count == 2
+    assert shutdown_steps["logger"].call_count == 2
+
+
 def test_lifespan_propagates_logger_nonconvergence(monkeypatch):
     """最后一个日志 owner 未收敛时 lifespan 必须以关闭失败结束。"""
     shutdown_steps = _patch_lifespan(monkeypatch)
@@ -212,6 +267,23 @@ def test_lifespan_propagates_logger_nonconvergence(monkeypatch):
     lifecycle.global_vars.clear_loop.assert_called_once_with(
         lifecycle.global_vars.set_loop.return_value
     )
+
+
+def test_lifespan_propagates_message_nonconvergence(monkeypatch):
+    """消息 owner 未收敛时 lifespan 必须保留资源并明确失败。"""
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    shutdown_steps["message"].return_value = False
+
+    async def run_lifespan() -> None:
+        """运行完整生命周期并触发消息资源失败。"""
+        async with lifecycle.lifespan(FastAPI()):
+            pass
+
+    with pytest.raises(RuntimeError, match="消息资源未在关停预算内收敛"):
+        asyncio.run(run_lifespan())
+
+    _assert_completed_once(shutdown_steps["message"])
+    _assert_completed_once(shutdown_steps["logger"])
 
 
 def test_runtime_gil_status_warns_when_free_threaded_runtime_enables_gil(monkeypatch):
@@ -293,6 +365,7 @@ _ORDERED_SHUTDOWN_STEPS = (
     "quiesce_plugin_services",
     "drain_events",
     "finalize_plugins",
+    "message",
     "stop_modules",
     "close_http",
 )
@@ -476,7 +549,7 @@ def test_lifespan_configures_plugin_services_before_restore(monkeypatch):
 def test_lifespan_safe_mode_skips_optional_runtime(monkeypatch):
     """安全模式只启动基础模块，并跳过插件及可选后台服务。"""
     shutdown_steps = _patch_lifespan(monkeypatch)
-    monkeypatch.setattr(lifecycle.settings, "MOVIEPILOT_SAFE_MODE", True)
+    monkeypatch.setattr(runtime_settings, "MOVIEPILOT_SAFE_MODE", True)
 
     async def run_lifespan():
         async with lifecycle.lifespan(FastAPI()):
@@ -563,6 +636,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
     safe_names = {item["name"] for item in safe}
 
     assert normal_start == [
+        "文件日志",
         "后台任务登记器",
         "数据库准备",
         "HTTP 基础能力",
@@ -571,6 +645,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "数据库连接预算",
         "路由",
         "模块服务",
+        "消息队列",
         "插件备份恢复",
         "插件",
         "定时器",
@@ -595,10 +670,13 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "插件后台服务",
         "事件投递屏障",
         "插件",
+        "消息队列",
         "模块服务",
         "HTTP 基础能力",
+        "文件日志",
     ]
     assert safe_names == {
+        "文件日志",
         "后台任务登记器",
         "数据库准备",
         "HTTP 基础能力",
@@ -607,6 +685,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "数据库连接预算",
         "路由",
         "模块服务",
+        "消息队列",
         "AI智能体会话",
         "整理后台服务",
         "事件投递屏障",
@@ -631,6 +710,8 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "插件后台服务",
         "事件投递屏障",
         "插件",
+        "消息队列",
+        "文件日志",
     }
     assert all(
         item["stop_failure"] == "continue"
@@ -649,6 +730,8 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
             "插件后台服务",
             "事件投递屏障",
             "插件",
+            "消息队列",
+            "文件日志",
         }
     )
     assert all(
@@ -889,7 +972,8 @@ def test_lifespan_cleans_started_owners_after_late_startup_failure(monkeypatch):
     ):
         _assert_completed_once(shutdown_steps[name])
     shutdown_steps["stop_workflow"].assert_not_called()
-    shutdown_steps["logger"].assert_not_called()
+    _assert_completed_once(shutdown_steps["message"])
+    _assert_completed_once(shutdown_steps["logger"])
     assert isinstance(app.state.task_registry, lifecycle.TaskRegistry)
     assert get_task_registry() is app.state.task_registry
     assert app.state.moviepilot_health.phase.value == "failed"
@@ -964,7 +1048,7 @@ def test_restart_endpoint_failure_preserves_stop_state(
     stop_event = threading.Event()
     if initially_stopped:
         stop_event.set()
-    monkeypatch.setattr(system.global_vars, "STOP_EVENT", stop_event)
+    monkeypatch.setattr(system.runtime_stop_state, "_system_event", stop_event)
     monkeypatch.setattr(system.SystemHelper, "can_restart", MagicMock(return_value=True))
     monkeypatch.setattr(system.SystemHelper, "restart", MagicMock(return_value=(False, "restart failed")))
     monkeypatch.setattr(
@@ -1049,18 +1133,6 @@ def test_stop_modules_propagates_false_without_skipping_later_cleanup(monkeypatc
         _assert_completed_once(dependency)
 
 
-def test_stop_modules_propagates_message_queue_nonconvergence(monkeypatch):
-    """消息队列线程未终止时必须由模块服务关闭结果向上暴露。"""
-    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
-    dependencies["stop_message"].return_value = False
-
-    converged = asyncio.run(modules_initializer.stop_modules())
-
-    assert converged is False
-    for dependency in dependencies.values():
-        _assert_completed_once(dependency)
-
-
 def test_stop_modules_propagates_shared_thread_pool_nonconvergence(monkeypatch):
     """共享线程池仍有活动 Future 时必须由模块服务关闭结果向上暴露。"""
     dependencies = _patch_module_shutdown_dependencies(monkeypatch)
@@ -1108,7 +1180,7 @@ async def test_stop_modules_keeps_event_loop_responsive_during_sync_owner_wait(
 def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
     """关闭时先收口 Web Agent，再关闭持久化准入和数据库任务。"""
     order = []
-    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    _patch_module_shutdown_dependencies(monkeypatch)
     monkeypatch.setattr(
         modules_initializer,
         "shutdown_web_agent_background_tasks",
@@ -1319,7 +1391,6 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
 
     for name in (
         "close_browser_sessions",
-        "stop_message",
         "stop_frontend",
         "clear_temp",
     ):

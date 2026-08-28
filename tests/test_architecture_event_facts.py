@@ -954,7 +954,7 @@ def handler(event):
 
 
 def test_collect_event_facts_matches_current_host_inventory() -> None:
-    """统一事实覆盖当前 97 个 producer 调用与 17 个 consumer 调用。"""
+    """统一事实覆盖当前 95 个 producer 调用与 17 个 consumer 调用。"""
     from scripts.architecture.baseline import (
         _event_enum_members,
         discover_modules,
@@ -970,11 +970,11 @@ def test_collect_event_facts_matches_current_host_inventory() -> None:
     producers = facts["producers"]
     consumers = facts["consumers"]
 
-    assert len(producers) == 97
-    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in producers) == 96
+    assert len(producers) == 95
+    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in producers) == 94
     assert sum(fact["dynamic"] for fact in producers) == 1
     assert sum(fact["invalid"] for fact in producers) == 0
-    assert sum(len(fact["events"]) for fact in producers) == 98
+    assert sum(len(fact["events"]) for fact in producers) == 96
     assert len(consumers) == 17
     assert sum(not fact["dynamic"] and not fact["invalid"] for fact in consumers) == 16
     assert sum(fact["dynamic"] for fact in consumers) == 1

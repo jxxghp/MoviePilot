@@ -4,6 +4,7 @@ import ast
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -168,7 +169,11 @@ def _runtime() -> HostRuntime:
             system_config=lambda: _Repository(object()),
             passkey=lambda: _Repository(object()),
         ),
-        messaging=MessagingRuntime(repository=_Repository),
+        messaging=MessagingRuntime(
+            repository=_Repository,
+            helper=SimpleNamespace(),
+            queue=SimpleNamespace(),
+        ),
         history=HistoryRuntime(
             download_repository=_Repository,
             transfer_repository=_Repository,
@@ -284,3 +289,42 @@ async def test_lifecycle_component_attaches_init_modules_result(monkeypatch) -> 
     await lifecycle.initialize_modules_component(app)
 
     assert app.state.host_runtime is runtime
+
+
+@pytest.mark.asyncio
+async def test_init_modules_cleans_partial_message_owner_on_failure(monkeypatch) -> None:
+    """直接调用模块初始化时，中途失败也不得遗留消息缓存单例。"""
+    from app.application.messaging.message import MessageHelper
+    from app.foundation.singleton import Singleton, SingletonClass
+    from app.startup.initializers import modules as modules_initializer
+
+    monkeypatch.setattr(Singleton, "_instances", {})
+    monkeypatch.setattr(SingletonClass, "_instances", {})
+    close = MagicMock()
+    startup_error = RuntimeError("module startup failed")
+
+    async def failing_initialize_modules() -> HostRuntime:
+        """构造消息 owner 后模拟组合逻辑失败。"""
+        helper = MessageHelper()
+        monkeypatch.setattr(helper._recent_notification_keys, "close", close)
+        raise startup_error
+
+    monkeypatch.setattr(
+        modules_initializer,
+        "_initialize_modules",
+        failing_initialize_modules,
+    )
+    stop_database_worker = AsyncMock()
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_database_worker",
+        stop_database_worker,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        await modules_initializer.init_modules()
+
+    assert raised.value is startup_error
+    close.assert_called_once_with()
+    assert MessageHelper.get_existing_instance() is None
+    stop_database_worker.assert_awaited_once_with()

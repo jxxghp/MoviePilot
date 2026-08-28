@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import threading
 import time
 from unittest.mock import MagicMock
@@ -9,7 +11,104 @@ from app.runtime.log import (
     LoggerManager,
     NonBlockingFileHandler,
     log_settings,
+    shutdown_log_writer,
+    start_log_writer,
 )
+
+
+def test_runtime_config_cold_import_does_not_start_log_writer() -> None:
+    """冷导入配置模块不得创建日志后台线程。"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import threading; before={id(t) for t in threading.enumerate()}; "
+                "import app.runtime.config; "
+                "created=[t.name for t in threading.enumerate() if id(t) not in before]; "
+                "assert 'LogBatchWriter' not in created, created"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_log_writer_restarts_with_new_owner_after_shutdown(tmp_path) -> None:
+    """完整关闭后下一轮 lifespan 必须创建新的日志 owner。"""
+    previous_writer = LoggerManager._writer
+    previous_log_path = LoggerManager._log_path
+    previous_instance = NonBlockingFileHandler._instance
+    LoggerManager._writer = None
+    LoggerManager._log_path = None
+    NonBlockingFileHandler._instance = None
+    try:
+        first = start_log_writer(tmp_path)
+        assert shutdown_log_writer(first) is True
+        second = start_log_writer(tmp_path)
+
+        assert second is not first
+        assert shutdown_log_writer(second) is True
+    finally:
+        shutdown_log_writer()
+        LoggerManager._writer = previous_writer
+        LoggerManager._log_path = previous_log_path
+        NonBlockingFileHandler._instance = previous_instance
+
+
+def test_start_log_writer_rejects_retained_stopping_owner_until_retry(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """关闭失败后不得复用停止态 writer；重试收敛后才能创建新 owner。"""
+    previous_writer = LoggerManager._writer
+    previous_log_path = LoggerManager._log_path
+    previous_instance = NonBlockingFileHandler._instance
+    LoggerManager._writer = None
+    LoggerManager._log_path = None
+    NonBlockingFileHandler._instance = None
+    monkeypatch.setattr(log_settings, "WRITE_TIMEOUT", 0.01)
+    first = start_log_writer(tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    real_shutdown = first.shutdown
+
+    def block_batch(_batch: list[LogEntry]) -> None:
+        """占住真实 writer 线程，制造一次可恢复的关闭超时。"""
+        entered.set()
+        release.wait()
+
+    monkeypatch.setattr(first, "_write_batch", block_batch)
+    monkeypatch.setattr(first, "shutdown", lambda: real_shutdown(timeout=0.01))
+    try:
+        assert first._write_non_blocking(
+            LogEntry("info", "blocked", tmp_path / "retry.log")
+        ) is True
+        assert entered.wait(timeout=1)
+        assert shutdown_log_writer(first) is False
+        assert LoggerManager.current_writer() is first
+        assert NonBlockingFileHandler.get_existing_instance() is first
+
+        with pytest.raises(RuntimeError, match="既有日志 writer 尚未释放"):
+            start_log_writer(tmp_path)
+
+        assert LoggerManager.current_writer() is first
+        assert NonBlockingFileHandler.get_existing_instance() is first
+        release.set()
+        assert shutdown_log_writer(first) is True
+        second = start_log_writer(tmp_path)
+        assert second is not first
+        assert shutdown_log_writer(second) is True
+    finally:
+        release.set()
+        real_shutdown(timeout=1)
+        shutdown_log_writer()
+        LoggerManager._writer = previous_writer
+        LoggerManager._log_path = previous_log_path
+        NonBlockingFileHandler._instance = previous_instance
 
 
 def test_non_blocking_file_handler_shutdown_wakes_writer_and_closes_handlers(tmp_path):
