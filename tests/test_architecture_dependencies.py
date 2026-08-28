@@ -418,7 +418,7 @@ def test_chain_runtime_context_owns_typed_repository_instances():
     }
     assert {name: annotations[name] for name in expected} == expected
 
-    chain_base_source = (APP_ROOT / "chain" / "__init__.py").read_text(
+    chain_base_source = (APP_ROOT / "chain" / "base.py").read_text(
         encoding="utf-8-sig"
     )
     for field_name in expected:
@@ -1571,26 +1571,12 @@ def test_complete_host_sccs_match_reviewed_policy() -> None:
         "include_parent_package_initialization": True,
         "root": "app",
     }
-    assert {entry["classification"] for entry in entries} == {
-        "contained_vendor",
-        "temporary_debt",
-    }
+    assert {entry["classification"] for entry in entries} == {"contained_vendor"}
     assert len({entry["id"] for entry in entries}) == len(entries)
     assert all(entry["modules"] == sorted(set(entry["modules"])) for entry in entries)
     assert all(entry["reason"] and entry["tracking"] for entry in entries)
     all_members = [member for entry in entries for member in entry["modules"]]
     assert len(all_members) == len(set(all_members))
-
-    temporary = next(
-        entry for entry in entries if entry["classification"] == "temporary_debt"
-    )
-    assert temporary["id"] == "chain-package-root"
-    assert temporary["tracking"] == "ARCH-107"
-    assert temporary["modules"] == [
-        "app.chain",
-        "app.chain._messaging",
-        "app.chain._recognition",
-    ]
 
     vendor = next(
         entry for entry in entries if entry["classification"] == "contained_vendor"

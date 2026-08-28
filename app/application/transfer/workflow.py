@@ -37,7 +37,6 @@ from typing import (
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from app.adapters.system.host import SystemUtils
 from app.application.history import DownloadHistorySnapshot
 from app.application.transfer.execution import TransferExecutionCheckpoint
 from app.domain.context import MediaInfo, MusicInfo
@@ -88,6 +87,23 @@ class _DictionarySerializable(Protocol):
         """返回领域对象的字典投影。"""
 
 
+class DirectorySize(Protocol):
+    """描述本地文件或目录大小读取能力。"""
+
+    def get_directory_size(self, path: Path) -> int:
+        """返回真实本地路径占用的字节数。"""
+        ...
+
+
+_directory_size: Optional[DirectorySize] = None
+
+
+def configure_directory_size(reader: Optional[DirectorySize]) -> None:
+    """由启动组合根注入或清除本地目录大小适配器。"""
+    global _directory_size
+    _directory_size = reader
+
+
 def _domain_to_dict(value: object) -> dict[str, Any]:
     """按领域对象既有 ``to_dict`` 合同生成字典投影。"""
     return cast(_DictionarySerializable, value).to_dict()
@@ -109,7 +125,9 @@ def _job_task_size(task: TransferJobTask) -> int:
     if fileitem.size is not None:
         return fileitem.size
     if fileitem.storage == "local":
-        return SystemUtils.get_directory_size(Path(cast(str, fileitem.path)))
+        if _directory_size is None:
+            raise RuntimeError("本地目录大小能力尚未由启动组合根配置")
+        return _directory_size.get_directory_size(Path(cast(str, fileitem.path)))
     return 0
 
 

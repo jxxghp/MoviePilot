@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.domain.context import MusicInfo
 from app.schemas.types import (
     LISTENBRAINZ_CHART_RANGES,

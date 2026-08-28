@@ -14,7 +14,7 @@ from app.application.configuration import (
     get_chain_runtime_config_snapshot,
     get_configured_system_config,
 )
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.chain.lyrics import LyricsChain
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain

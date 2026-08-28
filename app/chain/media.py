@@ -6,8 +6,8 @@ from typing import Any, Iterable, List, Optional, Tuple, Union
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.music.catalog import MusicCatalogService
-from app.chain import ChainBase
 from app.chain.acoustid import AcoustIdChain
+from app.chain.base import ChainBase
 from app.chain.douban import DoubanChain
 from app.chain.musicbrainz import MusicBrainzChain, _MusicMetadataSourceChain
 from app.chain.theaudiodb import TheAudioDbChain

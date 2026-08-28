@@ -73,7 +73,6 @@ from app.application.transfer.workflow import (
     build_transfer_failure_group_key,
     job_lock,
 )
-from app.chain import ChainBase
 from app.chain._transfer import (
     EpisodeFormatMixin,
     FailedRetryMixin,
@@ -83,6 +82,7 @@ from app.chain._transfer import (
     ManualHistoryMixin,
     ScrapeBatchMixin,
 )
+from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain

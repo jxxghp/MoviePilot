@@ -1,10 +1,13 @@
 import asyncio
 import inspect
 import sys
+from collections.abc import Mapping
 from functools import partial
-from typing import Any, Callable
+from typing import Any, Callable, Optional, cast
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.adapters.network.ip import IpUtils
 from app.application.plugin.transaction import (
     PluginPersistenceService,
     configure_plugin_persistence,
@@ -62,7 +65,13 @@ from app.application.configuration import (
 )
 from app.application.database import configure_database_governance
 from app.application.history import configure_transfer_history_repository
-from app.application.image import configure_wallpaper_providers
+from app.application.image import (
+    ImageResponsePort,
+    ImageTransport,
+    InternalAddressPort,
+    configure_image_ports,
+    configure_wallpaper_providers,
+)
 from app.application.messaging.agent import (
     dispatch_web_agent_message_event,
     shutdown_web_agent_background_tasks,
@@ -74,6 +83,10 @@ from app.application.messaging.chat import (
     configure_agent_chat_persistence,
     configure_agent_chat_service,
     get_configured_agent_chat_persistence,
+)
+from app.application.messaging.ingress import (
+    MessageIngressPort,
+    configure_message_ingress_port,
 )
 from app.application.messaging.message import (
     MessageHelper,
@@ -533,6 +546,102 @@ def configure_wallpaper_services() -> None:
     )
 
 
+class _ImageTransportAdapter:
+    """把通用 HTTP Adapter 收窄为图片应用服务的 GET 端口。"""
+
+    def get(
+        self,
+        url: str,
+        *,
+        options: Mapping[str, Any],
+    ) -> Optional[ImageResponsePort]:
+        """同步创建短生命周期请求对象并返回响应。"""
+        response = RequestUtils(**dict(options)).get_res(url=url)
+        return cast(Optional[ImageResponsePort], response)
+
+    async def async_get(
+        self,
+        url: str,
+        *,
+        options: Mapping[str, Any],
+    ) -> Optional[ImageResponsePort]:
+        """异步创建短生命周期请求对象并返回响应。"""
+        response = await AsyncRequestUtils(**dict(options)).get_res(url=url)
+        return cast(Optional[ImageResponsePort], response)
+
+
+class _InternalAddressAdapter:
+    """把通用地址判断收窄为图片代理决策端口。"""
+
+    @staticmethod
+    def is_internal(url: str) -> bool:
+        """返回 URL 是否指向内部地址。"""
+        probe = cast(Callable[[str], bool], IpUtils.is_internal)
+        return bool(probe(url))
+
+
+class _MessageIngressAdapter:
+    """通过通用 HTTP Adapter 投递本地消息并负责释放响应。"""
+
+    def post(
+        self,
+        url: str,
+        payload: Mapping[str, Any],
+        *,
+        timeout: float,
+    ) -> Optional[int]:
+        """同步投递消息，关闭响应后返回状态码。"""
+        response = RequestUtils(timeout=timeout).post_res(  # type: ignore[arg-type]
+            url,
+            json=dict(payload),
+        )
+        if response is None:
+            return None
+        try:
+            return int(response.status_code)
+        finally:
+            try:
+                response.close()
+            except Exception as error:  # noqa: BLE001 - 释放失败不改变投递结果
+                logger.debug(f"释放本地消息入口响应失败：{error}")
+
+    async def async_post(
+        self,
+        url: str,
+        payload: Mapping[str, Any],
+        *,
+        timeout: float,
+    ) -> Optional[int]:
+        """异步投递消息，关闭响应后返回状态码。"""
+        response = await AsyncRequestUtils(
+            timeout=timeout  # type: ignore[arg-type]
+        ).post_res(
+            url,
+            json=dict(payload),
+        )
+        if response is None:
+            return None
+        try:
+            return int(response.status_code)
+        finally:
+            try:
+                await response.aclose()
+            except Exception as error:  # noqa: BLE001 - 释放失败不改变投递结果
+                logger.debug(f"释放本地消息入口响应失败：{error}")
+
+
+def configure_application_network_ports() -> None:
+    """装配图片读取、内部地址判断和消息回环传输端口。"""
+    image_transport: ImageTransport = _ImageTransportAdapter()
+    internal_address: InternalAddressPort = _InternalAddressAdapter()
+    message_ingress: MessageIngressPort = _MessageIngressAdapter()
+    configure_image_ports(
+        transport=image_transport,
+        internal_address=internal_address,
+    )
+    configure_message_ingress_port(message_ingress)
+
+
 def notify_event_error(title: str, message: str) -> None:
     """将事件总线错误转发到系统消息通道。"""
     MessageHelper().put(
@@ -801,6 +910,7 @@ async def _initialize_modules() -> HostRuntime:
     构造模块服务并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
     global _database_worker
+    configure_application_network_ports()
     # 兼容 Oper 的无 Session 写入口仍由组合根持有事务，避免模型恢复自动提交。
     transaction_runner = TransactionalWriteRunner(
         sync_session=SessionFactory,

@@ -10,17 +10,6 @@
   },
   "allowed_sccs": [
     {
-      "classification": "temporary_debt",
-      "id": "chain-package-root",
-      "modules": [
-        "app.chain",
-        "app.chain._messaging",
-        "app.chain._recognition"
-      ],
-      "reason": "ChainBase 仍由包根导出，包根又加载消息和识别实现；S2-L2 负责拆出 app.chain.base 并清零该环。",
-      "tracking": "ARCH-107"
-    },
-    {
       "classification": "contained_vendor",
       "id": "themoviedb-vendored-package",
       "modules": [
@@ -71,71 +60,6 @@
       "imported_symbols": false
     },
     "entries": [
-      {
-        "source": "app.application.directory",
-        "target": "app.adapters.system.host",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.image",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.image",
-        "target": "app.adapters.network.ip",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.messaging.ingress",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.rss",
-        "target": "app.adapters.network.browser",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.rss",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.rss",
-        "target": "app.adapters.system",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.rules",
-        "target": "app.adapters.system",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.security.cookie",
-        "target": "app.adapters.external.ocr",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.security.cookie",
-        "target": "app.adapters.network.browser",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.security.cookie",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.torrent",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L6"
-      },
-      {
-        "source": "app.application.transfer.workflow",
-        "target": "app.adapters.system.host",
-        "tracking": "S2-L6"
-      },
       {
         "source": "app.chain._recognition",
         "target": "app.adapters.external.server",

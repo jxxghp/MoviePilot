@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 
 
 class NotificationChain(ChainBase):

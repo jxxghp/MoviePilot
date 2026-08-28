@@ -1,6 +1,6 @@
 from typing import List
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 
 
 class TvdbChain(ChainBase):

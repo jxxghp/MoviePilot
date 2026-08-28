@@ -873,6 +873,30 @@ class EventManager:
     assert facts["consumers"] == []
     assert len(facts["producers"]) == 1
     assert facts["producers"][0]["receiver_kind"] == "event_manager_self"
+
+
+def test_collect_event_facts_tracks_chain_base_context_event_manager(
+    tmp_path: Path,
+) -> None:
+    """ChainBase 迁入 canonical base 模块后仍应识别上下文注入的事件管理器。"""
+    facts = _collect_facts(
+        tmp_path,
+        '''
+from app.schemas.types import EventType
+
+class ChainBase:
+    def __init__(self, context):
+        self.eventmanager = context.event_manager
+
+    def publish(self):
+        self.eventmanager.send_event(EventType.Alpha)
+''',
+        module_name="app.chain.base",
+    )
+
+    assert len(facts["producers"]) == 1
+    assert facts["producers"][0]["events"] == ["EventType.Alpha"]
+    assert facts["producers"][0]["receiver_kind"] == "injected_event_manager"
     assert facts["producers"][0]["events"] == ["EventType.Alpha"]
 
 

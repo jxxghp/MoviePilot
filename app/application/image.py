@@ -1,20 +1,120 @@
 import io
+import threading
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Callable, Optional, List
+from typing import Any, Callable, List, Optional, Protocol
 
 from PIL import Image
 
-from app.runtime.cache import cached, FileCache, AsyncFileCache
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.runtime.log import logger
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.adapters.network.ip import IpUtils
 from app.application.security.url import SecurityUtils
 from app.foundation.singleton import Singleton
-
+from app.runtime.cache import AsyncFileCache, FileCache, cached
+from app.runtime.log import logger
 
 WallpaperProvider = Callable[[], Optional[str]]
 WallpaperListProvider = Callable[[int], List[str]]
+
+
+class ImageResponsePort(Protocol):
+    """图片应用服务消费的最小 HTTP 响应契约。"""
+
+    status_code: int
+    content: bytes
+    headers: Mapping[str, str]
+
+    def json(self) -> Any:
+        """返回响应 JSON 载荷。"""
+        ...
+
+
+class ImageTransport(Protocol):
+    """图片与壁纸读取所需的同步、异步 GET 端口。"""
+
+    def get(
+        self,
+        url: str,
+        *,
+        options: Mapping[str, Any],
+    ) -> Optional[ImageResponsePort]:
+        """同步读取远端图片或壁纸响应。"""
+        ...
+
+    async def async_get(
+        self,
+        url: str,
+        *,
+        options: Mapping[str, Any],
+    ) -> Optional[ImageResponsePort]:
+        """异步读取远端图片响应。"""
+        ...
+
+
+class InternalAddressPort(Protocol):
+    """判断 URL 是否指向无需代理的内部地址。"""
+
+    def is_internal(self, url: str) -> bool:
+        """返回 URL 是否属于内部地址。"""
+        ...
+
+
+_image_port_lock = threading.Lock()
+_image_transport: Optional[ImageTransport] = None
+_internal_address: Optional[InternalAddressPort] = None
+
+
+def _clear_wallpaper_caches() -> None:
+    """清除依赖外部 provider 或 transport 的壁纸函数缓存。"""
+    for method_name in (
+        "get_tmdb_wallpaper",
+        "get_tmdb_wallpapers",
+        "get_bing_wallpaper",
+        "get_bing_wallpapers",
+        "get_mediaserver_wallpaper",
+        "get_mediaserver_wallpapers",
+        "get_customize_wallpaper",
+        "get_customize_wallpapers",
+    ):
+        cache_clear = getattr(getattr(WallpaperHelper, method_name), "cache_clear", None)
+        if callable(cache_clear):
+            cache_clear()
+
+
+def configure_image_ports(
+    *,
+    transport: ImageTransport,
+    internal_address: InternalAddressPort,
+) -> tuple[Optional[ImageTransport], Optional[InternalAddressPort]]:
+    """由启动组合根装配图片 I/O 端口，并清除旧实现产生的壁纸缓存。"""
+    global _image_transport, _internal_address
+    with _image_port_lock:
+        previous = (_image_transport, _internal_address)
+        _image_transport = transport
+        _internal_address = internal_address
+        _clear_wallpaper_caches()
+    return previous
+
+
+def reset_image_ports(
+    transport: Optional[ImageTransport] = None,
+    internal_address: Optional[InternalAddressPort] = None,
+) -> None:
+    """恢复指定图片端口；省略参数时回到未装配状态并清缓存。"""
+    global _image_transport, _internal_address
+    with _image_port_lock:
+        _image_transport = transport
+        _internal_address = internal_address
+        _clear_wallpaper_caches()
+
+
+def _image_ports_snapshot() -> tuple[ImageTransport, InternalAddressPort]:
+    """读取一致的图片端口快照，未装配时稳定失败。"""
+    with _image_port_lock:
+        transport = _image_transport
+        internal_address = _internal_address
+    if transport is None or internal_address is None:
+        raise RuntimeError("图片网络端口尚未由启动组合根装配")
+    return transport, internal_address
 
 
 def _empty_wallpaper_provider() -> Optional[str]:
@@ -53,6 +153,7 @@ def configure_wallpaper_providers(
     _tmdb_wallpaper_list_provider = tmdb_wallpapers
     _mediaserver_wallpaper_provider = mediaserver_wallpaper
     _mediaserver_wallpaper_list_provider = mediaserver_wallpapers
+    _clear_wallpaper_caches()
 
 
 class WallpaperHelper(metaclass=Singleton):
@@ -110,7 +211,8 @@ class WallpaperHelper(metaclass=Singleton):
         获取Bing每日壁纸
         """
         url = "https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
-        resp = RequestUtils(timeout=5).get_res(url)
+        transport, _ = _image_ports_snapshot()
+        resp = transport.get(url, options={"timeout": 5})
         if resp and resp.status_code == 200:
             try:
                 result = resp.json()
@@ -127,7 +229,8 @@ class WallpaperHelper(metaclass=Singleton):
         获取7天的Bing每日壁纸
         """
         url = f"https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n={num}"
-        resp = RequestUtils(timeout=5).get_res(url)
+        transport, _ = _image_ports_snapshot()
+        resp = transport.get(url, options={"timeout": 5})
         if resp and resp.status_code == 200:
             try:
                 result = resp.json()
@@ -195,7 +298,11 @@ class WallpaperHelper(metaclass=Singleton):
         config = get_chain_runtime_config_snapshot()
         if config.customize_wallpaper_api_url:
             wallpaper_list = []
-            resp = RequestUtils(timeout=15).get_res(config.customize_wallpaper_api_url)
+            transport, _ = _image_ports_snapshot()
+            resp = transport.get(
+                config.customize_wallpaper_api_url,
+                options={"timeout": 15},
+            )
             if resp and resp.status_code == 200:
                 # 如果返回的是图片格式
                 content_type = resp.headers.get('Content-Type')
@@ -266,7 +373,10 @@ class ImageHelper(metaclass=Singleton):
         referer = "https://movie.douban.com/" if "doubanio.com" in url else None
         config = get_chain_runtime_config_snapshot()
         if proxy is None:
-            proxies = config.proxy if not (referer or IpUtils.is_internal(url)) else None
+            _, internal_address = _image_ports_snapshot()
+            proxies = (
+                config.proxy if not (referer or internal_address.is_internal(url)) else None
+            )
         else:
             proxies = config.proxy if proxy else None
         return {
@@ -321,7 +431,8 @@ class ImageHelper(metaclass=Singleton):
 
         # 请求远程图片
         params = self._get_request_params(url, proxy, cookies)
-        response = RequestUtils(**params).get_res(url=url)
+        transport, _ = _image_ports_snapshot()
+        response = transport.get(url, options=params)
         if response is None or response.status_code != 200:
             logger.warn(f"Failed to fetch image from URL: {url}")
             return None
@@ -379,7 +490,8 @@ class ImageHelper(metaclass=Singleton):
 
         # 请求远程图片
         params = self._get_request_params(url, proxy, cookies)
-        response = await AsyncRequestUtils(**params).get_res(url=url)
+        transport, _ = _image_ports_snapshot()
+        response = await transport.async_get(url, options=params)
         if response is None or response.status_code != 200:
             logger.warn(f"Failed to fetch image from URL: {url}")
             return None

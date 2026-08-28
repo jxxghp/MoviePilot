@@ -22,8 +22,8 @@ from app.application.site.contract import (
     SiteUserDataMutation,
 )
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.chain import ChainBase
 from app.chain._interaction import InteractionChainMixin
+from app.chain.base import ChainBase
 from app.domain import site as site_rules
 from app.domain.site import SiteUtils
 from app.foundation import size as size_tools

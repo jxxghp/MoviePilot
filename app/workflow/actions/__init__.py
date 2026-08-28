@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Union
 
 from app.application.configuration import get_configured_system_config
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.schemas.workflow import ActionContext, ActionParams, ActionResult
 
 

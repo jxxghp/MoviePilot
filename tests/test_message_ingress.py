@@ -16,8 +16,35 @@ from app.modules.telegram import telegram as telegram_module
 from app.modules.wechat import wechatbot as wechat_module
 from app.modules.wechatclawbot import wechatclawbot as clawbot_module
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class _FakeMessageIngressPort:
+    """返回固定状态码并记录同步、异步回环投递。"""
+
+    def __init__(self, status_code=200) -> None:
+        """保存固定状态码。"""
+        self.status_code = status_code
+        self.sync_calls = []
+        self.async_calls = []
+
+    def post(self, url, payload, *, timeout):
+        """记录同步投递并返回固定状态码。"""
+        self.sync_calls.append((url, payload, timeout))
+        return self.status_code
+
+    async def async_post(self, url, payload, *, timeout):
+        """记录异步投递并返回固定状态码。"""
+        self.async_calls.append((url, payload, timeout))
+        return self.status_code
+
+
+@pytest.fixture(autouse=True)
+def restore_message_ingress_port():
+    """隔离消息回环端口并在用例结束后恢复。"""
+    previous = ingress.configure_message_ingress_port(_FakeMessageIngressPort())
+    yield
+    ingress.reset_message_ingress_port(previous)
 
 
 def _patch_ingress_settings(monkeypatch, **values):
@@ -30,58 +57,56 @@ def _patch_ingress_settings(monkeypatch, **values):
     )
 
 
-def test_forward_message_to_host_encodes_source_and_closes_response(monkeypatch):
-    """统一入口必须安全编码查询参数并释放本地 HTTP 响应。"""
-    response = SimpleNamespace(status_code=200, close=MagicMock())
-    post_res = MagicMock(return_value=response)
-    request = MagicMock()
-    request.post_res = post_res
-    request_factory = MagicMock(return_value=request)
+def test_forward_message_to_host_encodes_source_and_copies_payload(monkeypatch):
+    """统一入口必须安全编码查询参数，并向端口传递 payload 副本。"""
+    port = _FakeMessageIngressPort()
+    ingress.configure_message_ingress_port(port)
     _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token value")
-    monkeypatch.setattr(ingress, "RequestUtils", request_factory)
+    payload = {"text": "hello"}
 
     assert ingress.forward_message_to_host(
-        {"text": "hello"},
+        payload,
         "channel & one",
         timeout=9,
     ) is True
 
-    request_factory.assert_called_once_with(timeout=9)
-    url = post_res.call_args.args[0]
+    url, forwarded, timeout = port.sync_calls[0]
     assert urlparse(url).path == "/api/v1/message"
     assert parse_qs(urlparse(url).query) == {
         "token": ["token value"],
         "source": ["channel & one"],
     }
-    assert post_res.call_args.kwargs["json"] == {"text": "hello"}
-    response.close.assert_called_once_with()
+    assert forwarded == {"text": "hello"}
+    assert forwarded is not payload
+    assert timeout == 9
 
 
-@pytest.mark.parametrize("status_code", [400, 500])
+@pytest.mark.parametrize("status_code", [None, 400, 500])
 def test_forward_message_to_host_rejects_unconfirmed_response(
     monkeypatch,
     status_code,
 ):
     """本地入口无响应或返回错误状态时不得宣称渠道消息已接收。"""
-    response = SimpleNamespace(status_code=status_code, close=MagicMock())
-    request = MagicMock()
-    request.post_res.return_value = response
+    ingress.configure_message_ingress_port(_FakeMessageIngressPort(status_code))
     _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token")
-    monkeypatch.setattr(ingress, "RequestUtils", MagicMock(return_value=request))
 
     assert ingress.forward_message_to_host({}, "channel") is False
-    response.close.assert_called_once_with()
+
+
+def test_forward_message_to_host_fails_closed_when_port_is_unconfigured(monkeypatch):
+    """组合根未装配时公开入口稳定拒绝，不得懒加载具体 Adapter。"""
+    ingress.reset_message_ingress_port()
+    _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token")
+
+    assert ingress.forward_message_to_host({}, "channel") is False
 
 
 @pytest.mark.asyncio
 async def test_async_forward_message_to_host_uses_same_contract(monkeypatch):
-    """自有事件循环的渠道必须复用同一 URL、确认规则和异步资源释放。"""
-    response = SimpleNamespace(status_code=200, aclose=AsyncMock())
-    request = MagicMock()
-    request.post_res = AsyncMock(return_value=response)
-    request_factory = MagicMock(return_value=request)
+    """自有事件循环的渠道必须复用同一 URL、payload 和确认规则。"""
+    port = _FakeMessageIngressPort()
+    ingress.configure_message_ingress_port(port)
     _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token value")
-    monkeypatch.setattr(ingress, "AsyncRequestUtils", request_factory)
 
     assert await ingress.async_forward_message_to_host(
         {"text": "hello"},
@@ -89,12 +114,59 @@ async def test_async_forward_message_to_host_uses_same_contract(monkeypatch):
         timeout=10,
     ) is True
 
-    request_factory.assert_called_once_with(timeout=10)
-    url = request.post_res.await_args.args[0]
+    url, payload, timeout = port.async_calls[0]
     assert parse_qs(urlparse(url).query) == {
         "token": ["token value"],
         "source": ["discord & one"],
     }
+    assert payload == {"text": "hello"}
+    assert timeout == 10
+
+
+def test_startup_message_ingress_adapter_closes_sync_response(monkeypatch):
+    """生产同步注入适配层必须负责关闭 HTTP 响应。"""
+    from app.startup.initializers import modules as module_initializer
+
+    response = SimpleNamespace(status_code=202, close=MagicMock())
+    request = MagicMock()
+    request.post_res.return_value = response
+    monkeypatch.setattr(
+        module_initializer,
+        "RequestUtils",
+        MagicMock(return_value=request),
+    )
+
+    status_code = module_initializer._MessageIngressAdapter().post(
+        "http://127.0.0.1/message",
+        {"text": "hello"},
+        timeout=9,
+    )
+
+    assert status_code == 202
+    response.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_startup_message_ingress_adapter_closes_async_response(monkeypatch):
+    """生产异步注入适配层必须负责关闭 HTTP 响应。"""
+    from app.startup.initializers import modules as module_initializer
+
+    response = SimpleNamespace(status_code=202, aclose=AsyncMock())
+    request = MagicMock()
+    request.post_res = AsyncMock(return_value=response)
+    monkeypatch.setattr(
+        module_initializer,
+        "AsyncRequestUtils",
+        MagicMock(return_value=request),
+    )
+
+    status_code = await module_initializer._MessageIngressAdapter().async_post(
+        "http://127.0.0.1/message",
+        {"text": "hello"},
+        timeout=10,
+    )
+
+    assert status_code == 202
     response.aclose.assert_awaited_once_with()
 
 

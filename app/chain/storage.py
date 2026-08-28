@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 from app.application.directory import DirectoryHelper
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.runtime.log import logger
 from app.schemas.workflow import FileItem as _SchemaFileItem
 

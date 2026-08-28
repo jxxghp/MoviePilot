@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.domain.context import MediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 

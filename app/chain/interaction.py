@@ -8,7 +8,7 @@ from app.application.messaging.media import (
     media_interaction_manager,
 )
 from app.application.torrent import TorrentHelper
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain

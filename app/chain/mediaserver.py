@@ -8,7 +8,7 @@ from app.application.mediaserver import (
     get_mediaserver_configs,
 )
 from app.application.security.url import SecurityUtils
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.mediaserver import MediaServerItem, MediaServerLibrary, MediaServerPlayItem, MediaServerSeasonInfo

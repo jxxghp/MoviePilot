@@ -22,7 +22,7 @@ from app.application.download.failures import (
 from app.application.download.tasks import DownloadTaskService
 from app.application.history import DownloadFileWrite, DownloadHistoryWrite
 from app.application.torrent import TorrentHelper
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.domain import episode as episode_rules

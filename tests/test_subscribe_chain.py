@@ -41,6 +41,7 @@ def _load_subscribe_chain_class():
         return module
 
     chain_module = ensure_module("app.chain", types.ModuleType("app.chain"))
+    chain_module.__path__ = []
 
     class _ChainBase:
         subscription_repository = SimpleNamespace()
@@ -86,7 +87,11 @@ def _load_subscribe_chain_class():
         def recognize_media(self, *args, **kwargs):
             return None
 
-    chain_module.ChainBase = _ChainBase
+    chain_base_module = ensure_module(
+        "app.chain.base",
+        types.ModuleType("app.chain.base"),
+    )
+    chain_base_module.ChainBase = _ChainBase
 
     # 链内功能域 mixin：交互四件套委托与音乐订阅域，隔离加载以空 mixin 注入
     interaction_mixin_module = ensure_module("app.chain._interaction", types.ModuleType("app.chain._interaction"))

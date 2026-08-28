@@ -884,7 +884,7 @@ def loaded_provider_modules():
 
 assert loaded_provider_modules() == []
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.api.endpoints.message import WebPushError, is_webpush_subscription_gone
 from app.schemas.transfer import DownloaderFile
 

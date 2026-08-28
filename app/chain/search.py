@@ -21,7 +21,7 @@ from app.application.search.state import (
 )
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.torrent import TorrentHelper
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metamusic import MetaMusic

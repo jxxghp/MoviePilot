@@ -7,7 +7,7 @@
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaSource, MediaType

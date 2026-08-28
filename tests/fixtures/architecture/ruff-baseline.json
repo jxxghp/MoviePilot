@@ -223,16 +223,10 @@
   "app/api/endpoints/agent.py": {
     "F841": 1
   },
-  "app/application/directory.py": {
-    "I001": 1
-  },
   "app/application/downloader.py": {
     "I001": 1
   },
   "app/application/formatting.py": {
-    "I001": 1
-  },
-  "app/application/image.py": {
     "I001": 1
   },
   "app/application/maintenance.py": {
@@ -250,17 +244,10 @@
   "app/application/plugin/runtime.py": {
     "I001": 1
   },
-  "app/application/rss.py": {
-    "I001": 1
-  },
   "app/application/site/sites.pyi": {
     "I001": 1
   },
   "app/application/storage.py": {
-    "I001": 1
-  },
-  "app/application/torrent.py": {
-    "F541": 3,
     "I001": 1
   },
   "app/application/torrent_cache.py": {
@@ -1210,9 +1197,6 @@
   "tests/test_message_channel_permissions.py": {
     "I001": 1
   },
-  "tests/test_message_ingress.py": {
-    "I001": 1
-  },
   "tests/test_message_media_identity.py": {
     "I001": 1
   },
@@ -1351,13 +1335,7 @@
   "tests/test_resource_v3.py": {
     "I001": 1
   },
-  "tests/test_rss_helper.py": {
-    "I001": 1
-  },
   "tests/test_runtime_execution.py": {
-    "I001": 1
-  },
-  "tests/test_rust_accel.py": {
     "I001": 1
   },
   "tests/test_rust_accel_toggle.py": {

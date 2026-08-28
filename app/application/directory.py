@@ -1,18 +1,41 @@
 import re
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
-from typing import List, Optional, Tuple
+from typing import List, Optional, Protocol, Tuple
 
+from app.application.configuration import get_configured_system_config
+from app.domain.context import MediaInfo
+from app.runtime.log import logger
 from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
-from app.domain.context import MediaInfo
-from app.application.configuration import get_configured_system_config
-from app.runtime.log import logger
 from app.schemas.types import MediaType, StorageSchema, SystemConfigKey
-from app.adapters.system.host import SystemUtils
 
 JINJA2_VAR_PATTERN = re.compile(r"\{\{.*?}}", re.DOTALL)
 WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 WINDOWS_DRIVE_PREFIX_PATTERN = re.compile(r"^[A-Za-z]:")
+
+
+class DiskTopology(Protocol):
+    """描述本地路径磁盘拓扑判断能力。"""
+
+    def is_same_disk(self, src: Path, dest: Path) -> bool:
+        """返回两个真实本地路径是否位于同一磁盘。"""
+        ...
+
+
+_disk_topology: Optional[DiskTopology] = None
+
+
+def configure_disk_topology(topology: Optional[DiskTopology]) -> None:
+    """由启动组合根注入或清除本地磁盘拓扑适配器。"""
+    global _disk_topology
+    _disk_topology = topology
+
+
+def _is_same_local_disk(src: Path, dest: Path) -> bool:
+    """通过已注入端口判断真实本地路径；未装配时稳定拒绝。"""
+    if _disk_topology is None:
+        raise RuntimeError("本地磁盘拓扑能力尚未由启动组合根配置")
+    return _disk_topology.is_same_disk(src, dest)
 
 
 class DirectoryHelper:
@@ -163,7 +186,7 @@ class DirectoryHelper:
         src_path, src_storage = src
         tar_path, tar_storage = tar
         if "local" == tar_storage == src_storage:
-            return SystemUtils.is_same_disk(src_path, tar_path)
+            return _is_same_local_disk(src_path, tar_path)
         # 网络存储，直接比较类型
         return src_storage == tar_storage
 

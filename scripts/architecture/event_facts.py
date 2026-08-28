@@ -458,7 +458,7 @@ def _discover_injected_event_fields(
                         )
                         if (
                             symbol is None
-                            and module_name == "app.chain"
+                            and module_name == "app.chain.base"
                             and qualname == "ChainBase"
                             and target.attr == "eventmanager"
                             and isinstance(value, ast.Attribute)

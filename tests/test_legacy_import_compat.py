@@ -482,6 +482,7 @@ def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
 
 def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     """符号级映射清单应覆盖媒体身份、整理工作项、刮削拆分与消息/通知命名统一的旧入口。"""
+    assert set(SYMBOL_ALIASES["app.chain"]) == {"ChainBase"}
     assert set(SYMBOL_ALIASES["app.db.oper"]) == {
         "SiteOper",
         "SubscribeHistoryOper",
@@ -535,3 +536,18 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     assert set(SYMBOL_ALIASES["app.schemas.message"]) == set(
         _MESSAGE_NOTIFICATION_SYMBOL_ALIASES
     )
+
+
+def test_chain_base_legacy_sdk_and_canonical_imports_share_identity(monkeypatch):
+    """旧包根与 SDK 必须解析到 canonical ChainBase，方法补丁对三条路径同时可见。"""
+    legacy_chain = importlib.import_module("app.chain")
+    canonical = importlib.import_module("app.chain.base").ChainBase
+    sdk = importlib.import_module("app.sdk.chain").ChainBase
+    marker = object()
+
+    monkeypatch.setattr(canonical, "_compat_identity_marker", marker, raising=False)
+
+    assert legacy_chain.ChainBase is canonical
+    assert sdk is canonical
+    assert legacy_chain.ChainBase._compat_identity_marker is marker
+    assert sdk._compat_identity_marker is marker

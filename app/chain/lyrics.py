@@ -1,7 +1,7 @@
 import time
 from typing import Any, Optional, Union
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 

@@ -34,7 +34,7 @@ from app.application.plugin.routes import register_plugin_api
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.workflow import WorkflowSnapshot
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.chain.mediaserver import MediaServerChain
 from app.chain.recommend import RecommendChain
 from app.chain.site import SiteChain

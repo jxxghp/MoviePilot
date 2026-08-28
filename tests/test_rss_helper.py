@@ -1,8 +1,7 @@
 from types import SimpleNamespace
 
-from app.application import rss as rss_module
-from app.application.rss import RssHelper
 from app.adapters.network.http import RequestUtils
+from app.application.rss import RssHelper, configure_rss_ports, reset_rss_ports
 
 
 def test_rss_site_domain_prefers_configured_multilevel_domain():
@@ -11,7 +10,7 @@ def test_rss_site_domain_prefers_configured_multilevel_domain():
     assert RssHelper._get_site_domain("https://tracker.example.com/rss") == "example.com"
 
 
-def test_rss_helper_decodes_utf8_xml_before_python_parser(monkeypatch):
+def test_rss_helper_decodes_utf8_xml_before_python_parser():
     """
     RSS 解码应先修正 XML 文本，再交给 Python 解析兜底路径处理。
     """
@@ -29,19 +28,12 @@ def test_rss_helper_decodes_utf8_xml_before_python_parser(monkeypatch):
     </rss>
     """.strip()
 
-    class FakeRequestUtils:
+    class FakeHttpPort:
         """
-        测试用 RequestUtils，避免真实网络请求。
+        测试用 RSS HTTP Port，避免真实网络请求。
         """
 
-        get_decoded_xml_content = staticmethod(RequestUtils.get_decoded_xml_content)
-
-        def __init__(self, **_kwargs):
-            """
-            保存构造参数占位，兼容 RssHelper 的调用方式。
-            """
-
-        def get_res(self, _url):
+        def get(self, **_kwargs):
             """
             返回带错误 HTTP 默认编码的 RSS 响应对象。
             """
@@ -53,10 +45,35 @@ def test_rss_helper_decodes_utf8_xml_before_python_parser(monkeypatch):
                 encoding="ISO-8859-1",
             )
 
-    monkeypatch.setattr(rss_module, "RequestUtils", FakeRequestUtils)
-    monkeypatch.setattr(rss_module.rust_accel, "parse_rss_items", lambda *_args, **_kwargs: None)
+        @staticmethod
+        def decode_xml(response, **kwargs):
+            """复用真实编码策略验证 Port 边界前后的旧行为。"""
+            return RequestUtils.get_decoded_xml_content(response, **kwargs)
 
-    result = RssHelper().parse("https://example.com/rss")
+    class FakeBrowserPort:
+        """占位浏览器 Port，本用例不会触达。"""
+
+        @staticmethod
+        def render(**_kwargs):
+            """拒绝意外浏览器访问。"""
+            raise AssertionError("不应访问浏览器")
+
+    class FakeParserPort:
+        """关闭原生解析以验证 Python 解析兜底。"""
+
+        @staticmethod
+        def parse(_content, _max_items):
+            """返回 None 触发 Python 解析。"""
+            return None
+
+    configure_rss_ports(
+        http=FakeHttpPort(), browser=FakeBrowserPort(), parser=FakeParserPort()
+    )
+
+    try:
+        result = RssHelper().parse("https://example.com/rss")
+    finally:
+        reset_rss_ports()
 
     assert result[0]["title"] == "警察故事4：简单任务 2160p"
     assert result[0]["description"] == "中文简介"

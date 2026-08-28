@@ -6,7 +6,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain.context import MediaInfo, MusicInfo
 from app.runtime.events import Event

@@ -1,12 +1,82 @@
 import asyncio
 import io
+from collections.abc import Iterator, Mapping
+from types import SimpleNamespace
+from typing import Any, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from PIL import Image
 
 from app.api.endpoints import system as system_endpoint
-from app.application.image import ImageHelper
+from app.application import image as image_service
+from app.application.image import (
+    ImageHelper,
+    ImageResponsePort,
+    configure_image_ports,
+    reset_image_ports,
+)
+
+
+class _FakeImageTransport:
+    """返回测试响应并记录同步、异步图片请求。"""
+
+    def __init__(
+        self,
+        *,
+        sync_response: Optional[ImageResponsePort] = None,
+        async_response: Optional[ImageResponsePort] = None,
+    ) -> None:
+        """保存固定响应。"""
+        self.sync_response = sync_response
+        self.async_response = async_response
+        self.sync_calls: list[tuple[str, Mapping[str, Any]]] = []
+        self.async_calls: list[tuple[str, Mapping[str, Any]]] = []
+
+    def get(
+        self,
+        url: str,
+        *,
+        options: Mapping[str, Any],
+    ) -> Optional[ImageResponsePort]:
+        """记录同步请求并返回固定响应。"""
+        self.sync_calls.append((url, options))
+        return self.sync_response
+
+    async def async_get(
+        self,
+        url: str,
+        *,
+        options: Mapping[str, Any],
+    ) -> Optional[ImageResponsePort]:
+        """记录异步请求并返回固定响应。"""
+        self.async_calls.append((url, options))
+        return self.async_response
+
+
+class _FakeInternalAddress:
+    """返回固定内部地址判断并记录 URL。"""
+
+    def __init__(self, internal: bool = False) -> None:
+        """保存固定判断。"""
+        self.internal = internal
+        self.calls: list[str] = []
+
+    def is_internal(self, url: str) -> bool:
+        """记录 URL 并返回固定判断。"""
+        self.calls.append(url)
+        return self.internal
+
+
+@pytest.fixture(autouse=True)
+def restore_image_ports() -> Iterator[None]:
+    """为每个用例装配无网络 fake，并在结束后恢复原端口。"""
+    previous = configure_image_ports(
+        transport=_FakeImageTransport(),
+        internal_address=_FakeInternalAddress(),
+    )
+    yield
+    reset_image_ports(*previous)
 
 
 def _image_bytes(image_format: str, trailing: bytes = b"") -> bytes:
@@ -67,8 +137,11 @@ def test_fetch_image_with_mime_type_validates_network_content_once():
     content = _image_bytes("PNG")
     image_helper = ImageHelper()
     response = Mock(status_code=200, content=content)
-    request = Mock()
-    request.get_res.return_value = response
+    transport = _FakeImageTransport(sync_response=response)
+    configure_image_ports(
+        transport=transport,
+        internal_address=_FakeInternalAddress(),
+    )
 
     with patch.object(
         image_helper.file_cache,
@@ -77,9 +150,6 @@ def test_fetch_image_with_mime_type_validates_network_content_once():
     ), patch.object(
         image_helper.file_cache,
         "set",
-    ), patch(
-        "app.application.image.RequestUtils",
-        return_value=request,
     ), patch.object(
         image_helper,
         "get_image_mime_type",
@@ -91,6 +161,7 @@ def test_fetch_image_with_mime_type_validates_network_content_once():
 
     assert result == (content, "image/png")
     get_mime_type.assert_called_once_with(content)
+    assert transport.sync_calls[0][0] == "https://images.example/wallpaper.png"
 
 
 def test_async_fetch_image_with_mime_type_only_reads_cached_format_header():
@@ -120,8 +191,11 @@ def test_async_fetch_image_with_mime_type_validates_network_content_once():
     content = _image_bytes("PNG")
     image_helper = ImageHelper()
     response = Mock(status_code=200, content=content)
-    request = Mock()
-    request.get_res = AsyncMock(return_value=response)
+    transport = _FakeImageTransport(async_response=response)
+    configure_image_ports(
+        transport=transport,
+        internal_address=_FakeInternalAddress(),
+    )
 
     with patch.object(
         image_helper.async_file_cache,
@@ -131,9 +205,6 @@ def test_async_fetch_image_with_mime_type_validates_network_content_once():
         image_helper.async_file_cache,
         "set",
         new=AsyncMock(),
-    ), patch(
-        "app.application.image.AsyncRequestUtils",
-        return_value=request,
     ), patch.object(
         image_helper,
         "get_image_mime_type",
@@ -147,6 +218,33 @@ def test_async_fetch_image_with_mime_type_validates_network_content_once():
 
     assert result == (content, "image/png")
     get_mime_type.assert_called_once_with(content)
+    assert transport.async_calls[0][0] == "https://images.example/wallpaper.png"
+
+
+def test_image_request_uses_internal_address_port_for_proxy_decision(monkeypatch):
+    """自动代理策略必须通过注入端口判断内部地址。"""
+    internal_address = _FakeInternalAddress(internal=True)
+    configure_image_ports(
+        transport=_FakeImageTransport(),
+        internal_address=internal_address,
+    )
+    monkeypatch.setattr(
+        image_service,
+        "get_chain_runtime_config_snapshot",
+        lambda: SimpleNamespace(
+            proxy={"https": "http://proxy.example"},
+            normal_user_agent="MoviePilot/Test",
+        ),
+    )
+
+    params = ImageHelper._get_request_params(
+        "https://images.example/wallpaper.png",
+        proxy=None,
+        cookies=None,
+    )
+
+    assert params["proxies"] is None
+    assert internal_address.calls == ["https://images.example/wallpaper.png"]
 
 
 def test_fetch_image_does_not_trust_active_url_suffix():

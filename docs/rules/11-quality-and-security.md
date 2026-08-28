@@ -16,7 +16,7 @@ uv run --locked --no-sync pytest
 
 Run the full test suite when changing:
 - `app/runtime/`, `app/adapters/`, or `app/runtime/compat/` - config, events, managers, adapters, and compatibility boundaries
-- `app/chain/__init__.py` — chain base class
+- `app/chain/base.py` — chain base class
 - `app/modules/__init__.py` — module base class
 - `app/main.py` — application startup
 - The CLI entrypoint (`moviepilot`)

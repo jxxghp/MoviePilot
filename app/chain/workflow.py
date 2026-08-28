@@ -19,7 +19,7 @@ from app.application.workflow import (
     get_configured_workflow_query,
     get_workflow_manager,
 )
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.runtime.events import Event, eventmanager
 from app.runtime.execution import OwnedThreadPoolExecutor
 from app.runtime.log import logger

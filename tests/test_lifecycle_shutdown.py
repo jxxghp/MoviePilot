@@ -640,6 +640,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "后台任务登记器",
         "数据库准备",
         "HTTP 基础能力",
+        "站点访问端口",
         "领域依赖装配",
         "数据库引擎预热",
         "数据库连接预算",
@@ -672,6 +673,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "插件",
         "消息队列",
         "模块服务",
+        "站点访问端口",
         "HTTP 基础能力",
         "文件日志",
     ]
@@ -680,6 +682,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "后台任务登记器",
         "数据库准备",
         "HTTP 基础能力",
+        "站点访问端口",
         "领域依赖装配",
         "数据库引擎预热",
         "数据库连接预算",

@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.schemas.types import EventType
 
 

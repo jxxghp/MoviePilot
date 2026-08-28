@@ -5,7 +5,7 @@ from typing import Any, Optional, Tuple
 
 from app.runtime.execution import run_in_threadpool
 from app.agent.policy.sanitizer import sanitize_for_host
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.runtime.log import logger
 from app.schemas.message import Message, MessageResponse
 from app.schemas.notification import ChannelCapabilityManager, ChannelCapability

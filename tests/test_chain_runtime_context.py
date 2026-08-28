@@ -7,7 +7,7 @@ import pytest
 from app.application.chain import context as chain_context
 from app.application.chain.context import ChainRuntimeContext
 from app.application.configuration import ChainRuntimeConfig
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 
 

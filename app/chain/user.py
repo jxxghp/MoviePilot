@@ -5,7 +5,7 @@ from typing import Literal, Optional, Tuple, Union
 from app.application.security.otp import OtpUtils
 from app.application.security.token import get_password_hash, verify_password
 from app.application.security.user import AuxiliaryUserCreate, UserAuthSnapshot
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.runtime.log import logger
 from app.schemas.event import AuthCredentials, AuthInterceptCredentials
 from app.schemas.types import ChainEventType

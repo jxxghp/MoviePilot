@@ -57,8 +57,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `domain` | 已与 DB、Application、Adapter 保持单向隔离 | `domain/context.py` 等核心对象过大，来源投影与领域模型仍集中 |
 | `runtime` | 已有任务、事件、缓存、托管资源和停止合同 | 导入/构造时启动线程；`global_vars` 仍混合停止、主循环和 WebPush 状态 |
 | `adapters` | 技术与命名外部生态已有明确目录 | Application/Chain 仍直接识别部分具体 Adapter；例外规则没有形式化 |
-| `application` | 已有命令、Port、Outbox 和安全能力 | 部分 Port 是 `Any` 服务定位器，ORM/具体 Adapter 仍会穿透边界 |
-| `chain` | 多入口复用的用例编排与 Module 动态分发已稳定 | God object、私有长方法、包根 SCC、无参构造和资源物化过重 |
+| `application` | 已有命令、Port、Outbox 和安全能力，具体 Adapter 直连已清零 | 部分 Port 是 `Any` 服务定位器，仍需继续收窄合同 |
+| `chain` | 多入口复用的用例编排与 Module 动态分发已稳定，包根 SCC 已清零 | God object、私有长方法、无参构造和资源物化过重 |
 | `db/oper` | Model/Oper 已不自建 Session、不自行提交 | 无 Session Facade 仍被宿主组合根注入，业务操作可能拆成多个事务 |
 | `db/adapters` | 已有显式 Session/UoW 的参考切片 | Port 返回类型不够稳定；Outbox 的 stage 与自提交 dispatcher store 混在一个类型 |
 | `startup` | 已是 HostRuntime 和生命周期组合根 | `initializers/modules.py` 高扇出，仍有导入期 provider 注册和具体对象目录装配 |
@@ -69,8 +69,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 859 / 7,095 | `dependency-baseline.json` 当前快照 |
-| 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
+| 宿主 Python 模块 / 内部依赖边 | 862 / 7,123 | `dependency-baseline.json` 当前快照 |
+| 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
 | Module Contract | 217 specs / 215 methods / 266 calls | 动态方法名为 0；内部 planning 合同不进入插件调度，旧 transfer 只保留 provider ABI |
@@ -112,8 +112,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-104 | P1 | 待执行 | 收口跨多次写入的业务事务 | 站点/规则引用清理可整体回滚或幂等恢复 |
 | ARCH-105 | P1 | 已验证 | 明确 post-commit 与 Outbox 完成语义 | 业务提交、effect 完成/pending 可区分；stager/store 分离且 claim/settlement 受 fencing，外部 sink 仍承担 at-least-once 幂等边界 |
 | ARCH-106 | P1 | 进行中 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志与消息 owner 已收口；GlobalVar/provider 继续治理 |
-| ARCH-107 | P1 | 待执行 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
-| ARCH-108 | P1 | 执行中 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Passkey 缓存纵切面已验证，其余 Adapter/HTTP/DNS 债务继续按低水位迁移 |
+| ARCH-107 | P1 | 已验证 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
+| ARCH-108 | P1 | 执行中 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Application Adapter/DNS 债务已清零；Chain Adapter 与宿主 HTTP 债务继续迁移 |
 | ARCH-109 | P1 | 待执行 | 按用例拆分超大 Chain、Scheduler 和厚 API | 稳定 Facade 保留，决策/I/O/状态/生命周期各有 owner |
 | ARCH-110 | P1 | 待执行 | Module/Event Contract 分可信级执行 | 宿主 provider 严格，第三方插件仍兼容诊断 |
 | ARCH-111 | P1 | 待执行 | 升级复杂度、类型、覆盖率和并发原语门禁 | 高风险私有路径也进入只降不增的治理面 |
@@ -455,21 +455,20 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 **问题与证据**
 
 - 当前新增 SCC 为 `app.chain -> app.chain._messaging/_recognition -> app.chain`。
-- `app/chain/__init__.py` 同时是 1,000 行以上的 `ChainBase` 实现和插件/宿主导入入口，
-  又在包初始化时导入 mixin。
+- `ChainBase` 已迁到 `app/chain/base.py`；物理包根仅保留包说明，旧符号由 Compat/SDK 惰性解析。
 - `baseline.py --check-host` 会确认该 SCC 与 fixture 一致，但现有语义测试没有拒绝 Chain 包内环。
 
 **目标与步骤**
 
-- [ ] 将 canonical `ChainBase` 实现移到 `app/chain/base.py`。
-- [ ] 宿主全部改用 `app.chain.base.ChainBase`；包根不得 eager re-export，否则父包与子模块仍形成 SCC。
-- [ ] 若 `from app.chain import ChainBase` 必须继续兼容，使用仅限 ABI 的 lazy facade，并以独立测试
+- [x] 将 canonical `ChainBase` 实现移到 `app/chain/base.py`。
+- [x] 宿主全部改用 `app.chain.base.ChainBase`；包根不做 eager re-export。
+- [x] `from app.chain import ChainBase` 只通过 Compat/SDK lazy facade 兼容，并以独立测试
   证明它没有被宿主 canonical 路径使用；同时把这一精确例外写入“不得延迟导入隐藏循环”的规则。
-- [ ] 保证 `_messaging`、`_recognition`、`base` 任意冷导入顺序都不依赖部分初始化包。
-- [ ] 对排除 `app/plugins/**` 的完整宿主图断言 SCC 集合等于精确 allowlist，而不是继续追加根前缀。
-- [ ] TMDB 29 模块移植包允许正常单向包外依赖，但禁止 SCC 成员扩展到 allowlist 外、包外模块
+- [x] 保证 `_messaging`、`_recognition`、`base` 任意冷导入顺序都不依赖部分初始化包。
+- [x] 对排除 `app/plugins/**` 的完整宿主图断言 SCC 集合等于精确 allowlist，而不是继续追加根前缀。
+- [x] TMDB 29 模块移植包允许正常单向包外依赖，但禁止 SCC 成员扩展到 allowlist 外、包外模块
   通过反向边加入该 SCC，或新增不符合分层方向的边。
-- [ ] 更新兼容、SDK、架构文档和 fixture 前先审查真实依赖变化。
+- [x] 更新兼容、SDK、架构文档和 fixture 前先审查真实依赖变化。
 
 **验收**
 
@@ -489,8 +488,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- 当前 `app/application` 有 8 个文件、13 条直接 Adapter 导入，代表路径包括
-  `image.py`、`rss.py`、`security/cookie.py`；Passkey 与 Backup 纵切面已经退出临时 policy。
+- `app/application` 原有 8 个文件、13 条直接 Adapter 导入已全部迁移为 Application-owned Port，
+  startup 统一注入具体实现；Passkey、Backup 与 DNS 纵切面也已退出临时 policy。
 - `app/chain` 有 8 个文件、13 条直接 Adapter 导入，使用 `RequestUtils`、Browser、Cloudflare、
   CookieCloud、ServerHelper 等具体能力。
 - Passkey Application 已改为消费启动注入的 `PasskeyChallengeCache`，不再判断 Redis 或导入
@@ -508,7 +507,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [x] 为 Backup 定义 Application-owned artifact store Port，由 startup 注入文件系统实现。
 - [ ] 将 policy 中 11 条普通 HTTP/Session bridge 债务迁移到统一网络能力并把目标收缩为空。
 - [x] 为 Application SSRF 校验注入 DNS 解析 Port，清除 `socket.getaddrinfo` 直接 I/O。
-- [ ] 命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不在 Application/Chain 保留直连例外。
+- [x] Application 中命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不保留直连例外。
+- [ ] Chain 中命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不保留直连例外。
 - [ ] 最终把基线收缩到零或少量书面化例外，而不是一次性禁止后再大量豁免。
 
 ```bash

@@ -774,6 +774,13 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 }
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.chain": {
+        "ChainBase": SymbolAlias(
+            target_module="app.sdk.chain",
+            target_name="ChainBase",
+            replacement="app.sdk.chain.ChainBase",
+        ),
+    },
     "app.db.oper": {
         "SiteOper": SymbolAlias(
             target_module="app.sdk._legacy.site",

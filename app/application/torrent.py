@@ -2,29 +2,68 @@ import datetime
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Tuple, Optional, List, Union, Dict, Any
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 from urllib.parse import unquote
 
 from torrentool.api import Torrent
 
-from app.runtime.cache import TTLCache, FileCache
-from app.application.configuration import get_chain_runtime_config_snapshot
-from app.domain.context import Context, TorrentInfo, MediaInfo
+from app.application.configuration import get_chain_runtime_config_snapshot, get_configured_system_config
+from app.application.site.query import get_configured_site_query_service
+from app.domain import torrent as torrent_rules
+from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import audio_quality_tier, normalize_audio_format, parse_audio_quality
 from app.domain.metainfo import MetaInfo
-from app.application.site.query import get_configured_site_query_service
-from app.application.configuration import get_configured_system_config
-from app.runtime.log import logger
-from app.schemas.types import MediaType, SystemConfigKey
-from app.adapters.network.http import RequestUtils
-from app.schemas.media import resolve_media_identity
-from app.domain import torrent as torrent_rules
 from app.foundation import text as text_tools
 from app.foundation.crypto import HashUtils
-
+from app.runtime.cache import FileCache, TTLCache
+from app.runtime.log import logger
+from app.schemas.media import resolve_media_identity
+from app.schemas.types import MediaType, SystemConfigKey
 
 _SIZE_UNIT = 1024 * 1024
+
+
+class TorrentResponsePort(Protocol):
+    """声明种子下载用例实际读取的 HTTP 响应字段。"""
+
+    status_code: int
+    headers: dict[str, str]
+    content: bytes
+    text: str
+    reason: str
+
+
+class TorrentHttpPort(Protocol):
+    """声明种子下载所需的同步 GET/POST 能力。"""
+
+    def request(self, *, method: str, url: str, cookie: Optional[str],
+                ua: Optional[str], referer: Optional[str], proxies: Optional[dict[str, Any]],
+                allow_redirects: bool = True,
+                data: Optional[dict[str, Any]] = None) -> Optional[TorrentResponsePort]:
+        """发送种子下载请求并返回窄响应。"""
+
+
+_torrent_http_port: Optional[TorrentHttpPort] = None
+
+
+def configure_torrent_port(http: TorrentHttpPort) -> None:
+    """由组合根装配种子下载 HTTP 端口。"""
+    global _torrent_http_port
+    _torrent_http_port = http
+
+
+def reset_torrent_port() -> None:
+    """清除种子下载 HTTP 端口。"""
+    global _torrent_http_port
+    _torrent_http_port = None
+
+
+def _require_torrent_port() -> TorrentHttpPort:
+    """返回已装配端口，缺失时明确拒绝隐式构造 Adapter。"""
+    if _torrent_http_port is None:
+        raise RuntimeError("种子下载端口尚未由启动组合根装配")
+    return _torrent_http_port
 
 # 站点首页、RSS 与音乐独立缓存的稳定键名；迁移脚本也复用这一事实来源。
 _TORRENT_CACHE_KEYS = (
@@ -106,7 +145,7 @@ class TorrentHelper:
         :return: 种子缓存相对路径【用于索引缓存】, 种子内容、种子主目录、种子文件清单、错误信息
         """
         if url.startswith("magnet:"):
-            return None, url, "", [], f"磁力链接"
+            return None, url, "", [], "磁力链接"
         # 构建 torrent 种子文件的缓存路径
         cache_path = Path(HashUtils.md5(url)).with_suffix(".torrent")
         # 缓存处理器
@@ -127,29 +166,26 @@ class TorrentHelper:
                 logger.error(f"处理缓存的种子文件 {cache_path} 时出错: {err}，将重新下载")
         # 下载种子文件
         config = get_chain_runtime_config_snapshot()
-        req = RequestUtils(
-            ua=ua,
-            cookies=cookie,
-            referer=referer,
-            proxies=config.proxy if proxy else None
-        ).get_res(url=url, allow_redirects=False)
+        http_port = _require_torrent_port()
+        req = http_port.request(
+            method="GET", url=url, cookie=cookie, ua=ua, referer=referer,
+            proxies=config.proxy if proxy else None, allow_redirects=False,
+        )
         while req and req.status_code in [301, 302]:
             url = req.headers['Location']
             if url and url.startswith("magnet:"):
-                return None, url, "", [], f"获取到磁力链接"
-            req = RequestUtils(
-                ua=ua,
-                cookies=cookie,
-                referer=referer,
-                proxies=config.proxy if proxy else None
-            ).get_res(url=url, allow_redirects=False)
+                return None, url, "", [], "获取到磁力链接"
+            req = http_port.request(
+                method="GET", url=url, cookie=cookie, ua=ua, referer=referer,
+                proxies=config.proxy if proxy else None, allow_redirects=False,
+            )
         if req and req.status_code == 200:
             if not req.content:
                 return cache_path, None, "", [], "未下载到种子数据"
             # 解析内容格式
             if req.content.startswith(b"magnet:"):
                 # 磁力链接
-                return cache_path, req.text, "", [], f"获取到磁力链接"
+                return cache_path, req.text, "", [], "获取到磁力链接"
             if "下载种子文件".encode("utf-8") in req.content:
                 # 首次下载提示页面
                 skip_flag = False
@@ -166,12 +202,11 @@ class TorrentHelper:
                             for item in inputs:
                                 data[item[0]] = item[1]
                             # 改写req
-                            req = RequestUtils(
-                                ua=ua,
-                                cookies=cookie,
-                                referer=referer,
-                                proxies=config.proxy if proxy else None
-                            ).post_res(url=action, data=data)
+                            req = http_port.request(
+                                method="POST", url=action, cookie=cookie, ua=ua,
+                                referer=referer, proxies=config.proxy if proxy else None,
+                                data=data,
+                            )
                             if req and req.status_code == 200:
                                 # 检查是不是种子文件，如果不是抛出异常
                                 Torrent.from_string(req.content)
@@ -188,6 +223,7 @@ class TorrentHelper:
                     logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{str(err)}")
                 if not skip_flag:
                     return cache_path, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
+            assert req is not None
             # 种子内容
             if req.content:
                 # 检查是不是种子文件，如果不是仍然抛出异常

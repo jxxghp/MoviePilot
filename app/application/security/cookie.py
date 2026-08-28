@@ -1,17 +1,67 @@
 import base64
 import time
-from typing import Optional, Tuple
+from typing import Any, Callable, Optional, Protocol, Tuple
 from urllib.parse import urljoin, urlparse
 
 from lxml import etree
 
-from app.adapters.external.ocr import OcrHelper
-from app.adapters.network.browser import BrowserPage, PlaywrightHelper
-from app.adapters.network.http import RequestUtils
 from app.application.security.twofactor import TwoFactorAuth
 from app.domain.site import SiteUtils
 from app.foundation import url as url_tools
 from app.runtime.log import logger
+
+CookieResult = Tuple[Optional[str], Optional[str], str]
+
+
+class CookieBrowserPort(Protocol):
+    """声明站点登录用例所需的受控浏览器执行能力。"""
+
+    def action(self, *, url: str, callback: Callable[[Any], CookieResult],
+               proxies: Optional[dict[str, Any]], timeout: Optional[int]) -> CookieResult:
+        """在受控页面会话内执行登录回调并返回兼容三元组。"""
+
+
+class CaptchaHttpPort(Protocol):
+    """声明验证码图片下载能力。"""
+
+    def fetch(self, *, url: str, cookie: str, ua: str) -> Optional[bytes]:
+        """下载验证码图片字节。"""
+
+
+class CaptchaOcrPort(Protocol):
+    """声明验证码图片识别能力。"""
+
+    def recognize(self, image_b64: str) -> str:
+        """识别 Base64 编码的验证码图片。"""
+
+
+_cookie_browser_port: Optional[CookieBrowserPort] = None
+_captcha_http_port: Optional[CaptchaHttpPort] = None
+_captcha_ocr_port: Optional[CaptchaOcrPort] = None
+
+
+def configure_cookie_ports(*, browser: CookieBrowserPort, http: CaptchaHttpPort,
+                           ocr: CaptchaOcrPort) -> None:
+    """由组合根装配站点登录与验证码端口。"""
+    global _cookie_browser_port, _captcha_http_port, _captcha_ocr_port
+    _cookie_browser_port = browser
+    _captcha_http_port = http
+    _captcha_ocr_port = ocr
+
+
+def reset_cookie_ports() -> None:
+    """清除站点登录端口，避免跨生命周期保留 Adapter。"""
+    global _cookie_browser_port, _captcha_http_port, _captcha_ocr_port
+    _cookie_browser_port = None
+    _captcha_http_port = None
+    _captcha_ocr_port = None
+
+
+def _require_cookie_ports() -> Tuple[CookieBrowserPort, CaptchaHttpPort, CaptchaOcrPort]:
+    """返回已装配端口，缺失时明确拒绝隐式构造 Adapter。"""
+    if _cookie_browser_port is None or _captcha_http_port is None or _captcha_ocr_port is None:
+        raise RuntimeError("站点登录端口尚未由启动组合根装配")
+    return _cookie_browser_port, _captcha_http_port, _captcha_ocr_port
 
 
 class CookieHelper:
@@ -67,7 +117,7 @@ class CookieHelper:
     }
 
     @staticmethod
-    def get_page_content(page: BrowserPage, retries: int = 3, interval: float = 1.0) -> Optional[str]:
+    def get_page_content(page: Any, retries: int = 3, interval: float = 1.0) -> Optional[str]:
         """
         获取页面源码，页面跳转中（如登录前后的重定向）会导致 page.content() 抛出
         "Unable to retrieve content because the page is navigating" 异常，等待加载完成后重试
@@ -161,7 +211,7 @@ class CookieHelper:
         :return: cookie、ua、message
         """
 
-        def __page_handler(page: BrowserPage) -> Tuple[Optional[str], Optional[str], str]:
+        def __page_handler(page: Any) -> CookieResult:
             """
             页面处理
             :return: Cookie和UA
@@ -379,10 +429,11 @@ class CookieHelper:
         if not url or not username or not password:
             return None, None, "参数错误"
 
-        return PlaywrightHelper().action(url=url,
-                                         callback=__page_handler,
-                                         proxies=proxies,
-                                         timeout=timeout)
+        browser_port, _, _ = _require_cookie_ports()
+        return browser_port.action(url=url,
+                                   callback=__page_handler,
+                                   proxies=proxies,
+                                   timeout=timeout)
 
     @staticmethod
     def __get_captcha_text(cookie: str, ua: str, code_url: str) -> str:
@@ -391,15 +442,11 @@ class CookieHelper:
         """
         if not code_url:
             return ""
-        ret = RequestUtils(ua=ua, cookies=cookie).get_res(code_url)
-        if ret:
-            if not ret.content:
-                return ""
-            return OcrHelper().get_captcha_text(
-                image_b64=base64.b64encode(ret.content).decode()
-            )
-        else:
+        _, http_port, ocr_port = _require_cookie_ports()
+        content = http_port.fetch(url=code_url, cookie=cookie, ua=ua)
+        if not content:
             return ""
+        return ocr_port.recognize(base64.b64encode(content).decode())
 
     @staticmethod
     def __get_captcha_url(siteurl: str, imageurl: str) -> str:

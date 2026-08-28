@@ -61,7 +61,7 @@ class ExampleModule(_ModuleBase, _DownloaderBase):
 
 **When to use:** Adding a new business workflow that is shared across multiple entrypoints (API endpoint, CLI, agent, scheduler, webhook). Chains coordinate modules, helpers, databases, events, and caches.
 
-**Base class:** `ChainBase` in `app/chain/__init__.py`
+**Base class:** `ChainBase` in `app/chain/base.py`
 
 **Calling modules from a chain:**
 

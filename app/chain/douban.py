@@ -1,6 +1,6 @@
 from typing import Any, List, Optional
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.context import MediaPerson as _SchemaMediaPerson

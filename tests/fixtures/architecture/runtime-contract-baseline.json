@@ -902,6 +902,13 @@
           "target_name": "TransferTask"
         }
       },
+      "app.chain": {
+        "ChainBase": {
+          "replacement": "app.sdk.chain.ChainBase",
+          "target_module": "app.sdk.chain",
+          "target_name": "ChainBase"
+        }
+      },
       "app.chain.media": {
         "ScrapingChain": {
           "replacement": "app.chain.scraping.ScrapingChain",
@@ -1831,10 +1838,10 @@
       "EventType.SystemError": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "152b6c8e20d4c16640799a429f67f2421294e34751ccc07b0e513653f342e78e",
+          "8b725b957d7699c989b20606ab2ed4df85768a16096eba922b9ddf1232f3a9fd",
           "a812b122b031e0ed33df0300292fad84360bd09223de07f3d13d0bd3d1a59429",
-          "dcfe851d124af4d4c3781b65b0c0115934a9c2422ee20aca53d625dda3190289",
-          "ebaac7c11265a2f7c59dd084d36fc4b1593c284c5fd5379a564bbae81ea598fc"
+          "b80e0452e3c7ad08b2c5a83cd7bea4185e0ed3f3012d20f2f1688597e6cefe57",
+          "dcfe851d124af4d4c3781b65b0c0115934a9c2422ee20aca53d625dda3190289"
         ]
       },
       "EventType.TransferComplete": {
@@ -2131,30 +2138,6 @@
         "receiver_kind": "injected_event_publisher"
       },
       {
-        "caller": "app.chain",
-        "dynamic": false,
-        "events": [
-          "EventType.SystemError"
-        ],
-        "fingerprint": "ebaac7c11265a2f7c59dd084d36fc4b1593c284c5fd5379a564bbae81ea598fc",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "ChainBase.__handle_plugin_error",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain",
-        "dynamic": false,
-        "events": [
-          "EventType.SystemError"
-        ],
-        "fingerprint": "152b6c8e20d4c16640799a429f67f2421294e34751ccc07b0e513653f342e78e",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "ChainBase.__handle_system_error",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
         "caller": "app.chain._messaging",
         "dynamic": false,
         "events": [
@@ -2250,6 +2233,30 @@
         "invalid": false,
         "method": "send_event",
         "qualname": "ScrapeBatchMixin._send_metadata_scrape_event",
+        "receiver_kind": "injected_event_manager"
+      },
+      {
+        "caller": "app.chain.base",
+        "dynamic": false,
+        "events": [
+          "EventType.SystemError"
+        ],
+        "fingerprint": "8b725b957d7699c989b20606ab2ed4df85768a16096eba922b9ddf1232f3a9fd",
+        "invalid": false,
+        "method": "send_event",
+        "qualname": "ChainBase.__handle_plugin_error",
+        "receiver_kind": "injected_event_manager"
+      },
+      {
+        "caller": "app.chain.base",
+        "dynamic": false,
+        "events": [
+          "EventType.SystemError"
+        ],
+        "fingerprint": "b80e0452e3c7ad08b2c5a83cd7bea4185e0ed3f3012d20f2f1688597e6cefe57",
+        "invalid": false,
+        "method": "send_event",
+        "qualname": "ChainBase.__handle_system_error",
         "receiver_kind": "injected_event_manager"
       },
       {
@@ -8167,12 +8174,12 @@
       ],
       "async_bangumi_info": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.bangumi",
           "count": 1,
           "mode": "async"
         },
         {
-          "caller": "app.chain.bangumi",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
@@ -8212,7 +8219,7 @@
       ],
       "async_douban_info": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
@@ -8275,7 +8282,7 @@
       ],
       "async_match_doubaninfo": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
@@ -8289,7 +8296,7 @@
       ],
       "async_match_tmdbinfo": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
@@ -8332,7 +8339,7 @@
       ],
       "async_obtain_images": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
@@ -8356,42 +8363,42 @@
       ],
       "async_refresh_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
       ],
       "async_search_collections": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
       ],
       "async_search_medias": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
       ],
       "async_search_persons": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
       ],
       "async_search_subtitles": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
       ],
       "async_search_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
@@ -8431,7 +8438,7 @@
       ],
       "async_tmdb_info": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "async"
         }
@@ -8589,12 +8596,12 @@
       ],
       "bangumi_info": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.bangumi",
           "count": 1,
           "mode": "sync"
         },
         {
-          "caller": "app.chain.bangumi",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -8629,7 +8636,7 @@
       ],
       "clear_cache": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -8664,7 +8671,7 @@
       ],
       "douban_info": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -8713,14 +8720,14 @@
       ],
       "download": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "download_added": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -8839,7 +8846,7 @@
       ],
       "execute_transfer_plan": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         },
@@ -8851,7 +8858,7 @@
       ],
       "filter_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -8893,14 +8900,14 @@
       ],
       "get_search_page_size": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "get_torrent_trackers": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -8921,14 +8928,14 @@
       ],
       "list_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "load_category_config": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -8949,7 +8956,7 @@
       ],
       "match_doubaninfo": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -8963,28 +8970,28 @@
       ],
       "match_tmdbinfo": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "media_category": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "media_exists": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "media_files": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9080,14 +9087,14 @@
       ],
       "message_parser": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "metadata_img": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         },
@@ -9258,21 +9265,21 @@
       ],
       "obtain_images": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "obtain_specific_image": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "plan_transfer": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9303,7 +9310,7 @@
       ],
       "refresh_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9317,14 +9324,14 @@
       ],
       "register_commands": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "remove_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9338,28 +9345,28 @@
       ],
       "save_category_config": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "scheduler_job": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "search_collections": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "search_medias": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9388,21 +9395,21 @@
       ],
       "search_persons": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "search_subtitles": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "search_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9423,7 +9430,7 @@
       ],
       "set_torrents_tag": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9444,14 +9451,14 @@
       ],
       "start_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "stop_torrents": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9519,7 +9526,7 @@
       ],
       "tmdb_info": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9596,14 +9603,14 @@
       ],
       "torrent_files": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "transfer_completed": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9638,14 +9645,14 @@
       ],
       "tvdb_info": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
       ],
       "tvdb_slug": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9659,7 +9666,7 @@
       ],
       "update_torrent": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9680,7 +9687,7 @@
       ],
       "webhook_parser": [
         {
-          "caller": "app.chain",
+          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9806,6 +9813,13 @@
         "kind": "import",
         "name": "is_fresh",
         "target": "app.runtime.cache.is_fresh"
+      }
+    ],
+    "app.sdk.chain": [
+      {
+        "kind": "import",
+        "name": "ChainBase",
+        "target": "app.chain.base.ChainBase"
       }
     ],
     "app.sdk.config": [

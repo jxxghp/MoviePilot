@@ -9,7 +9,7 @@ from typing import Optional, Union
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.runtime import version as runtime_version
 from app.runtime.log import logger
 from app.runtime.state import SystemHelper

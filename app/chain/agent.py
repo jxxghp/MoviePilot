@@ -5,7 +5,7 @@ ChainBase 提供的消息处理状态机（渠道处理状态、直发消息等�
 因此继承关系归属链层；具体 Agent 运行时（MoviePilotAgent 等）留在 app.agent。
 """
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 
 
 class AgentChain(ChainBase):

@@ -40,9 +40,9 @@ from app.application.subscription.write import (
     build_subscription_create_request,
 )
 from app.application.torrent import TorrentHelper
-from app.chain import ChainBase
 from app.chain._interaction import InteractionChainMixin
 from app.chain._music import MusicSubscribeMixin
+from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain

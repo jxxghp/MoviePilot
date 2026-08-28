@@ -692,8 +692,8 @@ flowchart LR
 - `tests/fixtures/architecture/dependency-baseline.json` 记录生成事实；人工审查的 SCC 分类单独存入
   `dependency-policy.json`。完整宿主 SCC 必须精确匹配 policy，新增、扩大、变形和陈旧 policy 都失败；
   `--write-host` 不会替代人工决策。
-- 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；policy 将其全部标为有 owner 的
-  `temporary_debt`，并以初始 28 条冻结上界、目标为空集合。新增、替换、删除后未清理 policy 都会失败。
+- 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；Application 已清零，policy 只保留
+  Chain 的 13 条有 owner `temporary_debt`，目标为空集合。新增、替换、删除后未清理 policy 都会失败。
 - `direct_egress` 记录全宿主 66 条 raw transport、network SDK 和协议操作 identity；11 条普通 HTTP/
   Session bridge 与 1 条 Application DNS I/O 是清零债务，54 条 canonical transport、SDK、
   stream/vendor/diagnostic/control-plane 事实是精确 containment。每条初始边的指纹由测试独立冻结，
@@ -713,9 +713,10 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 859 |
-| 内部导入边 | 7,095 |
-| 非平凡 SCC | 2（`ARCH-107` 临时 Chain 包根环；精确 containment 的 TMDB 移植包环） |
+| Python 模块 | 862 |
+| 内部导入边 | 7,123 |
+| 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
+| Application / Chain 具体 Adapter 直连 | 0 / 13 |
 | Direct egress | 66（11 条待迁移债务，55 条精确 containment） |
 | Module Contract V2 spec | 217（其中 215 个进入 `run_module` 观察面） |
 | Event Contract | 53 |

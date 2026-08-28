@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Union
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 
 
 class AcoustIdChain(ChainBase):

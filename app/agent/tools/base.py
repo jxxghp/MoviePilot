@@ -22,7 +22,7 @@ from app.agent.tools.tags import ToolTag
 from app.application.agent import AgentDataContext
 from app.application.messaging.agent import matches_channel_admin
 from app.application.notification import get_notification_configs
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.message import Message

@@ -202,9 +202,8 @@ RSS is not classified as a transport adapter merely because it uses HTTP. The
 current `RssHelper` combines feed parsing, torrent item semantics, configured
 site-specific URL discovery and browser fallback, so it belongs to
 `app/application/rss.py`. The target design gives it ownership of the required
-technical Ports and lets startup inject network/system Adapter implementations.
-Its current concrete imports are tracked as `S2-L6` temporary debt, not an
-approved dependency direction. Likewise, the generated
+technical Ports, and startup injects the network/system Adapter implementations;
+no concrete Adapter import remains in the Application module. Likewise, the generated
 site extension owns the configured catalog/authentication/index capability and
 lives in `app/application/site/`; only its download and file installation
 mechanism remains in `app/adapters/system/resource.py`.
@@ -648,17 +647,16 @@ policy.
 
 The semantic architecture test compares every SCC in the complete host graph with
 the exact member sets in policy. A new SCC, member expansion, changed member set,
-or stale policy entry fails. The current policy has only two classifications:
+or stale policy entry fails. The current policy has one classification:
 
-- `temporary_debt`: the three-module `app.chain` package-root cycle, owned by
-  `ARCH-107` and removed when `ChainBase` moves to `app.chain.base`.
 - `contained_vendor`: the exact 29-module TMDB vendored SCC. It may have ordinary
   one-way dependencies outside the package, but no outside module may join the SCC
   and its member set may not grow.
 
 The target remains zero canonical host cycles except the precisely contained
-vendor component. A temporary policy entry is an executable migration obligation,
-not precedent for approving another cycle.
+vendor component. `ChainBase` lives in `app.chain.base`; the physical package root
+has no eager export, and the old package-root symbol is available only through the
+exact Compat overlay backed by `app.sdk.chain`.
 
 The same fact/policy split governs direct Adapter imports. The generated
 dependency baseline records the original runtime imports from `app.application`

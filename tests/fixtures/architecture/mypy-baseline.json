@@ -1130,7 +1130,6 @@
     "arg-type": 1,
     "misc": 8,
     "no-any-return": 10,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 5
   },
@@ -1151,9 +1150,6 @@
   },
   "app/application/messaging/chat.py": {
     "type-arg": 8
-  },
-  "app/application/messaging/ingress.py": {
-    "arg-type": 2
   },
   "app/application/messaging/interaction.py": {
     "no-untyped-def": 4,
@@ -1218,7 +1214,6 @@
     "type-arg": 3
   },
   "app/application/rss.py": {
-    "arg-type": 2,
     "assignment": 5,
     "attr-defined": 4,
     "import-untyped": 2,
@@ -1235,10 +1230,9 @@
   "app/application/security/cookie.py": {
     "arg-type": 3,
     "assignment": 2,
-    "attr-defined": 3,
     "no-any-return": 1,
     "type-arg": 3,
-    "union-attr": 13
+    "union-attr": 11
   },
   "app/application/security/otp.py": {
     "no-any-return": 3
@@ -1291,7 +1285,7 @@
     "arg-type": 2
   },
   "app/application/torrent.py": {
-    "arg-type": 14,
+    "arg-type": 2,
     "assignment": 3,
     "attr-defined": 1,
     "no-untyped-call": 1,
@@ -1299,18 +1293,11 @@
     "operator": 2,
     "return-value": 1,
     "type-arg": 4,
-    "union-attr": 8,
+    "union-attr": 4,
     "var-annotated": 1
   },
   "app/application/torrent_cache.py": {
     "type-arg": 1
-  },
-  "app/chain/__init__.py": {
-    "assignment": 13,
-    "attr-defined": 1,
-    "no-any-return": 50,
-    "no-untyped-def": 7,
-    "type-arg": 31
   },
   "app/chain/_interaction.py": {
     "assignment": 3,
@@ -1362,6 +1349,13 @@
     "no-any-return": 14,
     "no-untyped-def": 2,
     "type-arg": 2
+  },
+  "app/chain/base.py": {
+    "assignment": 13,
+    "attr-defined": 1,
+    "no-any-return": 50,
+    "no-untyped-def": 7,
+    "type-arg": 31
   },
   "app/chain/dashboard.py": {
     "no-any-return": 2

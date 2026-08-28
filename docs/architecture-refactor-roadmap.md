@@ -120,11 +120,11 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
 | S2-L1 日志/消息资源显式生命周期 | `VERIFIED` | S0 | 配置冷导入和非消息 Chain 构造零新增日志/消息线程；lifespan 显式创建共享 owner，启动失败、关闭超时、重试及连续两轮 lifespan 均收口；Chain 轻量客户端不保留首个回调 |
-| S2-L2 ChainBase 与 SCC 清零 | `PLANNED` | S0-L2.2 | canonical `app.chain.base` 落地，包根无 eager/重复导出，宿主包根导入清零，Chain SCC 消失 |
+| S2-L2 ChainBase 与 SCC 清零 | `VERIFIED` | S0-L2.2 | canonical `app.chain.base` 已落地，包根无 eager/重复导出，宿主包根导入清零，旧符号只经 `app.sdk.chain` 与 Compat 保持同一类身份；完整宿主 SCC 只剩精确 containment 的 TMDB 移植包 |
 | S2-L3 GlobalVar/provider 注册收口 | `PLANNED` | S2-L1 | `global_vars` canonical 消费清零，provider 注册进入显式装配阶段并可 reset；Legacy 入口精确保留 |
 | S2-L4 Passkey 缓存边界 | `VERIFIED` | S0-L2.4 | `PasskeyChallengeCache` 由 startup 注入，Application 不识别 Redis；严格 `AtomicCacheBackend.store/consume` 由 Memory/Redis backend 分别实现，challenge 仅能被原子领取一次 |
 | S2-L5 Backup artifact Port | `VERIFIED` | S0-L2.4 | Application-owned `BackupArtifactStore`/factory 覆盖创建、发布、清理、列举、解析、删除和元数据读取；startup 注入唯一 `BackupFiles` 实现，Application 具体 Adapter 直连由 14 降至 13，完整备份调用链 62 项通过 |
-| S2-L6 Application Adapter/DNS 债务清零 | `IN PROGRESS` | S2-L4,S2-L5 | DNS 子切片已验证：SSRF 校验消费注入 `DnsResolver`，系统 `getaddrinfo` 只由 `adapters/network/resolver.py` 持有；当前依赖事实为 859 个模块、7,095 条边，其余 Application 具体 Adapter 边继续清零 |
+| S2-L6 Application Adapter/DNS 债务清零 | `VERIFIED` | S2-L4,S2-L5 | Application 自有 DNS、图片、消息回环、RSS、站点登录、种子、系统加速 Port，startup 统一注入；13 条具体 Adapter 边及 Application DNS I/O 均归零，未装配和失败回滚语义已验证 |
 | S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `PLANNED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 归零；SDK/stream/vendor 例外保持精确 containment |
 
 ### S3：大型编排器职责清零

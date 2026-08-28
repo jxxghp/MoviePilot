@@ -1,6 +1,6 @@
 from unittest.mock import Mock, patch
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import MediaSource, MediaType

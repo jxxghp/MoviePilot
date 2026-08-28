@@ -72,6 +72,10 @@ from app.startup.initializers.scheduler import (
     init_scheduler,
     stop_scheduler,
 )
+from app.startup.initializers.site import (  # noqa: E402
+    init_site_access_ports,
+    reset_site_access_ports,
+)
 from app.startup.initializers.transfer import (
     replay_pending_transfers,
     stop_transfer_runtime,
@@ -402,6 +406,16 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             stop_timeout_seconds=120,
         ),
         LifecycleComponent(
+            name="站点访问端口",
+            dependencies=("HTTP 基础能力",),
+            start=init_site_access_ports,
+            stop=reset_site_access_ports,
+            start_order=25,
+            stop_order=75,
+            start_timeout_seconds=30,
+            stop_timeout_seconds=30,
+        ),
+        LifecycleComponent(
             name="领域依赖装配",
             dependencies=("HTTP 基础能力",),
             start=configure_domain_dependencies,
@@ -431,7 +445,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         ),
         LifecycleComponent(
             name="模块服务",
-            dependencies=("路由",),
+            dependencies=("路由", "站点访问端口"),
             start=lambda: initialize_modules_component(app),
             stop=stop_modules,
             start_order=70,

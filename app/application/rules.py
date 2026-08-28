@@ -22,7 +22,6 @@ from pyparsing import (
     opAssoc,
 )
 
-from app.adapters.system import rust as rust_accel
 from app.application.configuration import (
     SystemConfigStagingPort,
     get_configured_system_config,
@@ -49,6 +48,23 @@ _RULE_GROUP_DEFAULT_CONFIG_KEYS = (
     SystemConfigKey.DefaultTvSubscribeConfig,
     SystemConfigKey.DefaultMusicSubscribeConfig,
 )
+
+
+class FilterRuleParser(Protocol):
+    """描述可选的过滤规则加速解析能力。"""
+
+    def parse_filter_rule(self, expression: str) -> Optional[list[Any]]:
+        """返回加速解析结构；不可用时返回 None。"""
+        ...
+
+
+_filter_rule_parser: Optional[FilterRuleParser] = None
+
+
+def configure_filter_rule_parser(parser: Optional[FilterRuleParser]) -> None:
+    """由启动组合根注入或清除可选规则解析加速器。"""
+    global _filter_rule_parser
+    _filter_rule_parser = parser
 
 
 class AsyncRuleGroupUnitOfWork(Protocol):
@@ -686,9 +702,13 @@ class RuleParser:
         返回:
         解析结果
         """
-        rust_result = rust_accel.parse_filter_rule(expression)
-        if rust_result is not None:
-            return _RustParseResults(rust_result)
+        if _filter_rule_parser is not None:
+            try:
+                accelerated = _filter_rule_parser.parse_filter_rule(expression)
+            except Exception:
+                accelerated = None
+            if accelerated is not None:
+                return _RustParseResults(accelerated)
         return self.expr.parse_string(expression)
 
 

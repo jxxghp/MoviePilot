@@ -7,7 +7,7 @@ import asyncio
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase

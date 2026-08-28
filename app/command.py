@@ -4,7 +4,7 @@ import traceback
 from concurrent.futures import Future
 from typing import Any, Union, Dict, Optional
 
-from app.chain import ChainBase
+from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.message import MessageChain
 from app.chain.site import SiteChain

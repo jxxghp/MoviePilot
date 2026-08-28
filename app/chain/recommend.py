@@ -3,8 +3,8 @@ from typing import Callable, List, Optional
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
 
 from app.application.image import ImageHelper
-from app.chain import ChainBase
 from app.chain.bangumi import BangumiChain
+from app.chain.base import ChainBase
 from app.chain.douban import DoubanChain
 from app.chain.listenbrainz import ListenBrainzChain
 from app.chain.tmdb import TmdbChain
