@@ -1,5 +1,6 @@
-"""进程停止契约和 global_vars 兼容边界测试。"""
+"""进程 owner 契约和 global_vars 兼容边界测试。"""
 
+import ast
 import threading
 from pathlib import Path
 
@@ -64,5 +65,28 @@ def test_host_code_no_longer_reads_stop_state_from_global_vars() -> None:
         for expression in forbidden:
             if expression in content:
                 violations.append(f"{path.relative_to(root)}:{expression}")
+
+    assert violations == []
+
+
+def test_host_code_no_longer_imports_global_vars() -> None:
+    """除定义与 SDK 兼容出口外，canonical 宿主不得消费 GlobalVar 门面。"""
+    root = Path(__file__).resolve().parents[1]
+    allowed = {
+        root / "app/runtime/config.py",
+        root / "app/sdk/config.py",
+    }
+    violations: list[str] = []
+    for path in (root / "app").rglob("*.py"):
+        if path in allowed or "app/plugins" in path.as_posix():
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "app.runtime.config":
+                continue
+            if any(alias.name == "global_vars" for alias in node.names):
+                violations.append(str(path.relative_to(root)))
 
     assert violations == []

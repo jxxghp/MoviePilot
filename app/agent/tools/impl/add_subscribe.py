@@ -1,15 +1,34 @@
 """添加订阅工具"""
 
-from typing import List, Optional, Type
+from typing import List, Optional, Type, TypedDict
 
 from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.media import normalize_music_type
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, NotificationChannel
+
+
+class _SubscribeOptions(TypedDict, total=False):
+    """声明 Agent 工具允许透传给订阅链的可选配置。"""
+
+    music_type: str
+    start_episode: int
+    total_episode: int
+    quality: str
+    resolution: str
+    effect: str
+    audio_quality: str
+    audio_format: str
+    min_bitrate: int
+    min_bit_depth: int
+    min_sample_rate: int
+    best_version: int
+    filter_groups: List[str]
+    sites: List[int]
 
 
 class AddSubscribeInput(BaseModel):
@@ -234,7 +253,7 @@ class AddSubscribeTool(MoviePilotTool):
             subscribe_username = await self._resolve_subscribe_username()
 
             # 构建额外的订阅参数
-            subscribe_kwargs = {}
+            subscribe_kwargs: _SubscribeOptions = {}
             if normalized_music_type:
                 subscribe_kwargs["music_type"] = normalized_music_type
             if start_episode is not None:

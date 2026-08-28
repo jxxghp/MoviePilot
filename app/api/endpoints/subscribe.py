@@ -45,7 +45,7 @@ from app.application.subscription.search import (
     SearchSubscriptionsCommand,
     SubscribeSearchActor,
 )
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.tasks import TaskRegistry
@@ -194,11 +194,8 @@ async def create_subscribe(
         subscribe_in.name = meta.name
         if subscribe_in.season is None:
             subscribe_in.season = meta.begin_season
-    # 标题转换
-    if subscribe_in.name:
-        title = subscribe_in.name
-    else:
-        title = None
+    # 空标题由订阅识别链按显式媒体身份补全，但调用契约始终使用字符串。
+    title = subscribe_in.name or ""
     subscribe_dict = subscribe_in.to_public_write_payload()
     identity_fields = {"media_source", "media_id"}.intersection(
         subscribe_in.model_fields_set

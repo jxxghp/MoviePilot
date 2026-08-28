@@ -2,15 +2,16 @@ import asyncio
 import base64
 import mimetypes
 import re
+import threading
 import uuid
+from collections.abc import Mapping
 from concurrent.futures import CancelledError as FutureCancelledError
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 from urllib.parse import unquote, urlparse
 
-from app.adapters.network.http import RequestUtils
 from app.application.agent import (
     get_running_agent_manager,
     is_audio_input_available,
@@ -29,14 +30,80 @@ from app.application.messaging.subscribe import subscribe_interaction_manager
 from app.chain.base import ChainBase
 from app.chain.interaction import MediaInteractionChain as _MediaInteractionChain
 from app.chain.site import SiteChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.transfer import TransferChain
-from app.runtime.config import global_vars
+from app.chain.subscribe.facade import SubscribeChain
+from app.chain.transfer.facade import TransferChain
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import get_task_registry
 from app.schemas.message import IncomingMessage, Message
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import EventType, NotificationChannel
+
+
+class MessageResponsePort(Protocol):
+    """消息链读取附件所需的最小同步 HTTP 响应契约。"""
+
+    content: bytes
+    headers: Mapping[str, str]
+
+    def close(self) -> None:
+        """释放响应与连接资源。"""
+        ...
+
+
+class MessageHttpPort(Protocol):
+    """消息链读取远程附件所需的同步 GET 端口。"""
+
+    def get(self, url: str, *, timeout: int) -> Optional[MessageResponsePort]:
+        """读取附件响应，并保留无响应与有响应两态。"""
+        ...
+
+
+_message_http_lock = threading.RLock()
+_message_http_port: Optional[MessageHttpPort] = None
+
+
+def configure_message_http_port(http: MessageHttpPort) -> Optional[MessageHttpPort]:
+    """由启动组合根装配消息附件 HTTP 端口，并返回旧实现。"""
+    global _message_http_port
+    with _message_http_lock:
+        previous = _message_http_port
+        _message_http_port = http
+        return previous
+
+
+def reset_message_http_port(http: Optional[MessageHttpPort] = None) -> None:
+    """恢复指定消息 HTTP 端口；省略参数时回到未装配状态。"""
+    global _message_http_port
+    with _message_http_lock:
+        _message_http_port = http
+
+
+def _message_http_snapshot() -> MessageHttpPort:
+    """读取消息 HTTP 端口快照，未装配时稳定失败。"""
+    with _message_http_lock:
+        http = _message_http_port
+    if http is None:
+        raise RuntimeError("消息附件 HTTP 端口尚未由启动组合根装配")
+    return http
+
+
+def _read_message_http(
+    url: str,
+    *,
+    timeout: int = 30,
+) -> tuple[Optional[bytes], Mapping[str, str]]:
+    """读取远程消息附件并在复制所需字段后立即释放响应。"""
+    response = _message_http_snapshot().get(url, timeout=timeout)
+    if response is None:
+        return None, {}
+    try:
+        return response.content or None, dict(response.headers)
+    finally:
+        try:
+            response.close()
+        except Exception as err:
+            logger.debug(f"释放消息附件响应失败：{str(err)}")
 
 
 class MessageChain(ChainBase):
@@ -68,7 +135,7 @@ class MessageChain(ChainBase):
             )
             get_task_registry().submit_threadsafe(
                 clear_task,
-                loop=global_vars.loop,
+                loop=main_loop_registry.require(),
                 owner="chain.message.agent_session_clear",
             )
         except Exception as e:
@@ -1008,7 +1075,7 @@ class MessageChain(ChainBase):
                 else:
                     future = asyncio.run_coroutine_threadsafe(
                         manager.stop_current_task(session_id=session_id),
-                        global_vars.loop,
+                        main_loop_registry.require(),
                     )
                     stopped = future.result(timeout=10)
             except Exception as e:
@@ -1363,7 +1430,7 @@ class MessageChain(ChainBase):
             # 在事件循环中处理，并消费跨线程 Future 的失败，避免队列满时静默丢消息。
             submission_future = asyncio.run_coroutine_threadsafe(
                 manager.process_message(**process_kwargs),
-                global_vars.loop,
+                main_loop_registry.require(),
             )
 
             def _report_agent_submission_failure(completed) -> None:
@@ -1502,8 +1569,7 @@ class MessageChain(ChainBase):
                         audio_ref, default="input.opus"
                     )
                 elif audio_ref.startswith("http"):
-                    resp = RequestUtils(timeout=30).get_res(audio_ref)
-                    content = resp.content if resp and resp.content else None
+                    content, _ = _read_message_http(audio_ref)
                     filename = self._guess_audio_filename(
                         audio_ref, default="input.ogg"
                     )
@@ -1626,10 +1692,10 @@ class MessageChain(ChainBase):
                     if data_url:
                         data_urls.append(data_url)
                 elif attachment_ref.startswith("http"):
-                    resp = RequestUtils(timeout=30).get_res(attachment_ref)
-                    if resp and resp.content:
-                        base64_data = base64.b64encode(resp.content).decode()
-                        mime_type = resp.headers.get("Content-Type", "image/jpeg")
+                    content, headers = _read_message_http(attachment_ref)
+                    if content:
+                        base64_data = base64.b64encode(content).decode()
+                        mime_type = headers.get("Content-Type", "image/jpeg")
                         data_urls.append(f"data:{mime_type};base64,{base64_data}")
                 else:
                     logger.debug(
@@ -1776,8 +1842,8 @@ class MessageChain(ChainBase):
             return self._decode_data_url_bytes(data_url) if data_url else None
         if file_ref.startswith("wxbot://file/"):
             file_url = unquote(file_ref.replace("wxbot://file/", "", 1))
-            resp = RequestUtils(timeout=30).get_res(file_url)
-            return resp.content if resp and resp.content else None
+            content, _ = _read_message_http(file_url)
+            return content
         if file_ref.startswith("wxclaw://file/") or file_ref.startswith("wxclaw://voice/"):
             return self.run_module(
                 "download_wechat_media_bytes", media_ref=file_ref, source=source
@@ -1812,8 +1878,8 @@ class MessageChain(ChainBase):
                     "download_slack_file_to_data_url", file_url=file_ref, source=source
                 )
                 return self._decode_data_url_bytes(data_url) if data_url else None
-            resp = RequestUtils(timeout=30).get_res(file_ref)
-            return resp.content if resp and resp.content else None
+            content, _ = _read_message_http(file_ref)
+            return content
         logger.debug(
             "暂不支持的附件引用: channel=%s, source=%s, ref=%s",
             channel.value if channel else None,

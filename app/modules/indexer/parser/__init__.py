@@ -6,8 +6,6 @@ from enum import Enum
 from typing import Optional
 from urllib.parse import urljoin, urlsplit
 
-from requests import Session
-
 from app.adapters.network.cloudflare import under_challenge
 from app.adapters.network.http import RequestUtils
 from app.domain.site import SiteUtils
@@ -55,7 +53,7 @@ class SiteParserBase(metaclass=ABCMeta):
                  site_cookie: str,
                  apikey: str,
                  token: str,
-                 session: Session = None,
+                 request_utils: Optional[RequestUtils] = None,
                  ua: Optional[str] = None,
                  emulate: bool = False,
                  proxy: bool = None,
@@ -68,7 +66,7 @@ class SiteParserBase(metaclass=ABCMeta):
         :param site_cookie: 站点 Cookie
         :param apikey: 站点 API Key
         :param token: 站点 Token
-        :param session: 可复用的 HTTP 会话
+        :param request_utils: 可复用的统一 HTTP 请求客户端
         :param ua: 请求 User-Agent
         :param emulate: 是否使用浏览器仿真
         :param proxy: 是否使用系统代理
@@ -86,7 +84,7 @@ class SiteParserBase(metaclass=ABCMeta):
         self._base_url = f"{__split_url.scheme}://{__split_url.netloc}"
         self._site_cookie = site_cookie
         self._api_url = api_url
-        self._session = session if session else None
+        self._request_utils = request_utils or RequestUtils(use_session=True)
         self._ua = ua
         self._emulate = emulate
         self._proxy = proxy
@@ -367,31 +365,39 @@ class SiteParserBase(metaclass=ABCMeta):
         if self.request_mode == "apikey":
             # 使用apikey请求，通过请求头传递
             cookie = None
-            session = None
+            request_utils = RequestUtils()
         else:
             # 使用cookie请求
             cookie = self._site_cookie
-            session = self._session
+            request_utils = self._request_utils
 
         if method == "post" or params:
             if (req_headers or {}).get("Content-Type") == "application/json":
-                res = RequestUtils(cookies=cookie,
-                                   session=session,
-                                   timeout=60,
-                                   proxies=proxies,
-                                   headers=req_headers).post_res(url=url, json=params or {})
+                res = request_utils.post_res(
+                    url=url,
+                    json=params or {},
+                    cookies=cookie,
+                    timeout=60,
+                    proxies=proxies,
+                    headers=req_headers,
+                )
             else:
-                res = RequestUtils(cookies=cookie,
-                                   session=session,
-                                   timeout=60,
-                                   proxies=proxies,
-                                   headers=req_headers).post_res(url=url, data=params or {})
+                res = request_utils.post_res(
+                    url=url,
+                    data=params or {},
+                    cookies=cookie,
+                    timeout=60,
+                    proxies=proxies,
+                    headers=req_headers,
+                )
         else:
-            res = RequestUtils(cookies=cookie,
-                               session=session,
-                               timeout=60,
-                               proxies=proxies,
-                               headers=req_headers).get_res(url=url)
+            res = request_utils.get_res(
+                url=url,
+                cookies=cookie,
+                timeout=60,
+                proxies=proxies,
+                headers=req_headers,
+            )
         if res is not None and res.status_code in (200, 500, 403):
             if req_headers and "application/json" in str(req_headers.get("Accept")):
                 try:
@@ -484,9 +490,7 @@ class SiteParserBase(metaclass=ABCMeta):
         """
         关闭会话
         """
-        if self._session:
-            self._session.close()
-            self._session = None
+        self._request_utils.close()
 
     def clear(self):
         """

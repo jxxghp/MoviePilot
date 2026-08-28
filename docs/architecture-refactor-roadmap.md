@@ -121,11 +121,11 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 |---|---|---|---|
 | S2-L1 日志/消息资源显式生命周期 | `VERIFIED` | S0 | 配置冷导入和非消息 Chain 构造零新增日志/消息线程；lifespan 显式创建共享 owner，启动失败、关闭超时、重试及连续两轮 lifespan 均收口；Chain 轻量客户端不保留首个回调 |
 | S2-L2 ChainBase 与 SCC 清零 | `VERIFIED` | S0-L2.2 | canonical `app.chain.base` 已落地，包根无 eager/重复导出，宿主包根导入清零，旧符号只经 `app.sdk.chain` 与 Compat 保持同一类身份；完整宿主 SCC 只剩精确 containment 的 TMDB 移植包 |
-| S2-L3 GlobalVar/provider 注册收口 | `PLANNED` | S2-L1 | `global_vars` canonical 消费清零，provider 注册进入显式装配阶段并可 reset；Legacy 入口精确保留 |
+| S2-L3 GlobalVar/provider 注册收口 | `VERIFIED` | S2-L1 | 停止、主循环和 WebPush 各有唯一 runtime owner，canonical `global_vars` 消费清零并由 AST 门禁冻结；Workflow、Scheduler、Command、Agent、技能和 LLM provider 均在生命周期显式 configure/reset，冷导入保持未注册；Legacy SDK 门面继续共享同一事实源 |
 | S2-L4 Passkey 缓存边界 | `VERIFIED` | S0-L2.4 | `PasskeyChallengeCache` 由 startup 注入，Application 不识别 Redis；严格 `AtomicCacheBackend.store/consume` 由 Memory/Redis backend 分别实现，challenge 仅能被原子领取一次 |
 | S2-L5 Backup artifact Port | `VERIFIED` | S0-L2.4 | Application-owned `BackupArtifactStore`/factory 覆盖创建、发布、清理、列举、解析、删除和元数据读取；startup 注入唯一 `BackupFiles` 实现，Application 具体 Adapter 直连由 14 降至 13，完整备份调用链 62 项通过 |
 | S2-L6 Application Adapter/DNS 债务清零 | `VERIFIED` | S2-L4,S2-L5 | Application 自有 DNS、图片、消息回环、RSS、站点登录、种子、系统加速 Port，startup 统一注入；13 条具体 Adapter 边及 Application DNS I/O 均归零，未装配和失败回滚语义已验证 |
-| S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `PLANNED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 归零；SDK/stream/vendor 例外保持精确 containment |
+| S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `VERIFIED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 均归零；当前 55 条出口事实全部属于精确 SDK/stream/vendor/canonical containment，policy 无 unreviewed、stale 或指纹漂移 |
 
 ### S3：大型编排器职责清零
 
@@ -134,8 +134,8 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S3-L1 TransferChain | `PLANNED` | S1-L1 | queue/recovery、plan、execute、settle、history/notify 完整拆分，原 836 行执行方法消失 |
-| S3-L2 SubscribeChain | `PLANNED` | S1-L5 | search、match、refresh、reconciliation、notification 完整拆分，原文件无跨域业务实现 |
+| S3-L1 TransferChain | `VERIFIED` | S1-L1 | 旧 `transfer.py`/`_transfer.py` 单体退役，由 `app.chain.transfer` 同名职责包承接；queue/recovery、plan、execute、settle、history/notify 各有唯一 owner，原 836 行执行方法消失，包根只保留稳定 ABI |
+| S3-L2 SubscribeChain | `VERIFIED` | S1-L5 | 旧 `subscribe.py` 单体退役，由 `app.chain.subscribe` 同名职责包承接；search、match、refresh、completion、reference reconciliation、notification 各有唯一 owner，包根只保留稳定 `SubscribeChain` |
 | S3-L3 Scheduler | `PLANNED` | S2-L3 | JobCatalog、ExecutionRegistry、reconciler、lifecycle 分离，无参 Chain 构造清零 |
 | S3-L4 DownloadChain | `PLANNED` | S1-L6 | selection、submission、history、post-processing 分离，提交后动作遵守新完成语义 |
 | S3-L5 SearchChain | `PLANNED` | S2-L7 | plan、provider fan-out、result state、pagination 分离，状态 owner 唯一 |
@@ -153,7 +153,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 747 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 706 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口

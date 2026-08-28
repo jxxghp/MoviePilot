@@ -175,7 +175,7 @@ class BluRayTest(TestCase):
         __test_scrape_metadata("/FOLDER", excepted_nfo_count=2)
 
     @patch("app.chain.scraping.ScrapingChain.metadata_img", return_value=None)  # 避免获取图片
-    @patch("app.chain._transfer.resolve_history")
+    @patch("app.chain.transfer.records.resolve_history")
     @patch("app.chain.storage.StorageChain.list_files")
     @patch("app.chain.storage.StorageChain.get_parent_item")
     @patch("app.chain.storage.StorageChain.get_file_item")

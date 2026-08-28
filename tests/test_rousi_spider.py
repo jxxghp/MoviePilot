@@ -3,6 +3,7 @@
 
 import base64
 import json
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -282,12 +283,13 @@ def test_site_connectivity_uses_peergo_personal_api_key(monkeypatch):
     """Rousi 连接测试应以 Bearer 个人 API Key 请求兼容资料接口。"""
     captured = {}
 
-    def fake_get_res(request, url: str, **_kwargs):
-        """记录连接测试请求并返回有效用户资料。"""
-        captured.update({"url": url, "headers": request._headers})
-        return _FakeResponse({"code": 0, "message": "success", "data": {"id": 619}})
+    @contextmanager
+    def fake_open_response(*, url: str, headers: dict, **_kwargs):
+        """在 Site HTTP Port 边界回放有效用户资料。"""
+        captured.update({"url": url, "headers": headers})
+        yield _FakeResponse({"code": 0, "message": "success", "data": {"id": 619}})
 
-    monkeypatch.setattr("app.chain.site.RequestUtils.get_res", fake_get_res)
+    monkeypatch.setattr("app.chain.site._open_site_response", fake_open_response)
     site = SimpleNamespace(
         url="https://rousi.pro/",
         apikey="rousi-secret",

@@ -89,6 +89,19 @@ def register_agent_service_providers(
     _manual_redo_prompt_builder_provider = manual_redo_prompt_builder_provider
 
 
+def reset_agent_service_providers() -> None:
+    """清除全部 Agent provider，防止 lifespan 重启复用旧运行时。"""
+    global _agent_manager_provider, _running_agent_manager_provider
+    global _prompt_manager_provider, _agent_capability_manager_provider
+    global _llm_helper_provider, _manual_redo_prompt_builder_provider
+    _agent_manager_provider = None
+    _running_agent_manager_provider = None
+    _prompt_manager_provider = None
+    _agent_capability_manager_provider = None
+    _llm_helper_provider = None
+    _manual_redo_prompt_builder_provider = None
+
+
 def register_agent_services(
         agent_manager: Any,
         prompt_manager: Any,

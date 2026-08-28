@@ -101,10 +101,19 @@ def _unconfigured_workflow_runtime() -> WorkflowRuntime:
 _workflow_runtime_provider: WorkflowRuntimeProvider = _unconfigured_workflow_runtime
 
 
-def configure_workflow_runtime(provider: WorkflowRuntimeProvider) -> None:
-    """由启动组合根登记工作流运行时实例提供器。"""
+def configure_workflow_runtime(
+    provider: Optional[WorkflowRuntimeProvider],
+) -> WorkflowRuntimeProvider:
+    """登记工作流运行时 provider，并返回先前 provider 供失败回滚。"""
     global _workflow_runtime_provider
-    _workflow_runtime_provider = provider
+    previous = _workflow_runtime_provider
+    _workflow_runtime_provider = provider or _unconfigured_workflow_runtime
+    return previous
+
+
+def reset_workflow_runtime() -> None:
+    """恢复未装配 provider，禁止重复 lifespan 复用旧运行时。"""
+    configure_workflow_runtime(None)
 
 
 def get_workflow_manager() -> WorkflowRuntime:

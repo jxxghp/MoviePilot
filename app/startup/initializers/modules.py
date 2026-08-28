@@ -303,7 +303,7 @@ def _build_transactional_user_repository() -> TransactionalUserRepository:
 
 def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
     """把旧 Chain ABI 延迟转入唯一 TransferChain durable command。"""
-    from app.chain.transfer import TransferChain
+    from app.chain.transfer.facade import TransferChain
 
     return TransferChain().execute_legacy_transfer_command(**kwargs)
 
@@ -657,7 +657,7 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
     from app.chain.scraping import ScrapingChain
     from app.chain.search import SearchChain
     from app.chain.site import SiteChain
-    from app.chain.subscribe import SubscribeChain
+    from app.chain.subscribe.facade import SubscribeChain
     from app.chain.workflow import WorkflowChain
     from app.command import Command
     from app.scheduler import Scheduler

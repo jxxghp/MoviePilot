@@ -1,7 +1,7 @@
 """调度器工具服务门面。
 
 Agent 工具与 API 端点对运行时调度器的操作统一经本模块调用，
-Scheduler 实现由 startup 组合根在导入期注册，避免 application 层
+Scheduler 实现由 startup 组合根在生命周期装配阶段注册，避免 application 层
 静态依赖顶层 scheduler 模块（scheduler 反向依赖 chain，会成环）。
 
 依赖方向：
@@ -17,7 +17,7 @@ from typing import Any, Awaitable, Callable, List, Optional, cast
 # Agent 自主定时任务在运行时调度器中的任务 ID 前缀。
 AGENT_TASK_JOB_PREFIX = "agent-task"
 
-# Scheduler 类：由 startup/initializers/scheduler.py 在导入期注册。
+# Scheduler 类：由 startup/initializers/scheduler.py 在显式启动阶段注册。
 _scheduler_class: Any = None
 
 
@@ -118,10 +118,17 @@ class JobExecutionState:
         return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
 
 
-def register_scheduler_class(scheduler_class: Any) -> None:
-    """注册 Scheduler 类（组合根在导入期调用）。"""
+def register_scheduler_class(scheduler_class: Any) -> Any:
+    """注册 Scheduler 类，并返回先前实现供失败回滚。"""
     global _scheduler_class
+    previous = _scheduler_class
     _scheduler_class = scheduler_class
+    return previous
+
+
+def reset_scheduler_class() -> None:
+    """清除 Scheduler 实现，避免跨 lifespan 保留具体运行时。"""
+    register_scheduler_class(None)
 
 
 def get_scheduler() -> Any:

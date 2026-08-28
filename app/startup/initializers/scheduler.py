@@ -1,15 +1,27 @@
 import asyncio
 
 from app.application.agenttask import AgentTaskRepository
-from app.application.scheduling import get_scheduler, register_scheduler_class
+from app.application.scheduling import (
+    get_scheduler,
+    register_scheduler_class,
+    reset_scheduler_class,
+)
 from app.scheduler import Scheduler
 
-# 导入期即向 application 门面注册调度器类，保证工具调用时不依赖静态边。
-register_scheduler_class(Scheduler)
+
+def configure_scheduler_runtime() -> None:
+    """在显式装配阶段登记 concrete Scheduler。"""
+    register_scheduler_class(Scheduler)
+
+
+def reset_scheduler_runtime() -> None:
+    """清除 concrete Scheduler 登记，支持重复 lifespan。"""
+    reset_scheduler_class()
 
 
 def configure_scheduler_agent_tasks(repository: AgentTaskRepository) -> None:
     """在调度器启动前注入自主任务仓储。"""
+    configure_scheduler_runtime()
     get_scheduler().configure_agent_tasks(repository)
 
 
@@ -17,7 +29,12 @@ def init_scheduler():
     """
     初始化定时器
     """
-    Scheduler().init()
+    configure_scheduler_runtime()
+    try:
+        Scheduler().init()
+    except Exception:
+        reset_scheduler_runtime()
+        raise
 
 
 def stop_scheduler():
@@ -28,15 +45,27 @@ def stop_scheduler():
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        scheduler.stop()
+        try:
+            scheduler.stop()
+        finally:
+            reset_scheduler_runtime()
         return None
-    return scheduler.stop_async()
+
+    async def stop_and_reset() -> None:
+        """等待异步调度器收口后清除 provider。"""
+        try:
+            await scheduler.stop_async()
+        finally:
+            reset_scheduler_runtime()
+
+    return stop_and_reset()
 
 
 def restart_scheduler():
     """
     重启定时器
     """
+    configure_scheduler_runtime()
     Scheduler().init()
 
 

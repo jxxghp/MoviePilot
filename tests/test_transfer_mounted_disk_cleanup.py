@@ -32,7 +32,7 @@ def test_enabled_cleanup_skips_filesystem_detection():
     开关开启时应保持旧行为，且不产生额外文件系统检测。
     """
     with patch(
-            "app.chain._transfer.SystemUtils.is_network_filesystem"
+            "app.startup.initializers.chain.SystemUtils.is_network_filesystem"
     ) as is_network_filesystem:
         should_delete = (
             TransferChain._should_delete_empty_source_directories(
@@ -51,7 +51,7 @@ def test_disabled_cleanup_keeps_mounted_local_source_directories():
     开关关闭时应保留网络或 FUSE 挂载的本地源目录。
     """
     with patch(
-            "app.chain._transfer.SystemUtils.is_network_filesystem",
+            "app.startup.initializers.chain.SystemUtils.is_network_filesystem",
             return_value=True,
     ) as is_network_filesystem:
         should_delete = (
@@ -73,7 +73,7 @@ def test_disabled_cleanup_still_deletes_ordinary_local_source_directories():
     开关关闭时普通本地文件系统仍应删除空目录。
     """
     with patch(
-            "app.chain._transfer.SystemUtils.is_network_filesystem",
+            "app.startup.initializers.chain.SystemUtils.is_network_filesystem",
             return_value=False,
     ):
         should_delete = (
@@ -92,7 +92,7 @@ def test_disabled_cleanup_does_not_change_remote_storage_cleanup():
     开关关闭时非本地存储仍应执行原有空目录清理。
     """
     with patch(
-            "app.chain._transfer.SystemUtils.is_network_filesystem"
+            "app.startup.initializers.chain.SystemUtils.is_network_filesystem"
     ) as is_network_filesystem:
         should_delete = (
             TransferChain._should_delete_empty_source_directories(
@@ -112,7 +112,7 @@ def test_mounted_filesystem_detection_is_cached_by_source_directory():
     """
     mounted_filesystem_cache = {}
     with patch(
-            "app.chain._transfer.SystemUtils.is_network_filesystem",
+            "app.startup.initializers.chain.SystemUtils.is_network_filesystem",
             return_value=True,
     ) as is_network_filesystem:
         for _ in range(2):

@@ -1,14 +1,15 @@
 import os
 import re
+import threading
 import time
+from collections.abc import Iterator, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
-from typing import Any, Iterable, List, Optional, Tuple, Union
+from typing import Any, Iterable, List, Optional, Protocol, Self, Tuple, Union
 
-from app.adapters.network.http import RequestUtils
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
@@ -46,6 +47,90 @@ from app.schemas.types import (
 )
 from app.schemas.workflow import FileItem
 from app.schemas.workflow import FileItem as _SchemaFileItem
+
+
+class ScrapingResponsePort(Protocol):
+    """刮削链读取封面所需的最小同步 HTTP 响应契约。"""
+
+    status_code: int
+    content: bytes
+    headers: Mapping[str, str]
+
+    def close(self) -> None:
+        """释放响应与连接资源。"""
+        ...
+
+
+class ScrapingStreamResponsePort(Protocol):
+    """刮削链流式保存图片所需的最小响应契约。"""
+
+    status_code: int
+
+    def __enter__(self) -> Self:
+        """进入响应所有权上下文。"""
+        ...
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        """退出上下文并释放响应资源。"""
+        ...
+
+    def iter_content(self, *, chunk_size: int) -> Iterator[bytes]:
+        """按固定块大小迭代响应字节。"""
+        ...
+
+
+class ScrapingHttpPort(Protocol):
+    """刮削链下载普通封面与流式图片所需的同步 HTTP 端口。"""
+
+    def get(
+        self,
+        url: str,
+        *,
+        proxies: Optional[dict[str, str]],
+        ua: str,
+        timeout: int,
+    ) -> Optional[ScrapingResponsePort]:
+        """读取小型封面响应。"""
+        ...
+
+    def stream(
+        self,
+        url: str,
+        *,
+        proxies: Optional[dict[str, str]],
+        ua: str,
+    ) -> ScrapingStreamResponsePort:
+        """打开由上下文负责释放的流式图片响应。"""
+        ...
+
+
+_scraping_http_lock = threading.RLock()
+_scraping_http_port: Optional[ScrapingHttpPort] = None
+
+
+def configure_scraping_http_port(http: ScrapingHttpPort) -> Optional[ScrapingHttpPort]:
+    """由启动组合根装配刮削 HTTP 端口，并返回旧实现。"""
+    global _scraping_http_port
+    with _scraping_http_lock:
+        previous = _scraping_http_port
+        _scraping_http_port = http
+        return previous
+
+
+def reset_scraping_http_port(http: Optional[ScrapingHttpPort] = None) -> None:
+    """恢复指定刮削 HTTP 端口；省略参数时回到未装配状态。"""
+    global _scraping_http_port
+    with _scraping_http_lock:
+        _scraping_http_port = http
+
+
+def _scraping_http_snapshot() -> ScrapingHttpPort:
+    """读取刮削 HTTP 端口快照，未装配时稳定失败。"""
+    with _scraping_http_lock:
+        http = _scraping_http_port
+    if http is None:
+        raise RuntimeError("刮削 HTTP 端口尚未由启动组合根装配")
+    return http
 
 scraping_lock = Lock()
 
@@ -320,11 +405,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return
         try:
             logger.info(f"正在下载图片：{url} ...")
-            request_utils = RequestUtils(
+            http = _scraping_http_snapshot()
+            response = http.stream(
+                url,
                 proxies=self.runtime_config.proxy,
                 ua=self.runtime_config.normal_user_agent,
             )
-            with request_utils.get_stream(url=url) as r:
+            with response as r:
                 if r and r.status_code == 200:
                     tmp_file_path = None
                     try:
@@ -1155,11 +1242,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     )
     def _request_music_cover(url: str) -> Optional[tuple[Optional[bytes], str]]:
         """下载并缓存音乐封面；仅稳定 404 与成功响应进入有界缓存。"""
-        response = RequestUtils(
+        response = _scraping_http_snapshot().get(
+            url,
             proxies=get_chain_runtime_config_snapshot().proxy,
             ua=get_chain_runtime_config_snapshot().normal_user_agent,
             timeout=20,
-        ).get_res(url)
+        )
         if response is None:
             return None
         try:

@@ -1,16 +1,14 @@
 import base64
 import re
-from dataclasses import replace
+import threading
+from contextlib import AbstractContextManager
+from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Protocol, Tuple, Union
 from urllib.parse import urljoin
 
 from lxml import etree
 
-from app.adapters.external.cookiecloud import CookieCloudHelper
-from app.adapters.network.browser import PlaywrightHelper
-from app.adapters.network.cloudflare import under_challenge
-from app.adapters.network.http import RequestUtils
 from app.application.configuration import get_configured_system_config
 from app.application.messaging.site import SiteInteractionHandler
 from app.application.rss import RssHelper
@@ -36,6 +34,152 @@ from app.schemas.message import Message
 from app.schemas.notification import NotificationChannel
 from app.schemas.site import SiteUserData
 from app.schemas.types import EventType, MessageType
+
+
+class SiteResponsePort(Protocol):
+    """声明站点链在响应有效期内读取的最小 HTTP 字段。"""
+
+    status_code: int
+    reason: str
+    text: str
+    content: bytes
+
+    def __bool__(self) -> bool:
+        """保留 requests.Response 对错误状态返回 False 的兼容语义。"""
+        ...
+
+    def json(self) -> Any:
+        """解析响应 JSON，格式错误继续向调用方抛出。"""
+        ...
+
+
+class SiteHttpPort(Protocol):
+    """声明站点探测所需的同步 HTTP 上下文能力。"""
+
+    def open(
+        self,
+        *,
+        method: str,
+        url: str,
+        headers: Optional[Mapping[str, Any]] = None,
+        cookie: Optional[str] = None,
+        ua: Optional[str] = None,
+        proxies: Optional[Mapping[str, Any]] = None,
+        timeout: int = 20,
+    ) -> AbstractContextManager[Optional[SiteResponsePort]]:
+        """打开有界响应上下文，退出时必须关闭底层响应。"""
+        ...
+
+
+class SiteBrowserPort(Protocol):
+    """声明站点连通性测试所需的浏览器渲染能力。"""
+
+    def render(
+        self,
+        *,
+        url: str,
+        cookies: str,
+        ua: str,
+        proxies: Optional[Mapping[str, Any]],
+        timeout: int,
+    ) -> Optional[str]:
+        """在受控浏览器会话内渲染页面并返回源码。"""
+        ...
+
+
+class SiteChallengePort(Protocol):
+    """声明站点页面挑战识别能力。"""
+
+    def detected(self, html_text: str) -> bool:
+        """返回页面是否命中 Cloudflare 等挑战特征。"""
+        ...
+
+
+class SiteCookieCloudPort(Protocol):
+    """声明 CookieCloud 同步入口的最小能力。"""
+
+    def download(self) -> Tuple[Optional[dict[str, str]], str]:
+        """下载并解密按站点域名聚合的 Cookie。"""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class _SiteAccessPorts:
+    """保存一次原子发布的站点链技术端口。"""
+
+    http: SiteHttpPort
+    browser: SiteBrowserPort
+    challenge: SiteChallengePort
+    cookiecloud: SiteCookieCloudPort
+
+
+@dataclass(frozen=True, slots=True)
+class _SiteConnectionResponse:
+    """保存 CookieCloud 新站点探测完成后的必要响应数据。"""
+
+    status_code: int
+    text: str
+
+
+_site_ports_lock = threading.Lock()
+_site_ports: Optional[_SiteAccessPorts] = None
+
+
+def configure_site_ports(
+    *,
+    http: SiteHttpPort,
+    browser: SiteBrowserPort,
+    challenge: SiteChallengePort,
+    cookiecloud: SiteCookieCloudPort,
+) -> None:
+    """由启动组合根一次发布站点链的全部技术端口。"""
+    global _site_ports
+    ports = _SiteAccessPorts(
+        http=http,
+        browser=browser,
+        challenge=challenge,
+        cookiecloud=cookiecloud,
+    )
+    with _site_ports_lock:
+        _site_ports = ports
+
+
+def reset_site_ports() -> None:
+    """原子清除站点链端口，支持重复关闭与失败回滚。"""
+    global _site_ports
+    with _site_ports_lock:
+        _site_ports = None
+
+
+def _site_ports_snapshot() -> _SiteAccessPorts:
+    """返回一致端口快照，未装配时稳定失败。"""
+    with _site_ports_lock:
+        ports = _site_ports
+    if ports is None:
+        raise RuntimeError("站点链访问端口尚未由启动组合根装配")
+    return ports
+
+
+def _open_site_response(
+    *,
+    method: str,
+    url: str,
+    headers: Optional[Mapping[str, Any]] = None,
+    cookie: Optional[str] = None,
+    ua: Optional[str] = None,
+    proxies: Optional[Mapping[str, Any]] = None,
+    timeout: int = 20,
+) -> AbstractContextManager[Optional[SiteResponsePort]]:
+    """通过当前 HTTP 端口打开一个必定有界关闭的响应上下文。"""
+    return _site_ports_snapshot().http.open(
+        method=method,
+        url=url,
+        headers=headers,
+        cookie=cookie,
+        ua=ua,
+        proxies=proxies,
+        timeout=timeout,
+    )
 
 
 class SiteChain(InteractionChainMixin, ChainBase):
@@ -192,41 +336,46 @@ class SiteChain(InteractionChainMixin, ChainBase):
         # 获取token
         token = None
         user_agent = site.ua or self.runtime_config.user_agent
-        res = RequestUtils(
+        with _open_site_response(
+            method="GET",
+            url=site.url,
             ua=user_agent,
-            cookies=site.cookie or "",
+            cookie=site.cookie or "",
             proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
-            timeout=site.timeout or 15
-        ).get_res(url=site.url)
-        if res is None:
-            return False, "无法打开网站！"
-        if res.status_code == 200:
-            csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
-            if csrf_token:
-                token = csrf_token.group(1)
-        else:
-            return False, f"错误：{res.status_code} {res.reason}"
+            timeout=site.timeout or 15,
+        ) as res:
+            if res is None:
+                return False, "无法打开网站！"
+            if res.status_code == 200:
+                csrf_token = re.search(
+                    r'<meta name="x-csrf-token" content="(.+?)">', res.text
+                )
+                if csrf_token:
+                    token = csrf_token.group(1)
+            else:
+                return False, f"错误：{res.status_code} {res.reason}"
         if not token:
             return False, "无法获取Token"
         # 调用查询用户信息接口
-        user_res = RequestUtils(
+        with _open_site_response(
+            method="GET",
+            url=f"{site.url}api/user/getInfo",
             headers={
                 'X-CSRF-TOKEN': token,
                 "Content-Type": "application/json; charset=utf-8",
                 "User-Agent": f"{user_agent}"
             },
-            cookies=site.cookie or "",
+            cookie=site.cookie or "",
             proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
-            timeout=site.timeout or 15
-        ).get_res(url=f"{site.url}api/user/getInfo")
-        if user_res is None:
-            return False, "无法打开网站！"
-        if user_res.status_code == 200:
-            user_info = user_res.json()
-            if user_info and user_info.get("data"):
-                return True, "连接成功"
-            return False, "Cookie已失效"
-        else:
+            timeout=site.timeout or 15,
+        ) as user_res:
+            if user_res is None:
+                return False, "无法打开网站！"
+            if user_res.status_code == 200:
+                user_info = user_res.json()
+                if user_info and user_info.get("data"):
+                    return True, "连接成功"
+                return False, "Cookie已失效"
             return False, f"错误：{user_res.status_code} {user_res.reason}"
 
     def __mteam_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
@@ -241,19 +390,20 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "Accept": "application/json, text/plain, */*",
             "x-api-key": site.apikey,
         }
-        res = RequestUtils(
+        with _open_site_response(
+            method="POST",
+            url=url,
             headers=headers,
             proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
-            timeout=site.timeout or 15
-        ).post_res(url=url)
-        if res is None:
-            return False, "无法打开网站！"
-        if res.status_code == 200:
-            user_info = res.json() or {}
-            if user_info.get("data"):
-                return True, "连接成功"
-            return False, user_info.get("message", "鉴权已过期或无效")
-        else:
+            timeout=site.timeout or 15,
+        ) as res:
+            if res is None:
+                return False, "无法打开网站！"
+            if res.status_code == 200:
+                user_info = res.json() or {}
+                if user_info.get("data"):
+                    return True, "连接成功"
+                return False, user_info.get("message", "鉴权已过期或无效")
             return False, f"错误：{res.status_code} {res.reason}"
 
     def __sunnypt_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
@@ -268,7 +418,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
         api_url = str(
             indexer.get("api_url") or "https://api.sunnypt.top/api/v1/mp"
         ).rstrip("/")
-        res = RequestUtils(
+        with _open_site_response(
+            method="GET",
+            url=f"{api_url}/profile",
             headers={
                 "Accept": "application/json",
                 "User-Agent": site.ua or self.runtime_config.user_agent,
@@ -276,20 +428,22 @@ class SiteChain(InteractionChainMixin, ChainBase):
             },
             proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15,
-        ).get_res(url=f"{api_url}/profile")
-        if res is None:
-            return False, "无法连接 SunnyPT API 服务"
-        if res.status_code != 200:
-            return False, f"错误：{res.status_code} {res.reason}"
-        try:
-            payload = res.json() or {}
-        except (TypeError, ValueError):
-            return False, "SunnyPT API 响应不是有效 JSON"
-        if str(payload.get("code")) != "0" or not isinstance(payload.get("data"), dict):
-            return False, payload.get("msg") or "API Key 已过期或无效"
-        if payload["data"].get("download_allowed") is False:
-            return False, "当前账号没有下载权限"
-        return True, "连接成功"
+        ) as res:
+            if res is None:
+                return False, "无法连接 SunnyPT API 服务"
+            if res.status_code != 200:
+                return False, f"错误：{res.status_code} {res.reason}"
+            try:
+                payload = res.json() or {}
+            except (TypeError, ValueError):
+                return False, "SunnyPT API 响应不是有效 JSON"
+            if str(payload.get("code")) != "0" or not isinstance(
+                payload.get("data"), dict
+            ):
+                return False, payload.get("msg") or "API Key 已过期或无效"
+            if payload["data"].get("download_allowed") is False:
+                return False, "当前账号没有下载权限"
+            return True, "连接成功"
 
     def __yema_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
@@ -302,20 +456,21 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*",
         }
-        res = RequestUtils(
+        with _open_site_response(
+            method="GET",
+            url=url,
             headers=headers,
-            cookies=site.cookie or "",
+            cookie=site.cookie or "",
             proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
-            timeout=site.timeout or 15
-        ).get_res(url=url)
-        if res is None:
-            return False, "无法打开网站！"
-        if res.status_code == 200:
-            user_info = res.json()
-            if user_info and user_info.get("success"):
-                return True, "连接成功"
-            return False, "Cookie已过期"
-        else:
+            timeout=site.timeout or 15,
+        ) as res:
+            if res is None:
+                return False, "无法打开网站！"
+            if res.status_code == 200:
+                user_info = res.json()
+                if user_info and user_info.get("success"):
+                    return True, "连接成功"
+                return False, "Cookie已过期"
             return False, f"错误：{res.status_code} {res.reason}"
 
     def __indexphp_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
@@ -334,19 +489,20 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "Accept": "application/json, text/plain, */*",
             "x-api-key": site.apikey,
         }
-        res = RequestUtils(
+        with _open_site_response(
+            method="GET",
+            url=url,
             headers=headers,
             proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
-            timeout=site.timeout or 15
-        ).get_res(url=url)
-        if res is None:
-            return False, "无法打开网站！"
-        if res.status_code == 200:
-            user_info = res.json()
-            if user_info and user_info.get("status") == 0:
-                return True, "连接成功"
-            return False, "APIKEY已过期"
-        else:
+            timeout=site.timeout or 15,
+        ) as res:
+            if res is None:
+                return False, "无法打开网站！"
+            if res.status_code == 200:
+                user_info = res.json()
+                if user_info and user_info.get("status") == 0:
+                    return True, "连接成功"
+                return False, "APIKEY已过期"
             return False, f"错误：{res.status_code} {res.reason}"
 
     def __rousi_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
@@ -361,24 +517,25 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "Accept": "application/json",
             "Authorization": f"Bearer {site.apikey}",
         }
-        res = RequestUtils(
+        with _open_site_response(
+            method="GET",
+            url=url,
             headers=headers,
             proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
-            timeout=site.timeout or 15
-        ).get_res(url=url)
-        if res is None:
-            return False, "无法打开网站！"
-        if res.status_code == 200:
-            try:
-                user_info = res.json()
-            except (TypeError, ValueError):
-                return False, "站点返回了无效的用户数据"
-            if user_info and user_info.get("code") == 0:
-                return True, "连接成功"
-            return False, "个人 API Key 已失效或权限不足"
-        elif res.status_code in (401, 403):
-            return False, "个人 API Key 已失效或权限不足"
-        else:
+            timeout=site.timeout or 15,
+        ) as res:
+            if res is None:
+                return False, "无法打开网站！"
+            if res.status_code == 200:
+                try:
+                    user_info = res.json()
+                except (TypeError, ValueError):
+                    return False, "站点返回了无效的用户数据"
+                if user_info and user_info.get("code") == 0:
+                    return True, "连接成功"
+                return False, "个人 API Key 已失效或权限不足"
+            if res.status_code in (401, 403):
+                return False, "个人 API Key 已失效或权限不足"
             return False, f"错误：{res.status_code} {res.reason}"
 
     @staticmethod
@@ -391,12 +548,14 @@ class SiteChain(InteractionChainMixin, ChainBase):
         :return:
         """
         favicon_url = urljoin(url, "favicon.ico")
-        res = RequestUtils(cookies=cookie, timeout=30, ua=ua).get_res(url=url)
-        if res:
-            html_text = res.text
-        else:
-            logger.error(f"获取站点页面失败：{url}")
-            return favicon_url, None
+        with _open_site_response(
+            method="GET", url=url, cookie=cookie, timeout=30, ua=ua
+        ) as res:
+            if res:
+                html_text = res.text
+            else:
+                logger.error(f"获取站点页面失败：{url}")
+                return favicon_url, None
         html = etree.HTML(html_text)
         try:
             if DomUtils.has_child_elements(html):
@@ -404,10 +563,11 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 if fav_link:
                     favicon_url = urljoin(url, fav_link[0])
 
-            res = RequestUtils(cookies=cookie, timeout=15, ua=ua).get_res(url=favicon_url)
-            if res:
-                return favicon_url, base64.b64encode(res.content).decode()
-            else:
+            with _open_site_response(
+                method="GET", url=favicon_url, cookie=cookie, timeout=15, ua=ua
+            ) as res:
+                if res:
+                    return favicon_url, base64.b64encode(res.content).decode()
                 logger.error(f"获取站点图标失败：{favicon_url}")
         finally:
             if html is not None:
@@ -429,7 +589,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         logger.info("开始同步CookieCloud站点 ...")
         if progress_callback:
             progress_callback(value=0, text="开始下载 CookieCloud 数据 ...")
-        cookies, msg = CookieCloudHelper().download()
+        cookies, msg = _site_ports_snapshot().cookiecloud.download()
         if not cookies:
             logger.error(f"CookieCloud同步失败：{msg}")
             if progress_callback:
@@ -577,16 +737,39 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 return ext_domain
         return sub_domain
 
-    def _cookiecloud_connect(self, domain_url: str, cookie: str, indexer: dict) -> Tuple[bool, Any]:
+    def _cookiecloud_connect(
+        self, domain_url: str, cookie: str, indexer: dict
+    ) -> Tuple[bool, Optional[_SiteConnectionResponse]]:
         """连接新站点，必要时通过已配置代理重试。"""
-        response = RequestUtils(cookies=cookie, ua=self.runtime_config.user_agent).get_res(url=domain_url)
-        if response is not None or not self.runtime_config.proxy_host:
-            return False, response
+        with _open_site_response(
+            method="GET",
+            url=domain_url,
+            cookie=cookie,
+            ua=self.runtime_config.user_agent,
+        ) as response:
+            if response is not None or not self.runtime_config.proxy_host:
+                return False, self._site_connection_response(response)
         logger.info(f"站点 {indexer.get('name')} 初次连接失败，尝试通过代理重试...")
-        response = RequestUtils(
-            cookies=cookie, ua=self.runtime_config.user_agent, proxies=self.runtime_config.proxy
-        ).get_res(url=domain_url)
-        return True, response
+        with _open_site_response(
+            method="GET",
+            url=domain_url,
+            cookie=cookie,
+            ua=self.runtime_config.user_agent,
+            proxies=self.runtime_config.proxy,
+        ) as response:
+            return True, self._site_connection_response(response)
+
+    @staticmethod
+    def _site_connection_response(
+        response: Optional[SiteResponsePort],
+    ) -> Optional[_SiteConnectionResponse]:
+        """在关闭响应前投影 CookieCloud 新站点探测所需字段。"""
+        if response is None:
+            return None
+        return _SiteConnectionResponse(
+            status_code=response.status_code,
+            text=response.text,
+        )
 
     @eventmanager.register(EventType.SiteUpdated)
     def cache_site_icon(self, event: Event):
@@ -726,37 +909,43 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
         # 访问链接
         if render:
-            page_source = PlaywrightHelper().get_page_source(url=site_url,
-                                                             cookies=site_cookie,
-                                                             ua=ua,
-                                                             proxies=proxy_server,
-                                                             timeout=timeout) or ""
+            ports = _site_ports_snapshot()
+            page_source = ports.browser.render(
+                url=site_url,
+                cookies=site_cookie,
+                ua=ua,
+                proxies=proxy_server,
+                timeout=timeout,
+            ) or ""
             if not public and not SiteUtils.is_logged_in(page_source):
-                if under_challenge(page_source):
+                if ports.challenge.detected(page_source):
                     return False, "无法通过Cloudflare！"
                 return False, "仿真登录失败，Cookie已失效！"
         else:
-            res = RequestUtils(cookies=site_cookie,
-                               ua=ua,
-                               proxies=proxies
-                               ).get_res(url=site_url)
-            # 判断登录状态
-            if res and res.status_code in [200, 500, 403]:
-                content = res.text
-                if not public and not SiteUtils.is_logged_in(content):
-                    if under_challenge(content):
-                        msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
-                    elif res.status_code == 200:
-                        msg = "Cookie已失效"
-                    else:
-                        msg = f"错误：{res.status_code} {res.reason}"
-                    return False, f"{msg}！"
-                elif public and res.status_code != 200:
+            with _open_site_response(
+                method="GET",
+                url=site_url,
+                cookie=site_cookie,
+                ua=ua,
+                proxies=proxies,
+            ) as res:
+                # 判断登录状态
+                if res and res.status_code in [200, 500, 403]:
+                    content = res.text
+                    if not public and not SiteUtils.is_logged_in(content):
+                        if _site_ports_snapshot().challenge.detected(content):
+                            msg = "站点被Cloudflare防护，请打开站点浏览器仿真"
+                        elif res.status_code == 200:
+                            msg = "Cookie已失效"
+                        else:
+                            msg = f"错误：{res.status_code} {res.reason}"
+                        return False, f"{msg}！"
+                    if public and res.status_code != 200:
+                        return False, f"错误：{res.status_code} {res.reason}！"
+                elif res is not None:
                     return False, f"错误：{res.status_code} {res.reason}！"
-            elif res is not None:
-                return False, f"错误：{res.status_code} {res.reason}！"
-            else:
-                return False, "无法打开网站！"
+                else:
+                    return False, "无法打开网站！"
         return True, "连接成功"
 
     def _interaction_handler(self) -> "SiteInteractionHandler":

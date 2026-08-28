@@ -12,7 +12,7 @@ import json
 import re
 import subprocess
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +22,19 @@ DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/mypy-baseline.jso
 MYPY_TARGETS = ("app",)
 MYPY_EXCLUDES = ("app/plugins",)
 MYPY_PLATFORM = "linux"
+
+# 单体文件退役为同名 package 时，错误 owner 会从一个路径迁移到多个文件。迁移只在旧路径
+# 已从当前源码消失时生效，并且仍按错误码聚合执行只降不增；其他文件继续使用原有逐路径门禁。
+MYPY_PATH_MIGRATIONS = {
+    "subscribe-package": (
+        ("app/chain/subscribe.py",),
+        ("app/chain/subscribe/",),
+    ),
+    "transfer-package": (
+        ("app/chain/transfer.py", "app/chain/_transfer.py"),
+        ("app/chain/transfer/",),
+    ),
+}
 
 # 形如 app/foo.py:12: error: 消息说明 [error-code]；个别错误可能缺代码。
 _ERROR_LINE = re.compile(r"^(?P<path>.+?):\d+(?::\d+)?: error: .+?(?:\s+\[(?P<code>[a-z0-9-]+)\])?$")
@@ -103,6 +116,7 @@ def classify_counts(
     baseline: dict[str, dict[str, int]], current: dict[str, dict[str, int]]
 ) -> tuple[list[str], list[str]]:
     """把计数差异分为不可写入的回退和可固化的低水位下降。"""
+    baseline, current = _fold_path_migrations(baseline, current)
     regressions: list[str] = []
     stale: list[str] = []
     for path in sorted(baseline.keys() | current.keys()):
@@ -123,6 +137,37 @@ def classify_counts(
                     f"{path}: 类型错误低水位未固化 [{code}] {old_count}->{new_count}"
                 )
     return regressions, stale
+
+
+def _fold_path_migrations(
+    baseline: dict[str, dict[str, int]],
+    current: dict[str, dict[str, int]],
+) -> tuple[dict[str, dict[str, int]], dict[str, dict[str, int]]]:
+    """把已退役单文件与同名 package 折叠为按错误码比较的一次性迁移 owner。"""
+    folded_baseline = {path: dict(codes) for path, codes in baseline.items()}
+    folded_current = {path: dict(codes) for path, codes in current.items()}
+    for name, (source_paths, target_prefixes) in MYPY_PATH_MIGRATIONS.items():
+        if not any(path in folded_baseline for path in source_paths):
+            continue
+        if any(path in current for path in source_paths):
+            continue
+        target_paths = tuple(
+            path
+            for path in current
+            if any(path.startswith(prefix) for prefix in target_prefixes)
+        )
+        if not target_paths:
+            continue
+        previous: Counter[str] = Counter()
+        latest: Counter[str] = Counter()
+        for path in source_paths:
+            previous.update(folded_baseline.pop(path, {}))
+        for path in target_paths:
+            latest.update(folded_current.pop(path, {}))
+        migration_key = f"<path-migration:{name}>"
+        folded_baseline[migration_key] = dict(previous)
+        folded_current[migration_key] = dict(latest)
+    return folded_baseline, folded_current
 
 
 def compare_counts(

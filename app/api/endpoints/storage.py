@@ -16,7 +16,7 @@ from app.api.response import ResponseAPIRouter
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.foundation import text as text_tools
 from app.runtime.progress import ProgressHelper
 from app.schemas.common import ManageRequest as _SchemaManageRequest

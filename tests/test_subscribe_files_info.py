@@ -89,11 +89,11 @@ def test_subscribe_files_info_merges_multiple_mediaservers():
     chain.download_history_repository = MagicMock()
     chain.download_history_repository.get_by_mediaid.return_value = []
     with (
-        patch("app.chain.subscribe.MediaChain", return_value=media_chain),
+        patch("app.chain.subscribe.query.MediaChain", return_value=media_chain),
         patch.object(chain, "media_files", return_value=None),
         patch.object(chain, "media_exists", side_effect=_media_exists_side_effect),
-        patch("app.chain.subscribe.MediaServerHelper", return_value=helper),
-        patch("app.chain.subscribe.MediaServerChain", return_value=mediaserver_chain),
+        patch("app.chain.subscribe.query.MediaServerHelper", return_value=helper),
+        patch("app.chain.subscribe.query.MediaServerChain", return_value=mediaserver_chain),
     ):
         result = chain.subscribe_files_info(subscribe)
 
@@ -136,11 +136,11 @@ def test_subscribe_files_info_uses_season_zero_for_tv():
     chain.download_history_repository = MagicMock()
     chain.download_history_repository.get_by_mediaid.return_value = []
     with (
-        patch("app.chain.subscribe.MediaChain", return_value=media_chain),
+        patch("app.chain.subscribe.query.MediaChain", return_value=media_chain),
         patch.object(chain, "media_files", return_value=None),
         patch.object(chain, "media_exists", side_effect=_media_exists_side_effect),
-        patch("app.chain.subscribe.MediaServerHelper", return_value=helper),
-        patch("app.chain.subscribe.MediaServerChain", return_value=mediaserver_chain),
+        patch("app.chain.subscribe.query.MediaServerHelper", return_value=helper),
+        patch("app.chain.subscribe.query.MediaServerChain", return_value=mediaserver_chain),
     ):
         result = chain.subscribe_files_info(subscribe)
 

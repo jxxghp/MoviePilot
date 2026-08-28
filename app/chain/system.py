@@ -2,12 +2,12 @@ import errno
 import json
 import re
 import shutil
+import threading
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Protocol, Union
 
-from app.adapters.network.http import RequestUtils
-from app.adapters.system.host import SystemUtils
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.chain.base import ChainBase
 from app.runtime import version as runtime_version
@@ -15,6 +15,88 @@ from app.runtime.log import logger
 from app.runtime.state import SystemHelper
 from app.schemas.message import Message
 from app.schemas.notification import NotificationChannel
+
+
+class SystemResponsePort(Protocol):
+    """系统链查询发布版本所需的最小同步 HTTP 响应契约。"""
+
+    def json(self) -> Any:
+        """返回响应 JSON 载荷。"""
+        ...
+
+    def close(self) -> None:
+        """释放响应与连接资源。"""
+        ...
+
+
+class SystemHttpPort(Protocol):
+    """系统链查询发布版本所需的同步 GET 端口。"""
+
+    def get(
+        self,
+        url: str,
+        *,
+        proxies: Optional[dict[str, str]],
+        headers: Mapping[str, str],
+    ) -> Optional[SystemResponsePort]:
+        """读取远端发布列表，并保留无响应与有响应两态。"""
+        ...
+
+
+class SystemEnvironmentPort(Protocol):
+    """系统链备份插件时所需的最小运行环境端口。"""
+
+    def is_docker(self) -> bool:
+        """返回当前进程是否运行在 Docker 容器中。"""
+        ...
+
+
+_system_port_lock = threading.RLock()
+_system_http_port: Optional[SystemHttpPort] = None
+_system_environment_port: Optional[SystemEnvironmentPort] = None
+
+
+def configure_system_ports(
+    *,
+    http: SystemHttpPort,
+    environment: SystemEnvironmentPort,
+) -> tuple[Optional[SystemHttpPort], Optional[SystemEnvironmentPort]]:
+    """由启动组合根装配系统链技术端口，并返回旧快照。"""
+    global _system_http_port, _system_environment_port
+    with _system_port_lock:
+        previous = (_system_http_port, _system_environment_port)
+        _system_http_port = http
+        _system_environment_port = environment
+        return previous
+
+
+def reset_system_ports(
+    http: Optional[SystemHttpPort] = None,
+    environment: Optional[SystemEnvironmentPort] = None,
+) -> None:
+    """恢复指定系统链端口；省略参数时回到未装配状态。"""
+    global _system_http_port, _system_environment_port
+    with _system_port_lock:
+        _system_http_port = http
+        _system_environment_port = environment
+
+
+def _system_ports_snapshot() -> tuple[SystemHttpPort, SystemEnvironmentPort]:
+    """读取一致的系统链端口快照，未装配时稳定失败。"""
+    with _system_port_lock:
+        http = _system_http_port
+        environment = _system_environment_port
+    if http is None or environment is None:
+        raise RuntimeError("系统链技术端口尚未由启动组合根装配")
+    return http, environment
+
+
+def _close_system_response(response: SystemResponsePort) -> None:
+    """释放版本响应；关闭失败只记录诊断，不覆盖解析结果。"""
+    try:
+        response.close()
+    except Exception as err:
+        logger.debug(f"释放版本响应失败：{str(err)}")
 
 
 class SystemChain(ChainBase):
@@ -65,7 +147,8 @@ class SystemChain(ChainBase):
         """
 
         # 非docker环境不处理
-        if not SystemUtils.is_docker():
+        _, environment = _system_ports_snapshot()
+        if not environment.is_docker():
             return
 
         try:
@@ -131,7 +214,8 @@ class SystemChain(ChainBase):
         """
 
         # 非docker环境不处理
-        if not SystemUtils.is_docker():
+        _, environment = _system_ports_snapshot()
+        if not environment.is_docker():
             return
 
         # 使用绝对路径确保准确性
@@ -368,20 +452,25 @@ class SystemChain(ChainBase):
         """
         try:
             # 获取所有发布的版本列表
-            response = RequestUtils(
+            http, _ = _system_ports_snapshot()
+            response = http.get(
+                "https://api.github.com/repos/jxxghp/MoviePilot/releases",
                 proxies=get_chain_runtime_config_snapshot().proxy,
                 headers=get_chain_runtime_config_snapshot().github_headers,
-            ).get_res("https://api.github.com/repos/jxxghp/MoviePilot/releases")
+            )
             if response:
-                releases = [release['tag_name'] for release in response.json()]
-                v2_releases = [tag for tag in releases if re.match(r"^v2\.", tag)]
-                if not v2_releases:
-                    logger.warn("获取v2后端最新版本版本出错！")
-                else:
-                    # 找到最新的v2版本
-                    latest_v2 = sorted(v2_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
-                    logger.info(f"获取到后端最新版本：{latest_v2}")
-                    return latest_v2
+                try:
+                    releases = [release['tag_name'] for release in response.json()]
+                    v2_releases = [tag for tag in releases if re.match(r"^v2\.", tag)]
+                    if not v2_releases:
+                        logger.warn("获取v2后端最新版本版本出错！")
+                    else:
+                        # 找到最新的v2版本
+                        latest_v2 = sorted(v2_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
+                        logger.info(f"获取到后端最新版本：{latest_v2}")
+                        return latest_v2
+                finally:
+                    _close_system_response(response)
             else:
                 logger.error("无法获取后端版本信息，请检查网络连接或GitHub API请求。")
         except Exception as err:
@@ -395,20 +484,25 @@ class SystemChain(ChainBase):
         """
         try:
             # 获取所有发布的版本列表
-            response = RequestUtils(
+            http, _ = _system_ports_snapshot()
+            response = http.get(
+                "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases",
                 proxies=get_chain_runtime_config_snapshot().proxy,
                 headers=get_chain_runtime_config_snapshot().github_headers,
-            ).get_res("https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases")
+            )
             if response:
-                releases = [release['tag_name'] for release in response.json()]
-                v2_releases = [tag for tag in releases if re.match(r"^v2\.", tag)]
-                if not v2_releases:
-                    logger.warn("获取v2前端最新版本版本出错！")
-                else:
-                    # 找到最新的v2版本
-                    latest_v2 = sorted(v2_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
-                    logger.info(f"获取到前端最新版本：{latest_v2}")
-                    return latest_v2
+                try:
+                    releases = [release['tag_name'] for release in response.json()]
+                    v2_releases = [tag for tag in releases if re.match(r"^v2\.", tag)]
+                    if not v2_releases:
+                        logger.warn("获取v2前端最新版本版本出错！")
+                    else:
+                        # 找到最新的v2版本
+                        latest_v2 = sorted(v2_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
+                        logger.info(f"获取到前端最新版本：{latest_v2}")
+                        return latest_v2
+                finally:
+                    _close_system_response(response)
             else:
                 logger.error("无法获取前端版本信息，请检查网络连接或GitHub API请求。")
         except Exception as err:

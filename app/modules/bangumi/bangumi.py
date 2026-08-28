@@ -1,12 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-import requests
-
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.cache import cached
 from app.runtime.settings import get_runtime_setting
-
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 
 
 class BangumiApi(object):
@@ -30,11 +27,10 @@ class BangumiApi(object):
     _base_url = "https://api.bgm.tv/"
 
     def __init__(self):
-        self._session = requests.Session()
         self._req = RequestUtils(
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
-            session=self._session,
+            use_session=True,
         )
         self._async_req = AsyncRequestUtils(
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
@@ -320,5 +316,4 @@ class BangumiApi(object):
         """
         关闭Bangumi会话
         """
-        if self._session:
-            self._session.close()
+        self._req.close()

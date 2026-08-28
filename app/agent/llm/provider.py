@@ -17,15 +17,14 @@ from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlencode, urlsplit
 
 import aiofiles
-import httpx
 import jwt
 
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.network.http import AsyncRequestUtils
 from app.application.configuration import get_configured_system_config
-from app.runtime.log import logger
-from app.schemas.types import LlmProviderAction, SystemConfigKey
 from app.foundation.singleton import Singleton
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import LlmProviderAction, SystemConfigKey
 
 
 class LLMProviderError(RuntimeError):
@@ -196,7 +195,6 @@ class LLMProviderManager(metaclass=Singleton):
     _CHATGPT_ISSUER = "https://auth.openai.com"
     _CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
     _COPILOT_CLIENT_ID = "Ov23li8tweQw6odWQebz"
-    _DEFAULT_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
     _MODELS_DEV_DYNAMIC_SKIP_IDS = {
         "aihubmix",
         "amazon-bedrock",
@@ -1489,22 +1487,33 @@ class LLMProviderManager(metaclass=Singleton):
             base_url_preset_id=base_url_preset_id,
         )
 
-    @staticmethod
-    def _httpx_proxy_key() -> str:
-        """兼容不同 httpx 版本的 proxy 参数名。"""
-        params = httpx.Client.__init__.__code__.co_varnames
-        return "proxy" if "proxy" in params else "proxies"
-
-    def _build_httpx_kwargs(self, use_proxy: Optional[bool] = None) -> dict[str, Any]:
-        """构造用于 httpx 客户端的参数，如代理等。"""
+    def _build_async_request(
+        self,
+        use_proxy: Optional[bool] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> AsyncRequestUtils:
+        """按 LLM 代理策略构造统一异步 HTTP 请求客户端。"""
         should_use_proxy = get_runtime_setting('LLM_USE_PROXY') if use_proxy is None else use_proxy
-        kwargs: dict[str, Any] = {
-            "timeout": self._DEFAULT_TIMEOUT,
-            "trust_env": False,
-        }
-        if should_use_proxy and get_runtime_setting('PROXY_HOST'):
-            kwargs[self._httpx_proxy_key()] = get_runtime_setting('PROXY_HOST')
-        return kwargs
+        proxy = get_runtime_setting('PROXY_HOST') if should_use_proxy else None
+        proxies = {"http": proxy, "https": proxy} if proxy else None
+        return AsyncRequestUtils(
+            headers=headers,
+            proxies=proxies,
+            timeout=15,
+            verify=True,
+            trust_env=False,
+        )
+
+    def _build_sdk_http_client(self, use_proxy: Optional[bool] = None) -> Any:
+        """为需要注入 transport 的第三方 SDK 构造统一异步客户端。"""
+        should_use_proxy = get_runtime_setting('LLM_USE_PROXY') if use_proxy is None else use_proxy
+        proxy = get_runtime_setting('PROXY_HOST') if should_use_proxy else None
+        return AsyncRequestUtils.create_sdk_client(
+            proxy=proxy,
+            timeout=15,
+            connect_timeout=10,
+            trust_env=False,
+        )
 
     @staticmethod
     def _read_agent_config() -> dict[str, Any]:
@@ -1615,11 +1624,12 @@ class LLMProviderManager(metaclass=Singleton):
 
     async def _fetch_models_dev(self, use_proxy: Optional[bool] = None) -> dict[str, Any]:
         """通过网络请求获取最新 models.dev 数据。"""
-        headers = {"User-Agent": get_runtime_setting('USER_AGENT')}
-        async with httpx.AsyncClient(**self._build_httpx_kwargs(use_proxy)) as client:
-            response = await client.get(self._MODELS_DEV_URL, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        response = await self._build_async_request(
+            use_proxy,
+            headers={"User-Agent": get_runtime_setting('USER_AGENT')},
+        ).get_res(self._MODELS_DEV_URL, raise_exception=True)
+        response.raise_for_status()
+        return response.json()
 
     async def get_models_dev_data(
             self,
@@ -2043,36 +2053,46 @@ class LLMProviderManager(metaclass=Singleton):
         from google.genai.types import HttpOptions
 
         should_use_proxy = get_runtime_setting('LLM_USE_PROXY') if use_proxy is None else use_proxy
-        client_args: dict[str, Any] = {"trust_env": False}
-        if should_use_proxy and get_runtime_setting('PROXY_HOST'):
-            client_args[self._httpx_proxy_key()] = get_runtime_setting('PROXY_HOST')
+        proxy = get_runtime_setting('PROXY_HOST') if should_use_proxy else None
+        client_args = AsyncRequestUtils.build_sdk_client_args(
+            proxy=proxy,
+            timeout=15,
+            connect_timeout=10,
+            trust_env=False,
+        )
         http_options = HttpOptions(
             client_args=client_args,
             async_client_args=client_args,
         )
 
         client = genai.Client(api_key=api_key, http_options=http_options)
-        response = await client.aio.models.list()
-        results = []
-        for model in response.page:
-            supported = set(model.supported_actions or [])
-            if "generateContent" not in supported:
-                continue
-            model_id = model.name
-            metadata = await self._models_dev_model(
-                "google",
-                model_id,
-                use_proxy=use_proxy,
-            ) or {}
-            results.append(
-                self._normalize_model_record(
-                    model_id=model_id,
-                    display_name=model.display_name or metadata.get("name") or model_id,
-                    metadata=metadata,
-                    source="provider",
+        try:
+            response = await client.aio.models.list()
+            results = []
+            for model in response.page:
+                supported = set(model.supported_actions or [])
+                if "generateContent" not in supported:
+                    continue
+                model_id = model.name
+                metadata = await self._models_dev_model(
+                    "google",
+                    model_id,
+                    use_proxy=use_proxy,
+                ) or {}
+                results.append(
+                    self._normalize_model_record(
+                        model_id=model_id,
+                        display_name=model.display_name or metadata.get("name") or model_id,
+                        metadata=metadata,
+                        source="provider",
+                    )
                 )
-            )
-        return sorted(results, key=lambda item: item["name"].lower())
+            return sorted(results, key=lambda item: item["name"].lower())
+        finally:
+            try:
+                await client.aio.aclose()
+            finally:
+                client.close()
 
     async def _list_models_from_openai_compatible(
             self,
@@ -2085,31 +2105,31 @@ class LLMProviderManager(metaclass=Singleton):
         """通过 OpenAI 兼容接口获取模型列表。"""
         from openai import AsyncOpenAI
 
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            default_headers=default_headers,
-            timeout=15.0,
-            max_retries=2,
-            http_client=httpx.AsyncClient(**self._build_httpx_kwargs(use_proxy)),
-        )
-        results = []
-        response = await client.models.list()
-        for model in response.data:
-            metadata = await self._models_dev_model(
-                provider_id,
-                model.id,
+        async with AsyncOpenAI(
+                api_key=api_key,
                 base_url=base_url,
-                use_proxy=use_proxy,
-            ) or {}
-            results.append(
-                self._normalize_model_record(
-                    model_id=model.id,
-                    display_name=metadata.get("name") or model.id,
-                    metadata=metadata,
-                    source="provider",
+                default_headers=default_headers,
+                timeout=15.0,
+                max_retries=2,
+                http_client=self._build_sdk_http_client(use_proxy),
+        ) as client:
+            results = []
+            response = await client.models.list()
+            for model in response.data:
+                metadata = await self._models_dev_model(
+                    provider_id,
+                    model.id,
+                    base_url=base_url,
+                    use_proxy=use_proxy,
+                ) or {}
+                results.append(
+                    self._normalize_model_record(
+                        model_id=model.id,
+                        display_name=metadata.get("name") or model.id,
+                        metadata=metadata,
+                        source="provider",
+                    )
                 )
-            )
         return sorted(results, key=lambda item: item["name"].lower())
 
     async def _list_models_from_models_dev_only(
@@ -2401,13 +2421,15 @@ class LLMProviderManager(metaclass=Singleton):
             use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
         """从 GitHub Copilot 端点获取模型列表。"""
-        async with httpx.AsyncClient(**self._build_httpx_kwargs(use_proxy)) as client:
-            response = await client.get(
-                "https://api.githubcopilot.com/models",
-                headers=self._copilot_headers(token),
-            )
-            response.raise_for_status()
-            payload = response.json()
+        response = await self._build_async_request(
+            use_proxy,
+            headers=self._copilot_headers(token),
+        ).get_res(
+            "https://api.githubcopilot.com/models",
+            raise_exception=True,
+        )
+        response.raise_for_status()
+        payload = response.json()
 
         raw_models = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(raw_models, list):
@@ -2763,17 +2785,18 @@ class LLMProviderManager(metaclass=Singleton):
             }
 
         if provider_id == "chatgpt" and method_id == "device_code":
-            async with httpx.AsyncClient(**self._build_httpx_kwargs()) as client:
-                response = await client.post(
-                    f"{self._CHATGPT_ISSUER}/api/accounts/deviceauth/usercode",
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": get_runtime_setting('USER_AGENT'),
-                    },
-                    json={"client_id": self._CHATGPT_CLIENT_ID},
-                )
-                response.raise_for_status()
-                payload = response.json()
+            response = await self._build_async_request(
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": get_runtime_setting('USER_AGENT'),
+                }
+            ).post_res(
+                f"{self._CHATGPT_ISSUER}/api/accounts/deviceauth/usercode",
+                json={"client_id": self._CHATGPT_CLIENT_ID},
+                raise_exception=True,
+            )
+            response.raise_for_status()
+            payload = response.json()
 
             session.verification_url = f"{self._CHATGPT_ISSUER}/codex/device"
             session.user_code = payload.get("user_code")
@@ -2799,21 +2822,22 @@ class LLMProviderManager(metaclass=Singleton):
             }
 
         if provider_id == "github-copilot" and method_id == "device_code":
-            async with httpx.AsyncClient(**self._build_httpx_kwargs()) as client:
-                response = await client.post(
-                    "https://github.com/login/device/code",
-                    headers={
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                        "User-Agent": get_runtime_setting('USER_AGENT'),
-                    },
-                    json={
-                        "client_id": self._COPILOT_CLIENT_ID,
-                        "scope": "read:user",
-                    },
-                )
-                response.raise_for_status()
-                payload = response.json()
+            response = await self._build_async_request(
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "User-Agent": get_runtime_setting('USER_AGENT'),
+                }
+            ).post_res(
+                "https://github.com/login/device/code",
+                json={
+                    "client_id": self._COPILOT_CLIENT_ID,
+                    "scope": "read:user",
+                },
+                raise_exception=True,
+            )
+            response.raise_for_status()
+            payload = response.json()
 
             session.verification_url = payload.get("verification_uri")
             session.user_code = payload.get("user_code")
@@ -3113,50 +3137,53 @@ class LLMProviderManager(metaclass=Singleton):
             self, code: str, redirect_uri: str, code_verifier: str
     ) -> dict[str, Any]:
         """使用 authorization code 交换 ChatGPT 令牌。"""
-        async with httpx.AsyncClient(**self._build_httpx_kwargs()) as client:
-            response = await client.post(
-                f"{self._CHATGPT_ISSUER}/oauth/token",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": redirect_uri,
-                    "client_id": self._CHATGPT_CLIENT_ID,
-                    "code_verifier": code_verifier,
-                },
-            )
-            response.raise_for_status()
-            return response.json()
+        response = await self._build_async_request(
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        ).post_res(
+            f"{self._CHATGPT_ISSUER}/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": self._CHATGPT_CLIENT_ID,
+                "code_verifier": code_verifier,
+            },
+            raise_exception=True,
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def _refresh_chatgpt_tokens(self, refresh_token: str) -> dict[str, Any]:
         """刷新 ChatGPT 的 access_token。"""
-        async with httpx.AsyncClient(**self._build_httpx_kwargs()) as client:
-            response = await client.post(
-                f"{self._CHATGPT_ISSUER}/oauth/token",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "client_id": self._CHATGPT_CLIENT_ID,
-                },
-            )
-            response.raise_for_status()
-            return response.json()
+        response = await self._build_async_request(
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        ).post_res(
+            f"{self._CHATGPT_ISSUER}/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": self._CHATGPT_CLIENT_ID,
+            },
+            raise_exception=True,
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def _poll_chatgpt_device_auth(self, session: PendingAuthSession) -> None:
         """轮询 ChatGPT Device Auth 状态。"""
-        async with httpx.AsyncClient(**self._build_httpx_kwargs()) as client:
-            response = await client.post(
-                f"{self._CHATGPT_ISSUER}/api/accounts/deviceauth/token",
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": get_runtime_setting('USER_AGENT'),
-                },
-                json={
-                    "device_auth_id": session.context["device_auth_id"],
-                    "user_code": session.context["user_code"],
-                },
-            )
+        response = await self._build_async_request(
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": get_runtime_setting('USER_AGENT'),
+            }
+        ).post_res(
+            f"{self._CHATGPT_ISSUER}/api/accounts/deviceauth/token",
+            json={
+                "device_auth_id": session.context["device_auth_id"],
+                "user_code": session.context["user_code"],
+            },
+            raise_exception=True,
+        )
 
         if response.status_code in {403, 404}:
             session.message = "等待用户在浏览器完成授权"
@@ -3189,22 +3216,23 @@ class LLMProviderManager(metaclass=Singleton):
 
     async def _poll_copilot_device_auth(self, session: PendingAuthSession) -> None:
         """轮询 GitHub Copilot Device Auth 状态。"""
-        async with httpx.AsyncClient(**self._build_httpx_kwargs()) as client:
-            response = await client.post(
-                "https://github.com/login/oauth/access_token",
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "User-Agent": get_runtime_setting('USER_AGENT'),
-                },
-                json={
-                    "client_id": self._COPILOT_CLIENT_ID,
-                    "device_code": session.context["device_code"],
-                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
+        response = await self._build_async_request(
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": get_runtime_setting('USER_AGENT'),
+            }
+        ).post_res(
+            "https://github.com/login/oauth/access_token",
+            json={
+                "client_id": self._COPILOT_CLIENT_ID,
+                "device_code": session.context["device_code"],
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            },
+            raise_exception=True,
+        )
+        response.raise_for_status()
+        payload = response.json()
 
         access_token = payload.get("access_token")
         if access_token:

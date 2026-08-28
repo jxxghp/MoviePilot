@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.runtime.config import global_vars
+from app.runtime.loop import main_loop_registry
 from app.runtime.extensions.plugin.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
@@ -23,6 +23,14 @@ from app.runtime.extensions import plugin_manager as plugin_manager_module
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 from app.startup.initializers import plugins as plugins_initializer
+
+
+@pytest.fixture(autouse=True)
+def _restore_main_loop_registry():
+    """每个插件生命周期用例后恢复主循环投递目标。"""
+    previous = main_loop_registry.current
+    yield
+    main_loop_registry.replace_compat(previous)
 
 
 def _reset_plugin_manager() -> None:
@@ -189,11 +197,7 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
         return task_func()
 
     register = MagicMock()
-    monkeypatch.setattr(
-        global_vars,
-        "CURRENT_EVENT_LOOP",
-        asyncio.get_running_loop(),
-    )
+    main_loop_registry.replace_compat(asyncio.get_running_loop())
     monkeypatch.setattr(plugins_initializer, "configure_plugin_services", lambda: None)
     migration = MagicMock()
     migration.migrate = AsyncMock()
@@ -487,11 +491,7 @@ async def test_sync_plugins_keeps_event_loop_responsive_during_activation(
     )
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(plugins_initializer, "register_plugin_api", MagicMock())
-    monkeypatch.setattr(
-        plugins_initializer.global_vars,
-        "CURRENT_EVENT_LOOP",
-        asyncio.get_running_loop(),
-    )
+    main_loop_registry.replace_compat(asyncio.get_running_loop())
 
     sync_task = asyncio.create_task(plugins_initializer.sync_plugins())
     assert await asyncio.to_thread(activation_started.wait, 1)

@@ -120,7 +120,7 @@ def test_music_cover_download_uses_bounded_external_response_cache() -> None:
     request.get_res.return_value = response
     ScrapingChain._request_music_cover.cache_clear()
 
-    with patch("app.chain.scraping.RequestUtils", return_value=request):
+    with patch("app.startup.initializers.network.RequestUtils", return_value=request):
         first = ScrapingChain._download_music_cover("https://example.com/album.webp")
         second = ScrapingChain._download_music_cover("https://example.com/album.webp")
 

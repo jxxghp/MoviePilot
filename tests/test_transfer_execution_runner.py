@@ -22,7 +22,7 @@ from app.application.transfer.workflow import (
     TransferPlanItem,
     TransferPlanningInput,
 )
-from app.chain import transfer as transfer_chain_module
+from app.chain.transfer import execution as transfer_chain_module
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )

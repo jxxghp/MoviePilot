@@ -338,7 +338,35 @@ def _function_parameter_symbols(
 _InjectedFieldKey: TypeAlias = tuple[str, str]
 
 
-def _module_import_aliases(tree: ast.Module) -> dict[str, str]:
+def _resolve_import_from_module(
+    module_name: str,
+    node: ast.ImportFrom,
+    package_modules: set[str],
+) -> str:
+    """把绝对或相对 from-import 解析为 canonical 来源模块。"""
+    if not node.level:
+        return node.module or ""
+    current_parts = module_name.split(".")
+    package_parts = (
+        current_parts
+        if module_name in package_modules
+        else current_parts[:-1]
+    )
+    ascend = node.level - 1
+    if ascend > len(package_parts):
+        return ""
+    base_parts = package_parts[:len(package_parts) - ascend]
+    if node.module:
+        base_parts.extend(node.module.split("."))
+    return ".".join(base_parts)
+
+
+def _module_import_aliases(
+    tree: ast.Module,
+    *,
+    module_name: str,
+    package_modules: set[str],
+) -> dict[str, str]:
     """收集解析类继承关系所需的模块级 import 别名。"""
     aliases: dict[str, str] = {}
     for node in tree.body:
@@ -346,10 +374,18 @@ def _module_import_aliases(tree: ast.Module) -> dict[str, str]:
             for item in node.names:
                 bound = item.asname or item.name.split(".", 1)[0]
                 aliases[bound] = item.name if item.asname else bound
-        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+        elif isinstance(node, ast.ImportFrom):
+            source_module = _resolve_import_from_module(
+                module_name,
+                node,
+                package_modules,
+            )
             for item in node.names:
                 if item.name != "*":
-                    aliases[item.asname or item.name] = f"{node.module}.{item.name}"
+                    canonical = ".".join(
+                        part for part in (source_module, item.name) if part
+                    )
+                    aliases[item.asname or item.name] = canonical
     return aliases
 
 
@@ -386,6 +422,7 @@ def _canonical_class_name(
 
 def _discover_injected_event_fields(
     trees: dict[str, ast.Module],
+    package_modules: set[str],
 ) -> dict[_InjectedFieldKey, dict[str, _Symbol]]:
     """按 owning class 发现构造注入字段，并沿已知继承关系传播。"""
     classes = {
@@ -394,7 +431,11 @@ def _discover_injected_event_fields(
         for qualname, node in _iter_classes(tree.body)
     }
     aliases = {
-        module_name: _module_import_aliases(tree)
+        module_name: _module_import_aliases(
+            tree,
+            module_name=module_name,
+            package_modules=package_modules,
+        )
         for module_name, tree in trees.items()
     }
     fields: dict[str, dict[str, _Symbol]] = {
@@ -1395,7 +1436,15 @@ def collect_event_facts(
         if module_name != "app.plugins"
         and not module_name.startswith("app.plugins.")
     }
-    injected_fields = _discover_injected_event_fields(trees)
+    package_modules = {
+        module_name
+        for module_name, path in modules.items()
+        if path.name == "__init__.py"
+    }
+    injected_fields = _discover_injected_event_fields(
+        trees,
+        package_modules,
+    )
     producers: list[dict[str, Any]] = []
     consumers: list[dict[str, Any]] = []
     for module_name, tree in sorted(trees.items()):

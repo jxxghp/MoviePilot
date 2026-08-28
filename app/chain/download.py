@@ -4,13 +4,13 @@ import hashlib
 import json
 import re
 import shutil
+import threading
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Set, Tuple, Union
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-from app.adapters.network.http import RequestUtils
-from app.adapters.system.host import SystemUtils
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.application.download import selection as _selection
@@ -63,6 +63,123 @@ from app.schemas.types import (
     TorrentStatus,
 )
 from app.schemas.workflow import FileItem as _SchemaFileItem
+
+
+class DownloadResponsePort(Protocol):
+    """下载链读取的最小同步 HTTP 响应契约。"""
+
+    status_code: int
+    reason: str
+    text: str
+    content: bytes
+    headers: Mapping[str, str]
+
+    def json(self) -> Any:
+        """返回响应 JSON 载荷。"""
+        ...
+
+    def close(self) -> None:
+        """释放响应与连接资源。"""
+        ...
+
+
+class DownloadHttpPort(Protocol):
+    """下载链获取字幕与间接下载地址所需的同步 HTTP 端口。"""
+
+    def get(
+        self,
+        url: str,
+        *,
+        cookies: Optional[Union[str, dict[str, str]]] = None,
+        ua: Optional[str] = None,
+        headers: Optional[dict[str, str]] = None,
+        proxies: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = None,
+        params: Optional[dict[str, Any]] = None,
+        raise_exception: bool = False,
+    ) -> Optional[DownloadResponsePort]:
+        """发送 GET 请求并保留无响应、失败响应与成功响应三态。"""
+        ...
+
+    def post(
+        self,
+        url: str,
+        *,
+        cookies: Optional[Union[str, dict[str, str]]] = None,
+        ua: Optional[str] = None,
+        headers: Optional[dict[str, str]] = None,
+        proxies: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = None,
+        params: Optional[dict[str, Any]] = None,
+    ) -> Optional[DownloadResponsePort]:
+        """发送 POST 请求并保留无响应、失败响应与成功响应三态。"""
+        ...
+
+
+class DownloadArchivePort(Protocol):
+    """下载链保存压缩字幕所需的最小归档文件端口。"""
+
+    def unpack(
+        self,
+        archive_file: Path,
+        extract_dir: Path,
+        *,
+        archive_format: Optional[str],
+    ) -> None:
+        """将字幕归档解压到指定临时目录。"""
+        ...
+
+    def list_files(self, directory: Path, extensions: tuple[str, ...]) -> list[Path]:
+        """返回临时目录内匹配扩展名的字幕文件。"""
+        ...
+
+
+_download_port_lock = threading.RLock()
+_download_http_port: Optional[DownloadHttpPort] = None
+_download_archive_port: Optional[DownloadArchivePort] = None
+
+
+def configure_download_ports(
+    *,
+    http: DownloadHttpPort,
+    archive: DownloadArchivePort,
+) -> tuple[Optional[DownloadHttpPort], Optional[DownloadArchivePort]]:
+    """由启动组合根装配下载链技术端口，并返回旧快照供隔离测试恢复。"""
+    global _download_http_port, _download_archive_port
+    with _download_port_lock:
+        previous = (_download_http_port, _download_archive_port)
+        _download_http_port = http
+        _download_archive_port = archive
+        return previous
+
+
+def reset_download_ports(
+    http: Optional[DownloadHttpPort] = None,
+    archive: Optional[DownloadArchivePort] = None,
+) -> None:
+    """恢复指定下载链端口；省略参数时回到未装配状态。"""
+    global _download_http_port, _download_archive_port
+    with _download_port_lock:
+        _download_http_port = http
+        _download_archive_port = archive
+
+
+def _download_ports_snapshot() -> tuple[DownloadHttpPort, DownloadArchivePort]:
+    """读取一致的下载链端口快照，未装配时稳定失败。"""
+    with _download_port_lock:
+        http = _download_http_port
+        archive = _download_archive_port
+    if http is None or archive is None:
+        raise RuntimeError("下载链技术端口尚未由启动组合根装配")
+    return http, archive
+
+
+def _close_download_response(response: DownloadResponsePort) -> None:
+    """释放下载响应；关闭失败只记录诊断，不覆盖已完成的业务结果。"""
+    try:
+        response.close()
+    except Exception as err:
+        logger.debug(f"释放下载响应失败：{str(err)}")
 
 DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS = 24 * 60 * 60
 DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS = 60 * 60
@@ -456,7 +573,8 @@ class DownloadChain(ChainBase):
             temp_file.write_bytes(response.content)
             if self._is_subtitle_archive(file_name):
                 try:
-                    SystemUtils.unpack_archive(
+                    _, archive_port = _download_ports_snapshot()
+                    archive_port.unpack(
                         temp_file,
                         temp_extract_dir,
                         archive_format=self._subtitle_archive_format(file_name),
@@ -465,7 +583,7 @@ class DownloadChain(ChainBase):
                     message = f"字幕压缩包解压失败：{str(err)}"
                     logger.error(f"{message}，文件：{temp_file}")
                     return False, message, []
-                for sub_file in SystemUtils.list_files(
+                for sub_file in archive_port.list_files(
                     temp_extract_dir,
                     self.runtime_config.subtitle_extensions,
                 ):
@@ -546,32 +664,37 @@ class DownloadChain(ChainBase):
         if not target_dir:
             return False, error_msg or "未找到下载目录", []
 
-        request = RequestUtils(
-            cookies=subtitle.site_cookie,
-            ua=subtitle.site_ua or self.runtime_config.user_agent,
-            proxies=self.runtime_config.proxy if subtitle.site_proxy else None,
-        )
         try:
-            response = request.get_res(subtitle.enclosure, raise_exception=True)
+            http, _ = _download_ports_snapshot()
+            response = http.get(
+                subtitle.enclosure,
+                cookies=subtitle.site_cookie,
+                ua=subtitle.site_ua or self.runtime_config.user_agent,
+                proxies=self.runtime_config.proxy if subtitle.site_proxy else None,
+                raise_exception=True,
+            )
         except Exception as err:
             message = f"下载字幕文件失败：{str(err)}"
             logger.error(message)
             return False, message, []
         if response is None:
             return False, "下载字幕文件失败：未收到站点响应", []
-        if response.status_code != 200:
-            message = self._build_subtitle_download_error(response)
-            logger.error(message)
-            return False, message, []
+        try:
+            if response.status_code != 200:
+                message = self._build_subtitle_download_error(response)
+                logger.error(message)
+                return False, message, []
 
-        success, message, saved_files = self._save_subtitle_response(
-            subtitle=subtitle,
-            response=response,
-            storage=storage,
-            target_dir=target_dir,
-        )
-        if not success:
-            return False, message, []
+            success, message, saved_files = self._save_subtitle_response(
+                subtitle=subtitle,
+                response=response,
+                storage=storage,
+                target_dir=target_dir,
+            )
+            if not success:
+                return False, message, []
+        finally:
+            _close_download_response(response)
 
         logger.info(
             f"{mediainfo.title_year} 字幕下载完成：{subtitle.site_name} - {subtitle.title}，用户：{username}"
@@ -619,6 +742,71 @@ class DownloadChain(ChainBase):
         解析站点详情页的字幕下载链接，模块内部自行区分页面解析与API站点
         """
         return self.run_module("site_subtitle_links", context=context)
+
+    def _save_site_subtitle_response(
+        self,
+        *,
+        response: DownloadResponsePort,
+        sublink: str,
+        archive_port: DownloadArchivePort,
+        storage_chain: StorageChain,
+        storage: str,
+        working_dir_item: _SchemaFileItem,
+    ) -> None:
+        """保存站点详情页返回的单个字幕响应，响应所有权仍归调用方。"""
+        if response.status_code != 200:
+            logger.error(f"下载字幕文件失败：{sublink}")
+            return
+        file_name = TorrentHelper.get_url_filename(response, sublink)
+        if not file_name:
+            logger.warn(f"链接不是字幕文件：{sublink}")
+            return
+        archive_format = self._SUBTITLE_ARCHIVE_FORMATS.get(
+            Path(file_name).suffix.lower()
+        )
+        if not archive_format:
+            if Path(file_name).suffix.lower() not in self.runtime_config.subtitle_extensions:
+                logger.warn(f"链接不是支持的字幕文件：{sublink} - {file_name}")
+                return
+            sub_file = self.runtime_config.temporary_path / file_name
+            sub_file.write_bytes(response.content)
+            target_sub_file = Path(working_dir_item.path) / sub_file.name
+            if storage_chain.get_file_item(storage, target_sub_file):
+                logger.info(f"字幕文件已存在：{target_sub_file}")
+                return
+            logger.info(f"转移字幕 {sub_file} 到 {target_sub_file} ...")
+            storage_chain.upload_file(working_dir_item, sub_file)
+            return
+
+        archive_file = self.runtime_config.temporary_path / file_name
+        archive_file.write_bytes(response.content)
+        archive_path = archive_file.with_name(archive_file.stem)
+        try:
+            archive_port.unpack(
+                archive_file,
+                archive_path,
+                archive_format=archive_format,
+            )
+            for sub_file in archive_port.list_files(
+                archive_path,
+                self.runtime_config.subtitle_extensions,
+            ):
+                target_sub_file = Path(working_dir_item.path) / sub_file.name
+                if storage_chain.get_file_item(storage, target_sub_file):
+                    logger.info(f"字幕文件已存在：{target_sub_file}")
+                    continue
+                logger.info(f"转移字幕 {sub_file} 到 {target_sub_file} ...")
+                storage_chain.upload_file(working_dir_item, sub_file)
+        except Exception as err:
+            logger.error(f"字幕压缩包解压失败：{archive_file} - {str(err)}")
+        finally:
+            try:
+                if archive_path.exists():
+                    shutil.rmtree(archive_path)
+                if archive_file.exists():
+                    archive_file.unlink()
+            except Exception as err:
+                logger.error(f"删除临时文件失败：{str(err)}")
 
     def download_site_subtitles(
             self,
@@ -681,75 +869,34 @@ class DownloadChain(ChainBase):
             logger.warn(f"{torrent.page_url} 页面未找到字幕下载链接")
             return
         # 下载所有字幕文件
-        request = RequestUtils(
-            cookies=torrent.site_cookie,
-            ua=torrent.site_ua,
-            proxies=self.runtime_config.proxy if torrent.site_proxy else None,
-        )
+        try:
+            http, archive_port = _download_ports_snapshot()
+        except RuntimeError as err:
+            logger.error(str(err))
+            return
         self.runtime_config.temporary_path.mkdir(parents=True, exist_ok=True)
         for sublink in sublink_list:
             logger.info(f"找到字幕下载链接：{sublink}，开始下载...")
-            # 下载
-            ret = request.get_res(sublink)
-            if ret and ret.status_code == 200:
-                file_name = TorrentHelper.get_url_filename(ret, sublink)
-                if not file_name:
-                    logger.warn(f"链接不是字幕文件：{sublink}")
-                    continue
-                archive_format = self._SUBTITLE_ARCHIVE_FORMATS.get(Path(file_name).suffix.lower())
-                if archive_format:
-                    archive_file = self.runtime_config.temporary_path / file_name
-                    # 保存
-                    archive_file.write_bytes(ret.content)
-                    # 解压路径
-                    archive_path = archive_file.with_name(archive_file.stem)
-                    try:
-                        # 解压文件
-                        SystemUtils.unpack_archive(
-                            archive_file,
-                            archive_path,
-                            archive_format=archive_format,
-                        )
-                        # 遍历转移文件
-                        for sub_file in SystemUtils.list_files(
-                            archive_path,
-                            self.runtime_config.subtitle_extensions,
-                        ):
-                            target_sub_file = Path(working_dir_item.path) / Path(sub_file.name)
-                            if storage_chain.get_file_item(storage, target_sub_file):
-                                logger.info(f"字幕文件已存在：{target_sub_file}")
-                                continue
-                            logger.info(f"转移字幕 {sub_file} 到 {target_sub_file} ...")
-                            storage_chain.upload_file(working_dir_item, sub_file)
-                    except Exception as err:
-                        logger.error(f"字幕压缩包解压失败：{archive_file} - {str(err)}")
-                    # 删除临时文件
-                    try:
-                        if archive_path.exists():
-                            shutil.rmtree(archive_path)
-                        if archive_file.exists():
-                            archive_file.unlink()
-                    except Exception as err:
-                        logger.error(f"删除临时文件失败：{str(err)}")
-                else:
-                    if (
-                        Path(file_name).suffix.lower()
-                        not in self.runtime_config.subtitle_extensions
-                    ):
-                        logger.warn(f"链接不是支持的字幕文件：{sublink} - {file_name}")
-                        continue
-                    sub_file = self.runtime_config.temporary_path / file_name
-                    # 保存
-                    sub_file.write_bytes(ret.content)
-                    target_sub_file = Path(working_dir_item.path) / Path(sub_file.name)
-                    if storage_chain.get_file_item(storage, target_sub_file):
-                        logger.info(f"字幕文件已存在：{target_sub_file}")
-                        continue
-                    logger.info(f"转移字幕 {sub_file} 到 {target_sub_file} ...")
-                    storage_chain.upload_file(working_dir_item, sub_file)
-            else:
+            ret = http.get(
+                sublink,
+                cookies=torrent.site_cookie,
+                ua=torrent.site_ua,
+                proxies=self.runtime_config.proxy if torrent.site_proxy else None,
+            )
+            if ret is None:
                 logger.error(f"下载字幕文件失败：{sublink}")
                 continue
+            try:
+                self._save_site_subtitle_response(
+                    response=ret,
+                    sublink=sublink,
+                    archive_port=archive_port,
+                    storage_chain=storage_chain,
+                    storage=storage,
+                    working_dir_item=working_dir_item,
+                )
+            finally:
+                _close_download_response(ret)
         logger.info(f"{torrent.page_url} 页面字幕下载完成")
 
     @staticmethod
@@ -1096,27 +1243,32 @@ class DownloadChain(ChainBase):
                     headers = req_params.get('header')
                 else:
                     headers = None
+                http, _ = _download_ports_snapshot()
                 if req_params.get('method') == 'get':
                     # GET请求
-                    res = RequestUtils(
+                    res = http.get(
+                        url,
                         ua=ua,
                         cookies=cookie,
                         headers=headers,
-                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None
-                    ).get_res(url, params=req_params.get('params'))
+                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,
+                        params=req_params.get('params'),
+                    )
                 else:
                     # POST请求
-                    res = RequestUtils(
+                    res = http.post(
+                        url,
                         ua=ua,
                         cookies=cookie,
                         headers=headers,
-                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None
-                    ).post_res(url, params=req_params.get('params'))
+                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,
+                        params=req_params.get('params'),
+                    )
                 if not res:
                     return None
-                if not req_params.get('result'):
-                    return res.text
-                else:
+                try:
+                    if not req_params.get('result'):
+                        return res.text
                     data = res.json()
                     success_key = req_params.get('success')
                     if success_key and not data.get(success_key):
@@ -1139,6 +1291,8 @@ class DownloadChain(ChainBase):
                     )
                     logger.info("已获取到站点临时下载地址")
                     return data
+                finally:
+                    _close_download_response(res)
             return None
 
         # 获取下载链接

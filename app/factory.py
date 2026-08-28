@@ -21,10 +21,10 @@ from app.api.response import ResponseAPIRoute
 from app.application.plugin.routes import configure_plugin_routes
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.security.token import create_access_token, decode_access_token
-from app.runtime.config import global_vars
 from app.runtime.correlation import get_correlation_id
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import configure_correlation_id_provider, logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.observability import configure_observation
 from app.runtime.settings import get_runtime_setting
 from app.runtime.version import get_app_version
@@ -393,7 +393,7 @@ def create_app() -> FastAPI:
             "/redoc",
         },
         log=logger,
-        event_loop=lambda: global_vars.CURRENT_EVENT_LOOP,
+        event_loop=lambda: main_loop_registry.current,
     ))
 
     return _app

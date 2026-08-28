@@ -5,22 +5,22 @@ import time
 from difflib import SequenceMatcher
 from typing import Any, Iterable, Optional, Tuple, Union
 
-from requests import Session
-
-from app.runtime.cache import cached
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
     MusicRelease,
 )
+from app.domain.media import is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.runtime.log import logger
+from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules.musicbrainz.music_cache import MusicBrainzCache
+from app.runtime.cache import cached
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
@@ -30,9 +30,6 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.domain.media import is_media_source_selected
-from app.foundation.text import convert as zhconv_convert
 
 
 class MusicBrainzModule(_ModuleBase):
@@ -49,9 +46,9 @@ class MusicBrainzModule(_ModuleBase):
     _last_request_at = 0.0
     # 本地识别缓存，由模块管理器初始化时挂载
     cache: MusicBrainzCache = None
-    # 全局复用 HTTP 会话：keep-alive 省去每次请求的 DNS+TLS 握手（约 6s → 0.4s）
-    _session: Optional[Session] = None
-    _session_lock = threading.Lock()
+    # 全局复用 HTTP 客户端：keep-alive 省去每次请求的 DNS+TLS 握手（约 6s → 0.4s）
+    _request: Optional[RequestUtils] = None
+    _client_lock = threading.Lock()
     # 服务端繁忙（429/5xx）时的重试次数与退避基数，重试间隔随次数翻倍递增
     _busy_retries = 2
     _busy_backoff = 5.0
@@ -99,6 +96,9 @@ class MusicBrainzModule(_ModuleBase):
                 self.cache.save()
             except Exception as err:
                 logger.error(f"保存音乐识别缓存失败：{str(err)}")
+        if self._request is not None:
+            self._request.close()
+            self.__class__._request = None
 
     def scheduler_job(self) -> None:
         """定时任务，每10分钟持久化一次音乐识别缓存。"""
@@ -1764,13 +1764,24 @@ class MusicBrainzModule(_ModuleBase):
         return f"{base}/release-group/{release_group_id}/front-500"
 
     @classmethod
-    def _get_session(cls) -> Session:
-        """懒创建并复用全局 HTTP 会话，批量识别时避免重复建连。"""
-        if cls._session is None:
-            with cls._session_lock:
-                if cls._session is None:
-                    cls._session = Session()
-        return cls._session
+    def _get_request(cls) -> RequestUtils:
+        """懒创建并复用统一 HTTP 客户端，批量识别时避免重复建连。"""
+        if cls._request is None:
+            with cls._client_lock:
+                if cls._request is None:
+                    cls._request = RequestUtils(
+                        headers={
+                            "User-Agent": (
+                                f"{get_runtime_setting('USER_AGENT')} "
+                                "(https://github.com/jxxghp/MoviePilot)"
+                            ),
+                            "Accept": "application/json",
+                        },
+                        proxies=get_runtime_setting('PROXY'),
+                        use_session=True,
+                        timeout=20,
+                    )
+        return cls._request
 
     @classmethod
     def _reserve_request_delay(cls) -> float:
@@ -1808,15 +1819,9 @@ class MusicBrainzModule(_ModuleBase):
         attempts = cls._busy_retries + 1
         for attempt in range(attempts):
             cls._wait_for_rate_limit()
-            response = RequestUtils(
-                headers={
-                    "User-Agent": f"{get_runtime_setting('USER_AGENT')} (https://github.com/jxxghp/MoviePilot)",
-                    "Accept": "application/json",
-                },
-                proxies=get_runtime_setting('PROXY'),
-                session=cls._get_session(),
-                timeout=20,
-            ).get_res(f"{cls._base_url}{path}", params=params)
+            response = cls._get_request().get_res(
+                f"{cls._base_url}{path}", params=params
+            )
             if response is None:
                 return None
             status_code = response.status_code

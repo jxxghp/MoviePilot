@@ -37,19 +37,6 @@ FROZEN_DIRECT_ADAPTER_IMPORTS = {
     ("app.application.security.cookie", "app.adapters.network.http"): "S2-L6",
     ("app.application.torrent", "app.adapters.network.http"): "S2-L6",
     ("app.application.transfer.workflow", "app.adapters.system.host"): "S2-L6",
-    ("app.chain._recognition", "app.adapters.external.server"): "S2-L7",
-    ("app.chain._transfer", "app.adapters.system.host"): "S2-L7",
-    ("app.chain.download", "app.adapters.network.http"): "S2-L7",
-    ("app.chain.download", "app.adapters.system.host"): "S2-L7",
-    ("app.chain.message", "app.adapters.network.http"): "S2-L7",
-    ("app.chain.scraping", "app.adapters.network.http"): "S2-L7",
-    ("app.chain.site", "app.adapters.external.cookiecloud"): "S2-L7",
-    ("app.chain.site", "app.adapters.network.browser"): "S2-L7",
-    ("app.chain.site", "app.adapters.network.cloudflare"): "S2-L7",
-    ("app.chain.site", "app.adapters.network.http"): "S2-L7",
-    ("app.chain.subscribe", "app.adapters.external.server"): "S2-L7",
-    ("app.chain.system", "app.adapters.network.http"): "S2-L7",
-    ("app.chain.system", "app.adapters.system.host"): "S2-L7",
 }
 
 
@@ -262,7 +249,6 @@ def test_current_direct_adapter_imports_match_temporary_debt_policy() -> None:
     assert Counter(FROZEN_DIRECT_ADAPTER_IMPORTS.values()) == {
         "S2-L5": 1,
         "S2-L6": 13,
-        "S2-L7": 13,
     }
     assert _adapter_policy_entry_errors(entries) == []
 

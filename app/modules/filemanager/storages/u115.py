@@ -6,12 +6,12 @@ from pathlib import Path
 from threading import Lock
 from typing import List, Optional, Tuple, Union
 
-import httpx
 import oss2
 from cryptography.hazmat.primitives import hashes
 from oss2 import SizedFileAdapter, determine_part_size
 from oss2.models import PartInfo
 
+from app.adapters.network.http import HttpRequestError, RequestUtils
 from app.foundation import size as size_tools
 from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
@@ -71,7 +71,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     def __init__(self):
         super().__init__()
         self._auth_state = {}
-        self.session = httpx.Client(follow_redirects=True, timeout=20.0)
+        self._request_utils = RequestUtils(
+            use_session=True,
+            timeout=20,
+            verify=True,
+        )
         self._init_session()
         # 接口限流
         self._download_limiter = QpsRateLimiter(1)
@@ -85,13 +89,17 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         初始化带速率限制的会话
         """
-        self.session.headers.update(
+        self._request_utils.update_headers(
             {
                 "User-Agent": "W115Storage/2.0",
                 "Accept-Encoding": "gzip, deflate",
                 "Content-Type": "application/x-www-form-urlencoded",
             }
         )
+
+    def close(self) -> None:
+        """关闭 115 HTTP 客户端。"""
+        self._request_utils.close()
 
     def _check_session(self):
         """
@@ -120,7 +128,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                     return None
             access_token = tokens.get("access_token")
             if access_token:
-                self.session.headers.update({"Authorization": f"Bearer {access_token}"})
+                self._request_utils.update_headers(
+                    {"Authorization": f"Bearer {access_token}"}
+                )
             return access_token
 
     def generate_auth_url(self) -> Tuple[dict, str]:
@@ -128,7 +138,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         生成 OAuth2 授权 URL
         """
         try:
-            resp = self.session.get(f"{get_runtime_setting('U115_AUTH_SERVER')}/u115/auth_url")
+            resp = self._request_utils.get_res(
+                f"{get_runtime_setting('U115_AUTH_SERVER')}/u115/auth_url"
+            )
             if resp is None:
                 return {}, "无法连接到授权服务器"
 
@@ -146,7 +158,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             self._auth_state = {"state": state}
 
             return {"authUrl": auth_url, "state": state}, ""
-        except Exception as e:
+        except HttpRequestError as e:
             logger.error(f"【115】获取授权 URL 失败: {str(e)}")
             return {}, f"获取授权 URL 失败: {str(e)}"
 
@@ -160,7 +172,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             sha256(code_verifier.encode("utf-8")).digest()
         ).decode("utf-8")
         # 请求设备码
-        resp = self.session.post(
+        resp = self._request_utils.post_res(
             "https://passportapi.115.com/open/authDeviceCode",
             data={
                 "client_id": get_runtime_setting('U115_APP_ID'),
@@ -194,7 +206,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if not self._auth_state:
             return {}, "生成二维码失败"
         try:
-            resp = self.session.get(
+            resp = self._request_utils.get_res(
                 "https://qrcodeapi.115.com/get/status/",
                 params={
                     "uid": self._auth_state["uid"],
@@ -214,7 +226,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 "status": result["data"]["status"],
                 "tip": result["data"]["msg"],
             }, ""
-        except Exception as e:
+        except HttpRequestError as e:
             return {}, str(e)
 
     def __check_oauth_login(self) -> Tuple[dict, str]:
@@ -226,7 +238,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             return {}, "state为空"
 
         try:
-            resp = self.session.get(
+            resp = self._request_utils.get_res(
                 f"{get_runtime_setting('U115_AUTH_SERVER')}/u115/token", params={"state": state}
             )
             if resp is None:
@@ -264,7 +276,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         if not self._auth_state:
             raise Exception("【115】请先生成二维码")
-        resp = self.session.post(
+        resp = self._request_utils.post_res(
             "https://passportapi.115.com/open/deviceCodeToToken",
             data={
                 "uid": self._auth_state["uid"],
@@ -282,7 +294,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         刷新access_token
         """
-        resp = self.session.post(
+        resp = self._request_utils.post_res(
             "https://passportapi.115.com/open/refreshToken",
             data={"refresh_token": refresh_token},
         )
@@ -339,8 +351,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             time.sleep(wait_secs)
 
         try:
-            resp = self.session.request(method, f"{self.base_url}{endpoint}", **kwargs)
-        except httpx.RequestError as e:
+            resp = self._request_utils.request(
+                method,
+                f"{self.base_url}{endpoint}",
+                raise_exception=True,
+                **kwargs,
+            )
+        except Exception as e:
             logger.error(f"【115】{method} 请求 {endpoint} 网络错误: {str(e)}")
             return None
 
@@ -379,7 +396,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         # 处理请求错误
         try:
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
+        except Exception as e:
             if retry_times <= 0:
                 logger.error(
                     f"【115】{method} 请求 {endpoint} 错误 {e}，重试次数用尽！"
@@ -920,12 +937,14 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
 
         try:
-            with self.session.stream("GET", download_url) as r:
+            with self._request_utils.get_stream(
+                download_url, raise_exception=True
+            ) as r:
                 r.raise_for_status()
                 downloaded_size = 0
 
                 with open(local_path, "wb") as f:
-                    for chunk in r.iter_bytes(chunk_size=self.chunk_size):
+                    for chunk in r.iter_content(chunk_size=self.chunk_size):
                         if runtime_stop_state.consume_transfer_stop(fileitem.path):
                             logger.info(f"【115】{fileitem.path} 下载已取消！")
                             r.close()
@@ -939,7 +958,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 # 完成下载
                 progress_callback(100)
                 logger.info(f"【115】下载完成: {fileitem.name}")
-        except httpx.RequestError as e:
+        except HttpRequestError as e:
             logger.error(f"【115】下载网络错误: {fileitem.name} - {str(e)}")
             # 删除可能部分下载的文件
             if local_path.exists():
@@ -966,7 +985,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 "POST", "/open/ufile/delete", data={"file_ids": int(fileitem.fileid)}
             )
             return True
-        except httpx.HTTPError:
+        except HttpRequestError:
             return False
 
     def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:

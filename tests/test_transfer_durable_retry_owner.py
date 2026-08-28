@@ -42,7 +42,7 @@ def _install_retry_port(monkeypatch) -> object:
         message="整理任务已登记重试",
     )
     monkeypatch.setattr(
-        "app.chain._transfer.TransferExecutionCommand",
+        "app.chain.transfer.retry.TransferExecutionCommand",
         _RetryCommand,
     )
     return repository
@@ -57,7 +57,7 @@ def test_durable_history_redo_only_requests_persistent_retry(monkeypatch):
         src="/missing/source.mkv",
     )
     monkeypatch.setattr(
-        "app.chain._transfer.Path.exists",
+        "app.chain.transfer.retry.Path.exists",
         lambda _path: (_ for _ in ()).throw(
             AssertionError("durable 重试不应检查源路径")
         ),
@@ -113,13 +113,13 @@ def test_durable_manual_cleanup_keeps_target_history_and_failure_budget(monkeypa
         )
     )
     monkeypatch.setattr(
-        "app.chain._transfer.StorageChain",
+        "app.chain.transfer.records.StorageChain",
         lambda: (_ for _ in ()).throw(
             AssertionError("durable 目标不得删除")
         ),
     )
     monkeypatch.setattr(
-        "app.chain._transfer.clear_transfer_failures",
+        "app.chain.transfer.records.clear_transfer_failures",
         lambda *_args: (_ for _ in ()).throw(
             AssertionError("durable 失败计数不得清零")
         ),
@@ -142,13 +142,13 @@ def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
     repository = _install_retry_port(monkeypatch)
     history = SimpleNamespace(id=83, transfer_task_id="transfer-task-83")
     monkeypatch.setattr(
-        "app.chain._transfer.build_manual_redo_prompt",
+        "app.chain.transfer.retry.build_manual_redo_prompt",
         lambda _history: (_ for _ in ()).throw(
             AssertionError("durable 重试不得生成 Agent 破坏性提示词")
         ),
     )
     monkeypatch.setattr(
-        "app.chain._transfer.get_task_registry",
+        "app.chain.transfer.retry.get_task_registry",
         lambda: (_ for _ in ()).throw(
             AssertionError("durable 重试不得提交 Agent 任务")
         ),
@@ -193,7 +193,7 @@ def test_durable_manual_review_rejection_does_not_fall_back_to_legacy(monkeypatc
         src="/downloads/source.mkv",
     )
     monkeypatch.setattr(
-        "app.chain._transfer.Path.exists",
+        "app.chain.transfer.retry.Path.exists",
         lambda _path: (_ for _ in ()).throw(
             AssertionError("拒绝后不得回退旧流程")
         ),

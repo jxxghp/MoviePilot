@@ -1,32 +1,31 @@
 import json
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple, Generator, Any, Union
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
 from plexapi.exceptions import NotFound
 from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
-from requests import Response, Session
 
+from app.adapters.network.http import RequestUtils
+from app.application.mediaserver import MediaServerIdentityHelper
+from app.foundation.url import UrlUtils
+from app.runtime.cache import cached
+from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.runtime.cache import cached
-from app.application.mediaserver import MediaServerIdentityHelper
-from app.runtime.log import logger
 from app.schemas.types import MediaSource, MediaType
-from app.adapters.network.http import RequestUtils
-from app.foundation.url import UrlUtils
-from app.schemas.mediaserver import MediaServerItem
 
 
 class Plex:
     _plex = None
-    _session = None
+    _request_utils = None
     _sync_libraries: List[str] = []
 
     def __init__(self, host: Optional[str] = None, token: Optional[str] = None, play_host: Optional[str] = None,
@@ -48,7 +47,10 @@ class Plex:
             except Exception as e:
                 self._plex = None
                 logger.error(f"Plex服务器连接失败：{str(e)}")
-            self._session = self.__adapt_plex_session()
+            self._request_utils = RequestUtils(
+                headers=self.__get_request_headers(),
+                use_session=True,
+            )
         self._sync_libraries = sync_libraries or []
 
     def is_inactive(self) -> bool:
@@ -472,7 +474,7 @@ class Plex:
                                                        plex_url=plex_url)
             return image_url
         except Exception as e:
-            logger.error(f"获取封面出错：" + str(e))
+            logger.error("获取封面出错：" + str(e))
         return None
 
     def __build_local_image_url(
@@ -1002,7 +1004,7 @@ class Plex:
             offset += num
         return ret_resume[:num]
 
-    def get_data(self, endpoint: str, **kwargs) -> Optional[Response]:
+    def get_data(self, endpoint: str, **kwargs) -> Optional[Any]:
         """
         自定义从媒体服务器获取数据
         :param endpoint: 端点
@@ -1010,7 +1012,7 @@ class Plex:
         """
         return self.__request(method="get", endpoint=endpoint, **kwargs)
 
-    def post_data(self, endpoint: str, **kwargs) -> Optional[Response]:
+    def post_data(self, endpoint: str, **kwargs) -> Optional[Any]:
         """
         自定义从媒体服务器获取数据
         :param endpoint: 端点
@@ -1018,7 +1020,7 @@ class Plex:
         """
         return self.__request(method="post", endpoint=endpoint, **kwargs)
 
-    def put_data(self, endpoint: str, **kwargs) -> Optional[Response]:
+    def put_data(self, endpoint: str, **kwargs) -> Optional[Any]:
         """
         自定义从媒体服务器获取数据
         :param endpoint: 端点
@@ -1026,27 +1028,27 @@ class Plex:
         """
         return self.__request(method="put", endpoint=endpoint, **kwargs)
 
-    def __request(self, method: str, endpoint: str, **kwargs) -> Optional[Response]:
+    def __request(self, method: str, endpoint: str, **kwargs) -> Optional[Any]:
         """
         自定义从媒体服务器获取数据
         :param method: HTTP方法，如 get, post, put 等
         :param endpoint: 端点
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         """
-        if not self._session:
+        if not self._request_utils:
             return None
         try:
             url = UrlUtils.adapt_request_url(host=self._host, endpoint=endpoint)
             kwargs.setdefault("headers", self.__get_request_headers())
             kwargs.setdefault("raise_exception", True)
-            request_method = getattr(RequestUtils(session=self._session), f"{method}_res", None)
+            request_method = getattr(self._request_utils, f"{method}_res", None)
             if request_method:
                 return request_method(url=url, **kwargs)
             else:
                 logger.error(f"方法 {method} 不存在")
                 return None
         except Exception as e:
-            logger.error(f"连接Plex出错：" + str(e))
+            logger.error("连接Plex出错：" + str(e))
             return None
 
     def __get_request_headers(self) -> dict:
@@ -1057,17 +1059,7 @@ class Plex:
             "Content-Type": "application/json"
         }
 
-    def __adapt_plex_session(self) -> Session:
-        """
-        创建并配置一个针对Plex服务的requests.Session实例
-        这个会话包括特定的头部信息，用于处理所有的Plex请求
-        """
-        # 设置请求头部，通常包括验证令牌和接受/内容类型头部
-        headers = self.__get_request_headers()
-        session = Session()
-        session.headers = headers
-        return session
-
     def close(self):
-        if self._session:
-            self._session.close()
+        """关闭自定义 Plex HTTP 请求客户端。"""
+        if self._request_utils:
+            self._request_utils.close()

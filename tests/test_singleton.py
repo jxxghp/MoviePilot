@@ -1,6 +1,6 @@
 import pytest
 
-from app.foundation.singleton import Singleton, SingletonClass
+from app.foundation.singleton import Singleton, SingletonClass, WeakSingleton
 
 
 def test_singleton_class_can_read_existing_instance_without_creating(monkeypatch):
@@ -57,6 +57,22 @@ def test_class_singleton_releases_only_matching_owner(monkeypatch):
 
     assert Example.release_existing_instance(object()) is False
     assert Example.get_existing_instance() is current
+    assert Example.release_existing_instance(current) is True
+    assert Example.get_existing_instance() is None
+
+
+def test_weak_singleton_reads_and_releases_only_current_owner(monkeypatch):
+    """弱单例应支持不触发构造的读取，并只释放当前 owner。"""
+
+    class Example(metaclass=WeakSingleton):
+        """用于验证弱单例 owner 身份。"""
+
+    monkeypatch.setattr(WeakSingleton, "_instances", {})
+
+    assert Example.get_existing_instance() is None
+    current = Example()
+    assert Example.get_existing_instance() is current
+    assert Example.release_existing_instance(object()) is False
     assert Example.release_existing_instance(current) is True
     assert Example.get_existing_instance() is None
 

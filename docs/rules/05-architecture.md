@@ -380,16 +380,32 @@ Underscore-prefixed files in `app/chain/` are feature-domain mixins for
 (`RecognitionMixin`), `_messaging.py` (`MessageProcessingMixin` /
 `NotificationMixin`), `_interaction.py` (`InteractionChainMixin`, the shared
 slash-command delegation for `remote_list` / `parse_callback` /
-`handle_callback_interaction` / `handle_text_interaction`), `_music.py`
+`handle_callback_interaction` / `handle_text_interaction`) and `_music.py`
 (`MusicSubscribeMixin`, the music single/album subscribe domain mixed into
-`SubscribeChain`) and `_transfer.py` (TransferChain feature mixins). Shared
-subscription metadata and media-key construction belongs to
-`app.application.subscription.contract`; `app.chain.subscribe` keeps the old helper
-names only as compatibility forwards and `_music` must not import its concrete
-chain owner. A concrete chain that exposes slash-command
-interaction inherits `InteractionChainMixin`, injects its handler class via
-`_interaction_handler_type` and implements only `_interaction_handler`; it must
-not re-export application-layer interaction managers.
+`SubscribeChain`).
+
+Transfer orchestration is a same-named package. Its root exposes only the stable
+`TransferChain` and the plugin-used `task_lock` compatibility identity; `facade.py`
+composes the owner classes, while queue/recovery, planning, execution, settlement,
+history/notification and request construction stay in focused single-word child
+modules. The retired `app/chain/transfer.py` and `_transfer.py` monoliths must not
+return. Internal owner classes, `JobManager` and the durable runner are imported
+from their canonical child owners instead of being re-exported by the package root.
+
+Shared subscription metadata and media-key construction belongs to
+`app.application.subscription.contract`; `app.chain.subscribe` is a same-named package
+whose root exposes only the stable `SubscribeChain`. `facade.py` owns the class
+identity and event entry wrappers; `create.py`, `search.py`, `match.py`, `refresh.py`,
+`completion.py`, `reconcile.py` and `notify.py` are the single owners of their
+respective workflows, while `query.py`, `interaction.py`, `identity.py` and `policy.py`
+own the remaining focused capabilities. Startup imports the subscription share Port
+directly from `notify.py`; canonical callers import identity projection directly from
+`identity.py`. The retired `app/chain/subscribe.py` monolith must not return, package
+owners must not be re-exported, and `_music` must not import its concrete chain owner.
+A concrete chain that exposes slash-command interaction inherits
+`InteractionChainMixin`, injects its handler class via `_interaction_handler_type` and
+implements only `_interaction_handler`; it must not re-export application-layer
+interaction managers.
 
 ### Module layer
 
@@ -692,7 +708,7 @@ removed in the same reviewed change so that it cannot return.
 |---|---|
 | `entrypoint -> chain / application / injected persistence Port` | Allowed according to workflow complexity |
 | `chain -> module (only via run_module dispatch) / application / injected Port / canonical capability` | Allowed; direct `chain -> module`, `chain -> Oper` and `chain -> concrete adapter` imports forbidden |
-| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/initializers/agent.py` registers lightweight providers at import time, and implementations are materialized only when the capability is enabled or first used |
+| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/initializers/agent.py` registers lightweight providers during the explicit lifecycle stage and resets them on shutdown, while implementations are materialized only when the capability is enabled or first used |
 | `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugin/routes.py`, `plugin/folders.py`, `scheduling.py` and `commands.py` application services |
 | `api -> factory` | Forbidden; the FastAPI route adapter is injected into `app/application/plugin/routes.py` by the composition root after creation |
 | `api / chain -> app.workflow` | Forbidden; workflow consumers use `app/application/workflow.py`, while only `app/workflow/**` and `app/startup/initializers/workflow.py` access the concrete runtime |

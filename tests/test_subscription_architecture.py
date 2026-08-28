@@ -1,11 +1,13 @@
 """订阅类型化边界、canonical 依赖与文件布局门禁。"""
 
 import ast
+import importlib
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
 SUBSCRIPTION_PACKAGE = APP_ROOT / "application" / "subscription"
+SUBSCRIBE_CHAIN_PACKAGE = APP_ROOT / "chain" / "subscribe"
 CONTRACT_PATH = SUBSCRIPTION_PACKAGE / "contract.py"
 CANONICAL_CONSUMER_PATHS = (
     APP_ROOT / "agent",
@@ -194,12 +196,12 @@ def test_subscription_use_case_ports_do_not_return_any() -> None:
 
 def test_subscription_callers_do_not_alias_snapshot_to_any() -> None:
     """订阅 Chain 不得以 Any 别名继续消费未声明的数据形状。"""
-    paths = (
+    paths = [
         APP_ROOT / "chain" / "_music.py",
-        APP_ROOT / "chain" / "subscribe.py",
         APP_ROOT / "workflow" / "actions" / "add_subscribe.py",
         APP_ROOT / "application" / "messaging" / "subscribe.py",
-    )
+        *sorted(SUBSCRIBE_CHAIN_PACKAGE.glob("*.py")),
+    ]
     violations: list[str] = []
 
     for path in paths:
@@ -217,6 +219,109 @@ def test_subscription_callers_do_not_alias_snapshot_to_any() -> None:
                     violations.append(f"{relative}:{node.lineno}:{target.id}=Any")
 
     assert violations == []
+
+
+def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
+    """SubscribeChain Facade 只保留稳定入口，各职责必须由唯一 owner 实现。"""
+    assert not (APP_ROOT / "chain" / "subscribe.py").exists()
+    expected_files = {
+        "__init__.py",
+        "completion.py",
+        "contract.py",
+        "context.py",
+        "create.py",
+        "facade.py",
+        "identity.py",
+        "interaction.py",
+        "match.py",
+        "notify.py",
+        "policy.py",
+        "query.py",
+        "reconcile.py",
+        "refresh.py",
+        "search.py",
+    }
+    assert {path.name for path in SUBSCRIBE_CHAIN_PACKAGE.glob("*.py")} == expected_files
+
+    facade_path = SUBSCRIBE_CHAIN_PACKAGE / "facade.py"
+    facade_tree = ast.parse(
+        facade_path.read_text(encoding="utf-8-sig"),
+        filename=str(facade_path),
+    )
+    facade = next(
+        node
+        for node in facade_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "SubscribeChain"
+    )
+    facade_methods = {
+        node.name
+        for node in facade.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert facade_methods == {
+        "_matches_music_resource",
+        "_music_download_chain",
+        "_music_media_chain",
+        "_music_search_chain",
+        "_music_site_keywords",
+        "reconcile_rule_group_references",
+        "remove_site",
+    }
+
+    package = importlib.import_module("app.chain.subscribe")
+    contract = importlib.import_module("app.chain.subscribe.contract")
+    chain_type = package.SubscribeChain
+    owner_base = contract._SubscribeOwnerBase
+    assert chain_type.__module__ == "app.chain.subscribe"
+    assert package.__all__ == ["SubscribeChain"]
+    assert owner_base is object
+    assert all(base.__name__ != "_SubscribeOwnerHost" for base in chain_type.__mro__)
+    assert {
+        "SubscriptionSharePort",
+        "build_subscribe_meta",
+        "configure_subscription_share_port",
+        "reset_subscription_share_port",
+    }.isdisjoint(vars(package))
+
+    method_owners: dict[str, str] = {}
+    for owner_path in sorted(SUBSCRIBE_CHAIN_PACKAGE.glob("*.py")):
+        owner_tree = ast.parse(
+            owner_path.read_text(encoding="utf-8-sig"),
+            filename=str(owner_path),
+        )
+        for owner in (
+            node
+            for node in owner_tree.body
+            if isinstance(node, ast.ClassDef) and node.name.endswith("Owner")
+        ):
+            for method in (
+                node
+                for node in owner.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ):
+                assert method.name not in method_owners, (
+                    f"{method.name} 同时由 {method_owners[method.name]} "
+                    f"和 {owner_path.name} 实现"
+                )
+                method_owners[method.name] = owner_path.name
+
+    expected_owners = {
+        "add": "app.chain.subscribe.create",
+        "search": "app.chain.subscribe.search",
+        "match": "app.chain.subscribe.match",
+        "refresh": "app.chain.subscribe.refresh",
+        "refresh_subscribe_progress": "app.chain.subscribe.refresh",
+        "_SubscribeChain__finish_subscribe": "app.chain.subscribe.completion",
+        "_SubscribeChain__build_completion_notification": "app.chain.subscribe.notify",
+        "_remove_site": "app.chain.subscribe.reconcile",
+        "follow": "app.chain.subscribe.query",
+        "remote_delete": "app.chain.subscribe.interaction",
+        "get_episode_priority": "app.chain.subscribe.policy",
+    }
+    assert {
+        method_name: getattr(chain_type, method_name).__module__
+        for method_name in expected_owners
+    } == expected_owners
 
 
 def test_chain_runtime_context_owns_typed_subscription_repository() -> None:

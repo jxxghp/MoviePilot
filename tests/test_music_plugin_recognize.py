@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain.context import MediaInfo, MusicInfo
-from app.runtime.events import Event
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
+from app.runtime.events import Event
 from app.schemas.types import ChainEventType, MediaSource, MediaType
 
 
@@ -376,7 +376,7 @@ def test_chain_recognize_media_music_plugin_supplement():
     with patch.object(chain, "recognize_music_from_source", return_value=fallback), \
             patch.object(chain.eventmanager, "check", return_value=True), \
             patch.object(chain.eventmanager, "send_event", return_value=event), \
-            patch("app.chain._recognition.MoviePilotServerHelper.report_recognize_share") as report_mock:
+            patch("app.startup.initializers.chain.MoviePilotServerHelper.report_recognize_share") as report_mock:
         result = chain.recognize_media(meta=meta, cache=False)
 
     assert result is not fallback

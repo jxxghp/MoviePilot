@@ -924,7 +924,7 @@ class HistoryGateAction:
     """
     整理历史查重闸的判定结果。
 
-    监控分发（app/monitor/dispatcher.py）与整理链计划整理段（app/chain/transfer.py）
+    监控分发（app/monitor/dispatcher.py）与整理链计划整理段（app/chain/transfer/plan.py）
     共用本模块，避免两处各写一套去重策略后互相对冲：上游放行的文件被下游按
     「存在记录即拦」全额收回，等于放行逻辑完全失效。
     """

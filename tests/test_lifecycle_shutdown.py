@@ -31,9 +31,9 @@ def _assert_completed_once(mock: MagicMock) -> None:
 def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
     """隔离 lifespan 的外部依赖，并按名称注入一个关闭失败"""
     monkeypatch.setattr(runtime_settings, "MOVIEPILOT_SAFE_MODE", False)
-    monkeypatch.setattr(lifecycle.global_vars, "set_loop", MagicMock())
-    monkeypatch.setattr(lifecycle.global_vars, "clear_loop", MagicMock())
-    monkeypatch.setattr(lifecycle.global_vars, "stop_system", MagicMock())
+    monkeypatch.setattr(lifecycle.main_loop_registry, "register", MagicMock())
+    monkeypatch.setattr(lifecycle.main_loop_registry, "release", MagicMock())
+    monkeypatch.setattr(lifecycle.runtime_stop_state, "stop_system", MagicMock())
 
     for name in (
         "init_routers",
@@ -194,7 +194,7 @@ def test_lifespan_continues_after_each_shutdown_owner_failure(
 
     asyncio.run(run_lifespan())
 
-    lifecycle.global_vars.stop_system.assert_called_once_with()
+    lifecycle.runtime_stop_state.stop_system.assert_called_once_with()
     lifecycle.init_modules.assert_awaited_once_with()
     for step in shutdown_steps.values():
         _assert_completed_once(step)
@@ -210,8 +210,8 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
 
     asyncio.run(run_lifespan())
 
-    lifecycle.global_vars.clear_loop.assert_called_once_with(
-        lifecycle.global_vars.set_loop.return_value
+    lifecycle.main_loop_registry.release.assert_called_once_with(
+        lifecycle.main_loop_registry.register.return_value
     )
     lifecycle.init_modules.assert_awaited_once_with()
     lifecycle.prepare_database_component.assert_called_once()
@@ -264,8 +264,8 @@ def test_lifespan_propagates_logger_nonconvergence(monkeypatch):
 
     for step in shutdown_steps.values():
         _assert_completed_once(step)
-    lifecycle.global_vars.clear_loop.assert_called_once_with(
-        lifecycle.global_vars.set_loop.return_value
+    lifecycle.main_loop_registry.release.assert_called_once_with(
+        lifecycle.main_loop_registry.register.return_value
     )
 
 
@@ -315,8 +315,8 @@ def test_lifespan_validation_failure_does_not_clear_outer_loop_owner(monkeypatch
     with pytest.raises(RuntimeError, match="invalid topology"):
         asyncio.run(run_lifespan())
 
-    lifecycle.global_vars.set_loop.assert_not_called()
-    lifecycle.global_vars.clear_loop.assert_not_called()
+    lifecycle.main_loop_registry.register.assert_not_called()
+    lifecycle.main_loop_registry.release.assert_not_called()
 
 
 def test_lifespan_settles_plugin_handlers_before_legacy_hooks(monkeypatch) -> None:
@@ -641,6 +641,8 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "数据库准备",
         "HTTP 基础能力",
         "站点访问端口",
+        "Chain 外部端口",
+        "Chain 网络端口",
         "领域依赖装配",
         "数据库引擎预热",
         "数据库连接预算",
@@ -662,6 +664,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "插件变更监控",
         "插件备份",
         "工作流",
+        "命令服务",
         "监控器",
         "定时器",
         "AI智能体会话",
@@ -673,6 +676,8 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "插件",
         "消息队列",
         "模块服务",
+        "Chain 网络端口",
+        "Chain 外部端口",
         "站点访问端口",
         "HTTP 基础能力",
         "文件日志",
@@ -683,6 +688,8 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "数据库准备",
         "HTTP 基础能力",
         "站点访问端口",
+        "Chain 外部端口",
+        "Chain 网络端口",
         "领域依赖装配",
         "数据库引擎预热",
         "数据库连接预算",
@@ -856,8 +863,8 @@ def test_lifespan_fails_fast_when_async_engine_cannot_be_built(monkeypatch):
     with pytest.raises(RuntimeError, match="no async driver"):
         asyncio.run(run_lifespan())
 
-    lifecycle.global_vars.clear_loop.assert_called_once_with(
-        lifecycle.global_vars.set_loop.return_value
+    lifecycle.main_loop_registry.release.assert_called_once_with(
+        lifecycle.main_loop_registry.register.return_value
     )
     # 失败要发生在任何东西被初始化之前，否则模块起来了却没人关：关停块在 yield 处才开始
     lifecycle.init_routers.assert_not_called()
@@ -869,7 +876,11 @@ def test_uvicorn_signal_publishes_stop_before_server_exit(monkeypatch):
     from app import main
 
     calls = []
-    monkeypatch.setattr(main.global_vars, "stop_system", lambda: calls.append("stop"))
+    monkeypatch.setattr(
+        main.runtime_stop_state,
+        "stop_system",
+        lambda: calls.append("stop"),
+    )
     monkeypatch.setattr(
         main.uvicorn.Server,
         "handle_exit",
@@ -888,7 +899,7 @@ def test_application_preserves_stop_requested_before_startup(monkeypatch):
 
     stop_event = threading.Event()
     stop_event.set()
-    monkeypatch.setattr(main.global_vars, "STOP_EVENT", stop_event)
+    monkeypatch.setattr(main.runtime_stop_state, "_system_event", stop_event)
     calls = []
     monkeypatch.setattr(
         main.signal,
@@ -957,7 +968,7 @@ def test_lifespan_cleans_started_owners_after_late_startup_failure(monkeypatch):
     assert raised.value is startup_error
     # 停止信号是无依赖的 stop-only owner：启动失败清理同样要先发出停机通知，
     # 让仍在运行的后台任务尽早感知进程即将退出。
-    lifecycle.global_vars.stop_system.assert_called_once_with()
+    lifecycle.runtime_stop_state.stop_system.assert_called_once_with()
     for name in (
         "stop_plugin_monitor",
         "backup_plugins",
@@ -1023,11 +1034,11 @@ def test_uvicorn_preserves_stop_requested_before_serve(monkeypatch):
     from app import main
 
     stop_event = threading.Event()
-    monkeypatch.setattr(main.global_vars, "STOP_EVENT", stop_event)
-    main.global_vars.stop_system()
+    monkeypatch.setattr(main.runtime_stop_state, "_system_event", stop_event)
+    main.runtime_stop_state.stop_system()
 
     async def serve(_self, sockets=None):
-        assert main.global_vars.is_system_stopped
+        assert main.runtime_stop_state.is_system_stopped
 
     monkeypatch.setattr(main.uvicorn.Server, "serve", serve)
     server = object.__new__(main.MoviePilotServer)

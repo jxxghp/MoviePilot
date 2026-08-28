@@ -900,6 +900,59 @@ class ChainBase:
     assert facts["producers"][0]["events"] == ["EventType.Alpha"]
 
 
+def test_collect_event_facts_tracks_relative_imported_chain_owner(
+    tmp_path: Path,
+) -> None:
+    """相对导入的 Chain owner 也应继承 facade 组合得到的事件端口。"""
+    base_path = tmp_path / "base.py"
+    owner_path = tmp_path / "owner.py"
+    facade_path = tmp_path / "facade.py"
+    base_path.write_text(
+        '''
+class ChainBase:
+    def __init__(self, context):
+        self.eventmanager = context.event_manager
+''',
+        encoding="utf-8",
+    )
+    owner_path.write_text(
+        '''
+from app.schemas.types import EventType
+
+class SettlementOwner:
+    def publish(self):
+        self.eventmanager.send_event(EventType.Alpha)
+''',
+        encoding="utf-8",
+    )
+    facade_path.write_text(
+        '''
+from app.chain.base import ChainBase
+from .owner import SettlementOwner
+
+class TransferChain(SettlementOwner, ChainBase):
+    pass
+''',
+        encoding="utf-8",
+    )
+
+    facts = collect_event_facts(
+        {
+            "app.chain.base": base_path,
+            "app.chain.transfer.owner": owner_path,
+            "app.chain.transfer.facade": facade_path,
+        },
+        EVENT_MEMBERS,
+    )
+
+    assert len(facts["producers"]) == 1
+    producer = facts["producers"][0]
+    assert producer["caller"] == "app.chain.transfer.owner"
+    assert producer["qualname"] == "SettlementOwner.publish"
+    assert producer["events"] == ["EventType.Alpha"]
+    assert producer["receiver_kind"] == "injected_event_manager"
+
+
 def test_collect_event_facts_consumer_schema_and_fingerprint_are_stable(
     tmp_path: Path,
 ) -> None:

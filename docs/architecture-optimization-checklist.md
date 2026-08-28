@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 862 / 7,123 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 893 / 7,532 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,18 +78,18 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,734 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 747 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Ruff 历史诊断 | 706 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 79.83%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
 | 文件 | 行数 | 主要职责混合 |
 |---|---:|---|
-| `app/chain/subscribe.py` | 3,895 | 搜索、匹配、状态、刷新、规则引用、通知和交互 |
+| `app/chain/subscribe/`（已治理） | Facade 91 行 | 搜索、匹配、刷新、完成、规则引用与通知已拆至单一 owner；原 3,895 行单文件已删除 |
 | `app/agent/orchestrator.py` | 3,678 | 会话、运行、流式输出、工具、任务与 Manager |
 | `app/agent/llm/provider.py` | 3,528 | provider 目录、认证、模型发现、配置和运行时构建 |
 | `app/adapters/external/market.py` | 3,488 | 插件市场、包下载、依赖、备份恢复、健康和兼容入口 |
-| `app/chain/transfer.py` | 3,250 | 队列、恢复、规划、执行、历史、通知和清理 |
+| `app/chain/transfer/`（已治理） | Facade 82 行 | 队列/恢复、规划、执行、结算、历史/通知已拆至单一 owner；旧 `transfer.py` 与 `_transfer.py` 已删除 |
 | `app/chain/search.py` | 2,970 | 搜索计划、并发 fan-out、状态、分页和结果处理 |
 | `app/api/endpoints/agent.py` | 2,346 | HTTP/SSE、文件/音频、Agent 会话和事件编排 |
 | `app/chain/download.py` | 2,230 | 选择、提交、历史、通知、模块后处理和批量执行 |
@@ -345,9 +345,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- `app/chain/subscribe.py:3011-3048` 删除站点引用时先写 SystemConfig，再通过 standalone typed
-  Repository 逐条更新订阅。
-- `app/chain/subscribe.py:3074-3114` 清理规则组时依次更新多项配置和多条订阅。
+- `app/chain/subscribe/reconcile.py` 只保留站点和规则组事件到原子 Application Command 的
+  引用协调委托；旧单文件中的多次独立写入实现已删除。
 - 类型化边界已经消除 ORM 泄漏，但 standalone Repository 的每次 update 仍是独立短事务；中途失败
   可能长期残留部分状态，直至同一事件再次触发或人工修复。处理本身具备一定幂等性，但触发事件不是
   durable owner，不能把 S1-L3.7 的通过误当作 ARCH-104 完成。
@@ -411,13 +410,12 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 - 日志 writer 已退出 `app.runtime.config` 导入路径，由 lifespan 显式创建、关闭并在真实收敛后释放身份。
 - `ChainBase` 只绑定共享消息队列的轻量客户端；队列线程由 lifespan 唯一启动，不再保存首个 Chain 回调。
-- `global_vars` 同时承担停止兼容、WebPush 订阅和主事件循环 owner，多层代码直接消费。
+- 停止状态、WebPush registry 和主循环 owner 已拆为独立 runtime 合同；`global_vars` 只保留旧插件 ABI 门面。
 - 当前 TaskRegistry 门禁只检查 Registry 调用是否带 owner，不会扫描全部原生 `create_task`、
   `Thread`、`Timer`、`Executor`。
-- 当前 service locator 门禁只覆盖 scheduler/module/plugin/command/workflow 五类 concrete runtime，
-  没有覆盖 `global_vars`，门禁通过不能证明全局状态已经收口。
-- Workflow、Scheduler、Command、Agent initializer 仍有导入期 provider 注册；需要明确这是兼容设计，
-  还是迁入显式装配阶段并提供 test reset，不能长期处于未声明状态。
+- service locator 门禁继续覆盖五类 concrete runtime；独立 AST 门禁现已拒绝 canonical 宿主导入
+  `global_vars`，只允许定义模块与 SDK 兼容出口。
+- Workflow、Scheduler、Command、Agent provider 均由生命周期显式 configure/reset，冷导入不再改变注册状态。
 
 **目标与步骤**
 
@@ -425,10 +423,10 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   现有关闭路径已能收口部分资源，当前要修的是隐式创建权，而不是重新发明 owner。
 - [x] startup 唯一启动日志和消息资源；Chain 只接收无生命周期的发送 Port。
 - [x] 普通模块 import 和构造 `MediaChain` 等非消息用例不得新增日志或消息线程。
-- [ ] 将 WebPush registry、主循环 execution gateway 和停止状态拆给各自 owner。
-- [ ] 保留 `global_vars` 作为兼容薄门面，但禁止 canonical 宿主新增依赖。
-- [ ] 将 initializer 的 provider 注册迁入显式 `configure_runtime_ports` 装配阶段并提供测试 reset；
-  若某项必须保留导入期兼容行为，需精确记录调用者、原因和退场条件。
+- [x] 将 WebPush registry、主循环 execution gateway 和停止状态拆给各自 owner。
+- [x] 保留 `global_vars` 作为兼容薄门面，但禁止 canonical 宿主新增依赖。
+- [x] 将 initializer 的 provider 注册迁入显式装配阶段并提供测试 reset；冷导入回归测试覆盖
+  Workflow、Scheduler、Command、Agent、技能目录和 LLM provider。
 - [ ] 建立原生并发原语清单：结构化局部等待、TaskRegistry、显式生命周期 owner 或受限上下文；
   未分类的新原语由 ratchet 拒绝。
 
@@ -542,6 +540,16 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `Scheduler` | JobCatalog、ExecutionRegistry、domain reconciler、lifecycle Facade | `init` 约 336 行且直接构造多个 Chain |
 | Agent API | WebAgent session/SSE/file/audio Application service | `_web_agent_stream_impl` 约 361 行 |
 | System/Plugin API | nettest、logging、update、market use cases | 入口直接组合多个 Helper/Manager |
+
+`SubscribeChain` 切片已完成：`app.chain.subscribe.facade.SubscribeChain` 只保留稳定类身份、
+音乐构造接缝和事件入口委托；创建、搜索、匹配、刷新、完成、查询、交互、引用协调和通知实现
+分别位于同名 package 的单词文件中。包根不导出 owner 类，旧 `app/chain/subscribe.py` 不再存在，
+公开方法和双下划线兼容属性仍由同一 `SubscribeChain` 类解析。
+
+`TransferChain` 切片已完成：`app.chain.transfer.facade.TransferChain` 只组合稳定 MRO 与三个可替换
+Chain 构造点；队列/恢复、规划、执行、结算、历史/通知、请求构建及原 `_transfer.py` mixin
+分别进入同名 package 的单词文件。包根只保留 `TransferChain` 与插件已使用的 `task_lock` 身份，
+不重复导出 `JobManager`、durable runner 或内部 owner；旧 `transfer.py` 和 `_transfer.py` 均已删除。
 
 ### ARCH-110 分可信级执行 Module/Event Contract
 

@@ -30,8 +30,10 @@ from app.runtime.log import (
     log_settings,
     logger,
 )
+from app.runtime.loop import MainLoopRegistry, main_loop_registry
 from app.runtime.stop import runtime_stop_state
 from app.runtime.version import get_app_version
+from app.runtime.webpush import WebPushRegistry, webpush_registry
 from app.schemas.types import MediaType
 
 
@@ -1391,22 +1393,40 @@ class GlobalVar(object):
     全局标识
     """
 
-    # 系统停止事件
-    # webpush订阅
-    SUBSCRIPTIONS: List[dict] = []
-    # webpush订阅读写锁
-    SUBSCRIPTIONS_LOCK: threading.Lock = threading.Lock()
     # 需应急停止的工作流
     EMERGENCY_STOP_WORKFLOWS: List[int] = []
     # 需应急停止文件整理
     EMERGENCY_STOP_TRANSFER: List[str] = []
-    # 生命周期登记的主事件循环
-    CURRENT_EVENT_LOOP: Optional[AbstractEventLoop] = None
 
-    def __init__(self) -> None:
-        self.CURRENT_EVENT_LOOP = None
-        self._event_loop_owners: dict[object, AbstractEventLoop] = {}
-        self._event_loop_owner_lock = threading.Lock()
+    def __init__(
+        self,
+        *,
+        loop_registry: Optional[MainLoopRegistry] = None,
+        push_registry: Optional[WebPushRegistry] = None,
+    ) -> None:
+        """绑定兼容门面背后的显式 owner；普通实例保持循环状态隔离。"""
+        self._loop_registry = loop_registry or MainLoopRegistry()
+        self._push_registry = push_registry or webpush_registry
+
+    @property
+    def CURRENT_EVENT_LOOP(self) -> Optional[AbstractEventLoop]:
+        """兼容旧代码读取未经可用性校验的主循环。"""
+        return self._loop_registry.current
+
+    @CURRENT_EVENT_LOOP.setter
+    def CURRENT_EVENT_LOOP(self, loop: Optional[AbstractEventLoop]) -> None:
+        """兼容旧测试和插件直接替换主循环投递目标。"""
+        self._loop_registry.replace_compat(loop)
+
+    @property
+    def SUBSCRIPTIONS(self) -> List[dict]:
+        """兼容旧代码在持锁后直接访问订阅列表。"""
+        return self._push_registry.compat_items
+
+    @property
+    def SUBSCRIPTIONS_LOCK(self) -> threading.Lock:
+        """兼容旧代码保护原始订阅列表的互斥锁。"""
+        return self._push_registry.compat_lock
 
     @property
     def STOP_EVENT(self) -> threading.Event:
@@ -1435,37 +1455,19 @@ class GlobalVar(object):
         """
         获取webpush订阅
         """
-        with self.SUBSCRIPTIONS_LOCK:
-            return list(self.SUBSCRIPTIONS)
+        return self._push_registry.list()
 
     def push_subscription(self, subscription: dict):
         """
         添加或更新webpush订阅。
         """
-        endpoint = subscription.get("endpoint") if subscription else None
-        if not endpoint:
-            return
-        with self.SUBSCRIPTIONS_LOCK:
-            for index, current in enumerate(self.SUBSCRIPTIONS):
-                if current.get("endpoint") == endpoint:
-                    self.SUBSCRIPTIONS[index] = subscription
-                    return
-            self.SUBSCRIPTIONS.append(subscription)
+        self._push_registry.upsert(subscription)
 
     def remove_subscription(self, subscription: dict) -> bool:
         """
         根据 endpoint 移除webpush订阅，返回是否实际删除。
         """
-        endpoint = subscription.get("endpoint") if subscription else None
-        if not endpoint:
-            return False
-        with self.SUBSCRIPTIONS_LOCK:
-            before_count = len(self.SUBSCRIPTIONS)
-            self.SUBSCRIPTIONS[:] = [
-                current for current in self.SUBSCRIPTIONS
-                if current.get("endpoint") != endpoint
-            ]
-            return len(self.SUBSCRIPTIONS) != before_count
+        return self._push_registry.remove(subscription)
 
     def stop_workflow(self, workflow_id: int):
         """
@@ -1500,30 +1502,19 @@ class GlobalVar(object):
     @property
     def loop(self) -> AbstractEventLoop:
         """返回由应用生命周期登记的主事件循环。"""
-        loop = self.CURRENT_EVENT_LOOP
-        if loop is None or not loop.is_running() or loop.is_closed():
-            raise RuntimeError("主事件循环尚未启动或已经停止")
-        return loop
+        return self._loop_registry.require()
 
     def set_loop(self, loop: AbstractEventLoop) -> object:
         """登记主事件循环，并返回仅供当前生命周期释放的 owner。"""
-        owner = object()
-        with self._event_loop_owner_lock:
-            self._event_loop_owners[owner] = loop
-            self.CURRENT_EVENT_LOOP = loop
-        return owner
+        return self._loop_registry.register(loop)
 
     def clear_loop(self, owner: object) -> None:
         """释放指定 owner，保留仍然有效的其他生命周期登记。"""
-        with self._event_loop_owner_lock:
-            if owner not in self._event_loop_owners:
-                return
-            self._event_loop_owners.pop(owner)
-            self.CURRENT_EVENT_LOOP = next(
-                reversed(self._event_loop_owners.values()),
-                None,
-            )
+        self._loop_registry.release(owner)
 
 
 # 全局标识
-global_vars = GlobalVar()
+global_vars = GlobalVar(
+    loop_registry=main_loop_registry,
+    push_registry=webpush_registry,
+)

@@ -10,7 +10,6 @@ from queue import Empty, PriorityQueue
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from app.foundation.singleton import Singleton
-from app.runtime.config import global_vars
 from app.runtime.correlation import get_correlation_id
 from app.runtime.event.binding import (
     EventBindingResolver,
@@ -22,6 +21,7 @@ from app.runtime.event.dispatch import EventDispatcher
 from app.runtime.event.errors import EventErrorNotifier, EventErrorPolicy
 from app.runtime.event.registry import EventRegistry
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.observability import record_metric
 from app.runtime.rate import ExponentialBackoffRateLimiter
 from app.runtime.thread import ThreadHelper
@@ -432,7 +432,10 @@ class EventManager(metaclass=Singleton):
 
             tracked = _tracked()
             try:
-                handle = asyncio.run_coroutine_threadsafe(tracked, global_vars.loop)
+                handle = asyncio.run_coroutine_threadsafe(
+                    tracked,
+                    main_loop_registry.require(),
+                )
             except RuntimeError:
                 tracked.close()
                 coroutine.close()
@@ -546,7 +549,7 @@ class EventManager(metaclass=Singleton):
     @staticmethod
     def __wait_strict_async_handler(coroutine: Any) -> Any:
         """在主事件循环等待异步处理器，禁止循环线程同步等待自身。"""
-        loop = global_vars.loop
+        loop = main_loop_registry.require()
         try:
             running_loop = asyncio.get_running_loop()
         except RuntimeError:

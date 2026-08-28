@@ -1562,11 +1562,11 @@ def test_accepted_replay_restores_explicit_context_without_online_lookup(
     execution_chain._TransferChain__finish_scrape_batch_task = Mock()
     execution_chain.transfer_history_repository = Mock()
     monkeypatch.setattr(
-        "app.chain.transfer.MediaChain",
+        "app.chain.transfer.execution.MediaChain",
         Mock(side_effect=AssertionError("accepted replay 不应重新在线识别")),
     )
     monkeypatch.setattr(
-        "app.chain.transfer.TmdbChain",
+        "app.chain.transfer.execution.TmdbChain",
         Mock(side_effect=AssertionError("accepted replay 不应重新在线获取剧集")),
     )
 
@@ -1656,11 +1656,11 @@ def test_accepted_replay_with_explicit_empty_episodes_stays_offline(
     execution_chain._TransferChain__finish_scrape_batch_task = Mock()
     execution_chain.transfer_history_repository = Mock()
     monkeypatch.setattr(
-        "app.chain.transfer.MediaChain",
+        "app.chain.transfer.execution.MediaChain",
         Mock(side_effect=AssertionError("accepted replay 不应重新在线识别")),
     )
     monkeypatch.setattr(
-        "app.chain.transfer.TmdbChain",
+        "app.chain.transfer.execution.TmdbChain",
         Mock(side_effect=AssertionError("accepted replay 不应重新在线获取剧集")),
     )
 
@@ -1683,7 +1683,7 @@ def test_planned_execution_restores_resolved_context_without_online_recognition(
     chain.eventmanager.send_event.return_value = None
 
     with patch(
-        "app.chain.transfer.MediaChain",
+        "app.chain.transfer.execution.MediaChain",
         side_effect=AssertionError("planned replay 不应重新在线识别"),
     ):
         result = chain._TransferChain__handle_transfer(task)
@@ -1766,15 +1766,15 @@ def test_pre_checkpoint_recognition_failure_records_retryable_error(monkeypatch)
     )
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
-    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.chain.transfer.execution.MediaChain", lambda: media_chain)
     chain.transfer_history_repository = SimpleNamespace()
     record_transfer_failure = Mock()
     add_transfer_fail = Mock()
     monkeypatch.setattr(
-        "app.chain.transfer.record_transfer_failure",
+        "app.chain.transfer.settlement.record_transfer_failure",
         record_transfer_failure,
     )
-    monkeypatch.setattr("app.chain.transfer.add_transfer_fail", add_transfer_fail)
+    monkeypatch.setattr("app.chain.transfer.settlement.add_transfer_fail", add_transfer_fail)
 
     result = chain._TransferChain__handle_transfer(task)
 
@@ -1812,15 +1812,15 @@ def test_recognition_rejection_without_writer_has_zero_terminal_side_effects(
     )
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
-    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.chain.transfer.execution.MediaChain", lambda: media_chain)
     chain.transfer_history_repository = SimpleNamespace()
     record_transfer_failure = Mock()
     add_transfer_fail = Mock()
     monkeypatch.setattr(
-        "app.chain.transfer.record_transfer_failure",
+        "app.chain.transfer.settlement.record_transfer_failure",
         record_transfer_failure,
     )
-    monkeypatch.setattr("app.chain.transfer.add_transfer_fail", add_transfer_fail)
+    monkeypatch.setattr("app.chain.transfer.settlement.add_transfer_fail", add_transfer_fail)
 
     with pytest.raises(RuntimeError, match="缺少 durable 原子写入端口"):
         chain._TransferChain__handle_transfer(task)
@@ -1931,32 +1931,49 @@ def test_filemanager_explicit_plan_then_execute_uses_same_checkpoint():
 
 def test_sync_and_worker_paths_share_checkpoint_orchestrator():
     """同步直跑和后台 worker 必须汇入同一个检查点编排，不得旁路旧 transfer。"""
-    module = ast.parse(inspect.getsource(inspect.getmodule(TransferChain)))
-    functions = {
+    execution_module = ast.parse(
+        inspect.getsource(inspect.getmodule(TransferChain._TransferChain__handle_transfer))
+    )
+    workflow_module = ast.parse(
+        inspect.getsource(inspect.getmodule(TransferChain._run_transfer_workflow))
+    )
+    execution_functions = {
         node.name: node
-        for node in ast.walk(module)
+        for node in ast.walk(execution_module)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    handler = functions["__handle_transfer"]
+    workflow_functions = {
+        node.name: node
+        for node in ast.walk(workflow_module)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    handler = execution_functions["_TransferChain__handle_transfer"]
     handler_calls = {
         node.func.attr
         for node in ast.walk(handler)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
     }
-    performer = functions["__perform_transfer"]
+    performer = execution_functions["_TransferChain__perform_transfer"]
     performer_calls = {
         node.func.attr
         for node in ast.walk(performer)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
     }
-    execute_batch = functions["_execute_transfer"]
+    execute_batch = workflow_functions["_run_transfer_workflow"]
     execute_calls = {
         node.func.attr
         for node in ast.walk(execute_batch)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
     }
+    execute_tasks = workflow_functions["_execute_transfer_tasks"]
+    execute_task_calls = {
+        node.func.attr
+        for node in ast.walk(execute_tasks)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
 
-    assert "__perform_transfer" in handler_calls
+    assert "_TransferChain__perform_transfer" in handler_calls
     assert "_plan_checkpoint_and_execute" in performer_calls
     assert "transfer" not in handler_calls
-    assert "__handle_transfer" in execute_calls
+    assert "_execute_transfer_tasks" in execute_calls
+    assert "_TransferChain__handle_transfer" in execute_task_calls

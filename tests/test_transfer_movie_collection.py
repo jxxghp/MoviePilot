@@ -110,7 +110,7 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
         get_by_type_tmdbid=lambda **kwargs: None
     )
     monkeypatch.setattr(
-        "app.chain.transfer.MediaChain",
+        "app.chain.transfer.execution.MediaChain",
         lambda: SimpleNamespace(
             recognize_media=lambda **kwargs: pytest.fail("不应按合集历史 ID 识别"),
             recognize_by_meta=lambda meta, obtain_images: (
@@ -119,7 +119,7 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
             supplement_tmdb_info=lambda media, _meta: media,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain.transfer.filter.MediaChain", lambda: SimpleNamespace(
             recognize_media=lambda **kwargs: pytest.fail("不应按合集历史 ID 识别"),
             recognize_by_meta=lambda meta, obtain_images: (
                 recognized_meta.append(meta) or fallback_media
@@ -192,13 +192,13 @@ def test_movie_collection_conflict_only_drops_automatic_media(
     )
     chain.download_history_repository = history_oper
     monkeypatch.setattr(
-        "app.chain.transfer.get_configured_system_config",
+        "app.chain.transfer.workflow.get_configured_system_config",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain._transfer.get_configured_system_config", lambda: SimpleNamespace(get=lambda key: None))
-    monkeypatch.setattr("app.chain.transfer.StorageChain", lambda: SimpleNamespace())
-    monkeypatch.setattr("app.chain._transfer.StorageChain", lambda: SimpleNamespace())
-    monkeypatch.setattr("app.chain.transfer.MetaInfoPath", lambda *args, **kwargs: file_meta)
+    monkeypatch.setattr("app.chain.transfer.format.get_configured_system_config", lambda: SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr("app.chain.transfer.request.StorageChain", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace())
+    monkeypatch.setattr("app.chain.transfer.request.MetaInfoPath", lambda *args, **kwargs: file_meta)
 
     # 用真 MediaInfo 而非 SimpleNamespace：它会被装进 TransferTask.mediainfo，
     # 那个字段已标注为 MusicInfo | MediaInfo，pydantic 会做 isinstance 校验

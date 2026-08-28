@@ -119,7 +119,7 @@
         "reason": "站点更新后由 SiteChain 刷新站点用户数据缓存。"
       },
       {
-        "caller": "app.chain.subscribe",
+        "caller": "app.chain.subscribe.facade",
         "qualname": "SubscribeChain",
         "method": "register",
         "receiver_kind": "canonical_singleton",
@@ -131,13 +131,13 @@
         "handler": "SubscribeChain.remove_site",
         "registration_kind": "decorator",
         "priority": "<default>",
-        "fingerprint": "f29dd0d5dd598e19281e2d1a577b98adc5a0c0722c569bb3e974cc6b984c0737",
+        "fingerprint": "26a42e4bd34260584bd0363d2bac213084d07c6811a3812d12c7ba208b31a029",
         "classification": "approved_static_registration",
-        "owner": "app.chain.subscribe",
+        "owner": "app.chain.subscribe.facade",
         "reason": "站点删除后由 SubscribeChain 清理订阅侧站点引用。"
       },
       {
-        "caller": "app.chain.subscribe",
+        "caller": "app.chain.subscribe.facade",
         "qualname": "SubscribeChain",
         "method": "register",
         "receiver_kind": "canonical_singleton",
@@ -149,9 +149,9 @@
         "handler": "SubscribeChain.reconcile_rule_group_references",
         "registration_kind": "decorator",
         "priority": "<default>",
-        "fingerprint": "5764fa4e793a602ce36195edf6ce15a16d4875910c0104589b1c5aa9b3173077",
+        "fingerprint": "713e0ff077b9f76ea4b6695ca730dd2360f25059f677c1d6496cb2a4ffc8e1c4",
         "classification": "approved_static_registration",
-        "owner": "app.chain.subscribe",
+        "owner": "app.chain.subscribe.facade",
         "reason": "配置变更后由 SubscribeChain 对齐订阅规则组引用。"
       },
       {

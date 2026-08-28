@@ -4,6 +4,7 @@ import pytest
 
 from app.api.endpoints.message import is_webpush_subscription_gone
 from app.runtime.config import global_vars
+from app.runtime.webpush import webpush_registry
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +39,17 @@ def test_remove_subscription_deletes_by_endpoint():
 
     assert global_vars.remove_subscription(subscription)
     assert global_vars.get_subscriptions() == []
+
+
+def test_global_vars_webpush_api_delegates_to_canonical_registry():
+    """旧订阅 API 与 canonical WebPushRegistry 必须共享同一事实源。"""
+    subscription = {"endpoint": "https://push.example/registry", "keys": {}}
+
+    webpush_registry.upsert(subscription)
+
+    assert global_vars.get_subscriptions() == [subscription]
+    assert global_vars.remove_subscription(subscription)
+    assert webpush_registry.list() == []
 
 
 def test_is_webpush_subscription_gone_matches_404_and_410():

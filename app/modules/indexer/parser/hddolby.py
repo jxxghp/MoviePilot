@@ -2,10 +2,10 @@
 import json
 from typing import Optional, Tuple
 
-from app.runtime.log import logger
+from app.domain import site as site_rules
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
-from app.domain import site as site_rules
+from app.runtime.log import logger
 
 
 class HDDolbySiteUserInfo(SiteParserBase):
@@ -178,7 +178,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
             site_cookie=self._site_cookie,
             apikey=self.apikey,
             token=self.token,
-            session=self._session,
+            request_utils=self._request_utils,
             ua=self._ua,
             emulate=self._emulate,
             proxy=self._proxy,

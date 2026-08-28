@@ -4,10 +4,12 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
+
 from app.application.subscription.contract import SubscriptionPatch, SubscriptionSnapshot
 from app.application.subscription.mutation import SubscriptionMutation
-from app.chain import subscribe as subscribe_module
 from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe import search as subscribe_search
 from app.schemas.types import MediaType
 
 
@@ -98,7 +100,7 @@ def test_new_subscribe_search_keeps_state_when_recently_created(monkeypatch) -> 
     _SubscribeOper.subscribe = _new_subscribe(datetime.now())
     _SubscribeOper.updates = []
     media_chain_class = Mock()
-    with patch.object(subscribe_module, "MediaChain", media_chain_class):
+    with patch.object(subscribe_search, "MediaChain", media_chain_class):
         chain = object.__new__(SubscribeChain)
         chain.subscription_repository = _SubscribeOper()
         chain.search(state="N", manual=False)
@@ -115,7 +117,7 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
     _SubscribeOper.updates = []
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
-    with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
+    with patch.object(subscribe_search, "MediaChain", return_value=media_chain):
         chain = object.__new__(SubscribeChain)
         _configure_subscription_write(chain, _SubscribeOper())
         chain.search(state="N", manual=False)
@@ -143,7 +145,7 @@ def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
 
-    with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
+    with patch.object(subscribe_search, "MediaChain", return_value=media_chain):
         chain = object.__new__(SubscribeChain)
         chain.subscription_repository = subscribe_oper
         chain.search(sids=(31, 32), state=None, manual=False)
@@ -168,6 +170,62 @@ def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
         value=100,
         text="订阅搜索锁等待超时，已跳过本轮",
     )
+
+
+def test_subscribe_search_releases_lock_when_repository_query_fails(monkeypatch) -> None:
+    """取得搜索锁后即使订阅查询失败，也必须释放进程级互斥锁。"""
+    lock = Mock()
+    lock.acquire.return_value = True
+    monkeypatch.setattr(SubscribeChain, "_rlock", lock)
+    repository = Mock()
+    repository.list.side_effect = RuntimeError("query failed")
+    chain = object.__new__(SubscribeChain)
+    chain.subscription_repository = repository
+
+    with pytest.raises(RuntimeError, match="query failed"):
+        chain.search(state="N")
+
+    lock.release.assert_called_once_with()
+
+
+def test_subscribe_search_uses_refreshed_state_for_final_reset(monkeypatch) -> None:
+    """下载后重新读取的 R 状态不能再被旧 N 快照重置。"""
+    subscribe = _new_subscribe(datetime.now() - timedelta(minutes=2))
+    refreshed = replace(subscribe, state="R")
+    _SubscribeOper.subscribe = subscribe
+    _SubscribeOper.updates = []
+    chain = object.__new__(SubscribeChain)
+    _configure_subscription_write(chain, _SubscribeOper())
+    process = Mock(return_value=refreshed)
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    chain.search(state="N")
+
+    process.assert_called_once()
+    assert _SubscribeOper.updates == []
+
+
+def test_subscribe_search_progress_preserves_public_callback_payload() -> None:
+    """拆包后仍保持搜索开始和完成进度的既有文案及字段。"""
+    subscribe = _new_subscribe(datetime.now() - timedelta(minutes=2))
+    progress = Mock()
+
+    SubscribeChain._report_search_progress(progress, subscribe, 1, 2)
+    SubscribeChain._report_search_progress(progress, subscribe, 1, 2, finished=True)
+
+    assert all(not item.args for item in progress.call_args_list)
+    assert [item.kwargs for item in progress.call_args_list] == [
+        {
+            "value": 0,
+            "text": "正在搜索订阅（1/2）测试电影 ...",
+            "data": {"total": 2, "finished": 0, "current": 31},
+        },
+        {
+            "value": 50,
+            "text": "订阅搜索（1/2）处理完成",
+            "data": {"total": 2, "finished": 1},
+        },
+    ]
 
 
 def test_subscribe_match_aborts_when_lock_times_out(monkeypatch) -> None:

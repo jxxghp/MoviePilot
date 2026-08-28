@@ -4,7 +4,6 @@ import asyncio
 from typing import Any, Optional, TypeVar
 from urllib.parse import quote
 
-import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
@@ -230,11 +229,10 @@ class ImdbApi:
             "Content-Type": "application/json",
             "x-imdb-client-name": "imdb-web-next-localized",
         }
-        self._session = requests.Session()
         self._request = RequestUtils(
             headers=headers,
             proxies=proxies,
-            session=self._session,
+            use_session=True,
             timeout=30,
         )
         self._async_request = AsyncRequestUtils(
@@ -358,8 +356,8 @@ class ImdbApi:
         await self._async_cached_graphql.cache_clear()
 
     def close(self) -> None:
-        """关闭同步 HTTP Session，异步共享连接池由宿主统一关闭。"""
-        self._session.close()
+        """关闭同步 HTTP 会话，异步共享连接池由宿主统一关闭。"""
+        self._request.close()
 
     @staticmethod
     def _parse(

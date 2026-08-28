@@ -38,12 +38,28 @@ class _FakeSession:
         self.calls.append(("GET", kwargs))
         return self._get_responses.pop(0) if self._get_responses else _FakeResponse({})
 
+    def get_res(self, *args: object, **kwargs: object) -> _FakeResponse:
+        """模拟统一请求客户端的 GET 响应接口。"""
+        return self.get(*args, **kwargs)
+
     def post(self, *args: object, **kwargs: object) -> _FakeResponse:
         """记录 POST 请求并返回预置响应"""
         if args:
             kwargs = {"url": args[0], **kwargs}
         self.calls.append(("POST", kwargs))
         return self._post_responses.pop(0) if self._post_responses else _FakeResponse({})
+
+    def post_res(self, *args: object, **kwargs: object) -> _FakeResponse:
+        """模拟统一请求客户端的 POST 响应接口。"""
+        return self.post(*args, **kwargs)
+
+    def get_cookies(self) -> dict:
+        """返回伪造 Cookie 快照。"""
+        return self.cookies.get_dict()
+
+    def update_cookies(self, cookies: dict) -> None:
+        """更新伪造 Cookie。"""
+        self.cookies.update(cookies)
 
     @staticmethod
     def close() -> None:
@@ -92,7 +108,7 @@ def test_request_json_default_verify_ssl_true() -> None:
         get_responses=[_FakeResponse({"code": 200})],
         post_responses=[_FakeResponse({"code": 200})],
     )
-    api._session = fake_session
+    api._request_utils = fake_session
 
     api._request_json(url="https://example.com/a", method="GET")
     api._request_json(url="https://example.com/b", method="POST", json_data={"x": 1})
@@ -125,7 +141,7 @@ def test_login_logout_requests_follow_client_configuration() -> None:
             ),
         ],
     )
-    api._session = fake_session
+    api._request_utils = fake_session
 
     with patch("app.modules.ugreen.api.UgreenCrypto", _FakeCrypto):
         token = api.login("tester", "pwd")
@@ -172,7 +188,7 @@ def test_login_accepts_token_id_and_reuses_check_public_key() -> None:
             ),
         ],
     )
-    api._session = fake_session
+    api._request_utils = fake_session
 
     with patch("app.modules.ugreen.api.UgreenCrypto", _FakeCrypto):
         token = api.login("tester", "pwd")

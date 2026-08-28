@@ -1,7 +1,4 @@
 {
-  "app/adapters/external/cookiecloud.py": {
-    "I001": 1
-  },
   "app/adapters/external/market.py": {
     "I001": 1
   },
@@ -9,10 +6,6 @@
     "I001": 1
   },
   "app/adapters/external/wechat_crypt.py": {
-    "I001": 1
-  },
-  "app/adapters/network/http.py": {
-    "F841": 2,
     "I001": 1
   },
   "app/adapters/system/host.py": {
@@ -44,9 +37,6 @@
     "I001": 1
   },
   "app/agent/llm/capability.py": {
-    "I001": 1
-  },
-  "app/agent/llm/provider.py": {
     "I001": 1
   },
   "app/agent/llm/server_tools.py": {
@@ -202,9 +192,6 @@
   "app/agent/tools/impl/send_voice_message.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/transfer_file.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/uninstall_plugin.py": {
     "I001": 1
   },
@@ -255,9 +242,6 @@
   },
   "app/chain/media.py": {
     "E731": 2
-  },
-  "app/command.py": {
-    "I001": 1
   },
   "app/db/__init__.py": {
     "I001": 1
@@ -398,7 +382,7 @@
     "I001": 1
   },
   "app/main.py": {
-    "E402": 15,
+    "E402": 14,
     "I001": 1
   },
   "app/modules/__init__.py": {
@@ -425,9 +409,6 @@
   "app/modules/bangumi/__init__.py": {
     "I001": 1
   },
-  "app/modules/bangumi/bangumi.py": {
-    "I001": 1
-  },
   "app/modules/discord/__init__.py": {
     "F401": 2,
     "I001": 1
@@ -438,9 +419,6 @@
     "I001": 1
   },
   "app/modules/douban/__init__.py": {
-    "I001": 1
-  },
-  "app/modules/douban/apiv2.py": {
     "I001": 1
   },
   "app/modules/douban/scraper.py": {
@@ -478,9 +456,6 @@
     "I001": 1
   },
   "app/modules/indexer/parser/file_list.py": {
-    "I001": 1
-  },
-  "app/modules/indexer/parser/hddolby.py": {
     "I001": 1
   },
   "app/modules/indexer/parser/ipt_project.py": {
@@ -563,9 +538,6 @@
   "app/modules/lrclib/__init__.py": {
     "I001": 1
   },
-  "app/modules/musicbrainz/__init__.py": {
-    "I001": 1
-  },
   "app/modules/musicbrainz/music_cache.py": {
     "I001": 1
   },
@@ -577,10 +549,6 @@
     "I001": 1
   },
   "app/modules/plex/__init__.py": {
-    "I001": 1
-  },
-  "app/modules/plex/plex.py": {
-    "F541": 2,
     "I001": 1
   },
   "app/modules/qbittorrent/__init__.py": {
@@ -673,9 +641,6 @@
   "app/modules/trimemedia/__init__.py": {
     "I001": 1
   },
-  "app/modules/trimemedia/api.py": {
-    "I001": 1
-  },
   "app/modules/trimemedia/module.py": {
     "I001": 1
   },
@@ -683,9 +648,6 @@
     "I001": 1
   },
   "app/modules/ugreen/__init__.py": {
-    "I001": 1
-  },
-  "app/modules/ugreen/api.py": {
     "I001": 1
   },
   "app/modules/ugreen/module.py": {
@@ -861,7 +823,7 @@
     "I001": 1
   },
   "app/startup/lifecycle/__init__.py": {
-    "E402": 26
+    "E402": 25
   },
   "scripts/architecture/task_ownership.py": {
     "I001": 1
@@ -1077,9 +1039,6 @@
     "F841": 1,
     "I001": 1
   },
-  "tests/test_episode_group_recognition.py": {
-    "E402": 4
-  },
   "tests/test_event_dispatch_snapshot.py": {
     "I001": 1
   },
@@ -1165,10 +1124,6 @@
     "F841": 1,
     "I001": 1
   },
-  "tests/test_media_recognize_share.py": {
-    "F401": 1,
-    "I001": 1
-  },
   "tests/test_media_recognize_share_statistics.py": {
     "I001": 1
   },
@@ -1176,9 +1131,6 @@
     "I001": 1
   },
   "tests/test_media_search_source_selection.py": {
-    "I001": 1
-  },
-  "tests/test_media_source_routing.py": {
     "I001": 1
   },
   "tests/test_media_source_signature_compatibility.py": {
@@ -1245,9 +1197,6 @@
   "tests/test_music_mediaserver.py": {
     "I001": 1
   },
-  "tests/test_music_plugin_recognize.py": {
-    "I001": 1
-  },
   "tests/test_music_recognize_cache.py": {
     "I001": 1
   },
@@ -1259,9 +1208,6 @@
   },
   "tests/test_music_torrents.py": {
     "I001": 1
-  },
-  "tests/test_music_workflows.py": {
-    "F401": 1
   },
   "tests/test_musicbrainz_module.py": {
     "I001": 1
@@ -1363,9 +1309,6 @@
   "tests/test_security_image_url_log.py": {
     "I001": 1
   },
-  "tests/test_server_statistic_lifecycle.py": {
-    "I001": 1
-  },
   "tests/test_site_adapter_collector.py": {
     "I001": 1
   },
@@ -1389,9 +1332,6 @@
     "I001": 1
   },
   "tests/test_subtitle_signed_download.py": {
-    "I001": 1
-  },
-  "tests/test_sunnypt_indexer.py": {
     "I001": 1
   },
   "tests/test_system_database_backup_api.py": {
@@ -1458,13 +1398,7 @@
   "tests/test_transfer_failed_retry_budget.py": {
     "I001": 1
   },
-  "tests/test_transfer_history_gate.py": {
-    "I001": 1
-  },
   "tests/test_transfer_history_retransfer.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_queue_count.py": {
     "I001": 1
   },
   "tests/test_transfer_rename_build_event.py": {

@@ -56,7 +56,6 @@ elif SystemUtils.is_frozen():
 
 from app.factory import app
 from app.runtime.settings import get_runtime_setting
-from app.runtime.config import global_vars
 from app.runtime.stop import runtime_stop_state
 
 from app.runtime.topology import (
@@ -71,7 +70,7 @@ class MoviePilotServer(uvicorn.Server):
     """在 Uvicorn 开始优雅退出前发布应用协作停止标志"""
 
     def handle_exit(self, sig, frame) -> None:
-        getattr(global_vars, "stop_system")()
+        runtime_stop_state.stop_system()
         super().handle_exit(sig, frame)
 
 
@@ -131,7 +130,7 @@ def run_api_server() -> None:
 
 def request_shutdown() -> None:
     """发布协作停止标志并请求 Uvicorn 退出"""
-    getattr(global_vars, "stop_system")()
+    runtime_stop_state.stop_system()
     if Server is not None:
         Server.should_exit = True
 

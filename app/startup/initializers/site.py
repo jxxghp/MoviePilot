@@ -1,9 +1,12 @@
 """装配站点访问相关 Application Port。"""
 
-from typing import Any, Callable, Optional, cast
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator, Mapping, Optional, cast
 
+from app.adapters.external.cookiecloud import CookieCloudHelper
 from app.adapters.external.ocr import OcrHelper
 from app.adapters.network.browser import PlaywrightHelper
+from app.adapters.network.cloudflare import under_challenge
 from app.adapters.network.http import RequestUtils
 from app.adapters.system import rust as rust_accel
 from app.application.rss import (
@@ -27,6 +30,15 @@ from app.application.torrent import (
     TorrentResponsePort,
     configure_torrent_port,
     reset_torrent_port,
+)
+from app.chain.site import (
+    SiteBrowserPort,
+    SiteChallengePort,
+    SiteCookieCloudPort,
+    SiteHttpPort,
+    SiteResponsePort,
+    configure_site_ports,
+    reset_site_ports,
 )
 
 
@@ -148,8 +160,74 @@ class _TorrentHttpAdapter:
         return cast(Optional[TorrentResponsePort], response)
 
 
+class _SiteHttpAdapter:
+    """用 RequestUtils 实现站点链有界 HTTP 响应端口。"""
+
+    @contextmanager
+    def open(
+        self,
+        *,
+        method: str,
+        url: str,
+        headers: Optional[Mapping[str, Any]] = None,
+        cookie: Optional[str] = None,
+        ua: Optional[str] = None,
+        proxies: Optional[Mapping[str, Any]] = None,
+        timeout: int = 20,
+    ) -> Iterator[Optional[SiteResponsePort]]:
+        """打开响应并在所有返回或异常分支后关闭底层连接。"""
+        request = RequestUtils(
+            headers=dict(headers or {}),
+            cookies=cookie or "",
+            ua=ua or "",
+            proxies=dict(proxies or {}),
+            timeout=timeout,
+        )
+        with request.response_manager(method=method, url=url) as response:
+            yield cast(Optional[SiteResponsePort], response)
+
+
+class _SiteBrowserAdapter:
+    """用 PlaywrightHelper 实现站点链浏览器渲染端口。"""
+
+    def render(
+        self,
+        *,
+        url: str,
+        cookies: str,
+        ua: str,
+        proxies: Optional[Mapping[str, Any]],
+        timeout: int,
+    ) -> Optional[str]:
+        """渲染页面；浏览器 helper 在返回前关闭页面与上下文。"""
+        source: Optional[str] = PlaywrightHelper().get_page_source(
+            url=url,
+            cookies=cookies,
+            ua=ua,
+            proxies=dict(proxies) if proxies else None,
+            timeout=timeout,
+        )
+        return source
+
+
+class _SiteChallengeAdapter:
+    """用统一 Cloudflare 规则实现页面挑战识别端口。"""
+
+    def detected(self, html_text: str) -> bool:
+        """返回页面是否处于站点挑战流程。"""
+        return bool(under_challenge(html_text))
+
+
+class _SiteCookieCloudAdapter:
+    """用 CookieCloudHelper 实现站点 Cookie 聚合端口。"""
+
+    def download(self) -> tuple[Optional[dict[str, str]], str]:
+        """下载并返回 CookieCloud 的兼容二元结果。"""
+        return CookieCloudHelper().download()
+
+
 def init_site_access_ports() -> None:
-    """统一装配 RSS、站点登录与种子下载的七条技术边。"""
+    """统一装配 RSS、登录、种子下载与站点链技术边。"""
     reset_site_access_ports()
     try:
         configure_rss_ports(
@@ -163,6 +241,12 @@ def init_site_access_ports() -> None:
             ocr=cast(CaptchaOcrPort, _CaptchaOcrAdapter()),
         )
         configure_torrent_port(cast(TorrentHttpPort, _TorrentHttpAdapter()))
+        configure_site_ports(
+            http=cast(SiteHttpPort, _SiteHttpAdapter()),
+            browser=cast(SiteBrowserPort, _SiteBrowserAdapter()),
+            challenge=cast(SiteChallengePort, _SiteChallengeAdapter()),
+            cookiecloud=cast(SiteCookieCloudPort, _SiteCookieCloudAdapter()),
+        )
     except Exception:
         reset_site_access_ports()
         raise
@@ -170,6 +254,7 @@ def init_site_access_ports() -> None:
 
 def reset_site_access_ports() -> None:
     """统一释放站点访问端口，支持重复 lifespan 与失败回滚。"""
+    reset_site_ports()
     reset_torrent_port()
     reset_cookie_ports()
     reset_rss_ports()

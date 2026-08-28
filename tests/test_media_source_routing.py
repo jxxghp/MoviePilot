@@ -2,10 +2,10 @@ from unittest.mock import Mock, patch
 
 from app.chain.base import ChainBase
 from app.domain.context import MediaInfo
-from app.domain.meta.metabase import MetaBase
-from app.schemas.types import MediaSource, MediaType
 from app.domain.media import parse_media_source_selection
+from app.domain.meta.metabase import MetaBase
 from app.schemas.media import build_media_key, resolve_media_identity
+from app.schemas.types import MediaSource, MediaType
 
 
 def _chain_without_init() -> ChainBase:
@@ -71,7 +71,7 @@ def test_explicit_source_recognition_reaches_modules_with_unified_identity() -> 
     chain.run_module = Mock(return_value=media)
 
     with patch(
-        "app.chain._recognition.MoviePilotServerHelper.report_recognize_share",
+        "app.startup.initializers.chain.MoviePilotServerHelper.report_recognize_share",
         return_value=False,
     ):
         result = chain.recognize_media(
@@ -105,7 +105,7 @@ def test_default_recognition_passes_empty_generic_identity() -> None:
     meta.type = MediaType.MOVIE
 
     with patch(
-        "app.chain._recognition.MoviePilotServerHelper.report_recognize_share",
+        "app.startup.initializers.chain.MoviePilotServerHelper.report_recognize_share",
         return_value=False,
     ):
         result = chain.recognize_media(meta=meta)

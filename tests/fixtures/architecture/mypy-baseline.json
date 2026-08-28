@@ -17,12 +17,7 @@
     "union-attr": 27
   },
   "app/adapters/external/cookiecloud.py": {
-    "arg-type": 1,
-    "no-any-return": 1,
-    "no-untyped-call": 2,
-    "no-untyped-def": 2,
-    "type-arg": 2,
-    "var-annotated": 1
+    "arg-type": 1
   },
   "app/adapters/external/location.py": {
     "no-untyped-def": 3
@@ -43,14 +38,14 @@
     "var-annotated": 5
   },
   "app/adapters/external/ocr.py": {
-    "arg-type": 2
+    "arg-type": 1
   },
   "app/adapters/external/plugin/client.py": {
     "arg-type": 1,
     "type-arg": 6
   },
   "app/adapters/external/server.py": {
-    "arg-type": 7,
+    "arg-type": 5,
     "assignment": 1,
     "misc": 9,
     "no-any-return": 23,
@@ -81,12 +76,12 @@
     "no-untyped-def": 3
   },
   "app/adapters/network/http.py": {
-    "assignment": 43,
+    "assignment": 28,
     "misc": 1,
     "no-any-return": 15,
     "no-untyped-call": 7,
-    "no-untyped-def": 35,
-    "type-arg": 41
+    "no-untyped-def": 33,
+    "type-arg": 26
   },
   "app/adapters/network/ip.py": {
     "no-untyped-call": 4,
@@ -283,7 +278,6 @@
     "import-untyped": 1
   },
   "app/agent/skills/registry.py": {
-    "arg-type": 1,
     "misc": 3,
     "no-any-return": 7,
     "no-untyped-def": 5,
@@ -347,8 +341,6 @@
     "override": 1
   },
   "app/agent/tools/impl/add_subscribe.py": {
-    "arg-type": 2,
-    "assignment": 8,
     "misc": 1,
     "no-untyped-def": 2,
     "override": 1
@@ -721,7 +713,6 @@
     "override": 1
   },
   "app/agent/tools/impl/transfer_file.py": {
-    "arg-type": 2,
     "attr-defined": 1,
     "misc": 1,
     "no-any-return": 1,
@@ -937,7 +928,7 @@
     "arg-type": 4,
     "assignment": 1,
     "misc": 8,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 8,
     "union-attr": 4
   },
@@ -1004,14 +995,14 @@
     "var-annotated": 1
   },
   "app/api/endpoints/storage.py": {
-    "arg-type": 3,
+    "arg-type": 1,
     "assignment": 1,
     "attr-defined": 1,
     "misc": 7,
     "type-arg": 1
   },
   "app/api/endpoints/subscribe.py": {
-    "arg-type": 12,
+    "arg-type": 11,
     "assignment": 3,
     "attr-defined": 2,
     "misc": 28,
@@ -1046,7 +1037,7 @@
     "no-untyped-def": 5
   },
   "app/api/endpoints/transfer.py": {
-    "arg-type": 18,
+    "arg-type": 9,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 8,
@@ -1073,7 +1064,7 @@
     "valid-type": 1
   },
   "app/api/servarr.py": {
-    "arg-type": 4,
+    "arg-type": 2,
     "assignment": 1,
     "attr-defined": 1,
     "index": 3,
@@ -1165,7 +1156,7 @@
     "dict-item": 1,
     "misc": 1,
     "no-any-return": 5,
-    "no-untyped-call": 4,
+    "no-untyped-call": 3,
     "no-untyped-def": 13,
     "type-arg": 18,
     "union-attr": 2,
@@ -1329,17 +1320,6 @@
     "no-untyped-def": 5,
     "type-arg": 4
   },
-  "app/chain/_transfer.py": {
-    "arg-type": 8,
-    "assignment": 4,
-    "attr-defined": 55,
-    "no-any-return": 3,
-    "no-untyped-call": 1,
-    "no-untyped-def": 8,
-    "return-value": 2,
-    "truthy-function": 1,
-    "type-arg": 3
-  },
   "app/chain/anilist.py": {
     "no-any-return": 4,
     "no-untyped-def": 2,
@@ -1364,13 +1344,13 @@
     "no-any-return": 28
   },
   "app/chain/download.py": {
-    "arg-type": 51,
+    "arg-type": 36,
     "assignment": 29,
     "attr-defined": 7,
     "call-overload": 1,
     "comparison-overlap": 1,
     "misc": 1,
-    "no-any-return": 3,
+    "no-any-return": 2,
     "no-redef": 1,
     "no-untyped-call": 7,
     "no-untyped-def": 6,
@@ -1381,7 +1361,7 @@
     "valid-type": 1
   },
   "app/chain/interaction.py": {
-    "arg-type": 16,
+    "arg-type": 14,
     "assignment": 3,
     "no-untyped-call": 1,
     "return-value": 1,
@@ -1406,7 +1386,7 @@
     "type-arg": 1
   },
   "app/chain/message.py": {
-    "arg-type": 23,
+    "arg-type": 21,
     "assignment": 2,
     "no-any-return": 11,
     "no-untyped-call": 10,
@@ -1461,7 +1441,6 @@
     "attr-defined": 1,
     "misc": 6,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 8,
     "return-value": 2,
     "type-arg": 5
@@ -1473,24 +1452,63 @@
     "no-any-return": 11,
     "type-arg": 2
   },
-  "app/chain/subscribe.py": {
-    "arg-type": 49,
-    "assignment": 16,
-    "attr-defined": 4,
-    "dict-item": 2,
-    "index": 1,
-    "misc": 7,
-    "no-any-return": 2,
-    "no-redef": 2,
-    "no-untyped-call": 14,
-    "no-untyped-def": 16,
-    "operator": 5,
-    "return-value": 5,
-    "truthy-function": 3,
-    "type-arg": 14,
+  "app/chain/subscribe/completion.py": {
+    "arg-type": 2,
+    "assignment": 3,
+    "no-untyped-call": 1,
+    "operator": 3,
     "type-var": 1,
-    "union-attr": 45,
-    "var-annotated": 3
+    "union-attr": 8,
+    "var-annotated": 1
+  },
+  "app/chain/subscribe/create.py": {
+    "arg-type": 10,
+    "assignment": 2,
+    "union-attr": 11
+  },
+  "app/chain/subscribe/facade.py": {
+    "arg-type": 2,
+    "attr-defined": 3,
+    "misc": 6,
+    "truthy-function": 3
+  },
+  "app/chain/subscribe/interaction.py": {
+    "arg-type": 2
+  },
+  "app/chain/subscribe/match.py": {
+    "arg-type": 5,
+    "assignment": 2,
+    "no-untyped-call": 4,
+    "union-attr": 7
+  },
+  "app/chain/subscribe/notify.py": {
+    "no-untyped-call": 2,
+    "union-attr": 6
+  },
+  "app/chain/subscribe/policy.py": {
+    "arg-type": 3,
+    "assignment": 1,
+    "return-value": 1,
+    "union-attr": 1
+  },
+  "app/chain/subscribe/query.py": {
+    "arg-type": 5,
+    "assignment": 1,
+    "index": 1,
+    "operator": 1,
+    "union-attr": 6
+  },
+  "app/chain/subscribe/refresh.py": {
+    "arg-type": 3,
+    "assignment": 2,
+    "dict-item": 2,
+    "no-redef": 2,
+    "return-value": 3,
+    "var-annotated": 2
+  },
+  "app/chain/subscribe/search.py": {
+    "arg-type": 1,
+    "assignment": 3
   },
   "app/chain/system.py": {
     "attr-defined": 1,
@@ -1513,21 +1531,89 @@
     "type-arg": 5,
     "union-attr": 2
   },
-  "app/chain/transfer.py": {
-    "arg-type": 53,
-    "assignment": 25,
-    "attr-defined": 4,
-    "func-returns-value": 1,
-    "misc": 2,
+  "app/chain/transfer/execution.py": {
+    "arg-type": 11,
+    "assignment": 4,
     "no-any-return": 2,
-    "no-untyped-call": 8,
-    "no-untyped-def": 12,
-    "operator": 3,
+    "type-arg": 2,
+    "union-attr": 18
+  },
+  "app/chain/transfer/facade.py": {
+    "attr-defined": 2,
+    "no-untyped-def": 2,
+    "truthy-function": 2
+  },
+  "app/chain/transfer/filter.py": {
+    "arg-type": 1,
+    "assignment": 1,
+    "attr-defined": 1
+  },
+  "app/chain/transfer/format.py": {
+    "arg-type": 1,
+    "attr-defined": 1,
+    "type-arg": 1
+  },
+  "app/chain/transfer/history.py": {
+    "assignment": 1,
+    "attr-defined": 1,
+    "no-untyped-call": 6,
+    "no-untyped-def": 4
+  },
+  "app/chain/transfer/plan.py": {
+    "arg-type": 3,
+    "attr-defined": 1
+  },
+  "app/chain/transfer/queue.py": {
+    "attr-defined": 1,
+    "func-returns-value": 1,
+    "no-untyped-def": 2,
+    "type-arg": 1,
+    "var-annotated": 3
+  },
+  "app/chain/transfer/records.py": {
+    "arg-type": 4,
+    "assignment": 1,
+    "attr-defined": 1,
+    "no-any-return": 1,
     "return-value": 2,
-    "truthy-function": 5,
-    "type-arg": 10,
-    "union-attr": 31,
-    "var-annotated": 4
+    "truthy-function": 1,
+    "type-arg": 1
+  },
+  "app/chain/transfer/request.py": {
+    "arg-type": 5,
+    "assignment": 2,
+    "attr-defined": 1,
+    "operator": 1,
+    "type-arg": 1
+  },
+  "app/chain/transfer/retry.py": {
+    "arg-type": 1,
+    "assignment": 2,
+    "attr-defined": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 2,
+    "type-arg": 1
+  },
+  "app/chain/transfer/scrape.py": {
+    "attr-defined": 1,
+    "no-untyped-def": 6
+  },
+  "app/chain/transfer/settlement.py": {
+    "arg-type": 6,
+    "assignment": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 3,
+    "union-attr": 7
+  },
+  "app/chain/transfer/workflow.py": {
+    "arg-type": 9,
+    "assignment": 11,
+    "attr-defined": 2,
+    "operator": 1,
+    "return-value": 1,
+    "type-arg": 6,
+    "union-attr": 3,
+    "var-annotated": 1
   },
   "app/chain/workflow.py": {
     "arg-type": 1,
@@ -1814,7 +1900,7 @@
   "app/foundation/singleton.py": {
     "arg-type": 2,
     "misc": 2,
-    "no-untyped-def": 5,
+    "no-untyped-def": 4,
     "type-arg": 3,
     "var-annotated": 2
   },
@@ -2016,7 +2102,7 @@
     "empty-body": 1,
     "no-any-return": 2,
     "no-untyped-call": 3,
-    "no-untyped-def": 6,
+    "no-untyped-def": 5,
     "type-arg": 3,
     "var-annotated": 3
   },
@@ -2139,7 +2225,6 @@
     "type-arg": 5
   },
   "app/modules/imdb/api.py": {
-    "arg-type": 2,
     "misc": 5,
     "no-any-return": 2,
     "type-arg": 18
@@ -2157,7 +2242,7 @@
     "var-annotated": 5
   },
   "app/modules/indexer/parser/__init__.py": {
-    "arg-type": 20,
+    "arg-type": 14,
     "assignment": 4,
     "comparison-overlap": 1,
     "no-untyped-call": 4,
@@ -2250,7 +2335,6 @@
     "type-arg": 1
   },
   "app/modules/indexer/parser/rousi.py": {
-    "arg-type": 2,
     "assignment": 12,
     "no-untyped-def": 8,
     "type-arg": 1
@@ -2296,7 +2380,7 @@
     "type-arg": 1
   },
   "app/modules/indexer/spider/__init__.py": {
-    "arg-type": 16,
+    "arg-type": 12,
     "assignment": 3,
     "dict-item": 3,
     "misc": 1,
@@ -2311,34 +2395,34 @@
     "var-annotated": 2
   },
   "app/modules/indexer/spider/haidan.py": {
-    "arg-type": 5,
+    "arg-type": 3,
     "assignment": 5,
     "no-any-return": 1,
     "no-untyped-def": 2,
     "type-arg": 6
   },
   "app/modules/indexer/spider/hddolby.py": {
-    "arg-type": 11,
+    "arg-type": 7,
     "assignment": 4,
     "operator": 1,
     "type-arg": 5
   },
   "app/modules/indexer/spider/mtorrent.py": {
-    "arg-type": 9,
+    "arg-type": 5,
     "assignment": 4,
     "no-untyped-def": 1,
     "type-arg": 5,
     "var-annotated": 1
   },
   "app/modules/indexer/spider/rousi.py": {
-    "arg-type": 6,
+    "arg-type": 4,
     "assignment": 8,
     "no-untyped-def": 1,
     "type-arg": 7,
     "var-annotated": 2
   },
   "app/modules/indexer/spider/sunnypt.py": {
-    "arg-type": 7,
+    "arg-type": 3,
     "assignment": 2,
     "no-any-return": 1,
     "no-untyped-def": 3,
@@ -2346,7 +2430,7 @@
     "var-annotated": 3
   },
   "app/modules/indexer/spider/tnode.py": {
-    "arg-type": 12,
+    "arg-type": 4,
     "assignment": 1,
     "misc": 2,
     "return-value": 2,
@@ -2354,14 +2438,14 @@
     "var-annotated": 1
   },
   "app/modules/indexer/spider/torrentleech.py": {
-    "arg-type": 7,
+    "arg-type": 3,
     "assignment": 5,
     "type-arg": 4,
     "union-attr": 14,
     "var-annotated": 1
   },
   "app/modules/indexer/spider/yema.py": {
-    "arg-type": 7,
+    "arg-type": 5,
     "assignment": 5,
     "no-untyped-def": 1,
     "type-arg": 8
@@ -2388,20 +2472,18 @@
     "var-annotated": 3
   },
   "app/modules/listenbrainz/__init__.py": {
-    "arg-type": 1,
     "misc": 2,
     "no-any-return": 2,
     "no-untyped-call": 1,
     "override": 1
   },
   "app/modules/lrclib/__init__.py": {
-    "arg-type": 1,
     "misc": 1,
     "no-untyped-call": 1,
     "override": 1
   },
   "app/modules/musicbrainz/__init__.py": {
-    "arg-type": 4,
+    "arg-type": 2,
     "assignment": 5,
     "misc": 4,
     "no-any-return": 1,
@@ -2547,7 +2629,7 @@
     "var-annotated": 3
   },
   "app/modules/subtitle/__init__.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "empty-body": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 2,
@@ -2796,9 +2878,7 @@
     "union-attr": 1
   },
   "app/modules/trimemedia/api.py": {
-    "attr-defined": 1,
     "misc": 2,
-    "no-any-return": 1,
     "no-untyped-def": 11,
     "type-arg": 6
   },
@@ -2871,7 +2951,7 @@
     "arg-type": 1,
     "assignment": 1,
     "empty-body": 1,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 1,
     "union-attr": 1
@@ -3325,14 +3405,14 @@
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
-    "no-untyped-call": 32,
+    "no-untyped-call": 30,
     "no-untyped-def": 6,
     "return-value": 3
   },
   "app/startup/initializers/plugins.py": {
     "arg-type": 5,
     "no-any-return": 2,
-    "no-untyped-call": 9,
+    "no-untyped-call": 4,
     "no-untyped-def": 5
   },
   "app/startup/initializers/routers.py": {
@@ -3341,11 +3421,6 @@
   "app/startup/initializers/scheduler.py": {
     "no-untyped-call": 5,
     "no-untyped-def": 4
-  },
-  "app/startup/initializers/transfer.py": {
-    "no-any-return": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 1
   },
   "app/startup/initializers/workflow.py": {
     "no-untyped-def": 1

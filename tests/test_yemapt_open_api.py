@@ -27,6 +27,10 @@ class _FakeResponse:
         """返回预设 JSON 数据。"""
         return self._payload
 
+    def close(self) -> None:
+        """模拟释放短生命周期响应。"""
+
+
 
 def _build_indexer() -> dict:
     """构造 YemaPT 开放 API Spider 所需的最小站点配置。"""
@@ -274,9 +278,9 @@ def test_yemapt_user_parser_uses_basic_info_only(monkeypatch):
         },
     }
 
-    def fake_post_res(request, url: str, json: dict = None, **_kwargs):
+    def fake_post_res(_request, url: str, json: dict = None, **kwargs):
         """记录用户基本信息请求并回放开放 API 响应。"""
-        captured.append((url, json, request._headers, request._cookies))
+        captured.append((url, json, kwargs.get("headers"), kwargs.get("cookies")))
         return _FakeResponse(payload)
 
     monkeypatch.setattr(
@@ -327,7 +331,10 @@ def test_yemapt_download_generates_and_urlencodes_temporary_key(monkeypatch):
         captured.update(kwargs)
         return None, b"torrent-content", "Movie", ["Movie.mkv"], ""
 
-    monkeypatch.setattr("app.chain.download.RequestUtils.post_res", fake_post_res)
+    monkeypatch.setattr(
+        "app.startup.initializers.network.RequestUtils.post_res",
+        fake_post_res,
+    )
     monkeypatch.setattr(
         "app.chain.download.TorrentHelper.download_torrent",
         fake_download_torrent,

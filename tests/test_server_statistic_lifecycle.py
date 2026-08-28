@@ -1,12 +1,18 @@
 """服务端统计兼容入口的后台任务生命周期回归。"""
 
 import asyncio
-
 from unittest.mock import Mock, patch
 
 from app.adapters.external.server import MoviePilotServerHelper
-from app.runtime.config import global_vars
+from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import TaskRegistry
+
+
+def _replace_loop(loop):
+    """替换测试投递循环并返回可用于恢复的旧值。"""
+    previous = main_loop_registry.current
+    main_loop_registry.replace_compat(loop)
+    return previous
 
 
 def test_legacy_subscription_reports_use_owned_threadsafe_tasks() -> None:
@@ -20,11 +26,15 @@ def test_legacy_subscription_reports_use_owned_threadsafe_tasks() -> None:
         return Mock()
 
     registry.submit_threadsafe.side_effect = submit
-    with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch(
-        "app.adapters.external.server.get_task_registry", return_value=registry
-    ):
-        assert MoviePilotServerHelper.sub_reg_async({"media_id": "1"}) is True
-        assert MoviePilotServerHelper.sub_done_async({"media_id": "1"}) is True
+    previous = _replace_loop(loop)
+    try:
+        with patch(
+            "app.adapters.external.server.get_task_registry", return_value=registry
+        ):
+            assert MoviePilotServerHelper.sub_reg_async({"media_id": "1"}) is True
+            assert MoviePilotServerHelper.sub_done_async({"media_id": "1"}) is True
+    finally:
+        main_loop_registry.replace_compat(previous)
 
     assert registry.submit_threadsafe.call_count == 2
     assert registry.submit_threadsafe.call_args_list[0].kwargs == {
@@ -41,8 +51,11 @@ def test_legacy_subscription_reports_use_owned_threadsafe_tasks() -> None:
 
 def test_legacy_subscription_report_rejects_without_runtime_loop() -> None:
     """宿主生命周期不可用时应拒绝提交，并保持布尔返回合同。"""
-    with patch.object(global_vars, "CURRENT_EVENT_LOOP", None):
+    previous = _replace_loop(None)
+    try:
         assert MoviePilotServerHelper.sub_done_async({"media_id": "1"}) is False
+    finally:
+        main_loop_registry.replace_compat(previous)
 
 
 def test_legacy_subscription_report_handles_closed_task_registry() -> None:
@@ -51,10 +64,14 @@ def test_legacy_subscription_report_handles_closed_task_registry() -> None:
     asyncio.run(registry.shutdown(timeout_seconds=0.01))
     loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
 
-    with patch.object(global_vars, "CURRENT_EVENT_LOOP", loop), patch(
-        "app.adapters.external.server.get_task_registry", return_value=registry
-    ), patch("app.adapters.external.server.logger") as logger:
-        assert MoviePilotServerHelper.sub_done_async({"media_id": "1"}) is False
+    previous = _replace_loop(loop)
+    try:
+        with patch(
+            "app.adapters.external.server.get_task_registry", return_value=registry
+        ), patch("app.adapters.external.server.logger") as logger:
+            assert MoviePilotServerHelper.sub_done_async({"media_id": "1"}) is False
+    finally:
+        main_loop_registry.replace_compat(previous)
 
     logger.warning.assert_called_once()
     assert "正在关闭" in logger.warning.call_args.args[0]

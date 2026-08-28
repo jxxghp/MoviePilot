@@ -78,12 +78,12 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
         get_by_path=lambda path: None,
     )
     monkeypatch.setattr(
-        "app.chain.transfer.get_configured_system_config",
+        "app.chain.transfer.workflow.get_configured_system_config",
         lambda: SimpleNamespace(get=lambda key: None),
     )
-    monkeypatch.setattr("app.chain._transfer.get_configured_system_config", lambda: SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr("app.chain.transfer.format.get_configured_system_config", lambda: SimpleNamespace(get=lambda key: None))
     monkeypatch.setattr(
-        "app.chain.transfer.StorageChain",
+        "app.chain.transfer.settlement.StorageChain",
         lambda: SimpleNamespace(
             exists=lambda current_fileitem: True,
             delete_media_file=lambda current_fileitem: deleted.append(
@@ -92,7 +92,7 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             or True,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.StorageChain", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
             exists=lambda current_fileitem: True,
             delete_media_file=lambda current_fileitem: deleted.append(
                 ("target", current_fileitem.path)
@@ -100,7 +100,7 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
             or True,
         ))
     monkeypatch.setattr(
-        "app.chain.transfer.MetaInfoPath",
+        "app.chain.transfer.request.MetaInfoPath",
         lambda path, custom_words=None, **kwargs: FakeMeta(1),
     )
 

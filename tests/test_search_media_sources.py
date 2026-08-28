@@ -6,7 +6,7 @@ import pytest
 
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import search as search_endpoint
-from app.chain import subscribe as subscribe_module
+from app.chain.subscribe import create as subscribe_create
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
@@ -358,7 +358,7 @@ def test_subscribe_add_does_not_fallback_for_explicit_identity() -> None:
     media_chain.recognize_by_meta.return_value = None
     chain = object.__new__(SubscribeChain)
 
-    with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
+    with patch.object(subscribe_create, "MediaChain", return_value=media_chain):
         sid, message = chain.add(
             title="AniList 同步订阅",
             year="2026",
@@ -380,7 +380,7 @@ def test_subscribe_async_add_does_not_fallback_for_explicit_identity() -> None:
     media_chain.async_recognize_by_meta = AsyncMock(return_value=None)
     chain = object.__new__(SubscribeChain)
 
-    with patch.object(subscribe_module, "MediaChain", return_value=media_chain):
+    with patch.object(subscribe_create, "MediaChain", return_value=media_chain):
         sid, message = asyncio.run(
             chain.async_add(
                 title="AniList 异步订阅",

@@ -56,7 +56,7 @@ def test_transfer_resolves_complete_identity_before_building_tasks(monkeypatch) 
             calls.append(kwargs)
             return None
 
-    recognize("app.chain.transfer.MediaChain", FakeMediaChain)
+    recognize("app.chain.transfer.workflow.MediaChain", FakeMediaChain)
 
     state, message = chain.do_transfer(
         fileitem=fileitem,
@@ -96,10 +96,10 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
     record_transfer_failure = Mock()
     add_transfer_fail = Mock()
     monkeypatch.setattr(
-        "app.chain.transfer.record_transfer_failure",
+        "app.chain.transfer.settlement.record_transfer_failure",
         record_transfer_failure,
     )
-    monkeypatch.setattr("app.chain.transfer.add_transfer_fail", add_transfer_fail)
+    monkeypatch.setattr("app.chain.transfer.settlement.add_transfer_fail", add_transfer_fail)
     chain._transfer_admissions.checkpoint_plan.side_effect = (
         lambda **kwargs: SimpleNamespace(checkpoint=kwargs["checkpoint"])
     )
@@ -118,12 +118,12 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
     )
     chain.transfer_history_repository = SimpleNamespace()
     monkeypatch.setattr(
-        "app.chain.transfer.MediaChain",
+        "app.chain.transfer.execution.MediaChain",
         lambda: SimpleNamespace(
             supplement_tmdb_info=lambda media, _meta: media,
         ),
     )
-    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: SimpleNamespace(
+    monkeypatch.setattr("app.chain.transfer.filter.MediaChain", lambda: SimpleNamespace(
             supplement_tmdb_info=lambda media, _meta: media,
         ))
     task = TransferTask(

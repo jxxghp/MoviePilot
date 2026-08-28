@@ -14,7 +14,7 @@ from app.application.subscription.write import (
     SubscriptionBatchWritePort,
 )
 from app.chain.media import MediaChain
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.chain.tvdb import TvdbChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -842,10 +842,14 @@ async def arr_add_series(
     if not left_seasons:
         return _SchemaServarrIdResponse(id=1)
 
+    # TMDB 身份完整时允许空标题交由识别链补全；年份统一为订阅写入合同的字符串。
+    subscribe_title = tv.title or ""
+    subscribe_year = str(tv.year or "")
+
     try:
         sid, message = await SubscribeChain().async_add_batch(
-            title=tv.title,
-            year=tv.year,
+            title=subscribe_title,
+            year=subscribe_year,
             seasons=left_seasons,
             batch_writer=batch_writer,
             media_source=MediaSource.TMDB,

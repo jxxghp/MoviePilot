@@ -1,7 +1,7 @@
 """命令工具服务门面。
 
 Agent 工具与 API 端点对命令注册表的操作统一经本模块调用，
-Command 实现由 startup 组合根在导入期注册，避免 application 层
+Command 实现由 startup 组合根在生命周期启动阶段注册，避免 application 层
 静态依赖顶层 command 模块。
 
 依赖方向：
@@ -11,14 +11,21 @@ Command 实现由 startup 组合根在导入期注册，避免 application 层
 
 from typing import Any, Dict, Optional
 
-# Command 类：由 startup/initializers/command.py 在导入期注册。
+# Command 类：由 startup/initializers/command.py 在显式启动阶段注册。
 _command_class: Any = None
 
 
-def register_command_class(command_class: Any) -> None:
-    """注册 Command 类（组合根在导入期调用）。"""
+def register_command_class(command_class: Any) -> Any:
+    """注册 Command 类，并返回先前实现供隔离测试或失败回滚。"""
     global _command_class
+    previous = _command_class
     _command_class = command_class
+    return previous
+
+
+def reset_command_class() -> None:
+    """清除 Command 实现，防止重复 lifespan 保留上一轮 provider。"""
+    register_command_class(None)
 
 
 def get_command_object() -> Any:

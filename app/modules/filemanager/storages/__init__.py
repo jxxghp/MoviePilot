@@ -50,6 +50,10 @@ class StorageBase(metaclass=ABCMeta):
     def __init__(self):
         self.storagehelper = StorageHelper()
 
+    def close(self) -> bool | None:
+        """关闭外部资源；返回 False 表示 owner 尚未收敛且必须保留。"""
+        return None
+
     @abstractmethod
     def init_storage(self):
         """

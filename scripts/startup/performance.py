@@ -143,8 +143,9 @@ async def _probe():
     '''执行一次隔离生命周期并输出资源与耗时样本。'''
     legacy_settings.MOVIEPILOT_SAFE_MODE = {safe_mode!r}
     lifecycle.init_extra = _async_noop
-    lifecycle.global_vars.set_loop = lambda loop: None
-    lifecycle.global_vars.stop_system = lambda: None
+    lifecycle.main_loop_registry.register = lambda loop: object()
+    lifecycle.main_loop_registry.release = lambda owner: None
+    lifecycle.runtime_stop_state.stop_system = lambda: None
     probe_app = FastAPI()
     original_components = lifecycle.build_lifecycle_components(probe_app)
     isolated_components = tuple(

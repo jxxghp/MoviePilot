@@ -1,6 +1,7 @@
 import abc
 import threading
 import weakref
+from typing import Any
 
 
 class Singleton(abc.ABCMeta, type):
@@ -11,7 +12,7 @@ class Singleton(abc.ABCMeta, type):
     _instances: dict = {}
     _lock = threading.RLock()
 
-    def get_existing_instance(cls, *args, **kwargs):
+    def get_existing_instance(cls, *args: Any, **kwargs: Any) -> Any:
         """按相同参数返回已创建实例，不触发初始化"""
         key = (cls, args, frozenset(kwargs.items()))
         with cls._lock:
@@ -105,6 +106,19 @@ class WeakSingleton(abc.ABCMeta, type):
     """
     _instances: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
     _lock = threading.RLock()
+
+    def get_existing_instance(cls) -> Any:
+        """返回仍存活的已创建实例，不触发初始化。"""
+        with cls._lock:
+            return cls._instances.get(cls)
+
+    def release_existing_instance(cls, instance: object) -> bool:
+        """仅在身份匹配时释放已关闭实例。"""
+        with cls._lock:
+            if cls._instances.get(cls) is not instance:
+                return False
+            cls._instances.pop(cls, None)
+            return True
 
     def __call__(cls, *args, **kwargs):
         """按类创建或复用仍有强引用的实例。"""

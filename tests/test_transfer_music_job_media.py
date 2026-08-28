@@ -1,6 +1,5 @@
 from app import schemas
-from app.application.transfer.workflow import TransferTask
-from app.chain.transfer import JobManager
+from app.application.transfer.workflow import JobManager, TransferTask
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.file import FileItem
 

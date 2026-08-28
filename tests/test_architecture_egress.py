@@ -11,26 +11,12 @@ DEPENDENCY_POLICY_PATH = (
     PROJECT_ROOT / "tests" / "fixtures" / "architecture" / "dependency-policy.json"
 )
 FROZEN_EGRESS_EDGES_BY_REASON = {
-    "direct_http": {
-        ("app.agent.llm.provider", "httpx"),
-        ("app.modules.filemanager.storages.alipan", "requests"),
-        ("app.modules.filemanager.storages.u115", "httpx"),
-        ("app.modules.ugreen.api", "requests"),
-    },
-    "requestutils_session_bridge": {
-        ("app.modules.bangumi.bangumi", "requests"),
-        ("app.modules.douban.apiv2", "requests"),
-        ("app.modules.imdb.api", "requests"),
-        ("app.modules.indexer.parser", "requests"),
-        ("app.modules.musicbrainz", "requests"),
-        ("app.modules.plex.plex", "requests"),
-        ("app.modules.trimemedia.api", "requests"),
-    },
     "canonical_transport": {
         ("app.adapters.cache.redis", "redis"),
         ("app.adapters.network.browser", "cloakbrowser"),
         ("app.adapters.network.doh", "socket.getaddrinfo"),
         ("app.adapters.network.doh", "urllib.request"),
+        ("app.adapters.network.http", "httpx"),
         ("app.adapters.network.http", "httpx2"),
         ("app.adapters.network.http", "requests"),
         ("app.adapters.network.ip", "socket.gethostbyname"),
@@ -86,7 +72,6 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
     "type_or_compat_only": {
         ("app.adapters.external.market", "httpx2"),
         ("app.adapters.external.market", "requests"),
-        ("app.modules.douban.apiv2", "httpx2"),
         ("app.modules.emby.emby", "requests"),
         ("app.modules.filemanager.storages.smb", "smbprotocol"),
         ("app.modules.jellyfin.jellyfin", "requests"),
@@ -114,8 +99,9 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.network.browser", "cloakbrowser"): "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173",
     ("app.adapters.network.doh", "socket.getaddrinfo"): "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
     ("app.adapters.network.doh", "urllib.request"): "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",
+    ("app.adapters.network.http", "httpx"): "c00458c868240f1adfe6278ba22bd5c4782e9bd2fcf896114c2288bf82981ee3",
     ("app.adapters.network.http", "httpx2"): "a70799e9930ff79cd28ebed92836c8108cd2d18bc668e0081f68533d84f69d0d",
-    ("app.adapters.network.http", "requests"): "95fb4576cec363355f40aa1758d90fbb09242a2b1d029b7ab5ab65e2aaca12f8",
+    ("app.adapters.network.http", "requests"): "dffac27a2e24803dd7c50b238ba44b4f106b7b105e63a487edc12258f65c710d",
     ("app.adapters.network.http", "urllib3"): "66cbd8ec4e7552bd458db0baada30f1953e6d0493793822d23a2199567bca98a",
     ("app.adapters.network.ip", "socket.gethostbyname"): "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048",
     ("app.adapters.network.resolver", "socket.getaddrinfo"): "1b1ce6763d730d7aa9c35d32a668560013c939467dcb3087357ffa53653ff306",
@@ -130,31 +116,21 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.agent.llm.helper", "openai"): "dbebd5e9fa38b2a525a5a2e5a92d855ba9d05762410590bfb544e665fe38f620",
     ("app.agent.llm.provider", "boto3"): "04ca4b5ecbda1531266d5f53817dde061dcfdd3293cabf9301fc8d8e4c281a88",
     ("app.agent.llm.provider", "botocore"): "fbeaa702703665ca60233a153aade0da7e49dfb6fe31f72e5593c883fb7d3f11",
-    ("app.agent.llm.provider", "google.genai"): "b545cffb169b87f87606c17762b5d9da3f35372bd411c1f4ebba010b3d7c3ebb",
-    ("app.agent.llm.provider", "httpx"): "a68ad216d86b4b33aa8c35572c26f7993245c0c12dd512e962bcacb46d7f15fc",
+    ("app.agent.llm.provider", "google.genai"): "b1a42e9a06f7cf3bdd1cb069a73c3597ebd0433cf64da6c0a305cccb56d257b7",
     ("app.agent.llm.provider", "openai"): "ffac3b355eb640f6421299cf838cb4e24866a39afabd9dcfd8d0f340925dc1a8",
     ("app.agent.tools.impl.search_web", "ddgs"): "377e73bb3be804b825d60ad6e792344ca633de107f8c4dbb45d50a34a4dfa04b",
     ("app.api.endpoints.message", "pywebpush"): "7d83ca0dc89dfb6af1cdd7bc90d922105de94222e4e3a44bba4f53bbd97bc31b",
     ("app.cli", "urllib.request"): "71b3e5be2a7d85fdc7a207d15c0e690d7ab96b335b882a3eaec03a1cb4ec1d1b",
     ("app.doctor.checks", "socket.create_connection"): "dfb34d4710353029dcc06e0e0ce3b299bae1a7e71a5743de1d253ac26380f9b6",
     ("app.doctor.checks", "urllib.request"): "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
-    ("app.modules.bangumi.bangumi", "requests"): "e5baf8a89b8661025169e9eec8d3c13d30660f63b35d94ec4896cd97e7fde3bf",
     ("app.modules.discord.discord", "discord"): "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86",
-    ("app.modules.douban.apiv2", "httpx2"): "edc337b12976d978cad3f83d0fa6faf71b2af2d814926dff890d5acc94f0a0a6",
-    ("app.modules.douban.apiv2", "requests"): "6e871a27b88263676797edd65093d0b38db48f77fb5db2bb581b7b82e9b2977d",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
     ("app.modules.feishu.feishu", "lark_oapi"): "99d16968a59932b5980f6d42ea2bbc8fa35ccdb1a27933beec29b4bdc093d78b",
-    ("app.modules.filemanager.storages.alipan", "requests"): "82d84425f58ed9664a6e2a4ece53240198c95a0f9fee5d0afd0a11e3c459ecf6",
     ("app.modules.filemanager.storages.smb", "smbclient"): "62e0585282ef206ac81b2bf9e93a58423fb058685edc0ef4ee592453bbf30376",
     ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
-    ("app.modules.filemanager.storages.u115", "httpx"): "f6678109963f9973d5d15e38e5f5e8dca01ec5e0117598ad1ac877b841ff7961",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
-    ("app.modules.imdb.api", "requests"): "3d05532e62d2cddf3bb05495196176b76aa02216c2b0d868cf9281d2257d9627",
-    ("app.modules.indexer.parser", "requests"): "facdb091442bacba0fc0f631637643e95e18545bd7ab63f1d49d67a9a928d016",
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
-    ("app.modules.musicbrainz", "requests"): "c54a10dd672fb0ebb32a536ae42c221ad434313466cc108d43e433dd84cac9a5",
     ("app.modules.plex.plex", "plexapi"): "76c1334863dc6c6623ce6ad3415bec5ff92656f51c31e4d982285898f193e57e",
-    ("app.modules.plex.plex", "requests"): "93f20b9c01571553e9601f4b9f4ee9471073e65f938cb635320f72fa41ec3843",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",
     ("app.modules.rtorrent.rtorrent", "http.client"): "6adc93b3bc479dfe81197554c7977930a60abc51714f14ef29298eb40730aaf7",
@@ -166,8 +142,6 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.telegram.telegram", "telebot"): "78f5ab18bfd67ba4fa0f3c0fc4a1a561a7b1d9e81e335fb80de86edb480b84b8",
     ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "d605eb176a203b3f4d205c5d183469b3002426682eb9cb4e7408bb6013652484",
     ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
-    ("app.modules.trimemedia.api", "requests"): "aecbe00404b2866c918c939bee5f1002045fc72aed4440c85e0811a4379913e4",
-    ("app.modules.ugreen.api", "requests"): "a266dd2b74f216b289682e5d83c0b5a7d0d08b5447d79c165659b6d7302656d6",
     ("app.modules.webpush", "pywebpush"): "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
@@ -810,6 +784,11 @@ def test_egress_policy_enforces_debt_and_exception_schemas() -> None:
         "test_network_guard",
     }
 
+    assert not {
+        "direct_http",
+        "requestutils_session_bridge",
+    } & {group["reason_code"] for group in groups}
+
     for group in groups:
         if group["classification"] == "temporary_debt":
             assert set(group) == {
@@ -841,13 +820,13 @@ def test_egress_policy_enforces_debt_and_exception_schemas() -> None:
 def test_egress_policy_rejects_classification_swaps() -> None:
     """事实即使仍被覆盖，也不能在债务与例外 reason 间互换。"""
     facts = [
-        {"source": "app.agent.llm.provider", "target": "httpx"},
+        {"source": "app.adapters.network.http", "target": "httpx"},
         {"source": "app.agent.llm.capability", "target": "openai"},
     ]
     swapped = [
         {
             "reason_code": "sdk_transport",
-            "facts": [{"source": "app.agent.llm.provider", "target": "httpx"}],
+            "facts": [{"source": "app.adapters.network.http", "target": "httpx"}],
         },
         {
             "reason_code": "direct_http",
@@ -859,8 +838,8 @@ def test_egress_policy_rejects_classification_swaps() -> None:
         [],
         [],
         [
+            ("app.adapters.network.http", "httpx"),
             ("app.agent.llm.capability", "openai"),
-            ("app.agent.llm.provider", "httpx"),
         ],
     )
 
@@ -869,14 +848,14 @@ def test_egress_policy_rejects_same_edge_surface_growth() -> None:
     """同一 source/target 的调用面变化不能靠刷新 policy 绕过。"""
     facts = [
         {
-            "source": "app.agent.llm.provider",
+            "source": "app.adapters.network.http",
             "target": "httpx",
             "fingerprint": "f" * 64,
         }
     ]
 
     assert _fingerprint_differences(facts) == [
-        ("app.agent.llm.provider", "httpx")
+        ("app.adapters.network.http", "httpx")
     ]
 
 

@@ -73,9 +73,31 @@ class FileManagerModule(_ModuleBase):
         """
         return 4
 
-    def stop(self):
-        """停止文件整理模块"""
-        pass
+    def stop(self) -> bool:
+        """关闭已物化存储并释放其弱单例，未使用实现不会因关停而创建。"""
+        converged = True
+        for storage_schema in self._storage_schemas:
+            get_existing = getattr(storage_schema, "get_existing_instance", None)
+            release_existing = getattr(storage_schema, "release_existing_instance", None)
+            if not get_existing or not release_existing:
+                continue
+            instance = get_existing()
+            if instance is None:
+                continue
+            try:
+                stopped = instance.close()
+            except Exception as err:
+                converged = False
+                logger.error(
+                    f"关闭存储 {storage_schema.schema.value} 失败：{str(err)}"
+                )
+                continue
+            if stopped is False:
+                converged = False
+                continue
+            if not release_existing(instance):
+                converged = False
+        return converged
 
     def test(self) -> Tuple[bool, str]:
         """

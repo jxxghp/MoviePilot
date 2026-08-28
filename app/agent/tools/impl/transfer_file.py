@@ -7,11 +7,10 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.log import logger
-from app.schemas.workflow import FileItem
-from app.schemas.types import MediaType
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource
 from app.domain.media import normalize_music_type
+from app.runtime.log import logger
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
+from app.schemas.workflow import FileItem
 
 
 class TransferFileInput(BaseModel):
@@ -195,7 +194,7 @@ class TransferFileTool(MoviePilotTool):
             return "错误：单曲必须按一个音频文件整理，不能把目录作为一首单曲"
         target_path_obj = Path(target_path) if target_path else None
 
-        from app.chain.transfer import TransferChain
+        from app.chain.transfer.facade import TransferChain
 
         state, errormsg = TransferChain().manual_transfer(
             fileitem=fileitem,

@@ -59,73 +59,7 @@
       "parent_package_expansion": false,
       "imported_symbols": false
     },
-    "entries": [
-      {
-        "source": "app.chain._recognition",
-        "target": "app.adapters.external.server",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain._transfer",
-        "target": "app.adapters.system.host",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.download",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.download",
-        "target": "app.adapters.system.host",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.message",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.scraping",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.site",
-        "target": "app.adapters.external.cookiecloud",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.site",
-        "target": "app.adapters.network.browser",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.site",
-        "target": "app.adapters.network.cloudflare",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.site",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.subscribe",
-        "target": "app.adapters.external.server",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.system",
-        "target": "app.adapters.network.http",
-        "tracking": "S2-L7"
-      },
-      {
-        "source": "app.chain.system",
-        "target": "app.adapters.system.host",
-        "tracking": "S2-L7"
-      }
-    ],
+    "entries": [],
     "target_state": "empty"
   },
   "direct_egress": {
@@ -161,35 +95,6 @@
     },
     "groups": [
       {
-        "classification": "temporary_debt",
-        "reason_code": "direct_http",
-        "tracking": "S2-L7",
-        "target_state": "empty",
-        "reason": "普通宿主 HTTP 与 SDK client factory 尚未收口；provider 的直接请求和注入 client 必须在同一迁移中处理。",
-        "facts": [
-          {"source": "app.agent.llm.provider", "target": "httpx", "kind": "raw_transport", "fingerprint": "a68ad216d86b4b33aa8c35572c26f7993245c0c12dd512e962bcacb46d7f15fc"},
-          {"source": "app.modules.filemanager.storages.alipan", "target": "requests", "kind": "raw_transport", "fingerprint": "82d84425f58ed9664a6e2a4ece53240198c95a0f9fee5d0afd0a11e3c459ecf6"},
-          {"source": "app.modules.filemanager.storages.u115", "target": "httpx", "kind": "raw_transport", "fingerprint": "f6678109963f9973d5d15e38e5f5e8dca01ec5e0117598ad1ac877b841ff7961"},
-          {"source": "app.modules.ugreen.api", "target": "requests", "kind": "raw_transport", "fingerprint": "a266dd2b74f216b289682e5d83c0b5a7d0d08b5447d79c165659b6d7302656d6"}
-        ]
-      },
-      {
-        "classification": "temporary_debt",
-        "reason_code": "requestutils_session_bridge",
-        "tracking": "S2-L7",
-        "target_state": "empty",
-        "reason": "模块构造或接收 requests Session，并管理生命周期或桥接给 RequestUtils；迁移后不再直接拥有 transport。",
-        "facts": [
-          {"source": "app.modules.bangumi.bangumi", "target": "requests", "kind": "raw_transport", "fingerprint": "e5baf8a89b8661025169e9eec8d3c13d30660f63b35d94ec4896cd97e7fde3bf"},
-          {"source": "app.modules.douban.apiv2", "target": "requests", "kind": "raw_transport", "fingerprint": "6e871a27b88263676797edd65093d0b38db48f77fb5db2bb581b7b82e9b2977d"},
-          {"source": "app.modules.imdb.api", "target": "requests", "kind": "raw_transport", "fingerprint": "3d05532e62d2cddf3bb05495196176b76aa02216c2b0d868cf9281d2257d9627"},
-          {"source": "app.modules.indexer.parser", "target": "requests", "kind": "raw_transport", "fingerprint": "facdb091442bacba0fc0f631637643e95e18545bd7ab63f1d49d67a9a928d016"},
-          {"source": "app.modules.musicbrainz", "target": "requests", "kind": "raw_transport", "fingerprint": "c54a10dd672fb0ebb32a536ae42c221ad434313466cc108d43e433dd84cac9a5"},
-          {"source": "app.modules.plex.plex", "target": "requests", "kind": "raw_transport", "fingerprint": "93f20b9c01571553e9601f4b9f4ee9471073e65f938cb635320f72fa41ec3843"},
-          {"source": "app.modules.trimemedia.api", "target": "requests", "kind": "raw_transport", "fingerprint": "aecbe00404b2866c918c939bee5f1002045fc72aed4440c85e0811a4379913e4"}
-        ]
-      },
-      {
         "classification": "approved_exception",
         "reason_code": "canonical_transport",
         "owner": "$source",
@@ -199,8 +104,9 @@
           {"source": "app.adapters.network.browser", "target": "cloakbrowser", "kind": "network_sdk", "fingerprint": "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173"},
           {"source": "app.adapters.network.doh", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71"},
           {"source": "app.adapters.network.doh", "target": "urllib.request", "kind": "raw_transport", "fingerprint": "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b"},
+          {"source": "app.adapters.network.http", "target": "httpx", "kind": "raw_transport", "fingerprint": "c00458c868240f1adfe6278ba22bd5c4782e9bd2fcf896114c2288bf82981ee3"},
           {"source": "app.adapters.network.http", "target": "httpx2", "kind": "raw_transport", "fingerprint": "a70799e9930ff79cd28ebed92836c8108cd2d18bc668e0081f68533d84f69d0d"},
-          {"source": "app.adapters.network.http", "target": "requests", "kind": "raw_transport", "fingerprint": "95fb4576cec363355f40aa1758d90fbb09242a2b1d029b7ab5ab65e2aaca12f8"},
+          {"source": "app.adapters.network.http", "target": "requests", "kind": "raw_transport", "fingerprint": "dffac27a2e24803dd7c50b238ba44b4f106b7b105e63a487edc12258f65c710d"},
           {"source": "app.adapters.network.ip", "target": "socket.gethostbyname", "kind": "protocol_operation", "fingerprint": "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048"},
           {"source": "app.adapters.network.resolver", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "1b1ce6763d730d7aa9c35d32a668560013c939467dcb3087357ffa53653ff306"}
         ]
@@ -231,7 +137,7 @@
           {"source": "app.agent.llm.helper", "target": "openai", "kind": "network_sdk", "fingerprint": "dbebd5e9fa38b2a525a5a2e5a92d855ba9d05762410590bfb544e665fe38f620"},
           {"source": "app.agent.llm.provider", "target": "boto3", "kind": "network_sdk", "fingerprint": "04ca4b5ecbda1531266d5f53817dde061dcfdd3293cabf9301fc8d8e4c281a88"},
           {"source": "app.agent.llm.provider", "target": "botocore", "kind": "network_sdk", "fingerprint": "fbeaa702703665ca60233a153aade0da7e49dfb6fe31f72e5593c883fb7d3f11"},
-          {"source": "app.agent.llm.provider", "target": "google.genai", "kind": "network_sdk", "fingerprint": "b545cffb169b87f87606c17762b5d9da3f35372bd411c1f4ebba010b3d7c3ebb"},
+          {"source": "app.agent.llm.provider", "target": "google.genai", "kind": "network_sdk", "fingerprint": "b1a42e9a06f7cf3bdd1cb069a73c3597ebd0433cf64da6c0a305cccb56d257b7"},
           {"source": "app.agent.llm.provider", "target": "openai", "kind": "network_sdk", "fingerprint": "ffac3b355eb640f6421299cf838cb4e24866a39afabd9dcfd8d0f340925dc1a8"},
           {"source": "app.agent.tools.impl.search_web", "target": "ddgs", "kind": "network_sdk", "fingerprint": "377e73bb3be804b825d60ad6e792344ca633de107f8c4dbb45d50a34a4dfa04b"},
           {"source": "app.api.endpoints.message", "target": "pywebpush", "kind": "network_sdk", "fingerprint": "7d83ca0dc89dfb6af1cdd7bc90d922105de94222e4e3a44bba4f53bbd97bc31b"},
@@ -296,7 +202,6 @@
         "facts": [
           {"source": "app.adapters.external.market", "target": "httpx2", "kind": "raw_transport", "fingerprint": "d4a648e8188818c0465013fc63cc3e49899da4df38541344303c251896564b1f"},
           {"source": "app.adapters.external.market", "target": "requests", "kind": "raw_transport", "fingerprint": "ecc5368adfced20741e5ed8696008ea7555a4a81ceda6d7149e09f5f3d0ff7e3"},
-          {"source": "app.modules.douban.apiv2", "target": "httpx2", "kind": "raw_transport", "fingerprint": "edc337b12976d978cad3f83d0fa6faf71b2af2d814926dff890d5acc94f0a0a6"},
           {"source": "app.modules.emby.emby", "target": "requests", "kind": "raw_transport", "fingerprint": "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31"},
           {"source": "app.modules.filemanager.storages.smb", "target": "smbprotocol", "kind": "network_sdk", "fingerprint": "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22"},
           {"source": "app.modules.jellyfin.jellyfin", "target": "requests", "kind": "raw_transport", "fingerprint": "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5"},

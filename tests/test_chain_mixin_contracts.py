@@ -13,17 +13,13 @@ from app.chain._interaction import InteractionChainMixin
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._music import MusicSubscribeMixin
 from app.chain._recognition import RecognitionMixin
-from app.chain._transfer import (
-    EpisodeFormatMixin,
-    FailedRetryMixin,
-    FileFilterMixin,
-    FileKeyMixin,
-    HistoryMatchMixin,
-    ManualHistoryMixin,
-    ScrapeBatchMixin,
-)
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.chain.transfer import TransferChain
+from app.chain.transfer.filter import FileFilterMixin
+from app.chain.transfer.format import EpisodeFormatMixin
+from app.chain.transfer.records import FileKeyMixin, HistoryMatchMixin, ManualHistoryMixin
+from app.chain.transfer.retry import FailedRetryMixin
+from app.chain.transfer.scrape import ScrapeBatchMixin
 
 
 def test_all_chain_mixins_declare_their_host_protocol() -> None:
@@ -70,18 +66,32 @@ def test_domain_mixins_keep_concrete_imports_explicit_until_next_migration() -> 
     """第一阶段先锁定契约标记，具体导入在后续批次逐步下沉到宿主工厂。"""
     root = Path(__file__).resolve().parents[1]
     violations = []
-    for relative in ("app/chain/_music.py", "app/chain/_transfer.py"):
+    for relative in (
+        "app/chain/_music.py",
+        "app/chain/transfer/filter.py",
+        "app/chain/transfer/format.py",
+        "app/chain/transfer/records.py",
+        "app/chain/transfer/retry.py",
+        "app/chain/transfer/scrape.py",
+    ):
         tree = ast.parse((root / relative).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module.startswith("app.chain.") and node.module != "app.chain._contracts":
+                if node.module.startswith("app.chain.") and node.module not in {
+                    "app.chain._contracts",
+                    "app.chain.transfer.contract",
+                }:
                     violations.append(f"{relative}:{node.module}")
 
     assert set(violations) <= {
         "app/chain/_music.py:app.chain.download",
         "app/chain/_music.py:app.chain.media",
         "app/chain/_music.py:app.chain.search",
-        "app/chain/_transfer.py:app.chain.media",
-        "app/chain/_transfer.py:app.chain.storage",
-        "app/chain/_transfer.py:app.chain.subscribe",
+        "app/chain/transfer/filter.py:app.chain.media",
+        "app/chain/transfer/filter.py:app.chain.storage",
+        "app/chain/transfer/format.py:app.chain.storage",
+        "app/chain/transfer/records.py:app.chain.storage",
+        "app/chain/transfer/records.py:app.chain.subscribe.facade",
+        "app/chain/transfer/retry.py:app.chain.media",
+        "app/chain/transfer/retry.py:app.chain.storage",
     }

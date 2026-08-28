@@ -1,7 +1,9 @@
-from app.chain.transfer import TransferChain
+from typing import cast
+
+from app.chain.transfer.facade import TransferChain
 
 
-def replay_pending_transfers():
+def replay_pending_transfers() -> None:
     """
     启动唯一整理恢复调度器。
 
@@ -19,7 +21,10 @@ async def stop_transfer_runtime(timeout_seconds: float = 30.0) -> bool:
     :param timeout_seconds: worker 与 pending 回放共享的最大等待秒数
     :return: 没有已创建实例或所有整理后台 owner 均已收敛时返回 True
     """
-    transfer_chain = TransferChain.get_existing_instance()
+    transfer_chain = cast(
+        TransferChain | None,
+        TransferChain.get_existing_instance(),
+    )
     if transfer_chain is None:
         return True
     return await transfer_chain.close(timeout_seconds=timeout_seconds)

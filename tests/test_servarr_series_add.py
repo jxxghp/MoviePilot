@@ -25,7 +25,7 @@ def _fake_mediainfo(tmdb_id=_TMDB_ID, seasons=None):
     return SimpleNamespace(
         tmdb_id=tmdb_id,
         title="Tales of Herding Gods",
-        year=2024,
+        year="2024",
         imdb_id=None,
         seasons=seasons or {1: [1, 2, 3]},
         get_poster_image=lambda: None,
@@ -39,7 +39,7 @@ def _series(tmdb_id=None, seasons=None):
         title="Tales of Herding Gods",
         tvdbId=_TVDB_ID,
         tmdbId=tmdb_id,
-        year=2024,
+        year="2024",
         seasons=seasons or [],
     )
 
@@ -91,7 +91,7 @@ def test_add_series_without_tmdbid_resolves_identity_via_tvdbid():
     assert result.id == 123
     subscribe_chain.async_add_batch.assert_awaited_once_with(
         title="Tales of Herding Gods",
-        year=2024,
+        year="2024",
         seasons=[1],
         batch_writer=batch_writer,
         media_source=MediaSource.TMDB,

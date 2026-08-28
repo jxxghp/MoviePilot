@@ -14,6 +14,7 @@ from app.application.torrent import (
     TorrentHelper,
     configure_torrent_port,
 )
+from app.chain import site as site_module
 from app.startup.initializers import site as site_initializer
 
 
@@ -199,12 +200,13 @@ def test_initializer_rolls_back_partial_ports_on_failure(monkeypatch) -> None:
 
 
 def test_initializer_configures_and_reset_releases_all_ports() -> None:
-    """统一 initializer 应一次装配并一次释放三组 Application Port。"""
+    """统一 initializer 应一次装配并一次释放全部站点访问 Port。"""
     site_initializer.init_site_access_ports()
 
     assert rss_module._require_rss_ports()
     assert cookie_module._require_cookie_ports()
     assert torrent_module._require_torrent_port()
+    assert site_module._site_ports_snapshot()
 
     site_initializer.reset_site_access_ports()
 
@@ -214,3 +216,5 @@ def test_initializer_configures_and_reset_releases_all_ports() -> None:
         cookie_module._require_cookie_ports()
     with pytest.raises(RuntimeError):
         torrent_module._require_torrent_port()
+    with pytest.raises(RuntimeError):
+        site_module._site_ports_snapshot()

@@ -207,7 +207,7 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 | `app/application/plugin/` | 插件市场、安装、运行时端口、文件夹操作和动态路由用例；具体 FastAPI 路由适配器在 adapters 层 | `catalog.py`、`install.py`、`runtime.py`、`folders.py`、`routes.py` |
 | `app/application/messaging/` | 渠道回环入口、消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `ingress.py`、`message.py`、`router.py`、`agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、SSRF 与 URL/路径安全 | `auth.py`、`url.py`、`twofactor.py` |
-| `app/chain/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe.py`、`search.py`、`transfer.py` |
+| `app/chain/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe/`、`search.py`、`transfer/` |
 | `app/modules/` | 可插拔后端：下载器、媒体服务器、元数据源、消息渠道、索引器、存储 | `qbittorrent/`、`emby/`、`telegram/`、`themoviedb/` |
 | `app/db/` | SQLAlchemy 模型、表级 Oper、会话/UoW 与 Application 持久化适配器；Model 只接受显式 Session，不拥有事务提交 | `models/`、`oper/`、`adapters/`、`uow.py` |
 | `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
@@ -561,7 +561,8 @@ Agent 采用**门面 + 惰性物化**设计，避免 `application → agent` 形
 ```mermaid
 flowchart TB
     Entry["消息渠道 / API / MCP"] --> Facade["app/application/agent.py<br/>编排门面（get_agent_manager 等）"]
-    Reg["app/startup/initializers/agent.py<br/>导入期注册轻量 Provider"]
+    Reg["app/startup/initializers/agent.py<br/>生命周期显式注册/重置 Provider"]
+    Reg --> Facade
     Facade -.能力启用或首次使用时物化.-> RT["app/agent/runtime_loader.py<br/>能力发现与服务物化"]
     RT --> ORC["app/agent/orchestrator.py<br/>会话编排"]
     ORC --> Tools["app/agent/tools<br/>系统工具（经 application 门面）"]
@@ -692,10 +693,10 @@ flowchart LR
 - `tests/fixtures/architecture/dependency-baseline.json` 记录生成事实；人工审查的 SCC 分类单独存入
   `dependency-policy.json`。完整宿主 SCC 必须精确匹配 policy，新增、扩大、变形和陈旧 policy 都失败；
   `--write-host` 不会替代人工决策。
-- 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；Application 已清零，policy 只保留
-  Chain 的 13 条有 owner `temporary_debt`，目标为空集合。新增、替换、删除后未清理 policy 都会失败。
-- `direct_egress` 记录全宿主 66 条 raw transport、network SDK 和协议操作 identity；11 条普通 HTTP/
-  Session bridge 与 1 条 Application DNS I/O 是清零债务，54 条 canonical transport、SDK、
+- 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；Application 与 Chain 均已清零，
+  policy 目标为空集合。新增、替换、删除后未清理 policy 都会失败。
+- `direct_egress` 记录全宿主 55 条 raw transport、network SDK 和协议操作 identity；普通 HTTP/
+  Session bridge 与 Application DNS I/O 债务已清零，其余 canonical transport、SDK、
   stream/vendor/diagnostic/control-plane 事实是精确 containment。每条初始边的指纹由测试独立冻结，
   bindings/uses 变化、分类互换、通配导入和初始边增长都会失败；债务删除时同步删除冻结项以禁止恢复，
   `--write-host` 不会改写人工 policy 或冻结上界。
@@ -713,11 +714,11 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 862 |
-| 内部导入边 | 7,123 |
+| Python 模块 | 893 |
+| 内部导入边 | 7,532 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
-| Application / Chain 具体 Adapter 直连 | 0 / 13 |
-| Direct egress | 66（11 条待迁移债务，55 条精确 containment） |
+| Application / Chain 具体 Adapter 直连 | 0 / 0 |
+| Direct egress | 55（债务已清零，55 条精确 containment） |
 | Module Contract V2 spec | 217（其中 215 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Event producer / consumer | 95（94 静态、1 动态）/ 17（16 静态、1 动态） |

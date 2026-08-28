@@ -434,8 +434,8 @@ def test_scheduler_progress_texts_have_english_translations():
         Path("app/chain/mediaserver.py"),
         Path("app/chain/site.py"),
         Path("app/chain/recommend.py"),
-        Path("app/chain/transfer.py"),
-        Path("app/chain/subscribe.py"),
+        *sorted(Path("app/chain/transfer").glob("*.py")),
+        *sorted(Path("app/chain/subscribe").glob("*.py")),
         Path("app/chain/workflow.py"),
     ]
     for path in progress_paths:

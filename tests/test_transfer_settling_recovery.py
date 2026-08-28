@@ -28,8 +28,8 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
     TransferTask,
 )
-from app.chain import transfer as transfer_chain_module
 from app.chain.transfer import TransferChain
+from app.chain.transfer.execution import _DurableTransferStepRunner
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository
@@ -630,7 +630,7 @@ def test_failed_settlement_retry_replays_step_and_commits_new_receipt(
     replayed_task = chain.put_to_queue.call_args.args[0]
     assert replayed_task.execution_checkpoint is None
     assert replayed_task.lease_token is not None
-    runner = transfer_chain_module._DurableTransferStepRunner(
+    runner = _DurableTransferStepRunner(
         task_id=admitted.task_id,
         lease_token=replayed_task.lease_token,
         checkpoint_fingerprint=plan_fingerprint,

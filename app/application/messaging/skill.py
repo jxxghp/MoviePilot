@@ -48,10 +48,19 @@ SkillCatalogProvider = Callable[[], SkillCatalogPort]
 _skill_catalog_provider: Optional[SkillCatalogProvider] = None
 
 
-def register_skill_catalog_provider(provider: SkillCatalogProvider) -> None:
-    """由启动组合根注册 Agent 技能目录实现，避免消息层依赖 Agent 具体模块。"""
+def register_skill_catalog_provider(
+    provider: Optional[SkillCatalogProvider],
+) -> Optional[SkillCatalogProvider]:
+    """注册技能目录 provider，并返回先前 provider 供失败回滚。"""
     global _skill_catalog_provider
+    previous = _skill_catalog_provider
     _skill_catalog_provider = provider
+    return previous
+
+
+def reset_skill_catalog_provider() -> None:
+    """清除技能目录 provider，避免跨 lifespan 持有旧 Agent 实现。"""
+    register_skill_catalog_provider(None)
 
 
 def _resolve_skill_catalog() -> SkillCatalogPort:

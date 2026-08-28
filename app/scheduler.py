@@ -38,15 +38,15 @@ from app.chain.base import ChainBase
 from app.chain.mediaserver import MediaServerChain
 from app.chain.recommend import RecommendChain
 from app.chain.site import SiteChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.transfer import TransferChain
+from app.chain.subscribe.facade import SubscribeChain
+from app.chain.transfer.facade import TransferChain
 from app.chain.workflow import WorkflowChain
 from app.foundation.singleton import SingletonClass
-from app.runtime.config import global_vars
 from app.runtime.correlation import call_with_correlation, get_correlation_id
 from app.runtime.events import Event, eventmanager
 from app.runtime.gc import get_memory_usage
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.observability import record_metric
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.runtime.reload import ConfigReloadMixin
@@ -1252,7 +1252,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
                 running_loop = asyncio.get_running_loop()
             except RuntimeError:
                 running_loop = None
-            target_loop = global_vars.CURRENT_EVENT_LOOP
+            target_loop = main_loop_registry.current
             target_loop_available = (
                 target_loop is not None
                 and target_loop.is_running()
@@ -1413,7 +1413,7 @@ class Scheduler(ConfigReloadMixin, metaclass=SingletonClass):
             running_loop = asyncio.get_running_loop()
         except RuntimeError:
             running_loop = None
-        target_loop = global_vars.CURRENT_EVENT_LOOP
+        target_loop = main_loop_registry.current
         target_loop_available = (
             target_loop is not None
             and target_loop.is_running()

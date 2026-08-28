@@ -11,7 +11,7 @@ from app.chain.search import SearchChain
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
-from app.schemas.types import MediaSource, MediaType
+from app.schemas.types import MediaSource
 
 
 def test_parse_query_supports_artist_title_format():
@@ -435,7 +435,7 @@ def test_media_chain_default_recognition_only_queries_musicbrainz(monkeypatch):
     recognize_source = Mock(return_value=expected)
     monkeypatch.setattr(chain, "recognize_music_from_source", recognize_source)
 
-    with patch("app.chain._recognition.MoviePilotServerHelper.report_recognize_share"):
+    with patch("app.startup.initializers.chain.MoviePilotServerHelper.report_recognize_share"):
         result = chain.recognize_media(meta=meta)
 
     assert result is expected
@@ -484,7 +484,7 @@ def test_default_recognition_does_not_fallback_after_musicbrainz_miss(monkeypatc
     monkeypatch.setattr(chain, "recognize_music_from_source", recognize_source)
 
     with patch(
-        "app.chain._recognition.MoviePilotServerHelper.query_recognize_share",
+        "app.startup.initializers.chain.MoviePilotServerHelper.query_recognize_share",
         return_value=None,
     ):
         assert chain.recognize_media(meta=meta) is None
@@ -506,7 +506,7 @@ def test_async_default_recognition_only_queries_musicbrainz(monkeypatch):
     monkeypatch.setattr(chain, "async_recognize_music_from_source", recognize_source)
 
     with patch(
-        "app.chain._recognition.MoviePilotServerHelper.async_report_recognize_share",
+        "app.startup.initializers.chain.MoviePilotServerHelper.async_report_recognize_share",
         new=AsyncMock(),
     ):
         result = asyncio.run(chain.async_recognize_media(meta=meta))

@@ -13,6 +13,7 @@ import pytest
 
 from app import schemas
 from app.chain.storage import StorageChain
+from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager import FileManagerModule
 
 
@@ -80,6 +81,69 @@ def test_storage_chain_reports_missing_module(monkeypatch):
     result = chain.manage_storage(storage="unknown", action="usage")
     assert result["success"] is False
     assert result["message"]
+
+
+def test_filemanager_stop_closes_only_materialized_storage_and_releases_owner():
+    """关停不得物化未使用存储，已物化 owner 关闭后必须允许下次重建。"""
+
+    class LifecycleStorage(metaclass=WeakSingleton):
+        """记录构造与关闭次数的生命周期存储替身。"""
+
+        schema = SimpleNamespace(value="lifecycle")
+        created = 0
+        closed = 0
+
+        def __init__(self) -> None:
+            """记录 owner 物化。"""
+            self.__class__.created += 1
+
+        def close(self) -> None:
+            """记录 owner 关闭。"""
+            self.__class__.closed += 1
+
+    module = object.__new__(FileManagerModule)
+    module._storage_schemas = [LifecycleStorage]
+
+    assert module.stop() is True
+    assert LifecycleStorage.created == 0
+
+    first = LifecycleStorage()
+    assert module.stop() is True
+    assert LifecycleStorage.closed == 1
+    assert LifecycleStorage.get_existing_instance() is None
+
+    second = LifecycleStorage()
+    assert second is not first
+    assert LifecycleStorage.created == 2
+    assert module.stop() is True
+    assert LifecycleStorage.closed == 2
+
+
+def test_filemanager_stop_retains_unconverged_storage_for_retry():
+    """存储显式返回未收敛时必须保留原 owner，后续关停才能继续重试。"""
+
+    class RetryingStorage(metaclass=WeakSingleton):
+        """首次拒绝关闭、再次收敛的生命周期存储替身。"""
+
+        schema = SimpleNamespace(value="retrying")
+
+        def __init__(self) -> None:
+            """初始化关闭尝试次数。"""
+            self.close_count = 0
+
+        def close(self) -> bool:
+            """第二次关闭时才报告收敛。"""
+            self.close_count += 1
+            return self.close_count >= 2
+
+    module = object.__new__(FileManagerModule)
+    module._storage_schemas = [RetryingStorage]
+    storage = RetryingStorage()
+
+    assert module.stop() is False
+    assert RetryingStorage.get_existing_instance() is storage
+    assert module.stop() is True
+    assert RetryingStorage.get_existing_instance() is None
 
 
 def test_storage_manage_rejects_unknown_action(module):

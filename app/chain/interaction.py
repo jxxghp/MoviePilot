@@ -12,7 +12,7 @@ from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain import episode as episode_rules
 from app.domain import title as title_rules
 from app.domain.context import Context, MediaInfo
@@ -683,7 +683,7 @@ class MediaInteractionChain(ChainBase):
             season=request.meta.begin_season,
             channel=channel,
             source=source,
-            userid=userid,
+            userid=str(userid),
             username=mp_name or username,
             best_version=best_version,
         )
@@ -996,7 +996,7 @@ class MediaInteractionChain(ChainBase):
             season=request.meta.begin_season,
             channel=channel,
             source=source,
-            userid=userid,
+            userid=str(userid),
             username=mp_name or username,
             state="R",
             note=note,

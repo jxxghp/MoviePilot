@@ -14,8 +14,15 @@ from app.agent.runtime_loader import (
 from app.agent.runtime_loader import (
     get_running_agent_manager as get_runtime_running_agent_manager,
 )
-from app.application.agent import AgentDataContext, register_agent_service_providers
-from app.application.messaging.skill import register_skill_catalog_provider
+from app.application.agent import (
+    AgentDataContext,
+    register_agent_service_providers,
+    reset_agent_service_providers,
+)
+from app.application.messaging.skill import (
+    register_skill_catalog_provider,
+    reset_skill_catalog_provider,
+)
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -228,27 +235,45 @@ class AgentInitializer:
 # 全局AI智能体初始化器实例
 agent_initializer = AgentInitializer()
 
-# application 门面仅保存 provider；下列注册不会导入 Agent 实现。
-register_agent_service_providers(
-    agent_manager_provider=_get_agent_manager,
-    running_agent_manager_provider=_get_running_agent_manager,
-    prompt_manager_provider=_get_prompt_manager,
-    capability_manager_provider=_get_capability_manager,
-    llm_helper_provider=_get_llm_helper,
-    manual_redo_prompt_builder_provider=_get_manual_redo_prompt_builder,
-)
-register_skill_catalog_provider(_get_skill_catalog)
-register_llm_provider_runtime(_get_llm_provider_runtime)
+def configure_agent_ports() -> None:
+    """在 Agent 启动阶段原子登记全部 Application provider。"""
+    reset_agent_ports()
+    try:
+        register_agent_service_providers(
+            agent_manager_provider=_get_agent_manager,
+            running_agent_manager_provider=_get_running_agent_manager,
+            prompt_manager_provider=_get_prompt_manager,
+            capability_manager_provider=_get_capability_manager,
+            llm_helper_provider=_get_llm_helper,
+            manual_redo_prompt_builder_provider=_get_manual_redo_prompt_builder,
+        )
+        register_skill_catalog_provider(_get_skill_catalog)
+        register_llm_provider_runtime(_get_llm_provider_runtime)
+    except Exception:
+        reset_agent_ports()
+        raise
+
+
+def reset_agent_ports() -> None:
+    """清除 Agent、技能和 LLM provider，支持失败回滚与重复 lifespan。"""
+    register_llm_provider_runtime(None)
+    reset_skill_catalog_provider()
+    reset_agent_service_providers()
 
 
 async def init_agent() -> bool:
     """
     在应用事件循环中初始化AI智能体。
     """
+    configure_agent_ports()
     try:
-        return await agent_initializer.initialize()
+        initialized = await agent_initializer.initialize()
+        if not initialized:
+            reset_agent_ports()
+        return initialized
 
     except Exception as e:
+        reset_agent_ports()
         logger.error(f"初始化AI智能体时发生错误: {e}")
         return False
 
@@ -306,5 +331,7 @@ async def stop_agent() -> bool:
         except Exception as e:
             logger.error(f"关闭AI智能体终端会话时发生错误: {e}")
             converged = False
+    if converged:
+        reset_agent_ports()
     agent_initializer._shutdown_complete = converged
     return converged

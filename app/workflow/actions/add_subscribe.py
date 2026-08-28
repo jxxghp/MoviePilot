@@ -1,5 +1,5 @@
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state

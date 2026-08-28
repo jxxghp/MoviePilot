@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from app.adapters.external import market as market_module
 from app.chain import system as system_module
 from app.chain.system import SystemChain
+from app.startup.initializers import network as network_initializer
 
 
 def _patch_docker_paths(monkeypatch, tmp_path: Path, *, reset: bool) -> Path:
@@ -27,7 +28,7 @@ def _patch_docker_paths(monkeypatch, tmp_path: Path, *, reset: bool) -> Path:
         lambda: runtime_config,
     )
     monkeypatch.setattr(
-        system_module.SystemUtils,
+        network_initializer.SystemUtils,
         "is_docker",
         staticmethod(lambda: True),
     )

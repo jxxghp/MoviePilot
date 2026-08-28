@@ -380,7 +380,10 @@ def test_save_subtitle_response_accepts_rar_filename_from_header(monkeypatch, tm
         extracted_subtitle.write_text("subtitle", encoding="utf-8")
 
     monkeypatch.setattr(download_module, "StorageChain", lambda: storage_chain)
-    monkeypatch.setattr(download_module.SystemUtils, "unpack_archive", fake_unpack_archive)
+    monkeypatch.setattr(
+        "app.startup.initializers.network.SystemUtils.unpack_archive",
+        fake_unpack_archive,
+    )
 
     chain = DownloadChain.__new__(DownloadChain)
     chain.runtime_config = SimpleNamespace(

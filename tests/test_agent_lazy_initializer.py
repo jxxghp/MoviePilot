@@ -21,6 +21,8 @@ async def test_disabled_initializer_does_not_materialize_manager(monkeypatch) ->
         "activate_agent_service",
         activate,
     )
+    monkeypatch.setattr(agent_initializer, "agent_manager", None)
+    monkeypatch.setattr(agent_initializer, "_agent_data_context", None)
     initializer = agent_initializer.AgentInitializer()
 
     assert await initializer.initialize() is True
@@ -93,6 +95,7 @@ async def test_production_initializer_delegates_lifecycle_to_runtime(
     manager = AsyncMock()
     activate = AsyncMock(return_value=manager)
     monkeypatch.setattr(agent_initializer, "agent_manager", None)
+    monkeypatch.setattr(agent_initializer, "_agent_data_context", None)
     monkeypatch.setattr(agent_initializer, "activate_agent_service", activate)
     initializer = agent_initializer.AgentInitializer()
 

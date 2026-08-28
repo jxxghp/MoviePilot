@@ -5,18 +5,15 @@ import hmac
 import re
 from datetime import datetime
 from random import choice
-from typing import Optional, Union
+from typing import Any, Optional
 from urllib import parse
 
-import httpx2
-import requests
 from bs4 import BeautifulSoup
 
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.foundation.singleton import WeakSingleton
 from app.runtime.cache import cached
 from app.runtime.settings import get_runtime_setting
-
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.foundation.singleton import WeakSingleton
 
 
 class DoubanApi(metaclass=WeakSingleton):
@@ -160,7 +157,7 @@ class DoubanApi(metaclass=WeakSingleton):
     _music_web_url = "https://music.douban.com"
 
     def __init__(self):
-        self._session = requests.Session()
+        self._request = RequestUtils(use_session=True)
 
     @classmethod
     def __sign(cls, url: str, ts: str, method='GET') -> str:
@@ -225,7 +222,7 @@ class DoubanApi(metaclass=WeakSingleton):
 
     @staticmethod
     def _handle_response(
-        resp: Union[requests.Response, httpx2.Response]
+        resp: Any
     ) -> dict:
         """
         处理HTTP响应
@@ -238,10 +235,11 @@ class DoubanApi(metaclass=WeakSingleton):
         GET请求
         """
         req_url, params = self._prepare_get_request(url, **kwargs)
-        resp = RequestUtils(
-            ua=choice(self._user_agents),
-            session=self._session
-        ).get_res(url=req_url, params=params)
+        resp = self._request.get_res(
+            url=req_url,
+            params=params,
+            headers={"User-Agent": choice(self._user_agents)},
+        )
         return self._handle_response(resp)
 
     @cached(maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True, shared_key="get")
@@ -283,10 +281,11 @@ class DoubanApi(metaclass=WeakSingleton):
         )
         """
         req_url, params = self._prepare_post_request(url, **kwargs)
-        resp = RequestUtils(
-            ua=get_runtime_setting('NORMAL_USER_AGENT'),
-            session=self._session,
-        ).post_res(url=req_url, data=params)
+        resp = self._request.post_res(
+            url=req_url,
+            data=params,
+            headers={"User-Agent": get_runtime_setting('NORMAL_USER_AGENT')},
+        )
         return self._handle_response(resp)
 
     @cached(maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True, shared_key="post")
@@ -1070,5 +1069,5 @@ class DoubanApi(metaclass=WeakSingleton):
         self.__post.cache_clear()
 
     def close(self):
-        if self._session:
-            self._session.close()
+        """关闭豆瓣同步 HTTP 客户端。"""
+        self._request.close()

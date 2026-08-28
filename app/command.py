@@ -2,28 +2,29 @@ import copy
 import threading
 import traceback
 from concurrent.futures import Future
-from typing import Any, Union, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
+from app.application.messaging.message import MessageHelper
+from app.application.messaging.skill import SkillInteractionHandler
+from app.application.plugin.runtime import get_plugin_manager
+from app.application.scheduling import get_scheduler
 from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.message import MessageChain
 from app.chain.site import SiteChain
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.chain.system import SystemChain
-from app.chain.transfer import TransferChain
-from app.runtime.events import Event as ManagerEvent, eventmanager, Event
-from app.application.plugin.runtime import get_plugin_manager
-from app.application.messaging.message import MessageHelper
-from app.application.messaging.skill import SkillInteractionHandler
-from app.application.scheduling import get_scheduler
-from app.runtime.thread import ThreadHelper
-from app.runtime.log import logger
-from app.schemas.message import Message
-from app.schemas.event import CommandRegisterEventData
-from app.schemas.types import EventType, NotificationChannel, ChainEventType
+from app.chain.transfer.facade import TransferChain
+from app.foundation.collections import DictUtils
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
-from app.foundation.collections import DictUtils
+from app.runtime.events import Event, eventmanager
+from app.runtime.events import Event as ManagerEvent
+from app.runtime.log import logger
+from app.runtime.thread import ThreadHelper
+from app.schemas.event import CommandRegisterEventData
+from app.schemas.message import Message
+from app.schemas.types import ChainEventType, EventType, NotificationChannel
 
 
 class CommandChain(ChainBase):

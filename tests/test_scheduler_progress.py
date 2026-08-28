@@ -4,8 +4,16 @@ from uuid import uuid4
 
 import pytest
 
-from app.runtime.config import global_vars
+from app.runtime.loop import main_loop_registry
 from app.scheduler import Scheduler
+
+
+@pytest.fixture(autouse=True)
+def _restore_main_loop_registry():
+    """每个用例后恢复主循环 registry，避免失败路径污染后续任务。"""
+    previous = main_loop_registry.current
+    yield
+    main_loop_registry.replace_compat(previous)
 
 
 def _build_scheduler(job_id, func):
@@ -112,7 +120,7 @@ def test_scheduler_runs_async_job_without_running_global_loop(monkeypatch):
 
     scheduler = _build_scheduler(job_id, task)
     target_loop = asyncio.new_event_loop()
-    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", target_loop)
+    main_loop_registry.replace_compat(target_loop)
 
     try:
         scheduler.start(job_id)
@@ -146,7 +154,7 @@ def test_scheduler_runs_async_job_from_current_event_loop(monkeypatch):
 
     scheduler = _build_scheduler(job_id, task)
     target_loop = asyncio.new_event_loop()
-    monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", target_loop)
+    main_loop_registry.replace_compat(target_loop)
 
     try:
         asyncio.run(run_task())

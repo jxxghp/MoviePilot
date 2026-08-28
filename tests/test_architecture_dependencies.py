@@ -569,9 +569,8 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
     assert agent_annotations["download_history"] == "DownloadHistoryRepository"
 
     consumer_paths = (
-        APP_ROOT / "chain" / "_transfer.py",
         APP_ROOT / "chain" / "download.py",
-        APP_ROOT / "chain" / "transfer.py",
+        *sorted((APP_ROOT / "chain" / "transfer").glob("*.py")),
         APP_ROOT / "agent" / "tools" / "impl" / "query_download_tasks.py",
         APP_ROOT / "agent" / "tools" / "impl" / "delete_download_history.py",
         APP_ROOT / "application" / "transfer" / "workflow.py",
@@ -1331,6 +1330,28 @@ def test_host_code_does_not_use_string_utils_facade():
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         if any(isinstance(node, ast.Name) and node.id == "StringUtils" for node in ast.walk(tree)):
             violations.append(str(relative))
+    assert violations == []
+
+
+def test_host_code_does_not_import_chain_plugin_abi_roots() -> None:
+    """Subscribe/Transfer 包根只服务插件 ABI，宿主必须直接导入规范 Facade。"""
+    compatibility_roots = {"app.chain.subscribe", "app.chain.transfer"}
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(APP_ROOT)
+        if relative.parts[0] == "plugins":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module in compatibility_roots:
+                violations.append(f"{relative}:{node.lineno}:{node.module}")
+            elif isinstance(node, ast.Import):
+                violations.extend(
+                    f"{relative}:{node.lineno}:{alias.name}"
+                    for alias in node.names
+                    if alias.name in compatibility_roots
+                )
+
     assert violations == []
 
 

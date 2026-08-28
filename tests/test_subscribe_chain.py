@@ -1,10 +1,8 @@
 import asyncio
-import importlib.util
 import sys
 import types
 from contextlib import contextmanager
 from dataclasses import replace
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,7 +16,6 @@ from app.application.subscription.contract import (
 from app.application.subscription.mutation import SubscriptionMutation
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType
-from app.testing import stub_modules
 
 
 def _load_subscribe_chain_class():
@@ -481,16 +478,131 @@ def _load_subscribe_chain_class():
     media_chain_module = ensure_module("app.chain.media", types.ModuleType("app.chain.media"))
     media_chain_module.MediaChain = _MediaChain
 
-    subscribe_path = Path(__file__).resolve().parents[1] / "app" / "chain" / "subscribe.py"
-    spec = importlib.util.spec_from_file_location(module_name, subscribe_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    # 加载期用 stub_modules 精确替换依赖、退出时统一还原；module_name 非桩，缓存入 sys.modules 供复用
-    with stub_modules(stub_deps):
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
-        module._injected_modules = {name: sys.modules.get(name) for name in stub_deps}
-    return module, module.SubscribeChain
+    import app.chain._music as music_owner
+    import app.chain.subscribe.completion as completion_owner
+    import app.chain.subscribe.create as create_owner
+    import app.chain.subscribe.match as match_owner
+    import app.chain.subscribe.notify as notification_owner
+    import app.chain.subscribe.policy as policy_owner
+    import app.chain.subscribe.query as query_owner
+    import app.chain.subscribe.refresh as refresh_owner
+    import app.chain.subscribe.search as search_owner
+    import app.startup.initializers.chain as chain_initializer
+    from app.application.messaging.subscribe import SubscribeInteractionHandler
+    from app.application.subscription.contract import SubscriptionSnapshot, build_subscribe_meta
+    from app.chain.subscribe import SubscribeChain as ProductionSubscribeChain
+    from app.chain.subscribe.context import _SubscribeCreateContext
+
+    class SubscribeChain(ProductionSubscribeChain):
+        """保留存量单元测试按调用时替换 repository 的隔离接缝。"""
+
+        subscription_repository = SimpleNamespace()
+
+        def __init__(self):
+            """复用真实运行时依赖，只把同步修改 scope 改为动态读取测试 repository。"""
+            super().__init__()
+            self.subscription_repository = type(self).subscription_repository
+            self.sync_subscription_mutation_scope = self._subscription_mutation_scope
+
+        @contextmanager
+        def _subscription_mutation_scope(self):
+            """为当前测试 repository 提供同步修改命令。"""
+            yield SimpleNamespace(update=self._update_subscription)
+
+        def _update_subscription(
+            self,
+            subscribe_id,
+            payload,
+            _actor,
+            existing=None,
+            scene="update",
+        ):
+            """记录测试写入并返回与生产命令一致的前后快照。"""
+            updated = self.subscription_repository.update(
+                subscribe_id,
+                SubscriptionPatch(payload),
+            )
+            old = existing.to_dict() if existing else {}
+            new = updated.to_dict() if updated else {}
+            return SubscriptionMutation(
+                snapshot=updated,
+                old=old,
+                new=new,
+            )
+
+    class _SubscribeOwnerPatchSurface:
+        """把旧单文件测试接缝转发到拆包后的唯一实现 owner。"""
+
+        def __init__(self):
+            """登记实现依赖的真实所属模块，不向生产包根增加重复导出。"""
+            object.__setattr__(self, "SubscribeChain", SubscribeChain)
+            object.__setattr__(self, "SubscribeInteractionHandler", SubscribeInteractionHandler)
+            object.__setattr__(self, "SubscriptionSnapshot", SubscriptionSnapshot)
+            object.__setattr__(self, "_SubscribeCreateContext", _SubscribeCreateContext)
+            object.__setattr__(self, "build_subscribe_meta", build_subscribe_meta)
+            object.__setattr__(
+                self,
+                "_targets",
+                {
+                    "MediaChain": (
+                        create_owner,
+                        completion_owner,
+                        match_owner,
+                        query_owner,
+                        refresh_owner,
+                        search_owner,
+                    ),
+                    "TorrentHelper": (match_owner,),
+                    "DownloadChain": (music_owner, policy_owner, refresh_owner),
+                    "eventmanager": (refresh_owner,),
+                    "get_configured_system_config": (
+                        match_owner,
+                        query_owner,
+                        search_owner,
+                    ),
+                    "MoviePilotServerHelper": (chain_initializer,),
+                    "MetaInfo": (create_owner, match_owner, query_owner),
+                    "logger": (
+                        completion_owner,
+                        create_owner,
+                        match_owner,
+                        notification_owner,
+                        policy_owner,
+                        query_owner,
+                        refresh_owner,
+                        search_owner,
+                    ),
+                    "add_subscribe": (create_owner,),
+                },
+            )
+
+        def __getattr__(self, name):
+            """读取首个 owner 的依赖，供 unittest.mock 保存并恢复原值。"""
+            targets = object.__getattribute__(self, "_targets")
+            if name not in targets:
+                raise AttributeError(name)
+            return getattr(targets[name][0], name)
+
+        def __setattr__(self, name, value):
+            """把测试替身同步设置到声明该依赖的所有 owner。"""
+            targets = object.__getattribute__(self, "_targets")
+            if name not in targets:
+                object.__setattr__(self, name, value)
+                return
+            for target in targets[name]:
+                setattr(target, name, value)
+
+        def __delattr__(self, name):
+            """兼容 patch.object 对临时新增属性的清理协议。"""
+            targets = object.__getattribute__(self, "_targets")
+            if name not in targets:
+                object.__delattr__(self, name)
+                return
+            for target in targets[name]:
+                delattr(target, name)
+
+    module = _SubscribeOwnerPatchSurface()
+    return module, SubscribeChain
 
 
 SUBSCRIBE_CHAIN_MODULE, SubscribeChain = _load_subscribe_chain_class()

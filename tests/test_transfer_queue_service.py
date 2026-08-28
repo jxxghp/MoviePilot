@@ -205,7 +205,7 @@ def test_do_transfer_reports_durable_admission_failure():
     chain.download_history_repository = no_download
 
     with patch(
-        "app.chain.transfer.get_configured_system_config",
+        "app.chain.transfer.workflow.get_configured_system_config",
         return_value=SimpleNamespace(get=lambda _key: None),
     ):
         state, message = chain.do_transfer(fileitem=fileitem, background=True)

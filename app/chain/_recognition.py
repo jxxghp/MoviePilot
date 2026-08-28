@@ -5,9 +5,9 @@
 等协作对象。
 """
 import copy
-from typing import Optional
+import threading
+from typing import Any, Optional, Protocol
 
-from app.adapters.external.server import MoviePilotServerHelper
 from app.application.configuration import get_configured_system_config
 from app.chain._contracts import ChainRuntimeMixinHost
 from app.domain.context import MediaInfo, MusicInfo
@@ -21,7 +21,91 @@ from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import ChainEventType, MediaSource, MediaType, SystemConfigKey
 
 
+class RecognitionSharePort(Protocol):
+    """媒体识别链访问共享识别服务所需的最小端口。"""
+
+    def report_recognize_share(
+            self,
+            meta: Optional[MetaBase],
+            mediainfo: Optional[MediaInfo | MusicInfo],
+            keyword_meta: Optional[MetaBase] = None,
+    ) -> bool:
+        """同步上报共享识别结果。"""
+        ...
+
+    async def async_report_recognize_share(
+            self,
+            meta: Optional[MetaBase],
+            mediainfo: Optional[MediaInfo | MusicInfo],
+            keyword_meta: Optional[MetaBase] = None,
+    ) -> bool:
+        """异步上报共享识别结果。"""
+        ...
+
+    def query_recognize_share(
+            self,
+            meta: Optional[MetaBase],
+            mtype: Optional[MediaType] = None,
+            keyword_meta: Optional[MetaBase] = None,
+            music_type: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """同步查询共享识别结果。"""
+        ...
+
+    async def async_query_recognize_share(
+            self,
+            meta: Optional[MetaBase],
+            mtype: Optional[MediaType] = None,
+            keyword_meta: Optional[MetaBase] = None,
+            music_type: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """异步查询共享识别结果。"""
+        ...
+
+    def to_recognize_params(
+            self,
+            item: Optional[dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
+        """把共享结果转换为本地识别参数。"""
+        ...
+
+
+_recognition_share_lock = threading.RLock()
+_recognition_share_port: Optional[RecognitionSharePort] = None
+
+
+def configure_recognition_share_port(
+        port: RecognitionSharePort,
+) -> Optional[RecognitionSharePort]:
+    """装配共享识别端口，并返回旧实现供隔离环境恢复。"""
+    global _recognition_share_port
+    with _recognition_share_lock:
+        previous = _recognition_share_port
+        _recognition_share_port = port
+    return previous
+
+
+def reset_recognition_share_port(
+        port: Optional[RecognitionSharePort] = None,
+) -> None:
+    """恢复指定共享识别端口；省略参数时回到未装配状态。"""
+    global _recognition_share_port
+    with _recognition_share_lock:
+        _recognition_share_port = port
+
+
+def _recognition_share_snapshot() -> RecognitionSharePort:
+    """获取当前共享识别端口，未装配时稳定失败。"""
+    with _recognition_share_lock:
+        port = _recognition_share_port
+    if port is None:
+        raise RuntimeError("共享识别端口尚未由启动组合根装配")
+    return port
+
+
 class RecognitionMixin:
+    """为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。"""
+
     __mixin_host_protocol__ = ChainRuntimeMixinHost
 
     def _can_use_media_recognize_share(
@@ -181,7 +265,7 @@ class RecognitionMixin:
         if mediainfo and self._media_info_has_identity(mediainfo):
             # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
             if not getattr(mediainfo, "recognize_cache_hit", False):
-                MoviePilotServerHelper.report_recognize_share(
+                _recognition_share_snapshot().report_recognize_share(
                     meta=meta,
                     mediainfo=mediainfo,
                     keyword_meta=share_query_meta,
@@ -199,10 +283,11 @@ class RecognitionMixin:
             }
             if music_type is not None:
                 share_query_kwargs["music_type"] = music_type
-            shared_item = MoviePilotServerHelper.query_recognize_share(
+            share_port = _recognition_share_snapshot()
+            shared_item = share_port.query_recognize_share(
                 **share_query_kwargs,
             )
-            shared_params = MoviePilotServerHelper.to_recognize_params(shared_item)
+            shared_params = share_port.to_recognize_params(shared_item)
             if shared_params:
                 shared_module_kwargs = {
                         "meta": meta,
@@ -299,7 +384,7 @@ class RecognitionMixin:
         if mediainfo and self._media_info_has_identity(mediainfo):
             # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
             if not getattr(mediainfo, "recognize_cache_hit", False):
-                await MoviePilotServerHelper.async_report_recognize_share(
+                await _recognition_share_snapshot().async_report_recognize_share(
                     meta=meta,
                     mediainfo=mediainfo,
                     keyword_meta=share_query_meta,
@@ -317,10 +402,11 @@ class RecognitionMixin:
             }
             if music_type is not None:
                 share_query_kwargs["music_type"] = music_type
-            shared_item = await MoviePilotServerHelper.async_query_recognize_share(
+            share_port = _recognition_share_snapshot()
+            shared_item = await share_port.async_query_recognize_share(
                 **share_query_kwargs,
             )
-            shared_params = MoviePilotServerHelper.to_recognize_params(shared_item)
+            shared_params = share_port.to_recognize_params(shared_item)
             if shared_params:
                 shared_module_kwargs = {
                         "meta": meta,

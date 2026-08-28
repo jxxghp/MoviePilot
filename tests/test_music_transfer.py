@@ -9,9 +9,9 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
-from app.application.transfer.workflow import TransferTask
+from app.application.transfer.workflow import JobManager, TransferTask
 from app.chain.media import MediaChain
-from app.chain.transfer import JobManager, TransferChain
+from app.chain.transfer import TransferChain
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.config import settings
@@ -71,8 +71,8 @@ def test_music_retry_restores_history_entity_namespace(tmp_path, monkeypatch):
         music_type="album",
         title="叶惠美",
     )
-    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
-    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.chain.transfer.queue.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.chain.transfer.filter.MediaChain", lambda: media_chain)
 
     result = TransferChain()._recognize_music_retry_media(
         history,
@@ -552,7 +552,7 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
 
     chain.transfer_history_repository = SimpleNamespace()
     monkeypatch.setattr(
-        "app.chain.transfer.add_transfer_success",
+        "app.chain.transfer.settlement.add_transfer_success",
         lambda **kwargs: SimpleNamespace(id=1),
     )
 
@@ -782,7 +782,7 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
     media_chain.recognize_media.return_value = recognized
     run_module = Mock()
     monkeypatch.setattr(
-        "app.chain.transfer.DirectoryHelper.get_download_dirs",
+        "app.chain.transfer.queue.DirectoryHelper.get_download_dirs",
         lambda _: [
             SimpleNamespace(
                 monitor_type="downloader",
@@ -807,8 +807,8 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
             ]
         ),
     )
-    monkeypatch.setattr("app.chain.transfer.MediaChain", lambda: media_chain)
-    monkeypatch.setattr("app.chain._transfer.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.chain.transfer.queue.MediaChain", lambda: media_chain)
+    monkeypatch.setattr("app.chain.transfer.filter.MediaChain", lambda: media_chain)
     monkeypatch.setattr(chain, "do_transfer", Mock(return_value=(True, "")))
     monkeypatch.setattr(chain, "run_module", run_module)
 

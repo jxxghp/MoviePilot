@@ -9,9 +9,10 @@ from app.application.subscription.contract import (
     SubscriptionIdentity,
     SubscriptionPatch,
     SubscriptionSnapshot,
+    build_subscribe_meta,
 )
 from app.application.subscription.mutation import SubscriptionMutation
-from app.chain.subscribe import SubscribeChain, build_subscribe_meta
+from app.chain.subscribe import SubscribeChain
 from app.domain.context import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
@@ -137,7 +138,7 @@ def test_music_subscribe_recovers_completion_from_persisted_download_note():
     download_chain = Mock()
     download_chain.get_no_exists_info.return_value = (False, {})
 
-    with patch("app.chain.subscribe.DownloadChain", return_value=download_chain):
+    with patch("app.chain.subscribe.refresh.DownloadChain", return_value=download_chain):
         satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
             subscribe=subscribe,
             meta=build_subscribe_meta(subscribe),
@@ -384,7 +385,7 @@ def test_album_best_version_requires_confirmed_full_coverage():
     chain = SubscribeChain()
     _configure_subscription_write(chain, subscribe_oper)
 
-    with patch("app.chain.subscribe.DownloadChain", return_value=download_chain), \
+    with patch("app.chain._music.DownloadChain", return_value=download_chain), \
             patch.object(chain, "_SubscribeChain__finish_subscribe") as finish:
         chain._download_music_subscribe(subscribe, album, [downloaded])
 
@@ -408,8 +409,8 @@ def test_music_subscribe_ignores_non_music_category():
     chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
-            patch("app.chain.subscribe.SearchChain", return_value=search_chain), \
-            patch("app.chain.subscribe.DownloadChain") as download_chain:
+            patch("app.chain._music.SearchChain", return_value=search_chain), \
+            patch("app.chain._music.DownloadChain") as download_chain:
         chain._search_music_subscribe(subscribe)
 
     download_chain.assert_not_called()
@@ -431,8 +432,8 @@ def test_music_subscribe_ignores_unrelated_music_title():
     chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
-            patch("app.chain.subscribe.SearchChain", return_value=search_chain), \
-            patch("app.chain.subscribe.DownloadChain") as download_chain:
+            patch("app.chain._music.SearchChain", return_value=search_chain), \
+            patch("app.chain._music.DownloadChain") as download_chain:
         chain._search_music_subscribe(subscribe)
 
     download_chain.assert_not_called()
@@ -445,8 +446,8 @@ def test_music_subscribe_skips_search_when_target_is_already_in_library():
     chain.check_and_handle_existing_media = Mock(return_value=(True, {}))
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
-            patch("app.chain.subscribe.SearchChain") as search_chain, \
-            patch("app.chain.subscribe.DownloadChain") as download_chain:
+            patch("app.chain._music.SearchChain") as search_chain, \
+            patch("app.chain._music.DownloadChain") as download_chain:
         chain._search_music_subscribe(subscribe)
 
     chain.check_and_handle_existing_media.assert_called_once()
@@ -484,8 +485,8 @@ def test_music_rss_match_reuses_cached_context_without_second_site_search():
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=target), \
             patch("app.chain._music.TorrentHelper", return_value=torrent_helper), \
             patch("app.chain._music.DownloadChain", return_value=download_chain), \
-            patch("app.chain.subscribe.SearchChain") as search_chain, \
-            patch("app.chain.subscribe.MediaChain") as media_chain:
+            patch.object(chain, "_music_search_chain") as search_chain, \
+            patch.object(chain, "_music_media_chain") as media_chain:
         chain.match({"music.example": [source_context]})
 
     search_chain.assert_not_called()
@@ -753,10 +754,10 @@ def test_subscribe_add_music_uses_explicit_entity_recognize():
     # 它收到的正是链路交给写入路径的那份字段
     add_subscribe = Mock(return_value=(1, ""))
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.add_subscribe", add_subscribe), \
-            patch("app.chain.subscribe.MoviePilotServerHelper"), \
-            patch("app.chain.subscribe.eventmanager"):
+    with patch("app.chain.subscribe.create.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.create.add_subscribe", add_subscribe), \
+            patch("app.startup.initializers.chain.MoviePilotServerHelper"), \
+            patch.object(SubscribeChain, "_SubscribeChain__post_subscribe_added"):
         sid, err_msg = SubscribeChain().add(
             title="周杰伦 - 晴天",
             year="2003",
@@ -803,10 +804,10 @@ def test_subscribe_add_music_routes_new_album_sources(
     media_chain.recognize_media = Mock(return_value=target)
     add_subscribe = Mock(return_value=(1, ""))
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.add_subscribe", add_subscribe), \
-            patch("app.chain.subscribe.MoviePilotServerHelper"), \
-            patch("app.chain.subscribe.eventmanager"):
+    with patch("app.chain.subscribe.create.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.create.add_subscribe", add_subscribe), \
+            patch("app.startup.initializers.chain.MoviePilotServerHelper"), \
+            patch.object(SubscribeChain, "_SubscribeChain__post_subscribe_added"):
         sid, err_msg = SubscribeChain().add(
             title=title,
             year="2000",
@@ -834,8 +835,8 @@ def test_subscribe_add_rejects_music_entity_mismatch_before_database_write():
     media_chain.recognize_media.return_value = _music_info()
     add_subscribe = Mock()
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.add_subscribe", add_subscribe):
+    with patch("app.chain.subscribe.create.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.create.add_subscribe", add_subscribe):
         sid, err_msg = SubscribeChain().add(
             title="叶惠美",
             year="2003",
@@ -859,8 +860,8 @@ def test_subscribe_add_music_fails_fast_on_offline_fallback():
     media_chain.recognize_by_meta = Mock(return_value=offline)
     add_subscribe = Mock(return_value=(1, ""))
 
-    with patch("app.chain.subscribe.MediaChain", return_value=media_chain), \
-            patch("app.chain.subscribe.add_subscribe", add_subscribe):
+    with patch("app.chain.subscribe.create.MediaChain", return_value=media_chain), \
+            patch("app.chain.subscribe.create.add_subscribe", add_subscribe):
         sid, err_msg = SubscribeChain().add(
             title="未知曲目",
             year=None,
@@ -894,12 +895,12 @@ def test_follow_preserves_album_entity_and_track_count():
 
     chain = SubscribeChain()
     chain.subscription_repository = subscribe_oper
-    with patch("app.chain.subscribe.get_configured_system_config", return_value=system_config), \
+    with patch("app.chain.subscribe.query.get_configured_system_config", return_value=system_config), \
             patch(
-                "app.chain.subscribe.MoviePilotServerHelper.get_subscribe_shares",
+                "app.startup.initializers.chain.MoviePilotServerHelper.get_subscribe_shares",
                 return_value=[share],
             ), \
-            patch("app.chain.subscribe.MetaInfo") as video_meta, \
+            patch("app.chain.subscribe.query.MetaInfo") as video_meta, \
             patch.object(SubscribeChain, "add", return_value=(1, "")) as add:
         chain.follow(repository=subscribe_oper)
 
@@ -926,8 +927,8 @@ def test_refresh_enables_music_entry_fetch_when_music_subscribe_exists():
     torrents_chain = Mock()
     torrents_chain.refresh.return_value = {}
 
-    with patch("app.chain.subscribe.get_configured_system_config") as system_config, \
-            patch("app.chain.subscribe.TorrentsChain", return_value=torrents_chain):
+    with patch("app.chain.subscribe.query.get_configured_system_config") as system_config, \
+            patch("app.chain.subscribe.refresh.TorrentsChain", return_value=torrents_chain):
         system_config.return_value.get.return_value = []
         chain.refresh()
 

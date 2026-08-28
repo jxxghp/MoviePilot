@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 from app.runtime.cache import cached
-from app.runtime.config import global_vars
+from app.runtime.loop import main_loop_registry
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
 from app.domain.context import MediaInfo, MusicInfo
@@ -961,7 +961,7 @@ class MoviePilotServerHelper:
             asyncio.to_thread(cls.sub_reg, sub),
             submit=lambda coroutine: get_task_registry().submit_threadsafe(
                 coroutine,
-                loop=global_vars.loop,
+                loop=main_loop_registry.require(),
                 owner="compat.server.subscribe_added_report",
                 cancel_on_shutdown=False,
             ),
@@ -975,7 +975,7 @@ class MoviePilotServerHelper:
             asyncio.to_thread(cls.sub_done, sub),
             submit=lambda coroutine: get_task_registry().submit_threadsafe(
                 coroutine,
-                loop=global_vars.loop,
+                loop=main_loop_registry.require(),
                 owner="compat.server.subscribe_done_report",
                 cancel_on_shutdown=False,
             ),

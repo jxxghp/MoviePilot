@@ -59,7 +59,6 @@ from app.runtime.compat.diagnostics import (
     scan_plugin_legacy_imports,
 )
 from app.runtime.compat.resource_imports import scan_plugin_resource_imports
-from app.runtime.config import global_vars
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
 from app.runtime.extensions.plugin.storage import (
@@ -79,6 +78,7 @@ from app.runtime.extensions.plugin_manager import (
     configure_site_auth_level_provider,
 )
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.resources import acquire_managed_resource
 from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import PluginMutationRejectedError
@@ -356,7 +356,7 @@ def _run_plugin_install_sync(
 ) -> tuple[bool, str]:
     """从插件工作线程把同步兼容调用提交到宿主事件循环。"""
     try:
-        loop = global_vars.loop
+        loop = main_loop_registry.require()
     except RuntimeError:
         return False, "插件安装服务当前不可用"
     try:
@@ -411,7 +411,7 @@ async def sync_plugins(
     """
     plugin_manager = None
     try:
-        loop = global_vars.loop
+        loop = main_loop_registry.require()
         plugin_manager = PluginManager()
         with plugin_manager.mutation("启动后同步插件"):
             configure_plugin_services()

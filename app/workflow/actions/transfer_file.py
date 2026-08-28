@@ -5,7 +5,7 @@ from typing import Optional
 from pydantic import Field
 
 from app.chain.storage import StorageChain
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.workflow import ActionContext, ActionParams

@@ -412,7 +412,7 @@ class TestMediaScrapingImages(unittest.TestCase):
         self.assertEqual(target_item, fileitem)
         self.assertEqual(target_path, Path("/tv/Show/Season 1/backdrop.jpg"))
 
-    @patch("app.chain.scraping.RequestUtils")
+    @patch("app.startup.initializers.network.RequestUtils")
     @patch("app.chain.scraping.NamedTemporaryFile")
     @patch("app.chain.scraping.Path.chmod")
     def test_download_and_save_image(self, mock_chmod, mock_temp_file, mock_request_utils):

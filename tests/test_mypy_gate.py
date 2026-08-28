@@ -162,6 +162,64 @@ def test_ratchet_rejects_growth_and_new_errors() -> None:
     assert any("app/b.py" in p and "新增类型错误" in p for p in problems)
 
 
+def test_ratchet_allows_same_package_path_migration_only_when_each_code_drops() -> None:
+    """单文件拆成同名包时允许债务换 owner，但每个错误码仍必须只降不增。"""
+    baseline = {
+        "app/chain/transfer.py": {"arg-type": 3, "attr-defined": 2},
+        "app/chain/_transfer.py": {"arg-type": 2},
+    }
+    current = {
+        "app/chain/transfer/plan.py": {"arg-type": 2},
+        "app/chain/transfer/workflow.py": {
+            "arg-type": 2,
+            "attr-defined": 1,
+        },
+    }
+
+    assert compare_counts(baseline, current) == [
+        "<path-migration:transfer-package>: 类型错误低水位未固化 "
+        "[arg-type] 5->4",
+        "<path-migration:transfer-package>: 类型错误低水位未固化 "
+        "[attr-defined] 2->1",
+    ]
+
+
+def test_ratchet_rejects_error_code_growth_inside_path_migration() -> None:
+    """迁移组总量下降也不得掩盖某个错误码增长。"""
+    baseline = {
+        "app/chain/subscribe.py": {"arg-type": 5, "attr-defined": 1},
+    }
+    current = {
+        "app/chain/subscribe/create.py": {
+            "arg-type": 1,
+            "attr-defined": 2,
+        },
+    }
+
+    problems = compare_counts(baseline, current)
+
+    assert problems == [
+        "<path-migration:subscribe-package>: 既有错误增长 "
+        "[attr-defined] 1->2",
+        "<path-migration:subscribe-package>: 类型错误低水位未固化 "
+        "[arg-type] 5->1",
+    ]
+
+
+def test_ratchet_path_migration_does_not_absorb_unrelated_new_file() -> None:
+    """同名包迁移不得为包外新增类型错误提供额度。"""
+    baseline = {"app/chain/subscribe.py": {"arg-type": 2}}
+    current = {
+        "app/chain/subscribe/create.py": {"arg-type": 1},
+        "app/api/new.py": {"arg-type": 1},
+    }
+
+    problems = compare_counts(baseline, current)
+
+    assert any("<path-migration:subscribe-package>" in item for item in problems)
+    assert any("app/api/new.py" in item and "新增类型错误" in item for item in problems)
+
+
 def test_write_refuses_to_legalize_type_regression(tmp_path, monkeypatch) -> None:
     """已有基线出现增长时，--write 不得覆盖原文件。"""
     baseline_path = tmp_path / "mypy-baseline.json"

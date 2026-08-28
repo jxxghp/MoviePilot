@@ -15,7 +15,7 @@ from app.application.history import (
     max_failed_retries,
     resolve_history,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting

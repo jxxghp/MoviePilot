@@ -1,18 +1,19 @@
 import asyncio
 import base64
 import json
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
 
 from app.chain.download import DownloadChain
 from app.chain.site import SiteChain
-from app.runtime.config import settings
-from app.domain.context import TorrentInfo
 from app.db.oper.message import MessageOper
+from app.domain.context import TorrentInfo
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.sunnypt import SunnyPTSiteUserInfo
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
+from app.runtime.config import settings
 from app.schemas.types import MediaSource, MediaType, MessageType
 
 
@@ -32,6 +33,10 @@ class _FakeResponse:
     def json(self) -> dict:
         """返回预设 JSON 数据。"""
         return self._payload
+
+    def close(self) -> None:
+        """模拟释放短生命周期响应。"""
+
 
 
 @pytest.fixture(autouse=True)
@@ -407,17 +412,18 @@ def test_sunnypt_site_test_uses_profile_api(monkeypatch):
         """构造不触发动态资源保护元类的站点帮助器替身。"""
         return SimpleNamespace(get_indexer=fake_get_indexer)
 
-    def fake_get_res(request, url: str, **_kwargs):
-        """记录站点连接测试请求并返回有效用户资料。"""
-        captured.update({"url": url, "headers": request._headers})
-        return _FakeResponse({
+    @contextmanager
+    def fake_open_response(*, url: str, headers: dict, **_kwargs):
+        """在 Site HTTP Port 边界回放有效用户资料。"""
+        captured.update({"url": url, "headers": headers})
+        yield _FakeResponse({
             "code": 0,
             "msg": "ok",
             "data": {"download_allowed": True},
         })
 
     monkeypatch.setattr("app.chain.site.SitesHelper", fake_sites_helper)
-    monkeypatch.setattr("app.chain.site.RequestUtils.get_res", fake_get_res)
+    monkeypatch.setattr("app.chain.site._open_site_response", fake_open_response)
     site = SimpleNamespace(
         domain="sunnypt.top",
         ua="MoviePilot-Test",
@@ -463,7 +469,10 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
         """收集下载链日志以校验敏感地址不会泄露。"""
         log_messages.append(message)
 
-    monkeypatch.setattr("app.chain.download.RequestUtils.post_res", fake_post_res)
+    monkeypatch.setattr(
+        "app.startup.initializers.network.RequestUtils.post_res",
+        fake_post_res,
+    )
     monkeypatch.setattr(
         "app.chain.download.TorrentHelper.download_torrent",
         fake_download_torrent,

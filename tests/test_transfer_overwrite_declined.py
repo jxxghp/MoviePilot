@@ -15,7 +15,8 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
-from app.chain.transfer import TransferChain, _DurableTransferStepRunner
+from app.chain.transfer import TransferChain
+from app.chain.transfer.execution import _DurableTransferStepRunner
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType
 from tests.test_transfer_job_manager import (
@@ -245,7 +246,7 @@ def test_default_callback_skips_history_and_notification_when_overwrite_declined
     chain.transfer_history_repository = transfer_history_oper
 
     with patch(
-        "app.chain.transfer.add_transfer_fail",
+        "app.chain.transfer.settlement.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
         "app.runtime.config.settings.AI_AGENT_ENABLE", False
@@ -290,7 +291,7 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
     chain.transfer_history_repository = transfer_history_oper
 
     with patch(
-        "app.chain.transfer.add_transfer_fail",
+        "app.chain.transfer.settlement.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
         "app.runtime.config.settings.AI_AGENT_ENABLE", False
@@ -348,7 +349,7 @@ def test_durable_callback_settles_overwrite_skip_without_history_as_failed():
     chain.durable_event_writer.transfer_result.side_effect = durable_transfer_result
     chain.transfer_history_repository = transfer_history_oper
     with patch(
-        "app.chain.transfer.add_transfer_fail",
+        "app.chain.transfer.settlement.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
         "app.runtime.config.settings.AI_AGENT_ENABLE", False
@@ -401,7 +402,7 @@ def test_default_callback_delegates_primary_failure_to_durable_writer():
     chain.durable_event_writer.transfer_result.side_effect = durable_transfer_result
     chain.transfer_history_repository = transfer_history_oper
     with patch(
-        "app.chain.transfer.add_transfer_fail",
+        "app.chain.transfer.settlement.add_transfer_fail",
         make_fail_recorder(add_fail_calls),
     ), patch(
         "app.runtime.config.settings.AI_AGENT_ENABLE",

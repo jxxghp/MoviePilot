@@ -37,17 +37,19 @@ from app.application.plugin.runtime import get_plugin_manager
 from app.chain.system import SystemChain
 from app.db.engine import check_connection_budget, get_engine, get_global_async_engine
 from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
-from app.runtime.config import global_vars
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.health import get_application_health
 from app.runtime.log import logger, shutdown_log_writer, start_log_writer
+from app.runtime.loop import main_loop_registry  # noqa: E402
 from app.runtime.settings import get_runtime_setting
 from app.runtime.state import SystemHelper
+from app.runtime.stop import runtime_stop_state  # noqa: E402
 from app.runtime.tasks import TaskRegistry, configure_task_registry
 from app.runtime.topology import validate_process_topology
 from app.startup.composition.context import HostRuntime  # noqa: E402
 from app.startup.initializers.agent import stop_agent
-from app.startup.initializers.command import init_command, restart_command
+from app.startup.initializers.chain import init_chain_ports, reset_chain_ports  # noqa: E402
+from app.startup.initializers.command import init_command, restart_command, stop_command
 from app.startup.initializers.domain import configure_domain_dependencies
 from app.startup.initializers.modules import (
     drain_events,
@@ -56,6 +58,10 @@ from app.startup.initializers.modules import (
     stop_modules,
 )
 from app.startup.initializers.monitor import init_monitor, stop_monitor
+from app.startup.initializers.network import (  # noqa: E402
+    init_chain_network_ports,
+    reset_chain_network_ports,
+)
 from app.startup.initializers.plugins import (
     configure_plugin_services,
     execute_task,
@@ -103,7 +109,7 @@ async def init_extra():
         async with plugin_lifecycle.hold_startup() as startup_token:
             if await sync_plugins(startup_token):
                 await execute_task(
-                    global_vars.loop,
+                    main_loop_registry.require(),
                     init_plugin_scheduler,
                     "插件定时服务刷新",
                 )
@@ -416,6 +422,26 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             stop_timeout_seconds=30,
         ),
         LifecycleComponent(
+            name="Chain 外部端口",
+            dependencies=("HTTP 基础能力",),
+            start=init_chain_ports,
+            stop=reset_chain_ports,
+            start_order=26,
+            stop_order=74,
+            start_timeout_seconds=30,
+            stop_timeout_seconds=30,
+        ),
+        LifecycleComponent(
+            name="Chain 网络端口",
+            dependencies=("HTTP 基础能力",),
+            start=init_chain_network_ports,
+            stop=reset_chain_network_ports,
+            start_order=27,
+            stop_order=73,
+            start_timeout_seconds=30,
+            stop_timeout_seconds=30,
+        ),
+        LifecycleComponent(
             name="领域依赖装配",
             dependencies=("HTTP 基础能力",),
             start=configure_domain_dependencies,
@@ -445,7 +471,12 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         ),
         LifecycleComponent(
             name="模块服务",
-            dependencies=("路由", "站点访问端口"),
+            dependencies=(
+                "路由",
+                "站点访问端口",
+                "Chain 外部端口",
+                "Chain 网络端口",
+            ),
             start=lambda: initialize_modules_component(app),
             stop=stop_modules,
             start_order=70,
@@ -581,8 +612,11 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("待处理整理回放",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_command,
+            stop=stop_command,
             start_order=130,
+            stop_order=21,
             start_timeout_seconds=120,
+            stop_timeout_seconds=30,
         ),
         LifecycleComponent(
             name="工作流",
@@ -609,8 +643,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
         # 停止信号必须先于一切资源释放发出，让工作流、整理等长任务尽早感知停机。
         LifecycleComponent(
             name="停止信号",
-            # 兼容旧测试与插件；GlobalVar 内部已委托到 StopState。
-            stop=getattr(global_vars, "stop_system"),
+            stop=runtime_stop_state.stop_system,
             stop_order=4,
             stop_timeout_seconds=10,
         ),
@@ -652,7 +685,7 @@ async def lifespan(app: FastAPI):
             safe_mode=get_runtime_setting('MOVIEPILOT_SAFE_MODE'),
         )
         print("Starting up...")
-        main_loop_owner = global_vars.set_loop(main_loop)
+        main_loop_owner = main_loop_registry.register(main_loop)
         components = build_lifecycle_components(app)
         enabled_components = tuple(
             component
@@ -697,7 +730,7 @@ async def lifespan(app: FastAPI):
             ):
                 stop_log_runtime(app)
             if main_loop_owner is not None:
-                global_vars.clear_loop(main_loop_owner)
+                main_loop_registry.release(main_loop_owner)
         raise
     try:
         # 在此处 yield，表示应用已经启动，控制权交回 FastAPI 主事件循环
@@ -717,7 +750,7 @@ async def lifespan(app: FastAPI):
             ):
                 stop_log_runtime(app)
             if main_loop_owner is not None:
-                global_vars.clear_loop(main_loop_owner)
+                main_loop_registry.release(main_loop_owner)
         if getattr(app.state, "message_shutdown_failed", False):
             raise RuntimeError("消息资源未在关停预算内收敛")
         if getattr(app.state, "log_shutdown_failed", False):

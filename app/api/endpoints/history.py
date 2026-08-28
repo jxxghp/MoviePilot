@@ -40,8 +40,8 @@ from app.application.transfer.execution import (
     TransferExecutionRepository,
     TransferRetryRequestResult,
 )
-from app.runtime.config import global_vars
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.progress import AsyncProgressHelper
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import BatchProgressKeyData as _SchemaBatchProgressKeyData
@@ -209,7 +209,7 @@ def _start_ai_redo_task(
         {"history_id": history_id},
         submit=lambda coroutine: registry.submit_threadsafe(
             coroutine,
-            loop=global_vars.loop,
+            loop=main_loop_registry.require(),
             owner="api.history.ai_redo.progress",
         ),
     )
@@ -266,7 +266,7 @@ def _start_batch_ai_redo_task(
         {"history_ids": history_ids},
         submit=lambda coroutine: registry.submit_threadsafe(
             coroutine,
-            loop=global_vars.loop,
+            loop=main_loop_registry.require(),
             owner="api.history.ai_redo_batch.progress",
         ),
     )
@@ -307,6 +307,35 @@ def _start_batch_ai_redo_task(
             await progress.end()
 
     registry.create(runner(), owner="api.history.ai_redo_batch")
+
+
+def _submit_legacy_batch_ai_redo(
+    *,
+    histories: list[_SchemaTransferHistory],
+    all_history_ids: list[int],
+    messages: list[str],
+    task_registry: TaskRegistry,
+) -> _SchemaResponse[_SchemaBatchProgressKeyData]:
+    """提交旧整理历史给 Agent，并构造批量进度兼容响应。"""
+    legacy_history_ids = [history.id for history in histories]
+    progress_key = f"ai_redo_transfer_batch_{int(time.time() * 1000)}"
+    _start_batch_ai_redo_task(
+        history_ids=legacy_history_ids,
+        prompt=build_batch_manual_redo_prompt(histories),
+        progress_key=progress_key,
+        task_registry=task_registry,
+    )
+    message = "；".join(
+        [*messages, f"已提交 {len(histories)} 条旧历史给智能助手处理"]
+    )
+    return _SchemaResponse(
+        success=True,
+        message=message,
+        data={
+            "progress_key": progress_key,
+            "history_ids": all_history_ids,
+        },
+    )
 
 
 @router.get(
@@ -518,25 +547,11 @@ async def batch_ai_redo_transfer_history(
             message="；".join(response_message_parts),
         )
 
-    prompt = build_batch_manual_redo_prompt(legacy_histories)
-    progress_key = f"ai_redo_transfer_batch_{int(time.time() * 1000)}"
-    _start_batch_ai_redo_task(
-        history_ids=[history.id for history in legacy_histories],
-        prompt=prompt,
-        progress_key=progress_key,
+    return _submit_legacy_batch_ai_redo(
+        histories=legacy_histories,
+        all_history_ids=[history.id for history in histories],
+        messages=response_message_parts,
         task_registry=task_registry,
-    )
-
-    response_message_parts.append(
-        f"已提交 {len(legacy_histories)} 条旧历史给智能助手处理"
-    )
-    return _SchemaResponse(
-        success=not rejections,
-        message="；".join(response_message_parts),
-        data={
-            "progress_key": progress_key,
-            "history_ids": [history.id for history in histories],
-        },
     )
 
 

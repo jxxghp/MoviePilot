@@ -376,6 +376,14 @@ def configure_plugin_system_services():
             configuration=build_chain_runtime_config(settings),
         )
     )
+    from app.startup.initializers.chain import init_chain_ports, reset_chain_ports
+    from app.startup.initializers.network import (
+        init_chain_network_ports,
+        reset_chain_network_ports,
+    )
+
+    init_chain_ports()
+    init_chain_network_ports()
     configure_site_query_service(SiteQueryService(repository=site_repository()))
     configure_site_health_service(SiteHealthService(repository=site_repository()))
     configure_workflow_query(
@@ -466,6 +474,8 @@ def configure_plugin_system_services():
     register_skill_catalog_provider(lambda: SkillHelper())
     register_llm_provider_runtime(lambda: LLMProviderManager())
     yield
+    reset_chain_network_ports()
+    reset_chain_ports()
     reset_plugin_system()
 
 

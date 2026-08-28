@@ -3,8 +3,8 @@ from typing import Union, Tuple
 
 from pywebpush import webpush, WebPushException
 
-from app.runtime.config import global_vars
 from app.runtime.settings import get_runtime_setting
+from app.runtime.webpush import webpush_registry
 
 from app.runtime.log import logger
 from app.modules import _ModuleBase, _MessageBase
@@ -85,7 +85,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
                 else:
                     caption = message.text
                     content = ""
-                for sub in global_vars.get_subscriptions():
+                for sub in webpush_registry.list():
                     logger.debug(f"给 {sub} 发送WebPush：{caption} {content}")
                     try:
                         endpoint = sub.get("endpoint")
@@ -116,7 +116,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
                             "status",
                             None,
                         )
-                        if status_code in {404, 410} and global_vars.remove_subscription(sub):
+                        if status_code in {404, 410} and webpush_registry.remove(sub):
                             logger.info(f"已移除失效WebPush订阅: {sub.get('endpoint')}")
 
             except Exception as msg_e:

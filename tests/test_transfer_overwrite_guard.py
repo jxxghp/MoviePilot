@@ -33,8 +33,8 @@ def _u115_with_api_payload(payload: dict) -> U115Pan:
     storage = _u115()
     response = MagicMock(status_code=200)
     response.json.return_value = payload
-    storage.session = MagicMock()
-    storage.session.request.return_value = response
+    storage._request_utils = MagicMock()
+    storage._request_utils.request.return_value = response
     storage._check_session = MagicMock()
     storage._download_limiter = MagicMock()
     storage._api_limiter = MagicMock()
