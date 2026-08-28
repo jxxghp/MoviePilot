@@ -138,8 +138,8 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S3-L2 SubscribeChain | `VERIFIED` | S1-L5 | 旧 `subscribe.py` 单体退役，由 `app.chain.subscribe` 同名职责包承接；search、match、refresh、completion、reference reconciliation、notification 各有唯一 owner，包根只保留稳定 `SubscribeChain` |
 | S3-L3 Scheduler | `VERIFIED` | S2-L3 | 旧 `app/scheduler.py` 已退役并迁入 `app.scheduler` 同名包；catalog、execution/bridge/progress、`ExecutionRegistry`、reconciler、lifecycle 与 maintenance 已分离，业务 callable 由 startup 经 `SchedulerServices` 注入，包内无参 Chain 构造清零；功能/生命周期 215 项、架构/兼容/文档 189 项通过，官方插件基线语义未变化 |
 | S3-L4 DownloadChain | `DELIVERED` | S1-L6 | `7941fd921`：旧单体退役；selection、submission、batch、history、post-processing 等职责进入同名包单一 owner，提交后动作遵守新完成语义；锁定全量 `7162 passed, 9 skipped`，远端 `0/0` |
-| S3-L5 SearchChain | `VERIFIED` | S2-L7 | 旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、类型/复杂度门禁和锁定全量均通过 |
-| S3-L5.1 Runtime dependencies 命名治理 | `PLANNED` | S3-L5 | `dependencies.py` 与 `native_dependencies.py` 退役为 `runtime/dependencies/` 同名包；单词子模块、无包根重复导出，并把规则写入 `docs/rules/07-naming-conventions.md` 及机器门禁 |
+| S3-L5 SearchChain | `DELIVERED` | S2-L7 | `1c145d716`：旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、类型/复杂度门禁和锁定全量 `7222 passed, 9 skipped` 通过；远端 `0/0` |
+| S3-L5.1 Runtime dependencies 命名治理 | `ACTIVE` | S3-L5 | `dependencies.py` 与 `native_dependencies.py` 退役为 `runtime/dependencies/` 同名包；单词子模块、无包根重复导出，并把规则写入 `docs/rules/07-naming-conventions.md` 及机器门禁 |
 | S3-L6 MediaChain | `PLANNED` | S2-L2 | recognition、source projection、music alignment、cache 分离，兼容仅经统一层 |
 | S3-L7 Agent/System/Plugin API | `PLANNED` | S2,S1-L6 | WebAgent SSE/file/audio、nettest/log/update/market 用例进入 Application，endpoint 只做传输适配 |
 
@@ -172,11 +172,36 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S5-L5 Sync/async 重复清零 | `PLANNED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
 | S5-L6 最终兼容与交付 | `PLANNED` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、现有类型/覆盖率门禁全部通过并推送；完成后结束本轮战略任务 |
 
-## 4. 当前活动叶子
+## 4. 叶子合同与当前活动项
+
+### S3-L5.1 Runtime dependencies 命名治理
+
+**Status:** `ACTIVE`
+
+**Outcome**
+
+退役平铺且语义相似的 `app/runtime/dependencies.py` 与
+`app/runtime/native_dependencies.py`，由同名 `app.runtime.dependencies` 包承接。
+`profile.py` 只拥有运行环境依赖分组与同步参数，`native.py` 只拥有已加载原生发行版快照和变更探测；
+包根不放实现、不重复导出内部符号，canonical 宿主调用方直接导入职责子模块。
+
+同步把该决策写入 `docs/rules/07-naming-conventions.md`：新增生产模块优先使用准确的单个小写单词；
+同一能力需要多个文件时建立同名单词目录包，再使用单词职责文件；禁止在父目录平铺相似复合文件名、
+用 `source.py` 保存旧实现，或通过包根重复导出内部 owner。架构测试锁定本包结构和退役文件，
+让后续 Agent 的错误命名在 CI 中直接失败。
+
+**Acceptance**
+
+- `app/runtime/dependencies.py` 与 `app/runtime/native_dependencies.py` 删除且不得复活。
+- `app/runtime/dependencies/` 只包含 `__init__.py`、`profile.py`、`native.py`；包根没有实现或重复导出。
+- 所有宿主 canonical 导入改为明确子模块；最新官方插件仓扫描决定是否需要精确 Compat 映射。
+- 命名规范、架构文档、依赖基线和结构门禁同步；`app/plugins/**` 不扫描、不修改。
+- 运行依赖分组、插件原生依赖激活、插件安装/包管理专项及架构/质量门禁全部通过。
+- 提交推送后确认远端 SHA、祖先关系和 ahead/behind `0/0`。
 
 ### S3-L5 SearchChain
 
-**Status:** `VERIFIED`
+**Status:** `DELIVERED`
 
 **Outcome**
 
