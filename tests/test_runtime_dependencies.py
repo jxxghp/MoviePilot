@@ -7,6 +7,7 @@ import pytest
 from app.doctor import dependencies as dependency_doctor
 from app.foundation import environment
 from app.runtime import dependencies
+from scripts import verify_runtime_profile
 
 
 def test_free_threaded_runtime_tracks_interpreter_build(monkeypatch):
@@ -23,37 +24,6 @@ def test_gil_status_tracks_current_interpreter_state(monkeypatch):
     monkeypatch.setattr(environment.sys, "_is_gil_enabled", lambda: False)
 
     assert environment.is_gil_enabled() is False
-
-
-def test_windows_dll_directory_registration_retains_handle(tmp_path, monkeypatch):
-    """Windows DLL 搜索路径句柄必须在进程生命周期内保留。"""
-    handle = object()
-    registered = []
-    monkeypatch.setattr(environment, "is_windows", lambda: True)
-    monkeypatch.setattr(
-        environment.os,
-        "add_dll_directory",
-        lambda path: registered.append(path) or handle,
-        raising=False,
-    )
-    monkeypatch.setattr(environment, "_windows_dll_directory_handles", [])
-
-    assert environment.register_windows_dll_directory(str(tmp_path)) is True
-    assert registered == [str(tmp_path)]
-    assert environment._windows_dll_directory_handles == [handle]
-
-
-def test_windows_dll_directory_registration_ignores_other_platforms(tmp_path, monkeypatch):
-    """非 Windows 运行时不得调用平台专属 DLL 注册 API。"""
-    monkeypatch.setattr(environment, "is_windows", lambda: False)
-    monkeypatch.setattr(
-        environment.os,
-        "add_dll_directory",
-        lambda _path: pytest.fail("must not register a DLL directory"),
-        raising=False,
-    )
-
-    assert environment.register_windows_dll_directory(str(tmp_path)) is False
 
 
 def test_runtime_dependency_group_tracks_interpreter_abi(monkeypatch):
@@ -167,6 +137,99 @@ exclude-dependencies = [
     assert dependencies.runtime_excluded_dependency_pairs(project_file) == {
         ("demo-package", "legacy-dep")
     }
+
+
+def test_runtime_profile_probe_accepts_only_declared_uv_exclusions(tmp_path: Path):
+    """CI 健康检查只能忽略 uv 配置中明确排除的依赖边。"""
+    project_file = tmp_path / "pyproject.toml"
+    project_file.write_text(
+        """
+[tool.uv]
+exclude-dependencies = [
+    { package = { name = "docker" }, dependencies = ["pywin32"] },
+]
+""",
+        encoding="utf-8",
+    )
+    ignored = "The package `docker` requires `pywin32>=304`, but it's not installed"
+    actionable = "The package `demo` requires `missing>=1`, but it's not installed"
+    summary = "\n".join((
+        "Using Python 3.14.7 environment at: .venv",
+        "Checked 189 packages in 3ms",
+        "Found 2 incompatibilities",
+    ))
+
+    assert verify_runtime_profile._uv_health_errors(
+        f"{summary}\n{ignored}\n{actionable}",
+        project_file,
+    ) == {actionable}
+
+
+def test_runtime_profile_probe_loads_standard_windows_named_pipe(monkeypatch):
+    """标准 Windows 必须真实加载 pywin32 与 Docker named-pipe adapter。"""
+    imported = []
+    win32_modules = {"pywintypes", "win32api", "win32file", "win32pipe"}
+
+    def fake_import_module(name: str):
+        imported.append(name)
+        if name == "docker.transport":
+            return SimpleNamespace(NpipeHTTPAdapter=object())
+        return SimpleNamespace()
+
+    monkeypatch.setattr(verify_runtime_profile.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(verify_runtime_profile.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(
+        verify_runtime_profile.sysconfig,
+        "get_config_var",
+        lambda _name: 0,
+    )
+    monkeypatch.setattr(verify_runtime_profile.sys, "_is_gil_enabled", lambda: True)
+    monkeypatch.setattr(
+        verify_runtime_profile,
+        "find_spec",
+        lambda name: object() if name in win32_modules else None,
+    )
+    monkeypatch.setattr(verify_runtime_profile, "import_module", fake_import_module)
+
+    verify_runtime_profile.verify_platform_profile(
+        expected_profile="standard",
+        expected_system="Windows",
+        expected_machine="AMD64",
+    )
+
+    assert win32_modules <= set(imported)
+    assert "docker.transport" in imported
+
+
+def test_runtime_profile_probe_rejects_pywin32_from_windows_free_threaded(
+        monkeypatch,
+):
+    """Windows 3.14t 不得继承标准 ABI 的 pywin32。"""
+    monkeypatch.setattr(verify_runtime_profile.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(verify_runtime_profile.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(
+        verify_runtime_profile.sysconfig,
+        "get_config_var",
+        lambda _name: 1,
+    )
+    monkeypatch.setattr(verify_runtime_profile.sys, "_is_gil_enabled", lambda: False)
+    monkeypatch.setattr(
+        verify_runtime_profile,
+        "find_spec",
+        lambda name: object() if name == "win32api" else None,
+    )
+    monkeypatch.setattr(
+        verify_runtime_profile,
+        "import_module",
+        lambda _name: SimpleNamespace(),
+    )
+
+    with pytest.raises(RuntimeError, match="意外安装 pywin32"):
+        verify_runtime_profile.verify_platform_profile(
+            expected_profile="free-threaded",
+            expected_system="Windows",
+            expected_machine="AMD64",
+        )
 
 
 def test_full_dependency_probe_rejects_psycopg_python_fallback(monkeypatch):

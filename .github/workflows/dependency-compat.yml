@@ -7,9 +7,11 @@ on:
     paths:
       - 'pyproject.toml'
       - 'uv.lock'
+      - 'app/__init__.py'
       - 'app/doctor/dependencies.py'
       - 'app/foundation/environment.py'
       - 'app/runtime/dependencies.py'
+      - 'scripts/verify_runtime_profile.py'
       - 'docker/Dockerfile'
       - 'docker/**'
       - '.github/workflows/dependency-compat.yml'
@@ -19,9 +21,11 @@ on:
     paths:
       - 'pyproject.toml'
       - 'uv.lock'
+      - 'app/__init__.py'
       - 'app/doctor/dependencies.py'
       - 'app/foundation/environment.py'
       - 'app/runtime/dependencies.py'
+      - 'scripts/verify_runtime_profile.py'
       - 'docker/Dockerfile'
       - 'docker/**'
       - '.github/workflows/dependency-compat.yml'
@@ -114,26 +118,20 @@ jobs:
           --group ${{ matrix.runtime-group }}
           --python ${{ matrix.python-version }}
 
-      - name: Verify environment and core imports
+      - name: Verify runtime profile
         env:
+          AUTO_UPDATE_RESOURCE: 'false'
           EXPECTED_SYSTEM: ${{ matrix.expected-system }}
           EXPECTED_MACHINE: ${{ matrix.expected-machine }}
           EXPECTED_PROFILE: ${{ matrix.expected-profile }}
           CONFIG_DIR: ${{ runner.temp }}/moviepilot-runtime-smoke
+          MOVIEPILOT_SAFE_MODE: 'true'
+          SUPERUSER_PASSWORD: moviepilot-ci-only
         run: >-
-          uv run --locked --no-sync python -c
-          "import os, platform;
-          assert platform.system() == os.environ['EXPECTED_SYSTEM'], (platform.system(), os.environ['EXPECTED_SYSTEM']);
-          assert platform.machine() == os.environ['EXPECTED_MACHINE'], (platform.machine(), os.environ['EXPECTED_MACHINE']);
-          import sys, sysconfig;
-          expected_free_threaded = os.environ['EXPECTED_PROFILE'] == 'free-threaded';
-          assert (sysconfig.get_config_var('Py_GIL_DISABLED') == 1) is expected_free_threaded;
-          assert sys._is_gil_enabled() is (not expected_free_threaded);
-          import importlib;
-          importlib.import_module('docker');
-          importlib.import_module('docker.transport.npipesocket') if os.name == 'nt' and not expected_free_threaded else None;
-          from app.doctor import dependencies;
-          dependencies.main(full=True)"
+          uv run --locked --no-sync python -m scripts.verify_runtime_profile
+          --expected-profile ${{ matrix.expected-profile }}
+          --expected-system ${{ matrix.expected-system }}
+          --expected-machine ${{ matrix.expected-machine }}
 
       - name: Verify locked project consistency
         run: >-

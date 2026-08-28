@@ -214,8 +214,14 @@ def test_dependency_compatibility_covers_windows_free_threaded_profile():
     }
     install = _step_commands(workflow, "install")
     assert "--group ${{ matrix.runtime-group }}" in install
-    assert "dependencies.main(full=True)" in install
-    assert "docker.transport.npipesocket" in install
+    assert "python -m scripts.verify_runtime_profile" in install
+    assert "MOVIEPILOT_SAFE_MODE" in str(workflow["jobs"]["install"]["steps"])
+    expected_paths = {
+        "app/__init__.py",
+        "scripts/verify_runtime_profile.py",
+    }
+    assert expected_paths <= set(workflow["on"]["pull_request"]["paths"])
+    assert expected_paths <= set(workflow["on"]["push"]["paths"])
     postgres_step = next(
         step
         for step in workflow["jobs"]["install"]["steps"]
