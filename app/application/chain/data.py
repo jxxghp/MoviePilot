@@ -12,12 +12,14 @@ from typing import Any, Optional
 
 from app.application.download.failures import DownloadFailureRepository
 from app.application.mediaserver import MediaServerRepository
+from app.application.security.user import ChainUserRepository
 from app.application.transfer.execution import TransferExecutionRepository
 from app.application.transfer.workflow import TransferAdmissionRepository
 
 OperFactory = Callable[[], Any]
 DownloadFailureRepositoryFactory = Callable[[], DownloadFailureRepository]
 MediaServerRepositoryFactory = Callable[[], MediaServerRepository]
+ChainUserRepositoryFactory = Callable[[], ChainUserRepository]
 TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]
 TransferExecutionRepositoryFactory = Callable[[], TransferExecutionRepository]
 
@@ -34,7 +36,7 @@ class ChainDataPorts:
     transfer_execution: TransferExecutionRepositoryFactory
     media_server: MediaServerRepositoryFactory
     download_failure: DownloadFailureRepositoryFactory
-    user: OperFactory
+    user: ChainUserRepositoryFactory
 
 
 _ports: Optional[ChainDataPorts] = None
@@ -50,7 +52,7 @@ def configure_chain_data_ports(
         transfer_execution: TransferExecutionRepositoryFactory,
         media_server: MediaServerRepositoryFactory,
         download_failure: DownloadFailureRepositoryFactory,
-        user: OperFactory,
+        user: ChainUserRepositoryFactory,
 ) -> None:
     """由启动组合根登记显式命名的 Chain 数据端口实现。"""
     global _ports
@@ -114,6 +116,6 @@ def get_chain_download_failure_port() -> DownloadFailureRepository:
     return get_chain_data_ports().download_failure()
 
 
-def get_chain_user_port() -> Any:
+def get_chain_user_port() -> ChainUserRepository:
     """创建用户数据端口实例。"""
     return get_chain_data_ports().user()

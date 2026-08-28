@@ -1258,8 +1258,7 @@
   },
   "app/application/security/auth.py": {
     "no-untyped-call": 2,
-    "no-untyped-def": 1,
-    "type-arg": 1
+    "no-untyped-def": 1
   },
   "app/application/security/cookie.py": {
     "arg-type": 3,
@@ -1581,10 +1580,6 @@
     "type-arg": 10,
     "union-attr": 31,
     "var-annotated": 4
-  },
-  "app/chain/user.py": {
-    "arg-type": 3,
-    "index": 1
   },
   "app/chain/workflow.py": {
     "arg-type": 1,
@@ -2078,7 +2073,7 @@
     "assignment": 1,
     "call-overload": 1,
     "method-assign": 2,
-    "no-untyped-def": 4,
+    "no-untyped-def": 3,
     "return-value": 1,
     "type-arg": 25,
     "union-attr": 8
@@ -3399,7 +3394,7 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 17,
+    "arg-type": 16,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,

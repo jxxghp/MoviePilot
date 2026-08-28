@@ -722,6 +722,67 @@ def test_user_and_messaging_chains_use_explicit_data_port_getters():
     assert violations == []
 
 
+def test_user_chain_and_agent_ports_are_typed_and_orm_free():
+    """用户 Chain、Agent 与宿主模块只能消费 Application 用户端口。"""
+    chain_data = ast.parse(
+        (APP_ROOT / "application" / "chain" / "data.py").read_text(
+            encoding="utf-8-sig"
+        )
+    )
+    agent_data = ast.parse(
+        (APP_ROOT / "application" / "agentdata.py").read_text(
+            encoding="utf-8-sig"
+        )
+    )
+
+    def return_annotation(tree: ast.AST, function_name: str) -> str | None:
+        """返回指定函数的源码级返回注解。"""
+        function = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == function_name
+        )
+        return ast.unparse(function.returns) if function.returns else None
+
+    assert return_annotation(chain_data, "get_chain_user_port") == "ChainUserRepository"
+    assert return_annotation(agent_data, "get_agent_user_port") == "ChainUserRepository"
+    assert not any(
+        isinstance(node, ast.ClassDef) and node.name == "UserPort"
+        for node in ast.walk(agent_data)
+    )
+
+    production_paths = [
+        APP_ROOT / "chain" / "user.py",
+        APP_ROOT / "chain" / "interaction.py",
+        APP_ROOT / "chain" / "_messaging.py",
+        APP_ROOT / "agent" / "orchestrator.py",
+        APP_ROOT / "agent" / "tools" / "impl" / "add_subscribe.py",
+        APP_ROOT / "modules" / "feishu" / "feishu.py",
+    ]
+    violations: list[str] = []
+    for path in production_paths:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == "UserOper":
+                violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}:class")
+            if isinstance(node, ast.ImportFrom) and node.module == "app.db.oper.user":
+                violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}:import")
+
+    assert violations == []
+
+
+def test_startup_injects_user_adapter_instead_of_raw_oper():
+    """启动组合根不得把无会话 UserOper 注入宿主查询调用面。"""
+    path = APP_ROOT / "startup" / "initializers" / "modules.py"
+    source = path.read_text(encoding="utf-8-sig")
+
+    assert "TransactionalUserRepository" in source
+    assert "SqlAlchemyUserRepository" in source
+    assert "from app.db.oper.user import UserOper" not in source
+    assert "user=lambda: UserOper()" not in source
+
+
 def test_music_chain_uses_explicit_subscribe_data_port_getter():
     """音乐订阅链不得把 SubscribePortProxy 伪装成 SubscribeOper。"""
     path = APP_ROOT / "chain" / "_music.py"

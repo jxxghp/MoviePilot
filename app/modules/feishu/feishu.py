@@ -23,25 +23,25 @@ from lark_oapi.api.im.v1 import (
     CreateFileRequestBody,
     CreateImageRequest,
     CreateImageRequestBody,
-    CreateMessageRequest,
-    CreateMessageRequestBody,
     CreateMessageReactionRequest,
     CreateMessageReactionRequestBody,
+    CreateMessageRequest,
+    CreateMessageRequestBody,
     DeleteMessageReactionRequest,
+    Emoji,
     GetFileRequest,
     GetImageRequest,
     GetMessageResourceRequest,
-    PatchMessageRequest,
-    PatchMessageRequestBody,
     P2ImChatAccessEventBotP2pChatEnteredV1,
     P2ImMessageMessageReadV1,
     P2ImMessageReactionCreatedV1,
     P2ImMessageReactionDeletedV1,
     P2ImMessageRecalledV1,
     P2ImMessageReceiveV1,
+    PatchMessageRequest,
+    PatchMessageRequestBody,
     ReplyMessageRequest,
     ReplyMessageRequestBody,
-    Emoji,
 )
 from lark_oapi.core.const import FEISHU_DOMAIN
 from lark_oapi.core.enum import LogLevel
@@ -50,18 +50,16 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
     P2CardActionTriggerResponse,
 )
 
-from app.runtime.settings import get_runtime_setting
-
-from app.application.messaging.ingress import submit_message_to_host
-from app.domain.context import Context, MediaInfo
-from app.application.security.user import get_configured_user_channel_lookup
-from app.application.messaging.agent import matches_channel_admin
-from app.runtime.log import logger
-from app.schemas.message import IncomingMessage
-from app.schemas.message import Message
-from app.schemas.types import NotificationChannel, MessageType
 from app.adapters.network.http import RequestUtils
+from app.application.messaging.agent import matches_channel_admin
+from app.application.messaging.ingress import submit_message_to_host
+from app.application.security.user import get_configured_user_channel_lookup
+from app.domain.context import Context, MediaInfo
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
+from app.schemas.message import IncomingMessage, Message
+from app.schemas.types import MessageType, NotificationChannel
 
 
 class _ThreadLocalEventLoopProxy:
@@ -113,15 +111,6 @@ async def _select_bound_ws_client() -> None:
 # 不再在启动/退出时反复覆盖同一全局对象。
 lark_ws_client_module.loop = _lark_ws_loop_proxy
 lark_ws_client_module._select = _select_bound_ws_client
-
-
-class UserOper:
-    """兼容飞书模块存量测试的渠道用户查询门面。"""
-
-    @staticmethod
-    def get_name(**bindings) -> Optional[str]:
-        """把渠道标识查询转发到启动组合根登记的用户端口。"""
-        return get_configured_user_channel_lookup()(**bindings)
 
 
 class Feishu:
@@ -521,7 +510,7 @@ class Feishu:
             binding_ids["feishu_userid"] = user_id
         if binding_ids:
             try:
-                mapped_username = UserOper().get_name(**binding_ids)
+                mapped_username = get_configured_user_channel_lookup()(**binding_ids)
                 if mapped_username:
                     return mapped_username
             except Exception as err:

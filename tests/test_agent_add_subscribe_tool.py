@@ -31,7 +31,7 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
         ) as async_add, patch(
             "app.agent.tools.impl.add_subscribe.get_agent_user_port",
             return_value=SimpleNamespace(
-                get_name=lambda **_kwargs: "moviepilot-user"
+                find_name_by_bindings=lambda _bindings: "moviepilot-user"
             ),
         ):
             result = asyncio.run(
@@ -59,7 +59,9 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
             new=AsyncMock(return_value=(1, "")),
         ) as async_add, patch(
             "app.agent.tools.impl.add_subscribe.get_agent_user_port",
-            return_value=SimpleNamespace(get_name=lambda **_kwargs: None),
+            return_value=SimpleNamespace(
+                find_name_by_bindings=lambda _bindings: None
+            ),
         ):
             result = asyncio.run(
                 tool.run(
@@ -85,7 +87,9 @@ class TestAgentAddSubscribeTool(unittest.TestCase):
             new=AsyncMock(return_value=(1, "")),
         ) as async_add, patch(
             "app.agent.tools.impl.add_subscribe.get_agent_user_port",
-            return_value=SimpleNamespace(get_name=lambda **_kwargs: None),
+            return_value=SimpleNamespace(
+                find_name_by_bindings=lambda _bindings: None
+            ),
         ):
             result = asyncio.run(
                 tool.run(

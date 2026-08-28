@@ -231,6 +231,10 @@ def configure_plugin_system_services():
     from app.db.adapters.transfer.execution import (
         TransactionalTransferExecutionRepository,
     )
+    from app.db.adapters.user import (
+        SqlAlchemyUserRepository,
+        TransactionalUserRepository,
+    )
     from app.db.adapters.workflow import (
         TransactionalWorkflowExecutionService,
         TransactionalWorkflowQueryRepository,
@@ -244,7 +248,6 @@ def configure_plugin_system_services():
     from app.db.oper.subscribe import SubscribeOper
     from app.db.oper.subscribehistory import SubscribeHistoryOper
     from app.db.oper.transferhistory import TransferHistoryOper
-    from app.db.oper.user import UserOper
     from app.db.oper.workflow import WorkflowOper
 
     def create_sync_session() -> Session:
@@ -275,13 +278,16 @@ def configure_plugin_system_services():
             "subscribe": SubscribeOper,
             "subscribe_history": SubscribeHistoryOper,
             "transfer_history": TransferHistoryOper,
-            "user": UserOper,
+            "user": SqlAlchemyUserRepository,
             "workflow": WorkflowOper,
         },
         standalone={
             "passkey": PassKeyOper,
             "system_config": SystemConfigOper,
-            "user": UserOper,
+            "user": lambda: TransactionalUserRepository(
+                sync_session=SessionFactory,
+                async_session=async_session_scope,
+            ),
         },
         unit_of_work={
             "async": SqlAlchemyAsyncUnitOfWork,
@@ -302,6 +308,13 @@ def configure_plugin_system_services():
             async_session=async_session_scope,
         )
 
+    def user_repository() -> TransactionalUserRepository:
+        """按生产组合根方式创建用户短会话仓储。"""
+        return TransactionalUserRepository(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+
     configure_chain_data_ports(
         site=site_repository,
         subscribe=lambda: SubscribeOper(),
@@ -317,7 +330,7 @@ def configure_plugin_system_services():
         download_failure=lambda: TransactionalDownloadFailureRepository(
             SessionFactory
         ),
-        user=lambda: UserOper(),
+        user=user_repository,
     )
     configure_chain_runtime_context_provider(lambda: ChainRuntimeContext(
         module_manager=ModuleManager(),
@@ -346,7 +359,7 @@ def configure_plugin_system_services():
     configure_agent_data_ports(
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
-        user=lambda: UserOper(),
+        user=user_repository,
         site=site_repository,
         subscribe=lambda: SubscribeOper(),
         subscribe_history=lambda: SubscribeHistoryOper(),

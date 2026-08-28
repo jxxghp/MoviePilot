@@ -128,9 +128,6 @@
   "app/agent/tools/impl/add_download_tasks.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/add_subscribe.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/ask_user_choice.py": {
     "I001": 1
   },
@@ -337,9 +334,6 @@
     "I001": 1
   },
   "app/application/rss.py": {
-    "I001": 1
-  },
-  "app/application/security/auth.py": {
     "I001": 1
   },
   "app/application/security/url.py": {
@@ -613,9 +607,6 @@
   },
   "app/modules/feishu/__init__.py": {
     "F401": 1,
-    "I001": 1
-  },
-  "app/modules/feishu/feishu.py": {
     "I001": 1
   },
   "app/modules/filemanager/__init__.py": {

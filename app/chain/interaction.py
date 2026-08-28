@@ -669,8 +669,8 @@ class MediaInteractionChain(ChainBase):
                 return
 
         mp_name = (
-            get_chain_user_port().get_name(
-                **{f"{channel.name.lower()}_userid": userid}
+            get_chain_user_port().find_name_by_bindings(
+                {f"{channel.name.lower()}_userid": userid}
             )
             if channel
             else None
@@ -982,8 +982,8 @@ class MediaInteractionChain(ChainBase):
             note = None
 
         mp_name = (
-            get_chain_user_port().get_name(
-                **{f"{channel.name.lower()}_userid": userid}
+            get_chain_user_port().find_name_by_bindings(
+                {f"{channel.name.lower()}_userid": userid}
             )
             if channel
             else None

@@ -124,6 +124,10 @@ from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRep
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
+from app.db.adapters.user import (
+    SqlAlchemyUserRepository,
+    TransactionalUserRepository,
+)
 from app.db.adapters.workflow import (
     TransactionalWorkflowExecutionService,
     TransactionalWorkflowQueryRepository,
@@ -140,7 +144,6 @@ from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.transferhistory import TransferHistoryOper
-from app.db.oper.user import UserOper
 from app.db.oper.userconfig import UserConfigOper
 from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
@@ -245,6 +248,14 @@ async def _initialize_configuration_services(
 def _build_runtime_settings_service() -> RuntimeSettingsService:
     """将唯一可变部署配置实现注入管理服务。"""
     return RuntimeSettingsService(legacy_settings)
+
+
+def _build_transactional_user_repository() -> TransactionalUserRepository:
+    """构造供 Chain、Agent 与进程级认证共享的短会话用户仓储。"""
+    return TransactionalUserRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
 
 
 async def _async_get_subscribe(subscribe_id: int):
@@ -795,13 +806,13 @@ async def init_modules() -> HostRuntime:
             "subscribe": SubscribeOper,
             "subscribe_history": SubscribeHistoryOper,
             "transfer_history": TransferHistoryOper,
-            "user": UserOper,
+            "user": SqlAlchemyUserRepository,
             "workflow": WorkflowOper,
         },
         standalone={
             "passkey": PassKeyOper,
             "system_config": SystemConfigOper,
-            "user": UserOper,
+            "user": _build_transactional_user_repository,
         },
         unit_of_work={
             "async": SqlAlchemyAsyncUnitOfWork,
@@ -841,8 +852,8 @@ async def init_modules() -> HostRuntime:
             async_transaction=SqlAlchemyAsyncUnitOfWork,
         ),
         authentication=AuthenticationRuntime(
-            user_repository=UserOper,
-            standalone_user=UserOper,
+            user_repository=SqlAlchemyUserRepository,
+            standalone_user=_build_transactional_user_repository,
             system_config=SystemConfigOper,
             passkey=PassKeyOper,
         ),
@@ -897,7 +908,7 @@ async def init_modules() -> HostRuntime:
         download_failure=lambda: TransactionalDownloadFailureRepository(
             SessionFactory
         ),
-        user=lambda: UserOper(),
+        user=_build_transactional_user_repository,
     )
     configure_outbox_dispatcher(_build_outbox_dispatcher)
     configure_transfer_retry_config(
@@ -909,13 +920,15 @@ async def init_modules() -> HostRuntime:
     configure_agent_chat_service(AgentChatService(repository=AgentChatOper()))
     configure_agent_chat_persistence(agent_chat_persistence)
     configure_user_lookups(
-        by_id=lambda user_id: UserOper().get_by_id(user_id),
-        by_name=lambda username: UserOper().get_by_name(username),
-        by_channel=lambda **bindings: UserOper().get_name(**bindings),
+        by_id=lambda user_id: _build_transactional_user_repository().get_by_id(user_id),
+        by_name=lambda username: _build_transactional_user_repository().get_by_name(username),
+        by_channel=lambda **bindings: (
+            _build_transactional_user_repository().find_name_by_bindings(bindings)
+        ),
     )
     configure_auth_service(
         AuthService(
-            users=UserOper(),
+            users=_build_transactional_user_repository(),
             config=get_configured_system_config(),
             passkeys=PassKeyOper(),
         )
@@ -933,7 +946,7 @@ async def init_modules() -> HostRuntime:
     configure_agent_data_ports(
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
-        user=lambda: UserOper(),
+        user=_build_transactional_user_repository,
         site=lambda: TransactionalSiteRepository(
             sync_session=SessionFactory,
             async_session=async_session_scope,

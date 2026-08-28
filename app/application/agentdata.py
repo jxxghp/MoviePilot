@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
+
+from app.application.security.user import ChainUserRepository
 
 AgentDataFactory = Callable[[], Any]
 
@@ -37,12 +39,6 @@ class AgentTaskPort(_PortProxy):
     """Agent 定时任务数据端口代理。"""
 
     port_name = "agent_task"
-
-
-class UserPort(_PortProxy):
-    """用户数据端口代理。"""
-
-    port_name = "user"
 
 
 class SitePort(_PortProxy):
@@ -129,9 +125,9 @@ def get_agent_task_port() -> Any:
     return get_agent_data_ports().agent_task()
 
 
-def get_agent_user_port() -> Any:
+def get_agent_user_port() -> ChainUserRepository:
     """创建 Agent 用户数据端口实例。"""
-    return get_agent_data_ports().user()
+    return cast(ChainUserRepository, get_agent_data_ports().user())
 
 
 def get_agent_site_port() -> Any:

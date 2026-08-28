@@ -177,7 +177,7 @@ class NotificationMixin:
                         # 仅发送管理员
                         logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
                         # 读取管理员消息IDS
-                        send_message.targets = useroper.get_settings(
+                        send_message.targets = useroper.get_notification_settings(
                             self.runtime_config.superuser
                         )
                         admin_sended = True
@@ -187,7 +187,7 @@ class NotificationMixin:
                             f"{send_message.mtype} 的消息已设置发送给用户 {send_message.username}"
                         )
                         # 读取用户消息IDS
-                        send_message.targets = useroper.get_settings(
+                        send_message.targets = useroper.get_notification_settings(
                             send_message.username
                         )
                         if send_message.targets is None:
@@ -198,7 +198,7 @@ class NotificationMixin:
                                     f"用户 {send_message.username} 不存在，消息将发送给管理员"
                                 )
                                 # 读取管理员消息IDS
-                                send_message.targets = useroper.get_settings(
+                                send_message.targets = useroper.get_notification_settings(
                                     self.runtime_config.superuser
                                 )
                                 admin_sended = True
@@ -295,7 +295,7 @@ class NotificationMixin:
                         # 仅发送管理员
                         logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
                         # 读取管理员消息IDS
-                        send_message.targets = useroper.get_settings(
+                        send_message.targets = await useroper.async_get_notification_settings(
                             self.runtime_config.superuser
                         )
                         admin_sended = True
@@ -305,7 +305,7 @@ class NotificationMixin:
                             f"{send_message.mtype} 的消息已设置发送给用户 {send_message.username}"
                         )
                         # 读取用户消息IDS
-                        send_message.targets = useroper.get_settings(
+                        send_message.targets = await useroper.async_get_notification_settings(
                             send_message.username
                         )
                         if send_message.targets is None:
@@ -316,7 +316,7 @@ class NotificationMixin:
                                     f"用户 {send_message.username} 不存在，消息将发送给管理员"
                                 )
                                 # 读取管理员消息IDS
-                                send_message.targets = useroper.get_settings(
+                                send_message.targets = await useroper.async_get_notification_settings(
                                     self.runtime_config.superuser
                                 )
                                 admin_sended = True

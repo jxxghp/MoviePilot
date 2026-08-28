@@ -140,7 +140,10 @@ class TestFeishu(unittest.TestCase):
     def test_parse_message_returns_callback_message(self):
         client = self._build_client()
 
-        with patch("app.modules.feishu.feishu.UserOper.get_name", return_value=None):
+        with patch(
+            "app.modules.feishu.feishu.get_configured_user_channel_lookup",
+            return_value=lambda **_bindings: None,
+        ):
             result = client.parse_message(
                 {
                     "type": "cardAction",
@@ -221,7 +224,10 @@ class TestFeishu(unittest.TestCase):
         client = self._build_client(FEISHU_ADMINS="ou_admin")
 
         with (
-            patch("app.modules.feishu.feishu.UserOper.get_name", return_value=None),
+            patch(
+                "app.modules.feishu.feishu.get_configured_user_channel_lookup",
+                return_value=lambda **_bindings: None,
+            ),
             patch.object(
                 client, "send_text", return_value={"success": True}
             ) as send_text,
@@ -250,10 +256,11 @@ class TestFeishu(unittest.TestCase):
     def test_parse_message_maps_feishu_ids_to_moviepilot_username(self):
         client = self._build_client()
 
+        get_name = MagicMock(return_value="moviepilot-user")
         with patch(
-            "app.modules.feishu.feishu.UserOper.get_name",
-            return_value="moviepilot-user",
-        ) as get_name:
+            "app.modules.feishu.feishu.get_configured_user_channel_lookup",
+            return_value=get_name,
+        ):
             result = client.parse_message(
                 {
                     "type": "message",
@@ -901,7 +908,10 @@ class TestFeishu(unittest.TestCase):
     def test_parse_message_supports_image_and_file_payloads(self):
         client = self._build_client()
 
-        with patch("app.modules.feishu.feishu.UserOper.get_name", return_value=None):
+        with patch(
+            "app.modules.feishu.feishu.get_configured_user_channel_lookup",
+            return_value=lambda **_bindings: None,
+        ):
             image_message = client.parse_message(
                 {
                     "type": "message",

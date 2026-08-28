@@ -1,16 +1,19 @@
 import secrets
 import threading
 import time
+from collections.abc import Mapping
 from datetime import timedelta
-from typing import Any, Optional, Protocol
+from typing import Any, Optional, Protocol, cast
 
+from app.application.configuration import get_api_runtime_config_snapshot, get_chain_runtime_config_snapshot
+from app.application.security.token import create_access_token
+from app.application.security.user import FrozenJson
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.foundation.singleton import Singleton
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.application.security.token import create_access_token
-from app.application.configuration import get_api_runtime_config_snapshot, get_chain_runtime_config_snapshot
-from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.schemas.types import SystemConfigKey
-from app.foundation.singleton import Singleton
+from app.schemas.user import UserPermissions
 
 
 class AuthTicketStore(metaclass=Singleton):
@@ -117,12 +120,29 @@ def consume_plugin_auth_ticket(ticket: str) -> Optional[dict[str, Any]]:
 class AuthUser(Protocol):
     """认证服务需要的最小用户投影。"""
 
-    id: int
-    name: str
-    is_active: bool
-    is_superuser: bool
-    avatar: Optional[str]
-    permissions: Optional[dict]
+    @property
+    def id(self) -> int:
+        """返回用户 ID。"""
+
+    @property
+    def name(self) -> str:
+        """返回用户名。"""
+
+    @property
+    def is_active(self) -> bool:
+        """返回账号启用状态。"""
+
+    @property
+    def is_superuser(self) -> bool:
+        """返回超级用户状态。"""
+
+    @property
+    def avatar(self) -> Optional[str]:
+        """返回用户头像。"""
+
+    @property
+    def permissions(self) -> Mapping[str, FrozenJson]:
+        """返回只读权限快照。"""
 
 
 class AuthUserRepository(Protocol):
@@ -206,7 +226,7 @@ class AuthService:
             user_name=user.name,
             avatar=user.avatar,
             level=level,
-            permissions=user.permissions or {},
+            permissions=cast(UserPermissions, dict(user.permissions)),
             wizard=show_wizard,
         )
 
