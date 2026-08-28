@@ -11,7 +11,11 @@ from app.api.dependencies.auth import (
 )
 from app.api.response import ResponseAPIRouter
 from app.application.security.token import PasswordTooLongError, get_password_hash
-from app.application.security.user import UserService
+from app.application.security.user import (
+    LastActiveSuperuserError,
+    UserNameConflictError,
+    UserService,
+)
 from app.application.security.userconfig import get_configured_user_configuration
 from app.schemas.common import FileNameData as _SchemaFileNameData
 from app.schemas.common import ValueData as _SchemaValueData
@@ -44,9 +48,6 @@ async def create_user(
     """
     新增用户
     """
-    user = await service.get_by_name(user_in.name)
-    if user:
-        return _SchemaResponse(success=False, message="用户已存在")
     user_info = user_in.model_dump()
     if user_info.get("password"):
         try:
@@ -54,7 +55,10 @@ async def create_user(
         except PasswordTooLongError as error:
             return _SchemaResponse(success=False, message=str(error))
         user_info.pop("password")
-    user = await service.create(user_info)
+    try:
+        user = await service.create(user_info)
+    except UserNameConflictError:
+        return _SchemaResponse(success=False, message="用户已存在")
     return _SchemaResponse(success=True if user else False)
 
 
@@ -86,14 +90,14 @@ async def update_user(
     user_name = user_info.get("name")
     if not user_name:
         return _SchemaResponse(success=False, message="用户名不能为空")
-    # 新用户名去重
-    users = await service.list()
-    for u in users:
-        if u.name == user_name and u.id != user_info["id"]:
-            return _SchemaResponse(success=False, message="用户名已被使用")
     if not user:
         return _SchemaResponse(success=False, message="用户不存在")
-    await service.update(user_info["id"], user_info)
+    try:
+        await service.update(user_info["id"], user_info)
+    except UserNameConflictError:
+        return _SchemaResponse(success=False, message="用户名已被使用")
+    except LastActiveSuperuserError:
+        return _SchemaResponse(success=False, message="必须保留至少一个启用的超级管理员")
     return _SchemaResponse(success=True)
 
 
@@ -180,7 +184,10 @@ async def delete_user_by_id(
     user = await service.get_by_id(user_id)
     if not user:
         return _SchemaResponse(success=False, message="用户不存在")
-    await service.delete(user_id)
+    try:
+        await service.delete(user_id)
+    except LastActiveSuperuserError:
+        return _SchemaResponse(success=False, message="必须保留至少一个启用的超级管理员")
     return _SchemaResponse(success=True)
 
 
@@ -197,7 +204,10 @@ async def delete_user_by_name(
     user = await service.get_by_name(user_name)
     if not user:
         return _SchemaResponse(success=False, message="用户不存在")
-    await service.delete(user.id)
+    try:
+        await service.delete(user.id)
+    except LastActiveSuperuserError:
+        return _SchemaResponse(success=False, message="必须保留至少一个启用的超级管理员")
     return _SchemaResponse(success=True)
 
 

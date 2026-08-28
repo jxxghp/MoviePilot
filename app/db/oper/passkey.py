@@ -1,11 +1,12 @@
 """PassKey 数据访问适配器。"""
 
+from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
-from app.db.base import DbOper
+from app.db.base import DbOper, execute_dml
 from app.db.models.passkey import (
     PassKey,
     _get_by_credential_id_statement,
@@ -54,11 +55,37 @@ class PassKeyOper(DbOper):
         session.add(passkey)
         session.flush()
 
-    def update_last_used(self, passkey: PassKey, sign_count: int) -> bool:
-        """更新凭证最后使用时间和签名计数。"""
-        return bool(self._execute_sync_write(
-            lambda session: passkey.update_last_used(session, sign_count)
-        ))
+    def compare_and_update_sign_count(
+        self,
+        passkey_id: int,
+        expected_sign_count: int,
+        sign_count: int,
+    ) -> bool:
+        """仅在凭证仍启用且签名计数未变化时记录本次认证。"""
+        if sign_count < expected_sign_count or (
+            expected_sign_count > 0 and sign_count == expected_sign_count
+        ):
+            return False
+
+        count_matches = PassKey.sign_count == expected_sign_count
+        if expected_sign_count == 0:
+            count_matches = or_(PassKey.sign_count == 0, PassKey.sign_count.is_(None))
+
+        statement = (
+            update(PassKey)
+            .where(
+                PassKey.id == passkey_id,
+                PassKey.is_active.is_(True),
+                count_matches,
+            )
+            .values(
+                last_used_at=datetime.now(),
+                sign_count=sign_count,
+            )
+        )
+        return self._execute_sync_write(
+            lambda session: execute_dml(session, statement)
+        ) == 1
 
     def delete_by_id(self, passkey_id: int, user_id: int) -> bool:
         """删除指定用户的凭证。"""

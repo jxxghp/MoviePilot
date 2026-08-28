@@ -132,11 +132,6 @@
         "tracking": "S2-L6"
       },
       {
-        "source": "app.application.security.passkey",
-        "target": "app.adapters.cache.redis",
-        "tracking": "S2-L4"
-      },
-      {
         "source": "app.application.torrent",
         "target": "app.adapters.network.http",
         "tracking": "S2-L6"
@@ -291,7 +286,7 @@
         "owner": "$source",
         "reason": "精确 Adapter source 持有其 Redis、浏览器、HTTP 或 DNS transport；上层只能消费 Port 或统一 Facade。",
         "facts": [
-          {"source": "app.adapters.cache.redis", "target": "redis", "kind": "network_sdk", "fingerprint": "9d455a5298d4373ff18d74a9d498a3dd797bcb5f5543af9776c0c741c30362c7"},
+          {"source": "app.adapters.cache.redis", "target": "redis", "kind": "network_sdk", "fingerprint": "49f0b28ef731b25aa772d6887febd762d03b981a1f52d6dfc8dff82f2f489f81"},
           {"source": "app.adapters.network.browser", "target": "cloakbrowser", "kind": "network_sdk", "fingerprint": "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173"},
           {"source": "app.adapters.network.doh", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71"},
           {"source": "app.adapters.network.doh", "target": "urllib.request", "kind": "raw_transport", "fingerprint": "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b"},

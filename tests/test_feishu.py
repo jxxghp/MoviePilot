@@ -12,15 +12,17 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
-from app.modules.feishu import FeishuModule
-from app.modules.feishu.feishu import Feishu
-from app.schemas import Message
-from app.schemas.message import (
-    ChannelCapability,
-    ChannelCapabilityManager,
+from app.modules.feishu import FeishuModule  # noqa: E402
+from app.modules.feishu.feishu import Feishu  # noqa: E402
+from app.schemas.message import (  # noqa: E402
+    Message,
     MessageResponse,
 )
-from app.schemas.types import NotificationChannel, MessageType
+from app.schemas.notification import (  # noqa: E402
+    ChannelCapability,
+    ChannelCapabilityManager,
+)
+from app.schemas.types import MessageType, NotificationChannel  # noqa: E402
 
 
 class TestFeishu(unittest.TestCase):

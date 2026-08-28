@@ -7,11 +7,11 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from app.runtime.correlation import correlation_scope
 from app.runtime.event.binding import EventBindingResolver
 from app.runtime.event.registry import EventRegistry
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
-from app.runtime.correlation import correlation_scope
 from app.runtime.observability import observe_duration
 from app.schemas.types import EventType
 
@@ -129,6 +129,44 @@ class EventDispatcher:
                     (handler, isolated),
                 )
 
+    def dispatch_broadcast_strict(
+        self,
+        event: Any,
+        async_runner: Callable[[Any], Any],
+    ) -> None:
+        """串行执行广播处理器并等待完成，任一处理失败时向调用方抛出。"""
+        handlers = self._registry.broadcast_snapshot(event.event_type)
+        target_plugin_id = None
+        if event.event_type == EventType.MessageAction and isinstance(
+            event.event_data,
+            dict,
+        ):
+            target_plugin_id = event.event_data.get("__mp_target_plugin_id")
+        for handler_id, handler in handlers:
+            if not self._registry.is_handler_enabled(handler):
+                continue
+            if target_plugin_id and not self.should_dispatch_to_target_plugin(
+                handler,
+                handler_id,
+                str(target_plugin_id),
+            ):
+                continue
+            if isinstance(event.event_data, dict):
+                event_data = event.event_data.copy()
+                event_data.pop("__mp_target_plugin_id", None)
+            else:
+                event_data = event.event_data
+            isolated = self._event_factory(
+                event_type=event.event_type,
+                event_data=event_data,
+                priority=event.priority,
+                correlation_id=event.correlation_id,
+            )
+            if inspect.iscoroutinefunction(handler):
+                async_runner(self.invoke_async_strict(handler, isolated))
+            else:
+                self.invoke_sync_strict(handler, isolated)
+
     def safe_invoke_sync(self, handler: Callable, event: Any) -> None:
         """仅在处理器启用时执行同步调用。"""
         if self._registry.is_handler_enabled(handler):
@@ -162,6 +200,34 @@ class EventDispatcher:
                     e=err,
                 )
 
+    def invoke_sync_strict(
+        self,
+        handler: Callable[..., object],
+        event: Any,
+    ) -> None:
+        """解析并执行同步处理器，记录错误后向 durable 调用方传播。"""
+        resolved = self._binding_resolver.resolve(handler)
+        if not resolved:
+            raise RuntimeError("事件处理器实例不可用")
+        method, binding, class_name, method_name = resolved
+        with correlation_scope(event.correlation_id):
+            try:
+                with observe_duration(
+                    "event.handler.duration",
+                    event_type=event.event_type.value,
+                    handler_type="bound" if class_name else "function",
+                ):
+                    method(event)
+            except Exception as err:
+                self._error_handler(
+                    event=event,
+                    module_name=binding.owner_name,
+                    class_name=class_name,
+                    method_name=method_name,
+                    e=err,
+                )
+                raise
+
     async def invoke_async(self, handler: Callable, event: Any) -> None:
         """解析实例绑定，并按处理器类型选择协程、线程池或同步调用。"""
         resolved = self._binding_resolver.resolve(handler)
@@ -189,6 +255,39 @@ class EventDispatcher:
                     method_name=method_name,
                     e=err,
                 )
+
+    async def invoke_async_strict(
+        self,
+        handler: Callable[..., object],
+        event: Any,
+    ) -> None:
+        """解析并等待处理器完成，记录错误后向 durable 调用方传播。"""
+        resolved = self._binding_resolver.resolve(handler)
+        if not resolved:
+            raise RuntimeError("事件处理器实例不可用")
+        method, binding, class_name, method_name = resolved
+        with correlation_scope(event.correlation_id):
+            try:
+                with observe_duration(
+                    "event.handler.duration",
+                    event_type=event.event_type.value,
+                    handler_type="bound" if class_name else "function",
+                ):
+                    if inspect.iscoroutinefunction(method):
+                        await method(event)
+                    elif binding.run_sync_in_threadpool or not class_name:
+                        await run_in_threadpool(method, event)
+                    else:
+                        method(event)
+            except Exception as err:
+                self._error_handler(
+                    event=event,
+                    module_name=binding.owner_name,
+                    class_name=class_name,
+                    method_name=method_name,
+                    e=err,
+                )
+                raise
 
     @staticmethod
     def should_dispatch_to_target_plugin(

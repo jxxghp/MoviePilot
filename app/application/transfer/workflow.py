@@ -38,6 +38,7 @@ from typing import (
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from app.adapters.system.host import SystemUtils
+from app.application.history import DownloadHistorySnapshot
 from app.application.transfer.execution import TransferExecutionCheckpoint
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
@@ -48,7 +49,6 @@ from app.runtime.log import logger
 from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import MetaInfo as _SchemaMetaInfo
 from app.schemas.file import FileItem
-from app.schemas.history import DownloadHistory
 from app.schemas.media import OptionalMediaIdentityMixin, resolve_media_identity
 from app.schemas.music import MusicInfo as _SchemaMusicInfo
 from app.schemas.music import MusicMeta as _SchemaMusicMeta
@@ -724,7 +724,7 @@ class TransferTask(OptionalMediaIdentityMixin, _ApplicationModel):
     username: Optional[str] = None
     downloader: Optional[str] = None
     download_hash: Optional[str] = None
-    download_history: Optional[DownloadHistory] = None
+    download_history: Optional[DownloadHistorySnapshot] = None
     transfer_batch_id: Optional[str] = None
     manual: Optional[bool] = False
     background: Optional[bool] = True

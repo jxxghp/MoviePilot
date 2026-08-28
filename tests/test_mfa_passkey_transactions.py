@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -7,7 +7,12 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from app.api.endpoints import mfa as mfa_endpoint
-from app.application.security.passkey import PasskeyChallengeStore
+from app.application.security.passkey import (
+    PASSKEY_CHALLENGE_TTL_SECONDS,
+    PasskeyChallengeStore,
+    configure_passkey_challenge_cache,
+)
+from app.runtime.cache import TTLCache
 
 
 def _request() -> Request:
@@ -25,7 +30,46 @@ def _request() -> Request:
 
 
 def setup_function():
-    PasskeyChallengeStore._cache.clear()
+    configure_passkey_challenge_cache(TTLCache(
+        region="passkey_challenge",
+        maxsize=4096,
+        ttl=PASSKEY_CHALLENGE_TTL_SECONDS,
+    ))
+
+
+@pytest.mark.asyncio
+async def test_mfa_status_hides_missing_disabled_and_unconfigured_accounts():
+    """匿名状态查询不得用状态码、消息或数据区分非 OTP 账号。"""
+    users = [
+        None,
+        SimpleNamespace(is_active=False, is_otp=True),
+        SimpleNamespace(is_active=True, is_otp=False),
+    ]
+    responses = []
+
+    for user in users:
+        service = SimpleNamespace(get_by_name=AsyncMock(return_value=user))
+        response = await mfa_endpoint.mfa_status("candidate", service=service)
+        responses.append(response.model_dump())
+
+    assert responses == [
+        {"success": True, "message": "", "data": {"enabled": False}},
+    ] * len(users)
+
+
+@pytest.mark.asyncio
+async def test_mfa_status_reports_otp_only_for_active_account():
+    """启用账号已配置 OTP 时仍应允许登录流程进入二次验证。"""
+    service = SimpleNamespace(
+        get_by_name=AsyncMock(
+            return_value=SimpleNamespace(is_active=True, is_otp=True)
+        )
+    )
+
+    response = await mfa_endpoint.mfa_status("candidate", service=service)
+
+    assert response.success is True
+    assert response.data == {"enabled": True}
 
 
 def test_registration_transaction_is_bound_to_current_user():
@@ -186,3 +230,117 @@ def test_authentication_finish_token_cannot_be_replayed():
     assert result.access_token == "access-token"
     assert replay_error.value.status_code == 401
     assert replay_error.value.detail == "认证请求已失效"
+
+
+def test_authentication_finish_fails_closed_when_challenge_backend_fails(
+    monkeypatch,
+):
+    """challenge 后端故障不得继续查询凭证或签发 Token。"""
+    class FailingCache:
+        """模拟 challenge 原子领取期间缓存不可用。"""
+
+        def consume(self, _key):
+            """报告后端不可用。"""
+            raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(PasskeyChallengeStore, "_cache", FailingCache())
+    service = SimpleNamespace(get_by_credential_id=Mock())
+    auth_service = SimpleNamespace(build_token_response=Mock())
+
+    with patch.object(
+        mfa_endpoint,
+        "get_configured_auth_service",
+        return_value=auth_service,
+    ), patch.object(
+        mfa_endpoint,
+        "set_or_refresh_resource_token_cookie",
+    ) as set_cookie, pytest.raises(HTTPException) as exc_info:
+        mfa_endpoint.passkey_authenticate_finish(
+            request=_request(),
+            response=Response(),
+            passkey_req=mfa_endpoint.PassKeyAuthenticationFinish(
+                credential={"id": "credential-id"},
+                transaction_token="transaction-token",
+            ),
+            service=service,
+        )
+
+    assert exc_info.value.status_code == 401
+    service.get_by_credential_id.assert_not_called()
+    auth_service.build_token_response.assert_not_called()
+    set_cookie.assert_not_called()
+
+
+@pytest.mark.parametrize("cas_failure", [False, RuntimeError("write failed")])
+def test_authentication_finish_does_not_issue_token_when_sign_count_write_fails(
+    cas_failure,
+):
+    """签名计数 CAS 冲突或事务失败时，认证不得越过持久化门禁。"""
+    token = PasskeyChallengeStore.issue(
+        challenge="server-challenge",
+        purpose="authentication",
+        user_id=1,
+    )
+    passkey_req = mfa_endpoint.PassKeyAuthenticationFinish(
+        credential={"id": "credential-id"},
+        transaction_token=token,
+    )
+    passkey = SimpleNamespace(
+        id=10,
+        user_id=1,
+        public_key="public-key",
+        sign_count=5,
+    )
+    user = SimpleNamespace(
+        id=1,
+        name="user",
+        is_active=True,
+        is_superuser=False,
+    )
+    compare_and_update = Mock()
+    if isinstance(cas_failure, Exception):
+        compare_and_update.side_effect = cas_failure
+    else:
+        compare_and_update.return_value = cas_failure
+    service = SimpleNamespace(
+        get_by_credential_id=Mock(return_value=passkey),
+        compare_and_update_sign_count=compare_and_update,
+    )
+    auth_service = SimpleNamespace(build_token_response=Mock())
+
+    with patch.object(
+        mfa_endpoint,
+        "_extract_and_standardize_credential_id",
+        return_value="credential-id",
+    ), patch.object(
+        mfa_endpoint,
+        "get_configured_user_id_lookup",
+        return_value=Mock(return_value=user),
+    ), patch.object(
+        mfa_endpoint.PassKeyHelper,
+        "verify_authentication_response",
+        return_value=(True, 6),
+    ), patch.object(
+        mfa_endpoint,
+        "get_configured_auth_service",
+        return_value=auth_service,
+    ), patch.object(
+        mfa_endpoint,
+        "set_or_refresh_resource_token_cookie",
+    ) as set_cookie:
+        with pytest.raises(HTTPException) as exc_info:
+            mfa_endpoint.passkey_authenticate_finish(
+                request=_request(),
+                response=Response(),
+                passkey_req=passkey_req,
+                service=service,
+            )
+
+    assert exc_info.value.status_code == 401
+    compare_and_update.assert_called_once_with(
+        passkey_id=10,
+        expected_sign_count=5,
+        sign_count=6,
+    )
+    auth_service.build_token_response.assert_not_called()
+    set_cookie.assert_not_called()

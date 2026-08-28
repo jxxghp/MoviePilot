@@ -4,13 +4,15 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Optional, Protocol
 from uuid import uuid4
 
 from app.application.outbox import (
-    AsyncOutboxTransaction,
-    OutboxIntent,
     SUBSCRIBE_MODIFIED_TOPIC,
+    AsyncOutboxDispatchStore,
+    AsyncOutboxStager,
+    OutboxIntent,
+    deliver_async_outbox_effect,
 )
 from app.schemas.event import SubscribeModifiedEventData
 
@@ -73,6 +75,8 @@ class SubscriptionMutation:
     old: dict[str, Any]
     new: dict[str, Any]
     event_published: bool = False
+    business_committed: bool = False
+    pending_effects: tuple[str, ...] = ()
 
 
 class SubscriptionMutationService:
@@ -83,7 +87,8 @@ class SubscriptionMutationService:
         repository: SubscriptionMutationRepository,
         history_repository: SubscriptionHistoryMutationRepository | None = None,
         unit_of_work: AsyncUnitOfWork | None = None,
-        outbox: AsyncOutboxTransaction | None = None,
+        outbox: Optional[AsyncOutboxStager] = None,
+        dispatch_store: Optional[AsyncOutboxDispatchStore] = None,
         publish_modified: SubscribeModifiedPublisher | None = None,
     ) -> None:
         """注入订阅数据、事务与 durable 事件端口。"""
@@ -91,6 +96,7 @@ class SubscriptionMutationService:
         self._history_repository = history_repository
         self._unit_of_work = unit_of_work
         self._outbox = outbox
+        self._dispatch_store = dispatch_store
         self._publish_modified = publish_modified
 
     async def get_accessible(
@@ -130,8 +136,9 @@ class SubscriptionMutationService:
             updated = await self._repository.async_update(subscribe_id, payload)
             return SubscriptionMutation(old=old, new=updated.to_dict() if updated else {})
 
-        if not self._outbox or not self._publish_modified:
-            raise RuntimeError("订阅修改事务缺少 outbox 或事件发布端口")
+        publish_modified = self._publish_modified
+        if not self._outbox or not self._dispatch_store or not publish_modified:
+            raise RuntimeError("订阅修改事务缺少 outbox stager、store 或事件发布端口")
         try:
             updated = await self._repository.async_stage_update(subscribe_id, payload)
             if not updated:
@@ -157,15 +164,21 @@ class SubscriptionMutationService:
             await self._unit_of_work.rollback()
             raise
 
-        await self._publish_modified(event_payload)
-        await self._outbox.complete_by_event_key(
+        async def publish_event() -> None:
+            """发布本次事务已持久化的订阅修改事件。"""
+            await publish_modified(event_payload)
+
+        delivered = await deliver_async_outbox_effect(
+            self._dispatch_store,
             event_key,
-            datetime.now(timezone.utc),
+            publish_event,
         )
         return SubscriptionMutation(
             old=old,
             new=event_payload["subscribe_info"],
-            event_published=True,
+            event_published=delivered,
+            business_committed=True,
+            pending_effects=() if delivered else (event_key,),
         )
 
     async def update_status(

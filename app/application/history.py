@@ -1,23 +1,24 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Protocol, Union
+from typing import Any, Callable, Dict, NoReturn, Optional, Protocol, Union
 
 from app.application.configuration import TransferRetryConfig, get_transfer_retry_config
 from app.domain.context import MediaInfo, MusicInfo
-from app.schemas.media import resolve_media_identity
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation.text import cut as jieba_cut
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
+from app.schemas.common import JsonData
 from app.schemas.history import (
-    DownloadHistory as DownloadHistoryView,
-    TransferHistory as TransferHistoryView,
+    DownloadHistory,
+    TransferHistory,
     TransferHistoryPage,
 )
-from app.schemas.workflow import FileItem
+from app.schemas.media import resolve_media_identity
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import MUSIC_ENTITY_RECORDING
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
+from app.schemas.workflow import FileItem
 
 # 失败重试次数的合法区间。下界为 1：一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）
 # 不该让文件永久漏整理，所以不允许关闭重试；上界为 10：永远识别不出的文件重试再多
@@ -99,6 +100,240 @@ class HistoryMutationResult:
     message: str = ""
 
 
+class _FrozenJsonDict(dict[str, JsonData]):
+    """保留 JSON 字典读取与序列化行为，并拒绝常规原地修改。"""
+
+    def _reject_mutation(self, *args: Any, **kwargs: Any) -> NoReturn:
+        """拒绝修改已经进入历史快照的嵌套 JSON。"""
+        raise TypeError("下载历史快照 JSON 不可修改")
+
+    __setitem__ = _reject_mutation
+    __delitem__ = _reject_mutation
+    __ior__ = _reject_mutation
+    clear = _reject_mutation
+    pop = _reject_mutation
+    popitem = _reject_mutation
+    setdefault = _reject_mutation
+    update = _reject_mutation
+
+
+class _FrozenJsonList(list[JsonData]):
+    """保留 JSON 数组读取与序列化行为，并拒绝常规原地修改。"""
+
+    def _reject_mutation(self, *args: Any, **kwargs: Any) -> NoReturn:
+        """拒绝修改已经进入历史快照的嵌套 JSON。"""
+        raise TypeError("下载历史快照 JSON 不可修改")
+
+    __setitem__ = _reject_mutation
+    __delitem__ = _reject_mutation
+    __iadd__ = _reject_mutation
+    __imul__ = _reject_mutation
+    append = _reject_mutation
+    clear = _reject_mutation
+    extend = _reject_mutation
+    insert = _reject_mutation
+    pop = _reject_mutation
+    remove = _reject_mutation
+    reverse = _reject_mutation
+    sort = _reject_mutation
+
+
+def _freeze_json(value: JsonData) -> JsonData:
+    """递归复制并冻结 JSON 容器，避免快照内部仍暴露可变引用。"""
+    if isinstance(value, dict):
+        return _FrozenJsonDict({key: _freeze_json(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return _FrozenJsonList([_freeze_json(item) for item in value])
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadHistorySnapshot:
+    """脱离数据库会话后供宿主下载、订阅和整理用例读取的历史快照。"""
+
+    id: int
+    path: str
+    type: str
+    title: str
+    year: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    music_type: Optional[str] = None
+    seasons: Optional[str] = None
+    episodes: Optional[str] = None
+    image: Optional[str] = None
+    poster: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    torrent_name: Optional[str] = None
+    torrent_description: Optional[str] = None
+    torrent_site: Optional[str] = None
+    userid: Optional[str] = None
+    username: Optional[str] = None
+    channel: Optional[str] = None
+    date: Optional[str] = None
+    note: Optional[JsonData] = None
+    media_category: Optional[str] = None
+    episode_group: Optional[str] = None
+    custom_words: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        """递归冻结可变 JSON 字段，使 DTO 在所有层级都不可修改。"""
+        object.__setattr__(self, "note", _freeze_json(self.note))
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadFileSnapshot:
+    """脱离数据库会话的下载文件关联快照。"""
+
+    id: int
+    downloader: Optional[str]
+    download_hash: Optional[str]
+    fullpath: Optional[str]
+    savepath: Optional[str]
+    filepath: Optional[str]
+    torrentname: Optional[str]
+    state: int
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadHistoryWrite:
+    """一次下载成功后写入历史所需的完整稳定数据。"""
+
+    path: str
+    type: str
+    title: str
+    year: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    music_type: Optional[str] = None
+    seasons: Optional[str] = None
+    episodes: Optional[str] = None
+    image: Optional[str] = None
+    poster: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    torrent_name: Optional[str] = None
+    torrent_description: Optional[str] = None
+    torrent_site: Optional[str] = None
+    userid: Optional[Union[str, int]] = None
+    username: Optional[str] = None
+    channel: Optional[str] = None
+    date: Optional[str] = None
+    note: Optional[JsonData] = None
+    media_category: Optional[str] = None
+    episode_group: Optional[str] = None
+    custom_words: Optional[str] = None
+
+    def to_payload(self) -> dict[str, Any]:
+        """返回可交给持久化适配器的独立字段副本。"""
+        payload = asdict(self)
+        if self.media_source is not None:
+            payload["media_source"] = str(self.media_source)
+        if self.userid is not None:
+            payload["userid"] = str(self.userid)
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadFileWrite:
+    """下载任务关联文件的一次稳定写入。"""
+
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    fullpath: Optional[str] = None
+    savepath: Optional[str] = None
+    filepath: Optional[str] = None
+    torrentname: Optional[str] = None
+    state: int = 1
+
+    def to_payload(self) -> dict[str, Any]:
+        """返回可交给持久化适配器的独立字段副本。"""
+        return asdict(self)
+
+
+class DownloadHistoryQueryPort(Protocol):
+    """宿主下载、订阅、Agent 和整理用例所需的类型化查询端口。"""
+
+    def get_by_hash(
+        self,
+        download_hash: str,
+    ) -> Optional[DownloadHistorySnapshot]:
+        """按下载任务 Hash 返回最新历史快照。"""
+        ...
+
+    def get_by_hashes(
+        self,
+        download_hashes: list[str],
+    ) -> dict[str, DownloadHistorySnapshot]:
+        """批量返回以下载任务 Hash 为键的最新历史快照。"""
+        ...
+
+    def get_by_path(self, path: str) -> Optional[DownloadHistorySnapshot]:
+        """按下载保存路径返回历史快照。"""
+        ...
+
+    def get_by_media_identity(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        music_type: Optional[str] = None,
+    ) -> list[DownloadHistorySnapshot]:
+        """按规范媒体身份返回历史快照。"""
+        ...
+
+    def get_file_by_fullpath(
+        self,
+        fullpath: str,
+    ) -> Optional[DownloadFileSnapshot]:
+        """按完整路径返回一条有效下载文件快照。"""
+        ...
+
+    def get_files_by_hash(
+        self,
+        download_hash: str,
+        state: Optional[int] = None,
+    ) -> list[DownloadFileSnapshot]:
+        """按下载任务 Hash 返回文件快照。"""
+        ...
+
+    def get_files_by_savepath(self, savepath: str) -> list[DownloadFileSnapshot]:
+        """按保存目录返回下载文件快照。"""
+        ...
+
+    async def async_list_by_page(
+        self,
+        page: int = 1,
+        count: int = 30,
+    ) -> list[DownloadHistorySnapshot]:
+        """异步按下载时间倒序分页返回历史快照。"""
+        ...
+
+
+class DownloadHistoryWritePort(Protocol):
+    """下载历史新增和删除所需的类型化事务端口。"""
+
+    def add(
+        self,
+        history: DownloadHistoryWrite,
+        files: tuple[DownloadFileWrite, ...] = (),
+    ) -> int:
+        """在单一事务中新增历史与关联文件并返回历史 ID。"""
+        ...
+
+    async def async_delete(self, history_id: int) -> None:
+        """在独立异步事务中删除指定历史。"""
+        ...
+
+
+class DownloadHistoryRepository(
+    DownloadHistoryQueryPort,
+    DownloadHistoryWritePort,
+    Protocol,
+):
+    """组合宿主所需全部下载历史查询和变更能力。"""
+
+
 class AsyncDownloadHistoryQueryRepository(Protocol):
     """下载历史只读用例需要的最小异步持久化端口。"""
 
@@ -106,7 +341,7 @@ class AsyncDownloadHistoryQueryRepository(Protocol):
         self,
         page: int = 1,
         count: int = 30,
-    ) -> list[Any]:
+    ) -> list[DownloadHistorySnapshot]:
         """按下载时间倒序分页读取历史记录。"""
         ...
 
@@ -228,10 +463,10 @@ class HistoryQueryService:
         *,
         page: int = 1,
         count: int = 30,
-    ) -> list[DownloadHistoryView]:
+    ) -> list[DownloadHistory]:
         """分页读取下载历史并转换为稳定的接口 DTO。"""
         records = await self._download_repository.async_list_by_page(page, count)
-        return [DownloadHistoryView.model_validate(record) for record in records]
+        return [DownloadHistory.model_validate(record) for record in records]
 
     async def list_transfer(
         self,
@@ -276,23 +511,23 @@ class HistoryQueryService:
             total = await self._transfer_repository.async_count(status=status)
 
         return TransferHistoryPage(
-            list=[TransferHistoryView.model_validate(record) for record in records],
+            list=[TransferHistory.model_validate(record) for record in records],
             total=int(total or 0),
         )
 
-    async def get_transfer(self, history_id: int) -> Optional[TransferHistoryView]:
+    async def get_transfer(self, history_id: int) -> Optional[TransferHistory]:
         """读取单条整理历史 DTO，不向调用方泄漏 ORM 实例。"""
         record = await self._transfer_repository.async_get(history_id)
         if record is None:
             return None
-        return TransferHistoryView.model_validate(record)
+        return TransferHistory.model_validate(record)
 
     async def get_transfers(
         self,
         history_ids: list[int],
-    ) -> tuple[list[TransferHistoryView], list[int]]:
+    ) -> tuple[list[TransferHistory], list[int]]:
         """按输入顺序读取多条整理历史，并同时返回缺失 ID。"""
-        records: list[TransferHistoryView] = []
+        records: list[TransferHistory] = []
         missing_ids: list[int] = []
         for history_id in history_ids:
             record = await self.get_transfer(history_id)

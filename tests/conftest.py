@@ -3,6 +3,7 @@
 引导与网络守卫均复用 ``app/testing`` 的共享 harness（与插件仓 conftest 同源），
 引导逻辑只在 ``app/testing`` 维护一处。
 """
+
 import asyncio
 import sys
 from collections.abc import Awaitable, Callable
@@ -124,8 +125,8 @@ def configure_plugin_system_services():
         configure_user_configuration,
     )
     from app.application.service import configure_service_directory
+    from app.db.adapters.configuration import TransactionalUserConfigurationRepository
     from app.db.oper.systemconfig import SystemConfigOper
-    from app.db.oper.userconfig import UserConfigOper
     from app.db.session import (
         SessionFactory,
         async_session_scope,
@@ -159,10 +160,10 @@ def configure_plugin_system_services():
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     database_executor = _TestDatabaseExecutor()
     system_config = SystemConfigOper()
-    user_config = UserConfigOper()
+    user_config = TransactionalUserConfigurationRepository(SessionFactory)
     with SessionFactory() as session:
         system_config.load_snapshot(session)
-        user_config.load_snapshot(session)
+    user_config.load_snapshot()
     configure_system_config(
         SystemConfigService(
             repository=system_config,
@@ -201,6 +202,7 @@ def configure_plugin_system_services():
     from app.runtime.extensions.module_manager import ModuleManager
     from app.runtime.extensions.plugin_manager import PluginManager
     from app.runtime.extensions.service_config import ServiceConfigHelper
+
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
@@ -216,6 +218,7 @@ def configure_plugin_system_services():
         configure_workflow_runtime,
     )
     from app.workflow import WorkflowManager
+
     configure_workflow_runtime(lambda: WorkflowManager())
     from app.application.agentdata import configure_agent_data_ports
     from app.application.agenttask import (
@@ -320,42 +323,39 @@ def configure_plugin_system_services():
         subscribe=lambda: SubscribeOper(),
         download_history=lambda: DownloadHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
-        transfer_pending=lambda: TransactionalTransferAdmissionRepository(
-            SessionFactory
-        ),
-        transfer_execution=lambda: TransactionalTransferExecutionRepository(
-            SessionFactory
-        ),
+        transfer_pending=lambda: TransactionalTransferAdmissionRepository(SessionFactory),
+        transfer_execution=lambda: TransactionalTransferExecutionRepository(SessionFactory),
         media_server=lambda: TransactionalMediaServerRepository(SessionFactory),
-        download_failure=lambda: TransactionalDownloadFailureRepository(
-            SessionFactory
-        ),
+        download_failure=lambda: TransactionalDownloadFailureRepository(SessionFactory),
         user=user_repository,
     )
-    configure_chain_runtime_context_provider(lambda: ChainRuntimeContext(
-        module_manager=ModuleManager(),
-        plugin_manager=PluginManager(),
-        event_manager=EventManager(),
-        message_oper=MessageOper(),
-        message_helper=MessageHelper(),
-        file_cache=FileCache(),
-        async_file_cache=AsyncFileCache(),
-        message_queue_factory=lambda callback: MessageQueueManager(
-            send_callback=callback
-        ),
-        module_dispatcher_factory=ModuleInvocationDispatcher,
-        configuration=build_chain_runtime_config(settings),
-    ))
+    configure_chain_runtime_context_provider(
+        lambda: ChainRuntimeContext(
+            module_manager=ModuleManager(),
+            plugin_manager=PluginManager(),
+            event_manager=EventManager(),
+            message_oper=MessageOper(),
+            message_helper=MessageHelper(),
+            file_cache=FileCache(),
+            async_file_cache=AsyncFileCache(),
+            message_queue_factory=lambda callback: MessageQueueManager(send_callback=callback),
+            module_dispatcher_factory=ModuleInvocationDispatcher,
+            configuration=build_chain_runtime_config(settings),
+        )
+    )
     configure_site_query_service(SiteQueryService(repository=site_repository()))
     configure_site_health_service(SiteHealthService(repository=site_repository()))
-    configure_workflow_query(WorkflowQueryService(
-        repository=TransactionalWorkflowQueryRepository(
-            sync_session=SessionFactory,
-            async_session=async_session_scope,
+    configure_workflow_query(
+        WorkflowQueryService(
+            repository=TransactionalWorkflowQueryRepository(
+                sync_session=SessionFactory,
+                async_session=async_session_scope,
+            )
         )
-    ))
+    )
     from app.db.oper.agenttask import AgentTaskOper
     from app.db.oper.plugindata import PluginDataOper
+
     configure_agent_data_ports(
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
@@ -367,11 +367,13 @@ def configure_plugin_system_services():
         download_history=lambda: DownloadHistoryOper(),
         plugin_data=lambda: PluginDataOper(),
     )
-    configure_agent_task_execution(AgentTaskExecutionService(
-        repository=lambda session: AgentTaskOper(session),
-        async_executor=database_executor,
-        sync_transaction=transaction_runner.sync,
-    ))
+    configure_agent_task_execution(
+        AgentTaskExecutionService(
+            repository=lambda session: AgentTaskOper(session),
+            async_executor=database_executor,
+            sync_transaction=transaction_runner.sync,
+        )
+    )
     configure_agent_chat_persistence(
         AgentChatPersistenceService(
             repository=lambda session: AgentChatOper(session),
@@ -395,18 +397,17 @@ def configure_plugin_system_services():
     )
 
     helper = PluginHelper()
-    configure_plugin_system(PluginSystemServices(
-        market=PluginMarketClient(helper),
-        package=PluginPackageManager(helper),
-        dependency=PluginDependencyInstaller(helper),
-        dependency_manifest_status=dependency_manifest_status,
-        compatible_flags=lambda flag: (
-            [flag] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, [])
-            if flag else []
-        ),
-        frozen=lambda: False,
-        install=lambda **_kwargs: (False, "测试环境未装配插件安装 Gateway"),
-    ))
+    configure_plugin_system(
+        PluginSystemServices(
+            market=PluginMarketClient(helper),
+            package=PluginPackageManager(helper),
+            dependency=PluginDependencyInstaller(helper),
+            dependency_manifest_status=dependency_manifest_status,
+            compatible_flags=lambda flag: [flag] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, []) if flag else [],
+            frozen=lambda: False,
+            install=lambda **_kwargs: (False, "测试环境未装配插件安装 Gateway"),
+        )
+    )
     from app.agent.llm.gateway import register_llm_provider_runtime
     from app.agent.llm.provider import LLMProviderManager
     from app.agent.skills.registry import SkillHelper
@@ -484,7 +485,16 @@ class DbHarness:
         except Exception:  # noqa: BLE001  会话已不可用时也要继续尝试清理
             pass
 
-        for model, mark in self._watermarks.items():
+        from app.db.base import Base
+
+        table_order = {table: index for index, table in enumerate(Base.metadata.sorted_tables)}
+        models = sorted(
+            self._watermarks,
+            key=lambda model: table_order.get(model.__table__, -1),
+            reverse=True,
+        )
+        for model in models:
+            mark = self._watermarks[model]
             try:
                 self.session.execute(delete(model).where(model.id > mark))
                 self.session.commit()

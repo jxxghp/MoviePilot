@@ -1,18 +1,22 @@
 """订阅删除应用用例及其依赖端口。"""
 
+import inspect
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import inspect
-from typing import Any, Awaitable, Callable, Mapping, Protocol, cast
+from typing import Any, Awaitable, Callable, Mapping, Optional, Protocol, cast
 from uuid import uuid4
 
 from app.application.outbox import (
-    AsyncOutboxTransaction,
-    OutboxIntent,
-    SyncOutboxTransaction,
-    SyncUnitOfWork,
     SUBSCRIBE_DELETED_TOPIC,
+    AsyncOutboxDispatchStore,
+    AsyncOutboxStager,
+    OutboxDispatchStore,
+    OutboxIntent,
+    OutboxStager,
+    SyncUnitOfWork,
+    deliver_async_outbox_effect,
+    deliver_outbox_effect,
 )
 from app.runtime.log import logger
 from app.schemas.event import SubscribeDeletedEventData
@@ -64,6 +68,7 @@ class SyncSubscribeDeletionRepository(Protocol):
         """把已读取的订阅登记为待删除，但不自行提交事务。"""
         ...
 
+
 class AsyncUnitOfWork(Protocol):
     """订阅写用例使用的异步事务端口。"""
 
@@ -101,7 +106,8 @@ class DeleteSubscribeCommand:
         unit_of_work: AsyncUnitOfWork,
         publish_deleted: SubscribeDeletedPublisher,
         report_deleted: SubscribeDeletedReporter,
-        outbox: AsyncOutboxTransaction | None = None,
+        outbox: Optional[AsyncOutboxStager] = None,
+        dispatch_store: Optional[AsyncOutboxDispatchStore] = None,
     ) -> None:
         """注入数据访问、事务与提交后副作用端口。"""
         self._repository = repository
@@ -109,6 +115,7 @@ class DeleteSubscribeCommand:
         self._publish_deleted = publish_deleted
         self._report_deleted = report_deleted
         self._outbox = outbox
+        self._dispatch_store = dispatch_store
 
     async def execute(
         self,
@@ -146,28 +153,37 @@ class DeleteSubscribeCommand:
             await self._unit_of_work.rollback()
             raise
 
-        await self._publish_deleted(effects.event_payload)
-        if self._outbox:
-            await self._outbox.complete_by_event_key(
+        if self._dispatch_store:
+            await deliver_async_outbox_effect(
+                self._dispatch_store,
                 effects.event_intent.event_key,
-                datetime.now(timezone.utc),
+                lambda: self._publish_deleted(effects.event_payload),
             )
+        else:
+            await self._publish_deleted(effects.event_payload)
         # 上报适配器会自行白名单过滤公开字段；传完整删除前快照可保留音乐实体维度，
         # 避免 Agent 与 API 入口收敛后丢失 music_type / total_tracks。
         try:
-            report_result = self._report_deleted(effects.report_payload)
-            if inspect.isawaitable(report_result):
-                report_result = await report_result
+
+            async def report() -> object:
+                """统一等待同步或异步统计 reporter 的确认结果。"""
+                result = self._report_deleted(effects.report_payload)
+                return await result if inspect.isawaitable(result) else result
+
+            report_result: object
+            if self._dispatch_store:
+                report_result = await deliver_async_outbox_effect(
+                    self._dispatch_store,
+                    effects.report_intent.event_key,
+                    report,
+                )
+            else:
+                report_result = await report()
         except Exception as error:
             logger.warning(f"订阅删除统计上报失败，将由后台重试：{error}")
         else:
             if report_result is False:
                 logger.warning("订阅删除统计上报未确认，将由后台重试")
-            elif self._outbox:
-                await self._outbox.complete_by_event_key(
-                    effects.report_intent.event_key,
-                    datetime.now(timezone.utc),
-                )
         return True
 
 
@@ -180,7 +196,8 @@ class SyncDeleteSubscribeCommand:
         unit_of_work: SyncUnitOfWork,
         publish_deleted: SyncSubscribeDeletedPublisher,
         report_deleted: SyncSubscribeDeletedReporter,
-        outbox: SyncOutboxTransaction | None = None,
+        outbox: Optional[OutboxStager] = None,
+        dispatch_store: Optional[OutboxDispatchStore] = None,
     ) -> None:
         """注入同步数据访问、事务与提交后副作用端口。"""
         self._repository = repository
@@ -188,6 +205,7 @@ class SyncDeleteSubscribeCommand:
         self._publish_deleted = publish_deleted
         self._report_deleted = report_deleted
         self._outbox = outbox
+        self._dispatch_store = dispatch_store
 
     def execute(
         self,
@@ -215,24 +233,29 @@ class SyncDeleteSubscribeCommand:
             self._unit_of_work.rollback()
             raise
 
-        self._publish_deleted(effects.event_payload)
-        if self._outbox:
-            self._outbox.complete_by_event_key(
+        if self._dispatch_store:
+            deliver_outbox_effect(
+                self._dispatch_store,
                 effects.event_intent.event_key,
-                datetime.now(timezone.utc),
+                lambda: self._publish_deleted(effects.event_payload),
             )
+        else:
+            self._publish_deleted(effects.event_payload)
         try:
-            report_result = self._report_deleted(effects.report_payload)
+            report_result: object
+            if self._dispatch_store:
+                report_result = deliver_outbox_effect(
+                    self._dispatch_store,
+                    effects.report_intent.event_key,
+                    lambda: self._report_deleted(effects.report_payload),
+                )
+            else:
+                report_result = self._report_deleted(effects.report_payload)
         except Exception as error:
             logger.warning(f"订阅删除统计上报失败，将由后台重试：{error}")
         else:
             if report_result is False:
                 logger.warning("订阅删除统计上报未确认，将由后台重试")
-            elif self._outbox:
-                self._outbox.complete_by_event_key(
-                    effects.report_intent.event_key,
-                    datetime.now(timezone.utc),
-                )
         return True
 
 
@@ -257,6 +280,7 @@ def _build_deletion_effects(
     event_key = event_payload["idempotency_key"]
     report_key = f"{event_key}:report"
     report_payload = dict(subscribe_info)
+    report_payload["idempotency_key"] = report_key
     return _SubscribeDeletionEffects(
         event_payload=event_payload,
         report_payload=report_payload,

@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pytest
 
+from app.application.outbox import ClaimedOutboxMessage
 from app.application.subscription.complete import CompleteSubscriptionCommand
 
 
@@ -54,14 +55,29 @@ class _Outbox:
         """记录 durable intent。"""
         self.calls.append(("stage", intent))
 
-    def claim_by_event_key(self, event_key: str, _now: datetime, _lease_until: datetime) -> bool:
+    def claim_by_event_key(self, event_key: str, _now: datetime, _lease_until: datetime):
         """记录同步投递认领结果。"""
         self.calls.append(("claim", event_key))
-        return self.claim_result
+        if not self.claim_result:
+            return None
+        return ClaimedOutboxMessage(
+            message_id=len(self.calls),
+            event_key=event_key,
+            topic="test",
+            payload={},
+            payload_version=1,
+            attempt=1,
+        )
 
-    def complete_by_event_key(self, event_key: str, _now: datetime) -> None:
+    def complete(self, message_id: int, attempt: int, _now: datetime) -> bool:
         """记录成功副作用对应的 intent 收口。"""
-        self.calls.append(("complete", event_key))
+        self.calls.append(("complete", message_id, attempt))
+        return True
+
+    def retry(self, message_id: int, attempt: int, **_kwargs) -> bool:
+        """记录失败副作用对应的 intent 释放。"""
+        self.calls.append(("retry", message_id, attempt))
+        return True
 
 
 def _command(
@@ -93,10 +109,12 @@ def _command(
             raise report_error
         return report_result
 
+    outbox = _Outbox(calls, claim_result)
     return CompleteSubscriptionCommand(
         repository=_Repository(calls),
         unit_of_work=_UnitOfWork(calls),
-        outbox=_Outbox(calls, claim_result),
+        outbox=outbox,
+        dispatch_store=outbox,
         publish=publish,
     ), notify, report
 
@@ -128,7 +146,9 @@ def test_completion_stages_business_and_independent_intents_before_commit(failur
     if failure == "notify":
         assert [call[0] for call in calls[5:]] == ["notify"]
     elif failure == "event":
-        assert [call[0] for call in calls[5:]] == ["notify", "claim", "event"]
+        assert [call[0] for call in calls[5:]] == [
+            "notify", "claim", "event", "retry",
+        ]
 
 
 def test_completion_report_failure_returns_success_and_keeps_intent_pending():
@@ -146,7 +166,7 @@ def test_completion_report_failure_returns_success_and_keeps_intent_pending():
 
     assert [call[0] for call in calls] == [
         "history", "delete", "stage", "stage", "commit",
-        "notify", "claim", "event", "complete", "claim", "report",
+        "notify", "claim", "event", "complete", "claim", "report", "retry",
     ]
 
 
@@ -168,7 +188,7 @@ def test_completion_report_error_returns_success_and_keeps_intent_pending():
 
     assert [call[0] for call in calls] == [
         "history", "delete", "stage", "stage", "commit",
-        "notify", "claim", "event", "complete", "claim", "report",
+        "notify", "claim", "event", "complete", "claim", "report", "retry",
     ]
 
 
@@ -215,8 +235,13 @@ def test_completion_stages_and_closes_notification_snapshot() -> None:
         "subscribe.complete.report",
     ]
     assert staged[1].payload["message"]["title"] == "完成"
-    completed = [call[1] for call in calls if call[0] == "complete"]
-    assert completed[0].endswith(":notification")
+    completed = [call for call in calls if call[0] == "complete"]
+    notification_claim = next(
+        call for call in calls
+        if call[0] == "claim" and call[1].endswith(":notification")
+    )
+    assert completed[0][1] > 0
+    assert notification_claim[1].endswith(":notification")
 
 
 def test_completion_skips_sync_delivery_owned_by_outbox_dispatcher() -> None:

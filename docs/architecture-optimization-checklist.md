@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 853 / 6,979 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 856 / 7,006 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,8 +78,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 11,808 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 868 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 79.02%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| Ruff 历史诊断 | 840 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 79.39%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -101,7 +101,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 ## 4. 优化清单总表
 
-状态含义：`阻塞` 表示当前门禁已失败；`待执行` 表示尚未开始；`渐进` 表示应按触碰路径逐步收敛。
+状态含义：`阻塞` 表示当前门禁已失败；`待执行` 表示尚未开始；`执行中` 表示只完成部分纵切面；`已验证` 表示实现和本地合同已落地但未在本文中声明未知的提交或 CI；`渐进` 表示应按触碰路径逐步收敛。
 
 | ID | 优先级 | 状态 | 事项 | 目标结果 |
 |---|---|---|---|---|
@@ -110,10 +110,10 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-102 | P1 | 已交付 | 将 Transfer pending 升级为真实 E3 状态机 | `e9de149db`、`a2e249f20` 已推送；Unit Tests `33092427327`、Pylint `33092427348` 全绿，崩溃结果未知时进入人工确认 |
 | ARCH-103 | P1 | 执行中 | 类型化 Chain/Agent 数据 Port 与 DTO | 宿主主路径不再注入无 Session Oper，不向入口泄漏 ORM |
 | ARCH-104 | P1 | 待执行 | 收口跨多次写入的业务事务 | 站点/规则引用清理可整体回滚或幂等恢复 |
-| ARCH-105 | P1 | 待执行 | 明确 post-commit 与 Outbox 完成语义 | “业务已提交、后置效果 pending”可被调用方正确识别 |
+| ARCH-105 | P1 | 已验证 | 明确 post-commit 与 Outbox 完成语义 | 业务提交、effect 完成/pending 可区分；stager/store 分离且 claim/settlement 受 fencing，外部 sink 仍承担 at-least-once 幂等边界 |
 | ARCH-106 | P1 | 待执行 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 导入或普通 Chain 构造不再启动进程资源 |
 | ARCH-107 | P1 | 待执行 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
-| ARCH-108 | P1 | 待执行 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | 依赖倒置有明确例外、低水位和迁移顺序 |
+| ARCH-108 | P1 | 执行中 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Passkey 缓存纵切面已验证，其余 Adapter/HTTP/DNS 债务继续按低水位迁移 |
 | ARCH-109 | P1 | 待执行 | 按用例拆分超大 Chain、Scheduler 和厚 API | 稳定 Facade 保留，决策/I/O/状态/生命周期各有 owner |
 | ARCH-110 | P1 | 待执行 | Module/Event Contract 分可信级执行 | 宿主 provider 严格，第三方插件仍兼容诊断 |
 | ARCH-111 | P1 | 待执行 | 升级复杂度、类型、覆盖率和并发原语门禁 | 高风险私有路径也进入只降不增的治理面 |
@@ -268,14 +268,13 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- `app/application/chain/data.py:14-29,134-176` 的 Oper factory 和 getter 基本都是 `Any`；
-  `app/application/agentdata.py:91-120` 还通过 `__dict__.update()` 动态组装端口。
-- `app/startup/initializers/modules.py:848-863,896-910` 仍向生产 Chain/Agent 注入多个无 Session Oper。
+- `app/application/chain/data.py` 的 Site/Subscribe/TransferHistory factory 仍是 `Any`；
+  `app/application/agentdata.py` 仍通过 `__dict__.update()` 动态组装未迁移端口。
+- `app/startup/initializers/modules.py` 仍向生产 Chain/Agent 注入部分无 Session Oper。
 - 无 Session Oper 会为单次调用独立创建事务；一个业务操作的“查询后更新”可能被拆成多个事务。
-- Workflow query 已在 S1-L2 迁入冻结 DTO 和 adapter-owned Session 投影；其余 Chain/Agent raw data port
-  仍返回 `Any`/ORM，Subscription mutation 内部也消费 ORM，因而仍存在 Session 生命周期外
-  detached/lazy-load 的潜在风险。公开 Subscription、Site、History QueryService 已经投影 DTO，
-  属于完成项，不应重做。
+- Workflow、User 和 DownloadHistory 已迁入冻结 DTO 与 adapter-owned Session 投影；
+  剩余 Chain/Agent raw data port 仍可返回 `Any`/ORM，Subscription mutation 内部也消费 ORM，
+  因而尚有 Session 生命周期外 detached/lazy-load 风险。
 - S1-L2 由 `b4f873654`、`a01a35bcb` 交付；精确 head SHA 的 Unit Tests `33098869736` 与
   Pylint `33098869837` 全绿，Application 覆盖率低水位提升并固化至 `78.78%`。该证据只完成
   Workflow query 纵切面，不能替代 S1-L3 对其余 Chain/Agent raw data port 的清零。
@@ -293,15 +292,20 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   伪注入；Workflow 执行服务只在 Application owner 配置一次，不再重复注册到 `ChainDataPorts`。
 - [x] DownloadFailure/MediaServer 两个 registry 字段改用冻结 DTO 与 typed Repository factory；
   ORM 不越过短 Session，媒体库远端枚举期间不持有事务，旧 Oper/Compat 与公开 Chain ABI 保持不变。
+- [x] User Chain/Agent/认证查询改用冻结 `UserSnapshot`/`UserAuthSnapshot`；创建、更名和
+  删除由请求级 UoW 原子提交，用户名唯一约束、最后一个启用超级管理员保护与
+  UserConfig/PassKey 级联约束共同守住身份聚合。
+- [x] DownloadHistory 查询和写入改用冻结 DTO、typed Port 与短 Session adapter，删除在单一
+  UoW 中处理；TransferHistory 仍是 raw port，History 整体仍在执行中。
 - [ ] `ChainDataPorts`/`AgentDataPorts` 可暂时保留为兼容聚合器，但字段必须显式、可类型检查。
 - [ ] 以一个业务纵切面迁移并验证后，再迁移下一组，禁止一次替换所有 Oper。
 - [ ] 增加 AST 门禁，禁止向 `ChainDataPorts`、`AgentDataPorts` 和新的 canonical use-case service
   注入裸 Oper；SystemConfig singleton、legacy transaction runner 等兼容边界使用精确 allowlist。
 
-**首批建议**
+**后续顺序**
 
-1. Workflow query DTO。
-2. Chain/Agent 的 Subscribe/History/User/Site raw port。
+1. 完成 TransferHistory，收口 History 剩余半边。
+2. Chain/Agent 的 Subscribe/Site raw port。
 3. Subscription mutation 与站点、规则组引用更新。
 4. Agent 数据能力。
 
@@ -350,28 +354,29 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 ### ARCH-105 明确 post-commit 与 Outbox 完成语义
 
-**问题与证据**
+**已实现事实与语义边界**
 
-- `app/application/outbox.py:167-192` 在业务提交后直接执行 `after_commit()`、即时 publish 和完成标记；
-  某一步抛错时，调用方可能收到失败，但业务行和 intent 已经提交。
-- 通用 `DurableEventCommand` commit 后没有先调用已经定义的 `claim_by_event_key()`；dispatcher 可在
-  commit 与请求线程即时 publish 之间先 claim 并投递，随后请求线程再次 publish，形成双发窗口。
-  `app/application/subscription/complete.py:111-145` 已提供先 claim 的正确参考。
-- 下载历史及事件 intent 已原子提交；通知在 commit 后同步执行，模块后处理和字幕再投进线程池。
-  进程在提交与这些动作完成之间退出时，未持久化的动作不会自动恢复。
-- `SqlAlchemyOutboxRepository` 同时提供不提交的 `stage()` 和内部自提交的 dispatcher 方法，
-  事务所有权没有由类型清楚表达。
+- `OutboxStager` 只在业务 Session 中 stage/flush；`OutboxDispatchStore` 的 claim、complete 和 retry
+  每次使用独立短事务，业务与 dispatcher 的事务所有权已由类型分开。
+- 请求线程即时投递与 dispatcher 均先按稳定 event key 原子 claim；同一 lease 期间只有
+  一个 owner，过期 owner 不能用旧 attempt 覆盖新 owner 的 complete/retry。
+- `PostCommitResult`/`PostCommitEffectError` 保留“业务已提交”事实，并逐项列出已完成和
+  pending effect，后置效果失败不伪装成业务回滚。
+- lease/attempt fencing 只保护宿主的认领与结算。外部调用成功但 complete 落库前崩溃时，
+  intent 仍会重放；因此交付承诺是 at-least-once。事件载荷和宿主 correlation context
+  携带稳定 event key，支持幂等的消费者应使用它；旧通知插件保持原方法签名，不能宣称外部
+  provider 已获得 exactly-once 或统一幂等能力。
 
 **目标与步骤**
 
-- [ ] Command 返回结构化结果：业务是否提交、哪些后置效果完成、哪些处于 pending。
-- [ ] commit 后先取得 delivery lease；未取得时跳过请求线程直投，确保与 dispatcher 排他。
-- [ ] 每个 post-commit effect 使用独立 intent 隔离和结算，避免效果 A 失败导致效果 B 被一起重放。
+- [x] Command 返回结构化结果：业务是否提交、哪些后置效果完成、哪些处于 pending。
+- [x] commit 后先取得 delivery lease；未取得时跳过请求线程直投，确保与 dispatcher 排他。
+- [x] 每个 post-commit effect 使用独立 intent 隔离和结算，避免效果 A 失败导致效果 B 被一起重放。
   单个外部效果仍是 at-least-once，必须有稳定幂等键和幂等 handler/消费者。
 - [ ] 按完成承诺、可重建性、外部不可逆性和业务重要性划分 E0-E3；用户可见性只是因素之一。
-- [ ] 拆分 `OutboxStager` 与 `OutboxDispatchStore`，避免业务 Session 调用自提交方法。
-- [ ] 在 commit、claim、publish、complete、通知和任务提交各断点注入异常/崩溃，验证声明等级与实际恢复一致。
-- [ ] 增加请求线程即时投递与 dispatcher 并发竞争测试，以及“外部调用成功、complete 前崩溃”的重放测试。
+- [x] 拆分 `OutboxStager` 与 `OutboxDispatchStore`，避免业务 Session 调用自提交方法。
+- [x] 在 commit、claim、publish、complete、通知和任务提交各断点注入异常/崩溃，验证声明等级与实际恢复一致。
+- [x] 增加请求线程即时投递与 dispatcher 并发竞争测试，以及“外部调用成功、complete 前崩溃”的重放测试。
 
 ```bash
 .venv/bin/python -m pytest \
@@ -469,7 +474,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
   `security/passkey.py`、`backup.py`、`image.py`、`rss.py`、`security/cookie.py`。
 - `app/chain` 有 8 个文件、13 条直接 Adapter 导入，使用 `RequestUtils`、Browser、Cloudflare、
   CookieCloud、ServerHelper 等具体能力。
-- Passkey Application 服务直接判断 Redis 后端并调用 `RedisHelper.pop()`，安全策略识别了具体实现。
+- Passkey Application 已改为消费启动注入的 `PasskeyChallengeCache`，不再判断 Redis 或导入
+  具体 cache adapter；Memory/Redis 均实现严格 `AtomicCacheBackend.store/consume`。
 - 审计时 LLM streaming、第三方 SDK、移植库和本地控制面没有精确例外表；S0-L2.4b 已建立
   66 条完整 egress identity 与 zero-growth policy，其中 11 条普通 HTTP/Session bridge 和 1 条
   Application DNS I/O 是清零债务；每条初始边另有独立指纹上界，不能靠同时刷新 baseline/policy
@@ -479,7 +485,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 - [x] 建立 Application/Chain 原始 Adapter 直连事实与精确临时 policy，冻结新增、替换和陈旧条目。
 - [x] 建立全宿主 direct egress 事实；SDK/stream/vendor/local-control 例外精确到 bindings/uses 指纹。
-- [ ] 将 Passkey 原子领取提升为 runtime cache contract，由 Memory/Redis backend 分别实现。
+- [x] 将 Passkey 原子领取提升为 runtime cache contract，由 Memory/Redis backend 分别实现。
 - [ ] 为 Backup 定义 Application-owned artifact store Port，由 startup 注入文件系统实现。
 - [ ] 将 policy 中 11 条普通 HTTP/Session bridge 债务迁移到统一网络能力并把目标收缩为空。
 - [ ] 为 Application SSRF 校验注入 DNS 解析 Port，清除 `socket.getaddrinfo` 直接 I/O。
@@ -611,7 +617,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 1. ARCH-102 设计并迁移 Transfer E3 状态机。
 2. 以站点/规则引用清理为 ARCH-103/104 的第一个 typed Port + UoW 纵切面。
-3. 完成 ARCH-105 的 post-commit 结构化结果与 Outbox 角色拆分。
+3. ARCH-105 已完成 post-commit 结构化结果、Outbox 角色拆分和 claim fencing；
+   后续只继续清理独立 intent 与更完整的崩溃矩阵。
 
 **退出条件**：故障注入覆盖清单列出的崩溃窗口；schema 有 migration；主路径不再 fail-open；调用方能区分
 业务提交与后置效果 pending。
@@ -620,7 +627,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 1. ARCH-106 将日志、消息队列和主循环 gateway 纳入 lifecycle。
 2. ARCH-107 拆出 `chain/base.py` 并消除新增 SCC。
-3. ARCH-108 先迁移 Passkey、Backup，再按风险迁移外部调用。
+3. ARCH-108 的 Passkey 缓存边界已验证；下一纵切面是 Backup，之后按风险迁移外部调用。
 
 **退出条件**：冷导入不启动线程；SCC 只剩 TMDB 精确豁免；Application/Chain 到 Adapter 的债务只降不增。
 

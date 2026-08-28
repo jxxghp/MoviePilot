@@ -19,7 +19,12 @@ from app.application.chain.events import (
     snapshot_transfer_result,
     transfer_result_event_key,
 )
-from app.application.history import TransferHistoryRecord, TransferHistoryWriter
+from app.application.history import (
+    DownloadFileWrite,
+    DownloadHistoryWrite,
+    TransferHistoryRecord,
+    TransferHistoryWriter,
+)
 from app.application.outbox import (
     DOWNLOAD_ADDED_TOPIC,
     DurableEventCommand,
@@ -32,7 +37,10 @@ from app.application.transfer.execution import (
     TransferExecutionState,
     TransferSettlementResult,
 )
-from app.db.adapters.outbox import SqlAlchemyOutboxRepository
+from app.db.adapters.outbox import (
+    SqlAlchemyOutboxDispatchStore,
+    SqlAlchemyOutboxStager,
+)
 from app.db.models.transfersettlementreceipt import TransferSettlementReceipt
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.transferexecutionstep import TransferExecutionStepOper
@@ -114,8 +122,8 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
     def download_added(
         self,
         *,
-        history_payload: dict[str, Any],
-        file_payloads: list[dict[str, Any]],
+        history: DownloadHistoryWrite,
+        files: tuple[DownloadFileWrite, ...],
         event_payload: dict[str, Any],
         after_commit: Callable[[], None],
         publish: Callable[[dict[str, Any]], None],
@@ -124,17 +132,20 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
         session = self._session_factory()
         try:
             repository = DownloadHistoryOper(session)
-            outbox = SqlAlchemyOutboxRepository(session)
+            outbox = SqlAlchemyOutboxStager(session)
             command = DurableEventCommand(
                 unit_of_work=SqlAlchemyUnitOfWork(session),
-                outbox=outbox,
+                stager=outbox,
+                store=SqlAlchemyOutboxDispatchStore(self._session_factory),
             )
             def stage_business() -> int:
                 """在同一事务暂存下载历史和可选文件清单。"""
-                history = repository.stage_add(history_payload)
-                if file_payloads:
-                    repository.stage_add_files(file_payloads)
-                return int(history.id)
+                record = repository.stage_add(history.to_payload())
+                if files:
+                    repository.stage_add_files([
+                        file_item.to_payload() for file_item in files
+                    ])
+                return int(record.id)
 
             def build_intent(history_id: int) -> OutboxIntent:
                 """历史 ID 确定后构造本次下载事实的稳定事件键。"""
@@ -182,7 +193,8 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
 
             command = DurableEventCommand(
                 unit_of_work=SqlAlchemyUnitOfWork(session),
-                outbox=SqlAlchemyOutboxRepository(session),
+                stager=SqlAlchemyOutboxStager(session),
+                store=SqlAlchemyOutboxDispatchStore(self._session_factory),
             )
 
             def stage_business() -> _StagedTransferResult:
@@ -271,7 +283,7 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                 )
 
             try:
-                result = command.execute(
+                execution = command.execute(
                     intent=build_intent if topic is not None else None,
                     stage_business=stage_business,
                     publish=(
@@ -301,6 +313,7 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                 if replay is None:
                     raise
                 return replay
+            result = execution.value
             return result.settlement or result.history
         finally:
             session.close()

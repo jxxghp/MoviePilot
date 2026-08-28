@@ -64,7 +64,7 @@ def test_resolve_download_history_falls_back_to_parent_download_path():
     )
 
     history = _make_chain()._resolve_download_history(
-        downloadhis=oper,
+        repository=oper,
         file_path=Path("/downloads/season-pack/Test.Show.S01E01.mkv"),
     )
 
@@ -85,7 +85,7 @@ def test_resolve_download_history_falls_back_to_unique_savepath_hash():
     )
 
     history = _make_chain()._resolve_download_history(
-        downloadhis=oper,
+        repository=oper,
         file_path=Path("/downloads/season-pack/subs/Test.Show.S01E01.zh.ass"),
     )
 
@@ -108,7 +108,7 @@ def test_resolve_download_history_skips_ambiguous_savepath_hashes():
     )
 
     history = _make_chain()._resolve_download_history(
-        downloadhis=oper,
+        repository=oper,
         file_path=Path("/downloads/shared/Test.Show.S01E01.mkv"),
     )
 
@@ -128,7 +128,7 @@ def test_resolve_download_history_stops_at_shared_download_root_path(monkeypatch
     )
 
     history = _make_chain()._resolve_download_history(
-        downloadhis=oper,
+        repository=oper,
         file_path=Path("/downloads/Ghost.Concert.mkv"),
     )
 
@@ -156,7 +156,7 @@ def test_resolve_download_history_stops_at_shared_download_root_savepath(monkeyp
     )
 
     history = _make_chain()._resolve_download_history(
-        downloadhis=oper,
+        repository=oper,
         file_path=Path("/downloads/Ghost.Concert.mkv"),
     )
 
@@ -184,7 +184,7 @@ def test_resolve_download_history_accepts_shared_root_savepath_for_exact_file(mo
     )
 
     history = _make_chain()._resolve_download_history(
-        downloadhis=oper,
+        repository=oper,
         file_path=Path("/downloads/Ghost.Concert.mkv"),
     )
 
@@ -215,7 +215,7 @@ def test_resolve_download_history_stops_at_type_category_download_root(monkeypat
     )
 
     history = _make_chain()._resolve_download_history(
-        downloadhis=oper,
+        repository=oper,
         file_path=Path("/downloads/电视剧/动漫/Ghost.Concert.mkv"),
     )
 
@@ -301,7 +301,7 @@ def test_resolve_download_history_stops_at_nested_category_root(monkeypatch):
     )
 
     history = _make_chain()._resolve_download_history(
-        downloadhis=oper,
+        repository=oper,
         file_path=Path("/downloads/动漫/日本番剧/Ghost.Concert.mkv"),
     )
 

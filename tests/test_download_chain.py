@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ from app.application.download.failures import (
     DownloadFailureSnapshot,
     DownloadFailureWrite,
 )
+from app.application.history import DownloadHistorySnapshot
 from app.chain.download import DownloadChain
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
@@ -19,6 +21,19 @@ from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaSource, MediaType
+
+
+@pytest.fixture(autouse=True)
+def _restore_eventmanager_instance_override() -> Iterator[None]:
+    """每个用例后恢复事件单例实例属性，避免遮蔽后续类级 monkeypatch。"""
+    instance = download_module.eventmanager
+    marker = object()
+    original = vars(instance).get("send_event", marker)
+    yield
+    if original is marker:
+        vars(instance).pop("send_event", None)
+    else:
+        vars(instance)["send_event"] = original
 
 
 @pytest.fixture(autouse=True)
@@ -41,10 +56,8 @@ class _FakeDownloadHistoryOper:
     避免单元测试写入真实下载历史，只验证下载链路的控制流。
     """
 
-    def add(self, **_kwargs):
-        pass
-
-    def add_files(self, _files):
+    def add(self, _history, _files=()):
+        """忽略当前用例无需验证的类型化历史写入。"""
         pass
 
 
@@ -266,13 +279,9 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
     class _CapturingDownloadHistoryOper:
         """捕获写入下载历史的字段，验证识别词快照确实落库。"""
 
-        def add(self, **kwargs):
+        def add(self, history, _files=()):
             """捕获下载历史字段。"""
-            captured.update(kwargs)
-
-        def add_files(self, _files):
-            """忽略与当前断言无关的下载文件记录。"""
-            pass
+            captured.update(history.to_payload())
 
     _FakeThreadHelper.submitted = []
     monkeypatch.setattr(
@@ -1283,13 +1292,15 @@ def test_downloading_includes_media_type_and_source_site(monkeypatch):
     正在下载任务应从下载历史回填媒体类型和来源站点。
     """
     torrent = DownloaderTorrent(hash="download-hash", title="Demo.Release")
-    history = SimpleNamespace(
+    history = DownloadHistorySnapshot(
+        id=1,
+        path="/downloads/Demo.Release.mkv",
         episodes="E02",
         image="https://images.example.com/backdrop.jpg",
         poster="https://images.example.com/poster.jpg",
         seasons="S01",
         title="示例剧集",
-        media_source=MediaSource.TMDB.value,
+        media_source=MediaSource.TMDB,
         media_id="1001",
         torrent_site="示例站点",
         type="电视剧",
@@ -1307,10 +1318,11 @@ def test_downloading_includes_media_type_and_source_site(monkeypatch):
     result = chain.downloading(name="qb-main")
 
     assert result == [torrent]
-    assert torrent.media["type"] == "电视剧"
-    assert torrent.media["image"] == "https://images.example.com/poster.jpg"
-    assert torrent.media["poster"] == "https://images.example.com/poster.jpg"
-    assert torrent.media["backdrop"] == "https://images.example.com/backdrop.jpg"
+    assert torrent.media is not None
+    assert torrent.media.type == "电视剧"
+    assert torrent.media.image == "https://images.example.com/poster.jpg"
+    assert torrent.media.poster == "https://images.example.com/poster.jpg"
+    assert torrent.media.backdrop == "https://images.example.com/backdrop.jpg"
     assert torrent.site_name == "示例站点"
     assert torrent.userid == "user-1"
     assert torrent.username == "tester"

@@ -20,8 +20,10 @@ from app.application.subscription.mutation import (
     configure_subscription_mutation_scope,
 )
 from app.db.adapters.outbox import (
+    SqlAlchemyAsyncOutboxDispatchStore,
     SqlAlchemyAsyncOutboxStager,
-    SqlAlchemyOutboxRepository,
+    SqlAlchemyOutboxDispatchStore,
+    SqlAlchemyOutboxStager,
 )
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
@@ -59,7 +61,8 @@ def subscription_completion_scope() -> Iterator[CompleteSubscriptionCommand]:
         yield CompleteSubscriptionCommand(
             repository=SubscribeOper(session),
             unit_of_work=SqlAlchemyUnitOfWork(session),
-            outbox=SqlAlchemyOutboxRepository(session),
+            outbox=SqlAlchemyOutboxStager(session),
+            dispatch_store=SqlAlchemyOutboxDispatchStore(SessionFactory),
             publish=_publish_completed,
         )
     finally:
@@ -75,6 +78,9 @@ async def subscription_mutation_scope() -> AsyncIterator[SubscriptionMutationSer
             history_repository=SubscribeHistoryOper(session),
             unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
             outbox=SqlAlchemyAsyncOutboxStager(session),
+            dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(
+                async_session_scope
+            ),
             publish_modified=_publish_modified,
         )
 
@@ -89,6 +95,9 @@ async def delete_subscribe_scope() -> AsyncIterator[DeleteSubscribeCommand]:
             publish_deleted=_publish_deleted,
             report_deleted=MoviePilotServerHelper.async_sub_done_durable,
             outbox=SqlAlchemyAsyncOutboxStager(session),
+            dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(
+                async_session_scope
+            ),
         )
 
 
@@ -102,7 +111,8 @@ def sync_delete_subscribe_scope() -> Iterator[SyncDeleteSubscribeCommand]:
             unit_of_work=SqlAlchemyUnitOfWork(session),
             publish_deleted=_publish_deleted_sync,
             report_deleted=MoviePilotServerHelper.sub_done_durable,
-            outbox=SqlAlchemyOutboxRepository(session),
+            outbox=SqlAlchemyOutboxStager(session),
+            dispatch_store=SqlAlchemyOutboxDispatchStore(SessionFactory),
         )
     finally:
         session.close()

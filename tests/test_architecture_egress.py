@@ -110,7 +110,7 @@ FROZEN_EGRESS_REASON_BY_EDGE = {
     for edge in edges
 }
 FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
-    ("app.adapters.cache.redis", "redis"): "9d455a5298d4373ff18d74a9d498a3dd797bcb5f5543af9776c0c741c30362c7",
+    ("app.adapters.cache.redis", "redis"): "49f0b28ef731b25aa772d6887febd762d03b981a1f52d6dfc8dff82f2f489f81",
     ("app.adapters.external.market", "httpx2"): "d4a648e8188818c0465013fc63cc3e49899da4df38541344303c251896564b1f",
     ("app.adapters.external.market", "requests"): "ecc5368adfced20741e5ed8696008ea7555a4a81ceda6d7149e09f5f3d0ff7e3",
     ("app.adapters.network.browser", "cloakbrowser"): "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173",

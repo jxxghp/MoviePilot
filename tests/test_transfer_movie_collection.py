@@ -1,15 +1,16 @@
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
+from app.application.history import DownloadHistorySnapshot
 from app.application.transfer.workflow import TransferTask
 from app.chain.transfer import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.config import settings
 from app.schemas.file import FileItem
-from app.schemas.history import DownloadHistory
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 def _make_chain() -> TransferChain:
@@ -59,17 +60,18 @@ def _make_file_meta(year: str = "2013") -> _FileMeta:
     return _FileMeta(year=year)
 
 
-def _make_history() -> SimpleNamespace:
+def _make_history() -> DownloadHistorySnapshot:
     """构造被合集首部电影占用的下载历史。"""
-    return SimpleNamespace(
+    return DownloadHistorySnapshot(
         id=1,
+        path="/downloads/The.Hunger.Games.Complete.4-Film.Collection",
         download_hash="collection-hash",
         downloader="qbittorrent",
         type=MediaType.MOVIE.value,
         title="饥饿游戏",
         year="2012",
-        tmdbid=70160,
-        doubanid=None,
+        media_source=MediaSource.TMDB,
+        media_id="70160",
         episode_group=None,
         media_category=None,
         username=None,
@@ -82,12 +84,12 @@ def test_movie_year_conflict_only_applies_to_movies():
     """仅电影年份冲突应触发逐文件识别，电视剧季包仍复用下载历史。"""
     file_meta = _make_file_meta()
     movie_history = _make_history()
-    tv_history = SimpleNamespace(type=MediaType.TV, year="2012")
+    tv_history = replace(movie_history, type=MediaType.TV.value)
 
     assert TransferChain._is_movie_year_conflict(file_meta, movie_history)
     assert not TransferChain._is_movie_year_conflict(file_meta, tv_history)
-    movie_history.year = "2013"
-    assert not TransferChain._is_movie_year_conflict(file_meta, movie_history)
+    same_year_history = replace(movie_history, year="2013")
+    assert not TransferChain._is_movie_year_conflict(file_meta, same_year_history)
 
 
 def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch):
@@ -136,7 +138,7 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
             size=1024,
         ),
         meta=_make_file_meta(),
-        download_history=DownloadHistory(**vars(_make_history())),
+        download_history=_make_history(),
         preview=True,
     )
 

@@ -117,8 +117,8 @@ def test_user_configuration_service_supports_sync_and_async_writes() -> None:
         async_executor=_InlineDatabaseExecutor(),
     )
 
-    assert service.set("alice", "theme", "dark") is True
-    assert asyncio.run(service.async_set("alice", "theme", "light")) is True
+    assert service.set("alice", "theme", "dark") is None
+    assert asyncio.run(service.async_set("alice", "theme", "light")) is None
     assert repository.set.call_args_list == [
         ((), {"username": "alice", "key": "theme", "value": "dark"}),
         ((), {"username": "alice", "key": "theme", "value": "light"}),

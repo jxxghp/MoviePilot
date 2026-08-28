@@ -10,7 +10,7 @@ from app.application.configuration import (
     get_api_runtime_config_snapshot,
 )
 from app.application.messaging.chat import AsyncAgentChatRepository, AsyncUnitOfWork
-from app.application.outbox import AsyncOutboxTransaction
+from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.subscription.delete import SubscribeDeletionRepository
 from app.application.subscription.identity import SubscribeIdentityDeletionRepository
 from app.application.subscription.mutation import (
@@ -161,6 +161,13 @@ def get_subscription_transaction(
 def get_subscription_outbox(
     session: object = Depends(get_subscription_session),
     runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
-) -> AsyncOutboxTransaction:
+) -> AsyncOutboxStager:
     """构造与订阅写入共享请求会话的 outbox 端口。"""
     return runtime.outbox(session)
+
+
+def get_subscription_outbox_store(
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+) -> AsyncOutboxDispatchStore:
+    """返回使用独立短事务的订阅 outbox 派发存储。"""
+    return runtime.dispatch_store

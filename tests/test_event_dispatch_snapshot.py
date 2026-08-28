@@ -164,6 +164,36 @@ def test_broadcast_dispatch_uses_subscription_snapshot(isolated_eventmanager):
     assert calls == ["mutating", "late"]
 
 
+def test_strict_broadcast_waits_and_propagates_handler_failure(
+    isolated_eventmanager,
+    monkeypatch,
+):
+    """durable 广播不入队，并在真实 handler 失败时阻止调用方结算。"""
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    calls = []
+
+    def handler(event):
+        """记录稳定键后模拟真实 handler 失败。"""
+        calls.append(event.event_data["idempotency_key"])
+        raise RuntimeError("delivery failed")
+
+    monkeypatch.setattr(
+        isolated_eventmanager,
+        "_EventManager__handle_event_error",
+        lambda *_args, **_kwargs: None,
+    )
+    isolated_eventmanager.add_event_listener(EventType.ConfigChanged, handler)
+
+    with pytest.raises(RuntimeError, match="delivery failed"):
+        isolated_eventmanager.send_event_strict(
+            EventType.ConfigChanged,
+            {"idempotency_key": "config.changed:v1"},
+        )
+
+    assert calls == ["config.changed:v1"]
+    assert isolated_eventmanager._EventManager__event_queue.empty()
+
+
 def test_sync_chain_dispatch_uses_subscription_snapshot(isolated_eventmanager):
     """同步链式事件中的订阅变更不影响当前处理器序列。"""
     calls = []

@@ -7,10 +7,10 @@ import pytest
 from app.application.messaging.agent import matches_channel_admin, resolve_config_principal_ids
 from app.modules.discord import DiscordModule
 from app.modules.feishu.feishu import Feishu
-from app.modules.qqbot import QQBotModule
+from app.modules.qqbot.module import QQBotModule
 from app.modules.slack import SlackModule
 from app.modules.synologychat import SynologyChatModule
-from app.modules.telegram import TelegramModule
+from app.modules.telegram.module import TelegramModule
 from app.modules.vocechat import VoceChatModule
 from app.modules.wechat import WechatModule
 from app.modules.wechat.wechatbot import WeChatBot

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from app.application.download.failures import DownloadFailureRepository
+from app.application.history import DownloadHistoryRepository
 from app.application.mediaserver import MediaServerRepository
 from app.application.security.user import ChainUserRepository
 from app.application.transfer.execution import TransferExecutionRepository
@@ -18,6 +19,7 @@ from app.application.transfer.workflow import TransferAdmissionRepository
 
 OperFactory = Callable[[], Any]
 DownloadFailureRepositoryFactory = Callable[[], DownloadFailureRepository]
+DownloadHistoryRepositoryFactory = Callable[[], DownloadHistoryRepository]
 MediaServerRepositoryFactory = Callable[[], MediaServerRepository]
 ChainUserRepositoryFactory = Callable[[], ChainUserRepository]
 TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]
@@ -30,7 +32,7 @@ class ChainDataPorts:
 
     site: OperFactory
     subscribe: OperFactory
-    download_history: OperFactory
+    download_history: DownloadHistoryRepositoryFactory
     transfer_history: OperFactory
     transfer_pending: TransferAdmissionRepositoryFactory
     transfer_execution: TransferExecutionRepositoryFactory
@@ -46,7 +48,7 @@ def configure_chain_data_ports(
         *,
         site: OperFactory,
         subscribe: OperFactory,
-        download_history: OperFactory,
+        download_history: DownloadHistoryRepositoryFactory,
         transfer_history: OperFactory,
         transfer_pending: TransferAdmissionRepositoryFactory,
         transfer_execution: TransferExecutionRepositoryFactory,
@@ -86,8 +88,8 @@ def get_chain_subscribe_port() -> Any:
     return get_chain_data_ports().subscribe()
 
 
-def get_chain_download_history_port() -> Any:
-    """创建下载历史数据端口实例。"""
+def get_chain_download_history_port() -> DownloadHistoryRepository:
+    """创建类型化的下载历史查询与事务端口实例。"""
     return get_chain_data_ports().download_history()
 
 

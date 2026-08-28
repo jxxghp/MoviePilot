@@ -11,7 +11,7 @@ from typing import Any, Literal, TypeAlias
 _DEFAULT_IDENTITY = "<default>"
 _DYNAMIC_IDENTITY = "<dynamic>"
 _EVENT_MANAGER_METHODS = {"add_event_listener", "register"}
-_PRODUCER_METHODS = {"async_send_event", "send_event"}
+_PRODUCER_METHODS = {"async_send_event", "send_event", "send_event_strict"}
 _COMPREHENSION_SCOPES = (
     ast.ListComp,
     ast.SetComp,
@@ -61,6 +61,7 @@ class _BoundEventMethod:
         "add_event_listener",
         "register",
         "send_event",
+        "send_event_strict",
         "async_send_event",
     ]
     receiver_kind: str

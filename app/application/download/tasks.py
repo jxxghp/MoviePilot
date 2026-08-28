@@ -2,7 +2,8 @@
 
 from typing import Callable, List, Optional
 
-from app.schemas.transfer import DownloaderTorrent
+from app.application.history import DownloadHistorySnapshot
+from app.schemas.transfer import DownloaderTorrent, DownloadTaskMedia
 from app.schemas.types import TorrentStatus
 
 
@@ -12,7 +13,10 @@ class DownloadTaskService:
     def __init__(
         self,
         list_torrents: Callable[..., List[DownloaderTorrent]],
-        get_history_by_hashes: Callable[[list[str]], dict],
+        get_history_by_hashes: Callable[
+            [list[str]],
+            dict[str, DownloadHistorySnapshot],
+        ],
         start_torrents: Callable[..., bool],
         stop_torrents: Callable[..., bool],
         remove_torrents: Callable[..., bool],
@@ -36,20 +40,22 @@ class DownloadTaskService:
             [torrent.hash for torrent in torrents if torrent.hash]
         )
         for torrent in torrents:
+            if not torrent.hash:
+                continue
             history = history_map.get(torrent.hash)
             if not history:
                 continue
-            torrent.media = {
-                "media_source": history.media_source,
-                "media_id": history.media_id,
-                "type": history.type,
-                "title": history.title,
-                "season": history.seasons,
-                "episode": history.episodes,
-                "image": history.poster,
-                "poster": history.poster,
-                "backdrop": history.image,
-            }
+            torrent.media = DownloadTaskMedia(
+                media_source=history.media_source,
+                media_id=history.media_id,
+                type=history.type,
+                title=history.title,
+                season=history.seasons,
+                episode=history.episodes,
+                image=history.poster,
+                poster=history.poster,
+                backdrop=history.image,
+            )
             torrent.site_name = history.torrent_site
             torrent.userid = history.userid
             torrent.username = history.username

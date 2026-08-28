@@ -35,7 +35,6 @@ FROZEN_DIRECT_ADAPTER_IMPORTS = {
     ("app.application.security.cookie", "app.adapters.external.ocr"): "S2-L6",
     ("app.application.security.cookie", "app.adapters.network.browser"): "S2-L6",
     ("app.application.security.cookie", "app.adapters.network.http"): "S2-L6",
-    ("app.application.security.passkey", "app.adapters.cache.redis"): "S2-L4",
     ("app.application.torrent", "app.adapters.network.http"): "S2-L6",
     ("app.application.transfer.workflow", "app.adapters.system.host"): "S2-L6",
     ("app.chain._recognition", "app.adapters.external.server"): "S2-L7",
@@ -261,7 +260,6 @@ def test_current_direct_adapter_imports_match_temporary_debt_policy() -> None:
     assert _adapter_policy_scope_errors(adapter_policy["scope"], contract["scope"]) == []
     assert entries == sorted(entries, key=lambda item: (item["source"], item["target"]))
     assert Counter(FROZEN_DIRECT_ADAPTER_IMPORTS.values()) == {
-        "S2-L4": 1,
         "S2-L5": 1,
         "S2-L6": 13,
         "S2-L7": 13,
@@ -323,9 +321,9 @@ def test_adapter_policy_rejects_add_remove_and_replacement() -> None:
 def test_adapter_policy_rejects_manual_policy_bypasses() -> None:
     """手工 policy 也不能接纳新边、错 owner、重复项或越界范围。"""
     valid = {
-        "source": "app.application.security.passkey",
-        "target": "app.adapters.cache.redis",
-        "tracking": "S2-L4",
+        "source": "app.application.backup",
+        "target": "app.adapters.system.backup.files",
+        "tracking": "S2-L5",
     }
     invalid_entries = [
         {
@@ -336,18 +334,18 @@ def test_adapter_policy_rejects_manual_policy_bypasses() -> None:
         {
             "source": valid["source"],
             "target": "app.adapters.network.browser",
-            "tracking": "S2-L4",
+            "tracking": "S2-L5",
         },
-        {**valid, "tracking": "S2-L5"},
+        {**valid, "tracking": "S2-L6"},
         {
             "source": "app.api.sample",
             "target": valid["target"],
-            "tracking": "S2-L4",
+            "tracking": "S2-L5",
         },
         {
             "source": valid["source"],
             "target": "app.db.adapters.subscription",
-            "tracking": "S2-L4",
+            "tracking": "S2-L5",
         },
         {
             "source": "app.application.*",

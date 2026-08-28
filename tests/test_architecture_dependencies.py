@@ -491,6 +491,160 @@ def test_download_failure_and_mediaserver_ports_are_typed_and_detached():
     assert "TransactionalMediaServerRepository(SessionFactory)" in startup_source
 
 
+def test_download_history_ports_are_typed_detached_and_canonically_injected():
+    """下载历史宿主调用面只能消费冻结快照和显式事务 adapter。"""
+    history_path = APP_ROOT / "application" / "history.py"
+    history_tree = ast.parse(
+        history_path.read_text(encoding="utf-8"),
+        filename=str(history_path),
+    )
+    classes = {
+        node.name: node
+        for node in history_tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    for class_name in (
+        "DownloadHistorySnapshot",
+        "DownloadFileSnapshot",
+        "DownloadHistoryWrite",
+        "DownloadFileWrite",
+    ):
+        decorator = next(
+            item
+            for item in classes[class_name].decorator_list
+            if isinstance(item, ast.Call)
+            and isinstance(item.func, ast.Name)
+            and item.func.id == "dataclass"
+        )
+        keywords = {
+            item.arg: ast.literal_eval(item.value)
+            for item in decorator.keywords
+        }
+        assert keywords == {"frozen": True, "slots": True}
+
+    for class_name in ("DownloadHistoryQueryPort", "DownloadHistoryWritePort"):
+        annotations = [
+            ast.unparse(node.returns)
+            for node in classes[class_name].body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.returns is not None
+        ]
+        assert annotations
+        assert all("Any" not in annotation for annotation in annotations)
+
+    data_path = APP_ROOT / "application" / "chain" / "data.py"
+    data_tree = ast.parse(data_path.read_text(encoding="utf-8"), filename=str(data_path))
+    data_class = next(
+        node
+        for node in data_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "ChainDataPorts"
+    )
+    annotations = {
+        node.target.id: ast.unparse(node.annotation)
+        for node in data_class.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+    }
+    returns = {
+        node.name: ast.unparse(node.returns)
+        for node in ast.walk(data_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.returns is not None
+    }
+    agent_tree = ast.parse(
+        (APP_ROOT / "application" / "agentdata.py").read_text(encoding="utf-8")
+    )
+    agent_return = next(
+        ast.unparse(node.returns)
+        for node in ast.walk(agent_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "get_agent_download_history_port"
+        and node.returns is not None
+    )
+    assert annotations["download_history"] == "DownloadHistoryRepositoryFactory"
+    assert returns["get_chain_download_history_port"] == "DownloadHistoryRepository"
+    assert agent_return == "DownloadHistoryRepository"
+
+    consumer_paths = (
+        APP_ROOT / "chain" / "_transfer.py",
+        APP_ROOT / "chain" / "download.py",
+        APP_ROOT / "chain" / "transfer.py",
+        APP_ROOT / "agent" / "tools" / "impl" / "query_download_tasks.py",
+        APP_ROOT / "agent" / "tools" / "impl" / "delete_download_history.py",
+        APP_ROOT / "application" / "transfer" / "workflow.py",
+    )
+    for path in consumer_paths:
+        source = path.read_text(encoding="utf-8")
+        assert "app.db.oper.downloadhistory" not in source
+        assert "DownloadHistory = Any" not in source
+        assert "DownloadFiles = Any" not in source
+
+    startup_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    assert "TransactionalDownloadHistoryRepository(" in startup_source
+    assert "SessionDownloadHistoryRepository" in startup_source
+    assert "DownloadHistoryOper" not in startup_source
+
+    adapter_source = (
+        APP_ROOT / "db" / "adapters" / "history" / "download.py"
+    ).read_text(encoding="utf-8")
+    assert "class TransactionalDownloadHistoryRepository" in adapter_source
+    assert "class SessionDownloadHistoryRepository" in adapter_source
+    assert "_project_history" in adapter_source
+    assert "SqlAlchemyUnitOfWork" in adapter_source
+
+    legacy_source = (
+        APP_ROOT / "sdk" / "_legacy" / "transfer.py"
+    ).read_text(encoding="utf-8")
+    assert "download_history: Optional[Any]" in legacy_source
+
+
+def test_user_configuration_uses_typed_transactional_adapter():
+    """用户配置宿主入口只消费类型化端口，旧 Oper 写入口仅承担兼容 ABI。"""
+    application_path = APP_ROOT / "application" / "security" / "userconfig.py"
+    application_source = application_path.read_text(encoding="utf-8")
+    application_tree = ast.parse(application_source, filename=str(application_path))
+    repository = next(
+        node
+        for node in application_tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "UserConfigurationRepository"
+    )
+    returns = {
+        node.name: ast.unparse(node.returns)
+        for node in repository.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.returns is not None
+    }
+    assert returns == {
+        "get": "JsonData",
+        "set": "None",
+        "publish_rename": "None",
+        "publish_delete": "None",
+    }
+    assert "Any" not in application_source
+
+    startup_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    assert "TransactionalUserConfigurationRepository(SessionFactory)" in startup_source
+    assert "UserConfigOper" not in startup_source
+
+    adapter_path = APP_ROOT / "db" / "adapters" / "configuration.py"
+    adapter_source = adapter_path.read_text(encoding="utf-8")
+    assert "class TransactionalUserConfigurationRepository" in adapter_source
+    assert "SqlAlchemyUnitOfWork" in adapter_source
+    assert "Any" not in adapter_source
+
+    oper_source = (
+        APP_ROOT / "db" / "oper" / "userconfig.py"
+    ).read_text(encoding="utf-8")
+    assert "def stage_set(" in oper_source
+    assert "def set(" in oper_source
+    assert "Any" not in oper_source
+
+
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
     """工作流旧写入口只能存在于 SDK Legacy facade。"""
     oper_path = APP_ROOT / "db" / "oper" / "workflow.py"
@@ -1465,6 +1619,40 @@ def test_cache_contract_does_not_import_concrete_adapters():
         for dependency in dependencies
         if dependency.startswith("app.adapters.cache")
     } == set()
+
+
+def test_passkey_application_does_not_select_cache_backend():
+    """PassKey 用例只消费原子缓存端口，不得识别 Redis 或后端类型。"""
+    modules = _discover_modules()
+    path = modules["app.application.security.passkey"]
+    dependencies = _resolve_imports(
+        "app.application.security.passkey",
+        path,
+        set(modules),
+    )
+    source = path.read_text(encoding="utf-8-sig")
+
+    assert {
+        dependency
+        for dependency in dependencies
+        if dependency.startswith("app.adapters.cache")
+    } == set()
+    assert "RedisHelper" not in source
+    assert ".is_redis(" not in source
+
+
+def test_startup_explicitly_configures_passkey_challenge_cache():
+    """PassKey challenge 缓存必须由启动组合根显式装配。"""
+    path = APP_ROOT / "startup" / "initializers" / "modules.py"
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    configured = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "configure_passkey_challenge_cache"
+        for node in ast.walk(tree)
+    )
+
+    assert configured is True
 
 
 def test_resource_adapter_does_not_restart_process():

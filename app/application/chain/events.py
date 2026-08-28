@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import uuid4
 
-from app.application.history import TransferHistoryRecord, TransferHistoryWriter
+from app.application.history import (
+    DownloadFileWrite,
+    DownloadHistoryWrite,
+    TransferHistoryRecord,
+    TransferHistoryWriter,
+)
 from app.application.transfer.execution import TransferSettlementResult
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
@@ -27,8 +32,8 @@ class ChainDurableEventWriter(Protocol):
     def download_added(
         self,
         *,
-        history_payload: dict[str, Any],
-        file_payloads: list[dict[str, Any]],
+        history: DownloadHistoryWrite,
+        files: tuple[DownloadFileWrite, ...],
         event_payload: dict[str, Any],
         after_commit: Callable[[], None],
         publish: Callable[[dict[str, Any]], None],

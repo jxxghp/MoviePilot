@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
+from app.application.history import DownloadHistoryRepository
 from app.application.security.user import ChainUserRepository
 
 AgentDataFactory = Callable[[], Any]
@@ -150,9 +151,12 @@ def get_agent_transfer_history_port() -> Any:
     return get_agent_data_ports().transfer_history()
 
 
-def get_agent_download_history_port() -> Any:
-    """创建 Agent 下载历史数据端口实例。"""
-    return get_agent_data_ports().download_history()
+def get_agent_download_history_port() -> DownloadHistoryRepository:
+    """创建 Agent 类型化下载历史数据端口实例。"""
+    return cast(
+        DownloadHistoryRepository,
+        get_agent_data_ports().download_history(),
+    )
 
 
 def get_agent_plugin_data_port() -> Any:

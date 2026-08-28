@@ -11,6 +11,7 @@ from app.runtime.cache import (
     AsyncCacheBackend,
     AsyncFileCache,
     AsyncMemoryBackend,
+    AtomicCacheBackend,
     Cache,
     CacheBackend,
     FileCache,
@@ -23,8 +24,8 @@ from app.runtime.cache import (
     is_fresh,
 )
 
-
 __all__ = [
+    "AtomicCacheBackend",
     "AsyncCache",
     "AsyncCacheBackend",
     "AsyncFileBackend",

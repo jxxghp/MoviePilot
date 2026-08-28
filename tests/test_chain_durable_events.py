@@ -20,7 +20,11 @@ from app.application.chain.events import (
     snapshot_transfer_result,
     transfer_result_event_key,
 )
-from app.application.history import TransferHistoryMutationCommand
+from app.application.history import (
+    DownloadFileWrite,
+    DownloadHistoryWrite,
+    TransferHistoryMutationCommand,
+)
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferExecutionConflictError,
@@ -250,22 +254,22 @@ def test_download_history_and_event_intent_share_one_transaction():
     calls = []
 
     writer.download_added(
-        history_payload={
-            "path": "/downloads/Demo.mkv",
-            "type": MediaType.MOVIE.value,
-            "title": "Demo",
-            "download_hash": "hash-2",
-        },
-        file_payloads=[
-            {
-                "download_hash": "hash-2",
-                "downloader": "qb",
-                "fullpath": "/downloads/Demo.mkv",
-                "savepath": "/downloads",
-                "filepath": "Demo.mkv",
-                "torrentname": "Demo torrent",
-            }
-        ],
+        history=DownloadHistoryWrite(
+            path="/downloads/Demo.mkv",
+            type=MediaType.MOVIE.value,
+            title="Demo",
+            download_hash="hash-2",
+        ),
+        files=(
+            DownloadFileWrite(
+                download_hash="hash-2",
+                downloader="qb",
+                fullpath="/downloads/Demo.mkv",
+                savepath="/downloads",
+                filepath="Demo.mkv",
+                torrentname="Demo torrent",
+            ),
+        ),
         event_payload={
             "hash": "hash-2",
             "context": context,
@@ -292,13 +296,13 @@ def test_download_history_and_event_intent_share_one_transaction():
     ]
 
     writer.download_added(
-        history_payload={
-            "path": "/downloads/duplicate.mkv",
-            "type": MediaType.MOVIE.value,
-            "title": "Duplicate",
-            "download_hash": "hash-2",
-        },
-        file_payloads=[],
+        history=DownloadHistoryWrite(
+            path="/downloads/duplicate.mkv",
+            type=MediaType.MOVIE.value,
+            title="Duplicate",
+            download_hash="hash-2",
+        ),
+        files=(),
         event_payload={
             "hash": "hash-2",
             "context": context,

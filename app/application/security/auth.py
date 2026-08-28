@@ -1,3 +1,4 @@
+import copy
 import secrets
 import threading
 import time
@@ -43,13 +44,13 @@ class AuthTicketStore(metaclass=Singleton):
         ticket = secrets.token_urlsafe(32)
         now = time.time()
         with self._lock:
-            self._cleanup(now)
             self._tickets[ticket] = {
                 "user_id": int(user_id),
                 "provider_id": provider_id,
-                "metadata": metadata or {},
+                "metadata": copy.deepcopy(metadata) if metadata is not None else {},
                 "created_at": now,
             }
+            self._cleanup(now)
         return ticket
 
     def consume(self, ticket: str) -> Optional[dict[str, Any]]:
@@ -69,7 +70,7 @@ class AuthTicketStore(metaclass=Singleton):
             return None
         if now - float(data.get("created_at") or 0) > self._ttl_seconds:
             return None
-        return data
+        return copy.deepcopy(data)
 
     def _cleanup(self, now: Optional[float] = None) -> None:
         """
@@ -77,7 +78,7 @@ class AuthTicketStore(metaclass=Singleton):
 
         :param now: 当前时间戳，未传入时自动读取
         """
-        current = now or time.time()
+        current = time.time() if now is None else now
         expired = [
             key
             for key, value in self._tickets.items()

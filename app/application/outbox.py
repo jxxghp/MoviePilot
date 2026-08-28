@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
-from typing import Any, Protocol, TypeVar
+from typing import Any, Generic, Optional, Protocol, TypeVar, Union
 
 from app.schemas.types import EventType
-
 
 T = TypeVar("T")
 
@@ -72,6 +71,10 @@ class ClaimedOutboxMessage:
     attempt: int
 
 
+class OutboxLeaseLostError(RuntimeError):
+    """当前派发 owner 的 attempt 已失效，禁止假报成功或覆盖新 owner。"""
+
+
 def validate_durable_event_handlers(
     handlers: Mapping[str, Callable[[ClaimedOutboxMessage], None]],
 ) -> None:
@@ -84,40 +87,81 @@ def validate_durable_event_handlers(
         )
 
 
-class OutboxRepository(Protocol):
-    """outbox 写入、claim 和终态更新所需的最小端口。"""
+class OutboxStager(Protocol):
+    """只在业务事务中暂存 durable intent 的最小端口。"""
 
     def stage(self, intent: OutboxIntent, now: datetime) -> None:
         """在调用方当前事务中暂存意图，不自行提交。"""
 
-    def claim(self, now: datetime, lease_until: datetime) -> ClaimedOutboxMessage | None:
+
+class OutboxDispatchStore(Protocol):
+    """使用独立短事务认领和结算 durable intent 的最小端口。"""
+
+    def claim(self, now: datetime, lease_until: datetime) -> Optional[ClaimedOutboxMessage]:
         """原子认领一条到期消息。"""
 
-    def complete(self, message_id: int, completed_at: datetime) -> None:
-        """按消息 ID 标记完成。"""
+    def claim_by_event_key(
+        self,
+        event_key: str,
+        now: datetime,
+        lease_until: datetime,
+    ) -> Optional[ClaimedOutboxMessage]:
+        """按稳定事件键原子认领一条到期消息。"""
+
+    def complete(
+        self,
+        message_id: int,
+        attempt: int,
+        completed_at: datetime,
+    ) -> bool:
+        """仅由当前 attempt 的 owner 标记完成。"""
 
     def retry(
         self,
         message_id: int,
+        attempt: int,
         *,
         next_retry_at: datetime,
         last_error: str,
         dead: bool,
-    ) -> None:
-        """记录有限退避或 dead-letter 终态。"""
+    ) -> bool:
+        """仅由当前 attempt 的 owner 记录退避或 dead-letter。"""
 
-class AsyncOutboxTransaction(Protocol):
-    """异步业务事务暂存并收口 durable intent 的最小端口。"""
+class AsyncOutboxStager(Protocol):
+    """只在异步业务事务中暂存 durable intent 的最小端口。"""
 
     async def stage(self, intent: OutboxIntent, now: datetime) -> None:
         """把 intent 加入调用方当前事务，但不自行提交。"""
 
-    async def complete_by_event_key(
+class AsyncOutboxDispatchStore(Protocol):
+    """使用独立异步短事务认领和结算 intent 的最小端口。"""
+
+    async def claim_by_event_key(
         self,
         event_key: str,
+        now: datetime,
+        lease_until: datetime,
+    ) -> Optional[ClaimedOutboxMessage]:
+        """按稳定事件键原子认领一条到期消息。"""
+
+    async def complete(
+        self,
+        message_id: int,
+        attempt: int,
         completed_at: datetime,
-    ) -> None:
-        """即时投递成功后按稳定幂等键标记 intent 完成。"""
+    ) -> bool:
+        """仅由当前 attempt 的 owner 标记完成。"""
+
+    async def retry(
+        self,
+        message_id: int,
+        attempt: int,
+        *,
+        next_retry_at: datetime,
+        last_error: str,
+        dead: bool,
+    ) -> bool:
+        """仅由当前 attempt 的 owner 记录退避或 dead-letter。"""
 
 
 class SyncUnitOfWork(Protocol):
@@ -130,26 +174,106 @@ class SyncUnitOfWork(Protocol):
         """回滚业务写入与 outbox intent。"""
 
 
-class SyncOutboxTransaction(Protocol):
-    """同步业务事务暂存并收口 durable intent 的最小端口。"""
+@dataclass(frozen=True, slots=True)
+class PostCommitResult(Generic[T]):
+    """区分已提交业务结果与逐项完成或仍待恢复的后置效果。"""
 
-    def stage(self, intent: OutboxIntent, now: datetime) -> None:
-        """把 intent 加入调用方事务，但不自行提交。"""
+    value: T
+    business_committed: bool
+    completed_effects: tuple[str, ...] = ()
+    pending_effects: tuple[str, ...] = ()
 
-    def claim_by_event_key(
-        self,
-        event_key: str,
-        now: datetime,
-        lease_until: datetime,
-    ) -> bool:
-        """在同步副作用前原子认领 intent，已被其他投递者持有时返回 False。"""
 
-    def complete_by_event_key(
-        self,
-        event_key: str,
-        completed_at: datetime,
-    ) -> None:
-        """即时投递成功后按幂等键标记 intent 完成。"""
+class PostCommitEffectError(RuntimeError):
+    """业务已提交但至少一个后置效果失败，并携带可检查的完成结果。"""
+
+    def __init__(self, result: PostCommitResult[Any], errors: tuple[Exception, ...]):
+        """保存结构化完成状态及逐项原始异常。"""
+        self.result = result
+        self.errors = errors
+        super().__init__(str(errors[0]) if errors else "提交后效果执行失败")
+
+
+def deliver_outbox_effect(
+    store: OutboxDispatchStore,
+    event_key: str,
+    effect: Callable[[], object],
+    *,
+    clock: Optional[Callable[[], datetime]] = None,
+) -> bool:
+    """先认领再执行同步效果，并用同一 attempt fencing 结算结果。"""
+    now = (clock or (lambda: datetime.now(timezone.utc)))()
+    claimed = store.claim_by_event_key(
+        event_key,
+        now,
+        now + timedelta(seconds=OUTBOX_LEASE_SECONDS),
+    )
+    if claimed is None:
+        return False
+    try:
+        confirmed = effect()
+    except Exception as error:
+        store.retry(
+            claimed.message_id,
+            claimed.attempt,
+            next_retry_at=now,
+            last_error=str(error)[:4000],
+            dead=False,
+        )
+        raise
+    if confirmed is False:
+        store.retry(
+            claimed.message_id,
+            claimed.attempt,
+            next_retry_at=now,
+            last_error="副作用未确认",
+            dead=False,
+        )
+        return False
+    if not store.complete(claimed.message_id, claimed.attempt, now):
+        raise OutboxLeaseLostError("Outbox 完成凭证已失效")
+    return True
+
+
+async def deliver_async_outbox_effect(
+    store: AsyncOutboxDispatchStore,
+    event_key: str,
+    effect: Callable[[], Awaitable[object]],
+    *,
+    clock: Optional[Callable[[], datetime]] = None,
+) -> bool:
+    """先认领再执行异步效果，并用同一 attempt fencing 结算结果。"""
+    now = (clock or (lambda: datetime.now(timezone.utc)))()
+    claimed = await store.claim_by_event_key(
+        event_key,
+        now,
+        now + timedelta(seconds=OUTBOX_LEASE_SECONDS),
+    )
+    if claimed is None:
+        return False
+    try:
+        confirmed = await effect()
+    except Exception as error:
+        await store.retry(
+            claimed.message_id,
+            claimed.attempt,
+            next_retry_at=now,
+            last_error=str(error)[:4000],
+            dead=False,
+        )
+        raise
+    if confirmed is False:
+        await store.retry(
+            claimed.message_id,
+            claimed.attempt,
+            next_retry_at=now,
+            last_error="副作用未确认",
+            dead=False,
+        )
+        return False
+    if not await store.complete(claimed.message_id, claimed.attempt, now):
+        raise OutboxLeaseLostError("Outbox 完成凭证已失效")
+    return True
 
 
 class DurableEventCommand:
@@ -158,42 +282,85 @@ class DurableEventCommand:
     def __init__(
         self,
         unit_of_work: SyncUnitOfWork,
-        outbox: SyncOutboxTransaction,
+        stager: OutboxStager,
+        store: OutboxDispatchStore,
     ) -> None:
-        """注入共享同一 Session 的事务与 outbox 端口。"""
+        """注入业务事务内 stager 与独立短事务 dispatch store。"""
         self._unit_of_work = unit_of_work
-        self._outbox = outbox
+        self._stager = stager
+        self._store = store
 
     def execute(
         self,
         *,
-        intent: OutboxIntent | Callable[[T], OutboxIntent] | None,
+        intent: Optional[Union[OutboxIntent, Callable[[T], OutboxIntent]]],
         stage_business: Callable[[], T],
-        publish: Callable[[], None] | None,
-        after_commit: Callable[[], None] | None = None,
-    ) -> T:
-        """原子提交业务与可选 intent，再执行可选提交后动作和广播。"""
-        resolved_intent: OutboxIntent | None = None
+        publish: Optional[Callable[[], None]],
+        after_commit: Optional[Callable[[], None]] = None,
+    ) -> PostCommitResult[T]:
+        """原子提交业务与 intent，再逐项记录提交后效果完成语义。"""
+        resolved_intent: Optional[OutboxIntent] = None
         try:
             result = stage_business()
             if intent is not None:
                 resolved_intent = intent(result) if callable(intent) else intent
-                self._outbox.stage(resolved_intent, datetime.now(timezone.utc))
+                self._stager.stage(resolved_intent, datetime.now(timezone.utc))
             self._unit_of_work.commit()
         except Exception:
             self._unit_of_work.rollback()
             raise
 
+        completed: list[str] = []
+        pending: list[str] = []
+        errors: list[Exception] = []
         if after_commit:
-            after_commit()
-        if publish:
-            publish()
+            try:
+                after_commit()
+                completed.append("after_commit")
+            except Exception as error:
+                pending.append("after_commit")
+                errors.append(error)
+        if resolved_intent is not None:
+            pending.append(resolved_intent.event_key)
         if resolved_intent is not None and publish is not None:
-            self._outbox.complete_by_event_key(
+            now = datetime.now(timezone.utc)
+            claimed = self._store.claim_by_event_key(
                 resolved_intent.event_key,
-                datetime.now(timezone.utc),
+                now,
+                now + timedelta(seconds=OUTBOX_LEASE_SECONDS),
             )
-        return result
+            if claimed is not None:
+                try:
+                    publish()
+                    settled = self._store.complete(
+                        claimed.message_id,
+                        claimed.attempt,
+                        datetime.now(timezone.utc),
+                    )
+                    if not settled:
+                        raise OutboxLeaseLostError("Outbox 完成凭证已失效")
+                    pending.remove(resolved_intent.event_key)
+                    completed.append(resolved_intent.event_key)
+                except OutboxLeaseLostError as error:
+                    errors.append(error)
+                except Exception as error:
+                    self._store.retry(
+                        claimed.message_id,
+                        claimed.attempt,
+                        next_retry_at=datetime.now(timezone.utc),
+                        last_error=str(error)[:4000],
+                        dead=False,
+                    )
+                    errors.append(error)
+        execution = PostCommitResult(
+            value=result,
+            business_committed=True,
+            completed_effects=tuple(completed),
+            pending_effects=tuple(pending),
+        )
+        if errors:
+            raise PostCommitEffectError(execution, tuple(errors))
+        return execution
 
 
 class OutboxDispatcher:
@@ -201,14 +368,14 @@ class OutboxDispatcher:
 
     def __init__(
         self,
-        repository: OutboxRepository,
+        repository: OutboxDispatchStore,
         handlers: dict[str, Callable[[ClaimedOutboxMessage], None]],
         *,
         max_attempts: int = 5,
         lease_seconds: int = OUTBOX_LEASE_SECONDS,
-        clock: Callable[[], datetime] | None = None,
-        close: Callable[[], None] | None = None,
-        failure_observer: Callable[[bool], None] | None = None,
+        clock: Optional[Callable[[], datetime]] = None,
+        close: Optional[Callable[[], None]] = None,
+        failure_observer: Optional[Callable[[bool], None]] = None,
     ) -> None:
         """注入持久端口、topic handler、有界重试策略与失败观测端口。"""
         self._repository = repository
@@ -231,25 +398,34 @@ class OutboxDispatcher:
         try:
             handler = self._handlers[message.topic]
             handler(message)
+            if not self._repository.complete(
+                message.message_id,
+                message.attempt,
+                now,
+            ):
+                raise OutboxLeaseLostError("Outbox 完成凭证已失效")
+        except OutboxLeaseLostError:
+            raise
         except Exception as error:
             dead = message.attempt >= self._max_attempts
             delay = min(3600, 2 ** max(0, message.attempt - 1))
-            self._repository.retry(
+            settled = self._repository.retry(
                 message.message_id,
+                message.attempt,
                 next_retry_at=now + timedelta(seconds=delay),
                 last_error=str(error)[:4000],
                 dead=dead,
             )
-            self._failure_observer(dead)
+            if settled:
+                self._failure_observer(dead)
             return True
-        self._repository.complete(message.message_id, now)
         return True
 
     def close(self) -> None:
         """释放 dispatcher 工厂创建的短生命周期持久化资源。"""
         self._close()
 
-_configured_dispatcher: Callable[[], OutboxDispatcher] | None = None
+_configured_dispatcher: Optional[Callable[[], OutboxDispatcher]] = None
 
 
 def configure_outbox_dispatcher(provider: Callable[[], OutboxDispatcher]) -> None:

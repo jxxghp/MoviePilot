@@ -25,6 +25,8 @@ from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
 from app.application.formatting import FormatParser
 from app.application.history import (
+    DownloadHistoryQueryPort,
+    DownloadHistorySnapshot,
     add_transfer_fail,
     add_transfer_success,
     clear_transfer_failures,
@@ -120,8 +122,6 @@ from app.schemas.types import (
     TorrentStatus,
 )
 from app.schemas.workflow import FileItem
-
-DownloadHistory = Any
 
 # 下载器锁
 downloader_lock = threading.Lock()
@@ -3678,8 +3678,10 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                         continue
 
                     # 查询下载记录识别情况
-                    downloadhis: DownloadHistory = get_chain_download_history_port().get_by_hash(
-                        torrent.hash
+                    downloadhis: Optional[DownloadHistorySnapshot] = (
+                        get_chain_download_history_port().get_by_hash(torrent.hash)
+                        if torrent.hash
+                        else None
                     )
                     # 下载记录中的媒体类型作为整理类型来源，无下载记录时留空由文件后缀兜底
                     mtype: Optional[MediaType] = None
@@ -4289,14 +4291,14 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         def _build_main_meta(
                 main_fileitem: FileItem,
                 main_bluray_dir: bool,
-                download_history_oper: Any,
+                download_history_repository: DownloadHistoryQueryPort,
         ) -> Optional[MetaBase]:
             """
             构建主视频元数据。
             """
             main_path = Path(main_fileitem.path)
             main_download_history = self._resolve_download_history(
-                downloadhis=download_history_oper,
+                repository=download_history_repository,
                 file_path=main_path,
                 bluray_dir=main_bluray_dir,
                 download_hash=download_hash,
@@ -4389,7 +4391,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             if not items:
                 return [], {}
 
-            download_history_oper = get_chain_download_history_port()
+            download_history_repository = get_chain_download_history_port()
             inherited_map: Dict[Tuple[str, str], MetaBase] = {}
             main_items_by_dir, extra_items_by_dir = _build_directory_index(items)
             main_items = [
@@ -4440,7 +4442,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             main_meta = _build_main_meta(
                                 related_main_fileitem,
                                 False,
-                                download_history_oper,
+                                download_history_repository,
                             )
                             if main_meta:
                                 inherited_map[self._get_file_key(current_item)] = deepcopy(main_meta)
@@ -4489,7 +4491,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
 
                 main_path = Path(main_item.path)
                 main_download_history = self._resolve_download_history(
-                    downloadhis=download_history_oper,
+                    repository=download_history_repository,
                     file_path=main_path,
                     bluray_dir=main_bluray_dir,
                     download_hash=download_hash,
@@ -4688,9 +4690,9 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                             continue
 
                 # 提前获取下载历史，以便获取自定义识别词
-                downloadhis = get_chain_download_history_port()
+                download_history_repository = get_chain_download_history_port()
                 download_history = self._resolve_download_history(
-                    downloadhis=downloadhis,
+                    repository=download_history_repository,
                     file_path=file_path,
                     bluray_dir=bluray_dir,
                     download_hash=download_hash,
@@ -4741,6 +4743,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
                     )
                 if (
                         not manual
+                        and task_mediainfo
                         and self._is_movie_year_conflict(file_meta, task_mediainfo)
                 ):
                     task_mediainfo = None

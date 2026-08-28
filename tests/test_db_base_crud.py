@@ -5,11 +5,13 @@ ORM 基类通用增删改查的行为。
 任何一个出偏差都会同时影响所有表。同步方法与其异步孪生方法必须给出相同结果，
 否则同一张表经 API（异步）与经调度任务（同步）会看到不同的数据。
 """
+
 import asyncio
 
 import pytest
 
 from app.db.models.systemconfig import SystemConfig
+from app.db.models.user import User
 from app.db.models.userconfig import UserConfig
 from app.db.uow import run_async_transaction
 
@@ -30,9 +32,7 @@ def test_create_persists_and_get_reads_back(db):
 
     assert row.id is not None
     assert SystemConfig.get(db.session, row.id).key == "base-create"
-    assert db.run_async_session(
-        lambda session: SystemConfig.async_get(session, rid=row.id)
-    ).key == "base-create"
+    assert db.run_async_session(lambda session: SystemConfig.async_get(session, rid=row.id)).key == "base-create"
 
 
 def test_get_returns_none_for_missing_id(db):
@@ -40,9 +40,7 @@ def test_get_returns_none_for_missing_id(db):
     主键不存在时返回 None，而不是抛异常或返回任意一行。
     """
     assert SystemConfig.get(db.session, -1) is None
-    assert db.run_async_session(
-        lambda session: SystemConfig.async_get(session, rid=-1)
-    ) is None
+    assert db.run_async_session(lambda session: SystemConfig.async_get(session, rid=-1)) is None
 
 
 def test_async_create_flushes_and_assigns_primary_key(db):
@@ -51,11 +49,11 @@ def test_async_create_flushes_and_assigns_primary_key(db):
 
     异步路径的调用方常常紧接着用 id 建立关联，拿到 None 会让关联静默丢失。
     """
-    created = asyncio.run(run_async_transaction(
-        lambda session: SystemConfig(
-            key="base-async-create", value={"n": 2}
-        ).async_create(session)
-    ))
+    created = asyncio.run(
+        run_async_transaction(
+            lambda session: SystemConfig(key="base-async-create", value={"n": 2}).async_create(session)
+        )
+    )
 
     assert created.id is not None
     assert SystemConfig.get(db.session, created.id).value == {"n": 2}
@@ -104,9 +102,7 @@ def test_async_delete_removes_only_the_given_row(db):
     dropped = db.add(SystemConfig(key="base-async-del", value={"n": 1}))
     kept = db.add(SystemConfig(key="base-async-keep", value={"n": 2}))
 
-    asyncio.run(run_async_transaction(
-        lambda session: SystemConfig.async_delete(session, rid=dropped.id)
-    ))
+    asyncio.run(run_async_transaction(lambda session: SystemConfig.async_delete(session, rid=dropped.id)))
 
     assert SystemConfig.get(db.session, dropped.id) is None
     assert SystemConfig.get(db.session, kept.id) is not None
@@ -116,15 +112,14 @@ def test_async_delete_tolerates_missing_row(db):
     """
     删除不存在的行不抛异常，保持调用方的幂等语义。
     """
-    asyncio.run(run_async_transaction(
-        lambda session: SystemConfig.async_delete(session, rid=-1)
-    ))
+    asyncio.run(run_async_transaction(lambda session: SystemConfig.async_delete(session, rid=-1)))
 
 
 def test_list_returns_every_row_of_that_model_only(db):
     """
     列举必须限定在本模型对应的表，不能跨表。
     """
+    db.add(User(name="base-user"))
     db.add(UserConfig(username="base-user", key="k", value="v"))
 
     listed = UserConfig.list(db.session)
@@ -137,6 +132,7 @@ def test_async_list_matches_sync_list(db):
     """
     同步与异步列举必须返回同一批主键。
     """
+    db.add(User(name="base-list"))
     db.add(UserConfig(username="base-list", key="k", value="v"))
 
     sync_ids = sorted(item.id for item in UserConfig.list(db.session))
@@ -149,6 +145,10 @@ def test_truncate_empties_the_table(db):
     """
     清表后该模型不再有任何行，同步与异步实现须一致。
     """
+    db.add(
+        User(name="base-truncate"),
+        User(name="base-truncate-async"),
+    )
     db.add(UserConfig(username="base-truncate", key="k", value="v"))
 
     UserConfig.truncate(db.session)

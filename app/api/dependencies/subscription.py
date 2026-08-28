@@ -13,12 +13,13 @@ from app.api.context import (
     get_host_runtime,
     get_subscription_history_repository,
     get_subscription_outbox,
+    get_subscription_outbox_store,
     get_subscription_repository,
     get_subscription_transaction,
     get_sync_session,
     resolve_background_task_registry,
 )
-from app.application.outbox import AsyncOutboxTransaction
+from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.scheduling import start_scheduler_job
 from app.application.servarr import ServarrSubscriptionService
 from app.application.subscription.delete import (
@@ -64,7 +65,10 @@ async def _publish_subscribe_modified(payload: dict[str, Any]) -> None:
 def get_delete_subscribe_command(
     repository_port: object = Depends(get_subscription_repository),
     unit_of_work: object = Depends(get_subscription_transaction),
-    outbox: AsyncOutboxTransaction = Depends(get_subscription_outbox),
+    outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
+    dispatch_store: AsyncOutboxDispatchStore = Depends(
+        get_subscription_outbox_store
+    ),
 ) -> DeleteSubscribeCommand:
     """组装请求级订阅删除用例及其具体适配器。"""
     return DeleteSubscribeCommand(
@@ -73,6 +77,7 @@ def get_delete_subscribe_command(
         publish_deleted=_publish_subscribe_deleted,
         report_deleted=MoviePilotServerHelper.async_sub_done_durable,
         outbox=outbox,
+        dispatch_store=dispatch_store,
     )
 
 
@@ -90,7 +95,10 @@ def _log_subscribe_deleted_event_error(
 def get_delete_subscriptions_by_identity_command(
     repository_port: object = Depends(get_subscription_repository),
     unit_of_work: object = Depends(get_subscription_transaction),
-    outbox: AsyncOutboxTransaction = Depends(get_subscription_outbox),
+    outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
+    dispatch_store: AsyncOutboxDispatchStore = Depends(
+        get_subscription_outbox_store
+    ),
 ) -> DeleteSubscriptionsByIdentityCommand:
     """组装请求级按媒体身份删除订阅用例。"""
     return DeleteSubscriptionsByIdentityCommand(
@@ -99,6 +107,7 @@ def get_delete_subscriptions_by_identity_command(
         publish_deleted=_publish_subscribe_deleted,
         handle_event_error=_log_subscribe_deleted_event_error,
         outbox=outbox,
+        dispatch_store=dispatch_store,
     )
 
 
@@ -165,7 +174,10 @@ def get_subscription_mutation_service(
         get_subscription_history_repository
     ),
     unit_of_work: object = Depends(get_subscription_transaction),
-    outbox: AsyncOutboxTransaction = Depends(get_subscription_outbox),
+    outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
+    dispatch_store: AsyncOutboxDispatchStore = Depends(
+        get_subscription_outbox_store
+    ),
 ) -> SubscriptionMutationService:
     """组装异步订阅写服务。"""
     return SubscriptionMutationService(
@@ -173,6 +185,7 @@ def get_subscription_mutation_service(
         history_repository=history_repository,
         unit_of_work=cast(MutationUnitOfWork, unit_of_work),
         outbox=outbox,
+        dispatch_store=dispatch_store,
         publish_modified=_publish_subscribe_modified,
     )
 
