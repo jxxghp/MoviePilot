@@ -61,7 +61,7 @@ from app.application.configuration import (
     get_configured_system_config,
 )
 from app.application.database import configure_database_governance
-from app.application.history import configure_transfer_history_provider
+from app.application.history import configure_transfer_history_repository
 from app.application.image import configure_wallpaper_providers
 from app.application.messaging.agent import (
     dispatch_web_agent_message_event,
@@ -125,6 +125,10 @@ from app.db.adapters.history.download import (
     SessionDownloadHistoryRepository,
     TransactionalDownloadHistoryRepository,
 )
+from app.db.adapters.history.transfer import (
+    SessionTransferHistoryRepository,
+    TransactionalTransferHistoryRepository,
+)
 from app.db.adapters.mediaserver import TransactionalMediaServerRepository
 from app.db.adapters.outbox import (
     SqlAlchemyAsyncOutboxDispatchStore,
@@ -157,7 +161,6 @@ from app.db.oper.site import SiteOper
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
     SessionFactory,
@@ -855,7 +858,6 @@ async def init_modules() -> HostRuntime:
             "site": SiteOper,
             "subscribe": SubscribeOper,
             "subscribe_history": SubscribeHistoryOper,
-            "transfer_history": TransferHistoryOper,
             "user": SqlAlchemyUserRepository,
             "workflow": WorkflowOper,
         },
@@ -883,6 +885,10 @@ async def init_modules() -> HostRuntime:
     )
     configure_workflow_query(workflow_query)
     download_history_repository = TransactionalDownloadHistoryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+    transfer_history_repository = TransactionalTransferHistoryRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
     )
@@ -914,7 +920,8 @@ async def init_modules() -> HostRuntime:
         messaging=MessagingRuntime(repository=MessageOper),
         history=HistoryRuntime(
             download_repository=SessionDownloadHistoryRepository,
-            transfer_repository=TransferHistoryOper,
+            transfer_repository=transfer_history_repository,
+            transfer_mutation_repository=SessionTransferHistoryRepository,
             media_server_repository=MediaServerOper,
         ),
         site=SiteRuntime(repository=SiteOper),
@@ -954,7 +961,7 @@ async def init_modules() -> HostRuntime:
         ),
         subscribe=lambda: SubscribeOper(),
         download_history=lambda: download_history_repository,
-        transfer_history=lambda: TransferHistoryOper(),
+        transfer_history=lambda: transfer_history_repository,
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(
             SessionFactory
         ),
@@ -998,7 +1005,7 @@ async def init_modules() -> HostRuntime:
         )
     )
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
-    configure_transfer_history_provider(lambda: TransferHistoryOper())
+    configure_transfer_history_repository(lambda: transfer_history_repository)
     configure_site_query_service(SiteQueryService(repository=TransactionalSiteRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -1017,7 +1024,7 @@ async def init_modules() -> HostRuntime:
         ),
         subscribe=lambda: SubscribeOper(),
         subscribe_history=lambda: SubscribeHistoryOper(),
-        transfer_history=lambda: TransferHistoryOper(),
+        transfer_history=lambda: transfer_history_repository,
         download_history=lambda: download_history_repository,
         plugin_data=lambda: PluginDataOper(),
     )

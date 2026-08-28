@@ -4,6 +4,7 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from app.application.history import TransferHistorySnapshot
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
@@ -110,19 +111,20 @@ def _settlement_writer(*, status: bool, history_id: int = 41):
         """暂存历史后返回与当前结算修订一致的投影。"""
         staging = Mock()
 
-        def add_force(**payload):
+        def replace_history(history):
             """保存历史 payload 并返回 writer 所需的最小记录。"""
+            payload = history.to_payload()
             staged_payloads.append(payload)
-            return SimpleNamespace(
+            return TransferHistorySnapshot(
                 id=history_id,
-                status=bool(payload["status"]),
-                src=payload["src"],
-                src_storage=payload["src_storage"],
-                src_fileitem=payload["src_fileitem"],
+                status=history.status,
+                src=history.src,
+                src_storage=history.src_storage,
+                src_fileitem=history.src_fileitem,
             )
 
-        staging.add_force.side_effect = add_force
-        staging.get_success_by_src.return_value = SimpleNamespace(
+        staging.replace.side_effect = replace_history
+        staging.get_success_by_src.return_value = TransferHistorySnapshot(
             id=history_id,
             status=True,
             src="/downloads/Movie.2026.mkv",

@@ -27,6 +27,8 @@ from app.application.formatting import FormatParser
 from app.application.history import (
     DownloadHistoryQueryPort,
     DownloadHistorySnapshot,
+    TransferHistorySnapshot,
+    TransferHistoryStagingPort,
     add_transfer_fail,
     add_transfer_success,
     clear_transfer_failures,
@@ -524,8 +526,12 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         if writer is None:
             raise RuntimeError("旧整理兼容命令缺少 durable 原子写入端口")
 
-        def stage_history(staging: Any) -> Any:
+        def stage_history(
+                staging: TransferHistoryStagingPort,
+        ) -> Optional[TransferHistorySnapshot]:
             """按兼容结果暂存成功、失败或覆盖跳过的唯一历史投影。"""
+            if not task.fileitem or not task.fileitem.path:
+                raise ValueError("整理终态缺少源文件路径")
             if overwrite_declined:
                 return staging.get_success_by_src(
                     task.fileitem.path,
@@ -578,7 +584,11 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         self.__forget_owned_lease(task.admission_task_id, task.lease_token)
 
     @staticmethod
-    def __transfer_history_id(history: Any) -> Optional[int]:
+    def __transfer_history_id(
+            history: Optional[
+                Union[TransferHistorySnapshot, TransferSettlementResult]
+            ],
+    ) -> Optional[int]:
         """统一读取旧历史投影和 task-aware 结算结果的历史标识。"""
         if isinstance(history, TransferSettlementResult):
             return history.history_id
@@ -943,7 +953,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
         # 转移失败
         if not transferinfo.success:
             # 查重闸放行同路径新版本后由 overwrite_mode 判定不覆盖，是一次正常裁决而非故障：
-            # 媒体库里原有版本仍然在位，写失败记录会用 add_force 顶掉原成功记录，此后该路径
+            # 媒体库里原有版本仍然在位，写失败记录会按同源 replace 替换原成功记录，此后该路径
             # 永远处于失败态，每个新事件都会重试并重推失败通知。此时保留原记录、不写历史、
             # 不发事件与通知、不触发重试，仅把任务置为未入库
             history = None
@@ -4559,7 +4569,7 @@ class TransferChain(FileFilterMixin, ScrapeBatchMixin, EpisodeFormatMixin, Histo
             file_items, matched_episode_format_template = self._collect_transfer_candidates(
                 fileitem=fileitem,
                 batch_mtype=batch_mtype,
-                min_filesize=min_filesize,
+                min_filesize=min_filesize or 0,
                 epformat=epformat,
                 season=season,
                 continue_callback=continue_callback,

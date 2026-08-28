@@ -32,14 +32,13 @@ def get_mediaserver_query_service(
 
 
 def get_dashboard_query_service(
-    db: Session = Depends(get_sync_session),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> DashboardQueryService:
     """组装 Dashboard 媒体与整理历史统计查询服务。"""
     from app.chain.dashboard import DashboardChain
 
     return DashboardQueryService(
-        repository=runtime.history.transfer_repository(db),
+        repository=runtime.history.transfer_repository,
         media_statistics=DashboardChain().media_statistic,
     )
 
@@ -62,17 +61,16 @@ def get_history_query_service(
     """组装历史列表和详情异步查询服务。"""
     return HistoryQueryService(
         download_repository=runtime.history.download_repository(db),
-        transfer_repository=runtime.history.transfer_repository(db),
+        transfer_repository=runtime.history.transfer_repository,
     )
 
 
 def get_transfer_history_lookup_service(
-    db: Session = Depends(get_sync_session),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> TransferHistoryLookupService:
     """组装手动整理使用的同步历史投影服务。"""
     return TransferHistoryLookupService(
-        runtime.history.transfer_repository(db)
+        runtime.history.transfer_repository
     )
 
 
@@ -83,7 +81,7 @@ def get_transfer_history_mutation_command(
     """组装整理历史删除、文件处理和事件发布用例。"""
     storage_chain = StorageChain()
     return TransferHistoryMutationCommand(
-        repository=runtime.history.transfer_repository(db),
+        repository=runtime.history.transfer_mutation_repository(db),
         download_repository=runtime.history.download_repository(db),
         unit_of_work=runtime.persistence.sync_transaction(db),
         file_item_factory=lambda payload: _SchemaFileItem(**payload),

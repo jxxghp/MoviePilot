@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from app.application.download.failures import DownloadFailureRepository
-from app.application.history import DownloadHistoryRepository
+from app.application.history import (
+    DownloadHistoryRepository,
+    TransferHistoryRepository,
+)
 from app.application.mediaserver import MediaServerRepository
 from app.application.security.user import ChainUserRepository
 from app.application.transfer.execution import TransferExecutionRepository
@@ -20,6 +23,7 @@ from app.application.transfer.workflow import TransferAdmissionRepository
 OperFactory = Callable[[], Any]
 DownloadFailureRepositoryFactory = Callable[[], DownloadFailureRepository]
 DownloadHistoryRepositoryFactory = Callable[[], DownloadHistoryRepository]
+TransferHistoryRepositoryFactory = Callable[[], TransferHistoryRepository]
 MediaServerRepositoryFactory = Callable[[], MediaServerRepository]
 ChainUserRepositoryFactory = Callable[[], ChainUserRepository]
 TransferAdmissionRepositoryFactory = Callable[[], TransferAdmissionRepository]
@@ -33,7 +37,7 @@ class ChainDataPorts:
     site: OperFactory
     subscribe: OperFactory
     download_history: DownloadHistoryRepositoryFactory
-    transfer_history: OperFactory
+    transfer_history: TransferHistoryRepositoryFactory
     transfer_pending: TransferAdmissionRepositoryFactory
     transfer_execution: TransferExecutionRepositoryFactory
     media_server: MediaServerRepositoryFactory
@@ -49,7 +53,7 @@ def configure_chain_data_ports(
         site: OperFactory,
         subscribe: OperFactory,
         download_history: DownloadHistoryRepositoryFactory,
-        transfer_history: OperFactory,
+        transfer_history: TransferHistoryRepositoryFactory,
         transfer_pending: TransferAdmissionRepositoryFactory,
         transfer_execution: TransferExecutionRepositoryFactory,
         media_server: MediaServerRepositoryFactory,
@@ -93,8 +97,8 @@ def get_chain_download_history_port() -> DownloadHistoryRepository:
     return get_chain_data_ports().download_history()
 
 
-def get_chain_transfer_history_port() -> Any:
-    """创建整理历史数据端口实例。"""
+def get_chain_transfer_history_port() -> TransferHistoryRepository:
+    """创建类型化的整理历史查询与变更端口实例。"""
     return get_chain_data_ports().transfer_history()
 
 

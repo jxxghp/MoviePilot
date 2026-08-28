@@ -155,6 +155,7 @@ def _runtime() -> HostRuntime:
         history=HistoryRuntime(
             download_repository=_Repository,
             transfer_repository=_Repository,
+            transfer_mutation_repository=_Repository,
             media_server_repository=_Repository,
         ),
         site=SiteRuntime(repository=_Repository),

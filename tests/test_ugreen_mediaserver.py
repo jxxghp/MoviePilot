@@ -1,7 +1,9 @@
-import unittest
 from unittest.mock import patch
 
+import pytest
+
 from app import schemas
+from app.application.history import TransferHistoryMonthlyStatistics
 from app.modules.ugreen.ugreen import Ugreen
 
 try:
@@ -67,143 +69,148 @@ class _PagedFolderApi:
         }
 
 
-class UgreenScanModeTest(unittest.TestCase):
-    def test_resolve_scan_type(self):
-        resolve = Ugreen._Ugreen__resolve_scan_type
+def test_resolve_scan_type():
+    resolve = Ugreen._Ugreen__resolve_scan_type
 
-        self.assertEqual(resolve(scan_mode="new_and_modified"), 1)
-        self.assertEqual(resolve(scan_mode="supplement_missing"), 2)
-        self.assertEqual(resolve(scan_mode="full_override"), 3)
-
-        self.assertEqual(resolve(scan_mode="1"), 1)
-        self.assertEqual(resolve(scan_mode="2"), 2)
-        self.assertEqual(resolve(scan_mode="3"), 3)
-
-        self.assertEqual(resolve(scan_type=1), 1)
-        self.assertEqual(resolve(scan_type=2), 2)
-        self.assertEqual(resolve(scan_type=3), 3)
-
-        self.assertEqual(resolve(scan_mode="unknown"), 2)
-        self.assertEqual(resolve(), 2)
+    assert resolve(scan_mode="new_and_modified") == 1
+    assert resolve(scan_mode="supplement_missing") == 2
+    assert resolve(scan_mode="full_override") == 3
+    assert resolve(scan_mode="1") == 1
+    assert resolve(scan_mode="2") == 2
+    assert resolve(scan_mode="3") == 3
+    assert resolve(scan_type=1) == 1
+    assert resolve(scan_type=2) == 2
+    assert resolve(scan_type=3) == 3
+    assert resolve(scan_mode="unknown") == 2
+    assert resolve() == 2
 
 
-class UgreenVerifySslTest(unittest.TestCase):
-    def test_resolve_verify_ssl(self):
-        resolve = Ugreen._Ugreen__resolve_verify_ssl
-        self.assertEqual(resolve(True), True)
-        self.assertEqual(resolve(False), False)
-        self.assertEqual(resolve("true"), True)
-        self.assertEqual(resolve("1"), True)
-        self.assertEqual(resolve("false"), False)
-        self.assertEqual(resolve("0"), False)
-        self.assertEqual(resolve(None), True)
+def test_resolve_verify_ssl():
+    resolve = Ugreen._Ugreen__resolve_verify_ssl
+    assert resolve(True) is True
+    assert resolve(False) is False
+    assert resolve("true") is True
+    assert resolve("1") is True
+    assert resolve("false") is False
+    assert resolve("0") is False
+    assert resolve(None) is True
 
 
-class UgreenStatisticTest(unittest.TestCase):
-    def test_get_medias_count_episode_is_none(self):
-        ugreen = Ugreen.__new__(Ugreen)
-        ugreen._host = "http://127.0.0.1:9999"
-        ugreen._username = "tester"
-        ugreen._password = "secret"
-        ugreen._userinfo = {"name": "tester"}
-        ugreen._api = _FakeUgreenApi()
+def test_get_medias_count_episode_is_none():
+    ugreen = Ugreen.__new__(Ugreen)
+    ugreen._host = "http://127.0.0.1:9999"
+    ugreen._username = "tester"
+    ugreen._password = "secret"
+    ugreen._userinfo = {"name": "tester"}
+    ugreen._api = _FakeUgreenApi()
 
-        stat = ugreen.get_medias_count()
-        self.assertEqual(stat.movie_count, 12)
-        self.assertEqual(stat.tv_count, 34)
-        self.assertIsNone(stat.episode_count)
-
-
-class UgreenReconnectTest(unittest.TestCase):
-    def test_reconnect_does_not_eagerly_load_libraries(self):
-        ugreen = Ugreen.__new__(Ugreen)
-        ugreen._host = "http://127.0.0.1:9999"
-        ugreen._username = "tester"
-        ugreen._password = "secret"
-        ugreen._verify_ssl = True
-        ugreen._libraries = {"old": {"id": "old"}}
-        ugreen._library_paths = {"old": "/old"}
-        ugreen._api = None
-        ugreen._userinfo = None
-
-        with patch.object(Ugreen, "_Ugreen__restore_persisted_session", return_value=False), patch(
-            "app.modules.ugreen.ugreen.Api", return_value=_FakeReconnectApi()
-        ), patch.object(Ugreen, "_Ugreen__save_persisted_session", return_value=None), patch.object(
-            Ugreen, "disconnect", wraps=ugreen.disconnect
-        ), patch.object(Ugreen, "get_librarys") as mocked_get_librarys:
-            self.assertTrue(ugreen.reconnect())
-
-        mocked_get_librarys.assert_not_called()
-        self.assertEqual(ugreen._libraries, {})
-        self.assertEqual(ugreen._library_paths, {})
+    stat = ugreen.get_medias_count()
+    assert stat.movie_count == 12
+    assert stat.tv_count == 34
+    assert stat.episode_count is None
 
 
-class UgreenLibraryPathLimitTest(unittest.TestCase):
-    def test_load_library_paths_stops_at_last_page(self):
-        ugreen = Ugreen.__new__(Ugreen)
-        ugreen._username = "tester"
-        ugreen._api = _PagedFolderApi(stop_after=3)
+def test_reconnect_does_not_eagerly_load_libraries():
+    ugreen = Ugreen.__new__(Ugreen)
+    ugreen._host = "http://127.0.0.1:9999"
+    ugreen._username = "tester"
+    ugreen._password = "secret"
+    ugreen._verify_ssl = True
+    ugreen._libraries = {"old": {"id": "old"}}
+    ugreen._library_paths = {"old": "/old"}
+    ugreen._api = None
+    ugreen._userinfo = None
 
-        paths = ugreen._Ugreen__load_library_paths()
+    with patch.object(Ugreen, "_Ugreen__restore_persisted_session", return_value=False), patch(
+        "app.modules.ugreen.ugreen.Api", return_value=_FakeReconnectApi()
+    ), patch.object(Ugreen, "_Ugreen__save_persisted_session", return_value=None), patch.object(
+        Ugreen, "disconnect", wraps=ugreen.disconnect
+    ), patch.object(Ugreen, "get_librarys") as mocked_get_librarys:
+        assert ugreen.reconnect() is True
 
-        self.assertEqual(ugreen._api.pages, [1, 2, 3])
-        self.assertEqual(paths["3"], "/library/3")
-
-    def test_load_library_paths_respects_page_limit(self):
-        ugreen = Ugreen.__new__(Ugreen)
-        ugreen._username = "tester"
-        ugreen._api = _PagedFolderApi()
-
-        paths = ugreen._Ugreen__load_library_paths()
-
-        self.assertEqual(ugreen._api.calls, Ugreen.LIBRARY_PATH_PAGE_LIMIT)
-        self.assertEqual(len(paths), Ugreen.LIBRARY_PATH_PAGE_LIMIT)
-        self.assertIn(str(Ugreen.LIBRARY_PATH_PAGE_LIMIT), paths)
+    mocked_get_librarys.assert_not_called()
+    assert ugreen._libraries == {}
+    assert ugreen._library_paths == {}
 
 
-class DashboardStatisticTest(unittest.TestCase):
-    class _Repository:
-        """Dashboard 汇总测试使用的零增量历史仓储。"""
+def test_load_library_paths_stops_at_last_page():
+    ugreen = Ugreen.__new__(Ugreen)
+    ugreen._username = "tester"
+    ugreen._api = _PagedFolderApi(stop_after=3)
 
-        @staticmethod
-        def monthly_media_statistics():
-            """返回全零月度统计，隔离媒体服务汇总断言。"""
-            return 0, 0, 0, 0
+    paths = ugreen._Ugreen__load_library_paths()
 
-    @unittest.skipIf(dashboard_endpoint is None, "dashboard endpoint dependencies are missing")
-    def test_statistic_all_episode_missing(self):
-        mocked_stats = [
-            schemas.Statistic(movie_count=10, tv_count=20, episode_count=None, user_count=2),
-            schemas.Statistic(movie_count=1, tv_count=2, episode_count=None, user_count=1),
-        ]
-        from app.application.dashboard import DashboardQueryService
+    assert ugreen._api.pages == [1, 2, 3]
+    assert paths["3"] == "/library/3"
 
-        service = DashboardQueryService(
-            repository=self._Repository(),
-            media_statistics=lambda _name: mocked_stats,
+
+def test_load_library_paths_respects_page_limit():
+    ugreen = Ugreen.__new__(Ugreen)
+    ugreen._username = "tester"
+    ugreen._api = _PagedFolderApi()
+
+    paths = ugreen._Ugreen__load_library_paths()
+
+    assert ugreen._api.calls == Ugreen.LIBRARY_PATH_PAGE_LIMIT
+    assert len(paths) == Ugreen.LIBRARY_PATH_PAGE_LIMIT
+    assert str(Ugreen.LIBRARY_PATH_PAGE_LIMIT) in paths
+
+
+class _DashboardRepository:
+    """Dashboard 汇总测试使用的零增量历史仓储。"""
+
+    @staticmethod
+    def monthly_media_statistics() -> TransferHistoryMonthlyStatistics:
+        """返回全零月度统计，隔离媒体服务汇总断言。"""
+        return TransferHistoryMonthlyStatistics(
+            movies=0,
+            tv_shows=0,
+            episodes=0,
+            music=0,
         )
-        ret = dashboard_endpoint.statistic(name="ugreen", service=service, _=None)
 
-        self.assertEqual(ret.movie_count, 11)
-        self.assertEqual(ret.tv_count, 22)
-        self.assertEqual(ret.user_count, 3)
-        self.assertIsNone(ret.episode_count)
 
-    @unittest.skipIf(dashboard_endpoint is None, "dashboard endpoint dependencies are missing")
-    def test_statistic_mixed_episode_count(self):
-        mocked_stats = [
-            schemas.Statistic(movie_count=10, tv_count=20, episode_count=None, user_count=2),
-            schemas.Statistic(movie_count=1, tv_count=2, episode_count=6, user_count=1),
-        ]
-        from app.application.dashboard import DashboardQueryService
+@pytest.mark.skipif(
+    dashboard_endpoint is None,
+    reason="dashboard endpoint dependencies are missing",
+)
+def test_statistic_all_episode_missing():
+    mocked_stats = [
+        schemas.Statistic(movie_count=10, tv_count=20, episode_count=None, user_count=2),
+        schemas.Statistic(movie_count=1, tv_count=2, episode_count=None, user_count=1),
+    ]
+    from app.application.dashboard import DashboardQueryService
 
-        service = DashboardQueryService(
-            repository=self._Repository(),
-            media_statistics=lambda _name: mocked_stats,
-        )
-        ret = dashboard_endpoint.statistic(name="all", service=service, _=None)
+    service = DashboardQueryService(
+        repository=_DashboardRepository(),
+        media_statistics=lambda _name: mocked_stats,
+    )
+    ret = dashboard_endpoint.statistic(name="ugreen", service=service, _=None)
 
-        self.assertEqual(ret.movie_count, 11)
-        self.assertEqual(ret.tv_count, 22)
-        self.assertEqual(ret.user_count, 3)
-        self.assertEqual(ret.episode_count, 6)
+    assert ret.movie_count == 11
+    assert ret.tv_count == 22
+    assert ret.user_count == 3
+    assert ret.episode_count is None
+
+
+@pytest.mark.skipif(
+    dashboard_endpoint is None,
+    reason="dashboard endpoint dependencies are missing",
+)
+def test_statistic_mixed_episode_count():
+    mocked_stats = [
+        schemas.Statistic(movie_count=10, tv_count=20, episode_count=None, user_count=2),
+        schemas.Statistic(movie_count=1, tv_count=2, episode_count=6, user_count=1),
+    ]
+    from app.application.dashboard import DashboardQueryService
+
+    service = DashboardQueryService(
+        repository=_DashboardRepository(),
+        media_statistics=lambda _name: mocked_stats,
+    )
+    ret = dashboard_endpoint.statistic(name="all", service=service, _=None)
+
+    assert ret.movie_count == 11
+    assert ret.tv_count == 22
+    assert ret.user_count == 3
+    assert ret.episode_count == 6

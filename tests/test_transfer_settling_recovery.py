@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.application.chain.events import TransferResultSettlement
+from app.application.history import TransferHistoryWrite
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferExecutionCommand,
@@ -597,12 +598,12 @@ def test_failed_settlement_retry_replays_step_and_commits_new_receipt(
     writer = TransactionalChainDurableEventWriter(factory)
     first_settlement = writer.transfer_result(
         topic=None,
-        stage_history=lambda repository: repository.add_force(
+        stage_history=lambda repository: repository.replace(TransferHistoryWrite(
             src=path,
             src_storage="local",
             status=False,
             errmsg="copy failed",
-        ),
+        )),
         event_payload={},
         publish=None,
         settlement=TransferResultSettlement(
@@ -654,12 +655,12 @@ def test_failed_settlement_retry_replays_step_and_commits_new_receipt(
     assert new_checkpoint.fingerprint != exhausted.checkpoint.fingerprint
     second_settlement = writer.transfer_result(
         topic=None,
-        stage_history=lambda repository: repository.add_force(
+        stage_history=lambda repository: repository.replace(TransferHistoryWrite(
             src=path,
             src_storage="local",
             status=True,
             errmsg=None,
-        ),
+        )),
         event_payload={},
         publish=None,
         settlement=TransferResultSettlement(

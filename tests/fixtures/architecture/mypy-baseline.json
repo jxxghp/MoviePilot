@@ -837,7 +837,7 @@
     "redundant-cast": 1
   },
   "app/api/dependencies/history.py": {
-    "arg-type": 11,
+    "arg-type": 7,
     "attr-defined": 1
   },
   "app/api/dependencies/site.py": {
@@ -1140,10 +1140,8 @@
     "type-arg": 2
   },
   "app/application/history.py": {
-    "assignment": 2,
     "attr-defined": 1,
-    "no-any-return": 1,
-    "type-arg": 5
+    "no-any-return": 1
   },
   "app/application/image.py": {
     "arg-type": 1,
@@ -1380,7 +1378,7 @@
     "type-arg": 4
   },
   "app/chain/_transfer.py": {
-    "arg-type": 9,
+    "arg-type": 8,
     "assignment": 4,
     "attr-defined": 55,
     "no-any-return": 3,
@@ -1603,9 +1601,6 @@
     "valid-type": 1,
     "var-annotated": 1
   },
-  "app/db/adapters/chain.py": {
-    "return-value": 1
-  },
   "app/db/adapters/plugininstallation.py": {
     "no-any-return": 1,
     "redundant-cast": 2
@@ -1730,9 +1725,8 @@
     "no-untyped-def": 4
   },
   "app/db/oper/transferhistory.py": {
-    "arg-type": 1,
     "no-any-return": 2,
-    "no-untyped-def": 7,
+    "no-untyped-def": 6,
     "union-attr": 2
   },
   "app/db/oper/user.py": {
@@ -3380,7 +3374,7 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 13,
+    "arg-type": 12,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,

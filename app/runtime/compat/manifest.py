@@ -775,6 +775,11 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
     "app.db.oper": {
+        "TransferHistoryOper": SymbolAlias(
+            target_module="app.sdk._legacy.history",
+            target_name="TransferHistoryOper",
+            replacement="app.application.history.TransferHistoryRepository",
+        ),
         "WorkflowOper": SymbolAlias(
             target_module="app.sdk._legacy.workflow",
             target_name="WorkflowOper",

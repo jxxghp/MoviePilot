@@ -927,6 +927,11 @@
         }
       },
       "app.db.oper": {
+        "TransferHistoryOper": {
+          "replacement": "app.application.history.TransferHistoryRepository",
+          "target_module": "app.sdk._legacy.history",
+          "target_name": "TransferHistoryOper"
+        },
         "WorkflowOper": {
           "replacement": "app.application.workflow.WorkflowExecutionPort",
           "target_module": "app.sdk._legacy.workflow",

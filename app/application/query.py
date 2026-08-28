@@ -74,11 +74,14 @@ class HistoryQueryPort(Protocol):
         *,
         filters: DownloadHistoryFilter,
         page: QueryPageRequest,
-    ) -> QueryRows[object]:
+    ) -> QueryRows[DownloadHistorySnapshot]:
         """按组合筛选和稳定分页读取下载历史。"""
         ...
 
-    def get_download_history(self, history_id: int) -> object | None:
+    def get_download_history(
+        self,
+        history_id: int,
+    ) -> DownloadHistorySnapshot | None:
         """按 ID 读取一条下载历史。"""
         ...
 
@@ -87,11 +90,14 @@ class HistoryQueryPort(Protocol):
         *,
         filters: TransferHistoryFilter,
         page: QueryPageRequest,
-    ) -> QueryRows[object]:
+    ) -> QueryRows[TransferHistorySnapshot]:
         """按组合筛选和稳定分页读取整理历史。"""
         ...
 
-    def get_transfer_history(self, history_id: int) -> object | None:
+    def get_transfer_history(
+        self,
+        history_id: int,
+    ) -> TransferHistorySnapshot | None:
         """按 ID 读取一条整理历史。"""
         ...
 

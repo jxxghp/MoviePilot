@@ -482,7 +482,10 @@ def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
 
 def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     """符号级映射清单应覆盖媒体身份、整理工作项、刮削拆分与消息/通知命名统一的旧入口。"""
-    assert set(SYMBOL_ALIASES["app.db.oper"]) == {"WorkflowOper"}
+    assert set(SYMBOL_ALIASES["app.db.oper"]) == {
+        "TransferHistoryOper",
+        "WorkflowOper",
+    }
     assert set(SYMBOL_ALIASES["app.workflow"]) == {"WorkFlowManager"}
     assert set(SYMBOL_ALIASES["app.domain.media"]) == {
         "MEDIA_SOURCE_ALIASES",

@@ -414,6 +414,17 @@ class TransferHistoryOper(DbOper):
             )
         )
 
+    async def async_stage_delete(self, historyid: int) -> None:
+        """在调用方异步事务内暂存旧整理记录删除。"""
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("整理历史异步删除需要调用方提供异步 Session")
+        await self._db.execute(
+            sqlalchemy_delete(TransferHistory).where(
+                TransferHistory.id == historyid,
+                TransferHistory.transfer_task_id.is_(None),
+            )
+        )
+
     def stage_truncate(self) -> None:
         """暂存旧整理记录删除，只保留当前失败任务历史。"""
         self._db.execute(
@@ -449,49 +460,13 @@ class TransferHistoryOper(DbOper):
             )
         )
 
-    def add_force(self, **kwargs) -> Optional[TransferHistory]:
-        """
-        新增转移历史，并以同源存储的记录为准替换旧记录。
-        """
-        # 文件项的默认存储是 local；归一化旧调用传入的 None，确保运行时语义与
-        # (src, src_storage) 唯一索引一致。
-        kwargs["src_storage"] = kwargs.get("src_storage") or "local"
-        # 旧记录的清理交给 replace_by_src 按 (src, src_storage) 处理：
-        # 仅按 src 删除会连带删掉其他存储下同路径的记录。
-        kwargs.update({
-            "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        })
-        def stage(session: Session) -> Optional[TransferHistory]:
-            """在同一事务替换记录并返回兼容查询投影。"""
-            TransferHistory.replace_by_src(session, **kwargs)
-            return TransferHistory.get_by_src(
-                session,
-                kwargs.get("src"),
-                kwargs["src_storage"],
-            )
-
-        # 保持 add_force 的既有返回契约：返回可被调用方安全读取字段的查询结果，
-        # 而非事务提交后可能已脱离会话的新建实例。
-        return self._execute_sync_write(stage)
-
     def stage_replace_by_src(self, **kwargs) -> TransferHistory:
         """在调用方事务内按源路径替换整理历史并返回已分配 ID 的新记录。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("整理历史事务写入需要调用方提供同步 Session")
         kwargs["src_storage"] = kwargs.get("src_storage") or "local"
         kwargs["date"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        self._db.execute(
-            sqlalchemy_delete(TransferHistory).where(
-                TransferHistory.src == kwargs.get("src"),
-                TransferHistory.src_storage == kwargs["src_storage"],
-                TransferHistory.transfer_task_id.is_(None),
-            )
-        )
-        self._db.flush()
-        history = TransferHistory(**kwargs)
-        self._db.add(history)
-        self._db.flush()
-        return history
+        return TransferHistory.replace_by_src(self._db, **kwargs)
 
     def stage_upsert_by_transfer_task_id(
             self,
@@ -544,6 +519,20 @@ class TransferHistoryOper(DbOper):
                 historyid,
                 download_hash,
             )
+        )
+
+    def stage_update_download_hash(
+        self,
+        historyid: int,
+        download_hash: str,
+    ) -> None:
+        """在调用方事务内暂存整理历史下载任务 Hash 更新。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("整理历史同步更新需要调用方提供同步 Session")
+        TransferHistory.update_download_hash(
+            self._db,
+            historyid,
+            download_hash,
         )
 
     def list_by_date(self, date: str) -> List[TransferHistory]:

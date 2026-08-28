@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, NoReturn, Optional, Protocol, Union
@@ -33,65 +35,6 @@ FAILED_RETRY_TTL = 24 * 3600
 _failed_retry_counts = TTLCache(region="transfer_failed_retry", maxsize=5000, ttl=FAILED_RETRY_TTL)
 
 
-class TransferHistoryRecord(Protocol):
-    """整理历史用例读取的最小记录投影。"""
-
-    id: int
-    status: bool
-    src: Optional[str]
-    src_storage: Optional[str]
-    src_fileitem: Optional[dict]
-    transfer_task_id: Optional[str]
-
-
-class TransferHistoryWriter(Protocol):
-    """整理历史写入和查重端口。"""
-
-    def get_by_src(self, src: str, storage: Optional[str] = None) -> Optional[TransferHistoryRecord]:
-        """按源路径读取记录。"""
-
-    def get_success_by_src(self, src: str, storage: Optional[str] = None) -> Optional[TransferHistoryRecord]:
-        """按源路径读取成功记录。"""
-
-    def add_force(self, **payload: Any) -> Optional[TransferHistoryRecord]:
-        """强制写入整理历史。"""
-
-
-_configured_transfer_history_provider: Callable[[], TransferHistoryWriter] | None = None
-
-
-def configure_transfer_history_provider(
-    provider: Callable[[], TransferHistoryWriter],
-) -> None:
-    """由启动组合根登记整理历史数据端口提供器。"""
-    global _configured_transfer_history_provider
-    _configured_transfer_history_provider = provider
-
-
-def _get_transfer_history_writer(
-    writer: Optional[TransferHistoryWriter],
-) -> TransferHistoryWriter:
-    """获取显式传入或组合根登记的整理历史数据端口。"""
-    if writer is not None:
-        return writer
-    if _configured_transfer_history_provider is None:
-        raise RuntimeError("整理历史数据端口尚未配置")
-    return _configured_transfer_history_provider()
-
-
-class TransferHistoryPort:
-    """把监控等宿主用例的存量构造形态转发到整理历史端口。"""
-
-    def __getattr__(self, name: str) -> Any:
-        """转发整理历史读写方法，避免上层直接导入数据库操作器。"""
-        return getattr(_get_transfer_history_writer(None), name)
-
-
-def get_transfer_history_port() -> TransferHistoryWriter:
-    """返回启动组合根登记的整理历史数据端口实例。"""
-    return _get_transfer_history_writer(None)
-
-
 @dataclass(frozen=True, slots=True)
 class HistoryMutationResult:
     """描述历史记录维护操作是否成功及兼容提示。"""
@@ -105,7 +48,7 @@ class _FrozenJsonDict(dict[str, JsonData]):
 
     def _reject_mutation(self, *args: Any, **kwargs: Any) -> NoReturn:
         """拒绝修改已经进入历史快照的嵌套 JSON。"""
-        raise TypeError("下载历史快照 JSON 不可修改")
+        raise TypeError("历史快照 JSON 不可修改")
 
     __setitem__ = _reject_mutation
     __delitem__ = _reject_mutation
@@ -122,7 +65,7 @@ class _FrozenJsonList(list[JsonData]):
 
     def _reject_mutation(self, *args: Any, **kwargs: Any) -> NoReturn:
         """拒绝修改已经进入历史快照的嵌套 JSON。"""
-        raise TypeError("下载历史快照 JSON 不可修改")
+        raise TypeError("历史快照 JSON 不可修改")
 
     __setitem__ = _reject_mutation
     __delitem__ = _reject_mutation
@@ -145,6 +88,312 @@ def _freeze_json(value: JsonData) -> JsonData:
     if isinstance(value, list):
         return _FrozenJsonList([_freeze_json(item) for item in value])
     return value
+
+
+@dataclass(frozen=True, slots=True)
+class TransferHistorySnapshot:
+    """脱离数据库会话后供整理、Agent 和历史用例读取的完整历史快照。"""
+
+    id: int
+    transfer_task_id: Optional[str] = None
+    transfer_settlement_revision: Optional[int] = None
+    src: Optional[str] = None
+    src_storage: Optional[str] = None
+    src_fileitem: Optional[JsonData] = None
+    dest: Optional[str] = None
+    dest_storage: Optional[str] = None
+    dest_fileitem: Optional[JsonData] = None
+    mode: Optional[str] = None
+    type: Optional[str] = None
+    category: Optional[str] = None
+    title: Optional[str] = None
+    year: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    music_type: Optional[str] = None
+    total_tracks: Optional[int] = None
+    audio_format: Optional[str] = None
+    audio_lossless: Optional[bool] = None
+    bit_depth: Optional[int] = None
+    sample_rate: Optional[int] = None
+    bitrate: Optional[int] = None
+    seasons: Optional[str] = None
+    episodes: Optional[str] = None
+    image: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    status: bool = True
+    errmsg: Optional[str] = None
+    date: Optional[str] = None
+    files: Optional[JsonData] = None
+    episode_group: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        """递归冻结历史 JSON 字段，避免跨层共享可变 ORM 列值。"""
+        object.__setattr__(self, "src_fileitem", _freeze_json(self.src_fileitem))
+        object.__setattr__(self, "dest_fileitem", _freeze_json(self.dest_fileitem))
+        object.__setattr__(self, "files", _freeze_json(self.files))
+
+
+@dataclass(frozen=True, slots=True)
+class TransferHistoryWrite:
+    """替换同源整理历史所需的完整稳定写入数据。"""
+
+    src: str
+    src_storage: Optional[str] = None
+    src_fileitem: Optional[JsonData] = None
+    dest: Optional[str] = None
+    dest_storage: Optional[str] = None
+    dest_fileitem: Optional[JsonData] = None
+    mode: Optional[str] = None
+    type: Optional[str] = None
+    category: Optional[str] = None
+    title: Optional[str] = None
+    year: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    music_type: Optional[str] = None
+    total_tracks: Optional[int] = None
+    audio_format: Optional[str] = None
+    audio_lossless: Optional[bool] = None
+    bit_depth: Optional[int] = None
+    sample_rate: Optional[int] = None
+    bitrate: Optional[int] = None
+    seasons: Optional[str] = None
+    episodes: Optional[str] = None
+    image: Optional[str] = None
+    downloader: Optional[str] = None
+    download_hash: Optional[str] = None
+    status: bool = True
+    errmsg: Optional[str] = None
+    files: Optional[JsonData] = None
+    episode_group: Optional[str] = None
+
+    def to_payload(self) -> dict[str, object]:
+        """返回仅含持久化字段的独立副本。"""
+        payload: dict[str, object] = asdict(self)
+        if self.media_source is not None:
+            payload["media_source"] = str(self.media_source)
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class TransferHistoryStatisticSnapshot:
+    """单日整理历史数量统计。"""
+
+    date: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class TransferHistoryMonthlyStatistics:
+    """本月按媒体类别聚合的整理历史数量。"""
+
+    movies: int
+    tv_shows: int
+    episodes: int
+    music: int
+
+
+class TransferHistoryQueryPort(Protocol):
+    """宿主整理、历史、Agent 和工作流所需的类型化查询端口。"""
+
+    def get(self, history_id: int) -> Optional[TransferHistorySnapshot]:
+        """按主键返回整理历史快照。"""
+        ...
+
+    def get_by_src(
+        self,
+        src: str,
+        storage: Optional[str] = None,
+    ) -> Optional[TransferHistorySnapshot]:
+        """按源路径和可选存储返回最新历史快照。"""
+        ...
+
+    def get_success_by_src(
+        self,
+        src: str,
+        storage: Optional[str] = None,
+    ) -> Optional[TransferHistorySnapshot]:
+        """按源路径和可选存储返回最新成功历史快照。"""
+        ...
+
+    def get_by_dest(
+        self,
+        dest: str,
+        storage: Optional[str] = None,
+    ) -> Optional[TransferHistorySnapshot]:
+        """按目标路径和可选存储返回最新历史快照。"""
+        ...
+
+    def get_by_transfer_task_id(
+        self,
+        *,
+        task_id: str,
+    ) -> Optional[TransferHistorySnapshot]:
+        """按 durable 整理任务标识返回终态历史快照。"""
+        ...
+
+    def get_by_media_identity(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        mtype: Optional[str] = None,
+    ) -> Optional[TransferHistorySnapshot]:
+        """按规范媒体身份和可选媒体类型返回历史快照。"""
+        ...
+
+    def list_success_by_src(
+        self,
+        src: str,
+        storage: Optional[str] = None,
+        recursive: bool = False,
+    ) -> list[TransferHistorySnapshot]:
+        """按源路径返回成功整理历史快照。"""
+        ...
+
+    def list_success_move_by_dest(
+        self,
+        dest: str,
+        storage: Optional[str] = None,
+        recursive: bool = False,
+    ) -> list[TransferHistorySnapshot]:
+        """按目标路径返回成功移动历史快照。"""
+        ...
+
+    def list_by_hash(self, download_hash: str) -> list[TransferHistorySnapshot]:
+        """按下载任务 Hash 返回历史快照。"""
+        ...
+
+    async def async_get(
+        self,
+        history_id: int,
+    ) -> Optional[TransferHistorySnapshot]:
+        """异步按主键返回整理历史快照。"""
+        ...
+
+    async def async_list_by_title(
+        self,
+        title: str,
+        page: int = 1,
+        count: int = 30,
+        status: Optional[bool] = None,
+        wildcard: bool = False,
+    ) -> list[TransferHistorySnapshot]:
+        """异步按标题或路径分页返回历史快照。"""
+        ...
+
+    async def async_list_by_page(
+        self,
+        page: int = 1,
+        count: int = 30,
+        status: Optional[bool] = None,
+    ) -> list[TransferHistorySnapshot]:
+        """异步按时间倒序分页返回历史快照。"""
+        ...
+
+    async def async_count(self, status: Optional[bool] = None) -> int:
+        """异步统计指定状态的整理历史数量。"""
+        ...
+
+    async def async_count_by_title(
+        self,
+        title: str,
+        status: Optional[bool] = None,
+        wildcard: bool = False,
+    ) -> int:
+        """异步统计匹配标题或路径的整理历史数量。"""
+        ...
+
+    async def async_statistic(
+        self,
+        days: int = 7,
+    ) -> list[TransferHistoryStatisticSnapshot]:
+        """异步返回最近若干天的每日整理数量。"""
+        ...
+
+    def monthly_media_statistics(self) -> TransferHistoryMonthlyStatistics:
+        """返回本月电影、剧集、单集和音乐整理数量。"""
+        ...
+
+
+class TransferHistoryWritePort(Protocol):
+    """整理历史替换、删除与维护所需的类型化事务端口。"""
+
+    def replace(self, history: TransferHistoryWrite) -> TransferHistorySnapshot:
+        """在独立事务中替换同源历史并返回快照。"""
+        ...
+
+    def delete(self, history_id: int) -> None:
+        """在独立事务中删除一条旧历史。"""
+        ...
+
+    async def async_delete(self, history_id: int) -> None:
+        """在独立异步事务中删除一条旧历史。"""
+        ...
+
+    def truncate(self) -> None:
+        """在独立事务中清空没有 durable 任务映射的历史。"""
+        ...
+
+    def update_download_hash(self, history_id: int, download_hash: str) -> None:
+        """在独立事务中补充整理历史的下载任务 Hash。"""
+        ...
+
+
+class TransferHistoryReplacePort(Protocol):
+    """整理历史业务写入规则需要的最小替换端口。"""
+
+    def replace(self, history: TransferHistoryWrite) -> TransferHistorySnapshot:
+        """替换同源历史并返回冻结快照。"""
+        ...
+
+
+class TransferHistoryStagingPort(TransferHistoryReplacePort, Protocol):
+    """durable 结算事务内查询并替换整理历史的类型化暂存端口。"""
+
+    def get_by_src(
+        self,
+        src: str,
+        storage: Optional[str] = None,
+    ) -> Optional[TransferHistorySnapshot]:
+        """在调用方 Session 内按源路径读取历史快照。"""
+        ...
+
+    def get_success_by_src(
+        self,
+        src: str,
+        storage: Optional[str] = None,
+    ) -> Optional[TransferHistorySnapshot]:
+        """在调用方 Session 内按源路径读取成功历史快照。"""
+        ...
+
+class TransferHistoryRepository(
+    TransferHistoryQueryPort,
+    TransferHistoryWritePort,
+    Protocol,
+):
+    """组合宿主所需全部整理历史查询和变更能力。"""
+
+
+_configured_transfer_history_repository: (
+    Callable[[], TransferHistoryRepository] | None
+) = None
+
+
+def configure_transfer_history_repository(
+    provider: Callable[[], TransferHistoryRepository],
+) -> None:
+    """由启动组合根登记类型化整理历史仓储提供器。"""
+    global _configured_transfer_history_repository
+    _configured_transfer_history_repository = provider
+
+
+def get_transfer_history_repository() -> TransferHistoryRepository:
+    """返回启动组合根登记的类型化整理历史仓储。"""
+    if _configured_transfer_history_repository is None:
+        raise RuntimeError("类型化整理历史仓储尚未配置")
+    return _configured_transfer_history_repository()
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,47 +595,6 @@ class AsyncDownloadHistoryQueryRepository(Protocol):
         ...
 
 
-class AsyncTransferHistoryQueryRepository(Protocol):
-    """整理历史列表和详情查询需要的最小异步持久化端口。"""
-
-    async def async_get(self, historyid: int) -> Optional[Any]:
-        """按主键读取单条整理历史。"""
-        ...
-
-    async def async_list_by_title(
-        self,
-        title: str,
-        page: int = 1,
-        count: int = 30,
-        status: Optional[bool] = None,
-        wildcard: bool = False,
-    ) -> list[Any]:
-        """按标题或路径分页读取整理历史。"""
-        ...
-
-    async def async_list_by_page(
-        self,
-        page: int = 1,
-        count: int = 30,
-        status: Optional[bool] = None,
-    ) -> list[Any]:
-        """按时间倒序分页读取整理历史。"""
-        ...
-
-    async def async_count(self, status: Optional[bool] = None) -> Optional[int]:
-        """统计指定状态的整理历史数量。"""
-        ...
-
-    async def async_count_by_title(
-        self,
-        title: str,
-        status: Optional[bool] = None,
-        wildcard: bool = False,
-    ) -> Optional[int]:
-        """统计匹配标题或路径的整理历史数量。"""
-        ...
-
-
 @dataclass(frozen=True, slots=True)
 class ManualTransferHistory:
     """手动整理准备阶段需要的稳定历史投影。"""
@@ -394,8 +602,8 @@ class ManualTransferHistory:
     id: int
     status: bool
     mode: Optional[str]
-    src_fileitem: Optional[dict]
-    dest_fileitem: Optional[dict]
+    src_fileitem: Optional[dict[str, JsonData]]
+    dest_fileitem: Optional[dict[str, JsonData]]
     downloader: Optional[str]
     download_hash: Optional[str]
     type: Optional[str]
@@ -410,7 +618,7 @@ class ManualTransferHistory:
 class TransferHistoryLookupRepository(Protocol):
     """手动整理历史投影所需的同步查询端口。"""
 
-    def get(self, history_id: int) -> Optional[Any]:
+    def get(self, history_id: int) -> Optional[TransferHistorySnapshot]:
         """按主键读取整理历史。"""
         ...
 
@@ -427,12 +635,18 @@ class TransferHistoryLookupService:
         record = self._repository.get(history_id)
         if record is None:
             return None
+        src_fileitem = (
+            record.src_fileitem if isinstance(record.src_fileitem, dict) else None
+        )
+        dest_fileitem = (
+            record.dest_fileitem if isinstance(record.dest_fileitem, dict) else None
+        )
         return ManualTransferHistory(
             id=record.id,
             status=bool(record.status),
             mode=record.mode,
-            src_fileitem=record.src_fileitem,
-            dest_fileitem=record.dest_fileitem,
+            src_fileitem=src_fileitem,
+            dest_fileitem=dest_fileitem,
             downloader=record.downloader,
             download_hash=record.download_hash,
             type=record.type,
@@ -452,7 +666,7 @@ class HistoryQueryService:
         self,
         *,
         download_repository: AsyncDownloadHistoryQueryRepository,
-        transfer_repository: AsyncTransferHistoryQueryRepository,
+        transfer_repository: TransferHistoryQueryPort,
     ) -> None:
         """保存下载历史和整理历史的只读端口。"""
         self._download_repository = download_repository
@@ -555,7 +769,7 @@ class DownloadHistoryMutationRepository(Protocol):
 class TransferHistoryMutationRepository(Protocol):
     """整理历史删除与清理用例需要的最小持久化端口。"""
 
-    def get(self, history_id: int) -> Optional[Any]:
+    def get(self, history_id: int) -> Optional[TransferHistorySnapshot]:
         """读取整理历史。"""
         ...
 
@@ -625,9 +839,9 @@ class TransferHistoryMutationCommand:
         repository: TransferHistoryMutationRepository,
         download_repository: DownloadFileMutationRepository,
         unit_of_work: HistoryUnitOfWork,
-        file_item_factory: Callable[[dict], Any],
+        file_item_factory: Callable[[dict[str, JsonData]], Any],
         delete_media_file: Callable[[Any], bool],
-        publish_download_file_deleted: Callable[[dict], None],
+        publish_download_file_deleted: Callable[[dict[str, Any]], None],
         clear_failures: Callable[[Optional[str], Optional[str]], None],
     ) -> None:
         """保存历史事务、存储删除、事件和失败状态清理端口。"""
@@ -657,12 +871,18 @@ class TransferHistoryMutationCommand:
             )
 
         if delete_destination and history.dest_fileitem:
-            destination = self._file_item_factory(history.dest_fileitem)
+            destination_payload = self._file_item_payload(history.dest_fileitem)
+            if destination_payload is None:
+                return HistoryMutationResult(False, "目标文件历史数据无效")
+            destination = self._file_item_factory(destination_payload)
             self._delete_media_file(destination)
 
         source_deleted = False
         if delete_source and history.src_fileitem:
-            source = self._file_item_factory(history.src_fileitem)
+            source_payload = self._file_item_payload(history.src_fileitem)
+            if source_payload is None:
+                return HistoryMutationResult(False, "源文件历史数据无效")
+            source = self._file_item_factory(source_payload)
             if not self._delete_media_file(source):
                 return HistoryMutationResult(False, f"{source.path} 删除失败")
             self._download_repository.stage_delete_file_by_fullpath(
@@ -679,6 +899,11 @@ class TransferHistoryMutationCommand:
             })
         self._clear_failures(history.src, history.src_storage)
         return HistoryMutationResult(True)
+
+    @staticmethod
+    def _file_item_payload(value: JsonData) -> Optional[dict[str, JsonData]]:
+        """仅接受可安全构造文件项的历史 JSON 对象。"""
+        return value if isinstance(value, dict) else None
 
     def truncate(self) -> HistoryMutationResult:
         """在单一事务中清空旧历史，并保留当前失败任务记录。"""
@@ -805,7 +1030,7 @@ def file_fingerprint(
     :param fileid: 存储器文件唯一标识
     :return: 非空且可比较的指纹字段
     """
-    fingerprint = {}
+    fingerprint: Dict[str, Any] = {}
     size = coerce_size(file_size)
     if size is not None:
         fingerprint["size"] = size
@@ -960,7 +1185,7 @@ def coerce_size(size: Any) -> Optional[int]:
         return None
 
 
-def history_src_size(history: TransferHistoryRecord) -> Optional[int]:
+def history_src_size(history: TransferHistorySnapshot) -> Optional[int]:
     """
     读取整理记录中的源文件大小。
     src_fileitem 是 JSON 列，历史数据可能为空、缺 size 键甚至不是字典，
@@ -971,7 +1196,7 @@ def history_src_size(history: TransferHistoryRecord) -> Optional[int]:
     return history_src_fingerprint(history).get("size")
 
 
-def history_src_fingerprint(history: TransferHistoryRecord) -> Dict[str, Any]:
+def history_src_fingerprint(history: TransferHistorySnapshot) -> Dict[str, Any]:
     """
     读取整理记录中的源文件版本指纹。
     :param history: 整理记录
@@ -987,9 +1212,11 @@ def history_src_fingerprint(history: TransferHistoryRecord) -> Dict[str, Any]:
     )
 
 
-def resolve_history(src_path: str, storage: Optional[str] = None,
-                    transfer_history_oper: Optional[TransferHistoryWriter] = None
-                    ) -> Optional[TransferHistoryRecord]:
+def resolve_history(
+    src_path: str,
+    storage: Optional[str] = None,
+    transfer_history_oper: Optional[TransferHistoryQueryPort] = None,
+) -> Optional[TransferHistorySnapshot]:
     """
     查询源路径对应的整理记录。
 
@@ -998,17 +1225,17 @@ def resolve_history(src_path: str, storage: Optional[str] = None,
     此处吞掉，由调用方按各自的重试策略处理。
     :param src_path: 整理记录使用的源路径
     :param storage: 存储
-    :param transfer_history_oper: 复用的历史操作对象，未传时新建
+    :param transfer_history_oper: 兼容旧关键字的类型化仓储，未传时使用组合根实现
     :return: 命中的整理记录，未命中时为 None
     """
-    oper = _get_transfer_history_writer(transfer_history_oper)
-    history = oper.get_by_src(src_path, storage=storage)
+    repository = transfer_history_oper or get_transfer_history_repository()
+    history = repository.get_by_src(src_path, storage=storage)
     if history is not None and not history.status:
-        history = oper.get_success_by_src(src_path, storage=storage) or history
+        history = repository.get_success_by_src(src_path, storage=storage) or history
     return history
 
 
-def evaluate_history_gate(history: Optional[TransferHistoryRecord],
+def evaluate_history_gate(history: Optional[TransferHistorySnapshot],
                           file_size: Optional[float] = None,
                           file_modify_time: Optional[float] = None,
                           fileid: Optional[str] = None,
@@ -1060,7 +1287,7 @@ def evaluate_history_gate(history: Optional[TransferHistoryRecord],
     return HistoryGateAction.SKIP
 
 
-def describe_history_gate(history: Optional[TransferHistoryRecord],
+def describe_history_gate(history: Optional[TransferHistorySnapshot],
                           file_size: Optional[float] = None,
                           file_modify_time: Optional[float] = None,
                           fileid: Optional[str] = None) -> str:
@@ -1102,7 +1329,7 @@ def describe_history_gate(history: Optional[TransferHistoryRecord],
 # 整理历史的写入路径
 #
 # 这两个函数把 FileItem / MetaBase / MediaInfo / TransferInfo 四个领域对象翻译成
-# 一行整理历史，是整理历史表的唯一写入口。它们此前长在 TransferHistoryOper 上，但
+# 一行整理历史，是整理历史表的唯一写入口。它们此前由表级适配器承载，但
 # 拼标题、拆季集、取海报、判音乐字段都是整理链的业务规则而非数据访问——Oper 只该
 # 收敛查询，领域对象不该出现在它的入参里。搬到本模块与查重闸（读侧）作伴：同一张
 # 表的读写规则放在一起，字段含义只有一处需要维护。
@@ -1112,18 +1339,34 @@ def _history_title(meta: MetaBase,
                    mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None) -> Optional[str]:
     """音乐文件优先记录曲目标题，其它媒体保持识别标题。"""
     if isinstance(meta, MetaMusic) and meta.title:
-        return meta.title
+        return str(meta.title)
     if mediainfo and mediainfo.title:
-        return mediainfo.title
-    return meta.name
+        return str(mediainfo.title)
+    return str(meta.name) if meta.name else None
 
 
-def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
-                         mediainfo: Union[MediaInfo, MusicInfo], transferinfo: TransferInfo,
-                         downloader: Optional[str] = None,
-                         download_hash: Optional[str] = None,
-                         transfer_history_oper: Optional[TransferHistoryWriter] = None
-                         ) -> Optional[TransferHistoryRecord]:
+def _history_source_path(fileitem: FileItem) -> str:
+    """返回整理历史必需的源路径，拒绝持久化无身份记录。"""
+    if not fileitem.path:
+        raise ValueError("整理历史缺少源文件路径")
+    return fileitem.path
+
+
+def _history_year(value: object) -> Optional[str]:
+    """把媒体年份规范为整理历史稳定字符串。"""
+    return str(value) if value is not None else None
+
+
+def add_transfer_success(
+    fileitem: FileItem,
+    mode: str,
+    meta: MetaBase,
+    mediainfo: Union[MediaInfo, MusicInfo],
+    transferinfo: TransferInfo,
+    downloader: Optional[str] = None,
+    download_hash: Optional[str] = None,
+    transfer_history_oper: Optional[TransferHistoryReplacePort] = None,
+) -> TransferHistorySnapshot:
     """
     新增转移成功历史记录。
     :param fileitem: 源文件项
@@ -1133,13 +1376,13 @@ def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
     :param transferinfo: 整理结果
     :param downloader: 下载器
     :param download_hash: 种子 hash
-    :param transfer_history_oper: 复用的历史操作对象，未传时新建
+    :param transfer_history_oper: 兼容旧关键字的暂存端口，未传时使用组合根仓储
     :return: 落库后的整理记录
     """
-    oper = _get_transfer_history_writer(transfer_history_oper)
+    repository = transfer_history_oper or get_transfer_history_repository()
     media_source, media_id = resolve_media_identity(media=mediainfo)
-    return oper.add_force(
-        src=fileitem.path,
+    return repository.replace(TransferHistoryWrite(
+        src=_history_source_path(fileitem),
         src_storage=fileitem.storage,
         src_fileitem=fileitem.model_dump(),
         dest=transferinfo.target_item.path if transferinfo.target_item else None,
@@ -1149,7 +1392,7 @@ def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
         type=mediainfo.type.value,
         category=mediainfo.category,
         title=_history_title(meta, mediainfo),
-        year=mediainfo.year,
+        year=_history_year(mediainfo.year),
         media_source=media_source,
         media_id=media_id,
         music_type=getattr(mediainfo, "music_type", None),
@@ -1164,18 +1407,21 @@ def add_transfer_success(fileitem: FileItem, mode: str, meta: MetaBase,
         image=mediainfo.get_poster_image(),
         downloader=downloader,
         download_hash=download_hash,
-        status=1,
-        files=transferinfo.file_list
-    )
+        status=True,
+        files=transferinfo.file_list,
+    ))
 
 
-def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
-                      mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
-                      transferinfo: Optional[TransferInfo] = None,
-                      downloader: Optional[str] = None,
-                      download_hash: Optional[str] = None,
-                      transfer_history_oper: Optional[TransferHistoryWriter] = None
-                      ) -> Optional[TransferHistoryRecord]:
+def add_transfer_fail(
+    fileitem: FileItem,
+    mode: str,
+    meta: MetaBase,
+    mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+    transferinfo: Optional[TransferInfo] = None,
+    downloader: Optional[str] = None,
+    download_hash: Optional[str] = None,
+    transfer_history_oper: Optional[TransferHistoryReplacePort] = None,
+) -> TransferHistorySnapshot:
     """
     新增转移失败历史记录。
 
@@ -1188,14 +1434,14 @@ def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
     :param transferinfo: 整理结果，未进入整理时为 None
     :param downloader: 下载器
     :param download_hash: 种子 hash
-    :param transfer_history_oper: 复用的历史操作对象，未传时新建
+    :param transfer_history_oper: 兼容旧关键字的暂存端口，未传时使用组合根仓储
     :return: 落库后的整理记录
     """
-    oper = _get_transfer_history_writer(transfer_history_oper)
+    repository = transfer_history_oper or get_transfer_history_repository()
     if mediainfo and transferinfo:
         media_source, media_id = resolve_media_identity(media=mediainfo)
-        his = oper.add_force(
-            src=fileitem.path,
+        history = repository.replace(TransferHistoryWrite(
+            src=_history_source_path(fileitem),
             src_storage=fileitem.storage,
             src_fileitem=fileitem.model_dump(),
             dest=transferinfo.target_item.path if transferinfo.target_item else None,
@@ -1205,7 +1451,7 @@ def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
             type=mediainfo.type.value,
             category=mediainfo.category,
             title=_history_title(meta, mediainfo),
-            year=mediainfo.year or meta.year,
+            year=_history_year(mediainfo.year or meta.year),
             media_source=media_source,
             media_id=media_id,
             music_type=getattr(mediainfo, "music_type", None),
@@ -1221,16 +1467,16 @@ def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
             downloader=downloader,
             download_hash=download_hash,
             episode_group=mediainfo.episode_group,
-            status=0,
+            status=False,
             errmsg=transferinfo.message or '未知错误',
-            files=transferinfo.file_list
-        )
+            files=transferinfo.file_list,
+        ))
     else:
         media_source, media_id = resolve_media_identity(media=meta)
-        his = oper.add_force(
+        history = repository.replace(TransferHistoryWrite(
             type=meta.type.value if meta.type else None,
             title=_history_title(meta),
-            year=meta.year,
+            year=_history_year(meta.year),
             media_source=media_source,
             media_id=media_id,
             music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
@@ -1239,7 +1485,7 @@ def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
             bit_depth=getattr(meta, "bit_depth", None),
             sample_rate=getattr(meta, "sample_rate", None),
             bitrate=getattr(meta, "bitrate", None),
-            src=fileitem.path,
+            src=_history_source_path(fileitem),
             src_storage=fileitem.storage,
             src_fileitem=fileitem.model_dump(),
             mode=mode,
@@ -1247,7 +1493,7 @@ def add_transfer_fail(fileitem: FileItem, mode: str, meta: MetaBase,
             episodes=meta.episode,
             downloader=downloader,
             download_hash=download_hash,
-            status=0,
-            errmsg="未识别到媒体信息"
-        )
-    return his
+            status=False,
+            errmsg="未识别到媒体信息",
+        ))
+    return history

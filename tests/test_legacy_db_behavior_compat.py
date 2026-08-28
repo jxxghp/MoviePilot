@@ -190,7 +190,10 @@ def test_legacy_transfer_history_writes_delegate_to_application_service(
     monkeypatch.setattr(legacy, service_name, fake_service)
 
     assert getattr(oper, method_name)(**arguments) == "history"
-    assert captured == {**arguments, "transfer_history_oper": oper}
+    stager = captured.pop("transfer_history_oper")
+    assert captured == arguments
+    assert stager._owner is oper
+    assert callable(stager.replace)
 
 
 def test_legacy_transfer_history_mutations_preserve_durable_receipts(db):

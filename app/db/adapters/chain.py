@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.application.chain.events import (
     ChainDurableEventWriter,
-    TransferHistoryRef,
     TransferResultSettlement,
     download_added_event_key,
     snapshot_download_added,
@@ -22,8 +21,9 @@ from app.application.chain.events import (
 from app.application.history import (
     DownloadFileWrite,
     DownloadHistoryWrite,
-    TransferHistoryRecord,
-    TransferHistoryWriter,
+    TransferHistorySnapshot,
+    TransferHistoryStagingPort,
+    TransferHistoryWrite,
 )
 from app.application.outbox import (
     DOWNLOAD_ADDED_TOPIC,
@@ -37,6 +37,7 @@ from app.application.transfer.execution import (
     TransferExecutionState,
     TransferSettlementResult,
 )
+from app.db.adapters.history.transfer import project_transfer_history
 from app.db.adapters.outbox import (
     SqlAlchemyOutboxDispatchStore,
     SqlAlchemyOutboxStager,
@@ -50,7 +51,7 @@ from app.db.oper.transfersettlementreceipt import TransferSettlementReceiptOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
 
-class _StagingTransferHistoryWriter:
+class _StagingTransferHistoryRepository:
     """让既有历史字段映射复用无提交的 replace 适配器。"""
 
     def __init__(
@@ -69,46 +70,56 @@ class _StagingTransferHistoryWriter:
         self,
         src: str,
         storage: str | None = None,
-    ) -> TransferHistoryRecord | None:
+    ) -> TransferHistorySnapshot | None:
         """转发按源路径读取。"""
-        return self._repository.get_by_src(src, storage)
+        record = self._repository.get_by_src(src, storage)
+        return project_transfer_history(record) if record is not None else None
 
     def get_success_by_src(
         self,
         src: str,
         storage: str | None = None,
-    ) -> TransferHistoryRecord | None:
+    ) -> TransferHistorySnapshot | None:
         """读取成功记录；任务结算时绑定当前任务投影。"""
         if self._settlement is not None:
             if self._settlement_revision is None:
                 raise RuntimeError("整理任务结算缺少事务内修订号")
-            return self._repository.stage_bind_settlement(
+            record = self._repository.stage_bind_settlement(
                 task_id=self._settlement.task_id,
                 settlement_revision=self._settlement_revision,
                 src=src,
                 storage=storage,
             )
-        return self._repository.get_success_by_src(src, storage)
+            return (
+                project_transfer_history(record)
+                if record is not None
+                else None
+            )
+        record = self._repository.get_success_by_src(src, storage)
+        return project_transfer_history(record) if record is not None else None
 
-    def add_force(self, **payload: Any) -> TransferHistoryRecord:
-        """保持旧端口名，并按是否存在任务身份选择暂存策略。"""
+    def replace(self, history: TransferHistoryWrite) -> TransferHistorySnapshot:
+        """按是否存在任务身份选择事务内类型化替换策略。"""
+        payload = history.to_payload()
         if self._settlement is not None:
             if self._settlement_revision is None:
                 raise RuntimeError("整理任务结算缺少事务内修订号")
-            return self._repository.stage_upsert_by_transfer_task_id(
+            record = self._repository.stage_upsert_by_transfer_task_id(
                 task_id=self._settlement.task_id,
                 settlement_revision=self._settlement_revision,
                 retain_task_mapping=self._settlement.outcome == "failed",
                 payload=payload,
             )
-        return self._repository.stage_replace_by_src(**payload)
+        else:
+            record = self._repository.stage_replace_by_src(**payload)
+        return project_transfer_history(record)
 
 
 @dataclass(frozen=True, slots=True)
 class _StagedTransferResult:
     """保存构造 outbox 所需历史投影及可选任务结算结果。"""
 
-    history: TransferHistoryRef
+    history: TransferHistorySnapshot
     settlement: TransferSettlementResult | None = None
 
 
@@ -170,11 +181,14 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
         self,
         *,
         topic: str | None,
-        stage_history: Callable[[TransferHistoryWriter], TransferHistoryRecord | None],
+        stage_history: Callable[
+            [TransferHistoryStagingPort],
+            TransferHistorySnapshot | None,
+        ],
         event_payload: dict[str, Any],
         publish: Callable[[dict[str, Any]], None] | None,
         settlement: TransferResultSettlement | None = None,
-    ) -> TransferHistoryRecord | TransferSettlementResult | None:
+    ) -> TransferHistorySnapshot | TransferSettlementResult | None:
         """原子写历史、可选任务终态与 intent，再返回稳定投影。"""
         if topic is None and settlement is None:
             raise ValueError("无事件 topic 的整理写入必须绑定 durable 任务结算")
@@ -208,7 +222,7 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                     if expected_revision is not None
                     else None
                 )
-                staging = _StagingTransferHistoryWriter(
+                staging = _StagingTransferHistoryRepository(
                     history_repository,
                     settlement=settlement,
                     settlement_revision=next_revision,
@@ -216,13 +230,7 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                 history = stage_history(staging)
                 if history is None:
                     raise RuntimeError("整理历史暂存失败，无法登记 durable 结果事件")
-                projected = TransferHistoryRef(
-                    id=history.id,
-                    status=bool(history.status),
-                    src=history.src,
-                    src_storage=history.src_storage,
-                    src_fileitem=history.src_fileitem,
-                )
+                projected = history
                 if settlement is None:
                     return _StagedTransferResult(history=projected)
                 assert expected_revision is not None
@@ -479,7 +487,7 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
 
     @staticmethod
     def _validate_history_outcome(
-            history: TransferHistoryRef,
+            history: TransferHistorySnapshot,
             settlement: TransferResultSettlement,
     ) -> None:
         """拒绝结算终态与历史状态不一致的调用。"""

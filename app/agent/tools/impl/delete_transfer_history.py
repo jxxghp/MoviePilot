@@ -101,6 +101,8 @@ class DeleteTransferHistoryTool(MoviePilotTool):
             status = "成功" if history.status else "失败"
             deleted_dest = False
             if history.dest_fileitem and not (history.status and history.mode == "move"):
+                if not isinstance(history.dest_fileitem, dict):
+                    return "删除失败：目标文件历史数据无效，已保留历史记录"
                 dest_fileitem = FileItem(**history.dest_fileitem)
                 try:
                     destination_exists, destination_deleted = await self.run_blocking(

@@ -1,19 +1,26 @@
 """Dashboard 统计查询用例。"""
 
 from collections.abc import Callable
-from typing import Any, Optional, Protocol
+from typing import Optional, Protocol
 
+from app.application.history import (
+    TransferHistoryMonthlyStatistics,
+    TransferHistoryStatisticSnapshot,
+)
 from app.schemas.dashboard import Statistic
 
 
 class TransferHistoryQueryRepository(Protocol):
     """Dashboard 所需的整理历史统计端口。"""
 
-    def monthly_media_statistics(self) -> tuple[int, int, int, int]:
+    def monthly_media_statistics(self) -> TransferHistoryMonthlyStatistics:
         """返回本月电影、剧集、单集和音乐数量。"""
         ...
 
-    async def async_statistic(self, days: int = 7) -> list[Any]:
+    async def async_statistic(
+            self,
+            days: int = 7,
+    ) -> list[TransferHistoryStatisticSnapshot]:
         """返回最近若干天的整理趋势。"""
         ...
 
@@ -50,15 +57,14 @@ class DashboardQueryService:
         else:
             result = Statistic()
 
-        (
-            result.movie_count_month,
-            result.tv_count_month,
-            result.episode_count_month,
-            result.music_count_month,
-        ) = self._repository.monthly_media_statistics()
+        monthly = self._repository.monthly_media_statistics()
+        result.movie_count_month = monthly.movies
+        result.tv_count_month = monthly.tv_shows
+        result.episode_count_month = monthly.episodes
+        result.music_count_month = monthly.music
         return result
 
     async def transfer(self, days: int = 7) -> list[int]:
         """返回最近若干天的整理数量序列。"""
         rows = await self._repository.async_statistic(days)
-        return [row[1] for row in rows]
+        return [row.count for row in rows]

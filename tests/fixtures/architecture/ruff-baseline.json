@@ -834,9 +834,6 @@
   "app/monitor/__init__.py": {
     "I001": 1
   },
-  "app/monitor/dispatcher.py": {
-    "I001": 1
-  },
   "app/monitor/monitor.py": {
     "I001": 1
   },
@@ -1181,9 +1178,6 @@
   "tests/test_db_lazy_engine.py": {
     "I001": 1
   },
-  "tests/test_db_oper_layer_extra.py": {
-    "I001": 1
-  },
   "tests/test_db_public_api.py": {
     "I001": 1
   },
@@ -1364,10 +1358,6 @@
     "I001": 1
   },
   "tests/test_module_quality.py": {
-    "I001": 1
-  },
-  "tests/test_monitor_dispatcher_history.py": {
-    "F401": 1,
     "I001": 1
   },
   "tests/test_monitor_gap_recovery.py": {
@@ -1642,16 +1632,10 @@
   "tests/test_transfer_history_retransfer.py": {
     "I001": 1
   },
-  "tests/test_transfer_history_write_path.py": {
-    "I001": 1
-  },
   "tests/test_transfer_queue_count.py": {
     "I001": 1
   },
   "tests/test_transfer_rename_build_event.py": {
-    "I001": 1
-  },
-  "tests/test_transferhistory_media_source_migration.py": {
     "I001": 1
   },
   "tests/test_uvicorn_entrypoint.py": {

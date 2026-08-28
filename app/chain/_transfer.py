@@ -26,6 +26,8 @@ from app.application.history import (
     DownloadFileSnapshot,
     DownloadHistoryQueryPort,
     DownloadHistorySnapshot,
+    TransferHistoryRepository,
+    TransferHistorySnapshot,
     clear_transfer_failures,
     resolve_history,
 )
@@ -58,11 +60,9 @@ from app.schemas.types import (
 )
 from app.schemas.workflow import FileItem
 
-TransferHistory = Any
-
 
 def _request_durable_transfer_retry(
-        history: TransferHistory,
+        history: TransferHistorySnapshot,
         *,
         requested_by: str,
 ) -> Optional[Tuple[bool, str]]:
@@ -357,7 +357,10 @@ class FileFilterMixin:
         return file_meta, file_info
 
     @staticmethod
-    def _is_music_retry_source(history: TransferHistory, src_path: Path) -> bool:
+    def _is_music_retry_source(
+            history: TransferHistorySnapshot,
+            src_path: Path,
+    ) -> bool:
         """
         判断重新整理来源是否应走音乐链路：历史类型为音乐，或源路径为音频文件。
         """
@@ -367,7 +370,7 @@ class FileFilterMixin:
 
     def _recognize_music_retry_media(
             self,
-            history: TransferHistory,
+            history: TransferHistorySnapshot,
             src_path: Path,
     ) -> Optional[Union[MusicInfo, MediaInfo]]:
         """
@@ -457,7 +460,7 @@ class FileFilterMixin:
 
     @staticmethod
     def _is_overwrite_declined(task: TransferTask, transferinfo: TransferInfo,
-                               transferhis: Any) -> bool:
+                               transferhis: TransferHistoryRepository) -> bool:
         """
         判断本次未入库是否为「同路径已有成功记录 + 覆盖模式裁定不覆盖」。
 
@@ -470,7 +473,11 @@ class FileFilterMixin:
         :param transferhis: 历史操作对象
         :return: True 表示应保留原成功记录
         """
-        if not transferinfo.overwrite_skipped or not task.fileitem:
+        if (
+                not transferinfo.overwrite_skipped
+                or not task.fileitem
+                or not task.fileitem.path
+        ):
             return False
         try:
             history = resolve_history(
@@ -1184,7 +1191,9 @@ class ManualHistoryMixin:
         )
 
     @staticmethod
-    def _is_successful_move_history(history: Optional[TransferHistory]) -> bool:
+    def _is_successful_move_history(
+            history: Optional[TransferHistorySnapshot],
+    ) -> bool:
         """判断历史记录是否为已成功完成的移动类整理。"""
         return bool(
             history
@@ -1196,10 +1205,12 @@ class ManualHistoryMixin:
     def _get_manual_transfer_history(
             self,
             fileitem: FileItem,
-            transfer_history_oper: Any,
+            transfer_history_oper: TransferHistoryRepository,
             include_move_dest: bool = False,
-    ) -> Optional[TransferHistory]:
+    ) -> Optional[TransferHistorySnapshot]:
         """查询文件源路径历史，并兼容从成功移动后的目标现址重新整理。"""
+        if not fileitem.path:
+            return None
         # resolve_history 在命中失败记录时会再确认一次有无成功记录，
         # 避免 get_by_src 无排序导致同源多行时返回哪条不确定
         history = resolve_history(
@@ -1219,7 +1230,7 @@ class ManualHistoryMixin:
     def get_manual_transfer_histories(
             self,
             fileitems: List[FileItem],
-    ) -> List[TransferHistory]:
+    ) -> List[TransferHistorySnapshot]:
         """
         查询文件或目录命中的成功整理记录，供手动整理界面显示重整状态。
 
@@ -1227,7 +1238,7 @@ class ManualHistoryMixin:
         :return: 去重后的成功整理记录
         """
         transfer_history_oper = get_chain_transfer_history_port()
-        histories: Dict[int, TransferHistory] = {}
+        histories: Dict[int, TransferHistorySnapshot] = {}
         for fileitem in fileitems or []:
             if not fileitem or not fileitem.path:
                 continue
@@ -1259,7 +1270,7 @@ class ManualHistoryMixin:
 
     def _request_durable_transfer_retry(
             self,
-            history: TransferHistory,
+            history: TransferHistorySnapshot,
             *,
             requested_by: str,
     ) -> Optional[Tuple[bool, str]]:
@@ -1279,8 +1290,8 @@ class ManualHistoryMixin:
 
     def _delete_manual_transfer_history(
             self,
-            history: TransferHistory,
-            transfer_history_oper: Any,
+            history: TransferHistorySnapshot,
+            transfer_history_oper: TransferHistoryRepository,
     ) -> Tuple[bool, str]:
         """删除手动重整历史；非成功移动记录同时清理可能存在的旧目标。"""
         durable_retry = self._request_durable_transfer_retry(
@@ -1295,6 +1306,8 @@ class ManualHistoryMixin:
                 history.dest_fileitem
                 and not ManualHistoryMixin._is_successful_move_history(history)
         ):
+            if not isinstance(history.dest_fileitem, dict):
+                return False, "目标文件历史数据无效"
             dest_fileitem = FileItem(**history.dest_fileitem)
             storage_chain = StorageChain()
             if (
@@ -1601,7 +1614,7 @@ class FailedRetryMixin:
         :param media_id: 数据源原生 ID，必须与 media_source 成对提供
         """
         # 查询历史记录
-        history: TransferHistory = get_chain_transfer_history_port().get(logid)
+        history = get_chain_transfer_history_port().get(logid)
         if not history:
             logger.error(f"整理记录不存在，ID：{logid}")
             return False, "整理记录不存在"
@@ -1676,12 +1689,16 @@ class FailedRetryMixin:
 
         # 删除旧的已整理文件
         if history.dest_fileitem:
+            if not isinstance(history.dest_fileitem, dict):
+                return False, "目标文件历史数据无效"
             # 解析目标文件对象
             dest_fileitem = FileItem(**history.dest_fileitem)
             StorageChain().delete_file(dest_fileitem)
 
         # 强制整理
         if history.src_fileitem:
+            if not isinstance(history.src_fileitem, dict):
+                return False, "源文件历史数据无效"
             state, errmsg = self.do_transfer(
                 fileitem=FileItem(**history.src_fileitem),
                 mediainfo=mediainfo,

@@ -4,23 +4,23 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.chain.transfer import TransferChain
-from app.runtime.cache import TTLCache
+from app.adapters.system.fsproxy import fsproxy
 from app.application.directory import DirectoryHelper
 from app.application.history import (
     HistoryGateAction,
     describe_history_gate,
     evaluate_history_gate,
-    get_transfer_history_port,
+    get_transfer_history_repository,
     is_skip_action,
     max_failed_retries,
     resolve_history,
 )
+from app.chain.transfer import TransferChain
+from app.runtime.cache import TTLCache
 from app.runtime.log import logger
-from app.adapters.system.fsproxy import fsproxy
-from app.schemas.workflow import FileItem
-from app.schemas.types import MediaType
 from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
+from app.schemas.workflow import FileItem
 
 
 class TransferDispatcher:
@@ -111,7 +111,7 @@ class TransferDispatcher:
         """
         try:
             history = resolve_history(src_path, storage=storage,
-                                      transfer_history_oper=get_transfer_history_port())
+                                      transfer_history_oper=get_transfer_history_repository())
         except Exception as err:
             logger.error(f"查询整理历史失败: {src_path} - {err}")
             return None

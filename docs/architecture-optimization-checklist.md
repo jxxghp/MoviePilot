@@ -69,7 +69,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 856 / 7,006 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 857 / 7,024 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 2 | 新增 Chain 包根环；另一个是隔离的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -77,9 +77,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 11,808 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 840 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 79.39%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 全量 mypy 历史债务 | 11,763 / 596 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
+| Ruff 历史诊断 | 834 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 79.47%，Domain 79.29% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -268,11 +268,11 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- `app/application/chain/data.py` 的 Site/Subscribe/TransferHistory factory 仍是 `Any`；
+- `app/application/chain/data.py` 的 Site/Subscribe factory 仍是 `Any`；
   `app/application/agentdata.py` 仍通过 `__dict__.update()` 动态组装未迁移端口。
 - `app/startup/initializers/modules.py` 仍向生产 Chain/Agent 注入部分无 Session Oper。
 - 无 Session Oper 会为单次调用独立创建事务；一个业务操作的“查询后更新”可能被拆成多个事务。
-- Workflow、User 和 DownloadHistory 已迁入冻结 DTO 与 adapter-owned Session 投影；
+- Workflow、User、DownloadHistory 和 TransferHistory 已迁入冻结 DTO 与 adapter-owned Session 投影；
   剩余 Chain/Agent raw data port 仍可返回 `Any`/ORM，Subscription mutation 内部也消费 ORM，
   因而尚有 Session 生命周期外 detached/lazy-load 风险。
 - S1-L2 由 `b4f873654`、`a01a35bcb` 交付；精确 head SHA 的 Unit Tests `33098869736` 与
@@ -295,8 +295,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [x] User Chain/Agent/认证查询改用冻结 `UserSnapshot`/`UserAuthSnapshot`；创建、更名和
   删除由请求级 UoW 原子提交，用户名唯一约束、最后一个启用超级管理员保护与
   UserConfig/PassKey 级联约束共同守住身份聚合。
-- [x] DownloadHistory 查询和写入改用冻结 DTO、typed Port 与短 Session adapter，删除在单一
-  UoW 中处理；TransferHistory 仍是 raw port，History 整体仍在执行中。
+- [x] DownloadHistory 与 TransferHistory 查询和写入改用深度冻结 DTO、typed Port 与短
+  Session adapter；请求级删除和 durable 结算在各自单一 UoW 中处理，canonical 调用方不再
+  接收 raw Oper/ORM，旧动态写入只保留在 SDK Legacy/Compat。
 - [ ] `ChainDataPorts`/`AgentDataPorts` 可暂时保留为兼容聚合器，但字段必须显式、可类型检查。
 - [ ] 以一个业务纵切面迁移并验证后，再迁移下一组，禁止一次替换所有 Oper。
 - [ ] 增加 AST 门禁，禁止向 `ChainDataPorts`、`AgentDataPorts` 和新的 canonical use-case service
@@ -304,10 +305,10 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **后续顺序**
 
-1. 完成 TransferHistory，收口 History 剩余半边。
-2. Chain/Agent 的 Subscribe/Site raw port。
+1. Chain/Agent 的 Site raw port。
+2. Chain/Workflow/interaction 的 Subscription raw port。
 3. Subscription mutation 与站点、规则组引用更新。
-4. Agent 数据能力。
+4. Agent/Transfer locator gate。
 
 **验收**
 

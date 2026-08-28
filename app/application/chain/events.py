@@ -13,8 +13,8 @@ from uuid import uuid4
 from app.application.history import (
     DownloadFileWrite,
     DownloadHistoryWrite,
-    TransferHistoryRecord,
-    TransferHistoryWriter,
+    TransferHistorySnapshot,
+    TransferHistoryStagingPort,
 )
 from app.application.transfer.execution import TransferSettlementResult
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
@@ -44,11 +44,14 @@ class ChainDurableEventWriter(Protocol):
         self,
         *,
         topic: str | None,
-        stage_history: Callable[[TransferHistoryWriter], TransferHistoryRecord | None],
+        stage_history: Callable[
+            [TransferHistoryStagingPort],
+            TransferHistorySnapshot | None,
+        ],
         event_payload: dict[str, Any],
         publish: Callable[[dict[str, Any]], None] | None,
         settlement: "TransferResultSettlement | None" = None,
-    ) -> TransferHistoryRecord | TransferSettlementResult | None:
+    ) -> TransferHistorySnapshot | TransferSettlementResult | None:
         """提交历史、可选任务终态和结果 intent，再按 topic 广播事件。"""
 
 
@@ -70,17 +73,6 @@ class TransferResultSettlement:
             raise ValueError(f"不支持的整理终态：{self.outcome}")
         if self.outcome == "failed" and not self.error:
             raise ValueError("整理失败终态必须包含可诊断原因")
-
-
-@dataclass(frozen=True, slots=True)
-class TransferHistoryRef:
-    """事务关闭后仍可安全读取的最小整理历史投影。"""
-
-    id: int
-    status: bool
-    src: str | None
-    src_storage: str | None
-    src_fileitem: dict[str, Any] | None
 
 
 def download_added_event_key(history_id: int) -> str:

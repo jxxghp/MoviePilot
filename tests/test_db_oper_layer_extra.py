@@ -9,13 +9,13 @@ import asyncio
 
 import pytest
 
-from app.db.oper.downloadfailure import DownloadFailureOper
-from app.db.oper.message import MessageOper
 from app.db.models.downloadfailure import DownloadFailure
 from app.db.models.message import Message
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.transferhistory import TransferHistory
+from app.db.oper.downloadfailure import DownloadFailureOper
+from app.db.oper.message import MessageOper
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.transferhistory import TransferHistoryOper
@@ -93,14 +93,16 @@ def test_transferhistory_oper_identity_and_hash_lookups(db):
     assert oper.statistic(days=36500)
 
 
-def test_transferhistory_oper_add_force_replaces_same_source(db):
+def test_transferhistory_oper_stage_replace_replaces_same_source(db):
     """
     强制新增用同源新记录替换旧的，同一源路径只留一条。
     """
     oper = TransferHistoryOper(db=db.session)
     oper.add(**_transfer_kwargs("旧记录", "/data/op-force.mkv"))
 
-    created = oper.add_force(**_transfer_kwargs("新记录", "/data/op-force.mkv"))
+    created = oper.stage_replace_by_src(
+        **_transfer_kwargs("新记录", "/data/op-force.mkv")
+    )
 
     assert created.title == "新记录"
     assert [h.title for h in oper.list_success_by_src("/data/op-force.mkv")] == ["新记录"]

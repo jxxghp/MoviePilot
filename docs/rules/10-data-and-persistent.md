@@ -140,10 +140,11 @@ adapters; it does not retain reusable repository implementations.
   cascades on user delete; `(UserConfig.username, UserConfig.key)` is unique and
   non-null. A schema change to any of these constraints requires a replay-safe
   migration that repairs legacy duplicates/orphans before creating constraints.
-- DownloadHistory is projected into frozen DTOs within the adapter Session.
-  Its typed query/write port and delete mutation use short Session/UoW scopes.
-  TransferHistory has not completed the same migration and must be tracked
-  separately rather than treating the whole History area as typed.
+- DownloadHistory and TransferHistory are projected into deeply frozen DTOs
+  within the adapter Session. Their typed query/write ports use short
+  Session/UoW scopes; TransferHistory additionally exposes a staging port for
+  durable settlement inside the caller-owned transaction. Canonical callers
+  must not receive raw history ORM rows or Oper objects.
 
 ### Durable post-commit side effects
 

@@ -84,6 +84,9 @@ class TransferFileAction(BaseAction):
                 if not fileitem:
                     logger.info(f"文件 {download.path} 不存在")
                     continue
+                if not fileitem.path:
+                    logger.warn("工作流文件缺少可查询的源路径，跳过")
+                    continue
                 transferd = transferhis.get_by_src(fileitem.path, storage=fileitem.storage)
                 if transferd:
                     # 已经整理过的文件不再整理
@@ -102,6 +105,9 @@ class TransferFileAction(BaseAction):
             for fileitem in copy.deepcopy(context.fileitems):
                 if not check_continue():
                     break
+                if not fileitem.path:
+                    logger.warn("工作流文件缺少可查询的源路径，跳过")
+                    continue
                 # 检查缓存
                 cache_key = f"{fileitem.path}"
                 if self.check_cache(workflow_id, cache_key):

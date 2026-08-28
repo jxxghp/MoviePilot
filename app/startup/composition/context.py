@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from app.application.configuration import RuntimeConfiguration, RuntimeSettingsService
+from app.application.history import (
+    TransferHistoryMutationRepository,
+    TransferHistoryRepository,
+)
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AsyncAgentChatRepository,
@@ -92,6 +96,14 @@ class RepositoryFactory(Protocol):
         ...
 
 
+class TransferHistoryRepositoryFactory(Protocol):
+    """由请求 Session 构造整理历史事务仓储的工厂。"""
+
+    def __call__(self, session: object) -> TransferHistoryMutationRepository:
+        """绑定请求会话并返回整理历史暂存仓储。"""
+        ...
+
+
 class StandaloneRepositoryFactory(Protocol):
     """构造自持有兼容事务边界的领域仓储。"""
 
@@ -150,7 +162,8 @@ class HistoryRuntime:
     """下载、整理、媒体服务器与 Dashboard 领域的数据工厂。"""
 
     download_repository: RepositoryFactory
-    transfer_repository: RepositoryFactory
+    transfer_repository: TransferHistoryRepository
+    transfer_mutation_repository: TransferHistoryRepositoryFactory
     media_server_repository: RepositoryFactory
 
 

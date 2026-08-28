@@ -24,6 +24,7 @@ from app.application.history import (
     DownloadFileWrite,
     DownloadHistoryWrite,
     TransferHistoryMutationCommand,
+    TransferHistoryWrite,
 )
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -186,13 +187,13 @@ def _stage_result_history(
     succeeded: bool,
     src_path: str | None = None,
 ):
-    """通过兼容历史端口暂存一条最小任务结算记录。"""
-    return repository.add_force(
+    """通过类型化历史端口暂存一条最小任务结算记录。"""
+    return repository.replace(TransferHistoryWrite(
         src=src_path or f"/downloads/{task_id}.mkv",
         src_storage="local",
         status=succeeded,
         errmsg=None if succeeded else "目标文件校验失败",
-    )
+    ))
 
 
 def _assert_event_key(
@@ -416,11 +417,11 @@ def test_transfer_succeeds_when_history_id_is_reused_with_retained_outbox():
         """写入一条最小成功整理事实并完成即时事件。"""
         return writer.transfer_result(
             topic="transfer.completed",
-            stage_history=lambda repository: repository.add_force(
+            stage_history=lambda repository: repository.replace(TransferHistoryWrite(
                 src=src,
                 src_storage="local",
-                status=1,
-            ),
+                status=True,
+            )),
             event_payload={},
             publish=lambda _payload: None,
         )
@@ -460,15 +461,15 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
 
     def stage_history(repository):
         """通过应用历史端口名暂存一条成功整理记录。"""
-        return repository.add_force(
+        return repository.replace(TransferHistoryWrite(
             src=fileitem.path,
             src_storage=fileitem.storage,
             src_fileitem=fileitem.model_dump(mode="json"),
             dest=transferinfo.target_item.path,
             dest_storage=transferinfo.target_item.storage,
             dest_fileitem=transferinfo.target_item.model_dump(mode="json"),
-            status=1,
-        )
+            status=True,
+        ))
 
     def fail_publish(_payload):
         """模拟插件事件总线在业务提交后失败。"""

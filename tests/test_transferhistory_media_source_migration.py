@@ -1,18 +1,27 @@
 import importlib
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from app.application.history import add_transfer_fail, add_transfer_success
+from app.application.history import (
+    TransferHistorySnapshot,
+    add_transfer_fail,
+    add_transfer_success,
+)
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.db.oper.transferhistory import TransferHistoryOper
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
+
+
+def _history_repository(src: str) -> Mock:
+    """构造接收类型化写入并返回冻结快照的测试仓储。"""
+    repository = Mock()
+    repository.replace.return_value = TransferHistorySnapshot(id=1, src=src)
+    return repository
 
 
 def test_transferhistory_migration_backfills_existing_source_ids(monkeypatch) -> None:
@@ -64,8 +73,7 @@ def test_transferhistory_migration_backfills_existing_source_ids(monkeypatch) ->
 
 def test_failed_transfer_history_preserves_explicit_media_source() -> None:
     """识别失败记录也应保存文件名中显式指定的数据源ID。"""
-    oper = object.__new__(TransferHistoryOper)
-    oper.add_force = Mock(return_value=SimpleNamespace(id=1))
+    repository = _history_repository("/downloads/Frieren.mkv")
     meta = MetaBase("Frieren")
     meta.cn_name = "Frieren"
     meta.media_source = "anilist"
@@ -79,18 +87,17 @@ def test_failed_transfer_history_preserves_explicit_media_source() -> None:
         ),
         mode="copy",
         meta=meta,
-        transfer_history_oper=oper,
+        transfer_history_oper=repository,
     )
 
-    call = oper.add_force.call_args
-    assert call.kwargs["media_source"] == "anilist"
-    assert call.kwargs["media_id"] == "154587"
+    history = repository.replace.call_args.args[0]
+    assert str(history.media_source) == "anilist"
+    assert history.media_id == "154587"
 
 
 def test_failed_music_history_preserves_media_type_and_entity_namespace() -> None:
     """未识别音乐的失败记录也应保留音乐类型和单曲实体命名空间。"""
-    oper = object.__new__(TransferHistoryOper)
-    oper.add_force = Mock(return_value=SimpleNamespace(id=1))
+    repository = _history_repository("/downloads/周杰伦 - 晴天.flac")
     meta = MetaMusic(
         title="晴天",
         artists=["周杰伦"],
@@ -107,12 +114,12 @@ def test_failed_music_history_preserves_media_type_and_entity_namespace() -> Non
         ),
         mode="copy",
         meta=meta,
-        transfer_history_oper=oper,
+        transfer_history_oper=repository,
     )
 
-    call = oper.add_force.call_args
-    assert call.kwargs["type"] == "音乐"
-    assert call.kwargs["music_type"] == "recording"
+    history = repository.replace.call_args.args[0]
+    assert history.type == "音乐"
+    assert history.music_type == "recording"
 
 
 def test_transferhistory_music_migration_is_idempotent(monkeypatch) -> None:
@@ -224,8 +231,7 @@ def test_music_audio_quality_migration_is_idempotent(monkeypatch) -> None:
 
 def test_transfer_history_preserves_album_entity_context() -> None:
     """整理成功记录应保存整专实体和预期曲目数供 Agent 重试。"""
-    oper = object.__new__(TransferHistoryOper)
-    oper.add_force = Mock(return_value=SimpleNamespace(id=1))
+    repository = _history_repository("/downloads/叶惠美/01.flac")
     media = MusicInfo(
         media_source="musicbrainz",
         media_id="release-group-1",
@@ -254,14 +260,14 @@ def test_transfer_history_preserves_album_entity_context() -> None:
                 type="file",
             ),
         ),
-        transfer_history_oper=oper,
+        transfer_history_oper=repository,
     )
 
-    call = oper.add_force.call_args
-    assert call.kwargs["music_type"] == "album"
-    assert call.kwargs["total_tracks"] == 11
-    assert call.kwargs["audio_format"] == "FLAC"
-    assert call.kwargs["audio_lossless"] is True
-    assert call.kwargs["bit_depth"] == 24
-    assert call.kwargs["sample_rate"] == 96_000
-    assert call.kwargs["bitrate"] == 2_304_000
+    history = repository.replace.call_args.args[0]
+    assert history.music_type == "album"
+    assert history.total_tracks == 11
+    assert history.audio_format == "FLAC"
+    assert history.audio_lossless is True
+    assert history.bit_depth == 24
+    assert history.sample_rate == 96_000
+    assert history.bitrate == 2_304_000

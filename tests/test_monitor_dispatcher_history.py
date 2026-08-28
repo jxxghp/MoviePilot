@@ -3,13 +3,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app.runtime.config import settings
 from app.application.history import (
     clear_transfer_failures,
-    failed_retry_count,
     record_transfer_failure,
 )
 from app.monitor.dispatcher import TransferDispatcher
+from app.runtime.config import settings
 
 
 def _build_dispatcher() -> TransferDispatcher:
@@ -54,7 +53,10 @@ def _patch_history(monkeypatch, record=None, success_record=None) -> MagicMock:
     oper = MagicMock()
     oper.get_by_src.return_value = record
     oper.get_success_by_src.return_value = success_record
-    monkeypatch.setattr("app.monitor.dispatcher.get_transfer_history_port", MagicMock(return_value=oper))
+    monkeypatch.setattr(
+        "app.monitor.dispatcher.get_transfer_history_repository",
+        MagicMock(return_value=oper),
+    )
     return oper
 
 
@@ -229,7 +231,10 @@ def test_history_query_error_registers_pending(monkeypatch):
     dispatcher = _build_dispatcher()
     oper = MagicMock()
     oper.get_by_src.side_effect = RuntimeError("数据库不可用")
-    monkeypatch.setattr("app.monitor.dispatcher.get_transfer_history_port", MagicMock(return_value=oper))
+    monkeypatch.setattr(
+        "app.monitor.dispatcher.get_transfer_history_repository",
+        MagicMock(return_value=oper),
+    )
     chain = _patch_chain(monkeypatch)
 
     assert dispatcher.handle_file(storage="local", event_path=Path("/downloads/a.mkv"), file_size=100) is False

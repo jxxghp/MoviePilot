@@ -64,7 +64,7 @@ to make the directory tree look symmetrical.
 | `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
-| `app/application/history.py` | History use cases and persistence contracts; DownloadHistory owns frozen query/write DTOs and typed ports, while TransferHistory remains a separate unfinished migration surface |
+| `app/application/history.py` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
 | `app/application/music/` | Multi-source music catalog orchestration |
 | `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the runtime dependency aggregate, `data.py` owns named persistence ports, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agentdata.py` | Named Agent data ports; canonical Agent consumers use `get_agent_*_port()` and do not alias legacy proxies to Oper classes |
@@ -151,9 +151,9 @@ Agent orchestration, memory and tool implementations follow the same rule via
 the named `get_agent_*_port()` functions from `app/application/agentdata.py`.
 The legacy Agent `*Port` proxy classes remain import-compatible boundaries and
 must not be reintroduced as Oper aliases in canonical Agent modules.
-Monitor history checks use `get_transfer_history_port()` from
-`app/application/history.py`; the constructible `TransferHistoryPort` facade is
-retained only for compatibility and is not a canonical Oper substitute.
+Monitor history checks use `get_transfer_history_repository()` from
+`app/application/history.py`; old constructible Oper-style facades are available
+only through the exact SDK Legacy/Compat mapping.
 
 Durable transfer execution follows one explicit boundary. The Chain freezes each
 external file operation into the Application-owned contract in
@@ -491,12 +491,14 @@ The configured user-configuration repository publishes its in-memory snapshot
 only after the user transaction commits, and reloads from the database if
 publication fails.
 
-Download history is the verified half of the History migration:
-`app/application/history.py` owns frozen `DownloadHistorySnapshot` /
-`DownloadFileSnapshot` values and typed query/write ports;
-`app/db/adapters/history/download.py` performs projection and mutations in short
-Session scopes. TransferHistory still uses its existing ports, so this must not
-be described as completion of the entire History boundary.
+History is a verified typed boundary: `app/application/history.py` owns deeply
+frozen DownloadHistory and TransferHistory snapshots plus typed query/write and
+staging ports. `app/db/adapters/history/download.py` and
+`app/db/adapters/history/transfer.py` perform ORM projection and mutations inside
+short Session scopes; durable transfer settlement uses the staging port in its
+caller-owned transaction. Canonical callers never receive history ORM rows or
+raw Oper objects, while old plugin imports resolve only through SDK Legacy and
+the exact Compat manifest.
 
 Durable post-commit side effects have a separate boundary:
 
@@ -712,8 +714,9 @@ driven workflow registration.
 | `app/application/download/failures.py` | Frozen download-failure cooldown write/query DTOs and Chain persistence Port |
 | `app/db/adapters/download.py` | Short-session download-failure snapshot and mutation adapter |
 | `app/db/adapters/mediaserver.py` | Per-operation media-server cache query/upsert/cleanup transaction adapter |
-| `app/application/history.py` | History use cases; frozen DownloadHistory DTOs and typed query/write ports, with TransferHistory migration still pending |
+| `app/application/history.py` | History use cases; deeply frozen DownloadHistory/TransferHistory DTOs and typed query/write/staging ports |
 | `app/db/adapters/history/download.py` | DownloadHistory short-session snapshot, query and mutation adapter |
+| `app/db/adapters/history/transfer.py` | TransferHistory short-session snapshot/query/mutation adapter and caller-owned transaction stager |
 | `app/application/security/user.py` | Frozen user/auth projections and atomic user aggregate service contracts |
 | `app/db/adapters/user.py` | User projection plus request-UoW mutation adapter |
 | `app/db/adapters/configuration.py` | Commit-after UserConfig snapshot publication and fact-source reload adapter |

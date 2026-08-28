@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from app.db.oper.subscribe import SubscribeOper
     from app.db.oper.subscribehistory import SubscribeHistoryOper
     from app.db.oper.systemconfig import SystemConfigOper
-    from app.db.oper.transferhistory import TransferHistoryOper
     from app.db.oper.transferpending import TransferPendingOper
     from app.db.oper.transfersettlementreceipt import TransferSettlementReceiptOper
     from app.db.oper.user import UserOper
@@ -50,7 +49,6 @@ _OPER_MODULES = {
     "SubscribeHistoryOper": "subscribehistory",
     "SubscribeOper": "subscribe",
     "SystemConfigOper": "systemconfig",
-    "TransferHistoryOper": "transferhistory",
     "TransferPendingOper": "transferpending",
     "TransferSettlementReceiptOper": "transfersettlementreceipt",
     "UserConfigOper": "userconfig",
@@ -92,7 +90,6 @@ __all__ = [
     "SubscribeHistoryOper",
     "SubscribeOper",
     "SystemConfigOper",
-    "TransferHistoryOper",
     "TransferPendingOper",
     "TransferSettlementReceiptOper",
     "UserConfigOper",

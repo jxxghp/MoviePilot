@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
+from app.application.history import TransferHistorySnapshot
 from app.application.transfer import workflow as transfer_application
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -1064,7 +1065,7 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
     def settle_result(**kwargs):
         """执行历史暂存并模拟 writer 返回 task-aware 结算投影。"""
         staging = Mock()
-        staging.add_force.return_value = SimpleNamespace(
+        staging.replace.return_value = TransferHistorySnapshot(
             id=31,
             status=True,
             src=result.fileitem.path,
