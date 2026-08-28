@@ -125,9 +125,6 @@
   "app/agent/tools/impl/add_custom_filter_rule.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/add_download_tasks.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/ask_user_choice.py": {
     "I001": 1
   },
@@ -239,9 +236,6 @@
   "app/agent/tools/impl/send_voice_message.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/test_site.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/transfer_file.py": {
     "I001": 1
   },
@@ -261,9 +255,6 @@
     "I001": 1
   },
   "app/agent/tools/impl/update_rule_group.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/update_site.py": {
     "I001": 1
   },
   "app/agent/tools/impl/update_site_cookie.py": {
@@ -310,9 +301,6 @@
     "I001": 1
   },
   "app/application/messaging/session.py": {
-    "I001": 1
-  },
-  "app/application/messaging/site.py": {
     "I001": 1
   },
   "app/application/messaging/subscribe.py": {

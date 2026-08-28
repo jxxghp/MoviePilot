@@ -58,9 +58,9 @@ class QuerySitesTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: status={status}, name={name}")
         try:
             is_admin = await self.is_admin_user()
-            site_oper = get_agent_site_port()
+            repository = get_agent_site_port()
             # 获取所有站点（按优先级排序）
-            sites = await site_oper.async_list()
+            sites = await repository.async_list()
             filtered_sites = []
             for site in sites:
                 # 按状态过滤

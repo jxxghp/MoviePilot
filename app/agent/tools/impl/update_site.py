@@ -7,11 +7,12 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.runtime.events import eventmanager
 from app.application.agentdata import get_agent_site_port
+from app.application.site.contract import SiteMutation
+from app.foundation import url as url_tools
+from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.types import EventType
-from app.foundation import url as url_tools
 
 
 class UpdateSiteInput(BaseModel):
@@ -124,8 +125,8 @@ class UpdateSiteTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: site_id={site_id}")
 
         try:
-            site_oper = get_agent_site_port()
-            site = await site_oper.async_get(site_id)
+            repository = get_agent_site_port()
+            site = await repository.async_get(site_id)
             if not site:
                 return json.dumps(
                     {"success": False, "message": f"站点不存在: {site_id}"},
@@ -191,10 +192,10 @@ class UpdateSiteTool(MoviePilotTool):
                 )
 
             # 更新站点
-            await site_oper.async_update(site_id, site_dict)
+            await repository.async_update(site_id, SiteMutation(site_dict))
 
             # 重新获取更新后的站点数据
-            updated_site = await site_oper.async_get(site_id)
+            updated_site = await repository.async_get(site_id)
 
             # 发送站点更新事件
             await eventmanager.async_send_event(

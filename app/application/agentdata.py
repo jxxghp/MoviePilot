@@ -10,6 +10,7 @@ from app.application.history import (
     TransferHistoryRepository,
 )
 from app.application.security.user import ChainUserRepository
+from app.application.site.contract import SiteRepository
 
 AgentDataFactory = Callable[[], Any]
 
@@ -43,12 +44,6 @@ class AgentTaskPort(_PortProxy):
     """Agent 定时任务数据端口代理。"""
 
     port_name = "agent_task"
-
-
-class SitePort(_PortProxy):
-    """站点数据端口代理。"""
-
-    port_name = "site"
 
 
 class SubscribePort(_PortProxy):
@@ -134,9 +129,9 @@ def get_agent_user_port() -> ChainUserRepository:
     return cast(ChainUserRepository, get_agent_data_ports().user())
 
 
-def get_agent_site_port() -> Any:
-    """创建 Agent 站点数据端口实例。"""
-    return get_agent_data_ports().site()
+def get_agent_site_port() -> SiteRepository:
+    """创建 Agent 类型化站点查询与写入端口实例。"""
+    return cast(SiteRepository, get_agent_data_ports().site())
 
 
 def get_agent_subscribe_port() -> Any:

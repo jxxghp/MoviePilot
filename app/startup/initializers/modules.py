@@ -136,7 +136,7 @@ from app.db.adapters.outbox import (
     SqlAlchemyOutboxDispatchStore,
 )
 from app.db.adapters.query import SqlAlchemyDataQueryAdapter
-from app.db.adapters.site import TransactionalSiteRepository
+from app.db.adapters.site import SessionSiteRepository, TransactionalSiteRepository
 from app.db.adapters.subscription import TransactionalSubscribeWriter
 from app.db.adapters.transaction import TransactionalWriteRunner
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
@@ -157,7 +157,6 @@ from app.db.oper.mediaserver import MediaServerOper
 from app.db.oper.message import MessageOper
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.plugindata import PluginDataOper
-from app.db.oper.site import SiteOper
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -855,7 +854,7 @@ async def init_modules() -> HostRuntime:
             "media_server": MediaServerOper,
             "message": MessageOper,
             "passkey": PassKeyOper,
-            "site": SiteOper,
+            "site": SessionSiteRepository,
             "subscribe": SubscribeOper,
             "subscribe_history": SubscribeHistoryOper,
             "user": SqlAlchemyUserRepository,
@@ -898,6 +897,10 @@ async def init_modules() -> HostRuntime:
         sync_transaction=transaction_runner.sync,
         capacity=database_worker.snapshot().capacity,
     )
+    site_repository = TransactionalSiteRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
@@ -924,7 +927,10 @@ async def init_modules() -> HostRuntime:
             transfer_mutation_repository=SessionTransferHistoryRepository,
             media_server_repository=MediaServerOper,
         ),
-        site=SiteRuntime(repository=SiteOper),
+        site=SiteRuntime(
+            repository=SessionSiteRepository,
+            standalone=site_repository,
+        ),
         subscription=SubscriptionRuntime(
             async_session=get_async_db,
             repository=SubscribeOper,
@@ -955,10 +961,7 @@ async def init_modules() -> HostRuntime:
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_execution(workflow_execution)
     configure_chain_data_ports(
-        site=lambda: TransactionalSiteRepository(
-            sync_session=SessionFactory,
-            async_session=async_session_scope,
-        ),
+        site=lambda: site_repository,
         subscribe=lambda: SubscribeOper(),
         download_history=lambda: download_history_repository,
         transfer_history=lambda: transfer_history_repository,
@@ -1006,22 +1009,13 @@ async def init_modules() -> HostRuntime:
     )
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
     configure_transfer_history_repository(lambda: transfer_history_repository)
-    configure_site_query_service(SiteQueryService(repository=TransactionalSiteRepository(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )))
-    configure_site_health_service(SiteHealthService(repository=TransactionalSiteRepository(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )))
+    configure_site_query_service(SiteQueryService(repository=site_repository))
+    configure_site_health_service(SiteHealthService(repository=site_repository))
     configure_agent_data_ports(
         agent_chat=lambda: AgentChatOper(),
         agent_task=lambda: AgentTaskOper(),
         user=_build_transactional_user_repository,
-        site=lambda: TransactionalSiteRepository(
-            sync_session=SessionFactory,
-            async_session=async_session_scope,
-        ),
+        site=lambda: site_repository,
         subscribe=lambda: SubscribeOper(),
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: transfer_history_repository,

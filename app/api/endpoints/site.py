@@ -30,6 +30,7 @@ from app.chain.torrents import TorrentsChain
 from app.domain import site as site_rules
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
+from app.schemas.common import JsonData
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.site import SiteAuth as _SchemaSiteAuth
@@ -207,7 +208,7 @@ async def reset(
     "/priorities", summary="批量更新站点优先级", response_model=_SchemaResponse[None]
 )
 async def update_sites_priority(
-    priorities: List[dict],
+    priorities: List[Dict[str, JsonData]],
     command: SiteMutationCommand = Depends(get_site_mutation_command),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
 ) -> Any:

@@ -9,18 +9,17 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
+from app.application.agentdata import get_agent_site_port
+from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search import SearchChain
-from app.runtime.settings import get_runtime_setting
-
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo
-from app.application.agentdata import get_agent_site_port
-from app.application.directory import DirectoryHelper, validate_download_save_path
-from app.runtime.log import logger
-from app.schemas.file import FileURI
 from app.foundation.crypto import HashUtils
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.file import FileURI
 
 
 class AddDownloadTasksInput(BaseModel):
@@ -289,11 +288,11 @@ class AddDownloadTasksTool(MoviePilotTool):
                     torrent_info.description = torrent_description
                     torrent_info.enclosure = enclosure
                     torrent_info.site_name = site_name
-                    torrent_info.site_ua = siteinfo.ua
-                    torrent_info.site_cookie = siteinfo.cookie
-                    torrent_info.site_proxy = siteinfo.proxy
-                    torrent_info.site_order = siteinfo.pri
-                    torrent_info.site_downloader = siteinfo.downloader
+                    torrent_info.site_ua = siteinfo.ua or ""
+                    torrent_info.site_cookie = siteinfo.cookie or ""
+                    torrent_info.site_proxy = bool(siteinfo.proxy)
+                    torrent_info.site_order = siteinfo.pri or 0
+                    torrent_info.site_downloader = siteinfo.downloader or ""
                     context.torrent_info = torrent_info
 
                     meta_info = cached_context.meta_info or MetaInfo(

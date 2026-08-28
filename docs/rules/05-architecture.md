@@ -462,6 +462,16 @@ Oper classes for ordinary entity access. Adapter-owned cross-row locks and
 compare-and-set transitions may issue focused SQLAlchemy statements when the
 atomic persistence invariant cannot be expressed by an entity Oper; those
 statements stay private to the adapter and require concurrency tests.
+
+Site persistence crosses the DB boundary only through the contracts in
+`app/application/site/contract.py`. `SessionSiteRepository` reuses a request
+`AsyncSession` and only projects or stages changes, while
+`TransactionalSiteRepository` owns one short Session/UoW per standalone
+operation. Both adapters project `Site`, `SiteIcon`, `SiteStatistic`, and
+`SiteUserData` to deeply frozen snapshots before the Session closes. Canonical
+Application, Chain, Agent, API, and Startup code must not import `SiteOper` or
+these ORM models. Historical plugin imports resolve through the exact SDK
+Legacy/Compat manifest only.
 Application and Chain code reaches persistence through named Ports/Protocols;
 concrete DB adapters are the only layer that adapts those Ports to Oper/Session
 mechanics. Every schema change requires an Alembic migration under

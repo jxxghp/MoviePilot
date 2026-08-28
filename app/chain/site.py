@@ -1,5 +1,6 @@
 import base64
 import re
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 from urllib.parse import urljoin
@@ -15,6 +16,12 @@ from app.application.configuration import get_configured_system_config
 from app.application.messaging.site import SiteInteractionHandler
 from app.application.rss import RssHelper
 from app.application.security.cookie import CookieHelper
+from app.application.site.contract import (
+    SiteMutation,
+    SiteRepository,
+    SiteSnapshot,
+    SiteUserDataMutation,
+)
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain import ChainBase
 from app.chain._interaction import InteractionChainMixin
@@ -30,8 +37,6 @@ from app.schemas.message import Message
 from app.schemas.notification import NotificationChannel
 from app.schemas.site import SiteUserData
 from app.schemas.types import EventType, MessageType
-
-Site = Any
 
 
 class SiteChain(InteractionChainMixin, ChainBase):
@@ -67,11 +72,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
         :return: 用户数据
         """
         userdata: SiteUserData = self.run_module("refresh_userdata", site=site)
-        if userdata:
+        if userdata and site:
+            domain = site_rules.extract_domain(
+                str(site.get("domain") or site.get("url") or "")
+            )
+            name = str(site.get("name") or domain)
             get_chain_site_port().update_userdata(
-                domain=site_rules.extract_domain(site.get("domain")),
-                name=site.get("name"),
-                payload=userdata.model_dump(),
+                domain=domain,
+                name=name,
+                mutation=SiteUserDataMutation(userdata.model_dump()),
             )
             # 发送事件
             self.eventmanager.send_event(EventType.SiteRefreshed, {
@@ -177,7 +186,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         return domain in self.special_site_test
 
-    def __zhuque_test(self, site: Site) -> Tuple[bool, str]:
+    def __zhuque_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：zhuique
         """
@@ -186,8 +195,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
         user_agent = site.ua or self.runtime_config.user_agent
         res = RequestUtils(
             ua=user_agent,
-            cookies=site.cookie,
-            proxies=self.runtime_config.proxy if site.proxy else None,
+            cookies=site.cookie or "",
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15
         ).get_res(url=site.url)
         if res is None:
@@ -207,8 +216,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 "Content-Type": "application/json; charset=utf-8",
                 "User-Agent": f"{user_agent}"
             },
-            cookies=site.cookie,
-            proxies=self.runtime_config.proxy if site.proxy else None,
+            cookies=site.cookie or "",
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15
         ).get_res(url=f"{site.url}api/user/getInfo")
         if user_res is None:
@@ -221,7 +230,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         else:
             return False, f"错误：{user_res.status_code} {user_res.reason}"
 
-    def __mteam_test(self, site: Site) -> Tuple[bool, str]:
+    def __mteam_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：m-team
         """
@@ -235,7 +244,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         }
         res = RequestUtils(
             headers=headers,
-            proxies=self.runtime_config.proxy if site.proxy else None,
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15
         ).post_res(url=url)
         if res is None:
@@ -248,14 +257,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
         else:
             return False, f"错误：{res.status_code} {res.reason}"
 
-    def __sunnypt_test(self, site: Site) -> Tuple[bool, str]:
+    def __sunnypt_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
         通过 profile 接口测试 SunnyPT API Key 和下载权限
 
         :param site: SunnyPT 站点配置
         :return: 是否可用及状态信息
         """
-        indexer = SitesHelper().get_indexer(site.domain) or {}
+        domain = site.domain or site_rules.extract_domain(site.url)
+        indexer = SitesHelper().get_indexer(domain) or {}
         api_url = str(
             indexer.get("api_url") or "https://api.sunnypt.top/api/v1/mp"
         ).rstrip("/")
@@ -265,7 +275,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 "User-Agent": site.ua or self.runtime_config.user_agent,
                 "X-API-Key": site.apikey,
             },
-            proxies=self.runtime_config.proxy if site.proxy else None,
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15,
         ).get_res(url=f"{api_url}/profile")
         if res is None:
@@ -282,7 +292,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             return False, "当前账号没有下载权限"
         return True, "连接成功"
 
-    def __yema_test(self, site: Site) -> Tuple[bool, str]:
+    def __yema_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：yemapt
         """
@@ -295,8 +305,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
         }
         res = RequestUtils(
             headers=headers,
-            cookies=site.cookie,
-            proxies=self.runtime_config.proxy if site.proxy else None,
+            cookies=site.cookie or "",
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15
         ).get_res(url=url)
         if res is None:
@@ -309,14 +319,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
         else:
             return False, f"错误：{res.status_code} {res.reason}"
 
-    def __indexphp_test(self, site: Site) -> Tuple[bool, str]:
+    def __indexphp_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：ptlsp/1ptba
         """
-        site.url = f"{site.url}index.php"
-        return self.__test(site)
+        return self.__test(replace(site, url=f"{site.url}index.php"))
 
-    def __hddolby_test(self, site: Site) -> Tuple[bool, str]:
+    def __hddolby_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：hddolby
         """
@@ -328,7 +337,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         }
         res = RequestUtils(
             headers=headers,
-            proxies=self.runtime_config.proxy if site.proxy else None,
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15
         ).get_res(url=url)
         if res is None:
@@ -341,7 +350,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         else:
             return False, f"错误：{res.status_code} {res.reason}"
 
-    def __rousi_test(self, site: Site) -> Tuple[bool, str]:
+    def __rousi_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
         使用 PeerGo 个人 API Key 验证 Rousi.pro 站点连接。
         """
@@ -355,7 +364,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         }
         res = RequestUtils(
             headers=headers,
-            proxies=self.runtime_config.proxy if site.proxy else None,
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15
         ).get_res(url=url)
         if res is None:
@@ -430,7 +439,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 self.messagehelper.put(msg, title="CookieCloud同步失败", role="system")
             return False, msg
         siteshelper = SitesHelper()
-        siteoper = get_chain_site_port()
+        repository = get_chain_site_port()
         rsshelper = RssHelper()
         total_num = len(cookies)
         update_count = add_count = fail_count = 0
@@ -451,13 +460,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 )
 
             indexer = siteshelper.get_indexer(domain)
-            site_info = siteoper.get_by_domain(domain)
+            site_info = repository.get_by_domain(domain)
             updated, added, failed, should_finalize = self._sync_cookiecloud_domain(
                 domain=domain,
                 cookie=cookie,
                 indexer=indexer,
                 site_info=site_info,
-                siteoper=siteoper,
+                repository=repository,
                 rsshelper=rsshelper,
             )
             update_count += updated
@@ -493,8 +502,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
             domain: str,
             cookie: str,
             indexer: Optional[dict],
-            site_info: Any,
-            siteoper: Any,
+            site_info: Optional[SiteSnapshot],
+            repository: SiteRepository,
             rsshelper: RssHelper,
     ) -> Tuple[int, int, int, bool]:
         """处理单个域名，并返回计数与是否继续发送更新事件。"""
@@ -511,12 +520,12 @@ class SiteChain(InteractionChainMixin, ChainBase):
                         timeout=site_info.timeout or 15,
                     )
                     if rss_url:
-                        siteoper.update_rss(domain=domain, rss=rss_url)
+                        repository.update_rss(domain=domain, rss=rss_url)
                     else:
                         logger.warning(errmsg)
                 return 0, 0, 0, False
             logger.info(f"更新站点 {domain} Cookie ...")
-            siteoper.update_cookie(domain=domain, cookies=cookie)
+            repository.update_cookie(domain=domain, cookies=cookie)
             return 1, 0, 0, True
         if not indexer:
             return 0, 0, 0, True
@@ -540,10 +549,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
             )
             if errmsg:
                 logger.warning(errmsg)
-        siteoper.add(
-            name=indexer.get("name"), url=domain_url, domain=domain, cookie=cookie,
-            rss=rss_url, proxy=1 if proxy else 0, public=1 if indexer.get("public") else 0,
-        )
+        repository.add(SiteMutation({
+            "name": indexer.get("name"),
+            "url": domain_url,
+            "domain": domain,
+            "cookie": cookie,
+            "rss": rss_url,
+            "proxy": 1 if proxy else 0,
+            "public": 1 if indexer.get("public") else 0,
+        }))
         return 0, 1, 0, True
 
     def _cookiecloud_blacklisted(self, domain: str) -> bool:
@@ -590,9 +604,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if str(domain).startswith("http"):
             domain = site_rules.extract_domain(domain)
         # 站点信息
-        siteoper = get_chain_site_port()
+        repository = get_chain_site_port()
         siteshelper = SitesHelper()
-        siteinfo = siteoper.get_by_domain(domain)
+        siteinfo = repository.get_by_domain(domain)
         if not siteinfo:
             logger.warn(f"未维护站点 {domain} 信息！")
             return
@@ -605,14 +619,19 @@ class SiteChain(InteractionChainMixin, ChainBase):
             return
         # 查询站点图标
         logger.info(f"开始缓存站点 {indexer.get('name')} 图标 ...")
-        icon_url, icon_base64 = self.__parse_favicon(url=indexer.get("domain"),
-                                                     cookie=cookie,
+        icon_domain = indexer.get("domain")
+        icon_name = indexer.get("name")
+        if not isinstance(icon_domain, str) or not isinstance(icon_name, str):
+            logger.warn(f"站点 {domain} 索引器缺少图标域名或名称！")
+            return
+        icon_url, icon_base64 = self.__parse_favicon(url=icon_domain,
+                                                     cookie=cookie or "",
                                                      ua=self.runtime_config.user_agent)
         if icon_url:
-            siteoper.update_icon(name=indexer.get("name"),
+            repository.update_icon(name=icon_name,
                                  domain=domain,
                                  icon_url=icon_url,
-                                 icon_base64=icon_base64)
+                                 icon_base64=icon_base64 or "")
             logger.info(f"缓存站点 {indexer.get('name')} 图标成功")
         else:
             logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
@@ -668,8 +687,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         # 检查域名是否可用
         domain = site_rules.extract_domain(url)
-        siteoper = get_chain_site_port()
-        site_info = siteoper.get_by_domain(domain)
+        repository = get_chain_site_port()
+        site_info = repository.get_by_domain(domain)
         if not site_info:
             return False, f"站点【{url}】不存在"
 
@@ -686,23 +705,23 @@ class SiteChain(InteractionChainMixin, ChainBase):
             # 统计
             seconds = (datetime.now() - start_time).seconds
             if state:
-                siteoper.success(domain=domain, seconds=seconds)
+                repository.success(domain=domain, seconds=seconds)
             else:
-                siteoper.fail(domain)
+                repository.fail(domain)
             return state, message
         except Exception as e:
             return False, f"{str(e)}！"
 
-    def __test(self, site_info: Site) -> Tuple[bool, str]:
+    def __test(self, site_info: SiteSnapshot) -> Tuple[bool, str]:
         """
         通用站点测试
         """
         site_url = site_info.url
-        site_cookie = site_info.cookie
+        site_cookie = site_info.cookie or ""
         ua = site_info.ua or self.runtime_config.user_agent
         render = site_info.render
         public = site_info.public
-        proxies = self.runtime_config.proxy if site_info.proxy else None
+        proxies = (self.runtime_config.proxy or {}) if site_info.proxy else {}
         proxy_server = self.runtime_config.proxy_server if site_info.proxy else None
         timeout = site_info.timeout or 60
 
@@ -712,7 +731,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                                                              cookies=site_cookie,
                                                              ua=ua,
                                                              proxies=proxy_server,
-                                                             timeout=timeout)
+                                                             timeout=timeout) or ""
             if not public and not SiteUtils.is_logged_in(page_source):
                 if under_challenge(page_source):
                     return False, "无法通过Cloudflare！"
@@ -760,8 +779,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not arg_str.isdigit():
             return
         site_id = int(arg_str)
-        siteoper = get_chain_site_port()
-        site = siteoper.get(site_id)
+        repository = get_chain_site_port()
+        site = repository.get(site_id)
         if not site:
             self.post_message(Message(
                 channel=channel,
@@ -770,9 +789,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 save_history=False))
             return
         # 禁用站点
-        siteoper.update(site_id, {
-            "is_active": False
-        })
+        repository.update(site_id, SiteMutation({"is_active": False}))
         # 重新发送消息
         self.remote_list(channel=channel, userid=userid, source=source)
 
@@ -784,13 +801,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not arg_str:
             return
         arg_strs = str(arg_str).split()
-        siteoper = get_chain_site_port()
+        repository = get_chain_site_port()
         for arg_str in arg_strs:
             arg_str = arg_str.strip()
             if not arg_str.isdigit():
                 continue
             site_id = int(arg_str)
-            site = siteoper.get(site_id)
+            site = repository.get(site_id)
             if not site:
                 self.post_message(Message(
                     channel=channel,
@@ -799,13 +816,11 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     save_history=False))
                 return
             # 禁用站点
-            siteoper.update(site_id, {
-                "is_active": True
-            })
+            repository.update(site_id, SiteMutation({"is_active": True}))
         # 重新发送消息
         self.remote_list(channel=channel, userid=userid, source=source)
 
-    def update_cookie(self, site_info: Site,
+    def update_cookie(self, site_info: SiteSnapshot,
                       username: str, password: str, two_step_code: Optional[str] = None) -> Tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
@@ -828,10 +843,10 @@ class SiteChain(InteractionChainMixin, ChainBase):
             cookie, ua, msg = result
             if not cookie:
                 return False, msg
-            get_chain_site_port().update(site_info.id, {
+            get_chain_site_port().update(site_info.id, SiteMutation({
                 "cookie": cookie,
                 "ua": ua
-            })
+            }))
             return True, msg
         return False, "未知错误"
 
@@ -864,8 +879,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 userid=userid,
                 save_history=False))
             return
-        site_id = args[0]
-        if not site_id.isdigit():
+        raw_site_id = args[0]
+        if not raw_site_id.isdigit():
             self.post_message(Message(
                 channel=channel,
                 source=source,
@@ -874,7 +889,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 save_history=False))
             return
         # 站点ID
-        site_id = int(site_id)
+        site_id = int(raw_site_id)
         # 站点信息
         site_info = get_chain_site_port().get(site_id)
         if not site_info:

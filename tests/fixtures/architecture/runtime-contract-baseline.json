@@ -228,9 +228,9 @@
       "app.db.site_oper": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "db",
-        "replacement": "app.db.oper.site",
-        "target": "app.db.oper.site"
+        "owner": "sdk",
+        "replacement": "app.application.site.contract.SiteRepository",
+        "target": "app.sdk._legacy.site"
       },
       "app.db.subscribe_oper": {
         "introduced": "v3.0.0",
@@ -927,6 +927,11 @@
         }
       },
       "app.db.oper": {
+        "SiteOper": {
+          "replacement": "app.application.site.contract.SiteRepository",
+          "target_module": "app.sdk._legacy.site",
+          "target_name": "SiteOper"
+        },
         "TransferHistoryOper": {
           "replacement": "app.application.history.TransferHistoryRepository",
           "target_module": "app.sdk._legacy.history",

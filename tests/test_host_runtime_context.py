@@ -158,7 +158,10 @@ def _runtime() -> HostRuntime:
             transfer_mutation_repository=_Repository,
             media_server_repository=_Repository,
         ),
-        site=SiteRuntime(repository=_Repository),
+        site=SiteRuntime(
+            repository=_Repository,
+            standalone=_Repository(object()),
+        ),
         subscription=SubscriptionRuntime(
             async_session=async_session,
             repository=_Repository,

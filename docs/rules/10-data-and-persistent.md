@@ -130,6 +130,11 @@ adapters; it does not retain reusable repository implementations.
   `AgentChatService.delete()`, and `DeletePluginDataCommand`: bind the repository
   and UoW to one request/operation Session. Legacy plugin-facing Oper methods may
   remain temporarily, but a new endpoint or startup workflow must call `stage_*`.
+- Site reads and standalone writes use `TransactionalSiteRepository`; request
+  mutation uses `SessionSiteRepository` bound to the endpoint AsyncSession and
+  the request UoW. Both adapters must finish deep DTO projection inside their
+  Session. `SiteOper` remains a DB-internal table DAO; plugin compatibility is
+  exposed only by the SDK Legacy/Compat mapping.
 - User create/update/delete is an aggregate command owned by
   `app/application/security/user.py`. It uses one request AsyncSession/UoW, locks
   active superusers before destructive changes, and rejects removal of the last

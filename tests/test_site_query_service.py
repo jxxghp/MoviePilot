@@ -1,15 +1,16 @@
-"""站点查询应用服务的 ORM 投影契约测试。"""
+"""站点查询应用服务的稳定快照投影契约测试。"""
 
 from unittest.mock import Mock
 
+from app.application.site.contract import SiteUserDataSnapshot
 from app.application.site.query import SiteQueryService
-from app.db.models.siteuserdata import SiteUserData as SiteUserDataRecord
 from app.schemas.site import SiteUserData
 
 
-def test_userdata_latest_sync_projects_orm_record_to_dto() -> None:
-    """同步站点用户数据查询应支持 SQLAlchemy ORM 记录。"""
-    record = SiteUserDataRecord(
+def test_userdata_latest_sync_projects_snapshot_to_dto() -> None:
+    """同步站点用户数据查询只消费脱离 Session 的稳定快照。"""
+    record = SiteUserDataSnapshot(
+        id=1,
         domain="site.example",
         name="示例站点",
         username="tester",

@@ -17,10 +17,12 @@ from app.application.history import (
 )
 from app.application.mediaserver import MediaServerRepository
 from app.application.security.user import ChainUserRepository
+from app.application.site.contract import SiteRepository
 from app.application.transfer.execution import TransferExecutionRepository
 from app.application.transfer.workflow import TransferAdmissionRepository
 
 OperFactory = Callable[[], Any]
+SiteRepositoryFactory = Callable[[], SiteRepository]
 DownloadFailureRepositoryFactory = Callable[[], DownloadFailureRepository]
 DownloadHistoryRepositoryFactory = Callable[[], DownloadHistoryRepository]
 TransferHistoryRepositoryFactory = Callable[[], TransferHistoryRepository]
@@ -34,7 +36,7 @@ TransferExecutionRepositoryFactory = Callable[[], TransferExecutionRepository]
 class ChainDataPorts:
     """跨领域 Chain 使用的最小持久化端口工厂集合。"""
 
-    site: OperFactory
+    site: SiteRepositoryFactory
     subscribe: OperFactory
     download_history: DownloadHistoryRepositoryFactory
     transfer_history: TransferHistoryRepositoryFactory
@@ -50,7 +52,7 @@ _ports: Optional[ChainDataPorts] = None
 
 def configure_chain_data_ports(
         *,
-        site: OperFactory,
+        site: SiteRepositoryFactory,
         subscribe: OperFactory,
         download_history: DownloadHistoryRepositoryFactory,
         transfer_history: TransferHistoryRepositoryFactory,
@@ -82,8 +84,8 @@ def get_chain_data_ports() -> ChainDataPorts:
     return _ports
 
 
-def get_chain_site_port() -> Any:
-    """创建站点数据端口实例。"""
+def get_chain_site_port() -> SiteRepository:
+    """创建类型化站点查询与写入端口实例。"""
     return get_chain_data_ports().site()
 
 

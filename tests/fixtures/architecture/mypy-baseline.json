@@ -841,7 +841,7 @@
     "attr-defined": 1
   },
   "app/api/dependencies/site.py": {
-    "arg-type": 3
+    "arg-type": 2
   },
   "app/api/dependencies/subscription.py": {
     "arg-type": 7
@@ -1013,7 +1013,7 @@
     "no-untyped-call": 4,
     "no-untyped-def": 2,
     "return-value": 3,
-    "type-arg": 7,
+    "type-arg": 6,
     "var-annotated": 1
   },
   "app/api/endpoints/storage.py": {
@@ -1202,8 +1202,7 @@
     "arg-type": 1,
     "assignment": 2,
     "no-untyped-call": 1,
-    "no-untyped-def": 2,
-    "type-arg": 1
+    "no-untyped-def": 2
   },
   "app/application/messaging/skill.py": {
     "no-untyped-call": 4,
@@ -1294,13 +1293,6 @@
     "attr-defined": 5,
     "misc": 1
   },
-  "app/application/site/mutation.py": {
-    "type-arg": 4
-  },
-  "app/application/site/query.py": {
-    "attr-defined": 2,
-    "valid-type": 5
-  },
   "app/application/site/sites.pyi": {
     "type-arg": 7
   },
@@ -1328,7 +1320,7 @@
   "app/application/torrent.py": {
     "arg-type": 14,
     "assignment": 3,
-    "attr-defined": 2,
+    "attr-defined": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 3,
     "operator": 2,
@@ -1497,8 +1489,8 @@
     "valid-type": 2
   },
   "app/chain/site.py": {
-    "arg-type": 14,
-    "assignment": 7,
+    "arg-type": 2,
+    "assignment": 6,
     "attr-defined": 1,
     "misc": 6,
     "no-any-return": 1,
@@ -3374,7 +3366,7 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 12,
+    "arg-type": 11,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,

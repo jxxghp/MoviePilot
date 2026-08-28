@@ -123,10 +123,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="db",
     ),
     "app.db.site_oper": ModuleAlias(
-        target="app.db.oper.site",
-        replacement="app.db.oper.site",
+        target="app.sdk._legacy.site",
+        replacement="app.application.site.contract.SiteRepository",
         introduced="v3.0.0",
-        owner="db",
+        owner="sdk",
     ),
     "app.db.subscribe_oper": ModuleAlias(
         target="app.sdk._legacy.subscribe",
@@ -775,6 +775,11 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
     "app.db.oper": {
+        "SiteOper": SymbolAlias(
+            target_module="app.sdk._legacy.site",
+            target_name="SiteOper",
+            replacement="app.application.site.contract.SiteRepository",
+        ),
         "TransferHistoryOper": SymbolAlias(
             target_module="app.sdk._legacy.history",
             target_name="TransferHistoryOper",

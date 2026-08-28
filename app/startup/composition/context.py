@@ -15,6 +15,7 @@ from app.application.messaging.chat import (
     AsyncUnitOfWork,
 )
 from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
+from app.application.site.contract import SiteRepository
 from app.application.subscription.delete import SubscribeDeletionRepository
 from app.application.subscription.identity import SubscribeIdentityDeletionRepository
 from app.application.subscription.mutation import (
@@ -172,6 +173,7 @@ class SiteRuntime:
     """站点读写领域的显式仓储工厂。"""
 
     repository: RepositoryFactory
+    standalone: SiteRepository
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,51 +2,37 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Protocol
+from typing import Optional
 
-
-class SiteHealthRepository(Protocol):
-    """站点健康统计所需的最小写端口。"""
-
-    def success(self, domain: str, seconds: Optional[int] = None) -> Any:
-        """记录站点访问成功。"""
-        ...
-
-    def fail(self, domain: str) -> Any:
-        """记录站点访问失败。"""
-        ...
-
-    async def async_success(self, domain: str, seconds: Optional[int] = None) -> Any:
-        """异步记录站点访问成功。"""
-        ...
-
-    async def async_fail(self, domain: str) -> Any:
-        """异步记录站点访问失败。"""
-        ...
+from app.application.site.contract import SiteWritePort
 
 
 class SiteHealthService:
     """集中承接索引模块的站点健康统计写操作。"""
 
-    def __init__(self, repository: SiteHealthRepository) -> None:
+    def __init__(self, repository: SiteWritePort) -> None:
         """保存站点统计写端口。"""
         self._repository = repository
 
-    def success(self, domain: str, seconds: Optional[int] = None) -> Any:
+    def success(self, domain: str, seconds: Optional[int] = None) -> None:
         """记录同步站点访问成功。"""
-        return self._repository.success(domain, seconds)
+        self._repository.success(domain, seconds)
 
-    def fail(self, domain: str) -> Any:
+    def fail(self, domain: str) -> None:
         """记录同步站点访问失败。"""
-        return self._repository.fail(domain)
+        self._repository.fail(domain)
 
-    async def async_success(self, domain: str, seconds: Optional[int] = None) -> Any:
+    async def async_success(
+        self,
+        domain: str,
+        seconds: Optional[int] = None,
+    ) -> None:
         """记录异步站点访问成功。"""
-        return await self._repository.async_success(domain, seconds)
+        await self._repository.async_success(domain, seconds)
 
-    async def async_fail(self, domain: str) -> Any:
+    async def async_fail(self, domain: str) -> None:
         """记录异步站点访问失败。"""
-        return await self._repository.async_fail(domain)
+        await self._repository.async_fail(domain)
 
 
 _configured_site_health_service: SiteHealthService | None = None
