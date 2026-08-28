@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Mapping, Optional, Protocol, Tuple
 
-from app.application.outbox import OutboxIntent, SUBSCRIBE_ADDED_TOPIC
+from app.application.outbox import SUBSCRIBE_ADDED_TOPIC, OutboxIntent
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
@@ -237,6 +237,7 @@ def _subscribe_added_intents(
     event_key = subscription_added_event_key(subscribe_id, payload)
     event_payload = {
         "subscribe_id": subscribe_id,
+        "idempotency_key": event_key,
         "username": username,
         "mediainfo": dict(payload),
     }
@@ -265,7 +266,15 @@ def _subscribe_added_intents(
         OutboxIntent(
             event_key=subscription_added_report_key(subscribe_id, payload),
             topic="subscribe.added.report",
-            payload={"subscribe_info": dict(payload)},
+            payload={
+                "subscribe_info": {
+                    **dict(payload),
+                    "idempotency_key": subscription_added_report_key(
+                        subscribe_id,
+                        payload,
+                    ),
+                }
+            },
         )
     )
     return tuple(intents)

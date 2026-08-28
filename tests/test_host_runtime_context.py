@@ -87,8 +87,22 @@ class _Outbox:
     async def stage(self, intent, now) -> None:
         """模拟暂存 durable intent。"""
 
-    async def complete_by_event_key(self, event_key, completed_at) -> None:
-        """模拟收口 durable intent。"""
+
+
+class _DispatchStore:
+    """提供订阅即时副作用所需的独立派发存储替身。"""
+
+    async def claim_by_event_key(self, event_key, now, lease_until):
+        """模拟未取得指定消息 lease。"""
+        return None
+
+    async def complete(self, message_id, attempt, completed_at) -> bool:
+        """模拟按 attempt 完成消息。"""
+        return True
+
+    async def retry(self, message_id, attempt, **kwargs) -> bool:
+        """模拟按 attempt 释放消息。"""
+        return True
 
 
 class _RuntimeSettings:
@@ -150,6 +164,7 @@ def _runtime() -> HostRuntime:
             history_repository=_Repository,
             transaction=_UnitOfWork,
             outbox=_Outbox,
+            dispatch_store=_DispatchStore(),
         ),
         workflow=WorkflowRuntime(
             query=SimpleNamespace(),

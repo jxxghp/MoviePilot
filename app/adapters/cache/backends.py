@@ -11,13 +11,14 @@ from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 from app.runtime.cache import (
     DEFAULT_CACHE_REGION,
     AsyncCacheBackend,
+    AtomicCacheBackend,
     CacheBackend,
     configure_cache_factories,
 )
 from app.runtime.settings import get_runtime_setting
 
 
-class RedisBackend(CacheBackend):
+class RedisBackend(AtomicCacheBackend):
     """通过同步 Redis 客户端实现缓存后端。"""
 
     def __init__(self, ttl: Optional[int] = None) -> None:
@@ -39,6 +40,29 @@ class RedisBackend(CacheBackend):
             self.redis_helper.delete(key, region=region)
             return
         self.redis_helper.set(key, value, ttl=ttl, region=region, **kwargs)
+
+    def store(
+        self,
+        key: str,
+        value: Any,
+        ttl: Optional[int] = None,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+        **kwargs: Any,
+    ) -> None:
+        """严格写入 Redis，供安全敏感的一次性状态使用。"""
+        ttl = self.ttl if ttl is None else ttl
+        if ttl is not None and ttl <= 0:
+            self.redis_helper.consume(key, region=region)
+            return
+        self.redis_helper.store(key, value, ttl=ttl, region=region, **kwargs)
+
+    def consume(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> Optional[Any]:
+        """通过 Redis 原子命令严格领取一个缓存值。"""
+        return self.redis_helper.consume(key, region=region)
 
     def exists(
         self,

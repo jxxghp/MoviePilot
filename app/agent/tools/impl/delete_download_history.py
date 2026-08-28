@@ -37,7 +37,7 @@ class DeleteDownloadHistoryTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: history_id={history_id}")
 
         try:
-            await get_agent_download_history_port().async_delete_history(history_id)
+            await get_agent_download_history_port().async_delete(history_id)
             return f"下载历史记录 ID: {history_id} 已成功删除"
         except Exception as e:
             logger.error(f"删除下载历史记录失败: {e}", exc_info=True)

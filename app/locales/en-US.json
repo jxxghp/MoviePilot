@@ -227,6 +227,7 @@
     "密码需要同时包含字母、数字、特殊字符中的至少两项，且长度大于6位": "Password must contain at least two of letters, numbers, and special characters, and be longer than 6 characters",
     "用户名不能为空": "Username cannot be empty",
     "用户名已被使用": "Username is already in use",
+    "必须保留至少一个启用的超级管理员": "At least one active superuser must remain",
     "用户不存在": "User does not exist",
     "已存在相同名称的工作流": "A workflow with the same name already exists",
     "创建工作流成功": "Workflow created successfully",

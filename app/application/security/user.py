@@ -7,11 +7,17 @@
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Protocol, TypeAlias, TypeVar, cast
+from typing import Any, Optional, Protocol, TypeAlias, TypeVar, Union, cast
 
-FrozenJson: TypeAlias = (
-    str | int | float | bool | None | tuple["FrozenJson", ...] | Mapping[str, "FrozenJson"]
-)
+FrozenJson: TypeAlias = Union[
+    str,
+    int,
+    float,
+    bool,
+    None,
+    tuple["FrozenJson", ...],
+    Mapping[str, "FrozenJson"],
+]
 T = TypeVar("T")
 
 
@@ -24,7 +30,9 @@ def _freeze_json(value: Any) -> FrozenJson:
     return cast(FrozenJson, value)
 
 
-def _freeze_mapping(value: Mapping[str, Any] | None) -> Mapping[str, FrozenJson]:
+def _freeze_mapping(
+    value: Optional[Mapping[str, Any]],
+) -> Mapping[str, FrozenJson]:
     """把可空 JSON 对象复制为只读映射。"""
     frozen = _freeze_json(value or {})
     return cast(Mapping[str, FrozenJson], frozen)
@@ -36,10 +44,10 @@ class UserSnapshot:
 
     id: int
     name: str
-    email: str | None
+    email: Optional[str]
     is_active: bool
     is_superuser: bool
-    avatar: str | None
+    avatar: Optional[str]
     is_otp: bool
     permissions: Mapping[str, FrozenJson]
     settings: Mapping[str, FrozenJson]
@@ -50,13 +58,13 @@ class UserSnapshot:
         *,
         user_id: int,
         name: str,
-        email: str | None,
-        is_active: bool | None,
-        is_superuser: bool | None,
-        avatar: str | None,
-        is_otp: bool | None,
-        permissions: Mapping[str, Any] | None,
-        settings: Mapping[str, Any] | None,
+        email: Optional[str],
+        is_active: Optional[bool],
+        is_superuser: Optional[bool],
+        avatar: Optional[str],
+        is_otp: Optional[bool],
+        permissions: Optional[Mapping[str, Any]],
+        settings: Optional[Mapping[str, Any]],
     ) -> "UserSnapshot":
         """复制持久化字段并构造不可变的公开用户快照。"""
         return cls(
@@ -77,8 +85,8 @@ class UserAuthSnapshot:
     """仅供认证链使用的只读用户凭据快照。"""
 
     user: UserSnapshot
-    hashed_password: str | None
-    otp_secret: str | None
+    hashed_password: Optional[str]
+    otp_secret: Optional[str]
 
     @property
     def id(self) -> int:
@@ -101,7 +109,7 @@ class UserAuthSnapshot:
         return self.user.is_superuser
 
     @property
-    def avatar(self) -> str | None:
+    def avatar(self) -> Optional[str]:
         """返回用户头像。"""
         return self.user.avatar
 
@@ -126,13 +134,21 @@ class AuxiliaryUserCreate:
     is_superuser: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class UserUpdateResult:
+    """用户更新事务产出的新快照与原用户名。"""
+
+    user: UserSnapshot
+    previous_name: str
+
+
 class ChainUserRepository(Protocol):
     """用户 Chain 和 Agent 共享的类型化查询与创建端口。"""
 
-    def get_auth_by_name(self, name: str) -> UserAuthSnapshot | None:
+    def get_auth_by_name(self, name: str) -> Optional[UserAuthSnapshot]:
         """按用户名读取认证快照。"""
 
-    async def async_get_by_name(self, name: str) -> UserSnapshot | None:
+    async def async_get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """异步按用户名读取公开用户快照。"""
 
     def create_auxiliary(self, command: AuxiliaryUserCreate) -> UserAuthSnapshot:
@@ -141,16 +157,19 @@ class ChainUserRepository(Protocol):
     def get_notification_settings(
         self,
         name: str,
-    ) -> Mapping[str, FrozenJson] | None:
+    ) -> Optional[Mapping[str, FrozenJson]]:
         """读取通知路由设置；用户不存在时返回空值。"""
 
     async def async_get_notification_settings(
         self,
         name: str,
-    ) -> Mapping[str, FrozenJson] | None:
+    ) -> Optional[Mapping[str, FrozenJson]]:
         """异步读取通知路由设置；用户不存在时返回空值。"""
 
-    def find_name_by_bindings(self, bindings: Mapping[str, object]) -> str | None:
+    def find_name_by_bindings(
+        self,
+        bindings: Mapping[str, object],
+    ) -> Optional[str]:
         """解析唯一启用用户的渠道绑定，歧义时拒绝归属。"""
 
 
@@ -160,24 +179,27 @@ class UserRepository(Protocol):
     async def async_list(self) -> list[UserSnapshot]:
         """返回全部用户。"""
 
-    async def async_get_by_name(self, name: str) -> UserSnapshot | None:
+    async def async_get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """按用户名返回用户。"""
 
-    async def async_get_by_id(self, user_id: int) -> UserSnapshot | None:
+    async def async_get_by_id(self, user_id: int) -> Optional[UserSnapshot]:
         """按用户 ID 返回用户。"""
 
-    async def async_create(self, payload: dict[str, Any]) -> UserSnapshot | None:
+    async def async_create(
+        self,
+        payload: dict[str, Any],
+    ) -> Optional[UserSnapshot]:
         """创建用户并返回持久化对象。"""
 
     async def async_update(
         self,
         user_id: int,
         payload: dict[str, Any],
-    ) -> UserSnapshot | None:
-        """更新用户并返回原用户对象。"""
+    ) -> Optional[UserUpdateResult]:
+        """更新用户并返回提交后快照发布所需的变更结果。"""
 
-    async def async_delete(self, user_id: int) -> None:
-        """删除用户。"""
+    async def async_delete(self, user_id: int) -> Optional[str]:
+        """删除用户并返回被删除用户名。"""
 
     async def async_update_otp_by_name(self, name: str, otp: bool, secret: str) -> None:
         """更新用户 OTP 状态。"""
@@ -193,31 +215,51 @@ class AsyncUnitOfWork(Protocol):
         """回滚失败的用户写入。"""
 
 
+class UserConfigurationPublisher(Protocol):
+    """用户聚合提交后同步进程级配置快照的应用端口。"""
+
+    async def rename(self, previous_name: str, current_name: str) -> None:
+        """数据库改名提交后迁移对应用户名配置快照。"""
+
+    async def delete(self, username: str) -> None:
+        """数据库删除提交后移除对应用户名配置快照。"""
+
+
+class UserNameConflictError(Exception):
+    """用户名在数据库唯一约束下发生冲突。"""
+
+
+class LastActiveSuperuserError(Exception):
+    """用户变更会导致系统不再存在启用的超级管理员。"""
+
+
 class UserService:
     """用户管理应用服务。"""
 
     def __init__(
         self,
         repository: UserRepository,
-        unit_of_work: AsyncUnitOfWork | None = None,
+        unit_of_work: AsyncUnitOfWork,
+        configuration: UserConfigurationPublisher,
     ) -> None:
-        """创建用户服务；旧独立仓储可暂不提供请求级 UoW。"""
+        """创建用户服务并注入事务边界与提交后配置发布端口。"""
         self._repository = repository
         self._unit_of_work = unit_of_work
+        self._configuration = configuration
 
     async def list(self) -> list[UserSnapshot]:
         """返回用户列表。"""
         return await self._repository.async_list()
 
-    async def get_by_name(self, name: str) -> UserSnapshot | None:
+    async def get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """按用户名查询用户。"""
         return await self._repository.async_get_by_name(name)
 
-    async def get_by_id(self, user_id: int) -> UserSnapshot | None:
+    async def get_by_id(self, user_id: int) -> Optional[UserSnapshot]:
         """按用户 ID 查询用户。"""
         return await self._repository.async_get_by_id(user_id)
 
-    async def create(self, payload: dict[str, Any]) -> UserSnapshot | None:
+    async def create(self, payload: dict[str, Any]) -> Optional[UserSnapshot]:
         """创建用户。"""
         return await self._write(lambda: self._repository.async_create(payload))
 
@@ -225,44 +267,45 @@ class UserService:
         self,
         user_id: int,
         payload: dict[str, Any],
-    ) -> UserSnapshot | None:
+    ) -> Optional[UserSnapshot]:
         """更新用户。"""
-        return await self._write(
-            lambda: self._repository.async_update(user_id, payload)
-        )
+        result = await self._write(lambda: self._repository.async_update(user_id, payload))
+        if result is None:
+            return None
+        if result.previous_name != result.user.name:
+            await self._configuration.rename(result.previous_name, result.user.name)
+        return result.user
 
     async def delete(self, user_id: int) -> None:
         """删除用户。"""
-        await self._write(lambda: self._repository.async_delete(user_id))
+        username = await self._write(lambda: self._repository.async_delete(user_id))
+        if username is not None:
+            await self._configuration.delete(username)
 
     async def update_otp(self, name: str, otp: bool, secret: str) -> None:
         """更新用户 OTP 状态。"""
-        await self._write(
-            lambda: self._repository.async_update_otp_by_name(name, otp, secret)
-        )
+        await self._write(lambda: self._repository.async_update_otp_by_name(name, otp, secret))
 
     async def _write(self, operation: Callable[[], Awaitable[T]]) -> T:
         """执行用户写入，并在正式请求路径统一提交或回滚。"""
         try:
             result = await operation()
-            if self._unit_of_work is not None:
-                await self._unit_of_work.commit()
+            await self._unit_of_work.commit()
             return result
         except Exception:
-            if self._unit_of_work is not None:
-                await self._unit_of_work.rollback()
+            await self._unit_of_work.rollback()
             raise
 
 
-_configured_user_id_lookup: Callable[[int], UserSnapshot | None] | None = None
-_configured_user_name_lookup: Callable[[str], UserSnapshot | None] | None = None
-_configured_user_channel_lookup: Callable[..., str | None] | None = None
+_configured_user_id_lookup: Optional[Callable[[int], Optional[UserSnapshot]]] = None
+_configured_user_name_lookup: Optional[Callable[[str], Optional[UserSnapshot]]] = None
+_configured_user_channel_lookup: Optional[Callable[..., Optional[str]]] = None
 
 
 def configure_user_lookups(
-    by_id: Callable[[int], UserSnapshot | None],
-    by_name: Callable[[str], UserSnapshot | None],
-    by_channel: Callable[..., str | None],
+    by_id: Callable[[int], Optional[UserSnapshot]],
+    by_name: Callable[[str], Optional[UserSnapshot]],
+    by_channel: Callable[..., Optional[str]],
 ) -> None:
     """由启动组合根登记 ID、用户名和渠道身份查询能力。"""
     global _configured_user_id_lookup, _configured_user_name_lookup
@@ -272,21 +315,21 @@ def configure_user_lookups(
     _configured_user_channel_lookup = by_channel
 
 
-def get_configured_user_id_lookup() -> Callable[[int], UserSnapshot | None]:
+def get_configured_user_id_lookup() -> Callable[[int], Optional[UserSnapshot]]:
     """返回启动阶段登记的按 ID 用户查询函数。"""
     if _configured_user_id_lookup is None:
         raise RuntimeError("按 ID 的用户查询能力尚未配置")
     return _configured_user_id_lookup
 
 
-def get_configured_user_name_lookup() -> Callable[[str], UserSnapshot | None]:
+def get_configured_user_name_lookup() -> Callable[[str], Optional[UserSnapshot]]:
     """返回启动阶段登记的按用户名查询函数。"""
     if _configured_user_name_lookup is None:
         raise RuntimeError("按用户名的用户查询能力尚未配置")
     return _configured_user_name_lookup
 
 
-def get_configured_user_channel_lookup() -> Callable[..., str | None]:
+def get_configured_user_channel_lookup() -> Callable[..., Optional[str]]:
     """返回启动阶段登记的渠道身份到用户名查询函数。"""
     if _configured_user_channel_lookup is None:
         raise RuntimeError("渠道用户查询能力尚未配置")

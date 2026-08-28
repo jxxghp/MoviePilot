@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.application.outbox import ClaimedOutboxMessage
 from app.application.subscription.mutation import (
     SubscriptionActor,
     SubscriptionMutationService,
@@ -84,9 +85,27 @@ class _Outbox:
         if self.stage_error:
             raise self.stage_error
 
-    async def complete_by_event_key(self, event_key: str, _completed_at) -> None:
-        """记录即时事件成功后的完成键。"""
-        self.calls.append(("outbox_complete", event_key))
+    async def claim_by_event_key(self, event_key, _now, _lease_until):
+        """记录并返回当前测试拥有的派发 lease。"""
+        self.calls.append(("outbox_claim", event_key))
+        return ClaimedOutboxMessage(
+            message_id=7,
+            event_key=event_key,
+            topic="subscribe.modified",
+            payload={},
+            payload_version=1,
+            attempt=1,
+        )
+
+    async def complete(self, message_id, attempt, _completed_at):
+        """记录带 attempt fencing 的完成结算。"""
+        self.calls.append(("outbox_complete", message_id, attempt))
+        return True
+
+    async def retry(self, message_id, attempt, **_kwargs):
+        """记录带 attempt fencing 的失败释放。"""
+        self.calls.append(("outbox_retry", message_id, attempt))
+        return True
 
 
 def _service(calls: list, *, event_error: Exception | None = None, outbox=None):
@@ -99,10 +118,12 @@ def _service(calls: list, *, event_error: Exception | None = None, outbox=None):
         if event_error:
             raise event_error
 
+    outbox = outbox or _Outbox(calls)
     return SubscriptionMutationService(
         repository=_Repository(subscribe, calls),
         unit_of_work=_UnitOfWork(calls),
-        outbox=outbox or _Outbox(calls),
+        outbox=outbox,
+        dispatch_store=outbox,
         publish_modified=publish,
     )
 
@@ -129,14 +150,15 @@ async def test_modified_event_is_staged_with_update_and_completed_after_publish(
         "stage_update",
         "outbox_stage",
         "commit",
+        "outbox_claim",
         "event",
         "outbox_complete",
     ]
     intent = calls[2][1]
     assert intent.topic == "subscribe.modified"
     assert intent.event_key.startswith("subscribe.modified:7:update:")
-    assert calls[4][1]["idempotency_key"] == intent.event_key
-    assert calls[5][1] == intent.event_key
+    assert calls[5][1]["idempotency_key"] == intent.event_key
+    assert calls[6][1:] == (7, 1)
 
 
 @pytest.mark.asyncio
@@ -181,5 +203,7 @@ async def test_modified_event_failure_keeps_committed_intent_pending():
         "stage_update",
         "outbox_stage",
         "commit",
+        "outbox_claim",
         "event",
+        "outbox_retry",
     ]

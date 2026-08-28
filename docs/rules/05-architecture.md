@@ -64,16 +64,17 @@ to make the directory tree look symmetrical.
 | `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
+| `app/application/history.py` | History use cases and persistence contracts; DownloadHistory owns frozen query/write DTOs and typed ports, while TransferHistory remains a separate unfinished migration surface |
 | `app/application/music/` | Multi-source music catalog orchestration |
 | `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the runtime dependency aggregate, `data.py` owns named persistence ports, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agentdata.py` | Named Agent data ports; canonical Agent consumers use `get_agent_*_port()` and do not alias legacy proxies to Oper classes |
-| `app/application/outbox.py` | Durable intent and Outbox repository/dispatcher contracts for post-commit side effects |
+| `app/application/outbox.py` | Durable intent, transaction-only stager, short-transaction dispatch store, claim fencing and structured post-commit result contracts |
 | `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns admission/planning/queue behavior; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs |
 | `app/application/plugin/` | Plugin market catalog, installation command, installed-plugin identity contract and startup migration, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `identity.py`, `migration.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
 | `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
-| `app/application/security/` | Authentication, authorization, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
+| `app/application/security/` | Authentication, authorization, frozen user/auth projections, atomic user aggregate commands, per-user configuration publication, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
 Application services may use domain rules and runtime contracts. They own the
 persistence Protocol needed by a use case, but must not import `app.db`,
@@ -457,10 +458,14 @@ SQLAlchemy models stay under `app/db/models/`; the data access classes live in
 carries the role. Two verified aggregation exceptions exist: the site family
 (`Passkey`, `SiteIcon`, `SiteStatistic`, `SiteUserData`) is consolidated in
 `oper/site.py`, and `AgentTaskRun` lives in `oper/agenttask.py`. DB adapters use
-Oper classes instead of issuing SQLAlchemy queries directly. Application and
-Chain code reaches persistence through named Ports/Protocols; concrete DB adapters
-are the layer that adapts those Ports to Oper classes. Every schema change
-requires an Alembic migration under `database/versions/`.
+Oper classes for ordinary entity access. Adapter-owned cross-row locks and
+compare-and-set transitions may issue focused SQLAlchemy statements when the
+atomic persistence invariant cannot be expressed by an entity Oper; those
+statements stay private to the adapter and require concurrency tests.
+Application and Chain code reaches persistence through named Ports/Protocols;
+concrete DB adapters are the only layer that adapts those Ports to Oper/Session
+mechanics. Every schema change requires an Alembic migration under
+`database/versions/`.
 
 Oper classes take and return persistence values, not domain objects. Translating
 `MediaInfo` / `MetaBase` into a row is business logic and belongs in
@@ -477,17 +482,40 @@ path cannot forget them. Identity representation rules themselves
 alongside the two identity mixins; `app/domain/media.py` keeps only source
 policy. `app/db` therefore has no dependency on `app/domain`.
 
+User identity is a single aggregate boundary. `app/application/security/user.py`
+owns frozen user/auth snapshots and the atomic create/update/delete command;
+`app/db/adapters/user.py` binds each mutation to one request UoW and locks the
+active-superuser set before a destructive change. The database enforces unique
+user names and cascades rename/delete to `UserConfig` and delete to `PassKey`.
+The configured user-configuration repository publishes its in-memory snapshot
+only after the user transaction commits, and reloads from the database if
+publication fails.
+
+Download history is the verified half of the History migration:
+`app/application/history.py` owns frozen `DownloadHistorySnapshot` /
+`DownloadFileSnapshot` values and typed query/write ports;
+`app/db/adapters/history/download.py` performs projection and mutations in short
+Session scopes. TransferHistory still uses its existing ports, so this must not
+be described as completion of the entire History boundary.
+
 Durable post-commit side effects have a separate boundary:
 
-- `app/application/outbox.py` owns the Outbox intent, repository and dispatcher
-  contracts. An Application command stages the business mutation and its durable
-  intent in the same transaction.
-- `app/db/adapters/outbox.py` implements the persistence port with SQLAlchemy;
+- `app/application/outbox.py` separates `OutboxStager`, which only stages in the
+  caller's business transaction, from `OutboxDispatchStore`, whose claim,
+  complete and retry operations own independent short transactions.
+- `app/db/adapters/outbox.py` implements both roles with SQLAlchemy;
   `app/startup/composition/subscription.py` and the other composition modules
-  provide the concrete repository, UoW and handlers.
-- The dispatcher claims an intent with a lease, executes the topic handler, and
-  records retry/dead-letter state. Handlers must be idempotent and must not rely
-  on a live request object.
+  inject the stager, dispatch-store factory, UoW and handlers.
+- Immediate request-thread delivery and the dispatcher both claim before
+  calling a handler. Lease acquisition is atomic, while complete/retry is fenced
+  by the claimed attempt so an expired owner cannot settle a newer claim.
+- `PostCommitResult` distinguishes the committed business value from completed
+  and pending effects. This does not provide exactly-once delivery: a process may
+  stop after an external sink succeeds but before complete is persisted. Outbox
+  delivery is therefore at-least-once. Event payloads and the host correlation
+  context carry the stable event key, and consumers that support deduplication
+  should use it. Legacy notification plugins retain their existing method
+  signature, so the host must not claim provider-level exactly-once delivery.
 - Terminal history is part of the shared data-maintenance policy and is cleaned
   in bounded daily batches only when that policy is enabled. Completed intents
   default to 30-day retention and dead letters to 90 days; both values are
@@ -546,6 +574,10 @@ expired claimed task remains exclusively owned by fenced recovery APIs.
 - Startup registers concrete cache factories before decorated business modules
   are imported. Cache contracts remain in `app/runtime/cache.py`; Redis/file
   implementations remain in `app/adapters/cache/backends.py`.
+- Security-sensitive one-shot state uses the strict `AtomicCacheBackend`
+  `store/consume` contract. Memory and Redis implement atomic consume; startup
+  injects that capability through `PasskeyChallengeCache`, so Passkey
+  Application code never identifies or imports the Redis implementation.
 - `app/runtime/log.py` is a dependency leaf with no `app.*` imports. Foundation
   emits no runtime logs; upper-layer owners decide whether failures are
   operationally relevant.
@@ -573,6 +605,9 @@ expired claimed task remains exclusively owned by fenced recovery APIs.
   may use `app.core`, `app.helper`, `app.utils` or `app.log`.
 - New plugins use `app.sdk`. In DEBUG mode, a legacy plugin import remains
   functional and emits one actionable warning per plugin and legacy module.
+- Plugin compatibility changes belong only in curated SDK/Legacy exports or the
+  exact Compat manifest. `app/plugins/**` contains runtime plugin copies and is
+  excluded from host refactors, dependency baselines and ownership migrations.
 - Delayed imports are not accepted as a way to hide dependency cycles.
 
 ### Dependency facts and semantic policy
@@ -677,8 +712,13 @@ driven workflow registration.
 | `app/application/download/failures.py` | Frozen download-failure cooldown write/query DTOs and Chain persistence Port |
 | `app/db/adapters/download.py` | Short-session download-failure snapshot and mutation adapter |
 | `app/db/adapters/mediaserver.py` | Per-operation media-server cache query/upsert/cleanup transaction adapter |
-| `app/application/outbox.py` | Durable intent, topic handler and Outbox repository contracts |
-| `app/db/adapters/outbox.py` | SQLAlchemy Outbox persistence, claim/lease and retry state adapter |
+| `app/application/history.py` | History use cases; frozen DownloadHistory DTOs and typed query/write ports, with TransferHistory migration still pending |
+| `app/db/adapters/history/download.py` | DownloadHistory short-session snapshot, query and mutation adapter |
+| `app/application/security/user.py` | Frozen user/auth projections and atomic user aggregate service contracts |
+| `app/db/adapters/user.py` | User projection plus request-UoW mutation adapter |
+| `app/db/adapters/configuration.py` | Commit-after UserConfig snapshot publication and fact-source reload adapter |
+| `app/application/outbox.py` | Durable intent, stager/store, claim fencing, topic handler and structured post-commit contracts |
+| `app/db/adapters/outbox.py` | SQLAlchemy Outbox transaction-only stagers and short-transaction claim/settlement stores |
 | `app/application/chain/events.py` | Chain durable-event write port, settlement projection and replayable payload conversion |
 | `app/application/transfer/workflow.py` | Transfer task, durable admission, versioned planning input/checkpoint contracts and queue use case |
 | `app/db/adapters/transfer/admission.py` | SQLAlchemy admission/checkpoint persistence, CAS state transition and detached snapshot adapter |
@@ -691,6 +731,8 @@ driven workflow registration.
 | `app/startup/initializers/` | Domain-scoped initialization and shutdown hooks |
 | `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
 | `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
+| `app/runtime/cache.py` | Cache contracts and memory policy, including strict atomic store/consume for one-shot security state |
+| `app/application/security/passkey.py` | Injected Passkey challenge cache port and one-shot challenge issue/consume policy |
 | `app/runtime/tasks.py` | TaskRegistry owner, cancellation and bounded shutdown waiting |
 | `app/runtime/execution.py` | Shared execution/thread-boundary helpers and context propagation |
 | `app/runtime/correlation.py` | Correlation ID context and propagation boundary |
@@ -751,4 +793,4 @@ imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
 modules only through `run_module` dispatch), and downloader SDK
 (`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
 
-*Last Updated: 2026-08-27*
+*Last Updated: 2026-08-28*

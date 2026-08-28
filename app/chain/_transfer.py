@@ -22,7 +22,13 @@ from app.application.configuration import (
     get_configured_system_config,
 )
 from app.application.formatting import EpisodeFormatRuleHelper
-from app.application.history import clear_transfer_failures, resolve_history
+from app.application.history import (
+    DownloadFileSnapshot,
+    DownloadHistoryQueryPort,
+    DownloadHistorySnapshot,
+    clear_transfer_failures,
+    resolve_history,
+)
 from app.application.transfer.execution import TransferExecutionCommand
 from app.application.transfer.workflow import TransferTask, job_lock
 from app.chain._contracts import TransferMixinHost
@@ -37,7 +43,6 @@ from app.foundation import text as text_tools
 from app.runtime.config import global_vars
 from app.runtime.log import logger
 from app.runtime.tasks import get_task_registry
-from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import EpisodeFormatRule as _SchemaEpisodeFormatRule
@@ -53,8 +58,6 @@ from app.schemas.types import (
 )
 from app.schemas.workflow import FileItem
 
-DownloadFiles = Any
-DownloadHistory = Any
 TransferHistory = Any
 
 
@@ -266,7 +269,7 @@ class FileFilterMixin:
 
     @staticmethod
     def _download_history_music_type(
-            download_history: Optional[DownloadHistory],
+            download_history: Optional[DownloadHistorySnapshot],
     ) -> Optional[str]:
         """从下载历史字段或旧版音乐备注中恢复音乐实体类型。"""
         music_type = normalize_music_type(
@@ -288,7 +291,7 @@ class FileFilterMixin:
     @classmethod
     def _restore_music_download_context(
             cls,
-            download_history: Optional[DownloadHistory],
+            download_history: Optional[DownloadHistorySnapshot],
             file_path: Path,
     ) -> tuple[Optional[MetaMusic], Optional[MusicInfo]]:
         """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。"""
@@ -878,7 +881,7 @@ class HistoryMatchMixin:
     __mixin_host_protocol__ = TransferMixinHost
     @staticmethod
     def _match_download_file(
-            download_file: DownloadFiles,
+            download_file: DownloadFileSnapshot,
             file_path: Path,
             save_path: Path,
     ) -> bool:
@@ -899,11 +902,11 @@ class HistoryMatchMixin:
 
     def _resolve_history_from_download_files(
             self,
-            downloadhis: Any,
-            download_files: List[DownloadFiles],
+            repository: DownloadHistoryQueryPort,
+            download_files: List[DownloadFileSnapshot],
             file_path: Optional[Path] = None,
             save_path: Optional[Path] = None,
-    ) -> Optional[DownloadHistory]:
+    ) -> Optional[DownloadHistorySnapshot]:
         """
         从下载文件记录中解析唯一的下载历史。
         """
@@ -924,28 +927,28 @@ class HistoryMatchMixin:
             if download_file.download_hash
         }
         if len(download_hashes) == 1:
-            return downloadhis.get_by_hash(next(iter(download_hashes)))
+            return repository.get_by_hash(next(iter(download_hashes)))
         return None
 
     def _resolve_download_history(
             self,
-            downloadhis: Any,
+            repository: DownloadHistoryQueryPort,
             file_path: Path,
             bluray_dir: bool = False,
             download_hash: Optional[str] = None,
-    ) -> Optional[DownloadHistory]:
+    ) -> Optional[DownloadHistorySnapshot]:
         """
         根据显式 hash、文件路径或种子根目录回查下载历史。
         """
         if download_hash:
-            return downloadhis.get_by_hash(download_hash)
+            return repository.get_by_hash(download_hash)
 
         if bluray_dir:
-            return downloadhis.get_by_path(file_path.as_posix())
+            return repository.get_by_path(file_path.as_posix())
 
-        download_file = downloadhis.get_file_by_fullpath(file_path.as_posix())
-        if download_file:
-            return downloadhis.get_by_hash(download_file.download_hash)
+        download_file = repository.get_file_by_fullpath(file_path.as_posix())
+        if download_file and download_file.download_hash:
+            return repository.get_by_hash(download_file.download_hash)
 
         # 多文件种子里的字幕/附加文件可能没有稳定的 fullpath 记录，
         # 退回到父目录和 savepath 继续查找，尽量补齐同一种子的关联信息。
@@ -953,13 +956,13 @@ class HistoryMatchMixin:
 
         for parent_path in file_path.parents:
             parent_posix = parent_path.as_posix()
-            download_files = downloadhis.get_files_by_savepath(parent_posix) or []
+            download_files = repository.get_files_by_savepath(parent_posix) or []
 
             if parent_posix in shared_download_roots:
                 # 共享下载根目录只能接受有明确文件记录的匹配，
                 # 避免单文件/磁力任务把整个根目录污染成同一媒体。
                 history = self._resolve_history_from_download_files(
-                    downloadhis=downloadhis,
+                    repository=repository,
                     download_files=download_files,
                     file_path=file_path,
                     save_path=parent_path,
@@ -968,12 +971,12 @@ class HistoryMatchMixin:
                     return history
                 break
 
-            download_history = downloadhis.get_by_path(parent_posix)
+            download_history = repository.get_by_path(parent_posix)
             if download_history:
                 return download_history
 
             history = self._resolve_history_from_download_files(
-                downloadhis=downloadhis,
+                repository=repository,
                 download_files=download_files,
             )
             if history:
@@ -984,10 +987,7 @@ class HistoryMatchMixin:
     @staticmethod
     def _is_movie_year_conflict(
             file_meta: MetaBase,
-            # 两种 DownloadHistory 都会进来：库模型（本文件按 ORM 行查历史）与
-            # schemas DTO（TransferTask.download_history）。本函数只按 getattr 取
-            # year 与 type，对两者一视同仁
-            media: Union[DownloadHistory, _SchemaDownloadHistory, MediaInfo, MusicInfo]
+            media: Union[DownloadHistorySnapshot, MediaInfo, MusicInfo]
     ) -> bool:
         """
         判断文件名年份是否与已识别电影年份冲突。
@@ -1159,7 +1159,7 @@ class ManualHistoryMixin:
     __mixin_host_protocol__ = TransferMixinHost
     @staticmethod
     def _get_subscribe_custom_words(
-            history_record: Optional[DownloadHistory],
+            history_record: Optional[DownloadHistorySnapshot],
     ) -> Optional[List[str]]:
         """
         获取整理用自定义识别词：优先使用下载时保存的快照，无快照（历史旧记录）时再按来源实时反查订阅。

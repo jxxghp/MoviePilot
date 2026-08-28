@@ -130,18 +130,45 @@ adapters; it does not retain reusable repository implementations.
   `AgentChatService.delete()`, and `DeletePluginDataCommand`: bind the repository
   and UoW to one request/operation Session. Legacy plugin-facing Oper methods may
   remain temporarily, but a new endpoint or startup workflow must call `stage_*`.
+- User create/update/delete is an aggregate command owned by
+  `app/application/security/user.py`. It uses one request AsyncSession/UoW, locks
+  active superusers before destructive changes, and rejects removal of the last
+  enabled superuser. Query ports return frozen user/auth snapshots rather than
+  ORM rows.
+- The database is the final user-identity guard: `user.name` is unique;
+  `UserConfig.username` cascades on user rename/delete; `PassKey.user_id`
+  cascades on user delete; `(UserConfig.username, UserConfig.key)` is unique and
+  non-null. A schema change to any of these constraints requires a replay-safe
+  migration that repairs legacy duplicates/orphans before creating constraints.
+- DownloadHistory is projected into frozen DTOs within the adapter Session.
+  Its typed query/write port and delete mutation use short Session/UoW scopes.
+  TransferHistory has not completed the same migration and must be tracked
+  separately rather than treating the whole History area as typed.
 
 ### Durable post-commit side effects
 
 Business mutations that must survive process interruption stage their durable
-intent through `app/application/outbox.py` in the same Session/UoW as the
-business row. `app/db/adapters/outbox.py` is the SQLAlchemy implementation;
-startup composition supplies the repository, transaction scope and topic
-handlers.
+intent through `OutboxStager` in the same Session/UoW as the business row.
+`OutboxDispatchStore` owns separate short transactions for claim, complete and
+retry; a business Session must never call those self-committing operations.
+`app/db/adapters/outbox.py` implements both roles, and startup composition
+supplies the stager, store factory, transaction scope and topic handlers.
 
-The dispatcher claims an intent with a lease, executes an idempotent handler,
-and records bounded retries or dead-letter state. The shared data-maintenance
-policy controls bounded terminal-history cleanup, with user-configurable 30-day
+Immediate delivery and the dispatcher both claim before execution. Claim is
+atomic and complete/retry is fenced by the claimed attempt, so an expired owner
+cannot settle a newer lease. `PostCommitResult` separately reports the committed
+business value plus completed and pending effects; a post-commit failure cannot
+be represented as a rollback of already committed business data.
+
+This boundary is at-least-once, not exactly-once. If an external sink succeeds
+and the process stops before complete is persisted, the intent can be replayed.
+Event payloads and the host correlation context therefore carry the stable
+event key, and consumers that support deduplication should use it. Legacy
+notification plugins retain their existing method signature and remain an
+at-least-once boundary where duplicate provider delivery is possible. The
+dispatcher records bounded retries or dead-letter state.
+The shared data-maintenance policy controls bounded terminal-history cleanup,
+with user-configurable 30-day
 completed and 90-day dead-letter defaults; `0` disables either cleanup. It must
 not delete pending or leased processing rows. The `app/runtime/tasks.py`
 TaskRegistry is only the owner for in-process work and bounded shutdown waiting;
@@ -237,6 +264,15 @@ configuration.set(username="alice", key="notification_enabled", value=True)
 The no-Session `UserConfigOper()` form is legacy plugin ABI only and must not be
 copied into host code.
 
+`TransactionalUserConfigurationRepository` stages a set in a short transaction
+and publishes the process snapshot only after commit. User rename/delete is
+first completed by the user aggregate transaction through database cascades;
+post-commit publication then acquires the write lock and reloads the database
+fact source so concurrent set/rename/delete operations converge on committed
+state. If publication fails, the repository reloads that fact source instead of
+rolling back or hiding the already committed user mutation. Reads and published
+JSON values are copied so callers cannot mutate shared cache state.
+
 ---
 
 ## Settings / Environment Configuration
@@ -280,12 +316,19 @@ def get_movie_detail(tmdb_id: int) -> dict:
 
 When `REDIS_HOST` is configured, `app/modules/redis/` provides a distributed cache backend. Prefer `FileCache` for single-node deployments.
 
+Security-sensitive one-shot state uses `AtomicCacheBackend`, not a concrete
+Redis helper. Its strict `store()` surfaces backend write failures and
+`consume()` atomically returns-and-removes a value. Both Memory and Redis
+backends implement this contract; Passkey receives the capability from startup
+through `PasskeyChallengeCache`, so an authentication or registration challenge
+can be accepted only once without Application knowing the configured backend.
+
 ---
 
 ## Data Lifecycle Rules
 
 - **TransferHistory:** Records are inserted after every successful file transfer. Do not delete records without user confirmation.
-- **DownloadHistory:** Records are inserted when a download task is added. Linked `DownloadFiles` records track individual files within a torrent.
+- **DownloadHistory:** Records are inserted when a download task is added. Linked `DownloadFiles` records track individual files within a torrent. Host query/write callers use frozen DTOs and the typed DownloadHistory port; ORM rows remain inside the adapter Session.
 - **SystemConfig:** Values may be read and written freely at runtime. Changes to watched config keys trigger `on_config_changed()` on registered classes via `ConfigReloadMixin`.
 - **MediaServerItem:** This is a cache of the remote media server library. It is refreshed on media server sync events and can be safely cleared and rebuilt.
 
@@ -297,4 +340,4 @@ When `REDIS_HOST` is configured, `app/modules/redis/` provides a distributed cac
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-08-27*
+*Last Updated: 2026-08-28*

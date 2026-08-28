@@ -10,7 +10,7 @@ from app.application.messaging.chat import (
     AsyncAgentChatRepository,
     AsyncUnitOfWork,
 )
-from app.application.outbox import AsyncOutboxTransaction
+from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.subscription.delete import SubscribeDeletionRepository
 from app.application.subscription.identity import SubscribeIdentityDeletionRepository
 from app.application.subscription.mutation import (
@@ -40,7 +40,7 @@ class AsyncUnitOfWorkFactory(Protocol):
 class AsyncOutboxFactory(Protocol):
     """由请求会话构造异步 outbox 事务端口的工厂。"""
 
-    def __call__(self, session: object) -> AsyncOutboxTransaction:
+    def __call__(self, session: object) -> AsyncOutboxStager:
         """绑定请求会话并返回 outbox 暂存与收口端口。"""
         ...
 
@@ -179,6 +179,7 @@ class SubscriptionRuntime:
     history_repository: SubscriptionHistoryRepositoryFactory
     transaction: AsyncUnitOfWorkFactory
     outbox: AsyncOutboxFactory
+    dispatch_store: AsyncOutboxDispatchStore
 
 
 @dataclass(frozen=True, slots=True)

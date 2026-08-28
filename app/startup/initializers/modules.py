@@ -82,6 +82,7 @@ from app.application.messaging.message import (
 )
 from app.application.module import configure_module_runtime
 from app.application.outbox import (
+    ClaimedOutboxMessage,
     OutboxDispatcher,
     configure_outbox_dispatcher,
     durable_event_topic,
@@ -93,7 +94,12 @@ from app.application.query import (
     configure_data_query_service,
 )
 from app.application.security.auth import AuthService, build_superuser_token_payload, configure_auth_service
-from app.application.security.passkey import PasskeyService, configure_passkey_service
+from app.application.security.passkey import (
+    PASSKEY_CHALLENGE_TTL_SECONDS,
+    PasskeyService,
+    configure_passkey_challenge_cache,
+    configure_passkey_service,
+)
 from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.security.user import configure_user_lookups
 from app.application.security.userconfig import (
@@ -113,9 +119,18 @@ from app.application.workflow import (
 )
 from app.command import CommandChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
+from app.db.adapters.configuration import TransactionalUserConfigurationRepository
 from app.db.adapters.download import TransactionalDownloadFailureRepository
+from app.db.adapters.history.download import (
+    SessionDownloadHistoryRepository,
+    TransactionalDownloadHistoryRepository,
+)
 from app.db.adapters.mediaserver import TransactionalMediaServerRepository
-from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxRepository
+from app.db.adapters.outbox import (
+    SqlAlchemyAsyncOutboxDispatchStore,
+    SqlAlchemyAsyncOutboxStager,
+    SqlAlchemyOutboxDispatchStore,
+)
 from app.db.adapters.query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.site import TransactionalSiteRepository
 from app.db.adapters.subscription import TransactionalSubscribeWriter
@@ -134,7 +149,6 @@ from app.db.adapters.workflow import (
 )
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.agenttask import AgentTaskOper
-from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.mediaserver import MediaServerOper
 from app.db.oper.message import MessageOper
 from app.db.oper.passkey import PassKeyOper
@@ -144,7 +158,6 @@ from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.transferhistory import TransferHistoryOper
-from app.db.oper.userconfig import UserConfigOper
 from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
     SessionFactory,
@@ -159,7 +172,7 @@ from app.db.uow import (
     configure_transaction_runners,
 )
 from app.db.worker import DatabaseWorker
-from app.runtime.cache import AsyncFileCache, FileCache
+from app.runtime.cache import AsyncFileCache, FileCache, TTLCache
 from app.runtime.config import settings as legacy_settings
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.execution import run_in_threadpool_to_completion
@@ -227,7 +240,7 @@ async def _initialize_configuration_services(
 ) -> SystemConfigOper:
     """加载完整配置快照后发布系统与用户配置服务。"""
     system_config = SystemConfigOper()
-    user_config = UserConfigOper()
+    user_config = TransactionalUserConfigurationRepository(SessionFactory)
     await database_worker.run(system_config.load_snapshot)
     await database_worker.run(user_config.load_snapshot)
     configure_system_config(
@@ -345,122 +358,159 @@ def configure_runtime_data_providers(workflow_query: WorkflowQueryService) -> No
     )
 
 
-def _build_outbox_dispatcher() -> OutboxDispatcher:
-    """创建一次恢复批次独占的 Session、Repository 和事件 handler。"""
-    def dispatch_subscribe_deleted_report(message) -> None:
+def _build_outbox_handlers() -> dict[
+    str,
+    Callable[[ClaimedOutboxMessage], None],
+]:
+    """构造等待真实执行边界的 at-least-once 通知、事件和统计 handler。"""
+    def discard_event_receipt(_event: object) -> None:
+        """丢弃普通事件 API 的回执，使 outbox handler 仅表达结算成功。"""
+
+    def dispatch_subscribe_deleted_report(message: ClaimedOutboxMessage) -> None:
         """重放订阅删除统计；未确认时抛错以进入有限重试。"""
         if not MoviePilotServerHelper.sub_done_durable(
             message.payload.get("subscribe_info") or {}
         ):
             raise RuntimeError("订阅删除统计上报未确认")
 
-    def dispatch_subscribe_added_report(message) -> None:
+    def dispatch_subscribe_added_report(message: ClaimedOutboxMessage) -> None:
         """重放订阅新增统计；未确认时抛错以进入有限重试。"""
         if not MoviePilotServerHelper.sub_reg_durable(
             message.payload.get("subscribe_info") or {}
         ):
             raise RuntimeError("订阅新增统计上报未确认")
 
-    def dispatch_subscribe_complete_report(message) -> None:
+    def dispatch_subscribe_complete_report(message: ClaimedOutboxMessage) -> None:
         """重放订阅完成统计；未确认时抛错以进入有限重试。"""
         if not MoviePilotServerHelper.sub_done_durable(
             message.payload.get("subscribe_info") or {}
         ):
             raise RuntimeError("订阅完成统计上报未确认")
 
-    def dispatch_subscribe_notification(message) -> None:
+    def dispatch_subscribe_notification(message: ClaimedOutboxMessage) -> None:
         """恢复订阅完成通知；消息快照无需重建领域对象。"""
         snapshot = message.payload.get("message") or {}
         if not isinstance(snapshot, dict):
             raise RuntimeError("订阅完成通知快照格式无效")
-        CommandChain().post_message(Message.model_validate(snapshot))
+        CommandChain().post_message_strict(
+            Message.model_validate(snapshot),
+            event_key=message.event_key,
+        )
 
-    def dispatch_subscribe_added_notification(message) -> None:
+    def dispatch_subscribe_added_notification(message: ClaimedOutboxMessage) -> None:
         """恢复订阅新增通知；恢复使用提交前冻结的渲染消息快照。"""
         snapshot = message.payload.get("message") or {}
         if not isinstance(snapshot, dict):
             raise RuntimeError("订阅新增通知快照格式无效")
-        CommandChain().post_message(Message.model_validate(snapshot))
+        CommandChain().post_message_strict(
+            Message.model_validate(snapshot),
+            event_key=message.event_key,
+        )
 
-    handlers = {
+    handlers: dict[str, Callable[[ClaimedOutboxMessage], None]] = {
         durable_event_topic(
             EventType.SubscribeAdded
-        ): lambda message: EventManager().send_event(
-            EventType.SubscribeAdded,
-            message.payload,
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.SubscribeAdded,
+                message.payload,
+            )
         ),
         "subscribe.added.report": dispatch_subscribe_added_report,
         "subscribe.added.notification": dispatch_subscribe_added_notification,
         durable_event_topic(
             EventType.SubscribeModified
-        ): lambda message: EventManager().send_event(
-            EventType.SubscribeModified,
-            message.payload,
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.SubscribeModified,
+                message.payload,
+            )
         ),
         durable_event_topic(
             EventType.SubscribeDeleted
-        ): lambda message: EventManager().send_event(
-            EventType.SubscribeDeleted,
-            message.payload,
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.SubscribeDeleted,
+                message.payload,
+            )
         ),
         "subscribe.deleted.report": dispatch_subscribe_deleted_report,
         durable_event_topic(
             EventType.SubscribeComplete
-        ): lambda message: EventManager().send_event(
-            EventType.SubscribeComplete,
-            message.payload,
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.SubscribeComplete,
+                message.payload,
+            )
         ),
         "subscribe.complete.report": dispatch_subscribe_complete_report,
         "subscribe.complete.notification": dispatch_subscribe_notification,
         durable_event_topic(
             EventType.DownloadAdded
-        ): lambda message: EventManager().send_event(
-            EventType.DownloadAdded,
-            restore_download_added(message.payload),
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.DownloadAdded,
+                restore_download_added(message.payload),
+            )
         ),
         durable_event_topic(
             EventType.TransferComplete
-        ): lambda message: EventManager().send_event(
-            EventType.TransferComplete,
-            restore_transfer_result(message.payload),
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.TransferComplete,
+                restore_transfer_result(message.payload),
+            )
         ),
         durable_event_topic(
             EventType.TransferFailed
-        ): lambda message: EventManager().send_event(
-            EventType.TransferFailed,
-            restore_transfer_result(message.payload),
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.TransferFailed,
+                restore_transfer_result(message.payload),
+            )
         ),
         durable_event_topic(
             EventType.SubtitleTransferComplete
-        ): lambda message: EventManager().send_event(
-            EventType.SubtitleTransferComplete,
-            restore_transfer_result(message.payload),
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.SubtitleTransferComplete,
+                restore_transfer_result(message.payload),
+            )
         ),
         durable_event_topic(
             EventType.SubtitleTransferFailed
-        ): lambda message: EventManager().send_event(
-            EventType.SubtitleTransferFailed,
-            restore_transfer_result(message.payload),
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.SubtitleTransferFailed,
+                restore_transfer_result(message.payload),
+            )
         ),
         durable_event_topic(
             EventType.AudioTransferComplete
-        ): lambda message: EventManager().send_event(
-            EventType.AudioTransferComplete,
-            restore_transfer_result(message.payload),
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.AudioTransferComplete,
+                restore_transfer_result(message.payload),
+            )
         ),
         durable_event_topic(
             EventType.AudioTransferFailed
-        ): lambda message: EventManager().send_event(
-            EventType.AudioTransferFailed,
-            restore_transfer_result(message.payload),
+        ): lambda message: discard_event_receipt(
+            EventManager().send_event_strict(
+                EventType.AudioTransferFailed,
+                restore_transfer_result(message.payload),
+            )
         ),
     }
     validate_durable_event_handlers(handlers)
-    session = SessionFactory()
+    return handlers
+
+
+def _build_outbox_dispatcher() -> OutboxDispatcher:
+    """创建使用独立短事务和 attempt fencing 的恢复 dispatcher。"""
     return OutboxDispatcher(
-        repository=SqlAlchemyOutboxRepository(session),
-        handlers=handlers,
-        close=session.close,
+        repository=SqlAlchemyOutboxDispatchStore(SessionFactory),
+        handlers=_build_outbox_handlers(),
         failure_observer=lambda dead: record_metric(
             "scheduler.job.dead_letter" if dead else "scheduler.job.retry",
             owner="outbox",
@@ -798,7 +848,7 @@ async def init_modules() -> HostRuntime:
         sync_session=get_db,
         async_session=get_async_db,
         repositories={
-            "download_history": DownloadHistoryOper,
+            "download_history": SessionDownloadHistoryRepository,
             "media_server": MediaServerOper,
             "message": MessageOper,
             "passkey": PassKeyOper,
@@ -832,6 +882,10 @@ async def init_modules() -> HostRuntime:
         )
     )
     configure_workflow_query(workflow_query)
+    download_history_repository = TransactionalDownloadHistoryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
     agent_chat_persistence = AgentChatPersistenceService(
         repository=lambda session: AgentChatOper(session),
         async_executor=database_worker,
@@ -859,7 +913,7 @@ async def init_modules() -> HostRuntime:
         ),
         messaging=MessagingRuntime(repository=MessageOper),
         history=HistoryRuntime(
-            download_repository=DownloadHistoryOper,
+            download_repository=SessionDownloadHistoryRepository,
             transfer_repository=TransferHistoryOper,
             media_server_repository=MediaServerOper,
         ),
@@ -870,6 +924,9 @@ async def init_modules() -> HostRuntime:
             history_repository=SubscribeHistoryOper,
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
+            dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(
+                async_session_scope
+            ),
         ),
         workflow=WorkflowRuntime(
             query=workflow_query,
@@ -896,7 +953,7 @@ async def init_modules() -> HostRuntime:
             async_session=async_session_scope,
         ),
         subscribe=lambda: SubscribeOper(),
-        download_history=lambda: DownloadHistoryOper(),
+        download_history=lambda: download_history_repository,
         transfer_history=lambda: TransferHistoryOper(),
         transfer_pending=lambda: TransactionalTransferAdmissionRepository(
             SessionFactory
@@ -933,6 +990,13 @@ async def init_modules() -> HostRuntime:
             passkeys=PassKeyOper(),
         )
     )
+    configure_passkey_challenge_cache(
+        TTLCache(
+            region="passkey_challenge",
+            maxsize=4096,
+            ttl=PASSKEY_CHALLENGE_TTL_SECONDS,
+        )
+    )
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
     configure_transfer_history_provider(lambda: TransferHistoryOper())
     configure_site_query_service(SiteQueryService(repository=TransactionalSiteRepository(
@@ -954,7 +1018,7 @@ async def init_modules() -> HostRuntime:
         subscribe=lambda: SubscribeOper(),
         subscribe_history=lambda: SubscribeHistoryOper(),
         transfer_history=lambda: TransferHistoryOper(),
-        download_history=lambda: DownloadHistoryOper(),
+        download_history=lambda: download_history_repository,
         plugin_data=lambda: PluginDataOper(),
     )
     configure_agent_task_execution(AgentTaskExecutionService(

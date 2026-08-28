@@ -186,10 +186,7 @@ def test_default_sync_writer_persists_once_and_reuses_duplicate(db) -> None:
         media_id="arch-221-sync",
     )
     assert [row.id for row in rows] == [first[0]]
-    assert after_commit.call_args_list == [
-        ((first[0],), {}),
-        ((first[0],), {}),
-    ]
+    assert after_commit.call_args_list == [((first[0],), {})]
 
 
 def test_default_sync_writer_keeps_failed_report_pending_without_raising(db) -> None:

@@ -7,11 +7,23 @@ from webauthn.helpers.exceptions import InvalidRegistrationResponse
 from app.api.endpoints import mfa as mfa_endpoint
 from app.application.security import passkey as passkey_helper
 from app.application.security.passkey import (
+    PASSKEY_CHALLENGE_TTL_SECONDS,
+    PasskeyChallengeStore,
     PassKeyHelper,
     PassKeyRegistrationOriginMismatchError,
     PassKeyRegistrationVerificationError,
-    PasskeyChallengeStore,
+    configure_passkey_challenge_cache,
 )
+from app.runtime.cache import TTLCache
+
+
+def setup_function():
+    """为注册错误路径显式装配隔离的 challenge 缓存。"""
+    configure_passkey_challenge_cache(TTLCache(
+        region="passkey_challenge",
+        maxsize=4096,
+        ttl=PASSKEY_CHALLENGE_TTL_SECONDS,
+    ))
 
 
 def _registration_request(user_id: int = 1) -> mfa_endpoint.PassKeyRegistrationFinish:

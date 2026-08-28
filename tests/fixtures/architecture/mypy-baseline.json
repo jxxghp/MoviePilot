@@ -495,9 +495,8 @@
   },
   "app/agent/tools/impl/query_download_tasks.py": {
     "arg-type": 6,
-    "assignment": 1,
     "misc": 1,
-    "no-any-return": 2,
+    "no-any-return": 1,
     "no-untyped-def": 2
   },
   "app/agent/tools/impl/query_downloaders.py": {
@@ -1128,10 +1127,6 @@
     "type-arg": 1,
     "union-attr": 2
   },
-  "app/application/download/tasks.py": {
-    "assignment": 1,
-    "type-arg": 1
-  },
   "app/application/downloader.py": {
     "arg-type": 1,
     "no-untyped-def": 1
@@ -1271,9 +1266,6 @@
   "app/application/security/otp.py": {
     "no-any-return": 3
   },
-  "app/application/security/passkey.py": {
-    "no-untyped-call": 1
-  },
   "app/application/security/token.py": {
     "no-any-return": 3,
     "operator": 1
@@ -1319,7 +1311,7 @@
     "type-arg": 3
   },
   "app/application/subscription/complete.py": {
-    "arg-type": 3
+    "arg-type": 2
   },
   "app/application/subscription/contract.py": {
     "arg-type": 2,
@@ -1391,7 +1383,7 @@
     "arg-type": 9,
     "assignment": 4,
     "attr-defined": 55,
-    "no-any-return": 4,
+    "no-any-return": 3,
     "no-untyped-call": 1,
     "no-untyped-def": 8,
     "return-value": 2,
@@ -1747,9 +1739,6 @@
     "no-any-return": 6,
     "no-untyped-def": 2,
     "type-arg": 4
-  },
-  "app/db/oper/userconfig.py": {
-    "no-untyped-def": 4
   },
   "app/db/oper/workflow.py": {
     "arg-type": 1,
@@ -3364,9 +3353,6 @@
   "app/schemas/workflow.py": {
     "misc": 19
   },
-  "app/sdk/_legacy/transfer.py": {
-    "no-untyped-def": 1
-  },
   "app/sdk/string.py": {
     "attr-defined": 1,
     "no-untyped-def": 2,
@@ -3394,13 +3380,13 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 16,
+    "arg-type": 13,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
-    "no-untyped-call": 33,
-    "no-untyped-def": 12,
+    "no-untyped-call": 32,
+    "no-untyped-def": 7,
     "return-value": 5
   },
   "app/startup/initializers/plugins.py": {
@@ -3431,7 +3417,7 @@
     "type-arg": 1
   },
   "app/testing/bootstrap.py": {
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 3,
     "type-arg": 6
   },

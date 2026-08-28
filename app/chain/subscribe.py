@@ -3202,17 +3202,23 @@ class SubscribeChain(MusicSubscribeMixin, InteractionChainMixin, ChainBase):
 
         # 所有下载记录
         downloadhis = get_chain_download_history_port()
-        download_his = downloadhis.get_by_media_identity(
-            media_source=subscribe.media_source,
-            media_id=subscribe.media_id,
-            music_type=getattr(subscribe, "music_type", None),
-        )
+        download_his = []
+        if subscribe.media_source and subscribe.media_id:
+            download_his = downloadhis.get_by_media_identity(
+                media_source=subscribe.media_source,
+                media_id=subscribe.media_id,
+                music_type=getattr(subscribe, "music_type", None),
+            )
         if download_his:
             for his in download_his:
+                if not his.download_hash:
+                    continue
                 # 查询下载文件
                 files = downloadhis.get_files_by_hash(his.download_hash, state=1)
                 if files:
                     for file in files:
+                        if not file.filepath:
+                            continue
                         # 识别文件名
                         file_meta = MetaInfo(file.filepath)
                         # 下载文件信息

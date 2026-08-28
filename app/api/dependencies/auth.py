@@ -20,6 +20,7 @@ from app.application.security.user import (
     UserRepository,
     UserService,
 )
+from app.application.security.userconfig import get_configured_user_configuration
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.startup.composition.context import HostRuntime
 
@@ -36,6 +37,7 @@ def get_user_service(
         unit_of_work=cast(
             AsyncUnitOfWork, runtime.persistence.async_transaction(db)
         ),
+        configuration=get_configured_user_configuration(),
     )
 
 

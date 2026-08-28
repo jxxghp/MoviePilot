@@ -1621,14 +1621,14 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "29f02d6f5d4a82f6e2d304b899ee9d652dc5d3a1f375e45da2a7c7ba72fad828",
-          "fb5095b18017555a9da2ee5f5442814a0c783e61d99cec42c7f464c5a25a0968"
+          "e4ecf33c77ee608912dc20e6840caf13f01a6ad250867a7766e92fef4da17b4b"
         ]
       },
       "EventType.AudioTransferFailed": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "9e26ea89da42c77926126f7440c0365e24a63d4eb10280b270d29bf767bd47cf",
-          "c32e40027e195e6b664a7d5d287554804c65d04187dfbf5d922a7d832efd9ef0"
+          "c32e40027e195e6b664a7d5d287554804c65d04187dfbf5d922a7d832efd9ef0",
+          "e024ae64f7aa0245c005d1173d203a4aaf8aedaa18fb38a3fbe63776c96f160b"
         ]
       },
       "EventType.CommandExcute": {
@@ -1659,7 +1659,7 @@
       "EventType.DownloadAdded": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "090d218ce64d85213d4d0c51eac059a36365f0edf6976acb9d4588e921d63587",
+          "912f9d1ffc673cab43f157ea3674122c84591b695761275cee39cc74ced7011d",
           "f2e4ec70164d8ccb46a0f032c57c6c0452bee9ee55a2aa69e4f770e7d2c855b3",
           "f2e4ec70164d8ccb46a0f032c57c6c0452bee9ee55a2aa69e4f770e7d2c855b3"
         ]
@@ -1764,16 +1764,16 @@
       "EventType.SubscribeAdded": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
+          "1398d8796771fb8848bf67228b6de8a9d7047f681bab989eefe845f58ad5184c",
           "6dd6b59761660ab65659ea4e14c06108aa850c8d62fabf50391632ba2e74d8fe",
-          "79efb9919712de5265f3e9f8aafbdf53eede9a42c9c5d8bedb402ee6df9fab68",
           "cdc72f0211e4bd640c76419d7e0266b95a542f84eeeabc45654e1a66c6718688"
         ]
       },
       "EventType.SubscribeComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "8d8703c6323a227c4dfe4234e7d3056abb815e284464122faeccca87b050f3aa",
-          "a77dde8c737dd5636384a68b161220888639705a08089d62565452d4ca9b451c"
+          "a77dde8c737dd5636384a68b161220888639705a08089d62565452d4ca9b451c",
+          "ee17c108da3b9e5515176692af946dbff2d54372dc487c1a1880bc8f495dad7b"
         ]
       },
       "EventType.SubscribeDeleted": {
@@ -1781,7 +1781,7 @@
         "producer_fingerprints": [
           "49cb2961dd38ea10d2a53c7208fb3ca66ecda4c7c2f8cb2c29ea3ac62629a512",
           "7ee0ba0bfdba520a389d45c33d361120a0d710c3ea37b1e03532dd7364a52d47",
-          "b8610de798a3412aec42fde23dae3662f29464f3e1bea538f3e18156fcd65841",
+          "a2252a9f53ea9382e0a9a05564a04440cf1ba9fdf6a8e2fa6c426a20b473bf3b",
           "cbff1d6d00bcade626974178f292471c2bb7643ceb9360a0ad9fa23b87c3597d"
         ]
       },
@@ -1789,17 +1789,17 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "330678cc36e39079b052e5a6f1493cd38cf40565ddf8b231dc20c94207cb1ba9",
+          "3561ca8eed8a851c88889ded56d3188b89ad8c7d6c833d3aca24c5c8e9bbc22b",
           "4204fef37b0e1b87ff665209b1085359b778096827bed514cf61c6488ede3ee3",
           "4fc5c37849498747d5d61944b47381612c88d9b6320fda9ab48e3c1fa2444232",
           "89165b03827d9801a260dd54dd03e77f903795b8872bd043a79e8283181c786f",
-          "8d7d49151bd35a4eb2fdc8d82f514484d7f04146718129d3f429ab847d38f6d8",
           "ca81edd9f904843fdaaec15c0b774861c055742cdb0a27215ad43b0acfeaa73b"
         ]
       },
       "EventType.SubtitleTransferComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "10a4bd31fc73023e9abf0fc63c64bb43a1dfec208c546b603f687462a2cda27a",
+          "814318ca189db145cccf38f4ae2fb972988af23e13c39d1c3b267bd9fa5bc976",
           "9839276934bc6e557b3ec07a8a3f1d4b372f4dc792eb6198650e940140231083"
         ]
       },
@@ -1807,7 +1807,7 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "1c2a6b622bf96b2c46e0831c124e24f2810bbbd8b8f0ffd259a7e6912ec207b6",
-          "70effe3d0dbcb65ef333864d678cd7cc01f89849cdb2cb3e358acbc751548451"
+          "f2fa83463c2e723b08aef8c1ca4c3286fa18a7e1caffa3a24a656d728d47db0d"
         ]
       },
       "EventType.SystemError": {
@@ -1823,13 +1823,13 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "063a823d8634ee118279717c8a9ed35eaae48a0533f05d472180572ce4f50096",
-          "e00dae2c489550d72bfd2962b0ab5bdfa3992cddf012fd6827bab9a77fa17f22"
+          "f9e1d110de9e4a9c8490f09e5f3b7312b293f51ad95180f8fe7af15607c12307"
         ]
       },
       "EventType.TransferFailed": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "67272ed4bd81ea85c2e276e04b413f6d33665d260e4ff64aa900beb7fba8e071",
+          "be58b678d9a1f8c403e535c1836d2c509c7d34b664253cfe54da276e0d8c889c",
           "ec3818c033105e65936b400e72d6832cef6d6a4bec84286ed9cab6596b09ac70"
         ]
       },
@@ -2860,60 +2860,12 @@
         "caller": "app.startup.initializers.modules",
         "dynamic": false,
         "events": [
-          "EventType.DownloadAdded"
-        ],
-        "fingerprint": "090d218ce64d85213d4d0c51eac059a36365f0edf6976acb9d4588e921d63587",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.SubtitleTransferComplete"
-        ],
-        "fingerprint": "10a4bd31fc73023e9abf0fc63c64bb43a1dfec208c546b603f687462a2cda27a",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.TransferFailed"
-        ],
-        "fingerprint": "67272ed4bd81ea85c2e276e04b413f6d33665d260e4ff64aa900beb7fba8e071",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.SubtitleTransferFailed"
-        ],
-        "fingerprint": "70effe3d0dbcb65ef333864d678cd7cc01f89849cdb2cb3e358acbc751548451",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
           "EventType.SubscribeAdded"
         ],
-        "fingerprint": "79efb9919712de5265f3e9f8aafbdf53eede9a42c9c5d8bedb402ee6df9fab68",
+        "fingerprint": "1398d8796771fb8848bf67228b6de8a9d7047f681bab989eefe845f58ad5184c",
         "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
         "receiver_kind": "constructed_manager"
       },
       {
@@ -2922,34 +2874,34 @@
         "events": [
           "EventType.SubscribeModified"
         ],
-        "fingerprint": "8d7d49151bd35a4eb2fdc8d82f514484d7f04146718129d3f429ab847d38f6d8",
+        "fingerprint": "3561ca8eed8a851c88889ded56d3188b89ad8c7d6c833d3aca24c5c8e9bbc22b",
         "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
         "receiver_kind": "constructed_manager"
       },
       {
         "caller": "app.startup.initializers.modules",
         "dynamic": false,
         "events": [
-          "EventType.SubscribeComplete"
+          "EventType.SubtitleTransferComplete"
         ],
-        "fingerprint": "8d8703c6323a227c4dfe4234e7d3056abb815e284464122faeccca87b050f3aa",
+        "fingerprint": "814318ca189db145cccf38f4ae2fb972988af23e13c39d1c3b267bd9fa5bc976",
         "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
         "receiver_kind": "constructed_manager"
       },
       {
         "caller": "app.startup.initializers.modules",
         "dynamic": false,
         "events": [
-          "EventType.AudioTransferFailed"
+          "EventType.DownloadAdded"
         ],
-        "fingerprint": "9e26ea89da42c77926126f7440c0365e24a63d4eb10280b270d29bf767bd47cf",
+        "fingerprint": "912f9d1ffc673cab43f157ea3674122c84591b695761275cee39cc74ced7011d",
         "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
         "receiver_kind": "constructed_manager"
       },
       {
@@ -2958,22 +2910,34 @@
         "events": [
           "EventType.SubscribeDeleted"
         ],
-        "fingerprint": "b8610de798a3412aec42fde23dae3662f29464f3e1bea538f3e18156fcd65841",
+        "fingerprint": "a2252a9f53ea9382e0a9a05564a04440cf1ba9fdf6a8e2fa6c426a20b473bf3b",
         "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
         "receiver_kind": "constructed_manager"
       },
       {
         "caller": "app.startup.initializers.modules",
         "dynamic": false,
         "events": [
-          "EventType.TransferComplete"
+          "EventType.TransferFailed"
         ],
-        "fingerprint": "e00dae2c489550d72bfd2962b0ab5bdfa3992cddf012fd6827bab9a77fa17f22",
+        "fingerprint": "be58b678d9a1f8c403e535c1836d2c509c7d34b664253cfe54da276e0d8c889c",
         "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.initializers.modules",
+        "dynamic": false,
+        "events": [
+          "EventType.AudioTransferFailed"
+        ],
+        "fingerprint": "e024ae64f7aa0245c005d1173d203a4aaf8aedaa18fb38a3fbe63776c96f160b",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
         "receiver_kind": "constructed_manager"
       },
       {
@@ -2982,10 +2946,46 @@
         "events": [
           "EventType.AudioTransferComplete"
         ],
-        "fingerprint": "fb5095b18017555a9da2ee5f5442814a0c783e61d99cec42c7f464c5a25a0968",
+        "fingerprint": "e4ecf33c77ee608912dc20e6840caf13f01a6ad250867a7766e92fef4da17b4b",
         "invalid": false,
-        "method": "send_event",
-        "qualname": "_build_outbox_dispatcher",
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.initializers.modules",
+        "dynamic": false,
+        "events": [
+          "EventType.SubscribeComplete"
+        ],
+        "fingerprint": "ee17c108da3b9e5515176692af946dbff2d54372dc487c1a1880bc8f495dad7b",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.initializers.modules",
+        "dynamic": false,
+        "events": [
+          "EventType.SubtitleTransferFailed"
+        ],
+        "fingerprint": "f2fa83463c2e723b08aef8c1ca4c3286fa18a7e1caffa3a24a656d728d47db0d",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.initializers.modules",
+        "dynamic": false,
+        "events": [
+          "EventType.TransferComplete"
+        ],
+        "fingerprint": "f9e1d110de9e4a9c8490f09e5f3b7312b293f51ad95180f8fe7af15607c12307",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "_build_outbox_handlers",
         "receiver_kind": "constructed_manager"
       },
       {
@@ -9747,6 +9747,11 @@
         "kind": "import",
         "name": "AsyncRedisBackend",
         "target": "app.adapters.cache.backends.AsyncRedisBackend"
+      },
+      {
+        "kind": "import",
+        "name": "AtomicCacheBackend",
+        "target": "app.runtime.cache.AtomicCacheBackend"
       },
       {
         "kind": "import",

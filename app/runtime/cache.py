@@ -3,10 +3,10 @@ import inspect
 import logging
 import threading
 from abc import ABC, abstractmethod
-from contextlib import contextmanager, asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Generator, AsyncGenerator, Tuple, Literal, Union
+from typing import Any, AsyncGenerator, Callable, Dict, Generator, Literal, Optional, Tuple, Union
 
 from cachetools import LRUCache as MemoryLRUCache
 from cachetools import TLRUCache as MemoryTLRUCache
@@ -21,7 +21,7 @@ DEFAULT_CACHE_TTL = 365 * 24 * 60 * 60
 logger = logging.getLogger(__name__)
 
 _backend_type_provider: Callable[[], str] = lambda: "memory"
-_redis_factory: Optional[Callable[[Optional[int]], "CacheBackend"]] = None
+_redis_factory: Optional[Callable[[Optional[int]], "AtomicCacheBackend"]] = None
 _async_redis_factory: Optional[
     Callable[[Optional[int]], "AsyncCacheBackend"]
 ] = None
@@ -35,7 +35,7 @@ _file_ttl_provider: Callable[[], int] = lambda: DEFAULT_CACHE_TTL
 def configure_cache_factories(
     *,
     backend_type_provider: Callable[[], str],
-    redis_factory: Callable[[Optional[int]], "CacheBackend"],
+    redis_factory: Callable[[Optional[int]], "AtomicCacheBackend"],
     async_redis_factory: Callable[[Optional[int]], "AsyncCacheBackend"],
     file_factory: Callable[[Optional[Path]], "CacheBackend"],
     async_file_factory: Callable[[Optional[Path]], "AsyncCacheBackend"],
@@ -245,6 +245,43 @@ class CacheBackend(ABC):
         return False
 
 
+class AtomicCacheBackend(CacheBackend):
+    """支持严格写入和原子领取的一次性缓存后端契约。"""
+
+    @abstractmethod
+    def store(
+        self,
+        key: str,
+        value: Any,
+        ttl: Optional[int] = None,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+        **kwargs: Any,
+    ) -> None:
+        """写入缓存；后端故障必须向调用方传播。"""
+
+    @abstractmethod
+    def consume(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> Any:
+        """原子读取并删除缓存值，不存在时返回 None。"""
+
+    def pop(
+        self,
+        key: str,
+        default: Any = None,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> Any:
+        """以原子领取实现兼容的字典 pop 语义。"""
+        value = self.consume(key=key, region=region)
+        if value is not None:
+            return value
+        if default is not None:
+            return default
+        raise KeyError(key)
+
+
 class AsyncCacheBackend(CacheBackend):
     """
     缓存后端基类，定义通用的缓存接口（异步）
@@ -420,7 +457,7 @@ class _MemoryTLRUCache(MemoryTLRUCache):
             self.__setting_ttls.pop(key, None)
 
 
-class MemoryBackend(CacheBackend):
+class MemoryBackend(AtomicCacheBackend):
     """
     基于 `cachetools.TLRUCache` 实现的缓存后端
     """
@@ -480,6 +517,32 @@ class MemoryBackend(CacheBackend):
                 region_cache.set(key, value, ttl=ttl)
             else:
                 region_cache[key] = value
+
+    def store(
+        self,
+        key: str,
+        value: Any,
+        ttl: Optional[int] = None,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+        **kwargs: Any,
+    ) -> None:
+        """严格写入内存缓存。"""
+        self.set(key=key, value=value, ttl=ttl, region=region, **kwargs)
+
+    def consume(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> Any:
+        """在区域缓存锁内原子领取一个值。"""
+        with self._lock:
+            region_cache = self.__get_region_cache(region or DEFAULT_CACHE_REGION)
+            if region_cache is None:
+                return None
+            try:
+                return region_cache.pop(key)
+            except KeyError:
+                return None
 
     def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
         """
@@ -721,7 +784,7 @@ def AsyncFileCache(
 
 def Cache(cache_type: Literal['ttl', 'lru'] = 'ttl',
           maxsize: Optional[int] = None,
-          ttl: Optional[int] = None) -> CacheBackend:
+          ttl: Optional[int] = None) -> AtomicCacheBackend:
     """
     根据配置获取缓存后端实例（内存或Redis），maxsize仅在未启用Redis时生效
 
@@ -1023,7 +1086,7 @@ class CacheProxy:
     缓存代理类，将缓存后端的方法直接代理到实例上
     """
 
-    def __init__(self, cache_backend: CacheBackend, region: str):
+    def __init__(self, cache_backend: AtomicCacheBackend, region: str):
         """
         初始化缓存代理
 
@@ -1095,6 +1158,16 @@ class CacheProxy:
         """
         kwargs.setdefault('region', self._region)
         self._cache_backend.set(key, value, **kwargs)
+
+    def store(self, key: str, value: Any, **kwargs: Any) -> None:
+        """严格写入缓存，后端故障向调用方传播。"""
+        kwargs.setdefault('region', self._region)
+        self._cache_backend.store(key, value, **kwargs)
+
+    def consume(self, key: str, **kwargs: Any) -> Any:
+        """原子领取并删除缓存值。"""
+        kwargs.setdefault('region', self._region)
+        return self._cache_backend.consume(key, **kwargs)
 
     def delete(self, key: str, **kwargs) -> None:
         """

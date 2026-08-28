@@ -5,7 +5,6 @@ import base64
 import binascii
 import json
 import secrets
-import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple
 from urllib.parse import urlparse
@@ -28,9 +27,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from app.adapters.cache.redis import RedisHelper
 from app.application.configuration import get_api_runtime_config_snapshot
-from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 
 PASSKEY_CHALLENGE_TTL_SECONDS = 5 * 60
@@ -46,15 +43,27 @@ class PasskeyChallenge:
     user_id: Optional[int]
 
 
+class PasskeyChallengeCache(Protocol):
+    """PassKey 一次性 challenge 使用的严格原子缓存端口。"""
+
+    def store(self, key: str, value: Any) -> None:
+        """持久化 challenge，失败时抛出后端异常。"""
+
+    def consume(self, key: str) -> Any:
+        """原子领取 challenge，不存在时返回 None。"""
+
+
 class PasskeyChallengeStore:
     """使用当前缓存后端签发并原子消费短时 Passkey challenge。"""
 
-    _cache = TTLCache(
-        region="passkey_challenge",
-        maxsize=4096,
-        ttl=PASSKEY_CHALLENGE_TTL_SECONDS,
-    )
-    _memory_consume_lock = threading.Lock()
+    _cache: Optional[PasskeyChallengeCache] = None
+
+    @classmethod
+    def _get_cache(cls) -> PasskeyChallengeCache:
+        """返回已装配缓存，缺失时拒绝签发认证状态。"""
+        if cls._cache is None:
+            raise RuntimeError("PassKey challenge 缓存尚未配置")
+        return cls._cache
 
     @classmethod
     def issue(
@@ -66,7 +75,7 @@ class PasskeyChallengeStore:
     ) -> str:
         """保存 challenge 并返回不携带认证事实的随机事务 token。"""
         transaction_token = secrets.token_urlsafe(32)
-        cls._cache.set(
+        cls._get_cache().store(
             transaction_token,
             PasskeyChallenge(
                 challenge=challenge,
@@ -87,23 +96,18 @@ class PasskeyChallengeStore:
         if not transaction_token:
             return None
 
-        if cls._cache.is_redis():
-            challenge = RedisHelper().pop(
-                transaction_token,
-                region="passkey_challenge",
-            )
-        else:
-            with cls._memory_consume_lock:
-                try:
-                    challenge = cls._cache.pop(transaction_token)
-                except KeyError:
-                    challenge = None
+        challenge = cls._get_cache().consume(transaction_token)
 
         if not isinstance(challenge, PasskeyChallenge):
             return None
         if challenge.purpose != purpose:
             return None
         return challenge
+
+
+def configure_passkey_challenge_cache(cache: PasskeyChallengeCache) -> None:
+    """由启动组合根注入 PassKey challenge 的原子缓存。"""
+    PasskeyChallengeStore._cache = cache
 
 
 class PassKeyRegistrationVerificationError(Exception):
@@ -465,8 +469,13 @@ class PasskeyRepository(Protocol):
     def create(self, payload: dict[str, Any]) -> Any:
         """创建凭证。"""
 
-    def update_last_used(self, passkey: Any, sign_count: int) -> bool:
-        """更新凭证使用计数。"""
+    def compare_and_update_sign_count(
+        self,
+        passkey_id: int,
+        expected_sign_count: int,
+        sign_count: int,
+    ) -> bool:
+        """仅在签名计数未被并发修改时记录本次认证。"""
 
     def delete_by_id(self, passkey_id: int, user_id: int) -> bool:
         """删除用户凭证。"""
@@ -495,9 +504,18 @@ class PasskeyService:
         """创建凭证。"""
         return self._repository.create(payload)
 
-    def update_last_used(self, passkey: Any, sign_count: int) -> bool:
-        """更新凭证使用计数。"""
-        return self._repository.update_last_used(passkey, sign_count)
+    def compare_and_update_sign_count(
+        self,
+        passkey_id: int,
+        expected_sign_count: int,
+        sign_count: int,
+    ) -> bool:
+        """以验证时观察到的旧计数提交本次认证。"""
+        return self._repository.compare_and_update_sign_count(
+            passkey_id=passkey_id,
+            expected_sign_count=expected_sign_count,
+            sign_count=sign_count,
+        )
 
     def delete_by_id(self, passkey_id: int, user_id: int) -> bool:
         """删除用户凭证。"""

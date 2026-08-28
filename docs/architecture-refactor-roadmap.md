@@ -103,14 +103,14 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S1-L3.2 Chain registry/DI | `ACTIVE` | S1-L3.1 | 显式类型化 factory，删除 PortProxy 与失效的双重注入，构造器注入真实控制调用 |
 | S1-L3.2.1 Registry hygiene | `DELIVERED` | S1-L3.1 | `ac7a20132`：删除零消费者 PortProxy/动态转发和 `ChainRuntimeContext.data_ports` 伪注入；Workflow 退出 Chain registry，只保留 Application owner 单一配置入口；Unit Tests `33120205586`、Pylint `33120205581` 全绿 |
 | S1-L3.3 DownloadFailure/MediaServer | `DELIVERED` | S1-L3.2 | `5fb62108a`：两组 raw factory 已替换为冻结 DTO/typed Port；失败冷却在 Session 内投影，媒体库查询只返回标量且每个 upsert/cleanup 独立短事务，远端枚举不持有 Session；旧 Oper 与插件可见 Chain ABI 保持不变；Unit Tests `33127544925`、Pylint `33127544927` 全绿，Application 覆盖率低水位提升至 `78.95%` |
-| S1-L3.4 User | `PLANNED` | S1-L3.3 | 认证、偏好与渠道绑定投影冻结快照，User Chain/Agent 不接收 ORM |
-| S1-L3.5 History | `PLANNED` | S1-L3.4 | Download/Transfer history 统一 typed query/mutation，删除下载历史双事务 fail-open |
+| S1-L3.4 User | `VERIFIED` | S1-L3.3 | User Chain/Agent/认证改用冻结 typed snapshot；创建、更名、删除与最后一个启用超级管理员保护归并到单 UoW；用户名唯一索引及 UserConfig/PassKey 级联迁移落地，UserConfig 在 commit 后持写锁重载数据库事实源并发布内存快照 |
+| S1-L3.5 History | `IN_PROGRESS` | S1-L3.4 | DownloadHistory 已迁入冻结 DTO、typed query/write Port 与短 Session adapter，下载历史删除不再拆成 fail-open 双事务；TransferHistory 半边尚未完成，本项不宣称整体交付 |
 | S1-L3.6 Site | `PLANNED` | S1-L3.5 | 复用 Site query/health，补齐同步 typed command，Session 内完成 DTO 投影 |
 | S1-L3.7 Subscription | `PLANNED` | S1-L3.6 | Chain/Workflow/interaction 全部消费 typed query/command；完成后进入 S1-L4 原子事务收口 |
 | S1-L3.8 Agent/Transfer locator gate | `PLANNED` | S1-L3.7 | 删除 AgentDataPorts 与 Chain locator 跨层泄漏，AST 门禁确认 canonical 无 raw getter/Oper/Any |
 | S1-L4 Subscription mutation UoW | `PLANNED` | S1-L3 | Subscription mutation 不跨 Session 传 ORM，正式写路径一个 UoW，旧自动事务入口退出 canonical 路径 |
 | S1-L5 站点/规则引用原子清理 | `PLANNED` | S1-L4 | SystemConfig+Subscribe 同事务更新，commit 后快照原子发布，并发/故障注入无部分状态 |
-| S1-L6 Outbox 完成语义 | `PLANNED` | S0 | claim 竞争双发清零；业务提交与 effect pending 可区分；stager/store 分离；handler 幂等与崩溃测试完整 |
+| S1-L6 Outbox 完成语义 | `VERIFIED` | S0 | 事务内 `OutboxStager` 与独立短事务 `OutboxDispatchStore` 已分离；即时投递与 dispatcher 均先 claim，complete/retry 受 attempt fencing；`PostCommitResult` 区分已提交业务、已完成与 pending effect。事件载荷和宿主 correlation context 携带稳定 event key；旧通知插件保持原签名并承认 at-least-once 重复边界 |
 
 ### S2：进程生命周期、循环与 Adapter 边界
 
@@ -122,7 +122,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S2-L1 日志/消息资源显式生命周期 | `PLANNED` | S0 | import 和非消息 Chain 构造零新增线程；bootstrap 显式创建，失败和正常关闭均收口 |
 | S2-L2 ChainBase 与 SCC 清零 | `PLANNED` | S0-L2.2 | canonical `app.chain.base` 落地，包根无 eager/重复导出，宿主包根导入清零，Chain SCC 消失 |
 | S2-L3 GlobalVar/provider 注册收口 | `PLANNED` | S2-L1 | `global_vars` canonical 消费清零，provider 注册进入显式装配阶段并可 reset；Legacy 入口精确保留 |
-| S2-L4 Passkey 缓存边界 | `PLANNED` | S0-L2.4 | Application 不识别 Redis；原子 consume 由 runtime cache contract + backend 实现 |
+| S2-L4 Passkey 缓存边界 | `VERIFIED` | S0-L2.4 | `PasskeyChallengeCache` 由 startup 注入，Application 不识别 Redis；严格 `AtomicCacheBackend.store/consume` 由 Memory/Redis backend 分别实现，challenge 仅能被原子领取一次 |
 | S2-L5 Backup artifact Port | `PLANNED` | S0-L2.4 | Application 不构造 `BackupFiles`，文件 I/O 由注入 Adapter 拥有 |
 | S2-L6 Application Adapter/DNS 债务清零 | `PLANNED` | S2-L4,S2-L5 | Application 到具体 Adapter 的未批准边归零，SSRF DNS I/O 进入注入 Port，批准通用机制有精确规则和门禁 |
 | S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `PLANNED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 归零；SDK/stream/vendor 例外保持精确 containment |
@@ -153,7 +153,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S4-L2 Event strict contract | `PLANNED` | S0-L2.6,S1-L6 | 宿主事件输入/输出按风险 strict，诊断例外只属于第三方插件兼容 |
 | S4-L3 Complexity v2 | `PLANNED` | S3 | 私有方法、class/file、圈复杂度进入门禁；所有超限通过职责拆分归零 |
 | S4-L4 全量 mypy 清零 | `PLANNED` | S3,S4-L1,S4-L2 | `mypy-baseline.json` 归零并删除债务接受路径，全宿主 strict 类型通过 |
-| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 869 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
+| S4-L5 Ruff 治理债务清零 | `PLANNED` | S3 | 当前受控 841 条诊断归零，规则集扩展经过独立审查且新增诊断为零 |
 | S4-L6 Coverage/并发/质量证据 | `PLANNED` | S3,S4-L1,S4-L2 | 高风险包纳入 coverage；raw concurrency 分类清零；Module Quality 有真实 evidence test |
 
 ### S5：Plugin、Agent、Domain、Startup 与最终收口

@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.application.configuration import configure_runtime_settings
 from app.startup.initializers import modules as modules_initializer
 from app.startup.lifecycle import initialize_modules_component
-from app.application.configuration import configure_runtime_settings
 
 
 class _InlineWorker:
@@ -74,7 +74,11 @@ async def test_configuration_services_publish_after_both_snapshots_load(
             events.append("load-user")
 
     monkeypatch.setattr(modules_initializer, "SystemConfigOper", _SystemConfig)
-    monkeypatch.setattr(modules_initializer, "UserConfigOper", _UserConfig)
+    monkeypatch.setattr(
+        modules_initializer,
+        "TransactionalUserConfigurationRepository",
+        lambda _session_factory: _UserConfig(),
+    )
     monkeypatch.setattr(
         modules_initializer,
         "configure_system_config",
@@ -112,7 +116,11 @@ async def test_configuration_load_failure_does_not_publish_partial_service(
             raise RuntimeError("load failed")
 
     monkeypatch.setattr(modules_initializer, "SystemConfigOper", _SystemConfig)
-    monkeypatch.setattr(modules_initializer, "UserConfigOper", _UserConfig)
+    monkeypatch.setattr(
+        modules_initializer,
+        "TransactionalUserConfigurationRepository",
+        lambda _session_factory: _UserConfig(),
+    )
     monkeypatch.setattr(
         modules_initializer,
         "configure_system_config",

@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from sqlalchemy import Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, get_id_column

@@ -699,6 +699,8 @@ import app.schemas.types as schema_types
 receiver = eventmanager
 emit = receiver.send_event
 emit(EventType.Alpha)
+strict_emit = receiver.send_event_strict
+strict_emit(EventType.Beta)
 EventManager().send_event(EventType.Gamma)
 EventManager.get_existing_instance().send_event(ChainEventType.Delta)
 
@@ -710,7 +712,7 @@ async def publish():
     )
 
     assert facts["consumers"] == []
-    assert len(facts["producers"]) == 4
+    assert len(facts["producers"]) == 5
     assert {
         (
             fact["qualname"],
@@ -721,6 +723,12 @@ async def publish():
         for fact in facts["producers"]
     } == {
         ("<module>", "send_event", "canonical_singleton", ("EventType.Alpha",)),
+        (
+            "<module>",
+            "send_event_strict",
+            "canonical_singleton",
+            ("EventType.Beta",),
+        ),
         ("<module>", "send_event", "constructed_manager", ("EventType.Gamma",)),
         ("<module>", "send_event", "existing_manager", ("ChainEventType.Delta",)),
         ("publish", "async_send_event", "canonical_singleton", ("EventType.Beta",)),

@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
-from datetime import datetime, timedelta, timezone
-from typing import Any, Protocol
+from datetime import datetime, timezone
+from typing import Any, Optional, Protocol
 
 from app.application.outbox import (
-    OUTBOX_LEASE_SECONDS,
     SUBSCRIBE_COMPLETED_TOPIC,
+    OutboxDispatchStore,
     OutboxIntent,
-    SyncOutboxTransaction,
+    OutboxStager,
     SyncUnitOfWork,
+    deliver_outbox_effect,
 )
 from app.runtime.log import logger
 
@@ -40,13 +41,15 @@ class CompleteSubscriptionCommand:
         self,
         repository: SubscriptionCompletionRepository,
         unit_of_work: SyncUnitOfWork,
-        outbox: SyncOutboxTransaction | None,
+        outbox: Optional[OutboxStager],
+        dispatch_store: Optional[OutboxDispatchStore],
         publish: Callable[[dict[str, Any]], None],
     ) -> None:
         """注入共享同步会话、事件发布端口和可选 durable outbox。"""
         self._repository = repository
         self._unit_of_work = unit_of_work
         self._outbox = outbox
+        self._dispatch_store = dispatch_store
         self._publish = publish
 
     def execute(
@@ -109,40 +112,41 @@ class CompleteSubscriptionCommand:
             raise
 
         if notification:
-            if self._claim_sync_delivery(notification_key):
+            if self._dispatch_store:
+                deliver_outbox_effect(
+                    self._dispatch_store,
+                    notification_key,
+                    notify,
+                )
+            else:
                 notify()
-                self._complete_sync_delivery(notification_key)
         else:
             notify()
-        if self._claim_sync_delivery(event_key):
+        if self._dispatch_store:
+            deliver_outbox_effect(
+                self._dispatch_store,
+                event_key,
+                lambda: self._publish(event_payload),
+            )
+        else:
             self._publish(event_payload)
-            self._complete_sync_delivery(event_key)
-        if self._claim_sync_delivery(report_key):
+        if self._dispatch_store:
             try:
-                report_delivered = report(report_payload["subscribe_info"])
+                report_delivered = deliver_outbox_effect(
+                    self._dispatch_store,
+                    report_key,
+                    lambda: report(report_payload["subscribe_info"]),
+                )
             except Exception as error:
                 logger.warning(f"订阅完成统计上报失败，将由后台重试：{error}")
             else:
                 if report_delivered is False:
                     logger.warning("订阅完成统计上报未确认，将由后台重试")
-                else:
-                    self._complete_sync_delivery(report_key)
-
-    def _claim_sync_delivery(self, event_key: str) -> bool:
-        """在同步副作用前取得 lease，已由恢复投递接管时跳过直投。"""
-        if self._outbox is None:
-            return True
-        now = datetime.now(timezone.utc)
-        return self._outbox.claim_by_event_key(
-            event_key,
-            now,
-            now + timedelta(seconds=OUTBOX_LEASE_SECONDS),
-        )
-
-    def _complete_sync_delivery(self, event_key: str) -> None:
-        """收口当前同步投递持有的 durable intent。"""
-        if self._outbox:
-            self._outbox.complete_by_event_key(event_key, datetime.now(timezone.utc))
+        else:
+            try:
+                report(report_payload["subscribe_info"])
+            except Exception as error:
+                logger.warning(f"订阅完成统计上报失败：{error}")
 
 
 def completion_event_key(subscribe_id: int, subscribe_info: Mapping[str, Any]) -> str:

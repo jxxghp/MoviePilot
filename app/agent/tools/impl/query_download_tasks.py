@@ -7,10 +7,12 @@ from pydantic import BaseModel, Field
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.chain.download import DownloadChain
 from app.application.agentdata import get_agent_download_history_port
+from app.application.history import DownloadHistorySnapshot
+from app.chain.download import DownloadChain
 from app.runtime.log import logger
-from app.schemas.transfer import DownloaderTorrent
+from app.schemas.common import JsonData
+from app.schemas.transfer import DownloaderTorrent, DownloadTaskMedia
 from app.schemas.types import MUSIC_ENTITY_RECORDING, TorrentQueryStatus, media_type_to_agent
 
 
@@ -99,48 +101,75 @@ class QueryDownloadTasksTool(MoviePilotTool):
 
     @staticmethod
     def _apply_download_history(
-        torrent: DownloaderTorrent, history: Any
+        torrent: DownloaderTorrent, history: Optional[DownloadHistorySnapshot]
     ) -> None:
         """将下载历史中的补充信息回填到下载任务结果中。"""
         if not history:
             return
         if hasattr(torrent, "media"):
-            media_payload = {
-                "type": history.type,
-                "title": history.title,
-                "season": history.seasons,
-                "episode": history.episodes,
-                "image": history.image,
-                "poster": history.poster,
-                "media_source": history.media_source,
-                "media_id": history.media_id,
-            }
-            music_note = (
-                (history.note or {}).get("music")
-                if isinstance(history.note, dict)
-                else None
-            ) or {}
-            music_media = music_note.get("media") or {}
+            media = DownloadTaskMedia(
+                type=history.type,
+                title=history.title,
+                season=history.seasons,
+                episode=history.episodes,
+                image=history.image,
+                poster=history.poster,
+                media_source=history.media_source,
+                media_id=history.media_id,
+            )
+            music_media = QueryDownloadTasksTool._history_music_media(history)
             if media_type_to_agent(history.type) == "music":
-                media_payload.update({
-                    "music_type": music_media.get("music_type") or MUSIC_ENTITY_RECORDING,
-                    "artists": music_media.get("artists") or [],
-                    "album": music_media.get("album"),
-                    "album_id": music_media.get("album_id"),
-                    "total_tracks": music_media.get("total_tracks"),
-                    "track_number": music_media.get("track_number"),
-                })
-            torrent.media = media_payload
+                music_type = music_media.get("music_type")
+                artists = music_media.get("artists")
+                album = music_media.get("album")
+                album_id = music_media.get("album_id")
+                total_tracks = music_media.get("total_tracks")
+                track_number = music_media.get("track_number")
+                media.music_type = (
+                    music_type if isinstance(music_type, str) else MUSIC_ENTITY_RECORDING
+                )
+                media.artists = (
+                    [artist for artist in artists if isinstance(artist, str)]
+                    if isinstance(artists, list)
+                    else []
+                )
+                media.album = album if isinstance(album, str) else None
+                media.album_id = album_id if isinstance(album_id, str) else None
+                media.total_tracks = (
+                    total_tracks
+                    if isinstance(total_tracks, int) and not isinstance(total_tracks, bool)
+                    else None
+                )
+                media.track_number = (
+                    track_number
+                    if isinstance(track_number, int) and not isinstance(track_number, bool)
+                    else None
+                )
+            torrent.media = media
         if hasattr(torrent, "username"):
             torrent.username = history.username
         torrent.userid = history.userid
 
+    @staticmethod
+    def _history_music_media(
+        history: DownloadHistorySnapshot,
+    ) -> dict[str, JsonData]:
+        """从冻结历史备注中读取经过结构校验的音乐媒体字段。"""
+        note = history.note
+        if not isinstance(note, dict):
+            return {}
+        music = note.get("music")
+        if not isinstance(music, dict):
+            return {}
+        media = music.get("media")
+        return media if isinstance(media, dict) else {}
+
     @classmethod
     def _load_history_map(
         cls, torrents: List[DownloaderTorrent]
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, DownloadHistorySnapshot]:
         """批量加载下载历史，避免逐条查询形成 N+1。"""
-        hashes = [torrent.hash for torrent in torrents if getattr(torrent, "hash", None)]
+        hashes = [torrent.hash for torrent in torrents if torrent.hash]
         if not hashes:
             return {}
         return get_agent_download_history_port().get_by_hashes(hashes)

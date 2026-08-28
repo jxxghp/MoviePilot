@@ -17,6 +17,10 @@ class ChainRuntimeMixinHost(Protocol):
         """调用同步模块能力。"""
         ...
 
+    def run_module_strict(self, method: str, **kwargs: Any) -> Any:
+        """同步调用模块能力，并向调用方传播 provider 失败。"""
+        ...
+
     async def async_run_module(self, method: str, **kwargs: Any) -> Any:
         """调用异步模块能力。"""
         ...

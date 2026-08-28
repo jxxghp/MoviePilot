@@ -164,9 +164,6 @@
   "app/agent/tools/impl/query_custom_filter_rules.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/query_download_tasks.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/query_installed_plugins.py": {
     "I001": 1
   },
@@ -300,9 +297,6 @@
   "app/application/formatting.py": {
     "I001": 1
   },
-  "app/application/history.py": {
-    "I001": 1
-  },
   "app/application/image.py": {
     "I001": 1
   },
@@ -327,9 +321,6 @@
   "app/application/notification.py": {
     "I001": 1
   },
-  "app/application/outbox.py": {
-    "I001": 1
-  },
   "app/application/plugin/runtime.py": {
     "I001": 1
   },
@@ -345,20 +336,8 @@
   "app/application/storage.py": {
     "I001": 1
   },
-  "app/application/subscription/delete.py": {
-    "I001": 1
-  },
-  "app/application/subscription/identity.py": {
-    "I001": 1
-  },
-  "app/application/subscription/mutation.py": {
-    "I001": 1
-  },
   "app/application/subscription/priority.py": {
     "F401": 1,
-    "I001": 1
-  },
-  "app/application/subscription/write.py": {
     "I001": 1
   },
   "app/application/torrent.py": {
@@ -380,9 +359,6 @@
   "app/db/__init__.py": {
     "I001": 1
   },
-  "app/db/adapters/outbox.py": {
-    "I001": 1
-  },
   "app/db/adapters/transaction.py": {
     "I001": 1
   },
@@ -390,9 +366,6 @@
     "I001": 1
   },
   "app/db/diagnostics.py": {
-    "I001": 1
-  },
-  "app/db/engine.py": {
     "I001": 1
   },
   "app/db/models/__init__.py": {
@@ -408,12 +381,6 @@
     "I001": 1
   },
   "app/db/models/message.py": {
-    "I001": 1
-  },
-  "app/db/models/outbox.py": {
-    "I001": 1
-  },
-  "app/db/models/passkey.py": {
     "I001": 1
   },
   "app/db/models/plugindata.py": {
@@ -440,12 +407,6 @@
   "app/db/models/systemconfig.py": {
     "I001": 1
   },
-  "app/db/models/user.py": {
-    "I001": 1
-  },
-  "app/db/models/userconfig.py": {
-    "I001": 1
-  },
   "app/db/models/workflow.py": {
     "I001": 1
   },
@@ -459,9 +420,6 @@
     "I001": 1
   },
   "app/db/oper/user.py": {
-    "I001": 1
-  },
-  "app/db/oper/userconfig.py": {
     "I001": 1
   },
   "app/db/session.py": {
@@ -889,8 +847,7 @@
     "I001": 1
   },
   "app/runtime/cache.py": {
-    "E731": 2,
-    "I001": 1
+    "E731": 2
   },
   "app/runtime/capabilities/__init__.py": {
     "I001": 1
@@ -908,9 +865,6 @@
     "I001": 1
   },
   "app/runtime/dependencies.py": {
-    "I001": 1
-  },
-  "app/runtime/event/dispatch.py": {
     "I001": 1
   },
   "app/runtime/event/errors.py": {
@@ -996,9 +950,6 @@
     "I001": 1
   },
   "app/sdk/_legacy/user.py": {
-    "I001": 1
-  },
-  "app/sdk/cache.py": {
     "I001": 1
   },
   "app/sdk/config.py": {
@@ -1176,9 +1127,6 @@
   "tests/test_builtin_skill_boundaries.py": {
     "I001": 1
   },
-  "tests/test_cache_system.py": {
-    "I001": 1
-  },
   "tests/test_capability_registry.py": {
     "I001": 1
   },
@@ -1196,9 +1144,6 @@
     "I001": 1
   },
   "tests/test_coalesce.py": {
-    "I001": 1
-  },
-  "tests/test_configuration_initializer.py": {
     "I001": 1
   },
   "tests/test_dashboard_system_info.py": {
@@ -1293,10 +1238,6 @@
     "I001": 1
   },
   "tests/test_feedback_issue_scripts.py": {
-    "I001": 1
-  },
-  "tests/test_feishu.py": {
-    "E402": 5,
     "I001": 1
   },
   "tests/test_feishu_media_message.py": {
@@ -1419,9 +1360,6 @@
   "tests/test_metamusic.py": {
     "I001": 1
   },
-  "tests/test_mfa_passkey_registration_errors.py": {
-    "I001": 1
-  },
   "tests/test_module_manager_capability_adapter.py": {
     "I001": 1
   },
@@ -1493,9 +1431,6 @@
     "I001": 1
   },
   "tests/test_observability.py": {
-    "I001": 1
-  },
-  "tests/test_passkey_challenge.py": {
     "I001": 1
   },
   "tests/test_password_hashing.py": {
@@ -1619,9 +1554,6 @@
     "I001": 1
   },
   "tests/test_string_compat.py": {
-    "I001": 1
-  },
-  "tests/test_subscribe_delete_command.py": {
     "I001": 1
   },
   "tests/test_subscribe_oper.py": {

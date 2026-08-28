@@ -5,6 +5,7 @@ Oper 层大多是模型方法的薄封装，但薄封装恰恰是最容易出错
 默认值漏传、聚合逻辑写在这一层——这些都绕过了模型侧的测试。这里对着真实数据库
 验证 Oper 的对外契约，而不是验证它调了哪个模型方法。
 """
+
 import asyncio
 import importlib
 from unittest.mock import Mock
@@ -48,13 +49,25 @@ def test_oper_with_explicit_session_does_not_commit_caller_transaction(db, monke
 @pytest.fixture(autouse=True)
 def _track(db):
     """把本文件涉及的表纳入用例级回收。"""
-    db.watermark(Site, SiteIcon, SiteStatistic, SiteUserData, PluginData, Workflow,
-                 User, UserConfig, MediaServerItem, DownloadHistory, DownloadFiles)
+    db.watermark(
+        Site,
+        SiteIcon,
+        SiteStatistic,
+        SiteUserData,
+        PluginData,
+        Workflow,
+        User,
+        UserConfig,
+        MediaServerItem,
+        DownloadHistory,
+        DownloadFiles,
+    )
 
 
 # --------------------------------------------------------------------------- #
 # SiteOper
 # --------------------------------------------------------------------------- #
+
 
 def _site_kwargs(name: str, domain: str, **extra) -> dict:
     """构造新增站点的参数。"""
@@ -184,8 +197,7 @@ def test_site_oper_userdata_readers(db):
     assert any(r.domain == "op-read.test" for r in oper.get_userdata())
     assert any(r.domain == "op-read.test" for r in oper.get_userdata_by_date(today))
     assert any(r.domain == "op-read.test" for r in oper.get_userdata_latest())
-    assert [r.domain for r in asyncio.run(
-        oper.async_get_userdata_by_domain("op-read.test"))] == ["op-read.test"]
+    assert [r.domain for r in asyncio.run(oper.async_get_userdata_by_domain("op-read.test"))] == ["op-read.test"]
 
 
 def test_site_oper_update_icon_creates_then_only_overwrites_with_content(db):
@@ -256,8 +268,7 @@ def test_site_oper_success_caps_the_timing_note_at_ten_entries(db):
     只靠循环调用无法触及上限分支。
     """
     old_note = {f"2026-08-13 10:00:{index:02d}": index + 1 for index in range(10)}
-    db.add(SiteStatistic(domain="op-cap.test", success=10, fail=0, seconds=5,
-                         lst_state=0, note=old_note))
+    db.add(SiteStatistic(domain="op-cap.test", success=10, fail=0, seconds=5, lst_state=0, note=old_note))
 
     SiteOper(db=db.session).success("op-cap.test", seconds=99)
 
@@ -297,6 +308,7 @@ def test_site_oper_async_success_and_fail_match_sync(db):
 # --------------------------------------------------------------------------- #
 # PluginDataOper
 # --------------------------------------------------------------------------- #
+
 
 def test_plugindata_oper_save_is_upsert(db):
     """
@@ -359,10 +371,20 @@ def test_plugindata_oper_async_accessors_match_sync(db):
 # WorkflowOper
 # --------------------------------------------------------------------------- #
 
+
 def _workflow_kwargs(name: str, **extra) -> dict:
     """构造新增工作流的参数。"""
-    return dict(name=name, description=name, timer="0 * * * *", state="W",
-                actions=[], flows=[], context={}, execution_state={}, **extra)
+    return dict(
+        name=name,
+        description=name,
+        timer="0 * * * *",
+        state="W",
+        actions=[],
+        flows=[],
+        context={},
+        execution_state={},
+        **extra,
+    )
 
 
 def test_workflow_oper_add_rejects_duplicate_name(db):
@@ -430,6 +452,7 @@ def test_workflow_oper_event_list_and_async_accessors(db):
 # UserOper / UserConfigOper
 # --------------------------------------------------------------------------- #
 
+
 def test_user_oper_reads_permissions_and_settings(db):
     """
     权限与个性化设置的读取在用户不存在时各有约定的空值。
@@ -437,8 +460,7 @@ def test_user_oper_reads_permissions_and_settings(db):
     权限返回 {} 而设置返回 None——上层据此区分「没有权限」和「没有这个用户」。
     """
     oper = UserOper(db=db.session)
-    oper.add(name="op-user", hashed_password="x",
-             permissions={"discovery": True}, settings={"theme": "dark"})
+    oper.add(name="op-user", hashed_password="x", permissions={"discovery": True}, settings={"theme": "dark"})
 
     assert oper.get_by_name("op-user").name == "op-user"
     assert oper.get_permissions("op-user") == {"discovery": True}
@@ -471,6 +493,7 @@ def test_userconfig_oper_set_get_and_delete_on_empty_value(db):
 
     空值删除是「恢复默认」的实现方式，退化成写入空串会让默认值再也拿不回来。
     """
+    db.add(User(name="op-cfg-user", is_active=True))
     oper = UserConfigOper()
     oper.set("op-cfg-user", "theme", "dark")
 
@@ -486,6 +509,10 @@ def test_userconfig_oper_scopes_cache_by_username(db):
     """
     内存缓存必须按用户名隔离，且用户名为空时返回全量缓存。
     """
+    db.add(
+        User(name="op-cfg-a", is_active=True),
+        User(name="op-cfg-b", is_active=True),
+    )
     oper = UserConfigOper()
     oper.set("op-cfg-a", "theme", "dark")
     oper.set("op-cfg-b", "theme", "light")
@@ -501,10 +528,19 @@ def test_userconfig_oper_scopes_cache_by_username(db):
 # MediaServerOper
 # --------------------------------------------------------------------------- #
 
+
 def _server_item(item_id: str, **extra) -> dict:
     """构造媒体服务器条目的写入参数。"""
-    payload = dict(server="emby", library="lib", item_id=item_id, item_type="电影",
-                   title="片名", year="2026", media_source=TMDB, media_id="5001")
+    payload = dict(
+        server="emby",
+        library="lib",
+        item_id=item_id,
+        item_type="电影",
+        title="片名",
+        year="2026",
+        media_source=TMDB,
+        media_id="5001",
+    )
     payload.update(extra)
     return payload
 
@@ -554,17 +590,13 @@ def test_mediaserver_oper_exists_checks_season_presence(db):
     季信息缺失却判为已入库，会让整季订阅被跳过。
     """
     oper = MediaServerOper(db=db.session)
-    oper.add(**_server_item("ms-season", media_id="5200", item_type="电视剧",
-                            seasoninfo={"1": [1, 2]}))
+    oper.add(**_server_item("ms-season", media_id="5200", item_type="电视剧", seasoninfo={"1": [1, 2]}))
 
-    assert oper.exists(media_source=TMDB, media_id="5200", mtype="电视剧",
-                       season="1") is not None
-    assert oper.exists(media_source=TMDB, media_id="5200", mtype="电视剧",
-                       season="2") is None
+    assert oper.exists(media_source=TMDB, media_id="5200", mtype="电视剧", season="1") is not None
+    assert oper.exists(media_source=TMDB, media_id="5200", mtype="电视剧", season="2") is None
 
     oper.add(**_server_item("ms-noseason", media_id="5300", item_type="电视剧"))
-    assert oper.exists(media_source=TMDB, media_id="5300", mtype="电视剧",
-                       season="1") is None
+    assert oper.exists(media_source=TMDB, media_id="5300", mtype="电视剧", season="1") is None
 
 
 def test_mediaserver_oper_get_item_id_and_async_twins(db):
@@ -577,8 +609,7 @@ def test_mediaserver_oper_get_item_id_and_async_twins(db):
 
     assert oper.get_item_id(media_source=TMDB, media_id="5400", mtype="电影") == "ms-id"
     assert oper.get_item_id(media_source=TMDB, media_id="5999", mtype="电影") is None
-    assert asyncio.run(oper.async_get_item_id(
-        media_source=TMDB, media_id="5400", mtype="电影")) == "ms-id"
+    assert asyncio.run(oper.async_get_item_id(media_source=TMDB, media_id="5400", mtype="电影")) == "ms-id"
     assert asyncio.run(oper.async_exists(title="片名", mtype="电影", year="2026")) is not None
 
 
@@ -602,6 +633,7 @@ def test_mediaserver_oper_cleanup_entry_points(db):
 # DownloadHistoryOper
 # --------------------------------------------------------------------------- #
 
+
 def test_downloadhistory_oper_get_by_hashes_returns_a_mapping(db):
     """
     批量查询返回「hash -> 历史」映射，供上层直接按 hash 取用。
@@ -609,10 +641,8 @@ def test_downloadhistory_oper_get_by_hashes_returns_a_mapping(db):
     上层拿到列表还要自己配对，正是 N+1 的温床；这里的契约是映射。
     """
     oper = DownloadHistoryOper(db=db.session)
-    oper.add(path="/downloads/a", type=MediaType.TV.value, title="A",
-             download_hash="oh-a", date="2026-08-13 10:00:00")
-    oper.add(path="/downloads/b", type=MediaType.TV.value, title="B",
-             download_hash="oh-b", date="2026-08-13 10:00:00")
+    oper.add(path="/downloads/a", type=MediaType.TV.value, title="A", download_hash="oh-a", date="2026-08-13 10:00:00")
+    oper.add(path="/downloads/b", type=MediaType.TV.value, title="B", download_hash="oh-b", date="2026-08-13 10:00:00")
 
     mapping = oper.get_by_hashes(["oh-a", "oh-b", "oh-missing"])
 
@@ -626,12 +656,28 @@ def test_downloadhistory_oper_file_entry_points(db):
     文件记录的写入与四个读取入口构成完整闭环，删除只置状态。
     """
     oper = DownloadHistoryOper(db=db.session)
-    oper.add_files([
-        dict(downloader="qb", download_hash="oh-f", fullpath="/downloads/f/a.mkv",
-             savepath="/downloads/f", filepath="a.mkv", torrentname="种子", state=1),
-        dict(downloader="qb", download_hash="oh-f", fullpath="/downloads/f/b.mkv",
-             savepath="/downloads/f", filepath="b.mkv", torrentname="种子", state=1),
-    ])
+    oper.add_files(
+        [
+            dict(
+                downloader="qb",
+                download_hash="oh-f",
+                fullpath="/downloads/f/a.mkv",
+                savepath="/downloads/f",
+                filepath="a.mkv",
+                torrentname="种子",
+                state=1,
+            ),
+            dict(
+                downloader="qb",
+                download_hash="oh-f",
+                fullpath="/downloads/f/b.mkv",
+                savepath="/downloads/f",
+                filepath="b.mkv",
+                torrentname="种子",
+                state=1,
+            ),
+        ]
+    )
 
     assert len(oper.get_files_by_hash("oh-f")) == 2
     assert len(oper.get_files_by_hash("oh-f", state=1)) == 2
@@ -651,20 +697,27 @@ def test_downloadhistory_oper_query_entry_points(db):
     路径、hash、媒体身份、分页与时间窗口五个查询入口都应透传生效。
     """
     oper = DownloadHistoryOper(db=db.session)
-    oper.add(path="/downloads/q", type=MediaType.TV.value, title="Q", year="2026",
-             media_source=TMDB, media_id="4001", seasons="S01",
-             download_hash="oh-q", username="alice", date="2026-08-13 10:00:00")
+    oper.add(
+        path="/downloads/q",
+        type=MediaType.TV.value,
+        title="Q",
+        year="2026",
+        media_source=TMDB,
+        media_id="4001",
+        seasons="S01",
+        download_hash="oh-q",
+        username="alice",
+        date="2026-08-13 10:00:00",
+    )
 
     assert oper.get_by_path("/downloads/q").title == "Q"
     assert oper.get_by_hash("oh-q").title == "Q"
     assert len(oper.get_by_media_identity(media_source=TMDB, media_id="4001")) == 1
     assert oper.list_by_page(page=1, count=1)[0].title == "Q"
     assert [h.title for h in oper.list_by_user_date("2026-08-20", username="alice")] == ["Q"]
-    assert [h.title for h in oper.list_by_date("2026-08-01", MediaType.TV.value,
-                                               TMDB, "4001", "S01")] == ["Q"]
+    assert [h.title for h in oper.list_by_date("2026-08-01", MediaType.TV.value, TMDB, "4001", "S01")] == ["Q"]
     assert [h.title for h in oper.list_by_type(MediaType.TV.value, days=36500)] == ["Q"]
-    assert [h.title for h in oper.get_last_by(mtype=MediaType.TV.value,
-                                              media_source=TMDB, media_id="4001")] == ["Q"]
+    assert [h.title for h in oper.get_last_by(mtype=MediaType.TV.value, media_source=TMDB, media_id="4001")] == ["Q"]
 
 
 def test_downloadhistory_oper_delete_entry_points(db):
@@ -672,12 +725,21 @@ def test_downloadhistory_oper_delete_entry_points(db):
     历史与文件记录的删除入口都应真正落库。
     """
     oper = DownloadHistoryOper(db=db.session)
-    oper.add(path="/downloads/d", type=MediaType.TV.value, title="D",
-             download_hash="oh-d", date="2026-08-13 10:00:00")
+    oper.add(path="/downloads/d", type=MediaType.TV.value, title="D", download_hash="oh-d", date="2026-08-13 10:00:00")
     history = oper.get_by_hash("oh-d")
-    oper.add_files([dict(downloader="qb", download_hash="oh-d",
-                         fullpath="/downloads/d/a.mkv", savepath="/downloads/d",
-                         filepath="a.mkv", torrentname="种子", state=1)])
+    oper.add_files(
+        [
+            dict(
+                downloader="qb",
+                download_hash="oh-d",
+                fullpath="/downloads/d/a.mkv",
+                savepath="/downloads/d",
+                filepath="a.mkv",
+                torrentname="种子",
+                state=1,
+            )
+        ]
+    )
     file_row = oper.get_file_by_fullpath("/downloads/d/a.mkv")
 
     oper.delete_downloadfile(file_row.id)
@@ -692,8 +754,9 @@ def test_downloadhistory_oper_async_delete(db):
     异步删除历史与同步等效。
     """
     oper = DownloadHistoryOper(db=db.session)
-    oper.add(path="/downloads/ad", type=MediaType.TV.value, title="AD",
-             download_hash="oh-ad", date="2026-08-13 10:00:00")
+    oper.add(
+        path="/downloads/ad", type=MediaType.TV.value, title="AD", download_hash="oh-ad", date="2026-08-13 10:00:00"
+    )
     history = oper.get_by_hash("oh-ad")
     db.session.commit()
 

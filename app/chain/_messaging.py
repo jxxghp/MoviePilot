@@ -6,7 +6,7 @@ eventmanager、messageoper、messagequeue 等协作对象。
 """
 import copy
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 from app.application.chain.data import get_chain_user_port
 from app.application.messaging.message import MessageTemplateHelper
@@ -15,6 +15,7 @@ from app.chain._contracts import ChainRuntimeMixinHost
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.foundation.identity import normalize_internal_user_id
+from app.runtime.correlation import correlation_scope
 from app.runtime.log import logger
 from app.schemas.message import Message, MessageResponse
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
@@ -140,6 +141,8 @@ class NotificationMixin:
         :param kwargs:  其他参数(覆盖业务对象属性值)
         :return: 成功或失败
         """
+        strict_delivery = bool(kwargs.pop("_strict_delivery", False))
+        strict_source = kwargs.pop("_strict_source", None)
         # 添加格式化的时间参数
         kwargs.setdefault("current_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         # 渲染消息
@@ -156,8 +159,13 @@ class NotificationMixin:
             logger.warning("消息为空，跳过发送")
             return
         if message.save_history:
-            self.messageoper.add(**message.model_dump())
+            if not strict_source or not self.messageoper.exists_by_source(
+                strict_source
+            ):
+                self.messageoper.add(**message.model_dump())
         dispatch_message = self._normalize_notification_for_dispatch(message)
+        if strict_source and dispatch_message.source == strict_source:
+            dispatch_message.source = None
         # 发送消息按设置隔离
         if not dispatch_message.userid and dispatch_message.mtype:
             # 消息隔离设置
@@ -221,8 +229,11 @@ class NotificationMixin:
                         etype=EventType.NoticeMessage,
                         data=self._build_notice_message_data(send_message),
                     )
-                    self.messagequeue.send_message(
-                        "post_message", message=send_message, **kwargs
+                    self._deliver_notification(
+                        send_message,
+                        strict_delivery=strict_delivery,
+                        immediately=False,
+                        kwargs=kwargs,
                     )
                 if not send_orignal:
                     return
@@ -232,10 +243,47 @@ class NotificationMixin:
             data=self._build_notice_message_data(dispatch_message),
         )
         # 按原消息发送
+        self._deliver_notification(
+            dispatch_message,
+            strict_delivery=strict_delivery,
+            immediately=bool(dispatch_message.userid),
+            kwargs=kwargs,
+        )
+
+    def post_message_strict(self, message: Message, *, event_key: str) -> None:
+        """同步执行真实通知 provider，并通过调用上下文携带稳定事件键。"""
+        durable_message = message.model_copy(deep=True)
+        strict_source = None
+        if not durable_message.source:
+            strict_source = f"outbox:{event_key}"
+            durable_message.source = strict_source
+        with correlation_scope(event_key):
+            self.post_message(
+                durable_message,
+                _strict_delivery=True,
+                _strict_source=strict_source,
+            )
+
+    def _deliver_notification(
+        self,
+        message: Message,
+        *,
+        strict_delivery: bool,
+        immediately: bool,
+        kwargs: dict[str, object],
+    ) -> None:
+        """普通通知使用调度队列；durable 恢复同步执行并传播 provider 错误。"""
+        if strict_delivery:
+            host = cast(ChainRuntimeMixinHost, self)
+            host.run_module_strict(
+                "post_message",
+                message=message,
+            )
+            return
         self.messagequeue.send_message(
             "post_message",
-            message=dispatch_message,
-            immediately=True if dispatch_message.userid else False,
+            message=message,
+            immediately=immediately,
             **kwargs,
         )
 

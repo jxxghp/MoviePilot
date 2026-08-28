@@ -194,12 +194,12 @@ def prepare_backend() -> None:
         configs=lambda _config_key, _conf_type: [],
         modules=lambda _module_type: [],
     )
+    from app.db.adapters.configuration import TransactionalUserConfigurationRepository
     from app.db.oper.systemconfig import SystemConfigOper
-    from app.db.oper.userconfig import UserConfigOper
 
     with SessionFactory() as session:
         SystemConfigOper().load_snapshot(session)
-        UserConfigOper().load_snapshot(session)
+    TransactionalUserConfigurationRepository(SessionFactory).load_snapshot()
     # 缓存装饰器在测试模块导入时即创建后端，先装配隔离配置对应的适配器。
     from app.startup.initializers.cache import configure_cache_dependencies
     configure_cache_dependencies()

@@ -526,6 +526,36 @@ class EventManager(metaclass=Singleton):
             logger.error(f"Unknown event type: {etype}")
         return None
 
+    def send_event_strict(
+        self,
+        etype: EventType,
+        data: Optional[Union[dict[str, object], ChainEventData]] = None,
+        priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
+    ) -> Event:
+        """同步等待全部广播处理器完成，任一失败时阻止 durable 消息结算。"""
+        event = Event(etype, data, priority)
+        with self.__lifecycle_lock:
+            if self.__lifecycle_state != "running":
+                raise RuntimeError(f"事件处理处于 {self.__lifecycle_state} 状态")
+        self.__dispatcher.dispatch_broadcast_strict(
+            event,
+            self.__wait_strict_async_handler,
+        )
+        return event
+
+    @staticmethod
+    def __wait_strict_async_handler(coroutine: Any) -> Any:
+        """在主事件循环等待异步处理器，禁止循环线程同步等待自身。"""
+        loop = global_vars.loop
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if running_loop is loop:
+            coroutine.close()
+            raise RuntimeError("主事件循环线程不能同步等待 durable 事件处理器")
+        return asyncio.run_coroutine_threadsafe(coroutine, loop).result()
+
     async def async_send_event(self, etype: Union[EventType, ChainEventType],
                                data: Optional[Union[Dict, ChainEventData]] = None,
                                priority: Optional[int] = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
