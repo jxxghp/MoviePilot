@@ -172,6 +172,7 @@ def test_upload_artifact_actions_share_node24_major():
 
     assert actions_by_workflow == {
         "architecture-observe.yml": ["actions/upload-artifact@v7"],
+        "dependency-compat.yml": ["actions/upload-artifact@v7"],
         "pylint.yml": ["actions/upload-artifact@v7"],
         "site-adapter-collector.yml": ["actions/upload-artifact@v7"],
         "test.yml": ["actions/upload-artifact@v7"],

@@ -10,6 +10,7 @@ on:
       - 'app/doctor/dependencies.py'
       - 'app/foundation/environment.py'
       - 'app/runtime/dependencies.py'
+      - 'scripts/probe_native_dependency_update.py'
       - 'docker/Dockerfile'
       - 'docker/**'
       - '.github/workflows/dependency-compat.yml'
@@ -22,6 +23,7 @@ on:
       - 'app/doctor/dependencies.py'
       - 'app/foundation/environment.py'
       - 'app/runtime/dependencies.py'
+      - 'scripts/probe_native_dependency_update.py'
       - 'docker/Dockerfile'
       - 'docker/**'
       - '.github/workflows/dependency-compat.yml'
@@ -98,6 +100,72 @@ jobs:
 
       - name: Verify locked project consistency
         run: uv sync --locked --offline --inexact --no-dev --check --python ${{ matrix.python-version }}
+
+  native-update:
+    name: Loaded native dependency update / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-24.04
+            artifact-suffix: linux-x64
+            expected-system: Linux
+            expected-machine: x86_64
+            expected-python-platform-suffix: x86_64
+          - name: macOS ARM
+            runner: macos-15
+            artifact-suffix: macos-arm64
+            expected-system: Darwin
+            expected-machine: arm64
+            expected-python-platform-suffix: arm64
+          - name: Windows x64
+            runner: windows-2025
+            artifact-suffix: windows-x64
+            expected-system: Windows
+            expected-machine: AMD64
+            expected-python-platform-suffix: win-amd64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install locked standard runtime
+        run: >-
+          uv sync --locked --inexact --no-default-groups
+          --group runtime-standard --python 3.14
+
+      - name: Probe loaded native dependency update
+        env:
+          AUTO_UPDATE_RESOURCE: 'false'
+          CONFIG_DIR: ${{ runner.temp }}/moviepilot-native-update-config
+          MOVIEPILOT_SAFE_MODE: 'true'
+          SUPERUSER_PASSWORD: moviepilot-ci-only
+        run: >-
+          uv run --locked --no-sync python
+          -m scripts.probe_native_dependency_update
+          --output ${{ runner.temp }}/moviepilot-native-update-${{ matrix.artifact-suffix }}.json
+          --expected-system ${{ matrix.expected-system }}
+          --expected-machine ${{ matrix.expected-machine }}
+          --expected-python-platform-suffix ${{ matrix.expected-python-platform-suffix }}
+
+      - name: Upload native update evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-dependency-update-${{ matrix.artifact-suffix }}
+          path: ${{ runner.temp }}/moviepilot-native-update-${{ matrix.artifact-suffix }}.json
+          if-no-files-found: error
 
   docker-dependencies:
     name: Docker dependencies / ${{ matrix.platform }}
