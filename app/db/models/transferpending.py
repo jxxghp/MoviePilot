@@ -10,7 +10,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     and_,
-    cast as sql_cast,
     column,
     delete,
     exists,
@@ -20,6 +19,7 @@ from sqlalchemy import (
     table,
     update,
 )
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.sql.elements import ColumnElement
