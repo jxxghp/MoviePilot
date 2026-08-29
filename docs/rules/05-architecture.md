@@ -564,6 +564,21 @@ consumes the registered runtime and must not recreate provider discovery or lega
 runtime fallbacks; management tests pass the facade directly to avoid a
 `provider_manage -> helper -> gateway -> provider_manage` call loop.
 
+`app.agent` and `app.agent.llm` package roots contain no implementation,
+dynamic forwarding or host export list. Canonical callers import the owning
+module directly, such as `app.agent.orchestrator`, `app.agent.llm.helper`,
+`app.agent.llm.capability`, `app.agent.llm.auth` or `app.agent.llm.provider`. Historical Agent package
+symbols and the verified `app.agent.llm.LLMHelper` plugin path are preserved only
+by exact `SYMBOL_ALIASES`; `app.helper.llm` is an exact module alias to
+`app.agent.llm.helper`, not an alias to the whole LLM package. Therefore
+`app.agent.llm.LLMHelper`, `app.agent.llm.helper.LLMHelper` and
+`app.helper.llm.LLMHelper` resolve to the same class without exposing provider,
+auth or capability owners through either package root. The verified tool ABI
+continues at `app.agent.tools.base.MoviePilotTool` and
+`app.agent.tools.manager.moviepilot_tool_manager`, including the existing
+`_load_tools()` compatibility call; those canonical owner modules are not
+re-exported from `app.agent`.
+
 ### DB / Oper layer
 
 SQLAlchemy models stay under `app/db/models/`; the data access classes live in
@@ -860,6 +875,10 @@ driven workflow registration.
 | `app/agent/tasks.py` | Background prompt, scheduled task and heartbeat execution owner |
 | `app/agent/orchestrator.py` | Per-session `MoviePilotAgent` execution and LLM/tool/middleware orchestration only |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
+| `app/agent/__init__.py` | Implementation-free package root; exact historical Agent symbols are supplied by the Compat overlay only, while host callers import `orchestrator.py` or the relevant owner directly |
+| `app/agent/llm/__init__.py` | Implementation-free package root; only the verified historical `LLMHelper` symbol is supplied by exact Compat routing |
+| `app/agent/llm/helper.py` | Canonical `LLMHelper` owner and exact target of the historical `app.helper.llm` module path |
+| `app/agent/llm/auth.py` | OAuth callback result presentation; escapes provider-controlled text before rendering HTML and is not re-exported from the package root |
 | `app/application/subscription/contract.py` | Deeply frozen Subscription/History DTOs, media identity, write patch and typed query/write/staging Repository contracts |
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-command orchestration |
 | `app/db/adapters/subscription.py` | Standalone short-transaction and caller-Session subscription/history adapters; ORM projection remains inside the Session |

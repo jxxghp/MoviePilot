@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.agent.llm.auth import _ProviderAuth
-from app.agent.llm.auth import render_auth_result_html as _render_auth_result_html
 from app.agent.llm.catalog import (
     ProviderAuthMethod,
     ProviderSpec,
@@ -32,7 +31,6 @@ __all__ = [
     "ProviderAuthMethod",
     "ProviderSpec",
     "ProviderUrlPreset",
-    "render_auth_result_html",
 ]
 from app.foundation.singleton import Singleton
 from app.runtime.log import logger
@@ -413,8 +411,3 @@ class LLMProviderManager(
             method_id,
             callback_url,
         )
-
-
-def render_auth_result_html(success: bool, message: str) -> str:
-    """保持 OAuth 回调结果页的稳定 Facade 签名。"""
-    return _render_auth_result_html(success, message)

@@ -388,10 +388,10 @@
       },
       "app.helper.llm": {
         "introduced": "v3.0.0",
-        "is_package": true,
+        "is_package": false,
         "owner": "agent",
-        "replacement": "app.agent.llm",
-        "target": "app.agent.llm"
+        "replacement": "app.agent.llm.helper",
+        "target": "app.agent.llm.helper"
       },
       "app.helper.locale": {
         "introduced": "v3.0.0",
@@ -878,6 +878,50 @@
       }
     },
     "symbol_aliases": {
+      "app.agent": {
+        "AgentChain": {
+          "replacement": "app.chain.agent.AgentChain",
+          "target_module": "app.chain.agent",
+          "target_name": "AgentChain"
+        },
+        "AgentManager": {
+          "replacement": "app.agent.manager.AgentManager",
+          "target_module": "app.agent.manager",
+          "target_name": "AgentManager"
+        },
+        "HEARTBEAT_SESSION_PREFIX": {
+          "replacement": "app.agent.orchestrator.HEARTBEAT_SESSION_PREFIX",
+          "target_module": "app.agent.orchestrator",
+          "target_name": "HEARTBEAT_SESSION_PREFIX"
+        },
+        "MoviePilotAgent": {
+          "replacement": "app.agent.orchestrator.MoviePilotAgent",
+          "target_module": "app.agent.orchestrator",
+          "target_name": "MoviePilotAgent"
+        },
+        "ReplyMode": {
+          "replacement": "app.agent.contracts.ReplyMode",
+          "target_module": "app.agent.contracts",
+          "target_name": "ReplyMode"
+        },
+        "UNSUPPORTED_IMAGE_INPUT_MESSAGE": {
+          "replacement": "app.agent.orchestrator.UNSUPPORTED_IMAGE_INPUT_MESSAGE",
+          "target_module": "app.agent.orchestrator",
+          "target_name": "UNSUPPORTED_IMAGE_INPUT_MESSAGE"
+        },
+        "agent_manager": {
+          "replacement": "app.agent.manager.agent_manager",
+          "target_module": "app.agent.manager",
+          "target_name": "agent_manager"
+        }
+      },
+      "app.agent.llm": {
+        "LLMHelper": {
+          "replacement": "app.agent.llm.helper.LLMHelper",
+          "target_module": "app.agent.llm.helper",
+          "target_name": "LLMHelper"
+        }
+      },
       "app.agent.orchestrator": {
         "AGENT_SESSION_QUEUE_MAX_SIZE": {
           "replacement": "app.agent.session.AGENT_SESSION_QUEUE_MAX_SIZE",

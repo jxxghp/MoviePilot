@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8149,
-  "edge_sha256": "ba993b931e67bbd7901b6dbfc344634f508483533000d5b8f2372b7b130ea420",
+  "edge_count": 8150,
+  "edge_sha256": "ea2b01950aaaee993732fc83800a5db57dc57920967d5b83b6f0374f23a524e7",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3064,6 +3064,7 @@
     "app.api.endpoints.history -> app.schemas.token",
     "app.api.endpoints.llm -> app.agent",
     "app.api.endpoints.llm -> app.agent.llm",
+    "app.api.endpoints.llm -> app.agent.llm.auth",
     "app.api.endpoints.llm -> app.agent.llm.gateway",
     "app.api.endpoints.llm -> app.api",
     "app.api.endpoints.llm -> app.api.dependencies",

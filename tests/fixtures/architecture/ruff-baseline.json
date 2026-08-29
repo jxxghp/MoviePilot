@@ -24,9 +24,6 @@
   "app/agent/callback/__init__.py": {
     "I001": 1
   },
-  "app/agent/llm/__init__.py": {
-    "I001": 1
-  },
   "app/agent/llm/capability.py": {
     "I001": 1
   },

@@ -597,6 +597,12 @@ flowchart TB
 - `app.agent.AgentManager` 是插件稳定路径，精确解析到
   `app/agent/manager.py`；宿主直接导入 owner，包根不得通配转发
   `orchestrator.py` 的任意内部名称。
+- `app.agent.llm` 包根不承载实现或动态通配导出；宿主直接导入
+  `llm/helper.py`、`llm/capability.py`、`llm/auth.py`、`llm/provider.py` 等 owner。
+  旧 `app.agent.llm.LLMHelper` 由 Compat 精确叠加，`app.helper.llm` 直接映射到
+  canonical `llm/helper.py`，三条插件路径保持同一类身份且不公开 Provider 内部 owner。
+- 官方插件使用的 `MoviePilotTool` 与 `moviepilot_tool_manager` 继续由
+  `agent/tools/base.py`、`agent/tools/manager.py` 原位拥有，现有 `_load_tools()` 调用保持兼容。
 - Agent 工具不直接 import API / 调度器 / 命令：插件动态路由与文件夹操作使用
   `application/plugin/routes.py`、`application/plugin/folders.py`，调度和命令分别使用
   `application/scheduling.py`、`application/commands.py`。FastAPI 具体实现位于
@@ -736,7 +742,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 959 |
-| 内部导入边 | 8,149 |
+| 内部导入边 | 8,150 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |

@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 959 / 8,149 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 959 / 8,150 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -651,6 +651,10 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 
 ### ARCH-202 拆分 Agent 与 LLM provider
 
+- [x] 冻结官方插件真实 Agent/LLM 导入与属性调用；三条 `LLMHelper` 路径保持同一身份，
+  `MoviePilotTool`、`moviepilot_tool_manager._load_tools()` 保持原 owner 契约。
+- [x] 删除 `app.agent`、`app.agent.llm` 包根动态/重复导出；宿主改为 owner 导入，旧符号仅由
+  精确 Compat 承接，`app.helper.llm` 收窄为 `app.agent.llm.helper` 模块别名。
 - [x] 将内置 provider spec 数据从 `LLMProviderManager` 分离为只读 catalog。
 - [x] 模型发现、认证会话和运行时构建已拆至单词 owner。
 - [ ] 将 WebAgent SSE、文件/音频与会话桥接移出 API endpoint。

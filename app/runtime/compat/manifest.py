@@ -640,8 +640,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0", owner="application",
     ),
     "app.helper.llm": ModuleAlias(
-        target="app.agent.llm", replacement="app.agent.llm",
-        introduced="v3.0.0", owner="agent", is_package=True,
+        target="app.agent.llm.helper",
+        replacement="app.agent.llm.helper",
+        introduced="v3.0.0",
+        owner="agent",
     ),
 }
 
@@ -774,6 +776,50 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 }
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.agent": {
+        "AgentChain": SymbolAlias(
+            target_module="app.chain.agent",
+            target_name="AgentChain",
+            replacement="app.chain.agent.AgentChain",
+        ),
+        "AgentManager": SymbolAlias(
+            target_module="app.agent.manager",
+            target_name="AgentManager",
+            replacement="app.agent.manager.AgentManager",
+        ),
+        "HEARTBEAT_SESSION_PREFIX": SymbolAlias(
+            target_module="app.agent.orchestrator",
+            target_name="HEARTBEAT_SESSION_PREFIX",
+            replacement="app.agent.orchestrator.HEARTBEAT_SESSION_PREFIX",
+        ),
+        "MoviePilotAgent": SymbolAlias(
+            target_module="app.agent.orchestrator",
+            target_name="MoviePilotAgent",
+            replacement="app.agent.orchestrator.MoviePilotAgent",
+        ),
+        "ReplyMode": SymbolAlias(
+            target_module="app.agent.contracts",
+            target_name="ReplyMode",
+            replacement="app.agent.contracts.ReplyMode",
+        ),
+        "UNSUPPORTED_IMAGE_INPUT_MESSAGE": SymbolAlias(
+            target_module="app.agent.orchestrator",
+            target_name="UNSUPPORTED_IMAGE_INPUT_MESSAGE",
+            replacement="app.agent.orchestrator.UNSUPPORTED_IMAGE_INPUT_MESSAGE",
+        ),
+        "agent_manager": SymbolAlias(
+            target_module="app.agent.manager",
+            target_name="agent_manager",
+            replacement="app.agent.manager.agent_manager",
+        ),
+    },
+    "app.agent.llm": {
+        "LLMHelper": SymbolAlias(
+            target_module="app.agent.llm.helper",
+            target_name="LLMHelper",
+            replacement="app.agent.llm.helper.LLMHelper",
+        ),
+    },
     "app.chain": {
         "ChainBase": SymbolAlias(
             target_module="app.sdk.chain",

@@ -3,7 +3,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from app.runtime.compat.manifest import SYMBOL_ALIASES
+from app.runtime.compat.manifest import MODULE_ALIASES, SYMBOL_ALIASES
 from scripts.architecture.baseline import (
     collect_current_event_facts as _collect_current_event_facts,
 )
@@ -1591,6 +1591,46 @@ def test_host_consumers_get_agent_manager_through_application_facade():
             if isinstance(node, ast.ImportFrom) and node.module == "app.agent.runtime_loader"
             for alias in node.names
             if alias.name in forbidden
+        }
+        if imported:
+            violations[module_name] = imported
+    assert violations == {}
+
+
+def test_agent_package_roots_do_not_duplicate_implementation_exports():
+    """Agent 与 LLM 包根不得实现动态转发，旧符号只能由精确 Compat 路由承接。"""
+    for relative_path in ("app/agent/__init__.py", "app/agent/llm/__init__.py"):
+        path = PROJECT_ROOT / relative_path
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        assert all(isinstance(node, ast.Expr) for node in tree.body), relative_path
+
+    assert set(SYMBOL_ALIASES["app.agent"]) == {
+        "AgentChain",
+        "AgentManager",
+        "HEARTBEAT_SESSION_PREFIX",
+        "MoviePilotAgent",
+        "ReplyMode",
+        "UNSUPPORTED_IMAGE_INPUT_MESSAGE",
+        "agent_manager",
+    }
+    assert set(SYMBOL_ALIASES["app.agent.llm"]) == {"LLMHelper"}
+    helper_alias = MODULE_ALIASES["app.helper.llm"]
+    assert helper_alias.target == "app.agent.llm.helper"
+    assert helper_alias.replacement == "app.agent.llm.helper"
+    assert not helper_alias.is_package
+
+
+def test_host_code_imports_agent_and_llm_symbols_from_owner_modules():
+    """宿主不得消费 Agent 包根兼容符号，避免包根再次成为第二公开面。"""
+    violations: dict[str, set[str]] = {}
+    for module_name, path in _discover_modules().items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            f"{node.module}.{alias.name}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module in {"app.agent", "app.agent.llm"}
+            for alias in node.names
         }
         if imported:
             violations[module_name] = imported
