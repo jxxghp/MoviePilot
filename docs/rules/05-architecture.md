@@ -152,6 +152,10 @@ startup order and must not recreate their concrete construction.
 owns durable handler validation, lazy event/notification replay binding and the
 short-transaction dispatcher factory. Initializers call this owner in
 startup order and must not recreate their concrete construction. Database runtime
+`startup/composition/server.py` owns MoviePilot Server report/share service
+construction and registration, including lazy local-data readers and external
+transport callbacks; `initializers/modules.py` retains only its startup-order call
+and the later explicit network warmup. Database runtime
 ownership rejects overlapping lifespans; after a successful worker shutdown, the
 configuration/database composition owners must revoke every provider they published
 before releasing database connections. Other domain providers remain owned by their

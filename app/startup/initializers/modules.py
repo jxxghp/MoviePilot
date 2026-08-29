@@ -18,10 +18,7 @@ except ImportError as e:
     print(error_message, file=sys.stderr)
     sys.exit(1)
 
-from app.adapters.external.server import (
-    MoviePilotServerHelper,
-    configure_server_application_services,
-)
+from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.network.doh import DohHelper
 from app.adapters.system.host import SystemUtils
 from app.adapters.system.resource import (
@@ -64,16 +61,10 @@ from app.application.messaging.message import (
 from app.application.module import configure_module_runtime
 from app.application.outbox import configure_outbox_dispatcher
 from app.application.security.url import close_image_proxy_block_log_coalescer
-from app.application.server.report import ServerReportService
-from app.application.server.share import ServerSharingService
 from app.application.service import configure_service_directory
 from app.application.site.health import SiteHealthService, configure_site_health_service
 from app.application.site.query import SiteQueryService, configure_site_query_service
-from app.application.subscription.contract import SubscriptionRepository
-from app.application.workflow import (
-    WorkflowQueryService,
-    configure_workflow_execution,
-)
+from app.application.workflow import configure_workflow_execution
 from app.command import CommandChain
 from app.db.adapters.agent import (
     SessionAgentTaskRepository,
@@ -178,6 +169,7 @@ from app.startup.composition.security import (
     configure_security_access,
     configure_security_services,
 )
+from app.startup.composition.server import configure_server_services
 from app.startup.composition.subscription import (
     async_rule_group_mutation_scope,
     build_subscription_batch_writer,
@@ -254,47 +246,13 @@ def _build_chain_runtime_context(
     )
 
 
-def configure_runtime_data_providers(
-    workflow_query: WorkflowQueryService,
-    subscription_repository: SubscriptionRepository,
-) -> None:
-    """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
+def configure_runtime_data_providers() -> None:
+    """在启动组合层装配模块和配置目录的运行时读取能力。"""
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
     configure_module_runtime(lambda: ModuleManager())
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
-    )
-    configure_server_application_services(
-        report_service=ServerReportService(
-            config_reader=lambda key: get_configured_system_config().get(key),
-            config_writer=lambda key, value: get_configured_system_config().set(key, value),
-            async_config_writer=lambda key, value: get_configured_system_config().async_set(key, value),
-            installed_plugins_provider=lambda: (
-                get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or []
-            ),
-            subscribes_provider=subscription_repository.list,
-            async_subscribes_provider=subscription_repository.async_list,
-            plugin_report_sender=MoviePilotServerHelper.plugin_install_report,
-            async_plugin_report_sender=(MoviePilotServerHelper.async_plugin_install_report),
-            subscribe_report_sender=MoviePilotServerHelper.subscribe_report,
-            async_subscribe_report_sender=MoviePilotServerHelper.async_subscribe_report,
-            repo_url_sanitizer=MoviePilotServerHelper.sanitize_plugin_repo_url,
-        ),
-        sharing_service=ServerSharingService(
-            subscribe_provider=subscription_repository.get,
-            async_subscribe_provider=subscription_repository.async_get,
-            workflow_provider=workflow_query.get_sync,
-            async_workflow_provider=workflow_query.get,
-            user_uuid_provider=MoviePilotServerHelper.get_user_uuid,
-            subscribe_sender=MoviePilotServerHelper.subscribe_share,
-            async_subscribe_sender=MoviePilotServerHelper.async_subscribe_share,
-            workflow_sender=MoviePilotServerHelper.workflow_share,
-            async_workflow_sender=MoviePilotServerHelper.async_workflow_share,
-            response_handler=MoviePilotServerHelper._handle_response,
-            subscribe_cache_clearer=(MoviePilotServerHelper._clear_subscribe_share_cache),
-            workflow_cache_clearer=(MoviePilotServerHelper._clear_workflow_share_cache),
-        ),
     )
 
 
@@ -714,7 +672,8 @@ async def _initialize_modules() -> HostRuntime:
         tasks=get_task_registry(),
     )
     publish_database_services(database_services)
-    configure_runtime_data_providers(workflow_query, subscription_repository)
+    configure_runtime_data_providers()
+    configure_server_services(workflow_query, subscription_repository)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_execution(workflow_execution)
     configure_outbox_dispatcher(build_outbox_dispatcher)

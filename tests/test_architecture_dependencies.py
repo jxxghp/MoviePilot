@@ -848,6 +848,46 @@ def test_modules_initializer_delegates_outbox_composition():
     assert "build_outbox_dispatcher" not in package_source
 
 
+def test_modules_initializer_delegates_server_service_composition():
+    """中心服务对象图只由单词型 composition owner 构造，initializer 仅保留调用顺序。"""
+    initializer_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    composition_path = APP_ROOT / "startup" / "composition" / "server.py"
+    composition_source = composition_path.read_text(encoding="utf-8")
+    architecture_source = (
+        PROJECT_ROOT / "docs" / "rules" / "05-architecture.md"
+    ).read_text(encoding="utf-8")
+    package_tree = ast.parse(
+        (APP_ROOT / "startup" / "composition" / "__init__.py").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert composition_path.is_file()
+    assert not list(composition_path.parent.glob("server_*.py"))
+    assert "from app.startup.composition.server import configure_server_services" in (
+        initializer_source
+    )
+    assert "configure_server_services(workflow_query, subscription_repository)" in (
+        initializer_source
+    )
+    assert "`startup/composition/server.py` owns MoviePilot Server" in (
+        architecture_source
+    )
+    for detail in (
+        "ServerReportService(",
+        "ServerSharingService(",
+        "configure_server_application_services(",
+    ):
+        assert detail not in initializer_source
+        assert detail in composition_source
+    assert not any(
+        isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef))
+        for node in package_tree.body
+    )
+
+
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
     """工作流旧写入口只能存在于 SDK Legacy facade。"""
     oper_path = APP_ROOT / "db" / "oper" / "workflow.py"
