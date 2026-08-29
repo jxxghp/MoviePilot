@@ -1248,8 +1248,8 @@
     "no-untyped-def": 2
   },
   "app/chain/_messaging.py": {
-    "arg-type": 2,
-    "attr-defined": 35,
+    "arg-type": 1,
+    "attr-defined": 26,
     "no-any-return": 6,
     "no-untyped-call": 2,
     "no-untyped-def": 2,

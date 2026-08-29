@@ -78,7 +78,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,255 / 592 文件 | 识别链 typed plan/result 与 TMDB 双 ABI 共用计划继续清除参数、返回值和泛型注解债；strict frontier 当前覆盖 41 个文件 |
+| 全量 mypy 历史债务 | 10,245 / 592 文件 | 识别链 typed plan/result、TMDB 与消息双 ABI 共用计划继续清除参数、返回值和泛型注解债；strict frontier 当前覆盖 41 个文件 |
 | Ruff 历史诊断 | 642 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 81.00%，Domain 80.67% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
@@ -171,7 +171,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - Event consumer 扫描曾把任意同名 `.register()` 调用当成事件注册；S0-L2.5 已改为证明
   canonical EventManager receiver，10 个动态误报归零并保留唯一 workflow 动态注册。
 - S0-L2.6 已将 producer/consumer 合并为逐调用事实源；本轮统一 Transfer 事件发送点后为
-  95 个 producer（94 静态、1 动态）与
+  93 个 producer（92 静态、1 动态）与
   17 个 consumer（16 静态、1 动态）；consumer 由不可自动写入的精确人工 policy 管理。
 
 **目标与步骤**

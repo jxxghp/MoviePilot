@@ -1829,10 +1829,8 @@
           "043b1451d0995070b782b4c0e78186cbb1c019c9cfd23500cd9c84c0d1992218"
         ],
         "producer_fingerprints": [
-          "233eaefcad5d7635f25d05f7962774aa30890cce9bb2850186d9ac951b20e9be",
-          "233eaefcad5d7635f25d05f7962774aa30890cce9bb2850186d9ac951b20e9be",
-          "f69f4e169daad9a6e1793edf090aa773cc69459043810e1e0d739c8de144c866",
-          "f69f4e169daad9a6e1793edf090aa773cc69459043810e1e0d739c8de144c866"
+          "268702e19e01537b7e5c13981506cd3d75696d5da749ca0bd4c32eea1d7905a8",
+          "42f78d867c3555fe7ce92874c84226a6cd420535cb8addaf7d9f6c97d8b58a1d"
         ]
       },
       "EventType.PluginAction": {
@@ -1968,11 +1966,11 @@
         ]
       }
     },
-    "fact_count": 112,
+    "fact_count": 110,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
-    "producer_call_count": 95,
-    "producer_event_reference_count": 96,
+    "producer_call_count": 93,
+    "producer_event_reference_count": 94,
     "producers": [
       {
         "caller": "app.agent.orchestrator",
@@ -2232,10 +2230,10 @@
         "events": [
           "EventType.NoticeMessage"
         ],
-        "fingerprint": "233eaefcad5d7635f25d05f7962774aa30890cce9bb2850186d9ac951b20e9be",
+        "fingerprint": "42f78d867c3555fe7ce92874c84226a6cd420535cb8addaf7d9f6c97d8b58a1d",
         "invalid": false,
         "method": "async_send_event",
-        "qualname": "NotificationMixin.async_post_message",
+        "qualname": "NotificationMixin._async_dispatch_notification_steps",
         "receiver_kind": "injected_event_manager"
       },
       {
@@ -2244,34 +2242,10 @@
         "events": [
           "EventType.NoticeMessage"
         ],
-        "fingerprint": "233eaefcad5d7635f25d05f7962774aa30890cce9bb2850186d9ac951b20e9be",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "NotificationMixin.async_post_message",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain._messaging",
-        "dynamic": false,
-        "events": [
-          "EventType.NoticeMessage"
-        ],
-        "fingerprint": "f69f4e169daad9a6e1793edf090aa773cc69459043810e1e0d739c8de144c866",
+        "fingerprint": "268702e19e01537b7e5c13981506cd3d75696d5da749ca0bd4c32eea1d7905a8",
         "invalid": false,
         "method": "send_event",
-        "qualname": "NotificationMixin.post_message",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain._messaging",
-        "dynamic": false,
-        "events": [
-          "EventType.NoticeMessage"
-        ],
-        "fingerprint": "f69f4e169daad9a6e1793edf090aa773cc69459043810e1e0d739c8de144c866",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "NotificationMixin.post_message",
+        "qualname": "NotificationMixin._dispatch_notification_steps",
         "receiver_kind": "injected_event_manager"
       },
       {
@@ -3116,7 +3090,7 @@
       }
     ],
     "static_consumer_count": 16,
-    "static_producer_call_count": 94
+    "static_producer_call_count": 92
   },
   "event_specs": {
     "ChainEventType.AgentLLMProvider": {

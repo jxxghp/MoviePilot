@@ -5,6 +5,8 @@
 eventmanager、messageoper、messagequeue 等协作对象。
 """
 import copy
+from collections.abc import Generator, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union, cast
 
@@ -23,9 +25,136 @@ from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType, NotificationChannel
 
 
+@dataclass(frozen=True, slots=True)
+class _NotificationRouteLookup:
+    """通知路由状态机请求读取指定用户的渠道设置。"""
+
+    username: str
+    log_message: str
+
+
+@dataclass(frozen=True, slots=True)
+class _NotificationRouteDelivery:
+    """通知路由状态机产出的单次投递决策。"""
+
+    message: Message
+    immediately: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _NotificationRouteLog:
+    """通知路由状态机产出的无投递日志决策。"""
+
+    message: str
+
+
+_NotificationRouteStep = Union[
+    _NotificationRouteLookup,
+    _NotificationRouteDelivery,
+    _NotificationRouteLog,
+]
+
+
+def _notification_route_steps(
+    message: Message,
+    *,
+    action: Optional[str],
+    superuser: str,
+) -> Generator[
+    _NotificationRouteStep,
+    Optional[Mapping[str, object]],
+    None,
+]:
+    """
+    生成同步和异步通知共用的路由状态转换。
+
+    生成器只表达用户设置查询、日志和投递决策，调用方分别执行真实同步或
+    异步 I/O，避免两套外壳各自维护管理员回退和原消息投递规则。
+    """
+    admin_sent = False
+    send_original = not action
+    for route_action in action.split(",") if action else ():
+        routed_message = copy.deepcopy(message)
+        if route_action == "admin" and not admin_sent:
+            settings = yield _NotificationRouteLookup(
+                username=superuser,
+                log_message=f"{routed_message.mtype} 的消息已设置发送给管理员",
+            )
+            routed_message.targets = cast(dict[str, Any], settings)
+            admin_sent = True
+        elif route_action == "user" and routed_message.username:
+            username = cast(str, routed_message.username)
+            settings = yield _NotificationRouteLookup(
+                username=username,
+                log_message=(
+                    f"{routed_message.mtype} 的消息已设置发送给用户 {username}"
+                ),
+            )
+            routed_message.targets = cast(dict[str, Any], settings)
+            if settings is None:
+                if not admin_sent:
+                    settings = yield _NotificationRouteLookup(
+                        username=superuser,
+                        log_message=(
+                            f"用户 {username} 不存在，消息将发送给管理员"
+                        ),
+                    )
+                    routed_message.targets = cast(dict[str, Any], settings)
+                    admin_sent = True
+                else:
+                    yield _NotificationRouteLog(
+                        message=f"用户 {username} 不存在，消息无法发送到对应用户"
+                    )
+                    continue
+            elif username == superuser:
+                admin_sent = True
+        else:
+            send_original = not admin_sent
+            break
+        yield _NotificationRouteDelivery(
+            message=routed_message,
+            immediately=False,
+        )
+
+    if send_original:
+        yield _NotificationRouteDelivery(
+            message=message,
+            immediately=bool(message.userid),
+        )
+
+
+def _render_notification_message(
+    *,
+    message: Optional[Message],
+    meta: Optional[MetaBase],
+    mediainfo: Optional[Union[MediaInfo, MusicInfo]],
+    torrentinfo: Optional[TorrentInfo],
+    transferinfo: Optional[TransferInfo],
+    kwargs: dict[str, Any],
+) -> Optional[Message]:
+    """使用同步和异步入口共用的上下文规范化并渲染通知。"""
+    kwargs.setdefault("current_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    return MessageTemplateHelper.render(
+        message=message,
+        meta=meta,
+        mediainfo=mediainfo,
+        torrentinfo=torrentinfo,
+        transferinfo=transferinfo,
+        **kwargs,
+    )
+
+
+def _notification_route_action(message: Message) -> Optional[str]:
+    """仅为未绑定真实用户的业务通知读取隔离路由配置。"""
+    if message.userid or not message.mtype:
+        return None
+    return get_notification_switch(message.mtype)
+
+
 class MessageProcessingMixin:
-    __mixin_host_protocol__ = ChainRuntimeMixinHost
     """消息输入/处理状态机与通知派发规范化。"""
+
+    __mixin_host_protocol__ = ChainRuntimeMixinHost
 
     def start_message_processing_status(
             self,
@@ -119,9 +248,10 @@ class MessageProcessingMixin:
 
 
 class NotificationMixin:
+    """通知消息发送域：渲染、隔离路由、队列发送与消息编辑。"""
+
     __mixin_host_protocol__ = ChainRuntimeMixinHost
     user_repository: ChainUserRepository
-    """通知消息发送域：渲染、隔离路由、队列发送与消息编辑。"""
 
     def post_message(
             self,
@@ -144,18 +274,14 @@ class NotificationMixin:
         """
         strict_delivery = bool(kwargs.pop("_strict_delivery", False))
         strict_source = kwargs.pop("_strict_source", None)
-        # 添加格式化的时间参数
-        kwargs.setdefault("current_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        # 渲染消息
-        message = MessageTemplateHelper.render(
+        message = _render_notification_message(
             message=message,
             meta=meta,
             mediainfo=mediainfo,
             torrentinfo=torrentinfo,
             transferinfo=transferinfo,
-            **kwargs,
+            kwargs=kwargs,
         )
-        # 检查消息是否有效
         if not message:
             logger.warning("消息为空，跳过发送")
             return
@@ -167,87 +293,9 @@ class NotificationMixin:
         dispatch_message = self._normalize_notification_for_dispatch(message)
         if strict_source and dispatch_message.source == strict_source:
             dispatch_message.source = None
-        # 发送消息按设置隔离
-        if not dispatch_message.userid and dispatch_message.mtype:
-            # 消息隔离设置
-            notify_action = get_notification_switch(
-                dispatch_message.mtype
-            )
-            if notify_action:
-                # 'admin' 'user,admin' 'user' 'all'
-                actions = notify_action.split(",")
-                # 是否已发送管理员标志
-                admin_sended = False
-                send_orignal = False
-                useroper = self.user_repository
-                for action in actions:
-                    send_message = copy.deepcopy(dispatch_message)
-                    if action == "admin" and not admin_sended:
-                        # 仅发送管理员
-                        logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
-                        # 读取管理员消息IDS
-                        send_message.targets = useroper.get_notification_settings(
-                            self.runtime_config.superuser
-                        )
-                        admin_sended = True
-                    elif action == "user" and send_message.username:
-                        # 发送对应用户
-                        logger.info(
-                            f"{send_message.mtype} 的消息已设置发送给用户 {send_message.username}"
-                        )
-                        # 读取用户消息IDS
-                        send_message.targets = useroper.get_notification_settings(
-                            send_message.username
-                        )
-                        if send_message.targets is None:
-                            # 没有找到用户
-                            if not admin_sended:
-                                # 回滚发送管理员
-                                logger.info(
-                                    f"用户 {send_message.username} 不存在，消息将发送给管理员"
-                                )
-                                # 读取管理员消息IDS
-                                send_message.targets = useroper.get_notification_settings(
-                                    self.runtime_config.superuser
-                                )
-                                admin_sended = True
-                            else:
-                                # 管理员发过了，此消息不发了
-                                logger.info(
-                                    f"用户 {send_message.username} 不存在，消息无法发送到对应用户"
-                                )
-                                continue
-                        elif send_message.username == self.runtime_config.superuser:
-                            # 管理员同名已发送
-                            admin_sended = True
-                    else:
-                        # 按原消息发送全体
-                        if not admin_sended:
-                            send_orignal = True
-                        break
-                    # 按设定发送
-                    self.eventmanager.send_event(
-                        etype=EventType.NoticeMessage,
-                        data=self._build_notice_message_data(send_message),
-                    )
-                    self._deliver_notification(
-                        send_message,
-                        strict_delivery=strict_delivery,
-                        immediately=False,
-                        kwargs=kwargs,
-                    )
-                if not send_orignal:
-                    return
-        # 发送消息事件
-        self.eventmanager.send_event(
-            etype=EventType.NoticeMessage,
-            data=self._build_notice_message_data(dispatch_message),
-        )
-        # 按原消息发送
-        self._deliver_notification(
+        self._dispatch_notification_steps(
             dispatch_message,
             strict_delivery=strict_delivery,
-            immediately=bool(dispatch_message.userid),
             kwargs=kwargs,
         )
 
@@ -288,6 +336,49 @@ class NotificationMixin:
             **kwargs,
         )
 
+    def _dispatch_notification_steps(
+        self,
+        message: Message,
+        *,
+        strict_delivery: bool,
+        kwargs: dict[str, object],
+    ) -> None:
+        """执行通知路由状态机，并在同步边界完成查询、事件和投递。"""
+        steps = _notification_route_steps(
+            message,
+            action=_notification_route_action(message),
+            superuser=self.runtime_config.superuser,
+        )
+        lookup_result: Optional[Mapping[str, object]] = None
+        try:
+            step = next(steps)
+        except StopIteration:
+            return
+        while True:
+            lookup_result = None
+            if isinstance(step, _NotificationRouteLookup):
+                logger.info(step.log_message)
+                lookup_result = self.user_repository.get_notification_settings(
+                    step.username
+                )
+            elif isinstance(step, _NotificationRouteLog):
+                logger.info(step.message)
+            else:
+                self.eventmanager.send_event(
+                    etype=EventType.NoticeMessage,
+                    data=self._build_notice_message_data(step.message),
+                )
+                self._deliver_notification(
+                    step.message,
+                    strict_delivery=strict_delivery,
+                    immediately=step.immediately,
+                    kwargs=kwargs,
+                )
+            try:
+                step = steps.send(lookup_result)
+            except StopIteration:
+                return
+
     async def async_post_message(
             self,
             message: Optional[Message] = None,
@@ -307,104 +398,68 @@ class NotificationMixin:
         :param kwargs:  其他参数(覆盖业务对象属性值)
         :return: 成功或失败
         """
-        # 添加格式化的时间参数
-        kwargs.setdefault("current_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        # 渲染消息
-        message = MessageTemplateHelper.render(
+        message = _render_notification_message(
             message=message,
             meta=meta,
             mediainfo=mediainfo,
             torrentinfo=torrentinfo,
             transferinfo=transferinfo,
-            **kwargs,
+            kwargs=kwargs,
         )
-        # 检查消息是否有效
         if not message:
             logger.warning("消息为空，跳过发送")
             return
         if message.save_history:
             await self.messageoper.async_add(**message.model_dump())
         dispatch_message = self._normalize_notification_for_dispatch(message)
-        # 发送消息按设置隔离
-        if not dispatch_message.userid and dispatch_message.mtype:
-            # 消息隔离设置
-            notify_action = get_notification_switch(
-                dispatch_message.mtype
-            )
-            if notify_action:
-                # 'admin' 'user,admin' 'user' 'all'
-                actions = notify_action.split(",")
-                # 是否已发送管理员标志
-                admin_sended = False
-                send_orignal = False
-                useroper = self.user_repository
-                for action in actions:
-                    send_message = copy.deepcopy(dispatch_message)
-                    if action == "admin" and not admin_sended:
-                        # 仅发送管理员
-                        logger.info(f"{send_message.mtype} 的消息已设置发送给管理员")
-                        # 读取管理员消息IDS
-                        send_message.targets = await useroper.async_get_notification_settings(
-                            self.runtime_config.superuser
-                        )
-                        admin_sended = True
-                    elif action == "user" and send_message.username:
-                        # 发送对应用户
-                        logger.info(
-                            f"{send_message.mtype} 的消息已设置发送给用户 {send_message.username}"
-                        )
-                        # 读取用户消息IDS
-                        send_message.targets = await useroper.async_get_notification_settings(
-                            send_message.username
-                        )
-                        if send_message.targets is None:
-                            # 没有找到用户
-                            if not admin_sended:
-                                # 回滚发送管理员
-                                logger.info(
-                                    f"用户 {send_message.username} 不存在，消息将发送给管理员"
-                                )
-                                # 读取管理员消息IDS
-                                send_message.targets = await useroper.async_get_notification_settings(
-                                    self.runtime_config.superuser
-                                )
-                                admin_sended = True
-                            else:
-                                # 管理员发过了，此消息不发了
-                                logger.info(
-                                    f"用户 {send_message.username} 不存在，消息无法发送到对应用户"
-                                )
-                                continue
-                        elif send_message.username == self.runtime_config.superuser:
-                            # 管理员同名已发送
-                            admin_sended = True
-                    else:
-                        # 按原消息发送全体
-                        if not admin_sended:
-                            send_orignal = True
-                        break
-                    # 按设定发送
-                    await self.eventmanager.async_send_event(
-                        etype=EventType.NoticeMessage,
-                        data=self._build_notice_message_data(send_message),
-                    )
-                    await self.messagequeue.async_send_message(
-                        "post_message", message=send_message, **kwargs
-                    )
-                if not send_orignal:
-                    return
-        # 发送消息事件
-        await self.eventmanager.async_send_event(
-            etype=EventType.NoticeMessage,
-            data=self._build_notice_message_data(dispatch_message),
+        await self._async_dispatch_notification_steps(
+            dispatch_message,
+            kwargs=kwargs,
         )
-        # 按原消息发送
-        await self.messagequeue.async_send_message(
-            "post_message",
-            message=dispatch_message,
-            immediately=True if dispatch_message.userid else False,
-            **kwargs,
+
+    async def _async_dispatch_notification_steps(
+        self,
+        message: Message,
+        *,
+        kwargs: dict[str, object],
+    ) -> None:
+        """执行通知路由状态机，并在异步边界完成查询、事件和投递。"""
+        steps = _notification_route_steps(
+            message,
+            action=_notification_route_action(message),
+            superuser=self.runtime_config.superuser,
         )
+        lookup_result: Optional[Mapping[str, object]] = None
+        try:
+            step = next(steps)
+        except StopIteration:
+            return
+        while True:
+            lookup_result = None
+            if isinstance(step, _NotificationRouteLookup):
+                logger.info(step.log_message)
+                lookup_result = (
+                    await self.user_repository.async_get_notification_settings(
+                        step.username
+                    )
+                )
+            elif isinstance(step, _NotificationRouteLog):
+                logger.info(step.message)
+            else:
+                await self.eventmanager.async_send_event(
+                    etype=EventType.NoticeMessage,
+                    data=self._build_notice_message_data(step.message),
+                )
+                await self.messagequeue.async_send_message(
+                    "post_message",
+                    message=step.message,
+                    immediately=step.immediately,
+                    **kwargs,
+                )
+            try:
+                step = steps.send(lookup_result)
+            except StopIteration:
+                return
 
     def post_medias_message(
             self, message: Message, medias: List[MediaInfo]
