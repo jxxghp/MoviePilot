@@ -1,5 +1,5 @@
 import re
-from typing import Tuple, List, Optional
+from typing import Any, Tuple, List, Optional
 
 from app.runtime.cache import cached
 from app.runtime.settings import get_runtime_setting
@@ -11,6 +11,8 @@ from app.foundation import temporal as time_tools
 
 
 class TNodeSpider(metaclass=SingletonClass):
+    """TNode 页面令牌与种子搜索 API 适配器。"""
+
     _size = 100
     _timeout = 15
     _proxy = None
@@ -26,6 +28,7 @@ class TNodeSpider(metaclass=SingletonClass):
         return cls._size
 
     def __init__(self, indexer: dict):
+        """使用站点配置初始化 TNode 请求上下文。"""
         if indexer:
             self._indexerid = indexer.get('id')
             self._domain = indexer.get('domain')
@@ -39,31 +42,33 @@ class TNodeSpider(metaclass=SingletonClass):
 
     @cached(region="indexer_spider", maxsize=1, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
     def __get_token(self) -> Optional[str]:
+        """同步请求站点首页并提取 CSRF 令牌。"""
         if not self._domain:
             return
         res = RequestUtils(ua=self._ua,
                            cookies=self._cookie,
                            proxies=self._proxy,
                            timeout=self._timeout).get_res(url=self._domain)
-        if res and res.status_code == 200:
-            csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
-            if csrf_token:
-                return csrf_token.group(1)
-        return None
+        return self.__parse_token_response(res)
 
     @cached(region="indexer_spider", maxsize=1, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
     async def __async_get_token(self) -> Optional[str]:
+        """异步请求站点首页并提取 CSRF 令牌。"""
         if not self._domain:
             return
         res = await AsyncRequestUtils(ua=self._ua,
                                       cookies=self._cookie,
                                       proxies=self._proxy,
                                       timeout=self._timeout).get_res(url=self._domain)
-        if res and res.status_code == 200:
-            csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
-            if csrf_token:
-                return csrf_token.group(1)
-        return None
+        return self.__parse_token_response(res)
+
+    @staticmethod
+    def __parse_token_response(res: Any) -> Optional[str]:
+        """从同步或异步首页响应中提取有效 CSRF 令牌。"""
+        if not res or res.status_code != 200:
+            return None
+        csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
+        return csrf_token.group(1) if csrf_token else None
 
     def __get_params(self, keyword: str = None, page: Optional[int] = 0) -> dict:
         """
@@ -113,6 +118,17 @@ class TNodeSpider(metaclass=SingletonClass):
 
         return torrents
 
+    def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
+        """统一判定搜索响应状态并投影 TNode 种子结果。"""
+        if res and res.status_code == 200:
+            results = res.json().get('data', {}).get("torrents") or []
+            return False, self.__parse_result(results)
+        if res is not None:
+            logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
+            return True, []
+        logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
+        return True, []
+
     def search(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         搜索
@@ -137,15 +153,7 @@ class TNodeSpider(metaclass=SingletonClass):
             proxies=self._proxy,
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
-        if res and res.status_code == 200:
-            results = res.json().get('data', {}).get("torrents") or []
-            return False, self.__parse_result(results)
-        elif res is not None:
-            logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
-            return True, []
-        else:
-            logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
-            return True, []
+        return self.__process_response(res)
         
     async def async_search(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
@@ -171,12 +179,4 @@ class TNodeSpider(metaclass=SingletonClass):
             proxies=self._proxy,
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
-        if res and res.status_code == 200:
-            results = res.json().get('data', {}).get("torrents") or []
-            return False, self.__parse_result(results)
-        elif res is not None:
-            logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
-            return True, []
-        else:
-            logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
-            return True, []
+        return self.__process_response(res)

@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import Any, List, Tuple, Optional
 from urllib.parse import quote
 
 from app.runtime.settings import get_runtime_setting
@@ -97,6 +97,23 @@ class TorrentLeech:
             torrents.append(torrent)
         return torrents
 
+    def __process_response(
+        self,
+        res: Any,
+        mtype: Any = None,
+    ) -> Tuple[bool, List[dict[str, Any]]]:
+        """统一判定搜索响应状态并按请求媒体类型投影 TorrentLeech 结果。"""
+        if res and res.status_code == 200:
+            results = res.json().get('torrentList') or []
+            return False, self.__parse_result(results, mtype)
+        if res is not None:
+            logger.warn(f"{self._indexer.get('name')} 搜索失败，错误码：{res.status_code}")
+            return True, []
+        logger.warn(
+            f"{self._indexer.get('name')} 搜索失败，无法连接 {self._indexer.get('domain')}"
+        )
+        return True, []
+
     def search(
         self,
         keyword: str,
@@ -124,15 +141,7 @@ class TorrentLeech:
             proxies=self._proxy,
             timeout=self._timeout
         ).get_res(url)
-        if res and res.status_code == 200:
-            results = res.json().get('torrentList') or []
-            return False, self.__parse_result(results, mtype)
-        elif res is not None:
-            logger.warn(f"{self._indexer.get('name')} 搜索失败，错误码：{res.status_code}")
-            return True, []
-        else:
-            logger.warn(f"{self._indexer.get('name')} 搜索失败，无法连接 {self._indexer.get('domain')}")
-            return True, []
+        return self.__process_response(res, mtype)
 
     async def async_search(
         self,
@@ -161,12 +170,4 @@ class TorrentLeech:
             proxies=self._proxy,
             timeout=self._timeout
         ).get_res(url)
-        if res and res.status_code == 200:
-            results = res.json().get('torrentList') or []
-            return False, self.__parse_result(results, mtype)
-        elif res is not None:
-            logger.warn(f"{self._indexer.get('name')} 搜索失败，错误码：{res.status_code}")
-            return True, []
-        else:
-            logger.warn(f"{self._indexer.get('name')} 搜索失败，无法连接 {self._indexer.get('domain')}")
-            return True, []
+        return self.__process_response(res, mtype)

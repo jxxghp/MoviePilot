@@ -1,4 +1,4 @@
-from typing import Tuple, List, Optional
+from typing import Any, Tuple, List, Optional
 
 from app.runtime.settings import get_runtime_setting
 
@@ -68,6 +68,7 @@ class HddolbySpider:
         return cls._size
 
     def __init__(self, indexer: dict):
+        """使用站点配置初始化 HDDolby API 请求上下文。"""
         self.systemconfig = get_configured_system_config()
         if indexer:
             self._indexerid = indexer.get('id')
@@ -176,6 +177,20 @@ class HddolbySpider:
             torrents.append(torrent)
         return torrents
 
+    def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
+        """统一判定搜索响应状态、业务错误并投影 HDDolby 结果。"""
+        if res and res.status_code == 200:
+            result = res.json()
+            if result.get("error"):
+                logger.warn(f"{self._name} 搜索失败，错误信息：{result.get('error').get('message')}")
+                return True, []
+            return False, self.__parse_result(result.get('data'))
+        if res is not None:
+            logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
+            return True, []
+        logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
+        return True, []
+
     def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         搜索
@@ -196,18 +211,7 @@ class HddolbySpider:
             referer=f"{self._domain}",
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
-        if res and res.status_code == 200:
-            result = res.json()
-            if result.get("error"):
-                logger.warn(f"{self._name} 搜索失败，错误信息：{result.get('error').get('message')}")
-                return True, []
-            return False, self.__parse_result(result.get('data'))
-        elif res is not None:
-            logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
-            return True, []
-        else:
-            logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
-            return True, []
+        return self.__process_response(res)
 
     async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
@@ -228,18 +232,7 @@ class HddolbySpider:
             referer=f"{self._domain}",
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
-        if res and res.status_code == 200:
-            result = res.json()
-            if result.get("error"):
-                logger.warn(f"{self._name} 搜索失败，错误信息：{result.get('error').get('message')}")
-                return True, []
-            return False, self.__parse_result(result.get('data'))
-        elif res is not None:
-            logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
-            return True, []
-        else:
-            logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
-            return True, []
+        return self.__process_response(res)
 
     @staticmethod
     def __get_downloadvolumefactor(discount: int) -> float:

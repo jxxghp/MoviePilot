@@ -2328,7 +2328,7 @@
     "arg-type": 3,
     "assignment": 5,
     "type-arg": 4,
-    "union-attr": 14,
+    "union-attr": 12,
     "var-annotated": 1
   },
   "app/modules/indexer/spider/yema.py": {
