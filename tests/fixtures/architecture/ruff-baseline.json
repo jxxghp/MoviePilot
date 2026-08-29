@@ -857,9 +857,6 @@
   "tests/test_agent_activity_log.py": {
     "I001": 1
   },
-  "tests/test_agent_background_output.py": {
-    "I001": 1
-  },
   "tests/test_agent_lazy_runtime_boundary.py": {
     "F401": 1
   },
@@ -879,9 +876,6 @@
     "I001": 1
   },
   "tests/test_agent_subagents.py": {
-    "I001": 1
-  },
-  "tests/test_agent_summarization_streaming.py": {
     "I001": 1
   },
   "tests/test_agent_tokens_events.py": {

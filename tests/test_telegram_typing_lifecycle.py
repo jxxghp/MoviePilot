@@ -7,11 +7,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.agent import (  # pylint: disable=no-name-in-module
-    AgentManager,
-    _async_start_processing_status,
-    _MessageTask,
-)
+from app.agent.manager import AgentManager
+from app.agent.session import _async_start_processing_status, _MessageTask
 from app.chain.message import MessageChain
 from app.command import Command, _finish_command_processing_status
 from app.modules.telegram import TelegramModule  # pylint: disable=no-name-in-module
@@ -421,7 +418,7 @@ def test_agent_manager_starts_processing_status_when_task_runs():
         }
 
         with patch(
-                "app.agent.orchestrator._async_start_processing_status",
+                "app.agent.session._async_start_processing_status",
                 new_callable=AsyncMock,
                 return_value=status,
         ) as start_status:
@@ -462,7 +459,7 @@ def test_agent_start_processing_status_uses_chain_interface():
                 calls.append(kwargs)
                 return status
 
-        with patch("app.agent.orchestrator.AgentChain", FakeAgentChain):
+        with patch("app.agent.session.AgentChain", FakeAgentChain):
             result = await _async_start_processing_status(task)
 
         assert calls == [{
@@ -560,7 +557,7 @@ def test_agent_manager_finishes_processing_status_after_each_task():
         )
 
         with patch(
-                "app.agent.orchestrator._async_finish_processing_status",
+                "app.agent.session._async_finish_processing_status",
                 new_callable=AsyncMock,
         ) as finish_status:
             await manager._finish_task_processing_status(task)
@@ -607,7 +604,7 @@ def test_agent_worker_starts_and_finishes_each_queued_task():
         ))
 
         with patch(
-                "app.agent.orchestrator._async_start_processing_status",
+                "app.agent.session._async_start_processing_status",
                 new_callable=AsyncMock,
                 side_effect=[first_status, second_status],
         ) as start_status, patch.object(
@@ -615,7 +612,7 @@ def test_agent_worker_starts_and_finishes_each_queued_task():
                 "_process_message_internal",
                 new_callable=AsyncMock,
         ), patch(
-                "app.agent.orchestrator._async_finish_processing_status",
+                "app.agent.session._async_finish_processing_status",
                 new_callable=AsyncMock,
         ) as finish_status:
             manager._session_workers["session-1"] = asyncio.create_task(

@@ -283,6 +283,55 @@ def test_retired_canonical_filenames_do_not_return():
     assert leftovers == []
 
 
+def test_agent_manager_uses_focused_owner_modules_and_precise_facade():
+    """AgentManager 必须保持薄门面，编排器不得重新聚合 Manager 实现。"""
+    owner_paths = {
+        "manager": APP_ROOT / "agent" / "manager.py",
+        "session": APP_ROOT / "agent" / "session.py",
+        "lifecycle": APP_ROOT / "agent" / "lifecycle.py",
+        "tasks": APP_ROOT / "agent" / "tasks.py",
+        "orchestrator": APP_ROOT / "agent" / "orchestrator.py",
+    }
+    assert all(path.is_file() for path in owner_paths.values())
+
+    manager_tree = ast.parse(owner_paths["manager"].read_text(encoding="utf-8-sig"))
+    manager_class = next(
+        node
+        for node in manager_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "AgentManager"
+    )
+    manager_methods = {
+        node.name
+        for node in manager_class.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert manager_methods == {"__init__"}
+    assert [ast.unparse(base) for base in manager_class.bases] == ["AgentTaskOwner"]
+
+    orchestrator_tree = ast.parse(
+        owner_paths["orchestrator"].read_text(encoding="utf-8-sig")
+    )
+    orchestrator_classes = {
+        node.name for node in orchestrator_tree.body if isinstance(node, ast.ClassDef)
+    }
+    orchestrator_assignments = {
+        target.id
+        for node in orchestrator_tree.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    assert "AgentManager" not in orchestrator_classes
+    assert "_MessageTask" not in orchestrator_classes
+    assert "agent_manager" not in orchestrator_assignments
+
+    startup_source = (
+        APP_ROOT / "startup" / "initializers" / "agent.py"
+    ).read_text(encoding="utf-8-sig")
+    assert "from app.agent.manager import AgentManager" in startup_source
+    assert "from app.agent.orchestrator import AgentManager" not in startup_source
+
+
 def test_runtime_dependencies_use_same_named_single_word_package() -> None:
     """运行依赖能力必须使用同名包，且宿主直接依赖单一职责子模块。"""
     package = APP_ROOT / "runtime" / "dependencies"

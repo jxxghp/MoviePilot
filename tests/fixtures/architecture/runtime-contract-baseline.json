@@ -879,15 +879,60 @@
     },
     "symbol_aliases": {
       "app.agent.orchestrator": {
+        "AGENT_SESSION_QUEUE_MAX_SIZE": {
+          "replacement": "app.agent.session.AGENT_SESSION_QUEUE_MAX_SIZE",
+          "target_module": "app.agent.session",
+          "target_name": "AGENT_SESSION_QUEUE_MAX_SIZE"
+        },
         "AgentChain": {
           "replacement": "app.chain.agent.AgentChain",
           "target_module": "app.chain.agent",
           "target_name": "AgentChain"
         },
+        "AgentManager": {
+          "replacement": "app.agent.manager.AgentManager",
+          "target_module": "app.agent.manager",
+          "target_name": "AgentManager"
+        },
+        "AgentManagerQueueFullError": {
+          "replacement": "app.agent.session.AgentManagerQueueFullError",
+          "target_module": "app.agent.session",
+          "target_name": "AgentManagerQueueFullError"
+        },
+        "AgentManagerUnavailableError": {
+          "replacement": "app.agent.session.AgentManagerUnavailableError",
+          "target_module": "app.agent.session",
+          "target_name": "AgentManagerUnavailableError"
+        },
         "ReplyMode": {
           "replacement": "app.schemas.types.ReplyMode",
           "target_module": "app.schemas.types",
           "target_name": "ReplyMode"
+        },
+        "_MessageTask": {
+          "replacement": "app.agent.session._MessageTask",
+          "target_module": "app.agent.session",
+          "target_name": "_MessageTask"
+        },
+        "_async_finish_processing_status": {
+          "replacement": "app.agent.session._async_finish_processing_status",
+          "target_module": "app.agent.session",
+          "target_name": "_async_finish_processing_status"
+        },
+        "_async_start_processing_status": {
+          "replacement": "app.agent.session._async_start_processing_status",
+          "target_module": "app.agent.session",
+          "target_name": "_async_start_processing_status"
+        },
+        "_finish_processing_status": {
+          "replacement": "app.agent.session._finish_processing_status",
+          "target_module": "app.agent.session",
+          "target_name": "_finish_processing_status"
+        },
+        "agent_manager": {
+          "replacement": "app.agent.manager.agent_manager",
+          "target_module": "app.agent.manager",
+          "target_name": "agent_manager"
         }
       },
       "app.application.transfer": {

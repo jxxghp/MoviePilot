@@ -826,15 +826,60 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
         for name in ("TransferTask", "TransferQueue")
     },
     "app.agent.orchestrator": {
+        "AGENT_SESSION_QUEUE_MAX_SIZE": SymbolAlias(
+            target_module="app.agent.session",
+            target_name="AGENT_SESSION_QUEUE_MAX_SIZE",
+            replacement="app.agent.session.AGENT_SESSION_QUEUE_MAX_SIZE",
+        ),
         "AgentChain": SymbolAlias(
             target_module="app.chain.agent",
             target_name="AgentChain",
             replacement="app.chain.agent.AgentChain",
         ),
+        "AgentManager": SymbolAlias(
+            target_module="app.agent.manager",
+            target_name="AgentManager",
+            replacement="app.agent.manager.AgentManager",
+        ),
+        "AgentManagerQueueFullError": SymbolAlias(
+            target_module="app.agent.session",
+            target_name="AgentManagerQueueFullError",
+            replacement="app.agent.session.AgentManagerQueueFullError",
+        ),
+        "AgentManagerUnavailableError": SymbolAlias(
+            target_module="app.agent.session",
+            target_name="AgentManagerUnavailableError",
+            replacement="app.agent.session.AgentManagerUnavailableError",
+        ),
         "ReplyMode": SymbolAlias(
             target_module="app.schemas.types",
             target_name="ReplyMode",
             replacement="app.schemas.types.ReplyMode",
+        ),
+        "_MessageTask": SymbolAlias(
+            target_module="app.agent.session",
+            target_name="_MessageTask",
+            replacement="app.agent.session._MessageTask",
+        ),
+        "_async_finish_processing_status": SymbolAlias(
+            target_module="app.agent.session",
+            target_name="_async_finish_processing_status",
+            replacement="app.agent.session._async_finish_processing_status",
+        ),
+        "_async_start_processing_status": SymbolAlias(
+            target_module="app.agent.session",
+            target_name="_async_start_processing_status",
+            replacement="app.agent.session._async_start_processing_status",
+        ),
+        "_finish_processing_status": SymbolAlias(
+            target_module="app.agent.session",
+            target_name="_finish_processing_status",
+            replacement="app.agent.session._finish_processing_status",
+        ),
+        "agent_manager": SymbolAlias(
+            target_module="app.agent.manager",
+            target_name="agent_manager",
+            replacement="app.agent.manager.agent_manager",
         ),
     },
     # 刮削能力从 MediaChain 拆出为独立 ScrapingChain 后，

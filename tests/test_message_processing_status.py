@@ -2,7 +2,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.agent.orchestrator import _finish_processing_status
+from app.agent.session import _finish_processing_status
 from app.modules.discord import DiscordModule
 from app.modules.slack import SlackModule
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
@@ -136,7 +136,7 @@ def test_agent_finish_processing_status_uses_module_interface() -> None:
         "metadata": {"kind": "typing"},
     }
 
-    with patch("app.agent.orchestrator.AgentChain") as chain_cls:
+    with patch("app.agent.session.AgentChain") as chain_cls:
         _finish_processing_status(status, user_id="fallback")
 
     chain_cls.return_value.finish_message_processing_status.assert_called_once_with(

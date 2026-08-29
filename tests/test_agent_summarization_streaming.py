@@ -24,11 +24,11 @@ from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import Field
 
 import app.agent.orchestrator as agent_module
-from app.agent.memory import memory_manager
+from app.agent.memory import MemoryManager
 from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
 from app.agent.middleware.summarization import (
-    ContextSummarizationError,
     ContextPreservingSummarizationMiddleware,
+    ContextSummarizationError,
     FinalRequestCompactionMiddleware,
 )
 from app.agent.middleware.usage import UsageMiddleware
@@ -1204,14 +1204,19 @@ def test_summary_failure_preserves_database_history():
     """上下文压缩失败时不得覆盖数据库中的上一轮消息。"""
     session_id = f"summary-failure-{uuid.uuid4().hex}"
     user_id = "10001"
-    memory_manager.save_agent_messages(
+    isolated_memory = MemoryManager()
+    isolated_memory.save_agent_messages(
         session_id=session_id,
         user_id=user_id,
         messages=[HumanMessage(content="数据库中的旧事实")],
     )
-    memory_manager.clear_memory(session_id, user_id)
-    restored_messages = memory_manager.get_agent_messages(session_id, user_id)
-    agent = agent_module.MoviePilotAgent(session_id=session_id, user_id=user_id)
+    isolated_memory.clear_memory(session_id, user_id)
+    restored_messages = isolated_memory.get_agent_messages(session_id, user_id)
+    agent = agent_module.MoviePilotAgent(
+        session_id=session_id,
+        user_id=user_id,
+        memory=isolated_memory,
+    )
     agent._compiled_agent_bundle = object()
     agent._should_stream = lambda: False
     agent._create_agent = AsyncMock(return_value=_FailingGraph())
@@ -1229,8 +1234,8 @@ def test_summary_failure_preserves_database_history():
             )
         )
 
-    memory_manager.clear_memory(session_id, user_id)
-    recovered_messages = memory_manager.get_agent_messages(session_id, user_id)
+    isolated_memory.clear_memory(session_id, user_id)
+    recovered_messages = isolated_memory.get_agent_messages(session_id, user_id)
     assert result == "智能助手执行失败: 会话上下文压缩失败，原有上下文已保留，请稍后重试"
     assert agent._compiled_agent_bundle is None
     assert [message.content for message in recovered_messages] == ["数据库中的旧事实"]

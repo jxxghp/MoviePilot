@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.agent import HEARTBEAT_SESSION_PREFIX, MoviePilotAgent
-from app.agent.memory import memory_manager
+from app.agent.memory import MemoryManager, memory_manager
+from app.agent.orchestrator import HEARTBEAT_SESSION_PREFIX, MoviePilotAgent
 from app.db.oper.agentchat import AgentChatOper
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 
@@ -254,7 +254,7 @@ def test_memory_manager_restores_agent_messages_from_database():
     """内存缓存缺失时应从 Agent 会话历史表恢复原始 messages。"""
     session_id = "session-memory"
     user_id = "2"
-    memory_manager.clear_memory(session_id, user_id)
+    isolated_memory = MemoryManager()
     AgentChatOper().save_agent_messages(
         session_id=session_id,
         user_id=user_id,
@@ -274,7 +274,10 @@ def test_memory_manager_restores_agent_messages_from_database():
         ],
     )
 
-    messages = memory_manager.get_agent_messages(session_id=session_id, user_id=user_id)
+    messages = isolated_memory.get_agent_messages(
+        session_id=session_id,
+        user_id=user_id,
+    )
 
     assert len(messages) == 1
     assert isinstance(messages[0], HumanMessage)
@@ -285,7 +288,7 @@ def test_async_memory_manager_restores_through_native_async_service(monkeypatch)
     """异步记忆恢复只能通过会话应用服务的异步查询端口。"""
     session_id = "session-memory-async"
     user_id = "3"
-    memory_manager.clear_memory(session_id, user_id)
+    isolated_memory = MemoryManager()
     service = SimpleNamespace(
         get=AsyncMock(
             return_value=SimpleNamespace(
@@ -312,7 +315,7 @@ def test_async_memory_manager_restores_through_native_async_service(monkeypatch)
     )
 
     messages = asyncio.run(
-        memory_manager.async_get_agent_messages(
+        isolated_memory.async_get_agent_messages(
             session_id=session_id,
             user_id=user_id,
         )

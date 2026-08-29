@@ -77,6 +77,23 @@ to make the directory tree look symmetrical.
 | `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` owns Agent choice state, callback protocol, bounded WebAgent event publication, display projection, session identity/persistence coordination, temporary attachment registry and audio preparation/transcription; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, frozen user/auth projections, atomic user aggregate commands, per-user configuration publication, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
+### Agent runtime boundaries
+
+| Path | Ownership |
+|---|---|
+| `app/agent/manager.py` | Stable `AgentManager` facade and process singleton identity; no session, lifecycle or scheduled-task implementation |
+| `app/agent/session.py` | Per-session queues, workers, active Agent instances, status projection, cancellation and deferred cleanup |
+| `app/agent/lifecycle.py` | Runtime generation admission, initialization, idle-session collection and bounded manager shutdown |
+| `app/agent/tasks.py` | Background prompts, durable scheduled-task execution and heartbeat wakeups |
+| `app/agent/orchestrator.py` | One `MoviePilotAgent` execution instance: prompt/tool/middleware assembly, model invocation, streaming and per-agent state |
+
+`app.agent.AgentManager` remains the stable plugin-facing import and resolves lazily to
+`app.agent.manager.AgentManager`. Historical symbols formerly imported from
+`app.agent.orchestrator` are preserved only by exact Compat aliases; the physical
+orchestrator must not re-export manager/session implementations. The package root
+uses a reviewed symbol whitelist and must not restore an unbounded `__getattr__`
+forwarder.
+
 Application services may use domain rules and runtime contracts. They own the
 persistence Protocol needed by a use case, but must not import `app.db`,
 SQLAlchemy, Session, Oper classes or concrete adapters. `app/db/adapters/`
@@ -837,6 +854,11 @@ driven workflow registration.
 | `app/application/agent.py` | Agent orchestration facade plus typed `AgentDataContext`; lightweight service providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge or global persistence locator |
 | `app/application/network.py` | Server-owned network-test catalog, public/private DTOs, URL and redirect admission, content validation and the injected HTTPS transport Port |
 | `app/db/adapters/agent.py` | Agent task and plugin-data persistence implementations; ORM values are projected to Application snapshots before Session close |
+| `app/agent/manager.py` | Stable `AgentManager` construction facade and singleton identity |
+| `app/agent/session.py` | Session queue/worker/status/cancellation and deferred-cleanup owner |
+| `app/agent/lifecycle.py` | Agent manager admission, startup, idle collection and bounded shutdown owner |
+| `app/agent/tasks.py` | Background prompt, scheduled task and heartbeat execution owner |
+| `app/agent/orchestrator.py` | Per-session `MoviePilotAgent` execution and LLM/tool/middleware orchestration only |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/application/subscription/contract.py` | Deeply frozen Subscription/History DTOs, media identity, write patch and typed query/write/staging Repository contracts |
 | `app/application/subscription/write.py` | Subscription media translation and sync/async write-command orchestration |
