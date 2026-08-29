@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.adapters.external.market import PluginHelper
+from app.adapters.external.plugin.client import PluginMarketTransport
 
 
 class _PageResponse:
@@ -36,7 +36,7 @@ def _release_payload(size: int, *, offset: int = 0) -> list[dict]:
 @pytest.mark.asyncio
 async def test_sync_and_async_release_pages_share_policy(monkeypatch) -> None:
     """同步与异步分页必须请求相同页并产生相同规范化仓库快照。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
     repo_url = "https://github.com/policy-owner/release-repository"
     responses = [
         _PageResponse(_release_payload(100)),
@@ -57,12 +57,12 @@ async def test_sync_and_async_release_pages_share_policy(monkeypatch) -> None:
 
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__request_with_fallback",
+        "_PluginMarketTransport__request_with_fallback",
         sync_request,
     )
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__async_request_with_fallback",
+        "_PluginMarketTransport__async_request_with_fallback",
         async_request,
     )
 
@@ -102,7 +102,7 @@ def test_release_page_merge_preserves_stop_and_failure_contract(
     """统一分页解析必须区分继续、自然结束和整次仓库读取失败。"""
     releases: list[dict] = []
 
-    result = PluginHelper._merge_plugin_release_page(
+    result = PluginMarketTransport()._merge_plugin_release_page(
         "https://github.com/policy-owner/release-repository",
         response,
         releases,

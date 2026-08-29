@@ -1,17 +1,22 @@
 import asyncio
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from app.adapters.external.market import (
     LOCAL_REPO_PREFIX,
-    VERSION_BACKWARD_COMPATIBLE_FLAGS,
-    PluginHelper,
     configure_installed_plugins_provider,
     configure_plugin_install_gateway,
+)
+from app.adapters.external.plugin.client import (
+    VERSION_BACKWARD_COMPATIBLE_FLAGS,
+    PluginMarketClient,
+    PluginMarketTransport,
+    PluginPackageSourceClient,
     split_plugin_market_repo_urls,
 )
-from app.adapters.external.plugin.client import PluginMarketClient
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.system.host import SystemUtils
 from app.adapters.system.plugin.dependency import PluginDependencyInstaller
@@ -80,13 +85,21 @@ from app.runtime.compat.diagnostics import (
 from app.runtime.compat.resource_imports import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
+from app.runtime.extensions.plugin.runtime import (
+    PluginRuntime,
+    PluginRuntimeEnvironment,
+    PluginRuntimeHost,
+    build_plugin_runtime,
+)
 from app.runtime.extensions.plugin.storage import (
     PluginStorage,
     configure_plugin_storage,
+    get_plugin_storage,
 )
 from app.runtime.extensions.plugin.system import (
     PluginSystemServices,
     configure_plugin_system,
+    get_plugin_system,
 )
 from app.runtime.extensions.plugin_manager import (
     PluginManager,
@@ -94,6 +107,7 @@ from app.runtime.extensions.plugin_manager import (
     configure_plugin_legacy_import_services,
     configure_plugin_resource_import_preparer,
     configure_plugin_route_refresher,
+    configure_plugin_runtime_factory,
     configure_site_auth_level_provider,
 )
 from app.runtime.log import logger
@@ -131,11 +145,36 @@ def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
         )
 
 
+def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
+    """在启动组合根构造插件 Runtime 的完整依赖图。"""
+    return build_plugin_runtime(
+        host,
+        PluginRuntimeEnvironment(
+            plugins_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
+            storage=lambda: get_plugin_storage(),
+            system=lambda: get_plugin_system(),
+            catalog_factory=lambda mapper: _build_plugin_catalog(mapper),
+            import_preparer=_prepare_legacy_plugin_import,
+            import_scanner=scan_plugin_legacy_imports,
+            auth_level=lambda: SitesHelper().auth_level,
+            remote_entry=host.get_plugin_remote_entry,
+            development=lambda: bool(get_runtime_setting('DEV')),
+            logger=logger,
+        ),
+        tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
+    )
+
+
 def configure_plugin_services() -> None:
     """把兼容诊断、远程上报和站点认证等级装配到插件管理器。"""
-    plugin_helper = PluginHelper()
-    market_client = PluginMarketClient(plugin_helper)
-    package_manager = PluginPackageManager(plugin_helper)
+    market_transport = PluginMarketTransport()
+    market_client = PluginMarketClient(market_transport)
+    package_manager = PluginPackageManager(
+        source=PluginPackageSourceClient(market_transport),
+        plugin_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
+    )
+    configure_plugin_catalog_factory(_build_plugin_catalog)
+    configure_plugin_runtime_factory(build_plugin_runtime_graph)
     plugin_manager = get_plugin_manager()
     inventory_reader = PluginCandidateInventoryReader(
         market_loader=market_client.get_plugin_index_result,
@@ -147,7 +186,9 @@ def configure_plugin_services() -> None:
     async def refresh_plugin_releases(plugin_id: str, repo_url: str) -> None:
         """绕过已有 Release 缓存执行后台刷新。"""
         async with async_fresh(True):
-            await plugin_helper.async_get_plugin_release_versions(plugin_id, repo_url)
+            await market_transport.async_get_plugin_release_versions(
+                plugin_id, repo_url
+            )
 
     configure_plugin_release_service(
         PluginReleaseService(
@@ -160,8 +201,8 @@ def configure_plugin_services() -> None:
             compatible_flags=lambda flag: (
                 VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, []) if flag else []
             ),
-            has_release_cache=plugin_helper.async_has_plugin_release_cache,
-            releases=plugin_helper.async_get_plugin_release_versions,
+            has_release_cache=market_transport.async_has_plugin_release_cache,
+            releases=market_transport.async_get_plugin_release_versions,
             refresh_releases=refresh_plugin_releases,
         )
     )
@@ -236,7 +277,7 @@ def configure_plugin_services() -> None:
         inventory=load_inventory,
         identity=persistence.get_identity,
         candidate_compatibility=lambda candidate: (
-            plugin_helper.check_plugin_system_version(candidate.dto)
+            market_transport.check_plugin_system_version(candidate.dto)
         ),
         executor=command,
         clock=lambda: datetime.now(timezone.utc),
@@ -315,13 +356,11 @@ def configure_plugin_services() -> None:
     configure_installed_plugins_provider(
         lambda: get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or []
     )
-    configure_plugin_catalog_factory(_build_plugin_catalog)
     configure_plugin_route_refresher(register_plugin_api)
     configure_plugin_system(PluginSystemServices(
         market=market_client,
         package=package_manager,
         dependency=PluginDependencyInstaller(
-            plugin_helper,
             installed_plugins_provider=lambda: get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
@@ -450,7 +489,7 @@ def _run_plugin_install_sync(
         return False, str(error)
 
 
-def _build_plugin_catalog(manager: PluginManager) -> PluginCatalogService:
+def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogService:
     """在组合根连接目录用例、市场客户端、持久化读取和插件 DTO 映射。"""
     client = PluginMarketClient()
     return PluginCatalogService(
@@ -459,7 +498,7 @@ def _build_plugin_catalog(manager: PluginManager) -> PluginCatalogService:
         installed_plugins_provider=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
-        plugin_mapper=manager._process_plugin_info,
+        plugin_mapper=plugin_mapper,
         is_local_repo=PluginMarketClient.is_local_repo_url,
         version_compare=compare_version,
         warning=logger.warning,
@@ -476,9 +515,9 @@ async def sync_plugins(
     plugin_manager = None
     try:
         loop = main_loop_registry.require()
+        configure_plugin_services()
         plugin_manager = PluginManager()
         with plugin_manager.mutation("启动后同步插件"):
-            configure_plugin_services()
             await get_plugin_identity_migration().migrate()
             installed_plugins = get_configured_system_config().get(
                 SystemConfigKey.UserInstalledPlugins

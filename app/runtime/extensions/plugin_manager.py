@@ -20,37 +20,19 @@ from typing import (
 
 from watchfiles import watch
 
-from app.foundation.crypto import RSAUtils
 from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 from app.foundation.singleton import Singleton
-from app.foundation.version import compare_version
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
-from app.runtime.extensions.plugin.admission import PluginMutationAdmission
-from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
-from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
-    PluginDependencyService,
 )
-from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
-from app.runtime.extensions.plugin.loader import PluginLoader
 from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
-from app.runtime.extensions.plugin.monitor import (
-    PluginChangeMonitor,
-    PluginMonitorController,
-)
-from app.runtime.extensions.plugin.paths import PluginPathResolver
+from app.runtime.extensions.plugin.monitor import PluginChangeMonitor
 from app.runtime.extensions.plugin.projection import PluginProjection
-from app.runtime.extensions.plugin.registry import PluginRegistry
-from app.runtime.extensions.plugin.storage import PluginConfigStore, PluginInstanceStore, get_plugin_storage
-from app.runtime.extensions.plugin.sync import (
-    LocalPluginSyncService,
-    PluginSyncService,
-)
-from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.plugin.runtime import PluginRuntime
 from app.runtime.extensions.plugin.tools import PluginToolCatalog
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
@@ -61,13 +43,14 @@ from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
-from app.schemas.types import EventType, SystemConfigKey
+from app.schemas.types import EventType
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
 LegacyImportScanner = Callable[..., None]
 LegacyPluginImportPreparer = Callable[..., None]
 SiteAuthLevelProvider = Callable[[], int]
-PluginCatalogFactory = Callable[["PluginManager"], Any]
+PluginCatalogFactory = Callable[[Callable[..., Any]], Any]
+PluginRuntimeFactory = Callable[["PluginManager"], PluginRuntime]
 PluginRouteRefresher = Callable[[str], None]
 
 
@@ -84,9 +67,14 @@ def _unavailable_site_auth_level() -> int:
     return 0
 
 
-def _unavailable_plugin_catalog_factory(_manager: "PluginManager") -> Any:
+def _unavailable_plugin_catalog_factory(_mapper: Callable[..., Any]) -> Any:
     """在启动组合根尚未装配目录用例时拒绝隐式跨层构造。"""
     raise RuntimeError("插件目录应用服务尚未由启动组合根装配")
+
+
+def _unavailable_plugin_runtime_factory(_manager: "PluginManager") -> PluginRuntime:
+    """拒绝在启动组合根尚未注入依赖图时隐式构造插件 Runtime。"""
+    raise RuntimeError("插件 Runtime 工厂尚未由启动组合根装配")
 
 
 def _warn_if_plugin_enabled_gil(
@@ -121,6 +109,7 @@ _legacy_plugin_import_preparer: LegacyPluginImportPreparer = (
 )
 _site_auth_level_provider: SiteAuthLevelProvider = _unavailable_site_auth_level
 _plugin_catalog_factory: PluginCatalogFactory = _unavailable_plugin_catalog_factory
+_plugin_runtime_factory: PluginRuntimeFactory = _unavailable_plugin_runtime_factory
 _plugin_route_refresher: PluginRouteRefresher = _unavailable_plugin_route_refresher
 
 
@@ -155,10 +144,29 @@ def configure_plugin_catalog_factory(factory: PluginCatalogFactory) -> None:
     _plugin_catalog_factory = factory
 
 
+def configure_plugin_runtime_factory(factory: PluginRuntimeFactory) -> None:
+    """由启动组合根注入完整插件 Runtime 工厂。"""
+    global _plugin_runtime_factory
+    _plugin_runtime_factory = factory
+
+
+def reset_plugin_runtime_factory() -> None:
+    """恢复未装配工厂，仅供隔离测试清理进程级依赖。"""
+    global _plugin_runtime_factory
+    _plugin_runtime_factory = _unavailable_plugin_runtime_factory
+
+
 def configure_plugin_route_refresher(refresher: PluginRouteRefresher) -> None:
     """由启动组合根注入热重载后的动态路由投影刷新器。"""
     global _plugin_route_refresher
     _plugin_route_refresher = refresher
+
+
+def _resolve_plugin_handler_instance(
+    owner_class: Type[Any],
+) -> Optional[EventHandlerBinding]:
+    """通过当前插件管理器单例解析实例，避免事件总线持有过期对象。"""
+    return PluginManager().resolve_event_handler_instance(owner_class)
 
 
 @observe_compat_facade("PluginManager")
@@ -169,72 +177,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     # 略长于 watchfiles 默认 debounce，吸收包写入完成后才交付的延迟批次。
     MONITOR_SETTLE_SECONDS = 2.0
 
-    def __init__(self):
-        """初始化插件注册表、缓存和开发模式监控状态。"""
-        self._plugin_registry = PluginRegistry()
-        # 旧属性继续引用注册表拥有的可变字典，保持插件和测试的访问身份。
-        self._plugins = self._plugin_registry.classes
-        self._running_plugins = self._plugin_registry.running
-        self._plugin_instance_store = PluginInstanceStore(
-            storage=lambda: get_plugin_storage(),
-        )
-        # 配置Key
-        self._config_key: str = "plugin.%s"
-        self._plugin_config_store = PluginConfigStore(
-            storage=lambda: get_plugin_storage(),
-            plugin_exists=lambda pid: bool(self._plugins.get(pid)),
-            key_prefix=self._config_key,
-        )
-        self._plugin_access = PluginAccessPolicy(
-            auth_level=lambda: _site_auth_level_provider(),
-            verify_keys=RSAUtils.verify_rsa_keys,
-            log=logger,
-        )
-        self._plugin_catalog_view = PluginCatalogFacade(
-            classes=lambda: self._plugins,
-            running=lambda: self._running_plugins,
-            storage=lambda: get_plugin_storage(),
-            system=get_plugin_system,
-            market_catalog=lambda: self._plugin_catalog(),
-            market_loader=lambda market, package_version=None, force=False: (
-                self.get_plugins_from_market(market, package_version, force)
-            ),
-            async_market_loader=lambda market, package_version=None, force=False: (
-                self.async_get_plugins_from_market(market, package_version, force)
-            ),
-            map_plugin=lambda **kwargs: self._process_plugin_info(**kwargs),
-            auth_checker=lambda **kwargs: self.__set_and_check_auth_level(**kwargs),
-            plugin_attr=lambda pid, attr: self.get_plugin_attr(pid, attr),
-            plugin_instance=self.get_plugin_instance,
-            plugin_instances=self.get_plugin_instances,
-            runtime_status=self._plugin_registry.runtime_status,
-            log=logger,
-        )
-        # 本地插件同步写入运行目录后的短时忽略窗口
-        self._recent_local_sync: Dict[str, float] = {}
+    def __init__(self) -> None:
+        """消费组合根注入的唯一 Runtime，并保留旧私有字段的对象身份。"""
         self._monitor_suppression_lock = threading.Lock()
         self._suppressed_monitor_plugins: Dict[str, int] = {}
         self._monitor_suppressed_until: Dict[str, float] = {}
-        self._plugin_paths = PluginPathResolver(
-            runtime_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
-            running=lambda: self._running_plugins,
-            system=get_plugin_system,
-            strict_system_version=lambda: not get_runtime_setting('DEV'),
-            log=logger,
-        )
-        self._local_plugin_sync = LocalPluginSyncService(
-            installed_plugins=lambda: get_plugin_storage().read(
-                SystemConfigKey.UserInstalledPlugins
-            ) or [],
-            candidate=lambda pid: get_plugin_system().local_candidate(pid),
-            system=get_plugin_system,
-            recent_sync=self._recent_local_sync,
-            log=logger,
-        )
-        self._plugin_monitor = PluginMonitorController(
-            runner=self._run_file_watcher,
-            log=logger,
-        )
         self._plugin_quiesce_lock = threading.RLock()
         self._plugin_quiesce_future: Optional[
             concurrent.futures.Future[bool]
@@ -242,106 +189,31 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_service_quiesce_future: Optional[
             concurrent.futures.Future[bool]
         ] = None
-        self._plugin_mutation_admission = PluginMutationAdmission()
         self._plugin_runtime_closed = False
-        self._plugin_dependencies = PluginDependencyService(
-            system=get_plugin_system,
-            log=logger,
-        )
-        self._plugin_loader = PluginLoader(
-            plugins_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
-            import_preparer=lambda **kwargs: _legacy_plugin_import_preparer(**kwargs),
-            import_scanner=lambda **kwargs: _legacy_import_scanner(**kwargs),
-            log=logger,
-        )
-        self._plugin_tool_catalog = PluginToolCatalog(
-            max_attempts=self.AGENT_TOOLS_BUILD_MAX_ATTEMPTS
-        )
-        self._plugin_lifecycle = PluginLifecycle(
-            classes=self._plugins,
-            running=self._running_plugins,
-            load_plugins=lambda pid, installed, check: self._load_runtime_plugins(
-                pid,
-                installed,
-                check,
-            ),
-            installed_plugins=lambda: get_plugin_storage().read(
-                SystemConfigKey.UserInstalledPlugins
-            ) or [],
-            plugin_config=self.get_plugin_config,
-            auth_checker=lambda plugin: self.__set_and_check_auth_level(plugin=plugin),
-            clear_modules=lambda pid: self._clear_plugin_modules(pid),
-            clear_tools=self.clear_plugin_agent_tools_cache,
-            enable_events=eventmanager.enable_event_handler,
-            disable_events=eventmanager.disable_event_handler,
-            runtime_status_writer=self._plugin_registry.set_runtime_status,
-            log=logger,
-            event_sender=eventmanager.send_event,
-        )
-        self._plugin_metadata = PluginMetadataMapper(
-            plugin_instance=self._plugin_registry.instance,
-            plugin_class=self._plugin_registry.plugin_class,
-            annotate_system_version=lambda info: get_plugin_system().annotate_system_version(
-                info
-            ),
-            is_package_compatible=lambda info, version: get_plugin_system().is_package_compatible(
-                info,
-                version,
-            ),
-            auth_checker=lambda plugin, source: self.__set_and_check_auth_level(
-                plugin,
-                source,
-            ),
-            version_compare=compare_version,
-            log=logger,
-        )
-        self._plugin_sync = PluginSyncService(
-            frozen=lambda: get_plugin_system().is_frozen(),
-            installed_plugins=lambda: get_plugin_storage().read(
-                SystemConfigKey.UserInstalledPlugins
-            ) or [],
-            online_plugins=lambda: self.get_online_plugins(),
-            local_plugins=lambda: self.get_local_repo_plugins(),
-            merge_plugins=lambda higher, base, _markets: self.process_plugins_list(
-                higher,
-                base,
-            ),
-            plugin_exists=lambda plugin_id, version: self.is_plugin_exists(
-                plugin_id,
-                version,
-            ),
-            install=lambda plugin_id, repo_url, force, startup_token: get_plugin_system().install_plugin(
-                plugin_id=plugin_id,
-                repo_url=repo_url,
-                force=force,
-                startup_token=startup_token,
-            ),
-            log=logger,
-        )
-        self._plugin_clone = PluginCloneService(
-            plugin_class=self._plugin_registry.plugin_class,
-            plugin_exists=lambda plugin_id: self.is_plugin_exists(plugin_id),
-            source_plugin_id=self.get_plugin_source_id,
-            save_instance=self._plugin_instance_store.save,
-            delete_instance=self._plugin_instance_store.delete,
-            read_config=self.get_plugin_config,
-            save_config=lambda plugin_id, config: self.save_plugin_config(
-                plugin_id,
-                config,
-                force=True,
-            ),
-            delete_config=lambda plugin_id: self.delete_plugin_config(
-                plugin_id,
-                force=True,
-            ),
-            reload_plugin=self.reload_plugin,
-            remove_plugin=self.remove_plugin,
-            log=logger,
-        )
+        self._plugin_runtime = _plugin_runtime_factory(self)
+        self._plugin_registry = self._plugin_runtime.registry
+        self._plugins = self._plugin_registry.classes
+        self._running_plugins = self._plugin_registry.running
+        self._plugin_instance_store = self._plugin_runtime.instances
+        self._plugin_config_store = self._plugin_runtime.configs
+        self._plugin_access = self._plugin_runtime.access
+        self._plugin_catalog_view = self._plugin_runtime.catalog
+        self._recent_local_sync = self._plugin_runtime.recent_local_sync
+        self._plugin_paths = self._plugin_runtime.paths
+        self._local_plugin_sync = self._plugin_runtime.local_sync
+        self._plugin_monitor = self._plugin_runtime.monitor
+        self._plugin_mutation_admission = self._plugin_runtime.admission
+        self._plugin_dependencies = self._plugin_runtime.dependencies
+        self._plugin_loader = self._plugin_runtime.loader
+        self._plugin_tool_catalog = self._plugin_runtime.tools
+        self._plugin_lifecycle = self._plugin_runtime.lifecycle
+        self._plugin_metadata = self._plugin_runtime.metadata
+        self._plugin_sync = self._plugin_runtime.sync
+        self._plugin_clone = self._plugin_runtime.clone
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
-            self.resolve_event_handler_instance,
+            _resolve_plugin_handler_instance,
         )
     def resolve_event_handler_instance(
             self,
@@ -554,47 +426,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_mutation_admission.wait_until_idle()
         return self._plugin_lifecycle.quiesce_handlers()
 
-    @staticmethod
-    def _load_selective_plugins(pid: Optional[str], installed_plugins: List[str],
-                                check_module_func: Callable) -> List[Any]:
-        """
-        选择性加载插件，只import符合条件的插件
-        :param pid: 指定插件ID，为空则加载所有已安装插件
-        :param installed_plugins: 已安装插件列表
-        :param check_module_func: 模块检查函数
-        :return: 插件类列表
-        """
-        return PluginLoader(
-            plugins_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
-            import_preparer=lambda **kwargs: _legacy_plugin_import_preparer(**kwargs),
-            import_scanner=lambda **kwargs: _legacy_import_scanner(**kwargs),
-            log=logger,
-        ).load(pid, installed_plugins, check_module_func)
-
-    def _load_runtime_plugins(
-        self,
-        pid: Optional[str],
-        installed_plugins: List[str],
-        check_module_func: Callable[[Any], bool],
-    ) -> List[Any]:
-        """加载物理插件或虚拟实例，并保留旧选择性加载方法的合同。"""
-        if pid:
-            instance = self._plugin_instance_store.get(pid)
-            if instance:
-                return self._plugin_loader.load_instance(instance, check_module_func)
-            return self._plugin_loader.load(pid, installed_plugins, check_module_func)
-
-        plugins = self._plugin_loader.load(
-            None,
-            installed_plugins,
-            check_module_func,
-        )
-        for instance in self._plugin_instance_store.all().values():
-            plugins.extend(
-                self._plugin_loader.load_instance(instance, check_module_func)
-            )
-        return plugins
-
     @property
     def running_plugins(self) -> Dict[str, Any]:
         """
@@ -660,7 +491,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         PluginChangeMonitor(
             runtime_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
-            local_roots=get_plugin_system().local_repo_paths,
+            local_roots=self._plugin_runtime.system().local_repo_paths,
             stop_event=self._plugin_monitor.stop_event,
             recent_sync=self._recent_local_sync,
             federated_change=self._get_federated_plugin_change,
@@ -670,7 +501,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             sync_local=self._sync_local_plugin_if_installed,
             reload_plugin=self._reload_plugin_tree_from_monitor,
             dependency_manifest_status=(
-                get_plugin_system().dependency_manifest_status
+                self._plugin_runtime.system().dependency_manifest_status
             ),
             watch=watch,
             log=logger,
@@ -773,6 +604,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
 
+    def remove_plugin_package(self, plugin_id: str) -> bool:
+        """把插件物理目录删除委托给唯一包文件事务 owner。"""
+        return self._plugin_runtime.system().remove_plugin_package(plugin_id)
+
     def reload_plugin(self, plugin_id: str) -> PluginRuntimeStatus:
         """
         将一个插件重新加载到内存
@@ -823,20 +658,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             ),
         ]
 
-    @staticmethod
-    def _clear_plugin_modules(plugin_id: Optional[str] = None):
-        """
-        清除插件及其所有子模块的缓存
-        :param plugin_id: 插件ID
-        """
-
-        return PluginLoader(
-            plugins_root=get_runtime_setting('ROOT_PATH') / "app" / "plugins",
-            import_preparer=lambda **kwargs: _legacy_plugin_import_preparer(**kwargs),
-            import_scanner=lambda **kwargs: _legacy_import_scanner(**kwargs),
-            log=logger,
-        ).clear_modules(plugin_id)
-
     def sync(
         self,
         startup_token: object | None = None,
@@ -860,82 +681,32 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         manager = PluginManager()
         with manager.mutation("安装插件依赖"):
-            return PluginDependencyService(
-                system=get_plugin_system,
-                log=logger,
-            ).install_missing()
+            return manager._plugin_dependencies.install_missing()
 
     @staticmethod
     def install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
         """安装插件缺失依赖并返回缺失项及安装成功状态。"""
         manager = PluginManager()
         with manager.mutation("安装插件依赖"):
-            return PluginDependencyService(
-                system=get_plugin_system,
-                log=logger,
-            ).install_missing_with_status()
+            return manager._plugin_dependencies.install_missing_with_status()
 
     @staticmethod
     async def async_install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
         """在异步启动链中恢复插件依赖并保留取消语义。"""
         manager = PluginManager()
         with manager.mutation("安装插件依赖"):
-            return await PluginDependencyService(
-                system=get_plugin_system,
-                log=logger,
-            ).async_install_missing_with_status()
+            return await manager._plugin_dependencies.async_install_missing_with_status()
 
     def classify_plugins(self) -> PluginDependencyClassification:
-        """按源码依赖状态分类物理插件，并把结果映射到虚拟实例。"""
-        source_classification = PluginDependencyService(
-            system=get_plugin_system,
-            log=logger,
-        ).classify_plugins()
-        ready = list(source_classification.ready)
-        missing_dependencies = list(source_classification.missing_dependencies)
-        missing_source = list(source_classification.missing_source)
-        source_ready = set(source_classification.ready)
-        source_pending = set(source_classification.missing_dependencies)
-        for instance in self._plugin_instance_store.all().values():
-            if instance.source_plugin_id in source_ready:
-                ready.append(instance.instance_id)
-            elif instance.source_plugin_id in source_pending:
-                missing_dependencies.append(instance.instance_id)
-            else:
-                missing_source.append(instance.instance_id)
-        return PluginDependencyClassification(
-            ready=tuple(ready),
-            missing_dependencies=tuple(missing_dependencies),
-            missing_source=tuple(missing_source),
-        )
+        """返回依赖 owner 计算的物理插件与虚拟实例分类。"""
+        return self._plugin_dependencies.classify_plugins()
 
     def apply_plugin_dependency_classification(
         self,
         classification: PluginDependencyClassification,
     ) -> None:
-        """把源码和依赖分类写入运行状态，已激活插件保持当前结果。"""
-        running_ids = set(self._plugin_registry.running_ids())
-        for plugin_id in classification.missing_source:
-            self._plugin_registry.set_runtime_status(
-                plugin_id,
-                PluginRuntimeStatus.SOURCE_MISSING,
-            )
-        for plugin_id in classification.missing_dependencies:
-            self._plugin_registry.set_runtime_status(
-                plugin_id,
-                PluginRuntimeStatus.DEPENDENCY_PENDING,
-            )
-        for plugin_id in classification.ready:
-            current_status = self._plugin_registry.runtime_status(plugin_id)
-            if (
-                plugin_id in running_ids
-                and current_status is not PluginRuntimeStatus.DEPENDENCY_PENDING
-            ):
-                continue
-            self._plugin_registry.set_runtime_status(
-                plugin_id,
-                PluginRuntimeStatus.READY,
-            )
+        """把分类结果委托依赖 owner 写入唯一运行状态注册表。"""
+        self._plugin_dependencies.apply_classification(classification)
 
     def set_plugin_settling(self, settling: bool) -> None:
         """更新启动后的插件恢复任务状态。"""
@@ -1063,16 +834,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return plugin.get_state() if plugin else False
 
     def _plugin_projection(self) -> PluginProjection:
-        """构造绑定当前运行态插件注册表的能力投影服务。"""
-        return PluginProjection(
-            self._plugin_registry.running,
-            logger,
-            self.get_plugin_remote_entry,
-        )
+        """返回类型化 Runtime 持有的唯一能力投影。"""
+        return self._plugin_runtime.projection
 
     def _plugin_catalog(self) -> Any:
-        """构造绑定当前市场客户端和插件 DTO 映射器的目录应用服务。"""
-        return _plugin_catalog_factory(self)
+        """兼容旧私有入口，返回绑定唯一元数据 owner 的目录服务。"""
+        return _plugin_catalog_factory(self._plugin_metadata.map)
 
     def get_plugin_commands(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -1478,7 +1245,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         original_plugin_class = self._plugins.get(original_id)
         if not original_plugin_class:
             return False, f"无法获取原插件类 {original_id}"
-        return get_plugin_system().package._modify_plugin_files(
+        return self._plugin_runtime.system().modify_plugin_files(
             plugin_dir=plugin_dir,
             original_class_name=original_plugin_class.__name__,
             suffix=suffix,
@@ -1495,7 +1262,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         兼容旧内部调用，将 Python 文件改写委托给包适配器。
         """
-        return get_plugin_system().package._modify_python_file(
+        return PluginManager()._plugin_runtime.system().modify_python_file(
             file_path=file_path,
             original_class_name=original_class_name,
             clone_class_name=clone_class_name,
@@ -1510,7 +1277,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         兼容旧内部调用，将联邦文件改写委托给包适配器。
         """
-        return get_plugin_system().package._modify_federation_files(
+        return self._plugin_runtime.system().modify_federation_files(
             dist_dir=dist_dir,
             original_class_name=original_class_name,
             clone_class_name=clone_class_name,
@@ -1521,7 +1288,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         兼容旧内部调用，将资源重命名委托给包适配器。
         """
-        get_plugin_system().package._rename_federation_assets(
+        PluginManager()._plugin_runtime.system().rename_federation_assets(
             dist_dir,
             original_class_name,
             clone_class_name,

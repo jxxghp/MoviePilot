@@ -1,15 +1,12 @@
 """插件 Agent 工具共享辅助方法"""
 
 import json
-import shutil
-from pathlib import Path
 from typing import Any, Optional
 
-from app.adapters.external.market import PluginHelper
+from app.adapters.external.plugin.client import is_local_repo_url
 from app.application.configuration import get_configured_system_config
 from app.application.plugin.gateway import get_plugin_install_service
 from app.application.plugin.runtime import get_plugin_manager
-from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 
@@ -21,17 +18,6 @@ PLUGIN_DATA_KEY_PREVIEW_LIMIT = 50
 PLUGIN_DATA_TRUNCATION_SUFFIX = "\n...(插件数据内容过长，已截断)"
 DEFAULT_PLUGIN_CANDIDATE_LIMIT = 50
 MAX_PLUGIN_CANDIDATE_LIMIT = 200
-
-
-def _remove_plugin_directory(path: Path) -> bool:
-    """删除插件目录并返回是否完成，供受控线程执行。"""
-    if not path.exists():
-        return False
-    try:
-        shutil.rmtree(path)
-    except Exception:
-        return False
-    return True
 
 
 def get_plugin_snapshot(plugin_id: str) -> Optional[dict[str, Any]]:
@@ -118,7 +104,7 @@ def summarize_plugin(plugin: Any) -> dict[str, Any]:
         "system_version_message": getattr(plugin, "system_version_message", None),
         "state": bool(getattr(plugin, "state", False)),
         "repo_url": repo_url,
-        "source": "local_repo" if PluginHelper.is_local_repo_url(repo_url) else "market",
+        "source": "local_repo" if is_local_repo_url(repo_url) else "market",
     }
 
 
@@ -394,12 +380,11 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
         elif was_clone:
             plugin_manager.delete_plugin_config(plugin_id)
             plugin_manager.delete_plugin_data(plugin_id)
-            plugin_base_dir = get_runtime_setting('ROOT_PATH') / "app" / "plugins" / plugin_id.lower()
             try:
                 clone_files_removed = await run_agent_blocking(
                     "plugin",
-                    _remove_plugin_directory,
-                    plugin_base_dir,
+                    plugin_manager.remove_plugin_package,
+                    plugin_id,
                 )
                 if clone_files_removed:
                     plugin_manager.plugins.pop(plugin_id, None)

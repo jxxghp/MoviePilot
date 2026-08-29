@@ -74,6 +74,9 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
     ruff = json.loads(
         (BASELINE_ROOT / "ruff-baseline.json").read_text(encoding="utf-8")
     )
+    mypy = json.loads(
+        (BASELINE_ROOT / "mypy-baseline.json").read_text(encoding="utf-8")
+    )
     coverage = json.loads(
         (BASELINE_ROOT / "coverage-baseline.json").read_text(encoding="utf-8")
     )
@@ -97,12 +100,18 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
         for diagnostics in ruff.values()
         for count in diagnostics.values()
     )
+    mypy_count = sum(
+        count
+        for diagnostics in mypy.values()
+        for count in diagnostics.values()
+    )
     application_coverage = coverage["application"]["percent"]
     domain_coverage = coverage["domain"]["percent"]
     event_facts = runtime["event_facts"]
 
     assert edge_count in overview
     assert f"{dependency['module_count']} / {edge_count}" in checklist
+    assert f"全量 mypy 历史债务 | {mypy_count:,} / {len(mypy)} 文件" in checklist
     assert f"Ruff 历史诊断 | {ruff_count}" in checklist
     assert f"Application {application_coverage:.2f}%" in checklist
     assert f"Domain {domain_coverage:.2f}%" in checklist

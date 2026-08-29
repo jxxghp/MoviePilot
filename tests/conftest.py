@@ -207,15 +207,53 @@ def configure_plugin_system_services():
     from app.application.plugin.runtime import configure_plugin_runtime
     from app.runtime.cache import AsyncFileCache, FileCache
     from app.runtime.events import EventManager
+    from app.runtime.extensions import plugin_manager as plugin_manager_module
     from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
     from app.runtime.extensions.module_manager import ModuleManager
-    from app.runtime.extensions.plugin_manager import PluginManager
+    from app.runtime.extensions.plugin.runtime import (
+        PluginRuntimeEnvironment,
+        build_plugin_runtime,
+    )
+    from app.runtime.extensions.plugin.storage import get_plugin_storage
+    from app.runtime.extensions.plugin.system import get_plugin_system
+    from app.runtime.extensions.plugin_manager import (
+        PluginManager,
+        reset_plugin_runtime_factory,
+    )
     from app.runtime.extensions.service_config import ServiceConfigHelper
 
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
     )
+    def build_test_plugin_runtime(host):
+        """在 pytest 组合根装配直接构造 Manager 所需的隔离 Runtime。"""
+        return build_plugin_runtime(
+            host,
+            PluginRuntimeEnvironment(
+                plugins_root=settings.ROOT_PATH / "app" / "plugins",
+                storage=get_plugin_storage,
+                system=get_plugin_system,
+                catalog_factory=lambda mapper: (
+                    plugin_manager_module._plugin_catalog_factory(mapper)
+                ),
+                import_preparer=lambda **kwargs: (
+                    plugin_manager_module._legacy_plugin_import_preparer(**kwargs)
+                ),
+                import_scanner=lambda **kwargs: (
+                    plugin_manager_module._legacy_import_scanner(**kwargs)
+                ),
+                auth_level=lambda: plugin_manager_module._site_auth_level_provider(),
+                remote_entry=host.get_plugin_remote_entry,
+                development=lambda: bool(
+                    plugin_manager_module.get_runtime_setting('DEV')
+                ),
+                logger=plugin_manager_module.logger,
+            ),
+            tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
+        )
+
+    plugin_manager_module.configure_plugin_runtime_factory(build_test_plugin_runtime)
     configure_plugin_runtime(lambda: PluginManager())
     configure_module_runtime(lambda: ModuleManager())
     from app.application.site.health import SiteHealthService, configure_site_health_service
@@ -440,11 +478,12 @@ def configure_plugin_system_services():
 
     moviepilot_tool_manager.set_data_context(agent_data_context)
     Scheduler().configure_agent_tasks(agent_task_repository)
-    from app.adapters.external.market import (
+    from app.adapters.external.plugin.client import (
         VERSION_BACKWARD_COMPATIBLE_FLAGS,
-        PluginHelper,
+        PluginMarketClient,
+        PluginMarketTransport,
+        PluginPackageSourceClient,
     )
-    from app.adapters.external.plugin.client import PluginMarketClient
     from app.adapters.system.plugin.dependency import PluginDependencyInstaller
     from app.adapters.system.plugin.manifest import dependency_manifest_status
     from app.adapters.system.plugin.package import PluginPackageManager
@@ -454,12 +493,14 @@ def configure_plugin_system_services():
         reset_plugin_system,
     )
 
-    helper = PluginHelper()
+    market_transport = PluginMarketTransport()
     configure_plugin_system(
         PluginSystemServices(
-            market=PluginMarketClient(helper),
-            package=PluginPackageManager(helper),
-            dependency=PluginDependencyInstaller(helper),
+            market=PluginMarketClient(market_transport),
+            package=PluginPackageManager(
+                source=PluginPackageSourceClient(market_transport),
+            ),
+            dependency=PluginDependencyInstaller(),
             dependency_manifest_status=dependency_manifest_status,
             compatible_flags=lambda flag: [flag] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, []) if flag else [],
             frozen=lambda: False,
@@ -477,6 +518,7 @@ def configure_plugin_system_services():
     reset_chain_network_ports()
     reset_chain_ports()
     reset_plugin_system()
+    reset_plugin_runtime_factory()
 
 
 class DbHarness:

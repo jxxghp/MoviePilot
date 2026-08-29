@@ -347,7 +347,6 @@ async def stop_task_registry(app: FastAPI) -> bool:
 
 async def prepare_plugin_restore() -> None:
     """先恢复未完成安装事务，再加载持久插件备份及其依赖。"""
-    configure_plugin_services()
     await get_plugin_installation_recovery().replay()
     await run_in_threadpool_to_completion(SystemChain().restore_plugins)
 
@@ -470,9 +469,17 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             start_timeout_seconds=30,
         ),
         LifecycleComponent(
+            name="插件服务装配",
+            dependencies=("路由",),
+            start=configure_plugin_services,
+            start_order=65,
+            start_timeout_seconds=30,
+        ),
+        LifecycleComponent(
             name="模块服务",
             dependencies=(
                 "路由",
+                "插件服务装配",
                 "站点访问端口",
                 "Chain 外部端口",
                 "Chain 网络端口",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 
 class PluginSystemServices:
@@ -89,6 +89,38 @@ class PluginSystemServices:
             local_sync=local_sync,
             explicit_source=explicit_source,
             startup_token=startup_token,
+        )
+
+    def remove_plugin_package(self, plugin_id: str) -> bool:
+        """通过唯一包事务 owner 删除插件物理目录。"""
+        return bool(self.package.remove_plugin(plugin_id))
+
+    def modify_plugin_files(self, **kwargs: Any) -> tuple[bool, str]:
+        """把旧分身源码改写调用收口到唯一包适配器。"""
+        return cast(tuple[bool, str], self.package._modify_plugin_files(**kwargs))
+
+    def modify_python_file(self, **kwargs: Any) -> tuple[bool, str]:
+        """把旧 Python 类改写调用收口到唯一包适配器。"""
+        return cast(tuple[bool, str], self.package._modify_python_file(**kwargs))
+
+    def modify_federation_files(self, **kwargs: Any) -> tuple[bool, str]:
+        """把旧联邦构建产物改写调用收口到唯一包适配器。"""
+        return cast(
+            tuple[bool, str],
+            self.package._modify_federation_files(**kwargs),
+        )
+
+    def rename_federation_assets(
+        self,
+        dist_dir: Path,
+        original_class_name: str,
+        clone_class_name: str,
+    ) -> None:
+        """把旧联邦资源重命名调用收口到唯一包适配器。"""
+        self.package._rename_federation_assets(
+            dist_dir,
+            original_class_name,
+            clone_class_name,
         )
 
 

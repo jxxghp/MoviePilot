@@ -4,8 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.adapters.external.market import PluginHelper
-from app.adapters.external.plugin.client import PluginMarketClient
+from app.adapters.external.plugin.client import PluginMarketClient, PluginMarketTransport
 
 
 @pytest.mark.asyncio
@@ -13,7 +12,7 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
     monkeypatch,
 ) -> None:
     """同步与异步索引读取必须使用同一请求计划并返回相同三态结果。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
     repo_url = "https://github.com/policy-owner/policy-repository"
     response = SimpleNamespace(
         status_code=200,
@@ -34,12 +33,12 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
 
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__request_with_fallback",
+        "_PluginMarketTransport__request_with_fallback",
         sync_request,
     )
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__async_request_with_fallback",
+        "_PluginMarketTransport__async_request_with_fallback",
         async_request,
     )
 
@@ -63,7 +62,7 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
 @pytest.mark.asyncio
 async def test_market_read_warms_source_inventory_cache(monkeypatch) -> None:
     """市场目录成功读取后，来源库存不得再次请求同一仓库代际。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
     repo_url = "https://github.com/policy-owner/shared-index-cache"
     requests = 0
 
@@ -77,7 +76,7 @@ async def test_market_read_warms_source_inventory_cache(monkeypatch) -> None:
 
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__async_request_with_fallback",
+        "_PluginMarketTransport__async_request_with_fallback",
         request,
     )
     await helper.async_get_plugin_index_result.cache_clear()
@@ -93,7 +92,7 @@ def test_sync_force_refresh_bypasses_index_cache(
     monkeypatch,
 ) -> None:
     """同步强刷必须绕过唯一索引缓存。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
     client = PluginMarketClient(helper)
     repo_url = "https://github.com/policy-owner/sync-force-refresh"
     version = "1.0.0"
@@ -109,7 +108,7 @@ def test_sync_force_refresh_bypasses_index_cache(
 
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__request_with_fallback",
+        "_PluginMarketTransport__request_with_fallback",
         request,
     )
     helper.get_plugin_index_result.cache_clear()
@@ -134,7 +133,7 @@ async def test_async_force_refresh_bypasses_index_cache(
     monkeypatch,
 ) -> None:
     """异步强刷必须绕过唯一索引缓存。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
     client = PluginMarketClient(helper)
     repo_url = "https://github.com/policy-owner/async-force-refresh"
     version = "1.0.0"
@@ -150,7 +149,7 @@ async def test_async_force_refresh_bypasses_index_cache(
 
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__async_request_with_fallback",
+        "_PluginMarketTransport__async_request_with_fallback",
         request,
     )
     await helper.async_get_plugin_index_result.cache_clear()
@@ -173,7 +172,7 @@ async def test_async_force_refresh_bypasses_index_cache(
 @pytest.mark.asyncio
 async def test_absent_plugin_generation_is_cached(monkeypatch) -> None:
     """明确不存在的代际是稳定事实，后续来源检查不得重复请求。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
     repo_url = "https://github.com/policy-owner/absent-index-cache"
     requests = 0
 
@@ -184,7 +183,7 @@ async def test_absent_plugin_generation_is_cached(monkeypatch) -> None:
 
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__async_request_with_fallback",
+        "_PluginMarketTransport__async_request_with_fallback",
         request,
     )
     await helper.async_get_plugin_index_result.cache_clear()
@@ -201,7 +200,7 @@ async def test_index_cache_retains_multi_market_generation_working_set(
     monkeypatch,
 ) -> None:
     """数十个市场的多代索引不能因缓存容量不足立即重复出站。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
     requests = 0
 
     async def request(_url: str, *, headers: dict):
@@ -211,7 +210,7 @@ async def test_index_cache_retains_multi_market_generation_working_set(
 
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__async_request_with_fallback",
+        "_PluginMarketTransport__async_request_with_fallback",
         request,
     )
     await helper.async_get_plugin_index_result.cache_clear()
@@ -244,7 +243,7 @@ def test_plugin_index_response_preserves_status_contract(
     expected: dict | None,
 ) -> None:
     """统一响应解析必须保留 404 空索引、失败和有效字典的既有区别。"""
-    result = PluginHelper._resolve_plugin_index_response(status_code, content)
+    result = PluginMarketTransport()._resolve_plugin_index_response(status_code, content)
 
     assert result == expected
 
@@ -263,13 +262,13 @@ def test_plugin_index_result_preserves_read_state(
     expected: dict | None,
 ) -> None:
     """只读入口以值和 None 区分真实索引与确定不存在。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
     repo_url = f"https://github.com/policy-owner/policy-repository-{status_code}"
 
     def request(_url: str, *, headers: dict):
         return SimpleNamespace(status_code=status_code, text=content)
 
-    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    monkeypatch.setattr(helper, "_PluginMarketTransport__request_with_fallback", request)
     helper.get_plugin_index_result.cache_clear()
 
     result = helper.get_plugin_index_result(repo_url, "v3")
@@ -291,12 +290,12 @@ def test_plugin_index_result_raises_for_unusable_reads(
     message: str,
 ) -> None:
     """不可判定读取必须抛错，由应用库存统一记录失败事实。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
 
     def request(_url: str, *, headers: dict):
         return SimpleNamespace(status_code=status_code, text=content)
 
-    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    monkeypatch.setattr(helper, "_PluginMarketTransport__request_with_fallback", request)
     helper.get_plugin_index_result.cache_clear()
 
     with pytest.raises(RuntimeError, match=message):
@@ -309,14 +308,14 @@ def test_plugin_index_result_raises_for_unusable_reads(
 @pytest.mark.asyncio
 async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> None:
     """异步只读入口也必须保留 404 不存在事实。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
 
     async def request(_url: str, *, headers: dict):
         return SimpleNamespace(status_code=404, text="404: Not Found")
 
     monkeypatch.setattr(
         helper,
-        "_PluginHelper__async_request_with_fallback",
+        "_PluginMarketTransport__async_request_with_fallback",
         request,
     )
     await helper.async_get_plugin_index_result.cache_clear()
@@ -331,12 +330,12 @@ async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> 
 
 def test_plugin_index_result_propagates_adapter_exception(monkeypatch) -> None:
     """请求异常必须传播给应用库存统一转换为失败事实。"""
-    helper = PluginHelper()
+    helper = PluginMarketTransport()
 
     def request(_url: str, *, headers: dict):
         raise OSError("socket closed")
 
-    monkeypatch.setattr(helper, "_PluginHelper__request_with_fallback", request)
+    monkeypatch.setattr(helper, "_PluginMarketTransport__request_with_fallback", request)
     helper.get_plugin_index_result.cache_clear()
 
     with pytest.raises(OSError, match="socket closed"):

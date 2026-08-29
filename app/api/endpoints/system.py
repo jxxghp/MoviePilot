@@ -16,7 +16,7 @@ from anyio import Path as AsyncPath
 from fastapi import Body, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
-from app.adapters.external.market import (
+from app.adapters.external.plugin.client import (
     PLUGIN_MARKET_WIKI_URL,
     extract_plugin_market_repos_from_wiki,
     merge_plugin_market_repos,

@@ -20,6 +20,7 @@ from app.application.plugin.source import (
     PluginMarketCandidate,
     normalize_package_generation,
 )
+from app.domain.plugin import is_plugin_generation_compatible
 from app.foundation.environment import is_free_threaded_runtime
 
 PLUGIN_V3_GENERATIONS = ("v3", "v2", "v1")
@@ -353,7 +354,12 @@ def _market_candidates(
         plugin_id = raw_info.get("id") or index_plugin_id
         if not isinstance(plugin_id, str):
             continue
-        if not _is_v3_compatible(raw_info, package_generation):
+        if not is_plugin_generation_compatible(
+            dict(raw_info),
+            None if package_generation == "v1" else package_generation,
+            current_generation="v3",
+            free_threaded=is_free_threaded_runtime(),
+        ):
             continue
         plugin_version = raw_info.get("version")
         if plugin_version is None:
@@ -377,20 +383,6 @@ def _market_candidates(
     return tuple(result)
 
 
-def _is_v3_compatible(
-    plugin_info: Mapping[str, Any],
-    package_generation: str,
-) -> bool:
-    """按宿主 V3、兼容 V2、基础索引顺序判断候选兼容性。"""
-    if plugin_info.get("v3") is False:
-        return False
-    if is_free_threaded_runtime() and plugin_info.get("v3t") is False:
-        return False
-    if package_generation in {"v3", "v2"}:
-        return True
-    return plugin_info.get("v3") is True or plugin_info.get("v2") is True
-
-
 def _local_candidate(
     plugin_id: str,
     plugin_info: Mapping[str, Any],
@@ -403,7 +395,12 @@ def _local_candidate(
             or "v1"
         )
     )
-    if not _is_v3_compatible(plugin_info, generation):
+    if not is_plugin_generation_compatible(
+        dict(plugin_info),
+        None if generation == "v1" else generation,
+        current_generation="v3",
+        free_threaded=is_free_threaded_runtime(),
+    ):
         return None
     repo_url = plugin_info.get("repo_url")
     if not isinstance(repo_url, str) or not repo_url.startswith("local://"):

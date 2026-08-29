@@ -70,8 +70,8 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.doctor.checks", "urllib.request"),
     },
     "type_or_compat_only": {
-        ("app.adapters.external.market", "httpx2"),
-        ("app.adapters.external.market", "requests"),
+        ("app.adapters.external.plugin.client", "httpx2"),
+        ("app.adapters.external.plugin.client", "requests"),
         ("app.modules.emby.emby", "requests"),
         ("app.modules.filemanager.storages.smb", "smbprotocol"),
         ("app.modules.jellyfin.jellyfin", "requests"),
@@ -94,8 +94,8 @@ FROZEN_EGRESS_REASON_BY_EDGE = {
 }
 FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.cache.redis", "redis"): "49f0b28ef731b25aa772d6887febd762d03b981a1f52d6dfc8dff82f2f489f81",
-    ("app.adapters.external.market", "httpx2"): "d4a648e8188818c0465013fc63cc3e49899da4df38541344303c251896564b1f",
-    ("app.adapters.external.market", "requests"): "ecc5368adfced20741e5ed8696008ea7555a4a81ceda6d7149e09f5f3d0ff7e3",
+    ("app.adapters.external.plugin.client", "httpx2"): "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d",
+    ("app.adapters.external.plugin.client", "requests"): "b5239e7eee9c23569b7fec66791e56bcc226db86a8d09ee7fc58d3ba8bc14f09",
     ("app.adapters.network.browser", "cloakbrowser"): "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173",
     ("app.adapters.network.doh", "socket.getaddrinfo"): "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
     ("app.adapters.network.doh", "urllib.request"): "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",

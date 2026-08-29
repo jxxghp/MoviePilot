@@ -22,27 +22,8 @@
   "app/adapters/external/location.py": {
     "no-untyped-def": 3
   },
-  "app/adapters/external/market.py": {
-    "arg-type": 3,
-    "assignment": 3,
-    "attr-defined": 4,
-    "import-untyped": 1,
-    "misc": 2,
-    "no-any-return": 8,
-    "no-untyped-call": 6,
-    "no-untyped-def": 10,
-    "operator": 1,
-    "return-value": 6,
-    "type-arg": 41,
-    "union-attr": 2,
-    "var-annotated": 5
-  },
   "app/adapters/external/ocr.py": {
     "arg-type": 1
-  },
-  "app/adapters/external/plugin/client.py": {
-    "arg-type": 1,
-    "type-arg": 6
   },
   "app/adapters/external/server.py": {
     "arg-type": 5,
@@ -112,9 +93,6 @@
     "operator": 1,
     "type-arg": 5,
     "var-annotated": 1
-  },
-  "app/adapters/system/plugin/dependency.py": {
-    "no-any-return": 3
   },
   "app/adapters/system/resource.py": {
     "no-untyped-call": 1,
@@ -3111,13 +3089,11 @@
     "type-arg": 4
   },
   "app/runtime/extensions/plugin_manager.py": {
-    "arg-type": 2,
     "assignment": 8,
     "attr-defined": 1,
-    "no-any-return": 3,
-    "no-untyped-call": 4,
-    "no-untyped-def": 14,
-    "type-arg": 11
+    "no-untyped-call": 1,
+    "no-untyped-def": 12,
+    "type-arg": 10
   },
   "app/runtime/extensions/service_config.py": {
     "type-arg": 2
@@ -3324,14 +3300,14 @@
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
-    "no-untyped-call": 30,
+    "no-untyped-call": 28,
     "no-untyped-def": 6,
     "return-value": 3
   },
   "app/startup/initializers/plugins.py": {
     "arg-type": 5,
     "no-any-return": 2,
-    "no-untyped-call": 4,
+    "no-untyped-call": 2,
     "no-untyped-def": 5
   },
   "app/startup/initializers/routers.py": {

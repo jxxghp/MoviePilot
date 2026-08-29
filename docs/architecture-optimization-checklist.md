@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 947 / 8,038 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 950 / 8,075 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,9 +78,9 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,686 / 597 文件 | strict frontier 当前覆盖 41 个文件，Media 同名包及受益调用方低水位已固化 |
-| Ruff 历史诊断 | 657 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 80.75%，Domain 79.32% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 全量 mypy 历史债务 | 10,496 / 594 文件 | strict frontier 当前覆盖 41 个文件，Plugin owner 拆分及受益调用方低水位已固化 |
+| Ruff 历史诊断 | 654 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 覆盖率低水位 | Application 80.92%，Domain 79.87% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -89,7 +89,10 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `app/chain/subscribe/`（已治理） | Facade 91 行 | 搜索、匹配、刷新、完成、规则引用与通知已拆至单一 owner；原 3,895 行单文件已删除 |
 | `app/agent/orchestrator.py` | 3,678 | 会话、运行、流式输出、工具、任务与 Manager |
 | `app/agent/llm/provider.py` | 3,528 | provider 目录、认证、模型发现、配置和运行时构建 |
-| `app/adapters/external/market.py` | 3,488 | 插件市场、包下载、依赖、备份恢复、健康和兼容入口 |
+| `app/adapters/external/market.py`（已治理） | Facade 226 行 | `PluginHelper` 只保留精确旧 ABI、安装 Gateway 及 owner 委托 |
+| `app/adapters/external/plugin/client.py` | 1,600 | 插件市场传输、索引、Release 与本地仓候选查询 |
+| `app/adapters/system/plugin/package.py` | 2,324 | 插件安装、checkpoint、备份、恢复和物理删除事务 |
+| `app/adapters/system/plugin/health.py` | 1,060 | 插件运行环境保护、安装前后检查与故障恢复 |
 | `app/chain/transfer/`（已治理） | Facade 82 行 | 队列/恢复、规划、执行、结算、历史/通知已拆至单一 owner；旧 `transfer.py` 与 `_transfer.py` 已删除 |
 | `app/chain/search.py` | 2,970 | 搜索计划、并发 fan-out、状态、分页和结果处理 |
 | `app/api/endpoints/agent.py` | 2,346 | HTTP/SSE、文件/音频、Agent 会话和事件编排 |

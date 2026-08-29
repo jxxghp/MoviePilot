@@ -3,9 +3,11 @@
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
+from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.system import PluginSystemServices
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 
 
 @dataclass(frozen=True)
@@ -32,10 +34,14 @@ class PluginDependencyService:
         self,
         *,
         system: Callable[[], PluginSystemServices],
+        instances: Optional[Callable[[], dict[str, PluginInstance]]] = None,
+        registry: Optional[PluginRegistry] = None,
         log: Any,
     ) -> None:
-        """保存插件系统适配器和日志端口。"""
+        """保存插件系统、虚拟实例和运行状态端口。"""
         self._system = system
+        self._instances = instances or (lambda: {})
+        self._registry = registry
         self._logger = log
 
     def install_missing_with_status(self) -> PluginDependencyInstallResult:
@@ -85,12 +91,54 @@ class PluginDependencyService:
         return PluginDependencyInstallResult(missing=missing, success=success)
 
     def classify_plugins(self) -> PluginDependencyClassification:
-        """返回启动编排使用的轻量插件分类。"""
+        """分类物理插件，并把源码结论映射到全部虚拟实例。"""
         ready, missing_dependencies, missing_source = (
             self._system().dependency.classify_plugins()
         )
+        ready = list(ready)
+        missing_dependencies = list(missing_dependencies)
+        missing_source = list(missing_source)
+        source_ready = set(ready)
+        source_pending = set(missing_dependencies)
+        for instance in self._instances().values():
+            if instance.source_plugin_id in source_ready:
+                ready.append(instance.instance_id)
+            elif instance.source_plugin_id in source_pending:
+                missing_dependencies.append(instance.instance_id)
+            else:
+                missing_source.append(instance.instance_id)
         return PluginDependencyClassification(
             ready=tuple(ready),
             missing_dependencies=tuple(missing_dependencies),
             missing_source=tuple(missing_source),
         )
+
+    def apply_classification(
+        self,
+        classification: PluginDependencyClassification,
+    ) -> None:
+        """把依赖分类写入唯一注册表，已激活插件保持当前状态。"""
+        if self._registry is None:
+            raise RuntimeError("插件依赖状态注册表尚未装配")
+        running_ids = set(self._registry.running_ids())
+        for plugin_id in classification.missing_source:
+            self._registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.SOURCE_MISSING,
+            )
+        for plugin_id in classification.missing_dependencies:
+            self._registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.DEPENDENCY_PENDING,
+            )
+        for plugin_id in classification.ready:
+            current_status = self._registry.runtime_status(plugin_id)
+            if (
+                plugin_id in running_ids
+                and current_status is not PluginRuntimeStatus.DEPENDENCY_PENDING
+            ):
+                continue
+            self._registry.set_runtime_status(
+                plugin_id,
+                PluginRuntimeStatus.READY,
+            )

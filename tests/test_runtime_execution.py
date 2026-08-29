@@ -1,7 +1,7 @@
 """运行时同步 worker 的取消与容量合同回归。"""
 
-import asyncio
 import ast
+import asyncio
 import json
 import subprocess
 import sys
@@ -11,13 +11,11 @@ from pathlib import Path
 import pytest
 from anyio.to_thread import current_default_thread_limiter
 
-from app.adapters.external import market as market_adapter
 from app.adapters.system.plugin import package as plugin_package_adapter
 from app.runtime.execution import (
     await_task_to_terminal,
     run_in_threadpool_to_completion,
 )
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -81,8 +79,7 @@ print(json.dumps(observed))
 
 
 def test_plugin_file_adapters_share_runtime_completion_contract() -> None:
-    """市场与插件包适配器不得各自维护另一套线程取消实现。"""
-    assert market_adapter._await_thread_operation is run_in_threadpool_to_completion
+    """插件包文件适配器不得维护另一套线程取消实现。"""
     assert (
         plugin_package_adapter._await_thread_operation
         is run_in_threadpool_to_completion

@@ -1378,6 +1378,19 @@
         "response_model": null
       }
     ],
+    "plugins.v2/iqiyidiscover/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "iqiyi_discover",
+        "endpoint_return": "List[schemas.MediaInfo]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/iqiyi_discover",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
     "plugins.v2/lexiannot/__init__.py": [
       {
         "auth": null,
@@ -2892,7 +2905,7 @@
       ]
     },
     "get_api": {
-      "file_count": 117,
+      "file_count": 118,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -2925,6 +2938,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -3018,7 +3032,7 @@
       "files": []
     },
     "get_command": {
-      "file_count": 115,
+      "file_count": 116,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3050,6 +3064,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -3156,7 +3171,7 @@
       ]
     },
     "get_form": {
-      "file_count": 117,
+      "file_count": 118,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3189,6 +3204,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -3289,7 +3305,7 @@
       ]
     },
     "get_page": {
-      "file_count": 117,
+      "file_count": 118,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3322,6 +3338,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -3496,7 +3513,7 @@
       "files": []
     },
     "get_state": {
-      "file_count": 119,
+      "file_count": 120,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3530,6 +3547,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -3620,7 +3638,7 @@
       ]
     },
     "init_plugin": {
-      "file_count": 117,
+      "file_count": 118,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3653,6 +3671,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -3742,7 +3761,7 @@
       ]
     },
     "stop_service": {
-      "file_count": 117,
+      "file_count": 118,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -3775,6 +3794,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -4109,7 +4129,7 @@
       ]
     },
     "app.core.cache": {
-      "file_count": 9,
+      "file_count": 10,
       "files": [
         "plugins.v2/clashruleprovider/services.py",
         "plugins.v2/clashruleprovider/state.py",
@@ -4117,13 +4137,14 @@
         "plugins.v2/imdbsource/imdbapi.py",
         "plugins.v2/imdbsource/imdbhelper.py",
         "plugins.v2/imdbsource/officialapi.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/lexiannot/spacyworker.py",
         "plugins.v2/mediaservermsg/__init__.py"
       ]
     },
     "app.core.config": {
-      "file_count": 84,
+      "file_count": 85,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
@@ -4173,6 +4194,7 @@
         "plugins.v2/imdbsource/imdbapi.py",
         "plugins.v2/imdbsource/imdbhelper.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -4235,7 +4257,7 @@
       ]
     },
     "app.core.event": {
-      "file_count": 63,
+      "file_count": 64,
       "files": [
         "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4260,6 +4282,7 @@
         "plugins.v2/fullscreenposterwall/__init__.py",
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/mediaservermsg/__init__.py",
@@ -4695,7 +4718,7 @@
       ]
     },
     "app.log": {
-      "file_count": 128,
+      "file_count": 129,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -4758,6 +4781,7 @@
         "plugins.v2/imdbsource/imdbhelper.py",
         "plugins.v2/imdbsource/officialapi.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/lexiannot/pipeline.py",
@@ -4903,7 +4927,7 @@
       ]
     },
     "app.plugins": {
-      "file_count": 117,
+      "file_count": 118,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -4936,6 +4960,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
@@ -5134,7 +5159,7 @@
       ]
     },
     "app.schemas": {
-      "file_count": 56,
+      "file_count": 57,
       "files": [
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/blurayremux/__init__.py",
@@ -5152,6 +5177,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/lexiannot/pipeline.py",
@@ -5213,7 +5239,7 @@
       ]
     },
     "app.schemas.types": {
-      "file_count": 95,
+      "file_count": 96,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -5243,6 +5269,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/imdbsource/imdbhelper.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/lexiannot/pipeline.py",
@@ -5509,7 +5536,7 @@
       ]
     },
     "app.utils.http": {
-      "file_count": 62,
+      "file_count": 63,
       "files": [
         "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/animeupscale/__init__.py",
@@ -5544,6 +5571,7 @@
         "plugins.v2/imdbsource/imdbhelper.py",
         "plugins.v2/imdbsource/officialapi.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/iyuuautoseed/iyuu_helper.py",
         "plugins.v2/lexiannot/__init__.py",
@@ -5677,9 +5705,9 @@
     }
   },
   "provenance": {
-    "head": "aa40b961a2093474a77edd9eed88844ff07425ac",
-    "python_file_count": 284,
-    "source_sha256": "c9621ee326c82a47f7c79725249b8adb3cf5176d604e868547a913e6cd77c5cb"
+    "head": "d5a786882cd83060f8acc6b42f710f00e48a99d4",
+    "python_file_count": 285,
+    "source_sha256": "3a47cb221cbcc48c92aaa05838a98d23a13b66d9c3742cac73b1233d88d23fde"
   },
   "schema_version": 3,
   "scope": {

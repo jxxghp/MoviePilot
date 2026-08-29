@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.adapters.external import market
-from app.adapters.external.market import PluginHelper
+from app.adapters.external.plugin import client as client_module
+from app.adapters.external.plugin.client import PluginMarketTransport
 
 
 @pytest.mark.parametrize(
@@ -25,12 +25,12 @@ def test_package_version_candidates_have_one_canonical_order(
     """显式版本、向后兼容版本和基础索引必须由一个有序事实源产生。"""
     runtime_settings = SimpleNamespace(VERSION_FLAG=configured_version)
     monkeypatch.setattr(
-        market,
+        client_module,
         "get_runtime_setting",
         lambda key, default=None: getattr(runtime_settings, key, default),
     )
 
-    assert PluginHelper._package_version_candidates(requested_version) == expected
+    assert PluginMarketTransport._package_version_candidates(requested_version) == expected
 
 
 @pytest.mark.asyncio
@@ -40,11 +40,11 @@ async def test_sync_and_async_package_resolution_visit_same_candidates(
     """同步与异步安装必须按相同顺序停止在首个兼容插件索引。"""
     runtime_settings = SimpleNamespace(VERSION_FLAG="v3")
     monkeypatch.setattr(
-        market,
+        client_module,
         "get_runtime_setting",
         lambda key, default=None: getattr(runtime_settings, key, default),
     )
-    helper = PluginHelper.__new__(PluginHelper)
+    transport = PluginMarketTransport()
     indexes = {
         "v3": {},
         "v2": {"CompatiblePlugin": {"version": "1.0.0"}},
@@ -66,14 +66,14 @@ async def test_sync_and_async_package_resolution_visit_same_candidates(
         async_candidates.append(package_version)
         return indexes[package_version]
 
-    monkeypatch.setattr(helper, "get_plugins", get_plugins)
-    monkeypatch.setattr(helper, "async_get_plugins", async_get_plugins)
+    monkeypatch.setattr(transport, "get_plugins", get_plugins)
+    monkeypatch.setattr(transport, "async_get_plugins", async_get_plugins)
 
-    sync_result = helper.get_plugin_package_version(
+    sync_result = transport.get_plugin_package_version(
         "CompatiblePlugin",
         "https://github.com/example/plugins",
     )
-    async_result = await helper.async_get_plugin_package_version(
+    async_result = await transport.async_get_plugin_package_version(
         "CompatiblePlugin",
         "https://github.com/example/plugins",
     )

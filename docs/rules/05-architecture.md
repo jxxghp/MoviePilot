@@ -218,8 +218,8 @@ not a second application-facing service directory.
 | `app/adapters/external/` | CookieCloud, plugin market, OCR, IP-location providers and MoviePilot Server |
 | `app/adapters/web/` | FastAPI-specific technical adapters, including raw dynamic plugin routes |
 | `app/adapters/observability/` | Optional telemetry exporters; core code depends only on runtime observation ports |
-| `app/adapters/external/plugin/client.py` | Read-only plugin-market and local-repository client over the established `PluginHelper` implementation |
-| `app/adapters/system/plugin/` | Plugin package and dependency I/O (`package.py`, `dependency.py`) |
+| `app/adapters/external/plugin/client.py` | Plugin-market transport, index/release queries and local-repository candidate resolution; `PluginHelper` is only the stable compatibility facade that delegates here |
+| `app/adapters/system/plugin/` | Plugin package, dependency and health I/O (`package.py`, `dependency.py`, `health.py`); `PluginPackageManager` is the unique physical package mutation owner |
 | `app/db/adapters/` | SQLAlchemy implementations of Application-owned persistence Protocols |
 
 Generic protocol transport belongs in `adapters/network`; a named product or
@@ -878,7 +878,11 @@ driven workflow registration.
 | `app/application/chain/context.py` | Injectable Chain dependencies, no-argument compatibility provider and legacy Transfer command Port |
 | `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
 | `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
-| `app/runtime/extensions/plugin_manager.py` | Plugin discovery and lifecycle |
+| `app/runtime/extensions/plugin_manager.py` | Stable PluginManager ABI facade plus plugin discovery/lifecycle entrypoints; its constructor only consumes the startup-injected Runtime factory and does not build an environment or individual owner |
+| `app/runtime/extensions/plugin/runtime.py` | Frozen typed aggregate and construction primitive for plugin registry, lifecycle, catalog, dependency, monitor, projection, sync and package-system owners; it does not choose concrete startup dependencies |
+| `app/runtime/extensions/plugin/system.py` | Startup-injected market/package/dependency system-port facade, including delegation to the unique physical package deletion owner; it does not construct concrete adapters |
+| `app/runtime/extensions/plugin/dependency.py` | Virtual-instance dependency classification and runtime-status persistence owner |
+| `app/startup/initializers/plugins.py` | Plugin Runtime dependency-graph composition, concrete system/storage/catalog ports and lifecycle initialization |
 | `app/runtime/extensions/plugin/monitor.py` | Plugin file-change aggregation and monitor-thread lifecycle |
 | `app/runtime/extensions/plugin/projection.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
 | `app/runtime/extensions/plugin/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
@@ -893,9 +897,11 @@ driven workflow registration.
 | `app/application/scheduling.py` | Scheduler runtime port consumed by API/Agent/application commands |
 | `app/application/server/report.py` | Server reporting use cases over injected local readers and transport callbacks |
 | `app/application/server/share.py` | Server sharing use cases over injected repositories and transport callbacks |
-| `app/adapters/external/plugin/client.py` | Plugin-market read adapter and cache-refresh boundary |
-| `app/adapters/system/plugin/package.py` | Plugin package installation adapter |
-| `app/adapters/system/plugin/dependency.py` | Plugin dependency inspection and installation adapter |
+| `app/domain/plugin.py` | Pure local-source, generation-compatibility and Release-install-plan rules |
+| `app/adapters/external/plugin/client.py` | `PluginMarketTransport`, the unique market transport, index/Release and local-candidate owner |
+| `app/adapters/system/plugin/package.py` | `PluginPackageManager`, the unique install, checkpoint, backup, restore and physical-delete owner |
+| `app/adapters/system/plugin/dependency.py` | `PluginDependencyInstaller`, the dependency manifest, missing-package inspection and installation owner |
+| `app/adapters/system/plugin/health.py` | `PluginRuntimeHealth`, the runtime-environment guard, pre/post-install check and recovery owner |
 | `app/runtime/extensions/resource.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
 | `app/runtime/resources.py` | Lightweight acquisition, state observation and shutdown facade |
 | `app/foundation/reflection.py` | Generic reflection and Python module discovery |
@@ -910,7 +916,7 @@ driven workflow registration.
 | `app/adapters/system/fsproxy.py` | Timeout-guarded local filesystem operations in a killable subprocess (with colocated `fsworker.py`) |
 | `app/adapters/external/wechat_crypt.py` | WeChat enterprise-message XML encryption/decryption protocol |
 | `app/application/rules.py` | Rule domain: user rule-group config access (`RuleHelper`), built-in torrent filter rule set and rule parser |
-| `app/adapters/external/market.py` | Plugin repository discovery and installation |
+| `app/adapters/external/market.py` | Exact legacy `PluginHelper` compatibility facade and install Gateway; canonical market behavior lives in `plugin/client.py` and host code must not import this facade |
 | `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
 | `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
 | `app/runtime/compat/manifest.py` | Exact legacy-to-canonical import manifest |

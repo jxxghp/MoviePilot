@@ -27,9 +27,8 @@ REPO_URL = "https://github.com/example/moviepilot-plugins"
 
 def test_package_manager_sync_preserves_external_install_contract() -> None:
     """同步包适配器必须调用包级入口，不能再次进入公开 Gateway。"""
-    helper = Mock()
-    helper._PluginHelper__install_package.return_value = (True, "installed")
-    manager = PluginPackageManager(helper=helper)
+    manager = PluginPackageManager(source=Mock())
+    manager.install_raw = Mock(return_value=(True, "installed"))
 
     result = manager.install(
         plugin_id="DemoPlugin",
@@ -40,7 +39,7 @@ def test_package_manager_sync_preserves_external_install_contract() -> None:
     )
 
     assert result == (True, "installed")
-    helper._PluginHelper__install_package.assert_called_once_with(
+    manager.install_raw.assert_called_once_with(
         pid="DemoPlugin",
         repo_url=REPO_URL,
         package_version="v3",
@@ -48,15 +47,13 @@ def test_package_manager_sync_preserves_external_install_contract() -> None:
         force_install=False,
         before_dependency_install=None,
     )
-    helper.install.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_package_manager_async_preserves_external_install_contract() -> None:
     """异步包适配器必须调用包级入口，不能再次进入公开 Gateway。"""
-    helper = Mock()
-    helper._PluginHelper__async_install_package = AsyncMock(return_value=(True, "installed"))
-    manager = PluginPackageManager(helper=helper)
+    manager = PluginPackageManager(source=Mock())
+    manager.async_install_raw = AsyncMock(return_value=(True, "installed"))
 
     result = await manager.async_install(
         plugin_id="DemoPlugin",
@@ -67,7 +64,7 @@ async def test_package_manager_async_preserves_external_install_contract() -> No
     )
 
     assert result == (True, "installed")
-    helper._PluginHelper__async_install_package.assert_awaited_once_with(
+    manager.async_install_raw.assert_awaited_once_with(
         pid="DemoPlugin",
         repo_url=REPO_URL,
         package_version="v3",
@@ -75,7 +72,6 @@ async def test_package_manager_async_preserves_external_install_contract() -> No
         force_install=False,
         before_dependency_install=None,
     )
-    helper.async_install.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -83,7 +79,6 @@ async def test_package_manager_captures_native_state_only_when_dependency_instal
     monkeypatch,
 ) -> None:
     """包适配器只在安装器确认存在依赖清单后记录原生载荷。"""
-    helper = Mock()
     checkpoint = SimpleNamespace(native_dependencies=None)
     baseline = object()
     capture = Mock(return_value=baseline)
@@ -92,14 +87,12 @@ async def test_package_manager_captures_native_state_only_when_dependency_instal
         kwargs["before_dependency_install"]()
         return True, "installed"
 
-    helper._PluginHelper__async_install_package = AsyncMock(
-        side_effect=install_with_dependency
-    )
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.capture_loaded_native_dependencies",
         capture,
     )
-    manager = PluginPackageManager(helper=helper)
+    manager = PluginPackageManager(source=Mock())
+    manager.async_install_raw = AsyncMock(side_effect=install_with_dependency)
 
     result = await manager.async_install(
         plugin_id="DemoPlugin",
@@ -136,21 +129,20 @@ async def test_dependency_manifest_is_observed_before_install(
     plugin_dir.mkdir(parents=True)
     manifest = plugin_dir / filename
     manifest.write_text(content, encoding="utf-8")
-    helper = PluginHelper()
+    manager = PluginPackageManager(plugin_root=plugin_root)
     calls = []
 
     async def install(path, _find_links=None):
         calls.append(("install", path))
         return True, ""
 
-    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__async_install_packages_with_fallback",
+        manager._health,
+        "async_install_packages_with_fallback",
         install,
     )
 
-    result = await helper._PluginHelper__async_install_dependencies_if_required(
+    result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
         lambda: calls.append(("observe", None)),
     )
@@ -170,26 +162,25 @@ async def test_dependency_observer_failure_does_not_block_install(
     plugin_dir.mkdir(parents=True)
     requirements_file = plugin_dir / "requirements.txt"
     requirements_file.write_text("demo>=1\n", encoding="utf-8")
-    helper = PluginHelper()
+    manager = PluginPackageManager(plugin_root=plugin_root)
     install = AsyncMock(return_value=(True, ""))
 
     def failing_observer():
         raise OSError("probe unavailable")
 
-    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__async_install_packages_with_fallback",
+        manager._health,
+        "async_install_packages_with_fallback",
         install,
     )
 
-    result = await helper._PluginHelper__async_install_dependencies_if_required(
+    result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
         failing_observer,
     )
 
     assert result == (True, True, "")
-    install.assert_awaited_once_with(requirements_file)
+    install.assert_awaited_once_with(requirements_file, None)
 
 
 @pytest.mark.asyncio
@@ -200,11 +191,9 @@ async def test_dependency_observer_is_not_called_without_manifest(
     """未声明依赖的插件不承担原生环境快照成本。"""
     plugin_root = tmp_path / "plugins"
     (plugin_root / "demoplugin").mkdir(parents=True)
-    helper = PluginHelper()
+    manager = PluginPackageManager(plugin_root=plugin_root)
     observer = Mock()
-    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
-
-    result = await helper._PluginHelper__async_install_dependencies_if_required(
+    result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
         observer,
     )
@@ -237,24 +226,23 @@ async def test_empty_dependency_manifest_does_not_trigger_native_snapshot(
     plugin_dir.mkdir(parents=True)
     manifest = plugin_dir / filename
     manifest.write_text(content, encoding="utf-8")
-    helper = PluginHelper()
+    manager = PluginPackageManager(plugin_root=plugin_root)
     observer = Mock()
     install = AsyncMock(return_value=(True, ""))
-    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__async_install_packages_with_fallback",
+        manager._health,
+        "async_install_packages_with_fallback",
         install,
     )
 
-    result = await helper._PluginHelper__async_install_dependencies_if_required(
+    result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
         observer,
     )
 
     assert result == (True, True, "")
     observer.assert_not_called()
-    install.assert_awaited_once_with(manifest)
+    install.assert_awaited_once_with(manifest, None)
 
 
 @pytest.mark.asyncio
@@ -271,21 +259,20 @@ async def test_legacy_unparsed_requirement_still_triggers_native_snapshot(
         "git+https://example.invalid/demo.git@fixed\n",
         encoding="utf-8",
     )
-    helper = PluginHelper()
+    manager = PluginPackageManager(plugin_root=plugin_root)
     calls = []
 
     async def install(path, _find_links=None):
         calls.append(("install", path))
         return True, ""
 
-    monkeypatch.setattr(market, "PLUGIN_DIR", plugin_root)
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__async_install_packages_with_fallback",
+        manager._health,
+        "async_install_packages_with_fallback",
         install,
     )
 
-    result = await helper._PluginHelper__async_install_dependencies_if_required(
+    result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
         lambda: calls.append(("observe", None)),
     )
@@ -723,24 +710,39 @@ async def test_agent_install_uses_application_gateway(
 
 
 def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> None:
-    """启动组合根必须向 Application 与公开 Helper 发布同一 Gateway。"""
-    helper = Mock()
+    """启动组合根必须装配独立 owner，并向公开 Helper 发布同一 Gateway。"""
+    transport = Mock()
+    source = Mock()
+    package_manager = Mock()
     gateway_calls = []
     application_calls = []
+    transport_consumers = []
     gateway = Mock()
     sync_runner = Mock(return_value=(True, "installed"))
     async_runner = AsyncMock(return_value=(True, "installed"))
 
-    monkeypatch.setattr(plugins_initializer, "PluginHelper", lambda: helper)
+    monkeypatch.setattr(
+        plugins_initializer,
+        "PluginMarketTransport",
+        lambda: transport,
+    )
     monkeypatch.setattr(
         plugins_initializer,
         "PluginMarketClient",
-        lambda _helper: Mock(),
+        lambda injected: transport_consumers.append(("market", injected)) or Mock(),
+    )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "PluginPackageSourceClient",
+        lambda injected: transport_consumers.append(("package", injected)) or source,
     )
     monkeypatch.setattr(
         plugins_initializer,
         "PluginPackageManager",
-        lambda _helper: Mock(),
+        lambda **kwargs: (
+            transport_consumers.append(("package-owner", kwargs["source"]))
+            or package_manager
+        ),
     )
     monkeypatch.setattr(
         plugins_initializer,
@@ -805,6 +807,7 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
         "configure_site_auth_level_provider",
         "configure_installed_plugins_provider",
         "configure_plugin_catalog_factory",
+        "configure_plugin_runtime_factory",
         "configure_plugin_route_refresher",
         "configure_plugin_system",
         "configure_plugin_storage",
@@ -824,6 +827,11 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
 
     plugins_initializer.configure_plugin_services()
 
+    assert transport_consumers == [
+        ("market", transport),
+        ("package", transport),
+        ("package-owner", source),
+    ]
     assert application_calls == [gateway]
     assert len(gateway_calls) == 1
     assert callable(gateway_calls[0]["install"])

@@ -2,16 +2,34 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import io
 import re
 import shutil
+import stat
 import uuid
+import zipfile
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Optional, cast
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Any, Optional, Protocol, Sequence, cast
 
-from app.adapters.external.market import PluginHelper as _PluginHelper
+import aiofiles  # type: ignore[import-untyped]
+import aioshutil
+from anyio import Path as AsyncPath
+
 from app.adapters.system.host import SystemUtils
+from app.adapters.system.plugin.health import PluginRuntimeHealth
+from app.adapters.system.plugin.manifest import (
+    PluginDependencyManifestError,
+    dependency_manifest_declares_installation,
+    load_dependency_manifest,
+)
+from app.domain.plugin import (
+    PluginReleaseInstallPlan,
+    build_plugin_release_install_plan,
+)
 from app.runtime.dependencies.native import (
     LoadedNativeDependencySnapshot,
     NativeDependencyChange,
@@ -23,6 +41,99 @@ from app.runtime.execution import (
 )
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.runtime.version import get_app_version
+
+
+class PluginPackageSourcePort(Protocol):
+    """声明包 owner 读取市场元数据和远端制品所需的外部端口。"""
+
+    def is_local_repo_url(self, repo_url: Optional[str]) -> bool:
+        """判断来源是否为本地仓库。"""
+
+    def parse_local_repo_url(self, repo_url: str) -> Optional[str]:
+        """解析本地来源中的插件标识。"""
+
+    def parse_local_repo_path(self, repo_url: str) -> Optional[Path]:
+        """解析本地来源中的仓库目录。"""
+
+    def parse_local_repo_package_version(self, repo_url: str) -> Optional[str]:
+        """解析本地来源中的包代际。"""
+
+    def make_local_repo_url(
+        self,
+        plugin_id: str,
+        repo_path: Optional[Path] = None,
+        package_version: Optional[str] = None,
+    ) -> str:
+        """生成本地仓库来源标识。"""
+
+    def get_local_plugin_candidate(
+        self,
+        pid: str,
+        package_version: Optional[str] = None,
+        repo_path: Optional[Path] = None,
+        strict_compat: bool = True,
+        strict_system_version: bool = True,
+    ) -> Optional[dict[str, Any]]:
+        """读取一个本地插件候选。"""
+
+    def check_plugin_system_version(
+        self, plugin_info: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """校验插件声明的宿主版本约束。"""
+
+    def get_plugin_package_version(
+        self, plugin_id: str, repo_url: str, package_version: Optional[str]
+    ) -> Optional[str]:
+        """选择适用于当前宿主的远端索引代际。"""
+
+    async def async_get_plugin_package_version(
+        self, plugin_id: str, repo_url: str, package_version: Optional[str]
+    ) -> Optional[str]:
+        """异步选择适用于当前宿主的远端索引代际。"""
+
+    def get_plugins(
+        self, repo_url: str, package_version: Optional[str] = None
+    ) -> Optional[dict[str, dict[str, Any]]]:
+        """读取远端插件索引。"""
+
+    async def async_get_plugins(
+        self, repo_url: str, package_version: Optional[str] = None
+    ) -> Optional[dict[str, dict[str, Any]]]:
+        """异步读取远端插件索引。"""
+
+    def get_plugin_release_versions(
+        self, plugin_id: str, repo_url: str
+    ) -> list[dict[str, Any]]:
+        """读取插件可安装 Release。"""
+
+    async def async_get_plugin_release_versions(
+        self, plugin_id: str, repo_url: str
+    ) -> list[dict[str, Any]]:
+        """异步读取插件可安装 Release。"""
+
+    def get_repo_info(self, repo_url: str) -> tuple[Optional[str], Optional[str]]:
+        """解析 GitHub 仓库所有者和仓库名。"""
+
+    def request(
+        self,
+        url: str,
+        *,
+        headers: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = 60,
+        is_api: bool = False,
+    ) -> Any:
+        """同步读取 GitHub 元数据或制品。"""
+
+    async def async_request(
+        self,
+        url: str,
+        *,
+        headers: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = 60,
+        is_api: bool = False,
+    ) -> Any:
+        """异步读取 GitHub 元数据或制品。"""
 
 
 @dataclass(slots=True)
@@ -55,16 +166,33 @@ class PluginPackageManager:
 
     _COPY_IGNORE = ("__pycache__", "*.pyc", ".DS_Store", "node_modules")
 
-    def __init__(self, helper: Optional[_PluginHelper] = None) -> None:
-        """保存市场下载实现；文件事务由本适配器独立负责。"""
-        self._helper = helper or _PluginHelper()
+    def __init__(
+        self,
+        source: Optional[PluginPackageSourcePort] = None,
+        *,
+        health: Optional[PluginRuntimeHealth] = None,
+        plugin_root: Optional[Path] = None,
+    ) -> None:
+        """保存外部来源端口和依赖健康 owner。"""
+        self._source = source
+        self._health = health or PluginRuntimeHealth()
+        self._plugin_root = plugin_root.resolve() if plugin_root else None
 
-    @staticmethod
-    def __plugin_dir(plugin_id: str) -> Path:
-        """解析插件运行目录并拒绝越出宿主插件根目录的标识。"""
-        plugins_root = (
+    def _require_source(self) -> PluginPackageSourcePort:
+        """返回已装配来源端口，未完成组合时拒绝执行包写入。"""
+        if self._source is None:
+            raise RuntimeError("插件包来源客户端尚未完成装配")
+        return self._source
+
+    def _plugins_root(self) -> Path:
+        """返回组合根注入目录；旧直接构造调用按当前运行配置解析。"""
+        return self._plugin_root or (
             Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins"
         ).resolve()
+
+    def __plugin_dir(self, plugin_id: str) -> Path:
+        """解析插件运行目录并拒绝越出宿主插件根目录的标识。"""
+        plugins_root = self._plugins_root()
         plugin_dir = (plugins_root / plugin_id.lower()).resolve()
         if plugin_dir == plugins_root or not plugin_dir.is_relative_to(plugins_root):
             raise ValueError(f"非法插件ID：{plugin_id}")
@@ -203,9 +331,7 @@ class PluginPackageManager:
         if checkpoint.native_dependencies is None:
             return ()
         try:
-            return detect_changed_native_dependencies(
-                checkpoint.native_dependencies
-            )
+            return detect_changed_native_dependencies(checkpoint.native_dependencies)
         except Exception as error:  # noqa: BLE001 - 诊断失败不能改写安装结果
             logger.warning("检测插件原生依赖变更失败：%s", error)
             return ()
@@ -493,6 +619,167 @@ class PluginPackageManager:
             for part in relative_parts
         )
 
+    def is_local_repo_url(self, repo_url: Optional[str]) -> bool:
+        """委托外部来源客户端判断本地仓库标识。"""
+        return self._require_source().is_local_repo_url(repo_url)
+
+    def parse_local_repo_url(self, repo_url: str) -> Optional[str]:
+        """委托外部来源客户端解析本地插件标识。"""
+        return self._require_source().parse_local_repo_url(repo_url)
+
+    def parse_local_repo_path(self, repo_url: str) -> Optional[Path]:
+        """委托外部来源客户端解析本地仓库路径。"""
+        return self._require_source().parse_local_repo_path(repo_url)
+
+    def parse_local_repo_package_version(self, repo_url: str) -> Optional[str]:
+        """委托外部来源客户端解析本地包代际。"""
+        return self._require_source().parse_local_repo_package_version(repo_url)
+
+    def make_local_repo_url(
+        self,
+        plugin_id: str,
+        repo_path: Optional[Path] = None,
+        package_version: Optional[str] = None,
+    ) -> str:
+        """委托外部来源客户端生成本地来源标识。"""
+        return self._require_source().make_local_repo_url(
+            plugin_id, repo_path, package_version
+        )
+
+    def get_local_plugin_candidate(
+        self,
+        pid: str,
+        package_version: Optional[str] = None,
+        repo_path: Optional[Path] = None,
+        strict_compat: bool = True,
+        strict_system_version: bool = True,
+    ) -> Optional[dict[str, Any]]:
+        """委托外部来源客户端读取本地插件候选。"""
+        return self._require_source().get_local_plugin_candidate(
+            pid=pid,
+            package_version=package_version,
+            repo_path=repo_path,
+            strict_compat=strict_compat,
+            strict_system_version=strict_system_version,
+        )
+
+    def check_plugin_system_version(
+        self, plugin_info: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """委托外部来源客户端校验宿主版本约束。"""
+        return self._require_source().check_plugin_system_version(plugin_info)
+
+    def get_plugin_package_version(
+        self, plugin_id: str, repo_url: str, package_version: Optional[str]
+    ) -> Optional[str]:
+        """委托外部来源客户端选择远端索引代际。"""
+        return self._require_source().get_plugin_package_version(
+            plugin_id, repo_url, package_version
+        )
+
+    async def async_get_plugin_package_version(
+        self, plugin_id: str, repo_url: str, package_version: Optional[str]
+    ) -> Optional[str]:
+        """异步委托外部来源客户端选择远端索引代际。"""
+        return await self._require_source().async_get_plugin_package_version(
+            plugin_id, repo_url, package_version
+        )
+
+    def get_plugins(
+        self, repo_url: str, package_version: Optional[str] = None
+    ) -> Optional[dict[str, dict[str, Any]]]:
+        """委托外部来源客户端读取远端插件索引。"""
+        return self._require_source().get_plugins(repo_url, package_version)
+
+    async def async_get_plugins(
+        self, repo_url: str, package_version: Optional[str] = None
+    ) -> Optional[dict[str, dict[str, Any]]]:
+        """异步委托外部来源客户端读取远端插件索引。"""
+        return await self._require_source().async_get_plugins(
+            repo_url, package_version
+        )
+
+    def get_plugin_release_versions(
+        self, plugin_id: str, repo_url: str
+    ) -> list[dict[str, Any]]:
+        """委托外部来源客户端读取可安装 Release。"""
+        return self._require_source().get_plugin_release_versions(
+            plugin_id, repo_url
+        )
+
+    async def async_get_plugin_release_versions(
+        self, plugin_id: str, repo_url: str
+    ) -> list[dict[str, Any]]:
+        """异步委托外部来源客户端读取可安装 Release。"""
+        return await self._require_source().async_get_plugin_release_versions(
+            plugin_id, repo_url
+        )
+
+    def get_repo_info(self, repo_url: str) -> tuple[Optional[str], Optional[str]]:
+        """委托外部来源客户端解析 GitHub 仓库信息。"""
+        return self._require_source().get_repo_info(repo_url)
+
+    def __request_with_fallback(
+        self,
+        url: str,
+        headers: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = 60,
+        is_api: bool = False,
+    ) -> Any:
+        """通过外部来源客户端同步读取远端内容。"""
+        return self._require_source().request(
+            url, headers=headers, timeout=timeout, is_api=is_api
+        )
+
+    async def __async_request_with_fallback(
+        self,
+        url: str,
+        headers: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = 60,
+        is_api: bool = False,
+    ) -> Any:
+        """通过外部来源客户端异步读取远端内容。"""
+        return await self._require_source().async_request(
+            url, headers=headers, timeout=timeout, is_api=is_api
+        )
+
+    @staticmethod
+    def _build_remote_plugin_install_plan(
+        *,
+        pid: str,
+        meta: dict[str, Any],
+        release_version: Optional[str] = None,
+        release_items: Sequence[dict[str, Any]] = (),
+    ) -> tuple[Optional[PluginReleaseInstallPlan], str]:
+        """使用纯领域规则选择 Release 或文件列表安装计划。"""
+        return build_plugin_release_install_plan(
+            plugin_id=pid,
+            metadata=meta,
+            release_version=release_version,
+            release_items=release_items,
+            current_version=get_app_version(),
+        )
+
+    def install_packages_with_fallback(
+        self,
+        dependency_files: Path | Sequence[Path],
+        find_links_dirs: Optional[list[Path]] = None,
+    ) -> tuple[bool, str]:
+        """把插件依赖清单交给运行环境健康 owner 安装。"""
+        return self._health.install_packages_with_fallback(
+            dependency_files, find_links_dirs
+        )
+
+    async def async_install_packages_with_fallback(
+        self,
+        dependency_files: Path | Sequence[Path],
+        find_links_dirs: Optional[list[Path]] = None,
+    ) -> tuple[bool, str]:
+        """异步把插件依赖清单交给运行环境健康 owner 安装。"""
+        return await self._health.async_install_packages_with_fallback(
+            dependency_files, find_links_dirs
+        )
+
     def install(
         self,
         plugin_id: str,
@@ -502,20 +789,17 @@ class PluginPackageManager:
         force_install: bool = False,
         checkpoint: PluginPackageCheckpoint | None = None,
     ) -> tuple[bool, str]:
-        """同步安装插件包，下载过程继续复用既有市场兼容策略。"""
-        return cast(
-            tuple[bool, str],
-            cast(Any, self._helper)._PluginHelper__install_package(
-                pid=plugin_id,
-                repo_url=repo_url,
-                package_version=package_version,
-                release_version=release_version,
-                force_install=force_install,
-                before_dependency_install=(
-                    (lambda: self.__capture_native_dependencies(checkpoint))
-                    if checkpoint is not None
-                    else None
-                ),
+        """同步安装插件包；已有事务快照时禁止兼容层再创建第二份备份。"""
+        return self.install_raw(
+            pid=plugin_id,
+            repo_url=repo_url,
+            package_version=package_version,
+            release_version=release_version,
+            force_install=force_install or checkpoint is not None,
+            before_dependency_install=(
+                (lambda: self.__capture_native_dependencies(checkpoint))
+                if checkpoint is not None
+                else None
             ),
         )
 
@@ -528,20 +812,17 @@ class PluginPackageManager:
         force_install: bool = False,
         checkpoint: PluginPackageCheckpoint | None = None,
     ) -> tuple[bool, str]:
-        """异步安装插件包，下载过程继续复用既有市场兼容策略。"""
-        return cast(
-            tuple[bool, str],
-            await cast(Any, self._helper)._PluginHelper__async_install_package(
-                pid=plugin_id,
-                repo_url=repo_url,
-                package_version=package_version,
-                release_version=release_version,
-                force_install=force_install,
-                before_dependency_install=(
-                    (lambda: self.__capture_native_dependencies(checkpoint))
-                    if checkpoint is not None
-                    else None
-                ),
+        """异步安装插件包；已有事务快照时禁止兼容层再创建第二份备份。"""
+        return await self.async_install_raw(
+            pid=plugin_id,
+            repo_url=repo_url,
+            package_version=package_version,
+            release_version=release_version,
+            force_install=force_install or checkpoint is not None,
+            before_dependency_install=(
+                (lambda: self.__capture_native_dependencies(checkpoint))
+                if checkpoint is not None
+                else None
             ),
         )
 
@@ -556,6 +837,1249 @@ class PluginPackageManager:
             checkpoint.native_dependencies = capture_loaded_native_dependencies()
         except Exception as error:  # noqa: BLE001 - 诊断失败不能阻断插件安装
             logger.warning("记录插件原生依赖安装前状态失败：%s", error)
+
+    def install_raw(self, pid: str, repo_url: str, package_version: Optional[str] = None,
+                          release_version: Optional[str] = None, force_install: bool = False,
+                          before_dependency_install: Optional[Callable[[], None]] = None) \
+            -> tuple[bool, str]:
+        """执行已通过来源准入的同步包安装，不负责身份或运行态提交。"""
+        if self.is_local_repo_url(repo_url):
+            return self.__install_local_package(
+                pid=pid,
+                repo_url=repo_url,
+                force_install=force_install,
+                before_dependency_install=before_dependency_install,
+            )
+
+        if SystemUtils.is_frozen():
+            return False, "可执行文件模式下，只能安装本地插件"
+
+        # 验证参数
+        if not pid or not repo_url:
+            return False, "参数错误"
+
+        # 从 GitHub 的 repo_url 获取用户和项目名
+        user, repo = self.get_repo_info(repo_url)
+        if not user or not repo:
+            return False, "不支持的插件仓库地址格式"
+
+        user_repo = f"{user}/{repo}"
+
+        if not package_version:
+            package_version = get_runtime_setting('VERSION_FLAG')
+
+        # 1. 优先检查指定版本的插件
+        package_version = self.get_plugin_package_version(pid, repo_url, package_version)
+        # 如果 package_version 为None，说明没有找到匹配的插件
+        if package_version is None:
+            msg = f"{pid} 没有找到适用于当前版本的插件"
+            logger.debug(msg)
+            return False, msg
+        # package_version 为空，表示从 package.json 中找到插件
+        elif package_version == "":
+            logger.debug(f"{pid} 从 package.json 中找到适用于当前版本的插件")
+        else:
+            logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
+
+        # 2. 决定安装方式（release 或文件列表）并执行统一安装流程。
+        meta = self.__get_plugin_meta(pid, repo_url, package_version)
+        release_items = (
+            self.get_plugin_release_versions(pid, repo_url)
+            if release_version
+            else []
+        )
+        plan, message = self._build_remote_plugin_install_plan(
+            pid=pid,
+            meta=meta,
+            release_version=release_version,
+            release_items=release_items,
+        )
+        if plan is None:
+            return False, message
+
+        release_tag = plan.release_tag
+        if release_tag and not plan.fallback_to_filelist:
+            def prepare_selected_release() -> tuple[bool, str]:
+                return self.__install_from_release(
+                    pid,
+                    user_repo,
+                    release_tag,
+                )
+
+            return self.__install_flow_sync(
+                pid,
+                force_install,
+                prepare_selected_release,
+                repo_url,
+                before_dependency_install,
+            )
+
+        if release_tag:
+            # 当前索引 Release 失败时回退文件列表，避免发布产物短暂滞后阻断安装。
+            def prepare_release() -> tuple[bool, str]:
+                ok, msg = self.__install_from_release(
+                    pid,
+                    user_repo,
+                    release_tag,
+                )
+                if ok:
+                    return True, msg
+                logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
+                self.__remove_old_plugin(pid)
+                return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
+
+            return self.__install_flow_sync(
+                pid,
+                force_install,
+                prepare_release,
+                repo_url,
+                before_dependency_install,
+            )
+        # 未声明 release 打包的插件继续使用文件列表方式安装。
+        def prepare_filelist() -> tuple[bool, str]:
+            return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
+
+        return self.__install_flow_sync(
+            pid,
+            force_install,
+            prepare_filelist,
+            repo_url,
+            before_dependency_install,
+        )
+
+    def install_local_raw(
+        self,
+        plugin_id: str,
+        repo_url: str = "",
+        force_install: bool = False,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> tuple[bool, str]:
+        """提供给兼容 Facade 的本地载荷安装入口。"""
+        return self.__install_local_package(
+            pid=plugin_id,
+            repo_url=repo_url,
+            force_install=force_install,
+            before_dependency_install=before_dependency_install,
+        )
+
+    def backup_plugin(self, plugin_id: str) -> Optional[str]:
+        """提供给兼容 Facade 的临时备份入口。"""
+        return self.__backup_plugin(plugin_id)
+
+    def restore_plugin(self, plugin_id: str, backup_dir: str) -> None:
+        """提供给兼容 Facade 的临时备份恢复入口。"""
+        self.__restore_plugin(plugin_id, backup_dir)
+
+    def remove_plugin(self, plugin_id: str) -> bool:
+        """删除受控插件目录，返回删除前是否存在。"""
+        plugin_dir = self.__plugin_dir(plugin_id)
+        if not plugin_dir.exists():
+            return False
+        shutil.rmtree(plugin_dir, ignore_errors=False)
+        return True
+
+    def install_from_release(
+        self, plugin_id: str, user_repo: str, release_tag: str
+    ) -> tuple[bool, str]:
+        """提供给兼容 Facade 的 Release 制品安装入口。"""
+        return self.__install_from_release(plugin_id, user_repo, release_tag)
+
+    def __install_local_package(
+        self,
+        pid: str,
+        repo_url: str = "",
+        force_install: bool = False,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> tuple[bool, str]:
+        """
+        执行已通过来源准入的本地插件包安装。
+        """
+        local_pid = self.parse_local_repo_url(repo_url) if repo_url else pid
+        if not local_pid or local_pid.lower() != pid.lower():
+            return False, "本地插件来源与插件ID不匹配"
+
+        repo_path = self.parse_local_repo_path(repo_url) if repo_url else None
+        package_version = self.parse_local_repo_package_version(repo_url) if repo_url else None
+        candidate = self.get_local_plugin_candidate(
+            pid,
+            package_version=package_version,
+            repo_path=repo_path
+        )
+        if not candidate:
+            return False, f"未找到本地插件：{pid}"
+        compatible, message = self.check_plugin_system_version(candidate)
+        if not compatible:
+            logger.debug(f"{pid} 本地插件系统版本兼容性检查失败：{message}")
+            return False, message
+
+        raw_source_path = candidate.get("path")
+        if not isinstance(raw_source_path, (str, Path)):
+            return False, "本地插件来源路径无效"
+        source_dir = Path(raw_source_path)
+        dest_dir = self._plugins_root() / pid.lower()
+        try:
+            if source_dir.resolve() == dest_dir.resolve():
+                return False, "本地插件来源不能与运行目录相同"
+        except Exception:
+            return False, "本地插件来源路径无效"
+
+        def prepare_local() -> tuple[bool, str]:
+            try:
+                shutil.copytree(
+                    source_dir,
+                    dest_dir,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store", "node_modules")
+                )
+                return True, ""
+            except Exception as e:
+                logger.error(f"复制本地插件 {pid} 失败：{e}")
+                return False, f"复制本地插件失败：{e}"
+
+        return self.__install_flow_sync(
+            pid=pid,
+            force_install=force_install,
+            prepare_content=prepare_local,
+            repo_url=repo_url or self.make_local_repo_url(
+                pid,
+                (
+                    Path(repo_path_value)
+                    if isinstance(
+                        (repo_path_value := candidate.get("repo_path")),
+                        (str, Path),
+                    )
+                    else None
+                ),
+                (
+                    package_generation
+                    if isinstance(
+                        (package_generation := candidate.get("package_version")),
+                        str,
+                    )
+                    else None
+                ),
+            ),
+            before_dependency_install=before_dependency_install,
+        )
+
+    def __get_file_list(self, pid: str, user_repo: str, package_version: Optional[str] = None) -> \
+            tuple[Optional[list[dict[str, Any]]], Optional[str]]:
+        """
+        获取插件的文件列表
+        :param pid: 插件 ID
+        :param user_repo: GitHub 仓库的 user/repo 路径
+        :return: (文件列表, 错误信息)
+        """
+        file_api = f"https://api.github.com/repos/{user_repo}/contents/plugins"
+        # 如果 package_version 存在（如 "v2"），则加上版本号
+        if package_version:
+            file_api += f".{package_version}"
+        file_api += f"/{pid.lower()}"
+
+        res = self.__request_with_fallback(file_api,
+                                           headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
+                                           is_api=True,
+                                           timeout=30)
+        if res is None:
+            return None, "连接仓库失败"
+        elif res.status_code == 404:
+            return None, "插件源码目录不存在"
+        elif res.status_code != 200:
+            return None, f"连接仓库失败：{res.status_code} - " \
+                         f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.reason}"
+
+        try:
+            ret = res.json()
+            if isinstance(ret, list) and len(ret) > 0 and "message" not in ret[0]:
+                return ret, ""
+            else:
+                return None, "插件在仓库中不存在或返回数据格式不正确"
+        except Exception as e:
+            logger.error(f"插件数据解析失败：{e}")
+            return None, "插件数据解析失败"
+
+    def __resolve_download_file(
+        self,
+        pid: str,
+        remote_path: object,
+        package_version: Optional[str],
+    ) -> Path:
+        """把市场文件路径限定到当前插件目录，拒绝绝对路径和目录穿越。"""
+        if not isinstance(remote_path, str) or not remote_path or "\\" in remote_path:
+            raise ValueError("插件文件路径无效")
+        pure_path = PurePosixPath(remote_path)
+        if pure_path.is_absolute() or PureWindowsPath(remote_path).is_absolute():
+            raise ValueError("插件文件路径无效")
+        parts = pure_path.parts
+        expected_root = f"plugins.{package_version}" if package_version else "plugins"
+        if (
+            len(parts) < 3
+            or parts[0] != expected_root
+            or parts[1].casefold() != pid.casefold()
+            or any(part in {"", ".", ".."} for part in parts[2:])
+        ):
+            raise ValueError("插件文件路径无效")
+        plugin_dir = (self._plugins_root() / pid.lower()).resolve()
+        file_path = (plugin_dir / Path(*parts[2:])).resolve()
+        if not file_path.is_relative_to(plugin_dir):
+            raise ValueError("插件文件路径无效")
+        return file_path
+
+    def __download_files(self, pid: str, file_list: list[dict[str, Any]], user_repo: str,
+                         package_version: Optional[str] = None) -> tuple[bool, str]:
+        """
+        下载插件文件
+        :param pid: 插件 ID
+        :param file_list: 要下载的文件列表，包含文件的元数据（包括下载链接）
+        :param user_repo: GitHub 仓库的 user/repo 路径
+        :return: (是否成功, 错误信息)
+        """
+        if not file_list:
+            return False, "文件列表为空"
+
+        # 使用栈结构来替代递归调用，避免递归深度过大问题
+        stack = [(pid, file_list)]
+
+        while stack:
+            current_pid, current_file_list = stack.pop()
+
+            for item in current_file_list:
+                download_url = item.get("download_url")
+                if isinstance(download_url, str) and download_url:
+                    try:
+                        file_path = self.__resolve_download_file(
+                            pid,
+                            item.get("path"),
+                            package_version,
+                        )
+                    except ValueError as error:
+                        return False, str(error)
+                    logger.debug(f"正在下载文件：{item.get('path')}")
+                    res = self.__request_with_fallback(download_url,
+                                                       headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo))
+                    if not res:
+                        return False, f"文件 {item.get('path')} 下载失败！"
+                    elif res.status_code != 200:
+                        return False, f"下载文件 {item.get('path')} 失败：{res.status_code}"
+
+                    # 创建插件文件夹并写入文件
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(res.text)
+                    logger.debug(f"文件 {item.get('path')} 下载成功，保存路径：{file_path}")
+                else:
+                    # 如果是子目录，则将子目录内容加入栈中继续处理
+                    directory_name = item.get("name")
+                    if (
+                        not isinstance(directory_name, str)
+                        or directory_name in {"", ".", ".."}
+                        or PurePosixPath(directory_name).name != directory_name
+                        or PureWindowsPath(directory_name).name != directory_name
+                    ):
+                        return False, "插件目录路径无效"
+                    sub_list, msg = self.__get_file_list(f"{current_pid}/{directory_name}", user_repo,
+                                                         package_version)
+                    if not sub_list:
+                        return False, msg or "插件子目录读取失败"
+                    stack.append((f"{current_pid}/{directory_name}", sub_list))
+
+        return True, ""
+
+    def __install_dependencies_if_required(
+        self,
+        pid: str,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> tuple[bool, bool, str]:
+        """
+        安装插件依赖。
+        :param pid: 插件 ID
+        :return: (是否存在依赖，安装是否成功, 错误信息)
+        """
+        plugin_dir = self._plugins_root() / pid.lower()
+        try:
+            manifest = load_dependency_manifest(plugin_dir)
+        except PluginDependencyManifestError as error:
+            logger.error(f"{pid} 依赖清单无效：{error}")
+            return True, False, str(error)
+        if manifest is not None:
+            if (
+                before_dependency_install is not None
+                and dependency_manifest_declares_installation(manifest)
+            ):
+                try:
+                    before_dependency_install()
+                except Exception as error:  # noqa: BLE001 - 观察失败不能阻断安装
+                    logger.warning(f"{pid} 依赖安装前状态记录失败：{error}")
+            logger.info(f"{pid} 存在依赖，开始尝试安装依赖")
+            success, error_message = self.install_packages_with_fallback(manifest.path)
+            return True, success, "" if success else error_message
+
+        return False, False, "不存在依赖"
+
+    def __backup_plugin(self, pid: str) -> Optional[str]:
+        """
+        备份旧插件目录
+        :param pid: 插件 ID
+        :return: 备份目录路径
+        """
+        plugin_dir = self._plugins_root() / pid.lower()
+        backup_dir = Path(get_runtime_setting('TEMP_PATH')) / "plugin_backup" / pid.lower()
+
+        if plugin_dir.exists():
+            # 备份时清理已有的备份目录，防止残留文件影响
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
+                logger.debug(f"{pid} 旧的备份目录已清理 {backup_dir}")
+
+            shutil.copytree(plugin_dir, backup_dir, dirs_exist_ok=True)
+            logger.debug(f"{pid} 插件已备份到 {backup_dir}")
+
+        return str(backup_dir) if backup_dir.exists() else None
+
+    def __restore_plugin(self, pid: str, backup_dir: str) -> None:
+        """
+        还原旧插件目录
+        :param pid: 插件 ID
+        :param backup_dir: 备份目录路径
+        """
+        plugin_dir = self._plugins_root() / pid.lower()
+        if plugin_dir.exists():
+            shutil.rmtree(plugin_dir, ignore_errors=True)
+            logger.debug(f"{pid} 已清理插件目录 {plugin_dir}")
+
+        if Path(backup_dir).exists():
+            shutil.copytree(backup_dir, plugin_dir, dirs_exist_ok=True)
+            logger.debug(f"{pid} 已还原插件目录 {plugin_dir}")
+            shutil.rmtree(backup_dir, ignore_errors=True)
+            logger.debug(f"{pid} 已删除备份目录 {backup_dir}")
+
+    def __remove_old_plugin(self, pid: str) -> None:
+        """
+        删除旧插件
+        :param pid: 插件 ID
+        """
+        plugin_dir = self._plugins_root() / pid.lower()
+        if plugin_dir.exists():
+            shutil.rmtree(plugin_dir, ignore_errors=True)
+
+    def refresh_persistent_backup(self, pid: str) -> bool:
+        """
+        刷新插件持久化备份目录，供 docker 重置后恢复使用
+        """
+        if not SystemUtils.is_docker():
+            return True
+
+        plugin_dir = self._plugins_root() / pid.lower()
+        if not plugin_dir.exists():
+            logger.warn(f"{pid} 插件目录不存在，跳过刷新插件备份")
+            return False
+
+        backup_root = get_runtime_setting('CONFIG_PATH') / "plugins_backup"
+        backup_dir = backup_root / pid.lower()
+        staging_dir = backup_root / f".{pid.lower()}.tmp-{uuid.uuid4().hex}"
+        previous_dir = backup_root / f".{pid.lower()}.old-{uuid.uuid4().hex}"
+        try:
+            backup_root.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(
+                plugin_dir,
+                staging_dir,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+            )
+            if backup_dir.exists():
+                backup_dir.replace(previous_dir)
+            staging_dir.replace(backup_dir)
+            if previous_dir.exists():
+                shutil.rmtree(previous_dir, ignore_errors=True)
+            logger.info(f"已刷新插件备份: {pid}")
+            return True
+        except Exception as e:
+            if not backup_dir.exists() and previous_dir.exists():
+                try:
+                    previous_dir.replace(backup_dir)
+                except Exception as rollback_error:
+                    logger.error(
+                        f"恢复插件旧备份失败，已保留恢复材料 {previous_dir}: "
+                        f"{rollback_error}"
+                    )
+            logger.error(f"刷新插件备份失败: {pid} - {e}")
+            return False
+        finally:
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            if backup_dir.exists() and previous_dir.exists():
+                shutil.rmtree(previous_dir, ignore_errors=True)
+
+    def __get_plugin_meta(self, pid: str, repo_url: str,
+                          package_version: Optional[str]) -> dict[str, Any]:
+        """读取远端插件元数据，并把异常收敛为空映射。"""
+        try:
+            plugins = (
+                          self.get_plugins(repo_url) if not package_version
+                          else self.get_plugins(repo_url, package_version)
+                      ) or {}
+            meta = plugins.get(pid)
+            return meta if isinstance(meta, dict) else {}
+        except Exception as e:
+            logger.error(f"获取插件 {pid} 元数据失败：{e}")
+            return {}
+
+    def __install_flow_sync(
+        self,
+        pid: str,
+        force_install: bool,
+        prepare_content: Callable[[], tuple[bool, str]],
+        repo_url: Optional[str] = None,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> tuple[bool, str]:
+        """
+        同步安装统一流程：备份→清理→准备内容→安装依赖→上报
+        prepare_content 负责把插件文件放到 app/plugins/{pid}
+        """
+        backup_dir = None
+        if not force_install:
+            backup_dir = self.__backup_plugin(pid)
+
+        self.__remove_old_plugin(pid)
+
+        success, message = prepare_content()
+        if not success:
+            logger.error(f"{pid} 准备插件内容失败：{message}")
+            if backup_dir:
+                self.__restore_plugin(pid, backup_dir)
+                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
+            else:
+                self.__remove_old_plugin(pid)
+                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
+            return False, message
+
+        dependencies_exist, dep_ok, dep_msg = (
+            self.__install_dependencies_if_required(
+                pid,
+                before_dependency_install,
+            )
+            if before_dependency_install is not None
+            else self.__install_dependencies_if_required(pid)
+        )
+        if dependencies_exist and not dep_ok:
+            logger.error(f"{pid} 依赖安装失败：{dep_msg}")
+            if backup_dir:
+                self.__restore_plugin(pid, backup_dir)
+                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
+            else:
+                self.__remove_old_plugin(pid)
+                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
+            return False, dep_msg
+
+        if backup_dir:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        return True, ""
+
+    @staticmethod
+    def __validate_release_zip_name(name: str) -> None:
+        """
+        校验 release zip 成员名在 POSIX 与 Windows 语义下都只能表示相对路径。
+        """
+        if not name:
+            raise ValueError("非法 Release 压缩包成员：成员名为空")
+        if "\x00" in name:
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+        if "\\" in name:
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+
+        posix_path = PurePosixPath(name)
+        windows_path = PureWindowsPath(name)
+        if (
+            name.startswith("//")
+            or posix_path.is_absolute()
+            or windows_path.is_absolute()
+            or windows_path.drive
+        ):
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+
+        parts = [part for part in posix_path.parts if part not in ("", ".")]
+        if not parts:
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+        if ".." in parts:
+            raise ValueError(f"非法 Release 压缩包成员：{name}")
+
+    @staticmethod
+    def __validate_release_zip_type(info: zipfile.ZipInfo) -> None:
+        """
+        release zip 只接受普通文件和目录，避免归档内的符号链接或设备文件影响安装边界。
+        """
+        mode = info.external_attr >> 16
+        file_type = stat.S_IFMT(mode)
+        if not file_type:
+            return
+        if stat.S_ISREG(mode) or stat.S_ISDIR(mode):
+            return
+        raise ValueError(f"非法 Release 压缩包成员：{info.filename}")
+
+    @staticmethod
+    def __get_release_zip_base_prefix(infos: list[zipfile.ZipInfo]) -> str:
+        """
+        识别 release zip 的单一顶层目录，用于保持插件包根目录剥离行为。
+        """
+        names = [info.filename for info in infos]
+        names_with_slash = [name for name in names if "/" in name]
+        if names_with_slash and len(names_with_slash) == len(names):
+            first_seg = names_with_slash[0].split("/", 1)[0]
+            if first_seg and all(name.startswith(first_seg + "/") for name in names):
+                return first_seg + "/"
+        return ""
+
+    @classmethod
+    def __iter_release_zip_targets(
+        cls, zf: zipfile.ZipFile, dest_base: Path
+    ) -> list[tuple[zipfile.ZipInfo, Path, bool]]:
+        """
+        将 release zip 成员解析为安装目标路径，并保证目标路径不会逃逸插件目录。
+        """
+        infos = zf.infolist()
+        for info in infos:
+            cls.__validate_release_zip_type(info)
+            cls.__validate_release_zip_name(info.filename)
+
+        base_prefix = cls.__get_release_zip_base_prefix(infos)
+        dest_root = dest_base.resolve()
+        targets = []
+        for info in infos:
+            raw_name = info.filename
+            rel_name = raw_name[len(base_prefix):] if base_prefix else raw_name
+            if not rel_name:
+                if base_prefix and raw_name == base_prefix:
+                    continue
+                raise ValueError(f"非法 Release 压缩包成员：{raw_name}")
+
+            cls.__validate_release_zip_name(rel_name)
+            rel_parts = [part for part in PurePosixPath(rel_name).parts if part not in ("", ".")]
+            if not rel_parts:
+                raise ValueError(f"非法 Release 压缩包成员：{raw_name}")
+            dest_path = (dest_root / Path(*rel_parts)).resolve()
+            try:
+                dest_path.relative_to(dest_root)
+            except ValueError as exc:
+                raise ValueError(f"非法 Release 压缩包成员：{raw_name}") from exc
+            targets.append((info, dest_path, info.is_dir()))
+        return targets
+
+    def __install_from_release(self, pid: str, user_repo: str, release_tag: str) -> tuple[bool, str]:
+        """
+        通过 GitHub Release 资产文件安装插件。
+        规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
+        将其全部解压到 app/plugins/{pid}
+        """
+        # 拼接资产文件名
+        asset_name = f"{release_tag.lower()}.zip"
+
+        release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
+        rel_res = self.__request_with_fallback(
+            release_api,
+            headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
+            timeout=30,
+            is_api=True,
+        )
+        if rel_res is None:
+            return False, "获取 Release 信息失败：连接失败"
+        if rel_res.status_code == 404:
+            return False, f"{release_tag} 插件发布包不存在"
+        if rel_res.status_code != 200:
+            return False, f"获取 Release 信息失败：{rel_res.status_code}"
+
+        try:
+            rel_json = rel_res.json()
+            assets = rel_json.get("assets") or []
+            asset = next((a for a in assets if a.get("name") == asset_name), None)
+            if not asset:
+                return False, f"未找到资产文件：{asset_name}"
+            asset_id = asset.get("id")
+            if not asset_id:
+                return False, "资产缺少ID信息"
+            # 构建资产的API下载URL
+            download_url = f"https://api.github.com/repos/{user_repo}/releases/assets/{asset_id}"
+        except Exception as e:
+            logger.error(f"解析 Release 信息失败：{e}")
+            return False, f"解析 Release 信息失败：{e}"
+
+        # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
+        headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo).copy()
+        headers["Accept"] = "application/octet-stream"
+        res = self.__request_with_fallback(download_url, headers=headers, is_api=True)
+        if res is None or res.status_code != 200:
+            return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+                infos = zf.infolist()
+                if not infos:
+                    return False, "压缩包内容为空"
+                dest_base = self._plugins_root() / pid.lower()
+                targets = self.__iter_release_zip_targets(zf, dest_base)
+                wrote_any = False
+                for info, dest_path, is_dir in targets:
+                    if is_dir:
+                        dest_path.mkdir(parents=True, exist_ok=True)
+                        continue
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(info, 'r') as src, open(dest_path, 'wb') as dst:
+                        dst.write(src.read())
+                    wrote_any = True
+                if not wrote_any:
+                    return False, "压缩包中无可写入文件"
+            return True, ""
+        except Exception as e:
+            logger.error(f"解压 Release 压缩包失败：{e}")
+            return False, f"解压 Release 压缩包失败：{e}"
+
+    async def __async_get_file_list(self, pid: str, user_repo: str, package_version: Optional[str] = None) -> \
+            tuple[Optional[list[dict[str, Any]]], Optional[str]]:
+        """
+        异步获取插件的文件列表
+        :param pid: 插件 ID
+        :param user_repo: GitHub 仓库的 user/repo 路径
+        :return: (文件列表, 错误信息)
+        """
+        file_api = f"https://api.github.com/repos/{user_repo}/contents/plugins"
+        # 如果 package_version 存在（如 "v2"），则加上版本号
+        if package_version:
+            file_api += f".{package_version}"
+        file_api += f"/{pid.lower()}"
+
+        res = await self.__async_request_with_fallback(file_api,
+                                                       headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
+                                                       is_api=True,
+                                                       timeout=30)
+        if res is None:
+            return None, "连接仓库失败"
+        elif res.status_code == 404:
+            return None, "插件源码目录不存在"
+        elif res.status_code != 200:
+            return None, f"连接仓库失败：{res.status_code} - " \
+                         f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.text}"
+
+        try:
+            ret = res.json()
+            if isinstance(ret, list) and len(ret) > 0 and "message" not in ret[0]:
+                return ret, ""
+            else:
+                return None, "插件在仓库中不存在或返回数据格式不正确"
+        except Exception as e:
+            logger.error(f"插件数据解析失败：{e}")
+            return None, "插件数据解析失败"
+
+    async def __async_download_files(self, pid: str, file_list: list[dict[str, Any]], user_repo: str,
+                                     package_version: Optional[str] = None) -> tuple[bool, str]:
+        """
+        异步下载插件文件
+        :param pid: 插件 ID
+        :param file_list: 要下载的文件列表，包含文件的元数据（包括下载链接）
+        :param user_repo: GitHub 仓库的 user/repo 路径
+        :return: (是否成功, 错误信息)
+        """
+        if not file_list:
+            return False, "文件列表为空"
+
+        # 使用栈结构来替代递归调用，避免递归深度过大问题
+        stack = [(pid, file_list)]
+
+        while stack:
+            current_pid, current_file_list = stack.pop()
+
+            for item in current_file_list:
+                download_url = item.get("download_url")
+                if isinstance(download_url, str) and download_url:
+                    try:
+                        resolved_path = self.__resolve_download_file(
+                            pid,
+                            item.get("path"),
+                            package_version,
+                        )
+                    except ValueError as error:
+                        return False, str(error)
+                    logger.debug(f"正在下载文件：{item.get('path')}")
+                    res = await self.__async_request_with_fallback(download_url,
+                                                                   headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo))
+                    if not res:
+                        return False, f"文件 {item.get('path')} 下载失败！"
+                    elif res.status_code != 200:
+                        return False, f"下载文件 {item.get('path')} 失败：{res.status_code}"
+
+                    # 创建插件文件夹并写入文件
+                    file_path = AsyncPath(resolved_path)
+                    await file_path.parent.mkdir(parents=True, exist_ok=True)
+                    async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+                        await f.write(res.text)
+                    logger.debug(f"文件 {item.get('path')} 下载成功，保存路径：{file_path}")
+                else:
+                    # 如果是子目录，则将子目录内容加入栈中继续处理
+                    directory_name = item.get("name")
+                    if (
+                        not isinstance(directory_name, str)
+                        or directory_name in {"", ".", ".."}
+                        or PurePosixPath(directory_name).name != directory_name
+                        or PureWindowsPath(directory_name).name != directory_name
+                    ):
+                        return False, "插件目录路径无效"
+                    sub_list, msg = await self.__async_get_file_list(f"{current_pid}/{directory_name}", user_repo,
+                                                                     package_version)
+                    if not sub_list:
+                        return False, msg or "插件子目录读取失败"
+                    stack.append((f"{current_pid}/{directory_name}", sub_list))
+
+        return True, ""
+
+    async def __async_backup_plugin(self, pid: str) -> Optional[str]:
+        """
+        异步备份旧插件目录
+        :param pid: 插件 ID
+        :return: 备份目录路径
+        """
+        plugin_dir = AsyncPath(self._plugins_root()) / pid.lower()
+        backup_dir = AsyncPath(get_runtime_setting('TEMP_PATH')) / "plugin_backup" / pid.lower()
+
+        if await plugin_dir.exists():
+            try:
+                if await backup_dir.exists():
+                    await aioshutil.rmtree(backup_dir, ignore_errors=True)
+                    logger.debug(f"{pid} 旧的备份目录已清理 {backup_dir}")
+
+                await self._async_copytree(plugin_dir, backup_dir)
+                logger.debug(f"{pid} 插件已备份到 {backup_dir}")
+            except asyncio.CancelledError:
+                await aioshutil.rmtree(backup_dir, ignore_errors=True)
+                raise
+
+        return str(backup_dir) if await backup_dir.exists() else None
+
+    async def __async_restore_plugin(self, pid: str, backup_dir: str) -> None:
+        """
+        异步还原旧插件目录
+        :param pid: 插件 ID
+        :param backup_dir: 备份目录路径
+        """
+        plugin_dir = AsyncPath(self._plugins_root()) / pid.lower()
+        if await plugin_dir.exists():
+            await aioshutil.rmtree(plugin_dir, ignore_errors=True)
+            logger.debug(f"{pid} 已清理插件目录 {plugin_dir}")
+
+        backup_path = AsyncPath(backup_dir)
+        if await backup_path.exists():
+            await self._async_copytree(src=backup_path, dst=plugin_dir)
+            logger.debug(f"{pid} 已还原插件目录 {plugin_dir}")
+            await aioshutil.rmtree(backup_path, ignore_errors=True)
+            logger.debug(f"{pid} 已删除备份目录 {backup_dir}")
+
+    async def __async_remove_old_plugin(self, pid: str) -> None:
+        """
+        异步删除旧插件
+        :param pid: 插件 ID
+        """
+        plugin_dir = AsyncPath(self._plugins_root()) / pid.lower()
+        if await plugin_dir.exists():
+            await aioshutil.rmtree(plugin_dir, ignore_errors=True)
+
+    async def _async_copytree(self, src: AsyncPath, dst: AsyncPath) -> None:
+        """
+        异步递归复制目录
+        :param src: 源目录
+        :param dst: 目标目录
+        """
+        if not await src.exists():
+            return
+
+        await dst.mkdir(parents=True, exist_ok=True)
+
+        async for item in src.iterdir():
+            dst_item = dst / item.name
+            if await item.is_dir():
+                await self._async_copytree(item, dst_item)
+            else:
+                async with aiofiles.open(item, 'rb') as src_file:
+                    content = await src_file.read()
+                async with aiofiles.open(dst_item, 'wb') as dst_file:
+                    await dst_file.write(content)
+
+    async def __async_install_dependencies_if_required(
+        self,
+        pid: str,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> tuple[bool, bool, str]:
+        """
+        异步安装插件依赖。
+        :param pid: 插件 ID
+        :return: (是否存在依赖，安装是否成功, 错误信息)
+        """
+        plugin_dir = self._plugins_root() / pid.lower()
+        try:
+            manifest = load_dependency_manifest(plugin_dir)
+        except PluginDependencyManifestError as error:
+            logger.error(f"{pid} 依赖清单无效：{error}")
+            return True, False, str(error)
+        if manifest is not None:
+            if (
+                before_dependency_install is not None
+                and dependency_manifest_declares_installation(manifest)
+            ):
+                try:
+                    await _await_thread_operation(before_dependency_install)
+                except Exception as error:  # noqa: BLE001 - 观察失败不能阻断安装
+                    logger.warning(f"{pid} 依赖安装前状态记录失败：{error}")
+            logger.info(f"{pid} 存在依赖，开始尝试安装依赖")
+            success, error_message = await self.async_install_packages_with_fallback(
+                manifest.path
+            )
+            return True, success, "" if success else error_message
+
+        return False, False, "不存在依赖"
+
+    async def async_install_raw(
+            self,
+            pid: str,
+            repo_url: str,
+            package_version: Optional[str] = None,
+            release_version: Optional[str] = None,
+            force_install: bool = False,
+            before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> tuple[bool, str]:
+        """执行已通过来源准入的异步包安装，不负责身份或运行态提交。"""
+        if self.is_local_repo_url(repo_url):
+            return cast(
+                tuple[bool, str],
+                await _await_thread_operation(
+                    self.__install_local_package,
+                    pid,
+                    repo_url,
+                    force_install,
+                    before_dependency_install,
+                ),
+            )
+
+        if SystemUtils.is_frozen():
+            return False, "可执行文件模式下，只能安装本地插件"
+
+        # 验证参数
+        if not pid or not repo_url:
+            return False, "参数错误"
+
+        # 从 GitHub 的 repo_url 获取用户和项目名
+        user, repo = self.get_repo_info(repo_url)
+        if not user or not repo:
+            return False, "不支持的插件仓库地址格式"
+
+        user_repo = f"{user}/{repo}"
+
+        if not package_version:
+            package_version = get_runtime_setting('VERSION_FLAG')
+
+        # 1. 优先检查指定版本的插件
+        package_version = await self.async_get_plugin_package_version(pid, repo_url, package_version)
+        # 如果 package_version 为None，说明没有找到匹配的插件
+        if package_version is None:
+            msg = f"{pid} 没有找到适用于当前版本的插件"
+            logger.debug(msg)
+            return False, msg
+        # package_version 为空，表示从 package.json 中找到插件
+        elif package_version == "":
+            logger.debug(f"{pid} 从 package.json 中找到适用于当前版本的插件")
+        else:
+            logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
+
+        # 2. 统一异步安装流程（release 或文件列表）。
+        meta = await self.__async_get_plugin_meta(pid, repo_url, package_version)
+        release_items = (
+            await self.async_get_plugin_release_versions(pid, repo_url)
+            if release_version
+            else []
+        )
+        plan, message = self._build_remote_plugin_install_plan(
+            pid=pid,
+            meta=meta,
+            release_version=release_version,
+            release_items=release_items,
+        )
+        if plan is None:
+            return False, message
+
+        release_tag = plan.release_tag
+        if release_tag and not plan.fallback_to_filelist:
+            async def prepare_selected_release() -> tuple[bool, str]:
+                return await self.__async_install_from_release(
+                    pid,
+                    user_repo,
+                    release_tag,
+                )
+
+            return await self.__install_flow_async(
+                pid,
+                force_install,
+                prepare_selected_release,
+                repo_url,
+                before_dependency_install,
+            )
+
+        if release_tag:
+            # 当前索引 Release 失败时回退文件列表，保持同步与异步安装一致。
+            async def prepare_release() -> tuple[bool, str]:
+                ok, msg = await self.__async_install_from_release(
+                    pid,
+                    user_repo,
+                    release_tag,
+                )
+                if ok:
+                    return True, msg
+                logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
+                await self.__async_remove_old_plugin(pid)
+                return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
+
+            return await self.__install_flow_async(
+                pid,
+                force_install,
+                prepare_release,
+                repo_url,
+                before_dependency_install,
+            )
+        # 未声明 release 打包的插件继续使用文件列表方式安装。
+        async def prepare_filelist() -> tuple[bool, str]:
+            return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
+
+        return await self.__install_flow_async(
+            pid,
+            force_install,
+            prepare_filelist,
+            repo_url,
+            before_dependency_install,
+        )
+
+    async def async_install_local_raw(
+        self,
+        plugin_id: str,
+        repo_url: str = "",
+        force_install: bool = False,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> tuple[bool, str]:
+        """提供给兼容 Facade 的异步本地载荷安装入口。"""
+        return await self.async_install_raw(
+            pid=plugin_id,
+            repo_url=repo_url or self.make_local_repo_url(plugin_id),
+            force_install=force_install,
+            before_dependency_install=before_dependency_install,
+        )
+
+    async def async_backup_plugin(self, plugin_id: str) -> Optional[str]:
+        """提供给兼容 Facade 的异步临时备份入口。"""
+        return await self.__async_backup_plugin(plugin_id)
+
+    async def async_restore_plugin(
+        self, plugin_id: str, backup_dir: str
+    ) -> None:
+        """提供给兼容 Facade 的异步临时备份恢复入口。"""
+        await self.__async_restore_plugin(plugin_id, backup_dir)
+
+    async def async_remove_plugin(self, plugin_id: str) -> None:
+        """提供给兼容 Facade 的异步旧载荷清理入口。"""
+        await self.__async_remove_old_plugin(plugin_id)
+
+    async def async_install_from_release(
+        self, plugin_id: str, user_repo: str, release_tag: str
+    ) -> tuple[bool, str]:
+        """提供给兼容 Facade 的异步 Release 制品安装入口。"""
+        return await self.__async_install_from_release(
+            plugin_id, user_repo, release_tag
+        )
+
+    async def __async_get_plugin_meta(self, pid: str, repo_url: str,
+                                      package_version: Optional[str]) -> dict[str, Any]:
+        """异步读取远端插件元数据，并把异常收敛为空映射。"""
+        try:
+            plugins = (
+                          await self.async_get_plugins(repo_url) if not package_version
+                          else await self.async_get_plugins(repo_url, package_version)
+                      ) or {}
+            meta = plugins.get(pid)
+            return meta if isinstance(meta, dict) else {}
+        except Exception as e:
+            logger.warn(f"获取插件 {pid} 元数据失败：{e}")
+            return {}
+
+    async def __install_flow_async(
+        self,
+        pid: str,
+        force_install: bool,
+        prepare_content: Callable[[], Awaitable[tuple[bool, str]]],
+        repo_url: Optional[str] = None,
+        before_dependency_install: Optional[Callable[[], None]] = None,
+    ) -> tuple[bool, str]:
+        """
+        异步安装流程，处理插件内容准备、依赖安装和注册
+        """
+        backup_dir = None
+        try:
+            if not force_install:
+                backup_dir = await self.__async_backup_plugin(pid)
+
+            await self.__async_remove_old_plugin(pid)
+
+            success, message = await prepare_content()
+            if not success:
+                logger.error(f"{pid} 准备插件内容失败：{message}")
+                if backup_dir:
+                    await self.__async_restore_plugin(pid, backup_dir)
+                    logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                else:
+                    await self.__async_remove_old_plugin(pid)
+                    logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                return False, message
+
+            dependencies_exist, dep_ok, dep_msg = (
+                await self.__async_install_dependencies_if_required(
+                    pid,
+                    before_dependency_install,
+                )
+                if before_dependency_install is not None
+                else await self.__async_install_dependencies_if_required(pid)
+            )
+            if dependencies_exist and not dep_ok:
+                logger.error(f"{pid} 依赖安装失败：{dep_msg}")
+                if backup_dir:
+                    await self.__async_restore_plugin(pid, backup_dir)
+                    logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                else:
+                    await self.__async_remove_old_plugin(pid)
+                    logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                return False, dep_msg
+
+            return True, ""
+        except asyncio.CancelledError:
+            logger.warning(
+                f"{pid} 插件安装被取消，Python 依赖环境可能已经改变"
+            )
+            raise
+        finally:
+            if backup_dir:
+                await aioshutil.rmtree(backup_dir, ignore_errors=True)
+
+    def __prepare_content_via_filelist_sync(self, pid: str, user_repo: str,
+                                            package_version: Optional[str]) -> tuple[bool, str]:
+        """
+        同步准备插件内容，通过文件列表获取插件文件和依赖
+        """
+        runtime_pid = pid.lower()
+        file_list, msg = self.__get_file_list(runtime_pid, user_repo, package_version)
+        if not file_list:
+            if msg == "插件源码目录不存在":
+                return False, f"{pid} {msg}"
+            return False, msg or "插件文件列表读取失败"
+        ok, m = self.__download_files(runtime_pid, file_list, user_repo, package_version)
+        if not ok:
+            return False, m
+        return True, ""
+
+    async def __prepare_content_via_filelist_async(self, pid: str, user_repo: str,
+                                                   package_version: Optional[str]) -> tuple[bool, str]:
+        """
+        异步准备插件内容，通过文件列表获取插件文件和依赖
+        """
+        runtime_pid = pid.lower()
+        file_list, msg = await self.__async_get_file_list(
+            runtime_pid,
+            user_repo,
+            package_version,
+        )
+        if not file_list:
+            if msg == "插件源码目录不存在":
+                return False, f"{pid} {msg}"
+            return False, msg or "插件文件列表读取失败"
+        ok, m = await self.__async_download_files(
+            runtime_pid,
+            file_list,
+            user_repo,
+            package_version,
+        )
+        if not ok:
+            return False, m
+        return True, ""
+
+    async def __async_install_from_release(self, pid: str, user_repo: str, release_tag: str) -> tuple[bool, str]:
+        """
+        通过 GitHub Release 资产文件安装插件（异步）。
+        规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
+        将其全部解压到 app/plugins/{pid}
+        """
+        # 拼接资产文件名
+        asset_name = f"{release_tag.lower()}.zip"
+
+        release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
+        rel_res = await self.__async_request_with_fallback(
+            release_api,
+            headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
+            timeout=30,
+            is_api=True,
+        )
+        if rel_res is None:
+            return False, "获取 Release 信息失败：连接失败"
+        if rel_res.status_code == 404:
+            return False, f"{release_tag} 插件发布包不存在"
+        if rel_res.status_code != 200:
+            return False, f"获取 Release 信息失败：{rel_res.status_code}"
+
+        try:
+            rel_json = rel_res.json()
+            assets = rel_json.get("assets") or []
+            asset = next((a for a in assets if a.get("name") == asset_name), None)
+            if not asset:
+                return False, f"未找到资产文件：{asset_name}"
+            asset_id = asset.get("id")
+            if not asset_id:
+                return False, "资产缺少ID信息"
+            # 构建资产的API下载URL
+            download_url = f"https://api.github.com/repos/{user_repo}/releases/assets/{asset_id}"
+        except Exception as e:
+            logger.error(f"解析 Release 信息失败：{e}")
+            return False, f"解析 Release 信息失败：{e}"
+
+        # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
+        headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo).copy()
+        headers["Accept"] = "application/octet-stream"
+        res = await self.__async_request_with_fallback(download_url,
+                                                       headers=headers,
+                                                       is_api=True)
+        if res is None or res.status_code != 200:
+            return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+                infos = zf.infolist()
+                if not infos:
+                    return False, "压缩包内容为空"
+                dest_base = self._plugins_root() / pid.lower()
+                targets = self.__iter_release_zip_targets(zf, dest_base)
+                wrote_any = False
+                for info, dest_path, is_dir in targets:
+                    async_dest_path = AsyncPath(dest_path)
+                    if is_dir:
+                        await async_dest_path.mkdir(parents=True, exist_ok=True)
+                        continue
+                    await async_dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    data = await asyncio.to_thread(
+                        self.__read_release_zip_member,
+                        zf,
+                        info,
+                    )
+                    async with aiofiles.open(dest_path, 'wb') as dst:
+                        await dst.write(data)
+                    wrote_any = True
+                if not wrote_any:
+                    return False, "压缩包中无可写入文件"
+            return True, ""
+        except Exception as e:
+            logger.error(f"解压 Release 压缩包失败：{e}")
+            return False, f"解压 Release 压缩包失败：{e}"
+
+    @staticmethod
+    def __read_release_zip_member(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+        """在线程池读取并解压单个 Release 文件，避免阻塞事件循环。"""
+        with zf.open(info, "r") as source:
+            return source.read()
 
     def sync_local(self, plugin_id: str, source_dir: Path) -> bool:
         """用本地仓库内容原子替换运行副本，失败时恢复原目录。"""

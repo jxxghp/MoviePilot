@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, distribution, distributions
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 from urllib.parse import urlsplit
 
 from packaging.markers import default_environment
@@ -16,6 +16,7 @@ from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
+from app.adapters.system.plugin.health import PluginRuntimeHealth
 from app.adapters.system.plugin.manifest import (
     PluginDependencyManifestError,
     load_dependency_manifest,
@@ -34,22 +35,38 @@ class _RequirementGroup:
     specifiers: set[str] = field(default_factory=set)  # 待求交集的版本约束
 
 
+class PluginDependencyPackagePort(Protocol):
+    """声明依赖聚合器所需的唯一 Python 包安装边界。"""
+
+    def install_packages_with_fallback(
+        self,
+        dependency_files: list[Path],
+        find_links_dirs: list[Path],
+    ) -> tuple[bool, str]:
+        """同步安装已经聚合并准入的依赖清单。"""
+
+    async def async_install_packages_with_fallback(
+        self,
+        dependency_files: list[Path],
+        find_links_dirs: list[Path],
+    ) -> tuple[bool, str]:
+        """异步安装已经聚合并准入的依赖清单。"""
+
+
 class PluginDependencyInstaller:
     """独立负责插件依赖扫描、约束合并和安装。"""
 
     def __init__(
         self,
-        helper: Any = None,
+        packages: Optional[PluginDependencyPackagePort] = None,
         *,
         installed_plugins_provider: Optional[Callable[[], list[str]]] = None,
         plugin_dir: Optional[Path] = None,
     ) -> None:
         """保存包安装端口和启动层提供的已安装插件读取器。"""
-        if helper is None:
-            from app.adapters.external.market import PluginHelper
-
-            helper = PluginHelper()
-        self._helper = helper
+        if packages is None:
+            packages = PluginRuntimeHealth()
+        self._packages = packages
         self._installed_plugins_provider = installed_plugins_provider or (lambda: [])
         self._plugin_dir = plugin_dir or (
             Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins"
@@ -178,7 +195,7 @@ class PluginDependencyInstaller:
                 requirement.marker.evaluate({**environment, "extra": extra})
                 for extra in extras
             )
-        return requirement.marker.evaluate(environment)
+        return bool(requirement.marker.evaluate(environment))
 
     @staticmethod
     def _standardize_extra(name: str) -> str:
@@ -351,7 +368,7 @@ class PluginDependencyInstaller:
             manifest_paths = [manifest.path for manifest in self._plugin_manifests()]
             if not manifest_paths:
                 return False, "没有找到已安装插件的依赖清单"
-            return self._helper.install_packages_with_fallback(
+            return self._packages.install_packages_with_fallback(
                 manifest_paths,
                 self._wheels_dirs(),
             )
@@ -371,7 +388,7 @@ class PluginDependencyInstaller:
             manifest_paths = [manifest.path for manifest in self._plugin_manifests()]
             if not manifest_paths:
                 return False, "没有找到已安装插件的依赖清单"
-            return await self._helper.async_install_packages_with_fallback(
+            return await self._packages.async_install_packages_with_fallback(
                 manifest_paths,
                 self._wheels_dirs(),
             )

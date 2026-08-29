@@ -18,9 +18,9 @@ from app.application.plugin.source import (
     CandidateInventory,
     PluginLocalCandidate,
     PluginSelectionStatus,
-    parse_local_plugin_reference,
     select_plugin_candidate,
 )
+from app.domain.plugin import parse_local_plugin_reference
 
 
 class PluginSourceAdmissionError(RuntimeError):

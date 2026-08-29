@@ -200,8 +200,8 @@
         "owner": "$source",
         "reason": "运行期 import 仅用于响应类型、协议解析或兼容补丁，uses 为空或不获取网络能力。",
         "facts": [
-          {"source": "app.adapters.external.market", "target": "httpx2", "kind": "raw_transport", "fingerprint": "d4a648e8188818c0465013fc63cc3e49899da4df38541344303c251896564b1f"},
-          {"source": "app.adapters.external.market", "target": "requests", "kind": "raw_transport", "fingerprint": "ecc5368adfced20741e5ed8696008ea7555a4a81ceda6d7149e09f5f3d0ff7e3"},
+          {"source": "app.adapters.external.plugin.client", "target": "httpx2", "kind": "raw_transport", "fingerprint": "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d"},
+          {"source": "app.adapters.external.plugin.client", "target": "requests", "kind": "raw_transport", "fingerprint": "b5239e7eee9c23569b7fec66791e56bcc226db86a8d09ee7fc58d3ba8bc14f09"},
           {"source": "app.modules.emby.emby", "target": "requests", "kind": "raw_transport", "fingerprint": "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31"},
           {"source": "app.modules.filemanager.storages.smb", "target": "smbprotocol", "kind": "network_sdk", "fingerprint": "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22"},
           {"source": "app.modules.jellyfin.jellyfin", "target": "requests", "kind": "raw_transport", "fingerprint": "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5"},

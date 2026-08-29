@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from app.adapters.external.market import PluginHelper
+from app.adapters.external.plugin.client import PluginPackageSourceClient
+from app.adapters.system.plugin.package import PluginPackageManager
 
 
 @pytest.mark.asyncio
@@ -13,34 +15,36 @@ async def test_successful_install_flows_remove_transient_backups(
     tmp_path: Path,
 ) -> None:
     """同步与异步安装成功后都必须删除临时回滚副本。"""
-    helper = PluginHelper()
+    package = PluginPackageManager(
+        source=PluginPackageSourceClient(PluginHelper())
+    )
     sync_backup = tmp_path / "sync-backup"
     async_backup = tmp_path / "async-backup"
     sync_backup.mkdir()
     async_backup.mkdir()
 
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__backup_plugin",
+        package,
+        "_PluginPackageManager__backup_plugin",
         lambda _pid: str(sync_backup),
     )
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__remove_old_plugin",
+        package,
+        "_PluginPackageManager__remove_old_plugin",
         lambda _pid: None,
     )
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__install_dependencies_if_required",
+        package,
+        "_PluginPackageManager__install_dependencies_if_required",
         lambda _pid: (False, False, "不存在依赖"),
     )
     monkeypatch.setattr(
-        helper,
-        "refresh_persistent_plugin_backup",
+        package,
+        "refresh_persistent_backup",
         lambda _pid: True,
     )
 
-    sync_result = helper._PluginHelper__install_flow_sync(
+    sync_result = package._PluginPackageManager__install_flow_sync(
         "DemoPlugin",
         False,
         lambda: (True, ""),
@@ -62,22 +66,22 @@ async def test_successful_install_flows_remove_transient_backups(
         return True, ""
 
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__async_backup_plugin",
+        package,
+        "_PluginPackageManager__async_backup_plugin",
         backup_plugin,
     )
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__async_remove_old_plugin",
+        package,
+        "_PluginPackageManager__async_remove_old_plugin",
         remove_plugin,
     )
     monkeypatch.setattr(
-        helper,
-        "_PluginHelper__async_install_dependencies_if_required",
+        package,
+        "_PluginPackageManager__async_install_dependencies_if_required",
         install_dependencies,
     )
 
-    async_result = await helper._PluginHelper__install_flow_async(
+    async_result = await package._PluginPackageManager__install_flow_async(
         "DemoPlugin",
         False,
         prepare_content,

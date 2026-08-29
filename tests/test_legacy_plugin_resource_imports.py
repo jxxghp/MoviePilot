@@ -15,8 +15,8 @@ from app.runtime.compat.resource_imports import (
     PluginResourceImportScanError,
     scan_plugin_resource_imports,
 )
-from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.loader import PluginLoader
+from app.runtime.log import logger
 from app.startup.initializers import plugins as plugins_initializer
 
 _HEADED_CLOAKBROWSER_ENTRYPOINTS = (
@@ -275,7 +275,7 @@ def test_scanner_honors_python_source_encoding_cookie(tmp_path: Path) -> None:
 
 
 def _fake_plugin_module(module_name: str) -> ModuleType:
-    """构造满足 PluginManager 类发现合同的内存模块。"""
+    """构造满足插件 Loader 类发现合同的内存模块。"""
     module = ModuleType(module_name)
     plugin_type = type(
         module_name.rsplit(".", maxsplit=1)[-1].title(),
@@ -314,28 +314,14 @@ def test_plugin_preparer_runs_before_import_in_non_debug_and_isolates_failures(
         events.append(("import", plugin_id))
         return _fake_plugin_module(module_name)
 
-    monkeypatch.setattr(
-        plugin_manager_module,
-        "get_runtime_setting",
-        lambda key, default=None: {
-            "ROOT_PATH": tmp_path,
-            "DEBUG": False,
-            "DEV": False,
-        }.get(key, default),
-    )
-    monkeypatch.setattr(
-        plugin_manager_module,
-        "_legacy_plugin_import_preparer",
-        prepare,
-    )
-    monkeypatch.setattr(
-        plugin_manager_module,
-        "_legacy_import_scanner",
-        lambda **_kwargs: None,
-    )
     monkeypatch.setattr(importlib, "import_module", import_plugin)
 
-    plugins = PluginManager._load_selective_plugins(
+    plugins = PluginLoader(
+        plugins_root=plugins_root,
+        import_preparer=prepare,
+        import_scanner=lambda **_kwargs: None,
+        log=logger,
+    ).load(
         None,
         ["ScanFailed", "ResourceFailed", "Healthy"],
         lambda plugin_type: hasattr(plugin_type, "init_plugin"),

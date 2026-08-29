@@ -3,9 +3,9 @@
 import errno
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 
-from app.adapters.external import market as market_module
+from app.adapters.system.plugin import package as package_module
+from app.adapters.system.plugin.package import PluginPackageManager
 from app.chain import system as system_module
 from app.chain.system import SystemChain
 from app.startup.initializers import network as network_initializer
@@ -40,25 +40,30 @@ def _patch_docker_paths(monkeypatch, tmp_path: Path, *, reset: bool) -> Path:
     return runtime_dir
 
 
-def _patch_market_paths(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
+def _patch_package_paths(
+    monkeypatch,
+    tmp_path: Path,
+) -> tuple[PluginPackageManager, Path, Path]:
     """把插件更新后的持久化备份路径隔离到临时目录。"""
     plugin_root = tmp_path / "app" / "plugins"
     config_dir = tmp_path / "config"
     plugin_root.mkdir(parents=True)
     config_dir.mkdir(parents=True)
-    monkeypatch.setattr(market_module, "PLUGIN_DIR", plugin_root)
-    runtime_settings = SimpleNamespace(CONFIG_PATH=config_dir)
     monkeypatch.setattr(
-        market_module,
+        package_module,
         "get_runtime_setting",
-        lambda key, default=None: getattr(runtime_settings, key, default),
+        lambda key, default=None: config_dir if key == "CONFIG_PATH" else default,
     )
     monkeypatch.setattr(
-        market_module.SystemUtils,
+        package_module.SystemUtils,
         "is_docker",
         staticmethod(lambda: True),
     )
-    return plugin_root, config_dir / "plugins_backup"
+    return (
+        PluginPackageManager(plugin_root=plugin_root),
+        plugin_root,
+        config_dir / "plugins_backup",
+    )
 
 
 def _write_plugin(root: Path, plugin_id: str, filename: str, content: str) -> Path:
@@ -314,13 +319,13 @@ def test_backup_does_not_overwrite_failed_restore_snapshot(monkeypatch, tmp_path
 
 def test_market_refresh_replaces_snapshot_and_removes_stale_files(monkeypatch, tmp_path):
     """插件更新成功后应刷新对应持久化快照。"""
-    plugin_root, backup_root = _patch_market_paths(monkeypatch, tmp_path)
+    package, plugin_root, backup_root = _patch_package_paths(monkeypatch, tmp_path)
     backup_dir = backup_root / "demo"
     _write_plugin(plugin_root, "demo", "plugin.py", "new")
     _write_plugin(backup_root, "demo", "plugin.py", "old")
     _write_plugin(backup_root, "demo", "stale.py", "stale")
 
-    assert market_module.PluginHelper.refresh_persistent_plugin_backup("demo") is True
+    assert package.refresh_persistent_backup("demo") is True
 
     assert (backup_dir / "plugin.py").read_text(encoding="utf-8") == "new"
     assert not (backup_dir / "stale.py").exists()
@@ -328,7 +333,7 @@ def test_market_refresh_replaces_snapshot_and_removes_stale_files(monkeypatch, t
 
 def test_market_refresh_failure_preserves_previous_snapshot(monkeypatch, tmp_path):
     """插件更新备份失败时应继续保留旧快照。"""
-    plugin_root, backup_root = _patch_market_paths(monkeypatch, tmp_path)
+    package, plugin_root, backup_root = _patch_package_paths(monkeypatch, tmp_path)
     backup_dir = backup_root / "demo"
     _write_plugin(plugin_root, "demo", "plugin.py", "new")
     _write_plugin(backup_root, "demo", "plugin.py", "old")
@@ -336,7 +341,7 @@ def test_market_refresh_failure_preserves_previous_snapshot(monkeypatch, tmp_pat
     def fail_copy(*_args, **_kwargs):
         raise OSError("copy failed")
 
-    monkeypatch.setattr(market_module.shutil, "copytree", fail_copy)
+    monkeypatch.setattr(package_module.shutil, "copytree", fail_copy)
 
-    assert market_module.PluginHelper.refresh_persistent_plugin_backup("demo") is False
+    assert package.refresh_persistent_backup("demo") is False
     assert (backup_dir / "plugin.py").read_text(encoding="utf-8") == "old"

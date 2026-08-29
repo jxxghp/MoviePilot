@@ -435,6 +435,45 @@ def test_sealed_agent_uninstall_rejects_before_persistence() -> None:
     config_oper.async_set.assert_not_called()
 
 
+def test_agent_clone_uninstall_delegates_directory_removal_to_package_owner() -> None:
+    """Agent 分身卸载与 HTTP 入口共用唯一包文件删除 owner。"""
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_instance.return_value = None
+    plugin_manager.get_plugin_source_instances.return_value = []
+    plugin_manager.plugins = {"DemoPluginwork": MagicMock(is_clone=True)}
+    plugin_manager.remove_plugin_package.return_value = True
+    config_oper = MagicMock()
+    config_oper.get.return_value = ["DemoPluginwork"]
+    config_oper.async_set = AsyncMock()
+    blocking = AsyncMock(return_value=True)
+
+    with (
+        patch(
+            "app.agent.tools.impl._plugin_tool_utils.get_plugin_manager",
+            return_value=plugin_manager,
+        ),
+        patch(
+            "app.agent.tools.impl._plugin_tool_utils.get_configured_system_config",
+            return_value=config_oper,
+        ),
+        patch(
+            "app.application.plugin.folders.remove_plugin_from_folders",
+        ),
+        patch("app.application.plugin.routes.remove_plugin_api"),
+        patch("app.application.scheduling.remove_plugin_job"),
+        patch("app.agent.tools.base.run_agent_blocking", blocking),
+    ):
+        result = asyncio.run(uninstall_plugin_runtime("DemoPluginwork"))
+
+    assert result == {"was_clone": True, "clone_files_removed": True}
+    blocking.assert_awaited_once_with(
+        "plugin",
+        plugin_manager.remove_plugin_package,
+        "DemoPluginwork",
+    )
+    assert "DemoPluginwork" not in plugin_manager.plugins
+
+
 def test_query_plugin_data_truncates_large_payload() -> None:
     """
     查询插件数据会截断超长内容并返回预览。

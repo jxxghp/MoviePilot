@@ -932,7 +932,7 @@ def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
 
     storage = MagicMock()
     storage.delete.return_value = True
-    with patch("app.runtime.extensions.plugin_manager.get_plugin_storage", return_value=storage):
+    with patch("app.runtime.extensions.plugin.storage._plugin_storage", storage):
         assert manager.delete_plugin_config("DemoPlugin", force=True) is True
     storage.delete.assert_called_once_with("plugin.DemoPlugin")
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
@@ -998,6 +998,29 @@ def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
     )
     plugin_manager.delete_plugin_instance.assert_called_once_with("DemoPluginwork")
     plugin_manager.remove_plugin.assert_called_once_with("DemoPluginwork")
+    plugin_manager.remove_plugin_package.assert_not_called()
+
+
+def test_uninstall_clone_delegates_physical_removal_to_package_owner(monkeypatch):
+    """HTTP 分身卸载不得自行拼接路径或直接删除目录。"""
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_instance.return_value = None
+    plugin_manager.get_plugin_source_instances.return_value = []
+    plugin_manager.plugins = {"DemoPluginwork": MagicMock(is_clone=True)}
+    plugin_manager.remove_plugin_package.return_value = True
+    config = MagicMock()
+    config.get.return_value = ["DemoPluginwork"]
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_from_folders", MagicMock())
+
+    result = uninstall_plugin("DemoPluginwork", None)
+
+    assert result.success is True
+    plugin_manager.remove_plugin_package.assert_called_once_with("DemoPluginwork")
+    assert "DemoPluginwork" not in plugin_manager.plugins
 
 
 def test_sealed_http_uninstall_rejects_before_first_side_effect(monkeypatch):
@@ -1088,7 +1111,7 @@ def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():
 
     storage = MagicMock()
     storage.delete_data.side_effect = lambda pid: calls.append(pid)
-    with patch("app.runtime.extensions.plugin_manager.get_plugin_storage", return_value=storage):
+    with patch("app.runtime.extensions.plugin.storage._plugin_storage", storage):
         assert manager.delete_plugin_data("DemoPlugin", force=True) is True
 
     assert calls == ["DemoPlugin"]

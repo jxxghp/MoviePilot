@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -24,7 +24,7 @@ def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:
         "app.adapters.system.plugin.package.capture_loaded_native_dependencies",
         LoadedNativeDependencySnapshot,
     )
-    return PluginPackageManager(helper=Mock())
+    return PluginPackageManager(source=Mock())
 
 
 def test_checkpoint_rollback_restores_existing_package(monkeypatch, tmp_path):
@@ -43,6 +43,177 @@ def test_checkpoint_rollback_restores_existing_package(monkeypatch, tmp_path):
     assert source_file.read_text(encoding="utf-8") == "old"
     assert not (plugin_dir / "partial.py").exists()
     assert not checkpoint.transaction_dir.exists()
+
+
+def test_checkpoint_uses_injected_plugin_root(monkeypatch, tmp_path):
+    """显式装配的插件根目录必须覆盖全局运行目录设置。"""
+    _manager(monkeypatch, tmp_path)
+    plugin_root = tmp_path / "custom-plugins"
+    plugin_dir = plugin_root / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("custom", encoding="utf-8")
+    manager = PluginPackageManager(source=Mock(), plugin_root=plugin_root)
+
+    checkpoint = manager.checkpoint("DemoPlugin")
+
+    assert checkpoint.plugin_dir == plugin_dir.resolve()
+    assert (checkpoint.transaction_dir / "package" / "__init__.py").read_text(
+        encoding="utf-8"
+    ) == "custom"
+    manager.commit(checkpoint)
+
+
+def test_remove_plugin_uses_package_owner_path_boundary(tmp_path):
+    """物理卸载只删除注入根目录内的目标插件。"""
+    plugin_root = tmp_path / "plugins"
+    plugin_dir = plugin_root / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("plugin", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    manager = PluginPackageManager(source=Mock(), plugin_root=plugin_root)
+
+    assert manager.remove_plugin("DemoPlugin") is True
+    assert not plugin_dir.exists()
+    assert outside.exists()
+    assert manager.remove_plugin("DemoPlugin") is False
+    with pytest.raises(ValueError, match="非法插件ID"):
+        manager.remove_plugin("../outside")
+
+
+@pytest.mark.parametrize(
+    ("remote_path", "package_version"),
+    [
+        ("../escaped.py", None),
+        ("/tmp/escaped.py", None),
+        ("C:\\escaped.py", None),
+        ("plugins/other/file.py", None),
+        ("plugins.v2/demoplugin/../escaped.py", "v2"),
+    ],
+)
+def test_file_list_download_rejects_paths_outside_plugin_root(
+    monkeypatch,
+    tmp_path,
+    remote_path,
+    package_version,
+):
+    """同步文件列表安装不得把远端路径写到当前插件目录之外。"""
+    plugin_root = tmp_path / "plugins"
+    manager = PluginPackageManager(source=Mock(), plugin_root=plugin_root)
+    request = Mock()
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__request_with_fallback",
+        request,
+    )
+
+    result = manager._PluginPackageManager__download_files(
+        "DemoPlugin",
+        [{"path": remote_path, "download_url": "https://example.invalid/file"}],
+        "owner/repo",
+        package_version,
+    )
+
+    assert result == (False, "插件文件路径无效")
+    request.assert_not_called()
+    assert not (tmp_path / "escaped.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_async_file_list_download_rejects_path_outside_plugin_root(
+    monkeypatch,
+    tmp_path,
+):
+    """异步文件列表安装复用同一受控路径边界。"""
+    manager = PluginPackageManager(source=Mock(), plugin_root=tmp_path / "plugins")
+    request = AsyncMock()
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__async_request_with_fallback",
+        request,
+    )
+
+    result = await manager._PluginPackageManager__async_download_files(
+        "DemoPlugin",
+        [
+            {
+                "path": "plugins.v2/demoplugin/../../escaped.py",
+                "download_url": "https://example.invalid/file",
+            }
+        ],
+        "owner/repo",
+        "v2",
+    )
+
+    assert result == (False, "插件文件路径无效")
+    request.assert_not_awaited()
+    assert not (tmp_path / "escaped.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_file_list_download_rejects_traversal_directory_names(
+    monkeypatch,
+    tmp_path,
+):
+    """目录项名称不得扩大后续市场查询到当前插件树之外。"""
+    manager = PluginPackageManager(source=Mock(), plugin_root=tmp_path / "plugins")
+    sync_query = Mock()
+    async_query = AsyncMock()
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__get_file_list",
+        sync_query,
+    )
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__async_get_file_list",
+        async_query,
+    )
+    item = {"name": "..", "download_url": None}
+
+    assert manager._PluginPackageManager__download_files(
+        "DemoPlugin", [item], "owner/repo"
+    ) == (False, "插件目录路径无效")
+    assert await manager._PluginPackageManager__async_download_files(
+        "DemoPlugin", [item], "owner/repo"
+    ) == (False, "插件目录路径无效")
+    sync_query.assert_not_called()
+    async_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_file_list_download_maps_valid_paths_into_injected_plugin_root(
+    monkeypatch,
+    tmp_path,
+):
+    """同步与异步文件列表都只写入显式装配的插件根目录。"""
+    plugin_root = tmp_path / "plugins"
+    response = SimpleNamespace(status_code=200, text="payload")
+    manager = PluginPackageManager(source=Mock(), plugin_root=plugin_root)
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__request_with_fallback",
+        Mock(return_value=response),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__async_request_with_fallback",
+        AsyncMock(return_value=response),
+    )
+    item = {
+        "path": "plugins.v2/demoplugin/nested/file.py",
+        "download_url": "https://example.invalid/file",
+    }
+
+    assert manager._PluginPackageManager__download_files(
+        "DemoPlugin", [item], "owner/repo", "v2"
+    ) == (True, "")
+    assert await manager._PluginPackageManager__async_download_files(
+        "DemoPlugin", [item], "owner/repo", "v2"
+    ) == (True, "")
+    assert (plugin_root / "demoplugin" / "nested" / "file.py").read_text(
+        encoding="utf-8"
+    ) == "payload"
 
 
 def test_checkpoint_does_not_scan_native_dependencies(monkeypatch, tmp_path):

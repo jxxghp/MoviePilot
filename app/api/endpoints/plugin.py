@@ -1,6 +1,5 @@
 import asyncio
 import mimetypes
-import shutil
 from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
@@ -972,21 +971,9 @@ def uninstall_plugin(
                 # 如果是分身插件，则删除分身数据和配置
                 plugin_manager.delete_plugin_config(plugin_id)
                 plugin_manager.delete_plugin_data(plugin_id)
-                # 删除分身文件
-                plugin_base_dir = (
-                    get_api_runtime_config_snapshot().root_path
-                    / "app"
-                    / "plugins"
-                    / plugin_id.lower()
-                )
-                if plugin_base_dir.exists():
-                    try:
-                        shutil.rmtree(plugin_base_dir)
-                        plugin_manager.plugins.pop(plugin_id, None)
-                    except Exception as e:
-                        logger.error(
-                            f"删除插件分身目录 {plugin_base_dir} 失败: {str(e)}"
-                        )
+                # 分身物理目录只能由包文件 owner 删除。
+                if plugin_manager.remove_plugin_package(plugin_id):
+                    plugin_manager.plugins.pop(plugin_id, None)
             # 从插件文件夹中移除该插件
             remove_plugin_from_folders(plugin_id)
             # 移除插件

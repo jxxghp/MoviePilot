@@ -6,7 +6,6 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, TypeAlias
-from urllib.parse import unquote, urlsplit
 
 from app.application.plugin.identity import (
     PluginIdentity,
@@ -823,18 +822,6 @@ def get_effective_local_candidate(
         _normalize_generation_order(generations),
     )
     return candidate if isinstance(candidate, PluginLocalCandidate) else None
-
-
-def parse_local_plugin_reference(repo_url: str) -> str | None:
-    """从不透明本地来源标识中提取插件 ID，不读取或暴露宿主路径。"""
-    if not str(repo_url).startswith("local://"):
-        return None
-    try:
-        parsed = urlsplit(repo_url)
-        plugin_id = unquote(parsed.netloc or parsed.path.strip("/"))
-    except (TypeError, ValueError):
-        return None
-    return plugin_id or None
 
 
 def _coerce_online_source_type(source_type: TrustedPluginSourceType) -> TrustedPluginSourceType:

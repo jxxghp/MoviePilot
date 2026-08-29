@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.adapters.external import market
-from app.adapters.external.market import PluginHelper
+from app.adapters.external.plugin import client
+from app.adapters.external.plugin.client import PluginMarketTransport
 
 
 @pytest.mark.asyncio
@@ -20,7 +20,7 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
             PROXY=proxy,
     )
     monkeypatch.setattr(
-        market,
+        client,
         "get_runtime_setting",
         lambda key, default=None: getattr(runtime_settings, key, default),
     )
@@ -56,15 +56,15 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
                 raise RuntimeError("next strategy")
             return response
 
-    monkeypatch.setattr(market, "RequestUtils", SyncRequest)
-    monkeypatch.setattr(market, "AsyncRequestUtils", AsyncRequest)
+    monkeypatch.setattr(client, "RequestUtils", SyncRequest)
+    monkeypatch.setattr(client, "AsyncRequestUtils", AsyncRequest)
 
-    sync_response = PluginHelper._PluginHelper__request_with_fallback(
+    sync_response = PluginMarketTransport._PluginMarketTransport__request_with_fallback(
         "https://api.example/resource",
         headers={"X-Test": "1"},
         timeout=12,
     )
-    async_response = await PluginHelper._PluginHelper__async_request_with_fallback(
+    async_response = await PluginMarketTransport._PluginMarketTransport__async_request_with_fallback(
         "https://api.example/resource",
         headers={"X-Test": "1"},
         timeout=12,
@@ -95,12 +95,12 @@ def test_github_api_request_policy_skips_content_mirror(monkeypatch) -> None:
             PROXY=None,
     )
     monkeypatch.setattr(
-        market,
+        client,
         "get_runtime_setting",
         lambda key, default=None: getattr(runtime_settings, key, default),
     )
 
-    strategies = PluginHelper._build_github_request_strategies(
+    strategies = PluginMarketTransport._build_github_request_strategies(
         url="https://api.github.com/repos/example/plugins/releases",
         is_api=True,
     )
