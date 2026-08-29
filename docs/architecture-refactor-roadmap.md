@@ -342,6 +342,8 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 - `startup/composition/database.py` 唯一持有 `DatabaseWorker`、兼容事务 runner、查询服务、
   插件持久化、工作流查询和旧 `ApiDataPorts` 的具体数据库装配；runtime 拒绝重入，Worker 成功后
   才发布事务入口，关闭失败时保留 owner 与 provider，成功关闭后对称撤销。
+- `startup/composition/security.py` 唯一构造并登记认证、用户查询、PassKey 与 Web 认证入口，
+  initializer 只消费其返回的 `AuthenticationRuntime`，不再保留第二份安全服务装配。
 - `startup/initializers/modules.py` 只按原顺序调用 composition API，并继续构造尚未迁移的领域运行时；
   本批未改变 HostRuntime、插件 ABI、SDK/Compat 或生命周期 manifest，`app/plugins/**` 未改动。
 - 模块 owner 完整收敛后撤销 `app.state.host_runtime`；启动失败直接关闭 Worker、撤销本批 provider 并

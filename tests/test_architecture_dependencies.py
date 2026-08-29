@@ -1486,7 +1486,7 @@ def test_passkey_application_does_not_select_cache_backend():
 
 def test_startup_explicitly_configures_passkey_challenge_cache():
     """PassKey challenge 缓存必须由启动组合根显式装配。"""
-    path = APP_ROOT / "startup" / "initializers" / "modules.py"
+    path = APP_ROOT / "startup" / "composition" / "security.py"
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     configured = any(
         isinstance(node, ast.Call)

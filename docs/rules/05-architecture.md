@@ -140,7 +140,10 @@ not startup. Lower-level runtime modules must not import startup.
 runtime/settings construction and publication. `startup/composition/database.py`
 owns the process database worker, compatibility transaction runner, query services,
 plugin persistence and legacy API data-port wiring. Initializers call these owners in
-startup order and must not recreate their concrete construction. Database runtime
+startup order and must not recreate their concrete construction.
+`startup/composition/security.py` owns authentication, user lookup, PassKey and Web
+access provider assembly; `initializers/modules.py` only invokes that owner and places
+its returned `AuthenticationRuntime` into the host runtime. Database runtime
 ownership rejects overlapping lifespans; after a successful worker shutdown, the
 configuration/database composition owners must revoke every provider they published
 before releasing database connections. Other domain providers remain owned by their

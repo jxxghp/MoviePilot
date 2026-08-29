@@ -30,7 +30,6 @@ from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
 )
-from app.adapters.web.security.access import set_superuser_token_payload_provider
 from app.application.agent import AgentDataContext
 from app.application.agenttask import (
     AgentTaskExecutionService,
@@ -93,15 +92,7 @@ from app.application.outbox import (
     durable_event_topic,
     validate_durable_event_handlers,
 )
-from app.application.security.auth import AuthService, build_superuser_token_payload, configure_auth_service
-from app.application.security.passkey import (
-    PASSKEY_CHALLENGE_TTL_SECONDS,
-    PasskeyService,
-    configure_passkey_challenge_cache,
-    configure_passkey_service,
-)
 from app.application.security.url import close_image_proxy_block_log_coalescer
-from app.application.security.user import configure_user_lookups
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
 from app.application.service import configure_service_directory
@@ -145,14 +136,12 @@ from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRep
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
-from app.db.adapters.user import SqlAlchemyUserRepository
 from app.db.adapters.workflow import (
     TransactionalWorkflowExecutionService,
 )
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.mediaserver import MediaServerOper
 from app.db.oper.message import MessageOper
-from app.db.oper.passkey import PassKeyOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
@@ -166,7 +155,7 @@ from app.db.uow import (
     SqlAlchemyAsyncUnitOfWork,
     SqlAlchemyUnitOfWork,
 )
-from app.runtime.cache import AsyncFileCache, FileCache, TTLCache
+from app.runtime.cache import AsyncFileCache, FileCache
 from app.runtime.config import settings as legacy_settings
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.execution import run_in_threadpool_to_completion
@@ -196,7 +185,6 @@ from app.startup.composition.configuration import (
 )
 from app.startup.composition.context import (
     AgentChatRuntime,
-    AuthenticationRuntime,
     HistoryRuntime,
     HostRuntime,
     MessagingRuntime,
@@ -214,6 +202,10 @@ from app.startup.composition.database import (
     reset_database_services,
     start_database_runtime,
     stop_database_runtime,
+)
+from app.startup.composition.security import (
+    configure_security_access,
+    configure_security_services,
 )
 from app.startup.composition.subscription import (
     async_rule_group_mutation_scope,
@@ -953,6 +945,7 @@ async def _initialize_modules() -> HostRuntime:
         download_history=download_history_repository,
         plugin_data=plugin_data_repository,
     )
+    authentication = configure_security_services()
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
             async_session=get_async_db,
@@ -967,12 +960,7 @@ async def _initialize_modules() -> HostRuntime:
             sync_transaction=SqlAlchemyUnitOfWork,
             async_transaction=SqlAlchemyAsyncUnitOfWork,
         ),
-        authentication=AuthenticationRuntime(
-            user_repository=SqlAlchemyUserRepository,
-            standalone_user=build_transactional_user_repository,
-            system_config=SystemConfigOper,
-            passkey=PassKeyOper,
-        ),
+        authentication=authentication,
         messaging=MessagingRuntime(
             repository=MessageOper,
             helper=message_helper,
@@ -1032,26 +1020,6 @@ async def _initialize_modules() -> HostRuntime:
     configure_database()
     configure_agent_chat_service(agent_chat_service)
     configure_agent_chat_persistence(agent_chat_persistence)
-    configure_user_lookups(
-        by_id=lambda user_id: build_transactional_user_repository().get_by_id(user_id),
-        by_name=lambda username: build_transactional_user_repository().get_by_name(username),
-        by_channel=lambda **bindings: build_transactional_user_repository().find_name_by_bindings(bindings),
-    )
-    configure_auth_service(
-        AuthService(
-            users=build_transactional_user_repository(),
-            config=get_configured_system_config(),
-            passkeys=PassKeyOper(),
-        )
-    )
-    configure_passkey_challenge_cache(
-        TTLCache(
-            region="passkey_challenge",
-            maxsize=4096,
-            ttl=PASSKEY_CHALLENGE_TTL_SECONDS,
-        )
-    )
-    configure_passkey_service(PasskeyService(repository=PassKeyOper()))
     configure_transfer_history_repository(lambda: transfer_history_repository)
     configure_site_query_service(SiteQueryService(repository=site_repository))
     configure_site_health_service(SiteHealthService(repository=site_repository))
@@ -1084,7 +1052,7 @@ async def _initialize_modules() -> HostRuntime:
         )
     )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
-    set_superuser_token_payload_provider(build_superuser_token_payload)
+    configure_security_access()
     # DoH
     DohHelper()
     # 站点管理
