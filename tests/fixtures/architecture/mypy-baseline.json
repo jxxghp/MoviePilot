@@ -1316,11 +1316,9 @@
     "type-arg": 2
   },
   "app/chain/recommend.py": {
-    "arg-type": 20,
     "misc": 60,
-    "no-untyped-call": 14,
+    "no-untyped-call": 1,
     "no-untyped-def": 1,
-    "operator": 8,
     "type-arg": 31
   },
   "app/chain/scraping.py": {

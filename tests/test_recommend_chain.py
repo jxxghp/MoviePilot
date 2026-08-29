@@ -1,6 +1,6 @@
 import asyncio
 from typing import Generator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -94,6 +94,80 @@ def test_async_recommend_methods_do_not_cache_empty_result(
         assert asyncio.run(recommend_method(page=1)) == []
 
     assert backend_chain.return_value.async_run_module.call_count == 2
+
+
+def test_tmdb_discover_sync_async_share_request_and_projection() -> None:
+    """TMDB 推荐双入口应复用同一发现请求和结果投影。"""
+    chain = RecommendChain()
+    candidate = Mock()
+    candidate.to_dict.return_value = {"media_id": "tmdb-1"}
+
+    with patch("app.chain.recommend.TmdbChain") as source_chain:
+        source_chain.return_value.tmdb_discover.return_value = [candidate]
+        source_chain.return_value.async_run_module = AsyncMock(return_value=[candidate])
+
+        sync_result = chain.tmdb_movies(
+            with_genres="18", vote_average=7.5, vote_count=100, page=2
+        )
+        async_result = asyncio.run(chain.async_tmdb_movies(
+            with_genres="18", vote_average=7.5, vote_count=100, page=2
+        ))
+
+    sync_request = source_chain.return_value.tmdb_discover.call_args.kwargs
+    async_request = dict(source_chain.return_value.async_run_module.call_args.kwargs)
+    assert async_request.pop("raise_exception") is False
+    assert source_chain.return_value.async_run_module.call_args.args == (
+        "async_tmdb_discover",
+    )
+    assert sync_request == async_request
+    assert sync_result == async_result == [{"media_id": "tmdb-1"}]
+
+
+def test_bangumi_calendar_sync_async_share_page_projection() -> None:
+    """Bangumi 日历双入口应复用同一分页与字典投影规则。"""
+    chain = RecommendChain()
+    candidates = []
+    for index in range(5):
+        candidate = Mock()
+        candidate.to_dict.return_value = {"media_id": str(index)}
+        candidates.append(candidate)
+
+    with patch("app.chain.recommend.BangumiChain") as source_chain:
+        source_chain.return_value.calendar.return_value = candidates
+        source_chain.return_value.async_run_module = AsyncMock(return_value=candidates)
+
+        sync_result = chain.bangumi_calendar(page=2, count=2)
+        async_result = asyncio.run(chain.async_bangumi_calendar(page=2, count=2))
+
+    assert sync_result == async_result == [
+        {"media_id": "2"},
+        {"media_id": "3"},
+    ]
+
+
+def test_douban_discover_sync_async_share_request_and_projection() -> None:
+    """豆瓣推荐双入口应复用媒体类型、分页和结果投影。"""
+    chain = RecommendChain()
+    candidate = Mock()
+    candidate.to_dict.return_value = {"media_id": "douban-1"}
+
+    with patch("app.chain.recommend.DoubanChain") as source_chain:
+        source_chain.return_value.douban_discover.return_value = [candidate]
+        source_chain.return_value.async_run_module = AsyncMock(return_value=[candidate])
+
+        sync_result = chain.douban_movies(sort="U", tags="喜剧", page=3, count=12)
+        clear_recommend_cache()
+        async_result = asyncio.run(chain.async_douban_movies(
+            sort="U", tags="喜剧", page=3, count=12
+        ))
+
+    sync_request = source_chain.return_value.douban_discover.call_args.kwargs
+    async_request = source_chain.return_value.async_run_module.call_args.kwargs
+    assert source_chain.return_value.async_run_module.call_args.args == (
+        "async_douban_discover",
+    )
+    assert sync_request == async_request
+    assert sync_result == async_result == [{"media_id": "douban-1"}]
 
 
 def test_music_weekly_uses_music_chart():
