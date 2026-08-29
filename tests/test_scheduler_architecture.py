@@ -3,7 +3,7 @@
 import ast
 from pathlib import Path
 
-from app.scheduler import Scheduler, SchedulerChain
+from app.scheduler import Scheduler, SchedulerChain  # pylint: disable=no-name-in-module
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
