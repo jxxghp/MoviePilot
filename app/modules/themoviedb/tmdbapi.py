@@ -1,15 +1,52 @@
 import re
 import traceback
-from typing import Optional, List
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Callable, Generator, List, Optional, cast
 
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.log import logger
-from app.schemas.types import MediaType
 from app.foundation import text as text_tools
 from app.foundation.text import convert as zhconv_convert
-from .tmdbv3api import TMDb, Search, Movie, TV, Season, Episode, Discover, Trending, Person, Collection
-from .tmdbv3api.exceptions import TMDbException, TMDbConnectionError
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
+
+from .tmdbv3api import TV, Collection, Discover, Episode, Movie, Person, Search, Season, TMDb, Trending
+from .tmdbv3api.exceptions import TMDbConnectionError, TMDbException
+
+_MediaRecord = dict[str, Any]
+_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+class _MatchTarget(Enum):
+    """描述一次媒体匹配计划需要调用的真实 TMDB 查询。"""
+
+    MOVIE_NAME = "movie_name"
+    TV_NAME = "tv_name"
+    TV_SEASON = "tv_season"
+
+
+@dataclass(frozen=True)
+class _MatchStep:
+    """冻结同步与异步入口共同消费的单步匹配计划。"""
+
+    target: _MatchTarget
+    year: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class _CandidatePlan:
+    """冻结标题直达结果和需要详情补全的候选顺序。"""
+
+    direct: Optional[_MediaRecord]
+    aliases: tuple[_MediaRecord, ...]
+
+
+@dataclass(frozen=True)
+class _DetailRequest:
+    """描述候选决策继续推进前唯一允许执行的详情 I/O。"""
+
+    mtype: MediaType
+    tmdbid: int
 
 
 class TmdbApi:
@@ -31,53 +68,32 @@ class TmdbApi:
         self.person = Person(language=language)
         self.collection = Collection(language=language)
 
-    def search_multiis(self, title: str) -> List[dict]:
+    def search_multiis(self, title: str) -> List[_MediaRecord]:
         """
         同时查询模糊匹配的电影、电视剧TMDB信息
         """
         if not title:
             return []
-        ret_infos = []
         multis = self.search.multi(term=title) or []
-        for multi in multis:
-            if multi.get("media_type") in ["movie", "tv"]:
-                multi['media_type'] = MediaType.MOVIE if multi.get("media_type") == "movie" else MediaType.TV
-                ret_infos.append(multi)
-        return ret_infos
+        return self._project_multi_search_results(multis)
 
-    def search_movies(self, title: str, year: str) -> List[dict]:
+    def search_movies(self, title: str, year: str) -> List[_MediaRecord]:
         """
         查询模糊匹配的所有电影TMDB信息
         """
         if not title:
             return []
-        ret_infos = []
-        if year:
-            movies = self.search.movies(term=title, year=year) or []
-        else:
-            movies = self.search.movies(term=title) or []
-        for movie in movies:
-            if title in movie.get("title"):
-                movie['media_type'] = MediaType.MOVIE
-                ret_infos.append(movie)
-        return ret_infos
+        movies = self.search.movies(**self._search_kwargs(title, year, MediaType.MOVIE)) or []
+        return self._project_search_results(title, movies, MediaType.MOVIE)
 
-    def search_tvs(self, title: str, year: str) -> List[dict]:
+    def search_tvs(self, title: str, year: str) -> List[_MediaRecord]:
         """
         查询模糊匹配的所有电视剧TMDB信息
         """
         if not title:
             return []
-        ret_infos = []
-        if year:
-            tvs = self.search.tv_shows(term=title, release_year=year) or []
-        else:
-            tvs = self.search.tv_shows(term=title) or []
-        for tv in tvs:
-            if title in tv.get("name"):
-                tv['media_type'] = MediaType.TV
-                ret_infos.append(tv)
-        return ret_infos
+        tvs = self.search.tv_shows(**self._search_kwargs(title, year, MediaType.TV)) or []
+        return self._project_search_results(title, tvs, MediaType.TV)
 
     def search_persons(self, name: str) -> List[dict]:
         """
@@ -87,17 +103,14 @@ class TmdbApi:
             return []
         return self.search.people(term=name) or []
 
-    def search_collections(self, name: str) -> List[dict]:
+    def search_collections(self, name: str) -> List[_MediaRecord]:
         """
         查询模糊匹配的所有合集TMDB信息
         """
         if not name:
             return []
         collections = self.search.collections(term=name) or []
-        for collection in collections:
-            collection['media_type'] = MediaType.COLLECTION
-            collection['collection_id'] = collection.get("id")
-        return collections
+        return self._project_collections(collections)
 
     def get_collection(self, collection_id: int) -> List[dict]:
         """
@@ -114,7 +127,7 @@ class TmdbApi:
         return []
 
     @staticmethod
-    def __compare_names(file_name: str, tmdb_names: list) -> bool:
+    def __compare_names(file_name: str, tmdb_names: Any) -> bool:
         """
         比较文件名是否匹配，忽略大小写和特殊字符
         :param file_name: 识别的文件名或者种子名
@@ -123,7 +136,7 @@ class TmdbApi:
         """
         if not file_name or not tmdb_names:
             return False
-        if not isinstance(tmdb_names, list):
+        if not isinstance(tmdb_names, (list, tuple)):
             tmdb_names = [tmdb_names]
         file_name = text_tools.remove_punctuation(file_name).upper()
         for tmdb_name in tmdb_names:
@@ -132,9 +145,48 @@ class TmdbApi:
                 return True
         return False
 
-    # 公共方法
     @staticmethod
-    def _validate_match_params(name: str, search_obj) -> bool:
+    def _search_kwargs(title: str, year: Optional[str], mtype: MediaType) -> dict[str, str]:
+        """构造同步与异步搜索客户端共享的查询参数。"""
+        kwargs = {"term": title}
+        if year:
+            kwargs["year" if mtype == MediaType.MOVIE else "release_year"] = year
+        return kwargs
+
+    @staticmethod
+    def _project_multi_search_results(multis: List[_MediaRecord]) -> List[_MediaRecord]:
+        """过滤多类型搜索结果并投影为宿主媒体类型。"""
+        ret_infos = []
+        for multi in multis:
+            media_type = multi.get("media_type")
+            if media_type not in ("movie", "tv"):
+                continue
+            multi["media_type"] = MediaType.MOVIE if media_type == "movie" else MediaType.TV
+            ret_infos.append(multi)
+        return ret_infos
+
+    @staticmethod
+    def _project_search_results(title: str, items: List[_MediaRecord], mtype: MediaType) -> List[_MediaRecord]:
+        """按媒体类型过滤标题并补齐统一类型字段。"""
+        title_field = "title" if mtype == MediaType.MOVIE else "name"
+        ret_infos = []
+        for item in items:
+            if title not in (item.get(title_field) or ""):
+                continue
+            item["media_type"] = mtype
+            ret_infos.append(item)
+        return ret_infos
+
+    @staticmethod
+    def _project_collections(collections: List[_MediaRecord]) -> List[_MediaRecord]:
+        """补齐合集查询结果的宿主类型与稳定身份。"""
+        for collection in collections:
+            collection["media_type"] = MediaType.COLLECTION
+            collection["collection_id"] = collection.get("id")
+        return collections
+
+    @staticmethod
+    def _validate_match_params(name: str, search_obj: Any) -> bool:
         """
         验证匹配方法的基本参数
         """
@@ -155,9 +207,128 @@ class TmdbApi:
             year_range.append(str(int(year) - 1))
         return year_range
 
+    @classmethod
+    def _build_match_plan(
+        cls,
+        mtype: MediaType,
+        year: Optional[str],
+        season_year: Optional[str],
+        season_number: Optional[int],
+    ) -> tuple[_MatchStep, ...]:
+        """冻结名称、年份和季信息对应的有序查询计划。"""
+        if mtype != MediaType.TV:
+            return tuple(
+                _MatchStep(_MatchTarget.MOVIE_NAME, search_year) for search_year in cls._generate_year_range(year)
+            )
+        steps = []
+        if season_year and season_number is not None:
+            steps.append(_MatchStep(_MatchTarget.TV_SEASON, season_year))
+        steps.extend(_MatchStep(_MatchTarget.TV_NAME, search_year) for search_year in cls._generate_year_range(year))
+        return tuple(steps)
+
+    @classmethod
+    def _match_resolution(
+        cls, mtype: MediaType, plan: tuple[_MatchStep, ...]
+    ) -> Generator[_MatchStep, Optional[_MediaRecord], Optional[_MediaRecord]]:
+        """统一推进匹配计划并在首个有效结果处短路。"""
+        info: Optional[_MediaRecord] = {}
+        for step in plan:
+            info = yield step
+            if info:
+                break
+        result_type = MediaType.TV if mtype == MediaType.TV else MediaType.MOVIE
+        return cls._set_media_type(info, result_type)
+
+    def _execute_match_step_sync(
+        self,
+        step: _MatchStep,
+        name: str,
+        mtype: MediaType,
+        season_year: Optional[str],
+        season_number: Optional[int],
+        group_seasons: Optional[List[_MediaRecord]],
+    ) -> Optional[_MediaRecord]:
+        """通过同步客户端执行一条已冻结的匹配查询。"""
+        if step.target == _MatchTarget.TV_SEASON:
+            assert step.year is not None and season_number is not None
+            self._log_match_debug(mtype, name, step.year, season_number, season_year)
+            return self.__search_tv_by_season(name, step.year, season_number, group_seasons)
+        self._log_match_debug(mtype, name, step.year)
+        if step.target == _MatchTarget.TV_NAME:
+            return self.__search_tv_by_name(name, step.year)
+        return self.__search_movie_by_name(name, step.year)
+
+    async def _execute_match_step_async(
+        self,
+        step: _MatchStep,
+        name: str,
+        mtype: MediaType,
+        season_year: Optional[str],
+        season_number: Optional[int],
+        group_seasons: Optional[List[_MediaRecord]],
+    ) -> Optional[_MediaRecord]:
+        """通过异步客户端执行一条已冻结的匹配查询。"""
+        if step.target == _MatchTarget.TV_SEASON:
+            assert step.year is not None and season_number is not None
+            self._log_match_debug(mtype, name, step.year, season_number, season_year)
+            return await self.__async_search_tv_by_season(name, step.year, season_number, group_seasons)
+        self._log_match_debug(mtype, name, step.year)
+        if step.target == _MatchTarget.TV_NAME:
+            return await self.__async_search_tv_by_name(name, step.year)
+        return await self.__async_search_movie_by_name(name, step.year)
+
+    def _run_match_sync(
+        self,
+        resolution: Generator[_MatchStep, Optional[_MediaRecord], Optional[_MediaRecord]],
+        name: str,
+        mtype: MediaType,
+        season_year: Optional[str],
+        season_number: Optional[int],
+        group_seasons: Optional[List[_MediaRecord]],
+    ) -> Optional[_MediaRecord]:
+        """同步执行共享匹配状态机请求的真实 I/O。"""
+        try:
+            step = next(resolution)
+        except StopIteration as result:
+            return cast(Optional[_MediaRecord], result.value)
+        while True:
+            info = self._execute_match_step_sync(step, name, mtype, season_year, season_number, group_seasons)
+            try:
+                step = resolution.send(info)
+            except StopIteration as result:
+                return cast(Optional[_MediaRecord], result.value)
+
+    async def _run_match_async(
+        self,
+        resolution: Generator[_MatchStep, Optional[_MediaRecord], Optional[_MediaRecord]],
+        name: str,
+        mtype: MediaType,
+        season_year: Optional[str],
+        season_number: Optional[int],
+        group_seasons: Optional[List[_MediaRecord]],
+    ) -> Optional[_MediaRecord]:
+        """异步执行共享匹配状态机请求的真实 I/O。"""
+        try:
+            step = next(resolution)
+        except StopIteration as result:
+            return cast(Optional[_MediaRecord], result.value)
+        while True:
+            info = await self._execute_match_step_async(
+                step, name, mtype, season_year, season_number, group_seasons
+            )
+            try:
+                step = resolution.send(info)
+            except StopIteration as result:
+                return cast(Optional[_MediaRecord], result.value)
+
     @staticmethod
-    def _log_match_debug(mtype: MediaType, name: str, year: Optional[str] = None,
-                         season_number: Optional[int] = None, season_year: Optional[str] = None):
+    def _log_match_debug(
+        mtype: MediaType,
+        name: str,
+        year: Optional[str] = None,
+        season_number: Optional[int] = None,
+        season_year: Optional[str] = None,
+    ) -> None:
         """
         记录匹配调试日志
         """
@@ -167,86 +338,179 @@ class TmdbApi:
             logger.debug(f"正在识别{mtype.value}：{name}, 年份={year} ...")
 
     @staticmethod
-    def _set_media_type(info: dict, mtype: MediaType) -> dict:
+    def _set_media_type(info: Optional[_MediaRecord], mtype: MediaType) -> Optional[_MediaRecord]:
         """
         设置媒体类型
         """
         if info:
-            info['media_type'] = mtype
+            info["media_type"] = mtype
         return info
 
     @staticmethod
-    def _sort_multi_results(multis: List[dict]) -> List[dict]:
+    def _sort_multi_results(multis: List[_MediaRecord]) -> List[_MediaRecord]:
         """
         按年份降序排列搜索结果，电影在前面
         """
         return sorted(
             multis,
-            key=lambda x: ("1"
-                           if x.get("media_type") == "movie"
-                           else "0") + (x.get('release_date')
-                                        or x.get('first_air_date')
-                                        or '0000-00-00'),
-            reverse=True
+            key=lambda x: (
+                ("1" if x.get("media_type") == "movie" else "0")
+                + (x.get("release_date") or x.get("first_air_date") or "0000-00-00")
+            ),
+            reverse=True,
         )
 
     @staticmethod
-    def _convert_media_type(ret_info: dict) -> dict:
+    def _convert_media_type(ret_info: _MediaRecord) -> _MediaRecord:
         """
         转换媒体类型为MediaType枚举
         """
-        if (ret_info
-                and not isinstance(ret_info.get("media_type"), MediaType)):
-            ret_info['media_type'] = MediaType.MOVIE if ret_info.get("media_type") == "movie" else MediaType.TV
+        if ret_info and not isinstance(ret_info.get("media_type"), MediaType):
+            ret_info["media_type"] = MediaType.MOVIE if ret_info.get("media_type") == "movie" else MediaType.TV
         return ret_info
 
     @staticmethod
-    def _match_multi_title(name_compare_func, name: str, multi: dict) -> bool:
-        """
-        匹配单个多媒体搜索结果项的标题/原标题
-        """
-        if multi.get("media_type") == "movie":
-            return (name_compare_func(name, multi.get('title'))
-                    or name_compare_func(name, multi.get('original_title')))
-        elif multi.get("media_type") == "tv":
-            return (name_compare_func(name, multi.get('name'))
-                    or name_compare_func(name, multi.get('original_name')))
-        return False
-
-    def _match_multi_names(self, name: str, multi: dict, get_info_func) -> Optional[dict]:
-        """
-        匹配单个多媒体搜索结果项的别名、译名
-        """
-        if multi.get("media_type") == "movie":
-            if not multi.get("names"):
-                multi = get_info_func(mtype=MediaType.MOVIE, tmdbid=multi.get("id"))
-            if multi and self.__compare_names(name, multi.get("names")):
-                return multi
-        elif multi.get("media_type") == "tv":
-            if not multi.get("names"):
-                multi = get_info_func(mtype=MediaType.TV, tmdbid=multi.get("id"))
-            if multi and self.__compare_names(name, multi.get("names")):
-                return multi
-        return None
-
-    async def _async_match_multi_names(self, name: str, multi: dict) -> Optional[dict]:
-        """
-        匹配单个多媒体搜索结果项的别名、译名（异步版本）
-        """
-        if multi.get("media_type") == "movie":
-            if not multi.get("names"):
-                multi = await self.async_get_info(mtype=MediaType.MOVIE, tmdbid=multi.get("id"))
-            if multi and self.__compare_names(name, multi.get("names")):
-                return multi
-        elif multi.get("media_type") == "tv":
-            if not multi.get("names"):
-                multi = await self.async_get_info(mtype=MediaType.TV, tmdbid=multi.get("id"))
-            if multi and self.__compare_names(name, multi.get("names")):
-                return multi
+    def _candidate_media_type(candidate: _MediaRecord) -> Optional[MediaType]:
+        """把 TMDB 多类型结果值收窄为可查询的宿主媒体类型。"""
+        media_type = candidate.get("media_type")
+        if media_type in (MediaType.MOVIE, "movie"):
+            return MediaType.MOVIE
+        if media_type in (MediaType.TV, "tv"):
+            return MediaType.TV
         return None
 
     @staticmethod
-    def __get_names(tmdb_info: dict) -> List[str]:
+    def _title_fields(mtype: MediaType) -> tuple[str, str]:
+        """返回媒体类型对应的标题与原标题字段。"""
+        if mtype == MediaType.MOVIE:
+            return "title", "original_title"
+        return "name", "original_name"
+
+    @classmethod
+    def _title_matches(cls, name: str, candidate: _MediaRecord, mtype: MediaType) -> bool:
+        """使用同一规则比较候选标题和原标题。"""
+        return any(cls.__compare_names(name, candidate.get(field)) for field in cls._title_fields(mtype))
+
+    @classmethod
+    def _build_name_candidate_plan(
+        cls,
+        name: str,
+        mtype: MediaType,
+        items: List[_MediaRecord],
+        year: Optional[str],
+    ) -> _CandidatePlan:
+        """排序、过滤年份并冻结标题优先的候选匹配计划。"""
+        date_field = "release_date" if mtype == MediaType.MOVIE else "first_air_date"
+        candidates = sorted(
+            items,
+            key=lambda item: item.get(date_field) or "0000-00-00",
+            reverse=True,
+        )
+        if year:
+            candidates = [item for item in candidates if (item.get(date_field) or "")[:4] == year]
+        direct = next(
+            (item for item in candidates if cls._title_matches(name, item, mtype)),
+            None,
+        )
+        return _CandidatePlan(direct=direct, aliases=tuple(candidates))
+
+    @classmethod
+    def _build_multi_candidate_plan(cls, name: str, multis: List[_MediaRecord]) -> _CandidatePlan:
+        """冻结多类型结果的排序、标题优先和别名回退顺序。"""
+        candidates = cls._sort_multi_results(multis)
+        direct = next(
+            (
+                item
+                for item in candidates
+                if (mtype := cls._candidate_media_type(item)) and cls._title_matches(name, item, mtype)
+            ),
+            None,
+        )
+        return _CandidatePlan(direct=direct, aliases=tuple(candidates))
+
+    @classmethod
+    def _alias_matches(cls, name: str, candidate: Optional[_MediaRecord]) -> bool:
+        """判断详情候选的别名或译名是否与输入完全一致。"""
+        return bool(candidate and cls.__compare_names(name, candidate.get("names")))
+
+    @classmethod
+    def _candidate_resolution(
+        cls,
+        plan: _CandidatePlan,
+        media_type_for: Callable[[_MediaRecord], Optional[MediaType]],
+        accepts: Callable[[Optional[_MediaRecord]], bool],
+    ) -> Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord]:
+        """用生成器统一候选短路、详情补全和首个命中决策。"""
+        if plan.direct is not None:
+            return plan.direct
+        for candidate in plan.aliases:
+            resolved: Optional[_MediaRecord] = candidate
+            if not candidate.get("names"):
+                mtype = media_type_for(candidate)
+                tmdbid = candidate.get("id")
+                if not mtype or not isinstance(tmdbid, int):
+                    continue
+                resolved = yield _DetailRequest(mtype=mtype, tmdbid=tmdbid)
+            if accepts(resolved):
+                return resolved or {}
+        return {}
+
+    @classmethod
+    def _name_resolution(
+        cls, name: str, mtype: MediaType, plan: _CandidatePlan
+    ) -> Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord]:
+        """构造标题搜索候选的别名详情决策。"""
+        return cls._candidate_resolution(
+            plan,
+            lambda _candidate: mtype,
+            lambda candidate: cls._alias_matches(name, candidate),
+        )
+
+    @classmethod
+    def _multi_resolution(
+        cls, name: str, plan: _CandidatePlan
+    ) -> Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord]:
+        """构造多类型候选的类型化详情决策。"""
+        return cls._candidate_resolution(
+            plan,
+            cls._candidate_media_type,
+            lambda candidate: cls._alias_matches(name, candidate),
+        )
+
+    def _resolve_details_sync(
+        self,
+        resolution: Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord],
+    ) -> _MediaRecord:
+        """通过同步客户端执行生成器明确请求的详情 I/O。"""
+        try:
+            request = next(resolution)
+        except StopIteration as result:
+            return cast(_MediaRecord, result.value)
+        while True:
+            detail = self.get_info(mtype=request.mtype, tmdbid=request.tmdbid)
+            try:
+                request = resolution.send(detail)
+            except StopIteration as result:
+                return cast(_MediaRecord, result.value)
+
+    async def _resolve_details_async(
+        self,
+        resolution: Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord],
+    ) -> _MediaRecord:
+        """通过异步客户端执行生成器明确请求的详情 I/O。"""
+        try:
+            request = next(resolution)
+        except StopIteration as result:
+            return cast(_MediaRecord, result.value)
+        while True:
+            detail = await self.async_get_info(mtype=request.mtype, tmdbid=request.tmdbid)
+            try:
+                request = resolution.send(detail)
+            except StopIteration as result:
+                return cast(_MediaRecord, result.value)
+
+    @staticmethod
+    def __get_names(tmdb_info: _MediaRecord) -> List[str]:
         """
         搜索tmdb中所有的标题和译名，用于名称匹配
         :param tmdb_info: TMDB信息
@@ -255,7 +519,7 @@ class TmdbApi:
         if not tmdb_info:
             return []
         ret_names = []
-        if tmdb_info.get('media_type') == MediaType.MOVIE:
+        if tmdb_info.get("media_type") == MediaType.MOVIE:
             alternative_titles = tmdb_info.get("alternative_titles", {}).get("titles", [])
             for alternative_title in alternative_titles:
                 title = alternative_title.get("title")
@@ -279,12 +543,15 @@ class TmdbApi:
                     ret_names.append(name)
         return ret_names
 
-    def match(self, name: str,
-              mtype: MediaType,
-              year: Optional[str] = None,
-              season_year: Optional[str] = None,
-              season_number: Optional[int] = None,
-              group_seasons: Optional[List[dict]] = None) -> Optional[dict]:
+    def match(
+        self,
+        name: str,
+        mtype: MediaType,
+        year: Optional[str] = None,
+        season_year: Optional[str] = None,
+        season_number: Optional[int] = None,
+        group_seasons: Optional[List[_MediaRecord]] = None,
+    ) -> Optional[_MediaRecord]:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息
         :param name: 检索的名称
@@ -295,39 +562,19 @@ class TmdbApi:
         :param group_seasons: 集数组信息
         :return: TMDB的INFO，同时会将mtype赋值到media_type中
         """
-        # 基本参数验证
         if not self._validate_match_params(name, self.search):
             return None
+        plan = self._build_match_plan(mtype, year, season_year, season_number)
+        return self._run_match_sync(
+            self._match_resolution(mtype, plan),
+            name,
+            mtype,
+            season_year,
+            season_number,
+            group_seasons,
+        )
 
-        # TMDB搜索
-        info = {}
-        if mtype != MediaType.TV:
-            year_range = self._generate_year_range(year)
-            for search_year in year_range:
-                self._log_match_debug(mtype, name, search_year)
-                info = self.__search_movie_by_name(name, search_year)
-                if info:
-                    break
-            info = self._set_media_type(info, MediaType.MOVIE)
-        else:
-            # 有当前季和当前季集年份，使用精确匹配
-            if season_year and season_number is not None:
-                self._log_match_debug(mtype, name, season_year, season_number, season_year)
-                info = self.__search_tv_by_season(name,
-                                                  season_year,
-                                                  season_number,
-                                                  group_seasons)
-            if not info:
-                year_range = self._generate_year_range(year)
-                for search_year in year_range:
-                    self._log_match_debug(mtype, name, search_year)
-                    info = self.__search_tv_by_name(name, search_year)
-                    if info:
-                        break
-            info = self._set_media_type(info, MediaType.TV)
-        return info
-
-    def __search_movie_by_name(self, name: str, year: str) -> Optional[dict]:
+    def __search_movie_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
         """
         根据名称查询电影TMDB匹配
         :param name: 识别的文件名或种子名
@@ -346,35 +593,13 @@ class TmdbApi:
             logger.error(f"连接TMDB出错：{str(e)} - {traceback.format_exc()}")
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
-        if (movies is None) or (len(movies) == 0):
+        if not movies:
             logger.debug(f"{name} 未找到相关电影信息!")
             return {}
-        else:
-            # 按年份降序排列
-            movies = sorted(
-                movies,
-                key=lambda x: x.get('release_date') or '0000-00-00',
-                reverse=True
-            )
-            # 过滤年份
-            if year:
-                movies = [m for m in movies
-                          if (m.get('release_date') or '')[0:4] == year]
-            # 第一轮：优先匹配标题、原标题
-            for movie in movies:
-                if self.__compare_names(name, movie.get('title')):
-                    return movie
-                if self.__compare_names(name, movie.get('original_title')):
-                    return movie
-            # 第二轮：匹配别名、译名
-            for movie in movies:
-                if not movie.get("names"):
-                    movie = self.get_info(mtype=MediaType.MOVIE, tmdbid=movie.get("id"))
-                if movie and self.__compare_names(name, movie.get("names")):
-                    return movie
-        return {}
+        plan = self._build_name_candidate_plan(name, MediaType.MOVIE, movies, year)
+        return self._resolve_details_sync(self._name_resolution(name, MediaType.MOVIE, plan))
 
-    def __search_tv_by_name(self, name: str, year: str) -> Optional[dict]:
+    def __search_tv_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
         """
         根据名称查询电视剧TMDB匹配
         :param name: 识别的文件名或者种子名
@@ -393,36 +618,105 @@ class TmdbApi:
             logger.error(f"连接TMDB出错：{str(e)} - {traceback.format_exc()}")
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
-        if (tvs is None) or (len(tvs) == 0):
+        if not tvs:
             logger.debug(f"{name} 未找到相关剧集信息!")
             return {}
-        else:
-            # 按年份降序排列
-            tvs = sorted(
-                tvs,
-                key=lambda x: x.get('first_air_date') or '0000-00-00',
-                reverse=True
-            )
-            # 过滤年份
-            if year:
-                tvs = [t for t in tvs
-                       if (t.get('first_air_date') or '')[0:4] == year]
-            # 第一轮：优先匹配标题、原标题
-            for tv in tvs:
-                if self.__compare_names(name, tv.get('name')):
-                    return tv
-                if self.__compare_names(name, tv.get('original_name')):
-                    return tv
-            # 第二轮：匹配别名、译名
-            for tv in tvs:
-                if not tv.get("names"):
-                    tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
-                if tv and self.__compare_names(name, tv.get("names")):
-                    return tv
-        return {}
+        plan = self._build_name_candidate_plan(name, MediaType.TV, tvs, year)
+        return self._resolve_details_sync(self._name_resolution(name, MediaType.TV, plan))
 
-    def __search_tv_by_season(self, name: str, season_year: str, season_number: int,
-                              group_seasons: Optional[List[dict]] = None) -> Optional[dict]:
+    @staticmethod
+    def _season_year_matches(
+        tv_info: _MediaRecord,
+        season_year: str,
+        season_number: int,
+        group_seasons: Optional[List[_MediaRecord]],
+    ) -> bool:
+        """判断详情中的指定季或集数组是否在目标年份首播。"""
+        if group_seasons:
+            for group_season in group_seasons:
+                if group_season.get("order") != season_number:
+                    continue
+                episodes = group_season.get("episodes") or []
+                if not episodes or not isinstance(episodes[0], dict):
+                    continue
+                first_date = episodes[0].get("air_date")
+                if isinstance(first_date, str) and _DATE_PATTERN.match(first_date):
+                    return first_date[:4] == str(season_year)
+            return False
+        for season_info in tv_info.get("seasons") or []:
+            if season_info.get("season_number") != season_number:
+                continue
+            air_date = season_info.get("air_date") or ""
+            if air_date[:4] == str(season_year):
+                return True
+        return False
+
+    @classmethod
+    def _season_candidate_matches(
+        cls,
+        name: str,
+        candidate: Optional[_MediaRecord],
+        season_year: str,
+        season_number: int,
+        group_seasons: Optional[List[_MediaRecord]],
+    ) -> bool:
+        """按标题、别名、首播年份和季年份判断剧集候选。"""
+        if not candidate:
+            return False
+        if not (cls._title_matches(name, candidate, MediaType.TV) or cls._alias_matches(name, candidate)):
+            return False
+        first_air_year = (candidate.get("first_air_date") or "")[:4]
+        return first_air_year == str(season_year) or cls._season_year_matches(
+            candidate, season_year, season_number, group_seasons
+        )
+
+    @classmethod
+    def _build_season_candidate_plan(
+        cls,
+        name: str,
+        tvs: List[_MediaRecord],
+        season_year: str,
+    ) -> _CandidatePlan:
+        """冻结电视剧首播年份直达和详情回退候选顺序。"""
+        candidates = sorted(
+            tvs,
+            key=lambda item: item.get("first_air_date") or "0000-00-00",
+            reverse=True,
+        )
+        direct = next(
+            (
+                item
+                for item in candidates
+                if cls._title_matches(name, item, MediaType.TV)
+                and (item.get("first_air_date") or "")[:4] == str(season_year)
+            ),
+            None,
+        )
+        return _CandidatePlan(direct=direct, aliases=tuple(candidates))
+
+    @classmethod
+    def _season_resolution(
+        cls,
+        name: str,
+        plan: _CandidatePlan,
+        season_year: str,
+        season_number: int,
+        group_seasons: Optional[List[_MediaRecord]],
+    ) -> Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord]:
+        """构造剧集候选的标题、别名和季年份详情决策。"""
+        return cls._candidate_resolution(
+            plan,
+            lambda _candidate: MediaType.TV,
+            lambda candidate: cls._season_candidate_matches(name, candidate, season_year, season_number, group_seasons),
+        )
+
+    def __search_tv_by_season(
+        self,
+        name: str,
+        season_year: str,
+        season_number: int,
+        group_seasons: Optional[List[_MediaRecord]] = None,
+    ) -> Optional[_MediaRecord]:
         """
         根据电视剧的名称和季的年份及序号匹配TMDB
         :param name: 识别的文件名或者种子名
@@ -431,36 +725,6 @@ class TmdbApi:
         :param group_seasons: 集数组信息
         :return: 匹配的媒体信息
         """
-
-        def __season_match(tv_info: dict, _season_year: str) -> bool:
-            if not tv_info:
-                return False
-            try:
-                if group_seasons:
-                    for group_season in group_seasons:
-                        season = group_season.get('order')
-                        if season != season_number:
-                            continue
-                        episodes = group_season.get('episodes')
-                        if not episodes:
-                            continue
-                        first_date = episodes[0].get("air_date")
-                        if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
-                            if str(_season_year) == str(first_date).split("-")[0]:
-                                return True
-                else:
-                    seasons = self.__get_tv_seasons(tv_info)
-                    for season, season_info in seasons.items():
-                        if season_info.get("air_date"):
-                            if season_info.get("air_date")[0:4] == str(_season_year) \
-                                    and season == int(season_number):
-                                return True
-            except Exception as e1:
-                logger.error(f"连接TMDB出错：{e1}")
-                print(traceback.format_exc())
-                return False
-            return False
-
         try:
             tvs = self.search.tv_shows(term=name)
         except TMDbException as err:
@@ -471,77 +735,15 @@ class TmdbApi:
             print(traceback.format_exc())
             return None
 
-        if (tvs is None) or (len(tvs) == 0):
-            logger.debug("%s 未找到季%s相关信息!" % (name, season_number))
+        if not tvs:
+            logger.debug(f"{name} 未找到季{season_number}相关信息!")
             return {}
-        else:
-            # 按年份降序排列
-            tvs = sorted(
-                tvs,
-                key=lambda x: x.get('first_air_date') or '0000-00-00',
-                reverse=True
-            )
-            for tv in tvs:
-                # 使用年份、名称匹配
-                tv_year = tv.get('first_air_date')[0:4] if tv.get('first_air_date') else None
-                if (self.__compare_names(name, tv.get('name'))
-                    or self.__compare_names(name, tv.get('original_name'))) \
-                        and (tv_year == str(season_year)):
-                    return tv
-                # 获取别名、译名重新匹配
-                if not tv.get("names"):
-                    tv = self.get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
-                if not tv or not (
-                    self.__compare_names(name, tv.get("name"))
-                    or self.__compare_names(name, tv.get("original_name"))
-                    or self.__compare_names(name, tv.get("names"))):
-                    continue
-                if tv_year == str(season_year):
-                    return tv
-                # 季年份匹配
-                if __season_match(tv_info=tv, _season_year=season_year):
-                    return tv
-        return {}
+        plan = self._build_season_candidate_plan(name, tvs, season_year)
+        return self._resolve_details_sync(
+            self._season_resolution(name, plan, season_year, season_number, group_seasons)
+        )
 
-    @staticmethod
-    def __get_tv_seasons(tv_info: dict) -> Optional[dict]:
-        """
-        查询TMDB电视剧的所有季
-        :param tv_info: TMDB 的季信息
-        :return: 包括每季集数的字典
-        """
-        """
-        "seasons": [
-            {
-              "air_date": "2006-01-08",
-              "episode_count": 11,
-              "id": 3722,
-              "name": "特别篇",
-              "overview": "",
-              "poster_path": "/snQYndfsEr3Sto2jOmkmsQuUXAQ.jpg",
-              "season_number": 0
-            },
-            {
-              "air_date": "2005-03-27",
-              "episode_count": 9,
-              "id": 3718,
-              "name": "第 1 季",
-              "overview": "",
-              "poster_path": "/foM4ImvUXPrD2NvtkHyixq5vhPx.jpg",
-              "season_number": 1
-            }
-        ]
-        """
-        if not tv_info:
-            return {}
-        ret_seasons = {}
-        for season_info in tv_info.get("seasons") or []:
-            if season_info.get("season_number") is None:
-                continue
-            ret_seasons[season_info.get("season_number")] = season_info
-        return ret_seasons
-
-    def match_multi(self, name: str) -> Optional[dict]:
+    def match_multi(self, name: str) -> Optional[_MediaRecord]:
         """
         根据名称同时查询电影和电视剧，没有类型也没有年份时使用
         :param name: 识别的文件名或种子名
@@ -558,35 +760,127 @@ class TmdbApi:
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
 
-        # 返回结果
-        if (multis is None) or (len(multis) == 0):
+        if not multis:
             logger.debug(f"{name} 未找到相关媒体息!")
             return {}
+        plan = self._build_multi_candidate_plan(name, multis)
+        resolved = self._resolve_details_sync(self._multi_resolution(name, plan))
+        return self._convert_media_type(resolved)
 
-        # 按年份降序排列，电影在前面
-        multis = self._sort_multi_results(multis)
+    @staticmethod
+    def _info_lookup_types(mtype: Optional[MediaType]) -> tuple[MediaType, ...]:
+        """返回详情查询的稳定类型顺序，未知类型固定先剧集后电影。"""
+        if mtype == MediaType.MOVIE:
+            return (MediaType.MOVIE,)
+        if mtype == MediaType.TV:
+            return (MediaType.TV,)
+        return MediaType.TV, MediaType.MOVIE
 
-        # 第一轮：优先匹配标题、原标题
-        ret_info = {}
-        for multi in multis:
-            if self._match_multi_title(self.__compare_names, name, multi):
-                ret_info = multi
-                break
-        # 第二轮：匹配别名、译名
-        if not ret_info:
-            for multi in multis:
-                matched = self._match_multi_names(name, multi, self.get_info)
-                if matched:
-                    ret_info = matched
-                    break
+    @staticmethod
+    def _select_info(
+        mtype: Optional[MediaType],
+        tmdbid: int,
+        details: dict[MediaType, Optional[_MediaRecord]],
+    ) -> Optional[_MediaRecord]:
+        """从查询结果中统一判断类型、歧义和未命中状态。"""
+        if mtype in (MediaType.MOVIE, MediaType.TV):
+            tmdb_info = details.get(mtype)
+            if tmdb_info:
+                tmdb_info["media_type"] = mtype
+            return tmdb_info
+        tv_info = details.get(MediaType.TV)
+        movie_info = details.get(MediaType.MOVIE)
+        if tv_info and movie_info:
+            logger.warning(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
+            return None
+        if tv_info:
+            tv_info["media_type"] = MediaType.TV
+            return tv_info
+        if movie_info:
+            movie_info["media_type"] = MediaType.MOVIE
+            return movie_info
+        logger.warning(f"tmdb_id:{tmdbid} 未查询到媒体信息")
+        return None
 
-        # 类型变更
-        return self._convert_media_type(ret_info)
+    @classmethod
+    def _info_resolution(
+        cls, mtype: Optional[MediaType], tmdbid: int
+    ) -> Generator[MediaType, Optional[_MediaRecord], Optional[_MediaRecord]]:
+        """统一推进详情类型查询顺序并完成歧义判断。"""
+        details: dict[MediaType, Optional[_MediaRecord]] = {}
+        for detail_type in cls._info_lookup_types(mtype):
+            details[detail_type] = yield detail_type
+        return cls._select_info(mtype, tmdbid, details)
 
-    def get_info(self,
-                 mtype: MediaType,
-                 tmdbid: int,
-                 raise_on_connection_error: bool = False) -> dict:
+    def _run_info_sync(
+        self,
+        resolution: Generator[MediaType, Optional[_MediaRecord], Optional[_MediaRecord]],
+        tmdbid: int,
+        raise_on_connection_error: bool,
+    ) -> Optional[_MediaRecord]:
+        """同步执行共享详情状态机请求的真实 I/O。"""
+        try:
+            detail_type = next(resolution)
+        except StopIteration as result:
+            return cast(Optional[_MediaRecord], result.value)
+        while True:
+            if detail_type == MediaType.TV:
+                detail = self.__get_tv_detail(
+                    tmdbid,
+                    raise_on_connection_error=raise_on_connection_error,
+                )
+            else:
+                detail = self.__get_movie_detail(
+                    tmdbid,
+                    raise_on_connection_error=raise_on_connection_error,
+                )
+            try:
+                detail_type = resolution.send(detail)
+            except StopIteration as result:
+                return cast(Optional[_MediaRecord], result.value)
+
+    async def _run_info_async(
+        self,
+        resolution: Generator[MediaType, Optional[_MediaRecord], Optional[_MediaRecord]],
+        tmdbid: int,
+        raise_on_connection_error: bool,
+    ) -> Optional[_MediaRecord]:
+        """异步执行共享详情状态机请求的真实 I/O。"""
+        try:
+            detail_type = next(resolution)
+        except StopIteration as result:
+            return cast(Optional[_MediaRecord], result.value)
+        while True:
+            if detail_type == MediaType.TV:
+                detail = await self.__async_get_tv_detail(
+                    tmdbid,
+                    raise_on_connection_error=raise_on_connection_error,
+                )
+            else:
+                detail = await self.__async_get_movie_detail(
+                    tmdbid,
+                    raise_on_connection_error=raise_on_connection_error,
+                )
+            try:
+                detail_type = resolution.send(detail)
+            except StopIteration as result:
+                return cast(Optional[_MediaRecord], result.value)
+
+    def _project_info(self, tmdb_info: Optional[_MediaRecord]) -> Optional[_MediaRecord]:
+        """把 TMDB 详情统一投影为宿主识别所需字段。"""
+        if not tmdb_info:
+            return tmdb_info
+        tmdb_info["genre_ids"] = [genre.get("id") for genre in tmdb_info.get("genres") or []]
+        tmdb_info["names"] = self.__get_names(tmdb_info)
+        tmdb_info["content_rating"] = self.__get_content_rating(tmdb_info)
+        self.__update_tmdbinfo_extra_title(tmdb_info)
+        if self.tmdb.language in ("zh", "zh-CN"):
+            self.__update_tmdbinfo_cn_title(tmdb_info)
+        return tmdb_info
+
+    def get_info(
+        self, mtype: Optional[MediaType], tmdbid: int, raise_on_connection_error: bool = False
+    ) -> Optional[_MediaRecord]:
         """
         给定TMDB号，查询一条媒体信息
         :param mtype: 类型：电影、电视剧，为空时都查（此时用不上年份）
@@ -594,57 +888,12 @@ class TmdbApi:
         :param raise_on_connection_error: 为True时，遇到TMDB连接失败（区别于404等业务错误）
             将抛出TMDbConnectionError而不是吞掉返回None；默认False，与既有调用方行为完全一致
         """
-
-        def __get_genre_ids(genres: list) -> list:
-            """
-            从TMDB详情中获取genre_id列表
-            """
-            if not genres:
-                return []
-            genre_ids = []
-            for genre in genres:
-                genre_ids.append(genre.get('id'))
-            return genre_ids
-
-        # 查询TMDB详情
-        if mtype == MediaType.MOVIE:
-            tmdb_info = self.__get_movie_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
-            if tmdb_info:
-                tmdb_info['media_type'] = MediaType.MOVIE
-        elif mtype == MediaType.TV:
-            tmdb_info = self.__get_tv_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
-            if tmdb_info:
-                tmdb_info['media_type'] = MediaType.TV
-        else:
-            tmdb_info_tv = self.__get_tv_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
-            tmdb_info_movie = self.__get_movie_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
-            if tmdb_info_tv and tmdb_info_movie:
-                tmdb_info = None
-                logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
-            elif tmdb_info_tv:
-                tmdb_info = tmdb_info_tv
-                tmdb_info['media_type'] = MediaType.TV
-            elif tmdb_info_movie:
-                tmdb_info = tmdb_info_movie
-                tmdb_info['media_type'] = MediaType.MOVIE
-            else:
-                tmdb_info = None
-                logger.warn(f"tmdb_id:{tmdbid} 未查询到媒体信息")
-
-        if tmdb_info:
-            # 转换genreid
-            tmdb_info['genre_ids'] = __get_genre_ids(tmdb_info.get('genres'))
-            # 别名和译名
-            tmdb_info['names'] = self.__get_names(tmdb_info)
-            # 内容分级
-            tmdb_info['content_rating'] = self.__get_content_rating(tmdb_info)
-            # 转换多语种标题
-            self.__update_tmdbinfo_extra_title(tmdb_info)
-            # 转换中文标题
-            if self.tmdb.language in ("zh", "zh-CN"):
-                self.__update_tmdbinfo_cn_title(tmdb_info)
-
-        return tmdb_info
+        tmdb_info = self._run_info_sync(
+            self._info_resolution(mtype, tmdbid),
+            tmdbid,
+            raise_on_connection_error,
+        )
+        return self._project_info(tmdb_info)
 
     @staticmethod
     def __get_content_rating(tmdb_info: dict) -> Optional[str]:
@@ -1509,7 +1758,7 @@ class TmdbApi:
         self.tmdb.cache_clear()
 
     # 私有异步方法
-    async def __async_search_movie_by_name(self, name: str, year: str) -> Optional[dict]:
+    async def __async_search_movie_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
         """
         根据名称查询电影TMDB匹配（异步版本）
         :param name: 识别的文件名或种子名
@@ -1528,35 +1777,13 @@ class TmdbApi:
             logger.error(f"连接TMDB出错：{str(e)} - {traceback.format_exc()}")
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
-        if (movies is None) or (len(movies) == 0):
+        if not movies:
             logger.debug(f"{name} 未找到相关电影信息!")
             return {}
-        else:
-            # 按年份降序排列
-            movies = sorted(
-                movies,
-                key=lambda x: x.get('release_date') or '0000-00-00',
-                reverse=True
-            )
-            # 过滤年份
-            if year:
-                movies = [m for m in movies
-                          if (m.get('release_date') or '')[0:4] == year]
-            # 第一轮：优先匹配标题、原标题
-            for movie in movies:
-                if self.__compare_names(name, movie.get('title')):
-                    return movie
-                if self.__compare_names(name, movie.get('original_title')):
-                    return movie
-            # 第二轮：匹配别名、译名
-            for movie in movies:
-                if not movie.get("names"):
-                    movie = await self.async_get_info(mtype=MediaType.MOVIE, tmdbid=movie.get("id"))
-                if movie and self.__compare_names(name, movie.get("names")):
-                    return movie
-        return {}
+        plan = self._build_name_candidate_plan(name, MediaType.MOVIE, movies, year)
+        return await self._resolve_details_async(self._name_resolution(name, MediaType.MOVIE, plan))
 
-    async def __async_search_tv_by_name(self, name: str, year: str) -> Optional[dict]:
+    async def __async_search_tv_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
         """
         根据名称查询电视剧TMDB匹配（异步版本）
         :param name: 识别的文件名或者种子名
@@ -1575,36 +1802,19 @@ class TmdbApi:
             logger.error(f"连接TMDB出错：{str(e)} - {traceback.format_exc()}")
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
-        if (tvs is None) or (len(tvs) == 0):
+        if not tvs:
             logger.debug(f"{name} 未找到相关剧集信息!")
             return {}
-        else:
-            # 按年份降序排列
-            tvs = sorted(
-                tvs,
-                key=lambda x: x.get('first_air_date') or '0000-00-00',
-                reverse=True
-            )
-            # 过滤年份
-            if year:
-                tvs = [t for t in tvs
-                       if (t.get('first_air_date') or '')[0:4] == year]
-            # 第一轮：优先匹配标题、原标题
-            for tv in tvs:
-                if self.__compare_names(name, tv.get('name')):
-                    return tv
-                if self.__compare_names(name, tv.get('original_name')):
-                    return tv
-            # 第二轮：匹配别名、译名
-            for tv in tvs:
-                if not tv.get("names"):
-                    tv = await self.async_get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
-                if tv and self.__compare_names(name, tv.get("names")):
-                    return tv
-        return {}
+        plan = self._build_name_candidate_plan(name, MediaType.TV, tvs, year)
+        return await self._resolve_details_async(self._name_resolution(name, MediaType.TV, plan))
 
-    async def __async_search_tv_by_season(self, name: str, season_year: str, season_number: int,
-                                          group_seasons: Optional[List[dict]] = None) -> Optional[dict]:
+    async def __async_search_tv_by_season(
+        self,
+        name: str,
+        season_year: str,
+        season_number: int,
+        group_seasons: Optional[List[_MediaRecord]] = None,
+    ) -> Optional[_MediaRecord]:
         """
         根据电视剧的名称和季的年份及序号匹配TMDB（异步版本）
         :param name: 识别的文件名或者种子名
@@ -1613,36 +1823,6 @@ class TmdbApi:
         :param group_seasons: 集数组信息
         :return: 匹配的媒体信息
         """
-
-        def __season_match(tv_info: dict, _season_year: str) -> bool:
-            if not tv_info:
-                return False
-            try:
-                if group_seasons:
-                    for group_season in group_seasons:
-                        season = group_season.get('order')
-                        if season != season_number:
-                            continue
-                        episodes = group_season.get('episodes')
-                        if not episodes:
-                            continue
-                        first_date = episodes[0].get("air_date")
-                        if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
-                            if str(_season_year) == str(first_date).split("-")[0]:
-                                return True
-                else:
-                    seasons = self.__get_tv_seasons(tv_info)
-                    for season, season_info in seasons.items():
-                        if season_info.get("air_date"):
-                            if season_info.get("air_date")[0:4] == str(_season_year) \
-                                    and season == int(season_number):
-                                return True
-            except Exception as e1:
-                logger.error(f"连接TMDB出错：{e1}")
-                print(traceback.format_exc())
-                return False
-            return False
-
         try:
             tvs = await self.search.async_tv_shows(term=name)
         except TMDbException as err:
@@ -1653,31 +1833,13 @@ class TmdbApi:
             print(traceback.format_exc())
             return None
 
-        if (tvs is None) or (len(tvs) == 0):
-            logger.debug("%s 未找到季%s相关信息!" % (name, season_number))
+        if not tvs:
+            logger.debug(f"{name} 未找到季{season_number}相关信息!")
             return {}
-        else:
-            # 按年份降序排列
-            tvs = sorted(
-                tvs,
-                key=lambda x: x.get('first_air_date') or '0000-00-00',
-                reverse=True
-            )
-            for tv in tvs:
-                # 年份
-                tv_year = tv.get('first_air_date')[0:4] if tv.get('first_air_date') else None
-                if (self.__compare_names(name, tv.get('name'))
-                    or self.__compare_names(name, tv.get('original_name'))) \
-                        and (tv_year == str(season_year)):
-                    return tv
-                # 匹配别名、译名
-                if not tv.get("names"):
-                    tv = await self.async_get_info(mtype=MediaType.TV, tmdbid=tv.get("id"))
-                if not tv or not self.__compare_names(name, tv.get("names")):
-                    continue
-                if __season_match(tv_info=tv, _season_year=season_year):
-                    return tv
-        return {}
+        plan = self._build_season_candidate_plan(name, tvs, season_year)
+        return await self._resolve_details_async(
+            self._season_resolution(name, plan, season_year, season_number, group_seasons)
+        )
 
     async def __async_get_movie_detail(self,
                                        tmdbid: int,
@@ -1746,53 +1908,32 @@ class TmdbApi:
             logger.error(str(e))
             return None
 
-    async def async_search_multiis(self, title: str) -> List[dict]:
+    async def async_search_multiis(self, title: str) -> List[_MediaRecord]:
         """
         同时查询模糊匹配的电影、电视剧TMDB信息（异步版本）
         """
         if not title:
             return []
-        ret_infos = []
         multis = await self.search.async_multi(term=title) or []
-        for multi in multis:
-            if multi.get("media_type") in ["movie", "tv"]:
-                multi['media_type'] = MediaType.MOVIE if multi.get("media_type") == "movie" else MediaType.TV
-                ret_infos.append(multi)
-        return ret_infos
+        return self._project_multi_search_results(multis)
 
-    async def async_search_movies(self, title: str, year: str) -> List[dict]:
+    async def async_search_movies(self, title: str, year: str) -> List[_MediaRecord]:
         """
         查询模糊匹配的所有电影TMDB信息（异步版本）
         """
         if not title:
             return []
-        ret_infos = []
-        if year:
-            movies = await self.search.async_movies(term=title, year=year) or []
-        else:
-            movies = await self.search.async_movies(term=title) or []
-        for movie in movies:
-            if title in movie.get("title"):
-                movie['media_type'] = MediaType.MOVIE
-                ret_infos.append(movie)
-        return ret_infos
+        movies = await self.search.async_movies(**self._search_kwargs(title, year, MediaType.MOVIE)) or []
+        return self._project_search_results(title, movies, MediaType.MOVIE)
 
-    async def async_search_tvs(self, title: str, year: str) -> List[dict]:
+    async def async_search_tvs(self, title: str, year: str) -> List[_MediaRecord]:
         """
         查询模糊匹配的所有电视剧TMDB信息（异步版本）
         """
         if not title:
             return []
-        ret_infos = []
-        if year:
-            tvs = await self.search.async_tv_shows(term=title, release_year=year) or []
-        else:
-            tvs = await self.search.async_tv_shows(term=title) or []
-        for tv in tvs:
-            if title in tv.get("name"):
-                tv['media_type'] = MediaType.TV
-                ret_infos.append(tv)
-        return ret_infos
+        tvs = await self.search.async_tv_shows(**self._search_kwargs(title, year, MediaType.TV)) or []
+        return self._project_search_results(title, tvs, MediaType.TV)
 
     async def async_discover_movies(
             self, params: dict, raise_exception: bool = False
@@ -1840,17 +1981,14 @@ class TmdbApi:
             return []
         return await self.search.async_people(term=name) or []
 
-    async def async_search_collections(self, name: str) -> List[dict]:
+    async def async_search_collections(self, name: str) -> List[_MediaRecord]:
         """
         查询模糊匹配的所有合集TMDB信息（异步版本）
         """
         if not name:
             return []
         collections = await self.search.async_collections(term=name) or []
-        for collection in collections:
-            collection['media_type'] = MediaType.COLLECTION
-            collection['collection_id'] = collection.get("id")
-        return collections
+        return self._project_collections(collections)
 
     async def async_get_collection(self, collection_id: int) -> List[dict]:
         """
@@ -1866,12 +2004,15 @@ class TmdbApi:
             logger.error(f"连接TMDB出错：{str(e)}")
         return []
 
-    async def async_match(self, name: str,
-                          mtype: MediaType,
-                          year: Optional[str] = None,
-                          season_year: Optional[str] = None,
-                          season_number: Optional[int] = None,
-                          group_seasons: Optional[List[dict]] = None) -> Optional[dict]:
+    async def async_match(
+        self,
+        name: str,
+        mtype: MediaType,
+        year: Optional[str] = None,
+        season_year: Optional[str] = None,
+        season_number: Optional[int] = None,
+        group_seasons: Optional[List[_MediaRecord]] = None,
+    ) -> Optional[_MediaRecord]:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息（异步版本）
         :param name: 检索的名称
@@ -1882,39 +2023,19 @@ class TmdbApi:
         :param group_seasons: 集数组信息
         :return: TMDB的INFO，同时会将mtype赋值到media_type中
         """
-        # 基本参数验证
         if not self._validate_match_params(name, self.search):
             return None
+        plan = self._build_match_plan(mtype, year, season_year, season_number)
+        return await self._run_match_async(
+            self._match_resolution(mtype, plan),
+            name,
+            mtype,
+            season_year,
+            season_number,
+            group_seasons,
+        )
 
-        # TMDB搜索
-        info = {}
-        if mtype != MediaType.TV:
-            year_range = self._generate_year_range(year)
-            for search_year in year_range:
-                self._log_match_debug(mtype, name, search_year)
-                info = await self.__async_search_movie_by_name(name, search_year)
-                if info:
-                    break
-            info = self._set_media_type(info, MediaType.MOVIE)
-        else:
-            # 有当前季和当前季集年份，使用精确匹配
-            if season_year and season_number is not None:
-                self._log_match_debug(mtype, name, season_year, season_number, season_year)
-                info = await self.__async_search_tv_by_season(name,
-                                                              season_year,
-                                                              season_number,
-                                                              group_seasons)
-            if not info:
-                year_range = self._generate_year_range(year)
-                for search_year in year_range:
-                    self._log_match_debug(mtype, name, search_year)
-                    info = await self.__async_search_tv_by_name(name, search_year)
-                    if info:
-                        break
-            info = self._set_media_type(info, MediaType.TV)
-        return info
-
-    async def async_match_multi(self, name: str) -> Optional[dict]:
+    async def async_match_multi(self, name: str) -> Optional[_MediaRecord]:
         """
         根据名称同时查询电影和电视剧，没有类型也没有年份时使用（异步版本）
         :param name: 识别的文件名或种子名
@@ -1931,35 +2052,16 @@ class TmdbApi:
             return None
         logger.debug(f"API返回：{str(self.search.total_results)}")
 
-        # 返回结果
-        if (multis is None) or (len(multis) == 0):
+        if not multis:
             logger.debug(f"{name} 未找到相关媒体息!")
             return {}
+        plan = self._build_multi_candidate_plan(name, multis)
+        resolved = await self._resolve_details_async(self._multi_resolution(name, plan))
+        return self._convert_media_type(resolved)
 
-        # 按年份降序排列，电影在前面
-        multis = self._sort_multi_results(multis)
-
-        # 第一轮：优先匹配标题、原标题
-        ret_info = {}
-        for multi in multis:
-            if self._match_multi_title(self.__compare_names, name, multi):
-                ret_info = multi
-                break
-        # 第二轮：匹配别名、译名
-        if not ret_info:
-            for multi in multis:
-                matched = await self._async_match_multi_names(name, multi)
-                if matched:
-                    ret_info = matched
-                    break
-
-        # 类型变更
-        return self._convert_media_type(ret_info)
-
-    async def async_get_info(self,
-                             mtype: MediaType,
-                             tmdbid: int,
-                             raise_on_connection_error: bool = False) -> dict:
+    async def async_get_info(
+        self, mtype: Optional[MediaType], tmdbid: int, raise_on_connection_error: bool = False
+    ) -> Optional[_MediaRecord]:
         """
         给定TMDB号，查询一条媒体信息（异步版本）
         :param mtype: 类型：电影、电视剧，为空时都查（此时用不上年份）
@@ -1967,57 +2069,12 @@ class TmdbApi:
         :param raise_on_connection_error: 为True时，遇到TMDB连接失败（区别于404等业务错误）
             将抛出TMDbConnectionError而不是吞掉返回None；默认False，与既有调用方行为完全一致
         """
-
-        def __get_genre_ids(genres: list) -> list:
-            """
-            从TMDB详情中获取genre_id列表
-            """
-            if not genres:
-                return []
-            genre_ids = []
-            for genre in genres:
-                genre_ids.append(genre.get('id'))
-            return genre_ids
-
-        # 查询TMDB详情
-        if mtype == MediaType.MOVIE:
-            tmdb_info = await self.__async_get_movie_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
-            if tmdb_info:
-                tmdb_info['media_type'] = MediaType.MOVIE
-        elif mtype == MediaType.TV:
-            tmdb_info = await self.__async_get_tv_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
-            if tmdb_info:
-                tmdb_info['media_type'] = MediaType.TV
-        else:
-            tmdb_info_tv = await self.__async_get_tv_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
-            tmdb_info_movie = await self.__async_get_movie_detail(tmdbid, raise_on_connection_error=raise_on_connection_error)
-            if tmdb_info_tv and tmdb_info_movie:
-                tmdb_info = None
-                logger.warn(f"无法判断tmdb_id:{tmdbid} 是电影还是电视剧")
-            elif tmdb_info_tv:
-                tmdb_info = tmdb_info_tv
-                tmdb_info['media_type'] = MediaType.TV
-            elif tmdb_info_movie:
-                tmdb_info = tmdb_info_movie
-                tmdb_info['media_type'] = MediaType.MOVIE
-            else:
-                tmdb_info = None
-                logger.warn(f"tmdb_id:{tmdbid} 未查询到媒体信息")
-
-        if tmdb_info:
-            # 转换genreid
-            tmdb_info['genre_ids'] = __get_genre_ids(tmdb_info.get('genres'))
-            # 别名和译名
-            tmdb_info['names'] = self.__get_names(tmdb_info)
-            # 内容分级
-            tmdb_info['content_rating'] = self.__get_content_rating(tmdb_info)
-            # 转换多语种标题
-            self.__update_tmdbinfo_extra_title(tmdb_info)
-            # 转换中文标题
-            if self.tmdb.language in ("zh", "zh-CN"):
-                self.__update_tmdbinfo_cn_title(tmdb_info)
-
-        return tmdb_info
+        tmdb_info = await self._run_info_async(
+            self._info_resolution(mtype, tmdbid),
+            tmdbid,
+            raise_on_connection_error,
+        )
+        return self._project_info(tmdb_info)
 
     async def async_get_tv_season_detail(self, tmdbid: int, season: int):
         """

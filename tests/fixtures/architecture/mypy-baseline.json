@@ -2569,7 +2569,7 @@
     "override": 1
   },
   "app/modules/themoviedb/__init__.py": {
-    "arg-type": 15,
+    "arg-type": 9,
     "assignment": 12,
     "empty-body": 1,
     "index": 2,
@@ -2603,17 +2603,14 @@
     "union-attr": 5
   },
   "app/modules/themoviedb/tmdbapi.py": {
-    "arg-type": 13,
-    "assignment": 6,
+    "arg-type": 1,
     "attr-defined": 11,
-    "no-any-return": 24,
-    "no-untyped-call": 74,
-    "no-untyped-def": 11,
+    "no-any-return": 5,
+    "no-untyped-call": 70,
+    "no-untyped-def": 7,
     "operator": 24,
-    "return-value": 2,
-    "type-arg": 80,
-    "union-attr": 4,
-    "var-annotated": 2
+    "type-arg": 47,
+    "union-attr": 2
   },
   "app/modules/themoviedb/tmdbv3api/as_obj.py": {
     "assignment": 1,

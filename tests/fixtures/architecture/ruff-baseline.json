@@ -580,9 +580,6 @@
   "app/modules/themoviedb/tmdb_cache.py": {
     "I001": 1
   },
-  "app/modules/themoviedb/tmdbapi.py": {
-    "I001": 1
-  },
   "app/modules/themoviedb/tmdbv3api/__init__.py": {
     "F401": 25
   },
