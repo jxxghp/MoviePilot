@@ -156,6 +156,11 @@ startup order and must not recreate their concrete construction. Database runtim
 construction and registration, including lazy local-data readers and external
 transport callbacks; `initializers/modules.py` retains only its startup-order call
 and the later explicit network warmup. Database runtime
+`startup/composition/agent.py` owns the single `AgentDataContext`, `AgentChatRuntime`,
+chat persistence and autonomous-task repository/execution service set. It may accept
+the Agent initializer's data-context registrar as a callback, but must not import
+`startup.initializers`; tool-manager, scheduler and Agent activation order remains in
+the initializer. Database runtime
 ownership rejects overlapping lifespans; after a successful worker shutdown, the
 configuration/database composition owners must revoke every provider they published
 before releasing database connections. Other domain providers remain owned by their

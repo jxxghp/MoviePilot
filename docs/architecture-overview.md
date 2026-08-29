@@ -286,7 +286,9 @@ sequenceDiagram
   复用 `startup/composition/configuration.py` 的映射、快照加载与发布。`startup/composition/database.py`
   持有数据库 worker、兼容事务 runner、查询/插件持久化和旧 `ApiDataPorts` 的具体装配；initializer
   只保留顺序调用。`startup/composition/security.py` 统一装配认证、用户查询、PassKey 与 Web 访问
-  provider，并将同一 `AuthenticationRuntime` 交给 HostRuntime。`ApiDataPorts` 仅保留旧导入 ABI，
+  provider，并将同一 `AuthenticationRuntime` 交给 HostRuntime；`startup/composition/network.py` 统一
+  装配网络应用端口；`startup/composition/agent.py` 构造并发布唯一的 Agent 数据、会话和自主任务对象，
+  `HostRuntime`、工具管理器与 Scheduler 复用同一对象身份。`ApiDataPorts` 仅保留旧导入 ABI，
   不参与正式请求链路。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **Scheduler 同名职责包**：旧 `app/scheduler.py` 单体已退役；`catalog.py` 负责作业目录和计划投影，
@@ -745,8 +747,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 969 |
-| 内部导入边 | 8,257 |
+| Python 模块 | 970 |
+| 内部导入边 | 8,279 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |

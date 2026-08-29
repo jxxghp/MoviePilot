@@ -344,6 +344,10 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
   才发布事务入口，关闭失败时保留 owner 与 provider，成功关闭后对称撤销。
 - `startup/composition/security.py` 唯一构造并登记认证、用户查询、PassKey 与 Web 认证入口，
   initializer 只消费其返回的 `AuthenticationRuntime`，不再保留第二份安全服务装配。
+- `startup/composition/network.py` 唯一装配网络探测、图片、内部地址与消息回环端口，并保持
+  RuntimeSettings 延迟读取；`startup/composition/agent.py` 唯一构造 Agent 数据、会话持久化与自主任务
+  repository/execution service，Worker 启动后才读取容量，HostRuntime、兼容 provider、工具管理器与
+  Scheduler 复用同一对象身份。
 - `startup/initializers/modules.py` 只按原顺序调用 composition API，并继续构造尚未迁移的领域运行时；
   本批未改变 HostRuntime、插件 ABI、SDK/Compat 或生命周期 manifest，`app/plugins/**` 未改动。
 - 模块 owner 完整收敛后撤销 `app.state.host_runtime`；启动失败直接关闭 Worker、撤销本批 provider 并

@@ -578,6 +578,7 @@ def test_startup_composes_typed_chain_and_agent_data_contexts():
     context_specs = {
         "ChainRuntimeContext": (
             APP_ROOT / "application" / "chain" / "context.py",
+            APP_ROOT / "startup" / "initializers" / "modules.py",
             {
                 "site_repository",
                 "subscription_repository",
@@ -597,6 +598,7 @@ def test_startup_composes_typed_chain_and_agent_data_contexts():
         ),
         "AgentDataContext": (
             APP_ROOT / "application" / "agent.py",
+            APP_ROOT / "startup" / "composition" / "agent.py",
             {
                 "chat",
                 "chat_persistence",
@@ -614,13 +616,7 @@ def test_startup_composes_typed_chain_and_agent_data_contexts():
             },
         ),
     }
-    startup_path = APP_ROOT / "startup" / "initializers" / "modules.py"
-    startup_tree = ast.parse(
-        startup_path.read_text(encoding="utf-8-sig"),
-        filename=str(startup_path),
-    )
-
-    for class_name, (context_path, expected_fields) in context_specs.items():
+    for class_name, (context_path, composition_path, expected_fields) in context_specs.items():
         annotations = _class_annotations(context_path, class_name)
         assert expected_fields <= annotations.keys()
         assert all(
@@ -630,9 +626,13 @@ def test_startup_composes_typed_chain_and_agent_data_contexts():
             for field_name in expected_fields
         )
 
+        composition_tree = ast.parse(
+            composition_path.read_text(encoding="utf-8-sig"),
+            filename=str(composition_path),
+        )
         constructors = [
             node
-            for node in ast.walk(startup_tree)
+            for node in ast.walk(composition_tree)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == class_name
         ]
         assert len(constructors) == 1
@@ -886,6 +886,37 @@ def test_modules_initializer_delegates_server_service_composition():
         isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef))
         for node in package_tree.body
     )
+
+
+def test_modules_initializer_delegates_agent_composition():
+    """模块初始化器只编排 Agent composition，不再内联数据与任务构造。"""
+    initializer_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    agent_source = (
+        APP_ROOT / "startup" / "composition" / "agent.py"
+    ).read_text(encoding="utf-8")
+
+    assert "compose_agent(" in initializer_source
+    assert "publish_agent_services(" in initializer_source
+    assert initializer_source.index("await start_database_runtime()") < initializer_source.index(
+        "compose_agent("
+    )
+    for detail in (
+        "AgentDataContext(",
+        "AgentChatRuntime(",
+        "AgentChatPersistenceService(",
+        "AgentChatService(",
+        "TransactionalAgentTaskRepository(",
+        "AgentTaskExecutionService(",
+        "configure_agent_chat_service(",
+        "configure_agent_chat_persistence(",
+        "configure_agent_task_execution(",
+    ):
+        assert detail not in initializer_source
+        assert detail in agent_source
+    assert "runtime.worker.snapshot().capacity" in agent_source
+    assert "startup.initializers" not in agent_source
 
 
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():

@@ -3281,7 +3281,7 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 6,
+    "arg-type": 5,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,

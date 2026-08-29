@@ -25,11 +25,6 @@ from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
 )
-from app.application.agent import AgentDataContext
-from app.application.agenttask import (
-    AgentTaskExecutionService,
-    configure_agent_task_execution,
-)
 from app.application.chain.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
@@ -47,10 +42,6 @@ from app.application.messaging.agent import (
     wait_web_agent_background_tasks,
 )
 from app.application.messaging.chat import (
-    AgentChatPersistenceService,
-    AgentChatService,
-    configure_agent_chat_persistence,
-    configure_agent_chat_service,
     get_configured_agent_chat_persistence,
 )
 from app.application.messaging.message import (
@@ -66,11 +57,6 @@ from app.application.site.health import SiteHealthService, configure_site_health
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.workflow import configure_workflow_execution
 from app.command import CommandChain
-from app.db.adapters.agent import (
-    SessionAgentTaskRepository,
-    TransactionalAgentTaskRepository,
-    TransactionalPluginDataRepository,
-)
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.history.download import (
@@ -100,7 +86,6 @@ from app.db.adapters.transfer.execution import (
 from app.db.adapters.workflow import (
     TransactionalWorkflowExecutionService,
 )
-from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.mediaserver import MediaServerOper
 from app.db.oper.message import MessageOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -137,6 +122,10 @@ from app.runtime.tasks import get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.message import Message, MessageType
 from app.schemas.types import EventType, SystemConfigKey
+from app.startup.composition.agent import (
+    compose_agent,
+    publish_agent_services,
+)
 from app.startup.composition.configuration import (
     build_chain_runtime_config,
     compose_configuration,
@@ -144,7 +133,6 @@ from app.startup.composition.configuration import (
     reset_configuration,
 )
 from app.startup.composition.context import (
-    AgentChatRuntime,
     HistoryRuntime,
     HostRuntime,
     MessagingRuntime,
@@ -554,8 +542,6 @@ async def _initialize_modules() -> HostRuntime:
         system_config=configuration.system_config,
     )
     system_config = configuration.system_config
-    database_worker = database_runtime.worker
-    transaction_runner = database_runtime.transaction
     workflow_query = database_services.workflow_query
     download_history_repository = TransactionalDownloadHistoryRepository(
         sync_session=SessionFactory,
@@ -564,12 +550,6 @@ async def _initialize_modules() -> HostRuntime:
     transfer_history_repository = TransactionalTransferHistoryRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
-    )
-    agent_chat_persistence = AgentChatPersistenceService(
-        repository=lambda session: AgentChatOper(session),
-        async_executor=database_worker,
-        sync_transaction=transaction_runner.sync,
-        capacity=database_worker.snapshot().capacity,
     )
     site_repository = TransactionalSiteRepository(
         sync_session=SessionFactory,
@@ -582,42 +562,23 @@ async def _initialize_modules() -> HostRuntime:
     subscription_history_repository = TransactionalSubscriptionHistoryRepository(
         async_session=async_session_scope,
     )
-    agent_chat_service = AgentChatService(repository=AgentChatOper())
-    agent_task_repository = TransactionalAgentTaskRepository(SessionFactory)
-    plugin_data_repository = TransactionalPluginDataRepository(async_session_scope)
-    transfer_execution_repository = TransactionalTransferExecutionRepository(
-        SessionFactory
-    )
+    transfer_execution_repository = TransactionalTransferExecutionRepository(SessionFactory)
     message_helper = MessageHelper()
     message_queue = MessageQueueManager(auto_start=False)
-    agent_data = AgentDataContext(
-        chat=agent_chat_service,
-        chat_persistence=agent_chat_persistence,
-        tasks=agent_task_repository,
-        users=build_transactional_user_repository(),
-        sites=site_repository,
-        subscriptions=subscription_repository,
-        subscription_mutation_scope=subscription_mutation_scope,
-        subscription_delete_scope=delete_subscribe_scope,
-        async_rule_group_mutation_scope=partial(
-            async_rule_group_mutation_scope,
-            system_config.publish_many,
-        ),
+    agent_composition = compose_agent(
+        runtime=database_runtime,
+        system_config=system_config,
+        site=site_repository,
+        subscription=subscription_repository,
         subscription_history=subscription_history_repository,
         transfer_history=transfer_history_repository,
         transfer_execution=transfer_execution_repository,
         download_history=download_history_repository,
-        plugin_data=plugin_data_repository,
     )
     authentication = configure_security_services()
     host_runtime = HostRuntime(
-        agent_chat=AgentChatRuntime(
-            async_session=get_async_db,
-            repository=AgentChatOper,
-            transaction=SqlAlchemyAsyncUnitOfWork,
-            persistence=agent_chat_persistence,
-        ),
-        agent=agent_data,
+        agent_chat=agent_composition.chat,
+        agent=agent_composition.data,
         persistence=PersistenceRuntime(
             sync_session=get_db,
             async_session=get_async_db,
@@ -683,23 +644,17 @@ async def _initialize_modules() -> HostRuntime:
         )
     )
     configure_database()
-    configure_agent_chat_service(agent_chat_service)
-    configure_agent_chat_persistence(agent_chat_persistence)
+    publish_agent_services(
+        agent_composition,
+        data_context_registrar=configure_agent_data_context,
+    )
     configure_transfer_history_repository(lambda: transfer_history_repository)
     configure_site_query_service(SiteQueryService(repository=site_repository))
     configure_site_health_service(SiteHealthService(repository=site_repository))
-    configure_agent_data_context(agent_data)
     from app.agent.tools.manager import moviepilot_tool_manager
 
-    moviepilot_tool_manager.set_data_context(agent_data)
-    configure_scheduler_agent_tasks(agent_task_repository)
-    configure_agent_task_execution(
-        AgentTaskExecutionService(
-            repository=SessionAgentTaskRepository,
-            async_executor=database_worker,
-            sync_transaction=transaction_runner.sync,
-        )
-    )
+    moviepilot_tool_manager.set_data_context(agent_composition.data)
+    configure_scheduler_agent_tasks(agent_composition.tasks)
     # 托管资源只在这里装配声明与 adapter，具体资源仍由首个消费者显式激活。
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
