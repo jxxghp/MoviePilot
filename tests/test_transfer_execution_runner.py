@@ -401,3 +401,46 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
     assert runner.steps[0][2]["transfer_type"] == "copy"
     target_oper.upload.assert_called_once()
     source_oper.delete.assert_called_once_with(source_item)
+
+
+def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_path):
+    """网盘到本地的下载开始前必须先创建缺失的目标目录。"""
+    target_file = tmp_path / "library" / "Season 1" / "episode.mkv"
+    source_item = FileItem(
+        storage="alist",
+        path="/downloads/episode.mkv",
+        name="episode.mkv",
+        type="file",
+        size=5,
+        extension="mkv",
+    )
+
+    def download(*, fileitem, path):
+        """模拟只接受已存在本地目录的网盘下载适配器。"""
+        assert fileitem is source_item
+        assert path == target_file.parent
+        assert path.is_dir()
+        temporary_file = path / fileitem.name
+        temporary_file.write_bytes(b"movie")
+        return temporary_file
+
+    source_oper = Mock()
+    source_oper.download.side_effect = download
+
+    result, error = TransHandler._TransHandler__transfer_command(
+        fileitem=source_item,
+        target_storage="local",
+        source_oper=source_oper,
+        target_oper=Mock(),
+        target_file=target_file,
+        transfer_type="move",
+    )
+
+    assert error == ""
+    assert result is not None
+    assert target_file.read_bytes() == b"movie"
+    source_oper.download.assert_called_once_with(
+        fileitem=source_item,
+        path=target_file.parent,
+    )
+    source_oper.delete.assert_called_once_with(source_item)

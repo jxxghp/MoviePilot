@@ -1410,7 +1410,7 @@ class TransHandler:
         transfer_type: str,
     ) -> Tuple[Optional[FileItem], str]:
         """
-        处理单个文件
+        处理单个文件，确保跨存储下载的本地目标目录已准备就绪
         :param fileitem: 源文件
         :param target_storage: 目标存储
         :param source_oper: 源存储操作对象
@@ -1538,14 +1538,13 @@ class TransHandler:
                 return __get_targetitem(target_file), ""
             # 网盘到本地
             if transfer_type in ["copy", "move"]:
+                # 远程存储适配器会直接在传入目录创建文件，下载前必须先建好目录。
+                target_file.parent.mkdir(parents=True, exist_ok=True)
                 # 下载
                 tmp_file = source_oper.download(
                     fileitem=fileitem, path=target_file.parent
                 )
                 if tmp_file:
-                    # 创建目录
-                    if not target_file.parent.exists():
-                        target_file.parent.mkdir(parents=True, exist_ok=True)
                     # 将tmp_file移动后target_file
                     SystemUtils.move(tmp_file, target_file)
                     if transfer_type == "move":
