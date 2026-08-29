@@ -156,6 +156,19 @@ def configure_wallpaper_providers(
     _clear_wallpaper_caches()
 
 
+def reset_wallpaper_providers() -> None:
+    """恢复空壁纸来源并清除旧 lifespan 产生的壁纸缓存。"""
+    global _tmdb_wallpaper_provider
+    global _tmdb_wallpaper_list_provider
+    global _mediaserver_wallpaper_provider
+    global _mediaserver_wallpaper_list_provider
+    _tmdb_wallpaper_provider = _empty_wallpaper_provider
+    _tmdb_wallpaper_list_provider = _empty_wallpaper_list_provider
+    _mediaserver_wallpaper_provider = _empty_wallpaper_provider
+    _mediaserver_wallpaper_list_provider = _empty_wallpaper_list_provider
+    _clear_wallpaper_caches()
+
+
 class WallpaperHelper(metaclass=Singleton):
     """
     壁纸帮助类

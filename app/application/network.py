@@ -521,6 +521,12 @@ def configure_network_test_service(service: NetworkTestService) -> None:
     _configured_network_test_service = service
 
 
+def reset_network_test_service() -> None:
+    """清除当前 lifespan 的网络测试应用服务。"""
+    global _configured_network_test_service
+    _configured_network_test_service = None
+
+
 def get_configured_network_test_service() -> NetworkTestService:
     """返回启动阶段登记的网络测试应用服务。"""
     if _configured_network_test_service is None:

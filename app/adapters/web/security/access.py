@@ -66,6 +66,14 @@ def set_superuser_token_payload_provider(
     """由启动组合根注入 API 密钥认证使用的超级用户载荷来源。"""
     global _superuser_token_payload_provider
     _superuser_token_payload_provider = provider
+    _create_superuser_token_payload.cache_clear()
+
+
+def reset_superuser_token_payload_provider() -> None:
+    """清除当前 lifespan 的超级用户载荷来源及其身份缓存。"""
+    global _superuser_token_payload_provider
+    _superuser_token_payload_provider = None
+    _create_superuser_token_payload.cache_clear()
 
 
 def configure_token_codec(

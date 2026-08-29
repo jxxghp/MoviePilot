@@ -389,6 +389,12 @@ def configure_transfer_history_repository(
     _configured_transfer_history_repository = provider
 
 
+def reset_transfer_history_repository() -> None:
+    """清除当前 lifespan 的整理历史仓储提供器。"""
+    global _configured_transfer_history_repository
+    _configured_transfer_history_repository = None
+
+
 def get_transfer_history_repository() -> TransferHistoryRepository:
     """返回启动组合根登记的类型化整理历史仓储。"""
     if _configured_transfer_history_repository is None:

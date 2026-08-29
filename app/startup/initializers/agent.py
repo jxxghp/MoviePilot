@@ -69,6 +69,13 @@ def configure_agent_data_context(context: AgentDataContext) -> None:
     _injected_agent_manager = None
 
 
+def reset_agent_data_context() -> None:
+    """清除当前 lifespan 的 Agent 数据上下文和未运行 manager 缓存。"""
+    global _agent_data_context, _injected_agent_manager
+    _agent_data_context = None
+    _injected_agent_manager = None
+
+
 def _get_injected_agent_manager() -> Any:
     """按需构造并缓存显式注入数据上下文的 AgentManager。"""
     global _injected_agent_manager

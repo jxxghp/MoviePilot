@@ -434,6 +434,12 @@ def configure_outbox_dispatcher(provider: Callable[[], OutboxDispatcher]) -> Non
     _configured_dispatcher = provider
 
 
+def reset_outbox_dispatcher() -> None:
+    """清除当前 lifespan 的 Outbox dispatcher 工厂。"""
+    global _configured_dispatcher
+    _configured_dispatcher = None
+
+
 def dispatch_pending_outbox(limit: int = 20) -> int:
     """恢复有限数量到期 intent，供 Scheduler 与启动补偿复用。"""
     if _configured_dispatcher is None:

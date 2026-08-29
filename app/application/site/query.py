@@ -89,6 +89,12 @@ def configure_site_query_service(service: SiteQueryService) -> None:
     _configured_site_query_service = service
 
 
+def reset_site_query_service() -> None:
+    """清除当前 lifespan 的站点查询服务。"""
+    global _configured_site_query_service
+    _configured_site_query_service = None
+
+
 def get_configured_site_query_service() -> SiteQueryService:
     """返回启动阶段登记的站点查询服务。"""
     if _configured_site_query_service is None:

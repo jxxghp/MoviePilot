@@ -241,6 +241,12 @@ def configure_auth_service(service: AuthService) -> None:
     _configured_auth_service = service
 
 
+def reset_auth_service() -> None:
+    """清除当前 lifespan 的认证应用服务。"""
+    global _configured_auth_service
+    _configured_auth_service = None
+
+
 def _get_auth_service() -> AuthService:
     """返回启动阶段登记的认证应用服务。"""
     if _configured_auth_service is None:

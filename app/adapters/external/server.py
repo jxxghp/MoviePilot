@@ -5,26 +5,25 @@ from collections.abc import Coroutine
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.adapters.system.host import SystemUtils
+from app.domain.context import MediaInfo, MusicInfo
+from app.domain.media import normalize_music_type
+from app.domain.meta.metabase import MetaBase
 from app.runtime.cache import cached
+from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
+from app.runtime.observability import observe_compat_facade
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
-from app.domain.context import MediaInfo, MusicInfo
-from app.domain.meta.metabase import MetaBase
-from app.runtime.log import logger
-from app.runtime.observability import observe_compat_facade
+from app.runtime.version import get_app_version, get_frontend_version
+from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaType,
     SystemConfigKey,
     media_type_to_agent,
 )
-from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.domain.media import normalize_music_type
-from app.schemas.media import resolve_media_identity
-from app.adapters.system.host import SystemUtils
-from app.runtime.version import get_app_version, get_frontend_version
-
 
 # 中心服务适配器只通过 runtime 读取端口消费组合根的最新配置。
 
@@ -42,6 +41,13 @@ def configure_server_application_services(
     global _server_report_service, _server_sharing_service
     _server_report_service = report_service
     _server_sharing_service = sharing_service
+
+
+def reset_server_application_services() -> None:
+    """清除当前 lifespan 的中心服务上报与分享用例。"""
+    global _server_report_service, _server_sharing_service
+    _server_report_service = None
+    _server_sharing_service = None
 
 
 @observe_compat_facade("MoviePilotServerHelper")

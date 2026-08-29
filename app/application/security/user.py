@@ -315,6 +315,15 @@ def configure_user_lookups(
     _configured_user_channel_lookup = by_channel
 
 
+def reset_user_lookups() -> None:
+    """清除当前 lifespan 的全部用户身份查询函数。"""
+    global _configured_user_id_lookup, _configured_user_name_lookup
+    global _configured_user_channel_lookup
+    _configured_user_id_lookup = None
+    _configured_user_name_lookup = None
+    _configured_user_channel_lookup = None
+
+
 def get_configured_user_id_lookup() -> Callable[[int], Optional[UserSnapshot]]:
     """返回启动阶段登记的按 ID 用户查询函数。"""
     if _configured_user_id_lookup is None:

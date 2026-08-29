@@ -384,6 +384,12 @@ def configure_agent_task_execution(service: AgentTaskExecutionService) -> None:
     _service = service
 
 
+def reset_agent_task_execution() -> None:
+    """清除当前 lifespan 的 AgentTask 执行服务。"""
+    global _service
+    _service = None
+
+
 def get_agent_task_execution_service() -> AgentTaskExecutionService:
     """返回已登记的 AgentTask 执行服务。"""
     if _service is None:

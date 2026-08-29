@@ -298,6 +298,12 @@ def configure_workflow_execution(service: WorkflowExecutionPort) -> None:
     _configured_workflow_execution = service
 
 
+def reset_workflow_execution() -> None:
+    """清除当前 lifespan 的工作流执行状态事务服务。"""
+    global _configured_workflow_execution
+    _configured_workflow_execution = None
+
+
 def get_configured_workflow_execution() -> WorkflowExecutionPort:
     """返回启动阶段登记的工作流执行状态事务服务。"""
     if _configured_workflow_execution is None:

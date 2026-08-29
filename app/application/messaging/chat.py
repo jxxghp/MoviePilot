@@ -563,6 +563,18 @@ def configure_agent_chat_persistence(
     _configured_agent_chat_persistence = service
 
 
+def reset_agent_chat_service() -> None:
+    """清除当前 lifespan 的 Agent 会话查询服务。"""
+    global _configured_agent_chat_service
+    _configured_agent_chat_service = None
+
+
+def reset_agent_chat_persistence() -> None:
+    """清除当前 lifespan 的 Agent 会话持久化服务。"""
+    global _configured_agent_chat_persistence
+    _configured_agent_chat_persistence = None
+
+
 def get_configured_agent_chat_persistence() -> AgentChatPersistenceService:
     """返回由启动组合根登记的 AgentChat worker 端口。"""
     if _configured_agent_chat_persistence is None:

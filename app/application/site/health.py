@@ -44,6 +44,12 @@ def configure_site_health_service(service: SiteHealthService) -> None:
     _configured_site_health_service = service
 
 
+def reset_site_health_service() -> None:
+    """清除当前 lifespan 的站点健康统计服务。"""
+    global _configured_site_health_service
+    _configured_site_health_service = None
+
+
 def get_configured_site_health_service() -> SiteHealthService:
     """返回启动阶段登记的站点健康统计服务。"""
     if _configured_site_health_service is None:

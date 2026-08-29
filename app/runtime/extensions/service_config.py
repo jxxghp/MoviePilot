@@ -4,12 +4,8 @@ from typing import Any, List, Optional, Type
 from pydantic import ValidationError
 
 from app.runtime.log import logger
-from app.schemas.system import DownloaderConf
-from app.schemas.system import MediaServerConf
-from app.schemas.system import NotificationConf
-from app.schemas.system import NotificationSwitchConf
+from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf, NotificationSwitchConf
 from app.schemas.types import MessageType, SystemConfigKey
-
 
 ServiceConfigReader = Callable[[SystemConfigKey], Any]
 
@@ -28,6 +24,12 @@ def configure_service_config_reader(reader: ServiceConfigReader) -> ServiceConfi
     previous = _service_config_reader
     _service_config_reader = reader
     return previous
+
+
+def reset_service_config_reader() -> None:
+    """恢复空配置读取器，禁止复用旧 lifespan 的配置对象。"""
+    global _service_config_reader
+    _service_config_reader = _empty_service_config
 
 
 class ServiceConfigHelper:

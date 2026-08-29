@@ -531,6 +531,17 @@ def configure_passkey_service(service: PasskeyService) -> None:
     _configured_passkey_service = service
 
 
+def reset_passkey_challenge_cache() -> None:
+    """清除当前 lifespan 的 PassKey challenge 缓存。"""
+    PasskeyChallengeStore._cache = None
+
+
+def reset_passkey_service() -> None:
+    """清除当前 lifespan 的 PassKey 应用服务。"""
+    global _configured_passkey_service
+    _configured_passkey_service = None
+
+
 def get_configured_passkey_service() -> PasskeyService:
     """返回启动阶段登记的 PassKey 应用服务。"""
     if _configured_passkey_service is None:

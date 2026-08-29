@@ -41,6 +41,13 @@ def configure_service_directory(
     _module_loader = modules
 
 
+def reset_service_directory() -> None:
+    """恢复未装配服务目录，禁止跨 lifespan 复用旧模块对象。"""
+    global _config_loader, _module_loader
+    _config_loader = _unconfigured_configs
+    _module_loader = _unconfigured_modules
+
+
 def get_service_configs(
     config_key: SystemConfigKey,
     conf_type: Type[TConf],

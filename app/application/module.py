@@ -30,6 +30,12 @@ def configure_module_runtime(provider: ModuleRuntimeProvider) -> None:
     _runtime_provider = provider
 
 
+def reset_module_runtime() -> None:
+    """恢复未装配模块运行时，禁止跨 lifespan 复用旧目录。"""
+    global _runtime_provider
+    _runtime_provider = _unconfigured_runtime
+
+
 def get_module_manager() -> ModuleRuntime:
     """返回当前组合根提供的模块目录能力。"""
     return _runtime_provider()
@@ -56,4 +62,5 @@ __all__ = [
     "ModuleRuntime",
     "configure_module_runtime",
     "get_module_manager",
+    "reset_module_runtime",
 ]
