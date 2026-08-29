@@ -1074,6 +1074,83 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             **kwargs
         )
 
+    @staticmethod
+    def _douban_detail_order(mtype: Optional[MediaType]) -> Tuple[MediaType, ...]:
+        """返回详情查询的唯一类型顺序，未知类型保持电影优先回退电视剧。"""
+        if mtype == MediaType.TV:
+            return (MediaType.TV,)
+        if mtype == MediaType.MOVIE:
+            return (MediaType.MOVIE,)
+        return MediaType.MOVIE, MediaType.TV
+
+    @staticmethod
+    def _classify_douban_detail(
+            info: Optional[dict[str, Any]]
+    ) -> str:
+        """纯函数分类详情响应为未命中、速率限制或有效详情。"""
+        if not info:
+            return "missing"
+        if "subject_ip_rate_limit" in info.get("msg", ""):
+            return "rate_limited"
+        return "matched"
+
+    @classmethod
+    def _accept_douban_detail(
+            cls, info: Optional[dict[str, Any]]
+    ) -> bool:
+        """应用共享响应分类，并把豆瓣速率限制转换为既有领域异常。"""
+        state = cls._classify_douban_detail(info)
+        if state == "rate_limited":
+            msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
+            logger.warning(msg)
+            raise APIRateLimitException(msg)
+        return state == "matched"
+
+    @staticmethod
+    def _merge_douban_celebrities(
+            info: dict[str, Any],
+            celebrities: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """把人物详情合并回原响应，保持现有对象身份和字段覆盖语义。"""
+        if celebrities:
+            info["directors"] = celebrities.get("directors")
+            info["actors"] = celebrities.get("actors")
+        return info
+
+    def _douban_detail(
+            self, doubanid: str, mtype: MediaType
+    ) -> Optional[dict[str, Any]]:
+        """执行一次同步详情及人物查询，业务分类由共享状态机负责。"""
+        if mtype == MediaType.TV:
+            info = self.doubanapi.tv_detail(doubanid)
+            celebrity_loader = self.doubanapi.tv_celebrities
+        else:
+            info = self.doubanapi.movie_detail(doubanid)
+            celebrity_loader = self.doubanapi.movie_celebrities
+        if not self._accept_douban_detail(info):
+            return None
+        detail = cast(dict[str, Any], info)
+        return self._merge_douban_celebrities(
+            detail, celebrity_loader(doubanid)
+        )
+
+    async def _async_douban_detail(
+            self, doubanid: str, mtype: MediaType
+    ) -> Optional[dict[str, Any]]:
+        """执行一次异步详情及人物查询，业务分类由共享状态机负责。"""
+        if mtype == MediaType.TV:
+            info = await self.doubanapi.async_tv_detail(doubanid)
+            celebrity_loader = self.doubanapi.async_tv_celebrities
+        else:
+            info = await self.doubanapi.async_movie_detail(doubanid)
+            celebrity_loader = self.doubanapi.async_movie_celebrities
+        if not self._accept_douban_detail(info):
+            return None
+        detail = cast(dict[str, Any], info)
+        return self._merge_douban_celebrities(
+            detail, await celebrity_loader(doubanid)
+        )
+
     @rate_limit_exponential(source="douban_info")
     def douban_info(self, doubanid: str, mtype: MediaType = None, raise_exception: bool = True) -> Optional[dict]:
         """
@@ -1349,47 +1426,13 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         }
         """
 
-        def __douban_tv():
-            """
-            获取豆瓣剧集信息
-            """
-            info = self.doubanapi.tv_detail(doubanid)
-            if info:
-                if "subject_ip_rate_limit" in info.get("msg", ""):
-                    msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
-                    logger.warn(msg)
-                    raise APIRateLimitException(msg)
-                celebrities = self.doubanapi.tv_celebrities(doubanid)
-                if celebrities:
-                    info["directors"] = celebrities.get("directors")
-                    info["actors"] = celebrities.get("actors")
-            return info
-
-        def __douban_movie():
-            """
-            获取豆瓣电影信息
-            """
-            info = self.doubanapi.movie_detail(doubanid)
-            if info:
-                if "subject_ip_rate_limit" in info.get("msg", ""):
-                    msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
-                    logger.warn(msg)
-                    raise APIRateLimitException(msg)
-                celebrities = self.doubanapi.movie_celebrities(doubanid)
-                if celebrities:
-                    info["directors"] = celebrities.get("directors")
-                    info["actors"] = celebrities.get("actors")
-            return info
-
         if not doubanid:
             return None
         logger.info(f"开始获取豆瓣信息：{doubanid} ...")
-        if mtype == MediaType.TV:
-            return __douban_tv()
-        elif mtype == MediaType.MOVIE:
-            return __douban_movie()
-        else:
-            return __douban_movie() or __douban_tv()
+        for detail_type in self._douban_detail_order(mtype):
+            if info := self._douban_detail(doubanid, detail_type):
+                return info
+        return None
 
     @rate_limit_exponential(source="douban_info")
     async def async_douban_info(self, doubanid: str, mtype: MediaType = None,
@@ -1402,50 +1445,13 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :return: 豆瓣信息
         """
 
-        async def __async_douban_tv():
-            """
-            获取豆瓣剧集信息（异步版本）
-            """
-            info = await self.doubanapi.async_tv_detail(doubanid)
-            if info:
-                if "subject_ip_rate_limit" in info.get("msg", ""):
-                    msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
-                    logger.warn(msg)
-                    raise APIRateLimitException(msg)
-                celebrities = await self.doubanapi.async_tv_celebrities(doubanid)
-                if celebrities:
-                    info["directors"] = celebrities.get("directors")
-                    info["actors"] = celebrities.get("actors")
-            return info
-
-        async def __async_douban_movie():
-            """
-            获取豆瓣电影信息（异步版本）
-            """
-            info = await self.doubanapi.async_movie_detail(doubanid)
-            if info:
-                if "subject_ip_rate_limit" in info.get("msg", ""):
-                    msg = f"触发豆瓣IP速率限制，错误信息：{info} ..."
-                    logger.warn(msg)
-                    raise APIRateLimitException(msg)
-                celebrities = await self.doubanapi.async_movie_celebrities(doubanid)
-                if celebrities:
-                    info["directors"] = celebrities.get("directors")
-                    info["actors"] = celebrities.get("actors")
-            return info
-
         if not doubanid:
             return None
         logger.info(f"开始获取豆瓣信息：{doubanid} ...")
-        if mtype == MediaType.TV:
-            return await __async_douban_tv()
-        elif mtype == MediaType.MOVIE:
-            return await __async_douban_movie()
-        else:
-            movie_result = await __async_douban_movie()
-            if movie_result:
-                return movie_result
-            return await __async_douban_tv()
+        for detail_type in self._douban_detail_order(mtype):
+            if info := await self._async_douban_detail(doubanid, detail_type):
+                return info
+        return None
 
     def douban_discover(self, mtype: MediaType, sort: str, tags: str,
                         page: int = 1, count: int = 30) -> Optional[List[MediaInfo]]:

@@ -989,15 +989,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         """
         发送消息（立即发送或加入队列）
         """
-        immediately = kwargs.pop("immediately", False)
-        if immediately or self._is_in_scheduled_time(datetime.now()):
-            self._send(*args, **kwargs)
-        else:
-            self.queue.put({
-                "args": args,
-                "kwargs": kwargs
-            })
-            logger.info(f"消息已加入队列，当前队列长度：{self.queue.qsize()}")
+        self._dispatch_message(None, False, *args, **kwargs)
 
     def send_message_for(
         self,
@@ -1006,16 +998,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         **kwargs: Any,
     ) -> None:
         """使用显式调用方回调立即发送或排队，避免共享队列绑定首个 Chain。"""
-        immediately = kwargs.pop("immediately", False)
-        if immediately or self._is_in_scheduled_time(datetime.now()):
-            self._send_with_callback(send_callback, *args, **kwargs)
-            return
-        self.queue.put({
-            "args": args,
-            "kwargs": kwargs,
-            "send_callback": send_callback,
-        })
-        logger.info(f"消息已加入队列，当前队列长度：{self.queue.qsize()}")
+        self._dispatch_message(send_callback, True, *args, **kwargs)
 
     async def async_send_message(self, *args, **kwargs) -> None:
         """
@@ -1026,22 +1009,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         着不发。这里与同步 ``send_message`` 行为对齐：
         指定 ``immediately=True`` 必须当场发出，与时段无关。
         """
-        immediately = kwargs.pop("immediately", False)
-        if immediately or self._is_in_scheduled_time(datetime.now()):
-            # _send 会执行具体渠道回调，可能包含网络 IO；放到 executor
-            # 避免 async 调用方所在事件循环被同步发送阻塞。
-            context = copy_context()
-            call = partial(self._send, *args, **kwargs)
-            loop = asyncio.get_running_loop()
-            submission = partial(loop.run_in_executor, None, context.run, call)
-            # 默认执行器保持空底层上下文，渠道调用只使用当前消息快照。
-            await Context().run(submission)
-            return
-        self.queue.put({
-            "args": args,
-            "kwargs": kwargs
-        })
-        logger.info(f"消息已加入队列，当前队列长度：{self.queue.qsize()}")
+        await self._async_dispatch_message(None, False, *args, **kwargs)
 
     async def async_send_message_for(
         self,
@@ -1050,19 +1018,96 @@ class MessageQueueManager(metaclass=SingletonClass):
         **kwargs: Any,
     ) -> None:
         """使用显式调用方回调异步发送或排队。"""
-        immediately = kwargs.pop("immediately", False)
-        if immediately or self._is_in_scheduled_time(datetime.now()):
+        await self._async_dispatch_message(send_callback, True, *args, **kwargs)
+
+    def _dispatch_message(
+        self,
+        send_callback: Optional[Callable[..., Any]],
+        explicit_callback: bool,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """执行同步消息入口，共享调度计划但保留同步回调边界。"""
+        scheduled = (
+            False
+            if kwargs.get("immediately", False)
+            else self._is_in_scheduled_time(datetime.now())
+        )
+        send_now, message = self._build_message_dispatch(
+            send_callback=send_callback,
+            explicit_callback=explicit_callback,
+            args=args,
+            kwargs=kwargs,
+            scheduled=scheduled,
+        )
+        if send_now:
+            if explicit_callback:
+                self._send_with_callback(
+                    send_callback, *message["args"], **message["kwargs"]
+                )
+            else:
+                self._send(*message["args"], **message["kwargs"])
+            return
+        self._enqueue_message(message)
+
+    async def _async_dispatch_message(
+        self,
+        send_callback: Optional[Callable[..., Any]],
+        explicit_callback: bool,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """执行异步消息入口，共享调度计划并在线程池运行同步回调。"""
+        scheduled = (
+            False
+            if kwargs.get("immediately", False)
+            else self._is_in_scheduled_time(datetime.now())
+        )
+        send_now, message = self._build_message_dispatch(
+            send_callback=send_callback,
+            explicit_callback=explicit_callback,
+            args=args,
+            kwargs=kwargs,
+            scheduled=scheduled,
+        )
+        if send_now:
+            callback = (
+                partial(self._send_with_callback, send_callback)
+                if explicit_callback
+                else self._send
+            )
             context = copy_context()
-            call = partial(self._send_with_callback, send_callback, *args, **kwargs)
+            call = partial(callback, *message["args"], **message["kwargs"])
             loop = asyncio.get_running_loop()
             submission = partial(loop.run_in_executor, None, context.run, call)
+            # 默认执行器保持空底层上下文，渠道调用只使用当前消息快照。
             await Context().run(submission)
             return
-        self.queue.put({
+        self._enqueue_message(message)
+
+    @staticmethod
+    def _build_message_dispatch(
+        *,
+        send_callback: Optional[Callable[..., Any]],
+        explicit_callback: bool,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        scheduled: bool,
+    ) -> tuple[bool, dict[str, Any]]:
+        """纯函数生成同步、异步入口共用的立即发送结论和队列载荷。"""
+        dispatch_kwargs = dict(kwargs)
+        immediately = bool(dispatch_kwargs.pop("immediately", False))
+        message: dict[str, Any] = {
             "args": args,
-            "kwargs": kwargs,
-            "send_callback": send_callback,
-        })
+            "kwargs": dispatch_kwargs,
+        }
+        if explicit_callback:
+            message["send_callback"] = send_callback
+        return immediately or scheduled, message
+
+    def _enqueue_message(self, message: dict[str, Any]) -> None:
+        """写入一条已完成调度决策的消息并记录当前队列长度。"""
+        self.queue.put(message)
         logger.info(f"消息已加入队列，当前队列长度：{self.queue.qsize()}")
 
     def _send(self, *args, **kwargs) -> None:
