@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -12,6 +13,7 @@ from packaging.version import InvalidVersion, Version
 
 LOCAL_PLUGIN_SOURCE_PREFIX = "local://"
 PLUGIN_SYSTEM_VERSION_FIELD = "system_version"
+_PHYSICAL_PLUGIN_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 PLUGIN_GENERATION_COMPATIBILITY: dict[str, tuple[str, ...]] = {
     "v3": ("v2",),
 }
@@ -23,6 +25,15 @@ class PluginReleaseInstallPlan:
 
     release_tag: str | None
     fallback_to_filelist: bool
+
+
+def is_physical_plugin_id(plugin_id: object) -> bool:
+    """判断值是否符合物理插件在市场、目录和来源身份中共用的 ID 规则。"""
+    return bool(
+        isinstance(plugin_id, str)
+        and plugin_id == plugin_id.strip()
+        and _PHYSICAL_PLUGIN_ID_PATTERN.fullmatch(plugin_id)
+    )
 
 
 def is_local_plugin_source(repo_url: str | None) -> bool:

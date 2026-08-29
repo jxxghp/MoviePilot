@@ -8,6 +8,7 @@ import re
 import threading
 import time
 import traceback
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, cast
 from urllib.parse import urlparse, urlsplit
@@ -22,6 +23,7 @@ from app.domain.plugin import (
     build_local_plugin_source,
     check_plugin_system_version,
     is_local_plugin_source,
+    is_physical_plugin_id,
     is_plugin_generation_compatible,
     parse_local_plugin_generation,
     parse_local_plugin_path,
@@ -41,6 +43,28 @@ PluginIndex = dict[str, PluginPayload]
 PluginReleaseList = list[PluginPayload]
 PluginRequestOptions = dict[str, Any]
 PluginReleaseTask = asyncio.Task[Optional[PluginReleaseList]]
+
+PLUGIN_INDEX_MAX_BYTES = 1024 * 1024
+PLUGIN_INDEX_MAX_ENTRIES = 4096
+PLUGIN_INDEX_MAX_HISTORY_ENTRIES = 512
+PLUGIN_INDEX_MAX_NESTING = 64
+PLUGIN_INDEX_READ_CHUNK_SIZE = 64 * 1024
+PLUGIN_INDEX_COMPATIBILITY_FLAG_PATTERN = re.compile(r"^v\d+t?$")
+PLUGIN_INDEX_TEXT_LIMITS = {
+    "name": 256,
+    "author": 256,
+    "description": 4096,
+    "icon": 2048,
+    "author_url": 2048,
+    "authorUrl": 2048,
+    "project_url": 2048,
+    "homepage": 2048,
+    "repo_url": 2048,
+}
+
+
+class _PluginIndexTooLargeError(RuntimeError):
+    """插件索引的声明长度或实际读取字节超过资源边界。"""
 
 
 def build_local_repo_url(
@@ -418,9 +442,9 @@ class PluginMarketTransport:
             paths.append(path.resolve())
         return paths
 
-    @staticmethod
+    @classmethod
     def __get_local_package(
-        repo_path: Path, package_version: Optional[str] = None
+        cls, repo_path: Path, package_version: Optional[str] = None
     ) -> Optional[PluginIndex]:
         """
         从本地插件仓库读取 package.json 或 package.{version}.json
@@ -431,14 +455,22 @@ class PluginMarketTransport:
         if not package_file.exists():
             return {}
         try:
-            content = package_file.read_text(encoding="utf-8", errors="replace")
-            payload = json.loads(content)
-        except Exception as e:
-            logger.warn(f"读取本地插件包 {package_file} 失败：{e}")
-            return None
-        if not isinstance(payload, dict):
-            logger.warn(f"本地插件包 {package_file} 格式不正确")
-            return None
+            if package_file.stat().st_size > PLUGIN_INDEX_MAX_BYTES:
+                raise _PluginIndexTooLargeError(
+                    f"插件索引超过 {PLUGIN_INDEX_MAX_BYTES} 字节"
+                )
+            with package_file.open("rb") as file_handle:
+                raw_content = file_handle.read(PLUGIN_INDEX_MAX_BYTES + 1)
+            if len(raw_content) > PLUGIN_INDEX_MAX_BYTES:
+                raise _PluginIndexTooLargeError(
+                    f"插件索引超过 {PLUGIN_INDEX_MAX_BYTES} 字节"
+                )
+            content = raw_content.decode("utf-8", errors="replace")
+        except OSError as error:
+            raise RuntimeError(f"读取本地插件包 {package_file} 失败：{error}") from error
+        payload = cls.__parse_plugin_index_response(content)
+        if payload is None:
+            raise RuntimeError(f"本地插件包 {package_file} 格式无效")
         return payload
 
     @staticmethod
@@ -610,22 +642,236 @@ class PluginMarketTransport:
         return parts._replace(query=query).geturl()
 
     @staticmethod
-    def __parse_plugin_index_response(content: str) -> Optional[PluginIndex]:
-        """
-        解析插件索引响应，仅缓存成功解析出的字典结果。
-        """
+    def __safe_plugin_id(plugin_id: object) -> str:
+        """生成适合日志展示的有界插件 ID，不回显完整外部载荷。"""
+        if not isinstance(plugin_id, str):
+            return f"<{type(plugin_id).__name__}>"
+        return json.dumps(plugin_id[:64], ensure_ascii=True)
+
+    @staticmethod
+    def __plugin_index_nesting_is_valid(payload: object) -> bool:
+        """限制外部 JSON 的容器深度，避免后续序列化递归耗尽调用栈。"""
+        pending = [(payload, 0)]
+        while pending:
+            value, depth = pending.pop()
+            if depth > PLUGIN_INDEX_MAX_NESTING:
+                return False
+            if isinstance(value, dict):
+                pending.extend((item, depth + 1) for item in value.values())
+            elif isinstance(value, list):
+                pending.extend((item, depth + 1) for item in value)
+        return True
+
+    @classmethod
+    def __normalize_plugin_index_entry(
+        cls,
+        plugin_id: object,
+        plugin_info: object,
+    ) -> tuple[Optional[PluginPayload], Optional[str], list[str]]:
+        """校验影响安装决策的字段，并宽容丢弃异常展示字段。"""
+        if not isinstance(plugin_id, str) or not is_physical_plugin_id(plugin_id):
+            return None, "插件 ID 非法", []
+        if not isinstance(plugin_info, dict):
+            return None, "条目不是对象", []
+
+        declared_id = plugin_info.get("id")
+        if "id" in plugin_info and (
+            not isinstance(declared_id, str)
+            or not is_physical_plugin_id(declared_id)
+            or declared_id.lower() != plugin_id.lower()
+        ):
+            return None, "id 与索引键不一致", []
+
+        version = plugin_info.get("version")
+        if not isinstance(version, str) or not version or len(version) > 64:
+            return None, "version 非法", []
+
+        system_version = plugin_info.get("system_version")
+        if "system_version" in plugin_info and (
+            not isinstance(system_version, str) or len(system_version) > 256
+        ):
+            return None, "system_version 非法", []
+
+        level = plugin_info.get("level")
+        if "level" in plugin_info and (
+            isinstance(level, bool)
+            or not isinstance(level, int)
+            or not 0 <= level <= 99
+        ):
+            return None, "level 非法", []
+
+        public_key = plugin_info.get("key")
+        if "key" in plugin_info and (
+            not isinstance(public_key, str) or len(public_key) > 16 * 1024
+        ):
+            return None, "key 非法", []
+
+        for field, value in plugin_info.items():
+            if field == "release" and not isinstance(value, bool):
+                return None, "release 非法", []
+            if (
+                PLUGIN_INDEX_COMPATIBILITY_FLAG_PATTERN.fullmatch(field)
+                and not isinstance(value, bool)
+            ):
+                return None, "兼容标志非法", []
+
+        normalized = plugin_info.copy()
+        if declared_id is not None:
+            normalized["id"] = plugin_id
+        dropped_fields: list[str] = []
+        for field, max_length in PLUGIN_INDEX_TEXT_LIMITS.items():
+            if field not in normalized:
+                continue
+            value = normalized[field]
+            if not isinstance(value, str) or len(value) > max_length:
+                normalized.pop(field)
+                dropped_fields.append(field)
+
+        labels = normalized.get("labels")
+        if labels is not None:
+            valid_labels = (
+                isinstance(labels, str)
+                and len(labels) <= 1024
+            ) or (
+                isinstance(labels, list)
+                and len(labels) <= 64
+                and all(
+                    isinstance(item, str) and len(item) <= 128
+                    for item in labels
+                )
+            )
+            if not valid_labels:
+                normalized.pop("labels")
+                dropped_fields.append("labels")
+
+        history = normalized.get("history")
+        if history is not None and (
+            not isinstance(history, dict)
+            or len(history) > PLUGIN_INDEX_MAX_HISTORY_ENTRIES
+        ):
+            normalized.pop("history")
+            dropped_fields.append("history")
+
+        return normalized, None, dropped_fields
+
+    @classmethod
+    def __parse_plugin_index_response(cls, content: str) -> Optional[PluginIndex]:
+        """解析并规范化插件索引，仅缓存满足索引级边界的结果。"""
         try:
             payload = json.loads(content)
-        except json.JSONDecodeError:
-            if "404: Not Found" not in content:
-                logger.warn(f"插件包数据解析失败：{content}")
+        except (ValueError, RecursionError):
+            logger.warning("插件包数据解析失败：响应不是有效 JSON")
             return None
 
         if not isinstance(payload, dict):
-            logger.warn(f"插件包数据格式不正确，期望 dict，实际为 {type(payload).__name__}")
+            logger.warning(
+                f"插件包数据格式不正确，期望 dict，实际为 {type(payload).__name__}"
+            )
+            return None
+        if not cls.__plugin_index_nesting_is_valid(payload):
+            logger.warning(
+                f"插件包 JSON 嵌套超过上限：{PLUGIN_INDEX_MAX_NESTING} 层"
+            )
+            return None
+        if len(payload) > PLUGIN_INDEX_MAX_ENTRIES:
+            logger.warning(
+                f"插件包条目超过上限：{len(payload)} > {PLUGIN_INDEX_MAX_ENTRIES}"
+            )
             return None
 
-        return payload
+        normalized: PluginIndex = {}
+        skipped_reasons: Counter[str] = Counter()
+        dropped_fields: Counter[str] = Counter()
+        skipped_examples: list[str] = []
+        for plugin_id, plugin_info in payload.items():
+            item, reason, dropped = cls.__normalize_plugin_index_entry(
+                plugin_id,
+                plugin_info,
+            )
+            if item is None:
+                skipped_reasons[reason or "未知原因"] += 1
+                if len(skipped_examples) < 5:
+                    skipped_examples.append(cls.__safe_plugin_id(plugin_id))
+                continue
+            normalized[plugin_id] = item
+            dropped_fields.update(dropped)
+
+        summaries = []
+        if skipped_reasons:
+            reasons = "、".join(
+                f"{reason} {count} 条"
+                for reason, count in sorted(skipped_reasons.items())
+            )
+            examples = "、".join(skipped_examples)
+            summaries.append(
+                f"跳过 {sum(skipped_reasons.values())} 个条目（{reasons}；示例 {examples}）"
+            )
+        if dropped_fields:
+            fields = "、".join(
+                f"{field} {count} 次"
+                for field, count in sorted(dropped_fields.items())
+            )
+            summaries.append(f"丢弃异常展示字段（{fields}）")
+        if summaries:
+            logger.warning(f"插件包数据已隔离异常内容：{'；'.join(summaries)}")
+
+        return normalized
+
+    @staticmethod
+    def __declared_plugin_index_too_large(headers: Any) -> bool:
+        """仅把合法的 Content-Length 用作流式读取前的快速拒绝依据。"""
+        try:
+            value = headers.get("Content-Length")
+            return value is not None and int(value) > PLUGIN_INDEX_MAX_BYTES
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+    @classmethod
+    def __read_plugin_index_response(cls, response: Response) -> tuple[int, str]:
+        """从同步流式响应读取有界的解压后索引文本。"""
+        status_code = response.status_code
+        if status_code != 200:
+            return status_code, ""
+        if cls.__declared_plugin_index_too_large(response.headers):
+            raise _PluginIndexTooLargeError(
+                f"插件索引响应超过 {PLUGIN_INDEX_MAX_BYTES} 字节"
+            )
+        content = bytearray()
+        for chunk in response.iter_content(chunk_size=PLUGIN_INDEX_READ_CHUNK_SIZE):
+            if not chunk:
+                continue
+            content.extend(chunk)
+            if len(content) > PLUGIN_INDEX_MAX_BYTES:
+                raise _PluginIndexTooLargeError(
+                    f"插件索引响应超过 {PLUGIN_INDEX_MAX_BYTES} 字节"
+                )
+        return status_code, content.decode("utf-8", errors="replace")
+
+    @classmethod
+    async def __async_read_plugin_index_response(
+        cls,
+        response: httpx2.Response,
+    ) -> tuple[int, str]:
+        """从异步流式响应读取有界的解压后索引文本。"""
+        status_code = response.status_code
+        if status_code != 200:
+            return status_code, ""
+        if cls.__declared_plugin_index_too_large(response.headers):
+            raise _PluginIndexTooLargeError(
+                f"插件索引响应超过 {PLUGIN_INDEX_MAX_BYTES} 字节"
+            )
+        content = bytearray()
+        async for chunk in response.aiter_bytes(
+            chunk_size=PLUGIN_INDEX_READ_CHUNK_SIZE
+        ):
+            if not chunk:
+                continue
+            content.extend(chunk)
+            if len(content) > PLUGIN_INDEX_MAX_BYTES:
+                raise _PluginIndexTooLargeError(
+                    f"插件索引响应超过 {PLUGIN_INDEX_MAX_BYTES} 字节"
+                )
+        return status_code, content.decode("utf-8", errors="replace")
 
     @classmethod
     def _build_plugin_index_request(
@@ -650,6 +896,78 @@ class PluginMarketTransport:
         package_url = cls.__append_cache_buster(f"{raw_url}{package_file}")
         headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=f"{user}/{repo}")
         return package_url, headers
+
+    @classmethod
+    def __request_plugin_index_with_fallback(
+        cls,
+        url: str,
+        headers: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = 60,
+    ) -> Optional[tuple[int, str]]:
+        """按 GitHub 降级顺序流式读取同步插件索引，并限制解压后字节数。"""
+        strategies = cls._build_github_request_strategies(
+            url=url,
+            headers=headers,
+            timeout=timeout,
+        )
+        for strategy_name, target_url, request_params in strategies:
+            logger.debug(
+                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{target_url}"
+            )
+            try:
+                request = RequestUtils(**request_params)
+                with request.get_stream(
+                    url=target_url,
+                    raise_exception=True,
+                ) as response:
+                    if response is None:
+                        continue
+                    return cls.__read_plugin_index_response(response)
+            except _PluginIndexTooLargeError:
+                raise
+            except Exception as error:  # noqa: BLE001 - 失败后尝试下一传输策略
+                logger.error(
+                    f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
+                    f"URL：{target_url}，错误：{error}"
+                )
+        logger.error(f"[GitHub] 所有策略均无法读取插件索引，URL：{url}")
+        return None
+
+    @classmethod
+    async def __async_request_plugin_index_with_fallback(
+        cls,
+        url: str,
+        headers: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = 60,
+    ) -> Optional[tuple[int, str]]:
+        """按 GitHub 降级顺序流式读取异步插件索引，并限制解压后字节数。"""
+        strategies = cls._build_github_request_strategies(
+            url=url,
+            headers=headers,
+            timeout=timeout,
+        )
+        for strategy_name, target_url, request_params in strategies:
+            logger.debug(
+                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{target_url}"
+            )
+            try:
+                request = AsyncRequestUtils(**request_params)
+                async with request.get_stream(
+                    url=target_url,
+                    raise_exception=True,
+                ) as response:
+                    if response is None:
+                        continue
+                    return await cls.__async_read_plugin_index_response(response)
+            except _PluginIndexTooLargeError:
+                raise
+            except Exception as error:  # noqa: BLE001 - 失败后尝试下一传输策略
+                logger.error(
+                    f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
+                    f"URL：{target_url}，错误：{error}"
+                )
+        logger.error(f"[GitHub] 所有策略均无法读取插件索引，URL：{url}")
+        return None
 
     @classmethod
     def _resolve_plugin_index_response(
@@ -798,14 +1116,18 @@ class PluginMarketTransport:
         if request is None:
             raise ValueError("插件仓库地址无效")
         package_url, headers = request
-        res = self.__request_with_fallback(package_url, headers=headers)
-        if res is None:
+        response = self.__request_plugin_index_with_fallback(
+            package_url,
+            headers=headers,
+        )
+        if response is None:
             raise RuntimeError("插件索引请求失败：连接失败")
-        if res.status_code == 404:
+        status_code, content = response
+        if status_code == 404:
             return None
-        if res.status_code != 200:
-            raise RuntimeError(f"插件索引请求失败：HTTP {res.status_code}")
-        payload = self.__parse_plugin_index_response(res.text)
+        if status_code != 200:
+            raise RuntimeError(f"插件索引请求失败：HTTP {status_code}")
+        payload = self.__parse_plugin_index_response(content)
         if payload is None:
             raise RuntimeError("插件索引响应格式无效")
         return payload
@@ -1133,17 +1455,18 @@ class PluginMarketTransport:
         if request is None:
             raise ValueError("插件仓库地址无效")
         package_url, headers = request
-        res = await self.__async_request_with_fallback(
+        response = await self.__async_request_plugin_index_with_fallback(
             package_url,
             headers=headers,
         )
-        if res is None:
+        if response is None:
             raise RuntimeError("插件索引请求失败：连接失败")
-        if res.status_code == 404:
+        status_code, content = response
+        if status_code == 404:
             return None
-        if res.status_code != 200:
-            raise RuntimeError(f"插件索引请求失败：HTTP {res.status_code}")
-        payload = self.__parse_plugin_index_response(res.text)
+        if status_code != 200:
+            raise RuntimeError(f"插件索引请求失败：HTTP {status_code}")
+        payload = self.__parse_plugin_index_response(content)
         if payload is None:
             raise RuntimeError("插件索引响应格式无效")
         return payload

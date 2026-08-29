@@ -10,8 +10,8 @@ from enum import StrEnum
 from typing import Protocol
 
 from app.application.plugin.declaration import PluginDeclaredMetadata
+from app.domain.plugin import is_physical_plugin_id
 
-_PLUGIN_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 _ONLINE_SOURCE_KEY_PATTERN = re.compile(
     r"^github:[a-z0-9](?:[a-z0-9-]{0,38})/"
     r"[a-z0-9._-]{1,100}$"
@@ -60,7 +60,7 @@ class PluginIdentityConflictError(RuntimeError):
 
 def normalize_physical_plugin_id(plugin_id: str) -> str:
     """校验可安全持久化的物理插件 ID，并返回大小写无关身份键。"""
-    if plugin_id != plugin_id.strip() or not _PLUGIN_ID_PATTERN.fullmatch(plugin_id):
+    if not is_physical_plugin_id(plugin_id):
         raise ValueError("插件 ID 必须以字母开头且只能包含 ASCII 字母、数字或下划线")
     return plugin_id.lower()
 
