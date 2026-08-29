@@ -139,8 +139,8 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S3-L3 Scheduler | `VERIFIED` | S2-L3 | 旧 `app/scheduler.py` 已退役并迁入 `app.scheduler` 同名包；catalog、execution/bridge/progress、`ExecutionRegistry`、reconciler、lifecycle 与 maintenance 已分离，业务 callable 由 startup 经 `SchedulerServices` 注入，包内无参 Chain 构造清零；功能/生命周期 215 项、架构/兼容/文档 189 项通过，官方插件基线语义未变化 |
 | S3-L4 DownloadChain | `DELIVERED` | S1-L6 | `7941fd921`：旧单体退役；selection、submission、batch、history、post-processing 等职责进入同名包单一 owner，提交后动作遵守新完成语义；锁定全量 `7162 passed, 9 skipped`，远端 `0/0` |
 | S3-L5 SearchChain | `DELIVERED` | S2-L7 | `1c145d716`：旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、类型/复杂度门禁和锁定全量 `7222 passed, 9 skipped` 通过；远端 `0/0` |
-| S3-L5.1 Runtime dependencies 命名治理 | `VERIFIED` | S3-L5 | `dependencies.py` 与 `native_dependencies.py` 退役为 `runtime/dependencies/` 同名包；单词子模块、无包根重复导出，并把规则写入 `docs/rules/07-naming-conventions.md` 及机器门禁 |
-| S3-L6 MediaChain | `PLANNED` | S2-L2 | recognition、source projection、music alignment、cache 分离，兼容仅经统一层 |
+| S3-L5.1 Runtime dependencies 命名治理 | `DELIVERED` | S3-L5 | `13fba96fd`：平铺模块退役为 `runtime/dependencies/` 同名包；单词子模块、包根无重复导出、旧快照回滚兼容、命名规则与机器门禁均已交付，锁定全量 `7224 passed, 9 skipped`，远端 `0/0` |
+| S3-L6 MediaChain | `ACTIVE` | S2-L2 | recognition、source projection、music alignment、cache 分离，兼容仅经统一层 |
 | S3-L7 Agent/System/Plugin API | `PLANNED` | S2,S1-L6 | WebAgent SSE/file/audio、nettest/log/update/market 用例进入 Application，endpoint 只做传输适配 |
 
 ### S4：可执行合同与质量债务清零
@@ -176,7 +176,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 
 ### S3-L5.1 Runtime dependencies 命名治理
 
-**Status:** `VERIFIED`
+**Status:** `DELIVERED`
 
 **Outcome**
 
@@ -206,6 +206,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 - 官方插件仓最新远端 `aa40b961a2093474a77edd9eed88844ff07425ac` 对旧路径及全部公开符号零命中，因此未新增无消费者的 SDK/Compat 债务。
 - 运行依赖、原生激活、插件安装/包管理及架构专项 `406 passed`；最终架构/CI/Docker 门禁 `182 passed`。
 - 锁定全量 `7224 passed, 9 skipped`；Pylint `10.00/10` 且重复率 `0.000%`；mypy、Ruff（历史诊断降至 `667`）、复杂度和依赖基线门禁全部通过。
+- 交付提交 `13fba96fd82f4e94dbda8cff5dc635966e06fa67` 已推送；本地、`origin/v3` 与远端引用一致，ahead/behind `0/0`。
 
 ### S3-L5 SearchChain
 
