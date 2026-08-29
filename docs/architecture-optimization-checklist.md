@@ -79,7 +79,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 10,415 / 593 文件 | strict frontier 当前覆盖 41 个文件，Plugin、LLM Provider 与 Agent Manager owner 拆分及受益调用方低水位已固化 |
-| Ruff 历史诊断 | 652 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Ruff 历史诊断 | 651 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 80.92%，Domain 79.87% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -657,7 +657,8 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
   精确 Compat 承接，`app.helper.llm` 收窄为 `app.agent.llm.helper` 模块别名。
 - [x] 将内置 provider spec 数据从 `LLMProviderManager` 分离为只读 catalog。
 - [x] 模型发现、认证会话和运行时构建已拆至单词 owner。
-- [ ] 将 WebAgent SSE、文件/音频与会话桥接移出 API endpoint。
+- [x] WebAgent 会话、文件/音频和事件编排已由 `app/application/messaging/agent.py` 负责；
+  API endpoint 仅保留 FastAPI 请求映射、HTTP 响应与 SSE framing。
 - [x] `AgentManager` 会话、生命周期和后台任务已拆到单词 owner，公开方法由
   `app.agent.AgentManager` 稳定 Facade 精确保持，包根不再无边界转发。
 - [x] `LLMProviderManager` 公开方法由稳定 Facade 精确保持；owner 已纳入 mypy 低水位。
