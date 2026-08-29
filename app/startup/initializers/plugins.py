@@ -91,6 +91,15 @@ from app.runtime.compat.diagnostics import (
 from app.runtime.compat.resources import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
+from app.runtime.extensions.plugin.manager import (
+    PluginManager,
+    configure_plugin_catalog_factory,
+    configure_plugin_legacy_import_services,
+    configure_plugin_resource_import_preparer,
+    configure_plugin_route_refresher,
+    configure_plugin_runtime_factory,
+    configure_site_auth_level_provider,
+)
 from app.runtime.extensions.plugin.runtime import (
     PluginRuntime,
     PluginRuntimeEnvironment,
@@ -106,15 +115,6 @@ from app.runtime.extensions.plugin.system import (
     PluginSystemServices,
     configure_plugin_system,
     get_plugin_system,
-)
-from app.runtime.extensions.plugin.manager import (
-    PluginManager,
-    configure_plugin_catalog_factory,
-    configure_plugin_legacy_import_services,
-    configure_plugin_resource_import_preparer,
-    configure_plugin_route_refresher,
-    configure_plugin_runtime_factory,
-    configure_site_auth_level_provider,
 )
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry

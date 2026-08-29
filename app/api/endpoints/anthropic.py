@@ -16,12 +16,12 @@ from app.api.endpoints.openai import (
     _is_manager_unavailable,
     _run_managed_agent,
 )
+from app.api.presentation.sse import build_sse_response, encode_named_event
 from app.api.protocol import (
     build_anthropic_messages,
     build_prompt,
     build_session_id,
 )
-from app.api.presentation.sse import build_sse_response, encode_named_event
 from app.application.agent import get_running_agent_manager
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.runtime.tasks import TaskRegistry

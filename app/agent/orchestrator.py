@@ -29,13 +29,14 @@ from app.agent.middleware.activity import (
     QUERY_ACTIVITY_LOG_TOOL_NAME,
     ActivityLogMiddleware,
 )
+from app.agent.middleware.config import RuntimeConfigMiddleware
 from app.agent.middleware.jobs import (
     JobsMiddleware,
 )
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.patching import PatchToolCallsMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
-from app.agent.middleware.config import RuntimeConfigMiddleware
+from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.middleware.skills import SKILL_TOOL_NAME, SkillsMiddleware
 from app.agent.middleware.subagents import (
     SUBAGENT_CONTROL_TOOL_NAME,
@@ -49,7 +50,6 @@ from app.agent.middleware.summarization import (
 from app.agent.middleware.summarization import (
     FinalRequestCompactionMiddleware,
 )
-from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.middleware.usage import UsageMiddleware
 from app.agent.policy.contracts import (
     AuthSource,

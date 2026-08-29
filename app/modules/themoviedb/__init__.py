@@ -12,9 +12,9 @@ from app.domain.meta.metabase import MetaBase
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules._base.media import MediaAuxiliaryProviderMixin
+from app.modules.themoviedb.cache import TmdbCache
 from app.modules.themoviedb.category import CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
-from app.modules.themoviedb.cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
 from app.runtime.log import logger

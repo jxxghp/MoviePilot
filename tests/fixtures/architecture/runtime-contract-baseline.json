@@ -153,14 +153,14 @@
         "is_package": false,
         "owner": "runtime",
         "replacement": "app.sdk.plugins",
-        "target": "app.runtime.extensions.module_manager"
+        "target": "app.runtime.extensions.module.manager"
       },
       "app.core.plugin": {
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "runtime",
         "replacement": "app.sdk.plugins",
-        "target": "app.runtime.extensions.plugin_manager"
+        "target": "app.runtime.extensions.plugin.manager"
       },
       "app.core.security": {
         "introduced": "v3.0.0",
@@ -1492,12 +1492,12 @@
         "registration_kind": "decorator"
       },
       {
-        "caller": "app.runtime.extensions.module_manager",
+        "caller": "app.runtime.extensions.module.manager",
         "dynamic": false,
         "events": [
           "EventType.ConfigChanged"
         ],
-        "fingerprint": "37daee8e6104140ee28a6efebefd30f1f9ac6a7c44f9609199c1b4863b30c564",
+        "fingerprint": "26cc40efaa5ed089e42e73509e2668b83e3634c343fea7a5e8f3a45d68fba275",
         "handler": "self.handle_config_changed",
         "invalid": false,
         "method": "add_event_listener",
@@ -1758,7 +1758,7 @@
       },
       "EventType.ConfigChanged": {
         "consumer_fingerprints": [
-          "37daee8e6104140ee28a6efebefd30f1f9ac6a7c44f9609199c1b4863b30c564",
+          "26cc40efaa5ed089e42e73509e2668b83e3634c343fea7a5e8f3a45d68fba275",
           "713e0ff077b9f76ea4b6695ca730dd2360f25059f677c1d6496cb2a4ffc8e1c4",
           "829bb1b5d09ee66c26f4f500a25e12a768f041a8bcc5dab8954453a186fe0909",
           "c53927bd5752ec004ac403f6dc07fca7b253f0db152fc773643972d7c3bf5d34"
@@ -1821,7 +1821,7 @@
           "89480fbdb61c366e8c77e42fd3bdaa330e634579e7d85cf28e2475b1e3ba7ae6"
         ],
         "producer_fingerprints": [
-          "3b63f7f5a98a3f2e0ac2660d11c5a3cf9b29dac3bf6d0482abf874db38dfb535"
+          "034911ea736277e592c818007200fedbeb0ce0e84949c613467efaeac48ec316"
         ]
       },
       "EventType.NoticeMessage": {
@@ -2837,12 +2837,12 @@
         "receiver_kind": "event_manager_self"
       },
       {
-        "caller": "app.runtime.extensions.module_manager",
+        "caller": "app.runtime.extensions.module.manager",
         "dynamic": false,
         "events": [
           "EventType.ModuleReload"
         ],
-        "fingerprint": "3b63f7f5a98a3f2e0ac2660d11c5a3cf9b29dac3bf6d0482abf874db38dfb535",
+        "fingerprint": "034911ea736277e592c818007200fedbeb0ce0e84949c613467efaeac48ec316",
         "invalid": false,
         "method": "send_event",
         "qualname": "ModuleManager.reload",
@@ -10256,12 +10256,12 @@
       {
         "kind": "import",
         "name": "ModuleManager",
-        "target": "app.runtime.extensions.module_manager.ModuleManager"
+        "target": "app.runtime.extensions.module.manager.ModuleManager"
       },
       {
         "kind": "import",
         "name": "PluginManager",
-        "target": "app.runtime.extensions.plugin_manager.PluginManager"
+        "target": "app.runtime.extensions.plugin.manager.PluginManager"
       }
     ],
     "app.sdk.queries": [
@@ -10659,7 +10659,7 @@
       {
         "kind": "import",
         "name": "ServiceConfigHelper",
-        "target": "app.runtime.extensions.service_config.ServiceConfigHelper"
+        "target": "app.runtime.extensions.service.ServiceConfigHelper"
       },
       {
         "kind": "import",

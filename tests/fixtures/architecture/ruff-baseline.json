@@ -1,5 +1,5 @@
 {
-  "app/adapters/external/wechat_crypt.py": {
+  "app/adapters/external/wechat.py": {
     "I001": 1
   },
   "app/adapters/system/host.py": {
@@ -24,7 +24,10 @@
   "app/agent/llm/capability.py": {
     "I001": 1
   },
-  "app/agent/llm/server_tools.py": {
+  "app/agent/llm/tools.py": {
+    "I001": 1
+  },
+  "app/agent/loader.py": {
     "I001": 1
   },
   "app/agent/mcp.py": {
@@ -36,13 +39,13 @@
   "app/agent/middleware/policy.py": {
     "I001": 1
   },
+  "app/agent/middleware/selection.py": {
+    "I001": 1
+  },
   "app/agent/middleware/skills.py": {
     "I001": 1
   },
   "app/agent/middleware/subagents.py": {
-    "I001": 1
-  },
-  "app/agent/middleware/tool_selection.py": {
     "I001": 1
   },
   "app/agent/middleware/utils.py": {
@@ -60,16 +63,13 @@
   "app/agent/policy/sanitizer.py": {
     "I001": 1
   },
-  "app/agent/policy/secret_fields.py": {
+  "app/agent/policy/secrets.py": {
     "I001": 1
   },
   "app/agent/prompt/__init__.py": {
     "I001": 1
   },
   "app/agent/runtime.py": {
-    "I001": 1
-  },
-  "app/agent/runtime_loader.py": {
     "I001": 1
   },
   "app/agent/skills/metadata.py": {
@@ -367,12 +367,6 @@
   "app/modules/_base/notification.py": {
     "I001": 1
   },
-  "app/modules/acoustid/__init__.py": {
-    "I001": 1
-  },
-  "app/modules/anilist/anilist.py": {
-    "I001": 1
-  },
   "app/modules/discord/__init__.py": {
     "F401": 2,
     "I001": 1
@@ -416,7 +410,7 @@
   "app/modules/indexer/parser/file_list.py": {
     "I001": 1
   },
-  "app/modules/indexer/parser/ipt_project.py": {
+  "app/modules/indexer/parser/ipt.py": {
     "I001": 1
   },
   "app/modules/indexer/parser/mtorrent.py": {
@@ -479,9 +473,6 @@
   "app/modules/indexer/spider/torrentleech.py": {
     "I001": 1
   },
-  "app/modules/indexer/spider/yema.py": {
-    "I001": 1
-  },
   "app/modules/jellyfin/__init__.py": {
     "F401": 1,
     "I001": 1
@@ -496,7 +487,7 @@
   "app/modules/lrclib/__init__.py": {
     "I001": 1
   },
-  "app/modules/musicbrainz/music_cache.py": {
+  "app/modules/musicbrainz/cache.py": {
     "I001": 1
   },
   "app/modules/navidrome/__init__.py": {
@@ -561,6 +552,9 @@
   "app/modules/telegram/telegram.py": {
     "I001": 3
   },
+  "app/modules/themoviedb/cache.py": {
+    "I001": 1
+  },
   "app/modules/themoviedb/category.py": {
     "F541": 1,
     "I001": 1
@@ -568,16 +562,10 @@
   "app/modules/themoviedb/scraper.py": {
     "I001": 1
   },
-  "app/modules/themoviedb/tmdb_cache.py": {
-    "I001": 1
-  },
   "app/modules/themoviedb/tmdbv3api/__init__.py": {
     "F401": 25
   },
   "app/modules/themoviedb/tmdbv3api/tmdb.py": {
-    "I001": 1
-  },
-  "app/modules/thetvdb/__init__.py": {
     "I001": 1
   },
   "app/modules/transmission/__init__.py": {
@@ -672,10 +660,10 @@
   "app/runtime/execution.py": {
     "I001": 1
   },
-  "app/runtime/extensions/host_module_adapter.py": {
+  "app/runtime/extensions/module/adapter.py": {
     "I001": 1
   },
-  "app/runtime/extensions/module_manager.py": {
+  "app/runtime/extensions/module/manager.py": {
     "I001": 1
   },
   "app/runtime/extensions/plugin/lifecycle.py": {

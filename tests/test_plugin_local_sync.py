@@ -11,9 +11,9 @@ from watchfiles import Change
 from app.adapters.external.plugin.client import PluginMarketTransport
 from app.foundation.singleton import Singleton
 from app.runtime.events import Event, eventmanager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.paths import PluginPathResolver
 from app.runtime.extensions.plugin.system import get_plugin_system
-from app.runtime.extensions.plugin.manager import PluginManager
 from app.scheduler import reconcile as scheduler_reconcile
 from app.scheduler.facade import Scheduler
 from app.scheduler.registry import ExecutionRegistry

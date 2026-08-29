@@ -207,19 +207,19 @@ def configure_plugin_system_services():
     from app.application.plugin.runtime import configure_plugin_runtime
     from app.runtime.cache import AsyncFileCache, FileCache
     from app.runtime.events import EventManager
-    from app.runtime.extensions.plugin import manager as plugin_manager_module
     from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
     from app.runtime.extensions.module.manager import ModuleManager
+    from app.runtime.extensions.plugin import manager as plugin_manager_module
+    from app.runtime.extensions.plugin.manager import (
+        PluginManager,
+        reset_plugin_runtime_factory,
+    )
     from app.runtime.extensions.plugin.runtime import (
         PluginRuntimeEnvironment,
         build_plugin_runtime,
     )
     from app.runtime.extensions.plugin.storage import get_plugin_storage
     from app.runtime.extensions.plugin.system import get_plugin_system
-    from app.runtime.extensions.plugin.manager import (
-        PluginManager,
-        reset_plugin_runtime_factory,
-    )
     from app.runtime.extensions.service import ServiceConfigHelper
 
     configure_service_directory(

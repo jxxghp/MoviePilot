@@ -15,8 +15,8 @@ from app.runtime.extensions.plugin.admission import (
     PluginMutationAdmission,
     PluginMutationRejectedError,
 )
-from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.runtime.extensions.plugin.manager import PluginManager
+from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import EventType
 
