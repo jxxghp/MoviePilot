@@ -941,7 +941,7 @@
   },
   "app/api/endpoints/search.py": {
     "arg-type": 2,
-    "attr-defined": 4,
+    "attr-defined": 3,
     "misc": 11,
     "no-untyped-call": 3,
     "no-untyped-def": 4,

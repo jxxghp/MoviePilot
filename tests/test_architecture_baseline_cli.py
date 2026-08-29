@@ -397,9 +397,17 @@ def test_official_plugin_baseline_includes_effective_v3_default_fallback(
         "plugins.v3/current/__init__.py": (
             "import importlib\n"
             "from app.sdk.events import Event\n"
+            "from app.agent.llm import LLMHelper as PublicLLMHelper\n"
+            "from app.agent.llm.helper import LLMHelper as DirectLLMHelper\n"
+            "from app.helper.llm import LLMHelper as CompatLLMHelper\n"
+            "from app.agent.tools.manager import moviepilot_tool_manager\n"
             "_optional_import('app.chain.media', 'MediaChain')\n"
             "importlib.import_module('app.chain.search')\n"
             "__import__('app.chain.download')\n"
+            "PublicLLMHelper.get_llm(streaming=False)\n"
+            "DirectLLMHelper.extract_text_content('ok')\n"
+            "CompatLLMHelper.test_current_settings()\n"
+            "moviepilot_tool_manager._load_tools()\n"
         ),
         "plugins.v2/legacy/__init__.py": "from app.core.event import Event\n",
         "plugins/shared/__init__.py": "from app.log import logger\n",
@@ -437,6 +445,7 @@ def test_official_plugin_baseline_includes_effective_v3_default_fallback(
         "default_plugins": ["Shared"],
     }
     assert baseline["provenance"]["python_file_count"] == 3
+    assert baseline["schema_version"] == 4
     assert baseline["imports"]["app.log"]["files"] == [
         "plugins/shared/__init__.py"
     ]
@@ -449,6 +458,24 @@ def test_official_plugin_baseline_includes_effective_v3_default_fallback(
     assert baseline["imports"]["app.chain.download"]["files"] == [
         "plugins.v3/current/__init__.py"
     ]
+    assert set(baseline["from_imports"]) >= {
+        "app.agent.llm.LLMHelper",
+        "app.agent.llm.helper.LLMHelper",
+        "app.helper.llm.LLMHelper",
+        "app.agent.tools.manager.moviepilot_tool_manager",
+    }
+    assert baseline["attribute_calls"][
+        "app.agent.llm.LLMHelper.get_llm"
+    ]["call_count"] == 1
+    assert baseline["attribute_calls"][
+        "app.agent.llm.helper.LLMHelper.extract_text_content"
+    ]["call_count"] == 1
+    assert baseline["attribute_calls"][
+        "app.helper.llm.LLMHelper.test_current_settings"
+    ]["call_count"] == 1
+    assert baseline["attribute_calls"][
+        "app.agent.tools.manager.moviepilot_tool_manager._load_tools"
+    ]["call_count"] == 1
     assert not any(module.startswith("app.unused") for module in baseline["imports"])
 
 
@@ -488,6 +515,10 @@ def test_plugin_v2_fixture_migrates_before_semantic_comparison(tmp_path: Path):
         baseline_path,
         old_value,
     ) == architecture_baseline.semantic_baseline(baseline_path, new_value)
+    migrated = architecture_baseline.semantic_baseline(baseline_path, old_value)
+    assert migrated["schema_version"] == 4
+    assert migrated["from_imports"] == {}
+    assert migrated["attribute_calls"] == {}
 
 
 def test_transaction_ratchet_allows_removal_but_rejects_new_method() -> None:

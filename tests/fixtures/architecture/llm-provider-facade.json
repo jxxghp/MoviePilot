@@ -1,0 +1,102 @@
+{
+  "class": "LLMProviderManager",
+  "methods": {
+    "clear_auth": {
+      "async": true,
+      "parameters": "self, provider_id: str",
+      "returns": "None"
+    },
+    "create_bedrock_client": {
+      "async": false,
+      "parameters": "self, service_name: str, region: str, credentials: dict[str, Any], base_url: Optional[str]=None, use_proxy: Optional[bool]=None, read_timeout: Optional[int]=None",
+      "returns": "Any"
+    },
+    "get_auth_status": {
+      "async": false,
+      "parameters": "self, provider_id: str",
+      "returns": "dict[str, Any]"
+    },
+    "get_models_dev_data": {
+      "async": true,
+      "parameters": "self, force_refresh: bool=False, use_proxy: Optional[bool]=None",
+      "returns": "dict[str, Any]"
+    },
+    "get_provider": {
+      "async": false,
+      "parameters": "self, provider_id: str",
+      "returns": "ProviderSpec"
+    },
+    "get_saved_auth": {
+      "async": false,
+      "parameters": "self, provider_id: str",
+      "returns": "dict[str, Any] | None"
+    },
+    "get_session_status": {
+      "async": false,
+      "parameters": "self, session_id: str",
+      "returns": "dict[str, Any]"
+    },
+    "handle_chatgpt_callback": {
+      "async": true,
+      "parameters": "self, provider_id: str, code: Optional[str], state: Optional[str], error: Optional[str], error_description: Optional[str]",
+      "returns": "tuple[bool, str]"
+    },
+    "list_models": {
+      "async": true,
+      "parameters": "self, provider_id: str, api_key: Optional[str]=None, base_url: Optional[str]=None, base_url_preset_id: Optional[str]=None, user_agent: Optional[str]=None, use_proxy: Optional[bool]=None, force_refresh: bool=False",
+      "returns": "list[dict[str, Any]]"
+    },
+    "list_providers": {
+      "async": false,
+      "parameters": "self",
+      "returns": "list[dict[str, Any]]"
+    },
+    "list_providers_async": {
+      "async": true,
+      "parameters": "self, force_refresh: bool=False, use_proxy: Optional[bool]=None",
+      "returns": "list[dict[str, Any]]"
+    },
+    "poll_auth_session": {
+      "async": true,
+      "parameters": "self, session_id: str",
+      "returns": "dict[str, Any]"
+    },
+    "provider_manage": {
+      "async": true,
+      "parameters": "self, provider: str, action: str, **params: Any",
+      "returns": "Dict[str, Any]"
+    },
+    "resolve_cached_model_metadata": {
+      "async": false,
+      "parameters": "self, provider_id: str, model_id: Optional[str], base_url: Optional[str]=None, base_url_preset_id: Optional[str]=None",
+      "returns": "dict[str, Any] | None"
+    },
+    "resolve_model_list_base_url": {
+      "async": false,
+      "parameters": "self, provider_id: str, base_url: Optional[str], base_url_preset_id: Optional[str]=None",
+      "returns": "Optional[str]"
+    },
+    "resolve_model_metadata": {
+      "async": true,
+      "parameters": "self, provider_id: str, model_id: Optional[str], base_url: Optional[str]=None, base_url_preset_id: Optional[str]=None, use_proxy: Optional[bool]=None",
+      "returns": "dict[str, Any] | None"
+    },
+    "resolve_runtime": {
+      "async": true,
+      "parameters": "self, provider_id: str, model: Optional[str], api_key: Optional[str]=None, base_url: Optional[str]=None, base_url_preset_id: Optional[str]=None, user_agent: Optional[str]=None, use_proxy: Optional[bool]=None",
+      "returns": "dict[str, Any]"
+    },
+    "save_auth": {
+      "async": true,
+      "parameters": "self, provider_id: str, auth_data: dict[str, Any]",
+      "returns": "None"
+    },
+    "start_auth": {
+      "async": true,
+      "parameters": "self, provider_id: str, method_id: str, callback_url: Optional[str]=None",
+      "returns": "dict[str, Any]"
+    }
+  },
+  "module": "app.agent.llm.provider",
+  "schema_version": 1
+}

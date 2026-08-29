@@ -16,20 +16,36 @@ def test_official_plugin_baseline_records_external_source():
     baseline_path = BASELINE_ROOT / "official-plugin-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["schema_version"] == 3
+    assert baseline["schema_version"] == 4
     assert baseline["scope"]["repository"] == "MoviePilot-Plugins"
     assert baseline["scope"]["roots"] == ["plugins.v2", "plugins.v3", "plugins"]
     assert baseline["scope"]["default_plugins"]
     assert len(baseline["provenance"]["head"]) == 40
     assert all(
         not path.startswith("app/plugins/")
-        for contract in (*baseline["imports"].values(), *baseline["hooks"].values())
+        for contract in (
+            *baseline["imports"].values(),
+            *baseline["from_imports"].values(),
+            *baseline["attribute_calls"].values(),
+            *baseline["hooks"].values(),
+        )
         for path in contract["files"]
     )
     assert all(
         not path.startswith("app/plugins/")
         for path in baseline["api_routes"]
     )
+    assert {
+        "app.agent.llm.LLMHelper",
+        "app.agent.llm.helper.LLMHelper",
+        "app.helper.llm.LLMHelper",
+    } <= set(baseline["from_imports"])
+    assert {
+        "app.agent.llm.LLMHelper.get_llm",
+        "app.agent.llm.helper.LLMHelper.test_current_settings",
+        "app.helper.llm.LLMHelper.get_llm",
+        "app.agent.tools.manager.moviepilot_tool_manager._load_tools",
+    } <= set(baseline["attribute_calls"])
 
 
 def test_dependency_baseline_records_nonempty_host_graph() -> None:
