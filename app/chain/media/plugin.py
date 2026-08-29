@@ -1,6 +1,18 @@
 """插件识别选择、事件解析与辅助识别 owner。"""
 
-from typing import TYPE_CHECKING, Awaitable, Callable, Mapping, Optional, Protocol, Tuple
+from dataclasses import dataclass
+from enum import Enum
+from typing import (
+    TYPE_CHECKING,
+    Awaitable,
+    Callable,
+    Generator,
+    Mapping,
+    Optional,
+    Protocol,
+    Tuple,
+    cast,
+)
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.chain.media.contract import _MediaOwnerBase
@@ -19,6 +31,39 @@ from app.schemas.types import (
 RecognitionCallback = Callable[[], Optional[MediaInfo]]
 AsyncRecognitionCallback = Callable[[], Awaitable[Optional[MediaInfo]]]
 RecognitionPredicate = Callable[[Optional[MediaInfo]], bool]
+
+
+class _RecognitionSource(Enum):
+    """标识一次识别选择流程当前需要调用的真实 I/O 来源。"""
+
+    NATIVE = "native"
+    PLUGIN = "plugin"
+
+
+@dataclass(frozen=True, slots=True)
+class _RecognitionSelection:
+    """统一同步与异步识别入口的来源顺序、回退和结果采信决策。"""
+
+    plugin_first: bool
+    plugin_available: bool
+    is_recognized: RecognitionPredicate
+
+    def flow(
+        self,
+    ) -> Generator[_RecognitionSource, Optional[MediaInfo], Optional[MediaInfo]]:
+        """按相同状态机产出 I/O 动作，并接收各入口自己的调用结果。"""
+        if self.plugin_first and self.plugin_available:
+            helped = yield _RecognitionSource.PLUGIN
+            if self.is_recognized(helped):
+                return helped
+            native = yield _RecognitionSource.NATIVE
+            return native or helped
+
+        native = yield _RecognitionSource.NATIVE
+        if self.is_recognized(native) or not self.plugin_available:
+            return native
+        helped = yield _RecognitionSource.PLUGIN
+        return helped if self.is_recognized(helped) else native
 
 
 def _normalize_music_year(value: object) -> Optional[int]:
@@ -98,6 +143,102 @@ else:
 class MediaPluginOwner(_MediaPluginOwnerBase):
     """插件识别选择、事件解析与辅助识别 owner。"""
 
+    def _recognition_selection(
+        self,
+        plugin_event: ChainEventType,
+        is_recognized: Optional[RecognitionPredicate],
+    ) -> _RecognitionSelection:
+        """冻结本次识别的插件可用性、优先级和结果采信谓词。"""
+        return _RecognitionSelection(
+            plugin_first=get_chain_runtime_config_snapshot().recognize_plugin_first,
+            plugin_available=self.eventmanager.check(plugin_event),
+            is_recognized=is_recognized or bool,
+        )
+
+    @staticmethod
+    def _log_recognition_action(
+        action: _RecognitionSource,
+        *,
+        plugin_first: bool,
+        log_name: str,
+        log_context: str,
+    ) -> None:
+        """在状态机请求真实 I/O 前记录统一的来源切换原因。"""
+        if action is _RecognitionSource.PLUGIN:
+            if plugin_first:
+                logger.info(
+                    f"插件识别优先模式已开启。请求辅助识别，标题：{log_name} ..."
+                )
+            else:
+                logger.info(
+                    f"原生识别未识别到 {log_context} 的媒体信息，尝试使用辅助识别 ..."
+                )
+            return
+        if plugin_first:
+            logger.info(
+                f"辅助识别未识别到 {log_context} 的媒体信息，尝试使用原生识别 ..."
+            )
+        else:
+            logger.info(f"开始识别标题：{log_name} ...")
+
+    def _run_recognition_selection(
+        self,
+        selection: _RecognitionSelection,
+        *,
+        log_name: str,
+        log_context: str,
+        native_fn: RecognitionCallback,
+        plugin_fn: RecognitionCallback,
+    ) -> Optional[MediaInfo]:
+        """同步驱动共享选择状态机，并只在动作边界调用同步实现。"""
+        flow = selection.flow()
+        try:
+            action = next(flow)
+            while True:
+                MediaPluginOwner._log_recognition_action(
+                    action,
+                    plugin_first=selection.plugin_first,
+                    log_name=log_name,
+                    log_context=log_context,
+                )
+                result = (
+                    plugin_fn()
+                    if action is _RecognitionSource.PLUGIN
+                    else native_fn()
+                )
+                action = flow.send(result)
+        except StopIteration as completed:
+            return cast(Optional[MediaInfo], completed.value)
+
+    async def _async_run_recognition_selection(
+        self,
+        selection: _RecognitionSelection,
+        *,
+        log_name: str,
+        log_context: str,
+        native_fn: AsyncRecognitionCallback,
+        plugin_fn: AsyncRecognitionCallback,
+    ) -> Optional[MediaInfo]:
+        """异步驱动共享选择状态机，并只在动作边界等待异步实现。"""
+        flow = selection.flow()
+        try:
+            action = next(flow)
+            while True:
+                MediaPluginOwner._log_recognition_action(
+                    action,
+                    plugin_first=selection.plugin_first,
+                    log_name=log_name,
+                    log_context=log_context,
+                )
+                result = (
+                    await plugin_fn()
+                    if action is _RecognitionSource.PLUGIN
+                    else await native_fn()
+                )
+                action = flow.send(result)
+        except StopIteration as completed:
+            return cast(Optional[MediaInfo], completed.value)
+
     def select_recognize_source(
         self,
         log_name: str,
@@ -118,33 +259,17 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
             需视为未识别才会请求辅助识别，影视默认按非空判定
         :param plugin_event: 辅助识别对应的链式事件类型，音乐使用音乐名称识别事件
         """
-        if is_recognized is None:
-            is_recognized = bool
-        mediainfo: Optional[MediaInfo] = None
-        # 插件可用性检查走注入的事件管理器，避免链实例直连全局单例
-        plugin_available = self.eventmanager.check(plugin_event)
-        if get_chain_runtime_config_snapshot().recognize_plugin_first and plugin_available:
-            # 插件优先
-            logger.info(f"插件识别优先模式已开启。请求辅助识别，标题：{log_name} ...")
-            helped = plugin_fn()
-            if is_recognized(helped):
-                mediainfo = helped
-            else:
-                logger.info(f"辅助识别未识别到 {log_context} 的媒体信息，尝试使用原生识别 ...")
-                mediainfo = native_fn()
-                # 辅助结果不采信时保留原生兜底，避免丢失已有识别结果（音乐原生兜底恒非空）
-                if helped and not mediainfo:
-                    mediainfo = helped
-        else:
-            # 原生优先
-            logger.info(f"开始识别标题：{log_name} ...")
-            mediainfo = native_fn()
-            if not is_recognized(mediainfo) and plugin_available:
-                logger.info(f"原生识别未识别到 {log_context} 的媒体信息，尝试使用辅助识别 ...")
-                helped = plugin_fn()
-                if is_recognized(helped):
-                    mediainfo = helped
-        return mediainfo
+        selection = MediaPluginOwner._recognition_selection(
+            self, plugin_event, is_recognized
+        )
+        return MediaPluginOwner._run_recognition_selection(
+            self,
+            selection,
+            log_name=log_name,
+            log_context=log_context,
+            native_fn=native_fn,
+            plugin_fn=plugin_fn,
+        )
 
     @staticmethod
     def _parse_recognize_event_number(value: object) -> Optional[int]:
@@ -364,33 +489,17 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         :param is_recognized: 判定识别结果是否有效的谓词，语义同同步版本
         :param plugin_event: 辅助识别对应的链式事件类型，音乐使用音乐名称识别事件
         """
-        if is_recognized is None:
-            is_recognized = bool
-        mediainfo: Optional[MediaInfo] = None
-        # 插件可用性检查走注入的事件管理器，避免链实例直连全局单例
-        plugin_available = self.eventmanager.check(plugin_event)
-        if get_chain_runtime_config_snapshot().recognize_plugin_first and plugin_available:
-            # 插件优先
-            logger.info(f"插件优先模式已开启。请求辅助识别，标题：{log_name} ...")
-            helped = await plugin_fn()
-            if is_recognized(helped):
-                mediainfo = helped
-            else:
-                logger.info(f"辅助识别未识别到 {log_context} 的媒体信息，尝试使用原生识别")
-                mediainfo = await native_fn()
-                # 辅助结果不采信时保留原生兜底，避免丢失已有识别结果（音乐原生兜底恒非空）
-                if helped and not mediainfo:
-                    mediainfo = helped
-        else:
-            # 原生优先
-            logger.info(f"识别标题：{log_name} ...")
-            mediainfo = await native_fn()
-            if not is_recognized(mediainfo) and plugin_available:
-                logger.info(f"原生识别未识别到 {log_context} 的媒体信息，尝试使用辅助识别")
-                helped = await plugin_fn()
-                if is_recognized(helped):
-                    mediainfo = helped
-        return mediainfo
+        selection = MediaPluginOwner._recognition_selection(
+            self, plugin_event, is_recognized
+        )
+        return await MediaPluginOwner._async_run_recognition_selection(
+            self,
+            selection,
+            log_name=log_name,
+            log_context=log_context,
+            native_fn=native_fn,
+            plugin_fn=plugin_fn,
+        )
 
     async def async_recognize_help(
         self,

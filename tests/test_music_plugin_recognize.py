@@ -6,6 +6,8 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import pytest
+
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain.context import MediaInfo, MusicInfo
@@ -30,6 +32,93 @@ def _remote_music() -> MusicInfo:
         album="叶惠美",
         year=2003,
     )
+
+
+@pytest.mark.parametrize(
+    ("plugin_first", "native_kind", "plugin_kind", "expected_kind", "order"),
+    [
+        (False, "fallback", "remote", "remote", ["native", "plugin"]),
+        (False, "fallback", "other", "fallback", ["native", "plugin"]),
+        (True, "none", "fallback", "fallback", ["plugin", "native"]),
+        (True, "fallback", "remote", "remote", ["plugin"]),
+    ],
+)
+def test_recognize_source_selection_keeps_sync_async_parity(
+    monkeypatch,
+    plugin_first,
+    native_kind,
+    plugin_kind,
+    expected_kind,
+    order,
+):
+    """同步与异步入口必须共享来源顺序、采信规则和无身份回退结果。"""
+    chain = MediaChain()
+    candidates = {
+        "none": None,
+        "fallback": _fallback_music(title="本地兜底"),
+        "other": _fallback_music(title="插件兜底"),
+        "remote": _remote_music(),
+    }
+    native = candidates[native_kind]
+    plugin = candidates[plugin_kind]
+    expected = candidates[expected_kind]
+    eventmanager = MagicMock()
+    eventmanager.check.return_value = True
+    monkeypatch.setattr(chain, "eventmanager", eventmanager)
+
+    sync_order = []
+
+    def native_sync():
+        """记录同步原生 I/O 动作。"""
+        sync_order.append("native")
+        return native
+
+    def plugin_sync():
+        """记录同步插件 I/O 动作。"""
+        sync_order.append("plugin")
+        return plugin
+
+    async_order = []
+
+    async def native_async():
+        """记录异步原生 I/O 动作。"""
+        async_order.append("native")
+        return native
+
+    async def plugin_async():
+        """记录异步插件 I/O 动作。"""
+        async_order.append("plugin")
+        return plugin
+
+    def has_remote_identity(result):
+        """仅采信包含远端来源的识别结果。"""
+        return bool(result and result.media_source)
+
+    with patch(
+        "app.runtime.config.settings.RECOGNIZE_PLUGIN_FIRST",
+        plugin_first,
+    ):
+        sync_result = chain.select_recognize_source(
+            log_name="测试标题",
+            log_context="测试标题",
+            native_fn=native_sync,
+            plugin_fn=plugin_sync,
+            is_recognized=has_remote_identity,
+        )
+        async_result = asyncio.run(
+            chain.async_select_recognize_source(
+                log_name="测试标题",
+                log_context="测试标题",
+                native_fn=native_async,
+                plugin_fn=plugin_async,
+                is_recognized=has_remote_identity,
+            )
+        )
+
+    assert sync_result is expected
+    assert async_result is expected
+    assert sync_order == order
+    assert async_order == order
 
 
 def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
