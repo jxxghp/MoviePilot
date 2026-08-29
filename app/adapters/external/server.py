@@ -167,15 +167,10 @@ class MoviePilotServerHelper:
         """
         获取当前 GitHub 用户名。
         """
-        if cls._github_user is None and get_runtime_setting('GITHUB_HEADERS'):
-            res = RequestUtils(
-                headers=get_runtime_setting('GITHUB_HEADERS'),
-                proxies=get_runtime_setting('PROXY'),
-                timeout=15,
-            ).get_res("https://api.github.com/user")
-            if res:
-                cls._github_user = res.json().get("login")
-                logger.info(f"当前Github用户: {cls._github_user}")
+        plan = cls._build_github_user_request()
+        if plan:
+            res = RequestUtils(**plan).get_res("https://api.github.com/user")
+            cls._remember_github_user(res)
         return cls._github_user or ""
 
     @classmethod
@@ -183,16 +178,30 @@ class MoviePilotServerHelper:
         """
         异步获取当前 GitHub 用户名。
         """
-        if cls._github_user is None and get_runtime_setting('GITHUB_HEADERS'):
-            res = await AsyncRequestUtils(
-                headers=get_runtime_setting('GITHUB_HEADERS'),
-                proxies=get_runtime_setting('PROXY'),
-                timeout=15,
-            ).get_res("https://api.github.com/user")
-            if res:
-                cls._github_user = res.json().get("login")
-                logger.info(f"当前Github用户: {cls._github_user}")
+        plan = cls._build_github_user_request()
+        if plan:
+            res = await AsyncRequestUtils(**plan).get_res("https://api.github.com/user")
+            cls._remember_github_user(res)
         return cls._github_user or ""
+
+    @classmethod
+    def _build_github_user_request(cls) -> Optional[Dict[str, Any]]:
+        """生成 GitHub 当前用户查询计划，已有缓存或未配置凭据时不发请求。"""
+        headers = get_runtime_setting('GITHUB_HEADERS')
+        if cls._github_user is not None or not headers:
+            return None
+        return {
+            "headers": headers,
+            "proxies": get_runtime_setting('PROXY'),
+            "timeout": 15,
+        }
+
+    @classmethod
+    def _remember_github_user(cls, response: Any) -> None:
+        """统一解释 GitHub 用户响应并更新同步异步共享的用户名缓存。"""
+        if response:
+            cls._github_user = response.json().get("login")
+            logger.info(f"当前Github用户: {cls._github_user}")
 
     @classmethod
     def user_permissions(cls, github_user: str):
@@ -227,9 +236,7 @@ class MoviePilotServerHelper:
         if not github_user:
             return {}
         try:
-            res = cls.user_permissions(github_user)
-            if res is not None and res.status_code == 200:
-                return res.json()
+            return cls._handle_mapping_response(cls.user_permissions(github_user))
         except Exception as err:
             logger.debug(f"获取服务端用户权限失败：{str(err)}")
         return {}
@@ -243,11 +250,11 @@ class MoviePilotServerHelper:
         if not github_user:
             return {}
         try:
-            res = await cls.async_user_permissions(github_user)
-            if res is not None and res.status_code == 200:
-                return res.json()
+            return cls._handle_mapping_response(
+                await cls.async_user_permissions(github_user)
+            )
         except Exception as err:
-            logger.debug(f"异步获取服务端用户权限失败：{str(err)}")
+            logger.debug(f"获取服务端用户权限失败：{str(err)}")
         return {}
 
     @classmethod
@@ -255,19 +262,20 @@ class MoviePilotServerHelper:
         """
         判断当前用户是否为共享管理用户。
         """
-        permissions = cls.get_user_permissions()
-        return bool(
-            permissions.get("is_admin")
-            or permissions.get("subscribe_share_manage")
-            or permissions.get("workflow_share_manage")
-        )
+        return cls._permissions_allow_sharing(cls.get_user_permissions())
 
     @classmethod
     async def async_is_admin_user(cls) -> bool:
         """
         异步判断当前用户是否为共享管理用户。
         """
-        permissions = await cls.async_get_user_permissions()
+        return cls._permissions_allow_sharing(
+            await cls.async_get_user_permissions()
+        )
+
+    @staticmethod
+    def _permissions_allow_sharing(permissions: Dict[str, Any]) -> bool:
+        """按统一权限字段判断当前用户是否可管理共享内容。"""
         return bool(
             permissions.get("is_admin")
             or permissions.get("subscribe_share_manage")
@@ -293,14 +301,11 @@ class MoviePilotServerHelper:
         """
         上报当前安装实例的版本统计。
         """
-        if not get_runtime_setting('USAGE_STATISTIC_SHARE'):
-            return False
-        payload = cls.build_usage_payload()
-        if not payload.get("user_uid"):
+        payload = cls._build_usage_report_plan()
+        if not payload:
             return False
         try:
-            res = cls.usage_report(payload)
-            return bool(res is not None and res.status_code == 200)
+            return cls._response_succeeded(cls.usage_report(payload))
         except Exception as err:
             logger.debug(f"上报安装版本统计失败：{str(err)}")
             return False
@@ -310,17 +315,22 @@ class MoviePilotServerHelper:
         """
         异步上报当前安装实例的版本统计。
         """
-        if not get_runtime_setting('USAGE_STATISTIC_SHARE'):
-            return False
-        payload = cls.build_usage_payload()
-        if not payload.get("user_uid"):
+        payload = cls._build_usage_report_plan()
+        if not payload:
             return False
         try:
-            res = await cls.async_usage_report(payload)
-            return bool(res is not None and res.status_code == 200)
+            return cls._response_succeeded(await cls.async_usage_report(payload))
         except Exception as err:
-            logger.debug(f"异步上报安装版本统计失败：{str(err)}")
+            logger.debug(f"上报安装版本统计失败：{str(err)}")
             return False
+
+    @classmethod
+    def _build_usage_report_plan(cls) -> Optional[Dict[str, Any]]:
+        """在统计已启用且实例身份有效时生成版本统计载荷。"""
+        if not get_runtime_setting('USAGE_STATISTIC_SHARE'):
+            return None
+        payload = cls.build_usage_payload()
+        return payload if payload.get("user_uid") else None
 
     @classmethod
     async def async_get_usage_statistic(cls) -> Dict[str, Any]:
@@ -330,9 +340,7 @@ class MoviePilotServerHelper:
         if not get_runtime_setting('USAGE_STATISTIC_SHARE'):
             return {}
         try:
-            res = await cls.async_usage_statistic()
-            if res is not None and res.status_code == 200:
-                return res.json()
+            return cls._handle_mapping_response(await cls.async_usage_statistic())
         except Exception as err:
             logger.debug(f"异步获取安装版本统计报表失败：{str(err)}")
         return {}
@@ -385,6 +393,18 @@ class MoviePilotServerHelper:
         if res is not None and res.status_code == 200:
             return res.json()
         return []
+
+    @staticmethod
+    def _handle_mapping_response(res: Any) -> Dict[str, Any]:
+        """处理服务端返回的对象响应，非成功状态统一映射为空对象。"""
+        if res is not None and res.status_code == 200:
+            return res.json()
+        return {}
+
+    @staticmethod
+    def _response_succeeded(res: Any) -> bool:
+        """把同步与异步传输响应统一映射为服务端成功状态。"""
+        return bool(res is not None and res.status_code == 200)
 
     @staticmethod
     def _handle_response(res, clear_cache=None) -> Tuple[bool, str]:
@@ -521,10 +541,7 @@ class MoviePilotServerHelper:
         """
         if not get_runtime_setting('PLUGIN_STATISTIC_SHARE'):
             return {}
-        res = cls.plugin_statistic()
-        if res is not None and res.status_code == 200:
-            return res.json()
-        return {}
+        return cls._handle_mapping_response(cls.plugin_statistic())
 
     @classmethod
     async def async_get_plugin_statistic(cls) -> Dict:
@@ -533,10 +550,7 @@ class MoviePilotServerHelper:
         """
         if not get_runtime_setting('PLUGIN_STATISTIC_SHARE'):
             return {}
-        res = await cls.async_plugin_statistic()
-        if res is not None and res.status_code == 200:
-            return res.json()
-        return {}
+        return cls._handle_mapping_response(await cls.async_plugin_statistic())
 
     @classmethod
     async def async_get_plugin_ratings(
@@ -595,30 +609,36 @@ class MoviePilotServerHelper:
         """
         上报单个插件安装统计。
         """
-        if not get_runtime_setting('PLUGIN_STATISTIC_SHARE'):
+        payload = cls._build_plugin_install_plan(plugin_id, repo_url)
+        if not payload:
             return False
-        if not plugin_id:
-            return False
-        res = cls.plugin_install(plugin_id, {
-            "plugin_id": plugin_id,
-            "repo_url": cls.sanitize_plugin_repo_url(repo_url),
-        })
-        return bool(res is not None and res.status_code == 200)
+        return cls._response_succeeded(cls.plugin_install(plugin_id, payload))
 
     @classmethod
     async def async_install_plugin_reg(cls, plugin_id: str, repo_url: Optional[str] = None) -> bool:
         """
         异步上报单个插件安装统计。
         """
-        if not get_runtime_setting('PLUGIN_STATISTIC_SHARE'):
+        payload = cls._build_plugin_install_plan(plugin_id, repo_url)
+        if not payload:
             return False
-        if not plugin_id:
-            return False
-        res = await cls.async_plugin_install(plugin_id, {
+        return cls._response_succeeded(
+            await cls.async_plugin_install(plugin_id, payload)
+        )
+
+    @classmethod
+    def _build_plugin_install_plan(
+            cls,
+            plugin_id: str,
+            repo_url: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """在插件统计已启用且插件身份有效时生成单次安装上报载荷。"""
+        if not get_runtime_setting('PLUGIN_STATISTIC_SHARE') or not plugin_id:
+            return None
+        return {
             "plugin_id": plugin_id,
             "repo_url": cls.sanitize_plugin_repo_url(repo_url),
-        })
-        return bool(res is not None and res.status_code == 200)
+        }
 
     @classmethod
     def install_plugin_report(cls, items: Optional[List[Tuple[str, Optional[str]]]] = None) -> bool:
@@ -811,6 +831,36 @@ class MoviePilotServerHelper:
         return params
 
     @classmethod
+    def _build_subscribe_query_plan(
+            cls,
+            **kwargs: Any,
+    ) -> Optional[Dict[str, Any]]:
+        """在订阅统计已启用时生成统计或分享列表查询计划。"""
+        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
+            return None
+        return cls._build_subscribe_query_params(**kwargs)
+
+    @classmethod
+    def _build_subscribe_statistic_plan(
+            cls,
+            item: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """在订阅统计已启用且载荷有效时生成新增或完成上报计划。"""
+        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
+            return None
+        return cls._build_subscribe_statistic_payload(item)
+
+    @staticmethod
+    def _feature_disabled_result(
+            setting_key: str,
+            message: str,
+    ) -> Optional[Tuple[bool, str]]:
+        """将分享功能开关统一映射为可直接返回的禁用结果。"""
+        if not get_runtime_setting(setting_key):
+            return False, message
+        return None
+
+    @classmethod
     @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     def get_subscribe_statistic(
             cls,
@@ -825,9 +875,7 @@ class MoviePilotServerHelper:
         """
         获取订阅统计数据。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return []
-        params = cls._build_subscribe_query_params(
+        params = cls._build_subscribe_query_plan(
             page=page,
             count=count,
             genre_id=genre_id,
@@ -836,6 +884,8 @@ class MoviePilotServerHelper:
             sort_type=sort_type,
             stype=stype,
         )
+        if params is None:
+            return []
         return cls._handle_list_response(cls.subscribe_statistic(params))
 
     @classmethod
@@ -853,9 +903,7 @@ class MoviePilotServerHelper:
         """
         异步获取订阅统计数据。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return []
-        params = cls._build_subscribe_query_params(
+        params = cls._build_subscribe_query_plan(
             page=page,
             count=count,
             genre_id=genre_id,
@@ -864,6 +912,8 @@ class MoviePilotServerHelper:
             sort_type=sort_type,
             stype=stype,
         )
+        if params is None:
+            return []
         return cls._handle_list_response(await cls.async_subscribe_statistic(params))
 
     @classmethod
@@ -871,26 +921,20 @@ class MoviePilotServerHelper:
         """
         新增订阅统计。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return False
-        payload = cls._build_subscribe_statistic_payload(sub)
+        payload = cls._build_subscribe_statistic_plan(sub)
         if not payload:
             return False
-        res = cls.subscribe_add(payload)
-        return bool(res is not None and res.status_code == 200)
+        return cls._response_succeeded(cls.subscribe_add(payload))
 
     @classmethod
     async def async_sub_reg(cls, sub: dict) -> bool:
         """
         异步新增订阅统计。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return False
-        payload = cls._build_subscribe_statistic_payload(sub)
+        payload = cls._build_subscribe_statistic_plan(sub)
         if not payload:
             return False
-        res = await cls.async_subscribe_add(payload)
-        return bool(res is not None and res.status_code == 200)
+        return cls._response_succeeded(await cls.async_subscribe_add(payload))
 
     @classmethod
     def sub_reg_durable(cls, sub: dict) -> bool:
@@ -911,24 +955,18 @@ class MoviePilotServerHelper:
         """
         完成订阅统计。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return False
-        payload = cls._build_subscribe_statistic_payload(sub)
+        payload = cls._build_subscribe_statistic_plan(sub)
         if not payload:
             return False
-        res = cls.subscribe_done(payload)
-        return bool(res is not None and res.status_code == 200)
+        return cls._response_succeeded(cls.subscribe_done(payload))
 
     @classmethod
     async def async_sub_done(cls, sub: dict) -> bool:
         """异步完成订阅统计，并仅在服务端确认成功时返回 True。"""
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return False
-        payload = cls._build_subscribe_statistic_payload(sub)
+        payload = cls._build_subscribe_statistic_plan(sub)
         if not payload:
             return False
-        res = await cls.async_subscribe_done(payload)
-        return bool(res is not None and res.status_code == 200)
+        return cls._response_succeeded(await cls.async_subscribe_done(payload))
 
     @classmethod
     def sub_done_durable(cls, sub: dict) -> bool:
@@ -1061,8 +1099,12 @@ class MoviePilotServerHelper:
         """
         删除订阅分享。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return False, "当前没有开启订阅数据共享功能"
+        disabled = cls._feature_disabled_result(
+            'SUBSCRIBE_STATISTIC_SHARE',
+            "当前没有开启订阅数据共享功能",
+        )
+        if disabled:
+            return disabled
         return cls._handle_response(
             cls.subscribe_share_delete(share_id, cls.get_user_uuid()),
             cls._clear_subscribe_share_cache,
@@ -1073,8 +1115,12 @@ class MoviePilotServerHelper:
         """
         异步删除订阅分享。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return False, "当前没有开启订阅数据共享功能"
+        disabled = cls._feature_disabled_result(
+            'SUBSCRIBE_STATISTIC_SHARE',
+            "当前没有开启订阅数据共享功能",
+        )
+        if disabled:
+            return disabled
         return cls._handle_response(
             await cls.async_subscribe_share_delete(share_id, cls.get_user_uuid()),
             cls._clear_subscribe_share_cache,
@@ -1085,8 +1131,12 @@ class MoviePilotServerHelper:
         """
         复用订阅分享。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return False, "当前没有开启订阅数据共享功能"
+        disabled = cls._feature_disabled_result(
+            'SUBSCRIBE_STATISTIC_SHARE',
+            "当前没有开启订阅数据共享功能",
+        )
+        if disabled:
+            return disabled
         return cls._handle_response(cls.subscribe_fork(share_id))
 
     @classmethod
@@ -1094,8 +1144,12 @@ class MoviePilotServerHelper:
         """
         异步复用订阅分享。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return False, "当前没有开启订阅数据共享功能"
+        disabled = cls._feature_disabled_result(
+            'SUBSCRIBE_STATISTIC_SHARE',
+            "当前没有开启订阅数据共享功能",
+        )
+        if disabled:
+            return disabled
         return cls._handle_response(await cls.async_subscribe_fork(share_id))
 
     @classmethod
@@ -1113,9 +1167,7 @@ class MoviePilotServerHelper:
         """
         获取订阅分享数据。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return []
-        params = cls._build_subscribe_query_params(
+        params = cls._build_subscribe_query_plan(
             page=page,
             count=count,
             genre_id=genre_id,
@@ -1124,6 +1176,8 @@ class MoviePilotServerHelper:
             sort_type=sort_type,
             name=name,
         )
+        if params is None:
+            return []
         return cls._handle_list_response(cls.subscribe_shares(params))
 
     @classmethod
@@ -1141,9 +1195,7 @@ class MoviePilotServerHelper:
         """
         异步获取订阅分享数据。
         """
-        if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
-            return []
-        params = cls._build_subscribe_query_params(
+        params = cls._build_subscribe_query_plan(
             page=page,
             count=count,
             genre_id=genre_id,
@@ -1152,6 +1204,8 @@ class MoviePilotServerHelper:
             sort_type=sort_type,
             name=name,
         )
+        if params is None:
+            return []
         return cls._handle_list_response(await cls.async_subscribe_shares(params))
 
     @classmethod
@@ -1245,6 +1299,17 @@ class MoviePilotServerHelper:
         """
         return cls._sharing_service().prepare_workflow(workflow)
 
+    @staticmethod
+    def _build_workflow_query_plan(
+            name: Optional[str],
+            page: Optional[int],
+            count: Optional[int],
+    ) -> Optional[Dict[str, Any]]:
+        """在工作流分享已启用时生成列表查询计划。"""
+        if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
+            return None
+        return {"name": name, "page": page, "count": count}
+
     @classmethod
     def workflow_share_by_id(
             cls,
@@ -1288,8 +1353,12 @@ class MoviePilotServerHelper:
         """
         删除工作流分享。
         """
-        if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
-            return False, "当前没有开启工作流数据共享功能"
+        disabled = cls._feature_disabled_result(
+            'WORKFLOW_STATISTIC_SHARE',
+            "当前没有开启工作流数据共享功能",
+        )
+        if disabled:
+            return disabled
         return cls._handle_response(
             cls.workflow_share_delete(share_id, cls.get_user_uuid()),
             cls._clear_workflow_share_cache,
@@ -1300,8 +1369,12 @@ class MoviePilotServerHelper:
         """
         异步删除工作流分享。
         """
-        if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
-            return False, "当前没有开启工作流数据共享功能"
+        disabled = cls._feature_disabled_result(
+            'WORKFLOW_STATISTIC_SHARE',
+            "当前没有开启工作流数据共享功能",
+        )
+        if disabled:
+            return disabled
         return cls._handle_response(
             await cls.async_workflow_share_delete(share_id, cls.get_user_uuid()),
             cls._clear_workflow_share_cache,
@@ -1312,8 +1385,12 @@ class MoviePilotServerHelper:
         """
         复用工作流分享。
         """
-        if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
-            return False, "当前没有开启工作流数据共享功能"
+        disabled = cls._feature_disabled_result(
+            'WORKFLOW_STATISTIC_SHARE',
+            "当前没有开启工作流数据共享功能",
+        )
+        if disabled:
+            return disabled
         return cls._handle_response(cls.workflow_fork(share_id))
 
     @classmethod
@@ -1321,8 +1398,12 @@ class MoviePilotServerHelper:
         """
         异步复用工作流分享。
         """
-        if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
-            return False, "当前没有开启工作流数据共享功能"
+        disabled = cls._feature_disabled_result(
+            'WORKFLOW_STATISTIC_SHARE',
+            "当前没有开启工作流数据共享功能",
+        )
+        if disabled:
+            return disabled
         return cls._handle_response(await cls.async_workflow_fork(share_id))
 
     @classmethod
@@ -1336,13 +1417,10 @@ class MoviePilotServerHelper:
         """
         获取工作流分享数据。
         """
-        if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
+        params = cls._build_workflow_query_plan(name, page, count)
+        if params is None:
             return []
-        return cls._handle_list_response(cls.workflow_shares({
-            "name": name,
-            "page": page,
-            "count": count,
-        }))
+        return cls._handle_list_response(cls.workflow_shares(params))
 
     @classmethod
     @cached(region="workflow_share", maxsize=1, skip_empty=True)
@@ -1355,13 +1433,10 @@ class MoviePilotServerHelper:
         """
         异步获取工作流分享数据。
         """
-        if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
+        params = cls._build_workflow_query_plan(name, page, count)
+        if params is None:
             return []
-        return cls._handle_list_response(await cls.async_workflow_shares({
-            "name": name,
-            "page": page,
-            "count": count,
-        }))
+        return cls._handle_list_response(await cls.async_workflow_shares(params))
 
     @classmethod
     def _validate_workflow(cls, workflow) -> Tuple[bool, str]:
@@ -1384,44 +1459,96 @@ class MoviePilotServerHelper:
         return f"{server_host}{cls._RECOGNIZE_SHARE_PATH}"
 
     @classmethod
+    def _build_recognize_transport_plan(
+            cls,
+            data: Dict[str, Any],
+    ) -> Optional[Tuple[str, Dict[str, Any]]]:
+        """把共享识别地址与已验证请求数据组合成纯传输计划。"""
+        api_url = cls.recognize_share_url()
+        if not api_url:
+            return None
+        return api_url, data
+
+    @classmethod
+    def _build_recognize_query_plan(
+            cls,
+            meta: Optional[MetaBase],
+            mtype: Optional[MediaType] = None,
+            keyword_meta: Optional[MetaBase] = None,
+            music_type: Optional[str] = None,
+    ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
+        """在共享识别已启用且关键字有效时生成查询计划。"""
+        if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
+            return None
+        params = cls._build_recognize_query_params(
+            meta=meta,
+            mtype=mtype,
+            keyword_meta=keyword_meta,
+            music_type=music_type,
+        )
+        if not params:
+            return None
+        return params, params.get("keyword")
+
+    @classmethod
+    def _build_recognize_report_plan(
+            cls,
+            meta: Optional[MetaBase],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
+            keyword_meta: Optional[MetaBase] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """在共享识别已启用且统一媒体身份完整时生成上报载荷。"""
+        if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
+            return None
+        return cls._build_recognize_report_payload(
+            meta=meta,
+            mediainfo=mediainfo,
+            keyword_meta=keyword_meta,
+        )
+
+    @classmethod
     def recognize_query(cls, params: Dict[str, Any]):
         """
         查询共享识别结果。
         """
-        api_url = cls.recognize_share_url()
-        if not api_url:
+        plan = cls._build_recognize_transport_plan(params)
+        if not plan:
             return None
-        return cls._get(api_url, params=params, timeout=5)
+        api_url, request_data = plan
+        return cls._get(api_url, params=request_data, timeout=5)
 
     @classmethod
     async def async_recognize_query(cls, params: Dict[str, Any]):
         """
         异步查询共享识别结果。
         """
-        api_url = cls.recognize_share_url()
-        if not api_url:
+        plan = cls._build_recognize_transport_plan(params)
+        if not plan:
             return None
-        return await cls._async_get(api_url, params=params, timeout=5)
+        api_url, request_data = plan
+        return await cls._async_get(api_url, params=request_data, timeout=5)
 
     @classmethod
     def recognize_report(cls, payload: Dict[str, Any]):
         """
         上报共享识别结果。
         """
-        api_url = cls.recognize_share_url()
-        if not api_url:
+        plan = cls._build_recognize_transport_plan(payload)
+        if not plan:
             return None
-        return cls._post_json(api_url, payload, timeout=5)
+        api_url, request_data = plan
+        return cls._post_json(api_url, request_data, timeout=5)
 
     @classmethod
     async def async_recognize_report(cls, payload: Dict[str, Any]):
         """
         异步上报共享识别结果。
         """
-        api_url = cls.recognize_share_url()
-        if not api_url:
+        plan = cls._build_recognize_transport_plan(payload)
+        if not plan:
             return None
-        return await cls._async_post_json(api_url, payload, timeout=5)
+        api_url, request_data = plan
+        return await cls._async_post_json(api_url, request_data, timeout=5)
 
     @classmethod
     def query_recognize_share(
@@ -1434,18 +1561,17 @@ class MoviePilotServerHelper:
         """
         查询共享识别结果。
         """
-        if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
-            return None
-        params = cls._build_recognize_query_params(
+        plan = cls._build_recognize_query_plan(
             meta=meta,
             mtype=mtype,
             keyword_meta=keyword_meta,
             music_type=music_type,
         )
-        if not params:
+        if not plan:
             return None
+        params, keyword = plan
         response = cls.recognize_query(params)
-        return cls._parse_recognize_response(response, params.get("keyword"))
+        return cls._parse_recognize_response(response, keyword)
 
     @classmethod
     async def async_query_recognize_share(
@@ -1458,18 +1584,17 @@ class MoviePilotServerHelper:
         """
         异步查询共享识别结果。
         """
-        if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
-            return None
-        params = cls._build_recognize_query_params(
+        plan = cls._build_recognize_query_plan(
             meta=meta,
             mtype=mtype,
             keyword_meta=keyword_meta,
             music_type=music_type,
         )
-        if not params:
+        if not plan:
             return None
+        params, keyword = plan
         response = await cls.async_recognize_query(params)
-        return cls._parse_recognize_response(response, params.get("keyword"))
+        return cls._parse_recognize_response(response, keyword)
 
     @classmethod
     def report_recognize_share(
@@ -1481,14 +1606,12 @@ class MoviePilotServerHelper:
         """
         上报共享识别结果，电影、电视剧、音乐共用。
         """
-        if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
-            return False
-        payload = cls._build_recognize_report_payload(
+        payload = cls._build_recognize_report_plan(
             meta=meta,
             mediainfo=mediainfo,
             keyword_meta=keyword_meta,
         )
-        if not payload:
+        if payload is None:
             return False
         response = cls.recognize_report(payload)
         return cls._parse_recognize_report_response(response)
@@ -1503,14 +1626,12 @@ class MoviePilotServerHelper:
         """
         异步上报共享识别结果，电影、电视剧、音乐共用。
         """
-        if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
-            return False
-        payload = cls._build_recognize_report_payload(
+        payload = cls._build_recognize_report_plan(
             meta=meta,
             mediainfo=mediainfo,
             keyword_meta=keyword_meta,
         )
-        if not payload:
+        if payload is None:
             return False
         response = await cls.async_recognize_report(payload)
         return cls._parse_recognize_report_response(response)
