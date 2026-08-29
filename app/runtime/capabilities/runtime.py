@@ -9,7 +9,7 @@ from collections import deque
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Union
 
 from app.runtime.capabilities.errors import (
     CapabilityAdapterContractError,
@@ -46,6 +46,67 @@ class _CapabilityState:
     last_error: Optional[BaseException] = None
     inflight: Optional[Future[Any]] = None
     inflight_operation: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class _PublishedTransition:
+    """表示状态机已经拥有可直接返回的发布结果。"""
+
+    result: Any
+
+
+@dataclass(frozen=True, slots=True)
+class _SettledTransition:
+    """表示停止状态无需 I/O 即已真实收敛。"""
+
+
+@dataclass(frozen=True, slots=True)
+class _TransitionWait:
+    """表示调用方必须等待另一位 owner 完成当前状态转换。"""
+
+    future: Future[Any]
+    operation: Optional[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _MaterializationClaim:
+    """记录一次物化状态转换的唯一 owner。"""
+
+    generation: int
+    future: Future[Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _ActivationClaim:
+    """记录启动状态转换以及需要先收敛的遗留资源。"""
+
+    generation: int
+    future: Future[Any]
+    implementation: Any
+    pending_stop: Any
+    pending_cleanup: Any
+    pending_cleanup_error: Optional[BaseException]
+
+
+@dataclass(frozen=True, slots=True)
+class _ReloadClaim:
+    """记录重载状态转换及已撤销可见性的旧实例。"""
+
+    generation: int
+    future: Future[Any]
+    implementation: Any
+    previous: Any
+
+
+@dataclass(frozen=True, slots=True)
+class _StopClaim:
+    """记录停止状态转换及 Runtime 仍持有的全部资源 owner。"""
+
+    generation: int
+    future: Future[Any]
+    stop_owner: Any
+    pending_cleanup: Any
+    pending_cleanup_error: Optional[BaseException]
 
 
 class CapabilityRuntime:
@@ -193,6 +254,321 @@ class CapabilityRuntime:
         else:
             future.set_exception(error)
 
+    @staticmethod
+    def _claim_materialization(
+        state: _CapabilityState,
+        *,
+        retry: bool,
+    ) -> Union[_PublishedTransition, _TransitionWait, _MaterializationClaim]:
+        """声明一次物化转换，且不执行任何 adapter I/O。"""
+        with state.lock:
+            if state.materialization is CapabilityMaterializationState.RESOLVED:
+                return _PublishedTransition(state.implementation)
+            if state.materialization is CapabilityMaterializationState.FAILED and not retry:
+                raise CapabilityOperationError(
+                    state.spec.id,
+                    "materialize",
+                    RuntimeError("能力处于 FAILED，必须显式 retry=True"),
+                )
+            if state.inflight is not None:
+                return _TransitionWait(state.inflight, state.inflight_operation)
+            state.generation += 1
+            future: Future[Any] = Future()
+            state.inflight = future
+            state.inflight_operation = "materialize"
+            state.materialization = CapabilityMaterializationState.RESOLVING
+            return _MaterializationClaim(state.generation, future)
+
+    @staticmethod
+    def _claim_activation(
+        state: _CapabilityState,
+        *,
+        operation: str,
+        retry: bool,
+    ) -> Union[_PublishedTransition, _TransitionWait, _ActivationClaim]:
+        """声明一次启动转换并原子撤销遗留 owner 的共享状态。"""
+        with state.lock:
+            if operation == "activate" and state.instance is not None:
+                return _PublishedTransition(state.instance)
+            if state.pending_stop is not None and not retry:
+                raise CapabilityOperationError(
+                    state.spec.id,
+                    operation,
+                    RuntimeError("能力仍持有未释放资源，必须先重试 stop"),
+                )
+            if state.lifecycle is CapabilityLifecycleState.FAILED and not retry:
+                raise CapabilityOperationError(
+                    state.spec.id,
+                    operation,
+                    RuntimeError("能力处于 FAILED，必须显式 retry=True"),
+                )
+            if state.inflight is not None:
+                return _TransitionWait(state.inflight, state.inflight_operation)
+            state.generation += 1
+            future: Future[Any] = Future()
+            state.inflight = future
+            state.inflight_operation = operation
+            pending_stop = state.pending_stop
+            state.lifecycle = (
+                CapabilityLifecycleState.STOPPING
+                if pending_stop is not None
+                else CapabilityLifecycleState.STARTING
+            )
+            if state.implementation is None:
+                state.materialization = CapabilityMaterializationState.RESOLVING
+            claim = _ActivationClaim(
+                generation=state.generation,
+                future=future,
+                implementation=state.implementation,
+                pending_stop=pending_stop,
+                pending_cleanup=state.pending_cleanup,
+                pending_cleanup_error=state.pending_cleanup_error,
+            )
+            state.pending_stop = None
+            state.pending_cleanup = None
+            state.pending_cleanup_error = None
+            return claim
+
+    @staticmethod
+    def _claim_reload(
+        state: _CapabilityState,
+    ) -> Union[_TransitionWait, _ReloadClaim]:
+        """声明一次重载转换并先撤销旧实例的外部可见性。"""
+        with state.lock:
+            if state.inflight is not None:
+                return _TransitionWait(state.inflight, state.inflight_operation)
+            if state.pending_stop is not None:
+                raise CapabilityOperationError(
+                    state.spec.id,
+                    "reload",
+                    RuntimeError("能力仍持有未释放资源，必须先重试 stop"),
+                )
+            if state.instance is None:
+                raise CapabilityOperationError(
+                    state.spec.id,
+                    "reload",
+                    RuntimeError("只有 RUNNING 能力可以 reload"),
+                )
+            state.generation += 1
+            future: Future[Any] = Future()
+            state.inflight = future
+            state.inflight_operation = "reload"
+            claim = _ReloadClaim(
+                generation=state.generation,
+                future=future,
+                implementation=state.implementation,
+                previous=state.instance,
+            )
+            state.instance = None
+            state.lifecycle = CapabilityLifecycleState.RELOADING
+            return claim
+
+    @staticmethod
+    def _claim_stop(
+        state: _CapabilityState,
+    ) -> Union[_SettledTransition, _TransitionWait, _StopClaim]:
+        """声明一次停止转换并原子接管尚未释放的资源。"""
+        with state.lock:
+            if state.inflight is not None:
+                return _TransitionWait(state.inflight, state.inflight_operation)
+            stop_owner = (
+                state.instance
+                if state.instance is not None
+                else state.pending_stop
+            )
+            pending_cleanup = state.pending_cleanup
+            if stop_owner is None and pending_cleanup is None:
+                if state.lifecycle is not CapabilityLifecycleState.FAILED:
+                    state.lifecycle = CapabilityLifecycleState.STOPPED
+                return _SettledTransition()
+            state.generation += 1
+            future: Future[Any] = Future()
+            state.inflight = future
+            state.inflight_operation = "stop"
+            claim = _StopClaim(
+                generation=state.generation,
+                future=future,
+                stop_owner=stop_owner,
+                pending_cleanup=pending_cleanup,
+                pending_cleanup_error=state.pending_cleanup_error,
+            )
+            state.instance = None
+            state.pending_stop = None
+            state.pending_cleanup = None
+            state.pending_cleanup_error = None
+            state.lifecycle = CapabilityLifecycleState.STOPPING
+            return claim
+
+    @classmethod
+    def _publish_materialization(
+        cls,
+        state: _CapabilityState,
+        claim: _MaterializationClaim,
+        implementation: Any,
+    ) -> None:
+        """提交物化成功状态并唤醒全部等待者。"""
+        with state.lock:
+            state.implementation = implementation
+            state.materialization = CapabilityMaterializationState.RESOLVED
+            state.last_error = None
+        cls._finish_transition(state, claim.future, result=implementation)
+
+    @classmethod
+    def _fail_materialization(
+        cls,
+        state: _CapabilityState,
+        claim: _MaterializationClaim,
+        error: BaseException,
+    ) -> BaseException:
+        """提交物化失败状态并返回稳定的公开异常。"""
+        with state.lock:
+            state.materialization = CapabilityMaterializationState.FAILED
+            state.last_error = error
+        operation_error = cls._wrap_error(state.spec.id, "materialize", error)
+        cls._finish_transition(state, claim.future, error=operation_error)
+        return operation_error
+
+    @classmethod
+    def _publish_activation(
+        cls,
+        state: _CapabilityState,
+        claim: _ActivationClaim,
+        *,
+        implementation: Any,
+        candidate: Any,
+    ) -> None:
+        """仅在候选启动成功后提交实现与可见实例。"""
+        with state.lock:
+            state.implementation = implementation
+            state.materialization = CapabilityMaterializationState.RESOLVED
+            state.instance = candidate
+            state.lifecycle = CapabilityLifecycleState.RUNNING
+            state.last_error = None
+        cls._finish_transition(state, claim.future, result=candidate)
+
+    @classmethod
+    def _fail_activation(
+        cls,
+        state: _CapabilityState,
+        claim: _ActivationClaim,
+        *,
+        operation: str,
+        implementation: Any,
+        pending_stop: Any,
+        error: BaseException,
+        lifecycle_error: BaseException,
+    ) -> BaseException:
+        """提交启动失败状态，并保留尚未释放的旧 owner。"""
+        with state.lock:
+            state.implementation = implementation
+            state.materialization = (
+                CapabilityMaterializationState.RESOLVED
+                if implementation is not None
+                else CapabilityMaterializationState.FAILED
+            )
+            state.instance = None
+            if pending_stop is not None:
+                state.pending_stop = pending_stop
+            state.lifecycle = cls._failure_lifecycle(lifecycle_error)
+            state.last_error = error
+        operation_error = cls._wrap_error(state.spec.id, operation, error)
+        cls._finish_transition(state, claim.future, error=operation_error)
+        return operation_error
+
+    @classmethod
+    def _publish_reload(
+        cls,
+        state: _CapabilityState,
+        claim: _ReloadClaim,
+        candidate: Any,
+    ) -> None:
+        """提交重载后的新实例并恢复对外可见性。"""
+        with state.lock:
+            state.instance = candidate
+            state.lifecycle = CapabilityLifecycleState.RUNNING
+            state.last_error = None
+        cls._finish_transition(state, claim.future, result=candidate)
+
+    @classmethod
+    def _fail_reload(
+        cls,
+        state: _CapabilityState,
+        claim: _ReloadClaim,
+        *,
+        previous_released: bool,
+        error: BaseException,
+        lifecycle_error: BaseException,
+    ) -> BaseException:
+        """提交重载失败状态，必要时保留未释放的旧实例。"""
+        with state.lock:
+            state.instance = None
+            if not previous_released:
+                state.pending_stop = claim.previous
+            state.lifecycle = cls._failure_lifecycle(lifecycle_error)
+            state.last_error = error
+        operation_error = cls._wrap_error(state.spec.id, "reload", error)
+        cls._finish_transition(state, claim.future, error=operation_error)
+        return operation_error
+
+    @classmethod
+    def _publish_stop(
+        cls,
+        state: _CapabilityState,
+        claim: _StopClaim,
+    ) -> None:
+        """提交资源真实收敛后的停止状态。"""
+        with state.lock:
+            state.lifecycle = CapabilityLifecycleState.STOPPED
+            state.last_error = None
+        cls._finish_transition(state, claim.future, result=None)
+
+    @classmethod
+    def _fail_stop(
+        cls,
+        state: _CapabilityState,
+        claim: _StopClaim,
+        *,
+        stop_owner: Any,
+        pending_cleanup: Any,
+        error: BaseException,
+    ) -> BaseException:
+        """提交停止失败状态并归还仍未释放的资源 owner。"""
+        with state.lock:
+            state.lifecycle = CapabilityLifecycleState.FAILED
+            state.last_error = error
+            if stop_owner is not None:
+                state.pending_stop = stop_owner
+            if pending_cleanup is not None:
+                state.pending_cleanup = pending_cleanup
+                state.pending_cleanup_error = error
+        operation_error = cls._wrap_error(state.spec.id, "stop", error)
+        cls._finish_transition(state, claim.future, error=operation_error)
+        return operation_error
+
+    @staticmethod
+    def _publish_pending_stop_released(state: _CapabilityState) -> None:
+        """在遗留停止成功后把启动转换推进到 STARTING。"""
+        with state.lock:
+            state.lifecycle = CapabilityLifecycleState.STARTING
+
+    @staticmethod
+    def _restore_pending_cleanup(
+        state: _CapabilityState,
+        candidate: Any,
+        error: Optional[BaseException],
+    ) -> None:
+        """清理重试失败时归还 Runtime 对候选资源的所有权。"""
+        with state.lock:
+            state.pending_cleanup = candidate
+            state.pending_cleanup_error = error
+
+    @staticmethod
+    def _failure_lifecycle(error: BaseException) -> CapabilityLifecycleState:
+        """把关闭竞态与普通失败映射到统一生命周期结果。"""
+        if isinstance(error, CapabilityRuntimeClosedError):
+            return CapabilityLifecycleState.STOPPED
+        return CapabilityLifecycleState.FAILED
+
     def _calibrate_consumer_materialization(self, state: _CapabilityState) -> None:
         """从 sys.modules 校准显式 consumer import，不触发任何新导入。"""
         module_name, symbol_name = state.spec.entrypoint.split(":", maxsplit=1)
@@ -260,41 +636,21 @@ class CapabilityRuntime:
         while True:
             with self._shutdown_lock:
                 self._ensure_open()
-                with state.lock:
-                    if state.materialization is CapabilityMaterializationState.RESOLVED:
-                        return state.implementation
-                    if state.materialization is CapabilityMaterializationState.FAILED and not retry:
-                        raise CapabilityOperationError(
-                            state.spec.id,
-                            "materialize",
-                            RuntimeError("能力处于 FAILED，必须显式 retry=True"),
-                        )
-                    if state.inflight is not None:
-                        waiter = state.inflight
-                        waiter_operation = state.inflight_operation
-                        owner = None
-                    else:
-                        state.generation += 1
-                        generation = state.generation
-                        future: Future[Any] = Future()
-                        state.inflight = future
-                        state.inflight_operation = "materialize"
-                        state.materialization = CapabilityMaterializationState.RESOLVING
-                        waiter = None
-                        waiter_operation = None
-                        owner = (generation, future)
-            if waiter is not None:
-                result = self._wait_sync(waiter)
-                if waiter_operation == "materialize":
+                decision = self._claim_materialization(state, retry=retry)
+            if isinstance(decision, _PublishedTransition):
+                return decision.result
+            if isinstance(decision, _TransitionWait):
+                result = self._wait_sync(decision.future)
+                if decision.operation == "materialize":
                     return result
                 continue
+            claim = decision
             break
 
-        generation, future = owner
         started_at = time.monotonic()
         self._emit(
             state,
-            generation=generation,
+            generation=claim.generation,
             operation="materialize",
             outcome="started",
             reason=reason,
@@ -304,14 +660,10 @@ class CapabilityRuntime:
             implementation = self._sync_callback(adapter, "materialize", state.spec)
             implementation = self._canonical_implementation(state.spec, implementation)
             self._ensure_open()
-            with state.lock:
-                state.implementation = implementation
-                state.materialization = CapabilityMaterializationState.RESOLVED
-                state.last_error = None
-            self._finish_transition(state, future, result=implementation)
+            self._publish_materialization(state, claim, implementation)
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="materialize",
                 outcome="succeeded",
                 reason=reason,
@@ -319,14 +671,10 @@ class CapabilityRuntime:
             )
             return implementation
         except BaseException as error:
-            with state.lock:
-                state.materialization = CapabilityMaterializationState.FAILED
-                state.last_error = error
-            operation_error = self._wrap_error(state.spec.id, "materialize", error)
-            self._finish_transition(state, future, error=operation_error)
+            operation_error = self._fail_materialization(state, claim, error)
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="materialize",
                 outcome="failed",
                 reason=reason,
@@ -349,41 +697,21 @@ class CapabilityRuntime:
         while True:
             with self._shutdown_lock:
                 self._ensure_open()
-                with state.lock:
-                    if state.materialization is CapabilityMaterializationState.RESOLVED:
-                        return state.implementation
-                    if state.materialization is CapabilityMaterializationState.FAILED and not retry:
-                        raise CapabilityOperationError(
-                            state.spec.id,
-                            "materialize",
-                            RuntimeError("能力处于 FAILED，必须显式 retry=True"),
-                        )
-                    if state.inflight is not None:
-                        waiter = state.inflight
-                        waiter_operation = state.inflight_operation
-                        owner = None
-                    else:
-                        state.generation += 1
-                        generation = state.generation
-                        future: Future[Any] = Future()
-                        state.inflight = future
-                        state.inflight_operation = "materialize"
-                        state.materialization = CapabilityMaterializationState.RESOLVING
-                        waiter = None
-                        waiter_operation = None
-                        owner = (generation, future)
-            if waiter is not None:
-                result = await self._wait_async(waiter)
-                if waiter_operation == "materialize":
+                decision = self._claim_materialization(state, retry=retry)
+            if isinstance(decision, _PublishedTransition):
+                return decision.result
+            if isinstance(decision, _TransitionWait):
+                result = await self._wait_async(decision.future)
+                if decision.operation == "materialize":
                     return result
                 continue
+            claim = decision
             break
 
-        generation, future = owner
         started_at = time.monotonic()
         self._emit(
             state,
-            generation=generation,
+            generation=claim.generation,
             operation="materialize",
             outcome="started",
             reason=reason,
@@ -393,14 +721,10 @@ class CapabilityRuntime:
             implementation = await self._async_callback(adapter, "materialize", state.spec)
             implementation = self._canonical_implementation(state.spec, implementation)
             self._ensure_open()
-            with state.lock:
-                state.implementation = implementation
-                state.materialization = CapabilityMaterializationState.RESOLVED
-                state.last_error = None
-            self._finish_transition(state, future, result=implementation)
+            self._publish_materialization(state, claim, implementation)
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="materialize",
                 outcome="succeeded",
                 reason=reason,
@@ -408,14 +732,10 @@ class CapabilityRuntime:
             )
             return implementation
         except BaseException as error:
-            with state.lock:
-                state.materialization = CapabilityMaterializationState.FAILED
-                state.last_error = error
-            operation_error = self._wrap_error(state.spec.id, "materialize", error)
-            self._finish_transition(state, future, error=operation_error)
+            operation_error = self._fail_materialization(state, claim, error)
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="materialize",
                 outcome="failed",
                 reason=reason,
@@ -485,74 +805,27 @@ class CapabilityRuntime:
         while True:
             with self._shutdown_lock:
                 self._ensure_open()
-                with state.lock:
-                    if operation == "activate" and state.instance is not None:
-                        return state.instance
-                    if state.pending_stop is not None and not retry:
-                        raise CapabilityOperationError(
-                            state.spec.id,
-                            operation,
-                            RuntimeError("能力仍持有未释放资源，必须先重试 stop"),
-                        )
-                    if state.lifecycle is CapabilityLifecycleState.FAILED and not retry:
-                        raise CapabilityOperationError(
-                            state.spec.id,
-                            operation,
-                            RuntimeError("能力处于 FAILED，必须显式 retry=True"),
-                        )
-                    if state.inflight is not None:
-                        waiter = state.inflight
-                        waiter_operation = state.inflight_operation
-                        owner = None
-                    else:
-                        state.generation += 1
-                        generation = state.generation
-                        future: Future[Any] = Future()
-                        state.inflight = future
-                        state.inflight_operation = operation
-                        pending_stop = state.pending_stop
-                        state.lifecycle = (
-                            CapabilityLifecycleState.STOPPING
-                            if pending_stop is not None
-                            else CapabilityLifecycleState.STARTING
-                        )
-                        if state.implementation is None:
-                            state.materialization = CapabilityMaterializationState.RESOLVING
-                        pending_cleanup = state.pending_cleanup
-                        pending_error = state.pending_cleanup_error
-                        state.pending_stop = None
-                        state.pending_cleanup = None
-                        state.pending_cleanup_error = None
-                        implementation = state.implementation
-                        waiter = None
-                        waiter_operation = None
-                        owner = (
-                            generation,
-                            future,
-                            implementation,
-                            pending_stop,
-                            pending_cleanup,
-                            pending_error,
-                        )
-            if waiter is not None:
-                result = self._wait_sync(waiter)
-                if waiter_operation == operation:
+                decision = self._claim_activation(
+                    state,
+                    operation=operation,
+                    retry=retry,
+                )
+            if isinstance(decision, _PublishedTransition):
+                return decision.result
+            if isinstance(decision, _TransitionWait):
+                result = self._wait_sync(decision.future)
+                if decision.operation == operation:
                     return result
                 continue
+            claim = decision
             break
 
-        (
-            generation,
-            future,
-            implementation,
-            pending_stop,
-            pending_cleanup,
-            pending_error,
-        ) = owner
+        implementation = claim.implementation
+        pending_stop = claim.pending_stop
         started_at = time.monotonic()
         self._emit(
             state,
-            generation=generation,
+            generation=claim.generation,
             operation=operation,
             outcome="started",
             reason=reason,
@@ -566,25 +839,26 @@ class CapabilityRuntime:
                     "stop",
                     state.spec,
                     pending_stop,
-                    generation,
+                    claim.generation,
                 )
                 pending_stop = None
-                with state.lock:
-                    state.lifecycle = CapabilityLifecycleState.STARTING
-            if pending_cleanup is not None:
+                self._publish_pending_stop_released(state)
+            if claim.pending_cleanup is not None:
                 try:
                     self._sync_callback(
                         adapter,
                         "cleanup",
                         state.spec,
-                        pending_cleanup,
-                        generation,
-                        pending_error or RuntimeError("pending cleanup"),
+                        claim.pending_cleanup,
+                        claim.generation,
+                        claim.pending_cleanup_error or RuntimeError("pending cleanup"),
                     )
                 except BaseException:
-                    with state.lock:
-                        state.pending_cleanup = pending_cleanup
-                        state.pending_cleanup_error = pending_error
+                    self._restore_pending_cleanup(
+                        state,
+                        claim.pending_cleanup,
+                        claim.pending_cleanup_error,
+                    )
                     raise
             if implementation is None:
                 materialized = self._sync_callback(adapter, "materialize", state.spec)
@@ -594,25 +868,30 @@ class CapabilityRuntime:
                 "create",
                 state.spec,
                 implementation,
-                generation,
+                claim.generation,
                 previous,
             )
             if candidate is None:
                 raise CapabilityAdapterContractError(
                     f"adapter 没有返回 {state.spec.id} 的 candidate"
                 )
-            self._sync_callback(adapter, "start", state.spec, candidate, generation)
+            self._sync_callback(
+                adapter,
+                "start",
+                state.spec,
+                candidate,
+                claim.generation,
+            )
             self._ensure_open()
-            with state.lock:
-                state.implementation = implementation
-                state.materialization = CapabilityMaterializationState.RESOLVED
-                state.instance = candidate
-                state.lifecycle = CapabilityLifecycleState.RUNNING
-                state.last_error = None
-            self._finish_transition(state, future, result=candidate)
+            self._publish_activation(
+                state,
+                claim,
+                implementation=implementation,
+                candidate=candidate,
+            )
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation=operation,
                 outcome="succeeded",
                 reason=reason,
@@ -624,31 +903,22 @@ class CapabilityRuntime:
                 state,
                 adapter,
                 candidate,
-                generation,
+                claim.generation,
                 error,
             )
             final_error = cleanup_error or error
-            with state.lock:
-                state.implementation = implementation
-                state.materialization = (
-                    CapabilityMaterializationState.RESOLVED
-                    if implementation is not None
-                    else CapabilityMaterializationState.FAILED
-                )
-                state.instance = None
-                if pending_stop is not None:
-                    state.pending_stop = pending_stop
-                state.lifecycle = (
-                    CapabilityLifecycleState.STOPPED
-                    if isinstance(error, CapabilityRuntimeClosedError)
-                    else CapabilityLifecycleState.FAILED
-                )
-                state.last_error = final_error
-            operation_error = self._wrap_error(state.spec.id, operation, final_error)
-            self._finish_transition(state, future, error=operation_error)
+            operation_error = self._fail_activation(
+                state,
+                claim,
+                operation=operation,
+                implementation=implementation,
+                pending_stop=pending_stop,
+                error=final_error,
+                lifecycle_error=error,
+            )
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation=operation,
                 outcome="failed",
                 reason=reason,
@@ -672,74 +942,27 @@ class CapabilityRuntime:
         while True:
             with self._shutdown_lock:
                 self._ensure_open()
-                with state.lock:
-                    if operation == "activate" and state.instance is not None:
-                        return state.instance
-                    if state.pending_stop is not None and not retry:
-                        raise CapabilityOperationError(
-                            state.spec.id,
-                            operation,
-                            RuntimeError("能力仍持有未释放资源，必须先重试 stop"),
-                        )
-                    if state.lifecycle is CapabilityLifecycleState.FAILED and not retry:
-                        raise CapabilityOperationError(
-                            state.spec.id,
-                            operation,
-                            RuntimeError("能力处于 FAILED，必须显式 retry=True"),
-                        )
-                    if state.inflight is not None:
-                        waiter = state.inflight
-                        waiter_operation = state.inflight_operation
-                        owner = None
-                    else:
-                        state.generation += 1
-                        generation = state.generation
-                        future: Future[Any] = Future()
-                        state.inflight = future
-                        state.inflight_operation = operation
-                        pending_stop = state.pending_stop
-                        state.lifecycle = (
-                            CapabilityLifecycleState.STOPPING
-                            if pending_stop is not None
-                            else CapabilityLifecycleState.STARTING
-                        )
-                        if state.implementation is None:
-                            state.materialization = CapabilityMaterializationState.RESOLVING
-                        pending_cleanup = state.pending_cleanup
-                        pending_error = state.pending_cleanup_error
-                        state.pending_stop = None
-                        state.pending_cleanup = None
-                        state.pending_cleanup_error = None
-                        implementation = state.implementation
-                        waiter = None
-                        waiter_operation = None
-                        owner = (
-                            generation,
-                            future,
-                            implementation,
-                            pending_stop,
-                            pending_cleanup,
-                            pending_error,
-                        )
-            if waiter is not None:
-                result = await self._wait_async(waiter)
-                if waiter_operation == operation:
+                decision = self._claim_activation(
+                    state,
+                    operation=operation,
+                    retry=retry,
+                )
+            if isinstance(decision, _PublishedTransition):
+                return decision.result
+            if isinstance(decision, _TransitionWait):
+                result = await self._wait_async(decision.future)
+                if decision.operation == operation:
                     return result
                 continue
+            claim = decision
             break
 
-        (
-            generation,
-            future,
-            implementation,
-            pending_stop,
-            pending_cleanup,
-            pending_error,
-        ) = owner
+        implementation = claim.implementation
+        pending_stop = claim.pending_stop
         started_at = time.monotonic()
         self._emit(
             state,
-            generation=generation,
+            generation=claim.generation,
             operation=operation,
             outcome="started",
             reason=reason,
@@ -753,25 +976,26 @@ class CapabilityRuntime:
                     "stop",
                     state.spec,
                     pending_stop,
-                    generation,
+                    claim.generation,
                 )
                 pending_stop = None
-                with state.lock:
-                    state.lifecycle = CapabilityLifecycleState.STARTING
-            if pending_cleanup is not None:
+                self._publish_pending_stop_released(state)
+            if claim.pending_cleanup is not None:
                 try:
                     await self._async_callback(
                         adapter,
                         "cleanup",
                         state.spec,
-                        pending_cleanup,
-                        generation,
-                        pending_error or RuntimeError("pending cleanup"),
+                        claim.pending_cleanup,
+                        claim.generation,
+                        claim.pending_cleanup_error or RuntimeError("pending cleanup"),
                     )
                 except BaseException:
-                    with state.lock:
-                        state.pending_cleanup = pending_cleanup
-                        state.pending_cleanup_error = pending_error
+                    self._restore_pending_cleanup(
+                        state,
+                        claim.pending_cleanup,
+                        claim.pending_cleanup_error,
+                    )
                     raise
             if implementation is None:
                 materialized = await self._async_callback(adapter, "materialize", state.spec)
@@ -781,25 +1005,30 @@ class CapabilityRuntime:
                 "create",
                 state.spec,
                 implementation,
-                generation,
+                claim.generation,
                 previous,
             )
             if candidate is None:
                 raise CapabilityAdapterContractError(
                     f"adapter 没有返回 {state.spec.id} 的 candidate"
                 )
-            await self._async_callback(adapter, "start", state.spec, candidate, generation)
+            await self._async_callback(
+                adapter,
+                "start",
+                state.spec,
+                candidate,
+                claim.generation,
+            )
             self._ensure_open()
-            with state.lock:
-                state.implementation = implementation
-                state.materialization = CapabilityMaterializationState.RESOLVED
-                state.instance = candidate
-                state.lifecycle = CapabilityLifecycleState.RUNNING
-                state.last_error = None
-            self._finish_transition(state, future, result=candidate)
+            self._publish_activation(
+                state,
+                claim,
+                implementation=implementation,
+                candidate=candidate,
+            )
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation=operation,
                 outcome="succeeded",
                 reason=reason,
@@ -811,31 +1040,22 @@ class CapabilityRuntime:
                 state,
                 adapter,
                 candidate,
-                generation,
+                claim.generation,
                 error,
             )
             final_error = cleanup_error or error
-            with state.lock:
-                state.implementation = implementation
-                state.materialization = (
-                    CapabilityMaterializationState.RESOLVED
-                    if implementation is not None
-                    else CapabilityMaterializationState.FAILED
-                )
-                state.instance = None
-                if pending_stop is not None:
-                    state.pending_stop = pending_stop
-                state.lifecycle = (
-                    CapabilityLifecycleState.STOPPED
-                    if isinstance(error, CapabilityRuntimeClosedError)
-                    else CapabilityLifecycleState.FAILED
-                )
-                state.last_error = final_error
-            operation_error = self._wrap_error(state.spec.id, operation, final_error)
-            self._finish_transition(state, future, error=operation_error)
+            operation_error = self._fail_activation(
+                state,
+                claim,
+                operation=operation,
+                implementation=implementation,
+                pending_stop=pending_stop,
+                error=final_error,
+                lifecycle_error=error,
+            )
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation=operation,
                 outcome="failed",
                 reason=reason,
@@ -865,9 +1085,7 @@ class CapabilityRuntime:
             )
             return None
         except BaseException as cleanup_error:
-            with state.lock:
-                state.pending_cleanup = candidate
-                state.pending_cleanup_error = cleanup_error
+            self._restore_pending_cleanup(state, candidate, cleanup_error)
             return RuntimeError(f"{error}; cleanup failed: {cleanup_error}")
 
     async def _cleanup_failed_async(
@@ -891,9 +1109,7 @@ class CapabilityRuntime:
             )
             return None
         except BaseException as cleanup_error:
-            with state.lock:
-                state.pending_cleanup = candidate
-                state.pending_cleanup_error = cleanup_error
+            self._restore_pending_cleanup(state, candidate, cleanup_error)
             return RuntimeError(f"{error}; cleanup failed: {cleanup_error}")
 
     def reload(self, capability_id: str, *, reason: str) -> Any:
@@ -903,42 +1119,18 @@ class CapabilityRuntime:
         while True:
             with self._shutdown_lock:
                 self._ensure_open()
-                with state.lock:
-                    if state.inflight is not None:
-                        waiter = state.inflight
-                        waiter_operation = state.inflight_operation
-                    else:
-                        waiter = None
-                        waiter_operation = None
-                        if state.pending_stop is not None:
-                            raise CapabilityOperationError(
-                                state.spec.id,
-                                "reload",
-                                RuntimeError("能力仍持有未释放资源，必须先重试 stop"),
-                            )
-                        if state.instance is None:
-                            raise CapabilityOperationError(
-                                state.spec.id,
-                                "reload",
-                                RuntimeError("只有 RUNNING 能力可以 reload"),
-                            )
-                        previous = state.instance
-                        state.generation += 1
-                        generation = state.generation
-                        future: Future[Any] = Future()
-                        state.inflight = future
-                        state.inflight_operation = "reload"
-                        state.instance = None
-                        state.lifecycle = CapabilityLifecycleState.RELOADING
-                        implementation = state.implementation
-                        break
-            result = self._wait_sync(waiter)
-            if waiter_operation == "reload":
-                return result
+                decision = self._claim_reload(state)
+            if isinstance(decision, _TransitionWait):
+                result = self._wait_sync(decision.future)
+                if decision.operation == "reload":
+                    return result
+                continue
+            claim = decision
+            break
         started_at = time.monotonic()
         self._emit(
             state,
-            generation=generation,
+            generation=claim.generation,
             operation="reload",
             outcome="started",
             reason=reason,
@@ -947,30 +1139,38 @@ class CapabilityRuntime:
         candidate = None
         previous_released = False
         try:
-            self._sync_callback(adapter, "stop", state.spec, previous, generation)
+            self._sync_callback(
+                adapter,
+                "stop",
+                state.spec,
+                claim.previous,
+                claim.generation,
+            )
             previous_released = True
             candidate = self._sync_callback(
                 adapter,
                 "create",
                 state.spec,
-                implementation,
-                generation,
-                previous,
+                claim.implementation,
+                claim.generation,
+                claim.previous,
             )
             if candidate is None:
                 raise CapabilityAdapterContractError(
                     f"adapter 没有返回 {state.spec.id} 的 candidate"
                 )
-            self._sync_callback(adapter, "start", state.spec, candidate, generation)
+            self._sync_callback(
+                adapter,
+                "start",
+                state.spec,
+                candidate,
+                claim.generation,
+            )
             self._ensure_open()
-            with state.lock:
-                state.instance = candidate
-                state.lifecycle = CapabilityLifecycleState.RUNNING
-                state.last_error = None
-            self._finish_transition(state, future, result=candidate)
+            self._publish_reload(state, claim, candidate)
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="reload",
                 outcome="succeeded",
                 reason=reason,
@@ -982,25 +1182,20 @@ class CapabilityRuntime:
                 state,
                 adapter,
                 candidate,
-                generation,
+                claim.generation,
                 error,
             )
             final_error = cleanup_error or error
-            with state.lock:
-                state.instance = None
-                if not previous_released:
-                    state.pending_stop = previous
-                state.lifecycle = (
-                    CapabilityLifecycleState.STOPPED
-                    if isinstance(error, CapabilityRuntimeClosedError)
-                    else CapabilityLifecycleState.FAILED
-                )
-                state.last_error = final_error
-            operation_error = self._wrap_error(state.spec.id, "reload", final_error)
-            self._finish_transition(state, future, error=operation_error)
+            operation_error = self._fail_reload(
+                state,
+                claim,
+                previous_released=previous_released,
+                error=final_error,
+                lifecycle_error=error,
+            )
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="reload",
                 outcome="failed",
                 reason=reason,
@@ -1016,42 +1211,18 @@ class CapabilityRuntime:
         while True:
             with self._shutdown_lock:
                 self._ensure_open()
-                with state.lock:
-                    if state.inflight is not None:
-                        waiter = state.inflight
-                        waiter_operation = state.inflight_operation
-                    else:
-                        waiter = None
-                        waiter_operation = None
-                        if state.pending_stop is not None:
-                            raise CapabilityOperationError(
-                                state.spec.id,
-                                "reload",
-                                RuntimeError("能力仍持有未释放资源，必须先重试 stop"),
-                            )
-                        if state.instance is None:
-                            raise CapabilityOperationError(
-                                state.spec.id,
-                                "reload",
-                                RuntimeError("只有 RUNNING 能力可以 reload"),
-                            )
-                        previous = state.instance
-                        state.generation += 1
-                        generation = state.generation
-                        future: Future[Any] = Future()
-                        state.inflight = future
-                        state.inflight_operation = "reload"
-                        state.instance = None
-                        state.lifecycle = CapabilityLifecycleState.RELOADING
-                        implementation = state.implementation
-                        break
-            result = await self._wait_async(waiter)
-            if waiter_operation == "reload":
-                return result
+                decision = self._claim_reload(state)
+            if isinstance(decision, _TransitionWait):
+                result = await self._wait_async(decision.future)
+                if decision.operation == "reload":
+                    return result
+                continue
+            claim = decision
+            break
         started_at = time.monotonic()
         self._emit(
             state,
-            generation=generation,
+            generation=claim.generation,
             operation="reload",
             outcome="started",
             reason=reason,
@@ -1060,30 +1231,38 @@ class CapabilityRuntime:
         candidate = None
         previous_released = False
         try:
-            await self._async_callback(adapter, "stop", state.spec, previous, generation)
+            await self._async_callback(
+                adapter,
+                "stop",
+                state.spec,
+                claim.previous,
+                claim.generation,
+            )
             previous_released = True
             candidate = await self._async_callback(
                 adapter,
                 "create",
                 state.spec,
-                implementation,
-                generation,
-                previous,
+                claim.implementation,
+                claim.generation,
+                claim.previous,
             )
             if candidate is None:
                 raise CapabilityAdapterContractError(
                     f"adapter 没有返回 {state.spec.id} 的 candidate"
                 )
-            await self._async_callback(adapter, "start", state.spec, candidate, generation)
+            await self._async_callback(
+                adapter,
+                "start",
+                state.spec,
+                candidate,
+                claim.generation,
+            )
             self._ensure_open()
-            with state.lock:
-                state.instance = candidate
-                state.lifecycle = CapabilityLifecycleState.RUNNING
-                state.last_error = None
-            self._finish_transition(state, future, result=candidate)
+            self._publish_reload(state, claim, candidate)
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="reload",
                 outcome="succeeded",
                 reason=reason,
@@ -1095,25 +1274,20 @@ class CapabilityRuntime:
                 state,
                 adapter,
                 candidate,
-                generation,
+                claim.generation,
                 error,
             )
             final_error = cleanup_error or error
-            with state.lock:
-                state.instance = None
-                if not previous_released:
-                    state.pending_stop = previous
-                state.lifecycle = (
-                    CapabilityLifecycleState.STOPPED
-                    if isinstance(error, CapabilityRuntimeClosedError)
-                    else CapabilityLifecycleState.FAILED
-                )
-                state.last_error = final_error
-            operation_error = self._wrap_error(state.spec.id, "reload", final_error)
-            self._finish_transition(state, future, error=operation_error)
+            operation_error = self._fail_reload(
+                state,
+                claim,
+                previous_released=previous_released,
+                error=final_error,
+                lifecycle_error=error,
+            )
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="reload",
                 outcome="failed",
                 reason=reason,
@@ -1131,54 +1305,29 @@ class CapabilityRuntime:
         state = self._state(capability_id)
         adapter = self._adapter(state, AdapterExecutionMode.SYNC)
         while True:
-            with state.lock:
-                if state.inflight is not None:
-                    waiter = state.inflight
-                    waiter_operation = state.inflight_operation
-                    owner = None
-                else:
-                    stop_owner = (
-                        state.instance
-                        if state.instance is not None
-                        else state.pending_stop
-                    )
-                    pending = state.pending_cleanup
-                    pending_error = state.pending_cleanup_error
-                    if stop_owner is None and pending is None:
-                        if state.lifecycle is not CapabilityLifecycleState.FAILED:
-                            state.lifecycle = CapabilityLifecycleState.STOPPED
-                        return True
-                    state.generation += 1
-                    generation = state.generation
-                    future: Future[Any] = Future()
-                    state.inflight = future
-                    state.inflight_operation = "stop"
-                    state.instance = None
-                    state.pending_stop = None
-                    state.pending_cleanup = None
-                    state.pending_cleanup_error = None
-                    state.lifecycle = CapabilityLifecycleState.STOPPING
-                    waiter = None
-                    waiter_operation = None
-                    owner = (generation, future, stop_owner, pending, pending_error)
-            if waiter is not None:
+            decision = self._claim_stop(state)
+            if isinstance(decision, _SettledTransition):
+                return True
+            if isinstance(decision, _TransitionWait):
                 try:
-                    self._wait_sync(waiter)
+                    self._wait_sync(decision.future)
                 except BaseException:
                     if not shutdown:
                         raise
-                    if waiter_operation == "stop":
+                    if decision.operation == "stop":
                         return False
-                if waiter_operation == "stop":
+                if decision.operation == "stop":
                     return True
                 continue
+            claim = decision
             break
 
-        generation, future, stop_owner, pending, pending_error = owner
+        stop_owner = claim.stop_owner
+        pending_cleanup = claim.pending_cleanup
         started_at = time.monotonic()
         self._emit(
             state,
-            generation=generation,
+            generation=claim.generation,
             operation="stop",
             outcome="started",
             reason=reason,
@@ -1186,25 +1335,28 @@ class CapabilityRuntime:
         )
         try:
             if stop_owner is not None:
-                self._sync_callback(adapter, "stop", state.spec, stop_owner, generation)
+                self._sync_callback(
+                    adapter,
+                    "stop",
+                    state.spec,
+                    stop_owner,
+                    claim.generation,
+                )
                 stop_owner = None
-            if pending is not None:
+            if pending_cleanup is not None:
                 self._sync_callback(
                     adapter,
                     "cleanup",
                     state.spec,
-                    pending,
-                    generation,
-                    pending_error or RuntimeError("pending cleanup"),
+                    pending_cleanup,
+                    claim.generation,
+                    claim.pending_cleanup_error or RuntimeError("pending cleanup"),
                 )
-                pending = None
-            with state.lock:
-                state.lifecycle = CapabilityLifecycleState.STOPPED
-                state.last_error = None
-            self._finish_transition(state, future, result=None)
+                pending_cleanup = None
+            self._publish_stop(state, claim)
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="stop",
                 outcome="succeeded",
                 reason=reason,
@@ -1212,19 +1364,16 @@ class CapabilityRuntime:
             )
             return True
         except BaseException as error:
-            with state.lock:
-                state.lifecycle = CapabilityLifecycleState.FAILED
-                state.last_error = error
-                if stop_owner is not None:
-                    state.pending_stop = stop_owner
-                if pending is not None:
-                    state.pending_cleanup = pending
-                    state.pending_cleanup_error = error
-            operation_error = self._wrap_error(state.spec.id, "stop", error)
-            self._finish_transition(state, future, error=operation_error)
+            operation_error = self._fail_stop(
+                state,
+                claim,
+                stop_owner=stop_owner,
+                pending_cleanup=pending_cleanup,
+                error=error,
+            )
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="stop",
                 outcome="failed",
                 reason=reason,
@@ -1250,54 +1399,29 @@ class CapabilityRuntime:
         state = self._state(capability_id)
         adapter = self._adapter(state, AdapterExecutionMode.ASYNC)
         while True:
-            with state.lock:
-                if state.inflight is not None:
-                    waiter = state.inflight
-                    waiter_operation = state.inflight_operation
-                    owner = None
-                else:
-                    stop_owner = (
-                        state.instance
-                        if state.instance is not None
-                        else state.pending_stop
-                    )
-                    pending = state.pending_cleanup
-                    pending_error = state.pending_cleanup_error
-                    if stop_owner is None and pending is None:
-                        if state.lifecycle is not CapabilityLifecycleState.FAILED:
-                            state.lifecycle = CapabilityLifecycleState.STOPPED
-                        return True
-                    state.generation += 1
-                    generation = state.generation
-                    future: Future[Any] = Future()
-                    state.inflight = future
-                    state.inflight_operation = "stop"
-                    state.instance = None
-                    state.pending_stop = None
-                    state.pending_cleanup = None
-                    state.pending_cleanup_error = None
-                    state.lifecycle = CapabilityLifecycleState.STOPPING
-                    waiter = None
-                    waiter_operation = None
-                    owner = (generation, future, stop_owner, pending, pending_error)
-            if waiter is not None:
+            decision = self._claim_stop(state)
+            if isinstance(decision, _SettledTransition):
+                return True
+            if isinstance(decision, _TransitionWait):
                 try:
-                    await self._wait_async(waiter)
+                    await self._wait_async(decision.future)
                 except BaseException:
                     if not shutdown:
                         raise
-                    if waiter_operation == "stop":
+                    if decision.operation == "stop":
                         return False
-                if waiter_operation == "stop":
+                if decision.operation == "stop":
                     return True
                 continue
+            claim = decision
             break
 
-        generation, future, stop_owner, pending, pending_error = owner
+        stop_owner = claim.stop_owner
+        pending_cleanup = claim.pending_cleanup
         started_at = time.monotonic()
         self._emit(
             state,
-            generation=generation,
+            generation=claim.generation,
             operation="stop",
             outcome="started",
             reason=reason,
@@ -1310,26 +1434,23 @@ class CapabilityRuntime:
                     "stop",
                     state.spec,
                     stop_owner,
-                    generation,
+                    claim.generation,
                 )
                 stop_owner = None
-            if pending is not None:
+            if pending_cleanup is not None:
                 await self._async_callback(
                     adapter,
                     "cleanup",
                     state.spec,
-                    pending,
-                    generation,
-                    pending_error or RuntimeError("pending cleanup"),
+                    pending_cleanup,
+                    claim.generation,
+                    claim.pending_cleanup_error or RuntimeError("pending cleanup"),
                 )
-                pending = None
-            with state.lock:
-                state.lifecycle = CapabilityLifecycleState.STOPPED
-                state.last_error = None
-            self._finish_transition(state, future, result=None)
+                pending_cleanup = None
+            self._publish_stop(state, claim)
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="stop",
                 outcome="succeeded",
                 reason=reason,
@@ -1337,19 +1458,16 @@ class CapabilityRuntime:
             )
             return True
         except BaseException as error:
-            with state.lock:
-                state.lifecycle = CapabilityLifecycleState.FAILED
-                state.last_error = error
-                if stop_owner is not None:
-                    state.pending_stop = stop_owner
-                if pending is not None:
-                    state.pending_cleanup = pending
-                    state.pending_cleanup_error = error
-            operation_error = self._wrap_error(state.spec.id, "stop", error)
-            self._finish_transition(state, future, error=operation_error)
+            operation_error = self._fail_stop(
+                state,
+                claim,
+                stop_owner=stop_owner,
+                pending_cleanup=pending_cleanup,
+                error=error,
+            )
             self._emit(
                 state,
-                generation=generation,
+                generation=claim.generation,
                 operation="stop",
                 outcome="failed",
                 reason=reason,

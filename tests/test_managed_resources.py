@@ -200,6 +200,52 @@ def test_async_managed_resource_uses_async_adapter(
     assert AsyncResource.instances == [resource]
 
 
+def test_async_managed_resource_recreates_owner_across_event_loops(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """停止后的下一次激活必须在新事件循环创建新资源，不能复用旧 owner。"""
+    module_name = "fixture_loop_bound_managed_resource"
+    module = ModuleType(module_name)
+
+    class LoopBoundResource:
+        """记录资源实际启动和停止所在的事件循环。"""
+
+        def __init__(self) -> None:
+            self.loop = None
+
+        async def start(self) -> None:
+            self.loop = asyncio.get_running_loop()
+
+        async def stop(self) -> None:
+            assert asyncio.get_running_loop() is self.loop
+
+    module.LoopBoundResource = LoopBoundResource
+    monkeypatch.setitem(sys.modules, module_name, module)
+    _write_manifest(
+        tmp_path,
+        capability_id="fixture.loop_bound",
+        kind=MANAGED_RESOURCE_ASYNC_KIND,
+        entrypoint=f"{module_name}:LoopBoundResource",
+    )
+    runtime = _runtime(tmp_path)
+
+    async def exercise() -> LoopBoundResource:
+        """在当前事件循环完成一次资源启动与停止。"""
+        resource = await runtime.activate_async(
+            "fixture.loop_bound",
+            reason="loop_cycle",
+        )
+        await runtime.stop_async("fixture.loop_bound", reason="loop_cycle")
+        return resource
+
+    first = asyncio.run(exercise())
+    second = asyncio.run(exercise())
+
+    assert first is not second
+    assert first.loop is not second.loop
+
+
 def test_shutdown_propagates_stop_failure_and_retains_owner_for_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

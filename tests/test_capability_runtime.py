@@ -25,7 +25,6 @@ from app.runtime.capabilities.model import (
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.capabilities.runtime import CapabilityRuntime
 
-
 _MANIFEST = """
 schema_version = 1
 id = "sample.capability"
@@ -102,6 +101,7 @@ class _SyncAdapter:
         self.fail_materialize = False
         self.fail_start = False
         self.fail_stop = False
+        self.fail_cleanup = False
         self.start_entered: Optional[threading.Event] = None
         self.start_release: Optional[threading.Event] = None
         self.stop_entered: Optional[threading.Event] = None
@@ -140,6 +140,8 @@ class _SyncAdapter:
 
     def cleanup(self, spec, candidate: _Candidate, generation: int, error: BaseException) -> None:
         self.cleanup_calls += 1
+        if self.fail_cleanup:
+            raise RuntimeError("cleanup failed")
         candidate.stopped = True
 
 
@@ -156,6 +158,7 @@ class _AsyncAdapter:
         self.fail_materialize = False
         self.fail_start = False
         self.fail_stop = False
+        self.fail_cleanup = False
         self.start_entered = asyncio.Event()
         self.start_release = asyncio.Event()
         self.stop_entered: Optional[asyncio.Event] = None
@@ -196,6 +199,8 @@ class _AsyncAdapter:
     async def cleanup(self, spec, candidate: _Candidate, generation: int, error: BaseException) -> None:
         self.cleanup_calls += 1
         await asyncio.sleep(0)
+        if self.fail_cleanup:
+            raise RuntimeError("async cleanup failed")
         candidate.stopped = True
 
 
@@ -983,3 +988,172 @@ def test_adapter_mode_requires_declared_enum_member(tmp_path: Path) -> None:
 
     with pytest.raises(CapabilityAdapterModeError):
         runtime.activate("sample.capability", reason="invalid_mode")
+
+
+def _snapshot_signature(runtime: CapabilityRuntime) -> tuple:
+    """提取忽略具体错误文本的生命周期状态签名。"""
+    snapshot = runtime.snapshot("sample.capability")
+    return (
+        snapshot.materialization,
+        snapshot.lifecycle,
+        snapshot.generation,
+        snapshot.visible,
+        snapshot.error is not None,
+    )
+
+
+def _observation_signature(runtime: CapabilityRuntime) -> tuple:
+    """提取可比较的转换观测签名，排除耗时和具体错误文本。"""
+    return tuple(
+        (
+            item.generation,
+            item.operation,
+            item.outcome,
+            item.materialization,
+            item.lifecycle,
+            item.error is not None,
+        )
+        for item in runtime.observations("sample.capability")
+    )
+
+
+def _sync_lifecycle_trace(tmp_path: Path) -> tuple[tuple, tuple]:
+    """执行同步双轴生命周期并返回状态和观测轨迹。"""
+    adapter = _SyncAdapter()
+    runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
+    snapshots = []
+
+    runtime.materialize("sample.capability", reason="parity_materialize")
+    snapshots.append(_snapshot_signature(runtime))
+    runtime.activate("sample.capability", reason="parity_activate")
+    snapshots.append(_snapshot_signature(runtime))
+    runtime.reload("sample.capability", reason="parity_reload")
+    snapshots.append(_snapshot_signature(runtime))
+    runtime.stop("sample.capability", reason="parity_stop")
+    snapshots.append(_snapshot_signature(runtime))
+
+    return tuple(snapshots), _observation_signature(runtime)
+
+
+async def _async_lifecycle_trace(tmp_path: Path) -> tuple[tuple, tuple]:
+    """执行异步双轴生命周期并返回状态和观测轨迹。"""
+    adapter = _AsyncAdapter()
+    adapter.start_release.set()
+    runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
+    snapshots = []
+
+    await runtime.materialize_async("sample.capability", reason="parity_materialize")
+    snapshots.append(_snapshot_signature(runtime))
+    await runtime.activate_async("sample.capability", reason="parity_activate")
+    snapshots.append(_snapshot_signature(runtime))
+    await runtime.reload_async("sample.capability", reason="parity_reload")
+    snapshots.append(_snapshot_signature(runtime))
+    await runtime.stop_async("sample.capability", reason="parity_stop")
+    snapshots.append(_snapshot_signature(runtime))
+
+    return tuple(snapshots), _observation_signature(runtime)
+
+
+def test_sync_and_async_lifecycle_publish_identical_state_traces(
+    tmp_path: Path,
+) -> None:
+    """双 ABI 应共享完全一致的物化、启动、重载和停止状态决策。"""
+    sync_trace = _sync_lifecycle_trace(tmp_path / "sync")
+    sys.modules.pop("sample_implementation", None)
+    async_trace = asyncio.run(_async_lifecycle_trace(tmp_path / "async"))
+
+    assert async_trace == sync_trace
+
+
+def test_sync_and_async_start_failures_publish_identical_state(
+    tmp_path: Path,
+) -> None:
+    """启动和候选清理的 I/O 不同，但失败后的状态提交必须一致。"""
+    sync_adapter = _SyncAdapter()
+    sync_adapter.fail_start = True
+    sync_runtime = CapabilityRuntime(
+        _registry(tmp_path / "sync"),
+        adapters={"sample": sync_adapter},
+    )
+    with pytest.raises(CapabilityOperationError, match="start failed"):
+        sync_runtime.activate("sample.capability", reason="parity_failure")
+    sys.modules.pop("sample_implementation", None)
+
+    async_adapter = _AsyncAdapter()
+    async_adapter.fail_start = True
+    async_adapter.start_release.set()
+    async_runtime = CapabilityRuntime(
+        _registry(tmp_path / "async"),
+        adapters={"sample": async_adapter},
+    )
+
+    async def fail_async() -> None:
+        """触发异步启动失败并验证公开异常合同。"""
+        with pytest.raises(CapabilityOperationError, match="async start failed"):
+            await async_runtime.activate_async(
+                "sample.capability",
+                reason="parity_failure",
+            )
+
+    asyncio.run(fail_async())
+
+    assert _snapshot_signature(async_runtime) == _snapshot_signature(sync_runtime)
+    assert _observation_signature(async_runtime) == _observation_signature(sync_runtime)
+
+
+def test_sync_and_async_cleanup_retry_publish_identical_state(
+    tmp_path: Path,
+) -> None:
+    """候选清理失败后的 owner 归还与显式重试在双 ABI 下必须一致。"""
+    sync_adapter = _SyncAdapter()
+    sync_adapter.fail_start = True
+    sync_adapter.fail_cleanup = True
+    sync_runtime = CapabilityRuntime(
+        _registry(tmp_path / "sync"),
+        adapters={"sample": sync_adapter},
+    )
+    with pytest.raises(CapabilityOperationError, match="cleanup failed"):
+        sync_runtime.activate("sample.capability", reason="cleanup_failure")
+    sync_adapter.fail_start = False
+    sync_adapter.fail_cleanup = False
+    sync_runtime.activate(
+        "sample.capability",
+        reason="cleanup_retry",
+        retry=True,
+    )
+    sync_state = (
+        _snapshot_signature(sync_runtime),
+        _observation_signature(sync_runtime),
+    )
+    sys.modules.pop("sample_implementation", None)
+
+    async_adapter = _AsyncAdapter()
+    async_adapter.fail_start = True
+    async_adapter.fail_cleanup = True
+    async_adapter.start_release.set()
+    async_runtime = CapabilityRuntime(
+        _registry(tmp_path / "async"),
+        adapters={"sample": async_adapter},
+    )
+
+    async def exercise_async() -> None:
+        """触发异步清理失败后完成显式恢复。"""
+        with pytest.raises(CapabilityOperationError, match="async cleanup failed"):
+            await async_runtime.activate_async(
+                "sample.capability",
+                reason="cleanup_failure",
+            )
+        async_adapter.fail_start = False
+        async_adapter.fail_cleanup = False
+        await async_runtime.activate_async(
+            "sample.capability",
+            reason="cleanup_retry",
+            retry=True,
+        )
+
+    asyncio.run(exercise_async())
+
+    assert (
+        _snapshot_signature(async_runtime),
+        _observation_signature(async_runtime),
+    ) == sync_state

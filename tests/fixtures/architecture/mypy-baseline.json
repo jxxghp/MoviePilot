@@ -2962,8 +2962,6 @@
     "unused-coroutine": 3
   },
   "app/runtime/capabilities/runtime.py": {
-    "arg-type": 2,
-    "misc": 6,
     "no-untyped-def": 2
   },
   "app/runtime/compat/imports.py": {

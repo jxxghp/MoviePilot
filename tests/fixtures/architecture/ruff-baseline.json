@@ -899,9 +899,6 @@
   "tests/test_capability_registry.py": {
     "I001": 1
   },
-  "tests/test_capability_runtime.py": {
-    "I001": 1
-  },
   "tests/test_cli_auto_update.py": {
     "I001": 1
   },
@@ -1078,9 +1075,6 @@
     "I001": 1
   },
   "tests/test_metamusic.py": {
-    "I001": 1
-  },
-  "tests/test_module_manager_capability_adapter.py": {
     "I001": 1
   },
   "tests/test_module_quality.py": {
