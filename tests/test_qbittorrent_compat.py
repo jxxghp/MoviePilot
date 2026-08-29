@@ -210,7 +210,10 @@ def _load_qbittorrent_modules():
     modules_module._ModuleBase = _ModuleBase
     modules_module._DownloaderBase = _DownloaderBase
     base_module = types.ModuleType("app.modules._base")
-    base_module._DownloaderModuleBase = _DownloaderModuleBase
+    base_module.__path__ = []
+    downloader_base_module = types.ModuleType("app.modules._base.downloader")
+    downloader_base_module._DownloaderModuleBase = _DownloaderModuleBase
+    base_module.downloader = downloader_base_module
     modules_module._base = base_module
     torrentool_torrent_module.Torrent = _Torrent
     qbittorrentapi_module.TorrentDictionary = dict
@@ -265,6 +268,7 @@ def _load_qbittorrent_modules():
         "app.runtime.settings": runtime_settings_module,
         "app.modules": modules_module,
         "app.modules._base": base_module,
+        "app.modules._base.downloader": downloader_base_module,
         "app.modules.qbittorrent": qbittorrent_package_module,
         "app.schemas": schemas_module,
         "app.schemas.dashboard": schema_dashboard_module,
