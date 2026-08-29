@@ -50,7 +50,7 @@ from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
 from app.foundation.version import compare_version
 from app.runtime.cache import cached, is_fresh
-from app.runtime.dependencies import (
+from app.runtime.dependencies.profile import (
     iter_runtime_profile_requirement_strings,
     iter_runtime_requirement_strings,
     runtime_excluded_dependency_pairs,

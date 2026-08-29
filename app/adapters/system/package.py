@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from app.runtime.dependencies import runtime_sync_arguments
+from app.runtime.dependencies.profile import runtime_sync_arguments
 
 
 @dataclass(frozen=True)

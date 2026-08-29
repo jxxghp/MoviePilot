@@ -17,7 +17,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from app.doctor import dependencies as dependency_doctor
-from app.runtime.dependencies import runtime_excluded_dependency_pairs
+from app.runtime.dependencies.profile import runtime_excluded_dependency_pairs
 
 _UV_MISSING_DEPENDENCY_PATTERN = re.compile(
     r"The package `(?P<package>[^`]+)` requires `(?P<requirement>[^`]+)`, "

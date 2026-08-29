@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 932 / 7,886 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 933 / 7,890 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -79,7 +79,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
 | 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 10,982 / 599 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 671 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Ruff 历史诊断 | 667 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 80.75%，Domain 79.32% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件

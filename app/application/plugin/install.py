@@ -17,9 +17,9 @@ from app.application.plugin.transaction import (
     PluginInstallationRecord,
     PluginPersistenceService,
 )
+from app.runtime.dependencies.native import NativeDependencyChange
 from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
-from app.runtime.native_dependencies import NativeDependencyChange
 from app.schemas.exception import (
     PersistenceUnavailableError,
     PluginMutationRejectedError,

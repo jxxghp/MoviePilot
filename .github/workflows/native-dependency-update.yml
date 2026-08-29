@@ -8,7 +8,10 @@ on:
       - 'app/adapters/external/market.py'
       - 'app/adapters/system/host.py'
       - 'app/adapters/system/package.py'
-      - 'app/runtime/dependencies.py'
+      - 'app/adapters/system/plugin/package.py'
+      - 'app/application/plugin/install.py'
+      - 'app/runtime/dependencies/native.py'
+      - 'app/runtime/dependencies/profile.py'
       - 'scripts/probe_native_dependency_update.py'
       - '.github/workflows/native-dependency-update.yml'
   push:
@@ -18,7 +21,10 @@ on:
       - 'app/adapters/external/market.py'
       - 'app/adapters/system/host.py'
       - 'app/adapters/system/package.py'
-      - 'app/runtime/dependencies.py'
+      - 'app/adapters/system/plugin/package.py'
+      - 'app/application/plugin/install.py'
+      - 'app/runtime/dependencies/native.py'
+      - 'app/runtime/dependencies/profile.py'
       - 'scripts/probe_native_dependency_update.py'
       - '.github/workflows/native-dependency-update.yml'
   workflow_dispatch:

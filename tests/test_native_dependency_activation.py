@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from app.runtime import native_dependencies
+import app.runtime.dependencies.native as native_dependencies
 
 
 class _Distribution:

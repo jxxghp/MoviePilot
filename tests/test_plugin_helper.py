@@ -1394,7 +1394,7 @@ demo = { index = "private" }
             requirements_file = Path(temp_dir) / "requirements.txt"
             requirements_file.write_text(f"{requirement}\n", encoding="utf-8")
             with patch(
-                    "app.runtime.dependencies.runtime_dependency_group",
+                    "app.runtime.dependencies.profile.runtime_dependency_group",
                     return_value=runtime_group,
             ):
                 success, message = PluginHelper._PluginHelper__validate_runtime_dependency_conflicts(

@@ -79,6 +79,8 @@ RETIRED_CANONICAL_FILES = (
     "app/foundation/structures.py",
     "app/foundation/zhconv.py",
     "app/runtime/runtime.py",
+    "app/runtime/dependencies.py",
+    "app/runtime/native_dependencies.py",
     "app/adapters/network/rss.py",
     "app/adapters/network/sites.pyi",
     "app/application/plugins.py",
@@ -296,6 +298,43 @@ def test_retired_canonical_filenames_do_not_return():
         if (PROJECT_ROOT / relative_path).exists()
     ]
     assert leftovers == []
+
+
+def test_runtime_dependencies_use_same_named_single_word_package() -> None:
+    """运行依赖能力必须使用同名包，且宿主直接依赖单一职责子模块。"""
+    package = APP_ROOT / "runtime" / "dependencies"
+    assert {path.name for path in package.glob("*.py")} == {
+        "__init__.py",
+        "native.py",
+        "profile.py",
+    }
+
+    init_tree = ast.parse(
+        (package / "__init__.py").read_text(encoding="utf-8"),
+        filename=str(package / "__init__.py"),
+    )
+    assert ast.get_docstring(init_tree)
+    assert len(init_tree.body) == 1
+
+    violations: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(APP_ROOT)
+        if relative.parts[0] == "plugins":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "app.runtime.dependencies"
+            ):
+                violations.append(f"{relative}:{node.lineno}:from-package-root")
+            elif isinstance(node, ast.Import):
+                violations.extend(
+                    f"{relative}:{node.lineno}:package-root"
+                    for alias in node.names
+                    if alias.name == "app.runtime.dependencies"
+                )
+    assert violations == []
 
 
 def test_workflow_query_contract_returns_only_typed_snapshots():

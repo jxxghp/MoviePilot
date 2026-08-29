@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.adapters.system.plugin.package import PluginPackageManager
-from app.runtime.native_dependencies import LoadedNativeDependencySnapshot
+from app.runtime.dependencies.native import LoadedNativeDependencySnapshot
 
 
 def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:

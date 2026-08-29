@@ -192,7 +192,7 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 |---|---|---|
 | `app/foundation/` | 无状态、无配置、无 I/O 的底层原语：反射/动态导入、加密、DOM、单例、文本、URL、版本比较 | `reflection.py`、`crypto.py`、`singleton.py` |
 | `app/domain/` | 纯 MoviePilot 业务语义：媒体上下文、识别解析、站点状态解释、磁力语义、NFO 刮削 | `context.py`、`metainfo.py`、`meta/`、`scraper.py` |
-| `app/runtime/` | 进程级运行机制：配置、进程拓扑、事件、完整日志、缓存契约与内存后端、任务所有权、执行/关联上下文、并发、调度、限流、本地化、GC、重启状态 | `config.py`、`events.py`、`event/`、`tasks.py`、`execution.py`、`correlation.py`、`log.py`、`cache.py` |
+| `app/runtime/` | 进程级运行机制：配置、进程拓扑、事件、完整日志、缓存契约与内存后端、运行依赖 profile 与原生载荷激活检测、任务所有权、执行/关联上下文、并发、调度、限流、本地化、GC、重启状态 | `config.py`、`events.py`、`event/`、`dependencies/`、`tasks.py`、`execution.py`、`correlation.py`、`log.py`、`cache.py` |
 | `app/runtime/extensions/` | 模块 / 插件 / 配置化服务 / 托管资源的发现、注册与生命周期适配；旧管理器文件保留稳定 ABI 门面，具体实现拆在主题子包 | `module_manager.py`、`plugin_manager.py`、`plugin/` |
 | `app/runtime/compat/` | 仅标准库的精确旧模块、包与符号导入路由；不是业务实现，也不是通用 re-export 层 | `manifest.py`、`imports.py` |
 | `app/adapters/network/` | 通用 HTTP、浏览器、DNS、Cloudflare、IP 传输机制 | `http.py`、`browser.py` |
@@ -219,6 +219,8 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 | `app/monitor/` | 源目录监控 → 触发整理 | `watcher.py`、`dispatcher.py` |
 | `app/workflow/` | 工作流引擎 | — |
 | `app/plugins/` | 插件运行时副本/覆盖目录，由插件管理器加载；不是官方插件源码或宿主架构实现，架构审计以插件仓库与宿主边界为准 | — |
+
+`app/runtime/dependencies/` 是一个同名能力包：`profile.py` 只负责解释器 ABI 对应的依赖组，`native.py` 只负责已加载原生发行包的快照与变更检测。包根不重复导出实现，宿主直接导入职责子模块；旧的平级 `dependencies.py` 与 `native_dependencies.py` 已退出规范实现。
 
 ---
 
@@ -726,8 +728,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 932 |
-| 内部导入边 | 7,886 |
+| Python 模块 | 933 |
+| 内部导入边 | 7,890 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 55（债务已清零，55 条精确 containment） |

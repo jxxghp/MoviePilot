@@ -708,9 +708,6 @@
   "app/runtime/debounce.py": {
     "I001": 1
   },
-  "app/runtime/dependencies.py": {
-    "I001": 1
-  },
   "app/runtime/event/errors.py": {
     "I001": 1
   },
@@ -980,10 +977,6 @@
     "I001": 1
   },
   "tests/test_db_session_lifecycle.py": {
-    "I001": 1
-  },
-  "tests/test_docker_bootstrap.py": {
-    "F841": 2,
     "I001": 1
   },
   "tests/test_docker_entrypoint_permissions.py": {

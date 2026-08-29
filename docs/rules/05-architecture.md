@@ -100,6 +100,7 @@ directory categories.
 | `app/runtime/execution.py` | Shared sync/async execution and cross-thread submission boundary with correlation propagation |
 | `app/runtime/correlation.py` | Request/cross-thread correlation context and safe propagation into logs and child work |
 | `app/runtime/state.py` | Process restart and update state |
+| `app/runtime/dependencies/` | Runtime dependency profile selection in `profile.py` and loaded native payload activation detection in `native.py`; the package root contains no implementation or host re-exports |
 | `app/runtime/extensions/` | Module, plugin, configured-service and managed-resource discovery/registration/lifecycle adapters |
 | `app/runtime/compat/` | Standard-library-only exact legacy import routing, resource preflight scanning and DEBUG diagnostics |
 
@@ -114,6 +115,12 @@ API dependencies must narrow that object to a domain runtime (for example,
 `AgentChatRuntime`) instead of adding a string key to a global service map.
 Legacy registries may delegate the same object while domains migrate, but they
 must not construct a second set of service instances.
+The retired flat `app/runtime/dependencies.py` and
+`app/runtime/native_dependencies.py` modules must not return. Canonical host
+callers import `app.runtime.dependencies.profile` or
+`app.runtime.dependencies.native` directly; the package root is not an export
+facade, and plugin compatibility is added only through an exact SDK/Compat route
+when a verified plugin contract requires it.
 Canonical host consumers of the process-wide module, plugin, scheduler and
 system-configuration runtimes must call `get_module_manager()`,
 `get_plugin_manager()`, `get_scheduler()` and `get_configured_system_config()`
@@ -883,4 +890,4 @@ imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
 modules only through `run_module` dispatch), and downloader SDK
 (`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
 
-*Last Updated: 2026-08-28*
+*Last Updated: 2026-08-29*

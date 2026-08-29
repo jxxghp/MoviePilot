@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "docker" / "launcher.sh"
 UPDATER = ROOT / "docker" / "update.sh"
@@ -75,7 +74,9 @@ runtime-free-threaded = ["free-threaded"]
         encoding="utf-8",
     )
     (project / "uv.lock").write_text("version = 1\n", encoding="utf-8")
-    runtime_selector = project / "app" / "runtime" / "dependencies.py"
+    runtime_selector = (
+        project / "app" / "runtime" / "dependencies" / "profile.py"
+    )
     runtime_selector.parent.mkdir(parents=True)
     runtime_selector.write_text("print('runtime-free-threaded')\n", encoding="utf-8")
     venv_bin = tmp_path / "venv" / "bin"
@@ -121,6 +122,78 @@ runtime-free-threaded = ["free-threaded"]
 
     command = uv_log.read_text(encoding="utf-8")
     assert "--no-default-groups --group runtime-free-threaded" in command
+
+
+def test_update_sync_supports_legacy_runtime_selector_during_rollback(
+    tmp_path: Path,
+) -> None:
+    """更新回滚必须能读取改名前旧快照中的依赖 profile 选择器。"""
+    project = tmp_path / "legacy-project"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        """
+[project]
+name = "moviepilot"
+version = "0"
+
+[dependency-groups]
+runtime-standard = ["standard"]
+runtime-free-threaded = ["free-threaded"]
+""",
+        encoding="utf-8",
+    )
+    (project / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    legacy_selector = project / "app" / "runtime" / "dependencies.py"
+    legacy_selector.parent.mkdir(parents=True)
+    legacy_selector.write_text("print('runtime-standard')\n", encoding="utf-8")
+
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    python_log = tmp_path / "python.log"
+    python_bin = venv_bin / "python3"
+    python_bin.write_text(
+        "#!/bin/bash\nprintf '%s\\n' \"$*\" > "
+        f"{shlex.quote(str(python_log))}\nprintf '%s\\n' runtime-standard\n",
+        encoding="utf-8",
+    )
+    python_bin.chmod(0o755)
+    uv_bin = tmp_path / "uv"
+    uv_log = tmp_path / "uv.log"
+    uv_bin.write_text(
+        f"#!/bin/bash\nprintf '%s\\n' \"$*\" > {shlex.quote(str(uv_log))}\n",
+        encoding="utf-8",
+    )
+    uv_bin.chmod(0o755)
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        VENV_PATH="$2"
+        UV_BIN="$3"
+        source {UPDATER!s}
+        PACKAGE_ENV=()
+        UV_OPTIONS=()
+        sync_project_dependencies_for "$4"
+        """
+    )
+
+    subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "legacy-runtime-profile-test",
+            str(tmp_path / "config"),
+            str(tmp_path / "venv"),
+            str(uv_bin),
+            str(project),
+        ],
+        check=True,
+    )
+
+    assert python_log.read_text(encoding="utf-8").strip() == str(legacy_selector)
+    assert "--no-default-groups --group runtime-standard" in uv_log.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_build_profiles_use_full_runtime_capability_probe() -> None:
@@ -1222,7 +1295,6 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
 
 def test_update_transaction_keeps_marker_when_backup_cleanup_fails(tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
-    pending_file = config_dir / "temp" / "__update_pending__"
     log_file = tmp_path / "cleanup.log"
     script = textwrap.dedent(
         f"""\
@@ -1368,7 +1440,6 @@ def test_staged_payload_swap_failure_restores_previous_generation(tmp_path: Path
     (stage_app / "app" / "new.py").write_text("new", encoding="utf-8")
     (stage_public / "index.html").write_text("new-front", encoding="utf-8")
     config_dir = tmp_path / "config"
-    uv_log = tmp_path / "uv.log"
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"

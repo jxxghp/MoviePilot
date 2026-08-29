@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
+import app.runtime.dependencies.profile as dependencies
 from app.doctor import dependencies as dependency_doctor
 from app.foundation import environment
-from app.runtime import dependencies
 from scripts import verify_runtime_profile
 
 

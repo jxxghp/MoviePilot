@@ -28,7 +28,7 @@ V3t 的目标不是让所有请求都更快。它主要改善可并行的 Python
 - `runtime-free-threaded`
 
 `tool.uv.conflicts` 保证两个组不能同时解析。Docker 的两个构建 stage 分别固定选择对应组；源码升级、
-启动恢复和插件安装后的宿主恢复由 `app.runtime.dependencies.runtime_dependency_group()` 根据当前
+启动恢复和插件安装后的宿主恢复由 `app.runtime.dependencies.profile.runtime_dependency_group()` 根据当前
 解释器的 `Py_GIL_DISABLED` 构建标志选择 profile。
 
 依赖选择不得改为镜像标签判断，也不得在业务模块中按包名散落 V3/V3t 分支。Dockerfile 只选择运行

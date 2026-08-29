@@ -186,7 +186,10 @@ def test_native_dependency_update_probe_has_narrow_automatic_triggers():
         "app/adapters/external/market.py",
         "app/adapters/system/host.py",
         "app/adapters/system/package.py",
-        "app/runtime/dependencies.py",
+        "app/adapters/system/plugin/package.py",
+        "app/application/plugin/install.py",
+        "app/runtime/dependencies/native.py",
+        "app/runtime/dependencies/profile.py",
         "scripts/probe_native_dependency_update.py",
         ".github/workflows/native-dependency-update.yml",
     ]
@@ -218,6 +221,7 @@ def test_dependency_compatibility_covers_windows_free_threaded_profile():
     assert "MOVIEPILOT_SAFE_MODE" in str(workflow["jobs"]["install"]["steps"])
     expected_paths = {
         "app/__init__.py",
+        "app/runtime/dependencies/profile.py",
         "scripts/verify_runtime_profile.py",
     }
     assert expected_paths <= set(workflow["on"]["pull_request"]["paths"])

@@ -151,6 +151,7 @@ function update_pending_state() {
 
 function sync_project_dependencies_for() {
     local project_dir="$1"
+    local legacy_runtime_selector
     local runtime_group
     local runtime_selector
     local -a uv_cmd=(
@@ -164,9 +165,21 @@ function sync_project_dependencies_for() {
     )
     runtime_group=""
     if grep -Eq '^runtime-(standard|free-threaded)[[:space:]]*=' "${project_dir}/pyproject.toml"; then
-        runtime_selector="${project_dir}/app/runtime/dependencies.py"
-        [ -f "${runtime_selector}" ] || return 1
-        runtime_group="$("${VENV_PATH}/bin/python3" "${runtime_selector}")" || return 1
+        runtime_selector="${project_dir}/app/runtime/dependencies/profile.py"
+        legacy_runtime_selector="${project_dir}/app/runtime/dependencies.py"
+        if [ -f "${runtime_selector}" ]; then
+            runtime_group="$(
+                PYTHONPATH="${project_dir}${PYTHONPATH:+:${PYTHONPATH}}" \
+                    "${VENV_PATH}/bin/python3" -m app.runtime.dependencies.profile
+            )" || return 1
+        elif [ -f "${legacy_runtime_selector}" ]; then
+            runtime_group="$(
+                PYTHONPATH="${project_dir}${PYTHONPATH:+:${PYTHONPATH}}" \
+                    "${VENV_PATH}/bin/python3" "${legacy_runtime_selector}"
+            )" || return 1
+        else
+            return 1
+        fi
         [ -n "${runtime_group}" ] || return 1
     fi
     if [ -n "${runtime_group}" ]; then

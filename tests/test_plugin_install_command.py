@@ -33,7 +33,7 @@ from app.application.plugin.transaction import (
     PluginInstallationPhase,
     PluginInstallationRecord,
 )
-from app.runtime.native_dependencies import NativeDependencyChange
+from app.runtime.dependencies.native import NativeDependencyChange
 from app.schemas.exception import (
     DatabaseWorkerClosedError,
     PersistenceUnavailableError,

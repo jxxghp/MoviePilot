@@ -12,16 +12,16 @@ from typing import Any, Optional, cast
 
 from app.adapters.external.market import PluginHelper as _PluginHelper
 from app.adapters.system.host import SystemUtils
-from app.runtime.execution import (
-    run_in_threadpool_to_completion as _await_thread_operation,
-)
-from app.runtime.log import logger
-from app.runtime.native_dependencies import (
+from app.runtime.dependencies.native import (
     LoadedNativeDependencySnapshot,
     NativeDependencyChange,
     capture_loaded_native_dependencies,
     detect_changed_native_dependencies,
 )
+from app.runtime.execution import (
+    run_in_threadpool_to_completion as _await_thread_operation,
+)
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 

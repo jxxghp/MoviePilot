@@ -11,7 +11,6 @@ from packaging.utils import canonicalize_name
 
 from app.foundation.environment import is_free_threaded_runtime
 
-
 RUNTIME_STANDARD_GROUP = "runtime-standard"
 RUNTIME_FREE_THREADED_GROUP = "runtime-free-threaded"
 
