@@ -54,7 +54,7 @@
 
 G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属于本轮完成范围：
 
-- [ ] `ARCH-001`、`ARCH-101` 至 `ARCH-109`、`ARCH-201` 至 `ARCH-204` 全部完成；`ARCH-110/111` 随 S4 取消且不作为完成依赖。
+- [x] `ARCH-001`、`ARCH-101` 至 `ARCH-109`、`ARCH-201` 至 `ARCH-204` 全部完成；`ARCH-110/111` 随 S4 取消且不作为完成依赖。
 - [x] 宿主依赖图没有未解释 SCC；只允许精确 containment 的 TMDB 移植包例外，成员不能增长。
 - [x] Application/Chain 到具体 Adapter、direct egress，以及本轮迁移资源的并发 owner 例外均精确、可解释、不可增长。
 - [x] Chain/Agent 正式数据入口不再注入无 Session Oper，不再以 `Any`/ORM 作为跨层合同。
@@ -62,7 +62,7 @@ G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属�
 - [x] import、普通对象构造不启动进程资源；资源由 bootstrap/lifecycle 显式创建、发布、关闭和重试收口。
 - [x] S3、S5 各叶子定义的类型、复杂度、覆盖率和并发债务清零，现有全局 ratchet 不发生回退。
 - [x] canonical 主程序无旧实现、重复导出和 legacy import；插件兼容检查基于同步后的官方插件仓 SHA 通过。
-- [ ] 锁定全量测试、Pylint、依赖一致性和最终远端一致性全部通过；本轮未修改依赖。
+- [x] 锁定全量测试、Pylint、依赖一致性和最终远端一致性全部通过；本轮未修改依赖。
 
 ## 3. 阶段与叶子
 
@@ -87,30 +87,30 @@ G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属�
 竞争、失败呈现、at-least-once 和幂等语义全部闭环。
 
 `S1-L1` 是 ARCH-102 的 Transfer E3 父项，当前状态为 **DELIVERED**。`S1-L1.5` 聚合交付
-`S1-L1.1` 至 `S1-L1.4` 的阶段性 `VERIFIED` 结果；真实调用链已完成迁移，旧 fail-open、重复状态和
+`S1-L1.1` 至 `S1-L1.4` 的阶段性结果已由最终精确 head 统一交付；真实调用链已完成迁移，旧 fail-open、重复状态和
 兼容层外旧入口已退出 canonical 主程序，兼容只经统一 Compat/SDK 门面提供。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S1-L1.1 Durable admission | `VERIFIED` | S0 | Application-owned typed Port + DB adapter + migration 落地；先持久 commit 再入队，入队失败保留可恢复记录；宿主不再通过 raw/`Any` `TransferPendingOper` 处理 admission |
-| S1-L1.2 Planning checkpoint | `VERIFIED` | S1-L1.1 | 版本化输入与指纹先持久化；无 legacy provider 时以 `accepted -> planned` CAS 提交完整计划，有 provider 时先提交 `provider_pending`，全部返回空后再以第二次 CAS 提交 `planned`；重放只执行冻结目标，所有文件副作用晚于对应 checkpoint commit |
-| S1-L1.3 Lease 与恢复调度 | `VERIFIED` | S1-L1.2 | claim/lease/heartbeat/attempt 与过期接管规则落地；启动回放和同进程恢复共用唯一调度入口，同一任务同时只有一个 worker owner |
-| S1-L1.4 幂等执行与终态结算 | `VERIFIED` | S1-L1.3 | 文件操作、历史提交和 checkpoint 可重放；唯一 retry owner 生效，未知外部结果进入 `manual_review`，仅完整终态删除 pending |
+| S1-L1.1 Durable admission | `DELIVERED` | S0 | Application-owned typed Port + DB adapter + migration 落地；先持久 commit 再入队，入队失败保留可恢复记录；宿主不再通过 raw/`Any` `TransferPendingOper` 处理 admission |
+| S1-L1.2 Planning checkpoint | `DELIVERED` | S1-L1.1 | 版本化输入与指纹先持久化；无 legacy provider 时以 `accepted -> planned` CAS 提交完整计划，有 provider 时先提交 `provider_pending`，全部返回空后再以第二次 CAS 提交 `planned`；重放只执行冻结目标，所有文件副作用晚于对应 checkpoint commit |
+| S1-L1.3 Lease 与恢复调度 | `DELIVERED` | S1-L1.2 | claim/lease/heartbeat/attempt 与过期接管规则落地；启动回放和同进程恢复共用唯一调度入口，同一任务同时只有一个 worker owner |
+| S1-L1.4 幂等执行与终态结算 | `DELIVERED` | S1-L1.3 | 文件操作、历史提交和 checkpoint 可重放；唯一 retry owner 生效，未知外部结果进入 `manual_review`，仅完整终态删除 pending |
 | S1-L1.5 E3 全链收口 | `DELIVERED` | S1-L1.4 | `e9de149db`、`a2e249f20`：崩溃矩阵、3.0.17 升降级、重复回放和插件 ABI 验收完整；旧 fail-open、重复状态与兼容层外旧入口删除；Unit Tests `33092427327`、Pylint `33092427348` 全绿，ARCH-102 债务归零 |
 | S1-L2 Workflow typed query | `DELIVERED` | S0 | `b4f873654`、`a01a35bcb`：Workflow Application Port 不返回 `Any`/ORM，Session 内投影冻结 DTO，正式调用方全部切换；Unit Tests `33098869736`、Pylint `33098869837` 全绿，覆盖率低水位提升至 Application `78.78%` |
-| S1-L3 Chain/Agent typed data ports | `VERIFIED` | S1-L2 | User、History、Site、Subscription 的冻结 DTO/typed Port 已完成；`ChainDataPorts`/`AgentDataPorts` 与 raw Oper/`Any` factory 清零，旧公开 ABI 仅由 Legacy/Compat 承接 |
+| S1-L3 Chain/Agent typed data ports | `DELIVERED` | S1-L2 | User、History、Site、Subscription 的冻结 DTO/typed Port 已完成；`ChainDataPorts`/`AgentDataPorts` 与 raw Oper/`Any` factory 清零，旧公开 ABI 仅由 Legacy/Compat 承接 |
 | S1-L3.1 Workflow typed execution | `DELIVERED` | S1-L2 | `17d8be2af`、`b33b29876`：Chain 直连类型化事务服务且单次执行只取一个 port；canonical Oper 删除旧 writer/无 Session 写方法，旧 ABI 只在 `_legacy/workflow.py` 与 Compat overlay；Unit Tests `33103913838`、Pylint `33103913935` 全绿，Application 覆盖率低水位提升至 `78.79%` |
-| S1-L3.2 Chain registry/DI | `VERIFIED` | S1-L3.1 | 显式类型化 context，删除 PortProxy、全局数据 getter 与失效的双重注入，构造器注入真实控制调用 |
+| S1-L3.2 Chain registry/DI | `DELIVERED` | S1-L3.1 | 显式类型化 context，删除 PortProxy、全局数据 getter 与失效的双重注入，构造器注入真实控制调用 |
 | S1-L3.2.1 Registry hygiene | `DELIVERED` | S1-L3.1 | `ac7a20132`：删除零消费者 PortProxy/动态转发和 `ChainRuntimeContext.data_ports` 伪注入；Workflow 退出 Chain registry，只保留 Application owner 单一配置入口；Unit Tests `33120205586`、Pylint `33120205581` 全绿 |
 | S1-L3.3 DownloadFailure/MediaServer | `DELIVERED` | S1-L3.2 | `5fb62108a`：两组 raw factory 已替换为冻结 DTO/typed Port；失败冷却在 Session 内投影，媒体库查询只返回标量且每个 upsert/cleanup 独立短事务，远端枚举不持有 Session；旧 Oper 与插件可见 Chain ABI 保持不变；Unit Tests `33127544925`、Pylint `33127544927` 全绿，Application 覆盖率低水位提升至 `78.95%` |
-| S1-L3.4 User | `VERIFIED` | S1-L3.3 | User Chain/Agent/认证改用冻结 typed snapshot；创建、更名、删除与最后一个启用超级管理员保护归并到单 UoW；用户名唯一索引及 UserConfig/PassKey 级联迁移落地，UserConfig 在 commit 后持写锁重载数据库事实源并发布内存快照 |
-| S1-L3.5 History | `VERIFIED` | S1-L3.4 | DownloadHistory 与 TransferHistory 均已迁入深度冻结 DTO、typed query/write/staging Port 与短 Session adapter；请求级删除和 durable 结算各自保持单一 UoW，canonical 调用方不再接收 raw Oper/ORM，旧写入 ABI 只由 SDK Legacy/Compat 提供 |
-| S1-L3.6 Site | `VERIFIED` | S1-L3.5 | Site 配置、用户数据、图标和统计统一为深度冻结 DTO 与 typed query/write/staging Port；请求写入复用 AsyncSession，Chain/Agent 使用独立短事务，canonical 不再接收 raw Oper/ORM，旧插件 ABI 只经 SDK Legacy/Compat |
-| S1-L3.7 Subscription | `VERIFIED` | S1-L3.6 | `application/subscription/contract.py` 统一深度冻结 Snapshot/History/Identity/Patch 与 typed query/write/staging Repository；DB adapter 在 Session 内完成 ORM 投影，Chain/API/Agent/Workflow/interaction 不再消费 raw Oper/ORM/`Any`；旧 `SubscribeOper`/`SubscribeHistoryOper` 只经同一 SDK Legacy/Compat 门面保留插件 ABI |
-| S1-L3.8 Agent/Transfer locator gate | `VERIFIED` | S1-L3.7 | `chain/data.py`、`agentdata.py` 及其 getter 已删除；Chain/Agent 改用显式 typed context，AST 门禁确认 canonical 无 raw getter/Oper/Any；全量有效 `6955 passed, 9 skipped`，Application 覆盖率提升至 `79.83%`，依赖边降至 `7,062` |
+| S1-L3.4 User | `DELIVERED` | S1-L3.3 | User Chain/Agent/认证改用冻结 typed snapshot；创建、更名、删除与最后一个启用超级管理员保护归并到单 UoW；用户名唯一索引及 UserConfig/PassKey 级联迁移落地，UserConfig 在 commit 后持写锁重载数据库事实源并发布内存快照 |
+| S1-L3.5 History | `DELIVERED` | S1-L3.4 | DownloadHistory 与 TransferHistory 均已迁入深度冻结 DTO、typed query/write/staging Port 与短 Session adapter；请求级删除和 durable 结算各自保持单一 UoW，canonical 调用方不再接收 raw Oper/ORM，旧写入 ABI 只由 SDK Legacy/Compat 提供 |
+| S1-L3.6 Site | `DELIVERED` | S1-L3.5 | Site 配置、用户数据、图标和统计统一为深度冻结 DTO 与 typed query/write/staging Port；请求写入复用 AsyncSession，Chain/Agent 使用独立短事务，canonical 不再接收 raw Oper/ORM，旧插件 ABI 只经 SDK Legacy/Compat |
+| S1-L3.7 Subscription | `DELIVERED` | S1-L3.6 | `application/subscription/contract.py` 统一深度冻结 Snapshot/History/Identity/Patch 与 typed query/write/staging Repository；DB adapter 在 Session 内完成 ORM 投影，Chain/API/Agent/Workflow/interaction 不再消费 raw Oper/ORM/`Any`；旧 `SubscribeOper`/`SubscribeHistoryOper` 只经同一 SDK Legacy/Compat 门面保留插件 ABI |
+| S1-L3.8 Agent/Transfer locator gate | `DELIVERED` | S1-L3.7 | `chain/data.py`、`agentdata.py` 及其 getter 已删除；Chain/Agent 改用显式 typed context，AST 门禁确认 canonical 无 raw getter/Oper/Any；全量有效 `6955 passed, 9 skipped`，Application 覆盖率提升至 `79.83%`，依赖边降至 `7,062` |
 | S1-L4 Subscription mutation UoW | `DELIVERED` | S1-L3.8 | `d9e4a973c`：新增、修改、删除、完成均由显式 Session-bound Command/UoW 拥有事务；Servarr 多季新增在一个请求事务内提交全部订阅和 durable intents，任一季失败整批回滚；canonical 自动提交写入口与 locator 已退出，专项联合测试 327 项通过；当前依赖事实为 7,091 条边，远端 `0/0` |
 | S1-L5 站点/规则引用原子清理 | `DELIVERED` | S1-L4 | `d9e4a973c`：站点、规则组及自定义规则改名的 SystemConfig+Subscribe 共享一个 UoW，双事实 CAS 防止过期覆盖，commit 后一次发布配置快照；故障注入、通配重置、并发冲突与事件循环心跳测试通过，远端 `0/0` |
-| S1-L6 Outbox 完成语义 | `VERIFIED` | S0 | 事务内 `OutboxStager` 与独立短事务 `OutboxDispatchStore` 已分离；即时投递与 dispatcher 均先 claim，complete/retry 受 attempt fencing；`PostCommitResult` 区分已提交业务、已完成与 pending effect。事件载荷和宿主 correlation context 携带稳定 event key；旧通知插件保持原签名并承认 at-least-once 重复边界 |
+| S1-L6 Outbox 完成语义 | `DELIVERED` | S0 | 事务内 `OutboxStager` 与独立短事务 `OutboxDispatchStore` 已分离；即时投递与 dispatcher 均先 claim，complete/retry 受 attempt fencing；`PostCommitResult` 区分已提交业务、已完成与 pending effect。事件载荷和宿主 correlation context 携带稳定 event key；旧通知插件保持原签名并承认 at-least-once 重复边界 |
 
 ### S2：进程生命周期、循环与 Adapter 边界
 
@@ -119,13 +119,13 @@ G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属�
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S2-L1 日志/消息资源显式生命周期 | `VERIFIED` | S0 | 配置冷导入和非消息 Chain 构造零新增日志/消息线程；lifespan 显式创建共享 owner，启动失败、关闭超时、重试及连续两轮 lifespan 均收口；Chain 轻量客户端不保留首个回调 |
-| S2-L2 ChainBase 与 SCC 清零 | `VERIFIED` | S0-L2.2 | canonical `app.chain.base` 已落地，包根无 eager/重复导出，宿主包根导入清零，旧符号只经 `app.sdk.chain` 与 Compat 保持同一类身份；完整宿主 SCC 只剩精确 containment 的 TMDB 移植包 |
-| S2-L3 GlobalVar/provider 注册收口 | `VERIFIED` | S2-L1 | 停止、主循环和 WebPush 各有唯一 runtime owner，canonical `global_vars` 消费清零并由 AST 门禁冻结；Workflow、Scheduler、Command、Agent、技能和 LLM provider 均在生命周期显式 configure/reset，冷导入保持未注册；Legacy SDK 门面继续共享同一事实源 |
-| S2-L4 Passkey 缓存边界 | `VERIFIED` | S0-L2.4 | `PasskeyChallengeCache` 由 startup 注入，Application 不识别 Redis；严格 `AtomicCacheBackend.store/consume` 由 Memory/Redis backend 分别实现，challenge 仅能被原子领取一次 |
-| S2-L5 Backup artifact Port | `VERIFIED` | S0-L2.4 | Application-owned `BackupArtifactStore`/factory 覆盖创建、发布、清理、列举、解析、删除和元数据读取；startup 注入唯一 `BackupFiles` 实现，Application 具体 Adapter 直连由 14 降至 13，完整备份调用链 62 项通过 |
-| S2-L6 Application Adapter/DNS 债务清零 | `VERIFIED` | S2-L4,S2-L5 | Application 自有 DNS、图片、消息回环、RSS、站点登录、种子、系统加速 Port，startup 统一注入；13 条具体 Adapter 边及 Application DNS I/O 均归零，未装配和失败回滚语义已验证 |
-| S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `VERIFIED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 均归零；当前 53 条出口事实全部属于精确 SDK/stream/vendor/canonical containment，policy 无 unreviewed、stale 或指纹漂移 |
+| S2-L1 日志/消息资源显式生命周期 | `DELIVERED` | S0 | 配置冷导入和非消息 Chain 构造零新增日志/消息线程；lifespan 显式创建共享 owner，启动失败、关闭超时、重试及连续两轮 lifespan 均收口；Chain 轻量客户端不保留首个回调 |
+| S2-L2 ChainBase 与 SCC 清零 | `DELIVERED` | S0-L2.2 | canonical `app.chain.base` 已落地，包根无 eager/重复导出，宿主包根导入清零，旧符号只经 `app.sdk.chain` 与 Compat 保持同一类身份；完整宿主 SCC 只剩精确 containment 的 TMDB 移植包 |
+| S2-L3 GlobalVar/provider 注册收口 | `DELIVERED` | S2-L1 | 停止、主循环和 WebPush 各有唯一 runtime owner，canonical `global_vars` 消费清零并由 AST 门禁冻结；Workflow、Scheduler、Command、Agent、技能和 LLM provider 均在生命周期显式 configure/reset，冷导入保持未注册；Legacy SDK 门面继续共享同一事实源 |
+| S2-L4 Passkey 缓存边界 | `DELIVERED` | S0-L2.4 | `PasskeyChallengeCache` 由 startup 注入，Application 不识别 Redis；严格 `AtomicCacheBackend.store/consume` 由 Memory/Redis backend 分别实现，challenge 仅能被原子领取一次 |
+| S2-L5 Backup artifact Port | `DELIVERED` | S0-L2.4 | Application-owned `BackupArtifactStore`/factory 覆盖创建、发布、清理、列举、解析、删除和元数据读取；startup 注入唯一 `BackupFiles` 实现，Application 具体 Adapter 直连由 14 降至 13，完整备份调用链 62 项通过 |
+| S2-L6 Application Adapter/DNS 债务清零 | `DELIVERED` | S2-L4,S2-L5 | Application 自有 DNS、图片、消息回环、RSS、站点登录、种子、系统加速 Port，startup 统一注入；13 条具体 Adapter 边及 Application DNS I/O 均归零，未装配和失败回滚语义已验证 |
+| S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `DELIVERED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 均归零；当前 53 条出口事实全部属于精确 SDK/stream/vendor/canonical containment，policy 无 unreviewed、stale 或指纹漂移 |
 
 ### S3：大型编排器职责清零
 
@@ -134,9 +134,9 @@ G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属�
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S3-L1 TransferChain | `VERIFIED` | S1-L1 | 旧 `transfer.py`/`_transfer.py` 单体退役，由 `app.chain.transfer` 同名职责包承接；queue/recovery、plan、execute、settle、history/notify 各有唯一 owner，原 836 行执行方法消失，包根只保留稳定 ABI |
-| S3-L2 SubscribeChain | `VERIFIED` | S1-L5 | 旧 `subscribe.py` 单体退役，由 `app.chain.subscribe` 同名职责包承接；search、match、refresh、completion、reference reconciliation、notification 各有唯一 owner，包根只保留稳定 `SubscribeChain` |
-| S3-L3 Scheduler | `VERIFIED` | S2-L3 | 旧 `app/scheduler.py` 已退役并迁入 `app.scheduler` 同名包；catalog、execution/bridge/progress、`ExecutionRegistry`、reconciler、lifecycle 与 maintenance 已分离，业务 callable 由 startup 经 `SchedulerServices` 注入，包内无参 Chain 构造清零；功能/生命周期 215 项、架构/兼容/文档 189 项通过，官方插件基线语义未变化 |
+| S3-L1 TransferChain | `DELIVERED` | S1-L1 | 旧 `transfer.py`/`_transfer.py` 单体退役，由 `app.chain.transfer` 同名职责包承接；queue/recovery、plan、execute、settle、history/notify 各有唯一 owner，原 836 行执行方法消失，包根只保留稳定 ABI |
+| S3-L2 SubscribeChain | `DELIVERED` | S1-L5 | 旧 `subscribe.py` 单体退役，由 `app.chain.subscribe` 同名职责包承接；search、match、refresh、completion、reference reconciliation、notification 各有唯一 owner，包根只保留稳定 `SubscribeChain` |
+| S3-L3 Scheduler | `DELIVERED` | S2-L3 | 旧 `app/scheduler.py` 已退役并迁入 `app.scheduler` 同名包；catalog、execution/bridge/progress、`ExecutionRegistry`、reconciler、lifecycle 与 maintenance 已分离，业务 callable 由 startup 经 `SchedulerServices` 注入，包内无参 Chain 构造清零；功能/生命周期 215 项、架构/兼容/文档 189 项通过，官方插件基线语义未变化 |
 | S3-L4 DownloadChain | `DELIVERED` | S1-L6 | `7941fd921`：旧单体退役；selection、submission、batch、history、post-processing 等职责进入同名包单一 owner，提交后动作遵守新完成语义；锁定全量 `7162 passed, 9 skipped`，远端 `0/0` |
 | S3-L5 SearchChain | `DELIVERED` | S2-L7 | `1c145d716`：旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、类型/复杂度门禁和锁定全量 `7222 passed, 9 skipped` 通过；远端 `0/0` |
 | S3-L5.1 Runtime dependencies 命名治理 | `DELIVERED` | S3-L5 | `13fba96fd`：平铺模块退役为 `runtime/dependencies/` 同名包；单词子模块、包根无重复导出、旧快照回滚兼容、命名规则与机器门禁均已交付，锁定全量 `7224 passed, 9 skipped`，远端 `0/0` |
@@ -166,13 +166,13 @@ G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属�
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
 | S5-L1 PluginHelper/PluginManager | `DELIVERED` | S2,S3 | `fa40f29df`：市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
-| S5-L2 Agent/LLM provider | `VERIFIED` | S3-L7 | `c000c4fff`、`3a33da0b3`、`dbdf7d058` 已在 `origin/v3` 祖先链：catalog、发现、认证、session、runtime 分离；Manager/Facade 只保留稳定 API，待最终精确 head CI 统一闭环 |
-| S5-L3 Domain projection | `VERIFIED` | S3-L6 | `MediaInfo` canonical 路径和 setter ABI 保留；四来源纯投影归入单词 owner，输入不可变、重复业务语义清零 |
-| S5-L4 Startup composition | `VERIFIED` | S2,S3,S5-L1,S5-L2 | 领域构造全部归单词型 composition owner；HostRuntime/ApiData 同源；显式逆序 reset manifest 在 worker 收敛后撤销 Provider，失败保留完整诊断边界 |
-| S5-L5 Sync/async 重复清零 | `VERIFIED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
-| S5-L6 最终兼容与交付 | `ACTIVE` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、现有类型/覆盖率门禁全部通过并推送；完成后结束本轮战略任务 |
+| S5-L2 Agent/LLM provider | `DELIVERED` | S3-L7 | `c000c4fff`、`3a33da0b3`、`dbdf7d058` 已在 `origin/v3` 祖先链：catalog、发现、认证、session、runtime 分离；Manager/Facade 只保留稳定 API，最终精确 head CI 已闭环 |
+| S5-L3 Domain projection | `DELIVERED` | S3-L6 | `MediaInfo` canonical 路径和 setter ABI 保留；四来源纯投影归入单词 owner，输入不可变、重复业务语义清零 |
+| S5-L4 Startup composition | `DELIVERED` | S2,S3,S5-L1,S5-L2 | 领域构造全部归单词型 composition owner；HostRuntime/ApiData 同源；显式逆序 reset manifest 在 worker 收敛后撤销 Provider，失败保留完整诊断边界 |
+| S5-L5 Sync/async 重复清零 | `DELIVERED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
+| S5-L6 最终兼容与交付 | `DELIVERED` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；官方插件仓、锁定全量、Pylint、架构、类型、覆盖率与远端一致性全部通过，本轮战略任务结束 |
 
-## 4. 叶子合同与当前活动项
+## 4. 叶子合同与交付记录
 
 ### S3-L5.1 Runtime dependencies 命名治理
 
@@ -309,7 +309,7 @@ Helper、Manager 或跨多个领域状态。
 
 ### S5-L3 Domain projection
 
-**Status:** `VERIFIED`
+**Status:** `DELIVERED`
 
 **Outcome**
 
@@ -333,7 +333,7 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 
 ### S5-L4 Startup composition
 
-**Status:** `VERIFIED`
+**Status:** `DELIVERED`
 
 - configuration、database、network、security、agent、server、outbox、subscription 与 Chain 的具体构造
   全部归入单词型 `startup/composition/*` owner；initializer 只消费 composition API。
@@ -347,7 +347,7 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 
 ### S5-L5 Sync/async 重复清零
 
-**Status:** `VERIFIED`
+**Status:** `DELIVERED`
 
 - Search/TVDB、MusicBrainz、TheAudioDB、AcoustID、AniList、Bangumi、ServerReport、Memory、Yema、
   通知、豆瓣、媒体识别、目录源、Indexer、TMDB API 与 Recommend 的双 ABI 共用请求计划、响应投影、
@@ -361,7 +361,7 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 
 ### S5-L6 最终兼容与交付
 
-**Status:** `ACTIVE`
+**Status:** `DELIVERED`
 
 - 22 个不符合规范的 canonical 文件名已归并为单词文件或同名职责包；旧实现文件和主程序包根重复导出
   已删除，宿主调用方直接导入真实 owner，兼容只由精确 SDK/Compat manifest 提供。
@@ -375,13 +375,14 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
   Optional、Domain/Schema DTO 边界；2026-08-30 最终本地锁定全量 `7659 passed, 9 skipped`，
   CI 同构架构测试 `197 passed`，mypy 低水位降至 `9,995`，Ruff、Pylint `10.00/10`、复杂度、
   async、TaskRegistry、service locator、启动性能与依赖快照门禁均通过。
-- 收口提交 `c960a0184` 已推送，但 exact-head Unit Tests `33260357239` 的 mypy ratchet 暴露
-  canonical `SearchChain` 直达 owner 后的类型债务，因此本叶仍为 `ACTIVE`；不得以本地全量或 Pylint
-  成功替代远端失败终态。
+- `4575b11d8` 修复 canonical `SearchChain` 类型转发并更新真实低水位，`c204e2e97` 修正架构测试对
+  Chain owner 的直接导入；两者均已推送并进入 `origin/v3` 祖先链。精确 head `c204e2e97` 的
+  Unit Tests `33269394727` 与 Pylint `33269394716` 全绿，本地与远端 ahead/behind 为 `0/0`，
+  S5-L3 至 S5-L6 的最终远端门禁统一闭环。
 
 ### S1-L1.1 Durable admission
 
-**Status:** `VERIFIED`
+**Status:** `DELIVERED`
 
 **Outcome**
 
@@ -447,7 +448,7 @@ git diff --check
 
 ### S1-L1.2 Planning checkpoint
 
-**Status:** `VERIFIED`
+**Status:** `DELIVERED`
 
 **Outcome**
 
@@ -495,7 +496,7 @@ git diff --check
 
 ### S1-L1.3 Lease 与恢复调度
 
-**Status:** `VERIFIED`
+**Status:** `DELIVERED`
 
 **Outcome**
 

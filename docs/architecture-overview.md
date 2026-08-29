@@ -768,6 +768,9 @@ flowchart LR
 架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
 语义门禁，`Check host architecture snapshot` 再执行快照测试及一次
 `scripts/architecture/baseline.py --check-host`。快照一致只说明事实未漂移，不能替代边界合理性审查。
+本轮最终实现头 `c204e2e97` 的 Unit Tests `33269394727` 与 Pylint `33269394716` 均已成功；
+本地锁定全量为 `7659 passed, 9 skipped`，官方插件兼容基线基于
+`161fce34caa31deb7d82dd50a31f217d5e6784c2` 通过。S0-S3 与 S5 已全部交付，S4 按维护者决定取消。
 
 本总览与本轮架构治理的关系如下：
 

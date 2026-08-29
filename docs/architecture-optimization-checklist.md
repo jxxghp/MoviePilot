@@ -1,6 +1,6 @@
 # MoviePilot V3 架构优化清单
 
-> 审计日期：2026-08-26
+> 审计日期：2026-08-30
 >
 > 首次审计历史快照：`v3@9053db926d20`；历史问题描述用于追溯，当前事实与交付状态以
 > 本文“当前架构画像”、路线图和生成 fixture 为准
@@ -25,9 +25,10 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 4. **治理事实源**：依赖、SCC、Adapter、egress、Event、复杂度、类型、Ruff、生命周期和兼容基线
    已进入机器门禁；`app/plugins/**` 始终排除，插件兼容只由 SDK/Compat 承接。
 
-当前唯一活动项是 S5-L6 的最终交付闭环：`c960a0184` 已推送，但 exact-head Unit Tests 暴露
-canonical `SearchChain` 类型债务。本地修复和低水位更新已经通过，尚需提交推送并取得新精确 head
-远端 CI 全绿，才能把 S5-L3 至 S5-L6 及对应总表项晋升为已交付并结束本轮任务。
+本轮非取消项已经全部交付。canonical `SearchChain` 类型债务与架构测试导入边界分别由
+`4575b11d8`、`c204e2e97` 清零；精确 head `c204e2e97` 的 Unit Tests `33269394727` 与
+Pylint `33269394716` 全绿。S0-S3、S5 及 ARCH-001、ARCH-101 至 ARCH-109、ARCH-201 至
+ARCH-204 均达到实现、验证、提交、推送和远端门禁闭环；S4/ARCH-110/111 按维护者决定保持取消。
 
 ## 2. 范围与证据边界
 
@@ -44,10 +45,10 @@ canonical `SearchChain` 类型债务。本地修复和低水位更新已经通�
 - 检查依赖图、SCC、Module/Event Contract、事务/configuration 基线。
 - 对文件、类、方法长度及类型/覆盖率治理范围做静态统计。
 - 运行架构、复杂度、异步阻塞、TaskRegistry owner、service locator、Ruff 和 mypy ratchet。
-- 运行 9 个架构/质量专项测试文件，共 `158 passed`。
+- 运行 CI 同构架构测试 `197 passed`、锁定全量测试 `7659 passed, 9 skipped`，并以精确 head
+  GitHub Actions 结果复核 Unit Tests 与 Pylint。
 
-本次没有运行完整测试套件，也没有用生产流量做动态剖析。因此，清单中的性能收益和低频并发故障
-仍需在对应实施阶段通过专项故障注入、全量测试和运行指标确认。
+本轮没有用生产流量做动态剖析；性能收益仍需由运行指标持续观察，但不再作为本轮架构交付的未完成项。
 
 ## 3. 当前架构画像
 
@@ -124,19 +125,19 @@ canonical `SearchChain` 类型债务。本地修复和低水位更新已经通�
 | ARCH-001 | P0 | 已交付 | 恢复 mypy ratchet | `5df388719` 已推送，主线既有 CI gate 通过 |
 | ARCH-101 | P1 | 已交付 | 统一规则、总览、基线和语义门禁 | `113355784` 已推送，Unit Tests `33031697902`、Pylint `33031697785` 全绿，远端 `0/0` |
 | ARCH-102 | P1 | 已交付 | 将 Transfer pending 升级为真实 E3 状态机 | `e9de149db`、`a2e249f20` 已推送；Unit Tests `33092427327`、Pylint `33092427348` 全绿，崩溃结果未知时进入人工确认 |
-| ARCH-103 | P1 | 已验证 | 类型化 Chain/Agent 数据 Port 与 DTO | Chain/Agent 正式数据入口已切换到冻结 DTO 与 typed Port，raw Oper/ORM/`Any` 仅留统一 Legacy/Compat |
+| ARCH-103 | P1 | 已交付 | 类型化 Chain/Agent 数据 Port 与 DTO | Chain/Agent 正式数据入口已切换到冻结 DTO 与 typed Port，raw Oper/ORM/`Any` 仅留统一 Legacy/Compat；最终精确 head CI 已闭环 |
 | ARCH-104 | P1 | 已交付 | 收口跨多次写入的业务事务 | 订阅、站点和规则引用变更由单一 UoW/CAS 拥有，失败整体回滚或幂等恢复 |
-| ARCH-105 | P1 | 已验证 | 明确 post-commit 与 Outbox 完成语义 | 业务提交、effect 完成/pending 可区分；stager/store 分离且 claim/settlement 受 fencing，外部 sink 仍承担 at-least-once 幂等边界 |
-| ARCH-106 | P1 | 已验证 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志、消息、任务、模块与插件资源由 lifecycle 显式创建、逆序关闭和失败回滚 |
-| ARCH-107 | P1 | 已验证 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
-| ARCH-108 | P1 | 已验证 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Application/Chain 具体 Adapter 与普通 direct HTTP 债务清零，剩余出口均为精确政策例外 |
-| ARCH-109 | P1 | 已验证 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler、Download、Search、Media 与 Agent/System/Plugin API 均已按 owner 收敛；部分早期叶只保留阶段性验证记录 |
+| ARCH-105 | P1 | 已交付 | 明确 post-commit 与 Outbox 完成语义 | 业务提交、effect 完成/pending 可区分；stager/store 分离且 claim/settlement 受 fencing，外部 sink 仍承担 at-least-once 幂等边界 |
+| ARCH-106 | P1 | 已交付 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志、消息、任务、模块与插件资源由 lifecycle 显式创建、逆序关闭和失败回滚 |
+| ARCH-107 | P1 | 已交付 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
+| ARCH-108 | P1 | 已交付 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Application/Chain 具体 Adapter 与普通 direct HTTP 债务清零，剩余出口均为精确政策例外 |
+| ARCH-109 | P1 | 已交付 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler、Download、Search、Media 与 Agent/System/Plugin API 均已按 owner 收敛；最终精确 head CI 已闭环 |
 | ARCH-110 | P1 | 已取消 | Module/Event Contract 分可信级执行 | 随 S4 取消，不属于本轮完成依赖；现有宿主严格合同和插件兼容诊断继续保留 |
 | ARCH-111 | P1 | 已取消 | 升级复杂度、类型、覆盖率和并发原语门禁 | 随 S4 取消，不扩张为全宿主质量债务清零；保留现有 ratchet |
 | ARCH-201 | P2 | 已交付 | 收窄 PluginHelper/PluginManager 与 SDK 暴露面 | `fa40f29df` 已推送；ABI Facade 只委托，构造和具体服务归组合根 |
-| ARCH-202 | P2 | 已验证 | 拆分 Agent/LLM provider 职责 | provider catalog、发现、认证、会话和运行时分离，Facade 只保留稳定 API；实现提交已在远端，待最终精确 head CI 统一闭环 |
-| ARCH-203 | P2 | 已验证 | 拆分 Domain 投影与 Startup 高扇出目录 | Domain 四来源投影与 Startup 单词型 composition owner 均已完成，等待最终远端门禁闭环 |
-| ARCH-204 | P2 | 已验证 | 合并重复 sync/async 核心逻辑并转换存量测试风格 | 双 ABI 只保留 I/O 外壳，共享解析、校验、映射和状态决策，等待最终远端门禁闭环 |
+| ARCH-202 | P2 | 已交付 | 拆分 Agent/LLM provider 职责 | provider catalog、发现、认证、会话和运行时分离，Facade 只保留稳定 API；最终精确 head CI 已闭环 |
+| ARCH-203 | P2 | 已交付 | 拆分 Domain 投影与 Startup 高扇出目录 | Domain 四来源投影与 Startup 单词型 composition owner 均已完成；最终精确 head CI 已闭环 |
+| ARCH-204 | P2 | 已交付 | 合并重复 sync/async 核心逻辑并转换存量测试风格 | 双 ABI 只保留 I/O 外壳，共享解析、校验、映射和状态决策；最终精确 head CI 已闭环 |
 
 ## 5. P0：先恢复主线
 
@@ -202,16 +203,16 @@ canonical `SearchChain` 类型债务。本地修复和低水位更新已经通�
 
 **分叶状态**
 
-- `S1-L1.1 Durable admission`：`VERIFIED`。已交付 persist-before-enqueue、Application-owned typed Port、
+- `S1-L1.1 Durable admission`：`DELIVERED`。已交付 persist-before-enqueue、Application-owned typed Port、
   DB adapter 与可逆 migration，宿主退出 raw/`Any` `TransferPendingOper` admission 路径。
-- `S1-L1.2 Planning checkpoint`：`VERIFIED`。版本化请求与指纹先准入；无 legacy provider 时通过
+- `S1-L1.2 Planning checkpoint`：`DELIVERED`。版本化请求与指纹先准入；无 legacy provider 时通过
   `accepted -> planned` CAS 提交完整目标和有序操作，有 provider 时先提交 `provider_pending`，全部
   返回空后再以第二次 CAS 提交 `planned`；planned 重放只消费冻结上下文和目标。
-- `S1-L1.3 Lease 与恢复调度`：`VERIFIED`。已交付 token fencing 的
+- `S1-L1.3 Lease 与恢复调度`：`DELIVERED`。已交付 token fencing 的
   claim/lease/heartbeat/attempt、过期接管、固定退避的唯一恢复入口和有界关闭 owner。
-- `S1-L1.4 幂等执行与终态结算`：`VERIFIED`。已交付稳定 operation ledger、严格结果探测、
+- `S1-L1.4 幂等执行与终态结算`：`DELIVERED`。已交付稳定 operation ledger、严格结果探测、
   唯一 retry owner、`manual_review` 人工判定和 history/pending/outbox 同 UoW 终态结算。
-- `S1-L1.5 E3 全链收口`：`VERIFIED`。崩溃矩阵、3.0.17 升降级、重复回放、稳定计划身份、
+- `S1-L1.5 E3 全链收口`：`DELIVERED`。崩溃矩阵、3.0.17 升降级、重复回放、稳定计划身份、
   outcome/settlement 一致性和插件 ABI 已完成验收；旧 fail-open、重复状态与兼容层外旧入口已删除。
 
 **问题与证据**
@@ -600,7 +601,9 @@ LunaTV 三个私有补丁点和 HRBlocker 八个公开补丁点。主程序无 `
 Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线均通过，官方 V3 插件聚焦
 验证 `130 passed`。
 
-### ARCH-110 分可信级执行 Module/Event Contract
+### ARCH-110 分可信级执行 Module/Event Contract（已取消）
+
+本项随 S4 于 2026-08-28 取消。以下内容只保留为历史提案，未勾选项不是本轮未完成债务。
 
 **问题与证据**
 
@@ -608,7 +611,7 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 - `app/runtime/extensions/module/dispatcher.py:463-494` 对签名和结果偏差只告警并继续透传。
 - Event 53 个 payload model 已覆盖，但当前全部为 diagnostic enforcement，输出合同也很少。
 
-**目标与步骤**
+**原计划（已取消）**
 
 - [ ] 按“宿主内置 provider / 官方插件 / 第三方未知插件”划分可信级。
 - [ ] 下载、存储、消息等高风险宿主能力使用真实 Protocol/DTO，并在 admission 阶段 fail fast。
@@ -625,9 +628,11 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 .venv/bin/python scripts/architecture/baseline.py --check-host --diagnostics
 ```
 
-### ARCH-111 升级质量与架构趋势门禁
+### ARCH-111 升级质量与架构趋势门禁（已取消）
 
-**当前盲区**
+本项随 S4 于 2026-08-28 取消。现有 ratchet 继续生效，但以下扩张项不纳入本轮执行或完成计数。
+
+**取消时记录的盲区**
 
 - 复杂度脚本只检查 API、Application、Chain 的公共入口；私有长方法、类/文件规模和圈复杂度不受控。
 - strict mypy 仅 41 个文件，高风险 lifecycle、Scheduler、Agent、Plugin Manager 多数不在 frontier。
@@ -635,7 +640,7 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 - Task owner gate 尚未盘点原生并发原语；Event producer/consumer 已纳入统一事实源和人工 policy。
 - Ruff 仅是有限规则集的历史低水位，不代表整体风格/正确性无债务。
 
-**目标与步骤**
+**原计划（已取消）**
 
 - [ ] complexity v2 增加私有方法、class/file 行数和圈复杂度；先记录低水位，再只降不增。
 - [ ] strict mypy frontier 按 `runtime extensions -> startup -> workflow/scheduler -> messaging -> Agent`
@@ -735,8 +740,8 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 ### 阶段 4：取消记录与 S5 收口
 
 1. ARCH-110/111 随 S4 于 2026-08-28 取消，不再作为本轮完成依赖。
-2. ARCH-201/202 已完成 Facade 与 Provider 实现，ARCH-203/204 的 Domain/Startup 与 sync/async
-   重复治理已通过本地验证；最终交付状态由 S5-L6 的精确 head 远端门禁统一闭环。
+2. ARCH-201 至 ARCH-204 的 Facade/Provider、Domain/Startup 与 sync/async 重复治理均已交付；
+   S5-L6 已通过精确 head `c204e2e97` 的 Unit Tests `33269394727` 与 Pylint `33269394716` 完成闭环。
 3. 保留现有 strict frontier、复杂度、mypy、Ruff、覆盖率和并发 ratchet，不借取消阶段接受回退。
 
 **退出条件**：S5 全部叶子通过现有门禁与官方插件兼容验证，canonical 无旧实现和重复导出。
