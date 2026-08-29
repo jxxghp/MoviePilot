@@ -144,9 +144,13 @@ startup order and must not recreate their concrete construction.
 `startup/composition/security.py` owns authentication, user lookup, PassKey and Web
 access provider assembly; `initializers/modules.py` only invokes that owner and places
 its returned `AuthenticationRuntime` into the host runtime.
-`startup/composition/network.py`
-owns concrete network-test, image, internal-address and message-ingress Adapter wiring
+`startup/composition/network.py` owns concrete network-test, image, internal-address
+and message-ingress Adapter wiring
 while retaining lazy RuntimeSettings reads. Initializers call these owners in
+startup order and must not recreate their concrete construction.
+`startup/composition/outbox.py`
+owns durable handler validation, lazy event/notification replay binding and the
+short-transaction dispatcher factory. Initializers call this owner in
 startup order and must not recreate their concrete construction. Database runtime
 ownership rejects overlapping lifespans; after a successful worker shutdown, the
 configuration/database composition owners must revoke every provider they published
@@ -686,8 +690,9 @@ Durable post-commit side effects have a separate boundary:
   caller's business transaction, from `OutboxDispatchStore`, whose claim,
   complete and retry operations own independent short transactions.
 - `app/db/adapters/outbox.py` implements both roles with SQLAlchemy;
-  `app/startup/composition/subscription.py` and the other composition modules
-  inject the stager, dispatch-store factory, UoW and handlers.
+  `app/startup/composition/subscription.py` injects transaction-scoped stagers and
+  stores, while `app/startup/composition/outbox.py` owns the validated replay handlers
+  and dispatcher factory.
 - Immediate request-thread delivery and the dispatcher both claim before
   calling a handler. Lease acquisition is atomic, while complete/retry is fenced
   by the claimed attempt so an expired owner cannot settle a newer claim.

@@ -822,6 +822,32 @@ def test_modules_initializer_delegates_network_composition():
         assert detail in network_source
 
 
+def test_modules_initializer_delegates_outbox_composition():
+    """模块初始化器只发布 Outbox dispatcher，不再内联 handler 与存储装配。"""
+    initializer_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    composition_source = (
+        APP_ROOT / "startup" / "composition" / "outbox.py"
+    ).read_text(encoding="utf-8")
+    package_source = (
+        APP_ROOT / "startup" / "composition" / "__init__.py"
+    ).read_text(encoding="utf-8")
+
+    assert "configure_outbox_dispatcher(build_outbox_dispatcher)" in initializer_source
+    for retired_name in ("_build_outbox_handlers", "_build_outbox_dispatcher"):
+        assert retired_name not in initializer_source
+    for detail in (
+        "def build_outbox_handlers()",
+        "def build_outbox_dispatcher()",
+        "validate_durable_event_handlers(handlers)",
+        "SqlAlchemyOutboxDispatchStore(SessionFactory)",
+    ):
+        assert detail in composition_source
+    assert "build_outbox_handlers" not in package_source
+    assert "build_outbox_dispatcher" not in package_source
+
+
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
     """工作流旧写入口只能存在于 SDK Legacy facade。"""
     oper_path = APP_ROOT / "db" / "oper" / "workflow.py"

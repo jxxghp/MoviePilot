@@ -334,7 +334,7 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
     """真实 startup handler 等待执行边界，并以同一键诚实重放。"""
     from app.command import CommandChain
     from app.runtime.events import EventManager
-    from app.startup.initializers.modules import _build_outbox_handlers
+    from app.startup.composition.outbox import build_outbox_handlers
 
     calls = []
     if handler_kind == "event":
@@ -353,7 +353,7 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
             "post_message_strict",
             lambda _self, _message, *, event_key: calls.append(event_key),
         )
-    handlers = _build_outbox_handlers()
+    handlers = build_outbox_handlers()
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -377,6 +377,29 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
     )
     assert dispatcher.dispatch_one() is True
     assert calls == [event_key, event_key]
+
+
+def test_outbox_handler_builder_keeps_runtime_owners_lazy(monkeypatch) -> None:
+    """构造 handler 映射时先校验完整性，且不提前实例化运行 owner。"""
+    import app.startup.composition.outbox as outbox_composition
+
+    command_chain = MagicMock(side_effect=AssertionError("CommandChain 不应提前实例化"))
+    event_manager = MagicMock(side_effect=AssertionError("EventManager 不应提前实例化"))
+    validate_handlers = MagicMock()
+    monkeypatch.setattr(outbox_composition, "CommandChain", command_chain)
+    monkeypatch.setattr(outbox_composition, "EventManager", event_manager)
+    monkeypatch.setattr(
+        outbox_composition,
+        "validate_durable_event_handlers",
+        validate_handlers,
+    )
+
+    handlers = outbox_composition.build_outbox_handlers()
+
+    assert handlers
+    validate_handlers.assert_called_once_with(handlers)
+    command_chain.assert_not_called()
+    event_manager.assert_not_called()
 
 
 def test_strict_notification_preserves_legacy_provider_signature(monkeypatch) -> None:

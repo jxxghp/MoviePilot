@@ -67,6 +67,7 @@ RUNTIME_FACADE_POLICIES = (
         dependency="app.command",
         exact_consumers=frozenset(
             {
+                "app.startup.composition.outbox",
                 "app.startup.initializers.command",
                 "app.startup.initializers.modules",
             }

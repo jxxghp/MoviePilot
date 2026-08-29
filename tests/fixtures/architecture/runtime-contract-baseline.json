@@ -1736,15 +1736,15 @@
       "EventType.AudioTransferComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "93c221b3f8700f899d9613ba205f36d521c76ed5681048c0a754bcb73e6749bf",
-          "e4ecf33c77ee608912dc20e6840caf13f01a6ad250867a7766e92fef4da17b4b"
+          "75aa6118952ed941e778b0347b281cf07cff05858b658c811fdbead76a23341f",
+          "93c221b3f8700f899d9613ba205f36d521c76ed5681048c0a754bcb73e6749bf"
         ]
       },
       "EventType.AudioTransferFailed": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "174dd87157d87d94e5656f4251b33005914e52e2c5fa1b53342188a4641b3225",
-          "e024ae64f7aa0245c005d1173d203a4aaf8aedaa18fb38a3fbe63776c96f160b"
+          "57da97424ec6e2f81255d39105e0e4047226b47c05ecd5e9ab64b1164e79de53"
         ]
       },
       "EventType.CommandExcute": {
@@ -1775,9 +1775,9 @@
       "EventType.DownloadAdded": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
+          "35375727017385323cceeeb4db950615a604b51c6a4783171cc506256f3002d6",
           "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554",
-          "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554",
-          "912f9d1ffc673cab43f157ea3674122c84591b695761275cee39cc74ced7011d"
+          "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554"
         ]
       },
       "EventType.DownloadDeleted": {
@@ -1881,15 +1881,15 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "019a094d2d0fd4fa84076bfab9263c2bf33ece199f4d5a9a5b57f68e07c4a9c0",
-          "1398d8796771fb8848bf67228b6de8a9d7047f681bab989eefe845f58ad5184c",
-          "97717bff58a8806d2696054f1a1c9865954d2f0218dab51fb27027f0d560fbea"
+          "97717bff58a8806d2696054f1a1c9865954d2f0218dab51fb27027f0d560fbea",
+          "cc7bd553745df756f0a69b1cf42852ab166c9fc6a58a546998b2956a0b5d7305"
         ]
       },
       "EventType.SubscribeComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "eba9652f1bf1fab63b1ab459a1636e2167e03142099cfd2dd665dab6c88989f9",
-          "ee17c108da3b9e5515176692af946dbff2d54372dc487c1a1880bc8f495dad7b"
+          "c86fcb5d64d2367e007f01ecdccf01de80f3e0a0dae625c77246d698e1ca9d4b",
+          "eba9652f1bf1fab63b1ab459a1636e2167e03142099cfd2dd665dab6c88989f9"
         ]
       },
       "EventType.SubscribeDeleted": {
@@ -1897,15 +1897,15 @@
         "producer_fingerprints": [
           "7ee0ba0bfdba520a389d45c33d361120a0d710c3ea37b1e03532dd7364a52d47",
           "a08051c5da0861d7198f3f5aa1b4ce6ed054abfbeab35e06ecb64dea71ba8c5e",
-          "a2252a9f53ea9382e0a9a05564a04440cf1ba9fdf6a8e2fa6c426a20b473bf3b",
+          "b0e58582f05faa7b8385a100589bcd724072a41cd3523615d7ac927e3272c7f8",
           "ea7538a3f2ad3ddbf8de6264e0525f065eec338d2ee003a501b725e3194d490a"
         ]
       },
       "EventType.SubscribeModified": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "3561ca8eed8a851c88889ded56d3188b89ad8c7d6c833d3aca24c5c8e9bbc22b",
           "89165b03827d9801a260dd54dd03e77f903795b8872bd043a79e8283181c786f",
+          "b71e46714bd811b9c1703fecb112d0de83dd12e89ee70529702817958a9759a8",
           "ca9bf55c3886cd02fa31feade91fe333377fa8bf7bc9cc2d1bbdfb45214acfa3",
           "dbd5afd0aa1c2b449880ad3853e7e988dc29d799d40d2309780cf133a7e3c4a5"
         ]
@@ -1913,7 +1913,7 @@
       "EventType.SubtitleTransferComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "814318ca189db145cccf38f4ae2fb972988af23e13c39d1c3b267bd9fa5bc976",
+          "b2bacfe7cc27d289b4744dc2f7b904fb8f20368e79c60adab6988188cc011eea",
           "f8ed3d63cdd6f007dd4f281c1e493b5fa5ffd7dc1591576a0224618315531fa7"
         ]
       },
@@ -1921,7 +1921,7 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "45f2e225d176c9d7d49feedd0e9b3e7510760a286e89ec26b57d8173b6d4c002",
-          "f2fa83463c2e723b08aef8c1ca4c3286fa18a7e1caffa3a24a656d728d47db0d"
+          "7acfc1c2dd0ca50b8f9b72d55de769507e74851fb88381d66298f649078f5d9b"
         ]
       },
       "EventType.SystemError": {
@@ -1936,15 +1936,15 @@
       "EventType.TransferComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "b9c576056cd1bea0a768eea4e927144e393e194c44a0f0b6f3fe1a86fe91ddd5",
-          "f9e1d110de9e4a9c8490f09e5f3b7312b293f51ad95180f8fe7af15607c12307"
+          "6b3cb59b259d9ca82a52fe8376504ad848351c433d4427efd9b496874acdb1b2",
+          "b9c576056cd1bea0a768eea4e927144e393e194c44a0f0b6f3fe1a86fe91ddd5"
         ]
       },
       "EventType.TransferFailed": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "8ac0a3e2e96daa1e00ed16560f57bbe1ad55263753b46d1f8f196c69d80e978f",
-          "be58b678d9a1f8c403e535c1836d2c509c7d34b664253cfe54da276e0d8c889c"
+          "d0fb23c410c6fda68c9e676f107666e31e0828886f5d9aeb4f5d3dcd9fc2bda7"
         ]
       },
       "EventType.UserMessage": {
@@ -2887,6 +2887,138 @@
         "receiver_kind": "canonical_singleton"
       },
       {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.DownloadAdded"
+        ],
+        "fingerprint": "35375727017385323cceeeb4db950615a604b51c6a4783171cc506256f3002d6",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.AudioTransferFailed"
+        ],
+        "fingerprint": "57da97424ec6e2f81255d39105e0e4047226b47c05ecd5e9ab64b1164e79de53",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.TransferComplete"
+        ],
+        "fingerprint": "6b3cb59b259d9ca82a52fe8376504ad848351c433d4427efd9b496874acdb1b2",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.AudioTransferComplete"
+        ],
+        "fingerprint": "75aa6118952ed941e778b0347b281cf07cff05858b658c811fdbead76a23341f",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.SubtitleTransferFailed"
+        ],
+        "fingerprint": "7acfc1c2dd0ca50b8f9b72d55de769507e74851fb88381d66298f649078f5d9b",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.SubscribeDeleted"
+        ],
+        "fingerprint": "b0e58582f05faa7b8385a100589bcd724072a41cd3523615d7ac927e3272c7f8",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.SubtitleTransferComplete"
+        ],
+        "fingerprint": "b2bacfe7cc27d289b4744dc2f7b904fb8f20368e79c60adab6988188cc011eea",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.SubscribeModified"
+        ],
+        "fingerprint": "b71e46714bd811b9c1703fecb112d0de83dd12e89ee70529702817958a9759a8",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.SubscribeComplete"
+        ],
+        "fingerprint": "c86fcb5d64d2367e007f01ecdccf01de80f3e0a0dae625c77246d698e1ca9d4b",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.SubscribeAdded"
+        ],
+        "fingerprint": "cc7bd553745df756f0a69b1cf42852ab166c9fc6a58a546998b2956a0b5d7305",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
+        "caller": "app.startup.composition.outbox",
+        "dynamic": false,
+        "events": [
+          "EventType.TransferFailed"
+        ],
+        "fingerprint": "d0fb23c410c6fda68c9e676f107666e31e0828886f5d9aeb4f5d3dcd9fc2bda7",
+        "invalid": false,
+        "method": "send_event_strict",
+        "qualname": "build_outbox_handlers",
+        "receiver_kind": "constructed_manager"
+      },
+      {
         "caller": "app.startup.composition.subscription",
         "dynamic": false,
         "events": [
@@ -2945,138 +3077,6 @@
         "method": "send_event",
         "qualname": "_publish_modified_sync",
         "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.SubscribeAdded"
-        ],
-        "fingerprint": "1398d8796771fb8848bf67228b6de8a9d7047f681bab989eefe845f58ad5184c",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.SubscribeModified"
-        ],
-        "fingerprint": "3561ca8eed8a851c88889ded56d3188b89ad8c7d6c833d3aca24c5c8e9bbc22b",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.SubtitleTransferComplete"
-        ],
-        "fingerprint": "814318ca189db145cccf38f4ae2fb972988af23e13c39d1c3b267bd9fa5bc976",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.DownloadAdded"
-        ],
-        "fingerprint": "912f9d1ffc673cab43f157ea3674122c84591b695761275cee39cc74ced7011d",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.SubscribeDeleted"
-        ],
-        "fingerprint": "a2252a9f53ea9382e0a9a05564a04440cf1ba9fdf6a8e2fa6c426a20b473bf3b",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.TransferFailed"
-        ],
-        "fingerprint": "be58b678d9a1f8c403e535c1836d2c509c7d34b664253cfe54da276e0d8c889c",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.AudioTransferFailed"
-        ],
-        "fingerprint": "e024ae64f7aa0245c005d1173d203a4aaf8aedaa18fb38a3fbe63776c96f160b",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.AudioTransferComplete"
-        ],
-        "fingerprint": "e4ecf33c77ee608912dc20e6840caf13f01a6ad250867a7766e92fef4da17b4b",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.SubscribeComplete"
-        ],
-        "fingerprint": "ee17c108da3b9e5515176692af946dbff2d54372dc487c1a1880bc8f495dad7b",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.SubtitleTransferFailed"
-        ],
-        "fingerprint": "f2fa83463c2e723b08aef8c1ca4c3286fa18a7e1caffa3a24a656d728d47db0d",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.initializers.modules",
-        "dynamic": false,
-        "events": [
-          "EventType.TransferComplete"
-        ],
-        "fingerprint": "f9e1d110de9e4a9c8490f09e5f3b7312b293f51ad95180f8fe7af15607c12307",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "_build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
       },
       {
         "caller": "app.workflow",
