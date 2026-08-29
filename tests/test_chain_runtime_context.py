@@ -11,6 +11,7 @@ from app.application.chain.context import ChainRuntimeContext
 from app.application.configuration import ChainRuntimeConfig
 from app.chain.base import ChainBase
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.startup.composition.runtime import RuntimeDependencies
 
 
 def _context() -> ChainRuntimeContext:
@@ -125,15 +126,19 @@ def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) ->
     context = _context()
     builder = Mock(return_value=context)
     register = Mock()
-    dependencies = {
-        "message_helper": Mock(),
-        "message_queue": Mock(),
+    runtime_dependencies = RuntimeDependencies(
+        download_history=Mock(),
+        transfer_history=Mock(),
+        site=Mock(),
+        subscription=Mock(),
+        subscription_history=Mock(),
+        transfer_execution=Mock(),
+        message_helper=Mock(),
+        message_queue=Mock(),
+    )
+    inputs = {
+        "dependencies": runtime_dependencies,
         "system_config": Mock(),
-        "site": Mock(),
-        "subscription": Mock(),
-        "download_history": Mock(),
-        "transfer_history": Mock(),
-        "transfer_execution": Mock(),
         "configuration": Mock(),
     }
     monkeypatch.setattr(chain_composition, "build_chain_runtime_context", builder)
@@ -143,12 +148,12 @@ def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) ->
         register,
     )
 
-    chain_composition.configure_chain_runtime_context(**dependencies)
+    chain_composition.configure_chain_runtime_context(**inputs)
 
     builder.assert_not_called()
     provider = register.call_args.args[0]
     assert provider() is context
-    builder.assert_called_once_with(**dependencies)
+    builder.assert_called_once_with(**inputs)
 
 
 def test_chain_composition_keeps_legacy_transfer_import_lazy(monkeypatch) -> None:

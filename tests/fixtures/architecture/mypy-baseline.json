@@ -3276,12 +3276,12 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 5,
+    "arg-type": 2,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
-    "no-untyped-call": 15,
+    "no-untyped-call": 14,
     "no-untyped-def": 6,
     "return-value": 2
   },

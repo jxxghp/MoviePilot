@@ -286,7 +286,7 @@ async def test_modules_startup_failure_stops_database_runtime(monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_modules_startup_failure_preserves_original_error_when_cleanup_fails(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """数据库任务清理失败时仍向上层保留原始启动异常。"""
     startup_error = RuntimeError("startup failed")
@@ -343,7 +343,7 @@ async def test_database_worker_owner_is_retained_when_shutdown_fails(monkeypatch
 
 @pytest.mark.asyncio
 async def test_database_runtime_rejects_parallel_start_and_allows_next_lifespan(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """数据库 runtime 在启动中拒绝重入，成功关闭后才允许新 lifespan。"""
     started = asyncio.Event()
@@ -401,7 +401,7 @@ async def test_database_runtime_rejects_parallel_start_and_allows_next_lifespan(
 
 @pytest.mark.asyncio
 async def test_database_runtime_start_failure_does_not_publish_transaction_runners(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """Worker 启动失败时不得留下可调用的无会话事务入口。"""
     published = []
@@ -461,7 +461,6 @@ async def test_database_service_reset_revokes_transaction_runners() -> None:
 @pytest.mark.asyncio
 async def test_startup_failure_revokes_published_database_services(monkeypatch) -> None:
     """后续启动阶段失败并关闭 worker 后不得留下已失效的全局服务。"""
-    from app.api.data import get_api_data_ports
     from app.application.configuration import get_configured_system_config
     from app.application.plugin.transaction import get_plugin_persistence
     from app.application.query import get_configured_data_query_service
@@ -475,7 +474,6 @@ async def test_startup_failure_revokes_published_database_services(monkeypatch) 
         settings=SimpleNamespace(update=lambda _key, _value: (True, "")),
     )
     database = SimpleNamespace(
-        api_data=object(),
         data_query=object(),
         plugin_persistence=object(),
         workflow_query=object(),
@@ -503,7 +501,6 @@ async def test_startup_failure_revokes_published_database_services(monkeypatch) 
         get_configured_data_query_service,
         get_plugin_persistence,
         get_configured_workflow_query,
-        get_api_data_ports,
     ):
         with pytest.raises(RuntimeError):
             getter()

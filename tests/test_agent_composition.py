@@ -8,6 +8,7 @@ import sys
 from types import SimpleNamespace
 
 from app.startup.composition import agent as agent_composition
+from app.startup.composition.runtime import RuntimeDependencies
 
 
 class _StartedWorker:
@@ -34,15 +35,20 @@ def _compose() -> tuple[agent_composition.AgentComposition, _StartedWorker]:
         transaction=SimpleNamespace(sync=lambda operation: operation(object())),
     )
     system_config = SimpleNamespace(publish_many=lambda _values: None)
-    composition = agent_composition.compose_agent(
-        runtime=runtime,
-        system_config=system_config,
+    dependencies = RuntimeDependencies(
+        download_history=object(),
+        transfer_history=object(),
         site=object(),
         subscription=object(),
         subscription_history=object(),
-        transfer_history=object(),
         transfer_execution=object(),
-        download_history=object(),
+        message_helper=object(),
+        message_queue=object(),
+    )
+    composition = agent_composition.compose_agent(
+        runtime=runtime,
+        system_config=system_config,
+        dependencies=dependencies,
     )
     return composition, worker
 
@@ -52,7 +58,7 @@ def test_agent_composition_reuses_shared_objects_and_started_worker() -> None:
     composition, worker = _compose()
 
     assert composition.data.tasks is composition.tasks
-    assert composition.chat.persistence is composition.data.chat_persistence
+    assert composition.persistence is composition.data.chat_persistence
     assert composition.data.chat_persistence._async_executor is worker
     assert composition.data.chat_persistence._capacity == 17
     assert composition.execution._async_executor is worker

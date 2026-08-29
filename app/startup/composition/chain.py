@@ -12,17 +12,11 @@ from app.application.image import (
     configure_wallpaper_providers,
     reset_wallpaper_providers,
 )
-from app.application.messaging.message import MessageHelper, MessageQueueManager
-from app.application.transfer.execution import TransferExecutionRepository
 from app.chain.mediaserver import MediaServerChain
 from app.chain.tmdb import TmdbChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
-from app.db.adapters.history.download import TransactionalDownloadHistoryRepository
-from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
 from app.db.adapters.mediaserver import TransactionalMediaServerRepository
-from app.db.adapters.site import TransactionalSiteRepository
-from app.db.adapters.subscription import TransactionalSubscriptionRepository
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.oper.message import MessageOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -34,6 +28,7 @@ from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.stop import runtime_stop_state
 from app.startup.composition.database import build_transactional_user_repository
+from app.startup.composition.runtime import RuntimeDependencies
 from app.startup.composition.subscription import (
     delete_subscribe_scope,
     rule_group_mutation_scope,
@@ -56,14 +51,8 @@ def execute_legacy_transfer_command(**kwargs: Any) -> Any:
 
 def build_chain_runtime_context(
     *,
-    message_helper: MessageHelper,
-    message_queue: MessageQueueManager,
+    dependencies: RuntimeDependencies,
     system_config: SystemConfigOper,
-    site: TransactionalSiteRepository,
-    subscription: TransactionalSubscriptionRepository,
-    download_history: TransactionalDownloadHistoryRepository,
-    transfer_history: TransactionalTransferHistoryRepository,
-    transfer_execution: TransferExecutionRepository,
     configuration: Callable[[], ChainRuntimeConfig],
 ) -> ChainRuntimeContext:
     """创建 Chain 无参兼容入口共享的运行时对象与数据端口。"""
@@ -72,13 +61,13 @@ def build_chain_runtime_context(
         plugin_manager=PluginManager(),
         event_manager=_event_manager_factory(),
         message_oper=MessageOper(),
-        message_helper=message_helper,
+        message_helper=dependencies.message_helper,
         file_cache=FileCache(),
         async_file_cache=AsyncFileCache(),
-        message_queue=message_queue,
+        message_queue=dependencies.message_queue,
         module_dispatcher_factory=ModuleInvocationDispatcher,
-        site_repository=site,
-        subscription_repository=subscription,
+        site_repository=dependencies.site,
+        subscription_repository=dependencies.subscription,
         subscription_mutation_scope=subscription_mutation_scope,
         sync_subscription_mutation_scope=sync_subscription_mutation_scope,
         subscription_delete_scope=delete_subscribe_scope,
@@ -92,10 +81,10 @@ def build_chain_runtime_context(
             site_reference_mutation_scope,
             system_config.publish_many,
         ),
-        download_history_repository=download_history,
-        transfer_history_repository=transfer_history,
+        download_history_repository=dependencies.download_history,
+        transfer_history_repository=dependencies.transfer_history,
         transfer_admission_repository=TransactionalTransferAdmissionRepository(SessionFactory),
-        transfer_execution_repository=transfer_execution,
+        transfer_execution_repository=dependencies.transfer_execution,
         media_server_repository=TransactionalMediaServerRepository(SessionFactory),
         download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
         user_repository=build_transactional_user_repository(),
@@ -118,27 +107,15 @@ def configure_wallpaper_services() -> None:
 
 def configure_chain_runtime_context(
     *,
-    message_helper: MessageHelper,
-    message_queue: MessageQueueManager,
+    dependencies: RuntimeDependencies,
     system_config: SystemConfigOper,
-    site: TransactionalSiteRepository,
-    subscription: TransactionalSubscriptionRepository,
-    download_history: TransactionalDownloadHistoryRepository,
-    transfer_history: TransactionalTransferHistoryRepository,
-    transfer_execution: TransferExecutionRepository,
     configuration: Callable[[], ChainRuntimeConfig],
 ) -> None:
     """登记按需构造的 Chain 上下文，保持无参 Chain 的插件兼容合同。"""
     configure_chain_runtime_context_provider(
         lambda: build_chain_runtime_context(
-            message_helper=message_helper,
-            message_queue=message_queue,
+            dependencies=dependencies,
             system_config=system_config,
-            site=site,
-            subscription=subscription,
-            download_history=download_history,
-            transfer_history=transfer_history,
-            transfer_execution=transfer_execution,
             configuration=configuration,
         )
     )

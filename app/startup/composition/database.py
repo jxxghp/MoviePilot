@@ -9,11 +9,6 @@ from app.adapters.system.backup.database import (
     SQLiteBackupBackend,
 )
 from app.adapters.system.backup.files import BackupFiles
-from app.api.data import (
-    ApiDataPorts,
-    configure_api_data_runtime,
-    reset_api_data_runtime,
-)
 from app.application.backup import BackupPolicy, DatabaseBackupService
 from app.application.database import (
     DatabaseGovernance,
@@ -39,35 +34,21 @@ from app.application.workflow import (
     configure_workflow_query,
     reset_workflow_query,
 )
-from app.db.adapters.history.download import SessionDownloadHistoryRepository
 from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
 from app.db.adapters.plugininstallation import TransactionalPluginInstallationStore
 from app.db.adapters.query import SqlAlchemyDataQueryAdapter
-from app.db.adapters.site import SessionSiteRepository
-from app.db.adapters.subscription import (
-    SessionSubscriptionHistoryRepository,
-    SessionSubscriptionRepository,
-)
 from app.db.adapters.transaction import TransactionalWriteRunner
-from app.db.adapters.user import SqlAlchemyUserRepository, TransactionalUserRepository
+from app.db.adapters.user import TransactionalUserRepository
 from app.db.adapters.workflow import TransactionalWorkflowQueryRepository
 from app.db.engine import get_engine
 from app.db.health import probe_database
 from app.db.maintenance import DatabaseCleanupRepository
-from app.db.oper.mediaserver import MediaServerOper
-from app.db.oper.message import MessageOper
-from app.db.oper.passkey import PassKeyOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
     SessionFactory,
     async_session_scope,
-    get_async_db,
-    get_db,
 )
 from app.db.uow import (
-    SqlAlchemyAsyncUnitOfWork,
-    SqlAlchemyUnitOfWork,
     configure_transaction_runners,
     reset_transaction_runners,
 )
@@ -87,7 +68,6 @@ class DatabaseRuntime:
 class DatabaseComposition:
     """保存初始化器后续装配所需的数据库查询能力。"""
 
-    api_data: ApiDataPorts
     data_query: DataQueryService
     plugin_persistence: PluginPersistenceService
     workflow_query: WorkflowQueryService
@@ -148,7 +128,7 @@ def compose_database_services(
     runtime: DatabaseRuntime,
     system_config: SystemConfigOper,
 ) -> DatabaseComposition:
-    """组合查询、插件持久化与旧 API 数据 Facade 所需实现。"""
+    """组合查询、插件持久化与工作流查询所需实现。"""
     data_query_adapter = SqlAlchemyDataQueryAdapter(SessionFactory)
     data_query = DataQueryService(
         subscriptions=data_query_adapter,
@@ -170,30 +150,6 @@ def compose_database_services(
         )
     )
     return DatabaseComposition(
-        api_data=ApiDataPorts(
-            sync_session=get_db,
-            async_session=get_async_db,
-            repositories={
-                "download_history": SessionDownloadHistoryRepository,
-                "media_server": MediaServerOper,
-                "message": MessageOper,
-                "passkey": PassKeyOper,
-                "site": SessionSiteRepository,
-                "subscribe": SessionSubscriptionRepository,
-                "subscribe_history": SessionSubscriptionHistoryRepository,
-                "user": SqlAlchemyUserRepository,
-                "workflow": WorkflowOper,
-            },
-            standalone={
-                "passkey": PassKeyOper,
-                "system_config": SystemConfigOper,
-                "user": build_transactional_user_repository,
-            },
-            unit_of_work={
-                "async": SqlAlchemyAsyncUnitOfWork,
-                "sync": SqlAlchemyUnitOfWork,
-            },
-        ),
         data_query=data_query,
         plugin_persistence=plugin_persistence,
         workflow_query=workflow_query,
@@ -201,17 +157,15 @@ def compose_database_services(
 
 
 def publish_database_services(composition: DatabaseComposition) -> None:
-    """一次性发布当前 lifespan 的查询、插件持久化和旧 API 数据端口。"""
+    """一次性发布当前 lifespan 的查询与插件持久化服务。"""
     configure_data_query_service(composition.data_query)
     configure_plugin_persistence(composition.plugin_persistence)
     configure_workflow_query(composition.workflow_query)
-    configure_api_data_runtime(composition.api_data)
 
 
 def reset_database_services() -> None:
     """撤销当前 lifespan 发布的全部数据库派生服务。"""
     reset_transaction_runners()
-    reset_api_data_runtime()
     reset_workflow_query()
     reset_plugin_persistence()
     reset_data_query_service()
@@ -250,7 +204,7 @@ def configure_database() -> None:
 def read_backup_policy() -> BackupPolicy:
     """读取一次可热更新的数据库备份目录与保留策略。"""
     return BackupPolicy(
-        root=get_runtime_setting('DATABASE_BACKUP_PATH'),
-        retention_days=get_runtime_setting('DB_BACKUP_RETENTION_DAYS'),
-        max_count=get_runtime_setting('DB_BACKUP_MAX_COUNT'),
+        root=get_runtime_setting("DATABASE_BACKUP_PATH"),
+        retention_days=get_runtime_setting("DB_BACKUP_RETENTION_DAYS"),
+        max_count=get_runtime_setting("DB_BACKUP_MAX_COUNT"),
     )

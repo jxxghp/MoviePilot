@@ -284,13 +284,18 @@ sequenceDiagram
   从 `HostRuntime.configuration` 获取 frozen 配置快照。系统设置管理 API 通过
   `HostRuntime.settings` 的窄服务读写可变部署设置，业务域不接触 Settings 实例；生产与测试组合根统一
   复用 `startup/composition/configuration.py` 的映射、快照加载与发布。`startup/composition/database.py`
-  持有数据库 worker、兼容事务 runner、查询/插件持久化和旧 `ApiDataPorts` 的具体装配；initializer
-  只保留顺序调用。`startup/composition/chain.py` 集中构造无参 Chain 兼容上下文及其持久化、事件、
+  持有数据库 worker、兼容事务 runner、查询与插件持久化；`startup/composition/runtime.py` 是
+  `HostRuntime`、全部命名领域 Runtime 和旧 `ApiDataPorts` 投影的唯一构造/发布 owner。它先构造
+  一份 frozen `RuntimeDependencies`，Agent、Chain 与 HostRuntime 复用同一仓储、transfer execution
+  ledger 和消息对象，导入阶段不启动数据库 worker 或消息队列；initializer 只保留顺序调用。
+  `startup/composition/chain.py` 集中构造无参 Chain 兼容上下文及其持久化、事件、
   Outbox、消息和模块分发依赖，并延迟绑定旧 Transfer command 与壁纸 Chain，避免组合根导入环。
   `startup/composition/security.py` 统一装配认证、用户查询、PassKey 与 Web 访问
-  provider，并将同一 `AuthenticationRuntime` 交给 HostRuntime；`startup/composition/network.py` 统一
-  装配网络应用端口；`startup/composition/agent.py` 构造并发布唯一的 Agent 数据、会话和自主任务对象，
-  `HostRuntime`、工具管理器与 Scheduler 复用同一对象身份。`ApiDataPorts` 仅保留旧导入 ABI，
+  provider，并把持久化工厂交给 runtime owner 投影为 `AuthenticationRuntime`；
+  `startup/composition/network.py` 统一装配网络应用端口；`startup/composition/agent.py` 构造并发布
+  唯一的 Agent 数据、会话持久化和自主任务对象，由 runtime owner 投影 `AgentChatRuntime`，
+  `HostRuntime`、工具管理器与 Scheduler 复用同一对象身份。`ApiDataPorts` 严格从同一 HostRuntime
+  字段投影，仅保留旧导入 ABI，
   不参与正式请求链路。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **Scheduler 同名职责包**：旧 `app/scheduler.py` 单体已退役；`catalog.py` 负责作业目录和计划投影，
@@ -749,8 +754,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 971 |
-| 内部导入边 | 8,306 |
+| Python 模块 | 972 |
+| 内部导入边 | 8,301 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |

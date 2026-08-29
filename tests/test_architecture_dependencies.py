@@ -296,24 +296,16 @@ def test_agent_manager_uses_focused_owner_modules_and_precise_facade():
 
     manager_tree = ast.parse(owner_paths["manager"].read_text(encoding="utf-8-sig"))
     manager_class = next(
-        node
-        for node in manager_tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "AgentManager"
+        node for node in manager_tree.body if isinstance(node, ast.ClassDef) and node.name == "AgentManager"
     )
     manager_methods = {
-        node.name
-        for node in manager_class.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        node.name for node in manager_class.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     assert manager_methods == {"__init__"}
     assert [ast.unparse(base) for base in manager_class.bases] == ["AgentTaskOwner"]
 
-    orchestrator_tree = ast.parse(
-        owner_paths["orchestrator"].read_text(encoding="utf-8-sig")
-    )
-    orchestrator_classes = {
-        node.name for node in orchestrator_tree.body if isinstance(node, ast.ClassDef)
-    }
+    orchestrator_tree = ast.parse(owner_paths["orchestrator"].read_text(encoding="utf-8-sig"))
+    orchestrator_classes = {node.name for node in orchestrator_tree.body if isinstance(node, ast.ClassDef)}
     orchestrator_assignments = {
         target.id
         for node in orchestrator_tree.body
@@ -325,9 +317,7 @@ def test_agent_manager_uses_focused_owner_modules_and_precise_facade():
     assert "_MessageTask" not in orchestrator_classes
     assert "agent_manager" not in orchestrator_assignments
 
-    startup_source = (
-        APP_ROOT / "startup" / "initializers" / "agent.py"
-    ).read_text(encoding="utf-8-sig")
+    startup_source = (APP_ROOT / "startup" / "initializers" / "agent.py").read_text(encoding="utf-8-sig")
     assert "from app.agent.manager import AgentManager" in startup_source
     assert "from app.agent.orchestrator import AgentManager" not in startup_source
 
@@ -390,14 +380,10 @@ def test_domain_media_projection_uses_single_word_owner_package() -> None:
         filename=str(context_path),
     )
     media_class = next(
-        node
-        for node in context_tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "MediaInfo"
+        node for node in context_tree.body if isinstance(node, ast.ClassDef) and node.name == "MediaInfo"
     )
     methods = {
-        node.name: node
-        for node in media_class.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        node.name: node for node in media_class.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     for name in (
         "set_tmdb_info",
@@ -419,9 +405,7 @@ def test_domain_media_projection_uses_single_word_owner_package() -> None:
         assert isinstance(executable[0], ast.Expr)
         assert isinstance(executable[0].value, ast.Call)
 
-    schema_source = (APP_ROOT / "schemas" / "context.py").read_text(
-        encoding="utf-8-sig"
-    )
+    schema_source = (APP_ROOT / "schemas" / "context.py").read_text(encoding="utf-8-sig")
     assert "app.domain.projection" not in schema_source
     assert not any(name in schema_source for name in methods if name.startswith("set_") and name.endswith("_info"))
 
@@ -697,8 +681,11 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
         assert "DownloadFiles = Any" not in source
 
     startup_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
-    assert "TransactionalDownloadHistoryRepository(" in startup_source
-    assert "SessionDownloadHistoryRepository" in startup_source
+    runtime_source = (APP_ROOT / "startup" / "composition" / "runtime.py").read_text(encoding="utf-8")
+    assert "TransactionalDownloadHistoryRepository(" not in startup_source
+    assert "TransactionalDownloadHistoryRepository(" in runtime_source
+    assert "SessionDownloadHistoryRepository" not in startup_source
+    assert "SessionDownloadHistoryRepository" in runtime_source
     assert "DownloadHistoryOper" not in startup_source
 
     adapter_source = (APP_ROOT / "db" / "adapters" / "history" / "download.py").read_text(encoding="utf-8")
@@ -734,9 +721,7 @@ def test_user_configuration_uses_typed_transactional_adapter():
     }
     assert "Any" not in application_source
 
-    composition_source = (
-        APP_ROOT / "startup" / "composition" / "configuration.py"
-    ).read_text(encoding="utf-8")
+    composition_source = (APP_ROOT / "startup" / "composition" / "configuration.py").read_text(encoding="utf-8")
     assert "TransactionalUserConfigurationRepository(SessionFactory)" in composition_source
     assert "UserConfigOper" not in composition_source
 
@@ -754,15 +739,10 @@ def test_user_configuration_uses_typed_transactional_adapter():
 
 def test_modules_initializer_delegates_configuration_and_database_composition():
     """模块初始化器只编排配置与数据库组合 API，不再内联其构造细节。"""
-    initializer_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
-    configuration_source = (
-        APP_ROOT / "startup" / "composition" / "configuration.py"
-    ).read_text(encoding="utf-8")
-    database_source = (
-        APP_ROOT / "startup" / "composition" / "database.py"
-    ).read_text(encoding="utf-8")
+    initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
+    configuration_source = (APP_ROOT / "startup" / "composition" / "configuration.py").read_text(encoding="utf-8")
+    database_source = (APP_ROOT / "startup" / "composition" / "database.py").read_text(encoding="utf-8")
+    runtime_source = (APP_ROOT / "startup" / "composition" / "runtime.py").read_text(encoding="utf-8")
 
     for call in (
         "start_database_runtime()",
@@ -796,17 +776,14 @@ def test_modules_initializer_delegates_configuration_and_database_composition():
     assert "SqlAlchemyDataQueryAdapter(" in database_source
     assert "reset_transaction_runners()" in database_source
     assert "configure_api_data_runtime" not in initializer_source
-    assert "configure_api_data_runtime" in database_source
+    assert "configure_api_data_runtime" not in database_source
+    assert "configure_api_data_runtime" in runtime_source
 
 
 def test_modules_initializer_delegates_network_composition():
     """模块初始化器只调用网络组合 API，不再内联具体 Adapter 组装。"""
-    initializer_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
-    network_source = (
-        APP_ROOT / "startup" / "composition" / "network.py"
-    ).read_text(encoding="utf-8")
+    initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
+    network_source = (APP_ROOT / "startup" / "composition" / "network.py").read_text(encoding="utf-8")
 
     assert "configure_application_network_ports()" in initializer_source
     for detail in (
@@ -824,15 +801,9 @@ def test_modules_initializer_delegates_network_composition():
 
 def test_modules_initializer_delegates_outbox_composition():
     """模块初始化器只发布 Outbox dispatcher，不再内联 handler 与存储装配。"""
-    initializer_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
-    composition_source = (
-        APP_ROOT / "startup" / "composition" / "outbox.py"
-    ).read_text(encoding="utf-8")
-    package_source = (
-        APP_ROOT / "startup" / "composition" / "__init__.py"
-    ).read_text(encoding="utf-8")
+    initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
+    composition_source = (APP_ROOT / "startup" / "composition" / "outbox.py").read_text(encoding="utf-8")
+    package_source = (APP_ROOT / "startup" / "composition" / "__init__.py").read_text(encoding="utf-8")
 
     assert "configure_outbox_dispatcher(build_outbox_dispatcher)" in initializer_source
     for retired_name in ("_build_outbox_handlers", "_build_outbox_dispatcher"):
@@ -850,31 +821,17 @@ def test_modules_initializer_delegates_outbox_composition():
 
 def test_modules_initializer_delegates_server_service_composition():
     """中心服务对象图只由单词型 composition owner 构造，initializer 仅保留调用顺序。"""
-    initializer_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
+    initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     composition_path = APP_ROOT / "startup" / "composition" / "server.py"
     composition_source = composition_path.read_text(encoding="utf-8")
-    architecture_source = (
-        PROJECT_ROOT / "docs" / "rules" / "05-architecture.md"
-    ).read_text(encoding="utf-8")
-    package_tree = ast.parse(
-        (APP_ROOT / "startup" / "composition" / "__init__.py").read_text(
-            encoding="utf-8"
-        )
-    )
+    architecture_source = (PROJECT_ROOT / "docs" / "rules" / "05-architecture.md").read_text(encoding="utf-8")
+    package_tree = ast.parse((APP_ROOT / "startup" / "composition" / "__init__.py").read_text(encoding="utf-8"))
 
     assert composition_path.is_file()
     assert not list(composition_path.parent.glob("server_*.py"))
-    assert "from app.startup.composition.server import configure_server_services" in (
-        initializer_source
-    )
-    assert "configure_server_services(workflow_query, subscription_repository)" in (
-        initializer_source
-    )
-    assert "`startup/composition/server.py` owns MoviePilot Server" in (
-        architecture_source
-    )
+    assert "from app.startup.composition.server import configure_server_services" in (initializer_source)
+    assert "configure_server_services(workflow_query, runtime_dependencies.subscription)" in initializer_source
+    assert "`startup/composition/server.py` owns MoviePilot Server" in (architecture_source)
     for detail in (
         "ServerReportService(",
         "ServerSharingService(",
@@ -883,28 +840,21 @@ def test_modules_initializer_delegates_server_service_composition():
         assert detail not in initializer_source
         assert detail in composition_source
     assert not any(
-        isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef))
-        for node in package_tree.body
+        isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef)) for node in package_tree.body
     )
 
 
 def test_modules_initializer_delegates_agent_composition():
     """模块初始化器只编排 Agent composition，不再内联数据与任务构造。"""
-    initializer_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
-    agent_source = (
-        APP_ROOT / "startup" / "composition" / "agent.py"
-    ).read_text(encoding="utf-8")
+    initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
+    agent_source = (APP_ROOT / "startup" / "composition" / "agent.py").read_text(encoding="utf-8")
+    runtime_source = (APP_ROOT / "startup" / "composition" / "runtime.py").read_text(encoding="utf-8")
 
     assert "compose_agent(" in initializer_source
     assert "publish_agent_services(" in initializer_source
-    assert initializer_source.index("await start_database_runtime()") < initializer_source.index(
-        "compose_agent("
-    )
+    assert initializer_source.index("await start_database_runtime()") < initializer_source.index("compose_agent(")
     for detail in (
         "AgentDataContext(",
-        "AgentChatRuntime(",
         "AgentChatPersistenceService(",
         "AgentChatService(",
         "TransactionalAgentTaskRepository(",
@@ -915,26 +865,88 @@ def test_modules_initializer_delegates_agent_composition():
     ):
         assert detail not in initializer_source
         assert detail in agent_source
+    assert "AgentChatRuntime(" not in initializer_source
+    assert "AgentChatRuntime(" not in agent_source
+    assert "AgentChatRuntime(" in runtime_source
     assert "runtime.worker.snapshot().capacity" in agent_source
     assert "startup.initializers" not in agent_source
 
 
+def test_runtime_composition_is_the_sole_host_and_domain_runtime_owner():
+    """HostRuntime、领域 Runtime 与 ApiData 投影只能由单词型 runtime owner 构造。"""
+    initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
+    runtime_path = APP_ROOT / "startup" / "composition" / "runtime.py"
+    runtime_source = runtime_path.read_text(encoding="utf-8")
+    database_source = (APP_ROOT / "startup" / "composition" / "database.py").read_text(encoding="utf-8")
+    package_tree = ast.parse((APP_ROOT / "startup" / "composition" / "__init__.py").read_text(encoding="utf-8"))
+
+    assert runtime_path.is_file()
+    assert not list(runtime_path.parent.glob("runtime_*.py"))
+    assert "compose_runtime_dependencies()" in initializer_source
+    assert "compose_runtime(" in initializer_source
+    assert "RuntimeInputs(" in initializer_source
+    assert "publish_runtime(runtime_composition)" in initializer_source
+    assert "HostRuntime(" not in initializer_source
+    assert "ApiDataPorts(" not in initializer_source
+    assert "ApiDataPorts(" not in database_source
+    for detail in (
+        "class RuntimeDependencies:",
+        "class RuntimeInputs:",
+        "class RuntimeComposition:",
+        "HostRuntime(",
+        "AgentChatRuntime(",
+        "AuthenticationRuntime(",
+        "PersistenceRuntime(",
+        "MessagingRuntime(",
+        "HistoryRuntime(",
+        "SiteRuntime(",
+        "SubscriptionRuntime(",
+        "WorkflowRuntime(",
+        "ApiDataPorts(",
+    ):
+        assert detail in runtime_source
+    constructors = []
+    for path in APP_ROOT.rglob("*.py"):
+        if path.is_relative_to(APP_ROOT / "plugins"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if any(
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "HostRuntime"
+            for node in ast.walk(tree)
+        ):
+            constructors.append(path.relative_to(APP_ROOT).as_posix())
+    assert constructors == ["startup/composition/runtime.py"]
+    context_tree = ast.parse((APP_ROOT / "startup" / "composition" / "context.py").read_text(encoding="utf-8"))
+    host_runtime = next(
+        node for node in context_tree.body if isinstance(node, ast.ClassDef) and node.name == "HostRuntime"
+    )
+    task_field = next(
+        node
+        for node in host_runtime.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "tasks"
+    )
+    assert task_field.value is None
+    assert (
+        _class_annotations(
+            APP_ROOT / "startup" / "composition" / "context.py",
+            "AuthenticationRuntime",
+        )["passkey_repository"]
+        == "RepositoryFactory"
+    )
+    assert not any(
+        isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef)) for node in package_tree.body
+    )
+
+
 def test_modules_initializer_delegates_chain_composition():
     """Chain 上下文、壁纸与旧整理命令只由单词型 composition owner 装配。"""
-    initializer_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
+    initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     composition_path = APP_ROOT / "startup" / "composition" / "chain.py"
     composition_source = composition_path.read_text(encoding="utf-8")
     composition_tree = ast.parse(composition_source, filename=str(composition_path))
-    package_tree = ast.parse(
-        (APP_ROOT / "startup" / "composition" / "__init__.py").read_text(
-            encoding="utf-8"
-        )
-    )
-    architecture_source = (
-        PROJECT_ROOT / "docs" / "rules" / "05-architecture.md"
-    ).read_text(encoding="utf-8")
+    package_tree = ast.parse((APP_ROOT / "startup" / "composition" / "__init__.py").read_text(encoding="utf-8"))
+    architecture_source = (PROJECT_ROOT / "docs" / "rules" / "05-architecture.md").read_text(encoding="utf-8")
+    runtime_source = (APP_ROOT / "startup" / "composition" / "runtime.py").read_text(encoding="utf-8")
 
     assert composition_path.is_file()
     assert not list(composition_path.parent.glob("chain_*.py"))
@@ -958,32 +970,27 @@ def test_modules_initializer_delegates_chain_composition():
     ):
         assert detail not in initializer_source
         assert detail in composition_source
-    assert initializer_source.count(
-        "TransactionalTransferExecutionRepository("
-    ) == 1
-    assert "transfer_execution=transfer_execution_repository" in initializer_source
-    assert "transfer_execution_repository=transfer_execution" in composition_source
+    assert "TransactionalTransferExecutionRepository(" not in initializer_source
+    assert runtime_source.count("TransactionalTransferExecutionRepository(") == 1
+    assert "dependencies=runtime_dependencies" in initializer_source
+    assert "transfer_execution_repository=dependencies.transfer_execution" in composition_source
     assert "TransactionalTransferExecutionRepository" not in composition_source
     transfer_function = next(
         node
         for node in composition_tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name == "execute_legacy_transfer_command"
+        if isinstance(node, ast.FunctionDef) and node.name == "execute_legacy_transfer_command"
     )
     assert any(
-        isinstance(node, ast.ImportFrom)
-        and node.module == "app.chain.transfer.facade"
+        isinstance(node, ast.ImportFrom) and node.module == "app.chain.transfer.facade"
         for node in ast.walk(transfer_function)
     )
     assert not any(
-        isinstance(node, ast.ImportFrom)
-        and node.module == "app.chain.transfer.facade"
+        isinstance(node, ast.ImportFrom) and node.module == "app.chain.transfer.facade"
         for node in composition_tree.body
     )
     assert "`startup/composition/chain.py` owns" in architecture_source
     assert not any(
-        isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef))
-        for node in package_tree.body
+        isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef)) for node in package_tree.body
     )
 
 
@@ -1181,16 +1188,12 @@ def test_user_chain_and_agent_ports_are_typed_and_orm_free():
 
 def test_startup_injects_user_adapter_instead_of_raw_oper():
     """启动组合根不得把无会话 UserOper 注入宿主查询调用面。"""
-    initializer_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8-sig")
-    database_source = (
-        APP_ROOT / "startup" / "composition" / "database.py"
-    ).read_text(encoding="utf-8-sig")
-    chain_source = (
-        APP_ROOT / "startup" / "composition" / "chain.py"
-    ).read_text(encoding="utf-8-sig")
-    source = initializer_source + database_source + chain_source
+    initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8-sig")
+    database_source = (APP_ROOT / "startup" / "composition" / "database.py").read_text(encoding="utf-8-sig")
+    chain_source = (APP_ROOT / "startup" / "composition" / "chain.py").read_text(encoding="utf-8-sig")
+    runtime_source = (APP_ROOT / "startup" / "composition" / "runtime.py").read_text(encoding="utf-8-sig")
+    security_source = (APP_ROOT / "startup" / "composition" / "security.py").read_text(encoding="utf-8-sig")
+    source = initializer_source + database_source + chain_source + runtime_source + security_source
 
     assert "TransactionalUserRepository" in source
     assert "SqlAlchemyUserRepository" in source
@@ -1953,8 +1956,7 @@ def test_host_code_imports_agent_and_llm_symbols_from_owner_modules():
         imported = {
             f"{node.module}.{alias.name}"
             for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-            and node.module in {"app.agent", "app.agent.llm"}
+            if isinstance(node, ast.ImportFrom) and node.module in {"app.agent", "app.agent.llm"}
             for alias in node.names
         }
         if imported:
@@ -2192,9 +2194,7 @@ def test_web_agent_non_transport_state_stays_in_application():
         "app.runtime.stop",
     }
     endpoint_imports = {
-        node.module
-        for node in ast.walk(endpoint_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(endpoint_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
 
     assert required <= application_owners

@@ -13,7 +13,6 @@ from app.application.agenttask import (
     configure_agent_task_execution,
     reset_agent_task_execution,
 )
-from app.application.history import DownloadHistoryRepository, TransferHistoryRepository
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AgentChatService,
@@ -22,12 +21,6 @@ from app.application.messaging.chat import (
     reset_agent_chat_persistence,
     reset_agent_chat_service,
 )
-from app.application.site.contract import SiteRepository
-from app.application.subscription.contract import (
-    SubscriptionHistoryQueryPort,
-    SubscriptionRepository,
-)
-from app.application.transfer.execution import TransferExecutionRepository
 from app.db.adapters.agent import (
     SessionAgentTaskRepository,
     TransactionalAgentTaskRepository,
@@ -35,16 +28,15 @@ from app.db.adapters.agent import (
 )
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.db.session import SessionFactory, async_session_scope, get_async_db
-from app.db.uow import SqlAlchemyAsyncUnitOfWork
+from app.db.session import SessionFactory, async_session_scope
 from app.startup.composition.context import (
     AgentChatRepositoryFactory,
-    AgentChatRuntime,
 )
 from app.startup.composition.database import (
     DatabaseRuntime,
     build_transactional_user_repository,
 )
+from app.startup.composition.runtime import RuntimeDependencies
 from app.startup.composition.subscription import (
     async_rule_group_mutation_scope,
     delete_subscribe_scope,
@@ -60,7 +52,8 @@ class AgentComposition:
     """保存一个 lifespan 内共享的 Agent 数据、会话与任务对象。"""
 
     data: AgentDataContext
-    chat: AgentChatRuntime
+    chat_repository: AgentChatRepositoryFactory
+    persistence: AgentChatPersistenceService
     tasks: TransactionalAgentTaskRepository
     execution: AgentTaskExecutionService
 
@@ -69,12 +62,7 @@ def compose_agent(
     *,
     runtime: DatabaseRuntime,
     system_config: SystemConfigOper,
-    site: SiteRepository,
-    subscription: SubscriptionRepository,
-    subscription_history: SubscriptionHistoryQueryPort,
-    transfer_history: TransferHistoryRepository,
-    transfer_execution: TransferExecutionRepository,
-    download_history: DownloadHistoryRepository,
+    dependencies: RuntimeDependencies,
 ) -> AgentComposition:
     """在数据库 worker 启动后构造共享的 Agent 数据与任务服务。"""
     persistence = AgentChatPersistenceService(
@@ -91,28 +79,24 @@ def compose_agent(
         chat_persistence=persistence,
         tasks=task_repository,
         users=build_transactional_user_repository(),
-        sites=site,
-        subscriptions=subscription,
+        sites=dependencies.site,
+        subscriptions=dependencies.subscription,
         subscription_mutation_scope=subscription_mutation_scope,
         subscription_delete_scope=delete_subscribe_scope,
         async_rule_group_mutation_scope=partial(
             async_rule_group_mutation_scope,
             system_config.publish_many,
         ),
-        subscription_history=subscription_history,
-        transfer_history=transfer_history,
-        transfer_execution=transfer_execution,
-        download_history=download_history,
+        subscription_history=dependencies.subscription_history,
+        transfer_history=dependencies.transfer_history,
+        transfer_execution=dependencies.transfer_execution,
+        download_history=dependencies.download_history,
         plugin_data=TransactionalPluginDataRepository(async_session_scope),
     )
     return AgentComposition(
         data=data,
-        chat=AgentChatRuntime(
-            async_session=get_async_db,
-            repository=chat_repository,
-            transaction=SqlAlchemyAsyncUnitOfWork,
-            persistence=persistence,
-        ),
+        chat_repository=chat_repository,
+        persistence=persistence,
         tasks=task_repository,
         execution=AgentTaskExecutionService(
             repository=SessionAgentTaskRepository,

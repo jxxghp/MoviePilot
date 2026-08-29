@@ -139,15 +139,22 @@ not startup. Lower-level runtime modules must not import startup.
 `startup/composition/configuration.py` owns configuration snapshot loading, typed
 runtime/settings construction and publication. `startup/composition/database.py`
 owns the process database worker, compatibility transaction runner, query services,
-plugin persistence and legacy API data-port wiring. Initializers call these owners in
+plugin persistence and workflow query wiring. Initializers call these owners in
 startup order and must not recreate their concrete construction.
+`startup/composition/runtime.py` is the sole constructor of `HostRuntime`, its named
+domain Runtime projections and the legacy `ApiDataPorts` projection. It first creates
+one frozen `RuntimeDependencies` aggregate; Agent, Chain and HostRuntime must reuse the
+same repositories, transfer-execution ledger and message owners rather than constructing
+parallel instances. Importing this owner remains cold: concrete DB adapters are resolved
+only when composition functions run, and FastAPI `app.state` publication remains owned by
+the lifecycle layer.
 `startup/composition/chain.py` owns the no-argument Chain compatibility context,
 typed persistence/dispatch object graph, lazy legacy Transfer command binding and
-wallpaper-provider publication. `initializers/modules.py` only passes the already
-constructed repositories in startup order and must not recreate those dependencies.
+wallpaper-provider publication. `initializers/modules.py` passes the already constructed
+`RuntimeDependencies` in startup order and must not recreate those dependencies.
 `startup/composition/security.py` owns authentication, user lookup, PassKey and Web
-access provider assembly; `initializers/modules.py` only invokes that owner and places
-its returned `AuthenticationRuntime` into the host runtime.
+access provider assembly; it returns the persistence factories needed by the runtime
+owner, which alone constructs `AuthenticationRuntime`.
 `startup/composition/network.py` owns concrete network-test, image, internal-address
 and message-ingress Adapter wiring
 while retaining lazy RuntimeSettings reads. Initializers call these owners in
@@ -160,8 +167,9 @@ startup order and must not recreate its concrete construction.
 construction and registration, including lazy local-data readers and external
 transport callbacks; `initializers/modules.py` retains only its startup-order call
 and the later explicit network warmup. Database runtime
-`startup/composition/agent.py` owns the single `AgentDataContext`, `AgentChatRuntime`,
-chat persistence and autonomous-task repository/execution service set. It may accept
+`startup/composition/agent.py` owns the single `AgentDataContext`, chat persistence and
+autonomous-task repository/execution service set. The runtime owner projects those same
+objects into `AgentChatRuntime`. Agent composition may accept
 the Agent initializer's data-context registrar as a callback, but must not import
 `startup.initializers`; tool-manager, scheduler and Agent activation order remains in
 the initializer. Database runtime ownership rejects overlapping lifespans; after a

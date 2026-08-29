@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Callable, Generator
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from app.application.agent import AgentDataContext
@@ -172,6 +172,7 @@ class AuthenticationRuntime:
     """认证、用户管理与 PassKey API 的显式数据工厂。"""
 
     user_repository: RepositoryFactory
+    passkey_repository: RepositoryFactory
     standalone_user: StandaloneRepositoryFactory
     system_config: StandaloneRepositoryFactory
     passkey: StandaloneRepositoryFactory
@@ -225,15 +226,9 @@ class SubscriptionRuntime:
     outbox: AsyncOutboxFactory
     dispatch_store: AsyncOutboxDispatchStore
     batch_writer: SubscriptionBatchWriterFactory
-    rule_group_mutation_scope: Callable[
-        [], AbstractContextManager[SyncRuleGroupMutationService]
-    ]
-    async_rule_group_mutation_scope: Callable[
-        [], AbstractAsyncContextManager[AsyncRuleGroupMutationService]
-    ]
-    site_reference_mutation_scope: Callable[
-        [], AbstractContextManager[SyncSiteReferenceMutationService]
-    ]
+    rule_group_mutation_scope: Callable[[], AbstractContextManager[SyncRuleGroupMutationService]]
+    async_rule_group_mutation_scope: Callable[[], AbstractAsyncContextManager[AsyncRuleGroupMutationService]]
+    site_reference_mutation_scope: Callable[[], AbstractContextManager[SyncSiteReferenceMutationService]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,4 +246,4 @@ class HostRuntime:
     workflow: WorkflowRuntime
     configuration: RuntimeConfiguration
     settings: RuntimeSettingsService
-    tasks: TaskRegistry = field(default_factory=TaskRegistry)
+    tasks: TaskRegistry

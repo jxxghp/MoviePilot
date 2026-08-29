@@ -1,5 +1,8 @@
 """认证、用户与 PassKey 服务的启动组合。"""
 
+from dataclasses import dataclass
+from typing import cast
+
 from app.adapters.web.security.access import (
     reset_superuser_token_payload_provider,
     set_superuser_token_payload_provider,
@@ -24,18 +27,30 @@ from app.db.adapters.user import SqlAlchemyUserRepository
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.cache import TTLCache
-from app.startup.composition.context import AuthenticationRuntime
+from app.startup.composition.context import (
+    RepositoryFactory,
+    StandaloneRepositoryFactory,
+)
 from app.startup.composition.database import build_transactional_user_repository
 
 
-def configure_security_services() -> AuthenticationRuntime:
+@dataclass(frozen=True, slots=True)
+class SecurityComposition:
+    """保存认证领域运行时投影所需的持久化工厂。"""
+
+    user_repository: RepositoryFactory
+    passkey_repository: RepositoryFactory
+    standalone_user: StandaloneRepositoryFactory
+    system_config: StandaloneRepositoryFactory
+    passkey: StandaloneRepositoryFactory
+
+
+def configure_security_services() -> SecurityComposition:
     """构造并登记认证、用户查询和 PassKey 服务。"""
     configure_user_lookups(
         by_id=lambda user_id: build_transactional_user_repository().get_by_id(user_id),
         by_name=lambda username: build_transactional_user_repository().get_by_name(username),
-        by_channel=lambda **bindings: build_transactional_user_repository().find_name_by_bindings(
-            bindings
-        ),
+        by_channel=lambda **bindings: build_transactional_user_repository().find_name_by_bindings(bindings),
     )
     configure_auth_service(
         AuthService(
@@ -52,8 +67,9 @@ def configure_security_services() -> AuthenticationRuntime:
         )
     )
     configure_passkey_service(PasskeyService(repository=PassKeyOper()))
-    return AuthenticationRuntime(
+    return SecurityComposition(
         user_repository=SqlAlchemyUserRepository,
+        passkey_repository=cast(RepositoryFactory, PassKeyOper),
         standalone_user=build_transactional_user_repository,
         system_config=SystemConfigOper,
         passkey=PassKeyOper,

@@ -2,7 +2,6 @@ import asyncio
 import inspect
 import sys
 from collections.abc import Awaitable
-from functools import partial
 from typing import Callable, cast
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
@@ -28,7 +27,6 @@ from app.application.configuration import (
     configure_transfer_retry_config,
     get_configured_system_config,
 )
-from app.application.history import configure_transfer_history_repository
 from app.application.messaging.agent import (
     dispatch_web_agent_message_event,
     shutdown_web_agent_background_tasks,
@@ -39,55 +37,20 @@ from app.application.messaging.chat import (
 )
 from app.application.messaging.message import (
     MessageHelper,
-    MessageQueueManager,
     stop_message,
 )
 from app.application.module import configure_module_runtime
 from app.application.outbox import configure_outbox_dispatcher
 from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.service import configure_service_directory
-from app.application.site.health import SiteHealthService, configure_site_health_service
-from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.workflow import configure_workflow_execution
 from app.command import CommandChain
-from app.db.adapters.history.download import (
-    SessionDownloadHistoryRepository,
-    TransactionalDownloadHistoryRepository,
-)
-from app.db.adapters.history.transfer import (
-    SessionTransferHistoryRepository,
-    TransactionalTransferHistoryRepository,
-)
-from app.db.adapters.outbox import (
-    SqlAlchemyAsyncOutboxDispatchStore,
-    SqlAlchemyAsyncOutboxStager,
-)
-from app.db.adapters.site import SessionSiteRepository, TransactionalSiteRepository
-from app.db.adapters.subscription import (
-    SessionSubscriptionHistoryRepository,
-    SessionSubscriptionRepository,
-    TransactionalSubscriptionHistoryRepository,
-    TransactionalSubscriptionRepository,
-)
-from app.db.adapters.transfer.execution import (
-    TransactionalTransferExecutionRepository,
-)
 from app.db.adapters.workflow import (
     TransactionalWorkflowExecutionService,
 )
-from app.db.oper.mediaserver import MediaServerOper
-from app.db.oper.message import MessageOper
-from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
     SessionFactory,
-    async_session_scope,
     close_database,
-    get_async_db,
-    get_db,
-)
-from app.db.uow import (
-    SqlAlchemyAsyncUnitOfWork,
-    SqlAlchemyUnitOfWork,
 )
 from app.runtime.config import settings as legacy_settings
 from app.runtime.events import EventHandlerBinding, EventManager
@@ -119,15 +82,7 @@ from app.startup.composition.configuration import (
     publish_configuration,
     reset_configuration,
 )
-from app.startup.composition.context import (
-    HistoryRuntime,
-    HostRuntime,
-    MessagingRuntime,
-    PersistenceRuntime,
-    SiteRuntime,
-    SubscriptionRuntime,
-    WorkflowRuntime,
-)
+from app.startup.composition.context import HostRuntime
 from app.startup.composition.database import (
     compose_database_services,
     configure_database,
@@ -139,17 +94,17 @@ from app.startup.composition.database import (
 )
 from app.startup.composition.network import configure_application_network_ports
 from app.startup.composition.outbox import build_outbox_dispatcher
+from app.startup.composition.runtime import (
+    RuntimeInputs,
+    compose_runtime,
+    compose_runtime_dependencies,
+    publish_runtime,
+)
 from app.startup.composition.security import (
     configure_security_access,
     configure_security_services,
 )
 from app.startup.composition.server import configure_server_services
-from app.startup.composition.subscription import (
-    async_rule_group_mutation_scope,
-    build_subscription_batch_writer,
-    rule_group_mutation_scope,
-    site_reference_mutation_scope,
-)
 from app.startup.initializers.agent import configure_agent_data_context, init_agent
 from app.startup.initializers.resources import (
     init_managed_resources,
@@ -457,98 +412,28 @@ async def _initialize_modules() -> HostRuntime:
     )
     system_config = configuration.system_config
     workflow_query = database_services.workflow_query
-    download_history_repository = TransactionalDownloadHistoryRepository(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
-    transfer_history_repository = TransactionalTransferHistoryRepository(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
-    site_repository = TransactionalSiteRepository(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
-    subscription_repository = TransactionalSubscriptionRepository(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
-    subscription_history_repository = TransactionalSubscriptionHistoryRepository(
-        async_session=async_session_scope,
-    )
-    transfer_execution_repository = TransactionalTransferExecutionRepository(SessionFactory)
-    message_helper = MessageHelper()
-    message_queue = MessageQueueManager(auto_start=False)
+    runtime_dependencies = compose_runtime_dependencies()
     agent_composition = compose_agent(
         runtime=database_runtime,
         system_config=system_config,
-        site=site_repository,
-        subscription=subscription_repository,
-        subscription_history=subscription_history_repository,
-        transfer_history=transfer_history_repository,
-        transfer_execution=transfer_execution_repository,
-        download_history=download_history_repository,
+        dependencies=runtime_dependencies,
     )
-    authentication = configure_security_services()
-    host_runtime = HostRuntime(
-        agent_chat=agent_composition.chat,
-        agent=agent_composition.data,
-        persistence=PersistenceRuntime(
-            sync_session=get_db,
-            async_session=get_async_db,
-            sync_transaction=SqlAlchemyUnitOfWork,
-            async_transaction=SqlAlchemyAsyncUnitOfWork,
-        ),
-        authentication=authentication,
-        messaging=MessagingRuntime(
-            repository=MessageOper,
-            helper=message_helper,
-            queue=message_queue,
-        ),
-        history=HistoryRuntime(
-            download_repository=SessionDownloadHistoryRepository,
-            transfer_repository=transfer_history_repository,
-            transfer_mutation_repository=SessionTransferHistoryRepository,
-            media_server_repository=MediaServerOper,
-            transfer_execution_repository=transfer_execution_repository,
-        ),
-        site=SiteRuntime(
-            repository=SessionSiteRepository,
-            standalone=site_repository,
-        ),
-        subscription=SubscriptionRuntime(
-            async_session=get_async_db,
-            repository=SessionSubscriptionRepository,
-            history_repository=SessionSubscriptionHistoryRepository,
-            transaction=SqlAlchemyAsyncUnitOfWork,
-            outbox=SqlAlchemyAsyncOutboxStager,
-            dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(async_session_scope),
-            batch_writer=build_subscription_batch_writer,
-            rule_group_mutation_scope=partial(
-                rule_group_mutation_scope,
-                system_config.publish_many,
-            ),
-            async_rule_group_mutation_scope=partial(
-                async_rule_group_mutation_scope,
-                system_config.publish_many,
-            ),
-            site_reference_mutation_scope=partial(
-                site_reference_mutation_scope,
-                system_config.publish_many,
-            ),
-        ),
-        workflow=WorkflowRuntime(
-            query=workflow_query,
-            repository=WorkflowOper,
-            system_config=get_configured_system_config,
-        ),
-        configuration=configuration.runtime,
-        settings=configuration.settings,
-        tasks=get_task_registry(),
+    security_composition = configure_security_services()
+    runtime_composition = compose_runtime(
+        RuntimeInputs(
+            configuration=configuration,
+            database=database_services,
+            agent=agent_composition,
+            authentication=security_composition,
+            dependencies=runtime_dependencies,
+            tasks=get_task_registry(),
+        )
     )
+    host_runtime = runtime_composition.runtime
     publish_database_services(database_services)
+    publish_runtime(runtime_composition)
     configure_runtime_data_providers()
-    configure_server_services(workflow_query, subscription_repository)
+    configure_server_services(workflow_query, runtime_dependencies.subscription)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_execution(workflow_execution)
     configure_outbox_dispatcher(build_outbox_dispatcher)
@@ -562,9 +447,6 @@ async def _initialize_modules() -> HostRuntime:
         agent_composition,
         data_context_registrar=configure_agent_data_context,
     )
-    configure_transfer_history_repository(lambda: transfer_history_repository)
-    configure_site_query_service(SiteQueryService(repository=site_repository))
-    configure_site_health_service(SiteHealthService(repository=site_repository))
     from app.agent.tools.manager import moviepilot_tool_manager
 
     moviepilot_tool_manager.set_data_context(agent_composition.data)
@@ -575,14 +457,8 @@ async def _initialize_modules() -> HostRuntime:
     configure_wallpaper_services()
     # Chain 无参兼容入口由组合根明确提供依赖上下文；测试和新代码可直接注入替代上下文。
     configure_chain_runtime_context(
-        message_helper=message_helper,
-        message_queue=message_queue,
+        dependencies=runtime_dependencies,
         system_config=system_config,
-        site=site_repository,
-        subscription=subscription_repository,
-        download_history=download_history_repository,
-        transfer_history=transfer_history_repository,
-        transfer_execution=transfer_execution_repository,
         configuration=configuration.runtime.chain,
     )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。

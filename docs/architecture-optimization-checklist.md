@@ -62,7 +62,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `chain` | 多入口复用的用例编排与 Module 动态分发已稳定，包根 SCC 已清零 | God object、私有长方法、无参构造和资源物化过重 |
 | `db/oper` | Model/Oper 已不自建 Session、不自行提交 | 无 Session Facade 仍被宿主组合根注入，业务操作可能拆成多个事务 |
 | `db/adapters` | 已有显式 Session/UoW 的参考切片 | Port 返回类型不够稳定；Outbox 的 stage 与自提交 dispatcher store 混在一个类型 |
-| `startup` | 已是 HostRuntime 和生命周期组合根；Chain 兼容上下文由 `composition/chain.py` 独立装配 | `initializers/modules.py` 仍有其他领域高扇出和具体对象目录装配 |
+| `startup` | `composition/runtime.py` 已成为 HostRuntime、领域 Runtime 与旧 ApiData 投影唯一 owner；Chain/Agent 复用同一 RuntimeDependencies | `initializers/modules.py` 仍保留启动顺序与跨领域发布调用，高扇出需由生命周期验收继续约束 |
 | API/Command/Scheduler | 多数入口已转向 Chain/Application；Scheduler 单体已拆为同名职责包并由 startup 注入业务 callable | Agent/System/Plugin 等入口仍承担较多业务与 I/O 编排 |
 | `sdk`/`compat` | 精确映射、稳定插件 ABI 和宿主 canonical 路径已落地 | SDK 仍暴露部分可变全局对象/具体 Manager，只能渐进收窄，不能直接删除 |
 
@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 971 / 8,306 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 972 / 8,301 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,8 +78,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,335 / 593 文件 | 新 Chain composition owner 零类型债，`modules.py` 低水位下降 1；strict frontier 当前覆盖 41 个文件 |
-| Ruff 历史诊断 | 648 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 全量 mypy 历史债务 | 10,320 / 592 文件 | Runtime 唯一组合 owner 零新增类型债，`modules.py` 低水位下降 4；strict frontier 当前覆盖 41 个文件 |
+| Ruff 历史诊断 | 644 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 81.00%，Domain 80.67% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -675,8 +675,9 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 - [x] L4.2 已将 network、security、agent、server、outbox 与 Chain 装配迁入单词型
   `startup/composition/*` owner；Agent composition 在 Worker 启动后读取容量并共享同一数据和任务对象，
   Chain 通过 provider 保持插件无参构造兼容，旧 Transfer command 只在真实调用时延迟导入。
-- [ ] 继续将 HostRuntime 剩余构造移到 `startup/composition/runtime.py`，最终让 initializer
-  只负责顺序、注册和是否重启的决策。
+- [x] L4.3 已将 HostRuntime、命名领域 Runtime 和旧 `ApiDataPorts` 投影统一移到单词型
+  `startup/composition/runtime.py`；`RuntimeDependencies` 由 Agent、Chain、HostRuntime 复用，
+  `HostRuntime.tasks` 显式绑定 lifecycle 的 TaskRegistry，Chain 不再二次构造 transfer execution。
 - [ ] 保留生命周期 manifest 和顺序快照；高扇出在组合根是允许的，但业务实现不能继续沉积其中。
 
 ### ARCH-204 收敛 sync/async 重复与测试存量

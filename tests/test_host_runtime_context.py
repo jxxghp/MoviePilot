@@ -23,6 +23,7 @@ from app.application.configuration import (
     RuntimeSettingsService,
     SchedulerRuntimeConfig,
 )
+from app.runtime.tasks import TaskRegistry
 from app.startup import lifecycle
 from app.startup.composition.context import (
     AgentChatRuntime,
@@ -90,7 +91,6 @@ class _Outbox:
         """模拟暂存 durable intent。"""
 
 
-
 class _DispatchStore:
     """提供订阅即时副作用所需的独立派发存储替身。"""
 
@@ -125,6 +125,7 @@ class _RuntimeSettings:
 
 def _runtime() -> HostRuntime:
     """构造不加载数据库引擎或 PluginManager 的假宿主运行时。"""
+
     async def async_session():
         """生成一个可被 FastAPI 依赖缓存的会话标记。"""
         yield object()
@@ -165,6 +166,7 @@ def _runtime() -> HostRuntime:
         ),
         authentication=AuthenticationRuntime(
             user_repository=_Repository,
+            passkey_repository=_Repository,
             standalone_user=lambda: _Repository(object()),
             system_config=lambda: _Repository(object()),
             passkey=lambda: _Repository(object()),
@@ -205,12 +207,29 @@ def _runtime() -> HostRuntime:
         configuration=RuntimeConfiguration(
             api=lambda: ApiRuntimeConfig(False, 60, False, True),
             scheduler=lambda: SchedulerRuntimeConfig(
-                False, "Asia/Shanghai", 1, False, "", None, None,
-                False, 24, "rss", 30, False, None, None, True, 1, False, None,
+                False,
+                "Asia/Shanghai",
+                1,
+                False,
+                "",
+                None,
+                None,
+                False,
+                24,
+                "rss",
+                30,
+                False,
+                None,
+                None,
+                True,
+                1,
+                False,
+                None,
             ),
             chain=lambda: ChainRuntimeConfig(media_extensions=(".mkv",)),
         ),
         settings=RuntimeSettingsService(_RuntimeSettings()),
+        tasks=TaskRegistry(),
     )
 
 
@@ -260,17 +279,13 @@ def test_string_api_data_locator_is_confined_to_compatibility_boundary() -> None
         if path.is_relative_to(PROJECT_ROOT / "app" / "plugins"):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        imported_modules = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module
-        }
+        imported_modules = {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module}
         if imported_modules & {"app.api.data", "app.api.dependencies.data"}:
             importers.add(path.relative_to(PROJECT_ROOT).as_posix())
 
     assert importers == {
         "app/api/dependencies/data.py",
-        "app/startup/composition/database.py",
+        "app/startup/composition/runtime.py",
     }
 
 
@@ -293,7 +308,7 @@ async def test_lifecycle_component_attaches_init_modules_result(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_lifecycle_component_revokes_host_runtime_after_converged_stop(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """模块 owner 完整关闭后 AppState 不得继续暴露上一 lifespan 的运行时。"""
     app = FastAPI()
@@ -307,7 +322,7 @@ async def test_lifecycle_component_revokes_host_runtime_after_converged_stop(
 
 @pytest.mark.asyncio
 async def test_lifecycle_component_retains_host_runtime_after_failed_stop(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """模块 owner 未收敛时保留 HostRuntime，供诊断与后续重试。"""
     app = FastAPI()
