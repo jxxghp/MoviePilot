@@ -53,6 +53,7 @@ from app.application.site.sites import SitesHelper  # pylint: disable=import-err
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.search.facade import SearchChain
+from app.domain.context import TorrentInfo as _DomainTorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation.crypto import HashUtils
 from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
@@ -82,7 +83,6 @@ from app.schemas.system import RuleTestData as _SchemaRuleTestData
 from app.schemas.system import SystemEnvironmentUpdateData as _SchemaSystemEnvironmentUpdateData
 from app.schemas.system import SystemModuleListData as _SchemaSystemModuleListData
 from app.schemas.system import SystemUpdateStatus as _SchemaSystemUpdateStatus
-from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import EventType, SystemConfigKey
 from app.startup.composition.context import HostRuntime
@@ -1171,9 +1171,9 @@ def ruletest(
     过滤规则测试，规则类型 1-订阅，2-洗版，3-搜索
     """
     metainfo = MetaInfo(title=title, subtitle=subtitle)
-    torrent = _SchemaTorrentInfo(
+    torrent = _DomainTorrentInfo(
         title=title,
-        description=subtitle,
+        description=subtitle or "",
     )
     # 查询规则组详情
     rulegroup = RuleHelper().get_rule_group(rulegroup_name)
@@ -1184,7 +1184,7 @@ def ruletest(
         "rulegroup": rulegroup.model_dump() if rulegroup else None,
         "meta_info": metainfo.to_dict(),
         "media_info": None,
-        "torrent_info": torrent.model_dump(),
+        "torrent_info": torrent.to_dict(),
         "priority": None,
         "matched": False,
     }
@@ -1210,7 +1210,9 @@ def ruletest(
 
     # 过滤
     result = SearchChain().filter_torrents(
-        rule_groups=[rulegroup.name], torrent_list=[torrent], mediainfo=media_info
+        rule_groups=[rulegroup.name or rulegroup_name],
+        torrent_list=[torrent],
+        mediainfo=media_info,
     )
     if not result:
         return _SchemaResponse(
@@ -1222,7 +1224,7 @@ def ruletest(
         {
             "matched": True,
             "priority": 100 - result[0].pri_order + 1,
-            "torrent_info": result[0].model_dump(),
+            "torrent_info": result[0].to_dict(),
         }
     )
     return _SchemaResponse(

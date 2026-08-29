@@ -27,8 +27,8 @@ from app.chain.transfer import TransferChain
             SearchChain,
             {
                 "save_last_search_params": "_search_state",
-                "last_search_params": "_search_state",
-                "last_search_results": "_search_state",
+                "last_search_params": "SearchCacheOwner",
+                "last_search_results": "SearchCacheOwner",
             },
         ),
         (

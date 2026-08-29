@@ -27,7 +27,7 @@
 | `PLANNED` | 已定义边界，依赖满足后可激活 |
 | `BLOCKED` | 有明确阻塞证据，且没有可推进的替代叶子 |
 | `VERIFIED` | 本地验收完成，尚未推送或尚未确认远端 |
-| `DELIVERED` | 已提交、推送，远端 SHA 与本地交付一致 |
+| `DELIVERED` | 已提交、推送，远端 SHA 与本地交付一致，且本叶要求的远端 CI 已闭环 |
 | `COMPLETE` | 叶子验收和后续依赖均已结清 |
 | `CANCELLED` | 经维护者明确取消，不进入执行、验收或完成计数 |
 
@@ -54,15 +54,15 @@
 
 G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属于本轮完成范围：
 
-- [x] `ARCH-001`、`ARCH-101` 至 `ARCH-109`、`ARCH-201` 至 `ARCH-204` 全部完成；`ARCH-110/111` 随 S4 取消且不作为完成依赖。
+- [ ] `ARCH-001`、`ARCH-101` 至 `ARCH-109`、`ARCH-201` 至 `ARCH-204` 全部完成；`ARCH-110/111` 随 S4 取消且不作为完成依赖。
 - [x] 宿主依赖图没有未解释 SCC；只允许精确 containment 的 TMDB 移植包例外，成员不能增长。
-- [x] Application/Chain 到具体 Adapter、direct egress、raw concurrency 等所有例外均精确、可解释、不可增长。
+- [x] Application/Chain 到具体 Adapter、direct egress，以及本轮迁移资源的并发 owner 例外均精确、可解释、不可增长。
 - [x] Chain/Agent 正式数据入口不再注入无 Session Oper，不再以 `Any`/ORM 作为跨层合同。
 - [x] 正式业务写入均有单一事务 owner；E2/E3 动作完成语义、幂等、恢复与人工决策路径一致。
 - [x] import、普通对象构造不启动进程资源；资源由 bootstrap/lifecycle 显式创建、发布、关闭和重试收口。
 - [x] S3、S5 各叶子定义的类型、复杂度、覆盖率和并发债务清零，现有全局 ratchet 不发生回退。
 - [x] canonical 主程序无旧实现、重复导出和 legacy import；插件兼容检查基于同步后的官方插件仓 SHA 通过。
-- [x] 锁定全量测试、Pylint、依赖一致性和最终远端一致性全部通过；本轮未修改依赖。
+- [ ] 锁定全量测试、Pylint、依赖一致性和最终远端一致性全部通过；本轮未修改依赖。
 
 ## 3. 阶段与叶子
 
@@ -86,9 +86,9 @@ G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属�
 退出条件：Transfer 达到 E3；正式数据 Port 类型化；跨表业务操作有单一 UoW；post-commit/Outbox
 竞争、失败呈现、at-least-once 和幂等语义全部闭环。
 
-`S1-L1` 是 ARCH-102 的 Transfer E3 父项，当前状态为 **DELIVERED**。`S1-L1.1` 至
-`S1-L1.5` 已全部交付，真实调用链已完成迁移，旧 fail-open、重复状态和兼容层外旧入口已退出
-canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
+`S1-L1` 是 ARCH-102 的 Transfer E3 父项，当前状态为 **DELIVERED**。`S1-L1.5` 聚合交付
+`S1-L1.1` 至 `S1-L1.4` 的阶段性 `VERIFIED` 结果；真实调用链已完成迁移，旧 fail-open、重复状态和
+兼容层外旧入口已退出 canonical 主程序，兼容只经统一 Compat/SDK 门面提供。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
@@ -125,12 +125,12 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S2-L4 Passkey 缓存边界 | `VERIFIED` | S0-L2.4 | `PasskeyChallengeCache` 由 startup 注入，Application 不识别 Redis；严格 `AtomicCacheBackend.store/consume` 由 Memory/Redis backend 分别实现，challenge 仅能被原子领取一次 |
 | S2-L5 Backup artifact Port | `VERIFIED` | S0-L2.4 | Application-owned `BackupArtifactStore`/factory 覆盖创建、发布、清理、列举、解析、删除和元数据读取；startup 注入唯一 `BackupFiles` 实现，Application 具体 Adapter 直连由 14 降至 13，完整备份调用链 62 项通过 |
 | S2-L6 Application Adapter/DNS 债务清零 | `VERIFIED` | S2-L4,S2-L5 | Application 自有 DNS、图片、消息回环、RSS、站点登录、种子、系统加速 Port，startup 统一注入；13 条具体 Adapter 边及 Application DNS I/O 均归零，未装配和失败回滚语义已验证 |
-| S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `VERIFIED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 均归零；当前 55 条出口事实全部属于精确 SDK/stream/vendor/canonical containment，policy 无 unreviewed、stale 或指纹漂移 |
+| S2-L7 Chain Adapter/宿主 HTTP 债务清零 | `VERIFIED` | S2-L6 | Chain 具体 Adapter 与 11 条普通 direct HTTP/Session bridge 均归零；当前 53 条出口事实全部属于精确 SDK/stream/vendor/canonical containment，policy 无 unreviewed、stale 或指纹漂移 |
 
 ### S3：大型编排器职责清零
 
 退出条件：每个热点 Facade 只保留稳定公开入口；决策、I/O、状态和生命周期各有单一 owner；
-旧实现从 canonical 文件删除，complexity-v2 对该所有权面无债务。
+旧实现从 canonical 文件删除，现有复杂度 ratchet 与叶子结构门禁对该所有权面无新增债务。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
@@ -166,11 +166,11 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
 | S5-L1 PluginHelper/PluginManager | `DELIVERED` | S2,S3 | `fa40f29df`：市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
-| S5-L2 Agent/LLM provider | `DELIVERED` | S3-L7 | `c000c4fff`、`3a33da0b3`、`dbdf7d058`：catalog、发现、认证、session、runtime 分离；Manager/Facade 只保留稳定 API，旧包根符号仅由精确 Compat 承接 |
-| S5-L3 Domain projection | `DELIVERED` | S3-L6 | `MediaInfo` canonical 路径和 setter ABI 保留；四来源纯投影归入单词 owner，输入不可变、重复业务语义清零 |
-| S5-L4 Startup composition | `DELIVERED` | S2,S3,S5-L1,S5-L2 | 领域构造全部归单词型 composition owner；HostRuntime/ApiData 同源；显式逆序 reset manifest 在 worker 收敛后撤销 Provider，失败保留完整诊断边界 |
-| S5-L5 Sync/async 重复清零 | `DELIVERED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
-| S5-L6 最终兼容与交付 | `DELIVERED` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、现有类型/覆盖率门禁全部通过并推送；完成后结束本轮战略任务 |
+| S5-L2 Agent/LLM provider | `VERIFIED` | S3-L7 | `c000c4fff`、`3a33da0b3`、`dbdf7d058` 已在 `origin/v3` 祖先链：catalog、发现、认证、session、runtime 分离；Manager/Facade 只保留稳定 API，待最终精确 head CI 统一闭环 |
+| S5-L3 Domain projection | `VERIFIED` | S3-L6 | `MediaInfo` canonical 路径和 setter ABI 保留；四来源纯投影归入单词 owner，输入不可变、重复业务语义清零 |
+| S5-L4 Startup composition | `VERIFIED` | S2,S3,S5-L1,S5-L2 | 领域构造全部归单词型 composition owner；HostRuntime/ApiData 同源；显式逆序 reset manifest 在 worker 收敛后撤销 Provider，失败保留完整诊断边界 |
+| S5-L5 Sync/async 重复清零 | `VERIFIED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
+| S5-L6 最终兼容与交付 | `ACTIVE` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、现有类型/覆盖率门禁全部通过并推送；完成后结束本轮战略任务 |
 
 ## 4. 叶子合同与当前活动项
 
@@ -361,7 +361,7 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 
 ### S5-L6 最终兼容与交付
 
-**Status:** `DELIVERED`
+**Status:** `ACTIVE`
 
 - 22 个不符合规范的 canonical 文件名已归并为单词文件或同名职责包；旧实现文件和主程序包根重复导出
   已删除，宿主调用方直接导入真实 owner，兼容只由精确 SDK/Compat manifest 提供。
@@ -371,8 +371,13 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 - 锁定串行覆盖率全量 `7659 passed, 9 skipped`；Application/Domain 低水位提升并固化为
   `81.61%` / `81.03%`。Host 架构、Event/Egress policy、复杂度、async 阻塞、TaskRegistry、
   service locator、mypy/Ruff ratchet、启动性能、Pylint `10.00/10` 与依赖一致性均通过。
-- 本叶随最终收口提交推送到 `v3`；以 exact head 的 GitHub Unit Tests/Pylint 终态和远端 `0/0`
-  作为 G-ARCH 结束证据。
+- exact-head 失败后已将 canonical `SearchChain` Facade 改为显式类型转发，并修正 API/Workflow 的
+  Optional、Domain/Schema DTO 边界；2026-08-30 最终本地锁定全量 `7659 passed, 9 skipped`，
+  CI 同构架构测试 `197 passed`，mypy 低水位降至 `9,995`，Ruff、Pylint `10.00/10`、复杂度、
+  async、TaskRegistry、service locator、启动性能与依赖快照门禁均通过。
+- 收口提交 `c960a0184` 已推送，但 exact-head Unit Tests `33260357239` 的 mypy ratchet 暴露
+  canonical `SearchChain` 直达 owner 后的类型债务，因此本叶仍为 `ACTIVE`；不得以本地全量或 Pylint
+  成功替代远端失败终态。
 
 ### S1-L1.1 Durable admission
 

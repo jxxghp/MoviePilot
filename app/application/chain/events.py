@@ -106,7 +106,7 @@ def snapshot_download_added(payload: dict[str, Any]) -> dict[str, Any]:
     return cast(dict[str, Any], _json_snapshot({
         "hash": payload.get("hash"),
         "context": (
-            cast(Callable[[], dict[str, Any]], context.to_dict)()
+            context.to_dict()
             if isinstance(context, Context)
             else context
         ),

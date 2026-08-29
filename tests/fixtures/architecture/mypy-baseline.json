@@ -578,7 +578,6 @@
     "arg-type": 1,
     "assignment": 1,
     "misc": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2
   },
   "app/agent/tools/impl/reload_plugin.py": {
@@ -867,7 +866,7 @@
     "assignment": 8,
     "attr-defined": 3,
     "misc": 14,
-    "no-untyped-call": 7,
+    "no-untyped-call": 5,
     "no-untyped-def": 3,
     "type-arg": 1
   },
@@ -942,7 +941,6 @@
     "assignment": 2,
     "attr-defined": 3,
     "misc": 26,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "return-value": 3,
     "type-arg": 6,
@@ -966,7 +964,7 @@
   },
   "app/api/endpoints/system.py": {
     "arg-type": 2,
-    "attr-defined": 5,
+    "attr-defined": 4,
     "import-untyped": 1,
     "misc": 34,
     "no-untyped-call": 7,
@@ -1251,7 +1249,7 @@
     "arg-type": 1,
     "attr-defined": 26,
     "no-any-return": 6,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 4
   },
@@ -1679,8 +1677,8 @@
   "app/domain/context.py": {
     "assignment": 86,
     "no-any-return": 1,
-    "no-untyped-call": 5,
-    "no-untyped-def": 27,
+    "no-untyped-call": 4,
+    "no-untyped-def": 24,
     "operator": 1,
     "type-arg": 36
   },
@@ -3345,9 +3343,7 @@
     "var-annotated": 1
   },
   "app/workflow/actions/fetch_torrents.py": {
-    "type-arg": 1,
-    "union-attr": 2,
-    "var-annotated": 1
+    "type-arg": 1
   },
   "app/workflow/actions/filter_medias.py": {
     "operator": 1,

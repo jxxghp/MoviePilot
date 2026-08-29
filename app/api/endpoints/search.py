@@ -11,6 +11,7 @@ from app.adapters.web.security.access import verify_resource_token, verify_token
 from app.api.response import ResponseAPIRouter
 from app.application.security.url import SecurityUtils
 from app.chain.search.facade import SearchChain
+from app.domain.context import Context
 from app.domain.media import normalize_music_type
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
@@ -126,6 +127,11 @@ def _serialize_signed_subtitle_results(subtitles: List[Any]) -> List[dict]:
     批量序列化字幕结果，确保返回给客户端的下载链接均已签名。
     """
     return [_serialize_signed_subtitle_result(subtitle) for subtitle in subtitles]
+
+
+def _serialize_context_results(contexts: list[Context]) -> list[dict[str, Any]]:
+    """序列化 canonical 搜索上下文，集中保持传输层投影合同。"""
+    return [context.to_dict() for context in contexts]
 
 
 def _sign_subtitle_search_event(event: dict) -> dict:
@@ -339,7 +345,7 @@ async def search_latest(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     查询搜索结果
     """
     torrents = await SearchChain().async_last_search_results() or []
-    return [torrent.to_dict() for torrent in torrents]
+    return _serialize_context_results(torrents)
 
 
 @router.get(
@@ -354,16 +360,18 @@ async def search_latest_context(_: _SchemaTokenPayload = Depends(verify_token)) 
     search_chain = SearchChain()
     params = await search_chain.async_last_search_params() or {}
     if params.get("result_type") == "subtitle":
-        results = await search_chain.async_last_subtitle_search_results() or []
+        subtitle_results = (
+            await search_chain.async_last_subtitle_search_results() or []
+        )
+        serialized_results = _serialize_signed_subtitle_results(subtitle_results)
     else:
-        results = await search_chain.async_last_search_results() or []
+        context_results = await search_chain.async_last_search_results() or []
+        serialized_results = _serialize_context_results(context_results)
     return _SchemaResponse(
         success=True,
         data={
             "params": params,
-            "results": _serialize_signed_subtitle_results(results)
-            if params.get("result_type") == "subtitle"
-            else [result.to_dict() for result in results],
+            "results": serialized_results,
         },
     )
 
@@ -467,7 +475,7 @@ async def search_by_id(
     if not torrents:
         return _SchemaResponse(success=False, message="未搜索到任何资源")
     return _SchemaResponse(
-        success=True, data=[torrent.to_dict() for torrent in torrents]
+        success=True, data=_serialize_context_results(torrents)
     )
 
 
@@ -496,7 +504,7 @@ async def search_by_title_stream(
     """
 
     event_source = SearchChain().async_search_by_title_stream(
-        title=keyword,
+        title=keyword or "",
         page=page,
         sites=_parse_site_list(sites),
         cache_local=True,
@@ -525,7 +533,7 @@ async def search_by_title(
     根据名称模糊搜索站点资源，支持分页，关键词为空是返回首页资源
     """
     torrents = await SearchChain().async_search_by_title(
-        title=keyword,
+        title=keyword or "",
         page=page,
         sites=_parse_site_list(sites),
         cache_local=True,
@@ -534,7 +542,7 @@ async def search_by_title(
     if not torrents:
         return _SchemaResponse(success=False, message="未搜索到任何资源")
     return _SchemaResponse(
-        success=True, data=[torrent.to_dict() for torrent in torrents]
+        success=True, data=_serialize_context_results(torrents)
     )
 
 
@@ -562,7 +570,10 @@ async def search_subtitle_by_title_stream(
     """
 
     event_source = SearchChain().async_search_subtitles_by_title_stream(
-        title=keyword, page=page, sites=_parse_site_list(sites), cache_local=True
+        title=keyword or "",
+        page=page,
+        sites=_parse_site_list(sites),
+        cache_local=True,
     )
     return StreamingResponse(
         _stream_search_events(
@@ -589,7 +600,10 @@ async def search_subtitle_by_title(
     根据名称模糊搜索站点字幕资源，支持分页。
     """
     subtitles = await SearchChain().async_search_subtitles_by_title(
-        title=keyword, page=page, sites=_parse_site_list(sites), cache_local=True
+        title=keyword or "",
+        page=page,
+        sites=_parse_site_list(sites),
+        cache_local=True,
     )
     if not subtitles:
         return _SchemaResponse(success=False, message="未搜索到任何字幕")

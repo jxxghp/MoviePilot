@@ -1,6 +1,6 @@
 """搜索处理链稳定 Facade。"""
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from typing import Any, Optional, TypeVar, cast
 
 from app.chain.base import ChainBase
@@ -15,10 +15,10 @@ from app.chain.search.result import SearchResultOwner
 from app.chain.search.site import SearchSiteOwner
 from app.chain.search.subtitle import SearchSubtitleOwner
 from app.chain.search.title import SearchTitleOwner
-from app.domain.context import Context, MediaInfo
+from app.domain.context import Context, MediaInfo, SubtitleInfo
 from app.runtime.events import Event, eventmanager
 from app.schemas.mediaserver import NotExistMediaInfo
-from app.schemas.types import EventType, MediaType
+from app.schemas.types import EventType, MediaSource, MediaType
 
 _PUBLIC_MODULE = "app.chain.search"
 _Handler = TypeVar("_Handler", bound=Callable[..., Any])
@@ -56,12 +56,41 @@ class SearchChain(ChainBase):
     )
     _should_continue_search_pages = SearchPaginationOwner._should_continue_search_pages
     _should_continue_subtitle_search_pages = staticmethod(SearchPaginationOwner._should_continue_subtitle_search_pages)
-    is_ai_recommend_enabled = SearchRecommendOwner.is_ai_recommend_enabled
+    @property
+    def is_ai_recommend_enabled(self) -> bool:
+        """经推荐 owner 的原始描述符读取启用状态，避免 Facade 属性递归。"""
+        descriptor = cast(
+            property,
+            SearchRecommendOwner.__dict__["is_ai_recommend_enabled"],
+        )
+        return cast(bool, descriptor.__get__(self, type(self)))
+
     _calculate_recommend_request_hash = staticmethod(SearchRecommendOwner._calculate_recommend_request_hash)
     _build_ai_recommend_status = SearchRecommendOwner._build_ai_recommend_status
-    get_current_recommend_status_only = SearchRecommendOwner.get_current_recommend_status_only
-    get_recommend_status = SearchRecommendOwner.get_recommend_status
-    cancel_ai_recommend = SearchRecommendOwner.cancel_ai_recommend
+    def get_current_recommend_status_only(self) -> dict[str, Any]:
+        """返回当前推荐状态，不改变推荐请求代际。"""
+        return SearchRecommendOwner.get_current_recommend_status_only(
+            cast(SearchRecommendOwner, self)
+        )
+
+    def get_recommend_status(
+        self,
+        filtered_indices: Optional[list[int]],
+        search_results_count: int,
+    ) -> dict[str, Any]:
+        """按当前筛选条件返回推荐状态。"""
+        return SearchRecommendOwner.get_recommend_status(
+            cast(SearchRecommendOwner, self),
+            filtered_indices=filtered_indices,
+            search_results_count=search_results_count,
+        )
+
+    def cancel_ai_recommend(self) -> None:
+        """委托推荐 owner 取消当前任务并清理推荐缓存。"""
+        SearchRecommendOwner.cancel_ai_recommend(
+            cast(SearchRecommendOwner, self)
+        )
+
     _build_search_keyword = staticmethod(SearchPlanOwner._build_search_keyword)
     _media_recognize_kwargs = staticmethod(SearchPlanOwner._media_recognize_kwargs)
     _stringify_sites = staticmethod(SearchCacheOwner._stringify_sites)
@@ -72,14 +101,56 @@ class SearchChain(ChainBase):
     _async_save_subtitles = SearchCacheOwner._async_save_subtitles
     save_last_search_params = SearchCacheOwner.save_last_search_params
     async_save_last_search_params = SearchCacheOwner.async_save_last_search_params
-    last_search_params = SearchCacheOwner.last_search_params
-    async_last_search_params = SearchCacheOwner.async_last_search_params
+    def last_search_params(self) -> Optional[dict[str, str]]:
+        """返回最近一次搜索参数。"""
+        return SearchCacheOwner.last_search_params(cast(SearchCacheOwner, self))
+
+    async def async_last_search_params(self) -> Optional[dict[str, str]]:
+        """异步返回最近一次搜索参数。"""
+        return await SearchCacheOwner.async_last_search_params(
+            cast(SearchCacheOwner, self)
+        )
     _normalize_ai_indices = staticmethod(SearchRecommendOwner._normalize_ai_indices)
     _extract_recommend_items = staticmethod(SearchRecommendOwner._extract_recommend_items)
     _restore_original_indices = staticmethod(SearchRecommendOwner._restore_original_indices)
     _invoke_recommend_llm = staticmethod(SearchRecommendOwner._invoke_recommend_llm)
-    start_recommend_task = SearchRecommendOwner.start_recommend_task
-    search_by_id = SearchMediaOwner.search_by_id
+    def start_recommend_task(
+        self,
+        filtered_indices: Optional[list[int]],
+        search_results_count: int,
+        results: list[Any],
+    ) -> None:
+        """委托推荐 owner 启动受代际保护的推荐任务。"""
+        SearchRecommendOwner.start_recommend_task(
+            cast(SearchRecommendOwner, self),
+            filtered_indices=filtered_indices,
+            search_results_count=search_results_count,
+            results=results,
+        )
+
+    def search_by_id(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        mtype: Optional[MediaType] = None,
+        area: Optional[str] = "title",
+        season: Optional[int] = None,
+        sites: Optional[list[int]] = None,
+        cache_local: bool = False,
+        music_type: Optional[str] = None,
+    ) -> list[Context]:
+        """通过稳定 Facade 执行同步精确媒体搜索。"""
+        return SearchMediaOwner.search_by_id(
+            cast(SearchMediaOwner, self),
+            media_source=media_source,
+            media_id=media_id,
+            mtype=mtype,
+            area=area,
+            season=season,
+            sites=sites,
+            cache_local=cache_local,
+            music_type=music_type,
+        )
 
     def search_by_title(
         self,
@@ -101,19 +172,192 @@ class SearchChain(ChainBase):
             rule_groups=rule_groups,
         )
 
-    last_search_results = SearchCacheOwner.last_search_results
-    async_last_search_results = SearchCacheOwner.async_last_search_results
-    async_last_subtitle_search_results = SearchCacheOwner.async_last_subtitle_search_results
-    async_search_subtitles_by_title = SearchSubtitleOwner.async_search_subtitles_by_title
-    async_search_subtitles_by_title_stream = SearchSubtitleOwner.async_search_subtitles_by_title_stream
-    async_search_subtitles_by_id = SearchSubtitleOwner.async_search_subtitles_by_id
-    async_search_subtitles_by_id_stream = SearchSubtitleOwner.async_search_subtitles_by_id_stream
-    async_search_by_id = SearchMediaOwner.async_search_by_id
-    async_search_by_title = SearchTitleOwner.async_search_by_title
-    async_search_by_title_stream = SearchTitleOwner.async_search_by_title_stream
+    def last_search_results(self) -> Optional[list[Context]]:
+        """返回最近一次资源搜索结果。"""
+        return SearchCacheOwner.last_search_results(cast(SearchCacheOwner, self))
+
+    async def async_last_search_results(self) -> Optional[list[Context]]:
+        """异步返回最近一次资源搜索结果。"""
+        return await SearchCacheOwner.async_last_search_results(
+            cast(SearchCacheOwner, self)
+        )
+
+    async def async_last_subtitle_search_results(
+        self,
+    ) -> Optional[list[SubtitleInfo]]:
+        """异步返回最近一次字幕搜索结果。"""
+        return await SearchCacheOwner.async_last_subtitle_search_results(
+            cast(SearchCacheOwner, self)
+        )
+
+    async def async_search_subtitles_by_title(
+        self,
+        title: str,
+        page: Optional[int] = 0,
+        sites: Optional[list[int]] = None,
+        cache_local: Optional[bool] = False,
+    ) -> list[SubtitleInfo]:
+        """通过稳定 Facade 执行异步标题字幕搜索。"""
+        return await SearchSubtitleOwner.async_search_subtitles_by_title(
+            cast(SearchSubtitleOwner, self),
+            title=title,
+            page=page,
+            sites=sites,
+            cache_local=cache_local,
+        )
+
+    async def async_search_subtitles_by_title_stream(
+        self,
+        title: str,
+        page: Optional[int] = 0,
+        sites: Optional[list[int]] = None,
+        cache_local: Optional[bool] = False,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """通过稳定 Facade 流式执行标题字幕搜索。"""
+        async for event in SearchSubtitleOwner.async_search_subtitles_by_title_stream(
+            cast(SearchSubtitleOwner, self),
+            title=title,
+            page=page,
+            sites=sites,
+            cache_local=cache_local,
+        ):
+            yield event
+
+    async def async_search_subtitles_by_id(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        mtype: Optional[MediaType] = None,
+        season: Optional[int] = None,
+        episode: Optional[int] = None,
+        sites: Optional[list[int]] = None,
+        cache_local: bool = False,
+    ) -> list[SubtitleInfo]:
+        """通过稳定 Facade 执行异步精确字幕搜索。"""
+        return await SearchSubtitleOwner.async_search_subtitles_by_id(
+            cast(SearchSubtitleOwner, self),
+            media_source=media_source,
+            media_id=media_id,
+            mtype=mtype,
+            season=season,
+            episode=episode,
+            sites=sites,
+            cache_local=cache_local,
+        )
+
+    async def async_search_subtitles_by_id_stream(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        mtype: Optional[MediaType] = None,
+        season: Optional[int] = None,
+        episode: Optional[int] = None,
+        sites: Optional[list[int]] = None,
+        cache_local: bool = False,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """通过稳定 Facade 流式执行精确字幕搜索。"""
+        async for event in SearchSubtitleOwner.async_search_subtitles_by_id_stream(
+            cast(SearchSubtitleOwner, self),
+            media_source=media_source,
+            media_id=media_id,
+            mtype=mtype,
+            season=season,
+            episode=episode,
+            sites=sites,
+            cache_local=cache_local,
+        ):
+            yield event
+
+    async def async_search_by_id(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        mtype: Optional[MediaType] = None,
+        area: Optional[str] = "title",
+        season: Optional[int] = None,
+        sites: Optional[list[int]] = None,
+        cache_local: bool = False,
+        music_type: Optional[str] = None,
+    ) -> list[Context]:
+        """通过稳定 Facade 执行异步精确媒体搜索。"""
+        return await SearchMediaOwner.async_search_by_id(
+            cast(SearchMediaOwner, self),
+            media_source=media_source,
+            media_id=media_id,
+            mtype=mtype,
+            area=area,
+            season=season,
+            sites=sites,
+            cache_local=cache_local,
+            music_type=music_type,
+        )
+
+    async def async_search_by_title(
+        self,
+        title: str,
+        page: Optional[int] = 0,
+        sites: Optional[list[int]] = None,
+        cache_local: Optional[bool] = False,
+        mtype: Optional[MediaType] = None,
+        rule_groups: Optional[list[str]] = None,
+    ) -> list[Context]:
+        """通过稳定 Facade 执行异步标题资源搜索。"""
+        return await SearchTitleOwner.async_search_by_title(
+            cast(SearchTitleOwner, self),
+            title=title,
+            page=page,
+            sites=sites,
+            cache_local=cache_local,
+            mtype=mtype,
+            rule_groups=rule_groups,
+        )
+
+    async def async_search_by_title_stream(
+        self,
+        title: str,
+        page: Optional[int] = 0,
+        sites: Optional[list[int]] = None,
+        cache_local: Optional[bool] = False,
+        mtype: Optional[MediaType] = None,
+        rule_groups: Optional[list[str]] = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """通过稳定 Facade 流式执行标题资源搜索。"""
+        async for event in SearchTitleOwner.async_search_by_title_stream(
+            cast(SearchTitleOwner, self),
+            title=title,
+            page=page,
+            sites=sites,
+            cache_local=cache_local,
+            mtype=mtype,
+            rule_groups=rule_groups,
+        ):
+            yield event
     _build_title_search_meta = staticmethod(SearchTitleOwner._build_title_search_meta)
     _filter_title_search_torrents = SearchTitleOwner._filter_title_search_torrents
-    async_search_by_id_stream = SearchMediaOwner.async_search_by_id_stream
+    async def async_search_by_id_stream(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        mtype: Optional[MediaType] = None,
+        area: Optional[str] = "title",
+        season: Optional[int] = None,
+        sites: Optional[list[int]] = None,
+        cache_local: bool = False,
+        music_type: Optional[str] = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """通过稳定 Facade 流式执行精确媒体搜索。"""
+        async for event in SearchMediaOwner.async_search_by_id_stream(
+            cast(SearchMediaOwner, self),
+            media_source=media_source,
+            media_id=media_id,
+            mtype=mtype,
+            area=area,
+            season=season,
+            sites=sites,
+            cache_local=cache_local,
+            music_type=music_type,
+        ):
+            yield event
     _prepare_params = staticmethod(SearchPlanOwner._prepare_params)
     _copy_media_input = staticmethod(SearchPlanOwner._copy_media_input)
     _parse_result = SearchResultOwner._parse_result
@@ -148,8 +392,54 @@ class SearchChain(ChainBase):
             filter_params=filter_params,
         )
 
-    async_process = SearchMediaOwner.async_process
-    async_process_stream = SearchMediaOwner.async_process_stream
+    async def async_process(
+        self,
+        mediainfo: MediaInfo,
+        keyword: Optional[str] = None,
+        no_exists: Optional[dict[str, dict[int, NotExistMediaInfo]]] = None,
+        sites: Optional[list[int]] = None,
+        rule_groups: Optional[list[str]] = None,
+        area: Optional[str] = "title",
+        custom_words: Optional[list[str]] = None,
+        filter_params: Optional[dict[str, str]] = None,
+    ) -> list[Context]:
+        """通过稳定 Facade 执行异步媒体搜索编排。"""
+        return await SearchMediaOwner.async_process(
+            cast(SearchMediaOwner, self),
+            mediainfo=mediainfo,
+            keyword=keyword,
+            no_exists=no_exists,
+            sites=sites,
+            rule_groups=rule_groups,
+            area=area,
+            custom_words=custom_words,
+            filter_params=filter_params,
+        )
+
+    async def async_process_stream(
+        self,
+        mediainfo: MediaInfo,
+        keyword: Optional[str] = None,
+        no_exists: Optional[dict[str, dict[int, NotExistMediaInfo]]] = None,
+        sites: Optional[list[int]] = None,
+        rule_groups: Optional[list[str]] = None,
+        area: Optional[str] = "title",
+        custom_words: Optional[list[str]] = None,
+        filter_params: Optional[dict[str, str]] = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """通过稳定 Facade 流式执行媒体搜索编排。"""
+        async for event in SearchMediaOwner.async_process_stream(
+            cast(SearchMediaOwner, self),
+            mediainfo=mediainfo,
+            keyword=keyword,
+            no_exists=no_exists,
+            sites=sites,
+            rule_groups=rule_groups,
+            area=area,
+            custom_words=custom_words,
+            filter_params=filter_params,
+        ):
+            yield event
     _build_subtitle_season_episodes = staticmethod(SearchSubtitleOwner._build_subtitle_season_episodes)
     _build_subtitle_torrent = staticmethod(SearchSubtitleOwner._build_subtitle_torrent)
     _build_subtitle_names = staticmethod(SearchSubtitleOwner._build_subtitle_names)

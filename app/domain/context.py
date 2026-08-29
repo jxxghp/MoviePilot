@@ -1088,7 +1088,7 @@ class TorrentInfo:
             print(f"种子发布时间获取失败: {e}")
             return 0
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """
         返回字典
         """
@@ -1179,7 +1179,7 @@ class SubtitleInfo:
         for key, value in data.items():
             setattr(self, key, value)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """
         返回字典。
         """
@@ -1575,7 +1575,7 @@ class Context:
     # 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源。
     confirmed_full_coverage: bool = False
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """
         转换为字典
         """

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from app.domain.context import Context, TorrentInfo
+from app.domain.metainfo import MetaInfo
 from app.schemas.download import DownloadTask
 from app.schemas.file import FileItem
 from app.schemas.workflow import ActionContext, ActionResult
@@ -53,15 +55,13 @@ def test_fetch_torrents_filters_special_season_zero(monkeypatch):
 
         def search_by_title(self, **_kwargs):
             return [
-                SimpleNamespace(
-                    meta_info=SimpleNamespace(year=None, begin_season=0),
-                    media_info=None,
-                    torrent_info=SimpleNamespace(title="Test S00"),
+                Context(
+                    meta_info=MetaInfo("Test S00"),
+                    torrent_info=TorrentInfo(title="Test S00"),
                 ),
-                SimpleNamespace(
-                    meta_info=SimpleNamespace(year=None, begin_season=1),
-                    media_info=None,
-                    torrent_info=SimpleNamespace(title="Test S01"),
+                Context(
+                    meta_info=MetaInfo("Test S01"),
+                    torrent_info=TorrentInfo(title="Test S01"),
                 ),
             ]
 

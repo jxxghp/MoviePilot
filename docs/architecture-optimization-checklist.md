@@ -2,9 +2,10 @@
 
 > 审计日期：2026-08-26
 >
-> 首次审计历史快照：`v3@9053db926d20`；当前交付状态以路线图和生成 fixture 为准
+> 首次审计历史快照：`v3@9053db926d20`；历史问题描述用于追溯，当前事实与交付状态以
+> 本文“当前架构画像”、路线图和生成 fixture 为准
 >
-> 文档性质：当前源码的差距清单与分阶段执行说明，不是历史重构结项账本
+> 文档性质：原始差距、治理结果和剩余交付边界的持续校准账本
 
 ## 1. 结论摘要
 
@@ -13,20 +14,20 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 基本成立。旧物理兼容目录、Model/Oper 自建 Session/提交和直接跨层 DB 依赖等历史问题已有
 硬门禁；门禁还能证明可识别的 TaskRegistry 调用已经声明稳定 owner。
 
-当前主要问题不再是“目录没有分层”，而是以下四类更深层的债务：
+截至当前校准，原审计识别的四类结构性债务已经按既定路线收口：
 
-1. **边界有形、合同偏弱**：部分 Application Port 仍是 `Callable[[], Any]`，返回 ORM 或
-   动态代理；生产路径因此继续依赖无 Session Oper、全局 provider 和隐式构造。
-2. **用例编排过度集中**：部分 Chain、Plugin、Agent、LLM 和 API 文件仍同时承担决策、I/O、
-   状态、生命周期与兼容职责；Scheduler 已完成生产代码拆包和综合验收，其他私有长方法仍可能
-   处于复杂度门禁盲区。
-3. **可靠性声明强于实现**：整理 pending 目前只能做最小重放，尚不满足 ADR 中声明的 E3
-   状态机语义；部分 commit 后副作用仍存在“业务已提交但调用方收到失败”或进程退出后丢失的窗口。
-4. **治理事实源不一致**：架构规则、总览、AST 基线和 CI 语义存在漂移；快照门禁能证明“没有变化”，
-   但不能自动证明依赖合理、没有新环或所有运行资源都有生命周期 owner。
+1. **类型化边界**：Chain/Agent 正式数据入口已使用冻结 DTO 与 typed Port；raw Oper/ORM/`Any`
+   只留统一 Legacy/Compat，canonical 宿主不再依赖无 Session 写入口或全局数据 locator。
+2. **职责拆分**：Transfer、Subscribe、Download、Search、Media、Scheduler、Plugin、Agent/LLM、
+   Domain 投影和 Startup composition 均已有单一 owner；Facade 只保留稳定 ABI 与显式委托。
+3. **可靠性语义**：Transfer E3 状态机、业务 UoW、post-commit 结构化结果、Outbox claim/settlement
+   fencing 和人工确认边界均已落地，外部 sink 的 at-least-once 责任被明确记录。
+4. **治理事实源**：依赖、SCC、Adapter、egress、Event、复杂度、类型、Ruff、生命周期和兼容基线
+   已进入机器门禁；`app/plugins/**` 始终排除，插件兼容只由 SDK/Compat 承接。
 
-审计时唯一 P0 的主线 `mypy` ratchet 失败已由 `5df388719` 修复并推送。后续架构优化按可靠性、
-边界类型化、生命周期、复杂度的顺序推进；不建议再做一次大规模目录搬迁。
+当前唯一活动项是 S5-L6 的最终交付闭环：`c960a0184` 已推送，但 exact-head Unit Tests 暴露
+canonical `SearchChain` 类型债务。本地修复和低水位更新已经通过，尚需提交推送并取得新精确 head
+远端 CI 全绿，才能把 S5-L3 至 S5-L6 及对应总表项晋升为已交付并结束本轮任务。
 
 ## 2. 范围与证据边界
 
@@ -55,30 +56,30 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | 层/区域 | 已形成的正确边界 | 当前主要缺口 |
 |---|---|---|
 | `foundation` | 无状态、无配置、无 I/O 的底层机制 | 当前未发现需要重做的结构性问题 |
-| `domain` | 已与 DB、Application、Adapter 保持单向隔离 | `domain/context.py` 等核心对象过大，来源投影与领域模型仍集中 |
-| `runtime` | 已有任务、事件、缓存、托管资源和停止合同 | 导入/构造时启动线程；`global_vars` 仍混合停止、主循环和 WebPush 状态 |
-| `adapters` | 技术与命名外部生态已有明确目录 | Application/Chain 仍直接识别部分具体 Adapter；例外规则没有形式化 |
-| `application` | 已有命令、Port、Outbox 和安全能力，具体 Adapter 直连已清零 | 部分 Port 是 `Any` 服务定位器，仍需继续收窄合同 |
-| `chain` | 多入口复用的用例编排与 Module 动态分发已稳定，包根 SCC 已清零 | God object、私有长方法、无参构造和资源物化过重 |
-| `db/oper` | Model/Oper 已不自建 Session、不自行提交 | 无 Session Facade 仍被宿主组合根注入，业务操作可能拆成多个事务 |
-| `db/adapters` | 已有显式 Session/UoW 的参考切片 | Port 返回类型不够稳定；Outbox 的 stage 与自提交 dispatcher store 混在一个类型 |
+| `domain` | 已与 DB、Application、Adapter 保持单向隔离；四类媒体来源投影已拆入独立 owner | `domain/context.py` 仍承载核心领域对象和兼容 setter，继续由复杂度门禁约束 |
+| `runtime` | 已有任务、事件、缓存、托管资源和停止合同；资源由 lifecycle 显式装配 | 原生并发原语的全宿主清单属于已取消 ARCH-111，不在本轮扩张 |
+| `adapters` | 技术与命名外部生态已有明确目录；Application/Chain 具体 Adapter 直连已清零 | 现存 direct egress 均为精确书面化协议例外，需由 zero-growth 门禁持续守护 |
+| `application` | 命令、typed Port、Outbox 和安全能力边界已落地，具体 Adapter 与 raw data locator 已清零 | 新增能力必须继续使用明确 Protocol/DTO，不能恢复 `Any` 服务定位器 |
+| `chain` | 多入口复用的用例编排与 Module 动态分发已稳定，热点 Chain 已拆为同名职责包 | Facade 仍需保持稳定 ABI，并由类型、复杂度和兼容门禁防止职责回流 |
+| `db/oper` | Model/Oper 已不自建 Session、不自行提交，只在调用方 Session 内查询、stage 或 flush | 当前未发现需重做的结构性事务所有权问题 |
+| `db/adapters` | Application Port、短 Session/UoW 与 DTO 投影已落地；Outbox stager/store 已分离 | 新用例需继续防止 ORM 越界和隐式事务回流 |
 | `startup` | `composition/runtime.py` 已成为 HostRuntime、领域 Runtime 与旧 ApiData 投影唯一 owner；Chain/Agent 复用同一 RuntimeDependencies | `initializers/modules.py` 仍保留启动顺序与跨领域发布调用，高扇出需由生命周期验收继续约束 |
-| API/Command/Scheduler | 多数入口已转向 Chain/Application；Scheduler 单体已拆为同名职责包并由 startup 注入业务 callable | Agent/System/Plugin 等入口仍承担较多业务与 I/O 编排 |
+| API/Command/Scheduler | Agent/System/Plugin 用例已下沉 Application；Scheduler 单体已拆为同名职责包并由 startup 注入业务 callable | endpoint 与 Facade 需继续由架构门禁防止业务编排回流 |
 | `sdk`/`compat` | 精确映射、稳定插件 ABI 和宿主 canonical 路径已落地 | SDK 仍暴露部分可变全局对象/具体 Manager，只能渐进收窄，不能直接删除 |
 
 ### 3.2 量化快照
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 973 / 8,350 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 973 / 8,355 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
 | Module Contract | 217 specs / 215 methods / 266 calls | 动态方法名为 0；内部 planning 合同不进入插件调度，旧 transfer 只保留 provider ABI |
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
-| Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
-| 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,008 / 592 文件 | 识别链 typed plan/result、TMDB API、消息、Indexer、目录源与 Recommend 双 ABI 共用计划继续清除参数、返回值和泛型注解债；strict frontier 当前覆盖 41 个文件 |
+| Python 源码量 | 305,884 行 | 排除 `app/plugins/**`；61 个文件超过 1,000 行，11 个超过 2,000 行 |
+| 长方法 | 290 个超过 80 行 | AST 统计排除 `app/plugins/**`；65 个超过 150 行，21 个超过 250 行 |
+| 全量 mypy 历史债务 | 9,995 / 592 文件 | canonical `SearchChain` Facade 已补齐显式类型转发；strict frontier 当前覆盖 41 个文件，低水位只允许继续下降 |
 | Ruff 历史诊断 | 633 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 81.61%，Domain 81.03% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
@@ -86,52 +87,56 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 文件 | 行数 | 主要职责混合 |
 |---|---:|---|
-| `app/chain/subscribe/`（已治理） | Facade 91 行 | 搜索、匹配、刷新、完成、规则引用与通知已拆至单一 owner；原 3,895 行单文件已删除 |
+| `app/chain/subscribe/`（已治理） | Facade 98 行 | 搜索、匹配、刷新、完成、规则引用与通知已拆至单一 owner；原 3,895 行单文件已删除 |
 | `app/agent/orchestrator.py` | 2,558 | 单 Agent 运行、流式输出、工具与中间件编排 |
 | `app/agent/session.py` | 837 | 会话队列、worker、状态、取消与延迟清理 |
 | `app/agent/tasks.py` | 208 | 后台 prompt、持久化定时任务与心跳 |
 | `app/agent/lifecycle.py` | 166 | 接收门禁、启动、空闲回收与有界关闭 |
 | `app/agent/manager.py` | 27 | 稳定 `AgentManager` 构造门面 |
-| `app/agent/llm/provider.py` | 420 | 稳定 `LLMProviderManager` Facade 与兼容方法 |
+| `app/agent/llm/provider.py` | 413 | 稳定 `LLMProviderManager` Facade 与兼容方法 |
 | `app/agent/llm/catalog.py` | 1,571 | provider spec、预设和模型元数据 |
 | `app/agent/llm/discovery.py` | 985 | 远端目录发现与 SDK 客户端 I/O |
 | `app/agent/llm/auth.py` | 582 | 持久鉴权和外部授权协议 |
 | `app/adapters/external/market.py`（已治理） | Facade 226 行 | `PluginHelper` 只保留精确旧 ABI、安装 Gateway 及 owner 委托 |
-| `app/adapters/external/plugin/client.py` | 1,600 | 插件市场传输、索引、Release 与本地仓候选查询 |
-| `app/adapters/system/plugin/package.py` | 2,324 | 插件安装、checkpoint、备份、恢复和物理删除事务 |
+| `app/adapters/external/plugin/client.py` | 1,927 | 插件市场传输、索引、Release 与本地仓候选查询 |
+| `app/adapters/system/plugin/package.py` | 2,391 | 插件安装、checkpoint、备份、恢复和物理删除事务 |
 | `app/adapters/system/plugin/health.py` | 1,060 | 插件运行环境保护、安装前后检查与故障恢复 |
 | `app/chain/transfer/`（已治理） | Facade 82 行 | 队列/恢复、规划、执行、结算、历史/通知已拆至单一 owner；旧 `transfer.py` 与 `_transfer.py` 已删除 |
-| `app/chain/search.py` | 2,970 | 搜索计划、并发 fan-out、状态、分页和结果处理 |
-| `app/api/endpoints/agent.py` | 2,346 | HTTP/SSE、文件/音频、Agent 会话和事件编排 |
+| `app/chain/search/`（已治理） | Facade 473 行 | 搜索计划、并发 fan-out、状态、分页和结果处理已拆至单一 owner；旧 2,970 行单文件已删除 |
+| `app/api/endpoints/agent.py`（已治理） | 577 | 只保留 HTTP/SSE、文件/音频传输映射；Agent 会话和事件编排已下沉 Application |
+| `app/application/messaging/agent.py` | 2,195 | WebAgent 会话、文件/音频、事件与消息桥接用例；是后续复杂度治理热点，不回流 endpoint |
 | `app/chain/download/`（已治理） | Facade 47 行 | 选择、提交、批量、历史、提交后处理、字幕和任务控制已拆至单一 owner；原 2,413 行单文件已删除 |
 | `app/chain/media/`（已治理） | Facade 213 行 | 识别、来源投影、插件事件、音乐目录、路径证据与缓存已拆至单一 owner；旧 2,191 行单文件已删除 |
-| `app/scheduler/` | Facade 128 行 | 原 2,111 行单体已退役；catalog、execution、bridge、progress、registry、reconcile、lifecycle、maintenance 与注入合同已有独立 owner |
+| `app/scheduler/`（已治理） | Facade 135 行 | 原 2,111 行单体已退役；catalog、execution、bridge、progress、registry、reconcile、lifecycle、maintenance 与注入合同已有独立 owner |
 
 热点不是按行数机械拆文件的依据。只有在提取出稳定合同、保留旧入口委托并有行为测试时，拆分才算
 降低复杂度；把长方法原样移动到新目录不算完成。
 
 ## 4. 优化清单总表
 
-状态含义：`阻塞` 表示当前门禁已失败；`待执行` 表示尚未开始；`执行中` 表示只完成部分纵切面；`已验证` 表示实现和本地合同已落地但未在本文中声明未知的提交或 CI；`渐进` 表示应按触碰路径逐步收敛。
+状态含义：`阻塞` 表示当前门禁已失败；`待执行` 表示尚未开始；`执行中` 表示只完成部分纵切面；
+`已验证` 表示实现和本地验收已通过，但本叶提交、推送或精确 head 远端门禁尚未全部闭环；
+`已交付` 表示实现、提交、推送、远端一致性和该叶要求的 CI 证据均已闭环；`已取消` 表示维护者明确
+取消且不再作为本轮完成依赖。
 
 | ID | 优先级 | 状态 | 事项 | 目标结果 |
 |---|---|---|---|---|
 | ARCH-001 | P0 | 已交付 | 恢复 mypy ratchet | `5df388719` 已推送，主线既有 CI gate 通过 |
 | ARCH-101 | P1 | 已交付 | 统一规则、总览、基线和语义门禁 | `113355784` 已推送，Unit Tests `33031697902`、Pylint `33031697785` 全绿，远端 `0/0` |
 | ARCH-102 | P1 | 已交付 | 将 Transfer pending 升级为真实 E3 状态机 | `e9de149db`、`a2e249f20` 已推送；Unit Tests `33092427327`、Pylint `33092427348` 全绿，崩溃结果未知时进入人工确认 |
-| ARCH-103 | P1 | 已交付 | 类型化 Chain/Agent 数据 Port 与 DTO | Chain/Agent 正式数据入口已切换到冻结 DTO 与 typed Port，raw Oper/ORM/`Any` 仅留统一 Legacy/Compat |
+| ARCH-103 | P1 | 已验证 | 类型化 Chain/Agent 数据 Port 与 DTO | Chain/Agent 正式数据入口已切换到冻结 DTO 与 typed Port，raw Oper/ORM/`Any` 仅留统一 Legacy/Compat |
 | ARCH-104 | P1 | 已交付 | 收口跨多次写入的业务事务 | 订阅、站点和规则引用变更由单一 UoW/CAS 拥有，失败整体回滚或幂等恢复 |
-| ARCH-105 | P1 | 已交付 | 明确 post-commit 与 Outbox 完成语义 | 业务提交、effect 完成/pending 可区分；stager/store 分离且 claim/settlement 受 fencing，外部 sink 仍承担 at-least-once 幂等边界 |
-| ARCH-106 | P1 | 已交付 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志、消息、任务、模块与插件资源由 lifecycle 显式创建、逆序关闭和失败回滚 |
-| ARCH-107 | P1 | 已交付 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
-| ARCH-108 | P1 | 已交付 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Application/Chain 具体 Adapter 与普通 direct HTTP 债务清零，剩余出口均为精确政策例外 |
-| ARCH-109 | P1 | 已交付 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler、Download、Search、Media 与 Agent/System/Plugin API 均已按 owner 收敛 |
+| ARCH-105 | P1 | 已验证 | 明确 post-commit 与 Outbox 完成语义 | 业务提交、effect 完成/pending 可区分；stager/store 分离且 claim/settlement 受 fencing，外部 sink 仍承担 at-least-once 幂等边界 |
+| ARCH-106 | P1 | 已验证 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志、消息、任务、模块与插件资源由 lifecycle 显式创建、逆序关闭和失败回滚 |
+| ARCH-107 | P1 | 已验证 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
+| ARCH-108 | P1 | 已验证 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Application/Chain 具体 Adapter 与普通 direct HTTP 债务清零，剩余出口均为精确政策例外 |
+| ARCH-109 | P1 | 已验证 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler、Download、Search、Media 与 Agent/System/Plugin API 均已按 owner 收敛；部分早期叶只保留阶段性验证记录 |
 | ARCH-110 | P1 | 已取消 | Module/Event Contract 分可信级执行 | 随 S4 取消，不属于本轮完成依赖；现有宿主严格合同和插件兼容诊断继续保留 |
 | ARCH-111 | P1 | 已取消 | 升级复杂度、类型、覆盖率和并发原语门禁 | 随 S4 取消，不扩张为全宿主质量债务清零；保留现有 ratchet |
 | ARCH-201 | P2 | 已交付 | 收窄 PluginHelper/PluginManager 与 SDK 暴露面 | `fa40f29df` 已推送；ABI Facade 只委托，构造和具体服务归组合根 |
-| ARCH-202 | P2 | 已交付 | 拆分 Agent/LLM provider 职责 | provider catalog、发现、认证、会话和运行时分离，Facade 只保留稳定 API |
-| ARCH-203 | P2 | 已交付 | 拆分 Domain 投影与 Startup 高扇出目录 | Domain 四来源投影与 Startup 单词型 composition owner 均已完成 |
-| ARCH-204 | P2 | 已交付 | 合并重复 sync/async 核心逻辑并转换存量测试风格 | 双 ABI 只保留 I/O 外壳，共享解析、校验、映射和状态决策 |
+| ARCH-202 | P2 | 已验证 | 拆分 Agent/LLM provider 职责 | provider catalog、发现、认证、会话和运行时分离，Facade 只保留稳定 API；实现提交已在远端，待最终精确 head CI 统一闭环 |
+| ARCH-203 | P2 | 已验证 | 拆分 Domain 投影与 Startup 高扇出目录 | Domain 四来源投影与 Startup 单词型 composition owner 均已完成，等待最终远端门禁闭环 |
+| ARCH-204 | P2 | 已验证 | 合并重复 sync/async 核心逻辑并转换存量测试风格 | 双 ABI 只保留 I/O 外壳，共享解析、校验、映射和状态决策，等待最终远端门禁闭环 |
 
 ## 5. P0：先恢复主线
 
@@ -296,7 +301,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 - [x] Subscription 按领域定义 Query/Write/Staging/History Protocol，不再使用通用
   `OperFactory = Callable[[], Any]` 或 raw Subscribe Oper factory。
-- [ ] 写 Port 由 `db/adapters` 创建单操作 Session/UoW；Oper 的 canonical 写方法只 stage/flush，
+- [x] 写 Port 由 `db/adapters` 创建单操作 Session/UoW；Oper 的 canonical 写方法只 stage/flush，
   读取方法仍可在调用方 Session 中查询。
 - [x] Workflow 查询 Port 在 adapter Session 内映射为冻结 DTO/Projection，API、Agent、Chain、Scheduler、
   Workflow runtime 和中心服务分享均不接收 ORM。
@@ -401,7 +406,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [x] commit 后先取得 delivery lease；未取得时跳过请求线程直投，确保与 dispatcher 排他。
 - [x] 每个 post-commit effect 使用独立 intent 隔离和结算，避免效果 A 失败导致效果 B 被一起重放。
   单个外部效果仍是 at-least-once，必须有稳定幂等键和幂等 handler/消费者。
-- [ ] 按完成承诺、可重建性、外部不可逆性和业务重要性划分 E0-E3；用户可见性只是因素之一。
+- [x] 按完成承诺、可重建性、外部不可逆性和业务重要性划分 E0-E3；用户可见性只是因素之一。
+  完整分类、失败语义和恢复责任记录在 `docs/adr/0007-background-action-reliability.md`。
 - [x] 拆分 `OutboxStager` 与 `OutboxDispatchStore`，避免业务 Session 调用自提交方法。
 - [x] 在 commit、claim、publish、complete、通知和任务提交各断点注入异常/崩溃，验证声明等级与实际恢复一致。
 - [x] 增加请求线程即时投递与 dispatcher 并发竞争测试，以及“外部调用成功、complete 前崩溃”的重放测试。
@@ -421,8 +427,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - 日志 writer 已退出 `app.runtime.config` 导入路径，由 lifespan 显式创建、关闭并在真实收敛后释放身份。
 - `ChainBase` 只绑定共享消息队列的轻量客户端；队列线程由 lifespan 唯一启动，不再保存首个 Chain 回调。
 - 停止状态、WebPush registry 和主循环 owner 已拆为独立 runtime 合同；`global_vars` 只保留旧插件 ABI 门面。
-- 当前 TaskRegistry 门禁只检查 Registry 调用是否带 owner，不会扫描全部原生 `create_task`、
-  `Thread`、`Timer`、`Executor`。
+- 当前 TaskRegistry 门禁检查 Registry 调用必须带 owner；全宿主原生 `create_task`、`Thread`、
+  `Timer`、`Executor` 清单原属于已取消 ARCH-111，不作为 ARCH-106 的完成依赖。
 - service locator 门禁继续覆盖五类 concrete runtime；独立 AST 门禁现已拒绝 canonical 宿主导入
   `global_vars`，只允许定义模块与 SDK 兼容出口。
 - Workflow、Scheduler、Command、Agent provider 均由生命周期显式 configure/reset，冷导入不再改变注册状态。
@@ -437,8 +443,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [x] 保留 `global_vars` 作为兼容薄门面，但禁止 canonical 宿主新增依赖。
 - [x] 将 initializer 的 provider 注册迁入显式装配阶段并提供测试 reset；冷导入回归测试覆盖
   Workflow、Scheduler、Command、Agent、技能目录和 LLM provider。
-- [ ] 建立原生并发原语清单：结构化局部等待、TaskRegistry、显式生命周期 owner 或受限上下文；
-  未分类的新原语由 ratchet 拒绝。
+- [x] 对本叶迁移的日志、消息、Scheduler、Workflow、Agent、Plugin 资源建立 owner 与生命周期门禁；
+  全宿主原生并发原语清单不在本叶偷扩范围，保留为已取消 ARCH-111 的历史定义。
 
 **验收**
 
@@ -462,9 +468,10 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- 当前新增 SCC 为 `app.chain -> app.chain._messaging/_recognition -> app.chain`。
+- 当前宿主图只剩精确 containment 的 TMDB 移植包环；Chain 包内 SCC 已清零。
 - `ChainBase` 已迁到 `app/chain/base.py`；物理包根仅保留包说明，旧符号由 Compat/SDK 惰性解析。
-- `baseline.py --check-host` 会确认该 SCC 与 fixture 一致，但现有语义测试没有拒绝 Chain 包内环。
+- `baseline.py --check-host` 与独立 SCC 语义测试共同拒绝 Chain 包内环、allowlist 成员增长和
+  包外模块通过反向边加入 TMDB containment。
 
 **目标与步骤**
 
@@ -498,14 +505,14 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 - `app/application` 原有 8 个文件、13 条直接 Adapter 导入已全部迁移为 Application-owned Port，
   startup 统一注入具体实现；Passkey、Backup 与 DNS 纵切面也已退出临时 policy。
-- `app/chain` 有 8 个文件、13 条直接 Adapter 导入，使用 `RequestUtils`、Browser、Cloudflare、
-  CookieCloud、ServerHelper 等具体能力。
+- `app/chain` 原有 8 个文件、13 条直接 Adapter 导入和 11 条普通 HTTP/Session bridge 已全部
+  迁移至注入 Port 或统一技术边界，当前具体 Adapter 与普通 direct HTTP 债务均为零。
 - Passkey Application 已改为消费启动注入的 `PasskeyChallengeCache`，不再判断 Redis 或导入
   具体 cache adapter；Memory/Redis 均实现严格 `AtomicCacheBackend.store/consume`。
-- 审计时 LLM streaming、第三方 SDK、移植库和本地控制面没有精确例外表；S0-L2.4b 已建立
-  66 条完整 egress identity 与 zero-growth policy，其中 11 条普通 HTTP/Session bridge 和 1 条
-  Application DNS I/O 是清零债务；每条初始边另有独立指纹上界，不能靠同时刷新 baseline/policy
-  掩盖同一边的调用面增长，债务删除后也不得恢复。
+- S0-L2.4b 已为 LLM streaming、第三方 SDK、移植库和本地控制面建立完整 egress identity 与
+  zero-growth policy；11 条普通 HTTP/Session bridge 和 1 条 Application DNS I/O 债务已清零。
+  当前 53 条出口事实均为精确 containment，每条指纹由独立上界冻结，不能靠同时刷新
+  baseline/policy 掩盖调用面增长，已删除债务也不得恢复。
 
 **目标与步骤**
 
@@ -513,11 +520,12 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 - [x] 建立全宿主 direct egress 事实；SDK/stream/vendor/local-control 例外精确到 bindings/uses 指纹。
 - [x] 将 Passkey 原子领取提升为 runtime cache contract，由 Memory/Redis backend 分别实现。
 - [x] 为 Backup 定义 Application-owned artifact store Port，由 startup 注入文件系统实现。
-- [ ] 将 policy 中 11 条普通 HTTP/Session bridge 债务迁移到统一网络能力并把目标收缩为空。
+- [x] 将 policy 中 11 条普通 HTTP/Session bridge 债务迁移到统一网络能力并把目标收缩为空。
 - [x] 为 Application SSRF 校验注入 DNS 解析 Port，清除 `socket.getaddrinfo` 直接 I/O。
 - [x] Application 中命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不保留直连例外。
-- [ ] Chain 中命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不保留直连例外。
-- [ ] 最终把基线收缩到零或少量书面化例外，而不是一次性禁止后再大量豁免。
+- [x] Chain 中命名外部产品、安全敏感能力及通用技术 Adapter 均改为注入 Port；不保留直连例外。
+- [x] Adapter/direct HTTP 债务基线已收缩为零；其余 canonical transport、SDK、stream、vendor、
+  diagnostic 和 control-plane 出口均按用途精确书面化，不使用宽泛豁免。
 
 ```bash
 .venv/bin/python -m pytest \
@@ -702,8 +710,8 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 
 1. ARCH-102 设计并迁移 Transfer E3 状态机。
 2. 以站点/规则引用清理为 ARCH-103/104 的第一个 typed Port + UoW 纵切面。
-3. ARCH-105 已完成 post-commit 结构化结果、Outbox 角色拆分和 claim fencing；
-   后续只继续清理独立 intent 与更完整的崩溃矩阵。
+3. ARCH-105 已完成 post-commit 结构化结果、独立 intent、Outbox 角色拆分、claim fencing 和
+   commit/claim/publish/complete/通知/任务提交崩溃矩阵。
 
 **退出条件**：故障注入覆盖清单列出的崩溃窗口；schema 有 migration；主路径不再 fail-open；调用方能区分
 业务提交与后置效果 pending。
@@ -712,7 +720,8 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 
 1. ARCH-106 将日志、消息队列和主循环 gateway 纳入 lifecycle。
 2. ARCH-107 拆出 `chain/base.py` 并消除新增 SCC。
-3. ARCH-108 的 Passkey 缓存与 Backup artifact 边界已验证；后续按风险迁移 DNS 和其余外部调用。
+3. ARCH-108 的 Passkey、Backup、DNS、Application/Chain Adapter 与普通 HTTP 纵切面均已完成；
+   现存协议出口只保留精确书面化例外并由 zero-growth 门禁守护。
 
 **退出条件**：冷导入不启动线程；SCC 只剩 TMDB 精确豁免；Application/Chain 到 Adapter 的债务只降不增。
 
@@ -726,7 +735,8 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 ### 阶段 4：取消记录与 S5 收口
 
 1. ARCH-110/111 随 S4 于 2026-08-28 取消，不再作为本轮完成依赖。
-2. ARCH-201 至 ARCH-204 已由 S5 完成 Facade、Provider、Domain/Startup 与 sync/async 重复治理。
+2. ARCH-201/202 已完成 Facade 与 Provider 实现，ARCH-203/204 的 Domain/Startup 与 sync/async
+   重复治理已通过本地验证；最终交付状态由 S5-L6 的精确 head 远端门禁统一闭环。
 3. 保留现有 strict frontier、复杂度、mypy、Ruff、覆盖率和并发 ratchet，不借取消阶段接受回退。
 
 **退出条件**：S5 全部叶子通过现有门禁与官方插件兼容验证，canonical 无旧实现和重复导出。
