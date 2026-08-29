@@ -1,8 +1,7 @@
 import asyncio
 import inspect
 import sys
-from collections.abc import Awaitable
-from typing import Callable, cast
+from typing import Callable
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 
@@ -21,11 +20,13 @@ from app.adapters.system.host import SystemUtils
 from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
+    reset_resource_version_provider,
 )
 from app.application.configuration import (
     TransferRetryConfig,
     configure_transfer_retry_config,
     get_configured_system_config,
+    reset_transfer_retry_config,
 )
 from app.application.messaging.agent import (
     dispatch_web_agent_message_event,
@@ -39,11 +40,11 @@ from app.application.messaging.message import (
     MessageHelper,
     stop_message,
 )
-from app.application.module import configure_module_runtime
+from app.application.module import configure_module_runtime, reset_module_runtime
 from app.application.outbox import configure_outbox_dispatcher
 from app.application.security.url import close_image_proxy_block_log_coalescer
-from app.application.service import configure_service_directory
-from app.application.workflow import configure_workflow_execution
+from app.application.service import configure_service_directory, reset_service_directory
+from app.application.workflow import configure_workflow_execution, reset_workflow_execution
 from app.command import CommandChain
 from app.db.adapters.workflow import (
     TransactionalWorkflowExecutionService,
@@ -59,6 +60,7 @@ from app.runtime.extensions.module_manager import ModuleManager
 from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     configure_service_config_reader,
+    reset_service_config_reader,
 )
 from app.runtime.log import logger
 from app.runtime.settings import (
@@ -72,10 +74,12 @@ from app.schemas.types import EventType, SystemConfigKey
 from app.startup.composition.agent import (
     compose_agent,
     publish_agent_services,
+    reset_agent_services,
 )
 from app.startup.composition.chain import (
     configure_chain_runtime_context,
     configure_wallpaper_services,
+    reset_chain_services,
 )
 from app.startup.composition.configuration import (
     compose_configuration,
@@ -92,25 +96,39 @@ from app.startup.composition.database import (
     start_database_runtime,
     stop_database_runtime,
 )
-from app.startup.composition.network import configure_application_network_ports
-from app.startup.composition.outbox import build_outbox_dispatcher
+from app.startup.composition.network import (
+    configure_application_network_ports,
+    reset_application_network_ports,
+)
+from app.startup.composition.outbox import build_outbox_dispatcher, reset_outbox_services
 from app.startup.composition.runtime import (
     RuntimeInputs,
     compose_runtime,
     compose_runtime_dependencies,
     publish_runtime,
+    reset_runtime,
 )
 from app.startup.composition.security import (
     configure_security_access,
     configure_security_services,
+    reset_security_access,
+    reset_security_services,
 )
-from app.startup.composition.server import configure_server_services
-from app.startup.initializers.agent import configure_agent_data_context, init_agent
+from app.startup.composition.server import configure_server_services, reset_server_services
+from app.startup.initializers.agent import (
+    configure_agent_data_context,
+    init_agent,
+    reset_agent_data_context,
+)
 from app.startup.initializers.resources import (
     init_managed_resources,
+    reset_managed_resources,
     stop_managed_resources,
 )
-from app.startup.initializers.scheduler import configure_scheduler_agent_tasks
+from app.startup.initializers.scheduler import (
+    configure_scheduler_agent_tasks,
+    reset_scheduler_bindings,
+)
 
 
 def configure_runtime_data_providers() -> None:
@@ -121,6 +139,88 @@ def configure_runtime_data_providers() -> None:
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
     )
+
+
+def reset_runtime_data_providers() -> None:
+    """按发布逆序撤销模块、服务目录和配置读取 Provider。"""
+    reset_service_directory()
+    reset_module_runtime()
+    reset_service_config_reader()
+
+
+def reset_event_services() -> None:
+    """撤销启动组合根登记的事件通知、监听器和宿主 resolver。"""
+    event_manager = EventManager.get_existing_instance()
+    if event_manager is None:
+        return
+    event_manager.remove_event_listener(
+        EventType.NoticeMessage,
+        dispatch_web_agent_message_event,
+    )
+    event_manager.unregister_handler_instance_resolver("host")
+    event_manager.reset_error_notifier()
+
+
+def reset_tool_services() -> None:
+    """撤销工具管理器持有的 Agent 数据上下文与目录快照。"""
+    from app.agent.tools.manager import moviepilot_tool_manager
+
+    moviepilot_tool_manager.reset_data_context()
+
+
+def _module_provider_reset_steps() -> tuple[tuple[str, Callable[[], object]], ...]:
+    """返回当前模块 lifespan 的完整 Provider 逆序撤销清单。"""
+    return (
+        ("事件服务", reset_event_services),
+        ("资源版本 Provider", reset_resource_version_provider),
+        ("认证访问服务", reset_security_access),
+        ("Chain 服务", reset_chain_services),
+        ("托管资源引用", reset_managed_resources),
+        ("调度器绑定", reset_scheduler_bindings),
+        ("Agent 工具服务", reset_tool_services),
+        (
+            "Agent 服务",
+            lambda: reset_agent_services(
+                data_context_resetter=reset_agent_data_context,
+            ),
+        ),
+        ("传输重试配置", reset_transfer_retry_config),
+        ("Outbox 服务", reset_outbox_services),
+        ("工作流执行服务", reset_workflow_execution),
+        ("中心服务", reset_server_services),
+        ("运行时数据 Provider", reset_runtime_data_providers),
+        ("HostRuntime 投影", reset_runtime),
+        ("数据库服务", reset_database_services),
+        ("认证服务", reset_security_services),
+        ("应用网络端口", reset_application_network_ports),
+        ("配置服务", reset_configuration),
+    )
+
+
+def reset_module_providers() -> bool:
+    """逐项撤销模块 Provider；单项失败不跳过后续 owner，并返回整体结果。"""
+    converged = True
+    for name, callback in _module_provider_reset_steps():
+        try:
+            callback()
+        except Exception as error:
+            logger.error("撤销%s失败：%s", name, error)
+            converged = False
+    return converged
+
+
+def _existing_singleton(instance_type: type) -> object | None:
+    """读取已经物化的 Singleton，启动失败回滚时禁止反向创建新 owner。"""
+    getter = getattr(instance_type, "get_existing_instance", None)
+    return getter() if callable(getter) else None
+
+
+def _call_existing_singleton(instance_type: type, method_name: str) -> object:
+    """调用已存在 Singleton 的关闭方法；owner 未创建时视为已经收敛。"""
+    instance = _existing_singleton(instance_type)
+    if instance is None:
+        return True
+    return getattr(instance, method_name)()
 
 
 def notify_event_error(title: str, message: str) -> None:
@@ -345,14 +445,36 @@ async def stop_modules() -> bool:
         return converged
 
     await run_step("图片代理安全日志合并器", close_image_proxy_block_log_coalescer)
-    await run_step("模块", lambda: ModuleManager().shutdown(), offload=True)
-    await run_step("事件消费", lambda: EventManager().stop_async())
+    await run_step(
+        "模块",
+        lambda: _call_existing_singleton(ModuleManager, "shutdown"),
+        offload=True,
+    )
+    await run_step(
+        "事件消费",
+        lambda: _call_existing_singleton(EventManager, "stop_async"),
+    )
     await run_step("浏览器会话", close_browser_sessions, offload=True)
     await run_step("托管资源", stop_managed_resources)
-    await run_step("DoH服务", lambda: DohHelper().shutdown(), offload=True)
-    await run_step("线程池", lambda: ThreadHelper().shutdown(), offload=True)
-    await run_step("Redis缓存连接", lambda: RedisHelper().close(), offload=True)
-    await run_step("异步Redis缓存连接", lambda: AsyncRedisHelper().close())
+    await run_step(
+        "DoH服务",
+        lambda: _call_existing_singleton(DohHelper, "shutdown"),
+        offload=True,
+    )
+    await run_step(
+        "线程池",
+        lambda: _call_existing_singleton(ThreadHelper, "shutdown"),
+        offload=True,
+    )
+    await run_step(
+        "Redis缓存连接",
+        lambda: _call_existing_singleton(RedisHelper, "close"),
+        offload=True,
+    )
+    await run_step(
+        "异步Redis缓存连接",
+        lambda: _call_existing_singleton(AsyncRedisHelper, "close"),
+    )
     # Web Agent 的取消 finally 可能还要写入最终展示快照，必须先完成任务收尾，再关闭写入准入。
     web_agent_drained = await run_step(
         "Web Agent后台任务",
@@ -362,29 +484,38 @@ async def stop_modules() -> bool:
     if not web_agent_drained:
         web_agent_drained = await run_step("Web Agent后台任务收尾", wait_web_agent_background_tasks)
     if web_agent_drained:
-        await run_step(
-            "Agent会话持久化准入",
-            lambda: get_configured_agent_chat_persistence().begin_shutdown(),
-        )
-        persistence_drained = await run_step(
-            "Agent会话持久化",
-            lambda: get_configured_agent_chat_persistence().shutdown(),
-        )
+        try:
+            persistence = get_configured_agent_chat_persistence()
+        except RuntimeError:
+            persistence = None
+        if persistence is None:
+            persistence_drained = True
+        else:
+            await run_step(
+                "Agent会话持久化准入",
+                persistence.begin_shutdown,
+            )
+            persistence_drained = await run_step(
+                "Agent会话持久化",
+                persistence.shutdown,
+            )
     else:
         persistence_drained = False
         all_converged = False
         logger.error("Web Agent任务未完成收尾，跳过持久化和数据库关闭以保护活动事务")
     if persistence_drained:
         await run_step("数据库任务", stop_database_runtime)
+    await run_step("前端服务", stop_frontend, offload=True)
+    await run_step("临时文件", clear_temp, offload=True)
+    if persistence_drained:
         if not database_runtime_active():
-            await run_step("数据库服务", reset_database_services)
-            await run_step("配置服务", reset_configuration)
+            await run_step("模块 Provider", reset_module_providers)
             await run_step("数据库连接", close_database)
         else:
             all_converged = False
-            logger.error("数据库任务未收敛，跳过数据库连接关闭以避免运行中事务使用已释放连接")
-    await run_step("前端服务", stop_frontend, offload=True)
-    await run_step("临时文件", clear_temp, offload=True)
+            logger.error(
+                "数据库任务未收敛，保留全部 Provider 和数据库连接以供诊断与重试"
+            )
     return all_converged
 
 
@@ -509,14 +640,8 @@ async def init_modules() -> HostRuntime:
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"模块启动失败后的消息资源清理失败：{cleanup_error}")
         try:
-            await stop_database_runtime()
+            if await stop_modules() is False:
+                logger.error("模块启动失败后的资源 owner 未完全收敛")
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
-            logger.error(f"模块启动失败后的数据库任务清理失败：{cleanup_error}")
-        if not database_runtime_active():
-            reset_database_services()
-            reset_configuration()
-            try:
-                await cast(Callable[[], Awaitable[None]], close_database)()
-            except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
-                logger.error(f"模块启动失败后的数据库连接清理失败：{cleanup_error}")
+            logger.error(f"模块启动失败后的统一资源清理失败：{cleanup_error}")
         raise

@@ -31,6 +31,15 @@ def reset_scheduler_runtime() -> None:
     reset_scheduler_class()
 
 
+def reset_scheduler_bindings() -> None:
+    """在 Scheduler 已停止后撤销当前 lifespan 的仓储、业务能力和类登记。"""
+    # Singleton 元类保留旧动态接口，当前 owner 在此精确收窄为 Scheduler。
+    scheduler = Scheduler.get_existing_instance()  # type: ignore[no-untyped-call]
+    if scheduler is not None:
+        scheduler.reset_runtime_bindings()
+    reset_scheduler_runtime()
+
+
 def configure_scheduler_agent_tasks(repository: AgentTaskRepository) -> None:
     """在调度器启动前注入自主任务仓储。"""
     configure_scheduler_runtime()
@@ -91,18 +100,14 @@ def stop_scheduler() -> Optional[Awaitable[None]]:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        try:
-            scheduler.stop()
-        finally:
-            reset_scheduler_runtime()
+        scheduler.stop()
+        reset_scheduler_bindings()
         return None
 
     async def stop_and_reset() -> None:
         """等待异步调度器收口后清除 provider。"""
-        try:
-            await scheduler.stop_async()
-        finally:
-            reset_scheduler_runtime()
+        await scheduler.stop_async()
+        reset_scheduler_bindings()
 
     return stop_and_reset()
 

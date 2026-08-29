@@ -78,6 +78,29 @@ def test_scheduler_initializer_stop_awaits_in_running_loop(monkeypatch):
     scheduler.stop.assert_not_called()
 
 
+def test_scheduler_initializer_retains_bindings_when_async_stop_fails(monkeypatch):
+    """Scheduler 未停止时不得撤销仓储、业务能力或 concrete class 登记。"""
+    scheduler = Mock()
+    scheduler.stop_async = AsyncMock(side_effect=RuntimeError("scheduler busy"))
+    reset_bindings = Mock()
+    monkeypatch.setattr(scheduler_initializer, "Scheduler", Mock(return_value=scheduler))
+    monkeypatch.setattr(
+        scheduler_initializer,
+        "reset_scheduler_bindings",
+        reset_bindings,
+    )
+
+    async def scenario() -> None:
+        """等待异步关闭失败并验证 reset 未被调用。"""
+        result = scheduler_initializer.stop_scheduler()
+        assert result is not None
+        with pytest.raises(RuntimeError, match="scheduler busy"):
+            await result
+
+    asyncio.run(scenario())
+    reset_bindings.assert_not_called()
+
+
 def test_clear_cache_is_manual_only(monkeypatch):
     """缓存清理任务应仅手动执行，不注册到调度器自动运行。"""
     background_scheduler = _BackgroundSchedulerStub()

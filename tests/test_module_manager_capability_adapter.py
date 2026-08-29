@@ -499,13 +499,21 @@ def test_config_event_reloads_same_instance_and_tracks_selector_changes(
     assert running.events == ["create", "start", "stop", "start", "stop"]
 
 
-def test_shutdown_is_irreversible(module_manager_harness) -> None:
+def test_shutdown_is_irreversible(module_manager_harness, monkeypatch) -> None:
     """shutdown 撤销全部可见实例，并拒绝通过 load_modules 再次启动。"""
     manager = module_manager_harness.manager
     _enable_sample(module_manager_harness.config_values)
     manager.load_modules()
     running = manager.get_running_module("SampleModule")
     assert running is not None
+    remove_listener = Mock()
+    unregister_resolver = Mock()
+    monkeypatch.setattr(eventmanager, "remove_event_listener", remove_listener)
+    monkeypatch.setattr(
+        eventmanager,
+        "unregister_handler_instance_resolver",
+        unregister_resolver,
+    )
 
     manager.shutdown()
 
@@ -514,6 +522,11 @@ def test_shutdown_is_irreversible(module_manager_harness) -> None:
     manager.load_modules()
     assert manager.get_running_module("SampleModule") is None
     assert type(running).instances == [running]
+    remove_listener.assert_called_once_with(
+        EventType.ConfigChanged,
+        manager.handle_config_changed,
+    )
+    unregister_resolver.assert_called_once_with("modules")
 
 
 def test_shutdown_reports_unreleased_module_owner(module_manager_harness) -> None:

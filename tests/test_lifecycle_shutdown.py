@@ -1257,16 +1257,9 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
         "database_runtime_active",
         lambda: database_state["active"],
     )
-    monkeypatch.setattr(
-        modules_initializer,
-        "reset_database_services",
-        MagicMock(side_effect=lambda: order.append("database-services")),
-    )
-    monkeypatch.setattr(
-        modules_initializer,
-        "reset_configuration",
-        MagicMock(side_effect=lambda: order.append("configuration")),
-    )
+    dependencies["reset_module_providers"].side_effect = lambda: order.append(
+        "providers"
+    ) or True
     dependencies["close_database"].side_effect = lambda: order.append("connection")
 
     converged = asyncio.run(modules_initializer.stop_modules())
@@ -1277,10 +1270,63 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
         "persistence-admission",
         "persistence",
         "database",
-        "database-services",
-        "configuration",
+        "providers",
         "connection",
     ]
+
+
+def test_stop_modules_retains_providers_when_database_worker_remains_active(
+    monkeypatch,
+) -> None:
+    """数据库 worker 未收敛时不得撤销 Provider 或关闭仍被使用的连接。"""
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    persistence = MagicMock()
+    persistence.begin_shutdown = MagicMock()
+    persistence.shutdown = AsyncMock()
+    monkeypatch.setattr(
+        modules_initializer,
+        "get_configured_agent_chat_persistence",
+        MagicMock(return_value=persistence),
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_database_runtime",
+        AsyncMock(side_effect=RuntimeError("database busy")),
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "database_runtime_active",
+        lambda: True,
+    )
+
+    assert asyncio.run(modules_initializer.stop_modules()) is False
+    dependencies["reset_module_providers"].assert_not_called()
+    dependencies["close_database"].assert_not_awaited()
+
+
+def test_reset_module_providers_preserves_reverse_order_after_failure(
+    monkeypatch,
+) -> None:
+    """单个 Provider reset 失败时仍按既定逆序执行全部后续 owner。"""
+    calls: list[str] = []
+
+    def fail() -> None:
+        """记录失败 owner 后抛出异常。"""
+        calls.append("second")
+        raise RuntimeError("reset failed")
+
+    monkeypatch.setattr(
+        modules_initializer,
+        "_module_provider_reset_steps",
+        lambda: (
+            ("first", lambda: calls.append("first")),
+            ("second", fail),
+            ("third", lambda: calls.append("third")),
+        ),
+    )
+
+    assert modules_initializer.reset_module_providers() is False
+    assert calls == ["first", "second", "third"]
 
 
 @pytest.mark.asyncio
@@ -1459,11 +1505,9 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     ):
         instance = MagicMock()
         setattr(instance, method_name, MagicMock())
-        monkeypatch.setattr(
-            modules_initializer,
-            name,
-            MagicMock(return_value=instance),
-        )
+        instance_type = MagicMock(return_value=instance)
+        instance_type.get_existing_instance.return_value = instance
+        monkeypatch.setattr(modules_initializer, name, instance_type)
         key = name.removesuffix("Helper").removesuffix("Manager").lower()
         dependencies[key] = getattr(instance, method_name)
 
@@ -1496,29 +1540,20 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
 
     async_redis = MagicMock()
     async_redis.close = AsyncMock()
-    monkeypatch.setattr(
-        modules_initializer,
-        "AsyncRedisHelper",
-        MagicMock(return_value=async_redis),
-    )
+    async_redis_type = MagicMock(return_value=async_redis)
+    async_redis_type.get_existing_instance.return_value = async_redis
+    monkeypatch.setattr(modules_initializer, "AsyncRedisHelper", async_redis_type)
     dependencies["async_redis"] = async_redis.close
     close_database = AsyncMock()
     monkeypatch.setattr(modules_initializer, "close_database", close_database)
     dependencies["close_database"] = close_database
-    reset_database_services = MagicMock()
+    reset_module_providers = MagicMock(return_value=True)
     monkeypatch.setattr(
         modules_initializer,
-        "reset_database_services",
-        reset_database_services,
+        "reset_module_providers",
+        reset_module_providers,
     )
-    dependencies["reset_database_services"] = reset_database_services
-    reset_configuration = MagicMock()
-    monkeypatch.setattr(
-        modules_initializer,
-        "reset_configuration",
-        reset_configuration,
-    )
-    dependencies["reset_configuration"] = reset_configuration
+    dependencies["reset_module_providers"] = reset_module_providers
     return dependencies
 
 

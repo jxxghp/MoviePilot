@@ -172,13 +172,14 @@ autonomous-task repository/execution service set. The runtime owner projects tho
 objects into `AgentChatRuntime`. Agent composition may accept
 the Agent initializer's data-context registrar as a callback, but must not import
 `startup.initializers`; tool-manager, scheduler and Agent activation order remains in
-the initializer. Database runtime ownership rejects overlapping lifespans; after a
-successful worker shutdown, the
-configuration/database composition owners must revoke every provider they published
-before releasing database connections. Other domain providers remain owned by their
-matching composition batch and must satisfy the same symmetric lifecycle contract
-before S5-L4 closes. A failed shutdown retains both the runtime owner and its providers
-for diagnosis and retry instead of publishing a second owner.
+the initializer. Database runtime ownership rejects overlapping lifespans. After a
+successful worker shutdown, `initializers/modules.py` invokes the explicit reverse-order
+reset manifest: event/resource/security/Chain/managed-resource/Scheduler/tool/Agent,
+then transfer/outbox/workflow/server/runtime/database/network/configuration providers,
+and only afterward releases database connections. Startup rollback uses the same reset
+manifest and never materializes an owner merely to stop it. A failed database shutdown
+retains the runtime owner, every provider and the connection boundary for diagnosis and
+retry instead of publishing a second owner or silently entering a partial lifespan.
 Startup publishes its frozen, slotted `HostRuntime` through FastAPI `app.state`.
 API dependencies must narrow that object to a domain runtime (for example,
 `AgentChatRuntime`) instead of adding a string key to a global service map.

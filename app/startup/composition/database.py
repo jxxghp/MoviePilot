@@ -14,6 +14,7 @@ from app.application.database import (
     DatabaseGovernance,
     DatabaseHealthService,
     configure_database_governance,
+    reset_database_governance,
 )
 from app.application.maintenance import (
     DataCleanupService,
@@ -165,6 +166,7 @@ def publish_database_services(composition: DatabaseComposition) -> None:
 
 def reset_database_services() -> None:
     """撤销当前 lifespan 发布的全部数据库派生服务。"""
+    reset_database_governance()
     reset_transaction_runners()
     reset_workflow_query()
     reset_plugin_persistence()

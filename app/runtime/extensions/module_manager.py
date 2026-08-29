@@ -229,6 +229,11 @@ class ModuleManager(metaclass=Singleton):
             converged = self._runtime.shutdown(reason="application_shutdown")
             self._refresh_running_projection()
         if converged:
+            eventmanager.remove_event_listener(
+                EventType.ConfigChanged,
+                self.handle_config_changed,
+            )
+            eventmanager.unregister_handler_instance_resolver("modules")
             logger.info("模块运行时关闭完成")
         else:
             logger.error("模块运行时关闭后仍有资源 owner 未收敛")

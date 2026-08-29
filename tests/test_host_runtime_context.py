@@ -357,11 +357,11 @@ async def test_init_modules_cleans_partial_message_owner_on_failure(monkeypatch)
         "_initialize_modules",
         failing_initialize_modules,
     )
-    stop_database_runtime = AsyncMock()
+    stop_modules = AsyncMock(return_value=True)
     monkeypatch.setattr(
         modules_initializer,
-        "stop_database_runtime",
-        stop_database_runtime,
+        "stop_modules",
+        stop_modules,
     )
 
     with pytest.raises(RuntimeError) as raised:
@@ -370,4 +370,4 @@ async def test_init_modules_cleans_partial_message_owner_on_failure(monkeypatch)
     assert raised.value is startup_error
     close.assert_called_once_with()
     assert MessageHelper.get_existing_instance() is None
-    stop_database_runtime.assert_awaited_once_with()
+    stop_modules.assert_awaited_once_with()

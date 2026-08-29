@@ -78,7 +78,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,320 / 592 文件 | Runtime 唯一组合 owner 零新增类型债，`modules.py` 低水位下降 4；strict frontier 当前覆盖 41 个文件 |
+| 全量 mypy 历史债务 | 10,317 / 592 文件 | 生命周期统一撤销接线继续清除 `modules.py` 3 项调用类型债；strict frontier 当前覆盖 41 个文件 |
 | Ruff 历史诊断 | 644 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 81.00%，Domain 80.67% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
@@ -678,7 +678,8 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 - [x] L4.3 已将 HostRuntime、命名领域 Runtime 和旧 `ApiDataPorts` 投影统一移到单词型
   `startup/composition/runtime.py`；`RuntimeDependencies` 由 Agent、Chain、HostRuntime 复用，
   `HostRuntime.tasks` 显式绑定 lifecycle 的 TaskRegistry，Chain 不再二次构造 transfer execution。
-- [ ] 保留生命周期 manifest 和顺序快照；高扇出在组合根是允许的，但业务实现不能继续沉积其中。
+- [x] 生命周期按显式逆序 reset manifest 撤销全部 Provider；数据库 worker 未收敛时保留
+  HostRuntime、Provider 与连接供诊断重试，启动失败复用同一正式清理路径且不反向物化 owner。
 
 ### ARCH-204 收敛 sync/async 重复与测试存量
 

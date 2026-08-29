@@ -3281,7 +3281,7 @@
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
-    "no-untyped-call": 14,
+    "no-untyped-call": 11,
     "no-untyped-def": 6,
     "return-value": 2
   },
