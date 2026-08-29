@@ -153,6 +153,80 @@ def test_sync_async_share_miss_preserves_the_same_first_fallback() -> None:
     )
 
 
+def test_sync_async_share_hit_uses_same_second_plan_and_cache_backfill() -> None:
+    """共享身份命中后，双入口应按同一二次计划识别并回填各自本地缓存。"""
+    chain = ChainBase()
+    chain.runtime_config = replace(
+        chain.runtime_config,
+        media_recognize_share=True,
+    )
+    sync_meta = MetaInfo("共享命中电影 (2026)")
+    async_meta = MetaInfo("共享命中电影 (2026)")
+    sync_fallback = _fallback("同步回退")
+    async_fallback = _fallback("异步回退")
+    sync_hit = MediaInfo(
+        title="共享命中",
+        type=MediaType.MOVIE,
+        media_source=MediaSource.TMDB,
+        media_id="603",
+    )
+    async_hit = MediaInfo(
+        title="共享命中",
+        type=MediaType.MOVIE,
+        media_source=MediaSource.TMDB,
+        media_id="603",
+    )
+    sync_native = Mock(side_effect=[sync_fallback, sync_hit])
+    async_native = AsyncMock(side_effect=[async_fallback, async_hit])
+    sync_cache = Mock()
+    async_cache = AsyncMock()
+    sync_counter = Mock()
+    async_counter = AsyncMock()
+    share_port = Mock()
+    share_port.query_recognize_share.return_value = {"media_id": "603"}
+    share_port.async_query_recognize_share = AsyncMock(
+        return_value={"media_id": "603"}
+    )
+    share_port.to_recognize_params.return_value = {
+        "mtype": MediaType.MOVIE,
+        "media_source": MediaSource.TMDB,
+        "media_id": "603",
+    }
+
+    with patch.object(chain, "_run_native_media_recognize", sync_native), patch.object(
+        chain, "_async_run_native_media_recognize", async_native
+    ), patch.object(
+        chain, "_supplement_media_recognize", side_effect=_keep_candidate
+    ), patch.object(
+        chain, "_async_supplement_media_recognize", side_effect=_keep_async_candidate
+    ), patch.object(
+        chain, "_update_local_recognize_cache", sync_cache
+    ), patch.object(
+        chain, "_async_update_local_recognize_cache", async_cache
+    ), patch.object(
+        chain, "_record_media_recognize_share_hit", sync_counter
+    ), patch(
+        "app.chain._recognition.run_in_threadpool", async_counter
+    ), patch(
+        "app.chain._recognition._recognition_share_snapshot",
+        return_value=share_port,
+    ):
+        sync_result = chain.recognize_media(meta=sync_meta, cache=False)
+        async_result = asyncio.run(
+            chain.async_recognize_media(meta=async_meta, cache=False)
+        )
+
+    assert sync_result is sync_hit
+    assert async_result is async_hit
+    assert sync_native.call_args_list[1].args[0] == async_native.await_args_list[1].args[0]
+    assert sync_cache.call_args.kwargs["meta"] is not sync_meta
+    assert async_cache.await_args.kwargs["meta"] is not async_meta
+    assert sync_cache.call_args.kwargs["mediainfo"] is sync_hit
+    assert async_cache.await_args.kwargs["mediainfo"] is async_hit
+    sync_counter.assert_called_once_with()
+    async_counter.assert_awaited_once_with(sync_counter)
+
+
 def test_sync_async_plugin_failures_use_one_payload_and_fallback_policy() -> None:
     """插件返回无身份结果时，双入口发送同一载荷并保留各自原候选。"""
     chain = ChainBase()

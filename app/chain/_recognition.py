@@ -7,7 +7,8 @@
 import copy
 import threading
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol, cast
+from enum import Enum, auto
+from typing import Any, Generator, Optional, Protocol, cast
 
 from app.application.configuration import get_configured_system_config
 from app.chain._contracts import ChainRuntimeMixinHost
@@ -208,6 +209,26 @@ class _RecognitionOutcome:
         )
 
 
+class _RecognitionAction(Enum):
+    """标识媒体识别纯状态机请求同步或异步外壳执行的 I/O 动作。"""
+
+    NATIVE = auto()
+    SUPPLEMENT = auto()
+    REPORT = auto()
+    QUERY_SHARE = auto()
+    UPDATE_CACHE = auto()
+    RECORD_SHARE_HIT = auto()
+
+
+@dataclass(frozen=True, slots=True)
+class _RecognitionStep:
+    """描述媒体识别状态机的一次 I/O 请求及其稳定调用参数。"""
+
+    action: _RecognitionAction
+    kwargs: dict[str, Any]
+    cache: bool = True
+
+
 @dataclass(frozen=True, slots=True)
 class _PluginRecognitionPlan:
     """冻结插件补充识别的事件类型、载荷与结果解析上下文。"""
@@ -370,6 +391,143 @@ class RecognitionMixin:
                 ),
             )
 
+    @classmethod
+    def _recognition_steps(
+            cls,
+            plan: _RecognitionPlan,
+            use_share: bool,
+    ) -> Generator[
+        _RecognitionStep, Any, Optional[MediaInfo | MusicInfo]
+    ]:
+        """生成双 ABI 共用的识别状态机，仅把实际 I/O 留给入口外壳。"""
+        mediainfo = yield _RecognitionStep(
+            action=_RecognitionAction.NATIVE,
+            kwargs=plan.module_kwargs(),
+            cache=plan.cache,
+        )
+        mediainfo = yield _RecognitionStep(
+            action=_RecognitionAction.SUPPLEMENT,
+            kwargs={
+                "meta": plan.meta,
+                "mtype": plan.mtype,
+                "media_source": plan.media_source,
+                "media_id": plan.media_id,
+                "mediainfo": mediainfo,
+                "music_type": plan.music_type,
+            },
+        )
+        outcome = _RecognitionOutcome.decide(mediainfo)
+        if outcome.has_identity:
+            if outcome.should_report:
+                yield _RecognitionStep(
+                    action=_RecognitionAction.REPORT,
+                    kwargs={
+                        "meta": plan.meta,
+                        "mediainfo": outcome.candidate,
+                        "keyword_meta": plan.share_meta,
+                    },
+                )
+            return outcome.result
+
+        if use_share:
+            shared_cache_meta = cls._snapshot_recognize_cache_meta(plan.meta)
+            shared_params = yield _RecognitionStep(
+                action=_RecognitionAction.QUERY_SHARE,
+                kwargs=plan.share_query_kwargs(),
+            )
+            if shared_params:
+                mediainfo = yield _RecognitionStep(
+                    action=_RecognitionAction.NATIVE,
+                    kwargs=plan.shared_module_kwargs(shared_params),
+                    cache=plan.cache,
+                )
+                outcome = _RecognitionOutcome.decide(mediainfo, outcome.fallback)
+                if outcome.has_identity:
+                    yield _RecognitionStep(
+                        action=_RecognitionAction.UPDATE_CACHE,
+                        kwargs={
+                            "meta": shared_cache_meta,
+                            "mediainfo": outcome.candidate,
+                        },
+                    )
+                    yield _RecognitionStep(
+                        action=_RecognitionAction.RECORD_SHARE_HIT,
+                        kwargs={},
+                    )
+        return outcome.result
+
+    def _run_recognition_steps(self, plan: _RecognitionPlan) -> Optional[MediaInfo]:
+        """用同步端口驱动共享识别状态机。"""
+        steps = self._recognition_steps(
+            plan,
+            self._can_use_media_recognize_share(
+                plan.share_meta, plan.media_source, plan.media_id
+            ),
+        )
+        result: Any = None
+        while True:
+            try:
+                step = steps.send(result)
+            except StopIteration as completed:
+                return cast(Optional[MediaInfo], completed.value)
+            if step.action == _RecognitionAction.NATIVE:
+                result = self._run_native_media_recognize(step.kwargs, step.cache)
+            elif step.action == _RecognitionAction.SUPPLEMENT:
+                result = self._supplement_media_recognize(**step.kwargs)
+            elif step.action == _RecognitionAction.REPORT:
+                result = _recognition_share_snapshot().report_recognize_share(
+                    **step.kwargs
+                )
+            elif step.action == _RecognitionAction.QUERY_SHARE:
+                share_port = _recognition_share_snapshot()
+                shared_item = share_port.query_recognize_share(**step.kwargs)
+                result = share_port.to_recognize_params(shared_item)
+            elif step.action == _RecognitionAction.UPDATE_CACHE:
+                self._update_local_recognize_cache(**step.kwargs)
+                result = None
+            else:
+                result = self._record_media_recognize_share_hit()
+
+    async def _async_run_recognition_steps(
+            self, plan: _RecognitionPlan
+    ) -> Optional[MediaInfo]:
+        """用异步端口驱动共享识别状态机，不在线程间复用模块对象。"""
+        steps = self._recognition_steps(
+            plan,
+            self._can_use_media_recognize_share(
+                plan.share_meta, plan.media_source, plan.media_id
+            ),
+        )
+        result: Any = None
+        while True:
+            try:
+                step = steps.send(result)
+            except StopIteration as completed:
+                return cast(Optional[MediaInfo], completed.value)
+            if step.action == _RecognitionAction.NATIVE:
+                result = await self._async_run_native_media_recognize(
+                    step.kwargs, step.cache
+                )
+            elif step.action == _RecognitionAction.SUPPLEMENT:
+                result = await self._async_supplement_media_recognize(**step.kwargs)
+            elif step.action == _RecognitionAction.REPORT:
+                result = await (
+                    _recognition_share_snapshot().async_report_recognize_share(
+                        **step.kwargs
+                    )
+                )
+            elif step.action == _RecognitionAction.QUERY_SHARE:
+                share_port = _recognition_share_snapshot()
+                shared_item = await share_port.async_query_recognize_share(**step.kwargs)
+                result = share_port.to_recognize_params(shared_item)
+            elif step.action == _RecognitionAction.UPDATE_CACHE:
+                await self._async_update_local_recognize_cache(**step.kwargs)
+                result = None
+            else:
+                result = await run_in_threadpool(
+                    self._record_media_recognize_share_hit
+                )
+
     def recognize_media(
             self,
             meta: MetaBase = None,
@@ -406,51 +564,7 @@ class RecognitionMixin:
         if not plan.identity_valid:
             logger.warning("媒体识别需要同时提供有效的 media_source 和 media_id")
             return None
-        mediainfo: Optional[MediaInfo | MusicInfo] = self._run_native_media_recognize(
-            plan.module_kwargs(), plan.cache
-        )
-        # 原生识别未取得远端身份时，允许插件按已知要素补充匹配媒体信息（影视与音乐统一）
-        mediainfo = self._supplement_media_recognize(
-            meta=plan.meta,
-            mtype=plan.mtype,
-            media_source=plan.media_source,
-            media_id=plan.media_id,
-            mediainfo=mediainfo,
-            music_type=plan.music_type,
-        )
-        outcome = _RecognitionOutcome.decide(mediainfo)
-        if outcome.has_identity:
-            # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
-            if outcome.should_report:
-                _recognition_share_snapshot().report_recognize_share(
-                    meta=plan.meta,
-                    mediainfo=outcome.candidate,
-                    keyword_meta=plan.share_meta,
-                )
-            return cast(Optional[MediaInfo], outcome.result)
-
-        if self._can_use_media_recognize_share(
-                plan.share_meta, plan.media_source, plan.media_id
-        ):
-            shared_cache_meta = self._snapshot_recognize_cache_meta(plan.meta)
-            share_port = _recognition_share_snapshot()
-            shared_item = share_port.query_recognize_share(
-                **plan.share_query_kwargs(),
-            )
-            shared_params = share_port.to_recognize_params(shared_item)
-            if shared_params:
-                mediainfo = self._run_native_media_recognize(
-                    plan.shared_module_kwargs(shared_params),
-                    plan.cache,
-                )
-                outcome = _RecognitionOutcome.decide(mediainfo, outcome.fallback)
-                if outcome.has_identity:
-                    self._update_local_recognize_cache(
-                        shared_cache_meta, outcome.candidate
-                    )
-                    self._record_media_recognize_share_hit()
-                    return cast(Optional[MediaInfo], outcome.result)
-        return cast(Optional[MediaInfo], outcome.result)
+        return self._run_recognition_steps(plan)
 
     async def async_recognize_media(
             self,
@@ -488,53 +602,7 @@ class RecognitionMixin:
         if not plan.identity_valid:
             logger.warning("媒体识别需要同时提供有效的 media_source 和 media_id")
             return None
-        mediainfo: Optional[MediaInfo | MusicInfo] = (
-            await self._async_run_native_media_recognize(
-                plan.module_kwargs(), plan.cache
-            )
-        )
-        # 原生识别未取得远端身份时，允许插件按已知要素补充匹配媒体信息（影视与音乐统一）
-        mediainfo = await self._async_supplement_media_recognize(
-            meta=plan.meta,
-            mtype=plan.mtype,
-            media_source=plan.media_source,
-            media_id=plan.media_id,
-            mediainfo=mediainfo,
-            music_type=plan.music_type,
-        )
-        outcome = _RecognitionOutcome.decide(mediainfo)
-        if outcome.has_identity:
-            # 电影、电视剧、音乐统一上报；音乐的 tmdb 等字段恒为 None，身份取数据源原生 ID
-            if outcome.should_report:
-                await _recognition_share_snapshot().async_report_recognize_share(
-                    meta=plan.meta,
-                    mediainfo=outcome.candidate,
-                    keyword_meta=plan.share_meta,
-                )
-            return cast(Optional[MediaInfo], outcome.result)
-
-        if self._can_use_media_recognize_share(
-                plan.share_meta, plan.media_source, plan.media_id
-        ):
-            shared_cache_meta = self._snapshot_recognize_cache_meta(plan.meta)
-            share_port = _recognition_share_snapshot()
-            shared_item = await share_port.async_query_recognize_share(
-                **plan.share_query_kwargs(),
-            )
-            shared_params = share_port.to_recognize_params(shared_item)
-            if shared_params:
-                mediainfo = await self._async_run_native_media_recognize(
-                    plan.shared_module_kwargs(shared_params),
-                    plan.cache,
-                )
-                outcome = _RecognitionOutcome.decide(mediainfo, outcome.fallback)
-                if outcome.has_identity:
-                    await self._async_update_local_recognize_cache(
-                        shared_cache_meta, outcome.candidate
-                    )
-                    await run_in_threadpool(self._record_media_recognize_share_hit)
-                    return cast(Optional[MediaInfo], outcome.result)
-        return cast(Optional[MediaInfo], outcome.result)
+        return await self._async_run_recognition_steps(plan)
 
     @staticmethod
     def _media_recognize_plugin_payload(

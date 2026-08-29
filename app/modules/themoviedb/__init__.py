@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from enum import Enum, auto
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union, cast
 
 import cn2an
 
@@ -46,6 +47,37 @@ class _RecognizePlan:
     tmdbid: Optional[int]
     episode_group: Optional[str]
     use_cache: bool
+
+
+class _RecognizeAction(Enum):
+    """标识 TMDB 识别纯状态机交给同步或异步外壳执行的 I/O 动作。"""
+
+    LOAD_CACHE = auto()
+    LOAD_GROUP = auto()
+    LOOKUP_IDENTITY = auto()
+    SEARCH_NAME = auto()
+    LOAD_DETAILS = auto()
+    SAVE_CACHE = auto()
+    BUILD_RESULT = auto()
+    LOG_CACHE = auto()
+    LOG_FAILURE = auto()
+    LOG_MISS = auto()
+
+
+@dataclass(frozen=True)
+class _RecognizeStep:
+    """描述 TMDB 识别状态机的一次 I/O 请求及其稳定调用参数。"""
+
+    action: _RecognizeAction
+    kwargs: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class _RecognizeLookup:
+    """承载显式身份查询结果及连接失败状态，供纯状态机统一决策。"""
+
+    info: Optional[_TmdbData]
+    connection_error: bool = False
 
 
 @dataclass(frozen=True)
@@ -708,6 +740,189 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         # 处理剧集组信息
         return await self._async_process_episode_groups(mediainfo, episode_group, group_seasons)
 
+    @classmethod
+    def _recognize_steps(
+        cls, plan: _RecognizePlan
+    ) -> Generator[_RecognizeStep, Any, Optional[MediaInfo]]:
+        """生成双 ABI 共用的 TMDB 识别状态机，仅把实际 I/O 留给入口外壳。"""
+        cache_info = yield _RecognizeStep(
+            action=_RecognizeAction.LOAD_CACHE,
+            kwargs={"plan": plan},
+        )
+        group_seasons: _TmdbDataList = []
+        if plan.episode_group:
+            group_seasons = yield _RecognizeStep(
+                action=_RecognizeAction.LOAD_GROUP,
+                kwargs={"episode_group": plan.episode_group},
+            )
+
+        cache_hit = bool(cache_info and plan.use_cache)
+        info: Optional[_TmdbData]
+        if not cache_hit:
+            lookup = _RecognizeLookup(info=None)
+            if plan.tmdbid:
+                lookup = yield _RecognizeStep(
+                    action=_RecognizeAction.LOOKUP_IDENTITY,
+                    kwargs={
+                        "tmdbid": plan.tmdbid,
+                        "mtype": plan.mtype,
+                        "meta": plan.meta,
+                    },
+                )
+            info = lookup.info
+            if not info and plan.meta and not plan.tmdbid:
+                for name in cls._prepare_search_names(plan.meta):
+                    info = yield _RecognizeStep(
+                        action=_RecognizeAction.SEARCH_NAME,
+                        kwargs={
+                            "name": name,
+                            "meta": plan.meta,
+                            "group_seasons": group_seasons,
+                        },
+                    )
+                    if info:
+                        break
+                if info and not info.get("genres"):
+                    info = yield _RecognizeStep(
+                        action=_RecognizeAction.LOAD_DETAILS,
+                        kwargs={
+                            "mtype": info.get("media_type"),
+                            "tmdbid": info.get("id"),
+                        },
+                    )
+            elif not info:
+                yield _RecognizeStep(
+                    action=_RecognizeAction.LOG_FAILURE,
+                    kwargs={
+                        "plan": plan,
+                        "connection_error": lookup.connection_error,
+                    },
+                )
+                return None
+            yield _RecognizeStep(
+                action=_RecognizeAction.SAVE_CACHE,
+                kwargs={"plan": plan, "info": info},
+            )
+        else:
+            yield _RecognizeStep(
+                action=_RecognizeAction.LOG_CACHE,
+                kwargs={"plan": plan, "cache_info": cache_info},
+            )
+            if cache_info.get("title"):
+                info = yield _RecognizeStep(
+                    action=_RecognizeAction.LOAD_DETAILS,
+                    kwargs={
+                        "mtype": cache_info.get("type"),
+                        "tmdbid": cache_info.get("id"),
+                    },
+                )
+            else:
+                info = None
+
+        if info:
+            mediainfo = yield _RecognizeStep(
+                action=_RecognizeAction.BUILD_RESULT,
+                kwargs={
+                    "info": info,
+                    "meta": plan.meta,
+                    "tmdbid": plan.tmdbid,
+                    "episode_group": plan.episode_group,
+                    "group_seasons": group_seasons,
+                },
+            )
+            mediainfo.recognize_cache_hit = cache_hit
+            return cast(MediaInfo, mediainfo)
+
+        yield _RecognizeStep(
+            action=_RecognizeAction.LOG_MISS,
+            kwargs={"target": plan.meta.name if plan.meta else plan.tmdbid},
+        )
+        return None
+
+    def _run_recognize_steps(self, plan: _RecognizePlan) -> Optional[MediaInfo]:
+        """用同步 TMDB 客户端驱动共享识别状态机。"""
+        steps = self._recognize_steps(plan)
+        result: Any = None
+        while True:
+            try:
+                step = steps.send(result)
+            except StopIteration as completed:
+                return cast(Optional[MediaInfo], completed.value)
+            if step.action == _RecognizeAction.LOAD_CACHE:
+                result = self._load_recognize_cache(**step.kwargs)
+            elif step.action == _RecognizeAction.LOAD_GROUP:
+                result = self.tmdb.get_tv_group_seasons(**step.kwargs)
+            elif step.action == _RecognizeAction.LOOKUP_IDENTITY:
+                try:
+                    info = self._get_info_by_tmdbid(**step.kwargs)
+                    result = _RecognizeLookup(info=info)
+                except TMDbConnectionError as err:
+                    logger.error(f"tmdb_id:{plan.tmdbid} {err}")
+                    result = _RecognizeLookup(info=None, connection_error=True)
+            elif step.action == _RecognizeAction.SEARCH_NAME:
+                result = self._search_by_name(**step.kwargs)
+            elif step.action == _RecognizeAction.LOAD_DETAILS:
+                result = self.tmdb.get_info(**step.kwargs)
+            elif step.action == _RecognizeAction.SAVE_CACHE:
+                self._save_recognize_cache(**step.kwargs)
+                result = None
+            elif step.action == _RecognizeAction.BUILD_RESULT:
+                result = self._build_media_info_result(**step.kwargs)
+            else:
+                result = self._run_common_recognize_step(step)
+
+    async def _async_run_recognize_steps(
+        self, plan: _RecognizePlan
+    ) -> Optional[MediaInfo]:
+        """用异步 TMDB 客户端驱动共享识别状态机。"""
+        steps = self._recognize_steps(plan)
+        result: Any = None
+        while True:
+            try:
+                step = steps.send(result)
+            except StopIteration as completed:
+                return cast(Optional[MediaInfo], completed.value)
+            if step.action == _RecognizeAction.LOAD_CACHE:
+                result = self._load_recognize_cache(**step.kwargs)
+            elif step.action == _RecognizeAction.LOAD_GROUP:
+                result = await self.tmdb.async_get_tv_group_seasons(**step.kwargs)
+            elif step.action == _RecognizeAction.LOOKUP_IDENTITY:
+                try:
+                    info = await self._async_get_info_by_tmdbid(**step.kwargs)
+                    result = _RecognizeLookup(info=info)
+                except TMDbConnectionError as err:
+                    logger.error(f"tmdb_id:{plan.tmdbid} {err}")
+                    result = _RecognizeLookup(info=None, connection_error=True)
+            elif step.action == _RecognizeAction.SEARCH_NAME:
+                result = await self._async_search_by_name(**step.kwargs)
+            elif step.action == _RecognizeAction.LOAD_DETAILS:
+                result = await self.tmdb.async_get_info(**step.kwargs)
+            elif step.action == _RecognizeAction.SAVE_CACHE:
+                self._save_recognize_cache(**step.kwargs)
+                result = None
+            elif step.action == _RecognizeAction.BUILD_RESULT:
+                result = await self._async_build_media_info_result(**step.kwargs)
+            else:
+                result = self._run_common_recognize_step(step)
+
+    def _run_common_recognize_step(self, step: _RecognizeStep) -> None:
+        """执行不依赖 TMDB 客户端 ABI 的缓存和结果日志动作。"""
+        if step.action == _RecognizeAction.LOG_CACHE:
+            plan = cast(_RecognizePlan, step.kwargs["plan"])
+            cache_info = cast(_TmdbData, step.kwargs["cache_info"])
+            meta = plan.meta
+            target = meta.name if meta else plan.tmdbid
+            if cache_info.get("title"):
+                logger.info(
+                    f"{target} 使用TMDB识别缓存：{cache_info.get('title')}"
+                )
+            else:
+                logger.info(f"{target} 使用TMDB识别缓存：无法识别")
+        elif step.action == _RecognizeAction.LOG_FAILURE:
+            self._log_recognize_lookup_failure(**step.kwargs)
+        else:
+            logger.info(f"{step.kwargs['target']} 未匹配到TMDB媒体信息")
+
     def recognize_media(self, meta: MetaBase = None,
                         mtype: MediaType = None,
                         media_source: Optional[MediaSource] = None,
@@ -730,67 +945,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
         if not plan:
             return None
-        tmdbid = plan.tmdbid
-        cache_info = self._load_recognize_cache(plan)
-
-        # 查询剧集组
-        group_seasons = []
-        if plan.episode_group:
-            group_seasons = self.tmdb.get_tv_group_seasons(plan.episode_group)
-        cache_hit = False
-
-        # 识别匹配
-        if not cache_info or not plan.use_cache:
-            info = None
-            connection_error = False
-            # 缓存没有或者强制不使用缓存
-            if tmdbid:
-                # 直接查询详情，支持同ID电影/电视剧消歧
-                try:
-                    info = self._get_info_by_tmdbid(tmdbid=tmdbid, mtype=mtype, meta=meta)
-                except TMDbConnectionError as err:
-                    logger.error(f"tmdb_id:{tmdbid} {err}")
-                    connection_error = True
-            if not info and meta and not tmdbid:
-                # 准备搜索名称
-                names = self._prepare_search_names(meta)
-                for name in names:
-                    info = self._search_by_name(name, meta, group_seasons)
-                    if info:
-                        # 查到就退出
-                        break
-                # 补充全量信息
-                if info and not info.get("genres"):
-                    info = self.tmdb.get_info(mtype=info.get("media_type"),
-                                              tmdbid=info.get("id"))
-            elif not info:
-                self._log_recognize_lookup_failure(plan, connection_error)
-                return None
-
-            # 保存到缓存
-            self._save_recognize_cache(plan, info)
-        else:
-            # 使用缓存信息
-            cache_hit = True
-            if cache_info.get("title"):
-                logger.info(f"{meta.name} 使用TMDB识别缓存：{cache_info.get('title')}")
-                info = self.tmdb.get_info(mtype=cache_info.get("type"),
-                                          tmdbid=cache_info.get("id"))
-            else:
-                logger.info(f"{meta.name} 使用TMDB识别缓存：无法识别")
-                info = None
-
-        if info:
-            mediainfo = self._build_media_info_result(
-                info, meta, tmdbid, plan.episode_group, group_seasons
-            )
-            if mediainfo:
-                mediainfo.recognize_cache_hit = cache_hit
-            return mediainfo
-        else:
-            logger.info(f"{meta.name if meta else tmdbid} 未匹配到TMDB媒体信息")
-
-        return None
+        return self._run_recognize_steps(plan)
 
     async def async_recognize_media(self, meta: MetaBase = None,
                                     mtype: MediaType = None,
@@ -814,69 +969,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
         if not plan:
             return None
-        tmdbid = plan.tmdbid
-        cache_info = self._load_recognize_cache(plan)
-
-        # 查询剧集组
-        group_seasons = []
-        if plan.episode_group:
-            group_seasons = await self.tmdb.async_get_tv_group_seasons(
-                plan.episode_group
-            )
-        cache_hit = False
-
-        # 识别匹配
-        if not cache_info or not plan.use_cache:
-            info = None
-            connection_error = False
-            # 缓存没有或者强制不使用缓存
-            if tmdbid:
-                # 直接查询详情，支持同ID电影/电视剧消歧
-                try:
-                    info = await self._async_get_info_by_tmdbid(tmdbid=tmdbid, mtype=mtype, meta=meta)
-                except TMDbConnectionError as err:
-                    logger.error(f"tmdb_id:{tmdbid} {err}")
-                    connection_error = True
-            if not info and meta and not tmdbid:
-                # 准备搜索名称
-                names = self._prepare_search_names(meta)
-                for name in names:
-                    info = await self._async_search_by_name(name, meta, group_seasons)
-                    if info:
-                        # 查到就退出
-                        break
-                # 补充全量信息
-                if info and not info.get("genres"):
-                    info = await self.tmdb.async_get_info(mtype=info.get("media_type"),
-                                                          tmdbid=info.get("id"))
-            elif not info:
-                self._log_recognize_lookup_failure(plan, connection_error)
-                return None
-
-            # 保存到缓存
-            self._save_recognize_cache(plan, info)
-        else:
-            # 使用缓存信息
-            cache_hit = True
-            if cache_info.get("title"):
-                logger.info(f"{meta.name} 使用TMDB识别缓存：{cache_info.get('title')}")
-                info = await self.tmdb.async_get_info(mtype=cache_info.get("type"),
-                                                      tmdbid=cache_info.get("id"))
-            else:
-                logger.info(f"{meta.name} 使用TMDB识别缓存：无法识别")
-                info = None
-
-        if info:
-            mediainfo = await self._async_build_media_info_result(
-                info, meta, tmdbid, plan.episode_group, group_seasons
-            )
-            if mediainfo:
-                mediainfo.recognize_cache_hit = cache_hit
-            return mediainfo
-        else:
-            logger.info(f"{meta.name if meta else tmdbid} 未匹配到TMDB媒体信息")
-
-        return None
+        return await self._async_run_recognize_steps(plan)
 
     def match_tmdbinfo(self, name: str, mtype: MediaType = None,
                        year: Optional[str] = None, season: Optional[int] = None) -> dict:

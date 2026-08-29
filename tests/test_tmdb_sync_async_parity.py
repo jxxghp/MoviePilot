@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, call
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.themoviedb import TheMovieDbModule
+from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -85,6 +86,77 @@ def test_recognize_sync_async_share_identity_cache_and_result_decisions() -> Non
         call(sync_meta, info),
         call(async_meta, info),
     ]
+
+
+def test_recognize_sync_async_share_negative_cache_short_circuit() -> None:
+    """负缓存命中时双入口都不得继续访问 TMDB 客户端。"""
+    module = _module_with_clients()
+    module.tmdb.async_get_info = AsyncMock()
+    module.tmdb.async_match = AsyncMock()
+    module.cache.get.side_effect = [
+        {"title": None},
+        {"title": None},
+    ]
+    sync_meta = MetaBase("负缓存电影 2026")
+    async_meta = MetaBase("负缓存电影 2026")
+    sync_meta.name = "负缓存电影"
+    async_meta.name = "负缓存电影"
+
+    sync_result = module.recognize_media(
+        meta=sync_meta, media_source=MediaSource.TMDB, cache=True
+    )
+    async_result = asyncio.run(
+        module.async_recognize_media(
+            meta=async_meta, media_source=MediaSource.TMDB, cache=True
+        )
+    )
+
+    assert sync_result is None
+    assert async_result is None
+    assert module.cache.get.call_args_list == [call(sync_meta), call(async_meta)]
+    module.tmdb.get_info.assert_not_called()
+    module.tmdb.async_get_info.assert_not_awaited()
+    module.tmdb.match.assert_not_called()
+    module.tmdb.async_match.assert_not_awaited()
+    module.cache.update.assert_not_called()
+
+
+def test_recognize_sync_async_share_identity_connection_failure() -> None:
+    """显式身份查询连接失败时双入口都应失败且不得写入负缓存。"""
+    module = _module_with_clients()
+    sync_lookup = Mock(side_effect=TMDbConnectionError("offline"))
+    async_lookup = AsyncMock(side_effect=TMDbConnectionError("offline"))
+    module._get_info_by_tmdbid = sync_lookup
+    module._async_get_info_by_tmdbid = async_lookup
+    sync_meta = MetaBase("连接失败电影 2026")
+    async_meta = MetaBase("连接失败电影 2026")
+
+    sync_result = module.recognize_media(
+        meta=sync_meta,
+        mtype=MediaType.MOVIE,
+        media_source=MediaSource.TMDB,
+        media_id="10",
+        cache=False,
+    )
+    async_result = asyncio.run(
+        module.async_recognize_media(
+            meta=async_meta,
+            mtype=MediaType.MOVIE,
+            media_source=MediaSource.TMDB,
+            media_id="10",
+            cache=False,
+        )
+    )
+
+    assert sync_result is None
+    assert async_result is None
+    sync_lookup.assert_called_once_with(
+        tmdbid=10, mtype=MediaType.MOVIE, meta=sync_meta
+    )
+    async_lookup.assert_awaited_once_with(
+        tmdbid=10, mtype=MediaType.MOVIE, meta=async_meta
+    )
+    module.cache.update.assert_not_called()
 
 
 def test_name_match_sync_async_share_ordered_fallback_plan() -> None:
