@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Protocol, Set, Union
+from typing import Dict, Iterable, List, Optional, Protocol, Set, Union, cast
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 from anyio import Path as AsyncPath
@@ -177,6 +177,26 @@ class SecurityUtils:
     _SUBTITLE_DOWNLOAD_PURPOSE_PREFIX = "subtitle-download"
 
     @staticmethod
+    def _resolved_path_is_safe(
+        base_path: Union[Path, AsyncPath],
+        user_path: Union[Path, AsyncPath],
+        user_suffix: str,
+        allowed_suffixes: Optional[Union[Set[str], List[str]]],
+    ) -> bool:
+        """统一解析后路径 containment 与后缀白名单判定。"""
+        if base_path != user_path and base_path not in user_path.parents:
+            return False
+        if allowed_suffixes is None:
+            return True
+        return user_suffix.lower() in set(allowed_suffixes)
+
+    @staticmethod
+    def _path_validation_failed(error: Exception) -> bool:
+        """统一记录路径解析异常并按默认拒绝策略返回。"""
+        logger.debug(f"Error occurred while validating paths: {error}")
+        return False
+
+    @staticmethod
     def is_safe_path(base_path: Path, user_path: Path,
                      allowed_suffixes: Optional[Union[Set[str], List[str]]] = None) -> bool:
         """
@@ -193,19 +213,14 @@ class SecurityUtils:
             base_path_resolved = base_path.resolve()
             user_path_resolved = user_path.resolve()
 
-            # 检查用户路径是否在基准目录或基准目录的子目录内
-            if base_path_resolved != user_path_resolved and base_path_resolved not in user_path_resolved.parents:
-                return False
-
-            if allowed_suffixes is not None:
-                allowed_suffixes = set(allowed_suffixes)
-                if user_path.suffix.lower() not in allowed_suffixes:
-                    return False
-
-            return True
+            return SecurityUtils._resolved_path_is_safe(
+                base_path_resolved,
+                user_path_resolved,
+                user_path.suffix,
+                allowed_suffixes,
+            )
         except Exception as e:
-            logger.debug(f"Error occurred while validating paths: {e}")
-            return False
+            return SecurityUtils._path_validation_failed(e)
 
     @staticmethod
     async def async_is_safe_path(base_path: AsyncPath, user_path: AsyncPath,
@@ -224,19 +239,14 @@ class SecurityUtils:
             base_path_resolved = await base_path.resolve()
             user_path_resolved = await user_path.resolve()
 
-            # 检查用户路径是否在基准目录或基准目录的子目录内
-            if base_path_resolved != user_path_resolved and base_path_resolved not in user_path_resolved.parents:
-                return False
-
-            if allowed_suffixes is not None:
-                allowed_suffixes = set(allowed_suffixes)
-                if user_path.suffix.lower() not in allowed_suffixes:
-                    return False
-
-            return True
+            return SecurityUtils._resolved_path_is_safe(
+                base_path_resolved,
+                user_path_resolved,
+                user_path.suffix,
+                allowed_suffixes,
+            )
         except Exception as e:
-            logger.debug(f"Error occurred while validating paths: {e}")
-            return False
+            return SecurityUtils._path_validation_failed(e)
 
     @staticmethod
     def _literal_ip(hostname: str) -> Optional[ipaddress._BaseAddress]:
@@ -722,6 +732,37 @@ class SecurityUtils:
         return diagnosis.allowed
 
     @staticmethod
+    def _url_safety_prelude(
+        url: str,
+        allowed_domains: Union[Set[str], List[str]],
+        strict: bool,
+        block_private: bool,
+    ) -> tuple[Optional[str], Optional["UrlSafetyDiagnosis"]]:
+        """统一协议/域名白名单与无需 DNS 场景的终态诊断。"""
+        hostname = SecurityUtils._check_url_allowlist(url, allowed_domains, strict)
+        if hostname is None:
+            return None, UrlSafetyDiagnosis(
+                allowed=False,
+                reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
+            )
+        if not block_private:
+            return hostname, UrlSafetyDiagnosis(
+                allowed=True,
+                reason=UrlSafetyReason.ALLOWED,
+                host=hostname,
+            )
+        return hostname, None
+
+    @staticmethod
+    def _url_safety_failed(error: Exception) -> "UrlSafetyDiagnosis":
+        """统一记录 URL 校验异常并返回默认拒绝诊断。"""
+        logger.debug(f"Error occurred while validating URL: {error}")
+        return UrlSafetyDiagnosis(
+            allowed=False,
+            reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
+        )
+
+    @staticmethod
     def evaluate_url_safety(
         url: str,
         allowed_domains: Union[Set[str], List[str]],
@@ -738,28 +779,18 @@ class SecurityUtils:
         归类为 `DOMAIN_NOT_ALLOWED`，避免任何解析路径漏过 SSRF 校验。
         """
         try:
-            hostname = SecurityUtils._check_url_allowlist(url, allowed_domains, strict)
-            if hostname is None:
-                return UrlSafetyDiagnosis(
-                    allowed=False,
-                    reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
-                )
-            if not block_private:
-                return UrlSafetyDiagnosis(
-                    allowed=True,
-                    reason=UrlSafetyReason.ALLOWED,
-                    host=hostname,
-                )
+            hostname, diagnosis = SecurityUtils._url_safety_prelude(
+                url, allowed_domains, strict, block_private
+            )
+            if diagnosis is not None:
+                return diagnosis
+            hostname = cast(str, hostname)
             addresses = SecurityUtils._hostname_addresses(hostname)
             return SecurityUtils._diagnose_resolved_addresses(
                 url, hostname, addresses, allowed_private_ranges
             )
         except Exception as e:  # noqa: BLE001 - 默认拒绝，避免漏过 SSRF 校验
-            logger.debug(f"Error occurred while validating URL: {e}")
-            return UrlSafetyDiagnosis(
-                allowed=False,
-                reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
-            )
+            return SecurityUtils._url_safety_failed(e)
 
     @staticmethod
     async def evaluate_url_safety_async(
@@ -776,28 +807,18 @@ class SecurityUtils:
         的事件循环；校验顺序、字段含义、异常归类均与同步版本相同。
         """
         try:
-            hostname = SecurityUtils._check_url_allowlist(url, allowed_domains, strict)
-            if hostname is None:
-                return UrlSafetyDiagnosis(
-                    allowed=False,
-                    reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
-                )
-            if not block_private:
-                return UrlSafetyDiagnosis(
-                    allowed=True,
-                    reason=UrlSafetyReason.ALLOWED,
-                    host=hostname,
-                )
+            hostname, diagnosis = SecurityUtils._url_safety_prelude(
+                url, allowed_domains, strict, block_private
+            )
+            if diagnosis is not None:
+                return diagnosis
+            hostname = cast(str, hostname)
             addresses = await SecurityUtils._hostname_addresses_async(hostname)
             return SecurityUtils._diagnose_resolved_addresses(
                 url, hostname, addresses, allowed_private_ranges
             )
         except Exception as e:  # noqa: BLE001 - 默认拒绝，避免漏过 SSRF 校验
-            logger.debug(f"Error occurred while validating URL: {e}")
-            return UrlSafetyDiagnosis(
-                allowed=False,
-                reason=UrlSafetyReason.DOMAIN_NOT_ALLOWED,
-            )
+            return SecurityUtils._url_safety_failed(e)
 
     @staticmethod
     async def is_safe_image_url_async(

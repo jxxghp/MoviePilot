@@ -1,6 +1,7 @@
 import io
 import threading
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Protocol
 
@@ -14,6 +15,15 @@ from app.runtime.log import logger
 
 WallpaperProvider = Callable[[], Optional[str]]
 WallpaperListProvider = Callable[[int], List[str]]
+
+
+@dataclass(frozen=True, slots=True)
+class _ImageFetchRequest:
+    """冻结同步与异步图片获取共用的缓存键和传输参数。"""
+
+    url: str
+    cache_path: str
+    use_cache: bool
 
 
 class ImageResponsePort(Protocol):
@@ -400,6 +410,43 @@ class ImageHelper(metaclass=Singleton):
             "accept_type": "image/avif,image/webp,image/apng,*/*",
         }
 
+    @staticmethod
+    def _fetch_request(
+        url: str,
+        proxy: Optional[bool],
+        use_cache: bool,
+        cookies: Optional[str | dict[str, str]],
+    ) -> Optional[_ImageFetchRequest]:
+        """统一空 URL 拒绝、缓存键和远端传输参数生成。"""
+        if not url:
+            return None
+        return _ImageFetchRequest(
+            url=url,
+            cache_path=ImageHelper._prepare_cache_path(url),
+            use_cache=use_cache,
+        )
+
+    def _cached_image(
+        self, content: Optional[bytes]
+    ) -> Optional[tuple[bytes, str]]:
+        """缓存内容只读取格式头，返回可直接复用的图片结果。"""
+        if not content:
+            return None
+        mime_type = self.get_image_mime_type(content, verify=False)
+        return (content, mime_type) if mime_type else None
+
+    def _fetched_image(
+        self,
+        request: _ImageFetchRequest,
+        response: Optional[ImageResponsePort],
+    ) -> Optional[tuple[bytes, str]]:
+        """统一远端状态码与图片内容校验，拒绝结果不得进入缓存。"""
+        if response is None or response.status_code != 200:
+            logger.warn(f"Failed to fetch image from URL: {request.url}")
+            return None
+        mime_type = self.get_image_mime_type(response.content)
+        return (response.content, mime_type) if mime_type else None
+
     def fetch_image(
         self,
         url: str,
@@ -429,35 +476,29 @@ class ImageHelper(metaclass=Singleton):
 
         网络响应在写入缓存前完整验证一次；缓存命中仅重新识别格式头。
         """
-        if not url:
+        request = ImageHelper._fetch_request(url, proxy, use_cache, cookies)
+        if request is None:
             return None
-
-        cache_path = self._prepare_cache_path(url)
-
-        # 检查缓存
-        if use_cache:
-            content = self.file_cache.get(cache_path, region="images")
-            if content:
-                mime_type = self.get_image_mime_type(content, verify=False)
-                if mime_type:
-                    return content, mime_type
-
-        # 请求远程图片
-        params = self._get_request_params(url, proxy, cookies)
+        if request.use_cache:
+            cached_result = self._cached_image(
+                self.file_cache.get(request.cache_path, region="images")
+            )
+            if cached_result is not None:
+                return cached_result
         transport, _ = _image_ports_snapshot()
-        response = transport.get(url, options=params)
-        if response is None or response.status_code != 200:
-            logger.warn(f"Failed to fetch image from URL: {url}")
+        result = self._fetched_image(
+            request,
+            transport.get(
+                request.url,
+                options=ImageHelper._get_request_params(
+                    request.url, proxy, cookies
+                ),
+            ),
+        )
+        if result is None:
             return None
-
-        content = response.content
-        mime_type = self.get_image_mime_type(content)
-        if not mime_type:
-            return None
-
-        # 保存缓存
-        self.file_cache.set(cache_path, content, region="images")
-        return content, mime_type
+        self.file_cache.set(request.cache_path, result[0], region="images")
+        return result
 
     async def async_fetch_image(
         self,
@@ -488,32 +529,28 @@ class ImageHelper(metaclass=Singleton):
 
         网络响应在写入缓存前完整验证一次；缓存命中仅重新识别格式头。
         """
-        if not url:
+        request = ImageHelper._fetch_request(url, proxy, use_cache, cookies)
+        if request is None:
             return None
-
-        cache_path = self._prepare_cache_path(url)
-
-        # 检查缓存
-        if use_cache:
-            content = await self.async_file_cache.get(cache_path, region="images")
-            if content:
-                mime_type = self.get_image_mime_type(content, verify=False)
-                if mime_type:
-                    return content, mime_type
-
-        # 请求远程图片
-        params = self._get_request_params(url, proxy, cookies)
+        if request.use_cache:
+            cached_result = self._cached_image(
+                await self.async_file_cache.get(request.cache_path, region="images")
+            )
+            if cached_result is not None:
+                return cached_result
         transport, _ = _image_ports_snapshot()
-        response = await transport.async_get(url, options=params)
-        if response is None or response.status_code != 200:
-            logger.warn(f"Failed to fetch image from URL: {url}")
+        result = self._fetched_image(
+            request,
+            await transport.async_get(
+                request.url,
+                options=ImageHelper._get_request_params(
+                    request.url, proxy, cookies
+                ),
+            ),
+        )
+        if result is None:
             return None
-
-        content = response.content
-        mime_type = self.get_image_mime_type(content)
-        if not mime_type:
-            return None
-
-        # 保存缓存
-        await self.async_file_cache.set(cache_path, content, region="images")
-        return content, mime_type
+        await self.async_file_cache.set(
+            request.cache_path, result[0], region="images"
+        )
+        return result

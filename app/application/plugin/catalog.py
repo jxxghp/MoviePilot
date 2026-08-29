@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Optional, cast
 
 from app.application.plugin.identity import (
@@ -28,6 +29,15 @@ AsyncMarketLoader = Callable[
 ]
 PluginMapper = Callable[[str, dict, str, list[str], int, Optional[str]], Any]
 ProgressCallback = Callable[..., Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _CatalogLoadRequest:
+    """冻结同步与异步插件市场加载共用的仓库和代际参数。"""
+
+    market: str
+    package_version: Optional[str]
+    force: bool
 
 
 def apply_declared_metadata_fallback(
@@ -104,6 +114,37 @@ class PluginCatalogService:
         self._warning = warning
         self._error = error
 
+    @staticmethod
+    def _load_request(
+            market: str,
+            package_version: Optional[str],
+            force: bool,
+    ) -> Optional[_CatalogLoadRequest]:
+        """统一拒绝空市场，并冻结一次目录加载的完整输入。"""
+        if not market:
+            return None
+        return _CatalogLoadRequest(
+            market=market,
+            package_version=package_version,
+            force=force,
+        )
+
+    def _loaded_plugins(
+            self,
+            request: _CatalogLoadRequest,
+            online_plugins: Optional[dict[str, dict[str, Any]]],
+    ) -> list[Any]:
+        """统一加载失败告警与在线目录到插件 DTO 的投影。"""
+        if online_plugins is None:
+            self._warning(
+                f"获取{request.package_version if request.package_version else ''}插件库失败："
+                f"{request.market}，请检查 GitHub 网络连接"
+            )
+            return []
+        return self._map_plugins(
+            online_plugins, request.market, request.package_version
+        )
+
     def load(
             self,
             market: str,
@@ -111,16 +152,17 @@ class PluginCatalogService:
             force: bool = False,
     ) -> list[Any]:
         """同步读取并映射指定市场和插件代际。"""
-        if not market:
+        request = PluginCatalogService._load_request(
+            market, package_version, force
+        )
+        if request is None:
             return []
-        online_plugins = self._market_loader(market, package_version, force)
-        if online_plugins is None:
-            self._warning(
-                f"获取{package_version if package_version else ''}插件库失败："
-                f"{market}，请检查 GitHub 网络连接"
-            )
-            return []
-        return self._map_plugins(online_plugins, market, package_version)
+        return self._loaded_plugins(
+            request,
+            self._market_loader(
+                request.market, request.package_version, request.force
+            ),
+        )
 
     async def async_load(
             self,
@@ -129,20 +171,17 @@ class PluginCatalogService:
             force: bool = False,
     ) -> list[Any]:
         """异步读取并映射指定市场和插件代际。"""
-        if not market:
+        request = PluginCatalogService._load_request(
+            market, package_version, force
+        )
+        if request is None:
             return []
         online_plugins = await self._async_market_loader(
-            market,
-            package_version,
-            force,
+            request.market,
+            request.package_version,
+            request.force,
         )
-        if online_plugins is None:
-            self._warning(
-                f"获取{package_version if package_version else ''}插件库失败："
-                f"{market}，请检查 GitHub 网络连接"
-            )
-            return []
-        return self._map_plugins(online_plugins, market, package_version)
+        return self._loaded_plugins(request, online_plugins)
 
     def collect(
             self,

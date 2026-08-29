@@ -2,6 +2,7 @@
 
 import threading
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any, Optional, Protocol
 from urllib.parse import urlencode
 
@@ -9,6 +10,16 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 BackgroundSubmitter = Callable[..., object]
+
+
+@dataclass(frozen=True, slots=True)
+class _MessageIngressRequest:
+    """冻结同步与异步本地消息回环共用的请求参数。"""
+
+    url: str
+    payload: Mapping[str, Any]
+    source: str
+    timeout: float
 
 
 class MessageIngressPort(Protocol):
@@ -77,6 +88,48 @@ def build_message_ingress_url(source: str | None) -> str:
     )
 
 
+def _message_ingress_request(
+    payload: Mapping[str, Any],
+    source: str | None,
+    timeout: float,
+) -> _MessageIngressRequest:
+    """统一构造 URL、payload 副本和日志使用的来源标识。"""
+    return _MessageIngressRequest(
+        url=build_message_ingress_url(source),
+        payload=dict(payload),
+        source=source or "-",
+        timeout=timeout,
+    )
+
+
+def _message_ingress_confirmed(
+    request: _MessageIngressRequest,
+    status_code: Optional[int],
+) -> bool:
+    """统一判断本地入口是否确认接收，并输出稳定失败原因。"""
+    if status_code is None:
+        logger.error(f"转发渠道消息到本地入口失败：source={request.source} - 无响应")
+        return False
+    if status_code >= 400:
+        logger.error(
+            "转发渠道消息到本地入口失败："
+            f"source={request.source} - HTTP {status_code}"
+        )
+        return False
+    return True
+
+
+def _message_ingress_failed(
+    source: str | None,
+    error: Exception,
+) -> bool:
+    """统一记录传输或组合根异常，并按关闭策略返回失败。"""
+    logger.error(
+        f"转发渠道消息到本地入口失败：source={source or '-'} - {error}"
+    )
+    return False
+
+
 def forward_message_to_host(
     payload: Mapping[str, Any],
     source: str | None,
@@ -85,24 +138,15 @@ def forward_message_to_host(
 ) -> bool:
     """同步转发渠道 payload，统一判断本地入口是否确认接收。"""
     try:
+        request = _message_ingress_request(payload, source, timeout)
         status_code = _message_ingress_snapshot().post(
-            build_message_ingress_url(source),
-            dict(payload),
-            timeout=timeout,
+            request.url,
+            request.payload,
+            timeout=request.timeout,
         )
-        if status_code is None:
-            logger.error(f"转发渠道消息到本地入口失败：source={source or '-'} - 无响应")
-            return False
-        if status_code >= 400:
-            logger.error(
-                "转发渠道消息到本地入口失败："
-                f"source={source or '-'} - HTTP {status_code}"
-            )
-            return False
-        return True
+        return _message_ingress_confirmed(request, status_code)
     except Exception as error:
-        logger.error(f"转发渠道消息到本地入口失败：source={source or '-'} - {error}")
-        return False
+        return _message_ingress_failed(source, error)
 
 
 async def async_forward_message_to_host(
@@ -113,24 +157,15 @@ async def async_forward_message_to_host(
 ) -> bool:
     """异步转发渠道 payload，供自有事件循环的消息 SDK 复用同一确认语义。"""
     try:
+        request = _message_ingress_request(payload, source, timeout)
         status_code = await _message_ingress_snapshot().async_post(
-            build_message_ingress_url(source),
-            dict(payload),
-            timeout=timeout,
+            request.url,
+            request.payload,
+            timeout=request.timeout,
         )
-        if status_code is None:
-            logger.error(f"转发渠道消息到本地入口失败：source={source or '-'} - 无响应")
-            return False
-        if status_code >= 400:
-            logger.error(
-                "转发渠道消息到本地入口失败："
-                f"source={source or '-'} - HTTP {status_code}"
-            )
-            return False
-        return True
+        return _message_ingress_confirmed(request, status_code)
     except Exception as error:
-        logger.error(f"转发渠道消息到本地入口失败：source={source or '-'} - {error}")
-        return False
+        return _message_ingress_failed(source, error)
 
 
 def submit_message_to_host(
