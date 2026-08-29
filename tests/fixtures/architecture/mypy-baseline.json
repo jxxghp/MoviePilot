@@ -1909,7 +1909,7 @@
     "union-attr": 18
   },
   "app/modules/douban/__init__.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "assignment": 27,
     "empty-body": 1,
     "misc": 2,
@@ -1918,7 +1918,7 @@
     "no-untyped-def": 11,
     "return-value": 2,
     "type-arg": 13,
-    "union-attr": 9
+    "union-attr": 2
   },
   "app/modules/douban/apiv2.py": {
     "misc": 6,

@@ -1,17 +1,19 @@
+from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
 
-from app.runtime.cache import cached
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
     MusicInfo,
 )
+from app.domain.media import is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.runtime.log import logger
 from app.modules import _ModuleBase
+from app.runtime.cache import cached
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
@@ -21,8 +23,37 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
-from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.domain.media import is_media_source_selected
+
+
+@dataclass(frozen=True, slots=True)
+class _TheAudioDbRecognitionPlan:
+    """描述 TheAudioDB 识别允许的详情或候选检索步骤。"""
+
+    meta: Optional[MetaMusic]
+    media_id: Optional[str]
+    music_type: Optional[str]
+
+    @property
+    def search_recording(self) -> bool:
+        """是否需要尝试单曲详情或候选。"""
+        return bool(self.music_type != MUSIC_ENTITY_ALBUM)
+
+    @property
+    def search_album(self) -> bool:
+        """是否允许在单曲未命中后继续尝试专辑。"""
+        return bool(self.music_type != MUSIC_ENTITY_RECORDING)
+
+    def require_meta(self) -> MetaMusic:
+        """返回候选识别计划必有的音乐元数据。"""
+        if self.meta is None:
+            raise RuntimeError("TheAudioDB 候选识别计划缺少音乐元数据")
+        return self.meta
+
+    def require_media_id(self) -> str:
+        """返回详情识别计划必有的原生 ID。"""
+        if self.media_id is None:
+            raise RuntimeError("TheAudioDB 详情识别计划缺少原生 ID")
+        return self.media_id
 
 
 class TheAudioDbModule(_ModuleBase):
@@ -101,34 +132,28 @@ class TheAudioDbModule(_ModuleBase):
             **kwargs,
     ) -> Optional[MusicInfo]:
         """仅响应显式 TheAudioDB 音乐请求，并返回带原生 ID 的标准音乐信息。"""
-        music_type = kwargs.get("music_type")
-        if media_source != self._source:
+        plan = self._recognition_plan(
+            meta=meta,
+            mtype=mtype,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=kwargs.get("music_type"),
+        )
+        if not plan:
             return None
-        if not isinstance(meta, MetaMusic):
-            if mtype == MediaType.MUSIC and media_id:
-                detail_kwargs = (
-                    {"music_type": music_type} if music_type is not None else {}
-                )
-                return self.recognize_music(
-                    media_source, str(media_id), **detail_kwargs
-                )
-            return None
-        resolved_media_id = media_id or meta.media_id
-        if resolved_media_id:
-            detail_kwargs = (
-                {"music_type": music_type} if music_type is not None else {}
-            )
+        if plan.media_id:
             return self.recognize_music(
-                media_source, str(resolved_media_id), **detail_kwargs
+                self._source, plan.require_media_id(), music_type=plan.music_type
             )
-        if music_type != MUSIC_ENTITY_ALBUM:
-            matched = self._select_track(meta, self._search_tracks(meta))
+        plan_meta = plan.require_meta()
+        if plan.search_recording:
+            matched = self._select_track(plan_meta, self._search_tracks(plan_meta))
             if matched:
                 return matched
-            if music_type == MUSIC_ENTITY_RECORDING:
+            if not plan.search_album:
                 return None
-        album = self._select_album(meta, self._search_albums(meta))
-        return album.to_music_info() if album else None
+        album = self._select_album(plan_meta, self._search_albums(plan_meta))
+        return self._project_album_result(album)
 
     async def async_recognize_media(
             self,
@@ -139,38 +164,60 @@ class TheAudioDbModule(_ModuleBase):
             **kwargs,
     ) -> Optional[MusicInfo]:
         """异步识别 TheAudioDB 音乐详情或按元数据匹配单曲。"""
-        music_type = kwargs.get("music_type")
-        if media_source != self._source:
+        plan = self._recognition_plan(
+            meta=meta,
+            mtype=mtype,
+            media_source=media_source,
+            media_id=media_id,
+            music_type=kwargs.get("music_type"),
+        )
+        if not plan:
             return None
-        if not isinstance(meta, MetaMusic):
-            if mtype == MediaType.MUSIC and media_id:
-                return await self.async_recognize_music(
-                    media_source,
-                    str(media_id),
-                    music_type=music_type,
-                )
-            return None
-        resolved_media_id = media_id or meta.media_id
-        if resolved_media_id:
+        if plan.media_id:
             return await self.async_recognize_music(
-                media_source,
-                str(resolved_media_id),
-                music_type=music_type,
+                self._source,
+                plan.require_media_id(),
+                music_type=plan.music_type,
             )
-        if music_type != MUSIC_ENTITY_ALBUM:
+        plan_meta = plan.require_meta()
+        if plan.search_recording:
             matched = self._select_track(
-                meta,
-                await self._async_search_tracks(meta),
+                plan_meta,
+                await self._async_search_tracks(plan_meta),
             )
             if matched:
                 return matched
-            if music_type == MUSIC_ENTITY_RECORDING:
+            if not plan.search_album:
                 return None
         album = self._select_album(
-            meta,
-            await self._async_search_albums(meta),
+            plan_meta,
+            await self._async_search_albums(plan_meta),
         )
-        return album.to_music_info() if album else None
+        return self._project_album_result(album)
+
+    @classmethod
+    def _recognition_plan(
+            cls,
+            meta: Optional[MetaBase],
+            mtype: Optional[MediaType],
+            media_source: Optional[MediaSource],
+            media_id: Optional[str],
+            music_type: Optional[str],
+    ) -> Optional[_TheAudioDbRecognitionPlan]:
+        """统一完成来源、音乐类型和原生 ID 准入。"""
+        if media_source != cls._source:
+            return None
+        if not isinstance(meta, MetaMusic):
+            if mtype != MediaType.MUSIC or not media_id:
+                return None
+            return _TheAudioDbRecognitionPlan(
+                meta=None, media_id=str(media_id), music_type=music_type
+            )
+        return _TheAudioDbRecognitionPlan(
+            meta=meta,
+            media_id=str(media_id or meta.media_id) if media_id or meta.media_id else None,
+            music_type=music_type,
+        )
 
     def recognize_music(
             self,
@@ -179,17 +226,20 @@ class TheAudioDbModule(_ModuleBase):
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """按 TheAudioDB 原生 ID 和实体类型获取详情；空类型保留旧版探测顺序。"""
-        if media_source != self._source or not media_id:
+        plan = self._detail_plan(media_source, media_id, music_type)
+        if not plan:
             return None
-        if music_type != MUSIC_ENTITY_ALBUM:
-            payload = self._request_json("track.php", {"h": media_id})
-            track = self._first_entity(payload, "track", "tracks")
-            if track:
-                return self._track_to_info(track)
-            if music_type == MUSIC_ENTITY_RECORDING:
+        if plan.search_recording:
+            payload = self._request_json(
+                "track.php", {"h": plan.require_media_id()}
+            )
+            result = self._project_track_detail(payload)
+            if result:
+                return result
+            if not plan.search_album:
                 return None
-        album = self.music_album(media_source, media_id)
-        return album.to_music_info() if album else None
+        album = self.music_album(self._source, plan.require_media_id())
+        return self._project_album_result(album)
 
     async def async_recognize_music(
             self,
@@ -198,16 +248,50 @@ class TheAudioDbModule(_ModuleBase):
             music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
         """异步按 TheAudioDB 原生 ID 和实体类型获取详情。"""
-        if media_source != self._source or not media_id:
+        plan = self._detail_plan(media_source, media_id, music_type)
+        if not plan:
             return None
-        if music_type != MUSIC_ENTITY_ALBUM:
-            payload = await self._async_request_json("track.php", {"h": media_id})
-            track = self._first_entity(payload, "track", "tracks")
-            if track:
-                return self._track_to_info(track)
-            if music_type == MUSIC_ENTITY_RECORDING:
+        if plan.search_recording:
+            payload = await self._async_request_json(
+                "track.php", {"h": plan.require_media_id()}
+            )
+            result = self._project_track_detail(payload)
+            if result:
+                return result
+            if not plan.search_album:
                 return None
-        album = await self._async_music_album(media_source, media_id)
+        album = await self._async_music_album(
+            self._source, plan.require_media_id()
+        )
+        return self._project_album_result(album)
+
+    @classmethod
+    def _detail_plan(
+            cls,
+            media_source: MediaSource,
+            media_id: str,
+            music_type: Optional[str],
+    ) -> Optional[_TheAudioDbRecognitionPlan]:
+        """统一校验详情来源并冻结实体探测顺序。"""
+        if media_source != cls._source or not media_id:
+            return None
+        return _TheAudioDbRecognitionPlan(
+            meta=None, media_id=str(media_id), music_type=music_type
+        )
+
+    @classmethod
+    def _project_track_detail(
+            cls, payload: Optional[dict[str, Any]]
+    ) -> Optional[MusicInfo]:
+        """把单曲详情响应投影为统一音乐信息。"""
+        track = cls._first_entity(payload, "track", "tracks")
+        return cls._track_to_info(track) if track else None
+
+    @staticmethod
+    def _project_album_result(
+            album: Optional[MusicAlbumInfo],
+    ) -> Optional[MusicInfo]:
+        """把专辑候选统一投影到音乐识别返回类型。"""
         return album.to_music_info() if album else None
 
     async def _async_music_album(
@@ -216,20 +300,14 @@ class TheAudioDbModule(_ModuleBase):
             media_id: str,
     ) -> Optional[MusicAlbumInfo]:
         """异步按 TheAudioDB 专辑 ID 获取标准化专辑详情和曲目。"""
-        if media_source != self._source or not media_id:
+        if not self._detail_plan(media_source, media_id, MUSIC_ENTITY_ALBUM):
             return None
         payload = await self._async_request_json("album.php", {"m": media_id})
-        item = self._first_entity(payload, "album", "albums")
-        if not item:
+        album = self._project_album_header(payload)
+        if not album:
             return None
-        album = self._album_to_info(item)
         tracks_payload = await self._async_request_json("track.php", {"m": media_id})
-        album.tracks = [
-            info
-            for track in self._entities(tracks_payload, "track", "tracks")
-            if (info := self._track_to_info(track, album=album))
-        ]
-        return album
+        return self._project_album_tracks(album, tracks_payload)
 
     def music_album(
             self,
@@ -237,18 +315,35 @@ class TheAudioDbModule(_ModuleBase):
             media_id: str,
     ) -> Optional[MusicAlbumInfo]:
         """按 TheAudioDB 专辑 ID 获取标准化专辑详情和曲目。"""
-        if media_source != self._source or not media_id:
+        if not self._detail_plan(media_source, media_id, MUSIC_ENTITY_ALBUM):
             return None
         payload = self._request_json("album.php", {"m": media_id})
-        item = self._first_entity(payload, "album", "albums")
-        if not item:
+        album = self._project_album_header(payload)
+        if not album:
             return None
-        album = self._album_to_info(item)
         tracks_payload = self._request_json("track.php", {"m": media_id})
+        return self._project_album_tracks(album, tracks_payload)
+
+    @classmethod
+    def _project_album_header(
+            cls,
+            payload: Optional[dict[str, Any]],
+    ) -> Optional[MusicAlbumInfo]:
+        """把专辑详情响应投影为尚未装载曲目的专辑。"""
+        item = cls._first_entity(payload, "album", "albums")
+        return cls._album_to_info(item) if item else None
+
+    @classmethod
+    def _project_album_tracks(
+            cls,
+            album: MusicAlbumInfo,
+            tracks_payload: Optional[dict[str, Any]],
+    ) -> MusicAlbumInfo:
+        """把曲目响应附加到已投影的 TheAudioDB 专辑。"""
         album.tracks = [
             info
-            for track in self._entities(tracks_payload, "track", "tracks")
-            if (info := self._track_to_info(track, album=album))
+            for track in cls._entities(tracks_payload, "track", "tracks")
+            if (info := cls._track_to_info(track, album=album))
         ]
         return album
 
@@ -314,56 +409,75 @@ class TheAudioDbModule(_ModuleBase):
 
     def _search_tracks(self, meta: MetaMusic) -> list[MusicInfo]:
         """使用曲名和艺术家搜索 TheAudioDB 单曲。"""
-        title = meta.title
-        artist = meta.artists[0] if meta.artists else meta.album_artist
-        if not title or not artist:
+        params = self._track_search_params(meta)
+        if not params:
             return []
-        params = {"t": title, "s": artist}
         payload = self._request_json("searchtrack.php", params)
-        return [
-            info
-            for item in self._entities(payload, "track", "tracks")
-            if (info := self._track_to_info(item))
-        ]
+        return self._project_track_search(payload)
 
     async def _async_search_tracks(self, meta: MetaMusic) -> list[MusicInfo]:
         """异步使用曲名和艺术家搜索 TheAudioDB 单曲。"""
-        title = meta.title
-        artist = meta.artists[0] if meta.artists else meta.album_artist
-        if not title or not artist:
+        params = self._track_search_params(meta)
+        if not params:
             return []
-        params = {"t": title, "s": artist}
         payload = await self._async_request_json("searchtrack.php", params)
+        return self._project_track_search(payload)
+
+    @staticmethod
+    def _track_search_params(meta: MetaMusic) -> Optional[dict[str, str]]:
+        """从音乐元数据归一化单曲搜索参数。"""
+        artist = meta.artists[0] if meta.artists else meta.album_artist
+        if not meta.title or not artist:
+            return None
+        return {"t": meta.title, "s": artist}
+
+    @classmethod
+    def _project_track_search(
+            cls, payload: Optional[dict[str, Any]]
+    ) -> list[MusicInfo]:
+        """把单曲搜索响应投影为统一候选列表。"""
         return [
             info
-            for item in self._entities(payload, "track", "tracks")
-            if (info := self._track_to_info(item))
+            for item in cls._entities(payload, "track", "tracks")
+            if (info := cls._track_to_info(item))
         ]
 
     def _search_albums(self, meta: MetaMusic) -> list[MusicAlbumInfo]:
         """使用专辑名和艺术家搜索 TheAudioDB 专辑。"""
-        album_name = meta.album or meta.title
-        artist = meta.artists[0] if meta.artists else meta.album_artist
-        if not album_name or not artist:
+        params = self._album_search_params(meta)
+        if not params:
             return []
-        params = {"a": album_name, "s": artist}
         payload = self._request_json("searchalbum.php", params)
-        return [self._album_to_info(item) for item in self._entities(payload, "album", "albums")]
+        return self._project_album_search(payload)
 
     async def _async_search_albums(
             self,
             meta: MetaMusic,
     ) -> list[MusicAlbumInfo]:
         """异步使用专辑名和艺术家搜索 TheAudioDB 专辑。"""
+        params = self._album_search_params(meta)
+        if not params:
+            return []
+        payload = await self._async_request_json("searchalbum.php", params)
+        return self._project_album_search(payload)
+
+    @staticmethod
+    def _album_search_params(meta: MetaMusic) -> Optional[dict[str, str]]:
+        """从音乐元数据归一化专辑搜索参数。"""
         album_name = meta.album or meta.title
         artist = meta.artists[0] if meta.artists else meta.album_artist
         if not album_name or not artist:
-            return []
-        params = {"a": album_name, "s": artist}
-        payload = await self._async_request_json("searchalbum.php", params)
+            return None
+        return {"a": album_name, "s": artist}
+
+    @classmethod
+    def _project_album_search(
+            cls, payload: Optional[dict[str, Any]]
+    ) -> list[MusicAlbumInfo]:
+        """把专辑搜索响应投影为统一候选列表。"""
         return [
-            self._album_to_info(item)
-            for item in self._entities(payload, "album", "albums")
+            cls._album_to_info(item)
+            for item in cls._entities(payload, "album", "albums")
         ]
 
     def _search_artists(self, meta: MetaMusic) -> list[MusicArtistInfo]:

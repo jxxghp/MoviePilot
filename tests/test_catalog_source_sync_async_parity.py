@@ -1,4 +1,4 @@
-"""AniList、Bangumi 与 IMDb Module 同步/异步决策一致性测试。"""
+"""目录来源 Module 同步/异步决策一致性测试。"""
 
 import asyncio
 from copy import deepcopy
@@ -7,13 +7,22 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.anilist import AniListModule
 from app.modules.bangumi import BangumiModule
+from app.modules.douban import DoubanModule
 from app.modules.imdb import ImdbModule
 from app.modules.imdb.api import ImdbAka, ImdbApi, ImdbTitle
-from app.schemas.types import MediaSource, MediaType
+from app.modules.musicbrainz import MusicBrainzModule
+from app.modules.theaudiodb import TheAudioDbModule
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    MediaSource,
+    MediaType,
+)
 
 
 def _meta(
@@ -40,6 +49,22 @@ def _signature(media: Optional[MediaInfo]) -> Optional[tuple[Any, ...]]:
         media.title,
         media.year,
         media.season,
+    )
+
+
+def _music_signature(music: Optional[MusicInfo]) -> Optional[tuple[Any, ...]]:
+    """提取音乐识别双 ABI 必须一致的来源、身份和展示字段。"""
+    if music is None:
+        return None
+    return (
+        music.media_source,
+        music.media_id,
+        music.music_type,
+        music.title,
+        tuple(music.artists),
+        music.album,
+        music.album_id,
+        music.track_number,
     )
 
 
@@ -267,3 +292,192 @@ def test_catalog_search_sync_async_projection_parity(
     assert [_signature(item) for item in sync_results] == [
         _signature(item) for item in async_results
     ]
+
+
+@pytest.mark.parametrize(
+    ("media_source", "expected"),
+    [
+        (MediaSource.Douban, True),
+        (MediaSource.TMDB, False),
+    ],
+)
+def test_douban_video_recognition_sync_async_decision_parity(
+    media_source: MediaSource,
+    expected: bool,
+) -> None:
+    """豆瓣影视来源准入、原生 ID 规范化和详情投影在双 ABI 下应一致。"""
+    info = {
+        "id": "200",
+        "title": "测试电影",
+        "type": "movie",
+        "year": "2024",
+    }
+    module = DoubanModule()
+    module.douban_info = Mock(return_value=deepcopy(info))
+    module.async_douban_info = AsyncMock(return_value=deepcopy(info))
+
+    sync_result = module.recognize_media(
+        mtype=MediaType.MOVIE,
+        media_source=media_source,
+        media_id="200",
+    )
+    async_result = asyncio.run(
+        module.async_recognize_media(
+            mtype=MediaType.MOVIE,
+            media_source=media_source,
+            media_id="200",
+        )
+    )
+
+    assert bool(sync_result) is expected
+    assert _signature(sync_result) == _signature(async_result)
+    if expected:
+        module.douban_info.assert_called_once_with(
+            doubanid="200", mtype=MediaType.MOVIE
+        )
+        module.async_douban_info.assert_awaited_once_with(
+            doubanid="200", mtype=MediaType.MOVIE
+        )
+    else:
+        module.douban_info.assert_not_called()
+        module.async_douban_info.assert_not_awaited()
+
+
+def test_douban_music_candidate_sync_async_decision_parity() -> None:
+    """豆瓣音乐标题、艺术家和曲目候选选择仅由共享决策完成。"""
+    search_payload = {
+        "items": [{
+            "target_type": "music",
+            "target": {
+                "id": "1401853",
+                "title": "范特西",
+                "card_subtitle": "周杰伦 / 2001",
+            },
+        }]
+    }
+    detail_payload = {
+        "id": "1401853",
+        "title": "范特西",
+        "singer": [{"name": "周杰伦"}],
+        "songs": [{
+            "title": "爱在西元前",
+            "track_number": 1,
+            "artist_names": ["周杰伦"],
+        }],
+    }
+    module = DoubanModule()
+    module.doubanapi = Mock()
+    module.doubanapi.music_search.return_value = deepcopy(search_payload)
+    module.doubanapi.music_detail.return_value = deepcopy(detail_payload)
+    module.doubanapi.async_music_search = AsyncMock(
+        return_value=deepcopy(search_payload)
+    )
+    module.doubanapi.async_music_detail = AsyncMock(
+        return_value=deepcopy(detail_payload)
+    )
+    meta = MetaMusic(
+        title="爱在西元前",
+        album="范特西",
+        artists=["周杰伦"],
+    )
+
+    sync_result = module.recognize_media(
+        meta=meta,
+        mtype=MediaType.MUSIC,
+        media_source=MediaSource.DoubanMusic,
+        music_type=MUSIC_ENTITY_RECORDING,
+    )
+    async_result = asyncio.run(
+        module.async_recognize_media(
+            meta=meta,
+            mtype=MediaType.MUSIC,
+            media_source=MediaSource.DoubanMusic,
+            music_type=MUSIC_ENTITY_RECORDING,
+        )
+    )
+
+    assert _music_signature(sync_result) == _music_signature(async_result)
+    assert sync_result and sync_result.media_id == "1401853:1"
+    module.doubanapi.music_search.assert_called_once_with(
+        keyword="范特西", count=20
+    )
+    module.doubanapi.async_music_search.assert_awaited_once_with(
+        keyword="范特西", count=20
+    )
+
+
+def test_musicbrainz_candidate_sync_async_decision_parity() -> None:
+    """MusicBrainz 候选选择和兜底决策一致，仅检索 I/O 不同。"""
+    wrong = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="wrong",
+        title="晴天",
+        artists=["其他歌手"],
+    )
+    expected = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="recording-1",
+        title="晴天",
+        artists=["周杰伦"],
+        album="叶惠美",
+        album_id="album-1",
+    )
+    module = MusicBrainzModule()
+    module.cache = None
+    module._search_recordings = Mock(return_value=[wrong, expected])
+    module._async_search_recordings = AsyncMock(return_value=[wrong, expected])
+    module._search_albums = Mock(return_value=[])
+    module._async_search_albums = AsyncMock(return_value=[])
+    meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
+
+    sync_result = module.recognize_media(meta=meta, cache=False)
+    async_result = asyncio.run(module.async_recognize_media(meta=meta, cache=False))
+
+    assert _music_signature(sync_result) == _music_signature(async_result)
+    assert sync_result and sync_result.media_id == "recording-1"
+    module._search_recordings.assert_called_once_with(meta, limit=10)
+    module._async_search_recordings.assert_awaited_once_with(meta, limit=10)
+    module._search_albums.assert_not_called()
+    module._async_search_albums.assert_not_awaited()
+
+
+def test_theaudiodb_album_candidate_sync_async_decision_parity() -> None:
+    """TheAudioDB 专辑实体准入、候选选择和结果投影在双 ABI 下应一致。"""
+    album = MusicAlbumInfo(
+        media_source=MediaSource.TheAudioDB,
+        media_id="2109619",
+        title="Parachutes",
+        artists=["Coldplay"],
+    )
+    module = TheAudioDbModule()
+    module._search_tracks = Mock(return_value=[])
+    module._async_search_tracks = AsyncMock(return_value=[])
+    module._search_albums = Mock(return_value=[album])
+    module._async_search_albums = AsyncMock(return_value=[album])
+    meta = MetaMusic(
+        title="Parachutes",
+        album="Parachutes",
+        artists=["Coldplay"],
+    )
+
+    sync_result = module.recognize_media(
+        meta=meta,
+        mtype=MediaType.MUSIC,
+        media_source=MediaSource.TheAudioDB,
+        music_type=MUSIC_ENTITY_ALBUM,
+    )
+    async_result = asyncio.run(
+        module.async_recognize_media(
+            meta=meta,
+            mtype=MediaType.MUSIC,
+            media_source=MediaSource.TheAudioDB,
+            music_type=MUSIC_ENTITY_ALBUM,
+        )
+    )
+
+    assert _music_signature(sync_result) == _music_signature(async_result)
+    assert sync_result and sync_result.media_id == "2109619"
+    module._search_tracks.assert_not_called()
+    module._async_search_tracks.assert_not_awaited()
+    module._search_albums.assert_called_once_with(meta)
+    module._async_search_albums.assert_awaited_once_with(meta)

@@ -385,9 +385,6 @@
     "F541": 2,
     "I001": 1
   },
-  "app/modules/douban/__init__.py": {
-    "I001": 1
-  },
   "app/modules/douban/scraper.py": {
     "I001": 1
   },
@@ -566,9 +563,6 @@
   },
   "app/modules/telegram/telegram.py": {
     "I001": 3
-  },
-  "app/modules/theaudiodb/__init__.py": {
-    "I001": 1
   },
   "app/modules/themoviedb/category.py": {
     "F541": 1,
