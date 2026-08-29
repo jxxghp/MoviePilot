@@ -32,6 +32,27 @@ class TorrentsChain(ChainBase):
     _music_spider_file = "__torrents_music_cache__"
     _music_rss_file = "__rss_music_cache__"
 
+    def _cache_type(self, stype: Optional[str]) -> str:
+        """把可选缓存类型统一为本次读取使用的明确订阅模式。"""
+        return stype or self.runtime_config.subscribe_mode
+
+    def _cache_file_pair(self, stype: str) -> tuple[str, str]:
+        """返回指定订阅模式下影视与音乐缓存的唯一文件映射。"""
+        if stype == 'spider':
+            return self._spider_file, self._music_spider_file
+        return self._rss_file, self._music_rss_file
+
+    @staticmethod
+    def _merge_torrent_caches(
+        torrents_cache: Dict[str, List[Context]],
+        music_cache: Dict[str, List[Context]],
+    ) -> Dict[str, List[Context]]:
+        """按站点稳定合并音乐独立缓存，空列表不创建无效站点键。"""
+        for domain, contexts in music_cache.items():
+            if contexts:
+                torrents_cache.setdefault(domain, []).extend(contexts)
+        return torrents_cache
+
     @property
     def cache_file(self) -> str:
         """
@@ -63,34 +84,24 @@ class TorrentsChain(ChainBase):
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
 
-        if not stype:
-            stype = self.runtime_config.subscribe_mode
-
-        # 读取缓存
-        if stype == 'spider':
-            torrents_cache = self.load_cache(self._spider_file) or {}
-        else:
-            torrents_cache = self.load_cache(self._rss_file) or {}
+        stype = self._cache_type(stype)
+        video_file, _music_file = self._cache_file_pair(stype)
+        torrents_cache = self.load_cache(video_file) or {}
 
         # 兼容性处理：为旧版本的Context对象补齐新增候选识别字段
         self._ensure_context_compatibility(torrents_cache, stype=stype)
 
         # 合并音乐独立缓存，供订阅匹配等消费方按站点读取完整候选
         music_cache = self.get_music_torrents(stype=stype)
-        for domain, contexts in music_cache.items():
-            if contexts:
-                torrents_cache.setdefault(domain, []).extend(contexts)
-
-        return torrents_cache
+        return self._merge_torrent_caches(torrents_cache, music_cache)
 
     def get_music_torrents(self, stype: Optional[str] = None) -> Dict[str, List[Context]]:
         """
         获取音乐独立缓存的种子
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
-        if not stype:
-            stype = self.runtime_config.subscribe_mode
-        music_file = self._music_spider_file if stype == 'spider' else self._music_rss_file
+        stype = self._cache_type(stype)
+        _video_file, music_file = self._cache_file_pair(stype)
         music_cache = self.load_cache(music_file) or {}
         # 兼容性处理：为旧版本的Context对象补齐新增候选识别字段
         self._ensure_context_compatibility(music_cache, stype=stype)
@@ -101,11 +112,7 @@ class TorrentsChain(ChainBase):
         返回影视与音乐缓存文件名，供按当前订阅模式回写各自缓存
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
-        if not stype:
-            stype = self.runtime_config.subscribe_mode
-        if stype == 'spider':
-            return self._spider_file, self._music_spider_file
-        return self._rss_file, self._music_rss_file
+        return self._cache_file_pair(self._cache_type(stype))
 
     @staticmethod
     def split_cache_contexts(
@@ -131,27 +138,17 @@ class TorrentsChain(ChainBase):
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
 
-        if not stype:
-            stype = self.runtime_config.subscribe_mode
-
-        # 异步读取缓存
-        if stype == 'spider':
-            torrents_cache = await self.async_load_cache(self._spider_file) or {}
-            music_cache = await self.async_load_cache(self._music_spider_file) or {}
-        else:
-            torrents_cache = await self.async_load_cache(self._rss_file) or {}
-            music_cache = await self.async_load_cache(self._music_rss_file) or {}
+        stype = self._cache_type(stype)
+        video_file, music_file = self._cache_file_pair(stype)
+        torrents_cache = await self.async_load_cache(video_file) or {}
+        music_cache = await self.async_load_cache(music_file) or {}
 
         # 兼容性处理：为旧版本的Context对象补齐新增候选识别字段
         self._ensure_context_compatibility(torrents_cache, stype=stype)
         self._ensure_context_compatibility(music_cache, stype=stype)
 
         # 合并音乐独立缓存，供订阅匹配等消费方按站点读取完整候选
-        for domain, contexts in music_cache.items():
-            if contexts:
-                torrents_cache.setdefault(domain, []).extend(contexts)
-
-        return torrents_cache
+        return self._merge_torrent_caches(torrents_cache, music_cache)
 
     def get_subscribe_cache_candidates(
             self,

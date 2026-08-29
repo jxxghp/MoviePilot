@@ -40,8 +40,10 @@ class EventDispatcher:
         self._async_handle_sink = async_handle_sink
         self._sync_handle_sink = sync_handle_sink
 
-    def dispatch_chain(self, event: Any) -> bool:
-        """同步按优先级顺序执行链式事件快照。"""
+    def _begin_chain_dispatch(
+        self, event: Any
+    ) -> tuple[tuple[str, int, Callable[..., Any]], ...]:
+        """冻结启用处理器快照，并统一空快照与开始生命周期记录。"""
         handlers = self._registry.chain_snapshot(event.event_type)
         enabled = tuple(
             (handler_id, priority, handler)
@@ -50,45 +52,56 @@ class EventDispatcher:
         )
         if not enabled:
             logger.debug("No enabled handlers found for chain event: %s", event)
-            return False
+            return ()
         self._log_lifecycle(event, "Started")
-        for _handler_id, priority, handler in enabled:
-            started_at = time.time()
-            self.invoke_sync(handler, event)
-            logger.debug(
-                "%s (Priority: %s), completed in %.3fs for event: %s",
-                EventRegistry.handler_identifier(handler),
-                priority,
-                time.time() - started_at,
-                event,
-            )
+        return enabled
+
+    @staticmethod
+    def _log_chain_handler_completed(
+        handler: Callable[..., Any],
+        priority: int,
+        started_at: float,
+        event: Any,
+    ) -> None:
+        """统一记录同步与异步处理器完成耗时和优先级。"""
+        logger.debug(
+            "%s (Priority: %s), completed in %.3fs for event: %s",
+            EventRegistry.handler_identifier(handler),
+            priority,
+            time.time() - started_at,
+            event,
+        )
+
+    def _complete_chain_dispatch(self, event: Any) -> bool:
+        """统一提交链式事件完成生命周期并返回已处理标识。"""
         self._log_lifecycle(event, "Completed")
         return True
 
+    def dispatch_chain(self, event: Any) -> bool:
+        """同步按优先级顺序执行链式事件快照。"""
+        enabled = self._begin_chain_dispatch(event)
+        if not enabled:
+            return False
+        for _handler_id, priority, handler in enabled:
+            started_at = time.time()
+            self.invoke_sync(handler, event)
+            EventDispatcher._log_chain_handler_completed(
+                handler, priority, started_at, event
+            )
+        return self._complete_chain_dispatch(event)
+
     async def async_dispatch_chain(self, event: Any) -> bool:
         """异步按优先级顺序执行链式事件快照。"""
-        handlers = self._registry.chain_snapshot(event.event_type)
-        enabled = tuple(
-            (handler_id, priority, handler)
-            for handler_id, (priority, handler) in handlers
-            if self._registry.is_handler_enabled(handler)
-        )
+        enabled = self._begin_chain_dispatch(event)
         if not enabled:
-            logger.debug("No enabled handlers found for chain event: %s", event)
             return False
-        self._log_lifecycle(event, "Started")
         for _handler_id, priority, handler in enabled:
             started_at = time.time()
             await self.invoke_async(handler, event)
-            logger.debug(
-                "%s (Priority: %s), completed in %.3fs for event: %s",
-                EventRegistry.handler_identifier(handler),
-                priority,
-                time.time() - started_at,
-                event,
+            EventDispatcher._log_chain_handler_completed(
+                handler, priority, started_at, event
             )
-        self._log_lifecycle(event, "Completed")
-        return True
+        return self._complete_chain_dispatch(event)
 
     def dispatch_broadcast(self, event: Any) -> None:
         """按订阅快照把广播事件投递到线程池或主事件循环。"""

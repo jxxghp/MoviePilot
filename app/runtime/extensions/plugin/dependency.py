@@ -44,17 +44,22 @@ class PluginDependencyService:
         self._registry = registry
         self._logger = log
 
-    def install_missing_with_status(self) -> PluginDependencyInstallResult:
-        """安装缺失依赖并返回安装器的明确结果。"""
-        installer = self._system().dependency
-        missing = installer.find_missing()
+    def _begin_missing_install(self, missing: list[str]) -> Optional[float]:
+        """统一无缺失短路、安装清单日志和耗时起点。"""
         if not missing:
-            return PluginDependencyInstallResult(missing=[], success=True)
+            return None
         self._logger.debug(f"检测到缺失的依赖项: {missing}")
         self._logger.info(f"开始安装缺失的依赖项，共 {len(missing)} 个...")
-        started = time.time()
-        success, _message = installer.install(missing)
-        elapsed = time.time() - started
+        return time.time()
+
+    def _complete_missing_install(
+        self,
+        missing: list[str],
+        success: bool,
+        started_at: float,
+    ) -> PluginDependencyInstallResult:
+        """统一安装结果、耗时和成功或失败日志分类。"""
+        elapsed = time.time() - started_at
         if success:
             self._logger.info(
                 f"已完成 {len(missing)} 个依赖项安装，总耗时：{elapsed:.2f} 秒"
@@ -64,6 +69,16 @@ class PluginDependencyService:
                 f"存在缺失依赖项安装失败，请尝试手动安装，总耗时：{elapsed:.2f} 秒"
             )
         return PluginDependencyInstallResult(missing=missing, success=success)
+
+    def install_missing_with_status(self) -> PluginDependencyInstallResult:
+        """安装缺失依赖并返回安装器的明确结果。"""
+        installer = self._system().dependency
+        missing = installer.find_missing()
+        started_at = self._begin_missing_install(missing)
+        if started_at is None:
+            return PluginDependencyInstallResult(missing=[], success=True)
+        success, _message = installer.install(missing)
+        return self._complete_missing_install(missing, success, started_at)
 
     def install_missing(self) -> list[str]:
         """安装当前环境缺失的插件依赖并保持历史列表返回合同。"""
@@ -73,22 +88,11 @@ class PluginDependencyService:
         """在异步启动链中恢复缺失依赖，确保安装子进程可取消。"""
         installer = self._system().dependency
         missing = await installer.async_find_missing()
-        if not missing:
+        started_at = self._begin_missing_install(missing)
+        if started_at is None:
             return PluginDependencyInstallResult(missing=[], success=True)
-        self._logger.debug(f"检测到缺失的依赖项: {missing}")
-        self._logger.info(f"开始安装缺失的依赖项，共 {len(missing)} 个...")
-        started = time.time()
         success, _message = await installer.async_install(missing)
-        elapsed = time.time() - started
-        if success:
-            self._logger.info(
-                f"已完成 {len(missing)} 个依赖项安装，总耗时：{elapsed:.2f} 秒"
-            )
-        else:
-            self._logger.warning(
-                f"存在缺失依赖项安装失败，请尝试手动安装，总耗时：{elapsed:.2f} 秒"
-            )
-        return PluginDependencyInstallResult(missing=missing, success=success)
+        return self._complete_missing_install(missing, success, started_at)
 
     def classify_plugins(self) -> PluginDependencyClassification:
         """分类物理插件，并把源码结论映射到全部虚拟实例。"""
