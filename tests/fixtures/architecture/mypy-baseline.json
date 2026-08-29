@@ -1262,12 +1262,7 @@
     "no-untyped-call": 1
   },
   "app/chain/_recognition.py": {
-    "arg-type": 6,
-    "assignment": 7,
-    "attr-defined": 12,
-    "no-any-return": 4,
-    "no-untyped-def": 5,
-    "type-arg": 4
+    "assignment": 4
   },
   "app/chain/anilist.py": {
     "no-any-return": 4,
