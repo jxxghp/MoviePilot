@@ -709,7 +709,7 @@ flowchart LR
   `--write-host` 不会替代人工决策。
 - 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；Application 与 Chain 均已清零，
   policy 目标为空集合。新增、替换、删除后未清理 policy 都会失败。
-- `direct_egress` 记录全宿主 55 条 raw transport、network SDK 和协议操作 identity；普通 HTTP/
+- `direct_egress` 记录全宿主 53 条 raw transport、network SDK 和协议操作 identity；普通 HTTP/
   Session bridge 与 Application DNS I/O 债务已清零，其余 canonical transport、SDK、
   stream/vendor/diagnostic/control-plane 事实是精确 containment。每条初始边的指纹由测试独立冻结，
   bindings/uses 变化、分类互换、通配导入和初始边增长都会失败；债务删除时同步删除冻结项以禁止恢复，
@@ -732,7 +732,7 @@ flowchart LR
 | 内部导入边 | 8,106 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
-| Direct egress | 55（债务已清零，55 条精确 containment） |
+| Direct egress | 53（债务已清零，53 条精确 containment） |
 | Module Contract V2 spec | 217（其中 215 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Event producer / consumer | 95（94 静态、1 动态）/ 17（16 静态、1 动态） |
