@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from google import genai
 
 from app.adapters.network.http import AsyncRequestUtils
-from app.agent.llm import provider as provider_module
+from app.agent.llm import discovery as provider_module
 from app.agent.llm.provider import LLMProviderManager
 
 

@@ -123,6 +123,7 @@ def test_provider_manage_test_returns_reply_preview(manager, monkeypatch):
         use_proxy=False,
         api_protocol=None,
         web_search_mode=None,
+        provider_runtime=manager,
     )
     assert result["success"] is True
     assert result["data"]["reply_preview"] == "OK"
@@ -199,8 +200,8 @@ def test_provider_manage_test_maps_internal_error_to_base_url_hint(manager, monk
 def test_provider_manage_list_models_sanitizes_base_url_hint(manager):
     """模型列表查询遇到 SDK 内部错误时同样给出基础地址提示。"""
     with patch.object(
-        LLMHelper,
-        "get_models",
+        manager,
+        "list_models",
         AsyncMock(side_effect=AttributeError("'str' object has no attribute '_set_private_attributes'")),
     ):
         result = asyncio.run(
@@ -215,13 +216,13 @@ def test_provider_manage_list_models_sanitizes_base_url_hint(manager):
 def test_provider_manage_list_models_returns_catalog_with_auth_status(manager):
     """模型目录查询成功时附带授权状态摘要。"""
     models = [{"id": "gpt-4o"}]
-    with patch.object(LLMHelper, "get_models", AsyncMock(return_value=models)), patch.object(
+    with patch.object(manager, "list_models", AsyncMock(return_value=models)), patch.object(
         manager, "get_auth_status", lambda provider_id: {"connected": False}
     ):
         result = asyncio.run(manager.provider_manage("openai", "list_models"))
     assert result["success"] is True
     assert result["data"]["provider"] == "openai"
-    assert result["data"]["models"] == models
+    assert result["data"]["models"] == [{"id": "gpt-4o", "server_tools": []}]
     assert result["data"]["auth_status"] == {"connected": False}
 
 

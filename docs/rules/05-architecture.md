@@ -537,6 +537,15 @@ the same `ManageRequest` body. The only exception is the named OAuth callback
 route (`GET /api/v1/llm/provider-auth/callback/{provider_id}`), which stays
 named because external browsers redirect to that URL; the endpoint builds the
 callback URL from that route name and injects it as an action parameter.
+`app/agent/llm/provider.py` is the stable Provider facade only. Catalog and model
+metadata ownership lives in `catalog.py`; remote directory and SDK discovery I/O
+lives in `discovery.py`; persistent authorization and external OAuth protocols live
+in `auth.py`; temporary authorization state lives in `session.py`; unified client
+parameters live in `runtime.py`. The facade preserves the historical public method
+signatures while private behavior resolves directly to those owners. `LLMHelper`
+consumes the registered runtime and must not recreate provider discovery or legacy
+runtime fallbacks; management tests pass the facade directly to avoid a
+`provider_manage -> helper -> gateway -> provider_manage` call loop.
 
 ### DB / Oper layer
 

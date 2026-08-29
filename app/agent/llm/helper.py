@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
-from app.agent.llm.gateway import resolve_llm_provider_runtime
+from app.agent.llm.gateway import LLMProviderRuntimePort, resolve_llm_provider_runtime
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
@@ -842,45 +842,6 @@ class LLMHelper:
         return True
 
     @staticmethod
-    def _build_legacy_runtime(
-            provider_name: str,
-            model_name: str | None,
-            api_key: str | None = None,
-            base_url: str | None = None,
-            user_agent: str | None = None,
-    ) -> dict[str, Any]:
-        """
-        在 provider 目录不可用时回退到旧的直接构造逻辑。
-
-        这主要用于单测 stub 环境以及极端的最小运行环境，正常生产路径仍优先
-        走 `LLMProviderManager.resolve_runtime()`。
-        """
-        api_key_value = api_key if api_key is not None else get_runtime_setting('LLM_API_KEY')
-        base_url_value = base_url if base_url is not None else get_runtime_setting('LLM_BASE_URL')
-        if not api_key_value:
-            raise ValueError("未配置LLM API Key")
-
-        runtime_name = (
-            provider_name
-            if provider_name in {"google", "deepseek"}
-            else "openai_compatible"
-        )
-        return {
-            "provider_id": provider_name,
-            "runtime": runtime_name,
-            "model_id": model_name,
-            "api_key": api_key_value,
-            "base_url": base_url_value,
-            "default_headers": LLMHelper._build_openai_default_headers(
-                None,
-                user_agent=user_agent,
-            ),
-            "use_responses_api": None,
-            "model_record": None,
-            "model_metadata": None,
-        }
-
-    @staticmethod
     def _build_openai_default_headers(
             default_headers: dict[str, str] | None = None,
             user_agent: str | None = None,
@@ -1157,6 +1118,7 @@ class LLMHelper:
             api_protocol: str | None = None,
             web_search_mode: str | None = None,
             prompt_cache_key: str | None = None,
+            provider_runtime: LLMProviderRuntimePort | None = None,
     ):
         """
         获取LLM实例
@@ -1181,6 +1143,7 @@ class LLMHelper:
             （local/builtin/auto/disabled）。未显式传入时使用配置项
             ``LLM_WEB_SEARCH_MODE``。
         :param prompt_cache_key: 同一 Agent 会话内稳定且脱敏的提示词缓存路由键。
+        :param provider_runtime: 已由调用方解析的 Provider 运行时；管理入口传入自身以避免回绕 Gateway。
         :return: LLM实例
         """
         provider_name = str(provider if provider is not None else get_runtime_setting('LLM_PROVIDER')).lower()
@@ -1195,25 +1158,16 @@ class LLMHelper:
         normalized_thinking_level = cls._resolve_thinking_level(
             thinking_level=thinking_level,
         )
-        try:
-            runtime = await resolve_llm_provider_runtime().resolve_runtime(
-                provider_id=provider_name,
-                model=model_name,
-                api_key=api_key_value,
-                base_url=base_url_value,
-                base_url_preset_id=base_url_preset_value,
-                user_agent=user_agent_value,
-                use_proxy=use_proxy,
-            )
-        except Exception as err:
-            logger.debug(f"LLM provider 目录不可用，回退到旧运行时逻辑: {err}")
-            runtime = cls._build_legacy_runtime(
-                provider_name=provider_name,
-                model_name=model_name,
-                api_key=api_key_value,
-                base_url=base_url_value,
-                user_agent=user_agent_value,
-            )
+        runtime_owner = provider_runtime or resolve_llm_provider_runtime()
+        runtime = await runtime_owner.resolve_runtime(
+            provider_id=provider_name,
+            model=model_name,
+            api_key=api_key_value,
+            base_url=base_url_value,
+            base_url_preset_id=base_url_preset_value,
+            user_agent=user_agent_value,
+            use_proxy=use_proxy,
+        )
         model_name = runtime.get("model_id") or model_name
         from app.agent.llm.server_tools import (
             ServerToolRegistry,
@@ -1337,7 +1291,7 @@ class LLMHelper:
             aws_auth = runtime.get("aws_auth") or {}
             # Bearer 认证需要跳过 SigV4 签名并注入 Authorization 头，SigV4 认证
             # 直接以 AK/SK 签名；两种方式统一由 provider 管理器构造 boto3 客户端。
-            bedrock_client = resolve_llm_provider_runtime().create_bedrock_client(
+            bedrock_client = runtime_owner.create_bedrock_client(
                 "bedrock-runtime",
                 region=aws_region,
                 credentials=aws_auth,
@@ -1482,6 +1436,7 @@ class LLMHelper:
             use_proxy: bool | None = None,
             api_protocol: str | None = None,
             web_search_mode: str | None = None,
+            provider_runtime: LLMProviderRuntimePort | None = None,
     ) -> dict:
         """
         使用当前配置或显式传入的临时配置执行一次最小 LLM 调用。
@@ -1489,6 +1444,7 @@ class LLMHelper:
         :param temperature: LLM 温度参数。未显式传入时沿用已保存配置。
         :param api_protocol: OpenAI 兼容接口 API 协议，未显式传入时沿用已保存配置。
         :param web_search_mode: 联网搜索模式，未显式传入时沿用已保存配置。
+        :param provider_runtime: 已解析的 Provider 运行时，用于阻断管理入口回绕 Gateway。
         """
         provider_name = provider if provider is not None else get_runtime_setting('LLM_PROVIDER')
         model_name = model if model is not None else get_runtime_setting('LLM_MODEL')
@@ -1506,6 +1462,8 @@ class LLMHelper:
             "api_protocol": api_protocol,
             "web_search_mode": web_search_mode,
         }
+        if provider_runtime is not None:
+            llm_kwargs["provider_runtime"] = provider_runtime
         if temperature is not None:
             llm_kwargs["temperature"] = temperature
 
@@ -1550,60 +1508,20 @@ class LLMHelper:
         回填上下文大小。
         """
         logger.info(f"获取 {provider} 模型列表...")
-        try:
-            models = await resolve_llm_provider_runtime().list_models(
-                provider_id=provider,
-                api_key=api_key,
-                base_url=base_url,
-                base_url_preset_id=base_url_preset,
-                user_agent=user_agent,
-                use_proxy=use_proxy,
-                force_refresh=force_refresh,
-            )
-            return self._attach_server_tool_capabilities(
-                provider,
-                models,
-                base_url=base_url,
-            )
-        except Exception as err:
-            logger.debug(f"LLM provider 目录不可用，回退旧模型列表逻辑: {err}")
-            if provider == "google":
-                return self._attach_server_tool_capabilities(
-                    provider,
-                    [
-                        {"id": model_id, "name": model_id}
-                        for model_id in await self._get_google_models(
-                            api_key or "",
-                            use_proxy=use_proxy,
-                        )
-                    ],
-                    base_url=base_url,
-                )
-            try:
-                model_list_base_url = (
-                    resolve_llm_provider_runtime().resolve_model_list_base_url(
-                        provider_id=provider,
-                        base_url=base_url,
-                        base_url_preset_id=base_url_preset,
-                    )
-                    or base_url
-                )
-            except Exception:
-                model_list_base_url = base_url
-            return self._attach_server_tool_capabilities(
-                provider,
-                [
-                    {"id": model_id, "name": model_id}
-                    for model_id in await self._get_openai_compatible_models(
-                        provider,
-                        api_key or "",
-                        model_list_base_url,
-                        user_agent=user_agent,
-                        use_proxy=use_proxy,
-                    )
-                ],
-                base_url=base_url,
-            )
+        models = await resolve_llm_provider_runtime().list_models(
+            provider_id=provider,
+            api_key=api_key,
+            base_url=base_url,
+            base_url_preset_id=base_url_preset,
+            user_agent=user_agent,
+            use_proxy=use_proxy,
+            force_refresh=force_refresh,
+        )
+        return self._attach_server_tool_capabilities(
+            provider,
+            models,
+            base_url=base_url,
+        )
 
     @staticmethod
     def _attach_server_tool_capabilities(
@@ -1612,77 +1530,6 @@ class LLMHelper:
             base_url: Optional[str] = None,
     ) -> List[dict[str, Any]]:
         """为模型目录附加通用服务端工具能力元数据。"""
-        from app.agent.llm.server_tools import ServerToolRegistry
+        from app.agent.llm.discovery import attach_server_tool_capabilities
 
-        result = []
-        for item in models:
-            model_item = dict(item)
-            model_item["server_tools"] = ServerToolRegistry.list_capabilities(
-                provider=provider,
-                model=str(model_item.get("id") or ""),
-                base_url=base_url,
-            )
-            result.append(model_item)
-        return result
-
-    @staticmethod
-    async def _get_google_models(api_key: str, use_proxy: bool | None = None) -> List[str]:
-        """获取Google模型列表（使用 google-genai SDK v1）"""
-        try:
-            from google import genai
-            from google.genai.types import HttpOptions
-
-            llm_proxy = _resolve_llm_proxy(use_proxy)
-            google_client_args = _build_google_client_args(llm_proxy)
-            http_options = HttpOptions(
-                client_args=google_client_args,
-                async_client_args=google_client_args,
-            )
-
-            client = genai.Client(api_key=api_key, http_options=http_options)
-            models = await client.aio.models.list()
-            result = [
-                m.name
-                for m in models.page
-                if m.supported_actions and "generateContent" in m.supported_actions
-            ]
-            await client.aio.aclose()
-            return result
-        except Exception as e:
-            logger.error(f"获取Google模型列表失败：{e}")
-            raise e
-
-    @staticmethod
-    async def _get_openai_compatible_models(
-            provider: str,
-            api_key: str,
-            base_url: str = None,
-            user_agent: str | None = None,
-            use_proxy: bool | None = None,
-    ) -> List[str]:
-        """获取OpenAI兼容模型列表"""
-        try:
-            from openai import AsyncOpenAI
-
-            if provider == "deepseek":
-                base_url = base_url or "https://api.deepseek.com"
-
-            client = AsyncOpenAI(
-                api_key=api_key,
-                base_url=base_url,
-                default_headers=LLMHelper._build_openai_default_headers(
-                    None,
-                    user_agent=user_agent,
-                ),
-                http_client=_build_httpx_client(
-                    _resolve_llm_proxy(use_proxy),
-                    async_client=True,
-                    timeout=15.0,
-                ),
-            )
-            models = await client.models.list()
-            await client.close()
-            return [model.id for model in models.data]
-        except Exception as e:
-            logger.error(f"获取 {provider} 模型列表失败：{e}")
-            raise e
+        return attach_server_tool_capabilities(provider, models, base_url)
