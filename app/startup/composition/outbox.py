@@ -27,6 +27,7 @@ def build_outbox_handlers() -> dict[
     Callable[[ClaimedOutboxMessage], None],
 ]:
     """构造等待真实执行边界的 at-least-once 通知、事件和统计 handler。"""
+    event_manager_factory: Callable[[], EventManager] = EventManager
 
     def discard_event_receipt(_event: object) -> None:
         """丢弃普通事件 API 的回执，使 outbox handler 仅表达结算成功。"""
@@ -68,7 +69,7 @@ def build_outbox_handlers() -> dict[
 
     handlers: dict[str, Callable[[ClaimedOutboxMessage], None]] = {
         durable_event_topic(EventType.SubscribeAdded): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.SubscribeAdded,
                 message.payload,
             )
@@ -76,20 +77,20 @@ def build_outbox_handlers() -> dict[
         "subscribe.added.report": dispatch_subscribe_added_report,
         "subscribe.added.notification": dispatch_subscribe_added_notification,
         durable_event_topic(EventType.SubscribeModified): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.SubscribeModified,
                 message.payload,
             )
         ),
         durable_event_topic(EventType.SubscribeDeleted): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.SubscribeDeleted,
                 message.payload,
             )
         ),
         "subscribe.deleted.report": dispatch_subscribe_deleted_report,
         durable_event_topic(EventType.SubscribeComplete): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.SubscribeComplete,
                 message.payload,
             )
@@ -97,43 +98,43 @@ def build_outbox_handlers() -> dict[
         "subscribe.complete.report": dispatch_subscribe_complete_report,
         "subscribe.complete.notification": dispatch_subscribe_notification,
         durable_event_topic(EventType.DownloadAdded): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.DownloadAdded,
                 restore_download_added(message.payload),
             )
         ),
         durable_event_topic(EventType.TransferComplete): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.TransferComplete,
                 restore_transfer_result(message.payload),
             )
         ),
         durable_event_topic(EventType.TransferFailed): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.TransferFailed,
                 restore_transfer_result(message.payload),
             )
         ),
         durable_event_topic(EventType.SubtitleTransferComplete): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.SubtitleTransferComplete,
                 restore_transfer_result(message.payload),
             )
         ),
         durable_event_topic(EventType.SubtitleTransferFailed): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.SubtitleTransferFailed,
                 restore_transfer_result(message.payload),
             )
         ),
         durable_event_topic(EventType.AudioTransferComplete): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.AudioTransferComplete,
                 restore_transfer_result(message.payload),
             )
         ),
         durable_event_topic(EventType.AudioTransferFailed): lambda message: discard_event_receipt(
-            EventManager().send_event_strict(
+            event_manager_factory().send_event_strict(
                 EventType.AudioTransferFailed,
                 restore_transfer_result(message.payload),
             )
