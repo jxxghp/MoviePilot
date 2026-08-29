@@ -166,7 +166,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
 | S5-L1 PluginHelper/PluginManager | `DELIVERED` | S2,S3 | `fa40f29df`：市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
-| S5-L2 Agent/LLM provider | `ACTIVE` | S3-L7 | catalog、发现、认证、session、runtime 分离；Manager 只保留稳定 API |
+| S5-L2 Agent/LLM provider | `DELIVERED` | S3-L7 | `c000c4fff`、`3a33da0b3`、`dbdf7d058`：catalog、发现、认证、session、runtime 分离；Manager/Facade 只保留稳定 API，旧包根符号仅由精确 Compat 承接 |
 | S5-L3 Domain projection | `PLANNED` | S3-L6 | `MediaInfo` canonical 路径保留，来源投影规则拆分，重复 DTO/业务语义清零 |
 | S5-L4 Startup composition | `PLANNED` | S2,S3,S5-L1,S5-L2 | `initializers/modules.py` 仅负责顺序/注册/重启决策，构造按领域进入 composition |
 | S5-L5 Sync/async 重复清零 | `PLANNED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |

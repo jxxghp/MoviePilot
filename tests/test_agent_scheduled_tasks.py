@@ -15,14 +15,11 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from langchain_core.messages import AIMessage
 
-from app.agent import (
-    AgentChain,
-    AgentManager,
-    MoviePilotAgent,
-    ReplyMode,
-    _MessageTask,
-)
+from app.agent.contracts import ReplyMode
+from app.agent.manager import AgentManager
 from app.agent.middleware.tool_selection import ToolSelectorMiddleware
+from app.agent.orchestrator import MoviePilotAgent
+from app.agent.session import _MessageTask
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.create_agent_task import (
     CreateAgentTaskInput,
@@ -39,6 +36,7 @@ from app.agent.tools.impl.update_agent_task import (
     UpdateAgentTaskTool,
 )
 from app.agent.tools.tags import ToolTag
+from app.chain.agent import AgentChain
 from app.db import SessionFactory
 from app.db.adapters.agent import TransactionalAgentTaskRepository
 from app.db.models.agenttask import AgentTask

@@ -3,7 +3,8 @@
 import ast
 from pathlib import Path
 
-from app.agent.llm.provider import LLMProviderManager, render_auth_result_html
+from app.agent.llm.auth import render_auth_result_html
+from app.agent.llm.provider import LLMProviderManager
 
 PROJECT_ROOT = Path(__file__).parents[1]
 

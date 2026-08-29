@@ -75,7 +75,7 @@ def _get_injected_agent_manager() -> Any:
     if _agent_data_context is None:
         raise RuntimeError("Agent 数据上下文尚未由启动组合根装配")
     if _injected_agent_manager is None:
-        from app.agent.orchestrator import AgentManager
+        from app.agent.manager import AgentManager
 
         _injected_agent_manager = AgentManager(data=_agent_data_context)
     return _injected_agent_manager

@@ -24,9 +24,6 @@
   "app/agent/callback/__init__.py": {
     "I001": 1
   },
-  "app/agent/llm/__init__.py": {
-    "I001": 1
-  },
   "app/agent/llm/capability.py": {
     "I001": 1
   },
@@ -857,9 +854,6 @@
   "tests/test_agent_activity_log.py": {
     "I001": 1
   },
-  "tests/test_agent_background_output.py": {
-    "I001": 1
-  },
   "tests/test_agent_lazy_runtime_boundary.py": {
     "F401": 1
   },
@@ -879,9 +873,6 @@
     "I001": 1
   },
   "tests/test_agent_subagents.py": {
-    "I001": 1
-  },
-  "tests/test_agent_summarization_streaming.py": {
     "I001": 1
   },
   "tests/test_agent_tokens_events.py": {

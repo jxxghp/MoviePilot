@@ -298,17 +298,19 @@ def test_reply_mode_identity_and_display_message_contract() -> None:
     assert legacy_message == contract_message
 
 
-def test_llm_facade_resolves_only_requested_public_module() -> None:
-    """访问 capability 导出时不应顺带加载 helper 或 provider registry。"""
+def test_llm_internal_owner_is_imported_directly_without_loading_other_owners() -> None:
+    """内部 capability 使用 owner 路径，包根不再重复导出其实现。"""
     result = _run_isolated(
         """
 import json
 import sys
 
 import app.agent.llm as llm
-capability = llm.AgentCapabilityManager
+missing_root_export = not hasattr(llm, "AgentCapabilityManager")
+from app.agent.llm.capability import AgentCapabilityManager
 print(json.dumps({
-    "module": capability.__module__,
+    "missing_root_export": missing_root_export,
+    "module": AgentCapabilityManager.__module__,
     "helper_loaded": "app.agent.llm.helper" in sys.modules,
     "provider_loaded": "app.agent.llm.provider" in sys.modules,
 }))
@@ -316,6 +318,7 @@ print(json.dumps({
     )
 
     assert result == {
+        "missing_root_export": True,
         "module": "app.agent.llm.capability",
         "helper_loaded": False,
         "provider_loaded": False,

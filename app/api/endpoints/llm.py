@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 from fastapi import Depends, Request, Response
 from fastapi.responses import HTMLResponse
 
+from app.agent.llm.auth import render_auth_result_html
 from app.agent.llm.gateway import resolve_llm_provider_runtime
 from app.api.dependencies.auth import get_current_active_superuser_async
 from app.api.response import ResponseAPIRouter
@@ -77,7 +78,4 @@ async def llm_provider_auth_callback(
         error,
         error_description,
     )
-    # 该符号由 app.agent.llm.__getattr__ 惰性公开，Pylint 无法静态发现。
-    from app.agent.llm import render_auth_result_html  # pylint: disable=no-name-in-module
-
     return HTMLResponse(content=render_auth_result_html(success, message))

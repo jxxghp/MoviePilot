@@ -213,7 +213,7 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 | `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
 | `app/api/` | FastAPI 主端点、鉴权依赖、统一 `Response` 响应封装；动态插件端点不走此统一包装 | `apiv1.py`、`endpoints/`、`response.py` |
 | `app/adapters/web/plugin/` | FastAPI 动态插件路由的技术适配：注册/移除、认证依赖、OpenAPI 重建；保留插件原生响应结构 | `routes.py` |
-| `app/agent/` | AI Agent：编排器、运行时、工具、中间件、LLM、记忆、技能、策略 | `orchestrator.py`、`runtime_loader.py`、`tools/` |
+| `app/agent/` | AI Agent：稳定 Manager 门面、会话/生命周期/后台任务 owner、单 Agent 编排器、运行时、工具、中间件、LLM、记忆、技能、策略 | `manager.py`、`session.py`、`lifecycle.py`、`tasks.py`、`orchestrator.py` |
 | `app/startup/` | 唯一组合根：跨层装配、领域初始化、声明式生命周期排序与重启策略 | `composition/`、`initializers/`、`lifecycle/` |
 | `app/sdk/` | 面向新插件的稳定导入面（网络、缓存、日志、浏览器等）；`_legacy/` 只承载旧插件行为适配薄门面 | `network.py`、`browser.py`、`cache.py`、`_legacy/` |
 | `app/monitor/` | 源目录监控 → 触发整理 | `watcher.py`、`dispatcher.py` |
@@ -578,7 +578,11 @@ flowchart TB
     Reg["app/startup/initializers/agent.py<br/>生命周期显式注册/重置 Provider"]
     Reg --> Facade
     Facade -.能力启用或首次使用时物化.-> RT["app/agent/runtime_loader.py<br/>能力发现与服务物化"]
-    RT --> ORC["app/agent/orchestrator.py<br/>会话编排"]
+    RT --> Manager["app/agent/manager.py<br/>稳定 AgentManager 门面"]
+    Manager --> Session["session.py / lifecycle.py<br/>会话队列与有界生命周期"]
+    Manager --> Tasks["tasks.py<br/>后台、调度与心跳任务"]
+    Session --> ORC["orchestrator.py<br/>单 MoviePilotAgent 执行"]
+    Tasks --> Session
     ORC --> Tools["app/agent/tools<br/>系统工具（经 application 门面）"]
     ORC --> LLM["app/agent/llm<br/>LLM 提供商管理"]
     ORC --> MW["middleware / policy / memory / skills"]
@@ -590,6 +594,15 @@ flowchart TB
 
 - Chain 访问 Agent 运行时只能经 `app/application/agent.py`；
   `app/chain/agent.py` 的 `AgentChain` 是链层入口，Agent 实现保持在 `app/agent/`。
+- `app.agent.AgentManager` 是插件稳定路径，精确解析到
+  `app/agent/manager.py`；宿主直接导入 owner，包根不得通配转发
+  `orchestrator.py` 的任意内部名称。
+- `app.agent.llm` 包根不承载实现或动态通配导出；宿主直接导入
+  `llm/helper.py`、`llm/capability.py`、`llm/auth.py`、`llm/provider.py` 等 owner。
+  旧 `app.agent.llm.LLMHelper` 由 Compat 精确叠加，`app.helper.llm` 直接映射到
+  canonical `llm/helper.py`，三条插件路径保持同一类身份且不公开 Provider 内部 owner。
+- 官方插件使用的 `MoviePilotTool` 与 `moviepilot_tool_manager` 继续由
+  `agent/tools/base.py`、`agent/tools/manager.py` 原位拥有，现有 `_load_tools()` 调用保持兼容。
 - Agent 工具不直接 import API / 调度器 / 命令：插件动态路由与文件夹操作使用
   `application/plugin/routes.py`、`application/plugin/folders.py`，调度和命令分别使用
   `application/scheduling.py`、`application/commands.py`。FastAPI 具体实现位于
@@ -728,8 +741,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 955 |
-| 内部导入边 | 8,108 |
+| Python 模块 | 959 |
+| 内部导入边 | 8,152 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |

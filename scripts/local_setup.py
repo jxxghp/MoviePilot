@@ -3814,7 +3814,7 @@ def run_agent_request(
 
     try:
         from app.startup.initializers.database import prepare_database
-        from app.agent import MoviePilotAgent
+        from app.agent.orchestrator import MoviePilotAgent
         from app.runtime.config import settings
     except ModuleNotFoundError as exc:
         raise RuntimeError(

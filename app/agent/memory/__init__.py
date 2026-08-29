@@ -26,14 +26,14 @@ class MemoryManager:
         self,
         chat: AgentChatService | None = None,
         persistence: AgentChatPersistenceService | None = None,
-    ):
+    ) -> None:
         """创建记忆缓存，并保存组合根显式注入的会话能力。"""
         self._chat = chat
         self._persistence = persistence
         # 内存中的会话记忆缓存
         self.memory_cache: Dict[str, ConversationMemory] = {}
         # 内存缓存清理任务
-        self.cleanup_task: Optional[asyncio.Task] = None
+        self.cleanup_task: Optional[asyncio.Task[None]] = None
 
     def configure(
         self,
@@ -52,7 +52,7 @@ class MemoryManager:
         """返回显式注入写服务，兼容测试未装配时使用既有应用服务。"""
         return self._persistence or get_configured_agent_chat_persistence()
 
-    def initialize(self):
+    def initialize(self) -> None:
         """
         初始化记忆管理器
         """
@@ -68,7 +68,7 @@ class MemoryManager:
         except Exception as e:
             logger.warning(f"Redis连接失败，将使用内存存储: {e}")
 
-    async def close(self):
+    async def close(self) -> None:
         """
         关闭记忆管理器
         """
@@ -83,7 +83,7 @@ class MemoryManager:
         logger.info("对话记忆管理器已关闭")
 
     @staticmethod
-    def _get_memory_key(session_id: str, user_id: str):
+    def _get_memory_key(session_id: str, user_id: Optional[str]) -> str:
         """
         计算内存Key
         """
@@ -173,7 +173,7 @@ class MemoryManager:
 
     def save_agent_messages(
             self, session_id: str, user_id: str, messages: List[BaseMessage]
-    ):
+    ) -> None:
         """
         保存Agent消息到内存缓存与持久化会话表。
         """
@@ -216,7 +216,7 @@ class MemoryManager:
         except Exception as e:
             logger.debug(f"持久化Agent消息失败: {e}")
 
-    def save_memory(self, memory: ConversationMemory):
+    def save_memory(self, memory: ConversationMemory) -> None:
         """
         保存记忆到内存缓存
 
@@ -225,7 +225,7 @@ class MemoryManager:
         cache_key = self._get_memory_key(memory.session_id, memory.user_id)
         self.memory_cache[cache_key] = memory
 
-    def clear_memory(self, session_id: str, user_id: str):
+    def clear_memory(self, session_id: str, user_id: str) -> None:
         """
         清空会话记忆
         """
@@ -235,7 +235,7 @@ class MemoryManager:
 
         logger.info(f"会话记忆已清空: session_id={session_id}, user_id={user_id}")
 
-    async def _cleanup_expired_memories(self):
+    async def _cleanup_expired_memories(self) -> None:
         """
         清理内存中过期记忆的后台任务
 

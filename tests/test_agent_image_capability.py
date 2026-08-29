@@ -3,9 +3,10 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.agent import MoviePilotAgent
-from app.agent.llm import AgentCapabilityManager, LLMHelper
+from app.agent.llm.capability import AgentCapabilityManager
+from app.agent.llm.helper import LLMHelper
 from app.agent.llm.provider import LLMProviderManager
+from app.agent.orchestrator import MoviePilotAgent
 from app.chain.message import MessageChain
 from app.runtime.config import global_vars, settings
 from app.schemas.types import NotificationChannel

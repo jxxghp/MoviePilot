@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 955 / 8,108 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 959 / 8,152 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,8 +78,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,480 / 594 文件 | strict frontier 当前覆盖 41 个文件，Plugin 与 LLM Provider owner 拆分及受益调用方低水位已固化 |
-| Ruff 历史诊断 | 654 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 全量 mypy 历史债务 | 10,415 / 593 文件 | strict frontier 当前覆盖 41 个文件，Plugin、LLM Provider 与 Agent Manager owner 拆分及受益调用方低水位已固化 |
+| Ruff 历史诊断 | 651 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 80.92%，Domain 79.87% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -87,8 +87,15 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | 文件 | 行数 | 主要职责混合 |
 |---|---:|---|
 | `app/chain/subscribe/`（已治理） | Facade 91 行 | 搜索、匹配、刷新、完成、规则引用与通知已拆至单一 owner；原 3,895 行单文件已删除 |
-| `app/agent/orchestrator.py` | 3,678 | 会话、运行、流式输出、工具、任务与 Manager |
-| `app/agent/llm/provider.py` | 3,528 | provider 目录、认证、模型发现、配置和运行时构建 |
+| `app/agent/orchestrator.py` | 2,558 | 单 Agent 运行、流式输出、工具与中间件编排 |
+| `app/agent/session.py` | 837 | 会话队列、worker、状态、取消与延迟清理 |
+| `app/agent/tasks.py` | 208 | 后台 prompt、持久化定时任务与心跳 |
+| `app/agent/lifecycle.py` | 166 | 接收门禁、启动、空闲回收与有界关闭 |
+| `app/agent/manager.py` | 27 | 稳定 `AgentManager` 构造门面 |
+| `app/agent/llm/provider.py` | 420 | 稳定 `LLMProviderManager` Facade 与兼容方法 |
+| `app/agent/llm/catalog.py` | 1,571 | provider spec、预设和模型元数据 |
+| `app/agent/llm/discovery.py` | 985 | 远端目录发现与 SDK 客户端 I/O |
+| `app/agent/llm/auth.py` | 582 | 持久鉴权和外部授权协议 |
 | `app/adapters/external/market.py`（已治理） | Facade 226 行 | `PluginHelper` 只保留精确旧 ABI、安装 Gateway 及 owner 委托 |
 | `app/adapters/external/plugin/client.py` | 1,600 | 插件市场传输、索引、Release 与本地仓候选查询 |
 | `app/adapters/system/plugin/package.py` | 2,324 | 插件安装、checkpoint、备份、恢复和物理删除事务 |
@@ -644,10 +651,17 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 
 ### ARCH-202 拆分 Agent 与 LLM provider
 
-- [ ] 将内置 provider spec 数据从 `LLMProviderManager` 分离为只读 catalog。
-- [ ] 模型发现、认证会话、运行时构建和用户配置分成可替换服务。
-- [ ] 将 WebAgent SSE、文件/音频与会话桥接移出 API endpoint。
-- [ ] 保留 `AgentManager`/`LLMProviderManager` 公开方法为稳定 Facade，并逐批纳入 strict mypy。
+- [x] 冻结官方插件真实 Agent/LLM 导入与属性调用；三条 `LLMHelper` 路径保持同一身份，
+  `MoviePilotTool`、`moviepilot_tool_manager._load_tools()` 保持原 owner 契约。
+- [x] 删除 `app.agent`、`app.agent.llm` 包根动态/重复导出；宿主改为 owner 导入，旧符号仅由
+  精确 Compat 承接，`app.helper.llm` 收窄为 `app.agent.llm.helper` 模块别名。
+- [x] 将内置 provider spec 数据从 `LLMProviderManager` 分离为只读 catalog。
+- [x] 模型发现、认证会话和运行时构建已拆至单词 owner。
+- [x] WebAgent 会话、文件/音频和事件编排已由 `app/application/messaging/agent.py` 负责；
+  API endpoint 仅保留 FastAPI 请求映射、HTTP 响应与 SSE framing。
+- [x] `AgentManager` 会话、生命周期和后台任务已拆到单词 owner，公开方法由
+  `app.agent.AgentManager` 稳定 Facade 精确保持，包根不再无边界转发。
+- [x] `LLMProviderManager` 公开方法由稳定 Facade 精确保持；owner 已纳入 mypy 低水位。
 
 ### ARCH-203 拆分 Domain 投影与 Startup 高扇出
 
