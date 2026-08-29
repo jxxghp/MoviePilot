@@ -121,7 +121,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-109 | P1 | 执行中 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler、Download、Search、Media 已验证；厚 API 尚待执行 |
 | ARCH-110 | P1 | 待执行 | Module/Event Contract 分可信级执行 | 宿主 provider 严格，第三方插件仍兼容诊断 |
 | ARCH-111 | P1 | 待执行 | 升级复杂度、类型、覆盖率和并发原语门禁 | 高风险私有路径也进入只降不增的治理面 |
-| ARCH-201 | P2 | 渐进 | 收窄 PluginHelper/PluginManager 与 SDK 暴露面 | ABI Facade 只委托，构造和具体服务归组合根 |
+| ARCH-201 | P2 | 已交付 | 收窄 PluginHelper/PluginManager 与 SDK 暴露面 | `fa40f29df` 已推送；ABI Facade 只委托，构造和具体服务归组合根 |
 | ARCH-202 | P2 | 渐进 | 拆分 Agent/LLM provider 职责 | provider catalog、发现、认证、会话和运行时分离 |
 | ARCH-203 | P2 | 渐进 | 拆分 Domain 投影与 Startup 高扇出目录 | 保留 canonical 类型和生命周期顺序，降低修改扩散 |
 | ARCH-204 | P2 | 渐进 | 合并重复 sync/async 核心逻辑并转换存量测试风格 | 保留双 ABI 外壳，共享纯业务核心 |
@@ -636,11 +636,11 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 
 ### ARCH-201 收窄 Plugin 与 SDK 边界
 
-- [ ] `PluginHelper` 继续作为兼容入口，但市场、包、依赖、备份/恢复、健康修复分别委托现有 owner。
-- [ ] `PluginManager` 的服务图构造移到 startup typed `PluginRuntime` factory，Facade 只保留稳定 API。
-- [ ] 新 SDK 提供只读配置、插件查询和主循环提交等窄合同；旧 `settings/global_vars` 和具体 Manager
-  只能标记弃用，不能在当前大版本直接删除。
-- [ ] 用官方插件仓 baseline 和真实插件导入探针决定退场，不按宿主“无人引用”判断。
+- [x] `PluginHelper` 继续作为兼容入口，但市场、包、依赖、备份/恢复、健康修复分别委托现有 owner。
+- [x] `PluginManager` 的服务图构造移到 startup typed `PluginRuntime` factory，Facade 只保留稳定 API。
+- [x] `PluginHelper` 不进入推荐 SDK，仅保留 `app.helper.plugin` 精确 Compat；`app.sdk.plugins` 只保留
+  审计过的 Manager ABI，不重复导出 canonical 实现。
+- [x] 用最新官方插件仓 baseline 和真实插件导入/兼容探针决定退场，不按宿主“无人引用”判断。
 
 ### ARCH-202 拆分 Agent 与 LLM provider
 

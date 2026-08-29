@@ -165,8 +165,8 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S5-L1 PluginHelper/PluginManager | `ACTIVE` | S2,S3 | 市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
-| S5-L2 Agent/LLM provider | `PLANNED` | S3-L7 | catalog、发现、认证、session、runtime 分离；Manager 只保留稳定 API |
+| S5-L1 PluginHelper/PluginManager | `DELIVERED` | S2,S3 | `fa40f29df`：市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
+| S5-L2 Agent/LLM provider | `ACTIVE` | S3-L7 | catalog、发现、认证、session、runtime 分离；Manager 只保留稳定 API |
 | S5-L3 Domain projection | `PLANNED` | S3-L6 | `MediaInfo` canonical 路径保留，来源投影规则拆分，重复 DTO/业务语义清零 |
 | S5-L4 Startup composition | `PLANNED` | S2,S3,S5-L1,S5-L2 | `initializers/modules.py` 仅负责顺序/注册/重启决策，构造按领域进入 composition |
 | S5-L5 Sync/async 重复清零 | `PLANNED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
@@ -282,7 +282,7 @@ Helper、Manager 或跨多个领域状态。
 
 ### S5-L1 PluginHelper/PluginManager
 
-**Status:** `ACTIVE`
+**Status:** `DELIVERED`
 
 **Outcome**
 
@@ -294,6 +294,18 @@ Helper、Manager 或跨多个领域状态。
 - 先审计真实宿主与官方插件调用图；现有 owner 能承接的能力不得新建近义文件或重复 Facade。
 - 多文件能力使用同名包和单词子模块，包根不得为宿主提供重复导出；`app/plugins/**` 排除。
 - PluginHelper/PluginManager 专项、兼容基线、架构门禁及受影响测试全部通过后才可交付。
+
+**Delivery (2026-08-29)**
+
+- `PluginHelper` 仅保留精确旧 ABI、安装 Gateway 和 owner 委托；市场传输、索引、Release 与本地候选
+  由 `PluginMarketTransport` 唯一拥有。
+- `PluginPackageManager`、`PluginDependencyInstaller`、`PluginRuntimeHealth` 分别唯一拥有包事务、依赖安装
+  与运行环境检查/恢复；API、Agent 与 Manager 不再保留物理删除或具体 Adapter 构造。
+- `PluginManager` 只消费 startup 提前注入的 typed `PluginRuntime` factory；Compat/SDK 无重复 canonical 导出。
+- 最新官方插件仓 `d5a786882` 基线与兼容探针通过；架构全集 `220 passed`，锁定覆盖率全量
+  `7302 passed, 9 skipped`，Pylint `10.00/10` 且零重复，Ruff `654`、mypy `10496`，覆盖率低水位
+  Application `80.92%`、Domain `79.87%`。实现提交 `fa40f29df` 已推送，远端 ahead/behind `0/0`；
+  GitHub 工作流已触发，不把 queued/in_progress 状态记作远端绿色。
 
 ### S1-L1.1 Durable admission
 
