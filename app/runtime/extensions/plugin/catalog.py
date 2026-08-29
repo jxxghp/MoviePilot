@@ -145,7 +145,11 @@ class PluginCatalogFacade:
     def local_repository(self) -> list[Plugin]:
         """读取本地插件仓候选并映射为目录 DTO。"""
         installed = self._storage().read(SystemConfigKey.UserInstalledPlugins) or []
-        candidates = self._system().local_candidates()
+        try:
+            candidates = self._system().local_candidates()
+        except Exception as error:  # noqa: BLE001 - 展示失败不能阻断整个插件目录
+            self._logger.warning(f"读取本地插件仓候选失败，已跳过本地目录展示：{error}")
+            return []
         plugins: list[Plugin] = []
         for plugin_id, info in candidates.items():
             package_version = info.get("package_version")
