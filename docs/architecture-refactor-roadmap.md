@@ -140,8 +140,8 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S3-L4 DownloadChain | `DELIVERED` | S1-L6 | `7941fd921`：旧单体退役；selection、submission、batch、history、post-processing 等职责进入同名包单一 owner，提交后动作遵守新完成语义；锁定全量 `7162 passed, 9 skipped`，远端 `0/0` |
 | S3-L5 SearchChain | `DELIVERED` | S2-L7 | `1c145d716`：旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、类型/复杂度门禁和锁定全量 `7222 passed, 9 skipped` 通过；远端 `0/0` |
 | S3-L5.1 Runtime dependencies 命名治理 | `DELIVERED` | S3-L5 | `13fba96fd`：平铺模块退役为 `runtime/dependencies/` 同名包；单词子模块、包根无重复导出、旧快照回滚兼容、命名规则与机器门禁均已交付，锁定全量 `7224 passed, 9 skipped`，远端 `0/0` |
-| S3-L6 MediaChain | `ACTIVE` | S2-L2 | recognition、source projection、music alignment、cache 分离，兼容仅经统一层 |
-| S3-L7 Agent/System/Plugin API | `PLANNED` | S2,S1-L6 | WebAgent SSE/file/audio、nettest/log/update/market 用例进入 Application，endpoint 只做传输适配 |
+| S3-L6 MediaChain | `DELIVERED` | S2-L2 | `13c4a71f4`：旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、缓存并发/别名语义、类型/复杂度门禁和锁定全量 `7244 passed, 9 skipped` 通过；远端 `0/0` |
+| S3-L7 Agent/System/Plugin API | `ACTIVE` | S2,S1-L6 | WebAgent SSE/file/audio、nettest/log/update/market 用例进入 Application，endpoint 只做传输适配 |
 
 ### S4：可执行合同与质量债务清零
 
@@ -228,6 +228,48 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 - 搜索计划、provider fan-out、分页、取消和状态发布的同步/异步/流式行为保持一致并有回归覆盖。
 - Search 专项、架构/兼容、mypy/Ruff/complexity、scoped Pylint 全部通过；广泛变更运行锁定全量。
 - 本叶提交推送后确认远端 SHA、祖先关系和 ahead/behind `0/0`。
+
+### S3-L6 MediaChain
+
+**Status:** `DELIVERED`
+
+**Outcome**
+
+退役 `app/chain/media.py` 单体，由同名 `app.chain.media` 包承接 recognition、plugin event、
+auxiliary、projection、search、catalog、path、album 和 cache。包根只惰性暴露稳定
+`MediaChain`；Facade 保持直接 `ChainBase` MRO、Singleton/pickle 类身份和官方插件真实调用签名，
+内部 owner 与刮削兼容符号不从包根重复导出。
+
+目录缓存使用有界 LRU、文件内容签名、深拷贝隔离与同步/异步单飞；等待者取消不会反向取消共享
+flight，符号链接目录别名不会因物理路径相同而错误共享专辑线索。跨 Chain 音乐来源复用只依赖公开
+`MusicMetadataSourceChain`，架构门禁拒绝跨 owner 导入下划线私有合同。
+
+**Evidence**
+
+- Media/架构/插件端点集中回归 `551 passed`；锁定全量 `7244 passed, 9 skipped`。
+- Pylint `10.00/10`、零重复；mypy 低水位 `10686 / 597`，Ruff 低水位 `661`，复杂度、宿主
+  dependency/runtime contract baseline 全部通过。
+- 最新官方插件仓 `aa40b961a2093474a77edd9eed88844ff07425ac` 的 MediaChain 消费者 15 个，
+  official-plugin baseline 与 V3 聚焦测试 `130 passed`；`app/plugins/**` 未扫描、未修改。
+- 交付提交 `13c4a71f42d189f618ac8663afb967d1517a79bb` 已推送；本地、`origin/v3` 与远端引用
+  一致，ahead/behind `0/0`。
+
+### S3-L7 Agent/System/Plugin API
+
+**Status:** `ACTIVE`
+
+**Outcome**
+
+把 WebAgent SSE/file/audio、System nettest/log/update 与 Plugin market 入口中的可复用用例编排下沉到
+Application owner；endpoint 只保留请求鉴权、参数/响应映射和流式传输适配，不直接组合具体 Adapter、
+Helper、Manager 或跨多个领域状态。
+
+**Acceptance**
+
+- 先以真实入口调用图确认厚方法、I/O、状态和生命周期边界，再按独立用例迁移，不复制 endpoint 实现。
+- Application 自有明确 Port/DTO，具体 Adapter 和 Runtime manager 只由 startup/composition 注入。
+- 旧插件兼容只经 SDK/Compat；canonical endpoint 不保留旧业务实现或重复导出，`app/plugins/**` 排除。
+- Agent/System/Plugin API 专项、架构/外联/类型/复杂度门禁及锁定全量通过后才可交付。
 
 ### S1-L1.1 Durable admission
 
