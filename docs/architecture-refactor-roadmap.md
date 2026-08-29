@@ -141,7 +141,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 | S3-L5 SearchChain | `DELIVERED` | S2-L7 | `1c145d716`：旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、类型/复杂度门禁和锁定全量 `7222 passed, 9 skipped` 通过；远端 `0/0` |
 | S3-L5.1 Runtime dependencies 命名治理 | `DELIVERED` | S3-L5 | `13fba96fd`：平铺模块退役为 `runtime/dependencies/` 同名包；单词子模块、包根无重复导出、旧快照回滚兼容、命名规则与机器门禁均已交付，锁定全量 `7224 passed, 9 skipped`，远端 `0/0` |
 | S3-L6 MediaChain | `DELIVERED` | S2-L2 | `13c4a71f4`：旧单体退役并由同名职责包承接；稳定 ABI、官方插件兼容、缓存并发/别名语义、类型/复杂度门禁和锁定全量 `7244 passed, 9 skipped` 通过；远端 `0/0` |
-| S3-L7 Agent/System/Plugin API | `ACTIVE` | S2,S1-L6 | WebAgent SSE/file/audio、nettest/log/update/market 用例进入 Application，endpoint 只做传输适配 |
+| S3-L7 Agent/System/Plugin API | `DELIVERED` | S2,S1-L6 | `f38637dce`：WebAgent 会话/file/audio、System nettest 和 Plugin market/rating/release/folders 用例进入 Application；endpoint 只保留传输适配，锁定全量 `7256 passed, 9 skipped`、官方插件基线和远端 `0/0` 通过 |
 
 ### S4：可执行合同与质量债务清零
 
@@ -165,7 +165,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 
 | Leaf | 状态 | 依赖 | 完成定义 |
 |---|---|---|---|
-| S5-L1 PluginHelper/PluginManager | `PLANNED` | S2,S3 | 市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
+| S5-L1 PluginHelper/PluginManager | `ACTIVE` | S2,S3 | 市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
 | S5-L2 Agent/LLM provider | `PLANNED` | S3-L7 | catalog、发现、认证、session、runtime 分离；Manager 只保留稳定 API |
 | S5-L3 Domain projection | `PLANNED` | S3-L6 | `MediaInfo` canonical 路径保留，来源投影规则拆分，重复 DTO/业务语义清零 |
 | S5-L4 Startup composition | `PLANNED` | S2,S3,S5-L1,S5-L2 | `initializers/modules.py` 仅负责顺序/注册/重启决策，构造按领域进入 composition |
@@ -256,7 +256,7 @@ flight，符号链接目录别名不会因物理路径相同而错误共享专�
 
 ### S3-L7 Agent/System/Plugin API
 
-**Status:** `ACTIVE`
+**Status:** `DELIVERED`
 
 **Outcome**
 
@@ -270,6 +270,30 @@ Helper、Manager 或跨多个领域状态。
 - Application 自有明确 Port/DTO，具体 Adapter 和 Runtime manager 只由 startup/composition 注入。
 - 旧插件兼容只经 SDK/Compat；canonical endpoint 不保留旧业务实现或重复导出，`app/plugins/**` 排除。
 - Agent/System/Plugin API 专项、架构/外联/类型/复杂度门禁及锁定全量通过后才可交付。
+
+**Evidence**
+
+- `app/api/endpoints/agent.py` 从 2,000 余行收敛为传输层；WebAgent 事件、会话、附件和音频用例由
+  `app/application/messaging/agent.py` 承担，运行时实现进入单词命名的 `app/agent/web.py`。
+- System 网络探测目录、HTTPS/重定向准入和内容校验进入 `app/application/network.py`；Plugin 市场投影、
+  Release、评分和目录读写分别由 `catalog.py`、`release.py`、`rating.py`、`folders.py` 唯一拥有。
+- 提交 `f38637dceaa2b7fedc8ab30a41aaad3d67392ec5` 已推送；本地锁定全量 `7256 passed, 9 skipped`，
+  Pylint `10.00/10`、架构/外联/类型/复杂度门禁和官方插件基线通过，远端 ahead/behind `0/0`。
+
+### S5-L1 PluginHelper/PluginManager
+
+**Status:** `ACTIVE`
+
+**Outcome**
+
+清除 `PluginHelper`、`PluginManager` 中仍混合的市场、包、依赖、备份、健康检查和运行时构造职责；
+每项能力归入现有单一 owner，稳定插件 ABI 只由受控 Facade/SDK/Compat 暴露。
+
+**Acceptance**
+
+- 先审计真实宿主与官方插件调用图；现有 owner 能承接的能力不得新建近义文件或重复 Facade。
+- 多文件能力使用同名包和单词子模块，包根不得为宿主提供重复导出；`app/plugins/**` 排除。
+- PluginHelper/PluginManager 专项、兼容基线、架构门禁及受影响测试全部通过后才可交付。
 
 ### S1-L1.1 Durable admission
 
