@@ -1686,16 +1686,12 @@
     "arg-type": 1
   },
   "app/domain/context.py": {
-    "arg-type": 5,
-    "assignment": 133,
-    "index": 3,
+    "assignment": 86,
     "no-any-return": 1,
     "no-untyped-call": 5,
     "no-untyped-def": 27,
     "operator": 1,
-    "type-arg": 37,
-    "union-attr": 7,
-    "var-annotated": 2
+    "type-arg": 36
   },
   "app/domain/meta/customization.py": {
     "assignment": 1,

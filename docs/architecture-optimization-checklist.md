@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 959 / 8,151 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 965 / 8,185 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -78,8 +78,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,413 / 593 文件 | strict frontier 当前覆盖 41 个文件，Plugin、LLM Provider 与 Agent Manager owner 拆分及受益调用方低水位已固化 |
-| Ruff 历史诊断 | 651 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 全量 mypy 历史债务 | 10,348 / 593 文件 | strict frontier 当前覆盖 41 个文件，Domain projection 与既有 owner 拆分的受益调用方低水位已固化 |
+| Ruff 历史诊断 | 648 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 80.92%，Domain 79.89% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -130,7 +130,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-111 | P1 | 待执行 | 升级复杂度、类型、覆盖率和并发原语门禁 | 高风险私有路径也进入只降不增的治理面 |
 | ARCH-201 | P2 | 已交付 | 收窄 PluginHelper/PluginManager 与 SDK 暴露面 | `fa40f29df` 已推送；ABI Facade 只委托，构造和具体服务归组合根 |
 | ARCH-202 | P2 | 渐进 | 拆分 Agent/LLM provider 职责 | provider catalog、发现、认证、会话和运行时分离 |
-| ARCH-203 | P2 | 渐进 | 拆分 Domain 投影与 Startup 高扇出目录 | 保留 canonical 类型和生命周期顺序，降低修改扩散 |
+| ARCH-203 | P2 | 渐进 | 拆分 Domain 投影与 Startup 高扇出目录 | Domain 四来源投影已验证；Startup composition 仍待后续叶完成 |
 | ARCH-204 | P2 | 渐进 | 合并重复 sync/async 核心逻辑并转换存量测试风格 | 保留双 ABI 外壳，共享纯业务核心 |
 
 ## 5. P0：先恢复主线
@@ -665,8 +665,9 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 
 ### ARCH-203 拆分 Domain 投影与 Startup 高扇出
 
-- [ ] `MediaInfo`/`domain/context.py` 保留 canonical 类型路径，把各外部来源 setter 的纯投影规则提取到
-  Domain 内部模块，旧方法委托，避免 DTO 再复制一套领域语义。
+- [x] `MediaInfo`/`domain/context.py` 保留 canonical 类型路径；TMDB、豆瓣、Bangumi、AniList 规则已整体迁入
+  `domain/projection/` 单词 owner，setter 只薄委托，输入不可变、多来源顺序、字段 golden 与宿主直接导入门禁覆盖；
+  既有 `app.core.context` 精确兼容映射继续指向 canonical 类型，未新增 SDK/Compat。
 - [ ] 将 `startup/initializers/modules.py` 的对象构造按领域移到 `startup/composition/*`；initializer
   只负责顺序、注册和是否重启的决策。
 - [ ] 保留生命周期 manifest 和顺序快照；高扇出在组合根是允许的，但业务实现不能继续沉积其中。

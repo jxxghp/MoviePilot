@@ -300,9 +300,6 @@
   "app/doctor/runner.py": {
     "I001": 1
   },
-  "app/domain/context.py": {
-    "E731": 1
-  },
   "app/domain/media.py": {
     "E731": 1
   },
@@ -379,13 +376,7 @@
   "app/modules/acoustid/__init__.py": {
     "I001": 1
   },
-  "app/modules/anilist/__init__.py": {
-    "I001": 1
-  },
   "app/modules/anilist/anilist.py": {
-    "I001": 1
-  },
-  "app/modules/bangumi/__init__.py": {
     "I001": 1
   },
   "app/modules/discord/__init__.py": {

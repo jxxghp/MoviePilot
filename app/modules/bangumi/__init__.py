@@ -1,18 +1,18 @@
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union
 
-from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
-from app.runtime.settings import get_runtime_setting
-from app.schemas.context import MediaPerson as _SchemaMediaPerson
-
 from app.adapters.network.http import RequestUtils
 from app.domain.context import MediaInfo
 from app.domain.media import is_media_source_enabled
 from app.domain.meta.metabase import MetaBase
+from app.domain.projection.bangumi import resolve_media_type as resolve_bangumi_media_type
 from app.domain.scraper import MediaScraperHelper
 from app.modules import _ModuleBase
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.modules.bangumi.bangumi import BangumiApi
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.types import (
     MediaRecognizeType,
     MediaSource,
@@ -207,7 +207,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         if (
             meta.type in {MediaType.MOVIE, MediaType.TV}
-            and MediaInfo.get_bangumi_media_type(info) != meta.type
+            and resolve_bangumi_media_type(info) != meta.type
         ):
             return False
         release_date = info.get("date") or info.get("air_date") or ""

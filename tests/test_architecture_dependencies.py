@@ -366,6 +366,84 @@ def test_runtime_dependencies_use_same_named_single_word_package() -> None:
     assert violations == []
 
 
+def test_domain_media_projection_uses_single_word_owner_package() -> None:
+    """媒体来源投影必须由单词 owner 完整承接，canonical 模型只保留薄委托。"""
+    package = APP_ROOT / "domain" / "projection"
+    assert {path.name for path in package.glob("*.py")} == {
+        "__init__.py",
+        "anilist.py",
+        "bangumi.py",
+        "douban.py",
+        "mapping.py",
+        "tmdb.py",
+    }
+    init_tree = ast.parse(
+        (package / "__init__.py").read_text(encoding="utf-8"),
+        filename=str(package / "__init__.py"),
+    )
+    assert ast.get_docstring(init_tree)
+    assert len(init_tree.body) == 1
+
+    context_path = APP_ROOT / "domain" / "context.py"
+    context_tree = ast.parse(
+        context_path.read_text(encoding="utf-8-sig"),
+        filename=str(context_path),
+    )
+    media_class = next(
+        node
+        for node in context_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "MediaInfo"
+    )
+    methods = {
+        node.name: node
+        for node in media_class.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    for name in (
+        "set_tmdb_info",
+        "set_douban_info",
+        "set_bangumi_info",
+        "set_anilist_info",
+    ):
+        method = methods[name]
+        executable = [
+            node
+            for node in method.body
+            if not (
+                isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            )
+        ]
+        assert len(executable) == 1
+        assert isinstance(executable[0], ast.Expr)
+        assert isinstance(executable[0].value, ast.Call)
+
+    schema_source = (APP_ROOT / "schemas" / "context.py").read_text(
+        encoding="utf-8-sig"
+    )
+    assert "app.domain.projection" not in schema_source
+    assert not any(name in schema_source for name in methods if name.startswith("set_") and name.endswith("_info"))
+
+    forbidden_calls: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        relative = path.relative_to(APP_ROOT)
+        if relative.parts[0] == "plugins" or path == context_path:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Attribute) or not isinstance(node.value, ast.Name):
+                continue
+            if node.value.id == "MediaInfo" and node.attr in {
+                "get_bangumi_media_type",
+                "get_anilist_media_type",
+                "_anilist_date",
+                "_anilist_chinese_title",
+            }:
+                forbidden_calls.append(f"{relative}:{node.lineno}:{node.attr}")
+    assert forbidden_calls == []
+
+
 def test_workflow_query_contract_returns_only_typed_snapshots():
     """工作流正式查询端口不得退化为 Any 或 ORM 返回值。"""
     path = APP_ROOT / "application" / "workflow.py"

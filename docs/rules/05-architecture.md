@@ -46,7 +46,7 @@ cycle passes through an established package that was not moved.
 | Package | Ownership |
 |---|---|
 | `app/foundation/` | Stateless, config-free and I/O-free primitives: reflection and dynamic import, crypto, DOM parsing, identity, collections, singleton, text conversion/segmentation, URL and version helpers |
-| `app/domain/` | Pure MoviePilot business semantics for media, recognition, sites and torrents; live configuration, persistence, transport and acceleration are injected |
+| `app/domain/` | Pure MoviePilot business semantics for media, recognition, sites and torrents; `projection/` owns immutable external-source-to-`MediaInfo` field mapping; live configuration, persistence, transport and acceleration are injected |
 | `app/application/` | Focused stateful application services, configured capability selection and service-bound rules |
 | `app/runtime/` | Process-wide config, events, complete logging runtime, cache contracts/in-memory policy, execution, background-task ownership, localization, scheduling, restart state, concurrency, GC and rate limits |
 | `app/adapters/` | Concrete technical I/O and named external ecosystems, split by cache, network, system and external boundaries |
@@ -314,7 +314,7 @@ mentions media, site or torrent:
 
 | Subdomain | Modules and ownership |
 |---|---|
-| Media | `context.py` owns `Context`, `MediaInfo` and `TorrentInfo`; `media.py` owns source/ID normalization; `title.py` owns title-candidate and search-keyword rules; `episode.py` owns episode-range display; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
+| Media | `context.py` owns canonical `Context`, `MediaInfo` and `TorrentInfo` construction; `projection/` owns the pure, input-immutable TMDB/Douban/Bangumi/AniList field mappings and TMDB image-builder port; `media.py` owns source selection policy; identity representation/normalization stays in `schemas/media.py`; `title.py` owns title-candidate and search-keyword rules; `episode.py` owns episode-range display; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
 | Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
 | Site | `site.py` owns site-domain exceptions and interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
 | Torrent | `torrent.py` owns magnet-link semantics; configured download/cache/file behavior stays in `app/application/torrent.py` |
@@ -322,6 +322,15 @@ mentions media, site or torrent:
 `app/domain` may depend only on schemas and foundation. It must not read global
 settings, access DB/network/filesystem adapters, import Rust, discover services
 or initialize process runtime state.
+
+External media detail projection is one domain capability under
+`app/domain/projection/`. Its package root contains documentation only;
+`mapping.py`, `tmdb.py`, `douban.py`, `bangumi.py` and `anilist.py` are the only
+owners. Projection accepts read-only mappings and returns field changes without
+mutating either input. `MediaInfo` retains its canonical constructor, attributes
+and four setter ABI as thin delegates; host code imports source owners rather
+than calling its compatibility helpers. These internal owners do not create new
+SDK or Compat paths.
 
 `StringUtils` is not a canonical implementation type. Generic text, capacity,
 time, URL, DOM, hash and version functions live under `app.foundation`; media

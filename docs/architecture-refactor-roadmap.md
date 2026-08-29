@@ -167,7 +167,7 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 |---|---|---|---|
 | S5-L1 PluginHelper/PluginManager | `DELIVERED` | S2,S3 | `fa40f29df`：市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
 | S5-L2 Agent/LLM provider | `DELIVERED` | S3-L7 | `c000c4fff`、`3a33da0b3`、`dbdf7d058`：catalog、发现、认证、session、runtime 分离；Manager/Facade 只保留稳定 API，旧包根符号仅由精确 Compat 承接 |
-| S5-L3 Domain projection | `PLANNED` | S3-L6 | `MediaInfo` canonical 路径保留，来源投影规则拆分，重复 DTO/业务语义清零 |
+| S5-L3 Domain projection | `VERIFIED` | S3-L6 | `MediaInfo` canonical 路径和 setter ABI 保留；四来源纯投影归入单词 owner，输入不可变、重复业务语义清零 |
 | S5-L4 Startup composition | `PLANNED` | S2,S3,S5-L1,S5-L2 | `initializers/modules.py` 仅负责顺序/注册/重启决策，构造按领域进入 composition |
 | S5-L5 Sync/async 重复清零 | `PLANNED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
 | S5-L6 最终兼容与交付 | `PLANNED` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、现有类型/覆盖率门禁全部通过并推送；完成后结束本轮战略任务 |
@@ -306,6 +306,30 @@ Helper、Manager 或跨多个领域状态。
   `7302 passed, 9 skipped`，Pylint `10.00/10` 且零重复，Ruff `654`、mypy `10496`，覆盖率低水位
   Application `80.92%`、Domain `79.87%`。实现提交 `fa40f29df` 已推送，远端 ahead/behind `0/0`；
   GitHub 工作流已触发，不把 queued/in_progress 状态记作远端绿色。
+
+### S5-L3 Domain projection
+
+**Status:** `VERIFIED`
+
+**Outcome**
+
+`app/domain/context.py` 继续唯一拥有 canonical `MediaInfo` 类型、构造参数、属性和四个历史 setter ABI；
+TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `app/domain/projection/`，接收只读快照并
+返回字段映射，不修改来源或当前输入。TMDB 图片构造器归 `tmdb.py` owner，宿主调用方直接导入来源 owner。
+
+**Compatibility and gates**
+
+- `app.core.context` 继续由现有精确 Compat 映射到 `app.domain.context`，未新增 SDK/Compat 或包根重复导出。
+- `app/schemas/context.py` 仍是传输 DTO，不复制 setter 或投影业务；`app/plugins/**` 未改动。
+- 架构门禁固定投影包文件集合、空包根、setter 薄委托和宿主禁用 `MediaInfo` helper；golden、输入不可变、
+  多来源顺序、字段对齐与 setter 签名测试共同守住行为和 ABI。
+
+**Local verification (2026-08-29)**
+
+- 基于 `origin/v3@d17d62e95` 锁定全量 `7374 passed, 9 skipped`；投影/响应/来源/Compat/架构专项全绿。
+- scoped Pylint `10.00/10` 且零重复；新 `domain/projection` owner mypy 零错误，strict frontier、
+  Ruff、mypy、复杂度和宿主依赖低水位均通过。
+- 最新官方插件仓 `2d6946eb1` 兼容基线通过；`app/plugins/**` 零改动，包根只有说明且无重复导出。
 
 ### S1-L1.1 Durable admission
 

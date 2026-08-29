@@ -1,16 +1,16 @@
 from typing import List, Optional, Tuple, Union
 
-from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
-from app.runtime.settings import get_runtime_setting
-from app.schemas.context import MediaPerson as _SchemaMediaPerson
-
 from app.domain.context import MediaInfo
 from app.domain.media import is_media_source_enabled
 from app.domain.meta.metabase import MetaBase
+from app.domain.projection.anilist import format_date as format_anilist_date
 from app.domain.scraper import MediaScraperHelper
 from app.modules import _ModuleBase
+from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
 from app.modules.anilist.anilist import AniListApi
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.types import (
     MediaRecognizeType,
     MediaSource,
@@ -168,7 +168,7 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param date_info: AniList FuzzyDate 字段
         :return: 日期文本
         """
-        return MediaInfo._anilist_date(date_info)
+        return format_anilist_date(date_info)
 
     @classmethod
     def _build_credit_person(cls, edge: dict) -> Optional[_SchemaMediaPerson]:

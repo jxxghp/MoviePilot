@@ -8,8 +8,8 @@ from enum import Enum, auto
 from typing import Any, Final, Optional, cast
 
 from app.chain.media.contract import _MediaOwnerBase
-from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
+from app.domain.projection.bangumi import resolve_media_type as resolve_bangumi_media_type
 from app.schemas.event import (
     MediaRecognizeConvertEventData as _SchemaMediaRecognizeConvertEventData,
 )
@@ -173,7 +173,7 @@ def _build_bangumi_tmdb_match(
     return _TmdbMatch(
         names=_unique_names((localized_meta.name, meta.name)),
         year=MediaProjectionOwner._extract_year_from_bangumi(source_info),
-        media_type=plan.media_type or MediaInfo.get_bangumi_media_type(dict(source_info)),
+        media_type=plan.media_type or resolve_bangumi_media_type(source_info),
         season=selected_season,
     )
 
@@ -213,7 +213,7 @@ def _build_bangumi_douban_match(
     return _DoubanMatch(
         name=meta.name,
         year=MediaProjectionOwner._extract_year_from_bangumi(source_info),
-        media_type=plan.media_type or MediaInfo.get_bangumi_media_type(dict(source_info)),
+        media_type=plan.media_type or resolve_bangumi_media_type(source_info),
         season=selected_season,
     )
 
