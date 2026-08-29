@@ -29,6 +29,29 @@ class BangumiConfigSnapshot:
     proxy: Any
 
 
+@dataclass(frozen=True, slots=True)
+class _BangumiRecognitionPlan:
+    """描述一次 Bangumi 识别应走显式详情还是标题搜索。"""
+
+    media_id: Optional[int]
+    meta: Optional[MetaBase]
+    label: str
+
+    def require_meta(self) -> MetaBase:
+        """返回标题搜索计划必有的解析元数据。"""
+        if self.meta is None:
+            raise RuntimeError("Bangumi 标题识别计划缺少解析元数据")
+        return self.meta
+
+
+@dataclass(frozen=True, slots=True)
+class _BangumiSearchPlan:
+    """保存 Bangumi 搜索来源准入结果和有效查询元数据。"""
+
+    enabled: bool
+    meta: Optional[MetaBase]
+
+
 class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     """
     Bangumi媒体信息匹配
@@ -98,6 +121,97 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         return 3
 
+    @staticmethod
+    def _recognition_plan(
+        meta: Optional[MetaBase],
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        requested_type: Optional[MediaType],
+    ) -> Optional[_BangumiRecognitionPlan]:
+        """统一校验来源、媒体类型和显式 Bangumi ID。"""
+        if requested_type == MediaType.MUSIC or getattr(meta, "type", None) == MediaType.MUSIC:
+            return None
+        if media_source and media_source != MediaSource.Bangumi:
+            return None
+        if media_id is not None:
+            if media_source != MediaSource.Bangumi or not str(media_id).isdigit():
+                return None
+            normalized_id = int(media_id)
+            if normalized_id <= 0:
+                return None
+            return _BangumiRecognitionPlan(
+                media_id=normalized_id, meta=meta, label=str(normalized_id)
+            )
+        selected_source = media_source or get_runtime_setting('RECOGNIZE_SOURCE')
+        if not meta or selected_source != MediaSource.Bangumi:
+            return None
+        return _BangumiRecognitionPlan(media_id=None, meta=meta, label=meta.name)
+
+    @staticmethod
+    def _search_plan(
+        meta: Optional[MetaBase],
+        media_source: Optional[MediaSourceSelection],
+    ) -> _BangumiSearchPlan:
+        """统一决定 Bangumi 搜索是否响应以及是否具备查询标题。"""
+        enabled = is_media_source_enabled(media_source, MediaSource.Bangumi)
+        return _BangumiSearchPlan(
+            enabled=enabled,
+            meta=meta if enabled and meta and meta.name else None,
+        )
+
+    @staticmethod
+    def _candidate_ids(
+        infos: Optional[list[dict[str, Any]]],
+    ) -> tuple[int, ...]:
+        """提取前十个可用于详情查询的 Bangumi 数字 ID。"""
+        return tuple(
+            int(item["id"])
+            for item in (infos or [])[:10]
+            if str(item.get("id") or "").isdigit()
+        )
+
+    @staticmethod
+    def _build_recognized_media(
+        info: dict[str, Any],
+        actors: list[dict[str, Any]],
+        meta: Optional[MetaBase],
+    ) -> MediaInfo:
+        """把 Bangumi 详情和演职员投影为统一媒体信息。"""
+        enriched = {**info, "actors": actors}
+        mediainfo = MediaInfo(bangumi_info=enriched)
+        if meta and meta.begin_season is not None:
+            mediainfo.season = meta.begin_season
+        return mediainfo
+
+    @staticmethod
+    def _project_media_list(
+        infos: Optional[list[dict[str, Any]]],
+    ) -> list[MediaInfo]:
+        """把 Bangumi 媒体列表投影为统一媒体信息列表。"""
+        return [MediaInfo(bangumi_info=info) for info in infos or []]
+
+    @classmethod
+    def _project_search_results(
+        cls, meta: MetaBase, infos: Optional[list[dict[str, Any]]]
+    ) -> list[MediaInfo]:
+        """按标题包含关系过滤 Bangumi 搜索结果并统一投影。"""
+        query = meta.name.lower()
+        return cls._project_media_list(
+            [
+                info
+                for info in infos or []
+                if query in str(info.get("name")).lower()
+                or query in str(info.get("name_cn")).lower()
+            ]
+        )
+
+    @staticmethod
+    def _project_people(
+        persons: Optional[list[dict[str, Any]]],
+    ) -> list[_SchemaMediaPerson]:
+        """把 Bangumi 演职员列表投影为统一人物列表。"""
+        return [_SchemaMediaPerson(source='bangumi', **person) for person in persons or []]
+
     def recognize_media(
         self,
         meta: MetaBase = None,
@@ -112,38 +226,23 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param media_id: 数据源原生ID
         :return: 识别的媒体信息，包括剧集信息
         """
-        # Bangumi 只处理影视，不能在音乐模块未响应时接管音乐请求。
-        if (
-                kwargs.get("mtype") == MediaType.MUSIC
-                or getattr(meta, "type", None) == MediaType.MUSIC
-        ):
+        plan = self._recognition_plan(
+            meta, media_source, media_id, kwargs.get("mtype")
+        )
+        if not plan:
             return None
-        if media_source and media_source != MediaSource.Bangumi:
-            return None
-        if media_id is not None and (
-                media_source != MediaSource.Bangumi or not str(media_id).isdigit()
-        ):
-            return None
-        bangumiid = int(media_id) if media_id is not None else None
-        if not bangumiid and (
-            not meta or (media_source or get_runtime_setting('RECOGNIZE_SOURCE')) != MediaSource.Bangumi
-        ):
-            return None
-
         info = (
-            self.bangumi_info(bangumiid=bangumiid)
-            if bangumiid
-            else self._match_by_meta(meta)
+            self.bangumi_info(bangumiid=plan.media_id)
+            if plan.media_id is not None
+            else self._match_by_meta(plan.require_meta())
         )
         if info:
-            info["actors"] = self.bangumiapi.credits(info.get("id"))
-            mediainfo = MediaInfo(bangumi_info=info)
-            if meta and meta.begin_season is not None:
-                mediainfo.season = meta.begin_season
-            logger.info(f"{bangumiid or meta.name} Bangumi识别结果：{mediainfo.type.value} "
+            actors = self.bangumiapi.credits(info.get("id"))
+            mediainfo = self._build_recognized_media(info, actors, plan.meta)
+            logger.info(f"{plan.label} Bangumi识别结果：{mediainfo.type.value} "
                         f"{mediainfo.title_year}")
             return mediainfo
-        logger.info(f"{bangumiid or meta.name} 未匹配到Bangumi媒体信息")
+        logger.info(f"{plan.label} 未匹配到Bangumi媒体信息")
 
         return None
 
@@ -161,38 +260,23 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param media_id: 数据源原生ID
         :return: 识别的媒体信息，包括剧集信息
         """
-        # 与同步入口保持同一类型边界，音乐请求不得进入 Bangumi。
-        if (
-                kwargs.get("mtype") == MediaType.MUSIC
-                or getattr(meta, "type", None) == MediaType.MUSIC
-        ):
+        plan = self._recognition_plan(
+            meta, media_source, media_id, kwargs.get("mtype")
+        )
+        if not plan:
             return None
-        if media_source and media_source != MediaSource.Bangumi:
-            return None
-        if media_id is not None and (
-                media_source != MediaSource.Bangumi or not str(media_id).isdigit()
-        ):
-            return None
-        bangumiid = int(media_id) if media_id is not None else None
-        if not bangumiid and (
-            not meta or (media_source or get_runtime_setting('RECOGNIZE_SOURCE')) != MediaSource.Bangumi
-        ):
-            return None
-
         info = (
-            await self.async_bangumi_info(bangumiid=bangumiid)
-            if bangumiid
-            else await self._async_match_by_meta(meta)
+            await self.async_bangumi_info(bangumiid=plan.media_id)
+            if plan.media_id is not None
+            else await self._async_match_by_meta(plan.require_meta())
         )
         if info:
-            info["actors"] = await self.bangumiapi.async_credits(info.get("id"))
-            mediainfo = MediaInfo(bangumi_info=info)
-            if meta and meta.begin_season is not None:
-                mediainfo.season = meta.begin_season
-            logger.info(f"{bangumiid or meta.name} Bangumi识别结果：{mediainfo.type.value} "
+            actors = await self.bangumiapi.async_credits(info.get("id"))
+            mediainfo = self._build_recognized_media(info, actors, plan.meta)
+            logger.info(f"{plan.label} Bangumi识别结果：{mediainfo.type.value} "
                         f"{mediainfo.title_year}")
             return mediainfo
-        logger.info(f"{bangumiid or meta.name} 未匹配到Bangumi媒体信息")
+        logger.info(f"{plan.label} 未匹配到Bangumi媒体信息")
 
         return None
 
@@ -220,8 +304,8 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param meta: 标题解析元数据
         :return: Bangumi媒体详情
         """
-        for item in (self.bangumiapi.search(meta.name) or [])[:10]:
-            info = self.bangumiapi.detail(item.get("id")) if item.get("id") else None
+        for media_id in self._candidate_ids(self.bangumiapi.search(meta.name)):
+            info = self.bangumiapi.detail(media_id)
             if info and self._matches_meta(meta, info):
                 return info
         return None
@@ -233,8 +317,9 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param meta: 标题解析元数据
         :return: Bangumi媒体详情
         """
-        for item in (await self.bangumiapi.async_search(meta.name) or [])[:10]:
-            info = await self.bangumiapi.async_detail(item.get("id")) if item.get("id") else None
+        infos = await self.bangumiapi.async_search(meta.name)
+        for media_id in self._candidate_ids(infos):
+            info = await self.bangumiapi.async_detail(media_id)
             if info and self._matches_meta(meta, info):
                 return info
         return None
@@ -248,16 +333,14 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if not is_media_source_enabled(media_source, MediaSource.Bangumi):
+        plan = self._search_plan(meta, media_source)
+        if not plan.enabled:
             return None
-        if not meta.name:
+        if not plan.meta:
             return []
-        infos = self.bangumiapi.search(meta.name)
-        if infos:
-            return [MediaInfo(bangumi_info=info) for info in infos
-                    if meta.name.lower() in str(info.get("name")).lower()
-                    or meta.name.lower() in str(info.get("name_cn")).lower()]
-        return []
+        return self._project_search_results(
+            plan.meta, self.bangumiapi.search(plan.meta.name)
+        )
 
     async def async_search_medias(
         self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
@@ -268,16 +351,13 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param media_source: 请求级搜索数据源
         :return: 媒体信息
         """
-        if not is_media_source_enabled(media_source, MediaSource.Bangumi):
+        plan = self._search_plan(meta, media_source)
+        if not plan.enabled:
             return None
-        if not meta.name:
+        if not plan.meta:
             return []
-        infos = await self.bangumiapi.async_search(meta.name)
-        if infos:
-            return [MediaInfo(bangumi_info=info) for info in infos
-                    if meta.name.lower() in str(info.get("name")).lower()
-                    or meta.name.lower() in str(info.get("name_cn")).lower()]
-        return []
+        infos = await self.bangumiapi.async_search(plan.meta.name)
+        return self._project_search_results(plan.meta, infos)
 
     def bangumi_info(self, bangumiid: int) -> Optional[dict]:
         """
@@ -344,29 +424,21 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         获取Bangumi每日放送
         """
-        infos = self.bangumiapi.calendar()
-        if infos:
-            return [MediaInfo(bangumi_info=info) for info in infos]
-        return []
+        return self._project_media_list(self.bangumiapi.calendar())
 
     async def async_bangumi_calendar(self) -> Optional[List[MediaInfo]]:
         """
         获取Bangumi每日放送（异步版本）
         """
         infos = await self.bangumiapi.async_calendar()
-        if infos:
-            return [MediaInfo(bangumi_info=info) for info in infos]
-        return []
+        return self._project_media_list(infos)
 
     def bangumi_credits(self, bangumiid: int) -> List[_SchemaMediaPerson]:
         """
         根据TMDBID查询电影演职员表
         :param bangumiid:  BangumiID
         """
-        persons = self.bangumiapi.credits(bangumiid)
-        if persons:
-            return [_SchemaMediaPerson(source='bangumi', **person) for person in persons]
-        return []
+        return self._project_people(self.bangumiapi.credits(bangumiid))
 
     async def async_bangumi_credits(self, bangumiid: int) -> List[_SchemaMediaPerson]:
         """
@@ -374,19 +446,14 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param bangumiid:  BangumiID
         """
         persons = await self.bangumiapi.async_credits(bangumiid)
-        if persons:
-            return [_SchemaMediaPerson(source='bangumi', **person) for person in persons]
-        return []
+        return self._project_people(persons)
 
     def bangumi_recommend(self, bangumiid: int) -> List[MediaInfo]:
         """
         根据BangumiID查询推荐电影
         :param bangumiid:  BangumiID
         """
-        subjects = self.bangumiapi.subjects(bangumiid)
-        if subjects:
-            return [MediaInfo(bangumi_info=subject) for subject in subjects]
-        return []
+        return self._project_media_list(self.bangumiapi.subjects(bangumiid))
 
     async def async_bangumi_recommend(self, bangumiid: int) -> List[MediaInfo]:
         """
@@ -394,9 +461,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param bangumiid:  BangumiID
         """
         subjects = await self.bangumiapi.async_subjects(bangumiid)
-        if subjects:
-            return [MediaInfo(bangumi_info=subject) for subject in subjects]
-        return []
+        return self._project_media_list(subjects)
 
     def bangumi_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
@@ -450,10 +515,9 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         根据TMDBID查询人物参演作品
         :param person_id:  人物ID
         """
-        credits_info = self.bangumiapi.person_credits(person_id=person_id)
-        if credits_info:
-            return [MediaInfo(bangumi_info=credit) for credit in credits_info]
-        return []
+        return self._project_media_list(
+            self.bangumiapi.person_credits(person_id=person_id)
+        )
 
     async def async_bangumi_person_credits(self, person_id: int) -> List[MediaInfo]:
         """
@@ -461,27 +525,20 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param person_id:  人物ID
         """
         credits_info = await self.bangumiapi.async_person_credits(person_id=person_id)
-        if credits_info:
-            return [MediaInfo(bangumi_info=credit) for credit in credits_info]
-        return []
+        return self._project_media_list(credits_info)
 
     def bangumi_discover(self, **kwargs) -> Optional[List[MediaInfo]]:
         """
         发现Bangumi番剧
         """
-        infos = self.bangumiapi.discover(**kwargs)
-        if infos:
-            return [MediaInfo(bangumi_info=info) for info in infos]
-        return []
+        return self._project_media_list(self.bangumiapi.discover(**kwargs))
 
     async def async_bangumi_discover(self, **kwargs) -> Optional[List[MediaInfo]]:
         """
         发现Bangumi番剧（异步版本）
         """
         infos = await self.bangumiapi.async_discover(**kwargs)
-        if infos:
-            return [MediaInfo(bangumi_info=info) for info in infos]
-        return []
+        return self._project_media_list(infos)
 
     def clear_cache(self) -> None:
         """

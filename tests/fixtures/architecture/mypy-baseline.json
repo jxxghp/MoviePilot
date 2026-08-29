@@ -1853,7 +1853,6 @@
   },
   "app/modules/anilist/__init__.py": {
     "assignment": 4,
-    "no-any-return": 2,
     "no-untyped-call": 1,
     "no-untyped-def": 5,
     "return-value": 1,

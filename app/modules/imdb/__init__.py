@@ -42,6 +42,37 @@ class ImdbConfigSnapshot:
     proxy: Any
 
 
+@dataclass(frozen=True, slots=True)
+class _ImdbRecognitionPlan:
+    """描述一次 IMDb 识别应走显式详情还是标题搜索。"""
+
+    media_id: Optional[str]
+    meta: Optional[MetaBase]
+    media_type: Optional[MediaType]
+
+    def require_meta(self) -> MetaBase:
+        """返回标题搜索计划必有的解析元数据。"""
+        if self.meta is None:
+            raise RuntimeError("IMDb 标题识别计划缺少解析元数据")
+        return self.meta
+
+
+@dataclass(frozen=True, slots=True)
+class _ImdbCandidatePlan:
+    """保存无需别名查询即可命中的候选及后续别名候选。"""
+
+    direct_match: Optional[ImdbTitle]
+    alias_candidates: tuple[ImdbTitle, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ImdbSearchPlan:
+    """保存 IMDb 搜索来源准入结果和有效查询元数据。"""
+
+    enabled: bool
+    meta: Optional[MetaBase]
+
+
 class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     """提供 IMDb 搜索、识别、详情补全与刮削能力。"""
 
@@ -140,6 +171,44 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         requested_type = mtype or getattr(meta, "type", None)
         return requested_type not in {MediaType.MUSIC, MediaType.MUSIC.value, "music"}
 
+    @classmethod
+    def _recognition_plan(
+        cls,
+        meta: Optional[MetaBase],
+        mtype: Optional[MediaType],
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+    ) -> Optional[_ImdbRecognitionPlan]:
+        """统一校验媒体类型、来源选择和显式 IMDb ID。"""
+        if not cls._supports_request_type(meta, mtype):
+            return None
+        requested_source = normalize_media_source(media_source)
+        if media_id is not None:
+            normalized_id = cls._normalize_imdb_id(media_id)
+            if requested_source != MediaSource.IMDb or not normalized_id:
+                return None
+            return _ImdbRecognitionPlan(normalized_id, meta, mtype)
+        if requested_source not in {None, MediaSource.IMDb}:
+            return None
+        selected_source = requested_source or normalize_media_source(
+            get_runtime_setting('RECOGNIZE_SOURCE')
+        )
+        if selected_source != MediaSource.IMDb or not meta or not meta.name:
+            return None
+        return _ImdbRecognitionPlan(None, meta, mtype)
+
+    @staticmethod
+    def _search_plan(
+        meta: Optional[MetaBase],
+        media_source: Optional[MediaSourceSelection],
+    ) -> _ImdbSearchPlan:
+        """统一决定 IMDb 搜索是否响应以及是否具备查询标题。"""
+        enabled = is_media_source_enabled(media_source, MediaSource.IMDb)
+        return _ImdbSearchPlan(
+            enabled=enabled,
+            meta=meta if enabled and meta and meta.name else None,
+        )
+
     @staticmethod
     def _recognize_names(meta: MetaBase) -> list[str]:
         """按中文、简体中文、英文和解析主标题顺序生成识别词。"""
@@ -178,6 +247,31 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             candidates.sort(key=lambda title: title.start_year or 0, reverse=True)
         return candidates
 
+    @classmethod
+    def _candidate_plan(
+        cls,
+        query: str,
+        titles: list[ImdbTitle],
+        mtype: Optional[MediaType],
+        year: Optional[str],
+    ) -> _ImdbCandidatePlan:
+        """生成直接标题匹配和最多十个别名回查候选。"""
+        candidates = cls._candidate_titles(titles, mtype, year)
+        direct_match = next(
+            (
+                title
+                for title in candidates
+                if cls._name_matches(
+                    query, [title.primary_title, title.original_title]
+                )
+            ),
+            None,
+        )
+        return _ImdbCandidatePlan(
+            direct_match=direct_match,
+            alias_candidates=tuple(candidates[:10]) if direct_match is None else (),
+        )
+
     def _pick_title(
         self,
         query: str,
@@ -186,13 +280,12 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         year: Optional[str],
     ) -> Optional[ImdbTitle]:
         """同步选取标题、原名或别名精确命中的 IMDb 候选项。"""
-        candidates = self._candidate_titles(titles, mtype, year)
-        for title in candidates:
-            if self._name_matches(query, [title.primary_title, title.original_title]):
-                return title
+        plan = self._candidate_plan(query, titles, mtype, year)
+        if plan.direct_match:
+            return plan.direct_match
         if not self.imdb_api:
             return None
-        for title in candidates[:10]:
+        for title in plan.alias_candidates:
             akas = self.imdb_api.list_akas(title.id)
             if self._name_matches(query, [aka.text for aka in akas]):
                 return title
@@ -206,13 +299,12 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         year: Optional[str],
     ) -> Optional[ImdbTitle]:
         """异步选取标题、原名或别名精确命中的 IMDb 候选项。"""
-        candidates = self._candidate_titles(titles, mtype, year)
-        for title in candidates:
-            if self._name_matches(query, [title.primary_title, title.original_title]):
-                return title
+        plan = self._candidate_plan(query, titles, mtype, year)
+        if plan.direct_match:
+            return plan.direct_match
         if not self.imdb_api:
             return None
-        for title in candidates[:10]:
+        for title in plan.alias_candidates:
             akas = await self.imdb_api.async_list_akas(title.id)
             if self._name_matches(query, [aka.text for aka in akas]):
                 return title
@@ -444,6 +536,35 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_info.set_category(cls._category(title, media_type))
         return media_info
 
+    @classmethod
+    def _project_search_results(
+        cls,
+        titles: list[ImdbTitle],
+        mtype: Optional[MediaType],
+        year: Optional[str],
+    ) -> list[MediaInfo]:
+        """排序过滤 IMDb 搜索候选并投影为统一媒体信息。"""
+        return [
+            cls._to_media_info(title)
+            for title in cls._candidate_titles(titles, mtype, year)
+        ]
+
+    @staticmethod
+    def _finish_recognition(
+        media_info: MediaInfo, meta: Optional[MetaBase]
+    ) -> MediaInfo:
+        """保留解析季号并统一记录 IMDb 识别结果。"""
+        if meta and meta.begin_season is not None:
+            media_info.season = meta.begin_season
+        logger.info(
+            "IMDb 识别结果：%s %s %s:%s",
+            media_info.type.value,
+            media_info.title_year,
+            media_info.media_source,
+            media_info.media_id,
+        )
+        return media_info
+
     def _load_media_info(self, title: ImdbTitle) -> MediaInfo:
         """同步补齐一个 IMDb 条目的别名、演职员、剧集和图片。"""
         if not self.imdb_api:
@@ -503,36 +624,19 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     ) -> Optional[MediaInfo]:
         """按 IMDb 显式身份或标题元数据同步识别影视信息。"""
         del episode_group, cache, kwargs
-        if not self._supports_request_type(meta, mtype) or not self.imdb_api:
+        if not self.imdb_api:
             return None
-        requested_source = normalize_media_source(media_source)
-        if media_id is not None:
-            imdb_id = self._normalize_imdb_id(media_id)
-            if requested_source != MediaSource.IMDb or not imdb_id:
-                return None
-            title = self.imdb_api.get_title(imdb_id)
-        else:
-            if requested_source not in {None, MediaSource.IMDb}:
-                return None
-            selected_source = requested_source or normalize_media_source(
-                get_runtime_setting('RECOGNIZE_SOURCE')
-            )
-            if selected_source != MediaSource.IMDb or not meta or not meta.name:
-                return None
-            title = self._match_by_meta(meta, mtype)
+        plan = self._recognition_plan(meta, mtype, media_source, media_id)
+        if not plan:
+            return None
+        title = (
+            self.imdb_api.get_title(plan.media_id)
+            if plan.media_id is not None
+            else self._match_by_meta(plan.require_meta(), plan.media_type)
+        )
         if not title:
             return None
-        media_info = self._load_media_info(title)
-        if meta and meta.begin_season is not None:
-            media_info.season = meta.begin_season
-        logger.info(
-            "IMDb 识别结果：%s %s %s:%s",
-            media_info.type.value,
-            media_info.title_year,
-            media_info.media_source,
-            media_info.media_id,
-        )
-        return media_info
+        return self._finish_recognition(self._load_media_info(title), plan.meta)
 
     async def async_recognize_media(
         self,
@@ -546,36 +650,20 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     ) -> Optional[MediaInfo]:
         """按 IMDb 显式身份或标题元数据异步识别影视信息。"""
         del episode_group, cache, kwargs
-        if not self._supports_request_type(meta, mtype) or not self.imdb_api:
+        if not self.imdb_api:
             return None
-        requested_source = normalize_media_source(media_source)
-        if media_id is not None:
-            imdb_id = self._normalize_imdb_id(media_id)
-            if requested_source != MediaSource.IMDb or not imdb_id:
-                return None
-            title = await self.imdb_api.async_get_title(imdb_id)
-        else:
-            if requested_source not in {None, MediaSource.IMDb}:
-                return None
-            selected_source = requested_source or normalize_media_source(
-                get_runtime_setting('RECOGNIZE_SOURCE')
-            )
-            if selected_source != MediaSource.IMDb or not meta or not meta.name:
-                return None
-            title = await self._async_match_by_meta(meta, mtype)
+        plan = self._recognition_plan(meta, mtype, media_source, media_id)
+        if not plan:
+            return None
+        title = (
+            await self.imdb_api.async_get_title(plan.media_id)
+            if plan.media_id is not None
+            else await self._async_match_by_meta(plan.require_meta(), plan.media_type)
+        )
         if not title:
             return None
         media_info = await self._async_load_media_info(title)
-        if meta and meta.begin_season is not None:
-            media_info.season = meta.begin_season
-        logger.info(
-            "IMDb 异步识别结果：%s %s %s:%s",
-            media_info.type.value,
-            media_info.title_year,
-            media_info.media_source,
-            media_info.media_id,
-        )
-        return media_info
+        return self._finish_recognition(media_info, plan.meta)
 
     def search_medias(
         self,
@@ -583,16 +671,16 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_source: Optional[MediaSourceSelection] = None,
     ) -> Optional[list[MediaInfo]]:
         """按请求级来源选择同步搜索 IMDb 影视条目。"""
-        if not is_media_source_enabled(media_source, MediaSource.IMDb):
+        plan = self._search_plan(meta, media_source)
+        if not plan.enabled:
             return None
-        if not self.imdb_api or not meta.name:
+        if not self.imdb_api or not plan.meta:
             return []
-        return [
-            self._to_media_info(title)
-            for title in self._candidate_titles(
-                self.imdb_api.search_titles(meta.name), meta.type, meta.year
-            )
-        ]
+        return self._project_search_results(
+            self.imdb_api.search_titles(plan.meta.name),
+            plan.meta.type,
+            plan.meta.year,
+        )
 
     async def async_search_medias(
         self,
@@ -600,15 +688,15 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_source: Optional[MediaSourceSelection] = None,
     ) -> Optional[list[MediaInfo]]:
         """按请求级来源选择异步搜索 IMDb 影视条目。"""
-        if not is_media_source_enabled(media_source, MediaSource.IMDb):
+        plan = self._search_plan(meta, media_source)
+        if not plan.enabled:
             return None
-        if not self.imdb_api or not meta.name:
+        if not self.imdb_api or not plan.meta:
             return []
-        titles = await self.imdb_api.async_search_titles(meta.name)
-        return [
-            self._to_media_info(title)
-            for title in self._candidate_titles(titles, meta.type, meta.year)
-        ]
+        titles = await self.imdb_api.async_search_titles(plan.meta.name)
+        return self._project_search_results(
+            titles, plan.meta.type, plan.meta.year
+        )
 
     def clear_cache(self) -> None:
         """清理 IMDb 请求缓存并记录统一模块日志。"""
