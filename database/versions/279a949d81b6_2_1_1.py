@@ -7,7 +7,7 @@ Create Date: 2025-02-14 19:02:24.989349
 """
 
 from app.adapters.cache.backends import configure_platform_cache
-from app.application.torrent import clear_torrent_cache
+from app.application.torrent.download import clear_torrent_cache
 
 # revision identifiers, used by Alembic.
 revision = '279a949d81b6'

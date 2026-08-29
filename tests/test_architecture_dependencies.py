@@ -381,15 +381,19 @@ def test_application_torrent_uses_same_named_single_word_package() -> None:
     assert len(init_tree.body) == 1
 
     root_imports: list[str] = []
-    for path in APP_ROOT.rglob("*.py"):
-        if path.is_relative_to(APP_ROOT / "plugins"):
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "app.application.torrent":
-                root_imports.append(
-                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-                )
+    for root in (APP_ROOT, PROJECT_ROOT / "database"):
+        for path in root.rglob("*.py"):
+            if path.is_relative_to(APP_ROOT / "plugins"):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.ImportFrom)
+                    and node.module == "app.application.torrent"
+                ):
+                    root_imports.append(
+                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                    )
     assert root_imports == []
 
 
