@@ -1244,9 +1244,6 @@
   "tests/test_tmdb_failure_snapshot_cache.py": {
     "I001": 1
   },
-  "tests/test_tmdb_recognize.py": {
-    "I001": 1
-  },
   "tests/test_tmdb_retry_and_errors.py": {
     "F811": 1
   },

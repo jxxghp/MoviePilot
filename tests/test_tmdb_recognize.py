@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-import asyncio
 import json
 from copy import deepcopy
 from pathlib import Path
-from unittest import TestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from app.domain.metainfo import MetaInfo
-from app.chain.base import ChainBase
+import pytest
+
 from app.adapters.external.server import MoviePilotServerHelper
+from app.chain.base import ChainBase
+from app.domain.metainfo import MetaInfo
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
 from app.schemas.types import MediaSource, MediaType
@@ -96,159 +96,121 @@ def tearDownModule():
     _PATCHERS.clear()
 
 
-class TmdbRecognizeModuleTest(TestCase):
-    """
-    TMDB模块层识别测试
-    模块层使用统一媒体身份；历史 tmdbid 文件名标签只在元数据解析边界转换。
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        cls.module = TheMovieDbModule()
-        cls.module.init_module()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.module.stop()
-
-    def _run(self, coro):
-        return asyncio.run(coro)
-
-    def test_tmdbid_priority_over_title(self):
-        """
-        当标题中包含 {tmdbid=xxx} 时，应优先使用tmdbid识别，
-        而非回退到标题搜索
-        """
-        meta = MetaInfo(title="空之境界 {tmdbid=938416}")
-        self.assertEqual(meta.media_source, MediaSource.TMDB)
-        self.assertEqual(meta.media_id, "938416")
-        self.assertEqual(meta.cn_name, "空之境界")
-
-        result = self._run(
-            self.module.async_recognize_media(
-                meta=meta,
-                media_source=meta.media_source,
-                media_id=meta.media_id,
-                cache=False,
-            )
-        )
-        self.assertIsNotNone(result, "应能识别到媒体信息")
-        self.assertEqual(result.tmdb_id, 938416)
-
-    def test_tmdbid_disambiguation_tv_vs_movie(self):
-        """
-        当同一tmdbid同时存在电影和电视剧时，应通过元数据消歧
-        tmdbid=23155 同时存在电影"空之境界 第五章 矛盾螺旋"和电视剧"TV Land Top 10"
-        标题包含"空之境界"应消歧为电影
-        """
-        meta = MetaInfo(title="空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
-        self.assertEqual(meta.media_source, MediaSource.TMDB)
-        self.assertEqual(meta.media_id, "23155")
-
-        result = self._run(
-            self.module.async_recognize_media(
-                meta=meta,
-                media_source=meta.media_source,
-                media_id=meta.media_id,
-                cache=False,
-            )
-        )
-        self.assertIsNotNone(result, "同ID存在电影和电视剧时应能通过元数据消歧")
-        self.assertEqual(result.tmdb_id, 23155)
-        self.assertEqual(result.type, MediaType.MOVIE)
-
-    def test_tmdbid_with_explicit_type(self):
-        """
-        当标题中同时包含 tmdbid 和 type 时，应直接使用指定类型查询
-        """
-        meta = MetaInfo(title="空之境界 {tmdbid=23155}")
-
-        result = self._run(
-            self.module.async_recognize_media(
-                meta=meta,
-                media_source=meta.media_source,
-                media_id=meta.media_id,
-                mtype=MediaType.TV,
-                cache=False,
-            )
-        )
-        self.assertIsNotNone(result)
-        self.assertEqual(result.tmdb_id, 23155)
-        self.assertEqual(result.type, MediaType.TV)
-
-    def test_tmdbid_only_movie_exists(self):
-        """
-        tmdbid仅存在电影时，即使meta.type推断为TV也应正确识别为电影
-        tmdbid=496891 仅存在电影"少女与战车 最终章 ～第2话～"
-        """
-        meta = MetaInfo(title="少女与战车 最终章 ～第2话～ (2019) {tmdbid=496891}")
-        self.assertEqual(meta.media_source, MediaSource.TMDB)
-        self.assertEqual(meta.media_id, "496891")
-
-        result = self._run(
-            self.module.async_recognize_media(
-                meta=meta,
-                media_source=meta.media_source,
-                media_id=meta.media_id,
-                cache=False,
-            )
-        )
-        self.assertIsNotNone(result, "仅存在电影时应正确识别")
-        self.assertEqual(result.tmdb_id, 496891)
-        self.assertEqual(result.type, MediaType.MOVIE)
+@pytest.fixture
+def tmdb_module():
+    """创建并在用例结束后关闭独立的 TMDB 模块实例。"""
+    module = TheMovieDbModule()
+    module.init_module()
+    yield module
+    module.stop()
 
 
-class TmdbRecognizeChainTest(TestCase):
-    """
-    ChainBase层识别测试（端到端）
-    验证旧文件名标签转换为统一媒体身份后的完整识别流程
-    """
+@pytest.fixture
+def chain():
+    """在 pytest 组合根完成装配后创建端到端 Chain。"""
+    return ChainBase()
 
-    @classmethod
-    def setUpClass(cls):
-        cls.chain = ChainBase()
 
-    def _run(self, coro):
-        return asyncio.run(coro)
+@pytest.mark.asyncio
+async def test_tmdbid_priority_over_title(tmdb_module):
+    """文件名带 TMDB 身份时优先按身份识别，不回退标题搜索。"""
+    meta = MetaInfo(title="空之境界 {tmdbid=938416}")
+    assert meta.media_source is MediaSource.TMDB
+    assert meta.media_id == "938416"
+    assert meta.cn_name == "空之境界"
 
-    def test_chain_tmdbid_movie(self):
-        """
-        通过ChainBase识别，tmdbid对应电影应正确识别
-        """
-        meta = MetaInfo(title="空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
-        result = self._run(
-            self.chain.async_recognize_media(meta=meta, cache=False)
-        )
-        self.assertIsNotNone(result)
-        self.assertEqual(result.tmdb_id, 23155)
-        self.assertEqual(result.type, MediaType.MOVIE)
+    result = await tmdb_module.async_recognize_media(
+        meta=meta,
+        media_source=meta.media_source,
+        media_id=meta.media_id,
+        cache=False,
+    )
+    assert result is not None, "应能识别到媒体信息"
+    assert result.tmdb_id == 938416
 
-    def test_chain_tmdbid_ignores_inferred_type(self):
-        """
-        当tmdbid存在时，不应使用meta推断的类型
-        "第2话"会让meta.type推断为TV，但tmdbid=496891仅存在电影
-        """
-        meta = MetaInfo(title="少女与战车 最终章 ～第2话～ (2019) {tmdbid=496891}")
-        self.assertEqual(meta.type, MediaType.TV, "meta.type应被推断为TV")
-        self.assertEqual(meta.media_source, MediaSource.TMDB)
-        self.assertEqual(meta.media_id, "496891")
 
-        result = self._run(
-            self.chain.async_recognize_media(meta=meta, cache=False)
-        )
-        self.assertIsNotNone(result, "有tmdbid时不应因meta.type推断错误而识别失败")
-        self.assertEqual(result.tmdb_id, 496891)
-        self.assertEqual(result.type, MediaType.MOVIE)
+@pytest.mark.asyncio
+async def test_tmdbid_disambiguation_tv_vs_movie(tmdb_module):
+    """同一 TMDB ID 同时命中电影和剧集时按标题证据消歧。"""
+    meta = MetaInfo(title="空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
+    assert meta.media_source is MediaSource.TMDB
+    assert meta.media_id == "23155"
 
-    def test_chain_no_tmdbid_uses_inferred_type(self):
-        """
-        无tmdbid时，应正常使用meta推断的类型进行标题搜索
-        """
-        meta = MetaInfo(title="进击的巨人 S01E01")
-        self.assertEqual(meta.type, MediaType.TV)
+    result = await tmdb_module.async_recognize_media(
+        meta=meta,
+        media_source=meta.media_source,
+        media_id=meta.media_id,
+        cache=False,
+    )
+    assert result is not None, "同 ID 存在电影和电视剧时应能通过元数据消歧"
+    assert result.tmdb_id == 23155
+    assert result.type is MediaType.MOVIE
 
-        result = self._run(
-            self.chain.async_recognize_media(meta=meta, cache=False)
-        )
-        self.assertIsNotNone(result)
-        self.assertEqual(result.type, MediaType.TV)
+
+@pytest.mark.asyncio
+async def test_tmdbid_with_explicit_type(tmdb_module):
+    """显式媒体类型与 TMDB 身份同时存在时直接查询指定类型。"""
+    meta = MetaInfo(title="空之境界 {tmdbid=23155}")
+    result = await tmdb_module.async_recognize_media(
+        meta=meta,
+        media_source=meta.media_source,
+        media_id=meta.media_id,
+        mtype=MediaType.TV,
+        cache=False,
+    )
+    assert result is not None
+    assert result.tmdb_id == 23155
+    assert result.type is MediaType.TV
+
+
+@pytest.mark.asyncio
+async def test_tmdbid_only_movie_exists(tmdb_module):
+    """只有电影记录时忽略标题对 TV 类型的错误推断。"""
+    meta = MetaInfo(title="少女与战车 最终章 ～第2话～ (2019) {tmdbid=496891}")
+    assert meta.media_source is MediaSource.TMDB
+    assert meta.media_id == "496891"
+
+    result = await tmdb_module.async_recognize_media(
+        meta=meta,
+        media_source=meta.media_source,
+        media_id=meta.media_id,
+        cache=False,
+    )
+    assert result is not None, "仅存在电影时应正确识别"
+    assert result.tmdb_id == 496891
+    assert result.type is MediaType.MOVIE
+
+
+@pytest.mark.asyncio
+async def test_chain_tmdbid_movie(chain):
+    """端到端 Chain 应按 TMDB 身份识别电影。"""
+    meta = MetaInfo(title="空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
+    result = await chain.async_recognize_media(meta=meta, cache=False)
+    assert result is not None
+    assert result.tmdb_id == 23155
+    assert result.type is MediaType.MOVIE
+
+
+@pytest.mark.asyncio
+async def test_chain_tmdbid_ignores_inferred_type(chain):
+    """端到端 Chain 有 TMDB 身份时不采信标题误推断的类型。"""
+    meta = MetaInfo(title="少女与战车 最终章 ～第2话～ (2019) {tmdbid=496891}")
+    assert meta.type is MediaType.TV, "meta.type 应被推断为 TV"
+    assert meta.media_source is MediaSource.TMDB
+    assert meta.media_id == "496891"
+
+    result = await chain.async_recognize_media(meta=meta, cache=False)
+    assert result is not None, "有 TMDB 身份时不应因类型推断错误而识别失败"
+    assert result.tmdb_id == 496891
+    assert result.type is MediaType.MOVIE
+
+
+@pytest.mark.asyncio
+async def test_chain_no_tmdbid_uses_inferred_type(chain):
+    """无 TMDB 身份时端到端 Chain 继续使用标题推断类型。"""
+    meta = MetaInfo(title="进击的巨人 S01E01")
+    assert meta.type is MediaType.TV
+
+    result = await chain.async_recognize_media(meta=meta, cache=False)
+    assert result is not None
+    assert result.type is MediaType.TV
