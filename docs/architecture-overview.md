@@ -798,7 +798,7 @@ flowchart LR
   保留多余导出。
 
 当前架构问题、优先级、分阶段实施步骤与验收门禁见
-[`docs/architecture-optimization-checklist.md`](architecture-optimization-checklist.md)。
+[`docs/architecture/optimization-checklist.md`](architecture/optimization-checklist.md)。
 
 ---
 
@@ -814,7 +814,7 @@ flowchart LR
 | [`docs/rules/10-data-and-persistent.md`](rules/10-data-and-persistent.md) | 数据模型、迁移与缓存规范 |
 | [`docs/subscribe-lifecycle.md`](subscribe-lifecycle.md) | 订阅生命周期详解 |
 | [`docs/mcp-api.md`](mcp-api.md) | MCP 工具端点说明 |
-| [`docs/architecture-optimization-checklist.md`](architecture-optimization-checklist.md) | 当前架构差距、优先级与可执行优化清单 |
-| [`docs/architecture-refactor-roadmap.md`](architecture-refactor-roadmap.md) | 多级 Goal、叶子依赖、清零条件与交付状态 |
+| [`docs/architecture/optimization-checklist.md`](architecture/optimization-checklist.md) | 当前架构差距、优先级与可执行优化清单 |
+| [`docs/architecture/refactor-roadmap.md`](architecture/refactor-roadmap.md) | 多级 Goal、叶子依赖、清零条件与交付状态 |
 | [`docs/v3t-runtime-governance.md`](v3t-runtime-governance.md) | V3/V3t 运行依赖、故障恢复、GIL 可观测性与兼容退场门禁 |
 | [`docs/adr/0007-background-action-reliability.md`](adr/0007-background-action-reliability.md) | 后台动作 E0–E3 可靠性分级与完成语义决策 |

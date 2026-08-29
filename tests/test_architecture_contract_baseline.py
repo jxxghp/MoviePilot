@@ -105,10 +105,16 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
         encoding="utf-8"
     )
     checklist = (
-        PROJECT_ROOT / "docs" / "architecture-optimization-checklist.md"
+        PROJECT_ROOT
+        / "docs"
+        / "architecture"
+        / "optimization-checklist.md"
     ).read_text(encoding="utf-8")
     roadmap = (
-        PROJECT_ROOT / "docs" / "architecture-refactor-roadmap.md"
+        PROJECT_ROOT
+        / "docs"
+        / "architecture"
+        / "refactor-roadmap.md"
     ).read_text(encoding="utf-8")
     edge_count = f"{dependency['edge_count']:,}"
     ruff_count = sum(
