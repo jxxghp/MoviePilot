@@ -18,15 +18,6 @@ from app.domain.meta.metamusic import (
     normalize_audio_format,
 )
 from app.domain.metainfo import MetaInfo
-from app.domain.projection.anilist import format_date as _format_anilist_date
-from app.domain.projection.anilist import project as _project_anilist
-from app.domain.projection.anilist import resolve_media_type as _resolve_anilist_media_type
-from app.domain.projection.anilist import select_chinese_title as _select_anilist_chinese_title
-from app.domain.projection.bangumi import project as _project_bangumi
-from app.domain.projection.bangumi import resolve_media_type as _resolve_bangumi_media_type
-from app.domain.projection.douban import project as _project_douban
-from app.domain.projection.tmdb import configure_image_url_builder as _configure_tmdb_image_url_builder
-from app.domain.projection.tmdb import project as _project_tmdb
 from app.foundation import temporal as time_tools
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import (
@@ -66,7 +57,37 @@ def configure_tmdb_image_url_builder(
     builder: Callable[[str], Optional[str]],
 ) -> None:
     """兼容旧入口，将 TMDB 图片地址构造器交给来源投影 owner。"""
-    _configure_tmdb_image_url_builder(builder)
+    from app.domain.projection.tmdb import configure_image_url_builder
+
+    configure_image_url_builder(builder)
+
+
+def _project_tmdb(state: dict, info: dict) -> dict:
+    """按需加载 TMDB 投影 owner，避免领域上下文冷导入全部来源实现。"""
+    from app.domain.projection.tmdb import project
+
+    return project(state, info)
+
+
+def _project_douban(state: dict, info: dict) -> dict:
+    """按需加载豆瓣投影 owner，避免领域上下文冷导入全部来源实现。"""
+    from app.domain.projection.douban import project
+
+    return project(state, info)
+
+
+def _project_bangumi(state: dict, info: dict) -> dict:
+    """按需加载 Bangumi 投影 owner，避免领域上下文冷导入全部来源实现。"""
+    from app.domain.projection.bangumi import project
+
+    return project(state, info)
+
+
+def _project_anilist(state: dict, info: dict) -> dict:
+    """按需加载 AniList 投影 owner，避免领域上下文冷导入全部来源实现。"""
+    from app.domain.projection.anilist import project
+
+    return project(state, info)
 
 
 def _validate_music_type(value: object) -> None:
@@ -1356,7 +1377,9 @@ class MediaInfo:
     @staticmethod
     def get_bangumi_media_type(info: dict) -> MediaType:
         """兼容旧方法，委托 Bangumi 来源 owner 解析媒体类型。"""
-        return _resolve_bangumi_media_type(info)
+        from app.domain.projection.bangumi import resolve_media_type
+
+        return resolve_media_type(info)
 
     def set_bangumi_info(self, info: dict) -> None:
         """通过 Bangumi 来源 owner 初始化统一媒体字段。"""
@@ -1365,17 +1388,23 @@ class MediaInfo:
     @staticmethod
     def get_anilist_media_type(info: dict) -> MediaType:
         """兼容旧方法，委托 AniList 来源 owner 解析媒体类型。"""
-        return _resolve_anilist_media_type(info)
+        from app.domain.projection.anilist import resolve_media_type
+
+        return resolve_media_type(info)
 
     @staticmethod
     def _anilist_date(date_info: dict) -> Optional[str]:
         """兼容旧私有补丁点，委托 AniList owner 格式化模糊日期。"""
-        return _format_anilist_date(date_info)
+        from app.domain.projection.anilist import format_date
+
+        return format_date(date_info)
 
     @staticmethod
     def _anilist_chinese_title(info: dict) -> Optional[str]:
         """兼容旧私有补丁点，委托 AniList owner 选择中文标题。"""
-        return _select_anilist_chinese_title(info)
+        from app.domain.projection.anilist import select_chinese_title
+
+        return select_chinese_title(info)
 
     def set_anilist_info(self, info: dict) -> None:
         """通过 AniList 来源 owner 初始化统一媒体字段。"""

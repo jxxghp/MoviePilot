@@ -9,7 +9,6 @@ from typing import Any, Final, Optional, cast
 
 from app.chain.media.contract import _MediaOwnerBase
 from app.domain.metainfo import MetaInfo
-from app.domain.projection.bangumi import resolve_media_type as resolve_bangumi_media_type
 from app.schemas.event import (
     MediaRecognizeConvertEventData as _SchemaMediaRecognizeConvertEventData,
 )
@@ -163,6 +162,8 @@ def _build_bangumi_tmdb_match(
     source_info: _ProjectionSource,
 ) -> Optional[_TmdbMatch]:
     """把 Bangumi 详情投影为 TMDB 名称匹配请求。"""
+    from app.domain.projection.bangumi import resolve_media_type
+
     title = _optional_text(source_info.get("name"))
     if not title:
         return None
@@ -173,7 +174,7 @@ def _build_bangumi_tmdb_match(
     return _TmdbMatch(
         names=_unique_names((localized_meta.name, meta.name)),
         year=MediaProjectionOwner._extract_year_from_bangumi(source_info),
-        media_type=plan.media_type or resolve_bangumi_media_type(source_info),
+        media_type=plan.media_type or resolve_media_type(source_info),
         season=selected_season,
     )
 
@@ -205,6 +206,8 @@ def _build_bangumi_douban_match(
     source_info: _ProjectionSource,
 ) -> Optional[_DoubanMatch]:
     """把 Bangumi 详情投影为豆瓣名称、年份、类型和季请求。"""
+    from app.domain.projection.bangumi import resolve_media_type
+
     title = _optional_text(source_info.get("name_cn") or source_info.get("name"))
     if not title:
         return None
@@ -213,7 +216,7 @@ def _build_bangumi_douban_match(
     return _DoubanMatch(
         name=meta.name,
         year=MediaProjectionOwner._extract_year_from_bangumi(source_info),
-        media_type=plan.media_type or resolve_bangumi_media_type(source_info),
+        media_type=plan.media_type or resolve_media_type(source_info),
         season=selected_season,
     )
 
