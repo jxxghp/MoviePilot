@@ -66,6 +66,16 @@ class _RecognitionSelection:
         return helped if self.is_recognized(helped) else native
 
 
+@dataclass(frozen=True, slots=True)
+class _VideoHelpElements:
+    """保存影视辅助识别事件解析出的规范化标题要素。"""
+
+    title: str
+    year: Optional[str]
+    season: Optional[int]
+    episode: Optional[int]
+
+
 def _normalize_music_year(value: object) -> Optional[int]:
     """把本地或插件音乐年份统一为正整数，空值和非法文本返回空。"""
     text = str(value or "").strip()
@@ -281,6 +291,55 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         text = str(value).strip()
         return int(text) if text.isdigit() else None
 
+    @staticmethod
+    def _video_help_elements(
+        event_data: Mapping[str, object],
+    ) -> Optional[_VideoHelpElements]:
+        """规范化影视辅助识别结果，标题为空或未知时拒绝该结果。"""
+        recognized_title: Optional[str] = None
+        recognized_year: Optional[str] = None
+        if event_data.get("name"):
+            recognized_title = (
+                str(event_data["name"]).split("/")[0].strip().replace(".", " ")
+            )
+        if not recognized_title or recognized_title == "Unknown":
+            return None
+        if event_data.get("year"):
+            recognized_year = str(event_data["year"]).split("/")[0].strip()
+        if not str(recognized_year).isdigit():
+            recognized_year = None
+        return _VideoHelpElements(
+            title=recognized_title,
+            year=recognized_year,
+            season=MediaPluginOwner._parse_recognize_event_number(
+                event_data.get("season")
+            ),
+            episode=MediaPluginOwner._parse_recognize_event_number(
+                event_data.get("episode")
+            ),
+        )
+
+    @staticmethod
+    def _prepare_video_help_meta(
+        org_meta: MetaBase,
+        event_data: Mapping[str, object],
+    ) -> Optional[MetaBase]:
+        """统一校验影视辅助要素并把有效变化应用到本次元数据。"""
+        elements = MediaPluginOwner._video_help_elements(event_data)
+        if elements is None:
+            return None
+        if elements.title == org_meta.name and elements.year == org_meta.year:
+            logger.info("辅助识别与原始识别结果一致，无需重新识别媒体信息")
+            return None
+        logger.info("辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
+        org_meta.name = elements.title
+        org_meta.year = elements.year
+        org_meta.begin_season = elements.season
+        org_meta.begin_episode = elements.episode
+        if org_meta.begin_season is not None or org_meta.begin_episode is not None:
+            org_meta.type = MediaType.TV
+        return org_meta
+
     def recognize_help(
         self,
         title: str,
@@ -318,38 +377,13 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         )
         if not result:
             return None
-        # 获取返回事件数据
         event_data = result.event_data or {}
         logger.info(f"获取到辅助识别结果：{event_data}")
-        # 处理数据格式
-        recognized_title: Optional[str] = None
-        recognized_year: Optional[str] = None
-        if event_data.get("name"):
-            recognized_title = str(event_data["name"]).split("/")[0].strip().replace(".", " ")
-        if event_data.get("year"):
-            recognized_year = str(event_data["year"]).split("/")[0].strip()
-        season_number = self._parse_recognize_event_number(event_data.get("season"))
-        episode_number = self._parse_recognize_event_number(event_data.get("episode"))
-        if not recognized_title:
+        rematch_meta = MediaPluginOwner._prepare_video_help_meta(org_meta, event_data)
+        if rematch_meta is None:
             return None
-        if recognized_title == "Unknown":
-            return None
-        if not str(recognized_year).isdigit():
-            recognized_year = None
-        # 结果赋值
-        if recognized_title == org_meta.name and recognized_year == org_meta.year:
-            logger.info("辅助识别与原始识别结果一致，无需重新识别媒体信息")
-            return None
-        logger.info("辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
-        org_meta.name = recognized_title
-        org_meta.year = recognized_year
-        org_meta.begin_season = season_number
-        org_meta.begin_episode = episode_number
-        if org_meta.begin_season is not None or org_meta.begin_episode is not None:
-            org_meta.type = MediaType.TV
-        # 重新识别
         return self.recognize_media(
-            meta=org_meta,
+            meta=rematch_meta,
             media_source=media_source,
             share_meta=share_meta,
             episode_group=episode_group,
@@ -372,25 +406,52 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         :param media_source: 请求级识别数据源
         :param music_type: 音乐实体类型
         """
-        # 发送音乐名称识别事件，等待插件返回标题要素
         result = self.eventmanager.send_event(
             ChainEventType.MusicNameRecognize,
-            {
-                "title": title,
-                "artist": org_meta.artist,
-                "album": org_meta.album,
-                "year": org_meta.year,
-                "music_type": music_type,
-            },
+            MediaPluginOwner._music_help_payload(title, org_meta, music_type),
         )
         if not result:
             return None
         event_data = result.event_data or {}
         logger.info(f"获取到音乐辅助识别结果：{event_data}")
-        name, artist, album, year = self._parse_music_recognize_event(event_data)
+        new_meta = MediaPluginOwner._prepare_music_help_meta(org_meta, event_data)
+        if new_meta is None:
+            return None
+        # 重新识别，仅采信取得远端身份的结果，否则由选择流程保留原生兜底
+        mediainfo = self.recognize_media(
+            meta=new_meta,
+            media_source=media_source,
+            share_meta=share_meta,
+            music_type=music_type,
+        )
+        return mediainfo if mediainfo and mediainfo.media_source else None
+
+    @staticmethod
+    def _music_help_payload(
+        title: str,
+        org_meta: MetaMusic,
+        music_type: Optional[str],
+    ) -> Mapping[str, object]:
+        """为同步与异步音乐辅助识别生成完全相同的事件载荷。"""
+        return {
+            "title": title,
+            "artist": org_meta.artist,
+            "album": org_meta.album,
+            "year": org_meta.year,
+            "music_type": music_type,
+        }
+
+    @staticmethod
+    def _prepare_music_help_meta(
+        org_meta: MetaMusic,
+        event_data: Mapping[str, object],
+    ) -> Optional[MetaMusic]:
+        """统一校验音乐辅助要素，并仅为真实变化构造重新匹配元数据。"""
+        name, artist, album, year = MediaPluginOwner._parse_music_recognize_event(
+            event_data
+        )
         if not name:
             return None
-        # 辅助识别要素与原始一致时无需重新匹配
         if (
             name == org_meta.title
             and (not artist or artist in org_meta.artists)
@@ -400,21 +461,13 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
             logger.info("音乐辅助识别与原始识别结果一致，无需重新匹配媒体信息")
             return None
         logger.info("音乐辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
-        new_meta = self._build_music_help_meta(
+        return MediaPluginOwner._build_music_help_meta(
             org_meta=org_meta,
             name=name,
             artist=artist,
             album=album,
             year=year,
         )
-        # 重新识别，仅采信取得远端身份的结果，否则由选择流程保留原生兜底
-        mediainfo = self.recognize_media(
-            meta=new_meta,
-            media_source=media_source,
-            share_meta=share_meta,
-            music_type=music_type,
-        )
-        return mediainfo if mediainfo and mediainfo.media_source else None
 
     @staticmethod
     def _parse_music_recognize_event(
@@ -541,35 +594,11 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         # 获取返回事件数据
         event_data = result.event_data or {}
         logger.info(f"获取到辅助识别结果：{event_data}")
-        # 处理数据格式
-        recognized_title: Optional[str] = None
-        recognized_year: Optional[str] = None
-        if event_data.get("name"):
-            recognized_title = str(event_data["name"]).split("/")[0].strip().replace(".", " ")
-        if event_data.get("year"):
-            recognized_year = str(event_data["year"]).split("/")[0].strip()
-        season_number = self._parse_recognize_event_number(event_data.get("season"))
-        episode_number = self._parse_recognize_event_number(event_data.get("episode"))
-        if not recognized_title:
+        rematch_meta = MediaPluginOwner._prepare_video_help_meta(org_meta, event_data)
+        if rematch_meta is None:
             return None
-        if recognized_title == "Unknown":
-            return None
-        if not str(recognized_year).isdigit():
-            recognized_year = None
-        # 结果赋值
-        if recognized_title == org_meta.name and recognized_year == org_meta.year:
-            logger.info("辅助识别与原始识别结果一致，无需重新识别媒体信息")
-            return None
-        logger.info("辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
-        org_meta.name = recognized_title
-        org_meta.year = recognized_year
-        org_meta.begin_season = season_number
-        org_meta.begin_episode = episode_number
-        if org_meta.begin_season is not None or org_meta.begin_episode is not None:
-            org_meta.type = MediaType.TV
-        # 重新识别
         return await self.async_recognize_media(
-            meta=org_meta,
+            meta=rematch_meta,
             media_source=media_source,
             share_meta=share_meta,
             episode_group=episode_group,
@@ -592,41 +621,17 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         :param media_source: 请求级识别数据源
         :param music_type: 音乐实体类型
         """
-        # 发送音乐名称识别事件，等待插件返回标题要素
         result = await self.eventmanager.async_send_event(
             ChainEventType.MusicNameRecognize,
-            {
-                "title": title,
-                "artist": org_meta.artist,
-                "album": org_meta.album,
-                "year": org_meta.year,
-                "music_type": music_type,
-            },
+            MediaPluginOwner._music_help_payload(title, org_meta, music_type),
         )
         if not result:
             return None
         event_data = result.event_data or {}
         logger.info(f"获取到音乐辅助识别结果：{event_data}")
-        name, artist, album, year = self._parse_music_recognize_event(event_data)
-        if not name:
+        new_meta = MediaPluginOwner._prepare_music_help_meta(org_meta, event_data)
+        if new_meta is None:
             return None
-        # 辅助识别要素与原始一致时无需重新匹配
-        if (
-            name == org_meta.title
-            and (not artist or artist in org_meta.artists)
-            and (not album or album == org_meta.album)
-            and (not year or year == _normalize_music_year(org_meta.year))
-        ):
-            logger.info("音乐辅助识别与原始识别结果一致，无需重新匹配媒体信息")
-            return None
-        logger.info("音乐辅助识别结果与原始识别结果不一致，重新匹配媒体信息 ...")
-        new_meta = self._build_music_help_meta(
-            org_meta=org_meta,
-            name=name,
-            artist=artist,
-            album=album,
-            year=year,
-        )
         # 重新识别，仅采信取得远端身份的结果，否则由选择流程保留原生兜底
         mediainfo = await self.async_recognize_media(
             meta=new_meta,
