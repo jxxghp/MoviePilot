@@ -1,17 +1,17 @@
 from typing import Any
 
 from app.agent.llm.gateway import register_llm_provider_runtime
-from app.agent.runtime_loader import (
+from app.agent.loader import (
     activate_agent_service,
     begin_agent_shutdown,
     close_materialized_terminal_sessions,
     is_tool_factory_materialized,
     reconcile_agent_service,
 )
-from app.agent.runtime_loader import (
+from app.agent.loader import (
     get_agent_manager as get_runtime_agent_manager,
 )
-from app.agent.runtime_loader import (
+from app.agent.loader import (
     get_running_agent_manager as get_runtime_running_agent_manager,
 )
 from app.application.agent import (
@@ -141,7 +141,7 @@ def _get_llm_helper() -> Any:
 
 def _get_manual_redo_prompt_builder() -> Any:
     """首个整理接管请求才导入对应提示词构建器。"""
-    from app.agent.prompt.transfer_redo import build_manual_redo_prompt
+    from app.agent.prompt.transfer import build_manual_redo_prompt
 
     return build_manual_redo_prompt
 

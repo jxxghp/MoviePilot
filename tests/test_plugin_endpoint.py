@@ -31,7 +31,7 @@ from app.application.plugin.release import PluginReleaseService
 from app.foundation.singleton import Singleton
 from app.runtime.config import settings
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.tasks import TaskRegistry
 from app.schemas.event import PluginDataResetEventData
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus

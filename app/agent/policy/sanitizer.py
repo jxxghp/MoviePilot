@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import AliasChoices, AliasPath, BaseModel, ValidationError
 
-from app.agent.policy.secret_fields import is_secret_setting_key
+from app.agent.policy.secrets import is_secret_setting_key
 
 
 REDACTED_VALUE = "***"

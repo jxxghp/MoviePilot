@@ -16,7 +16,7 @@ from app.api.endpoints.openai import (
     _is_manager_unavailable,
     _run_managed_agent,
 )
-from app.api.openai_utils import (
+from app.api.protocol import (
     build_anthropic_messages,
     build_prompt,
     build_session_id,

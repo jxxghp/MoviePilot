@@ -298,7 +298,7 @@ def test_transfer_ai_retry_callback_uses_successful_move_dest_as_source(
     async def fake_async_post_message(*args, **kwargs):
         return None
 
-    from app.agent.prompt.transfer_redo import build_manual_redo_prompt
+    from app.agent.prompt.transfer import build_manual_redo_prompt
 
     manager = SimpleNamespace(run_background_prompt=fake_run_background_prompt)
     loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})

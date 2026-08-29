@@ -16,7 +16,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
-from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.modules._base.media import MediaAuxiliaryProviderMixin
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.douban.scraper import DoubanScraper
 from app.runtime.execution import retry

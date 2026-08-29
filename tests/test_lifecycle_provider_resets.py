@@ -110,8 +110,8 @@ from app.application.workflow import (
     get_configured_workflow_execution,
     reset_workflow_execution,
 )
-from app.runtime.extensions import service_config as service_config_module
-from app.runtime.extensions.service_config import (
+from app.runtime.extensions import service as service_config_module
+from app.runtime.extensions.service import (
     configure_service_config_reader,
     reset_service_config_reader,
 )

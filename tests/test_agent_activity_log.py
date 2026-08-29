@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from app.agent.middleware.activity_log import (
+from app.agent.middleware.activity import (
     ActivityLogMiddleware,
     QUERY_ACTIVITY_LOG_TOOL_DESCRIPTION,
     QUERY_ACTIVITY_LOG_TOOL_NAME,
@@ -111,7 +111,7 @@ def test_activity_log_skips_trivial_greeting_without_llm(tmp_path):
 
         with (
             patch(
-                "app.agent.middleware.activity_log._summarize_with_llm",
+                "app.agent.middleware.activity._summarize_with_llm",
                 new=summarize_mock,
             ),
             patch.object(middleware, "_append_activity", new=append_mock),
@@ -185,7 +185,7 @@ def test_activity_log_records_detailed_summary(tmp_path):
     async def _run_test():
         middleware = ActivityLogMiddleware(activity_dir=str(tmp_path))
         with patch(
-            "app.agent.middleware.activity_log._summarize_with_llm",
+            "app.agent.middleware.activity._summarize_with_llm",
             new=AsyncMock(return_value=summary),
         ):
             await middleware.aafter_agent(
@@ -234,7 +234,7 @@ def test_activity_log_after_agent_does_not_wait_for_summary(tmp_path):
         append_mock = AsyncMock()
         with (
             patch(
-                "app.agent.middleware.activity_log._summarize_with_llm",
+                "app.agent.middleware.activity._summarize_with_llm",
                 side_effect=_slow_summarize,
             ) as summarize_mock,
             patch.object(middleware, "_append_activity", new=append_mock),
@@ -479,7 +479,7 @@ def test_activity_log_middleware_sanitizes_its_own_logs(tmp_path):
         async def _failing_handler(_request):
             raise RuntimeError(f"Authorization: Bearer {secret_marker}")
 
-        with patch("app.agent.middleware.activity_log.logger", mock_logger):
+        with patch("app.agent.middleware.activity.logger", mock_logger):
             try:
                 await middleware.awrap_tool_call(request, _failing_handler)
             except RuntimeError:
@@ -503,10 +503,10 @@ def test_activity_log_provider_error_does_not_echo_secret(tmp_path):
 
     with (
         patch(
-            "app.agent.middleware.activity_log.query_activity_logs",
+            "app.agent.middleware.activity.query_activity_logs",
             side_effect=RuntimeError(f"OPENAI_API_KEY={secret_marker}"),
         ),
-        patch("app.agent.middleware.activity_log.logger", mock_logger),
+        patch("app.agent.middleware.activity.logger", mock_logger),
     ):
         result = asyncio.run(
             middleware._tool_provider.query_activity_log(keyword="visible")

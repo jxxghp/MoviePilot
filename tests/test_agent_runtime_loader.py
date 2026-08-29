@@ -22,7 +22,7 @@ from app.runtime.capabilities.model import (
 @pytest.fixture
 def runtime_loader(monkeypatch):
     """为每个用例提供未构建、未关闭的 Agent Capability Runtime。"""
-    from app.agent import runtime_loader as module
+    from app.agent import loader as module
 
     monkeypatch.setattr(module, "_agent_runtime", None)
     for implementation_module in (

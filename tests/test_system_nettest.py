@@ -1,5 +1,6 @@
 import asyncio
 import ipaddress
+import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -49,7 +50,7 @@ _STUB_MODULES = dict([
     _stub("app.chain.system", SystemChain=_Dummy),
     _stub("app.runtime.events", eventmanager=_Dummy(), Event=_Dummy, EventManager=_Dummy),
     _stub("app.domain.metainfo", MetaInfo=_Dummy),
-    _stub("app.runtime.extensions.module_manager", ModuleManager=_Dummy),
+    _stub("app.runtime.extensions.module.manager", ModuleManager=_Dummy),
     _stub("app.adapters.web.security.access", verify_apitoken=_Dummy, verify_resource_token=_Dummy, verify_token=_Dummy),
     _stub("app.api.context", get_host_runtime=_Dummy),
     _stub("app.startup.composition.context", HostRuntime=_Dummy),
@@ -74,12 +75,25 @@ _STUB_MODULES = dict([
 ])
 
 _APP_MODULES = snapshot_modules("app")
+_ENDPOINTS_PACKAGE = sys.modules.get("app.api.endpoints")
+_MISSING_SYSTEM_BINDING = object()
+_SYSTEM_BINDING = (
+    getattr(_ENDPOINTS_PACKAGE, "system", _MISSING_SYSTEM_BINDING)
+    if _ENDPOINTS_PACKAGE is not None
+    else _MISSING_SYSTEM_BINDING
+)
 try:
     with stub_modules(_STUB_MODULES):
         from app.api.endpoints import system as system_endpoint
         from app.application.network import NetworkTestService
 finally:
     restore_modules(_APP_MODULES, "app")
+    if _ENDPOINTS_PACKAGE is not None:
+        if _SYSTEM_BINDING is _MISSING_SYSTEM_BINDING:
+            if hasattr(_ENDPOINTS_PACKAGE, "system"):
+                delattr(_ENDPOINTS_PACKAGE, "system")
+        else:
+            setattr(_ENDPOINTS_PACKAGE, "system", _SYSTEM_BINDING)
 
 
 def _network_test_service(transport, **settings) -> NetworkTestService:

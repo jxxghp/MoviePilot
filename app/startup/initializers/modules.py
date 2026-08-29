@@ -56,8 +56,8 @@ from app.db.session import (
 from app.runtime.config import settings as legacy_settings
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.execution import run_in_threadpool_to_completion
-from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.service_config import (
+from app.runtime.extensions.module.manager import ModuleManager
+from app.runtime.extensions.service import (
     ServiceConfigHelper,
     configure_service_config_reader,
     reset_service_config_reader,

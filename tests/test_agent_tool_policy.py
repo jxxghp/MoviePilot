@@ -8,7 +8,7 @@ from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
 import app.agent.orchestrator as agent_module
-from app.agent.middleware.activity_log import ActivityLogMiddleware
+from app.agent.middleware.activity import ActivityLogMiddleware
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.summarization import FinalRequestCompactionMiddleware

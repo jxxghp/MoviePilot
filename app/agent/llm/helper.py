@@ -15,7 +15,7 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 if TYPE_CHECKING:
-    from app.agent.llm.server_tools import ServerToolResolution
+    from app.agent.llm.tools import ServerToolResolution
 
 
 class LLMTestError(RuntimeError):
@@ -1169,7 +1169,7 @@ class LLMHelper:
             use_proxy=use_proxy,
         )
         model_name = runtime.get("model_id") or model_name
-        from app.agent.llm.server_tools import (
+        from app.agent.llm.tools import (
             ServerToolRegistry,
             ServerToolUnavailableError,
         )

@@ -7,7 +7,7 @@ import pytest
 
 from app.agent.llm import LLMHelper
 from app.agent.llm.provider import LLMProviderManager
-from app.agent.llm.server_tools import (
+from app.agent.llm.tools import (
     ServerToolRegistry,
     ServerToolUnavailableError,
 )

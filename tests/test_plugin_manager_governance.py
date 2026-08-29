@@ -6,7 +6,7 @@ from pathlib import Path
 from app.startup.initializers import plugins as plugins_initializer
 
 PROJECT_ROOT = Path(__file__).parents[1]
-MANAGER_PATH = PROJECT_ROOT / "app" / "runtime" / "extensions" / "plugin_manager.py"
+MANAGER_PATH = PROJECT_ROOT / "app" / "runtime" / "extensions" / "plugin" / "manager.py"
 RUNTIME_PATH = PROJECT_ROOT / "app" / "runtime" / "extensions" / "plugin" / "runtime.py"
 
 

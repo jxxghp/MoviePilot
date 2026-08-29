@@ -170,7 +170,7 @@ def _agent_module_observation() -> dict[str, object]:
 def _read_agent_runtime() -> dict[str, object]:
     """读取轻量 Agent loader 的公开只读状态，不触发 capability 首用。"""
     try:
-        from app.agent.runtime_loader import is_tool_factory_materialized
+        from app.agent.loader import is_tool_factory_materialized
 
         return {
             "available": True,

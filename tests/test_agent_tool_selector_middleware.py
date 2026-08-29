@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from app.agent.middleware import tool_selection as tool_selector_module
+from app.agent.middleware import selection as tool_selector_module
 from app.agent.tools.tags import ToolTag
 
 

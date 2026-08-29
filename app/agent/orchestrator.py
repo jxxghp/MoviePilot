@@ -22,10 +22,10 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.llm.helper import LLMHelper
-from app.agent.llm.server_tools import ServerToolRegistry
+from app.agent.llm.tools import ServerToolRegistry
 from app.agent.mcp import agent_mcp_manager
 from app.agent.memory import MemoryManager, memory_manager
-from app.agent.middleware.activity_log import (
+from app.agent.middleware.activity import (
     QUERY_ACTIVITY_LOG_TOOL_NAME,
     ActivityLogMiddleware,
 )
@@ -33,9 +33,9 @@ from app.agent.middleware.jobs import (
     JobsMiddleware,
 )
 from app.agent.middleware.memory import MemoryMiddleware
-from app.agent.middleware.patch_tool_calls import PatchToolCallsMiddleware
+from app.agent.middleware.patching import PatchToolCallsMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
-from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
+from app.agent.middleware.config import RuntimeConfigMiddleware
 from app.agent.middleware.skills import SKILL_TOOL_NAME, SkillsMiddleware
 from app.agent.middleware.subagents import (
     SUBAGENT_CONTROL_TOOL_NAME,
@@ -49,7 +49,7 @@ from app.agent.middleware.summarization import (
 from app.agent.middleware.summarization import (
     FinalRequestCompactionMiddleware,
 )
-from app.agent.middleware.tool_selection import ToolSelectorMiddleware
+from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.middleware.usage import UsageMiddleware
 from app.agent.policy.contracts import (
     AuthSource,
@@ -1552,7 +1552,7 @@ class MoviePilotAgent:
         """
         初始化主 Agent 本地工具实例。
         """
-        from app.agent.runtime_loader import get_tool_factory
+        from app.agent.loader import get_tool_factory
 
         return get_tool_factory().create_tools(
             session_id=self.session_id,
@@ -1570,7 +1570,7 @@ class MoviePilotAgent:
         self,
     ) -> tuple[ToolCatalogSnapshot, ToolCatalogSnapshot]:
         """在同一插件 revision 窗口内建立主图和子图工具目录。"""
-        from app.agent.runtime_loader import get_tool_factory
+        from app.agent.loader import get_tool_factory
 
         tool_factory = get_tool_factory()
         plugin_manager = get_plugin_manager()
@@ -1677,7 +1677,7 @@ class MoviePilotAgent:
     @staticmethod
     def _tool_factory_revision() -> str:
         """在目录签名确实需要时解析工具工厂版本。"""
-        from app.agent.runtime_loader import get_tool_factory
+        from app.agent.loader import get_tool_factory
 
         return get_tool_factory().catalog_factory_revision()
 
@@ -1807,7 +1807,7 @@ class MoviePilotAgent:
         """
         初始化子代理专用静默工具列表。
         """
-        from app.agent.runtime_loader import get_tool_factory
+        from app.agent.loader import get_tool_factory
 
         return get_tool_factory().create_tools(
             session_id=self.session_id,
@@ -2005,7 +2005,7 @@ class MoviePilotAgent:
                 logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
                 return cached_agent
             max_tools = get_runtime_setting('LLM_MAX_TOOLS')
-            from app.agent.runtime_loader import get_tool_factory
+            from app.agent.loader import get_tool_factory
 
             always_include_tools = (
                 get_tool_factory().get_tool_selector_always_include_names(tools)

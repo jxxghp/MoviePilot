@@ -23,7 +23,7 @@ import pytest
 import app.modules.themoviedb as themoviedb_module
 from app.domain.metainfo import MetaInfo
 from app.modules.themoviedb import TheMovieDbModule
-from app.modules.themoviedb.tmdb_cache import TmdbCache
+from app.modules.themoviedb.cache import TmdbCache
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.modules.themoviedb.tmdbv3api import tmdb as tmdb_module
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError, TMDbException

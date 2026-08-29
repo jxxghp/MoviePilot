@@ -17,7 +17,7 @@ def _load_downloader_base():
     runtime_module.__path__ = []
     runtime_extensions_module = types.ModuleType("app.runtime.extensions")
     runtime_extensions_module.__path__ = []
-    service_module = types.ModuleType("app.runtime.extensions.service_config")
+    service_module = types.ModuleType("app.runtime.extensions.service")
     log_module = types.ModuleType("app.runtime.log")
     schemas_module = types.ModuleType("app.schemas")
     schemas_module.__path__ = []
@@ -100,7 +100,7 @@ def _load_downloader_base():
         "app.helper": helper_module,
         "app.runtime": runtime_module,
         "app.runtime.extensions": runtime_extensions_module,
-        "app.runtime.extensions.service_config": service_module,
+        "app.runtime.extensions.service": service_module,
         "app.runtime.log": log_module,
         "app.schemas": schemas_module,
         "app.schemas.message": schema_message_module,

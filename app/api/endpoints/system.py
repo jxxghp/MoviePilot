@@ -127,7 +127,7 @@ def _database_backup_artifact_data(artifact: Any) -> _SchemaDatabaseBackupArtifa
 
 def _validate_llm_server_tool_config(env: dict) -> Optional[str]:
     """校验强制服务端联网搜索配置，返回用户可读错误信息。"""
-    from app.agent.llm.server_tools import (
+    from app.agent.llm.tools import (
         ServerToolRegistry,
         ServerToolUnavailableError,
     )

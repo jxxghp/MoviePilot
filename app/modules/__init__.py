@@ -3,7 +3,7 @@ from abc import abstractmethod, ABCMeta
 from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 from pathlib import Path
 
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.extensions.service import ServiceConfigHelper
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf

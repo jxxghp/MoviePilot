@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from app.agent.policy.secret_fields import is_secret_setting_key
+from app.agent.policy.secrets import is_secret_setting_key
 from app.runtime.config import Settings
 from app.schemas.types import SystemConfigKey
 

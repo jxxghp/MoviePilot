@@ -110,7 +110,7 @@ except:
 - Private functions in the same file are preferable to extracting a new module for single-use logic.
 - Add code to the canonical capability package that owns it, and extend an existing domain file whenever that domain already exists.
 - Do not recreate generic `core`, `helper`, or `utils` buckets; see `05-architecture.md` for placement rules.
-- New files should use a focused noun name; a role suffix is appropriate only when it distinguishes ownership, such as `plugin_manager.py`; otherwise prefer the package-owned noun, such as `adapters/system/package.py`.
+- New files use one focused lowercase noun. When the capability already names the package, put the role in a single-word child such as `plugin/manager.py`; do not flatten it back into `plugin_manager.py`.
 - Keep files focused on one domain concern.
 
 ---

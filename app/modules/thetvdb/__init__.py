@@ -8,7 +8,7 @@ from app.runtime.execution import run_in_threadpool
 from app.runtime.settings import get_runtime_setting
 
 from app.modules import _ModuleBase
-from app.modules.thetvdb import tvdb_v4_official
+from app.modules.thetvdb import client
 from app.runtime.log import logger
 from app.schemas.types import (
     MediaRecognizeType,
@@ -24,7 +24,7 @@ class TheTvDbModule(_ModuleBase):
     TVDB媒体信息匹配
     """
     __timeout: int = 15
-    tvdb: Optional[tvdb_v4_official.TVDB] = None
+    tvdb: Optional[client.TVDB] = None
     __auth_lock = Lock()
 
     def init_module(self) -> None:
@@ -40,7 +40,7 @@ class TheTvDbModule(_ModuleBase):
         try:
             if not get_runtime_setting('TVDB_V4_API_KEY'):
                 raise ConnectionError("TVDB API Key 未配置，无法初始化会话。")
-            self.tvdb = tvdb_v4_official.TVDB(apikey=get_runtime_setting('TVDB_V4_API_KEY'),
+            self.tvdb = client.TVDB(apikey=get_runtime_setting('TVDB_V4_API_KEY'),
                                               pin=get_runtime_setting('TVDB_V4_API_PIN'),
                                               proxy=get_runtime_setting('PROXY'),
                                               timeout=self.__timeout)

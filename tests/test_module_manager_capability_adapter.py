@@ -19,9 +19,9 @@ from app.runtime.capabilities.errors import CapabilityRuntimeClosedError
 from app.runtime.capabilities.model import CapabilityLifecycleState, SelectorSchema
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
-from app.runtime.extensions import module_manager as module_manager_extension
-from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.service_config import configure_service_config_reader
+from app.runtime.extensions.module import manager as module_manager_extension
+from app.runtime.extensions.module.manager import ModuleManager
+from app.runtime.extensions.service import configure_service_config_reader
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType
 
@@ -551,7 +551,7 @@ def test_all_real_host_modules_zero_arg_construct_without_starting_resources(
 ) -> None:
     """每份真实 manifest 都必须能解析 canonical class 并零参数构造且不启动资源。"""
     body = r"""
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.module.adapter import (
     HostModuleAdapter,
     build_host_module_registry,
 )
@@ -595,11 +595,11 @@ from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.capabilities.model import ActivationPolicy
 from app.runtime.config import settings
 from app.runtime.events import Event
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.module.adapter import (
     HostModuleAdapter,
     build_host_module_registry,
 )
-from app.runtime.extensions.service_config import configure_service_config_reader
+from app.runtime.extensions.service import configure_service_config_reader
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType
 
@@ -655,7 +655,7 @@ def get_config(_self, key=None):
 SystemConfigOper.get = get_config
 configure_service_config_reader(lambda key: SystemConfigOper().get(key))
 
-from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.module.manager import ModuleManager
 
 manager = ModuleManager()
 bootstrap_ids = {
@@ -765,7 +765,7 @@ def test_default_config_keeps_every_manifest_configured_entrypoint_unimported(
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.capabilities.model import ActivationPolicy
 from app.runtime.config import settings
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.module.adapter import (
     HostModuleAdapter,
     build_host_module_registry,
 )
@@ -802,7 +802,7 @@ for spec in specs:
 
 assert configured_modules.isdisjoint(sys.modules)
 
-from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.module.manager import ModuleManager
 
 manager = ModuleManager()
 assert manager.get_specs() == manager.list_specs()
@@ -862,7 +862,7 @@ SystemConfigOper.get = empty_config
 settings.ACOUSTID_API_KEY = None
 settings.FANART_API_KEY = None
 
-from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.module.manager import ModuleManager
 from app.application.module import configure_module_runtime
 
 configure_module_runtime(lambda: ModuleManager())
@@ -978,7 +978,7 @@ from app.runtime.config import settings
 settings.ACOUSTID_API_KEY = None
 settings.FANART_API_KEY = None
 
-from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.module.manager import ModuleManager
 
 manager = ModuleManager()
 modules = manager.get_modules()

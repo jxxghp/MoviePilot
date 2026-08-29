@@ -12,9 +12,9 @@ from app.api.endpoints import music as music_endpoint
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.api.deps import get_current_active_superuser_async
-from app.modules.musicbrainz import music_cache as music_cache_module
+from app.modules.musicbrainz import cache as music_cache_module
 from app.modules.musicbrainz import MusicBrainzModule
-from app.modules.musicbrainz.music_cache import MusicBrainzCache
+from app.modules.musicbrainz.cache import MusicBrainzCache
 
 
 class _MemoryCacheStub:

@@ -2,7 +2,7 @@ import asyncio
 import threading
 from types import SimpleNamespace
 
-from app.agent.prompt.transfer_redo import build_manual_redo_template_context
+from app.agent.prompt.transfer import build_manual_redo_template_context
 from app.agent.tools.impl.delete_transfer_history import DeleteTransferHistoryTool
 
 

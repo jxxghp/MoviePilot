@@ -3,7 +3,7 @@
 import pytest
 
 from app.runtime.events import Event, EventManager
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.schemas.types import ChainEventType
 
 

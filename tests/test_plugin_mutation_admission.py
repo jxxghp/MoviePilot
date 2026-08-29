@@ -16,7 +16,7 @@ from app.runtime.extensions.plugin.admission import (
     PluginMutationRejectedError,
 )
 from app.runtime.extensions.plugin.system import reset_plugin_system
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import EventType
 
@@ -161,7 +161,7 @@ async def test_quiesce_timeout_retains_admitted_owner_and_nested_reload(
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         monkeypatch.setattr(
-            "app.runtime.extensions.plugin_manager.ThreadHelper",
+            "app.runtime.extensions.plugin.manager.ThreadHelper",
             lambda: SimpleNamespace(submit=executor.submit),
         )
         mutation_task = asyncio.create_task(mutate())
@@ -200,15 +200,15 @@ def test_reload_attributes_gil_transition_to_plugin(
     )
     warning = MagicMock()
     monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.is_free_threaded_runtime",
+        "app.runtime.extensions.plugin.manager.is_free_threaded_runtime",
         lambda: True,
     )
     monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.is_gil_enabled",
+        "app.runtime.extensions.plugin.manager.is_gil_enabled",
         lambda: next(states),
     )
     monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.logger.warning",
+        "app.runtime.extensions.plugin.manager.logger.warning",
         warning,
     )
 

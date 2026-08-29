@@ -23,7 +23,7 @@ from app.testing.bootstrap import prepare_backend
 prepare_backend()
 
 # 复用共享 autouse 网络守卫；同一实现亦供各插件仓 conftest import 复用，避免逐仓维护
-from app.testing.network_guard import block_real_network  # noqa: E402,F401
+from app.testing.network import block_real_network  # noqa: E402,F401
 
 TResult = TypeVar("TResult")
 
@@ -207,20 +207,20 @@ def configure_plugin_system_services():
     from app.application.plugin.runtime import configure_plugin_runtime
     from app.runtime.cache import AsyncFileCache, FileCache
     from app.runtime.events import EventManager
-    from app.runtime.extensions import plugin_manager as plugin_manager_module
+    from app.runtime.extensions.plugin import manager as plugin_manager_module
     from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-    from app.runtime.extensions.module_manager import ModuleManager
+    from app.runtime.extensions.module.manager import ModuleManager
     from app.runtime.extensions.plugin.runtime import (
         PluginRuntimeEnvironment,
         build_plugin_runtime,
     )
     from app.runtime.extensions.plugin.storage import get_plugin_storage
     from app.runtime.extensions.plugin.system import get_plugin_system
-    from app.runtime.extensions.plugin_manager import (
+    from app.runtime.extensions.plugin.manager import (
         PluginManager,
         reset_plugin_runtime_factory,
     )
-    from app.runtime.extensions.service_config import ServiceConfigHelper
+    from app.runtime.extensions.service import ServiceConfigHelper
 
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,

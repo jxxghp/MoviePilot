@@ -11,7 +11,7 @@ from app.agent.tools.catalog import (
     ToolIdentityAmbiguousError,
 )
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 
 
 class _Arguments(BaseModel):

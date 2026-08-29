@@ -97,7 +97,7 @@ class MoviePilotToolsManager:
         工厂负责插件 revision 前后稳定窗口；manager 只发布完整快照，避免
         并发调用观察到一半刷新后的工具列表。
         """
-        from app.agent.runtime_loader import get_tool_factory
+        from app.agent.loader import get_tool_factory
 
         try:
             catalog = get_tool_factory().create_catalog(
@@ -255,7 +255,7 @@ class MoviePilotToolsManager:
             if self.catalog is None or [
                 id(tool) for tool in self.catalog.tools
             ] != [id(tool) for tool in self.tools]:
-                from app.agent.runtime_loader import get_tool_factory
+                from app.agent.loader import get_tool_factory
                 from app.agent.tools.catalog import ToolCatalogSnapshot
 
                 self.catalog = ToolCatalogSnapshot.from_tools(

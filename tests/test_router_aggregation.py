@@ -55,7 +55,7 @@ def _route_contract(route: APIRoute) -> tuple[Any, ...]:
 
 def test_init_routers_directly_includes_endpoint_router_specs(monkeypatch):
     """启动聚合应直接 include 原始端点路由器并一次性附加完整 v1 前缀。"""
-    from app.api.router_specs import API_V1_ROUTER_SPECS
+    from app.api.routers import API_V1_ROUTER_SPECS
     from app.startup.initializers.routers import init_routers
 
     app = FastAPI()
@@ -135,14 +135,14 @@ async def test_direct_routes_honor_application_dependency_overrides():
     ) as client:
         response = await client.get(f"{settings.API_V1_STR}/system/ping")
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     assert response.json() == {"success": True, "message": "", "data": None}
 
 
 def test_compatibility_api_router_keeps_public_contract():
     """历史导出应继续提供无 v1 根前缀的标准 APIRouter 与固定路由集合。"""
     from app.api.apiv1 import api_router
-    from app.api.router_specs import API_V1_ROUTER_SPECS
+    from app.api.routers import API_V1_ROUTER_SPECS
 
     assert type(api_router) is APIRouter
     app = FastAPI()

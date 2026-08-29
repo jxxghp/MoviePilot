@@ -22,7 +22,7 @@ def attach_server_tool_capabilities(
     base_url: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """为 Provider 模型目录附加统一的服务端工具能力描述。"""
-    from app.agent.llm.server_tools import ServerToolRegistry
+    from app.agent.llm.tools import ServerToolRegistry
 
     result = []
     for item in models:

@@ -17,7 +17,7 @@ from langchain_core.messages import AIMessage
 
 from app.agent.contracts import ReplyMode
 from app.agent.manager import AgentManager
-from app.agent.middleware.tool_selection import ToolSelectorMiddleware
+from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.orchestrator import MoviePilotAgent
 from app.agent.session import _MessageTask
 from app.agent.tools.factory import MoviePilotToolFactory

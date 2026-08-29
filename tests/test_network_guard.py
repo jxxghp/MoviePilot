@@ -2,7 +2,7 @@ import socket
 
 import pytest
 
-from app.testing.network_guard import block_real_network
+from app.testing.network import block_real_network
 
 
 def test_network_guard_fails_when_blocked_attempt_is_swallowed(monkeypatch):

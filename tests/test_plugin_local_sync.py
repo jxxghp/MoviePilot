@@ -13,7 +13,7 @@ from app.foundation.singleton import Singleton
 from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin.paths import PluginPathResolver
 from app.runtime.extensions.plugin.system import get_plugin_system
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.scheduler import reconcile as scheduler_reconcile
 from app.scheduler.facade import Scheduler
 from app.scheduler.registry import ExecutionRegistry
@@ -102,7 +102,7 @@ def _build_local_plugin_repo(tmp_path: Path) -> tuple[Path, Path]:
 def _patch_plugin_runtime_settings(monkeypatch, settings) -> None:
     """以只读键值端口注入插件运行配置。"""
     for target in (
-        "app.runtime.extensions.plugin_manager.get_runtime_setting",
+        "app.runtime.extensions.plugin.manager.get_runtime_setting",
         "app.adapters.external.plugin.client.get_runtime_setting",
     ):
         monkeypatch.setattr(
@@ -143,7 +143,7 @@ def _configure_local_watcher(
     )
     _patch_plugin_runtime_settings(monkeypatch, settings_stub)
     _patch_package_runtime_settings(monkeypatch, settings_stub)
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.watch", lambda *_args, **_kwargs: iter([changes]))
+    monkeypatch.setattr("app.runtime.extensions.plugin.manager.watch", lambda *_args, **_kwargs: iter([changes]))
 
 
 def _set_running_render_mode(
@@ -427,7 +427,7 @@ def test_local_federated_asset_reads_running_render_mode_for_each_batch(
     )
     _patch_plugin_runtime_settings(monkeypatch, settings_stub)
     monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.watch",
+        "app.runtime.extensions.plugin.manager.watch",
         lambda *_args, **_kwargs: iter([
             {(Change.modified, str(source_dir / "dist" / "assets" / "remoteEntry.js"))},
             {(Change.modified, str(next_entry))},
@@ -533,7 +533,7 @@ def test_local_requirements_change_still_does_not_sync_or_reload(
     monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
     monkeypatch.setattr(plugin_manager, "reload_plugin", reload_spy)
     log = Mock()
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+    monkeypatch.setattr("app.runtime.extensions.plugin.manager.logger", log)
 
     plugin_manager._run_file_watcher()
 
@@ -566,7 +566,7 @@ def test_local_pyproject_change_prompts_reinstall_without_sync_or_reload(
     monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
     monkeypatch.setattr(plugin_manager, "reload_plugin", reload_spy)
     log = Mock()
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+    monkeypatch.setattr("app.runtime.extensions.plugin.manager.logger", log)
 
     plugin_manager._run_file_watcher()
 
@@ -600,7 +600,7 @@ def test_local_inactive_requirements_change_is_debug_only(
     monkeypatch.setattr(plugin_manager, "_sync_local_plugin_if_installed", sync_spy)
     monkeypatch.setattr(plugin_manager, "reload_plugin", reload_spy)
     log = Mock()
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+    monkeypatch.setattr("app.runtime.extensions.plugin.manager.logger", log)
 
     plugin_manager._run_file_watcher()
 
@@ -634,7 +634,7 @@ def test_deleting_active_pyproject_prompts_for_requirements_takeover(
     )
     monkeypatch.setattr(PluginMarketTransport, "get_current_system_version", lambda: Version("2.13.11"))
     log = Mock()
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+    monkeypatch.setattr("app.runtime.extensions.plugin.manager.logger", log)
 
     plugin_manager._run_file_watcher()
 
@@ -660,7 +660,7 @@ def test_deleting_only_active_requirements_prompts_reinstall(
     )
     monkeypatch.setattr(PluginMarketTransport, "get_current_system_version", lambda: Version("2.13.11"))
     log = Mock()
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+    monkeypatch.setattr("app.runtime.extensions.plugin.manager.logger", log)
 
     plugin_manager._run_file_watcher()
 
@@ -691,7 +691,7 @@ def test_deleting_inactive_requirements_is_debug_only(
     )
     monkeypatch.setattr(PluginMarketTransport, "get_current_system_version", lambda: Version("2.13.11"))
     log = Mock()
-    monkeypatch.setattr("app.runtime.extensions.plugin_manager.logger", log)
+    monkeypatch.setattr("app.runtime.extensions.plugin.manager.logger", log)
 
     plugin_manager._run_file_watcher()
 

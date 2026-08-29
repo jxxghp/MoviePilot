@@ -1,7 +1,7 @@
 from app.foundation.singleton import Singleton
 from app.runtime.events import EventManager, eventmanager
-from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.module.manager import ModuleManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.sdk.plugins import ModuleManager as SdkModuleManager
 from app.sdk.plugins import PluginManager as SdkPluginManager
 

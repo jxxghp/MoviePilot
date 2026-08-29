@@ -55,7 +55,7 @@ def _configure_plugin_catalog_factory(monkeypatch):
     from app.adapters.external.plugin.client import PluginMarketClient
     from app.application.plugin.catalog import PluginCatalogService
     from app.foundation.version import compare_version
-    from app.runtime.extensions import plugin_manager as manager_module
+    from app.runtime.extensions.plugin import manager as manager_module
     from app.runtime.extensions.plugin.storage import get_plugin_storage
     from app.schemas.types import SystemConfigKey
     original_runtime_setting = plugin_client_module.get_runtime_setting
@@ -836,7 +836,7 @@ class TestPluginHelper:
         插件市场 labels 为列表时应转换为字符串，避免响应模型序列化异常。
         """
         try:
-            from app.runtime.extensions.plugin_manager import PluginManager
+            from app.runtime.extensions.plugin.manager import PluginManager
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -858,7 +858,7 @@ class TestPluginHelper:
             SimpleNamespace(read=lambda _key: []),
         )
         monkeypatch.setattr(
-            "app.runtime.extensions.plugin_manager._site_auth_level_provider",
+            "app.runtime.extensions.plugin.manager._site_auth_level_provider",
             lambda: 1,
         )
         monkeypatch.setattr(
@@ -879,7 +879,7 @@ class TestPluginHelper:
         package.v2.json 中的 v2 原生插件，并过滤掉未声明任何版本兼容的 v1 插件。
         """
         try:
-            from app.runtime.extensions.plugin_manager import PluginManager
+            from app.runtime.extensions.plugin.manager import PluginManager
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -930,7 +930,7 @@ class TestPluginHelper:
             SimpleNamespace(read=lambda _key: []),
         )
         monkeypatch.setattr(
-            "app.runtime.extensions.plugin_manager._site_auth_level_provider",
+            "app.runtime.extensions.plugin.manager._site_auth_level_provider",
             lambda: 1,
         )
         monkeypatch.setattr(PluginMarketTransport, "get_plugins", fake_get_plugins)
@@ -1092,7 +1092,7 @@ class TestPluginHelper:
         全市场刷新不清理 Release 缓存，Release 接口按请求仓库协调刷新两类数据。
         """
         try:
-            from app.runtime.extensions.plugin_manager import PluginManager
+            from app.runtime.extensions.plugin.manager import PluginManager
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1111,7 +1111,7 @@ class TestPluginHelper:
     def test_async_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
         """异步全市场刷新同样不得清理其他仓库的 Release 缓存。"""
         try:
-            from app.runtime.extensions.plugin_manager import PluginManager
+            from app.runtime.extensions.plugin.manager import PluginManager
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
@@ -1137,7 +1137,7 @@ class TestPluginHelper:
     def test_get_local_plugin_version_reads_only_requested_installed_plugin(self, monkeypatch):
         """单插件版本查询不构建全部本地插件信息。"""
         try:
-            from app.runtime.extensions.plugin_manager import PluginManager
+            from app.runtime.extensions.plugin.manager import PluginManager
             from app.schemas.types import SystemConfigKey
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")

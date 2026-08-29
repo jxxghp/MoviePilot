@@ -2,7 +2,7 @@ from time import time
 from types import SimpleNamespace
 
 from app.runtime.config import settings
-from app.modules.themoviedb.tmdb_cache import TmdbCache
+from app.modules.themoviedb.cache import TmdbCache
 from app.schemas.types import MediaSource, MediaType
 
 

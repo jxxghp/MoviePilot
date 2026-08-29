@@ -145,7 +145,7 @@ from typing import get_args, get_type_hints
 from app.testing.bootstrap import ensure_sites_stub
 
 ensure_sites_stub()
-from app.agent.runtime_loader import get_tool_factory
+from app.agent.loader import get_tool_factory
 
 factory = get_tool_factory()
 catalog = factory.create_catalog(session_id="lazy", user_id="api")
@@ -197,7 +197,7 @@ print(json.dumps({
 
 def test_manager_first_catalog_use_is_single_flight(monkeypatch) -> None:
     """并发首次查询只能在 manager 锁内建立一次会话工具快照。"""
-    from app.agent import runtime_loader
+    from app.agent import loader as runtime_loader
     from app.agent.tools.manager import MoviePilotToolsManager
 
     calls: list[tuple[str, str]] = []
@@ -240,7 +240,7 @@ def test_legacy_explicit_tool_refresh_keeps_atomic_catalog_contract(
     monkeypatch,
 ) -> None:
     """插件显式刷新旧入口应继续发布同一次构造的完整目录快照。"""
-    from app.agent import runtime_loader
+    from app.agent import loader as runtime_loader
     from app.agent.tools.manager import MoviePilotToolsManager
 
     calls: list[int] = []

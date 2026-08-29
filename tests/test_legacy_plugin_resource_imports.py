@@ -9,8 +9,8 @@ from types import ModuleType
 
 import pytest
 
-from app.runtime.compat import resource_imports
-from app.runtime.compat.resource_imports import (
+from app.runtime.compat import resources as resource_imports
+from app.runtime.compat.resources import (
     RESOURCE_IMPORT_RULES,
     PluginResourceImportScanError,
     scan_plugin_resource_imports,

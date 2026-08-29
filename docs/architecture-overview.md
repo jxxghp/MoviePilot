@@ -193,12 +193,12 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 | `app/foundation/` | 无状态、无配置、无 I/O 的底层原语：反射/动态导入、加密、DOM、单例、文本、URL、版本比较 | `reflection.py`、`crypto.py`、`singleton.py` |
 | `app/domain/` | 纯 MoviePilot 业务语义：媒体上下文、识别解析、站点状态解释、磁力语义、NFO 刮削 | `context.py`、`metainfo.py`、`meta/`、`scraper.py` |
 | `app/runtime/` | 进程级运行机制：配置、进程拓扑、事件、完整日志、缓存契约与内存后端、运行依赖 profile 与原生载荷激活检测、任务所有权、执行/关联上下文、并发、调度、限流、本地化、GC、重启状态 | `config.py`、`events.py`、`event/`、`dependencies/`、`tasks.py`、`execution.py`、`correlation.py`、`log.py`、`cache.py` |
-| `app/runtime/extensions/` | 模块 / 插件 / 配置化服务 / 托管资源的发现、注册与生命周期适配；旧管理器文件保留稳定 ABI 门面，具体实现拆在主题子包 | `module_manager.py`、`plugin_manager.py`、`plugin/` |
+| `app/runtime/extensions/` | 模块 / 插件 / 配置化服务 / 托管资源的发现、注册与生命周期适配；管理器归入对应主题包，旧插件路径只由 Compat 精确映射 | `module/manager.py`、`plugin/manager.py`、`service.py` |
 | `app/runtime/compat/` | 仅标准库的精确旧模块、包与符号导入路由；不是业务实现，也不是通用 re-export 层 | `manifest.py`、`imports.py` |
 | `app/adapters/network/` | 通用 HTTP、浏览器、DNS、Cloudflare、IP 传输机制 | `http.py`、`browser.py` |
 | `app/adapters/cache/` | Redis 与文件缓存的具体实现 | `backends.py`、`redis.py` |
 | `app/adapters/system/` | OS/文件/进程/stdio/显示/包安装/Rust 加速适配 | `host.py`、`resource.py`、`fsproxy.py` |
-| `app/adapters/external/` | 命名外部生态：插件市场、CookieCloud、OCR、IP 归属、MP Server、微信加密 | `market.py`、`server.py`、`wechat_crypt.py` |
+| `app/adapters/external/` | 命名外部生态：插件市场、CookieCloud、OCR、IP 归属、MP Server、微信加密 | `market.py`、`server.py`、`wechat.py` |
 | `app/adapters/web/` | Web 技术适配：动态插件路由注册、认证依赖和 OpenAPI 重建；不承载插件路由用例 | `plugin/routes.py` |
 | `app/adapters/observability/` | 可选观测技术适配；核心层只依赖 `runtime/observability` 定义的窄端口 | `otel.py` |
 | `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则、可靠副作用等；同一主题拆成子包 | `recognition.py`、`rules.py`、`rss.py`、`outbox.py`、`site/`、`subscription/`、`plugin/` |
@@ -340,7 +340,7 @@ flowchart LR
     MM --> M6["indexer / subtitle / filter ..."]
 ```
 
-- 模块由 `runtime/extensions/module_manager.py` 发现并管理生命周期；
+- 模块由 `runtime/extensions/module/manager.py` 发现并管理生命周期；
   `app/modules/_base/` 承载各模块族的共享模板基类（下载器、媒体服务器、消息渠道）。
 - 模块开关由 `init_setting()` 声明的配置项决定（如 `DOWNLOADER = "qbittorrent"`）。
 - **模块之间、模块到 Chain 的直接依赖被禁止**，跨模块编排一律由 Chain 完成。
@@ -590,7 +590,7 @@ flowchart TB
     Entry["消息渠道 / API / MCP"] --> Facade["app/application/agent.py<br/>编排门面（get_agent_manager 等）"]
     Reg["app/startup/initializers/agent.py<br/>生命周期显式注册/重置 Provider"]
     Reg --> Facade
-    Facade -.能力启用或首次使用时物化.-> RT["app/agent/runtime_loader.py<br/>能力发现与服务物化"]
+    Facade -.能力启用或首次使用时物化.-> RT["app/agent/loader.py<br/>能力发现与服务物化"]
     RT --> Manager["app/agent/manager.py<br/>稳定 AgentManager 门面"]
     Manager --> Session["session.py / lifecycle.py<br/>会话队列与有界生命周期"]
     Manager --> Tasks["tasks.py<br/>后台、调度与心跳任务"]
@@ -663,9 +663,9 @@ flowchart TB
   端点层禁止直接依赖 `factory`。
 - 动态插件路由使用原生 `APIRoute`，插件自行决定返回结构；主程序的统一 `Response` 封装只适用于
   `app/api/` 的宿主端点。插件若已经自行返回 `Response`、字典、列表或其它可序列化值，宿主不再二次包裹。
-- `app/runtime/extensions/plugin_manager.py` 是保留插件 ABI 的管理器门面，发现、加载、生命周期、
-  目录、同步等实现拆在 `app/runtime/extensions/plugin/`；这个“门面 + 实现包”是有意的兼容边界，
-  不应为了目录整齐而让外部插件改用内部实现文件。
+- `app/runtime/extensions/plugin/manager.py` 是 canonical 管理器 owner，发现、加载、生命周期、
+  目录、同步等实现共同归入 `app/runtime/extensions/plugin/`。旧插件仍从 `app.core.plugin` 或
+  `app.sdk.plugins` 进入，并由 Compat 精确路由到同一个 `PluginManager` 身份。
 - 插件可参与 `run_module` 方法分发（同名方法优先响应）并注册事件处理器。
 
 ---
@@ -776,8 +776,8 @@ flowchart LR
   `app/sdk/_legacy/` 薄门面保留行为兼容。兼容清单是导入路由，不负责合并模块，也不负责把任意
   新实现重新导出到旧模块。
 - 已完成的插件边界：插件 API 的动态路由由 application 端口 + web adapter 组成，使用原生
-  `APIRoute` 保留插件响应；插件管理器保留 `plugin_manager.py` 的稳定 ABI，内部实现拆在
-  `runtime/extensions/plugin/`；`app/plugins/` 仅作为运行时插件副本/覆盖层处理。
+  `APIRoute` 保留插件响应；插件管理器归入 `runtime/extensions/plugin/manager.py`，旧 ABI
+  只由 SDK/Compat 路由；`app/plugins/` 仅作为运行时插件副本/覆盖层处理。
 - 已完成的主题收口：订阅 DTO/Port 归入 `app/application/subscription/contract.py`，用例写入归入
   `app/application/subscription/write.py`，SQLAlchemy 实现只在 `app/db/adapters/subscription.py`；插件动态路由与
   文件夹操作归入 `app/application/plugin/routes.py`、`folders.py`。原

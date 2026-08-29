@@ -25,7 +25,7 @@ from pydantic import Field
 
 import app.agent.orchestrator as agent_module
 from app.agent.memory import MemoryManager
-from app.agent.middleware.runtime_config import RuntimeConfigMiddleware
+from app.agent.middleware.config import RuntimeConfigMiddleware
 from app.agent.middleware.summarization import (
     ContextPreservingSummarizationMiddleware,
     ContextSummarizationError,

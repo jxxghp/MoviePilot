@@ -14,7 +14,7 @@ from app.runtime.capabilities.model import (
 from app.runtime.capabilities.runtime import CapabilityRuntime
 from app.runtime.settings import get_runtime_setting
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
-from app.runtime.extensions.host_module_adapter import (
+from app.runtime.extensions.module.adapter import (
     HOST_MODULE_KIND,
     HostModuleAdapter,
     build_host_module_registry,

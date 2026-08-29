@@ -79,6 +79,28 @@ RETIRED_CANONICAL_FILES = (
     "app/runtime/runtime.py",
     "app/runtime/dependencies.py",
     "app/runtime/native_dependencies.py",
+    "app/agent/runtime_loader.py",
+    "app/agent/llm/server_tools.py",
+    "app/agent/middleware/activity_log.py",
+    "app/agent/middleware/patch_tool_calls.py",
+    "app/agent/middleware/runtime_config.py",
+    "app/agent/middleware/tool_selection.py",
+    "app/agent/policy/secret_fields.py",
+    "app/agent/prompt/transfer_redo.py",
+    "app/api/openai_utils.py",
+    "app/api/router_specs.py",
+    "app/adapters/external/wechat_crypt.py",
+    "app/modules/_base/media_auxiliary.py",
+    "app/modules/indexer/parser/ipt_project.py",
+    "app/modules/musicbrainz/music_cache.py",
+    "app/modules/themoviedb/tmdb_cache.py",
+    "app/modules/thetvdb/tvdb_v4_official.py",
+    "app/runtime/compat/resource_imports.py",
+    "app/runtime/extensions/host_module_adapter.py",
+    "app/runtime/extensions/module_manager.py",
+    "app/runtime/extensions/plugin_manager.py",
+    "app/runtime/extensions/service_config.py",
+    "app/testing/network_guard.py",
     "app/chain/media.py",
     "app/adapters/network/rss.py",
     "app/adapters/network/sites.pyi",
@@ -169,22 +191,22 @@ FORBIDDEN_IMPORT_PREFIXES = {
         "app.sdk",
     ),
     "app.api": (
-        "app.runtime.extensions.plugin_manager",
-        "app.runtime.extensions.module_manager",
+        "app.runtime.extensions.plugin.manager",
+        "app.runtime.extensions.module.manager",
         "app.scheduler",
     ),
     "app.agent": (
-        "app.runtime.extensions.plugin_manager",
-        "app.runtime.extensions.module_manager",
+        "app.runtime.extensions.plugin.manager",
+        "app.runtime.extensions.module.manager",
     ),
     "app.chain": (
-        "app.runtime.extensions.plugin_manager",
-        "app.runtime.extensions.module_manager",
+        "app.runtime.extensions.plugin.manager",
+        "app.runtime.extensions.module.manager",
         "app.runtime.extensions.module.dispatcher",
     ),
     "app.workflow": (
-        "app.runtime.extensions.plugin_manager",
-        "app.runtime.extensions.module_manager",
+        "app.runtime.extensions.plugin.manager",
+        "app.runtime.extensions.module.manager",
     ),
 }
 
@@ -1387,7 +1409,7 @@ def test_canonical_service_config_consumers_use_application_directory():
     for path in paths:
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "app.runtime.extensions.service_config":
+            if isinstance(node, ast.ImportFrom) and node.module == "app.runtime.extensions.service":
                 violations.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
             if (
                 path.name == "mediaserver.py"
@@ -1401,8 +1423,9 @@ def test_canonical_service_config_consumers_use_application_directory():
 
 
 def test_plugin_components_do_not_reexport_legacy_abi_names():
-    """新插件组件只提供 canonical 能力，不得复制旧 Helper、Manager 或 Oper 导出。"""
+    """插件组件只在 manager owner 定义 PluginManager，不得复制旧 ABI。"""
     violations: list[str] = []
+    manager_path = APP_ROOT / "runtime" / "extensions" / "plugin" / "manager.py"
     for root in PLUGIN_COMPONENT_ROOTS:
         for path in (PROJECT_ROOT / root).rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
@@ -1411,7 +1434,11 @@ def test_plugin_components_do_not_reexport_legacy_abi_names():
                     if node.name == "__getattr__" or node.name in PLUGIN_LEGACY_ABI_NAMES:
                         violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.name}")
                 elif isinstance(node, ast.ClassDef):
-                    if node.name in PLUGIN_LEGACY_ABI_NAMES or node.name.endswith("Oper"):
+                    is_canonical_manager = path == manager_path and node.name == "PluginManager"
+                    if (
+                        not is_canonical_manager
+                        and (node.name in PLUGIN_LEGACY_ABI_NAMES or node.name.endswith("Oper"))
+                    ):
                         violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.name}")
                 elif isinstance(node, ast.ImportFrom):
                     for alias in node.names:
@@ -1990,7 +2017,7 @@ def test_host_consumers_get_agent_manager_through_application_facade():
         imported = {
             alias.name
             for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module == "app.agent.runtime_loader"
+            if isinstance(node, ast.ImportFrom) and node.module == "app.agent.loader"
             for alias in node.names
             if alias.name in forbidden
         }

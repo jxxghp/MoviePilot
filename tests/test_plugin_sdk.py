@@ -31,8 +31,8 @@ def test_sdk_exports_canonical_plugin_interfaces():
     ).StringUtils
     from app.foundation.crypto import CryptoJsUtils
     from app.foundation.text import convert as canonical_convert
-    from app.runtime.extensions.module_manager import ModuleManager as CanonicalModuleManager
-    from app.runtime.extensions.plugin_manager import PluginManager as CanonicalPluginManager
+    from app.runtime.extensions.module.manager import ModuleManager as CanonicalModuleManager
+    from app.runtime.extensions.plugin.manager import PluginManager as CanonicalPluginManager
     from app.adapters.network.http import RequestUtils as CanonicalRequestUtils
     from app.application.rss import RssHelper as CanonicalRssHelper
     from app.application.site.sites import SitesHelper as CanonicalSitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -65,7 +65,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
     assert convert is canonical_convert
     assert ModuleManager is CanonicalModuleManager
     assert PluginManager is CanonicalPluginManager
-    assert CanonicalPluginManager.__module__ == "app.runtime.extensions.plugin_manager"
+    assert CanonicalPluginManager.__module__ == "app.runtime.extensions.plugin.manager"
 
 
 def test_legacy_common_crypto_aliases_round_trip():

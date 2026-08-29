@@ -7,7 +7,7 @@ from typing import Annotated, Any, List, Optional, Protocol, Union
 from fastapi import Depends, Request
 from starlette.responses import PlainTextResponse
 
-from app.adapters.external.wechat_crypt import WXBizMsgCrypt
+from app.adapters.external.wechat import WXBizMsgCrypt
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.context import get_background_task_registry, resolve_background_task_registry
 from app.api.dependencies.agent import get_message_query_service

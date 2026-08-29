@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from typing import Any, Iterator
 
 import pytest
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.contracts import PluginDashboardError
 from app.foundation.singleton import Singleton
 

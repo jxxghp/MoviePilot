@@ -21,7 +21,7 @@ from app.schemas.types import MediaSource, MediaType
 
 def test_music_routes_are_registered():
     """V1 API 应注册音乐详情识别、探索及艺术家专辑浏览路由。"""
-    from app.api.router_specs import API_V1_ROUTER_SPECS
+    from app.api.routers import API_V1_ROUTER_SPECS
 
     routes = {
         (f"{spec.prefix}{route.path}", tuple(route.methods or []))

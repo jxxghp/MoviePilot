@@ -43,7 +43,7 @@ RUNTIME_FACADE_POLICIES = (
     ),
     RuntimeFacadePolicy(
         name="module",
-        dependency="app.runtime.extensions.module_manager",
+        dependency="app.runtime.extensions.module.manager",
         exact_consumers=frozenset(
             {
                 "app.sdk.plugins",
@@ -54,7 +54,7 @@ RUNTIME_FACADE_POLICIES = (
     ),
     RuntimeFacadePolicy(
         name="plugin",
-        dependency="app.runtime.extensions.plugin_manager",
+        dependency="app.runtime.extensions.plugin.manager",
         exact_consumers=frozenset(
             {
                 "app.sdk.plugins",

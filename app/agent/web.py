@@ -3,7 +3,7 @@
 from threading import Lock
 from typing import Any, Awaitable, Callable, Optional
 
-from app.agent.runtime_loader import get_moviepilot_agent_type
+from app.agent.loader import get_moviepilot_agent_type
 from app.application.security.user import get_configured_user_id_lookup
 from app.runtime.log import logger
 from app.schemas.message import Message

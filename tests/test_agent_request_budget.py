@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
 from app.agent import MoviePilotAgent
-from app.agent.middleware.tool_selection import ToolSelectorMiddleware
+from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.middleware.usage import UsageMiddleware
 from app.chain.message import MessageChain
 

@@ -436,10 +436,13 @@ ownership.
 New production Python module filenames use one lowercase word. When one topic
 needs multiple modules, create a topic package and keep each child filename to
 one word, for example `runtime/event/{registry,binding,dispatch,errors}.py` or
-`application/subscription/{contract,delete,identity}.py`. Established multiword
-public import paths may remain as compatibility exceptions after plugin/import
-scanning, but they are not templates for new modules. Test filenames continue
-to follow pytest's descriptive `test_<behavior>.py` convention.
+`application/subscription/{contract,delete,identity}.py`. Multiword production
+paths may remain only when the machine policy verifies a stable discovery
+identifier or records a path-specific reason and consumer evidence; an
+unstructured grandfathered filename list is forbidden. The same gate scans
+every package root: new roots are documentation-only or precise lazy facades
+unless a reviewed owner reason is recorded. Test filenames continue to follow
+pytest's descriptive `test_<behavior>.py` convention.
 
 Legacy module paths belong in `app/runtime/compat/manifest.py`. New
 implementation modules must not re-export old managers, helpers or Oper classes
@@ -928,7 +931,7 @@ driven workflow registration.
 | `app/agent/lifecycle.py` | Agent manager admission, startup, idle collection and bounded shutdown owner |
 | `app/agent/tasks.py` | Background prompt, scheduled task and heartbeat execution owner |
 | `app/agent/orchestrator.py` | Per-session `MoviePilotAgent` execution and LLM/tool/middleware orchestration only |
-| `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
+| `app/agent/loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/agent/__init__.py` | Implementation-free package root; exact historical Agent symbols are supplied by the Compat overlay only, while host callers import `orchestrator.py` or the relevant owner directly |
 | `app/agent/llm/__init__.py` | Implementation-free package root; only the verified historical `LLMHelper` symbol is supplied by exact Compat routing |
 | `app/agent/llm/helper.py` | Canonical `LLMHelper` owner and exact target of the historical `app.helper.llm` module path |
@@ -981,8 +984,8 @@ driven workflow registration.
 | `app/runtime/extensions/module/contracts.py` | High-frequency method families and frozen legacy fallback contract |
 | `app/application/chain/context.py` | Injectable Chain dependencies, no-argument compatibility provider and legacy Transfer command Port |
 | `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
-| `app/runtime/extensions/module_manager.py` | Module discovery and lifecycle |
-| `app/runtime/extensions/plugin_manager.py` | Stable PluginManager ABI facade plus plugin discovery/lifecycle entrypoints; its constructor only consumes the startup-injected Runtime factory and does not build an environment or individual owner |
+| `app/runtime/extensions/module/manager.py` | Module discovery and lifecycle |
+| `app/runtime/extensions/plugin/manager.py` | Stable PluginManager ABI facade plus plugin discovery/lifecycle entrypoints; its constructor only consumes the startup-injected Runtime factory and does not build an environment or individual owner |
 | `app/runtime/extensions/plugin/runtime.py` | Frozen typed aggregate and construction primitive for plugin registry, lifecycle, catalog, dependency, monitor, projection, sync and package-system owners; it does not choose concrete startup dependencies |
 | `app/runtime/extensions/plugin/system.py` | Startup-injected market/package/dependency system-port facade, including delegation to the unique physical package deletion owner; it does not construct concrete adapters |
 | `app/runtime/extensions/plugin/dependency.py` | Virtual-instance dependency classification and runtime-status persistence owner |
@@ -1018,7 +1021,7 @@ driven workflow registration.
 | `app/adapters/cache/backends.py` | Redis and filesystem cache adapters |
 | `app/adapters/system/resource.py` | Runtime resource detection/download/installation |
 | `app/adapters/system/fsproxy.py` | Timeout-guarded local filesystem operations in a killable subprocess (with colocated `fsworker.py`) |
-| `app/adapters/external/wechat_crypt.py` | WeChat enterprise-message XML encryption/decryption protocol |
+| `app/adapters/external/wechat.py` | WeChat enterprise-message XML encryption/decryption protocol |
 | `app/application/rules.py` | Rule domain: user rule-group config access (`RuleHelper`), built-in torrent filter rule set and rule parser |
 | `app/adapters/external/market.py` | Exact legacy `PluginHelper` compatibility facade and install Gateway; canonical market behavior lives in `plugin/client.py` and host code must not import this facade |
 | `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |

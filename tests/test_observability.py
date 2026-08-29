@@ -17,7 +17,7 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.web.metrics import HttpMetricsMiddleware
 from app.db.engine import _register_database_pool_metrics
 from app.runtime.extensions.plugin.lifecycle import observe_plugin_lifecycle
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 from app.runtime.observability import (
     METRIC_SPECS,

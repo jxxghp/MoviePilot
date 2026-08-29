@@ -2,7 +2,7 @@
 from unittest.mock import Mock
 
 from app import schemas
-from app.runtime.extensions.module_manager import ModuleManager
+from app.runtime.extensions.module.manager import ModuleManager
 from app.domain.context import MusicInfo
 from app.modules.navidrome import NavidromeModule
 from app.modules.navidrome.navidrome import Navidrome

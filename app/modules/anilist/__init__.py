@@ -7,7 +7,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.projection.anilist import format_date as format_anilist_date
 from app.domain.scraper import MediaScraperHelper
 from app.modules import _ModuleBase
-from app.modules._base.media_auxiliary import MediaAuxiliaryProviderMixin
+from app.modules._base.media import MediaAuxiliaryProviderMixin
 from app.modules.anilist.anilist import AniListApi
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting

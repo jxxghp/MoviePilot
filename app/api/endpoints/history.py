@@ -7,7 +7,7 @@ from fastapi import Depends
 
 from app.adapters.web.security.access import verify_token
 from app.agent.contracts import ReplyMode
-from app.agent.prompt.transfer_redo import (
+from app.agent.prompt.transfer import (
     build_batch_manual_redo_prompt,
     build_manual_redo_prompt,
 )

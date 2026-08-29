@@ -19,8 +19,8 @@ from app.runtime.extensions.plugin.monitor import (
 )
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.system import reset_plugin_system
-from app.runtime.extensions import plugin_manager as plugin_manager_module
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin import manager as plugin_manager_module
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.schemas.plugin import PluginRuntimeStatus
 from app.startup.initializers import plugins as plugins_initializer
 
@@ -752,7 +752,7 @@ async def test_quiesce_timeout_retains_future_owner_until_worker_finishes(
         with ThreadPoolExecutor(max_workers=1) as executor:
             thread_helper = SimpleNamespace(submit=executor.submit)
             monkeypatch.setattr(
-                "app.runtime.extensions.plugin_manager.ThreadHelper",
+                "app.runtime.extensions.plugin.manager.ThreadHelper",
                 lambda: thread_helper,
             )
 

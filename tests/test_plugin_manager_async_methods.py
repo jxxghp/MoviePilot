@@ -36,7 +36,7 @@ async def test_async_run_plugin_method_offloads_sync_plugin_method(
     )
     worker = AsyncMock(return_value=2)
     monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.run_in_threadpool_to_completion",
+        "app.runtime.extensions.plugin.manager.run_in_threadpool_to_completion",
         worker,
     )
 
@@ -61,7 +61,7 @@ async def test_async_run_plugin_method_keeps_async_plugin_method_on_loop(
     )
     worker = AsyncMock()
     monkeypatch.setattr(
-        "app.runtime.extensions.plugin_manager.run_in_threadpool_to_completion",
+        "app.runtime.extensions.plugin.manager.run_in_threadpool_to_completion",
         worker,
     )
 

@@ -11,7 +11,7 @@ from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.api.endpoints import mcp
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.foundation.singleton import Singleton
 
 

@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agent.contracts import ReplyMode
 from app.agent.manager import AgentManager
 from app.agent.memory import memory_manager
-from app.agent.middleware.activity_log import QUERY_ACTIVITY_LOG_TOOL_NAME
+from app.agent.middleware.activity import QUERY_ACTIVITY_LOG_TOOL_NAME
 from app.agent.middleware.skills import SKILL_TOOL_NAME
 from app.agent.middleware.subagents import (
     SUBAGENT_CONTROL_TOOL_NAME,

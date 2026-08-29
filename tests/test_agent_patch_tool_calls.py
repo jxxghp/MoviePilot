@@ -3,7 +3,7 @@ import unittest
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.agent.middleware.patch_tool_calls import PatchToolCallsMiddleware
+from app.agent.middleware.patching import PatchToolCallsMiddleware
 
 
 def _build_tool_call(tool_call_id: str = "call_1", name: str = "search") -> dict:

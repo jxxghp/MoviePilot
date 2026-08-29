@@ -88,7 +88,7 @@ from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
-from app.runtime.compat.resource_imports import scan_plugin_resource_imports
+from app.runtime.compat.resources import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
 from app.runtime.extensions.plugin.runtime import (
@@ -107,7 +107,7 @@ from app.runtime.extensions.plugin.system import (
     configure_plugin_system,
     get_plugin_system,
 )
-from app.runtime.extensions.plugin_manager import (
+from app.runtime.extensions.plugin.manager import (
     PluginManager,
     configure_plugin_catalog_factory,
     configure_plugin_legacy_import_services,

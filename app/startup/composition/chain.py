@@ -24,8 +24,8 @@ from app.db.session import SessionFactory
 from app.runtime.cache import AsyncFileCache, FileCache
 from app.runtime.events import EventManager
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
-from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.module.manager import ModuleManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.stop import runtime_stop_state
 from app.startup.composition.database import build_transactional_user_repository
 from app.startup.composition.runtime import RuntimeDependencies

@@ -5,14 +5,14 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel
 
-from app.agent.middleware.activity_log import QueryActivityLogInput
+from app.agent.middleware.activity import QueryActivityLogInput
 from app.agent.middleware.skills import SkillToolInput
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.ask_user_choice import AskUserChoiceInput, AskUserChoiceTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
-from app.runtime.extensions.plugin_manager import PluginManager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.foundation.singleton import Singleton
 
 

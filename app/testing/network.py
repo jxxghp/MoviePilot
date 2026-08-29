@@ -1,7 +1,7 @@
 """测试网络守卫（主程序与插件仓共享）。
 
 提供一个 autouse 的 pytest fixture，拦截测试期对非本地主机的真实出站网络。主程序
-``tests/conftest.py`` 与各插件仓 conftest 只需 ``from app.testing.network_guard import
+``tests/conftest.py`` 与各插件仓 conftest 只需 ``from app.testing.network import
 block_real_network`` 即复用同一道守卫——pytest 会把 conftest 命名空间内（含 import 进来的）
 fixture 一并识别，autouse 自动作用于每个用例，无需逐用例改动。
 

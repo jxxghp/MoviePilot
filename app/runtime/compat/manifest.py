@@ -441,13 +441,13 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="domain",
     ),
     "app.core.module": ModuleAlias(
-        target="app.runtime.extensions.module_manager",
+        target="app.runtime.extensions.module.manager",
         replacement="app.sdk.plugins",
         introduced="v3.0.0",
         owner="runtime",
     ),
     "app.core.plugin": ModuleAlias(
-        target="app.runtime.extensions.plugin_manager",
+        target="app.runtime.extensions.plugin.manager",
         replacement="app.sdk.plugins",
         introduced="v3.0.0",
         owner="runtime",

@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from app.agent.prompt import prompt_manager
-from app.agent.prompt.transfer_redo import build_batch_manual_redo_prompt
+from app.agent.prompt.transfer import build_batch_manual_redo_prompt
 
 
 def test_batch_manual_redo_prompt_requires_plain_text_result():

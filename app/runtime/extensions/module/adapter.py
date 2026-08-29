@@ -14,7 +14,7 @@ from app.runtime.capabilities.model import (
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.settings import get_runtime_setting, has_runtime_setting
-from app.runtime.extensions.service_config import ServiceConfigHelper
+from app.runtime.extensions.service import ServiceConfigHelper
 from app.schemas.types import (
     DownloaderType,
     MediaRecognizeType,
@@ -30,7 +30,7 @@ from app.schemas.types import (
 HOST_MODULE_KIND = "host_module"
 _SETTING_SELECTOR = "setting_truthy"
 _SERVICE_SELECTOR = "system_config_item"
-_MODULE_ROOT = Path(__file__).resolve().parents[2] / "modules"
+_MODULE_ROOT = Path(__file__).resolve().parents[3] / "modules"
 _SERVICE_CONFIG_GETTERS = MappingProxyType({
     SystemConfigKey.Downloaders.value: ServiceConfigHelper.get_downloader_configs,
     SystemConfigKey.MediaServers.value: ServiceConfigHelper.get_mediaserver_configs,

@@ -51,7 +51,7 @@ class Item(BaseModel):
 
 def _v1_compat_routes() -> list[tuple[str, APIRoute]]:
     """返回兼容 v1 导出的公开路由，不依赖 FastAPI 内部 include 包装器。"""
-    from app.api.router_specs import API_V1_ROUTER_SPECS
+    from app.api.routers import API_V1_ROUTER_SPECS
 
     return [
         (f"{spec.prefix}{route.path}", route)

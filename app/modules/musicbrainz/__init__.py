@@ -18,7 +18,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
-from app.modules.musicbrainz.music_cache import MusicBrainzCache
+from app.modules.musicbrainz.cache import MusicBrainzCache
 from app.runtime.cache import cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
