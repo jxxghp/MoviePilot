@@ -9,7 +9,11 @@ from app.adapters.system.backup.database import (
     SQLiteBackupBackend,
 )
 from app.adapters.system.backup.files import BackupFiles
-from app.api.data import ApiDataPorts
+from app.api.data import (
+    ApiDataPorts,
+    configure_api_data_runtime,
+    reset_api_data_runtime,
+)
 from app.application.backup import BackupPolicy, DatabaseBackupService
 from app.application.database import (
     DatabaseGovernance,
@@ -23,9 +27,18 @@ from app.application.maintenance import (
 from app.application.plugin.transaction import (
     PluginPersistenceService,
     configure_plugin_persistence,
+    reset_plugin_persistence,
 )
-from app.application.query import DataQueryService, configure_data_query_service
-from app.application.workflow import WorkflowQueryService, configure_workflow_query
+from app.application.query import (
+    DataQueryService,
+    configure_data_query_service,
+    reset_data_query_service,
+)
+from app.application.workflow import (
+    WorkflowQueryService,
+    configure_workflow_query,
+    reset_workflow_query,
+)
 from app.db.adapters.history.download import SessionDownloadHistoryRepository
 from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
 from app.db.adapters.plugininstallation import TransactionalPluginInstallationStore
@@ -56,6 +69,7 @@ from app.db.uow import (
     SqlAlchemyAsyncUnitOfWork,
     SqlAlchemyUnitOfWork,
     configure_transaction_runners,
+    reset_transaction_runners,
 )
 from app.db.worker import DatabaseWorker
 from app.runtime.settings import get_runtime_setting
@@ -74,28 +88,37 @@ class DatabaseComposition:
     """保存初始化器后续装配所需的数据库查询能力。"""
 
     api_data: ApiDataPorts
+    data_query: DataQueryService
+    plugin_persistence: PluginPersistenceService
     workflow_query: WorkflowQueryService
 
 
 _database_runtime: DatabaseRuntime | None = None
+_database_runtime_starting = False
 
 
 async def start_database_runtime() -> DatabaseRuntime:
     """启动进程唯一数据库 worker，并登记兼容写事务 runner。"""
-    global _database_runtime
-    transaction = TransactionalWriteRunner(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
-    configure_transaction_runners(
-        sync=transaction.sync,
-        async_=transaction.async_,
-    )
-    worker = DatabaseWorker()
-    await worker.start()
-    runtime = DatabaseRuntime(worker=worker, transaction=transaction)
-    _database_runtime = runtime
-    return runtime
+    global _database_runtime, _database_runtime_starting
+    if _database_runtime is not None or _database_runtime_starting:
+        raise RuntimeError("数据库 runtime 已由当前进程持有")
+    _database_runtime_starting = True
+    try:
+        transaction = TransactionalWriteRunner(
+            sync_session=SessionFactory,
+            async_session=async_session_scope,
+        )
+        worker = DatabaseWorker()
+        await worker.start()
+        configure_transaction_runners(
+            sync=transaction.sync,
+            async_=transaction.async_,
+        )
+        runtime = DatabaseRuntime(worker=worker, transaction=transaction)
+        _database_runtime = runtime
+        return runtime
+    finally:
+        _database_runtime_starting = False
 
 
 async def stop_database_runtime() -> None:
@@ -127,22 +150,18 @@ def compose_database_services(
 ) -> DatabaseComposition:
     """组合查询、插件持久化与旧 API 数据 Facade 所需实现。"""
     data_query_adapter = SqlAlchemyDataQueryAdapter(SessionFactory)
-    configure_data_query_service(
-        DataQueryService(
-            subscriptions=data_query_adapter,
-            histories=data_query_adapter,
-            async_executor=runtime.worker,
-        )
+    data_query = DataQueryService(
+        subscriptions=data_query_adapter,
+        histories=data_query_adapter,
+        async_executor=runtime.worker,
     )
-    configure_plugin_persistence(
-        PluginPersistenceService(
-            executor=runtime.worker,
-            identities=TransactionalPluginIdentityStore(SessionFactory),
-            installations=TransactionalPluginInstallationStore(
-                SessionFactory,
-                system_config.update_atomically,
-            ),
-        )
+    plugin_persistence = PluginPersistenceService(
+        executor=runtime.worker,
+        identities=TransactionalPluginIdentityStore(SessionFactory),
+        installations=TransactionalPluginInstallationStore(
+            SessionFactory,
+            system_config.update_atomically,
+        ),
     )
     workflow_query = WorkflowQueryService(
         repository=TransactionalWorkflowQueryRepository(
@@ -150,7 +169,6 @@ def compose_database_services(
             async_session=async_session_scope,
         )
     )
-    configure_workflow_query(workflow_query)
     return DatabaseComposition(
         api_data=ApiDataPorts(
             sync_session=get_db,
@@ -176,8 +194,27 @@ def compose_database_services(
                 "sync": SqlAlchemyUnitOfWork,
             },
         ),
+        data_query=data_query,
+        plugin_persistence=plugin_persistence,
         workflow_query=workflow_query,
     )
+
+
+def publish_database_services(composition: DatabaseComposition) -> None:
+    """一次性发布当前 lifespan 的查询、插件持久化和旧 API 数据端口。"""
+    configure_data_query_service(composition.data_query)
+    configure_plugin_persistence(composition.plugin_persistence)
+    configure_workflow_query(composition.workflow_query)
+    configure_api_data_runtime(composition.api_data)
+
+
+def reset_database_services() -> None:
+    """撤销当前 lifespan 发布的全部数据库派生服务。"""
+    reset_transaction_runners()
+    reset_api_data_runtime()
+    reset_workflow_query()
+    reset_plugin_persistence()
+    reset_data_query_service()
 
 
 def build_database_governance() -> DatabaseGovernance:

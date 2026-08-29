@@ -336,6 +336,12 @@ def configure_data_query_service(service: DataQueryService) -> None:
     _configured_data_query_service = service
 
 
+def reset_data_query_service() -> None:
+    """清除当前 lifespan 的插件数据查询服务。"""
+    global _configured_data_query_service
+    _configured_data_query_service = None
+
+
 def get_configured_data_query_service() -> DataQueryService:
     """返回启动阶段登记的插件数据查询服务。"""
     if _configured_data_query_service is None:
@@ -350,4 +356,5 @@ __all__ = [
     "SubscriptionQueryPort",
     "configure_data_query_service",
     "get_configured_data_query_service",
+    "reset_data_query_service",
 ]

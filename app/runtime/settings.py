@@ -33,6 +33,13 @@ def configure_runtime_setting_updater(updater: RuntimeSettingUpdater) -> None:
     _updater = updater
 
 
+def reset_runtime_setting_ports() -> None:
+    """清除运行时读写器，使启动前访问重新回退旧 Settings。"""
+    global _provider, _updater
+    _provider = None
+    _updater = None
+
+
 def get_runtime_setting(key: str, default: Any = _MISSING) -> Any:
     """读取单项运行配置；可选默认值保留旧 `getattr` 容错语义。"""
     try:

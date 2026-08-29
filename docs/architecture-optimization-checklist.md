@@ -70,7 +70,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 965 / 8,209 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 965 / 8,207 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -80,7 +80,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
 | 全量 mypy 历史债务 | 10,347 / 593 文件 | strict frontier 当前覆盖 41 个文件，Domain projection 与既有 owner 拆分的受益调用方低水位已固化 |
 | Ruff 历史诊断 | 648 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 80.92%，Domain 79.89% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 覆盖率低水位 | Application 81.00%，Domain 80.67% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -670,6 +670,8 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
   既有 `app.core.context` 精确兼容映射继续指向 canonical 类型，未新增 SDK/Compat。
 - [x] L4.1 已将配置快照、`RuntimeSettingsService`、`DatabaseWorker`、兼容事务 runner、查询服务与
   插件持久化迁入既有 `startup/composition/{configuration,database}.py`；initializer 只调用组合 API。
+  数据库 runtime 拒绝重入，Worker 成功后才发布事务入口；成功关闭与启动失败会对称撤销本批 provider、
+  释放数据库引擎，并在模块 owner 收敛后清除 `app.state.host_runtime`。
 - [ ] 继续将 Chain、network、server、outbox、security、agent 与 HostRuntime 构造按领域移到
   `startup/composition/*`，最终让 initializer 只负责顺序、注册和是否重启的决策。
 - [ ] 保留生命周期 manifest 和顺序快照；高扇出在组合根是允许的，但业务实现不能继续沉积其中。

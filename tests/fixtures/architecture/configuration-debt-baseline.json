@@ -1,13 +1,7 @@
 {
   "composition_root_oper_boundaries": {
-    "count": 1,
-    "entries": [
-      {
-        "file": "app/startup/composition/configuration.py",
-        "name": "SystemConfigOper",
-        "reason": "配置组合 owner 负责构造唯一的系统配置数据库适配器"
-      }
-    ]
+    "count": 0,
+    "entries": []
   },
   "foundational_settings_boundaries": {
     "count": 0,

@@ -340,10 +340,16 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 - `startup/composition/configuration.py` 唯一负责系统/用户配置快照加载、`RuntimeConfiguration` 与
   `RuntimeSettingsService` 构造，以及同一对象向正式运行时和兼容设置入口的发布。
 - `startup/composition/database.py` 唯一持有 `DatabaseWorker`、兼容事务 runner、查询服务、
-  插件持久化、工作流查询和旧 `ApiDataPorts` 的具体数据库装配；worker 关闭失败时保留 owner。
+  插件持久化、工作流查询和旧 `ApiDataPorts` 的具体数据库装配；runtime 拒绝重入，Worker 成功后
+  才发布事务入口，关闭失败时保留 owner 与 provider，成功关闭后对称撤销。
 - `startup/initializers/modules.py` 只按原顺序调用 composition API，并继续构造尚未迁移的领域运行时；
   本批未改变 HostRuntime、插件 ABI、SDK/Compat 或生命周期 manifest，`app/plugins/**` 未改动。
-- 基于 `origin/v3@a1e351aa9` 锁定全量 `7377 passed, 9 skipped`；真实正常模式启动和优雅关闭通过。
+- 模块 owner 完整收敛后撤销 `app.state.host_runtime`；启动失败直接关闭 Worker、撤销本批 provider 并
+  释放数据库引擎，关停失败则保留所有权供诊断和重试。
+- 基于 `origin/v3@a1e351aa9` 锁定全量覆盖率 `7383 passed, 9 skipped`；正常模式真实启动达到
+  `Application startup complete`，优雅关闭达到 `Application shutdown complete`。
+- 启动性能、Pylint、Ruff/mypy ratchet、Host architecture baseline 与
+  `MoviePilot-Plugins@2d6946eb1` 官方插件兼容基线通过。
 - 后续批次继续迁移 Chain/network/server/outbox/security/agent 与最终 HostRuntime 构造；本批不宣称
   S5-L4 整体完成。
 

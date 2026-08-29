@@ -123,11 +123,14 @@ def test_domain_initializer_injects_all_system_acceleration_ports(monkeypatch) -
         "configure_release_groups_provider",
         "configure_custom_words_provider",
         "configure_search_source_provider",
-        "configure_tmdb_image_url_builder",
         "configure_recognition_runtime",
         "clear_rust_parse_options_cache",
     ):
         monkeypatch.setattr(domain_initializer, name, MagicMock())
+    monkeypatch.setattr(
+        "app.domain.projection.tmdb.configure_image_url_builder",
+        MagicMock(),
+    )
     monkeypatch.setattr(domain_initializer, "RecognitionRuleService", MagicMock())
     monkeypatch.setattr(
         domain_initializer,

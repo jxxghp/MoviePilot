@@ -1224,7 +1224,7 @@ async def test_stop_modules_keeps_event_loop_responsive_during_sync_owner_wait(
 def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
     """关闭时先收口 Web Agent，再关闭持久化准入和数据库任务。"""
     order = []
-    _patch_module_shutdown_dependencies(monkeypatch)
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
     monkeypatch.setattr(
         modules_initializer,
         "shutdown_web_agent_background_tasks",
@@ -1257,11 +1257,30 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
         "database_runtime_active",
         lambda: database_state["active"],
     )
+    monkeypatch.setattr(
+        modules_initializer,
+        "reset_database_services",
+        MagicMock(side_effect=lambda: order.append("database-services")),
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "reset_configuration",
+        MagicMock(side_effect=lambda: order.append("configuration")),
+    )
+    dependencies["close_database"].side_effect = lambda: order.append("connection")
 
     converged = asyncio.run(modules_initializer.stop_modules())
 
     assert converged is True
-    assert order == ["web-agent", "persistence-admission", "persistence", "database"]
+    assert order == [
+        "web-agent",
+        "persistence-admission",
+        "persistence",
+        "database",
+        "database-services",
+        "configuration",
+        "connection",
+    ]
 
 
 @pytest.mark.asyncio
@@ -1486,6 +1505,20 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     close_database = AsyncMock()
     monkeypatch.setattr(modules_initializer, "close_database", close_database)
     dependencies["close_database"] = close_database
+    reset_database_services = MagicMock()
+    monkeypatch.setattr(
+        modules_initializer,
+        "reset_database_services",
+        reset_database_services,
+    )
+    dependencies["reset_database_services"] = reset_database_services
+    reset_configuration = MagicMock()
+    monkeypatch.setattr(
+        modules_initializer,
+        "reset_configuration",
+        reset_configuration,
+    )
+    dependencies["reset_configuration"] = reset_configuration
     return dependencies
 
 

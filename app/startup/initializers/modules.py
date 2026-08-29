@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import sys
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from functools import partial
 from typing import Any, Callable, Optional, cast
 
@@ -31,7 +31,6 @@ from app.adapters.system.resource import (
     configure_resource_version_provider,
 )
 from app.adapters.web.security.access import set_superuser_token_payload_provider
-from app.api.data import configure_api_data_runtime
 from app.application.agent import AgentDataContext
 from app.application.agenttask import (
     AgentTaskExecutionService,
@@ -193,6 +192,7 @@ from app.startup.composition.configuration import (
     build_chain_runtime_config,
     compose_configuration,
     publish_configuration,
+    reset_configuration,
 )
 from app.startup.composition.context import (
     AgentChatRuntime,
@@ -210,6 +210,8 @@ from app.startup.composition.database import (
     compose_database_services,
     configure_database,
     database_runtime_active,
+    publish_database_services,
+    reset_database_services,
     start_database_runtime,
     stop_database_runtime,
 )
@@ -862,6 +864,8 @@ async def stop_modules() -> bool:
     if persistence_drained:
         await run_step("数据库任务", stop_database_runtime)
         if not database_runtime_active():
+            await run_step("数据库服务", reset_database_services)
+            await run_step("配置服务", reset_configuration)
             await run_step("数据库连接", close_database)
         else:
             all_converged = False
@@ -888,6 +892,7 @@ async def _initialize_modules() -> HostRuntime:
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
+    publish_configuration(configuration, legacy_settings)
     database_services = compose_database_services(
         runtime=database_runtime,
         system_config=configuration.system_config,
@@ -1014,9 +1019,7 @@ async def _initialize_modules() -> HostRuntime:
         settings=configuration.settings,
         tasks=get_task_registry(),
     )
-    publish_configuration(configuration, legacy_settings)
-    # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
-    configure_api_data_runtime(database_services.api_data)
+    publish_database_services(database_services)
     configure_runtime_data_providers(workflow_query, subscription_repository)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_execution(workflow_execution)
@@ -1131,4 +1134,11 @@ async def init_modules() -> HostRuntime:
             await stop_database_runtime()
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"模块启动失败后的数据库任务清理失败：{cleanup_error}")
+        if not database_runtime_active():
+            reset_database_services()
+            reset_configuration()
+            try:
+                await cast(Callable[[], Awaitable[None]], close_database)()
+            except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+                logger.error(f"模块启动失败后的数据库连接清理失败：{cleanup_error}")
         raise

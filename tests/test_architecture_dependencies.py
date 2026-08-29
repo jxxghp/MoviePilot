@@ -769,7 +769,10 @@ def test_modules_initializer_delegates_configuration_and_database_composition():
         "stop_database_runtime",
         "compose_configuration(",
         "compose_database_services(",
+        "publish_database_services(",
         "publish_configuration(",
+        "reset_database_services",
+        "reset_configuration",
         "configure_database()",
     ):
         assert call in initializer_source
@@ -791,6 +794,9 @@ def test_modules_initializer_delegates_configuration_and_database_composition():
     assert "TransactionalWriteRunner(" in database_source
     assert "PluginPersistenceService(" in database_source
     assert "SqlAlchemyDataQueryAdapter(" in database_source
+    assert "reset_transaction_runners()" in database_source
+    assert "configure_api_data_runtime" not in initializer_source
+    assert "configure_api_data_runtime" in database_source
 
 
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():

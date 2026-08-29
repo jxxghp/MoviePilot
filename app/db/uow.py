@@ -44,6 +44,13 @@ def configure_transaction_runners(
     _async_transaction_runner = async_
 
 
+def reset_transaction_runners() -> None:
+    """清除当前 lifespan 的无会话事务执行器，禁止关停后继续写库。"""
+    global _sync_transaction_runner, _async_transaction_runner
+    _sync_transaction_runner = None
+    _async_transaction_runner = None
+
+
 def run_sync_transaction(operation: Callable[[Session], T]) -> T:
     """委托组合根在独占同步事务中执行 Oper 操作。"""
     if _sync_transaction_runner is None:

@@ -98,6 +98,12 @@ def configure_user_configuration(service: UserConfigurationService) -> None:
     _configured_user_configuration = service
 
 
+def reset_user_configuration() -> None:
+    """清除当前 lifespan 的用户配置服务，避免重复启动复用旧实例。"""
+    global _configured_user_configuration
+    _configured_user_configuration = None
+
+
 def get_configured_user_configuration() -> UserConfigurationService:
     """返回启动阶段登记的用户配置服务。"""
     if _configured_user_configuration is None:

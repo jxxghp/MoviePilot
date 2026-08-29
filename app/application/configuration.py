@@ -366,6 +366,12 @@ def configure_system_config(service: SystemConfigService) -> None:
     _configured_system_config = service
 
 
+def reset_system_config() -> None:
+    """清除当前 lifespan 的系统配置服务，避免重复启动复用旧实例。"""
+    global _configured_system_config
+    _configured_system_config = None
+
+
 def get_configured_system_config() -> SystemConfigService:
     """返回启动阶段登记的系统配置服务。"""
     if _configured_system_config is None:
@@ -379,6 +385,12 @@ def configure_transfer_retry_config(
     """由组合根登记整理失败重试快照工厂。"""
     global _transfer_retry_config_provider
     _transfer_retry_config_provider = provider
+
+
+def reset_transfer_retry_config() -> None:
+    """清除整理失败重试快照工厂，使未装配读取重新失败。"""
+    global _transfer_retry_config_provider
+    _transfer_retry_config_provider = None
 
 
 def get_transfer_retry_config() -> TransferRetryConfig:
@@ -396,6 +408,12 @@ def configure_token_runtime_config(
     _token_runtime_config_provider = provider
 
 
+def reset_token_runtime_config() -> None:
+    """清除令牌安全配置快照工厂，禁止复用上一 lifespan 的密钥。"""
+    global _token_runtime_config_provider
+    _token_runtime_config_provider = None
+
+
 def get_token_runtime_config() -> TokenRuntimeConfig:
     """返回当前令牌编解码使用的不可变配置快照。"""
     if _token_runtime_config_provider is None:
@@ -409,10 +427,31 @@ def configure_runtime_configuration(configuration: RuntimeConfiguration) -> None
     _runtime_configuration = configuration
 
 
+def reset_runtime_configuration() -> None:
+    """清除各运行面共享的类型化配置快照工厂。"""
+    global _runtime_configuration
+    _runtime_configuration = None
+
+
 def configure_runtime_settings(service: RuntimeSettingsService) -> None:
     """由组合根登记管理 API 使用的部署设置服务。"""
     global _runtime_settings_service
     _runtime_settings_service = service
+
+
+def reset_runtime_settings() -> None:
+    """清除管理 API 使用的部署设置服务。"""
+    global _runtime_settings_service
+    _runtime_settings_service = None
+
+
+def reset_configuration_services() -> None:
+    """清除当前 lifespan 登记的全部配置服务与快照 provider。"""
+    reset_system_config()
+    reset_transfer_retry_config()
+    reset_token_runtime_config()
+    reset_runtime_configuration()
+    reset_runtime_settings()
 
 
 def get_runtime_settings() -> RuntimeSettingsService:

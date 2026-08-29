@@ -1,4 +1,5 @@
 import typing
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Self, Set, Union
@@ -62,28 +63,40 @@ def configure_tmdb_image_url_builder(
     configure_image_url_builder(builder)
 
 
-def _project_tmdb(state: dict, info: dict) -> dict:
+def _project_tmdb(
+    state: Mapping[str, Any],
+    info: Mapping[str, Any],
+) -> dict[str, Any]:
     """按需加载 TMDB 投影 owner，避免领域上下文冷导入全部来源实现。"""
     from app.domain.projection.tmdb import project
 
     return project(state, info)
 
 
-def _project_douban(state: dict, info: dict) -> dict:
+def _project_douban(
+    state: Mapping[str, Any],
+    info: Mapping[str, Any],
+) -> dict[str, Any]:
     """按需加载豆瓣投影 owner，避免领域上下文冷导入全部来源实现。"""
     from app.domain.projection.douban import project
 
     return project(state, info)
 
 
-def _project_bangumi(state: dict, info: dict) -> dict:
+def _project_bangumi(
+    state: Mapping[str, Any],
+    info: Mapping[str, Any],
+) -> dict[str, Any]:
     """按需加载 Bangumi 投影 owner，避免领域上下文冷导入全部来源实现。"""
     from app.domain.projection.bangumi import project
 
     return project(state, info)
 
 
-def _project_anilist(state: dict, info: dict) -> dict:
+def _project_anilist(
+    state: Mapping[str, Any],
+    info: Mapping[str, Any],
+) -> dict[str, Any]:
     """按需加载 AniList 投影 owner，避免领域上下文冷导入全部来源实现。"""
     from app.domain.projection.anilist import project
 

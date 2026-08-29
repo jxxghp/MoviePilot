@@ -271,7 +271,6 @@ def test_string_api_data_locator_is_confined_to_compatibility_boundary() -> None
     assert importers == {
         "app/api/dependencies/data.py",
         "app/startup/composition/database.py",
-        "app/startup/initializers/modules.py",
     }
 
 
@@ -289,6 +288,34 @@ async def test_lifecycle_component_attaches_init_modules_result(monkeypatch) -> 
 
     await lifecycle.initialize_modules_component(app)
 
+    assert app.state.host_runtime is runtime
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_component_revokes_host_runtime_after_converged_stop(
+        monkeypatch,
+) -> None:
+    """模块 owner 完整关闭后 AppState 不得继续暴露上一 lifespan 的运行时。"""
+    app = FastAPI()
+    runtime = _runtime()
+    app.state.host_runtime = runtime
+    monkeypatch.setattr(lifecycle, "stop_modules", AsyncMock(return_value=True))
+
+    assert await lifecycle.stop_modules_component(app) is True
+    assert app.state.host_runtime is None
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_component_retains_host_runtime_after_failed_stop(
+        monkeypatch,
+) -> None:
+    """模块 owner 未收敛时保留 HostRuntime，供诊断与后续重试。"""
+    app = FastAPI()
+    runtime = _runtime()
+    app.state.host_runtime = runtime
+    monkeypatch.setattr(lifecycle, "stop_modules", AsyncMock(return_value=False))
+
+    assert await lifecycle.stop_modules_component(app) is False
     assert app.state.host_runtime is runtime
 
 

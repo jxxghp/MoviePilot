@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8209,
-  "edge_sha256": "9f7de0c9e2a95fdcaf385feae16aa582ee1d5c68c2712fbb7b3fee07862499ae",
+  "edge_count": 8207,
+  "edge_sha256": "726a95dd9ad2caadc87bbed1395f56e01f0b323217e466380112326fe994e04d",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8835,8 +8835,6 @@
     "app.startup.initializers.modules -> app.agent",
     "app.startup.initializers.modules -> app.agent.tools",
     "app.startup.initializers.modules -> app.agent.tools.manager",
-    "app.startup.initializers.modules -> app.api",
-    "app.startup.initializers.modules -> app.api.data",
     "app.startup.initializers.modules -> app.application",
     "app.startup.initializers.modules -> app.application.agent",
     "app.startup.initializers.modules -> app.application.agenttask",

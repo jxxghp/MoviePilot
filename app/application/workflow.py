@@ -202,6 +202,12 @@ def configure_workflow_query(service: WorkflowQueryService) -> None:
     _configured_workflow_query = service
 
 
+def reset_workflow_query() -> None:
+    """清除当前 lifespan 的工作流查询服务。"""
+    global _configured_workflow_query
+    _configured_workflow_query = None
+
+
 def get_configured_workflow_query() -> WorkflowQueryService:
     """返回启动阶段登记的工作流查询服务。"""
     if _configured_workflow_query is None:

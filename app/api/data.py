@@ -53,6 +53,12 @@ def configure_api_data_runtime(ports: ApiDataPorts) -> None:
     _ports = ports
 
 
+def reset_api_data_runtime() -> None:
+    """清除当前 lifespan 的 API 数据端口集合。"""
+    global _ports
+    _ports = None
+
+
 def configure_api_data_ports(
     *,
     sync_session: SessionProvider,

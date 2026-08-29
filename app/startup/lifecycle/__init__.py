@@ -288,6 +288,14 @@ async def initialize_modules_component(app: FastAPI) -> None:
         app.state.host_runtime = runtime
 
 
+async def stop_modules_component(app: FastAPI) -> bool:
+    """关闭模块 owner；仅在完整收敛后撤销 AppState 中的 HostRuntime。"""
+    converged = await stop_modules()
+    if converged:
+        app.state.host_runtime = None
+    return converged
+
+
 def initialize_log_runtime(app: FastAPI) -> None:
     """创建并发布当前 lifespan 独占的文件日志 writer。"""
     app.state.log_shutdown_failed = False
@@ -486,7 +494,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
                 "Chain 网络端口",
             ),
             start=lambda: initialize_modules_component(app),
-            stop=stop_modules,
+            stop=lambda: stop_modules_component(app),
             start_order=70,
             stop_order=70,
             start_timeout_seconds=300,

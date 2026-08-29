@@ -289,10 +289,10 @@ def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
         "count": 0,
         "entries": [],
     }
-    assert baseline["composition_root_oper_boundaries"]["count"] == 1
-    assert baseline["composition_root_oper_boundaries"]["entries"][0]["file"] == (
-        "app/startup/composition/configuration.py"
-    )
+    assert baseline["composition_root_oper_boundaries"] == {
+        "count": 0,
+        "entries": [],
+    }
 
 
 def test_startup_performance_baseline_records_normal_and_safe_lifecycle_resources():
