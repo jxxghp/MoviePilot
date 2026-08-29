@@ -44,6 +44,11 @@ class EventBindingResolver:
         with self._lock:
             self._resolvers()[name] = resolver
 
+    def unregister(self, name: str) -> None:
+        """移除命名实例解析器；名称不存在时保持幂等。"""
+        with self._lock:
+            self._resolvers().pop(name, None)
+
     def unresolved_handlers(self) -> tuple[str, ...]:
         """返回本进程中未被显式 resolver 接管的类处理器。"""
         with self._lock:

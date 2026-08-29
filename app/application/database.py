@@ -97,6 +97,11 @@ def configure_database_governance(governance: DatabaseGovernance) -> None:
     _DATABASE_GOVERNANCE.append(governance)
 
 
+def reset_database_governance() -> None:
+    """撤销当前 lifespan 的数据库治理门面，恢复未装配状态。"""
+    _DATABASE_GOVERNANCE.clear()
+
+
 def get_database_governance() -> DatabaseGovernance:
     """返回启动阶段登记的数据库治理门面。"""
     if not _DATABASE_GOVERNANCE:

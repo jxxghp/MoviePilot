@@ -191,6 +191,10 @@ class EventManager(metaclass=Singleton):
         """
         self.__binding_resolver.register(name, resolver)
 
+    def unregister_handler_instance_resolver(self, name: str) -> None:
+        """撤销命名实例解析器；重复撤销不影响其它 owner。"""
+        self.__binding_resolver.unregister(name)
+
     def unresolved_handler_bindings(self) -> tuple[str, ...]:
         """返回未命中显式 resolver 的类处理器诊断清单。"""
         return self.__binding_resolver.unresolved_handlers()
@@ -199,6 +203,10 @@ class EventManager(metaclass=Singleton):
         """设置事件处理异常的外部通知回调。"""
         with self.__lock:
             self.__error_notifier = notifier
+
+    def reset_error_notifier(self) -> None:
+        """撤销当前 lifespan 的事件错误通知回调。"""
+        self.set_error_notifier(None)
 
     def start(self):
         """

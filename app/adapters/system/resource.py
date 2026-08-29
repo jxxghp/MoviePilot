@@ -28,6 +28,12 @@ def configure_resource_version_provider(provider: ResourceVersionProvider) -> No
     _resource_version_provider = provider
 
 
+def reset_resource_version_provider() -> None:
+    """撤销当前 lifespan 的资源版本来源，恢复安全空版本。"""
+    global _resource_version_provider
+    _resource_version_provider = _unavailable_resource_versions
+
+
 class ResourceHelper:
     """
     检测和更新资源包

@@ -64,6 +64,16 @@ def configure_managed_resource_runtime(runtime: ManagedResourceRuntime) -> None:
         _managed_resource_runtime = runtime
 
 
+def reset_managed_resource_runtime() -> None:
+    """释放已关闭 Runtime 的门面引用；未配置时保持幂等。"""
+    global _managed_resource_runtime
+    with _runtime_lock:
+        runtime = _managed_resource_runtime
+        if runtime is not None and not runtime.is_shutdown:
+            raise RuntimeError("Managed Resource Runtime 尚未关闭，不能释放引用")
+        _managed_resource_runtime = None
+
+
 @overload
 def _runtime(*, required: Literal[True]) -> ManagedResourceRuntime: ...
 

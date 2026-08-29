@@ -59,6 +59,14 @@ class MoviePilotToolsManager:
         self._catalog_materialized = False
         self._catalog_managed_by_factory = False
 
+    def _invalidate_catalog_locked(self) -> None:
+        """在持有工具锁时清除由旧数据上下文构造的目录快照。"""
+        self.tools = []
+        self.catalog = None
+        self._plugin_agent_tools_revision = -1
+        self._catalog_materialized = False
+        self._catalog_managed_by_factory = False
+
     def set_data_context(self, data: AgentDataContext) -> None:
         """绑定组合根上下文，并使工厂拥有的旧工具快照原子失效。"""
         with self._tools_lock:
@@ -67,11 +75,13 @@ class MoviePilotToolsManager:
             if self._catalog_materialized and not self._catalog_managed_by_factory:
                 raise RuntimeError("调用方工具目录已物化，不能替换数据上下文")
             self._data = data
-            self.tools = []
-            self.catalog = None
-            self._plugin_agent_tools_revision = -1
-            self._catalog_materialized = False
-            self._catalog_managed_by_factory = False
+            self._invalidate_catalog_locked()
+
+    def reset_data_context(self) -> None:
+        """撤销当前 lifespan 数据上下文，并清除引用旧仓储的工具快照。"""
+        with self._tools_lock:
+            self._data = None
+            self._invalidate_catalog_locked()
 
     @staticmethod
     def _summarize_error(error: Exception) -> str:

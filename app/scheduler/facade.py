@@ -104,6 +104,15 @@ class Scheduler(
             raise RuntimeError("Scheduler 已运行，不能替换业务能力")
         self._services = services
 
+    def reset_runtime_bindings(self) -> None:
+        """在调度器停止后撤销当前 lifespan 的仓储与业务能力引用。"""
+        with self._lock:
+            if self._lifecycle_state not in {"new", "stopped"}:
+                raise RuntimeError("Scheduler 仍在运行，不能撤销运行时绑定")
+            self._agent_tasks = None
+            self._services = None
+            self._agent_task_interruptions_reconciled = False
+
     def _scheduler_services(self) -> SchedulerServices:
         """返回显式注入能力；缺少组合根装配时稳定失败。"""
         if self._services is None:
