@@ -11,7 +11,7 @@ from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.chain.search import SearchChain
+from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain import episode as episode_rules
 from app.domain import title as title_rules
