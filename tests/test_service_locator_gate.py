@@ -29,8 +29,11 @@ def test_service_locator_gate_detects_each_concrete_runtime_family() -> None:
         "app.startup.initializers.modules": {
             "app.command",
             "app.runtime.extensions.module_manager",
-            "app.runtime.extensions.plugin_manager",
             "app.scheduler.facade",
+        },
+        "app.startup.composition.chain": {
+            "app.runtime.extensions.module_manager",
+            "app.runtime.extensions.plugin_manager",
         },
         "app.startup.composition.outbox": {"app.command"},
         "app.workflow.manager": {"app.workflow"},

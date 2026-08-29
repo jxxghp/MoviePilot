@@ -47,6 +47,7 @@ RUNTIME_FACADE_POLICIES = (
         exact_consumers=frozenset(
             {
                 "app.sdk.plugins",
+                "app.startup.composition.chain",
                 "app.startup.initializers.modules",
             }
         ),
@@ -57,7 +58,7 @@ RUNTIME_FACADE_POLICIES = (
         exact_consumers=frozenset(
             {
                 "app.sdk.plugins",
-                "app.startup.initializers.modules",
+                "app.startup.composition.chain",
                 "app.startup.initializers.plugins",
             }
         ),

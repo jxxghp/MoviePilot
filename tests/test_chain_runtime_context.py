@@ -1,5 +1,7 @@
 """Chain 运行上下文注入和无参兼容 provider 测试。"""
 
+import sys
+from types import ModuleType
 from unittest.mock import Mock, call
 
 import pytest
@@ -114,3 +116,86 @@ def test_chain_keeps_explicit_typed_repositories() -> None:
     assert chain.subscription_completion_scope is context.subscription_completion_scope
     assert chain.transfer_execution_repository is context.transfer_execution_repository
     assert chain.user_repository is context.user_repository
+
+
+def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) -> None:
+    """组合 API 只登记 provider，首次无参 Chain 请求时才构造完整上下文。"""
+    from app.startup.composition import chain as chain_composition
+
+    context = _context()
+    builder = Mock(return_value=context)
+    register = Mock()
+    dependencies = {
+        "message_helper": Mock(),
+        "message_queue": Mock(),
+        "system_config": Mock(),
+        "site": Mock(),
+        "subscription": Mock(),
+        "download_history": Mock(),
+        "transfer_history": Mock(),
+        "transfer_execution": Mock(),
+        "configuration": Mock(),
+    }
+    monkeypatch.setattr(chain_composition, "build_chain_runtime_context", builder)
+    monkeypatch.setattr(
+        chain_composition,
+        "configure_chain_runtime_context_provider",
+        register,
+    )
+
+    chain_composition.configure_chain_runtime_context(**dependencies)
+
+    builder.assert_not_called()
+    provider = register.call_args.args[0]
+    assert provider() is context
+    builder.assert_called_once_with(**dependencies)
+
+
+def test_chain_composition_keeps_legacy_transfer_import_lazy(monkeypatch) -> None:
+    """旧整理命令仅在真实调用时加载 TransferChain，并原样转交参数。"""
+    from app.startup.composition import chain as chain_composition
+
+    execute = Mock(return_value="transferred")
+    transfer_chain = Mock(return_value=Mock(execute_legacy_transfer_command=execute))
+    facade = ModuleType("app.chain.transfer.facade")
+    facade.TransferChain = transfer_chain
+    monkeypatch.setitem(sys.modules, "app.chain.transfer.facade", facade)
+
+    result = chain_composition.execute_legacy_transfer_command(
+        source="downloads",
+        target="library",
+    )
+
+    assert result == "transferred"
+    transfer_chain.assert_called_once_with()
+    execute.assert_called_once_with(source="downloads", target="library")
+
+
+def test_chain_composition_registers_lazy_wallpaper_providers(monkeypatch) -> None:
+    """壁纸装配只登记 callable，不在启动阶段提前物化业务 Chain。"""
+    from app.startup.composition import chain as chain_composition
+
+    register = Mock()
+    tmdb_instance = Mock()
+    tmdb_instance.get_random_wallpager.return_value = "tmdb-one"
+    tmdb_instance.get_trending_wallpapers.return_value = ["tmdb-many"]
+    media_instance = Mock()
+    media_instance.get_latest_wallpaper.return_value = "media-one"
+    media_instance.get_latest_wallpapers.return_value = ["media-many"]
+    tmdb_chain = Mock(return_value=tmdb_instance)
+    media_chain = Mock(return_value=media_instance)
+    monkeypatch.setattr(chain_composition, "configure_wallpaper_providers", register)
+    monkeypatch.setattr(chain_composition, "TmdbChain", tmdb_chain)
+    monkeypatch.setattr(chain_composition, "MediaServerChain", media_chain)
+
+    chain_composition.configure_wallpaper_services()
+
+    tmdb_chain.assert_not_called()
+    media_chain.assert_not_called()
+    providers = register.call_args.kwargs
+    assert providers["tmdb_wallpaper"]() == "tmdb-one"
+    assert providers["tmdb_wallpapers"](3) == ["tmdb-many"]
+    assert providers["mediaserver_wallpaper"]() == "media-one"
+    assert providers["mediaserver_wallpapers"](4) == ["media-many"]
+    tmdb_instance.get_trending_wallpapers.assert_called_once_with(3)
+    media_instance.get_latest_wallpapers.assert_called_once_with(count=4)

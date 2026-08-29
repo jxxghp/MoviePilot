@@ -1,7 +1,4 @@
 {
-  "app/adapters/external/server.py": {
-    "I001": 1
-  },
   "app/adapters/external/wechat_crypt.py": {
     "I001": 1
   },
@@ -706,9 +703,6 @@
     "I001": 1
   },
   "app/runtime/extensions/plugin/storage.py": {
-    "I001": 1
-  },
-  "app/runtime/extensions/service_config.py": {
     "I001": 1
   },
   "app/runtime/gc.py": {

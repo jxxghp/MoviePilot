@@ -3,11 +3,9 @@ import inspect
 import sys
 from collections.abc import Awaitable
 from functools import partial
-from typing import Any, Callable, cast
+from typing import Callable, cast
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
-from app.chain.mediaserver import MediaServerChain
-from app.chain.tmdb import TmdbChain
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
@@ -25,17 +23,12 @@ from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
 )
-from app.application.chain.context import (
-    ChainRuntimeContext,
-    configure_chain_runtime_context_provider,
-)
 from app.application.configuration import (
     TransferRetryConfig,
     configure_transfer_retry_config,
     get_configured_system_config,
 )
 from app.application.history import configure_transfer_history_repository
-from app.application.image import configure_wallpaper_providers
 from app.application.messaging.agent import (
     dispatch_web_agent_message_event,
     shutdown_web_agent_background_tasks,
@@ -57,8 +50,6 @@ from app.application.site.health import SiteHealthService, configure_site_health
 from app.application.site.query import SiteQueryService, configure_site_query_service
 from app.application.workflow import configure_workflow_execution
 from app.command import CommandChain
-from app.db.adapters.chain import TransactionalChainDurableEventWriter
-from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.history.download import (
     SessionDownloadHistoryRepository,
     TransactionalDownloadHistoryRepository,
@@ -67,7 +58,6 @@ from app.db.adapters.history.transfer import (
     SessionTransferHistoryRepository,
     TransactionalTransferHistoryRepository,
 )
-from app.db.adapters.mediaserver import TransactionalMediaServerRepository
 from app.db.adapters.outbox import (
     SqlAlchemyAsyncOutboxDispatchStore,
     SqlAlchemyAsyncOutboxStager,
@@ -79,7 +69,6 @@ from app.db.adapters.subscription import (
     TransactionalSubscriptionHistoryRepository,
     TransactionalSubscriptionRepository,
 )
-from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
@@ -88,7 +77,6 @@ from app.db.adapters.workflow import (
 )
 from app.db.oper.mediaserver import MediaServerOper
 from app.db.oper.message import MessageOper
-from app.db.oper.systemconfig import SystemConfigOper
 from app.db.oper.workflow import WorkflowOper
 from app.db.session import (
     SessionFactory,
@@ -101,13 +89,10 @@ from app.db.uow import (
     SqlAlchemyAsyncUnitOfWork,
     SqlAlchemyUnitOfWork,
 )
-from app.runtime.cache import AsyncFileCache, FileCache
 from app.runtime.config import settings as legacy_settings
 from app.runtime.events import EventHandlerBinding, EventManager
 from app.runtime.execution import run_in_threadpool_to_completion
-from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.extensions.module_manager import ModuleManager
-from app.runtime.extensions.plugin_manager import PluginManager
 from app.runtime.extensions.service_config import (
     ServiceConfigHelper,
     configure_service_config_reader,
@@ -117,7 +102,6 @@ from app.runtime.settings import (
     get_runtime_setting,
 )
 from app.runtime.state import SystemHelper
-from app.runtime.stop import runtime_stop_state
 from app.runtime.tasks import get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.message import Message, MessageType
@@ -126,8 +110,11 @@ from app.startup.composition.agent import (
     compose_agent,
     publish_agent_services,
 )
+from app.startup.composition.chain import (
+    configure_chain_runtime_context,
+    configure_wallpaper_services,
+)
 from app.startup.composition.configuration import (
-    build_chain_runtime_config,
     compose_configuration,
     publish_configuration,
     reset_configuration,
@@ -142,7 +129,6 @@ from app.startup.composition.context import (
     WorkflowRuntime,
 )
 from app.startup.composition.database import (
-    build_transactional_user_repository,
     compose_database_services,
     configure_database,
     database_runtime_active,
@@ -161,13 +147,8 @@ from app.startup.composition.server import configure_server_services
 from app.startup.composition.subscription import (
     async_rule_group_mutation_scope,
     build_subscription_batch_writer,
-    delete_subscribe_scope,
     rule_group_mutation_scope,
     site_reference_mutation_scope,
-    subscription_completion_scope,
-    subscription_mutation_scope,
-    sync_delete_subscribe_scope,
-    sync_subscription_mutation_scope,
 )
 from app.startup.initializers.agent import configure_agent_data_context, init_agent
 from app.startup.initializers.resources import (
@@ -177,63 +158,6 @@ from app.startup.initializers.resources import (
 from app.startup.initializers.scheduler import configure_scheduler_agent_tasks
 
 
-def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
-    """把旧 Chain ABI 延迟转入唯一 TransferChain durable command。"""
-    from app.chain.transfer.facade import TransferChain
-
-    return TransferChain().execute_legacy_transfer_command(**kwargs)
-
-
-def _build_chain_runtime_context(
-    *,
-    message_helper: MessageHelper,
-    message_queue: MessageQueueManager,
-    system_config: SystemConfigOper,
-    site: TransactionalSiteRepository,
-    subscription: TransactionalSubscriptionRepository,
-    download_history: TransactionalDownloadHistoryRepository,
-    transfer_history: TransactionalTransferHistoryRepository,
-) -> ChainRuntimeContext:
-    """在启动组合根创建 Chain 所需的运行时对象和数据端口。"""
-    return ChainRuntimeContext(
-        module_manager=ModuleManager(),
-        plugin_manager=PluginManager(),
-        event_manager=EventManager(),
-        message_oper=MessageOper(),
-        message_helper=message_helper,
-        file_cache=FileCache(),
-        async_file_cache=AsyncFileCache(),
-        message_queue=message_queue,
-        module_dispatcher_factory=ModuleInvocationDispatcher,
-        site_repository=site,
-        subscription_repository=subscription,
-        subscription_mutation_scope=subscription_mutation_scope,
-        sync_subscription_mutation_scope=sync_subscription_mutation_scope,
-        subscription_delete_scope=delete_subscribe_scope,
-        sync_subscription_delete_scope=sync_delete_subscribe_scope,
-        subscription_completion_scope=subscription_completion_scope,
-        rule_group_mutation_scope=partial(
-            rule_group_mutation_scope,
-            system_config.publish_many,
-        ),
-        site_reference_mutation_scope=partial(
-            site_reference_mutation_scope,
-            system_config.publish_many,
-        ),
-        download_history_repository=download_history,
-        transfer_history_repository=transfer_history,
-        transfer_admission_repository=TransactionalTransferAdmissionRepository(SessionFactory),
-        transfer_execution_repository=TransactionalTransferExecutionRepository(SessionFactory),
-        media_server_repository=TransactionalMediaServerRepository(SessionFactory),
-        download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
-        user_repository=build_transactional_user_repository(),
-        legacy_transfer_command=_execute_legacy_transfer_command,
-        configuration=build_chain_runtime_config(legacy_settings),
-        durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
-        stop_state=runtime_stop_state,
-    )
-
-
 def configure_runtime_data_providers() -> None:
     """在启动组合层装配模块和配置目录的运行时读取能力。"""
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
@@ -241,16 +165,6 @@ def configure_runtime_data_providers() -> None:
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
-    )
-
-
-def configure_wallpaper_services() -> None:
-    """把需要 Chain 编排的壁纸来源注入图片服务。"""
-    configure_wallpaper_providers(
-        tmdb_wallpaper=lambda: TmdbChain().get_random_wallpager(),
-        tmdb_wallpapers=lambda count: TmdbChain().get_trending_wallpapers(count),
-        mediaserver_wallpaper=lambda: MediaServerChain().get_latest_wallpaper(),
-        mediaserver_wallpapers=lambda count: MediaServerChain().get_latest_wallpapers(count=count),
     )
 
 
@@ -660,16 +574,16 @@ async def _initialize_modules() -> HostRuntime:
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
     configure_wallpaper_services()
     # Chain 无参兼容入口由组合根明确提供依赖上下文；测试和新代码可直接注入替代上下文。
-    configure_chain_runtime_context_provider(
-        lambda: _build_chain_runtime_context(
-            message_helper=message_helper,
-            message_queue=message_queue,
-            system_config=system_config,
-            site=site_repository,
-            subscription=subscription_repository,
-            download_history=download_history_repository,
-            transfer_history=transfer_history_repository,
-        )
+    configure_chain_runtime_context(
+        message_helper=message_helper,
+        message_queue=message_queue,
+        system_config=system_config,
+        site=site_repository,
+        subscription=subscription_repository,
+        download_history=download_history_repository,
+        transfer_history=transfer_history_repository,
+        transfer_execution=transfer_execution_repository,
+        configuration=configuration.runtime.chain,
     )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     configure_security_access()

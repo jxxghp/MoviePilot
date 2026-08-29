@@ -141,6 +141,10 @@ runtime/settings construction and publication. `startup/composition/database.py`
 owns the process database worker, compatibility transaction runner, query services,
 plugin persistence and legacy API data-port wiring. Initializers call these owners in
 startup order and must not recreate their concrete construction.
+`startup/composition/chain.py` owns the no-argument Chain compatibility context,
+typed persistence/dispatch object graph, lazy legacy Transfer command binding and
+wallpaper-provider publication. `initializers/modules.py` only passes the already
+constructed repositories in startup order and must not recreate those dependencies.
 `startup/composition/security.py` owns authentication, user lookup, PassKey and Web
 access provider assembly; `initializers/modules.py` only invokes that owner and places
 its returned `AuthenticationRuntime` into the host runtime.
@@ -151,7 +155,7 @@ startup order and must not recreate their concrete construction.
 `startup/composition/outbox.py`
 owns durable handler validation, lazy event/notification replay binding and the
 short-transaction dispatcher factory. Initializers call this owner in
-startup order and must not recreate their concrete construction. Database runtime
+startup order and must not recreate its concrete construction.
 `startup/composition/server.py` owns MoviePilot Server report/share service
 construction and registration, including lazy local-data readers and external
 transport callbacks; `initializers/modules.py` retains only its startup-order call
@@ -160,8 +164,8 @@ and the later explicit network warmup. Database runtime
 chat persistence and autonomous-task repository/execution service set. It may accept
 the Agent initializer's data-context registrar as a callback, but must not import
 `startup.initializers`; tool-manager, scheduler and Agent activation order remains in
-the initializer. Database runtime
-ownership rejects overlapping lifespans; after a successful worker shutdown, the
+the initializer. Database runtime ownership rejects overlapping lifespans; after a
+successful worker shutdown, the
 configuration/database composition owners must revoke every provider they published
 before releasing database connections. Other domain providers remain owned by their
 matching composition batch and must satisfy the same symmetric lifecycle contract

@@ -566,7 +566,7 @@ def test_chain_runtime_context_owns_typed_repository_instances():
     )
     mediaserver_source = (APP_ROOT / "chain" / "mediaserver.py").read_text(encoding="utf-8")
     application_source = (APP_ROOT / "application" / "mediaserver.py").read_text(encoding="utf-8")
-    startup_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
+    startup_source = (APP_ROOT / "startup" / "composition" / "chain.py").read_text(encoding="utf-8")
     assert "DownloadFailure = Any" not in download_source
     assert "dboper" not in mediaserver_source
     assert "async def async_get_item_id(" in application_source
@@ -578,7 +578,7 @@ def test_startup_composes_typed_chain_and_agent_data_contexts():
     context_specs = {
         "ChainRuntimeContext": (
             APP_ROOT / "application" / "chain" / "context.py",
-            APP_ROOT / "startup" / "initializers" / "modules.py",
+            APP_ROOT / "startup" / "composition" / "chain.py",
             {
                 "site_repository",
                 "subscription_repository",
@@ -919,6 +919,74 @@ def test_modules_initializer_delegates_agent_composition():
     assert "startup.initializers" not in agent_source
 
 
+def test_modules_initializer_delegates_chain_composition():
+    """Chain 上下文、壁纸与旧整理命令只由单词型 composition owner 装配。"""
+    initializer_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    composition_path = APP_ROOT / "startup" / "composition" / "chain.py"
+    composition_source = composition_path.read_text(encoding="utf-8")
+    composition_tree = ast.parse(composition_source, filename=str(composition_path))
+    package_tree = ast.parse(
+        (APP_ROOT / "startup" / "composition" / "__init__.py").read_text(
+            encoding="utf-8"
+        )
+    )
+    architecture_source = (
+        PROJECT_ROOT / "docs" / "rules" / "05-architecture.md"
+    ).read_text(encoding="utf-8")
+
+    assert composition_path.is_file()
+    assert not list(composition_path.parent.glob("chain_*.py"))
+    assert "from app.startup.composition.chain import (" in initializer_source
+    assert initializer_source.index("configure_wallpaper_services()") < (
+        initializer_source.index("configure_chain_runtime_context(")
+    )
+    for retired_name in (
+        "_execute_legacy_transfer_command",
+        "_build_chain_runtime_context",
+    ):
+        assert retired_name not in initializer_source
+    for detail in (
+        "ChainRuntimeContext(",
+        "TransactionalTransferAdmissionRepository(SessionFactory)",
+        "TransactionalChainDurableEventWriter(SessionFactory)",
+        "def execute_legacy_transfer_command(",
+        "def build_chain_runtime_context(",
+        "def configure_wallpaper_services(",
+        "def configure_chain_runtime_context(",
+    ):
+        assert detail not in initializer_source
+        assert detail in composition_source
+    assert initializer_source.count(
+        "TransactionalTransferExecutionRepository("
+    ) == 1
+    assert "transfer_execution=transfer_execution_repository" in initializer_source
+    assert "transfer_execution_repository=transfer_execution" in composition_source
+    assert "TransactionalTransferExecutionRepository" not in composition_source
+    transfer_function = next(
+        node
+        for node in composition_tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "execute_legacy_transfer_command"
+    )
+    assert any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "app.chain.transfer.facade"
+        for node in ast.walk(transfer_function)
+    )
+    assert not any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "app.chain.transfer.facade"
+        for node in composition_tree.body
+    )
+    assert "`startup/composition/chain.py` owns" in architecture_source
+    assert not any(
+        isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef))
+        for node in package_tree.body
+    )
+
+
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
     """工作流旧写入口只能存在于 SDK Legacy facade。"""
     oper_path = APP_ROOT / "db" / "oper" / "workflow.py"
@@ -1119,11 +1187,15 @@ def test_startup_injects_user_adapter_instead_of_raw_oper():
     database_source = (
         APP_ROOT / "startup" / "composition" / "database.py"
     ).read_text(encoding="utf-8-sig")
-    source = initializer_source + database_source
+    chain_source = (
+        APP_ROOT / "startup" / "composition" / "chain.py"
+    ).read_text(encoding="utf-8-sig")
+    source = initializer_source + database_source + chain_source
 
     assert "TransactionalUserRepository" in source
     assert "SqlAlchemyUserRepository" in source
-    assert "build_transactional_user_repository" in initializer_source
+    assert "build_transactional_user_repository" not in initializer_source
+    assert "build_transactional_user_repository" in chain_source
     assert "from app.db.oper.user import UserOper" not in source
     assert "user=lambda: UserOper()" not in source
 
@@ -1160,7 +1232,7 @@ def test_transfer_pending_oper_import_is_confined_to_database_boundary():
 
 def test_startup_injects_transactional_transfer_admission_repository():
     """启动组合根必须向 Chain 注入事务型整理准入仓储。"""
-    path = APP_ROOT / "startup" / "initializers" / "modules.py"
+    path = APP_ROOT / "startup" / "composition" / "chain.py"
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     imports_repository = any(
         isinstance(node, ast.ImportFrom)
