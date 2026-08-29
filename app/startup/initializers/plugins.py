@@ -66,7 +66,10 @@ from app.application.plugin.release import (
     reset_plugin_release_service,
 )
 from app.application.plugin.routes import register_plugin_api
-from app.application.plugin.runtime import get_plugin_manager
+from app.application.plugin.runtime import (
+    configure_plugin_runtime,
+    get_plugin_manager,
+)
 from app.application.plugin.transaction import (
     PluginPersistenceService,
     get_plugin_persistence,
@@ -175,6 +178,7 @@ def configure_plugin_services() -> None:
     )
     configure_plugin_catalog_factory(_build_plugin_catalog)
     configure_plugin_runtime_factory(build_plugin_runtime_graph)
+    configure_plugin_runtime(lambda: PluginManager())
     plugin_manager = get_plugin_manager()
     inventory_reader = PluginCandidateInventoryReader(
         market_loader=market_client.get_plugin_index_result,

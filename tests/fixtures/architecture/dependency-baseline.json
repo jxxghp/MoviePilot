@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8152,
-  "edge_sha256": "49283e0f19c1e78e457b3a870f3edb360ec1e203771a4582ae3d2b99796c276e",
+  "edge_count": 8151,
+  "edge_sha256": "8dde7ef068410659e55be5ebb0548b32d9fa1cef3cb888182b5aab6386e8b343",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8787,7 +8787,6 @@
     "app.startup.initializers.modules -> app.application.network",
     "app.startup.initializers.modules -> app.application.outbox",
     "app.startup.initializers.modules -> app.application.plugin",
-    "app.startup.initializers.modules -> app.application.plugin.runtime",
     "app.startup.initializers.modules -> app.application.plugin.transaction",
     "app.startup.initializers.modules -> app.application.query",
     "app.startup.initializers.modules -> app.application.security",

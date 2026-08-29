@@ -108,7 +108,6 @@ from app.application.outbox import (
     durable_event_topic,
     validate_durable_event_handlers,
 )
-from app.application.plugin.runtime import configure_plugin_runtime
 from app.application.query import (
     DataQueryService,
     configure_data_query_service,
@@ -372,7 +371,6 @@ def configure_runtime_data_providers(
     """在启动组合层装配运行时和外部服务所需的数据库读取能力。"""
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
     configure_module_runtime(lambda: ModuleManager())
-    configure_plugin_runtime(lambda: PluginManager())
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),

@@ -2,6 +2,11 @@
 
 import ast
 from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
+
+from app.startup.initializers import plugins as plugins_initializer
 
 PROJECT_ROOT = Path(__file__).parents[1]
 MANAGER_PATH = PROJECT_ROOT / "app" / "runtime" / "extensions" / "plugin_manager.py"
@@ -108,6 +113,8 @@ def test_startup_injects_runtime_factory_before_manager_materialization() -> Non
     assert service_calls.index(
         next(item for item in service_calls if item[1] == "configure_plugin_runtime_factory")
     ) < service_calls.index(
+        next(item for item in service_calls if item[1] == "configure_plugin_runtime")
+    ) < service_calls.index(
         next(item for item in service_calls if item[1] == "get_plugin_manager")
     )
     assert sync_calls.index(
@@ -115,6 +122,46 @@ def test_startup_injects_runtime_factory_before_manager_materialization() -> Non
     ) < sync_calls.index(
         next(item for item in sync_calls if item[1] == "PluginManager")
     )
+
+
+def test_plugin_services_publish_application_runtime_before_lookup(monkeypatch) -> None:
+    """插件服务装配必须先发布 Application provider，再读取 Manager。"""
+    order: list[str] = []
+
+    class _LookupReached(RuntimeError):
+        """表示测试已执行到首次插件 Manager 读取。"""
+
+    def factory(*_args, **_kwargs):
+        """返回不触发真实构造逻辑的测试替身。"""
+        return Mock()
+
+    monkeypatch.setattr(plugins_initializer, "PluginMarketTransport", factory)
+    monkeypatch.setattr(plugins_initializer, "PluginMarketClient", factory)
+    monkeypatch.setattr(plugins_initializer, "PluginPackageSourceClient", factory)
+    monkeypatch.setattr(plugins_initializer, "PluginPackageManager", factory)
+    monkeypatch.setattr(plugins_initializer, "configure_plugin_catalog_factory", Mock())
+    monkeypatch.setattr(
+        plugins_initializer,
+        "configure_plugin_runtime_factory",
+        lambda _factory: order.append("factory"),
+    )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "configure_plugin_runtime",
+        lambda _provider: order.append("provider"),
+    )
+
+    def lookup_manager():
+        """记录首次读取并终止无关的后续服务图构造。"""
+        order.append("lookup")
+        raise _LookupReached
+
+    monkeypatch.setattr(plugins_initializer, "get_plugin_manager", lookup_manager)
+
+    with pytest.raises(_LookupReached):
+        plugins_initializer.configure_plugin_services()
+
+    assert order == ["factory", "provider", "lookup"]
 
 
 def test_plugin_manager_does_not_reach_raw_system_adapters() -> None:
