@@ -5,7 +5,6 @@ from typing import Any
 
 
 _EXPORTS = {
-    "Telegram": ("app.modules.telegram.telegram", "Telegram"),
     "TelegramModule": ("app.modules.telegram.module", "TelegramModule"),
 }
 
@@ -28,4 +27,4 @@ def __dir__() -> list[str]:
     return sorted({*globals(), *_EXPORTS})
 
 
-__all__ = ["Telegram", "TelegramModule"]
+__all__ = ["TelegramModule"]

@@ -11,7 +11,7 @@ from app.domain.context import MediaInfo
 from app.runtime.events import eventmanager
 from app.application.mediaserver import MusicMediaServerHelper
 from app.runtime.log import logger
-from app.modules._base import _MediaServerModuleBase
+from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.plex.plex import Plex
 from app.schemas.event import AuthCredentials
 from app.schemas.event import AuthInterceptCredentials

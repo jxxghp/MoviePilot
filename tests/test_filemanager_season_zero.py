@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.domain.context import MediaInfo
-from app.modules.filemanager import FileManagerModule
+from app.modules.filemanager.module import FileManagerModule
 from app.schemas.types import MediaType
 
 
@@ -12,7 +12,7 @@ def test_local_media_exists_keeps_special_season_zero():
     module.media_files = lambda _mediainfo: [SimpleNamespace(basename="Test.Show.S00E01.mkv")]
     mediainfo = MediaInfo(title="Test Show", type=MediaType.TV)
 
-    with patch("app.modules.filemanager.settings.LOCAL_EXISTS_SEARCH", True):
+    with patch("app.modules.filemanager.module.settings.LOCAL_EXISTS_SEARCH", True):
         exists = module.media_exists(mediainfo)
 
     assert exists.seasons == {0: [1]}

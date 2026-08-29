@@ -116,6 +116,13 @@ RETIRED_CANONICAL_FILES = (
     "app/startup/workflow.py",
     "app/startup/workflow_initializer.py",
 )
+HOST_MODULE_PACKAGE_EXPORTS = {
+    "filemanager": {"FileManagerModule"},
+    "qqbot": {"QQBotModule"},
+    "telegram": {"TelegramModule"},
+    "trimemedia": {"TrimeMediaModule"},
+    "ugreen": {"UgreenModule"},
+}
 PLUGIN_COMPONENT_ROOTS = (
     "app/adapters/external/plugin",
     "app/adapters/system/plugin",
@@ -354,6 +361,39 @@ def test_runtime_dependencies_use_same_named_single_word_package() -> None:
                     if alias.name == "app.runtime.dependencies"
                 )
     assert violations == []
+
+
+def test_host_module_package_roots_only_export_capability_entrypoints() -> None:
+    """宿主模块包根只公开 capability entrypoint，内部 owner 必须直达子模块。"""
+    base_path = APP_ROOT / "modules" / "_base" / "__init__.py"
+    base_tree = ast.parse(base_path.read_text(encoding="utf-8"), filename=str(base_path))
+    assert ast.get_docstring(base_tree)
+    assert len(base_tree.body) == 1
+
+    root_imports: list[str] = []
+    for path in (APP_ROOT / "modules").rglob("*.py"):
+        if path.is_relative_to(APP_ROOT / "plugins"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "app.modules._base":
+                root_imports.append(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                )
+    assert root_imports == []
+
+    for package_name, expected_exports in HOST_MODULE_PACKAGE_EXPORTS.items():
+        path = APP_ROOT / "modules" / package_name / "__init__.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        assignments = {
+            target.id: ast.literal_eval(node.value)
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            for target in node.targets
+            if isinstance(target, ast.Name) and target.id in {"_EXPORTS", "__all__"}
+        }
+        assert set(assignments["_EXPORTS"]) == expected_exports
+        assert set(assignments["__all__"]) == expected_exports
 
 
 def test_domain_media_projection_uses_single_word_owner_package() -> None:

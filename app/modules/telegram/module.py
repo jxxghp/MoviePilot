@@ -9,7 +9,7 @@ from app.application.messaging.agent import (
     resolve_config_principal_ids,
 )
 from app.runtime.log import logger
-from app.modules._base import _MessageChannelModuleBase
+from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.telegram.telegram import Telegram
 from app.schemas.notification import NotificationChannel
 from app.schemas.message import IncomingMessage

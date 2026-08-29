@@ -7,7 +7,7 @@ from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPla
 from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerSeasonInfo
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.log import logger
-from app.modules._base import _MediaServerModuleBase
+from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.emby.emby import Emby
 from app.schemas.types import ModuleType, MediaServerType
 

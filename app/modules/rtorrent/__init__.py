@@ -5,7 +5,7 @@ from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.modules._base import _DownloaderModuleBase
+from app.modules._base.downloader import _DownloaderModuleBase
 from app.modules.rtorrent.rtorrent import Rtorrent
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (

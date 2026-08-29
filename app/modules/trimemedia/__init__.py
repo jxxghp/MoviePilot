@@ -5,7 +5,6 @@ from typing import Any
 
 
 _EXPORTS = {
-    "TrimeMedia": ("app.modules.trimemedia.trimemedia", "TrimeMedia"),
     "TrimeMediaModule": ("app.modules.trimemedia.module", "TrimeMediaModule"),
 }
 
@@ -28,4 +27,4 @@ def __dir__() -> list[str]:
     return sorted({*globals(), *_EXPORTS})
 
 
-__all__ = ["TrimeMedia", "TrimeMediaModule"]
+__all__ = ["TrimeMediaModule"]

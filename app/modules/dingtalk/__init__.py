@@ -3,7 +3,7 @@
 from typing import List, Optional, Tuple, Union
 
 from app.domain.context import Context, MediaInfo
-from app.modules._base import _MessageChannelModuleBase
+from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.dingtalk.dingtalk import DingTalk
 from app.schemas.message import Message
 from app.schemas.types import ModuleType, NotificationChannel

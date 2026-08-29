@@ -10,7 +10,7 @@ from app.application.messaging.agent import (
     resolve_config_principal_ids,
 )
 from app.runtime.log import logger
-from app.modules._base import _MessageChannelModuleBase
+from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.slack.slack import Slack
 from app.schemas.event import CommandRegisterEventData
 from app.schemas.message import IncomingMessage

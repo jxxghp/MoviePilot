@@ -7,9 +7,10 @@ from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.application.audio import AudioMetadataHelper
 from app.application.directory import DirectoryHelper
-from app.modules.filemanager import FileManagerModule
+from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
-from app.schemas import FileItem, TransferDirectoryConf
+from app.schemas.file import FileItem
+from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import MediaType
 
 
@@ -87,7 +88,7 @@ def test_media_files_uses_music_template_root_and_only_returns_audio():
     )
 
     with patch(
-        "app.modules.filemanager.DirectoryHelper.get_library_dirs",
+        "app.modules.filemanager.module.DirectoryHelper.get_library_dirs",
         return_value=[directory],
     ), patch(
         "app.modules.filemanager.transhandler.eventmanager.send_event",
@@ -109,7 +110,7 @@ def test_local_music_recording_requires_matching_track_not_any_album_file():
         ]
     )
 
-    with patch("app.modules.filemanager.settings.LOCAL_EXISTS_SEARCH", True):
+    with patch("app.modules.filemanager.module.settings.LOCAL_EXISTS_SEARCH", True):
         exists = module.media_exists(_recording())
         missing = module.media_exists(
             _recording(title="Instant Crush", media_id="recording-2", track_number=5)
@@ -137,7 +138,7 @@ def test_local_music_album_requires_unique_complete_track_coverage():
         total_tracks=3,
     )
 
-    with patch("app.modules.filemanager.settings.LOCAL_EXISTS_SEARCH", True):
+    with patch("app.modules.filemanager.module.settings.LOCAL_EXISTS_SEARCH", True):
         assert module.media_exists(album) is None
         files.append(_audio_file("03 - Giorgio by Moroder.flac"))
         exists = module.media_exists(album)
