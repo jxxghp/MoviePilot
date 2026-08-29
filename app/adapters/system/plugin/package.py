@@ -161,6 +161,16 @@ class PluginPackageCheckpoint:
         return self.transaction_dir / ".rollback-complete"
 
 
+@dataclass(frozen=True, slots=True)
+class _RemotePluginInstallSelection:
+    """冻结远端插件完成准入后的安装方式和索引事实。"""
+
+    user_repo: str
+    package_version: str
+    release_tag: Optional[str]
+    fallback_to_filelist: bool
+
+
 class PluginPackageManager:
     """隔离插件包安装、本地同步、分身改写和文件补偿能力。"""
 
@@ -760,6 +770,69 @@ class PluginPackageManager:
             current_version=get_app_version(),
         )
 
+    def _resolve_remote_plugin_repository(
+        self,
+        pid: str,
+        repo_url: str,
+    ) -> tuple[Optional[str], Optional[tuple[bool, str]]]:
+        """统一校验远端安装前置条件并返回规范仓库标识。"""
+        if SystemUtils.is_frozen():
+            return None, (False, "可执行文件模式下，只能安装本地插件")
+        if not pid or not repo_url:
+            return None, (False, "参数错误")
+        user, repo = self.get_repo_info(repo_url)
+        if not user or not repo:
+            return None, (False, "不支持的插件仓库地址格式")
+        return f"{user}/{repo}", None
+
+    @staticmethod
+    def _accept_remote_package_version(
+        pid: str,
+        package_version: Optional[str],
+    ) -> Optional[tuple[bool, str]]:
+        """统一记录索引代际选择，并映射找不到兼容插件的失败结果。"""
+        if package_version is None:
+            message = f"{pid} 没有找到适用于当前版本的插件"
+            logger.debug(message)
+            return False, message
+        if package_version:
+            logger.debug(
+                f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件"
+            )
+        else:
+            logger.debug(f"{pid} 从 package.json 中找到适用于当前版本的插件")
+        return None
+
+    @classmethod
+    def _select_remote_install(
+        cls,
+        *,
+        pid: str,
+        user_repo: str,
+        package_version: str,
+        meta: dict[str, Any],
+        release_version: Optional[str],
+        release_items: Sequence[dict[str, Any]],
+    ) -> tuple[Optional[_RemotePluginInstallSelection], str]:
+        """把元数据和 Release 列表统一映射为可执行的远端安装选择。"""
+        plan, message = cls._build_remote_plugin_install_plan(
+            pid=pid,
+            meta=meta,
+            release_version=release_version,
+            release_items=release_items,
+        )
+        if plan is None:
+            return None, message
+        return (
+            _RemotePluginInstallSelection(
+                user_repo=user_repo,
+                package_version=package_version,
+                release_tag=plan.release_tag,
+                fallback_to_filelist=plan.fallback_to_filelist,
+            ),
+            "",
+        )
+
     def install_packages_with_fallback(
         self,
         dependency_files: Path | Sequence[Path],
@@ -851,58 +924,47 @@ class PluginPackageManager:
                 before_dependency_install=before_dependency_install,
             )
 
-        if SystemUtils.is_frozen():
-            return False, "可执行文件模式下，只能安装本地插件"
+        user_repo, error_result = self._resolve_remote_plugin_repository(
+            pid, repo_url
+        )
+        if error_result is not None:
+            return error_result
+        assert user_repo is not None
 
-        # 验证参数
-        if not pid or not repo_url:
-            return False, "参数错误"
-
-        # 从 GitHub 的 repo_url 获取用户和项目名
-        user, repo = self.get_repo_info(repo_url)
-        if not user or not repo:
-            return False, "不支持的插件仓库地址格式"
-
-        user_repo = f"{user}/{repo}"
-
-        if not package_version:
-            package_version = get_runtime_setting('VERSION_FLAG')
-
-        # 1. 优先检查指定版本的插件
-        package_version = self.get_plugin_package_version(pid, repo_url, package_version)
-        # 如果 package_version 为None，说明没有找到匹配的插件
-        if package_version is None:
-            msg = f"{pid} 没有找到适用于当前版本的插件"
-            logger.debug(msg)
-            return False, msg
-        # package_version 为空，表示从 package.json 中找到插件
-        elif package_version == "":
-            logger.debug(f"{pid} 从 package.json 中找到适用于当前版本的插件")
-        else:
-            logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
+        preferred_version = package_version or get_runtime_setting('VERSION_FLAG')
+        selected_version = self.get_plugin_package_version(
+            pid, repo_url, preferred_version
+        )
+        if error_result := self._accept_remote_package_version(
+            pid, selected_version
+        ):
+            return error_result
+        assert selected_version is not None
 
         # 2. 决定安装方式（release 或文件列表）并执行统一安装流程。
-        meta = self.__get_plugin_meta(pid, repo_url, package_version)
+        meta = self.__get_plugin_meta(pid, repo_url, selected_version)
         release_items = (
             self.get_plugin_release_versions(pid, repo_url)
             if release_version
             else []
         )
-        plan, message = self._build_remote_plugin_install_plan(
+        selection, message = self._select_remote_install(
             pid=pid,
+            user_repo=user_repo,
+            package_version=selected_version,
             meta=meta,
             release_version=release_version,
             release_items=release_items,
         )
-        if plan is None:
+        if selection is None:
             return False, message
 
-        release_tag = plan.release_tag
-        if release_tag and not plan.fallback_to_filelist:
+        release_tag = selection.release_tag
+        if release_tag and not selection.fallback_to_filelist:
             def prepare_selected_release() -> tuple[bool, str]:
                 return self.__install_from_release(
                     pid,
-                    user_repo,
+                    selection.user_repo,
                     release_tag,
                 )
 
@@ -919,14 +981,18 @@ class PluginPackageManager:
             def prepare_release() -> tuple[bool, str]:
                 ok, msg = self.__install_from_release(
                     pid,
-                    user_repo,
+                    selection.user_repo,
                     release_tag,
                 )
                 if ok:
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
                 self.__remove_old_plugin(pid)
-                return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
+                return self.__prepare_content_via_filelist_sync(
+                    pid,
+                    selection.user_repo,
+                    selection.package_version,
+                )
 
             return self.__install_flow_sync(
                 pid,
@@ -937,7 +1003,11 @@ class PluginPackageManager:
             )
         # 未声明 release 打包的插件继续使用文件列表方式安装。
         def prepare_filelist() -> tuple[bool, str]:
-            return self.__prepare_content_via_filelist_sync(pid, user_repo, package_version)
+            return self.__prepare_content_via_filelist_sync(
+                pid,
+                selection.user_repo,
+                selection.package_version,
+            )
 
         return self.__install_flow_sync(
             pid,
@@ -1754,58 +1824,47 @@ class PluginPackageManager:
                 ),
             )
 
-        if SystemUtils.is_frozen():
-            return False, "可执行文件模式下，只能安装本地插件"
+        user_repo, error_result = self._resolve_remote_plugin_repository(
+            pid, repo_url
+        )
+        if error_result is not None:
+            return error_result
+        assert user_repo is not None
 
-        # 验证参数
-        if not pid or not repo_url:
-            return False, "参数错误"
-
-        # 从 GitHub 的 repo_url 获取用户和项目名
-        user, repo = self.get_repo_info(repo_url)
-        if not user or not repo:
-            return False, "不支持的插件仓库地址格式"
-
-        user_repo = f"{user}/{repo}"
-
-        if not package_version:
-            package_version = get_runtime_setting('VERSION_FLAG')
-
-        # 1. 优先检查指定版本的插件
-        package_version = await self.async_get_plugin_package_version(pid, repo_url, package_version)
-        # 如果 package_version 为None，说明没有找到匹配的插件
-        if package_version is None:
-            msg = f"{pid} 没有找到适用于当前版本的插件"
-            logger.debug(msg)
-            return False, msg
-        # package_version 为空，表示从 package.json 中找到插件
-        elif package_version == "":
-            logger.debug(f"{pid} 从 package.json 中找到适用于当前版本的插件")
-        else:
-            logger.debug(f"{pid} 从 package.{package_version}.json 中找到适用于当前版本的插件")
+        preferred_version = package_version or get_runtime_setting('VERSION_FLAG')
+        selected_version = await self.async_get_plugin_package_version(
+            pid, repo_url, preferred_version
+        )
+        if error_result := self._accept_remote_package_version(
+            pid, selected_version
+        ):
+            return error_result
+        assert selected_version is not None
 
         # 2. 统一异步安装流程（release 或文件列表）。
-        meta = await self.__async_get_plugin_meta(pid, repo_url, package_version)
+        meta = await self.__async_get_plugin_meta(pid, repo_url, selected_version)
         release_items = (
             await self.async_get_plugin_release_versions(pid, repo_url)
             if release_version
             else []
         )
-        plan, message = self._build_remote_plugin_install_plan(
+        selection, message = self._select_remote_install(
             pid=pid,
+            user_repo=user_repo,
+            package_version=selected_version,
             meta=meta,
             release_version=release_version,
             release_items=release_items,
         )
-        if plan is None:
+        if selection is None:
             return False, message
 
-        release_tag = plan.release_tag
-        if release_tag and not plan.fallback_to_filelist:
+        release_tag = selection.release_tag
+        if release_tag and not selection.fallback_to_filelist:
             async def prepare_selected_release() -> tuple[bool, str]:
                 return await self.__async_install_from_release(
                     pid,
-                    user_repo,
+                    selection.user_repo,
                     release_tag,
                 )
 
@@ -1822,14 +1881,18 @@ class PluginPackageManager:
             async def prepare_release() -> tuple[bool, str]:
                 ok, msg = await self.__async_install_from_release(
                     pid,
-                    user_repo,
+                    selection.user_repo,
                     release_tag,
                 )
                 if ok:
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
                 await self.__async_remove_old_plugin(pid)
-                return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
+                return await self.__prepare_content_via_filelist_async(
+                    pid,
+                    selection.user_repo,
+                    selection.package_version,
+                )
 
             return await self.__install_flow_async(
                 pid,
@@ -1840,7 +1903,11 @@ class PluginPackageManager:
             )
         # 未声明 release 打包的插件继续使用文件列表方式安装。
         async def prepare_filelist() -> tuple[bool, str]:
-            return await self.__prepare_content_via_filelist_async(pid, user_repo, package_version)
+            return await self.__prepare_content_via_filelist_async(
+                pid,
+                selection.user_repo,
+                selection.package_version,
+            )
 
         return await self.__install_flow_async(
             pid,

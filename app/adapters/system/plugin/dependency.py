@@ -35,6 +35,14 @@ class _RequirementGroup:
     specifiers: set[str] = field(default_factory=set)  # 待求交集的版本约束
 
 
+@dataclass(frozen=True, slots=True)
+class _DependencyInstallRequest:
+    """封装一次插件依赖安装所需的清单和本地 wheel 来源。"""
+
+    manifest_paths: list[Path]
+    wheels_dirs: list[Path]
+
+
 class PluginDependencyPackagePort(Protocol):
     """声明依赖聚合器所需的唯一 Python 包安装边界。"""
 
@@ -360,21 +368,46 @@ class PluginDependencyInstaller:
                 result.append(wheels_dir)
         return list(dict.fromkeys(result))
 
-    def install(self, dependencies: list[str]) -> tuple[bool, str]:
-        """把已安装插件的原始清单交给一次统一包安装。"""
+    def _prepare_install_request(
+        self, dependencies: list[str]
+    ) -> tuple[Optional[_DependencyInstallRequest], Optional[tuple[bool, str]]]:
+        """统一校验依赖安装请求，并在进入包 I/O 前构造规范输入。"""
         if not dependencies:
-            return False, "没有传入需要安装的依赖项"
+            return None, (False, "没有传入需要安装的依赖项")
         try:
             manifest_paths = [manifest.path for manifest in self._plugin_manifests()]
             if not manifest_paths:
-                return False, "没有找到已安装插件的依赖清单"
-            return self._packages.install_packages_with_fallback(
-                manifest_paths,
-                self._wheels_dirs(),
+                return None, (False, "没有找到已安装插件的依赖清单")
+            return (
+                _DependencyInstallRequest(
+                    manifest_paths=manifest_paths,
+                    wheels_dirs=self._wheels_dirs(),
+                ),
+                None,
             )
-        except Exception as err:
-            logger.error(f"安装依赖项时发生错误：{err}")
-            return False, f"安装依赖项时发生错误：{err}"
+        except Exception as error:  # noqa: BLE001 - 统一映射为公开安装结果
+            return None, self._dependency_install_failure(error)
+
+    @staticmethod
+    def _dependency_install_failure(error: Exception) -> tuple[bool, str]:
+        """统一记录同步与异步包安装异常，并保留既有错误文本合同。"""
+        message = f"安装依赖项时发生错误：{error}"
+        logger.error(message)
+        return False, message
+
+    def install(self, dependencies: list[str]) -> tuple[bool, str]:
+        """把已安装插件的原始清单交给一次统一包安装。"""
+        request, error_result = self._prepare_install_request(dependencies)
+        if error_result is not None:
+            return error_result
+        assert request is not None
+        try:
+            return self._packages.install_packages_with_fallback(
+                request.manifest_paths,
+                request.wheels_dirs,
+            )
+        except Exception as error:  # noqa: BLE001 - 统一映射为公开安装结果
+            return self._dependency_install_failure(error)
 
     async def async_find_missing(self) -> list[str]:
         """在线程池中扫描缺失依赖，避免阻塞事件循环。"""
@@ -382,16 +415,14 @@ class PluginDependencyInstaller:
 
     async def async_install(self, dependencies: list[str]) -> tuple[bool, str]:
         """异步安装依赖，使用可取消的包安装子进程。"""
-        if not dependencies:
-            return False, "没有传入需要安装的依赖项"
+        request, error_result = self._prepare_install_request(dependencies)
+        if error_result is not None:
+            return error_result
+        assert request is not None
         try:
-            manifest_paths = [manifest.path for manifest in self._plugin_manifests()]
-            if not manifest_paths:
-                return False, "没有找到已安装插件的依赖清单"
             return await self._packages.async_install_packages_with_fallback(
-                manifest_paths,
-                self._wheels_dirs(),
+                request.manifest_paths,
+                request.wheels_dirs,
             )
-        except Exception as err:
-            logger.error(f"安装依赖项时发生错误：{err}")
-            return False, f"安装依赖项时发生错误：{err}"
+        except Exception as error:  # noqa: BLE001 - 统一映射为公开安装结果
+            return self._dependency_install_failure(error)

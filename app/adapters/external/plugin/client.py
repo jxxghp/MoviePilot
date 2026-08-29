@@ -976,11 +976,35 @@ class PluginMarketTransport:
             content: str,
     ) -> Optional[PluginIndex]:
         """统一解释插件索引 HTTP 响应，保留不存在、失败和有效索引三态。"""
-        if status_code == 404:
-            return {}
-        if status_code != 200:
+        try:
+            payload = cls._resolve_plugin_index_result((status_code, content))
+        except RuntimeError:
             return None
-        return cls.__parse_plugin_index_response(content)
+        return payload if payload is not None else {}
+
+    @classmethod
+    def _resolve_plugin_index_result(
+            cls,
+            response: Optional[tuple[int, str]],
+    ) -> Optional[PluginIndex]:
+        """
+        把传输结果统一映射为索引读取合同。
+
+        :param response: 传输层返回的状态码和已受限响应文本；None 表示连接失败
+        :return: 有效索引，或以 None 表示仓库明确不存在该索引
+        :raises RuntimeError: 连接失败、非成功状态或响应格式无效
+        """
+        if response is None:
+            raise RuntimeError("插件索引请求失败：连接失败")
+        status_code, content = response
+        if status_code == 404:
+            return None
+        if status_code != 200:
+            raise RuntimeError(f"插件索引请求失败：HTTP {status_code}")
+        payload = cls.__parse_plugin_index_response(content)
+        if payload is None:
+            raise RuntimeError("插件索引响应格式无效")
+        return payload
 
     @staticmethod
     def __build_plugin_release_item(
@@ -1120,17 +1144,7 @@ class PluginMarketTransport:
             package_url,
             headers=headers,
         )
-        if response is None:
-            raise RuntimeError("插件索引请求失败：连接失败")
-        status_code, content = response
-        if status_code == 404:
-            return None
-        if status_code != 200:
-            raise RuntimeError(f"插件索引请求失败：HTTP {status_code}")
-        payload = self.__parse_plugin_index_response(content)
-        if payload is None:
-            raise RuntimeError("插件索引响应格式无效")
-        return payload
+        return self._resolve_plugin_index_result(response)
 
     def get_plugins(self, repo_url: str,
                     package_version: Optional[str] = None) -> Optional[PluginIndex]:
@@ -1459,17 +1473,7 @@ class PluginMarketTransport:
             package_url,
             headers=headers,
         )
-        if response is None:
-            raise RuntimeError("插件索引请求失败：连接失败")
-        status_code, content = response
-        if status_code == 404:
-            return None
-        if status_code != 200:
-            raise RuntimeError(f"插件索引请求失败：HTTP {status_code}")
-        payload = self.__parse_plugin_index_response(content)
-        if payload is None:
-            raise RuntimeError("插件索引响应格式无效")
-        return payload
+        return self._resolve_plugin_index_result(response)
 
     async def async_get_plugins(self, repo_url: str,
                                 package_version: Optional[str] = None) -> Optional[PluginIndex]:
