@@ -1539,8 +1539,8 @@
       "ChainEventType.MediaRecognizeConvert": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "42b5b83c7df46926bdf2d273f5267ba42d2ffc8cd7ee9c930406e5725759ffe4",
-          "6cb75180c27971ee7a954575f3ca252d83d0d8fe77fa916519a36250b6f97f8e"
+          "02f231d367d5180f571b06012999ed3a50a9bc901abfd4cee03811754f7df337",
+          "48411964b2c0671000333195cbbe60897beceaba98a1c890fee6ed6434fd29f0"
         ]
       },
       "ChainEventType.MusicMediaRecognize": {
@@ -1553,15 +1553,15 @@
       "ChainEventType.MusicNameRecognize": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "4f262e240a76e7a27b0c45fb3611238a42b8273331ac05af41bde116d6478acb",
-          "bcd54f2e88e7f2fcecc53e9e5b3e7e5ef2467a6763cbdb5e3973003fa1d034ea"
+          "4439a5f0b6b78e9250a60f80e66959c1116b28f83f1554dd40a7a266aabab13e",
+          "44e1b3805d513ac4d3ec199d85ed7c4778ae417e8dd67d85bec965fb54a2f092"
         ]
       },
       "ChainEventType.NameRecognize": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "6cf52aad20dacc890c356e71fb23a09eacecad4e6ae6c10364e96dfe0a751d37",
-          "c2918433549fd6ee231ae78756acd597724cfb4565feccefeb684c022e48c0c5"
+          "758ddce07a26d251ed0e5b9cb35586144b58231425a2b88eab438e969fb7f1da",
+          "b6b1dd221d412c29e6e3a073c584bc83e86b18a5ad85124ef81ce9a66730d970"
         ]
       },
       "ChainEventType.PluginDataReset": {
@@ -2296,75 +2296,75 @@
         "receiver_kind": "injected_event_manager"
       },
       {
-        "caller": "app.chain.media",
+        "caller": "app.chain.media.plugin",
         "dynamic": false,
         "events": [
           "ChainEventType.MusicNameRecognize"
         ],
-        "fingerprint": "4f262e240a76e7a27b0c45fb3611238a42b8273331ac05af41bde116d6478acb",
+        "fingerprint": "4439a5f0b6b78e9250a60f80e66959c1116b28f83f1554dd40a7a266aabab13e",
         "invalid": false,
         "method": "async_send_event",
-        "qualname": "MediaChain._async_recognize_music_help",
+        "qualname": "MediaPluginOwner._async_recognize_music_help",
         "receiver_kind": "injected_event_manager"
       },
       {
-        "caller": "app.chain.media",
+        "caller": "app.chain.media.plugin",
         "dynamic": false,
         "events": [
           "ChainEventType.MusicNameRecognize"
         ],
-        "fingerprint": "bcd54f2e88e7f2fcecc53e9e5b3e7e5ef2467a6763cbdb5e3973003fa1d034ea",
+        "fingerprint": "44e1b3805d513ac4d3ec199d85ed7c4778ae417e8dd67d85bec965fb54a2f092",
         "invalid": false,
         "method": "send_event",
-        "qualname": "MediaChain._recognize_music_help",
+        "qualname": "MediaPluginOwner._recognize_music_help",
         "receiver_kind": "injected_event_manager"
       },
       {
-        "caller": "app.chain.media",
-        "dynamic": false,
-        "events": [
-          "ChainEventType.MediaRecognizeConvert"
-        ],
-        "fingerprint": "42b5b83c7df46926bdf2d273f5267ba42d2ffc8cd7ee9c930406e5725759ffe4",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "MediaChain.async_convert_media_identity",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain.media",
+        "caller": "app.chain.media.plugin",
         "dynamic": false,
         "events": [
           "ChainEventType.NameRecognize"
         ],
-        "fingerprint": "6cf52aad20dacc890c356e71fb23a09eacecad4e6ae6c10364e96dfe0a751d37",
+        "fingerprint": "b6b1dd221d412c29e6e3a073c584bc83e86b18a5ad85124ef81ce9a66730d970",
         "invalid": false,
         "method": "async_send_event",
-        "qualname": "MediaChain.async_recognize_help",
+        "qualname": "MediaPluginOwner.async_recognize_help",
         "receiver_kind": "injected_event_manager"
       },
       {
-        "caller": "app.chain.media",
-        "dynamic": false,
-        "events": [
-          "ChainEventType.MediaRecognizeConvert"
-        ],
-        "fingerprint": "6cb75180c27971ee7a954575f3ca252d83d0d8fe77fa916519a36250b6f97f8e",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "MediaChain.convert_media_identity",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain.media",
+        "caller": "app.chain.media.plugin",
         "dynamic": false,
         "events": [
           "ChainEventType.NameRecognize"
         ],
-        "fingerprint": "c2918433549fd6ee231ae78756acd597724cfb4565feccefeb684c022e48c0c5",
+        "fingerprint": "758ddce07a26d251ed0e5b9cb35586144b58231425a2b88eab438e969fb7f1da",
         "invalid": false,
         "method": "send_event",
-        "qualname": "MediaChain.recognize_help",
+        "qualname": "MediaPluginOwner.recognize_help",
+        "receiver_kind": "injected_event_manager"
+      },
+      {
+        "caller": "app.chain.media.projection",
+        "dynamic": false,
+        "events": [
+          "ChainEventType.MediaRecognizeConvert"
+        ],
+        "fingerprint": "02f231d367d5180f571b06012999ed3a50a9bc901abfd4cee03811754f7df337",
+        "invalid": false,
+        "method": "async_send_event",
+        "qualname": "MediaProjectionOwner._async_dispatch_projection_event",
+        "receiver_kind": "injected_event_manager"
+      },
+      {
+        "caller": "app.chain.media.projection",
+        "dynamic": false,
+        "events": [
+          "ChainEventType.MediaRecognizeConvert"
+        ],
+        "fingerprint": "48411964b2c0671000333195cbbe60897beceaba98a1c890fee6ed6434fd29f0",
+        "invalid": false,
+        "method": "send_event",
+        "qualname": "MediaProjectionOwner._dispatch_projection_event",
         "receiver_kind": "injected_event_manager"
       },
       {
@@ -8268,7 +8268,7 @@
       ],
       "async_get_media_auxiliary_info": [
         {
-          "caller": "app.chain.media",
+          "caller": "app.chain.media.auxiliary",
           "count": 1,
           "mode": "async"
         }
@@ -8886,7 +8886,7 @@
       ],
       "get_media_auxiliary_info": [
         {
-          "caller": "app.chain.media",
+          "caller": "app.chain.media.auxiliary",
           "count": 1,
           "mode": "sync"
         }

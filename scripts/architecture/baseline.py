@@ -1068,7 +1068,7 @@ def git_head(repository: Path) -> str:
 
 
 def collect_plugin_imports(path: Path) -> set[str]:
-    """收集单个插件文件直接声明的 app 导入模块。"""
+    """收集单个插件文件静态声明及字面量动态加载的 app 模块。"""
     imports: set[str] = set()
     for node in ast.walk(parse_source(path)):
         if isinstance(node, ast.Import):
@@ -1078,6 +1078,20 @@ def collect_plugin_imports(path: Path) -> set[str]:
         elif isinstance(node, ast.ImportFrom) and node.module:
             if node.module.startswith("app."):
                 imports.add(node.module)
+        elif isinstance(node, ast.Call) and node.args:
+            function_name = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr if isinstance(node.func, ast.Attribute) else None
+            )
+            module_arg = node.args[0]
+            if (
+                function_name in {"_optional_import", "import_module", "__import__"}
+                and isinstance(module_arg, ast.Constant)
+                and isinstance(module_arg.value, str)
+                and module_arg.value.startswith("app.")
+            ):
+                imports.add(module_arg.value)
     return imports
 
 

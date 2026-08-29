@@ -3866,8 +3866,9 @@
   },
   "imports": {
     "app.adapters.external.server": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/bangumicoll/__init__.py"
       ]
     },
@@ -3925,8 +3926,9 @@
       ]
     },
     "app.application.directory": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v3/lunatvsource/__init__.py"
       ]
     },
@@ -3944,13 +3946,15 @@
       ]
     },
     "app.chain.download": {
-      "file_count": 12,
+      "file_count": 14,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/doubanrank/__init__.py",
         "plugins.v2/doubansync/__init__.py",
         "plugins.v2/maoyanrank/__init__.py",
         "plugins.v2/rsssubscribe/__init__.py",
         "plugins.v2/tvfirstwatch/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
@@ -3961,8 +3965,9 @@
       ]
     },
     "app.chain.media": {
-      "file_count": 13,
+      "file_count": 15,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
         "plugins.v2/courseorganizer/providers.py",
@@ -3970,6 +3975,7 @@
         "plugins.v2/doubansync/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/libraryscraper/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v3/courseorganizer/providers.py",
         "plugins.v3/doubanrank/__init__.py",
@@ -4007,10 +4013,12 @@
       ]
     },
     "app.chain.search": {
-      "file_count": 4,
+      "file_count": 6,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/doubansync/__init__.py",
         "plugins.v2/hrblocker/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/lunatvsource/__init__.py"
       ]
@@ -4023,21 +4031,24 @@
       ]
     },
     "app.chain.storage": {
-      "file_count": 4,
+      "file_count": 5,
       "files": [
         "plugins.v2/autoclean/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.chain.subscribe": {
-      "file_count": 10,
+      "file_count": 12,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/doubanrank/__init__.py",
         "plugins.v2/doubansync/__init__.py",
         "plugins.v2/maoyanrank/__init__.py",
         "plugins.v2/rsssubscribe/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
@@ -4072,8 +4083,9 @@
       ]
     },
     "app.chain.transfer": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/lunatvsource/__init__.py"
       ]
@@ -4223,8 +4235,9 @@
       ]
     },
     "app.core.event": {
-      "file_count": 61,
+      "file_count": 63,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
         "plugins.v2/autoclean/__init__.py",
@@ -4236,6 +4249,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubansync/__init__.py",
@@ -4304,8 +4318,9 @@
       ]
     },
     "app.core.metainfo": {
-      "file_count": 12,
+      "file_count": 13,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
         "plugins.v2/blurayremux/__init__.py",
         "plugins.v2/brushflow/__init__.py",
@@ -4327,10 +4342,11 @@
       ]
     },
     "app.core.plugin": {
-      "file_count": 6,
+      "file_count": 7,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/agenttool.py",
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/agentresourceofficer/services/p115_transfer.py",
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/lexiannot/agenttool.py",
@@ -4349,8 +4365,9 @@
       ]
     },
     "app.db.downloadhistory_oper": {
-      "file_count": 6,
+      "file_count": 7,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/downloadsitetag/__init__.py",
         "plugins.v2/episodetag/__init__.py",
@@ -4374,10 +4391,12 @@
       ]
     },
     "app.db.models.downloadhistory": {
-      "file_count": 3,
+      "file_count": 5,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/downloadsitetag/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/downloadsitetag/__init__.py"
       ]
     },
@@ -4396,9 +4415,11 @@
       ]
     },
     "app.db.models.transferhistory": {
-      "file_count": 1,
+      "file_count": 3,
       "files": [
-        "plugins.v2/qbuploadlimiter/__init__.py"
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
+        "plugins.v2/qbuploadlimiter/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py"
       ]
     },
     "app.db.models.user": {
@@ -4408,23 +4429,26 @@
       ]
     },
     "app.db.oper.downloadhistory": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.db.oper.site": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py"
       ]
     },
     "app.db.oper.subscribe": {
-      "file_count": 4,
+      "file_count": 5,
       "files": [
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubansync/__init__.py",
@@ -4432,8 +4456,9 @@
       ]
     },
     "app.db.oper.systemconfig": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/courseorganizer/__init__.py"
       ]
     },
@@ -4459,8 +4484,9 @@
       ]
     },
     "app.db.site_oper": {
-      "file_count": 11,
+      "file_count": 12,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/autosignin/__init__.py",
         "plugins.v2/brushflow/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
@@ -4475,16 +4501,18 @@
       ]
     },
     "app.db.subscribe_oper": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/brushflow/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubansync/__init__.py"
       ]
     },
     "app.db.systemconfig_oper": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py"
       ]
@@ -4533,9 +4561,10 @@
       ]
     },
     "app.helper.directory": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
         "plugins.v2/blurayremux/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/lexiannot/__init__.py"
       ]
     },
@@ -4629,6 +4658,12 @@
         "plugins.v2/qbuploadlimiter/__init__.py",
         "plugins.v2/sitestatistic/__init__.py",
         "plugins/customindexer/__init__.py"
+      ]
+    },
+    "app.helper.subscribe": {
+      "file_count": 1,
+      "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py"
       ]
     },
     "app.helper.system": {
@@ -5065,6 +5100,13 @@
         "plugins.v3/agentresourceofficer/services/p115_transfer.py"
       ]
     },
+    "app.plugins.p115strmhelper.service": {
+      "file_count": 2,
+      "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py"
+      ]
+    },
     "app.plugins.zvideohelper.DoubanHelper": {
       "file_count": 1,
       "files": [
@@ -5079,11 +5121,13 @@
       ]
     },
     "app.scheduler": {
-      "file_count": 6,
+      "file_count": 8,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/brushflow/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/tobypasstrackers/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins/ipdetect/__init__.py"
@@ -5169,9 +5213,10 @@
       ]
     },
     "app.schemas.types": {
-      "file_count": 92,
+      "file_count": 95,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
         "plugins.v2/autoauction/__init__.py",
@@ -5184,6 +5229,7 @@
         "plugins.v2/clashruleprovider/__init__.py",
         "plugins.v2/cleaninvalidseed/__init__.py",
         "plugins.v2/contractcheck/__init__.py",
+        "plugins.v2/courseorganizer/__init__.py",
         "plugins.v2/crossseed/__init__.py",
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/doubansync/__init__.py",
@@ -5221,6 +5267,7 @@
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
@@ -5311,8 +5358,9 @@
       ]
     },
     "app.sdk.events": {
-      "file_count": 14,
+      "file_count": 15,
       "files": [
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
@@ -5360,8 +5408,9 @@
       ]
     },
     "app.sdk.media": {
-      "file_count": 16,
+      "file_count": 17,
       "files": [
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
@@ -5381,8 +5430,9 @@
       ]
     },
     "app.sdk.network": {
-      "file_count": 16,
+      "file_count": 17,
       "files": [
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
@@ -5402,10 +5452,11 @@
       ]
     },
     "app.sdk.plugins": {
-      "file_count": 3,
+      "file_count": 4,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/agenttool.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/agentresourceofficer/services/p115_transfer.py"
       ]
     },
@@ -5420,9 +5471,10 @@
       ]
     },
     "app.sdk.utilities": {
-      "file_count": 10,
+      "file_count": 11,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
+        "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -5457,8 +5509,9 @@
       ]
     },
     "app.utils.http": {
-      "file_count": 61,
+      "file_count": 62,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/animeupscale/__init__.py",
         "plugins.v2/autoauction/__init__.py",
         "plugins.v2/autosignin/__init__.py",
@@ -5544,8 +5597,9 @@
       ]
     },
     "app.utils.string": {
-      "file_count": 45,
+      "file_count": 46,
       "files": [
+        "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/autosignin/__init__.py",
         "plugins.v2/autosignin/sites/52pt.py",
         "plugins.v2/autosignin/sites/__init__.py",

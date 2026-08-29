@@ -6,7 +6,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource, MediaType
 
 
-class _MusicMetadataSourceChain(ChainBase):
+class MusicMetadataSourceChain(ChainBase):
     """固定音乐元数据来源链的共用端口适配。"""
 
     source: MediaSource
@@ -253,7 +253,7 @@ class _MusicMetadataSourceChain(ChainBase):
         return artists[:limit] if limit else artists
 
 
-class MusicBrainzChain(_MusicMetadataSourceChain):
+class MusicBrainzChain(MusicMetadataSourceChain):
     """MusicBrainz 音乐搜索、识别与详情来源链。"""
 
     source = MediaSource.MusicBrainz

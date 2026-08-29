@@ -454,6 +454,22 @@ The retired `app/chain/search.py` monolith, internal root re-exports and `source
 copies must not return. Search state normalization and persistence remain owned by
 `app.application.search.state`; the Chain package only adapts its cache ports.
 
+Media recognition orchestration is owned by the same-named `app.chain.media`
+package. Its root lazily exposes only the stable `MediaChain`; `facade.py` preserves
+the direct `MediaChain -> ChainBase` MRO, Singleton class identity and official
+plugin method signatures. Recognition routing, plugin-event fallback, auxiliary
+source aggregation, identity projection, search, music catalog, audio-path evidence,
+album alignment and directory caching each have one focused single-word owner. The
+directory cache is bounded, isolates cached values from caller mutation, fingerprints
+file content metadata, preserves symbolic-link directory aliases and coalesces concurrent
+misses without letting a cancelled follower cancel the shared flight. Music catalog
+routing consumes the public `MusicMetadataSourceChain` contract instead of importing a
+private class from another Chain owner. Canonical callers must not
+import owner classes through the package root. The retired `app/chain/media.py`
+monolith, internal root re-exports and duplicate compatibility implementations must
+not return; historical scraping symbols continue only through the exact Compat
+overlay, while `MediaChain` remains the single canonical plugin facade.
+
 ### Module layer
 
 `app/modules/` contains pluggable downloaders, media servers, metadata sources,
@@ -807,6 +823,7 @@ driven workflow registration.
 | `app/db/adapters/history/download.py` | DownloadHistory short-session snapshot, query and mutation adapter |
 | `app/chain/download/` | Stable DownloadChain facade plus single-owner selection, submission, batch, existence, failure, history, post-processing, subtitle, task and technical-port modules |
 | `app/chain/search/` | Stable SearchChain facade plus single-owner plan, provider, pagination, result, cache, title, media, music, subtitle, site and recommendation modules |
+| `app/chain/media/` | Stable MediaChain facade plus single-owner recognition, plugin, auxiliary, projection, search, catalog, path, album and bounded cache modules |
 | `app/db/adapters/history/transfer.py` | TransferHistory short-session snapshot/query/mutation adapter and caller-owned transaction stager |
 | `app/application/security/user.py` | Frozen user/auth projections and atomic user aggregate service contracts |
 | `app/db/adapters/user.py` | User projection plus request-UoW mutation adapter |

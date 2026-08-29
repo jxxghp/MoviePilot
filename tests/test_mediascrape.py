@@ -1,8 +1,8 @@
-import sys
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 # ruff: noqa: E402
 from app.testing import stub_modules
 
@@ -14,12 +14,17 @@ with stub_modules({
     'app.db.oper.systemconfig': _systemconfig_stub,
 }):
     from app import schemas
-    from app.chain.media import MediaChain
     from app.chain.scraping import ScrapingChain, ScrapingConfig, ScrapingOption
     from app.domain.context import MediaInfo
-    from app.runtime.events import Event
     from app.domain.metainfo import MetaInfo
-    from app.schemas.types import EventType, MediaType, ScrapingTarget, ScrapingMetadata, ScrapingPolicy
+    from app.runtime.events import Event
+    from app.schemas.types import (
+        EventType,
+        MediaType,
+        ScrapingMetadata,
+        ScrapingPolicy,
+        ScrapingTarget,
+    )
 
 
 def reset_scraping_chain_singleton():
@@ -457,7 +462,7 @@ class TestMediaScrapingImages(unittest.TestCase):
         self.assertEqual(call_args["new_name"], "poster.jpg")
 
     @patch("app.chain.scraping.NamedTemporaryFile")
-    @patch("app.chain.media.Path.chmod")
+    @patch("app.chain.scraping.Path.chmod")
     def test_save_file_uses_python310_compatible_tempfile(self, mock_chmod, mock_temp_file):
         """保存刮削文件时不应使用 Python 3.12 才支持的 delete_on_close 参数。"""
         self.media_chain = ScrapingChain()
@@ -886,7 +891,7 @@ class TestMediaScrapeEvents(unittest.TestCase):
         fileitem = schemas.FileItem(path="/movies/movie.mkv", name="movie.mkv", type="file", storage="local")
         mock_recognize.return_value = None
 
-        with patch('app.chain.media.logger.warn') as mock_logger:
+        with patch('app.chain.scraping.logger.warn') as mock_logger:
             self.media_chain.scrape_metadata(
                 fileitem=fileitem
             )

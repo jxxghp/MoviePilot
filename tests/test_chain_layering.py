@@ -100,13 +100,40 @@ def test_music_source_chains_do_not_depend_on_public_orchestration_chains() -> N
     assert not violations
 
 
+def test_chain_modules_do_not_import_private_contracts_across_owners() -> None:
+    """Chain owner 之间只能复用公开合同，同名职责包内部合同除外。"""
+    violations = {}
+    for path in CHAIN_ROOT.rglob("*.py"):
+        relative = path.relative_to(CHAIN_ROOT)
+        owner = relative.parts[0] if len(relative.parts) > 1 else path.stem
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        private_imports = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            if not node.module.startswith("app.chain."):
+                continue
+            target_owner = node.module.split(".")[2]
+            if target_owner == owner:
+                continue
+            private_imports.extend(
+                f"{node.module}.{alias.name}"
+                for alias in node.names
+                if alias.name.startswith("_")
+            )
+        if private_imports:
+            violations[str(relative)] = sorted(private_imports)
+
+    assert not violations
+
+
 def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
     """MediaChain 只保留公共识别与详情路由，不得重新承接刮削或音乐探索职责。"""
-    path = CHAIN_ROOT / "media.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    paths = tuple((CHAIN_ROOT / "media").glob("*.py"))
     method_names = {
         node.name
-        for node in ast.walk(tree)
+        for path in paths
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     forbidden_methods = {
@@ -131,7 +158,7 @@ def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
     }
 
     assert not method_names.intersection(forbidden_methods)
-    assert "app.chain.scraping" not in _imported_modules(path)
+    assert all("app.chain.scraping" not in _imported_modules(path) for path in paths)
 
 
 def test_business_chains_delegate_recognition_to_media_chain() -> None:

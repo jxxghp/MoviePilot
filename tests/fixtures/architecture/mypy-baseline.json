@@ -901,7 +901,7 @@
     "no-untyped-def": 1
   },
   "app/api/endpoints/media.py": {
-    "arg-type": 5,
+    "arg-type": 2,
     "assignment": 8,
     "attr-defined": 3,
     "misc": 14,
@@ -987,7 +987,6 @@
     "var-annotated": 1
   },
   "app/api/endpoints/storage.py": {
-    "arg-type": 1,
     "assignment": 1,
     "attr-defined": 1,
     "misc": 7,
@@ -1341,16 +1340,6 @@
     "union-attr": 16,
     "var-annotated": 1
   },
-  "app/chain/media.py": {
-    "arg-type": 34,
-    "assignment": 15,
-    "comparison-overlap": 3,
-    "no-any-return": 3,
-    "no-untyped-def": 3,
-    "return-value": 7,
-    "type-arg": 11,
-    "union-attr": 2
-  },
   "app/chain/mediaserver.py": {
     "arg-type": 3,
     "assignment": 2,
@@ -1432,7 +1421,7 @@
     "arg-type": 2
   },
   "app/chain/subscribe/match.py": {
-    "arg-type": 5,
+    "arg-type": 4,
     "assignment": 2,
     "no-untyped-call": 4,
     "union-attr": 7
@@ -1483,7 +1472,7 @@
     "union-attr": 2
   },
   "app/chain/transfer/execution.py": {
-    "arg-type": 11,
+    "arg-type": 3,
     "assignment": 4,
     "no-any-return": 2,
     "type-arg": 2,
@@ -1532,7 +1521,7 @@
   },
   "app/chain/transfer/request.py": {
     "arg-type": 5,
-    "assignment": 2,
+    "assignment": 1,
     "attr-defined": 1,
     "operator": 1,
     "type-arg": 1
@@ -3457,7 +3446,7 @@
     "var-annotated": 1
   },
   "app/workflow/actions/scrape_file.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "no-untyped-call": 1,
     "type-arg": 1,
     "union-attr": 1,

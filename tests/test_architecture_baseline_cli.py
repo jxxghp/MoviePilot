@@ -394,7 +394,13 @@ def test_official_plugin_baseline_includes_effective_v3_default_fallback(
     """V3 插件快照应补入专用索引未接管的 package.json 兼容实现。"""
     plugin_repo = tmp_path / "MoviePilot-Plugins"
     sources = {
-        "plugins.v3/current/__init__.py": "from app.sdk.events import Event\n",
+        "plugins.v3/current/__init__.py": (
+            "import importlib\n"
+            "from app.sdk.events import Event\n"
+            "_optional_import('app.chain.media', 'MediaChain')\n"
+            "importlib.import_module('app.chain.search')\n"
+            "__import__('app.chain.download')\n"
+        ),
         "plugins.v2/legacy/__init__.py": "from app.core.event import Event\n",
         "plugins/shared/__init__.py": "from app.log import logger\n",
         "plugins/current/__init__.py": "from app.unused.current import Value\n",
@@ -433,6 +439,15 @@ def test_official_plugin_baseline_includes_effective_v3_default_fallback(
     assert baseline["provenance"]["python_file_count"] == 3
     assert baseline["imports"]["app.log"]["files"] == [
         "plugins/shared/__init__.py"
+    ]
+    assert baseline["imports"]["app.chain.media"]["files"] == [
+        "plugins.v3/current/__init__.py"
+    ]
+    assert baseline["imports"]["app.chain.search"]["files"] == [
+        "plugins.v3/current/__init__.py"
+    ]
+    assert baseline["imports"]["app.chain.download"]["files"] == [
+        "plugins.v3/current/__init__.py"
     ]
     assert not any(module.startswith("app.unused") for module in baseline["imports"])
 

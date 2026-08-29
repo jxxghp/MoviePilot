@@ -1,10 +1,13 @@
 import asyncio
+import os
+import threading
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from app.chain.media import MediaChain
+from app.chain.media.cache import AlbumDirectoryCache
 from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
@@ -150,7 +153,7 @@ def test_recognize_album_directory_maps_files(tmp_path, media_chain, monkeypatch
     source_chain = Mock()
     source_chain.match_music_album.side_effect = lambda *_args, **_kwargs: album
     monkeypatch.setattr(
-        "app.chain.media.MusicBrainzChain",
+        "app.chain.media.album.MusicBrainzChain",
         Mock(return_value=source_chain),
     )
 
@@ -254,9 +257,11 @@ def test_async_recognize_album_directory_calls_async_module(
     source_chain = Mock()
     source_chain.async_match_music_album = async_run_module
     source_chain.match_music_album = run_module
-    monkeypatch.setattr("app.chain.media.MusicBrainzChain", Mock(return_value=source_chain))
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_many",
+        "app.chain.media.album.MusicBrainzChain", Mock(return_value=source_chain)
+    )
+    monkeypatch.setattr(
+        "app.chain.media.album.AudioMetadataHelper.read_many",
         lambda _files: _local_tracks(),
     )
 
@@ -279,7 +284,7 @@ def test_async_recognize_album_directory_checks_path_in_threadpool(
 ):
     """异步专辑识别应把目录元数据检查移出事件循环。"""
     check_directory = AsyncMock(return_value=False)
-    monkeypatch.setattr("app.chain.media.run_in_threadpool", check_directory)
+    monkeypatch.setattr("app.chain.media.album.run_in_threadpool", check_directory)
 
     result = asyncio.run(
         media_chain.async_recognize_music_album_directory(tmp_path / "missing")
@@ -303,7 +308,7 @@ def test_async_album_fallback_propagates_cancellation_during_path_check(
         started.set()
         await asyncio.Event().wait()
 
-    monkeypatch.setattr("app.chain.media.run_in_threadpool", wait_for_check)
+    monkeypatch.setattr("app.chain.media.path.run_in_threadpool", wait_for_check)
 
     async def exercise_cancellation():
         """在同一事件循环中取消正在等待文件检查的调用。"""
@@ -361,6 +366,210 @@ def test_recognize_album_directory_invalidates_cache_after_same_count_rename(
         ["01 - First.wav", "02 - Second.wav"],
         ["01 - Renamed.wav", "02 - Second.wav"],
     ]
+
+
+def test_recognize_album_directory_invalidates_cache_after_content_change(
+        tmp_path,
+        media_chain,
+        monkeypatch,
+):
+    """同名文件内容变化时应通过大小和纳秒时间戳使目录缓存失效。"""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    files = [album_dir / "01.wav", album_dir / "02.wav"]
+    for file in files:
+        file.write_bytes(b"RIFF")
+    calls = 0
+
+    def fake_match(_directory, _files):
+        """记录缓存未命中的目录识别次数。"""
+        nonlocal calls
+        calls += 1
+        return {}
+
+    monkeypatch.setattr(media_chain, "_match_music_album_directory", fake_match)
+
+    media_chain.recognize_music_album_directory(album_dir)
+    files[0].write_bytes(b"RIFF-data")
+    os.utime(files[0], ns=(files[0].stat().st_atime_ns, files[0].stat().st_mtime_ns + 1))
+    media_chain.recognize_music_album_directory(album_dir)
+
+    assert calls == 2
+
+
+def test_album_directory_cache_returns_isolated_results(tmp_path, media_chain, monkeypatch):
+    """调用方修改识别结果不得污染后续目录缓存命中。"""
+    album_dir = tmp_path / "Album"
+    album_dir.mkdir()
+    files = [album_dir / "01.wav", album_dir / "02.wav"]
+    for file in files:
+        file.write_bytes(b"RIFF")
+    canonical = MusicInfo(media_source="musicbrainz", media_id="track-1", title="Original")
+    monkeypatch.setattr(
+        media_chain,
+        "_match_music_album_directory",
+        Mock(return_value={str(files[0].resolve()): canonical}),
+    )
+
+    first = media_chain.recognize_music_album_directory(album_dir)
+    first[str(files[0].resolve())].title = "Mutated"
+    second = media_chain.recognize_music_album_directory(album_dir)
+
+    assert second[str(files[0].resolve())].title == "Original"
+
+
+def test_album_directory_cache_keeps_symbolic_link_directory_aliases_distinct(
+    tmp_path, media_chain, monkeypatch
+):
+    """不同符号链接目录名提供不同专辑线索时不得共享同步缓存结果。"""
+    physical = tmp_path / "physical"
+    physical.mkdir()
+    for name in ("01.wav", "02.wav"):
+        (physical / name).write_bytes(b"RIFF")
+    first_alias = tmp_path / "Album A"
+    second_alias = tmp_path / "Album B"
+    first_alias.symlink_to(physical, target_is_directory=True)
+    second_alias.symlink_to(physical, target_is_directory=True)
+    calls = []
+
+    def fake_match(directory, files):
+        """用目录别名生成结果，暴露错误共享物理路径缓存的行为。"""
+        calls.append(directory.name)
+        return {
+            str(files[0].resolve()): MusicInfo(
+                media_source="musicbrainz",
+                media_id=directory.name,
+                title=directory.name,
+            )
+        }
+
+    monkeypatch.setattr(media_chain, "_match_music_album_directory", fake_match)
+
+    first = media_chain.recognize_music_album_directory(first_alias)
+    second = media_chain.recognize_music_album_directory(second_alias)
+
+    assert next(iter(first.values())).title == "Album A"
+    assert next(iter(second.values())).title == "Album B"
+    assert calls == ["Album A", "Album B"]
+
+
+@pytest.mark.asyncio
+async def test_async_album_directory_cache_keeps_symbolic_link_aliases_distinct(
+    tmp_path, media_chain, monkeypatch
+):
+    """异步目录识别同样必须按符号链接别名隔离专辑缓存。"""
+    physical = tmp_path / "physical"
+    physical.mkdir()
+    for name in ("01.wav", "02.wav"):
+        (physical / name).write_bytes(b"RIFF")
+    first_alias = tmp_path / "Album A"
+    second_alias = tmp_path / "Album B"
+    first_alias.symlink_to(physical, target_is_directory=True)
+    second_alias.symlink_to(physical, target_is_directory=True)
+    calls = []
+
+    async def fake_match(directory, files):
+        """用目录别名生成异步结果，验证两个别名分别执行。"""
+        calls.append(directory.name)
+        return {
+            str(files[0].resolve()): MusicInfo(
+                media_source="musicbrainz",
+                media_id=directory.name,
+                title=directory.name,
+            )
+        }
+
+    monkeypatch.setattr(media_chain, "_async_match_music_album_directory", fake_match)
+
+    first = await media_chain.async_recognize_music_album_directory(first_alias)
+    second = await media_chain.async_recognize_music_album_directory(second_alias)
+
+    assert next(iter(first.values())).title == "Album A"
+    assert next(iter(second.values())).title == "Album B"
+    assert calls == ["Album A", "Album B"]
+
+
+def test_album_directory_cache_evicts_only_least_recently_used_entry():
+    """缓存满额时只淘汰最久未使用目录，避免全量缓存断崖。"""
+    cache = AlbumDirectoryCache(capacity=2)
+    signature = (("01.wav", 4, 1),)
+    cache.put("first", signature, {})
+    cache.put("second", signature, {})
+    assert cache.get("first", signature) == {}
+
+    cache.put("third", signature, {})
+
+    assert cache.get("first", signature) == {}
+    assert cache.get("second", signature) is None
+    assert cache.get("third", signature) == {}
+
+
+def test_album_directory_cache_singleflights_concurrent_sync_resolvers():
+    """同一目录的并发同步未命中只允许首个解析器执行。"""
+    cache = AlbumDirectoryCache(capacity=2)
+    signature = (("01.wav", 4, 1),)
+    started = threading.Event()
+    release = threading.Event()
+    calls = 0
+
+    def resolver():
+        """阻塞首个解析器，让第二个调用进入单飞等待。"""
+        nonlocal calls
+        calls += 1
+        started.set()
+        release.wait(timeout=2)
+        return {}
+
+    results = []
+    first = threading.Thread(target=lambda: results.append(cache.resolve("album", signature, resolver)))
+    second = threading.Thread(target=lambda: results.append(cache.resolve("album", signature, resolver)))
+    first.start()
+    assert started.wait(timeout=2)
+    second.start()
+    release.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert calls == 1
+    assert results == [{}, {}]
+
+
+@pytest.mark.asyncio
+async def test_album_directory_cache_isolates_shared_flight_from_follower_cancellation():
+    """取消一个异步等待者不得取消 leader 或其他等待者共享的解析凭据。"""
+    cache = AlbumDirectoryCache(capacity=2)
+    signature = (("01.wav", 4, 1),)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def resolver():
+        """保持 leader 运行，直到两个 follower 都进入共享等待。"""
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+        return {}
+
+    leader = asyncio.create_task(cache.async_resolve("album", signature, resolver))
+    await started.wait()
+    cancelled_follower = asyncio.create_task(
+        cache.async_resolve("album", signature, resolver)
+    )
+    surviving_follower = asyncio.create_task(
+        cache.async_resolve("album", signature, resolver)
+    )
+    await asyncio.sleep(0)
+
+    cancelled_follower.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled_follower
+    release.set()
+
+    assert await leader == {}
+    assert await surviving_follower == {}
+    assert calls == 1
+    assert cache.get("album", signature) == {}
 
 
 def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, monkeypatch):

@@ -190,7 +190,7 @@ def test_supplement_media_info_uses_configured_source_union() -> None:
     chain.run_module = Mock(return_value=[])
 
     with patch(
-        "app.chain.media.get_chain_runtime_config_snapshot",
+        "app.chain.media.auxiliary.get_chain_runtime_config_snapshot",
         return_value=SimpleNamespace(search_source="douban,themoviedb,anilist"),
     ):
         result = chain.supplement_media_info(primary)

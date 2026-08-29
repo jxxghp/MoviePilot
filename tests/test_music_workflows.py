@@ -392,7 +392,7 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
     recognize = AsyncMock(return_value=info)
     filename_meta = MetaMusic(title="02. 眼泪成诗")
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_evidence",
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
         Mock(return_value=(meta, meta, filename_meta)),
     )
     monkeypatch.setattr(

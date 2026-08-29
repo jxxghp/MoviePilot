@@ -231,9 +231,6 @@
   "app/application/torrent_cache.py": {
     "I001": 1
   },
-  "app/chain/media.py": {
-    "E731": 2
-  },
   "app/db/__init__.py": {
     "I001": 1
   },
@@ -1094,10 +1091,6 @@
   },
   "tests/test_media_source_signature_compatibility.py": {
     "I001": 1
-  },
-  "tests/test_mediascrape.py": {
-    "F401": 2,
-    "I001": 2
   },
   "tests/test_mediaserver_image_signing.py": {
     "I001": 1

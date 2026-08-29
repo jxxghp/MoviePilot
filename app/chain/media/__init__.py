@@ -1,0 +1,30 @@
+"""媒体 Chain 的惰性稳定公开入口。"""
+
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.chain.media.facade import MediaChain
+
+_EXPORTS = {
+    "MediaChain": ("app.chain.media.facade", "MediaChain"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    """首次访问时解析稳定 MediaChain 类型，兼容符号仍由 Compat overlay 提供。"""
+    contract = _EXPORTS.get(name)
+    if contract is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, symbol_name = contract
+    value = getattr(import_module(module_name), symbol_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    """向交互式工具暴露稳定公开面。"""
+    return sorted({*globals(), *_EXPORTS})
+
+
+__all__ = ["MediaChain"]

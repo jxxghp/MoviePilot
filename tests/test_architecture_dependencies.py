@@ -81,6 +81,7 @@ RETIRED_CANONICAL_FILES = (
     "app/runtime/runtime.py",
     "app/runtime/dependencies.py",
     "app/runtime/native_dependencies.py",
+    "app/chain/media.py",
     "app/adapters/network/rss.py",
     "app/adapters/network/sites.pyi",
     "app/application/plugins.py",

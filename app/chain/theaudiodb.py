@@ -1,8 +1,8 @@
-from app.chain.musicbrainz import _MusicMetadataSourceChain
+from app.chain.musicbrainz import MusicMetadataSourceChain
 from app.schemas.types import MediaSource
 
 
-class TheAudioDbChain(_MusicMetadataSourceChain):
+class TheAudioDbChain(MusicMetadataSourceChain):
     """TheAudioDB 音乐搜索、识别与详情来源链。"""
 
     source = MediaSource.TheAudioDB

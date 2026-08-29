@@ -42,6 +42,10 @@ MYPY_PATH_MIGRATIONS = {
         ("app/chain/download.py",),
         ("app/chain/download/",),
     ),
+    "media-package": (
+        ("app/chain/media.py",),
+        ("app/chain/media/",),
+    ),
 }
 
 # 形如 app/foo.py:12: error: 消息说明 [error-code]；个别错误可能缺代码。

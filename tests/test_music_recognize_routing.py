@@ -119,7 +119,7 @@ def test_async_recognize_music_by_path_reads_local_audio_tags(tmp_path, monkeypa
     recognize = AsyncMock(return_value=info)
     filename_meta = MetaMusic(title="02. 眼泪成诗")
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_evidence",
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
         Mock(return_value=(meta, meta, filename_meta)),
     )
     monkeypatch.setattr(
@@ -157,7 +157,7 @@ def test_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch)
     direct = Mock(return_value=expected)
     later_tier = Mock()
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_evidence",
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
         Mock(return_value=(merged, tag_meta, filename_meta)),
     )
     monkeypatch.setattr(
@@ -195,7 +195,7 @@ def test_recognize_music_by_path_tag_mbid_skips_multi_source_matching(monkeypatc
     generic = Mock()
     tier = Mock(wraps=chain._recognize_music_meta_tier)
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_evidence",
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
         Mock(return_value=(tag_meta, tag_meta, filename_meta)),
     )
     monkeypatch.setattr(
@@ -228,7 +228,7 @@ def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
     chain = MediaChain()
     recognize = Mock(side_effect=[MusicInfo(title="Offline Tag"), expected])
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_evidence",
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
         Mock(return_value=(tag_meta, tag_meta, filename_meta)),
     )
     monkeypatch.setattr(
@@ -264,7 +264,7 @@ def test_async_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkey
     direct = AsyncMock(return_value=expected)
     later_tier = AsyncMock()
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_evidence",
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
         Mock(return_value=(merged, MetaMusic(), MetaMusic())),
     )
     monkeypatch.setattr(
@@ -422,7 +422,7 @@ def test_music_path_fallback_converts_local_tag_metadata(monkeypatch):
     )
     chain = MediaChain()
     monkeypatch.setattr(
-        "app.chain.media.AudioMetadataHelper.read_evidence",
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
         Mock(return_value=(meta, meta, MetaMusic())),
     )
     monkeypatch.setattr(

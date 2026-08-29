@@ -70,16 +70,16 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 933 / 7,890 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 944 / 8,017 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
 | Module Contract | 217 specs / 215 methods / 266 calls | 动态方法名为 0；内部 planning 合同不进入插件调度，旧 transfer 只保留 provider ABI |
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
-| Python 源码量 | 约 271,400 行 | 60 个文件超过 1,000 行，14 个超过 2,000 行 |
-| 长方法 | 281 个超过 80 行 | 67 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,982 / 599 文件 | strict frontier 当前覆盖 41 个文件，本批迁移路径的类型债务已清零 |
-| Ruff 历史诊断 | 667 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
+| 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
+| 全量 mypy 历史债务 | 10,686 / 597 文件 | strict frontier 当前覆盖 41 个文件，Media 同名包及受益调用方低水位已固化 |
+| Ruff 历史诊断 | 661 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 80.75%，Domain 79.32% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -94,7 +94,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `app/chain/search.py` | 2,970 | 搜索计划、并发 fan-out、状态、分页和结果处理 |
 | `app/api/endpoints/agent.py` | 2,346 | HTTP/SSE、文件/音频、Agent 会话和事件编排 |
 | `app/chain/download/`（已治理） | Facade 47 行 | 选择、提交、批量、历史、提交后处理、字幕和任务控制已拆至单一 owner；原 2,413 行单文件已删除 |
-| `app/chain/media.py` | 2,191 | 识别、来源投影、缓存、音乐匹配和兼容入口 |
+| `app/chain/media/`（已治理） | Facade 213 行 | 识别、来源投影、插件事件、音乐目录、路径证据与缓存已拆至单一 owner；旧 2,191 行单文件已删除 |
 | `app/scheduler/` | Facade 128 行 | 原 2,111 行单体已退役；catalog、execution、bridge、progress、registry、reconcile、lifecycle、maintenance 与注入合同已有独立 owner |
 
 热点不是按行数机械拆文件的依据。只有在提取出稳定合同、保留旧入口委托并有行为测试时，拆分才算
@@ -115,7 +115,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | ARCH-106 | P1 | 进行中 | 让线程/队列/日志 writer 由 bootstrap/lifecycle 显式构造 | 日志与消息 owner 已收口；GlobalVar/provider 继续治理 |
 | ARCH-107 | P1 | 已验证 | 消除 Chain SCC，强化循环门禁 | SCC 只剩精确豁免的 TMDB 移植包环 |
 | ARCH-108 | P1 | 执行中 | 决策并收口 Application/Chain 到 Adapter 与 HTTP 边界 | Application Adapter/DNS 债务已清零；Chain Adapter 与宿主 HTTP 债务继续迁移 |
-| ARCH-109 | P1 | 执行中 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler、Download 已验证；Search、Media 与厚 API 尚待执行 |
+| ARCH-109 | P1 | 执行中 | 按用例拆分超大 Chain、Scheduler 和厚 API | Transfer、Subscribe、Scheduler、Download、Search、Media 已验证；厚 API 尚待执行 |
 | ARCH-110 | P1 | 待执行 | Module/Event Contract 分可信级执行 | 宿主 provider 严格，第三方插件仍兼容诊断 |
 | ARCH-111 | P1 | 待执行 | 升级复杂度、类型、覆盖率和并发原语门禁 | 高风险私有路径也进入只降不增的治理面 |
 | ARCH-201 | P2 | 渐进 | 收窄 PluginHelper/PluginManager 与 SDK 暴露面 | ABI Facade 只委托，构造和具体服务归组合根 |
@@ -129,9 +129,8 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 
 **问题与证据**
 
-- `app/chain/media.py:1233` 把局部变量 `key` 推断为 `str`，`1269` 又赋值为
-  `tuple[int, int]`，随后 `1271` 触发 `dict.get` overload 错误。
-- 当前 ratchet 报告：`[assignment] 15 -> 16`，并新增 `[call-overload] x1`。
+- 历史 `app/chain/media.py` 的标题键与位置键复用已修复，随后单体已退役为
+  `app/chain/media/` 同名职责包；迁移门禁按错误码聚合并要求新 owner 不增加债务。
 - `.github/workflows/test.yml:71-72` 在主 CI 中执行该门禁。
 
 **执行要求**
@@ -537,7 +536,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | `TransferChain` | queue/recovery、plan、execute、settle、history/notify | `_execute_transfer` 约 836 行 |
 | `SearchChain` | plan、provider fan-out、result state、pagination | 并发状态与结果处理 |
 | `DownloadChain` | selection、submission、history、post-processing | batch download 约 449 行 |
-| `MediaChain` | recognition、source projection、music alignment、cache | 保留公共识别 Facade |
+| `MediaChain` | recognition、plugin fallback、source projection、music alignment、cache | 保留公共识别 Facade，包根只惰性导出该类 |
 | `Scheduler` | JobCatalog、ExecutionRegistry、domain reconciler、lifecycle Facade | `init` 约 336 行且直接构造多个 Chain |
 | Agent API | WebAgent session/SSE/file/audio Application service | `_web_agent_stream_impl` 约 361 行 |
 | System/Plugin API | nettest、logging、update、market use cases | 入口直接组合多个 Helper/Manager |
@@ -572,6 +571,16 @@ TaskRegistry，结果状态只由 `app.application.search.state` 持久化；Fac
 LunaTV 三个私有补丁点和 HRBlocker 八个公开补丁点。主程序无 `source.py`、旧实现或内部 owner
 重复导出；Search 专项 223 项、架构/兼容 188 项、官方 LunaTV 6 项和锁定全量
 `7222 passed, 9 skipped` 均通过。
+
+`MediaChain` 切片已完成验证：旧 `app/chain/media.py` 已删除，包根只惰性保留
+稳定 `MediaChain`；recognition、plugin、auxiliary、projection、search、catalog、path、album
+与 cache 各有单一 owner。Facade 保持直接 MRO、Singleton 类身份、pickle 路径和官方插件
+调用签名；目录缓存使用有界 LRU、内容签名、隔离副本与同步/异步单飞，并隔离等待者取消和
+符号链接目录别名。跨 Chain 音乐来源复用只依赖公开 `MusicMetadataSourceChain`，门禁拒绝跨 owner
+导入下划线私有合同。刮削兼容符号只由 Compat overlay 提供，主程序不恢复旧实现或内部 owner
+重复导出。Media/架构/插件端点集中回归 `551 passed`，锁定全量 `7244 passed, 9 skipped`；
+Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线均通过，官方 V3 插件聚焦
+验证 `130 passed`。
 
 ### ARCH-110 分可信级执行 Module/Event Contract
 
