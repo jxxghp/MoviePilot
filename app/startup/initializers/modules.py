@@ -523,6 +523,8 @@ async def _initialize_modules() -> HostRuntime:
     """
     构造模块服务并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
+    if not ThreadHelper().reopen():
+        raise RuntimeError("上一应用生命周期的共享线程池尚未收敛")
     configure_application_network_ports()
     database_runtime = await start_database_runtime()
     try:

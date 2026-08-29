@@ -1,3 +1,4 @@
+import threading
 from concurrent.futures import Future
 from contextvars import copy_context
 from typing import Any, Callable, TypeVar, cast
@@ -21,7 +22,13 @@ class ThreadHelper(metaclass=Singleton):  # type: ignore[metaclass]
 
     def __init__(self) -> None:
         """按系统配置创建共享后台线程池。"""
-        self.pool = OwnedThreadPoolExecutor(
+        self._lifecycle_lock = threading.RLock()
+        self.pool = self._new_pool()
+
+    @staticmethod
+    def _new_pool() -> OwnedThreadPoolExecutor:
+        """按当前运行配置构造一个新的共享线程池 owner。"""
+        return OwnedThreadPoolExecutor(
             max_workers=get_runtime_setting('CONF').threadpool
         )
 
@@ -39,8 +46,27 @@ class ThreadHelper(metaclass=Singleton):  # type: ignore[metaclass]
         :return: future
         """
         context = copy_context()
-        # strict mypy 跳过 execution 实现导入，需要在兼容门面恢复 Future 泛型。
-        return cast(Future[_Result], self.pool.submit(context.run, func, *args, **kwargs))
+        with self._lifecycle_lock:
+            # strict mypy 跳过 execution 实现导入，需要在兼容门面恢复 Future 泛型。
+            return cast(
+                Future[_Result],
+                self.pool.submit(context.run, func, *args, **kwargs),
+            )
+
+    def reopen(self) -> bool:
+        """
+        为新的应用生命周期恢复线程池提交准入。
+
+        只有上一 owner 已完全收敛时才会构造新线程池，避免跨 lifespan
+        同时保留两组 worker。
+        """
+        with self._lifecycle_lock:
+            if self.pool.accepting:
+                return True
+            if not self.pool.shutdown_bounded(timeout=0.0):
+                return False
+            self.pool = self._new_pool()
+            return True
 
     def shutdown(
             self,
@@ -52,4 +78,5 @@ class ThreadHelper(metaclass=Singleton):  # type: ignore[metaclass]
         :param timeout: 等待已接受任务达到终态的最长秒数
         :return: 全部任务和 worker 均已终止时返回 True，否则返回 False
         """
-        return bool(self.pool.shutdown_bounded(timeout=timeout))
+        with self._lifecycle_lock:
+            return bool(self.pool.shutdown_bounded(timeout=timeout))

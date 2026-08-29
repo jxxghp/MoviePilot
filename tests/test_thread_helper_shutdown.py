@@ -49,6 +49,30 @@ def test_thread_helper_shutdown_is_bounded_and_retryable(use_legacy_pool):
     assert helper.shutdown(timeout=1) is True
 
 
+def test_thread_helper_reopens_only_after_previous_owner_converges() -> None:
+    """新 lifespan 只能在旧 worker 完全结束后创建新的共享线程池。"""
+    helper = _new_thread_helper()
+    entered = threading.Event()
+    release = threading.Event()
+    future = helper.submit(lambda: entered.set() or release.wait())
+
+    try:
+        assert entered.wait(timeout=1)
+        assert helper.shutdown(timeout=0.01) is False
+        assert helper.reopen() is False
+    finally:
+        release.set()
+
+    assert future.result(timeout=1) is True
+    assert helper.shutdown(timeout=1) is True
+    previous_pool = helper.pool
+
+    assert helper.reopen() is True
+    assert helper.pool is not previous_pool
+    assert helper.submit(lambda: "reopened").result(timeout=1) == "reopened"
+    assert helper.shutdown(timeout=1) is True
+
+
 def test_thread_helper_shutdown_preserves_queued_work():
     """关闭封口不得取消已接受的排队任务，保持历史完成语义。"""
     executor = thread_module._OwnedThreadPoolExecutor(max_workers=1)
