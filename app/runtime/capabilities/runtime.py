@@ -171,7 +171,7 @@ class CapabilityRuntime:
             raise CapabilityRuntimeClosedError("Capability Runtime 已关闭")
 
     @staticmethod
-    def _sync_callback(adapter: Any, name: str, *args) -> Any:
+    def _sync_callback(adapter: Any, name: str, *args: Any) -> Any:
         callback = getattr(adapter, name, None)
         if not callable(callback):
             raise CapabilityAdapterContractError(f"同步 adapter 缺少 {name}()")
@@ -186,7 +186,7 @@ class CapabilityRuntime:
         return result
 
     @staticmethod
-    async def _async_callback(adapter: Any, name: str, *args) -> Any:
+    async def _async_callback(adapter: Any, name: str, *args: Any) -> Any:
         callback = getattr(adapter, name, None)
         if not callable(callback):
             raise CapabilityAdapterContractError(f"异步 adapter 缺少 {name}()")

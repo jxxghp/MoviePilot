@@ -2961,9 +2961,6 @@
     "type-arg": 3,
     "unused-coroutine": 3
   },
-  "app/runtime/capabilities/runtime.py": {
-    "no-untyped-def": 2
-  },
   "app/runtime/compat/imports.py": {
     "assignment": 1,
     "attr-defined": 2,
