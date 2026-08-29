@@ -48,6 +48,43 @@ class _MutableSettings:
         return True, ""
 
 
+def _isolate_startup_failure_cleanup(monkeypatch) -> None:
+    """隔离启动失败回滚中的非目标进程 owner，避免关闭其他用例共享资源。"""
+    absent_owner = SimpleNamespace(get_existing_instance=lambda: None)
+    for name in (
+        "ModuleManager",
+        "EventManager",
+        "DohHelper",
+        "ThreadHelper",
+        "RedisHelper",
+        "AsyncRedisHelper",
+    ):
+        monkeypatch.setattr(modules_initializer, name, absent_owner)
+    monkeypatch.setattr(
+        modules_initializer,
+        "close_image_proxy_block_log_coalescer",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(modules_initializer, "close_browser_sessions", MagicMock())
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_managed_resources",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "shutdown_web_agent_background_tasks",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        modules_initializer,
+        "get_configured_agent_chat_persistence",
+        lambda: None,
+    )
+    monkeypatch.setattr(modules_initializer, "stop_frontend", MagicMock())
+    monkeypatch.setattr(modules_initializer, "clear_temp", MagicMock())
+
+
 @pytest.mark.asyncio
 async def test_runtime_settings_service_uses_legacy_settings_from_startup_root(
     monkeypatch,
@@ -259,6 +296,7 @@ def test_publish_configuration_reuses_composed_runtime_and_settings(monkeypatch)
 @pytest.mark.asyncio
 async def test_modules_startup_failure_stops_database_runtime(monkeypatch) -> None:
     """首次启动失败时关闭 worker、撤销 provider 并释放数据库引擎。"""
+    _isolate_startup_failure_cleanup(monkeypatch)
     monkeypatch.setattr(
         modules_initializer,
         "_initialize_modules",
@@ -289,6 +327,7 @@ async def test_modules_startup_failure_preserves_original_error_when_cleanup_fai
     monkeypatch,
 ) -> None:
     """数据库任务清理失败时仍向上层保留原始启动异常。"""
+    _isolate_startup_failure_cleanup(monkeypatch)
     startup_error = RuntimeError("startup failed")
     monkeypatch.setattr(
         modules_initializer,
@@ -461,6 +500,7 @@ async def test_database_service_reset_revokes_transaction_runners() -> None:
 @pytest.mark.asyncio
 async def test_startup_failure_revokes_published_database_services(monkeypatch) -> None:
     """后续启动阶段失败并关闭 worker 后不得留下已失效的全局服务。"""
+    _isolate_startup_failure_cleanup(monkeypatch)
     from app.application.configuration import get_configured_system_config
     from app.application.plugin.transaction import get_plugin_persistence
     from app.application.query import get_configured_data_query_service
