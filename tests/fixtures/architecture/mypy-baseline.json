@@ -2572,17 +2572,16 @@
     "override": 1
   },
   "app/modules/themoviedb/__init__.py": {
-    "arg-type": 27,
+    "arg-type": 15,
     "assignment": 12,
     "empty-body": 1,
     "index": 2,
     "no-any-return": 4,
     "no-untyped-call": 7,
     "no-untyped-def": 3,
-    "return-value": 8,
-    "type-arg": 29,
-    "union-attr": 2,
-    "var-annotated": 2
+    "return-value": 2,
+    "type-arg": 21,
+    "union-attr": 2
   },
   "app/modules/themoviedb/category.py": {
     "assignment": 2,

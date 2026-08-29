@@ -573,9 +573,6 @@
   "app/modules/theaudiodb/__init__.py": {
     "I001": 1
   },
-  "app/modules/themoviedb/__init__.py": {
-    "I001": 1
-  },
   "app/modules/themoviedb/category.py": {
     "F541": 1,
     "I001": 1
