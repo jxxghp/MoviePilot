@@ -361,7 +361,7 @@ mentions media, site or torrent:
 | Media | `context.py` owns canonical `Context`, `MediaInfo` and `TorrentInfo` construction; `projection/` owns the pure, input-immutable TMDB/Douban/Bangumi/AniList field mappings and TMDB image-builder port; `media.py` owns source selection policy; identity representation/normalization stays in `schemas/media.py`; `title.py` owns title-candidate and search-keyword rules; `episode.py` owns episode-range display; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
 | Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
 | Site | `site.py` owns site-domain exceptions and interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
-| Torrent | `torrent.py` owns magnet-link semantics; configured download/cache/file behavior stays in `app/application/torrent.py` |
+| Torrent | `domain/torrent.py` owns magnet-link semantics; configured download/file behavior stays in `application/torrent/download.py`, while cache recognition stays in `application/torrent/cache.py` |
 
 `app/domain` may depend only on schemas and foundation. It must not read global
 settings, access DB/network/filesystem adapters, import Rust, discover services

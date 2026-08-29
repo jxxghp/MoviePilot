@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Optional, Union
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain import site as site_rules

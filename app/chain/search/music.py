@@ -10,7 +10,7 @@ from unicodedata import normalize
 from app.application.configuration import (
     get_configured_system_config,
 )
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.search.contract import _SearchOwnerBase as _SearchOwnerBase
 from app.domain.context import Context, MusicInfo, TorrentInfo
 from app.domain.meta.metamusic import MetaMusic

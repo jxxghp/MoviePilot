@@ -4,7 +4,7 @@ import asyncio
 import random
 from typing import Any, AsyncIterator, Dict, List, Optional, cast
 
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
 from app.chain.search.contract import _SearchOwnerBase as _SearchOwnerBase
 from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo

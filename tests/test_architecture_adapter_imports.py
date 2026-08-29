@@ -35,7 +35,7 @@ FROZEN_DIRECT_ADAPTER_IMPORTS = {
     ("app.application.security.cookie", "app.adapters.external.ocr"): "S2-L6",
     ("app.application.security.cookie", "app.adapters.network.browser"): "S2-L6",
     ("app.application.security.cookie", "app.adapters.network.http"): "S2-L6",
-    ("app.application.torrent", "app.adapters.network.http"): "S2-L6",
+    ("app.application.torrent.download", "app.adapters.network.http"): "S2-L6",
     ("app.application.transfer.workflow", "app.adapters.system.host"): "S2-L6",
 }
 

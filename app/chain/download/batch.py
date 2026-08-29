@@ -4,7 +4,7 @@ import copy
 from typing import Callable, Dict, List, Optional, Set, Tuple, cast
 
 from app.application.download import selection as _selection
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain import episode as episode_rules
 from app.domain.context import (

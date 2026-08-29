@@ -619,7 +619,8 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0", owner="runtime",
     ),
     "app.helper.torrent": ModuleAlias(
-        target="app.application.torrent", replacement="app.application.torrent",
+        target="app.application.torrent.download",
+        replacement="app.application.torrent.download",
         introduced="v3.0.0", owner="application",
     ),
     "app.helper.transferhistory": ModuleAlias(

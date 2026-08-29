@@ -400,7 +400,10 @@ def _load_subscribe_chain_class():
     )
     helper_mediaserver_module.MediaServerHelper = type("MediaServerHelper", (), {})
 
-    helper_torrent_module = ensure_module("app.application.torrent", types.ModuleType("app.application.torrent"))
+    helper_torrent_module = ensure_module(
+        "app.application.torrent.download",
+        types.ModuleType("app.application.torrent.download"),
+    )
     helper_torrent_module.TorrentHelper = type("TorrentHelper", (), {})
 
     db_model_module = ensure_module("app.db.models.subscribe", types.ModuleType("app.db.models.subscribe"))
@@ -490,8 +493,8 @@ def _load_subscribe_chain_class():
     import app.startup.initializers.chain as chain_initializer
     from app.application.messaging.subscribe import SubscribeInteractionHandler
     from app.application.subscription.contract import SubscriptionSnapshot, build_subscribe_meta
-    from app.chain.subscribe import SubscribeChain as ProductionSubscribeChain
     from app.chain.subscribe.context import _SubscribeCreateContext
+    from app.chain.subscribe.facade import SubscribeChain as ProductionSubscribeChain
 
     class SubscribeChain(ProductionSubscribeChain):
         """保留存量单元测试按调用时替换 repository 的隔离接缝。"""

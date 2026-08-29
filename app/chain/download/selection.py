@@ -7,7 +7,7 @@ from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.download.failures import (
     DownloadFailureSnapshot,
 )
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
     Context,

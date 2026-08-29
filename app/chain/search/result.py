@@ -4,7 +4,7 @@ import copy
 from typing import Callable, Dict, List, Optional, Tuple, cast
 
 from app.application.configuration import get_configured_system_config
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
 from app.chain.search.contract import _SearchOwnerBase
 from app.domain.context import Context, MediaInfo, TorrentInfo

@@ -8,7 +8,7 @@ from app.api.dependencies.auth import (
 )
 from app.api.response import ResponseAPIRouter
 from app.application.configuration import get_api_runtime_config_snapshot
-from app.application.torrent_cache import TorrentCacheRecognitionService
+from app.application.torrent.cache import TorrentCacheRecognitionService
 from app.chain.media import MediaChain
 from app.chain.torrents import TorrentsChain
 from app.foundation.crypto import HashUtils

@@ -16,7 +16,7 @@ from app.domain.meta.runtime import (
     get_media_extensions,
     get_metainfo_accelerator,
 )
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.schemas.types import MediaSource, MediaType
 from tests.cases.meta import meta_cases
 

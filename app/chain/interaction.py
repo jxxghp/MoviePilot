@@ -7,7 +7,7 @@ from app.application.messaging.media import (
     PendingMediaInteraction,
     media_interaction_manager,
 )
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain

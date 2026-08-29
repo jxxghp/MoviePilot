@@ -565,8 +565,8 @@
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "application",
-        "replacement": "app.application.torrent",
-        "target": "app.application.torrent"
+        "replacement": "app.application.torrent.download",
+        "target": "app.application.torrent.download"
       },
       "app.helper.transferhistory": {
         "introduced": "v3.0.0",

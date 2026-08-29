@@ -8,7 +8,7 @@ from typing import Any, List, Optional, Tuple, Union, cast
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import DirectoryHelper, validate_download_save_path
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
     DownloadArchivePort,

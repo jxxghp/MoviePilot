@@ -25,7 +25,7 @@ from app.application.security.cookie import (
     configure_cookie_ports,
     reset_cookie_ports,
 )
-from app.application.torrent import (
+from app.application.torrent.download import (
     TorrentHttpPort,
     TorrentResponsePort,
     configure_torrent_port,

@@ -10,7 +10,7 @@ from app.application.subscription.contract import (
     subscribe_media_key,
 )
 from app.application.subscription.mutation import SubscriptionActor
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain._contracts import MusicSubscribeMixinHost
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain

@@ -104,7 +104,6 @@
     "app/agent/tools/impl/write_file.py",
     "app/api/openai_utils.py",
     "app/api/router_specs.py",
-    "app/application/torrent_cache.py",
     "app/chain/_contracts.py",
     "app/chain/_interaction.py",
     "app/chain/_messaging.py",

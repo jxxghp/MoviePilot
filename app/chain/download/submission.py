@@ -9,7 +9,7 @@ from urllib.parse import urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import validate_download_save_path
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
     _close_download_response,

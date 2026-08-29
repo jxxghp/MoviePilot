@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from pydantic import Field
 
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.workflow import ActionContext, ActionParams

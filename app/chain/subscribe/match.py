@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Optional
 
 from app.application.configuration import get_configured_system_config
 from app.application.subscription.contract import build_subscribe_meta, subscribe_media_key
-from app.application.torrent import TorrentHelper
+from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.identity import subscribe_recognize_kwargs

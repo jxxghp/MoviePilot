@@ -5,12 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
+import app.application.torrent.download as torrent_module
 from app.application import rss as rss_module
-from app.application import torrent as torrent_module
 from app.application.rss import RssHelper, configure_rss_ports
 from app.application.security import cookie as cookie_module
 from app.application.security.cookie import CookieHelper, configure_cookie_ports
-from app.application.torrent import (
+from app.application.torrent.download import (
     TorrentHelper,
     configure_torrent_port,
 )

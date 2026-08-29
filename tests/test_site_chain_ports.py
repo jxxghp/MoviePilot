@@ -9,9 +9,9 @@ from typing import Iterator, Optional
 
 import pytest
 
+import app.application.torrent.download as torrent_module
 from app.adapters.external import cookiecloud as cookiecloud_module
 from app.application import rss as rss_module
-from app.application import torrent as torrent_module
 from app.application.security import cookie as cookie_module
 from app.application.site.contract import SiteSnapshot
 from app.chain import site as site_module

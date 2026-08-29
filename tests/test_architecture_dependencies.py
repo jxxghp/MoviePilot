@@ -84,6 +84,8 @@ RETIRED_CANONICAL_FILES = (
     "app/adapters/network/sites.pyi",
     "app/application/plugins.py",
     "app/application/subscribe.py",
+    "app/application/torrent.py",
+    "app/application/torrent_cache.py",
     "app/application/chain/durable_events.py",
     "app/application/transfer.py",
     "app/application/transfer_execution.py",
@@ -361,6 +363,34 @@ def test_runtime_dependencies_use_same_named_single_word_package() -> None:
                     if alias.name == "app.runtime.dependencies"
                 )
     assert violations == []
+
+
+def test_application_torrent_uses_same_named_single_word_package() -> None:
+    """种子应用能力必须归入同名包，包根不得重复导出内部实现。"""
+    package = APP_ROOT / "application" / "torrent"
+    assert {path.name for path in package.glob("*.py")} == {
+        "__init__.py",
+        "cache.py",
+        "download.py",
+    }
+    init_tree = ast.parse(
+        (package / "__init__.py").read_text(encoding="utf-8"),
+        filename=str(package / "__init__.py"),
+    )
+    assert ast.get_docstring(init_tree)
+    assert len(init_tree.body) == 1
+
+    root_imports: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        if path.is_relative_to(APP_ROOT / "plugins"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "app.application.torrent":
+                root_imports.append(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                )
+    assert root_imports == []
 
 
 def test_host_module_package_roots_only_export_capability_entrypoints() -> None:

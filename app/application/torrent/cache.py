@@ -3,10 +3,10 @@
 from typing import Any, Optional
 
 from app.domain.context import MediaInfo, MusicInfo
+from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.foundation.crypto import HashUtils
-from app.domain.media import is_music_media_source, normalize_music_type
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicTargetEntityType
 
 

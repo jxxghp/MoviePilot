@@ -216,9 +216,6 @@
   "app/application/storage.py": {
     "I001": 1
   },
-  "app/application/torrent_cache.py": {
-    "I001": 1
-  },
   "app/db/__init__.py": {
     "I001": 1
   },
