@@ -114,6 +114,21 @@ def test_plugin_identity_store_normalizes_reads_and_rejects_case_duplicate(
         )
 
 
+def test_plugin_identity_store_ignores_invalid_legacy_ids_on_read(
+    identity_store,
+) -> None:
+    """历史安装清单含不合规插件 ID 时，身份读取不得阻断插件列表。"""
+    created = identity_store.compare_and_set(
+        _identity("DemoPlugin"),
+        expected_revision=None,
+    )
+
+    assert identity_store.list(
+        ["legacy-plugin", "115Cloud", "DemoPlugin", "demoplugin"]
+    ) == [created]
+    assert identity_store.get("legacy-plugin") is None
+
+
 def test_plugin_identity_store_rejects_stale_revision(identity_store) -> None:
     """旧安装事务不能覆盖已经提交的新身份。"""
     original = identity_store.compare_and_set(

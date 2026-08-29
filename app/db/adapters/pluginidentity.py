@@ -29,6 +29,16 @@ def _parse_datetime(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
 
 
+def _normalize_plugin_id_for_read(plugin_id: str) -> str | None:
+    """读取历史安装清单时，将不属于身份合同的条目标记为无身份。"""
+    if not isinstance(plugin_id, str):
+        return None
+    try:
+        return normalize_physical_plugin_id(plugin_id)
+    except ValueError:
+        return None
+
+
 def _to_record(model: IdentityModel) -> PluginIdentity:
     """把持久化模型映射为已校验的应用身份。"""
     return PluginIdentity(
@@ -134,26 +144,29 @@ class TransactionalPluginIdentityStore:
         self._session_factory = session_factory
 
     def get(self, plugin_id: str) -> PluginIdentity | None:
-        """在短会话内读取指定物理插件身份。"""
+        """在短会话内读取指定物理插件身份；不合规历史 ID 视为未建立身份。"""
+        normalized_id = _normalize_plugin_id_for_read(plugin_id)
+        if normalized_id is None:
+            return None
         session = self._session_factory()
         try:
-            return _SqlAlchemyIdentityRepository(session).get(
-                normalize_physical_plugin_id(plugin_id)
-            )
+            return _SqlAlchemyIdentityRepository(session).get(normalized_id)
         finally:
             session.close()
 
     def list(self, plugin_ids: Sequence[str]) -> list[PluginIdentity]:
-        """在一个短会话内批量读取规范化插件身份。"""
-        normalized_ids = tuple(
-            dict.fromkeys(
-                normalize_physical_plugin_id(plugin_id)
-                for plugin_id in plugin_ids
-            )
-        )
+        """批量读取规范化插件身份，并忽略不合规的历史安装清单项。"""
+        normalized_ids: list[str] = []
+        seen: set[str] = set()
+        for plugin_id in plugin_ids:
+            normalized_id = _normalize_plugin_id_for_read(plugin_id)
+            if normalized_id is None or normalized_id in seen:
+                continue
+            seen.add(normalized_id)
+            normalized_ids.append(normalized_id)
         session = self._session_factory()
         try:
-            return _SqlAlchemyIdentityRepository(session).list(normalized_ids)
+            return _SqlAlchemyIdentityRepository(session).list(tuple(normalized_ids))
         finally:
             session.close()
 
