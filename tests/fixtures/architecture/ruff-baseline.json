@@ -198,9 +198,6 @@
   "app/agent/tools/impl/update_system_settings.py": {
     "I001": 1
   },
-  "app/api/endpoints/agent.py": {
-    "F841": 1
-  },
   "app/application/downloader.py": {
     "I001": 1
   },
@@ -208,9 +205,6 @@
     "I001": 1
   },
   "app/application/maintenance.py": {
-    "I001": 1
-  },
-  "app/application/messaging/agent.py": {
     "I001": 1
   },
   "app/application/messaging/session.py": {
@@ -866,9 +860,6 @@
   "tests/test_agent_background_output.py": {
     "I001": 1
   },
-  "tests/test_agent_chat_persistence.py": {
-    "I001": 1
-  },
   "tests/test_agent_lazy_runtime_boundary.py": {
     "F401": 1
   },
@@ -1192,9 +1183,6 @@
     "I001": 1
   },
   "tests/test_plugin_monitor_lifecycle.py": {
-    "I001": 1
-  },
-  "tests/test_plugin_rating.py": {
     "I001": 1
   },
   "tests/test_plugin_sdk.py": {

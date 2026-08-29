@@ -1,5 +1,6 @@
 """配置快照启动顺序测试。"""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -44,6 +45,49 @@ class _MutableSettings:
         return True, ""
 
 
+@pytest.mark.asyncio
+async def test_network_test_transport_enforces_safe_http_options(monkeypatch) -> None:
+    """组合根适配器必须固定证书校验、超时和手动重定向策略。"""
+    captured = {}
+    response = SimpleNamespace(status_code=200, headers={}, text="ok")
+
+    class _RequestUtils:
+        """捕获组合根网络探测适配器使用的 HTTP 参数。"""
+
+        def __init__(self, **kwargs) -> None:
+            """记录通用请求工具的构造参数。"""
+            captured["options"] = kwargs
+
+        async def get_res(self, url, allow_redirects=True):
+            """记录请求地址和重定向开关并返回固定响应。"""
+            captured["url"] = url
+            captured["allow_redirects"] = allow_redirects
+            return response
+
+    monkeypatch.setattr(modules_initializer, "AsyncRequestUtils", _RequestUtils)
+
+    result = await modules_initializer._NetworkTestTransportAdapter().get(
+        "https://example.com/health",
+        proxy="http://proxy.example:7890",
+        headers={"Authorization": "Bearer test"},
+        user_agent="MoviePilot-Test",
+    )
+
+    assert result is response
+    assert captured == {
+        "url": "https://example.com/health",
+        "allow_redirects": False,
+        "options": {
+            "proxies": "http://proxy.example:7890",
+            "headers": {"Authorization": "Bearer test"},
+            "timeout": 10,
+            "ua": "MoviePilot-Test",
+            "verify": True,
+            "follow_redirects": False,
+        },
+    }
+
+
 def test_runtime_settings_service_uses_legacy_settings_from_startup_root(monkeypatch) -> None:
     """组合根装配的设置服务应直接读写唯一部署配置对象。"""
     legacy_settings = _MutableSettings()
@@ -65,11 +109,17 @@ async def test_configuration_services_publish_after_both_snapshots_load(
     events = []
 
     class _SystemConfig:
+        """记录系统配置快照加载顺序。"""
+
         def load_snapshot(self):
+            """登记系统快照已加载。"""
             events.append("load-system")
 
     class _UserConfig:
+        """记录用户配置快照加载顺序。"""
+
         def load_snapshot(self):
+            """登记用户快照已加载。"""
             events.append("load-user")
 
     monkeypatch.setattr(modules_initializer, "SystemConfigOper", _SystemConfig)
@@ -107,11 +157,17 @@ async def test_configuration_load_failure_does_not_publish_partial_service(
     published = []
 
     class _SystemConfig:
+        """提供成功的系统配置快照加载桩。"""
+
         def load_snapshot(self):
+            """模拟系统配置加载成功。"""
             return None
 
     class _UserConfig:
+        """提供失败的用户配置快照加载桩。"""
+
         def load_snapshot(self):
+            """模拟用户配置加载失败。"""
             raise RuntimeError("load failed")
 
     monkeypatch.setattr(modules_initializer, "SystemConfigOper", _SystemConfig)
@@ -184,7 +240,10 @@ async def test_database_worker_owner_is_retained_when_shutdown_fails(monkeypatch
     """数据库 worker 关闭失败时保留 owner，允许后续重试或诊断。"""
 
     class _FailingWorker:
+        """模拟无法完成关闭的数据库 worker。"""
+
         async def shutdown(self):
+            """抛出关闭错误以验证 owner 保留。"""
             raise RuntimeError("shutdown failed")
 
     worker = _FailingWorker()

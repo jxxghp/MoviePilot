@@ -68,12 +68,13 @@ to make the directory tree look symmetrical.
 | `app/application/music/` | Multi-source music catalog orchestration |
 | `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the typed runtime and persistence dependency aggregate, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agent.py` | Agent orchestration facade and typed `AgentDataContext`; startup injects one explicit data context into the manager, memory, tool and scheduler owners without a process-wide persistence locator |
+| `app/application/network.py` | System network-test target catalog, immutable public/private projections, URL and redirect admission, response validation and the injected transport Port; startup owns concrete HTTP Adapter assembly |
 | `app/application/outbox.py` | Durable intent, transaction-only stager, short-transaction dispatch store, claim fencing and structured post-commit result contracts |
 | `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns admission/planning/queue behavior; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs |
 | `app/application/plugin/` | Plugin market catalog, installation command, installed-plugin identity contract and startup migration, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `identity.py`, `migration.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
-| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` agent choice state, callback protocol and WebAgent bridge; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
+| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` owns Agent choice state, callback protocol, bounded WebAgent event publication, display projection, session identity/persistence coordination, temporary attachment registry and audio preparation/transcription; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, frozen user/auth projections, atomic user aggregate commands, per-user configuration publication, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
 Application services may use domain rules and runtime contracts. They own the
@@ -83,6 +84,14 @@ implements those Protocols and startup injects the implementation. Multi-domain
 workflows still belong in the existing `app/chain/` package. `Chain`, `Service`
 and `Manager` remain class patterns; they do not create additional top-level
 directory categories.
+
+`app/api/endpoints/agent.py` must not recreate WebAgent file registries, audio
+conversion/transcription policy, traditional-message dispatch, Agent execution
+lifecycle, event-to-display projection or AgentChat snapshot writes. Those reusable
+state transitions and the transport-neutral event-stream use case belong to
+`app/application/messaging/agent.py`; the endpoint maps FastAPI principals and DTOs,
+translates upload/domain failures to HTTP responses, and frames Application events
+as SSE.
 
 ### Runtime boundaries
 
@@ -693,6 +702,12 @@ expired claimed task remains exclusively owned by fenced recovery APIs.
 - Configured notification discovery lives in
   `app/application/notification.py`. Web Push subscription and manual-send HTTP
   behavior stays in `app/api/endpoints/message.py`.
+- System network testing lives in `app/application/network.py`: it owns the
+  server-only target catalog, exact legacy URL matching, HTTPS and credential
+  checks, per-target redirect allowlists and content validation. The System API
+  only authenticates, maps request fields and projects the standard response;
+  startup injects the concrete HTTP transport with certificate verification and
+  automatic redirects disabled.
 - `app/runtime/compat` stores string mappings and resolves aliases lazily. It may
   not eagerly import canonical MoviePilot modules.
 - 已删除的 `app.db.<entity>_oper` 路径继续由精确模块映射提供给旧插件；其中订阅写入、
@@ -811,6 +826,7 @@ driven workflow registration.
 | Path | Purpose |
 |---|---|
 | `app/application/agent.py` | Agent orchestration facade plus typed `AgentDataContext`; lightweight service providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge or global persistence locator |
+| `app/application/network.py` | Server-owned network-test catalog, public/private DTOs, URL and redirect admission, content validation and the injected HTTPS transport Port |
 | `app/db/adapters/agent.py` | Agent task and plugin-data persistence implementations; ORM values are projected to Application snapshots before Session close |
 | `app/agent/runtime_loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/application/subscription/contract.py` | Deeply frozen Subscription/History DTOs, media identity, write patch and typed query/write/staging Repository contracts |
@@ -866,10 +882,12 @@ driven workflow registration.
 | `app/runtime/extensions/plugin/monitor.py` | Plugin file-change aggregation and monitor-thread lifecycle |
 | `app/runtime/extensions/plugin/projection.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
 | `app/runtime/extensions/plugin/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
-| `app/application/plugin/catalog.py` | Plugin-market mapping, concurrent collection, generation merge and source/version deduplication |
+| `app/application/plugin/catalog.py` | Plugin-market mapping, concurrent collection, generation merge, source/version deduplication and API catalog projection |
 | `app/application/plugin/install.py` | Compatibility, package installation, reporting, installed-list persistence and runtime reload command |
 | `app/application/plugin/routes.py` | Dynamic plugin-route registry protocol and registration/removal use cases; plugin response payloads remain raw unless the plugin chooses its own envelope |
-| `app/application/plugin/folders.py` | Plugin-folder cleanup use case, compatible with current dictionary and legacy list storage shapes |
+| `app/application/plugin/folders.py` | Plugin-folder query/mutation and clone/uninstall membership maintenance, compatible with current dictionary and legacy list storage shapes |
+| `app/application/plugin/release.py` | Trusted-source history and Release projection over startup-injected market/cache ports |
+| `app/application/plugin/rating.py` | Plugin statistics and rating use cases over a startup-injected MoviePilot Server port |
 | `app/application/plugin/runtime.py` | Plugin runtime port consumed by API, Agent and Workflow; the concrete `PluginManager` is registered only by startup |
 | `app/application/module.py` | Host module runtime port consumed by entrypoints; the concrete `ModuleManager` is registered only by startup |
 | `app/application/scheduling.py` | Scheduler runtime port consumed by API/Agent/application commands |

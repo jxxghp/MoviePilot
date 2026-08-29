@@ -62,6 +62,7 @@ from app.application.configuration import (
     configure_token_runtime_config,
     configure_transfer_retry_config,
     get_configured_system_config,
+    get_runtime_settings,
 )
 from app.application.database import configure_database_governance
 from app.application.history import configure_transfer_history_repository
@@ -94,6 +95,12 @@ from app.application.messaging.message import (
     stop_message,
 )
 from app.application.module import configure_module_runtime
+from app.application.network import (
+    NetworkTestResponse,
+    NetworkTestService,
+    NetworkTestTransport,
+    configure_network_test_service,
+)
 from app.application.outbox import (
     ClaimedOutboxMessage,
     OutboxDispatcher,
@@ -546,6 +553,34 @@ def configure_wallpaper_services() -> None:
     )
 
 
+class _NetworkTestTransportAdapter:
+    """把通用异步 HTTP Adapter 收窄为网络探测 GET 端口。"""
+
+    async def get(
+        self,
+        url: str,
+        *,
+        proxy: Any = None,
+        headers: Optional[Mapping[str, str]] = None,
+        user_agent: Optional[str] = None,
+    ) -> Optional[NetworkTestResponse]:
+        """使用固定超时、证书校验和手动重定向策略请求目标。"""
+        response = await AsyncRequestUtils(
+            proxies=proxy,
+            headers=dict(headers) if headers else None,
+            timeout=10,
+            ua=user_agent or "",
+            verify=True,
+            follow_redirects=False,
+        ).get_res(url, allow_redirects=False)
+        return cast(Optional[NetworkTestResponse], response)
+
+
+def _read_network_test_setting(key: str, default: Any = None) -> Any:
+    """延迟读取已由组合根发布的部署设置，避免应用服务持有全局对象。"""
+    return get_runtime_settings().get(key, default)
+
+
 class _ImageTransportAdapter:
     """把通用 HTTP Adapter 收窄为图片应用服务的 GET 端口。"""
 
@@ -631,10 +666,18 @@ class _MessageIngressAdapter:
 
 
 def configure_application_network_ports() -> None:
-    """装配图片读取、内部地址判断和消息回环传输端口。"""
+    """装配网络探测、图片读取、内部地址判断和消息回环传输端口。"""
+    network_test_transport: NetworkTestTransport = _NetworkTestTransportAdapter()
     image_transport: ImageTransport = _ImageTransportAdapter()
     internal_address: InternalAddressPort = _InternalAddressAdapter()
     message_ingress: MessageIngressPort = _MessageIngressAdapter()
+    configure_network_test_service(
+        NetworkTestService(
+            transport=network_test_transport,
+            settings=_read_network_test_setting,
+            logger=logger,
+        )
+    )
     configure_image_ports(
         transport=image_transport,
         internal_address=internal_address,
@@ -655,7 +698,7 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
     """返回所有使用事件装饰器的宿主类及其明确实例工厂。"""
     from app.chain.download import DownloadChain
     from app.chain.scraping import ScrapingChain
-    from app.chain.search import SearchChain
+    from app.chain.search import SearchChain  # pylint: disable=no-name-in-module
     from app.chain.site import SiteChain
     from app.chain.subscribe.facade import SubscribeChain
     from app.chain.workflow import WorkflowChain

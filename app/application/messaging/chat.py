@@ -27,9 +27,20 @@ def has_custom_agent_chat_title(value: Optional[str]) -> bool:
 class AgentChatPrincipal(Protocol):
     """会话访问控制所需的最小用户身份。"""
 
-    id: Any
-    name: Optional[str]
-    is_superuser: bool
+    @property
+    def id(self) -> Any:
+        """返回稳定用户标识。"""
+        ...
+
+    @property
+    def name(self) -> Optional[str]:
+        """返回可选用户显示名。"""
+        ...
+
+    @property
+    def is_superuser(self) -> bool:
+        """返回是否具备超级管理员权限。"""
+        ...
 
 
 class AsyncAgentChatRepository(Protocol):

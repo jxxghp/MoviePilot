@@ -44,7 +44,7 @@ from app.application.database import get_database_governance
 from app.application.image import ImageHelper
 from app.application.messaging.message import MessageHelper
 from app.application.module import get_module_manager
-from app.application.network import NetworkTestService
+from app.application.network import get_configured_network_test_service
 from app.application.plugin.runtime import plugin_system_config_mutation
 from app.application.rules import RuleHelper
 from app.application.scheduling import get_scheduler
@@ -52,11 +52,10 @@ from app.application.security.url import SecurityUtils
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
-from app.chain.search import SearchChain
+from app.chain.search import SearchChain  # pylint: disable=no-name-in-module
 from app.domain.metainfo import MetaInfo
 from app.foundation.crypto import HashUtils
 from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
-from app.foundation.url import UrlUtils
 from app.runtime.events import eventmanager
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.localization import LocaleHelper
@@ -90,7 +89,6 @@ from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
 
-_NETTEST_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _PUBLIC_SYSTEM_CONFIG_KEYS = {
     item.value: item
     for item in (
@@ -223,229 +221,6 @@ def _is_allowed_plugin_market_wiki_url(wiki_url: str) -> bool:
     )
 
 
-def _match_nettest_prefix(url: str, prefix: str) -> bool:
-    """
-    判断目标URL是否仍然落在允许的协议、主机、端口和路径前缀内。
-
-    nettest 会在服务端手动处理重定向，因此这里需要一个比简单 startswith
-    更严格的匹配，避免不同端口或同名路径被误判为白名单内跳转。
-    """
-    parsed_url = urlparse(url)
-    parsed_prefix = urlparse(prefix)
-    if parsed_url.scheme.lower() != parsed_prefix.scheme.lower():
-        return False
-    if (parsed_url.hostname or "").lower() != (parsed_prefix.hostname or "").lower():
-        return False
-    url_port = parsed_url.port or (443 if parsed_url.scheme.lower() == "https" else 80)
-    prefix_port = parsed_prefix.port or (
-        443 if parsed_prefix.scheme.lower() == "https" else 80
-    )
-    if url_port != prefix_port:
-        return False
-    return parsed_url.path.startswith(parsed_prefix.path or "/")
-
-
-def _build_nettest_rules() -> list[dict[str, Any]]:
-    """
-    构建系统内置的网络测试目标。
-
-    这里集中维护“前端允许显示哪些测试项”和“后端允许访问哪些远端地址”。
-    前端只拿到展示所需的 id/name/icon；真正的 URL、代理策略、内容校验规则
-    和重定向白名单都保留在服务端，避免再出现用户可控 SSRF。
-    """
-    runtime_settings = get_runtime_settings()
-    github_proxy = UrlUtils.standardize_base_url(
-        runtime_settings.get("GITHUB_PROXY") or ""
-    )
-    pip_proxy = UrlUtils.standardize_base_url(
-        runtime_settings.get("PIP_PROXY") or "https://pypi.org/simple/"
-    )
-    tmdb_key = runtime_settings.get("TMDB_API_KEY")
-    tmdb_domain = runtime_settings.get("TMDB_API_DOMAIN") or "api.themoviedb.org"
-    github_headers = runtime_settings.get("GITHUB_HEADERS")
-
-    github_readme_url = "https://github.com/jxxghp/MoviePilot/blob/v2/README.md"
-    raw_readme_url = "https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/README.md"
-
-    rules = [
-        {
-            "id": "tmdb_api",
-            "name": "api.themoviedb.org",
-            "icon": "tmdb",
-            "url": f"https://api.themoviedb.org/3/movie/550?api_key={tmdb_key}",
-            "proxy": True,
-            "allowed_redirect_prefixes": [
-                "https://api.themoviedb.org/3/",
-            ],
-        },
-        {
-            "id": "tmdb_api_alt",
-            "name": "api.tmdb.org",
-            "icon": "tmdb",
-            "url": f"https://api.tmdb.org/3/movie/550?api_key={tmdb_key}",
-            "proxy": True,
-            "allowed_redirect_prefixes": [
-                "https://api.tmdb.org/3/",
-            ],
-        },
-        {
-            "id": "tmdb_web",
-            "name": "www.themoviedb.org",
-            "icon": "tmdb",
-            "url": "https://www.themoviedb.org",
-            "proxy": True,
-            "allowed_redirect_prefixes": ["https://www.themoviedb.org/"],
-        },
-        {
-            "id": "tvdb_api",
-            "name": "api.thetvdb.com",
-            "icon": "tvdb",
-            "url": "https://api.thetvdb.com/series/81189",
-            "proxy": True,
-            "allowed_redirect_prefixes": ["https://api.thetvdb.com/"],
-        },
-        {
-            "id": "fanart_api",
-            "name": "webservice.fanart.tv",
-            "icon": "fanart",
-            "url": "https://webservice.fanart.tv",
-            "proxy": True,
-            "allowed_redirect_prefixes": ["https://webservice.fanart.tv/"],
-        },
-        {
-            "id": "telegram_api",
-            "name": "api.telegram.org",
-            "icon": "telegram",
-            "url": "https://api.telegram.org",
-            "proxy": True,
-            "allowed_redirect_prefixes": [
-                "https://api.telegram.org/",
-                "https://core.telegram.org/",
-            ],
-        },
-        {
-            "id": "wechat_api",
-            "name": "qyapi.weixin.qq.com",
-            "icon": "wechat",
-            "url": "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
-            "proxy": False,
-            "allowed_redirect_prefixes": ["https://qyapi.weixin.qq.com/"],
-        },
-        {
-            "id": "douban_api",
-            "name": "frodo.douban.com",
-            "icon": "douban",
-            "url": "https://frodo.douban.com",
-            "proxy": False,
-            "allowed_redirect_prefixes": [
-                "https://frodo.douban.com/",
-                "https://www.douban.com/doubanapp/frodo",
-            ],
-        },
-        {
-            "id": "slack_api",
-            "name": "slack.com",
-            "icon": "slack",
-            "url": "https://slack.com",
-            "proxy": False,
-            "allowed_redirect_prefixes": [
-                "https://slack.com/",
-                "https://www.slack.com/",
-            ],
-        },
-        {
-            "id": "pip_proxy",
-            "name": "pypi.org",
-            "icon": "python",
-            "url": f"{pip_proxy}rsa/",
-            "proxy": True,
-            "allowed_redirect_prefixes": [
-                pip_proxy,
-                "https://pypi.org/simple/",
-            ],
-            "expected_text": "pypi:repository-version",
-            "invalid_message": "PIP加速代理已失效，请检查配置",
-            "proxy_name": "PIP加速代理",
-        },
-        {
-            "id": "github_proxy_web",
-            "name": "github.com",
-            "icon": "github",
-            "url": f"{github_proxy}{github_readme_url}"
-            if github_proxy
-            else github_readme_url,
-            "proxy": True,
-            "allowed_redirect_prefixes": [
-                "https://github.com/",
-                *((f"{github_proxy}https://github.com/",) if github_proxy else ()),
-            ],
-            "expected_text": "MoviePilot",
-            "invalid_message": "Github加速代理已失效，请检查配置"
-            if github_proxy
-            else "无效响应",
-            "proxy_name": "Github加速代理" if github_proxy else "",
-            "headers": github_headers,
-        },
-        {
-            "id": "github_api",
-            "name": "api.github.com",
-            "icon": "github",
-            "url": "https://api.github.com",
-            "proxy": True,
-            "allowed_redirect_prefixes": ["https://api.github.com/"],
-            "headers": github_headers,
-        },
-        {
-            "id": "github_codeload",
-            "name": "codeload.github.com",
-            "icon": "github",
-            "url": "https://codeload.github.com",
-            "proxy": True,
-            "allowed_redirect_prefixes": [
-                "https://codeload.github.com/",
-                "https://github.com/",
-            ],
-            "headers": github_headers,
-        },
-        {
-            "id": "github_proxy_raw",
-            "name": "raw.githubusercontent.com",
-            "icon": "github",
-            "url": f"{github_proxy}{raw_readme_url}"
-            if github_proxy
-            else raw_readme_url,
-            "proxy": True,
-            "allowed_redirect_prefixes": [
-                "https://raw.githubusercontent.com/",
-                *(
-                    (f"{github_proxy}https://raw.githubusercontent.com/",)
-                    if github_proxy
-                    else ()
-                ),
-            ],
-            "expected_text": "MoviePilot",
-            "invalid_message": "Github加速代理已失效，请检查配置"
-            if github_proxy
-            else "无效响应",
-            "proxy_name": "Github加速代理" if github_proxy else "",
-            "headers": github_headers,
-        },
-    ]
-    if tmdb_domain not in {"api.themoviedb.org", "api.tmdb.org"}:
-        rules.insert(
-            2,
-            {
-                "id": "tmdb_api_configured",
-                "name": tmdb_domain,
-                "icon": "tmdb",
-                "url": f"https://{tmdb_domain}/3/movie/550?api_key={tmdb_key}",
-                "proxy": True,
-                "allowed_redirect_prefixes": [
-                    f"https://{tmdb_domain}/3/",
-                ],
-            },
-        )
-    return rules
 
 
 def _collect_named_log_files(name: str) -> list[Path]:
@@ -550,73 +325,6 @@ def _build_log_zip_data(name: str) -> tuple[bytes, str]:
     return zip_buffer.getvalue(), zip_stem
 
 
-def _validate_nettest_url(url: str) -> Optional[str]:
-    """
-    对实际请求地址做基础安全校验。
-
-    即使请求来自服务端内置规则，这里仍保留一层兜底校验，防止配置项被拼出
-    非 HTTPS、带凭据或不在内置目标集合中的地址。
-    """
-    parsed = urlparse(url)
-    if parsed.scheme.lower() != "https":
-        return "测试地址仅支持 HTTPS"
-    if not parsed.netloc:
-        return "测试地址无效"
-    if parsed.username or parsed.password:
-        return "测试地址不支持携带账号信息"
-    if not _get_nettest_rule(url):
-        return "测试地址不在允许的测试目标列表中"
-    return None
-
-
-def _get_nettest_rule(
-    url: Optional[str] = None, target_id: Optional[str] = None
-) -> Optional[dict[str, Any]]:
-    """
-    根据 target_id 或历史兼容参数匹配网络测试规则。
-
-    现在的主路径是 target_id。保留 url 参数是为了兼容旧前端或未升级的调用方，
-    但匹配结果仍然只能落到服务端预定义规则上。
-    """
-    for rule in _build_nettest_rules():
-        if target_id and rule.get("id") == target_id:
-            return rule
-        if url and rule.get("url") == url:
-            return rule
-    return None
-
-
-def _is_allowed_nettest_redirect(url: str, rule: dict[str, Any]) -> bool:
-    """
-    校验重定向目标是否仍属于当前测试项允许的跳转范围。
-
-    nettest 不再信任客户端跟随重定向，而是只允许在该测试项自己的白名单内跳转，
-    这样既能兼容正常 30x，又不会把安全边界重新放开。
-    """
-    parsed = urlparse(url)
-    if parsed.scheme.lower() != "https" or not parsed.netloc:
-        return False
-    if parsed.username or parsed.password:
-        return False
-    return any(
-        _match_nettest_prefix(url, prefix)
-        for prefix in rule.get("allowed_redirect_prefixes", [])
-    )
-
-
-async def _close_nettest_response(response: Any) -> None:
-    """
-    安静地关闭 httpx 响应对象。
-
-    nettest 在手动处理重定向时会提前结束部分响应读取，这里统一做资源回收，
-    避免连接泄漏干扰后续测试。
-    """
-    if response is None or not hasattr(response, "aclose"):
-        return
-    try:
-        await response.aclose()
-    except Exception as err:
-        logger.debug(f"关闭网络测试响应失败: {err}")
 
 
 async def fetch_image(
@@ -1535,16 +1243,10 @@ async def nettest_targets(_: _SchemaTokenPayload = Depends(verify_token)):
     这里只返回前端渲染所需的最小信息，避免把可请求 URL、内容校验规则和
     跳转白名单暴露给客户端。
     """
+    targets = get_configured_network_test_service().list_targets()
     return _SchemaResponse(
         success=True,
-        data=[
-            {
-                "id": item["id"],
-                "name": item["name"],
-                "icon": item["icon"],
-            }
-            for item in _build_nettest_rules()
-        ],
+        data=[{"id": item.id, "name": item.name, "icon": item.icon} for item in targets],
     )
 
 
@@ -1565,22 +1267,17 @@ async def nettest(
     `target_id` 是当前前端使用的正式入口。`url/proxy/include` 仅作兼容保留，
     其中 `include` 不再参与客户端可控的内容匹配，具体校验由服务端规则决定。
     """
-    target = _get_nettest_rule(url=url, target_id=target_id)
-    if not target:
-        return _SchemaResponse(success=False, message="测试目标不存在")
-    url = target["url"]
-    invalid_message = _validate_nettest_url(url)
-    if invalid_message:
-        logger.warning(f"拦截不安全的网络测试地址: {url}")
-        return _SchemaResponse(success=False, message=invalid_message)
-    success, message, data = await NetworkTestService(
-        request_utils_cls=AsyncRequestUtils,
-        settings_getter=get_runtime_settings,
-        logger=logger,
-        redirect_checker=_is_allowed_nettest_redirect,
-        close_response=_close_nettest_response,
-    ).execute(target, include=include)
-    return _SchemaResponse(success=success, message=message, data=data)
+    result = await get_configured_network_test_service().execute(
+        target_id=target_id,
+        url=url,
+        include=include,
+    )
+    data = {"time": result.elapsed_ms} if result.elapsed_ms is not None else None
+    return _SchemaResponse(
+        success=result.success,
+        message=result.message,
+        data=data,
+    )
 
 
 @router.get(

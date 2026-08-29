@@ -48,14 +48,13 @@ class AgentDataContext:
     subscriptions: SubscriptionRepository
     subscription_mutation_scope: SubscriptionMutationScope
     subscription_delete_scope: DeleteSubscribeScope
-    async_rule_group_mutation_scope: Callable[
-        [], AbstractAsyncContextManager[AsyncRuleGroupMutationService]
-    ]
+    async_rule_group_mutation_scope: Callable[[], AbstractAsyncContextManager[AsyncRuleGroupMutationService]]
     subscription_history: SubscriptionHistoryQueryPort
     transfer_history: TransferHistoryRepository
     transfer_execution: TransferExecutionRepository
     download_history: DownloadHistoryRepository
     plugin_data: PluginDataQueryRepository
+
 
 Provider = Callable[[], Any]
 
@@ -66,27 +65,31 @@ _prompt_manager_provider: Optional[Provider] = None
 _agent_capability_manager_provider: Optional[Provider] = None
 _llm_helper_provider: Optional[Provider] = None
 _manual_redo_prompt_builder_provider: Optional[Provider] = None
+_web_agent_type_provider: Optional[Provider] = None
 
 
 def register_agent_service_providers(
-        *,
-        agent_manager_provider: Provider,
-        running_agent_manager_provider: Provider,
-        prompt_manager_provider: Provider,
-        capability_manager_provider: Provider,
-        llm_helper_provider: Provider,
-        manual_redo_prompt_builder_provider: Provider,
+    *,
+    agent_manager_provider: Provider,
+    running_agent_manager_provider: Provider,
+    prompt_manager_provider: Provider,
+    capability_manager_provider: Provider,
+    llm_helper_provider: Provider,
+    manual_redo_prompt_builder_provider: Provider,
+    web_agent_type_provider: Provider,
 ) -> None:
     """注册 Agent 服务 provider，保持组合根装配阶段零重量实现导入。"""
     global _agent_manager_provider, _running_agent_manager_provider
     global _prompt_manager_provider, _agent_capability_manager_provider
     global _llm_helper_provider, _manual_redo_prompt_builder_provider
+    global _web_agent_type_provider
     _agent_manager_provider = agent_manager_provider
     _running_agent_manager_provider = running_agent_manager_provider
     _prompt_manager_provider = prompt_manager_provider
     _agent_capability_manager_provider = capability_manager_provider
     _llm_helper_provider = llm_helper_provider
     _manual_redo_prompt_builder_provider = manual_redo_prompt_builder_provider
+    _web_agent_type_provider = web_agent_type_provider
 
 
 def reset_agent_service_providers() -> None:
@@ -94,20 +97,22 @@ def reset_agent_service_providers() -> None:
     global _agent_manager_provider, _running_agent_manager_provider
     global _prompt_manager_provider, _agent_capability_manager_provider
     global _llm_helper_provider, _manual_redo_prompt_builder_provider
+    global _web_agent_type_provider
     _agent_manager_provider = None
     _running_agent_manager_provider = None
     _prompt_manager_provider = None
     _agent_capability_manager_provider = None
     _llm_helper_provider = None
     _manual_redo_prompt_builder_provider = None
+    _web_agent_type_provider = None
 
 
 def register_agent_services(
-        agent_manager: Any,
-        prompt_manager: Any,
-        capability_manager: Any,
-        llm_helper: Any,
-        manual_redo_prompt_builder: Optional[Callable[[Any], str]] = None,
+    agent_manager: Any,
+    prompt_manager: Any,
+    capability_manager: Any,
+    llm_helper: Any,
+    manual_redo_prompt_builder: Optional[Callable[[Any], str]] = None,
 ) -> None:
     """兼容直接对象注入；生产组合根应注册惰性 provider。"""
     register_agent_service_providers(
@@ -117,16 +122,14 @@ def register_agent_services(
         capability_manager_provider=lambda: capability_manager,
         llm_helper_provider=lambda: llm_helper,
         manual_redo_prompt_builder_provider=lambda: manual_redo_prompt_builder,
+        web_agent_type_provider=lambda: None,
     )
 
 
 def _resolve(provider: Optional[Provider], service_name: str) -> Any:
     """解析已注册服务；缺少组合根装配时给出稳定错误。"""
     if provider is None:
-        raise RuntimeError(
-            f"Agent 服务 {service_name} 未注册："
-            "请先导入 app.startup.initializers.agent 完成组合根装配"
-        )
+        raise RuntimeError(f"Agent 服务 {service_name} 未注册：请先导入 app.startup.initializers.agent 完成组合根装配")
     return provider()
 
 
@@ -148,10 +151,10 @@ def get_prompt_manager() -> Any:
 
 
 def supports_image_input(
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
-        base_url: Optional[str] = None,
-        base_url_preset: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    base_url_preset: Optional[str] = None,
 ) -> bool:
     """判断当前模型是否启用了图片输入能力。"""
     llm_helper = _resolve(_llm_helper_provider, "llm_helper")
@@ -179,6 +182,14 @@ def transcribe_audio(content: bytes, filename: str = "input.ogg") -> Optional[st
         "agent_capability_manager",
     )
     return capability_manager.transcribe_audio(content, filename=filename)
+
+
+def get_web_agent_type() -> type:
+    """返回由 Agent 实现层提供的 WebAgent 运行时类型。"""
+    web_agent_type = _resolve(_web_agent_type_provider, "web_agent_type")
+    if not isinstance(web_agent_type, type):
+        raise RuntimeError("WebAgent 运行时类型尚未配置")
+    return web_agent_type
 
 
 def build_manual_redo_prompt(history: Any) -> str:

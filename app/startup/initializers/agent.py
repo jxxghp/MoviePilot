@@ -19,6 +19,10 @@ from app.application.agent import (
     register_agent_service_providers,
     reset_agent_service_providers,
 )
+from app.application.messaging.agent import (
+    configure_web_agent_message_runtime,
+    reset_web_agent_message_runtime,
+)
 from app.application.messaging.skill import (
     register_skill_catalog_provider,
     reset_skill_catalog_provider,
@@ -58,8 +62,7 @@ def configure_agent_data_context(context: AgentDataContext) -> None:
         return
     manager = _injected_agent_manager
     if manager is not None and (
-        getattr(manager, "_accepting_tasks", False)
-        or bool(getattr(manager, "active_agents", {}))
+        getattr(manager, "_accepting_tasks", False) or bool(getattr(manager, "active_agents", {}))
     ):
         raise RuntimeError("AgentManager 已运行，不能替换数据上下文")
     _agent_data_context = context
@@ -136,6 +139,28 @@ def _get_manual_redo_prompt_builder() -> Any:
     return build_manual_redo_prompt
 
 
+def _get_web_agent_type() -> type:
+    """首个 Web 对话请求才解析 WebAgent 运行时类型。"""
+    from app.agent.web import _get_web_agent_type as get_web_agent_type
+
+    return get_web_agent_type()
+
+
+def _handle_web_agent_message(**kwargs: Any) -> object:
+    """按请求构造消息链并执行传统 WebAgent 输入。"""
+    from app.chain.message import MessageChain
+
+    MessageChain().handle_message(**kwargs)
+    return None
+
+
+def _bind_web_agent_user_session(user_id: str, session_id: str) -> None:
+    """把 Web 用户绑定到消息链的 Agent 会话。"""
+    from app.chain.message import MessageChain
+
+    MessageChain().bind_user_session(user_id, session_id)
+
+
 async def _handle_agent_config_changed(event: Event) -> None:
     """把配置事件交给当前全局 initializer，避免监听器持有过期实例。"""
     await agent_initializer.handle_config_changed(event)
@@ -165,14 +190,10 @@ class AgentInitializer:
             self._shutdown_started = False
             self._shutdown_complete = False
             if agent_manager is not None or _agent_data_context is not None:
-                if not get_runtime_setting('AI_AGENT_ENABLE'):
+                if not get_runtime_setting("AI_AGENT_ENABLE"):
                     logger.info("AI智能体功能未启用")
                     return True
-                self._manager = (
-                    agent_manager
-                    if agent_manager is not None
-                    else _get_injected_agent_manager()
-                )
+                self._manager = agent_manager if agent_manager is not None else _get_injected_agent_manager()
                 self._compat_injected = True
                 await self._manager.initialize()
             else:
@@ -192,12 +213,7 @@ class AgentInitializer:
     async def handle_config_changed(self, event: Event) -> None:
         """仅在 manifest watch 命中时协调 service，关闭态保持 fail closed。"""
         changed_keys = _event_changed_keys(event)
-        if (
-            not changed_keys
-            or self._compat_injected
-            or self._shutdown_started
-            or self._shutdown_complete
-        ):
+        if not changed_keys or self._compat_injected or self._shutdown_started or self._shutdown_complete:
             return
         try:
             self._manager = await reconcile_agent_service(
@@ -235,6 +251,7 @@ class AgentInitializer:
 # 全局AI智能体初始化器实例
 agent_initializer = AgentInitializer()
 
+
 def configure_agent_ports() -> None:
     """在 Agent 启动阶段原子登记全部 Application provider。"""
     reset_agent_ports()
@@ -246,9 +263,14 @@ def configure_agent_ports() -> None:
             capability_manager_provider=_get_capability_manager,
             llm_helper_provider=_get_llm_helper,
             manual_redo_prompt_builder_provider=_get_manual_redo_prompt_builder,
+            web_agent_type_provider=_get_web_agent_type,
         )
         register_skill_catalog_provider(_get_skill_catalog)
         register_llm_provider_runtime(_get_llm_provider_runtime)
+        configure_web_agent_message_runtime(
+            message_handler=_handle_web_agent_message,
+            session_binder=_bind_web_agent_user_session,
+        )
     except Exception:
         reset_agent_ports()
         raise
@@ -258,6 +280,7 @@ def reset_agent_ports() -> None:
     """清除 Agent、技能和 LLM provider，支持失败回滚与重复 lifespan。"""
     register_llm_provider_runtime(None)
     reset_skill_catalog_provider()
+    reset_web_agent_message_runtime()
     reset_agent_service_providers()
 
 

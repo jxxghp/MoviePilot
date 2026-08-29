@@ -19,9 +19,7 @@ from scripts.architecture.baseline import (
 
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
-DEPENDENCY_POLICY_PATH = (
-    PROJECT_ROOT / "tests" / "fixtures" / "architecture" / "dependency-policy.json"
-)
+DEPENDENCY_POLICY_PATH = PROJECT_ROOT / "tests" / "fixtures" / "architecture" / "dependency-policy.json"
 LEGACY_ROOTS = ("app.core", "app.helper", "app.utils")
 LEGACY_MODULES = {"app.log"}
 IMPLEMENTATION_ROOTS = (
@@ -197,9 +195,7 @@ def _legacy_imports(path: Path) -> set[str]:
             if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
                 candidates.append(argument.value)
         imports.update(
-            candidate
-            for candidate in candidates
-            if candidate in LEGACY_MODULES or candidate.startswith(LEGACY_ROOTS)
+            candidate for candidate in candidates if candidate in LEGACY_MODULES or candidate.startswith(LEGACY_ROOTS)
         )
     return imports
 
@@ -220,9 +216,7 @@ def _attribute_parts(node: ast.Attribute) -> list[str]:
 def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
     """收集显式导入或静态属性访问命中的兼容符号。"""
     compatibility_symbols = {
-        (module_name, symbol_name)
-        for module_name, symbols in SYMBOL_ALIASES.items()
-        for symbol_name in symbols
+        (module_name, symbol_name) for module_name, symbols in SYMBOL_ALIASES.items() for symbol_name in symbols
     }
     module_bindings: dict[str, str] = {}
     references: set[tuple[int, str]] = set()
@@ -259,11 +253,7 @@ def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
 def _class_annotations(path: Path, class_name: str) -> dict[str, str]:
     """返回指定类的源码级字段注解。"""
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-    class_node = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == class_name
-    )
+    class_node = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name)
     return {
         node.target.id: ast.unparse(node.annotation)
         for node in class_node.body
@@ -283,21 +273,13 @@ def test_legacy_roots_contain_no_python_sources():
 
 def test_legacy_source_directories_do_not_exist():
     """core/helper/utils 物理目录应完全退役，旧导入只由虚拟兼容包解析。"""
-    leftovers = [
-        root_name
-        for root_name in ("core", "helper", "utils")
-        if (APP_ROOT / root_name).exists()
-    ]
+    leftovers = [root_name for root_name in ("core", "helper", "utils") if (APP_ROOT / root_name).exists()]
     assert leftovers == []
 
 
 def test_retired_canonical_filenames_do_not_return():
     """能力包应使用包内语境明确的短文件名，避免再次出现冗余角色后缀。"""
-    leftovers = [
-        relative_path
-        for relative_path in RETIRED_CANONICAL_FILES
-        if (PROJECT_ROOT / relative_path).exists()
-    ]
+    leftovers = [relative_path for relative_path in RETIRED_CANONICAL_FILES if (PROJECT_ROOT / relative_path).exists()]
     assert leftovers == []
 
 
@@ -324,10 +306,7 @@ def test_runtime_dependencies_use_same_named_single_word_package() -> None:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.ImportFrom)
-                and node.module == "app.runtime.dependencies"
-            ):
+            if isinstance(node, ast.ImportFrom) and node.module == "app.runtime.dependencies":
                 violations.append(f"{relative}:{node.lineno}:from-package-root")
             elif isinstance(node, ast.Import):
                 violations.extend(
@@ -345,8 +324,7 @@ def test_workflow_query_contract_returns_only_typed_snapshots():
     query_classes = {
         node.name: node
         for node in tree.body
-        if isinstance(node, ast.ClassDef)
-        and node.name in {"WorkflowQueryRepository", "WorkflowQueryService"}
+        if isinstance(node, ast.ClassDef) and node.name in {"WorkflowQueryRepository", "WorkflowQueryService"}
     }
     methods = [
         node
@@ -410,16 +388,12 @@ def test_workflow_execution_chain_uses_single_application_owned_port():
         filename=str(contract_path),
     )
     contract = next(
-        node
-        for node in contract_tree.body
-        if isinstance(node, ast.ClassDef)
-        and node.name == "WorkflowExecutionPort"
+        node for node in contract_tree.body if isinstance(node, ast.ClassDef) and node.name == "WorkflowExecutionPort"
     )
     methods = {
         node.name: ast.unparse(node.returns)
         for node in contract.body
-        if isinstance(node, ast.FunctionDef)
-        and node.returns is not None
+        if isinstance(node, ast.FunctionDef) and node.returns is not None
     }
     assert methods == {
         "start": "bool",
@@ -430,9 +404,7 @@ def test_workflow_execution_chain_uses_single_application_owned_port():
     }
 
     chain_source = (APP_ROOT / "chain" / "workflow.py").read_text(encoding="utf-8")
-    startup_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
+    startup_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     assert chain_source.count("get_configured_workflow_execution()") == 1
     assert "get_chain_workflow_port" not in chain_source
     assert "configure_workflow_execution(workflow_execution)" in startup_source
@@ -458,25 +430,16 @@ def test_chain_runtime_context_owns_typed_repository_instances():
     }
     assert {name: annotations[name] for name in expected} == expected
 
-    chain_base_source = (APP_ROOT / "chain" / "base.py").read_text(
-        encoding="utf-8-sig"
-    )
+    chain_base_source = (APP_ROOT / "chain" / "base.py").read_text(encoding="utf-8-sig")
     for field_name in expected:
         assert f"self.{field_name} = context.{field_name}" in chain_base_source
 
     download_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in sorted((APP_ROOT / "chain" / "download").glob("*.py"))
+        path.read_text(encoding="utf-8") for path in sorted((APP_ROOT / "chain" / "download").glob("*.py"))
     )
-    mediaserver_source = (APP_ROOT / "chain" / "mediaserver.py").read_text(
-        encoding="utf-8"
-    )
-    application_source = (
-        APP_ROOT / "application" / "mediaserver.py"
-    ).read_text(encoding="utf-8")
-    startup_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
+    mediaserver_source = (APP_ROOT / "chain" / "mediaserver.py").read_text(encoding="utf-8")
+    application_source = (APP_ROOT / "application" / "mediaserver.py").read_text(encoding="utf-8")
+    startup_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     assert "DownloadFailure = Any" not in download_source
     assert "dboper" not in mediaserver_source
     assert "async def async_get_item_id(" in application_source
@@ -543,16 +506,10 @@ def test_startup_composes_typed_chain_and_agent_data_contexts():
         constructors = [
             node
             for node in ast.walk(startup_tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == class_name
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == class_name
         ]
         assert len(constructors) == 1
-        values = {
-            keyword.arg: keyword.value
-            for keyword in constructors[0].keywords
-            if keyword.arg is not None
-        }
+        values = {keyword.arg: keyword.value for keyword in constructors[0].keywords if keyword.arg is not None}
         assert expected_fields <= values.keys()
         assert all(not isinstance(values[field_name], ast.Lambda) for field_name in expected_fields)
 
@@ -564,11 +521,7 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
         history_path.read_text(encoding="utf-8"),
         filename=str(history_path),
     )
-    classes = {
-        node.name: node
-        for node in history_tree.body
-        if isinstance(node, ast.ClassDef)
-    }
+    classes = {node.name: node for node in history_tree.body if isinstance(node, ast.ClassDef)}
     for class_name in (
         "DownloadHistorySnapshot",
         "DownloadFileSnapshot",
@@ -578,22 +531,16 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
         decorator = next(
             item
             for item in classes[class_name].decorator_list
-            if isinstance(item, ast.Call)
-            and isinstance(item.func, ast.Name)
-            and item.func.id == "dataclass"
+            if isinstance(item, ast.Call) and isinstance(item.func, ast.Name) and item.func.id == "dataclass"
         )
-        keywords = {
-            item.arg: ast.literal_eval(item.value)
-            for item in decorator.keywords
-        }
+        keywords = {item.arg: ast.literal_eval(item.value) for item in decorator.keywords}
         assert keywords == {"frozen": True, "slots": True}
 
     for class_name in ("DownloadHistoryQueryPort", "DownloadHistoryWritePort"):
         annotations = [
             ast.unparse(node.returns)
             for node in classes[class_name].body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.returns is not None
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None
         ]
         assert annotations
         assert all("Any" not in annotation for annotation in annotations)
@@ -622,24 +569,18 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
         assert "DownloadHistory = Any" not in source
         assert "DownloadFiles = Any" not in source
 
-    startup_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
+    startup_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     assert "TransactionalDownloadHistoryRepository(" in startup_source
     assert "SessionDownloadHistoryRepository" in startup_source
     assert "DownloadHistoryOper" not in startup_source
 
-    adapter_source = (
-        APP_ROOT / "db" / "adapters" / "history" / "download.py"
-    ).read_text(encoding="utf-8")
+    adapter_source = (APP_ROOT / "db" / "adapters" / "history" / "download.py").read_text(encoding="utf-8")
     assert "class TransactionalDownloadHistoryRepository" in adapter_source
     assert "class SessionDownloadHistoryRepository" in adapter_source
     assert "_project_history" in adapter_source
     assert "SqlAlchemyUnitOfWork" in adapter_source
 
-    legacy_source = (
-        APP_ROOT / "sdk" / "_legacy" / "transfer.py"
-    ).read_text(encoding="utf-8")
+    legacy_source = (APP_ROOT / "sdk" / "_legacy" / "transfer.py").read_text(encoding="utf-8")
     assert "download_history: Optional[Any]" in legacy_source
 
 
@@ -651,14 +592,12 @@ def test_user_configuration_uses_typed_transactional_adapter():
     repository = next(
         node
         for node in application_tree.body
-        if isinstance(node, ast.ClassDef)
-        and node.name == "UserConfigurationRepository"
+        if isinstance(node, ast.ClassDef) and node.name == "UserConfigurationRepository"
     )
     returns = {
         node.name: ast.unparse(node.returns)
         for node in repository.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.returns is not None
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None
     }
     assert returns == {
         "get": "JsonData",
@@ -668,9 +607,7 @@ def test_user_configuration_uses_typed_transactional_adapter():
     }
     assert "Any" not in application_source
 
-    startup_source = (
-        APP_ROOT / "startup" / "initializers" / "modules.py"
-    ).read_text(encoding="utf-8")
+    startup_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     assert "TransactionalUserConfigurationRepository(SessionFactory)" in startup_source
     assert "UserConfigOper" not in startup_source
 
@@ -680,9 +617,7 @@ def test_user_configuration_uses_typed_transactional_adapter():
     assert "SqlAlchemyUnitOfWork" in adapter_source
     assert "Any" not in adapter_source
 
-    oper_source = (
-        APP_ROOT / "db" / "oper" / "userconfig.py"
-    ).read_text(encoding="utf-8")
+    oper_source = (APP_ROOT / "db" / "oper" / "userconfig.py").read_text(encoding="utf-8")
     assert "def stage_set(" in oper_source
     assert "def set(" in oper_source
     assert "Any" not in oper_source
@@ -695,22 +630,12 @@ def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
         oper_path.read_text(encoding="utf-8"),
         filename=str(oper_path),
     )
-    oper_class = next(
-        node
-        for node in oper_tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "WorkflowOper"
-    )
-    method_names = {
-        node.name
-        for node in oper_class.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
+    oper_class = next(node for node in oper_tree.body if isinstance(node, ast.ClassDef) and node.name == "WorkflowOper")
+    method_names = {node.name for node in oper_class.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
     assert {"start", "success", "fail", "step", "reset"}.isdisjoint(method_names)
     assert "legacy" not in oper_path.read_text(encoding="utf-8").lower()
 
-    package_source = (APP_ROOT / "db" / "oper" / "__init__.py").read_text(
-        encoding="utf-8"
-    )
+    package_source = (APP_ROOT / "db" / "oper" / "__init__.py").read_text(encoding="utf-8")
     assert '"WorkflowOper"' not in package_source
 
 
@@ -742,11 +667,7 @@ def test_startup_root_contains_only_composition_packages():
     """组合根顶层只保留稳定分区，禁止再次堆叠扁平实现文件。"""
     startup_root = APP_ROOT / "startup"
     root_modules = sorted(path.name for path in startup_root.glob("*.py"))
-    python_packages = sorted(
-        path.name
-        for path in startup_root.iterdir()
-        if path.is_dir() and any(path.rglob("*.py"))
-    )
+    python_packages = sorted(path.name for path in startup_root.iterdir() if path.is_dir() and any(path.rglob("*.py")))
 
     assert root_modules == ["__init__.py"]
     assert python_packages == ["composition", "initializers", "lifecycle"]
@@ -813,8 +734,7 @@ def test_host_code_does_not_use_compat_symbol_aliases() -> None:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         violations.extend(
-            f"{relative.as_posix()}:{line}:{symbol}"
-            for line, symbol in sorted(_compat_symbol_references(tree))
+            f"{relative.as_posix()}:{line}:{symbol}" for line, symbol in sorted(_compat_symbol_references(tree))
         )
 
     assert violations == []
@@ -837,16 +757,9 @@ def test_host_code_uses_explicit_runtime_facade_getters():
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
-                target_names = {
-                    target.id for target in node.targets if isinstance(target, ast.Name)
-                }
-                if (
-                    "SystemConfigOper" in target_names
-                    and node.value.id == "get_configured_system_config"
-                ):
-                    violations.append(
-                        f"{relative.as_posix()}:{node.lineno}:SystemConfigOper"
-                    )
+                target_names = {target.id for target in node.targets if isinstance(target, ast.Name)}
+                if "SystemConfigOper" in target_names and node.value.id == "get_configured_system_config":
+                    violations.append(f"{relative.as_posix()}:{node.lineno}:SystemConfigOper")
                 continue
             if not isinstance(node, ast.ImportFrom) or not node.module:
                 continue
@@ -862,15 +775,9 @@ def test_host_code_uses_explicit_runtime_facade_getters():
                     and alias.name == "get_configured_system_config"
                     and alias.asname is not None
                 )
-                if (
-                    alias.name in forbidden_names
-                    or class_shaped_plugin_getter
-                    or class_shaped_config_getter
-                ):
+                if alias.name in forbidden_names or class_shaped_plugin_getter or class_shaped_config_getter:
                     imported_name = alias.asname or alias.name
-                    violations.append(
-                        f"{relative.as_posix()}:{node.lineno}:{imported_name}"
-                    )
+                    violations.append(f"{relative.as_posix()}:{node.lineno}:{imported_name}")
 
     assert violations == []
 
@@ -935,19 +842,13 @@ def test_transfer_pending_oper_import_is_confined_to_database_boundary():
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                if any(
-                    alias.name == "app.db.oper.transferpending"
-                    for alias in node.names
-                ):
+                if any(alias.name == "app.db.oper.transferpending" for alias in node.names):
                     violations.append(f"{relative}:{node.lineno}")
             elif isinstance(node, ast.ImportFrom) and (
                 node.module == "app.db.oper.transferpending"
                 or (
                     node.module == "app.db.oper"
-                    and any(
-                        alias.name in {"transferpending", "TransferPendingOper"}
-                        for alias in node.names
-                    )
+                    and any(alias.name in {"transferpending", "TransferPendingOper"} for alias in node.names)
                 )
             ):
                 violations.append(f"{relative}:{node.lineno}")
@@ -962,27 +863,18 @@ def test_startup_injects_transactional_transfer_admission_repository():
     imports_repository = any(
         isinstance(node, ast.ImportFrom)
         and node.module == "app.db.adapters.transfer.admission"
-        and any(
-            alias.name == "TransactionalTransferAdmissionRepository"
-            for alias in node.names
-        )
+        and any(alias.name == "TransactionalTransferAdmissionRepository" for alias in node.names)
         for node in ast.walk(tree)
     )
     chain_context_calls = [
         node
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "ChainRuntimeContext"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ChainRuntimeContext"
     ]
 
     assert imports_repository is True
     assert len(chain_context_calls) == 1
-    keywords = {
-        keyword.arg: keyword.value
-        for keyword in chain_context_calls[0].keywords
-        if keyword.arg is not None
-    }
+    keywords = {keyword.arg: keyword.value for keyword in chain_context_calls[0].keywords if keyword.arg is not None}
     admission = keywords["transfer_admission_repository"]
     assert isinstance(admission, ast.Call)
     assert isinstance(admission.func, ast.Name)
@@ -1009,9 +901,7 @@ def test_scheduler_does_not_depend_on_database_implementation():
         )
     )
     assert {
-        dependency
-        for dependency in dependencies
-        if dependency == "app.db" or dependency.startswith("app.db.")
+        dependency for dependency in dependencies if dependency == "app.db" or dependency.startswith("app.db.")
     } == set()
 
 
@@ -1046,22 +936,15 @@ def test_canonical_service_config_consumers_use_application_directory():
     for path in paths:
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.ImportFrom)
-                and node.module == "app.runtime.extensions.service_config"
-            ):
-                violations.append(
-                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-                )
+            if isinstance(node, ast.ImportFrom) and node.module == "app.runtime.extensions.service_config":
+                violations.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
             if (
                 path.name == "mediaserver.py"
                 and isinstance(node, ast.ImportFrom)
                 and node.module == "app.application.mediaserver"
                 and any(alias.name == "MediaServerHelper" for alias in node.names)
             ):
-                violations.append(
-                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:MediaServerHelper"
-                )
+                violations.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}:MediaServerHelper")
 
     assert violations == []
 
@@ -1081,33 +964,19 @@ def test_plugin_components_do_not_reexport_legacy_abi_names():
                         violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.name}")
                 elif isinstance(node, ast.ImportFrom):
                     for alias in node.names:
-                        is_legacy_name = (
-                            alias.name in PLUGIN_LEGACY_ABI_NAMES
-                            or alias.name.endswith("Oper")
-                        )
+                        is_legacy_name = alias.name in PLUGIN_LEGACY_ABI_NAMES or alias.name.endswith("Oper")
                         is_private = bool(alias.asname and alias.asname.startswith("_"))
                         if is_legacy_name and not is_private:
-                            violations.append(
-                                f"{path.relative_to(PROJECT_ROOT)}:{alias.name}"
-                            )
+                            violations.append(f"{path.relative_to(PROJECT_ROOT)}:{alias.name}")
                 elif isinstance(node, (ast.Assign, ast.AnnAssign)):
                     targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                    names = {
-                        target.id
-                        for target in targets
-                        if isinstance(target, ast.Name)
-                    }
+                    names = {target.id for target in targets if isinstance(target, ast.Name)}
                     forbidden = {
                         name
                         for name in names
-                        if name == "__all__"
-                        or name in PLUGIN_LEGACY_ABI_NAMES
-                        or name.endswith("Oper")
+                        if name == "__all__" or name in PLUGIN_LEGACY_ABI_NAMES or name.endswith("Oper")
                     }
-                    violations.extend(
-                        f"{path.relative_to(PROJECT_ROOT)}:{name}"
-                        for name in sorted(forbidden)
-                    )
+                    violations.extend(f"{path.relative_to(PROJECT_ROOT)}:{name}" for name in sorted(forbidden))
     assert violations == []
 
 
@@ -1138,9 +1007,7 @@ def test_database_internals_do_not_import_db_facades():
             continue
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         if any(
-            isinstance(node, ast.ImportFrom)
-            and node.module in {"app.db", "app.db.models"}
-            for node in ast.walk(tree)
+            isinstance(node, ast.ImportFrom) and node.module in {"app.db", "app.db.models"} for node in ast.walk(tree)
         ):
             violations.append(str(path.relative_to(PROJECT_ROOT)))
     assert violations == []
@@ -1186,11 +1053,7 @@ def test_models_and_base_require_explicit_database_sessions():
             if isinstance(node, ast.ImportFrom) and node.module == "app.db.decorators":
                 violations.append(f"{relative}:{node.lineno}:decorator-import")
         if path.name == "base.py":
-            base_class = next(
-                node
-                for node in tree.body
-                if isinstance(node, ast.ClassDef) and node.name == "Base"
-            )
+            base_class = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Base")
             nodes = list(ast.walk(base_class))
         for node in nodes:
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1206,17 +1069,13 @@ def test_models_and_base_require_explicit_database_sessions():
                 if name in decorator_names:
                     violations.append(f"{relative}:{node.lineno}:@{name}")
             arguments = [*node.args.posonlyargs, *node.args.args]
-            defaults = [None] * (len(arguments) - len(node.args.defaults)) + list(
-                node.args.defaults
-            )
+            defaults = [None] * (len(arguments) - len(node.args.defaults)) + list(node.args.defaults)
             for argument, default in zip(arguments, defaults):
                 if argument.arg != "db":
                     continue
                 annotation = ast.unparse(argument.annotation) if argument.annotation else ""
                 if default is not None or "None" in annotation:
-                    violations.append(
-                        f"{relative}:{node.lineno}:{node.name}:optional-db"
-                    )
+                    violations.append(f"{relative}:{node.lineno}:{node.name}:optional-db")
     assert violations == []
 
 
@@ -1230,13 +1089,13 @@ def test_plugin_sdk_does_not_import_or_export_host_models():
         relative = path.relative_to(PROJECT_ROOT).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and (
-                node.module == "app.db.models"
-                or node.module.startswith("app.db.models.")
-            ) and (relative, node.module) not in internal_compat_imports:
-                violations.append(
-                    f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}:{node.module}"
-                )
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and (node.module == "app.db.models" or node.module.startswith("app.db.models."))
+                and (relative, node.module) not in internal_compat_imports
+            ):
+                violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}:{node.module}")
     assert violations == []
 
 
@@ -1255,14 +1114,9 @@ def test_entry_layers_do_not_import_database_implementations():
         "app.adapters",
     )
     violations = {
-        source: sorted(
-            dependency
-            for dependency in dependencies
-            if dependency.startswith("app.db")
-        )
+        source: sorted(dependency for dependency in dependencies if dependency.startswith("app.db"))
         for source, dependencies in graph.items()
-        if source.startswith(layer_roots)
-        and any(dependency.startswith("app.db") for dependency in dependencies)
+        if source.startswith(layer_roots) and any(dependency.startswith("app.db") for dependency in dependencies)
     }
     assert violations == {}
 
@@ -1271,10 +1125,7 @@ def test_migrated_modules_are_not_in_import_cycles():
     """任何 canonical 迁移模块都不得进入完整应用依赖图的环。"""
     modules = _discover_modules()
     known_modules = set(modules)
-    graph = {
-        name: _resolve_imports(name, path, known_modules)
-        for name, path in modules.items()
-    }
+    graph = {name: _resolve_imports(name, path, known_modules) for name, path in modules.items()}
     relevant_cycles = [
         sorted(component)
         for component in _strongly_connected_components(graph)
@@ -1295,9 +1146,7 @@ def test_canonical_layers_do_not_depend_on_sdk_or_compat():
             continue
         dependencies = _resolve_imports(module_name, path, known_modules)
         forbidden = {
-            dependency
-            for dependency in dependencies
-            if dependency.startswith(("app.sdk", "app.runtime.compat"))
+            dependency for dependency in dependencies if dependency.startswith(("app.sdk", "app.runtime.compat"))
         }
         if forbidden:
             violations[module_name] = forbidden
@@ -1311,20 +1160,14 @@ def test_capability_packages_do_not_import_forbidden_upper_layers():
     violations: dict[str, set[str]] = {}
     for module_name, path in modules.items():
         source_root = next(
-            (
-                root
-                for root in FORBIDDEN_IMPORT_PREFIXES
-                if module_name == root or module_name.startswith(f"{root}.")
-            ),
+            (root for root in FORBIDDEN_IMPORT_PREFIXES if module_name == root or module_name.startswith(f"{root}.")),
             None,
         )
         if not source_root:
             continue
         dependencies = _resolve_imports(module_name, path, known_modules)
         forbidden = {
-            dependency
-            for dependency in dependencies
-            if dependency.startswith(FORBIDDEN_IMPORT_PREFIXES[source_root])
+            dependency for dependency in dependencies if dependency.startswith(FORBIDDEN_IMPORT_PREFIXES[source_root])
         }
         if forbidden:
             violations[module_name] = forbidden
@@ -1346,9 +1189,7 @@ def test_application_does_not_import_transport_frameworks():
             forbidden.update(
                 candidate
                 for candidate in candidates
-                if candidate.startswith(
-                    ("fastapi", "starlette", "app.api", "app.adapters.web")
-                )
+                if candidate.startswith(("fastapi", "starlette", "app.api", "app.adapters.web"))
             )
         if forbidden:
             violations[str(path.relative_to(PROJECT_ROOT))] = forbidden
@@ -1410,11 +1251,7 @@ def test_runtime_log_is_a_dependency_leaf():
         modules["app.runtime.log"],
         set(modules),
     )
-    assert {
-        dependency
-        for dependency in dependencies
-        if dependency.startswith("app.")
-    } == set()
+    assert {dependency for dependency in dependencies if dependency.startswith("app.")} == set()
 
 
 def test_foundation_does_not_emit_runtime_logs():
@@ -1423,9 +1260,7 @@ def test_foundation_does_not_emit_runtime_logs():
     for path in (APP_ROOT / "foundation").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Import) and any(
-                alias.name == "logging" for alias in node.names
-            ):
+            if isinstance(node, ast.Import) and any(alias.name == "logging" for alias in node.names):
                 violations.append(str(path.relative_to(PROJECT_ROOT)))
                 break
             if isinstance(node, ast.ImportFrom) and node.module in {
@@ -1434,11 +1269,7 @@ def test_foundation_does_not_emit_runtime_logs():
             }:
                 violations.append(str(path.relative_to(PROJECT_ROOT)))
                 break
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "print"
-            ):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print":
                 violations.append(str(path.relative_to(PROJECT_ROOT)))
                 break
     assert violations == []
@@ -1452,11 +1283,7 @@ def test_cache_contract_does_not_import_concrete_adapters():
         modules["app.runtime.cache"],
         set(modules),
     )
-    assert {
-        dependency
-        for dependency in dependencies
-        if dependency.startswith("app.adapters.cache")
-    } == set()
+    assert {dependency for dependency in dependencies if dependency.startswith("app.adapters.cache")} == set()
 
 
 def test_passkey_application_does_not_select_cache_backend():
@@ -1470,11 +1297,7 @@ def test_passkey_application_does_not_select_cache_backend():
     )
     source = path.read_text(encoding="utf-8-sig")
 
-    assert {
-        dependency
-        for dependency in dependencies
-        if dependency.startswith("app.adapters.cache")
-    } == set()
+    assert {dependency for dependency in dependencies if dependency.startswith("app.adapters.cache")} == set()
     assert "RedisHelper" not in source
     assert ".is_redis(" not in source
 
@@ -1521,10 +1344,7 @@ def test_modules_do_not_import_other_modules_or_chain():
             dependency
             for dependency in dependencies
             if dependency.startswith("app.chain")
-            or (
-                dependency.startswith("app.modules.")
-                and dependency.split(".")[2] not in (own_package, "_base")
-            )
+            or (dependency.startswith("app.modules.") and dependency.split(".")[2] not in (own_package, "_base"))
         }
         if forbidden:
             violations[module_name] = forbidden
@@ -1541,11 +1361,7 @@ def test_entrypoints_do_not_import_module_internals():
         if not module_name.startswith(entrypoint_roots):
             continue
         dependencies = _resolve_imports(module_name, path, known_modules)
-        forbidden = {
-            dependency
-            for dependency in dependencies
-            if dependency.startswith("app.modules.")
-        }
+        forbidden = {dependency for dependency in dependencies if dependency.startswith("app.modules.")}
         if forbidden:
             violations[module_name] = forbidden
     assert violations == {}
@@ -1582,11 +1398,7 @@ def test_chain_does_not_import_module_internals():
         if not module_name.startswith("app.chain"):
             continue
         dependencies = _resolve_imports(module_name, path, known_modules)
-        forbidden = {
-            dependency
-            for dependency in dependencies
-            if dependency.startswith("app.modules.")
-        }
+        forbidden = {dependency for dependency in dependencies if dependency.startswith("app.modules.")}
         if forbidden:
             violations[module_name] = forbidden
     assert violations == {}
@@ -1600,10 +1412,7 @@ def _build_module_graph() -> dict[str, set[str]]:
     """
     modules = _discover_modules()
     known_modules = set(modules)
-    return {
-        name: _resolve_imports(name, path, known_modules)
-        for name, path in modules.items()
-    }
+    return {name: _resolve_imports(name, path, known_modules) for name, path in modules.items()}
 
 
 def _load_dependency_policy() -> dict:
@@ -1616,10 +1425,7 @@ def _scc_policy_violations(
     entries: list[dict],
 ) -> tuple[list[list[str]], list[list[str]]]:
     """返回未审查 SCC 与已经失效但未清理的 policy SCC。"""
-    actual = {
-        tuple(component)
-        for component in _strongly_connected_components(graph)
-    }
+    actual = {tuple(component) for component in _strongly_connected_components(graph)}
     reviewed = {tuple(entry["modules"]) for entry in entries}
     return (
         [list(component) for component in sorted(actual - reviewed)],
@@ -1646,16 +1452,11 @@ def test_complete_host_sccs_match_reviewed_policy() -> None:
     all_members = [member for entry in entries for member in entry["modules"]]
     assert len(all_members) == len(set(all_members))
 
-    vendor = next(
-        entry for entry in entries if entry["classification"] == "contained_vendor"
-    )
+    vendor = next(entry for entry in entries if entry["classification"] == "contained_vendor")
     assert vendor["id"] == "themoviedb-vendored-package"
     assert vendor["tracking"] == "replace-or-upgrade-vendored-package"
     assert len(vendor["modules"]) == 29
-    assert all(
-        member.startswith("app.modules.themoviedb")
-        for member in vendor["modules"]
-    )
+    assert all(member.startswith("app.modules.themoviedb") for member in vendor["modules"])
 
     unreviewed, stale = _scc_policy_violations(_build_module_graph(), entries)
     assert unreviewed == []
@@ -1706,10 +1507,7 @@ def test_contained_vendor_scc_may_have_one_way_outbound_dependency() -> None:
 
 def test_host_dependency_graph_excludes_plugin_copies() -> None:
     """`app/plugins/**` 是运行时副本，不能进入宿主模块或 SCC 图。"""
-    assert all(
-        not module.startswith("app.plugins")
-        for module in _discover_modules()
-    )
+    assert all(not module.startswith("app.plugins") for module in _discover_modules())
 
 
 def test_chain_does_not_import_agent_implementation():
@@ -1718,11 +1516,7 @@ def test_chain_does_not_import_agent_implementation():
     for module_name, dependencies in _build_module_graph().items():
         if not module_name.startswith("app.chain"):
             continue
-        forbidden = {
-            dependency
-            for dependency in dependencies
-            if dependency.startswith("app.agent")
-        }
+        forbidden = {dependency for dependency in dependencies if dependency.startswith("app.agent")}
         if forbidden:
             violations[module_name] = forbidden
     assert violations == {}
@@ -1731,11 +1525,7 @@ def test_chain_does_not_import_agent_implementation():
 def test_agent_application_facade_does_not_import_agent_implementation():
     """Agent application 门面只能接收组合根注入，不能反向解析具体实现。"""
     dependencies = _build_module_graph()["app.application.agent"]
-    assert {
-        dependency
-        for dependency in dependencies
-        if dependency.startswith("app.agent")
-    } == set()
+    assert {dependency for dependency in dependencies if dependency.startswith("app.agent")} == set()
 
 
 def test_host_consumers_get_agent_manager_through_application_facade():
@@ -1749,8 +1539,7 @@ def test_host_consumers_get_agent_manager_through_application_facade():
         imported = {
             alias.name
             for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-            and node.module == "app.agent.runtime_loader"
+            if isinstance(node, ast.ImportFrom) and node.module == "app.agent.runtime_loader"
             for alias in node.names
             if alias.name in forbidden
         }
@@ -1770,8 +1559,7 @@ def test_host_consumers_resolve_llm_provider_runtime_through_gateway():
         imported = {
             alias.name
             for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-            and node.module in {"app.agent.llm", "app.agent.llm.provider"}
+            if isinstance(node, ast.ImportFrom) and node.module in {"app.agent.llm", "app.agent.llm.provider"}
             for alias in node.names
             if alias.name == "LLMProviderManager"
         }
@@ -1793,8 +1581,7 @@ def test_host_consumers_use_agent_audio_capability_application_port():
         imported = {
             alias.name
             for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-            and node.module in {"app.agent.llm", "app.agent.llm.capability"}
+            if isinstance(node, ast.ImportFrom) and node.module in {"app.agent.llm", "app.agent.llm.capability"}
             for alias in node.names
             if alias.name == "AgentCapabilityManager"
         }
@@ -1808,8 +1595,7 @@ def test_application_services_do_not_resolve_event_manager_singleton():
     violations = {
         module_name: dependencies & {"app.runtime.events"}
         for module_name, dependencies in _build_module_graph().items()
-        if module_name.startswith("app.application")
-        and "app.runtime.events" in dependencies
+        if module_name.startswith("app.application") and "app.runtime.events" in dependencies
     }
     assert violations == {}
 
@@ -1909,11 +1695,7 @@ def test_deprecated_settings_proxy_imports_are_zero():
         counts[group] = counts.get(group, 0) + 1
 
     unexpected = set(counts) - set(limits)
-    exceeded = {
-        group: count
-        for group, count in counts.items()
-        if group in limits and count > limits[group]
-    }
+    exceeded = {group: count for group, count in counts.items() if group in limits and count > limits[group]}
     assert unexpected == set()
     assert exceeded == {}
 
@@ -1946,14 +1728,135 @@ def test_api_does_not_import_factory():
     for module_name, dependencies in _build_module_graph().items():
         if not module_name.startswith("app.api"):
             continue
-        forbidden = {
-            dependency
-            for dependency in dependencies
-            if dependency.startswith("app.factory")
-        }
+        forbidden = {dependency for dependency in dependencies if dependency.startswith("app.factory")}
         if forbidden:
             violations[module_name] = forbidden
     assert violations == {}
+
+
+def test_web_agent_non_transport_state_stays_in_application():
+    """Agent 端点不得重新拥有附件、音频、投影或会话写入实现。"""
+    endpoint_path = APP_ROOT / "api" / "endpoints" / "agent.py"
+    application_path = APP_ROOT / "application" / "messaging" / "agent.py"
+    endpoint_tree = ast.parse(
+        endpoint_path.read_text(encoding="utf-8-sig"),
+        filename=str(endpoint_path),
+    )
+    application_tree = ast.parse(
+        application_path.read_text(encoding="utf-8-sig"),
+        filename=str(application_path),
+    )
+    endpoint_owners = {
+        node.name
+        for node in endpoint_tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    application_owners = {
+        node.name
+        for node in application_tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    required = {
+        "WebAgentEventPublisher",
+        "apply_web_agent_display_event",
+        "build_web_agent_command_items",
+        "build_web_agent_input_attachments",
+        "build_web_agent_message_events_async",
+        "build_web_agent_session_id_async",
+        "build_web_agent_stream",
+        "collect_web_agent_traditional_events",
+        "get_web_agent_registered_file",
+        "prepare_web_agent_audio_attachment_path_async",
+        "save_web_agent_display_snapshot",
+        "transcribe_web_agent_audio_input",
+    }
+    forbidden_endpoint_imports = {
+        "app.application.commands",
+        "app.application.messaging.router",
+        "app.chain.message",
+        "app.runtime.execution",
+        "app.runtime.stop",
+    }
+    endpoint_imports = {
+        node.module
+        for node in ast.walk(endpoint_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+
+    assert required <= application_owners
+    assert required.isdisjoint(endpoint_owners)
+    assert endpoint_imports.isdisjoint(forbidden_endpoint_imports)
+
+
+def test_plugin_market_use_cases_stay_in_application():
+    """Plugin 端点不得重新组合市场 Adapter 或拥有目录投影实现。"""
+    endpoint_path = APP_ROOT / "api" / "endpoints" / "plugin.py"
+    endpoint_tree = ast.parse(
+        endpoint_path.read_text(encoding="utf-8-sig"),
+        filename=str(endpoint_path),
+    )
+    forbidden_imports = {
+        "app.adapters.external.market",
+        "app.adapters.external.server",
+    }
+    imported = {node.module for node in ast.walk(endpoint_tree) if isinstance(node, ast.ImportFrom) and node.module}
+    endpoint_owners = {
+        node.name
+        for node in endpoint_tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    assert forbidden_imports.isdisjoint(imported)
+    assert {
+        "_get_market_plugin_from_repo",
+        "_get_plugin_history_detail",
+        "_installed_plugins_with_declared_metadata",
+        "_prepare_update_candidates",
+    }.isdisjoint(endpoint_owners)
+
+
+def test_system_nettest_is_owned_by_application_service():
+    """System API 不得重新拥有网络目标目录、安全准入或具体传输组装。"""
+    endpoint_path = APP_ROOT / "api" / "endpoints" / "system.py"
+    endpoint_tree = ast.parse(
+        endpoint_path.read_text(encoding="utf-8-sig"),
+        filename=str(endpoint_path),
+    )
+    retired_endpoint_symbols = {
+        "_build_nettest_rules",
+        "_close_nettest_response",
+        "_get_nettest_rule",
+        "_is_allowed_nettest_redirect",
+        "_match_nettest_prefix",
+        "_validate_nettest_url",
+    }
+    endpoint_functions = {
+        node.name for node in endpoint_tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert endpoint_functions.isdisjoint(retired_endpoint_symbols)
+    assert not any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "NetworkTestService"
+        for node in ast.walk(endpoint_tree)
+    )
+
+    application_path = APP_ROOT / "application" / "network.py"
+    application_tree = ast.parse(
+        application_path.read_text(encoding="utf-8-sig"),
+        filename=str(application_path),
+    )
+    concrete_adapter_imports = {
+        node.module
+        for node in ast.walk(application_tree)
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("app.adapters")
+    }
+    concrete_adapter_imports.update(
+        alias.name
+        for node in ast.walk(application_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+        if alias.name.startswith("app.adapters")
+    )
+    assert concrete_adapter_imports == set()
 
 
 PROCESS_LEVEL_ROOTS = (
@@ -1979,11 +1882,7 @@ def test_process_level_packages_are_not_mutually_cyclic():
     components = _strongly_connected_components(graph)
     violations: list[list[str]] = []
     for component in components:
-        roots = {
-            name.split(".")[1]
-            for name in component
-            if name.startswith("app.") and name.count(".") >= 1
-        }
+        roots = {name.split(".")[1] for name in component if name.startswith("app.") and name.count(".") >= 1}
         involved = {root for root in roots if f"app.{root}" in PROCESS_LEVEL_ROOTS}
         if len(involved) > 1:
             violations.append(sorted(component))

@@ -11,18 +11,18 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete, select
 
-from app.schemas.exception import (
-    AgentChatPersistenceUnavailableError,
-    DatabaseWorkerOverloadedError,
-)
-from app.application.messaging.chat import AgentChatPersistenceService, AgentChatService
 from app.api.endpoints.agent import save_agent_chat_display
+from app.application.messaging.chat import AgentChatPersistenceService, AgentChatService
 from app.db.models.agentchat import AgentChat
 from app.db.oper.agentchat import AgentChatOper
 from app.db.session import SessionFactory, async_session_scope
 from app.db.uow import run_sync_transaction
-from app.schemas.agent import AgentChatDisplaySaveRequest
 from app.db.worker import DatabaseWorker
+from app.schemas.agent import AgentChatDisplaySaveRequest
+from app.schemas.exception import (
+    AgentChatPersistenceUnavailableError,
+    DatabaseWorkerOverloadedError,
+)
 
 
 class _Executor:
@@ -178,7 +178,7 @@ async def test_authoritative_display_save_propagates_worker_overload() -> None:
 
 @pytest.mark.asyncio
 async def test_authoritative_display_save_reads_fresh_projection_after_worker_write(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """权威展示保存的响应必须读取 worker 提交后的最新投影。"""
     existing_chat = SimpleNamespace(
@@ -218,9 +218,7 @@ async def test_authoritative_display_save_reads_fresh_projection_after_worker_wr
 
     assert response.success is True
     assert response.data == "fresh-summary"
-    canonical_service.get_accessible.assert_awaited_once_with(
-        "fresh-session", current_user
-    )
+    canonical_service.get_accessible.assert_awaited_once_with("fresh-session", current_user)
 
 
 @pytest.mark.asyncio
@@ -249,9 +247,7 @@ async def test_agent_chat_persistence_rolls_back_compound_write(monkeypatch) -> 
                 messages=[{"role": "user", "content": "not committed"}],
             )
         async with async_session_scope() as session:
-            result = await session.execute(
-                select(AgentChat).where(AgentChat.session_id == session_id)
-            )
+            result = await session.execute(select(AgentChat).where(AgentChat.session_id == session_id))
             assert result.scalars().first() is None
     finally:
         await worker.shutdown()
@@ -335,27 +331,13 @@ async def test_agent_chat_persistence_session_admission_is_fair() -> None:
         capacity=4,
         session_capacity=2,
     )
-    first = asyncio.create_task(
-        service.async_save_agent_messages(
-            session_id="hot-session", user_id="1", messages=[]
-        )
-    )
+    first = asyncio.create_task(service.async_save_agent_messages(session_id="hot-session", user_id="1", messages=[]))
     await executor.started.wait()
-    second = asyncio.create_task(
-        service.async_save_agent_messages(
-            session_id="hot-session", user_id="1", messages=[]
-        )
-    )
+    second = asyncio.create_task(service.async_save_agent_messages(session_id="hot-session", user_id="1", messages=[]))
     await asyncio.sleep(0)
     with pytest.raises(AgentChatPersistenceUnavailableError):
-        await service.async_save_agent_messages(
-            session_id="hot-session", user_id="1", messages=[]
-        )
-    other = asyncio.create_task(
-        service.async_save_agent_messages(
-            session_id="other-session", user_id="1", messages=[]
-        )
-    )
+        await service.async_save_agent_messages(session_id="hot-session", user_id="1", messages=[])
+    other = asyncio.create_task(service.async_save_agent_messages(session_id="other-session", user_id="1", messages=[]))
     await asyncio.sleep(0)
     assert not other.done()
     executor.release.set()
@@ -385,18 +367,14 @@ async def test_agent_chat_persistence_shutdown_drains_active_writes() -> None:
         sync_transaction=lambda operation: operation(object()),
     )
     write = asyncio.create_task(
-        service.async_save_agent_messages(
-            session_id="shutdown-session", user_id="1", messages=[]
-        )
+        service.async_save_agent_messages(session_id="shutdown-session", user_id="1", messages=[])
     )
     await executor.started.wait()
     shutdown = asyncio.create_task(service.shutdown())
     await asyncio.sleep(0)
     assert not shutdown.done()
     with pytest.raises(AgentChatPersistenceUnavailableError):
-        await service.async_save_agent_messages(
-            session_id="new-session", user_id="1", messages=[]
-        )
+        await service.async_save_agent_messages(session_id="new-session", user_id="1", messages=[])
     executor.release.set()
     await write
     await shutdown
@@ -515,32 +493,22 @@ async def test_agent_chat_persistence_serializes_same_session_writes() -> None:
             user_id="worker-race-user",
             messages=[{"role": "user", "content": "seed"}],
         )
-        await asyncio.gather(
-            *(append_existing(f"existing-{index}") for index in range(4))
-        )
+        await asyncio.gather(*(append_existing(f"existing-{index}") for index in range(4)))
         async with async_session_scope() as session:
             result = await session.execute(
-                select(AgentChat).where(
-                    AgentChat.session_id.in_((session_id, existing_session_id))
-                )
+                select(AgentChat).where(AgentChat.session_id.in_((session_id, existing_session_id)))
             )
             rows = list(result.scalars().all())
         assert len(rows) == 2
         row_by_session = {row.session_id: row for row in rows}
-        assert {
-            message["content"]
-            for message in row_by_session[session_id].display_messages
-        } == {f"message-{index}" for index in range(4)}
-        assert {
-            message["content"]
-            for message in row_by_session[existing_session_id].display_messages
-        } == {"seed"} | {f"existing-{index}" for index in range(4)}
+        assert {message["content"] for message in row_by_session[session_id].display_messages} == {
+            f"message-{index}" for index in range(4)
+        }
+        assert {message["content"] for message in row_by_session[existing_session_id].display_messages} == {"seed"} | {
+            f"existing-{index}" for index in range(4)
+        }
     finally:
         with SessionFactory() as session:
-            session.execute(
-                delete(AgentChat).where(
-                    AgentChat.session_id.in_((session_id, existing_session_id))
-                )
-            )
+            session.execute(delete(AgentChat).where(AgentChat.session_id.in_((session_id, existing_session_id))))
             session.commit()
         await worker.shutdown()

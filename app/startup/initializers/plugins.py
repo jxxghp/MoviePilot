@@ -18,8 +18,16 @@ from app.adapters.system.plugin.dependency import PluginDependencyInstaller
 from app.adapters.system.plugin.manifest import dependency_manifest_status
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.application.commands import init_commands
-from app.application.configuration import get_configured_system_config
-from app.application.plugin.catalog import PluginCatalogService
+from app.application.configuration import (
+    get_api_runtime_config_snapshot,
+    get_configured_system_config,
+)
+from app.application.plugin.catalog import (
+    PluginCatalogQuery,
+    PluginCatalogService,
+    configure_plugin_catalog_query,
+    reset_plugin_catalog_query,
+)
 from app.application.plugin.data import DeletePluginDataCommand
 from app.application.plugin.gateway import (
     PluginInstallGateway,
@@ -38,9 +46,19 @@ from app.application.plugin.migration import (
     configure_plugin_identity_migration,
     get_plugin_identity_migration,
 )
+from app.application.plugin.rating import (
+    PluginRatingService,
+    configure_plugin_rating_service,
+    reset_plugin_rating_service,
+)
 from app.application.plugin.recovery import (
     PluginInstallationRecoveryService,
     configure_plugin_installation_recovery,
+)
+from app.application.plugin.release import (
+    PluginReleaseService,
+    configure_plugin_release_service,
+    reset_plugin_release_service,
 )
 from app.application.plugin.routes import register_plugin_api
 from app.application.plugin.runtime import get_plugin_manager
@@ -54,6 +72,7 @@ from app.db.oper.plugindata import PluginDataOper
 from app.db.session import SessionFactory
 from app.db.uow import SqlAlchemyUnitOfWork
 from app.foundation.version import compare_version
+from app.runtime.cache import async_fresh
 from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
@@ -124,6 +143,50 @@ def configure_plugin_services() -> None:
         local_candidate_loader=market_client.get_local_candidates,
     )
     persistence = get_plugin_persistence()
+
+    async def refresh_plugin_releases(plugin_id: str, repo_url: str) -> None:
+        """绕过已有 Release 缓存执行后台刷新。"""
+        async with async_fresh(True):
+            await plugin_helper.async_get_plugin_release_versions(plugin_id, repo_url)
+
+    configure_plugin_release_service(
+        PluginReleaseService(
+            installed_plugins=plugin_manager.get_installed_plugins,
+            local_repo_plugins=plugin_manager.get_local_repo_plugins,
+            market_plugins=plugin_manager.async_get_plugins_from_market,
+            local_version=plugin_manager.get_local_plugin_version,
+            identity=persistence.get_identity,
+            version_flag=lambda: get_api_runtime_config_snapshot().version_flag,
+            compatible_flags=lambda flag: (
+                VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, []) if flag else []
+            ),
+            has_release_cache=plugin_helper.async_has_plugin_release_cache,
+            releases=plugin_helper.async_get_plugin_release_versions,
+            refresh_releases=refresh_plugin_releases,
+        )
+    )
+    configure_plugin_catalog_query(
+        PluginCatalogQuery(
+            installed_plugins=plugin_manager.get_installed_plugins,
+            local_plugins=plugin_manager.get_local_plugins,
+            local_repo_plugins=plugin_manager.get_local_repo_plugins,
+            online_candidates=plugin_manager.async_get_online_plugin_candidates,
+            process_plugins=plugin_manager.process_plugins_list,
+            identities=persistence.list_identities,
+        )
+    )
+    configure_plugin_rating_service(
+        PluginRatingService(
+            installed_plugins=lambda: get_configured_system_config().get(
+                SystemConfigKey.UserInstalledPlugins
+            )
+            or [],
+            statistic=MoviePilotServerHelper.async_get_plugin_statistic,
+            ratings=MoviePilotServerHelper.async_get_plugin_ratings,
+            rating=MoviePilotServerHelper.async_get_plugin_rating,
+            submit=MoviePilotServerHelper.async_submit_plugin_rating,
+        )
+    )
 
     async def load_inventory(force: bool):
         """读取本轮配置市场和本地仓库的完整候选事实。"""
@@ -661,3 +724,7 @@ def stop_plugins() -> bool:
     except Exception as e:
         logger.error(f"停止插件时发生错误：{e}", exc_info=True)
         return False
+    finally:
+        reset_plugin_catalog_query()
+        reset_plugin_release_service()
+        reset_plugin_rating_service()

@@ -822,14 +822,8 @@
     "redundant-cast": 2
   },
   "app/api/endpoints/agent.py": {
-    "arg-type": 9,
-    "attr-defined": 5,
-    "dict-item": 3,
-    "import-untyped": 1,
-    "misc": 17,
-    "no-any-return": 8,
-    "type-arg": 36,
-    "var-annotated": 1
+    "misc": 13,
+    "type-arg": 11
   },
   "app/api/endpoints/anilist.py": {
     "attr-defined": 1,
@@ -959,7 +953,7 @@
     "misc": 33,
     "no-any-return": 5,
     "no-untyped-call": 1,
-    "no-untyped-def": 3,
+    "no-untyped-def": 2,
     "type-arg": 11
   },
   "app/api/endpoints/recommend.py": {
@@ -1125,9 +1119,7 @@
     "arg-type": 1,
     "attr-defined": 1,
     "no-untyped-call": 1,
-    "no-untyped-def": 1,
-    "type-arg": 15,
-    "var-annotated": 1
+    "no-untyped-def": 1
   },
   "app/application/messaging/chat.py": {
     "type-arg": 8

@@ -5,15 +5,21 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from app.application.plugin.identity import (
+    OFFICIAL_PLUGIN_SOURCE_KEY,
     PluginBindingBasis,
     PluginIdentity,
     TrustedPluginSourceType,
     normalize_physical_plugin_id,
 )
-from app.schemas.plugin import Plugin, PluginSourceBindingStatus
+from app.application.plugin.inventory import normalize_github_plugin_source
+from app.schemas.plugin import (
+    Plugin,
+    PluginSourceBindingStatus,
+    PluginUpdateCandidate,
+)
 
 MarketLoader = Callable[[str, Optional[str], bool], Optional[dict[str, dict]]]
 AsyncMarketLoader = Callable[
@@ -396,3 +402,195 @@ class PluginCatalogService:
                 result.append(plugin)
             add_time -= 1
         return result
+
+
+class PluginCatalogQuery:
+    """组合运行态、来源身份和市场候选，生成插件页目录快照。"""
+
+    def __init__(
+        self,
+        *,
+        installed_plugins: Callable[[], list[Plugin]],
+        local_plugins: Callable[[], list[Plugin]],
+        local_repo_plugins: Callable[[], list[Plugin]],
+        online_candidates: Callable[[bool], Awaitable[list[Plugin]]],
+        process_plugins: Callable[[list[Plugin], list[Plugin]], list[Plugin]],
+        identities: Callable[[list[str]], Awaitable[list[PluginIdentity]]],
+    ) -> None:
+        """保存运行态目录和来源身份读取窄端口。"""
+        self._installed_plugins = installed_plugins
+        self._local_plugins = local_plugins
+        self._local_repo_plugins = local_repo_plugins
+        self._online_candidates = online_candidates
+        self._process_plugins = process_plugins
+        self._identities = identities
+
+    async def query(
+        self, *, state: str = "all", force: bool = False
+    ) -> list[Plugin]:
+        """按 installed、market 或 all 返回插件页所需稳定目录。"""
+        installed_plugins = self._installed_plugins()
+        if state == "installed":
+            return await self._with_declared_metadata(installed_plugins)
+
+        local_plugins = self._local_plugins()
+        not_installed = [plugin for plugin in local_plugins if not plugin.installed]
+        local_repo_plugins = self._local_repo_plugins()
+        online_plugins = await self._online_candidates(force)
+        installed_ids = [plugin.id for plugin in installed_plugins if plugin.id]
+        candidates = (
+            self._process_plugins(online_plugins + local_repo_plugins, [])
+            if online_plugins or local_repo_plugins
+            else []
+        )
+        candidates = await self.project_update_candidates(
+            online_plugins,
+            candidates,
+            installed_ids,
+        )
+        if not candidates:
+            if state == "market":
+                return not_installed
+            return await self._with_declared_metadata(installed_plugins) + not_installed
+
+        installed_keys = set(installed_ids)
+        market_plugins = [
+            plugin
+            for plugin in candidates
+            if plugin.id not in installed_keys or plugin.has_update
+        ]
+        market_ids = {plugin.id for plugin in market_plugins}
+        market_plugins.extend(
+            plugin for plugin in not_installed if plugin.id not in market_ids
+        )
+        if state == "market":
+            return market_plugins
+        return await self._with_declared_metadata(installed_plugins) + market_plugins
+
+    async def project_update_candidates(
+        self,
+        online_plugins: list[Plugin],
+        plugins: list[Plugin],
+        installed_ids: list[str],
+    ) -> list[Plugin]:
+        """优先选择绑定仓库更新并投影候选来源信息。"""
+        identities = await self._identities(installed_ids)
+        identity_by_id = {item.normalized_plugin_id: item for item in identities}
+        installed_keys = {plugin_id.lower() for plugin_id in installed_ids}
+        result: list[Plugin] = []
+        for plugin in plugins:
+            if (
+                not plugin.id
+                or plugin.id.lower() not in installed_keys
+                or not plugin.has_update
+            ):
+                result.append(plugin)
+                continue
+            identity = identity_by_id.get(plugin.id.lower())
+            plugin = self._prefer_bound_update(plugin, online_plugins, identity)
+            result.append(_project_update_candidate(plugin, identity))
+        return result
+
+    async def _with_declared_metadata(
+        self, plugins: list[Plugin]
+    ) -> list[Plugin]:
+        """为未加载插件补齐已提交的展示声明。"""
+        identities = await self._identities(
+            [plugin.id for plugin in plugins if plugin.id]
+        )
+        return apply_declared_metadata_fallback(
+            plugins,
+            {identity.normalized_plugin_id: identity for identity in identities},
+        )
+
+    def _prefer_bound_update(
+        self,
+        plugin: Plugin,
+        online_plugins: list[Plugin],
+        identity: PluginIdentity | None,
+    ) -> Plugin:
+        """绑定仓库存在更新时优先返回其候选。"""
+        if identity is None or not identity.trusted_source_key:
+            return plugin
+        bound_updates = [
+            candidate
+            for candidate in online_plugins
+            if _matches_trusted_source(candidate, plugin.id, identity.trusted_source_key)
+        ]
+        preferred = self._process_plugins(bound_updates, []) if bound_updates else []
+        return preferred[0] if preferred else plugin
+
+
+_catalog_query: PluginCatalogQuery | None = None
+
+
+def configure_plugin_catalog_query(query: PluginCatalogQuery) -> None:
+    """由启动组合根发布当前 lifespan 的插件目录查询。"""
+    global _catalog_query
+    _catalog_query = query
+
+
+def get_plugin_catalog_query() -> PluginCatalogQuery:
+    """返回已经由启动组合根装配的插件目录查询。"""
+    if _catalog_query is None:
+        raise RuntimeError("插件目录查询尚未完成初始化")
+    return _catalog_query
+
+
+def reset_plugin_catalog_query() -> None:
+    """清除当前 lifespan 的插件目录查询，供停机和隔离测试使用。"""
+    global _catalog_query
+    _catalog_query = None
+
+
+def _matches_trusted_source(
+    plugin: Plugin,
+    plugin_id: str,
+    trusted_source_key: str,
+) -> bool:
+    """判断市场候选是否为指定插件的可信绑定仓库更新。"""
+    if (
+        not plugin.id
+        or plugin.id.lower() != plugin_id.lower()
+        or not plugin.has_update
+        or not plugin.repo_url
+    ):
+        return False
+    try:
+        source_key, _ = normalize_github_plugin_source(plugin.repo_url)
+    except ValueError:
+        return False
+    return str(source_key) == trusted_source_key
+
+
+def _project_update_candidate(
+    plugin: Plugin, identity: PluginIdentity | None
+) -> Plugin:
+    """在隔离副本上附加来源类型和绑定关系。"""
+    if not plugin.repo_url or not plugin.plugin_version:
+        return plugin
+    try:
+        source_key, repo_url = normalize_github_plugin_source(plugin.repo_url)
+    except ValueError:
+        return plugin
+    source_type = (
+        TrustedPluginSourceType.OFFICIAL
+        if source_key == OFFICIAL_PLUGIN_SOURCE_KEY
+        else TrustedPluginSourceType.THIRD_PARTY
+    )
+    return cast(
+        Plugin,
+        plugin.model_copy(
+        update={
+            "update_candidate": PluginUpdateCandidate(
+                source_type=source_type.value,
+                source_key=source_key,
+                repo_url=repo_url,
+                version=plugin.plugin_version,
+                is_bound=bool(
+                    identity and identity.trusted_source_key == source_key
+                ),
+            )
+        },
+        ),
+    )

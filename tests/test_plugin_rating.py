@@ -1,13 +1,15 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 from app import schemas
-from app.api.endpoints.plugin import plugin_rating, plugin_ratings, rate_plugin
 from app.adapters.external import server as server_module
 from app.adapters.external.server import MoviePilotServerHelper
+from app.api.endpoints.plugin import plugin_rating, plugin_ratings, rate_plugin
+from app.application.plugin import rating as rating_module
+from app.application.plugin.rating import PluginRatingService
 
 
 def test_server_helper_uses_plugin_rating_endpoints() -> None:
@@ -60,41 +62,31 @@ def test_plugin_rating_endpoints_return_center_results() -> None:
             "rating_count": 12,
             "user_rating": 4.5,
         }
-        with patch.object(
-            MoviePilotServerHelper,
-            "async_get_plugin_ratings",
-            new=AsyncMock(return_value={"DemoPlugin": rating_result}),
-        ) as batch_query:
+        batch_query = AsyncMock(return_value={"DemoPlugin": rating_result})
+        single_query = AsyncMock(return_value=rating_result)
+        submit_rating = AsyncMock(return_value=rating_result)
+        service = PluginRatingService(
+            installed_plugins=lambda: ["DemoPlugin"],
+            statistic=AsyncMock(return_value={}),
+            ratings=batch_query,
+            rating=single_query,
+            submit=submit_rating,
+        )
+        with patch(
+            "app.api.endpoints.plugin.get_plugin_rating_service",
+            return_value=service,
+        ):
             batch = await plugin_ratings("DemoPlugin", None)
-
-        assert batch["DemoPlugin"].average_rating == 4.3
-        batch_query.assert_awaited_once_with(["DemoPlugin"])
-
-        with patch.object(
-            MoviePilotServerHelper,
-            "async_get_plugin_rating",
-            new=AsyncMock(return_value=rating_result),
-        ):
             single = await plugin_rating("DemoPlugin", None)
-
-        assert single.user_rating == 4.5
-
-        system_config = MagicMock()
-        system_config.get.return_value = ["DemoPlugin"]
-        with (
-            patch("app.api.endpoints.plugin.get_configured_system_config", return_value=system_config),
-            patch.object(
-                MoviePilotServerHelper,
-                "async_submit_plugin_rating",
-                new=AsyncMock(return_value=rating_result),
-            ) as submit_rating,
-        ):
             response = await rate_plugin(
                 "DemoPlugin",
                 schemas.PluginRatingRequest(rating=4.5),
                 None,
             )
 
+        assert batch["DemoPlugin"].average_rating == 4.3
+        batch_query.assert_awaited_once_with(["DemoPlugin"])
+        assert single.user_rating == 4.5
         assert response.success is True
         assert response.data == rating_result
         submit_rating.assert_awaited_once_with("DemoPlugin", 4.5)
@@ -106,15 +98,17 @@ def test_plugin_rating_rejects_uninstalled_plugin() -> None:
     """未安装插件不能借助 MoviePilot 接口向中心端提交评分。"""
 
     async def run_scenario() -> None:
-        system_config = MagicMock()
-        system_config.get.return_value = []
-        with (
-            patch("app.api.endpoints.plugin.get_configured_system_config", return_value=system_config),
-            patch.object(
-                MoviePilotServerHelper,
-                "async_submit_plugin_rating",
-                new=AsyncMock(),
-            ) as submit_rating,
+        submit_rating = AsyncMock()
+        service = PluginRatingService(
+            installed_plugins=lambda: [],
+            statistic=AsyncMock(return_value={}),
+            ratings=AsyncMock(return_value={}),
+            rating=AsyncMock(return_value={}),
+            submit=submit_rating,
+        )
+        with patch(
+            "app.api.endpoints.plugin.get_plugin_rating_service",
+            return_value=service,
         ):
             with pytest.raises(HTTPException) as error:
                 await rate_plugin(
@@ -127,3 +121,20 @@ def test_plugin_rating_rejects_uninstalled_plugin() -> None:
         submit_rating.assert_not_awaited()
 
     asyncio.run(run_scenario())
+
+
+def test_plugin_rating_service_reset_isolates_lifespans(monkeypatch) -> None:
+    """停机清理后不得继续复用上一 lifespan 的评分端口。"""
+    service = PluginRatingService(
+        installed_plugins=lambda: [],
+        statistic=AsyncMock(return_value={}),
+        ratings=AsyncMock(return_value={}),
+        rating=AsyncMock(return_value={}),
+        submit=AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(rating_module, "_rating_service", service)
+
+    rating_module.reset_plugin_rating_service()
+
+    with pytest.raises(RuntimeError, match="尚未完成初始化"):
+        rating_module.get_plugin_rating_service()
