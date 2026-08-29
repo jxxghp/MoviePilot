@@ -432,7 +432,7 @@ async def search_by_id_stream(
 @router.get(
     "/media/{media_id}",
     summary="精确搜索资源",
-    response_model=_SchemaResponse[list[_SchemaTorrentInfo]],
+    response_model=List[_SchemaContext],
 )
 async def search_by_id(
     media_id: str,
@@ -513,7 +513,7 @@ async def search_by_title_stream(
 @router.get(
     "/title",
     summary="模糊搜索资源",
-    response_model=_SchemaResponse[list[_SchemaTorrentInfo]],
+    response_model=List[_SchemaContext],
 )
 async def search_by_title(
     keyword: Optional[str] = None,
