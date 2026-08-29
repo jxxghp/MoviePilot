@@ -1,7 +1,7 @@
 """搜索处理链稳定 Facade。"""
 
 from collections.abc import Callable
-from typing import Any, TypeVar, cast
+from typing import Any, Optional, TypeVar, cast
 
 from app.chain.base import ChainBase
 from app.chain.search.cache import SearchCacheOwner
@@ -15,8 +15,10 @@ from app.chain.search.result import SearchResultOwner
 from app.chain.search.site import SearchSiteOwner
 from app.chain.search.subtitle import SearchSubtitleOwner
 from app.chain.search.title import SearchTitleOwner
+from app.domain.context import Context, MediaInfo
 from app.runtime.events import Event, eventmanager
-from app.schemas.types import EventType
+from app.schemas.mediaserver import NotExistMediaInfo
+from app.schemas.types import EventType, MediaType
 
 _PUBLIC_MODULE = "app.chain.search"
 _Handler = TypeVar("_Handler", bound=Callable[..., Any])
@@ -78,7 +80,27 @@ class SearchChain(ChainBase):
     _invoke_recommend_llm = staticmethod(SearchRecommendOwner._invoke_recommend_llm)
     start_recommend_task = SearchRecommendOwner.start_recommend_task
     search_by_id = SearchMediaOwner.search_by_id
-    search_by_title = SearchTitleOwner.search_by_title
+
+    def search_by_title(
+        self,
+        title: str,
+        page: Optional[int] = 0,
+        sites: Optional[list[int]] = None,
+        cache_local: Optional[bool] = False,
+        mtype: Optional[MediaType] = None,
+        rule_groups: Optional[list[str]] = None,
+    ) -> list[Context]:
+        """通过稳定 Facade 调用标题搜索 owner，保留精确的公开类型合同。"""
+        return SearchTitleOwner.search_by_title(
+            cast(SearchTitleOwner, self),
+            title=title,
+            page=page,
+            sites=sites,
+            cache_local=cache_local,
+            mtype=mtype,
+            rule_groups=rule_groups,
+        )
+
     last_search_results = SearchCacheOwner.last_search_results
     async_last_search_results = SearchCacheOwner.async_last_search_results
     async_last_subtitle_search_results = SearchCacheOwner.async_last_subtitle_search_results
@@ -101,7 +123,31 @@ class SearchChain(ChainBase):
     _process_music = SearchMusicOwner._process_music
     _async_process_music = SearchMusicOwner._async_process_music
     _async_process_music_stream = SearchMusicOwner._async_process_music_stream
-    process = SearchMediaOwner.process
+
+    def process(
+        self,
+        mediainfo: MediaInfo,
+        keyword: Optional[str] = None,
+        no_exists: Optional[dict[str, dict[int, NotExistMediaInfo]]] = None,
+        sites: Optional[list[int]] = None,
+        rule_groups: Optional[list[str]] = None,
+        area: Optional[str] = "title",
+        custom_words: Optional[list[str]] = None,
+        filter_params: Optional[dict[str, str]] = None,
+    ) -> list[Context]:
+        """通过稳定 Facade 调用精确媒体搜索 owner，保留公开类型合同。"""
+        return SearchMediaOwner.process(
+            cast(SearchMediaOwner, self),
+            mediainfo=mediainfo,
+            keyword=keyword,
+            no_exists=no_exists,
+            sites=sites,
+            rule_groups=rule_groups,
+            area=area,
+            custom_words=custom_words,
+            filter_params=filter_params,
+        )
+
     async_process = SearchMediaOwner.async_process
     async_process_stream = SearchMediaOwner.async_process_stream
     _build_subtitle_season_episodes = staticmethod(SearchSubtitleOwner._build_subtitle_season_episodes)

@@ -9,7 +9,7 @@ from app.chain._music import MusicSubscribeMixin
 from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.chain.search import SearchChain
+from app.chain.search.facade import SearchChain
 from app.chain.subscribe.completion import SubscribeCompletionOwner
 from app.chain.subscribe.create import SubscribeCreateOwner
 from app.chain.subscribe.interaction import SubscribeInteractionOwner
@@ -56,19 +56,22 @@ class SubscribeChain(
         """为音乐订阅 owner 提供可替换的媒体识别构造点。"""
         from app.chain import _music as _music_mixin
 
-        return (_music_mixin.MediaChain or MediaChain)()
+        factory = getattr(_music_mixin, "MediaChain", None) or MediaChain
+        return factory()
 
     def _music_download_chain(self) -> DownloadChain:
         """为音乐订阅 owner 提供可替换的下载构造点。"""
         from app.chain import _music as _music_mixin
 
-        return (_music_mixin.DownloadChain or DownloadChain)()
+        factory = getattr(_music_mixin, "DownloadChain", None) or DownloadChain
+        return factory()
 
     def _music_search_chain(self) -> SearchChain:
         """为音乐订阅 owner 提供可替换的搜索构造点。"""
         from app.chain import _music as _music_mixin
 
-        return (_music_mixin.SearchChain or SearchChain)()
+        factory = getattr(_music_mixin, "SearchChain", None) or SearchChain
+        return factory()
 
     def _music_site_keywords(self, mediainfo: MediaInfo) -> list[str]:
         """返回音乐订阅目标在各站点使用的检索关键字。"""

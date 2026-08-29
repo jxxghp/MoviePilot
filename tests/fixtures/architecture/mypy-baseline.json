@@ -1366,9 +1366,7 @@
     "union-attr": 11
   },
   "app/chain/subscribe/facade.py": {
-    "attr-defined": 3,
-    "misc": 4,
-    "truthy-function": 1
+    "misc": 4
   },
   "app/chain/subscribe/interaction.py": {
     "arg-type": 2
@@ -1913,9 +1911,9 @@
     "assignment": 27,
     "empty-body": 1,
     "misc": 2,
-    "no-any-return": 8,
-    "no-untyped-call": 12,
-    "no-untyped-def": 11,
+    "no-any-return": 1,
+    "no-untyped-call": 4,
+    "no-untyped-def": 7,
     "return-value": 2,
     "type-arg": 13,
     "union-attr": 2
