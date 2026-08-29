@@ -224,7 +224,7 @@
         "owner": "$source",
         "reason": "测试守卫包装 getaddrinfo 以拒绝真实外联，不执行新的 DNS 解析策略。",
         "facts": [
-          {"source": "app.testing.network_guard", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "2518de211c9ba32ccbc004cf58fe9c98837fe8ac95fe8ffb6ea82897b28d753f"}
+          {"source": "app.testing.network", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "ebf33718b54c81e1f575401da4a0bef5aa0e1ddc284e201f557897feeca71c6d"}
         ]
       }
     ]

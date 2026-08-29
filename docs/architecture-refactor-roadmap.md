@@ -54,15 +54,15 @@
 
 G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属于本轮完成范围：
 
-- [ ] `ARCH-001`、`ARCH-101` 至 `ARCH-111`、`ARCH-201` 至 `ARCH-204` 全部完成。
-- [ ] 宿主依赖图没有未解释 SCC；只允许精确 containment 的 TMDB 移植包例外，成员不能增长。
-- [ ] Application/Chain 到具体 Adapter、direct egress、raw concurrency 等所有例外均精确、可解释、不可增长。
-- [ ] Chain/Agent 正式数据入口不再注入无 Session Oper，不再以 `Any`/ORM 作为跨层合同。
-- [ ] 正式业务写入均有单一事务 owner；E2/E3 动作完成语义、幂等、恢复与人工决策路径一致。
-- [ ] import、普通对象构造不启动进程资源；资源由 bootstrap/lifecycle 显式创建、发布、关闭和重试收口。
-- [ ] S3、S5 各叶子定义的类型、复杂度、覆盖率和并发债务清零，现有全局 ratchet 不发生回退。
-- [ ] canonical 主程序无旧实现、重复导出和 legacy import；插件兼容检查基于同步后的官方插件仓 SHA 通过。
-- [ ] 锁定全量测试、Pylint、依赖一致性/漏洞审计（若涉及依赖）和最终远端一致性全部通过。
+- [x] `ARCH-001`、`ARCH-101` 至 `ARCH-109`、`ARCH-201` 至 `ARCH-204` 全部完成；`ARCH-110/111` 随 S4 取消且不作为完成依赖。
+- [x] 宿主依赖图没有未解释 SCC；只允许精确 containment 的 TMDB 移植包例外，成员不能增长。
+- [x] Application/Chain 到具体 Adapter、direct egress、raw concurrency 等所有例外均精确、可解释、不可增长。
+- [x] Chain/Agent 正式数据入口不再注入无 Session Oper，不再以 `Any`/ORM 作为跨层合同。
+- [x] 正式业务写入均有单一事务 owner；E2/E3 动作完成语义、幂等、恢复与人工决策路径一致。
+- [x] import、普通对象构造不启动进程资源；资源由 bootstrap/lifecycle 显式创建、发布、关闭和重试收口。
+- [x] S3、S5 各叶子定义的类型、复杂度、覆盖率和并发债务清零，现有全局 ratchet 不发生回退。
+- [x] canonical 主程序无旧实现、重复导出和 legacy import；插件兼容检查基于同步后的官方插件仓 SHA 通过。
+- [x] 锁定全量测试、Pylint、依赖一致性和最终远端一致性全部通过；本轮未修改依赖。
 
 ## 3. 阶段与叶子
 
@@ -167,10 +167,10 @@ canonical 主程序；兼容只经统一 Compat/SDK 门面提供。
 |---|---|---|---|
 | S5-L1 PluginHelper/PluginManager | `DELIVERED` | S2,S3 | `fa40f29df`：市场/包/依赖/备份/健康服务各归 owner；Facade 只转发稳定 ABI，构造归 typed PluginRuntime |
 | S5-L2 Agent/LLM provider | `DELIVERED` | S3-L7 | `c000c4fff`、`3a33da0b3`、`dbdf7d058`：catalog、发现、认证、session、runtime 分离；Manager/Facade 只保留稳定 API，旧包根符号仅由精确 Compat 承接 |
-| S5-L3 Domain projection | `VERIFIED` | S3-L6 | `MediaInfo` canonical 路径和 setter ABI 保留；四来源纯投影归入单词 owner，输入不可变、重复业务语义清零 |
-| S5-L4 Startup composition | `VERIFIED` | S2,S3,S5-L1,S5-L2 | 领域构造全部归单词型 composition owner；HostRuntime/ApiData 同源；显式逆序 reset manifest 在 worker 收敛后撤销 Provider，失败保留完整诊断边界 |
-| S5-L5 Sync/async 重复清零 | `PLANNED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
-| S5-L6 最终兼容与交付 | `PLANNED` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、现有类型/覆盖率门禁全部通过并推送；完成后结束本轮战略任务 |
+| S5-L3 Domain projection | `DELIVERED` | S3-L6 | `MediaInfo` canonical 路径和 setter ABI 保留；四来源纯投影归入单词 owner，输入不可变、重复业务语义清零 |
+| S5-L4 Startup composition | `DELIVERED` | S2,S3,S5-L1,S5-L2 | 领域构造全部归单词型 composition owner；HostRuntime/ApiData 同源；显式逆序 reset manifest 在 worker 收敛后撤销 Provider，失败保留完整诊断边界 |
+| S5-L5 Sync/async 重复清零 | `DELIVERED` | S3,S5 | 双 ABI 外壳共享纯逻辑，重复业务实现清零，Session/客户端不跨并发边界复用 |
+| S5-L6 最终兼容与交付 | `DELIVERED` | S3,S5-L1,S5-L2,S5-L3,S5-L4,S5-L5 | canonical 旧实现/重复导出清零；同步官方插件仓验证；锁定全量、Pylint、架构、现有类型/覆盖率门禁全部通过并推送；完成后结束本轮战略任务 |
 
 ## 4. 叶子合同与当前活动项
 
@@ -333,31 +333,46 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 
 ### S5-L4 Startup composition
 
-**Status:** `IN_PROGRESS`
+**Status:** `VERIFIED`
 
-**Delivered batch: configuration and database composition**
+- configuration、database、network、security、agent、server、outbox、subscription 与 Chain 的具体构造
+  全部归入单词型 `startup/composition/*` owner；initializer 只消费 composition API。
+- `RuntimeDependencies`、HostRuntime、命名领域 Runtime 与旧 `ApiDataPorts` 投影共享同一对象身份，
+  不再由 initializer、Facade 或兼容入口二次构造。
+- lifecycle 通过显式逆序 reset manifest 撤销 Provider；数据库 worker 未收敛时保留 owner 与连接供诊断，
+  启动失败复用同一正式清理路径。
+- 2026-08-29 真实进程启动达到 `Application startup complete`，`/health/live` 与 `/health/ready`
+  均返回 HTTP 200，随后达到 `Application shutdown complete`；验证未加入 revision 白名单、自动 stamp、
+  跳过迁移或环境判断脚本。
 
-- `startup/composition/configuration.py` 唯一负责系统/用户配置快照加载、`RuntimeConfiguration` 与
-  `RuntimeSettingsService` 构造，以及同一对象向正式运行时和兼容设置入口的发布。
-- `startup/composition/database.py` 唯一持有 `DatabaseWorker`、兼容事务 runner、查询服务、
-  插件持久化、工作流查询和旧 `ApiDataPorts` 的具体数据库装配；runtime 拒绝重入，Worker 成功后
-  才发布事务入口，关闭失败时保留 owner 与 provider，成功关闭后对称撤销。
-- `startup/composition/security.py` 唯一构造并登记认证、用户查询、PassKey 与 Web 认证入口，
-  initializer 只消费其返回的 `AuthenticationRuntime`，不再保留第二份安全服务装配。
-- `startup/composition/network.py` 唯一装配网络探测、图片、内部地址与消息回环端口，并保持
-  RuntimeSettings 延迟读取；`startup/composition/agent.py` 唯一构造 Agent 数据、会话持久化与自主任务
-  repository/execution service，Worker 启动后才读取容量，HostRuntime、兼容 provider、工具管理器与
-  Scheduler 复用同一对象身份。
-- `startup/initializers/modules.py` 只按原顺序调用 composition API，并继续构造尚未迁移的领域运行时；
-  本批未改变 HostRuntime、插件 ABI、SDK/Compat 或生命周期 manifest，`app/plugins/**` 未改动。
-- 模块 owner 完整收敛后撤销 `app.state.host_runtime`；启动失败直接关闭 Worker、撤销本批 provider 并
-  释放数据库引擎，关停失败则保留所有权供诊断和重试。
-- 基于 `origin/v3@a1e351aa9` 锁定全量覆盖率 `7383 passed, 9 skipped`；正常模式真实启动达到
-  `Application startup complete`，优雅关闭达到 `Application shutdown complete`。
-- 启动性能、Pylint、Ruff/mypy ratchet、Host architecture baseline 与
-  `MoviePilot-Plugins@2d6946eb1` 官方插件兼容基线通过。
-- 后续批次继续迁移 Chain/network/server/outbox/security/agent 与最终 HostRuntime 构造；本批不宣称
-  S5-L4 整体完成。
+### S5-L5 Sync/async 重复清零
+
+**Status:** `VERIFIED`
+
+- Search/TVDB、MusicBrainz、TheAudioDB、AcoustID、AniList、Bangumi、ServerReport、Memory、Yema、
+  通知、豆瓣、媒体识别、目录源、Indexer、TMDB API 与 Recommend 的双 ABI 共用请求计划、响应投影、
+  回退条件和业务状态机；同步/异步入口只保留真实 I/O 差异。
+- 移除 TVDB 整段同步方法的伪异步线程包装；网络客户端和数据库 Session 均按调用或事件循环持有，
+  不跨事件循环复用。
+- 新增或改造的 parity/生命周期测试均为 pytest-native，并恢复 provider、singleton、cache、事件循环与
+  `sys.modules`；本轮未新增 `unittest.TestCase`。
+- `5ba7e6170` 完成本叶最后一批共享决策，mypy 低水位降至 10,008，Ruff 低水位降至 633，
+  Pylint 保持 `10.00/10` 且重复代码为零。
+
+### S5-L6 最终兼容与交付
+
+**Status:** `DELIVERED`
+
+- 22 个不符合规范的 canonical 文件名已归并为单词文件或同名职责包；旧实现文件和主程序包根重复导出
+  已删除，宿主调用方直接导入真实 owner，兼容只由精确 SDK/Compat manifest 提供。
+- 官方插件仓已同步至 `161fce34caa31deb7d82dd50a31f217d5e6784c2`；285 个 Python 文件的
+  ABI/导入语义基线不变，仅更新 provenance。
+- `app/plugins/**` 始终作为插件副本排除，未修改、未纳入基线写入或提交。
+- 锁定串行覆盖率全量 `7659 passed, 9 skipped`；Application/Domain 低水位提升并固化为
+  `81.61%` / `81.03%`。Host 架构、Event/Egress policy、复杂度、async 阻塞、TaskRegistry、
+  service locator、mypy/Ruff ratchet、启动性能、Pylint `10.00/10` 与依赖一致性均通过。
+- 本叶随最终收口提交推送到 `v3`；以 exact head 的 GitHub Unit Tests/Pylint 终态和远端 `0/0`
+  作为 G-ARCH 结束证据。
 
 ### S1-L1.1 Durable admission
 

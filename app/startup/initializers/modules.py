@@ -236,7 +236,7 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
     """返回所有使用事件装饰器的宿主类及其明确实例工厂。"""
     from app.chain.download import DownloadChain
     from app.chain.scraping import ScrapingChain
-    from app.chain.search import SearchChain  # pylint: disable=no-name-in-module
+    from app.chain.search.facade import SearchChain
     from app.chain.site import SiteChain
     from app.chain.subscribe.facade import SubscribeChain
     from app.chain.workflow import WorkflowChain

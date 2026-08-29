@@ -52,7 +52,7 @@ from app.application.security.url import SecurityUtils
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
-from app.chain.search import SearchChain  # pylint: disable=no-name-in-module
+from app.chain.search.facade import SearchChain
 from app.domain.metainfo import MetaInfo
 from app.foundation.crypto import HashUtils
 from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled

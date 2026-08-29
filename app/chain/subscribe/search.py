@@ -14,7 +14,7 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.chain.media import MediaChain
-from app.chain.search import SearchChain
+from app.chain.search.facade import SearchChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
 from app.domain.context import (

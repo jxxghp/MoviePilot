@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from app.adapters.web.security.access import verify_resource_token, verify_token
 from app.api.response import ResponseAPIRouter
 from app.application.security.url import SecurityUtils
-from app.chain.search import SearchChain  # pylint: disable=no-name-in-module
+from app.chain.search.facade import SearchChain
 from app.domain.media import normalize_music_type
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger

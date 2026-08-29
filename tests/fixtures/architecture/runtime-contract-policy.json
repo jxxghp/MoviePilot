@@ -209,7 +209,7 @@
         "reason": "模块重载事件由 Command 更新命令注册状态。"
       },
       {
-        "caller": "app.runtime.extensions.module_manager",
+        "caller": "app.runtime.extensions.module.manager",
         "qualname": "ModuleManager.__init__",
         "method": "add_event_listener",
         "receiver_kind": "canonical_singleton",
@@ -221,9 +221,9 @@
         "handler": "self.handle_config_changed",
         "registration_kind": "listener",
         "priority": "<default>",
-        "fingerprint": "37daee8e6104140ee28a6efebefd30f1f9ac6a7c44f9609199c1b4863b30c564",
+        "fingerprint": "26cc40efaa5ed089e42e73509e2668b83e3634c343fea7a5e8f3a45d68fba275",
         "classification": "approved_static_registration",
-        "owner": "app.runtime.extensions.module_manager",
+        "owner": "app.runtime.extensions.module.manager",
         "reason": "模块管理器监听配置变化并重建受影响的模块运行状态。"
       },
       {

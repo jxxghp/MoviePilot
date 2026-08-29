@@ -143,7 +143,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
     ("app.runtime.state", "docker"): "20a91ec521f7dfe6a0153dfd8ea49c4bac7f0a16b55f1c0655dfb33f54a01215",
     ("app.startup.lifecycle", "urllib3"): "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
-    ("app.testing.network", "socket.getaddrinfo"): "2518de211c9ba32ccbc004cf58fe9c98837fe8ac95fe8ffb6ea82897b28d753f",
+    ("app.testing.network", "socket.getaddrinfo"): "ebf33718b54c81e1f575401da4a0bef5aa0e1ddc284e201f557897feeca71c6d",
 }
 
 

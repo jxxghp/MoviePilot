@@ -14,7 +14,7 @@ from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 
 # SearchChain 由包根惰性公开，Pylint 无法静态解析 __getattr__ 映射。
-from app.chain.search import SearchChain  # pylint: disable=no-name-in-module
+from app.chain.search.facade import SearchChain
 from app.domain.context import Context
 from app.domain.metainfo import MetaInfo
 from app.foundation.crypto import HashUtils

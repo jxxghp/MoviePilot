@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import Field
 
 from app.chain.media import MediaChain
-from app.chain.search import SearchChain
+from app.chain.search.facade import SearchChain
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.types import MediaType
