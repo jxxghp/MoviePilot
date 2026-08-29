@@ -125,18 +125,18 @@ async def test_async_forward_message_to_host_uses_same_contract(monkeypatch):
 
 def test_startup_message_ingress_adapter_closes_sync_response(monkeypatch):
     """生产同步注入适配层必须负责关闭 HTTP 响应。"""
-    from app.startup.initializers import modules as module_initializer
+    from app.startup.composition import network as network_composition
 
     response = SimpleNamespace(status_code=202, close=MagicMock())
     request = MagicMock()
     request.post_res.return_value = response
     monkeypatch.setattr(
-        module_initializer,
+        network_composition,
         "RequestUtils",
         MagicMock(return_value=request),
     )
 
-    status_code = module_initializer._MessageIngressAdapter().post(
+    status_code = network_composition._MessageIngressAdapter().post(
         "http://127.0.0.1/message",
         {"text": "hello"},
         timeout=9,
@@ -149,18 +149,18 @@ def test_startup_message_ingress_adapter_closes_sync_response(monkeypatch):
 @pytest.mark.asyncio
 async def test_startup_message_ingress_adapter_closes_async_response(monkeypatch):
     """生产异步注入适配层必须负责关闭 HTTP 响应。"""
-    from app.startup.initializers import modules as module_initializer
+    from app.startup.composition import network as network_composition
 
     response = SimpleNamespace(status_code=202, aclose=AsyncMock())
     request = MagicMock()
     request.post_res = AsyncMock(return_value=response)
     monkeypatch.setattr(
-        module_initializer,
+        network_composition,
         "AsyncRequestUtils",
         MagicMock(return_value=request),
     )
 
-    status_code = await module_initializer._MessageIngressAdapter().async_post(
+    status_code = await network_composition._MessageIngressAdapter().async_post(
         "http://127.0.0.1/message",
         {"text": "hello"},
         timeout=10,

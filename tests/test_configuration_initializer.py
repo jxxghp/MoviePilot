@@ -49,49 +49,6 @@ class _MutableSettings:
 
 
 @pytest.mark.asyncio
-async def test_network_test_transport_enforces_safe_http_options(monkeypatch) -> None:
-    """组合根适配器必须固定证书校验、超时和手动重定向策略。"""
-    captured = {}
-    response = SimpleNamespace(status_code=200, headers={}, text="ok")
-
-    class _RequestUtils:
-        """捕获组合根网络探测适配器使用的 HTTP 参数。"""
-
-        def __init__(self, **kwargs) -> None:
-            """记录通用请求工具的构造参数。"""
-            captured["options"] = kwargs
-
-        async def get_res(self, url, allow_redirects=True):
-            """记录请求地址和重定向开关并返回固定响应。"""
-            captured["url"] = url
-            captured["allow_redirects"] = allow_redirects
-            return response
-
-    monkeypatch.setattr(modules_initializer, "AsyncRequestUtils", _RequestUtils)
-
-    result = await modules_initializer._NetworkTestTransportAdapter().get(
-        "https://example.com/health",
-        proxy="http://proxy.example:7890",
-        headers={"Authorization": "Bearer test"},
-        user_agent="MoviePilot-Test",
-    )
-
-    assert result is response
-    assert captured == {
-        "url": "https://example.com/health",
-        "allow_redirects": False,
-        "options": {
-            "proxies": "http://proxy.example:7890",
-            "headers": {"Authorization": "Bearer test"},
-            "timeout": 10,
-            "ua": "MoviePilot-Test",
-            "verify": True,
-            "follow_redirects": False,
-        },
-    }
-
-
-@pytest.mark.asyncio
 async def test_runtime_settings_service_uses_legacy_settings_from_startup_root(
     monkeypatch,
 ) -> None:

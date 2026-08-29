@@ -799,6 +799,29 @@ def test_modules_initializer_delegates_configuration_and_database_composition():
     assert "configure_api_data_runtime" in database_source
 
 
+def test_modules_initializer_delegates_network_composition():
+    """模块初始化器只调用网络组合 API，不再内联具体 Adapter 组装。"""
+    initializer_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    network_source = (
+        APP_ROOT / "startup" / "composition" / "network.py"
+    ).read_text(encoding="utf-8")
+
+    assert "configure_application_network_ports()" in initializer_source
+    for detail in (
+        "_NetworkTestTransportAdapter",
+        "_ImageTransportAdapter",
+        "_InternalAddressAdapter",
+        "_MessageIngressAdapter",
+        "NetworkTestService(",
+        "configure_image_ports(",
+        "configure_message_ingress_port(",
+    ):
+        assert detail not in initializer_source
+        assert detail in network_source
+
+
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
     """工作流旧写入口只能存在于 SDK Legacy facade。"""
     oper_path = APP_ROOT / "db" / "oper" / "workflow.py"
