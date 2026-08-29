@@ -29,7 +29,7 @@
     "arg-type": 5,
     "assignment": 1,
     "misc": 9,
-    "no-any-return": 23,
+    "no-any-return": 19,
     "no-untyped-call": 6,
     "no-untyped-def": 59,
     "type-arg": 40
