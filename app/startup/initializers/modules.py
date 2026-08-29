@@ -8,14 +8,8 @@ from typing import Any, Callable, Optional, cast
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.adapters.network.ip import IpUtils
-from app.application.plugin.transaction import (
-    PluginPersistenceService,
-    configure_plugin_persistence,
-)
 from app.chain.mediaserver import MediaServerChain
 from app.chain.tmdb import TmdbChain
-from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
-from app.db.adapters.plugininstallation import TransactionalPluginInstallationStore
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
@@ -37,7 +31,7 @@ from app.adapters.system.resource import (
     configure_resource_version_provider,
 )
 from app.adapters.web.security.access import set_superuser_token_payload_provider
-from app.api.data import ApiDataPorts, configure_api_data_runtime
+from app.api.data import configure_api_data_runtime
 from app.application.agent import AgentDataContext
 from app.application.agenttask import (
     AgentTaskExecutionService,
@@ -52,19 +46,11 @@ from app.application.chain.events import (
     restore_transfer_result,
 )
 from app.application.configuration import (
-    RuntimeConfiguration,
-    RuntimeSettingsService,
-    SystemConfigService,
     TransferRetryConfig,
-    configure_runtime_configuration,
-    configure_runtime_settings,
-    configure_system_config,
-    configure_token_runtime_config,
     configure_transfer_retry_config,
     get_configured_system_config,
     get_runtime_settings,
 )
-from app.application.database import configure_database_governance
 from app.application.history import configure_transfer_history_repository
 from app.application.image import (
     ImageResponsePort,
@@ -108,10 +94,6 @@ from app.application.outbox import (
     durable_event_topic,
     validate_durable_event_handlers,
 )
-from app.application.query import (
-    DataQueryService,
-    configure_data_query_service,
-)
 from app.application.security.auth import AuthService, build_superuser_token_payload, configure_auth_service
 from app.application.security.passkey import (
     PASSKEY_CHALLENGE_TTL_SECONDS,
@@ -121,10 +103,6 @@ from app.application.security.passkey import (
 )
 from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.security.user import configure_user_lookups
-from app.application.security.userconfig import (
-    UserConfigurationService,
-    configure_user_configuration,
-)
 from app.application.server.report import ServerReportService
 from app.application.server.share import ServerSharingService
 from app.application.service import configure_service_directory
@@ -134,7 +112,6 @@ from app.application.subscription.contract import SubscriptionRepository
 from app.application.workflow import (
     WorkflowQueryService,
     configure_workflow_execution,
-    configure_workflow_query,
 )
 from app.command import CommandChain
 from app.db.adapters.agent import (
@@ -143,7 +120,6 @@ from app.db.adapters.agent import (
     TransactionalPluginDataRepository,
 )
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
-from app.db.adapters.configuration import TransactionalUserConfigurationRepository
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.history.download import (
     SessionDownloadHistoryRepository,
@@ -159,7 +135,6 @@ from app.db.adapters.outbox import (
     SqlAlchemyAsyncOutboxStager,
     SqlAlchemyOutboxDispatchStore,
 )
-from app.db.adapters.query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.site import SessionSiteRepository, TransactionalSiteRepository
 from app.db.adapters.subscription import (
     SessionSubscriptionHistoryRepository,
@@ -167,18 +142,13 @@ from app.db.adapters.subscription import (
     TransactionalSubscriptionHistoryRepository,
     TransactionalSubscriptionRepository,
 )
-from app.db.adapters.transaction import TransactionalWriteRunner
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
-from app.db.adapters.user import (
-    SqlAlchemyUserRepository,
-    TransactionalUserRepository,
-)
+from app.db.adapters.user import SqlAlchemyUserRepository
 from app.db.adapters.workflow import (
     TransactionalWorkflowExecutionService,
-    TransactionalWorkflowQueryRepository,
 )
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.mediaserver import MediaServerOper
@@ -196,9 +166,7 @@ from app.db.session import (
 from app.db.uow import (
     SqlAlchemyAsyncUnitOfWork,
     SqlAlchemyUnitOfWork,
-    configure_transaction_runners,
 )
-from app.db.worker import DatabaseWorker
 from app.runtime.cache import AsyncFileCache, FileCache, TTLCache
 from app.runtime.config import settings as legacy_settings
 from app.runtime.events import EventHandlerBinding, EventManager
@@ -213,8 +181,6 @@ from app.runtime.extensions.service_config import (
 from app.runtime.log import logger
 from app.runtime.observability import record_metric
 from app.runtime.settings import (
-    configure_runtime_setting_provider,
-    configure_runtime_setting_updater,
     get_runtime_setting,
 )
 from app.runtime.state import SystemHelper
@@ -224,10 +190,9 @@ from app.runtime.thread import ThreadHelper
 from app.schemas.message import Message, MessageType
 from app.schemas.types import EventType, SystemConfigKey
 from app.startup.composition.configuration import (
-    build_api_runtime_config,
     build_chain_runtime_config,
-    build_scheduler_runtime_config,
-    build_token_runtime_config,
+    compose_configuration,
+    publish_configuration,
 )
 from app.startup.composition.context import (
     AgentChatRuntime,
@@ -240,7 +205,14 @@ from app.startup.composition.context import (
     SubscriptionRuntime,
     WorkflowRuntime,
 )
-from app.startup.composition.database import build_database_governance
+from app.startup.composition.database import (
+    build_transactional_user_repository,
+    compose_database_services,
+    configure_database,
+    database_runtime_active,
+    start_database_runtime,
+    stop_database_runtime,
+)
 from app.startup.composition.subscription import (
     async_rule_group_mutation_scope,
     build_subscription_batch_writer,
@@ -258,53 +230,6 @@ from app.startup.initializers.resources import (
     stop_managed_resources,
 )
 from app.startup.initializers.scheduler import configure_scheduler_agent_tasks
-
-_database_worker: DatabaseWorker | None = None
-
-
-async def stop_database_worker() -> None:
-    """停止当前进程的数据库短事务 worker。"""
-    global _database_worker
-    worker = _database_worker
-    if worker is not None:
-        await worker.shutdown()
-        _database_worker = None
-
-
-async def _initialize_configuration_services(
-    database_worker: DatabaseWorker,
-) -> SystemConfigOper:
-    """加载完整配置快照后发布系统与用户配置服务。"""
-    system_config = SystemConfigOper()
-    user_config = TransactionalUserConfigurationRepository(SessionFactory)
-    await database_worker.run(system_config.load_snapshot)
-    await database_worker.run(user_config.load_snapshot)
-    configure_system_config(
-        SystemConfigService(
-            repository=system_config,
-            async_executor=database_worker,
-        )
-    )
-    configure_user_configuration(
-        UserConfigurationService(
-            repository=user_config,
-            async_executor=database_worker,
-        )
-    )
-    return system_config
-
-
-def _build_runtime_settings_service() -> RuntimeSettingsService:
-    """将唯一可变部署配置实现注入管理服务。"""
-    return RuntimeSettingsService(legacy_settings)
-
-
-def _build_transactional_user_repository() -> TransactionalUserRepository:
-    """构造供 Chain、Agent 与进程级认证共享的短会话用户仓储。"""
-    return TransactionalUserRepository(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
 
 
 def _execute_legacy_transfer_command(**kwargs: Any) -> Any:
@@ -356,7 +281,7 @@ def _build_chain_runtime_context(
         transfer_execution_repository=TransactionalTransferExecutionRepository(SessionFactory),
         media_server_repository=TransactionalMediaServerRepository(SessionFactory),
         download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
-        user_repository=_build_transactional_user_repository(),
+        user_repository=build_transactional_user_repository(),
         legacy_transfer_command=_execute_legacy_transfer_command,
         configuration=build_chain_runtime_config(legacy_settings),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
@@ -935,8 +860,8 @@ async def stop_modules() -> bool:
         all_converged = False
         logger.error("Web Agent任务未完成收尾，跳过持久化和数据库关闭以保护活动事务")
     if persistence_drained:
-        await run_step("数据库任务", stop_database_worker)
-        if _database_worker is None:
+        await run_step("数据库任务", stop_database_runtime)
+        if not database_runtime_active():
             await run_step("数据库连接", close_database)
         else:
             all_converged = False
@@ -950,84 +875,27 @@ async def _initialize_modules() -> HostRuntime:
     """
     构造模块服务并返回本次 lifespan 唯一的类型化 HostRuntime。
     """
-    global _database_worker
     configure_application_network_ports()
-    # 兼容 Oper 的无 Session 写入口仍由组合根持有事务，避免模型恢复自动提交。
-    transaction_runner = TransactionalWriteRunner(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
-    configure_transaction_runners(
-        sync=transaction_runner.sync,
-        async_=transaction_runner.async_,
-    )
-    database_worker = DatabaseWorker()
-    await database_worker.start()
-    _database_worker = database_worker
+    database_runtime = await start_database_runtime()
     try:
-        system_config = await _initialize_configuration_services(database_worker)
+        configuration = await compose_configuration(
+            executor=database_runtime.worker,
+            settings=legacy_settings,
+        )
     except BaseException:
         try:
-            await stop_database_worker()
+            await stop_database_runtime()
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
-    data_query_adapter = SqlAlchemyDataQueryAdapter(SessionFactory)
-    configure_data_query_service(
-        DataQueryService(
-            subscriptions=data_query_adapter,
-            histories=data_query_adapter,
-            async_executor=database_worker,
-        )
+    database_services = compose_database_services(
+        runtime=database_runtime,
+        system_config=configuration.system_config,
     )
-    configure_plugin_persistence(
-        PluginPersistenceService(
-            executor=database_worker,
-            identities=TransactionalPluginIdentityStore(SessionFactory),
-            installations=TransactionalPluginInstallationStore(
-                SessionFactory,
-                system_config.update_atomically,
-            ),
-        )
-    )
-    # 数据访问能力统一在启动组合根注入，Runtime 和 Adapter 不再直接依赖 Oper。
-    api_data = ApiDataPorts(
-        sync_session=get_db,
-        async_session=get_async_db,
-        repositories={
-            "download_history": SessionDownloadHistoryRepository,
-            "media_server": MediaServerOper,
-            "message": MessageOper,
-            "passkey": PassKeyOper,
-            "site": SessionSiteRepository,
-            "subscribe": SessionSubscriptionRepository,
-            "subscribe_history": SessionSubscriptionHistoryRepository,
-            "user": SqlAlchemyUserRepository,
-            "workflow": WorkflowOper,
-        },
-        standalone={
-            "passkey": PassKeyOper,
-            "system_config": SystemConfigOper,
-            "user": _build_transactional_user_repository,
-        },
-        unit_of_work={
-            "async": SqlAlchemyAsyncUnitOfWork,
-            "sync": SqlAlchemyUnitOfWork,
-        },
-    )
-    runtime_configuration = RuntimeConfiguration(
-        api=lambda: build_api_runtime_config(legacy_settings),
-        scheduler=lambda: build_scheduler_runtime_config(legacy_settings),
-        chain=lambda: build_chain_runtime_config(legacy_settings),
-    )
-    runtime_settings = _build_runtime_settings_service()
-    workflow_query = WorkflowQueryService(
-        repository=TransactionalWorkflowQueryRepository(
-            sync_session=SessionFactory,
-            async_session=async_session_scope,
-        )
-    )
-    configure_workflow_query(workflow_query)
+    system_config = configuration.system_config
+    database_worker = database_runtime.worker
+    transaction_runner = database_runtime.transaction
+    workflow_query = database_services.workflow_query
     download_history_repository = TransactionalDownloadHistoryRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -1065,7 +933,7 @@ async def _initialize_modules() -> HostRuntime:
         chat=agent_chat_service,
         chat_persistence=agent_chat_persistence,
         tasks=agent_task_repository,
-        users=_build_transactional_user_repository(),
+        users=build_transactional_user_repository(),
         sites=site_repository,
         subscriptions=subscription_repository,
         subscription_mutation_scope=subscription_mutation_scope,
@@ -1096,7 +964,7 @@ async def _initialize_modules() -> HostRuntime:
         ),
         authentication=AuthenticationRuntime(
             user_repository=SqlAlchemyUserRepository,
-            standalone_user=_build_transactional_user_repository,
+            standalone_user=build_transactional_user_repository,
             system_config=SystemConfigOper,
             passkey=PassKeyOper,
         ),
@@ -1142,17 +1010,13 @@ async def _initialize_modules() -> HostRuntime:
             repository=WorkflowOper,
             system_config=get_configured_system_config,
         ),
-        configuration=runtime_configuration,
-        settings=runtime_settings,
+        configuration=configuration.runtime,
+        settings=configuration.settings,
         tasks=get_task_registry(),
     )
-    configure_runtime_configuration(host_runtime.configuration)
-    configure_runtime_settings(host_runtime.settings)
-    configure_runtime_setting_provider(lambda key: getattr(legacy_settings, key))
-    configure_runtime_setting_updater(host_runtime.settings.update)
-    configure_token_runtime_config(lambda: build_token_runtime_config(legacy_settings))
+    publish_configuration(configuration, legacy_settings)
     # 旧 app.api.data 导入只保留 ABI 转发，正式 API 依赖全部读取 HostRuntime。
-    configure_api_data_runtime(api_data)
+    configure_api_data_runtime(database_services.api_data)
     configure_runtime_data_providers(workflow_query, subscription_repository)
     workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
     configure_workflow_execution(workflow_execution)
@@ -1162,17 +1026,17 @@ async def _initialize_modules() -> HostRuntime:
             max_failed_retries=get_runtime_setting("TRANSFER_MAX_FAILED_RETRIES"),
         )
     )
-    configure_database_governance(build_database_governance())
+    configure_database()
     configure_agent_chat_service(agent_chat_service)
     configure_agent_chat_persistence(agent_chat_persistence)
     configure_user_lookups(
-        by_id=lambda user_id: _build_transactional_user_repository().get_by_id(user_id),
-        by_name=lambda username: _build_transactional_user_repository().get_by_name(username),
-        by_channel=lambda **bindings: _build_transactional_user_repository().find_name_by_bindings(bindings),
+        by_id=lambda user_id: build_transactional_user_repository().get_by_id(user_id),
+        by_name=lambda username: build_transactional_user_repository().get_by_name(username),
+        by_channel=lambda **bindings: build_transactional_user_repository().find_name_by_bindings(bindings),
     )
     configure_auth_service(
         AuthService(
-            users=_build_transactional_user_repository(),
+            users=build_transactional_user_repository(),
             config=get_configured_system_config(),
             passkeys=PassKeyOper(),
         )
@@ -1264,7 +1128,7 @@ async def init_modules() -> HostRuntime:
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"模块启动失败后的消息资源清理失败：{cleanup_error}")
         try:
-            await stop_database_worker()
+            await stop_database_runtime()
         except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
             logger.error(f"模块启动失败后的数据库任务清理失败：{cleanup_error}")
         raise

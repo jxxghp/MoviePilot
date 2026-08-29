@@ -326,10 +326,26 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
 
 **Local verification (2026-08-29)**
 
-- 基于 `origin/v3@d17d62e95` 锁定全量 `7374 passed, 9 skipped`；投影/响应/来源/Compat/架构专项全绿。
+- 基于 `origin/v3@d17d62e95` 锁定全量 `7375 passed, 9 skipped`；投影/响应/来源/Compat/架构专项全绿。
 - scoped Pylint `10.00/10` 且零重复；新 `domain/projection` owner mypy 零错误，strict frontier、
   Ruff、mypy、复杂度和宿主依赖低水位均通过。
 - 最新官方插件仓 `2d6946eb1` 兼容基线通过；`app/plugins/**` 零改动，包根只有说明且无重复导出。
+
+### S5-L4 Startup composition
+
+**Status:** `IN_PROGRESS`
+
+**Delivered batch: configuration and database composition**
+
+- `startup/composition/configuration.py` 唯一负责系统/用户配置快照加载、`RuntimeConfiguration` 与
+  `RuntimeSettingsService` 构造，以及同一对象向正式运行时和兼容设置入口的发布。
+- `startup/composition/database.py` 唯一持有 `DatabaseWorker`、兼容事务 runner、查询服务、
+  插件持久化、工作流查询和旧 `ApiDataPorts` 的具体数据库装配；worker 关闭失败时保留 owner。
+- `startup/initializers/modules.py` 只按原顺序调用 composition API，并继续构造尚未迁移的领域运行时；
+  本批未改变 HostRuntime、插件 ABI、SDK/Compat 或生命周期 manifest，`app/plugins/**` 未改动。
+- 基于 `origin/v3@a1e351aa9` 锁定全量 `7377 passed, 9 skipped`；真实正常模式启动和优雅关闭通过。
+- 后续批次继续迁移 Chain/network/server/outbox/security/agent 与最终 HostRuntime 构造；本批不宣称
+  S5-L4 整体完成。
 
 ### S1-L1.1 Durable admission
 

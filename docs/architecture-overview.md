@@ -283,7 +283,9 @@ sequenceDiagram
   订阅、工作流和请求事务均使用命名 runtime 字段，不再通过字符串仓储键定位；API、Scheduler、Chain
   从 `HostRuntime.configuration` 获取 frozen 配置快照。系统设置管理 API 通过
   `HostRuntime.settings` 的窄服务读写可变部署设置，业务域不接触 Settings 实例；生产与测试组合根统一
-  复用 `startup/composition/configuration.py` 的映射。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
+  复用 `startup/composition/configuration.py` 的映射、快照加载与发布。`startup/composition/database.py`
+  持有数据库 worker、兼容事务 runner、查询/插件持久化和旧 `ApiDataPorts` 的具体装配；initializer
+  只保留顺序调用。`ApiDataPorts` 仅保留旧导入 ABI，不参与正式请求链路。
 - **安全模式**：`MOVIEPILOT_SAFE_MODE` 会跳过插件、定时器、监控器、命令与工作流，用于故障自救。
 - **Scheduler 同名职责包**：旧 `app/scheduler.py` 单体已退役；`catalog.py` 负责作业目录和计划投影，
   `execution.py`、`bridge.py`、`progress.py` 分别负责执行、跨循环句柄和进度终态，`registry.py`
@@ -742,7 +744,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 965 |
-| 内部导入边 | 8,185 |
+| 内部导入边 | 8,209 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |

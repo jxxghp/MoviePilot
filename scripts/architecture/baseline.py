@@ -81,8 +81,8 @@ FOUNDATIONAL_SETTINGS_BOUNDARIES = {
     "app/db/session.py": "数据库会话与连接配额必须在应用组合根装配前可用",
 }
 COMPOSITION_ROOT_OPER_BOUNDARIES = {
-    ("app/startup/initializers/modules.py", "SystemConfigOper"):
-        "启动组合根负责构造唯一的系统配置数据库适配器",
+    ("app/startup/composition/configuration.py", "SystemConfigOper"):
+        "配置组合 owner 负责构造唯一的系统配置数据库适配器",
 }
 
 

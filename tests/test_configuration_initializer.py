@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.application.configuration import configure_runtime_settings
+from app.startup.composition import configuration as configuration_composition
+from app.startup.composition import database as database_composition
 from app.startup.initializers import modules as modules_initializer
 
 
@@ -88,12 +90,39 @@ async def test_network_test_transport_enforces_safe_http_options(monkeypatch) ->
     }
 
 
-def test_runtime_settings_service_uses_legacy_settings_from_startup_root(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_runtime_settings_service_uses_legacy_settings_from_startup_root(
+    monkeypatch,
+) -> None:
     """组合根装配的设置服务应直接读写唯一部署配置对象。"""
     legacy_settings = _MutableSettings()
-    monkeypatch.setattr(modules_initializer, "legacy_settings", legacy_settings)
 
-    service = modules_initializer._build_runtime_settings_service()
+    class _SystemConfig:
+        """提供无需数据库的系统配置快照桩。"""
+
+        def load_snapshot(self):
+            """模拟系统配置快照加载。"""
+
+    class _UserConfig:
+        """提供无需数据库的用户配置快照桩。"""
+
+        def load_snapshot(self):
+            """模拟用户配置快照加载。"""
+
+    monkeypatch.setattr(configuration_composition, "SystemConfigOper", _SystemConfig)
+    monkeypatch.setattr(
+        configuration_composition,
+        "TransactionalUserConfigurationRepository",
+        lambda _session_factory: _UserConfig(),
+    )
+    monkeypatch.setattr(configuration_composition, "configure_system_config", lambda _service: None)
+    monkeypatch.setattr(configuration_composition, "configure_user_configuration", lambda _service: None)
+
+    composition = await configuration_composition.compose_configuration(
+        executor=_InlineWorker(),
+        settings=legacy_settings,
+    )
+    service = composition.settings
     configure_runtime_settings(service)
 
     assert service.snapshot(include={"VALUE"}) == {"VALUE": "before"}
@@ -122,24 +151,27 @@ async def test_configuration_services_publish_after_both_snapshots_load(
             """登记用户快照已加载。"""
             events.append("load-user")
 
-    monkeypatch.setattr(modules_initializer, "SystemConfigOper", _SystemConfig)
+    monkeypatch.setattr(configuration_composition, "SystemConfigOper", _SystemConfig)
     monkeypatch.setattr(
-        modules_initializer,
+        configuration_composition,
         "TransactionalUserConfigurationRepository",
         lambda _session_factory: _UserConfig(),
     )
     monkeypatch.setattr(
-        modules_initializer,
+        configuration_composition,
         "configure_system_config",
         lambda _service: events.append("publish-system"),
     )
     monkeypatch.setattr(
-        modules_initializer,
+        configuration_composition,
         "configure_user_configuration",
         lambda _service: events.append("publish-user"),
     )
 
-    await modules_initializer._initialize_configuration_services(_InlineWorker())
+    await configuration_composition.compose_configuration(
+        executor=_InlineWorker(),
+        settings=_MutableSettings(),
+    )
 
     assert events == [
         "load-system",
@@ -170,31 +202,77 @@ async def test_configuration_load_failure_does_not_publish_partial_service(
             """模拟用户配置加载失败。"""
             raise RuntimeError("load failed")
 
-    monkeypatch.setattr(modules_initializer, "SystemConfigOper", _SystemConfig)
+    monkeypatch.setattr(configuration_composition, "SystemConfigOper", _SystemConfig)
     monkeypatch.setattr(
-        modules_initializer,
+        configuration_composition,
         "TransactionalUserConfigurationRepository",
         lambda _session_factory: _UserConfig(),
     )
     monkeypatch.setattr(
-        modules_initializer,
+        configuration_composition,
         "configure_system_config",
         lambda service: published.append(service),
     )
     monkeypatch.setattr(
-        modules_initializer,
+        configuration_composition,
         "configure_user_configuration",
         lambda service: published.append(service),
     )
 
     with pytest.raises(RuntimeError, match="load failed"):
-        await modules_initializer._initialize_configuration_services(_InlineWorker())
+        await configuration_composition.compose_configuration(
+            executor=_InlineWorker(),
+            settings=_MutableSettings(),
+        )
 
     assert published == []
 
 
+def test_publish_configuration_reuses_composed_runtime_and_settings(monkeypatch) -> None:
+    """正式运行时与兼容入口必须共享同一组配置对象。"""
+    events = {}
+    runtime = object()
+    settings_service = SimpleNamespace(update=lambda key, value: (key, value))
+    legacy_settings = SimpleNamespace(VALUE="configured")
+    composition = SimpleNamespace(runtime=runtime, settings=settings_service)
+
+    monkeypatch.setattr(
+        configuration_composition,
+        "configure_runtime_configuration",
+        lambda value: events.update(runtime=value),
+    )
+    monkeypatch.setattr(
+        configuration_composition,
+        "configure_runtime_settings",
+        lambda value: events.update(settings=value),
+    )
+    monkeypatch.setattr(
+        configuration_composition,
+        "configure_runtime_setting_provider",
+        lambda value: events.update(provider=value),
+    )
+    monkeypatch.setattr(
+        configuration_composition,
+        "configure_runtime_setting_updater",
+        lambda value: events.update(updater=value),
+    )
+    monkeypatch.setattr(
+        configuration_composition,
+        "configure_token_runtime_config",
+        lambda value: events.update(token=value),
+    )
+
+    configuration_composition.publish_configuration(composition, legacy_settings)
+
+    assert events["runtime"] is runtime
+    assert events["settings"] is settings_service
+    assert events["provider"]("VALUE") == "configured"
+    assert events["updater"] is settings_service.update
+    assert callable(events["token"])
+
+
 @pytest.mark.asyncio
-async def test_modules_startup_failure_stops_database_worker(monkeypatch) -> None:
+async def test_modules_startup_failure_stops_database_runtime(monkeypatch) -> None:
     """模块组合根启动失败时立即关闭已创建的数据库 worker。"""
     monkeypatch.setattr(
         modules_initializer,
@@ -203,7 +281,7 @@ async def test_modules_startup_failure_stops_database_worker(monkeypatch) -> Non
     )
     monkeypatch.setattr(modules_initializer, "stop_message", lambda: True)
     stop_worker = AsyncMock()
-    monkeypatch.setattr(modules_initializer, "stop_database_worker", stop_worker)
+    monkeypatch.setattr(modules_initializer, "stop_database_runtime", stop_worker)
 
     with pytest.raises(RuntimeError, match="startup failed"):
         await modules_initializer.init_modules()
@@ -225,7 +303,7 @@ async def test_modules_startup_failure_preserves_original_error_when_cleanup_fai
     monkeypatch.setattr(modules_initializer, "stop_message", lambda: True)
     monkeypatch.setattr(
         modules_initializer,
-        "stop_database_worker",
+        "stop_database_runtime",
         AsyncMock(side_effect=RuntimeError("cleanup failed")),
     )
 
@@ -247,9 +325,10 @@ async def test_database_worker_owner_is_retained_when_shutdown_fails(monkeypatch
             raise RuntimeError("shutdown failed")
 
     worker = _FailingWorker()
-    monkeypatch.setattr(modules_initializer, "_database_worker", worker)
+    runtime = SimpleNamespace(worker=worker)
+    monkeypatch.setattr(database_composition, "_database_runtime", runtime)
 
     with pytest.raises(RuntimeError, match="shutdown failed"):
-        await modules_initializer.stop_database_worker()
+        await database_composition.stop_database_runtime()
 
-    assert modules_initializer._database_worker is worker
+    assert database_composition._database_runtime is runtime

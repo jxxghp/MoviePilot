@@ -734,9 +734,11 @@ def test_user_configuration_uses_typed_transactional_adapter():
     }
     assert "Any" not in application_source
 
-    startup_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
-    assert "TransactionalUserConfigurationRepository(SessionFactory)" in startup_source
-    assert "UserConfigOper" not in startup_source
+    composition_source = (
+        APP_ROOT / "startup" / "composition" / "configuration.py"
+    ).read_text(encoding="utf-8")
+    assert "TransactionalUserConfigurationRepository(SessionFactory)" in composition_source
+    assert "UserConfigOper" not in composition_source
 
     adapter_path = APP_ROOT / "db" / "adapters" / "configuration.py"
     adapter_source = adapter_path.read_text(encoding="utf-8")
@@ -748,6 +750,47 @@ def test_user_configuration_uses_typed_transactional_adapter():
     assert "def stage_set(" in oper_source
     assert "def set(" in oper_source
     assert "Any" not in oper_source
+
+
+def test_modules_initializer_delegates_configuration_and_database_composition():
+    """模块初始化器只编排配置与数据库组合 API，不再内联其构造细节。"""
+    initializer_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8")
+    configuration_source = (
+        APP_ROOT / "startup" / "composition" / "configuration.py"
+    ).read_text(encoding="utf-8")
+    database_source = (
+        APP_ROOT / "startup" / "composition" / "database.py"
+    ).read_text(encoding="utf-8")
+
+    for call in (
+        "start_database_runtime()",
+        "stop_database_runtime",
+        "compose_configuration(",
+        "compose_database_services(",
+        "publish_configuration(",
+        "configure_database()",
+    ):
+        assert call in initializer_source
+    for detail in (
+        "DatabaseWorker()",
+        "TransactionalWriteRunner(",
+        "PluginPersistenceService(",
+        "SqlAlchemyDataQueryAdapter(",
+        "RuntimeConfiguration(",
+        "RuntimeSettingsService(",
+        "TransactionalUserConfigurationRepository(",
+    ):
+        assert detail not in initializer_source
+    assert "stop_database_worker" not in initializer_source
+    assert "RuntimeConfiguration(" in configuration_source
+    assert "RuntimeSettingsService(" in configuration_source
+    assert "TransactionalUserConfigurationRepository(" in configuration_source
+    assert "DatabaseWorker()" in database_source
+    assert "TransactionalWriteRunner(" in database_source
+    assert "PluginPersistenceService(" in database_source
+    assert "SqlAlchemyDataQueryAdapter(" in database_source
 
 
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
@@ -944,11 +987,17 @@ def test_user_chain_and_agent_ports_are_typed_and_orm_free():
 
 def test_startup_injects_user_adapter_instead_of_raw_oper():
     """启动组合根不得把无会话 UserOper 注入宿主查询调用面。"""
-    path = APP_ROOT / "startup" / "initializers" / "modules.py"
-    source = path.read_text(encoding="utf-8-sig")
+    initializer_source = (
+        APP_ROOT / "startup" / "initializers" / "modules.py"
+    ).read_text(encoding="utf-8-sig")
+    database_source = (
+        APP_ROOT / "startup" / "composition" / "database.py"
+    ).read_text(encoding="utf-8-sig")
+    source = initializer_source + database_source
 
     assert "TransactionalUserRepository" in source
     assert "SqlAlchemyUserRepository" in source
+    assert "build_transactional_user_repository" in initializer_source
     assert "from app.db.oper.user import UserOper" not in source
     assert "user=lambda: UserOper()" not in source
 

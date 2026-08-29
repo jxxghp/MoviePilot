@@ -214,7 +214,7 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
             == []
         )
     finally:
-        await modules_initializer.stop_database_worker()
+        await modules_initializer.stop_database_runtime()
 
     manager.initialize.assert_awaited_once_with()
     start_frontend.assert_called_once_with()

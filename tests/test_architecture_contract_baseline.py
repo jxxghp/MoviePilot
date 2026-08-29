@@ -291,7 +291,7 @@ def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
     }
     assert baseline["composition_root_oper_boundaries"]["count"] == 1
     assert baseline["composition_root_oper_boundaries"]["entries"][0]["file"] == (
-        "app/startup/initializers/modules.py"
+        "app/startup/composition/configuration.py"
     )
 
 

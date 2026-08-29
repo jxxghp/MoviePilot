@@ -1240,18 +1240,23 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
         "get_configured_agent_chat_persistence",
         MagicMock(return_value=persistence),
     )
+    database_state = {"active": True}
 
-    async def stop_database_worker() -> None:
+    async def stop_database_runtime() -> None:
         """模拟生产 worker 关闭后释放组合根句柄。"""
         order.append("database")
-        modules_initializer._database_worker = None
+        database_state["active"] = False
 
     monkeypatch.setattr(
         modules_initializer,
-        "stop_database_worker",
-        AsyncMock(side_effect=stop_database_worker),
+        "stop_database_runtime",
+        AsyncMock(side_effect=stop_database_runtime),
     )
-    monkeypatch.setattr(modules_initializer, "_database_worker", object())
+    monkeypatch.setattr(
+        modules_initializer,
+        "database_runtime_active",
+        lambda: database_state["active"],
+    )
 
     converged = asyncio.run(modules_initializer.stop_modules())
 
@@ -1260,7 +1265,7 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stop_modules_cancellation_does_not_skip_database_worker_cleanup(
+async def test_stop_modules_cancellation_does_not_skip_database_runtime_cleanup(
     monkeypatch,
 ):
     """模块关闭收到取消请求后仍应继续收口数据库 worker。"""
@@ -1290,9 +1295,19 @@ async def test_stop_modules_cancellation_does_not_skip_database_worker_cleanup(
         MagicMock(return_value=persistence),
     )
     database_worker_stopped = asyncio.Event()
-    stop_database_worker = AsyncMock(side_effect=database_worker_stopped.set)
-    monkeypatch.setattr(modules_initializer, "stop_database_worker", stop_database_worker)
-    monkeypatch.setattr(modules_initializer, "_database_worker", object())
+    database_state = {"active": True}
+
+    def mark_database_worker_stopped() -> None:
+        """记录取消路径仍执行了 worker 关闭调用。"""
+        database_worker_stopped.set()
+
+    stop_database_runtime = AsyncMock(side_effect=mark_database_worker_stopped)
+    monkeypatch.setattr(modules_initializer, "stop_database_runtime", stop_database_runtime)
+    monkeypatch.setattr(
+        modules_initializer,
+        "database_runtime_active",
+        lambda: database_state["active"],
+    )
 
     shutdown = asyncio.create_task(modules_initializer.stop_modules())
     await started.wait()
@@ -1301,7 +1316,7 @@ async def test_stop_modules_cancellation_does_not_skip_database_worker_cleanup(
 
     assert completed is False
     assert database_worker_stopped.is_set()
-    stop_database_worker.assert_awaited_once_with()
+    stop_database_runtime.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

@@ -136,6 +136,11 @@ composition constructs and injects cross-layer dependencies, initializers expose
 domain-scoped startup/shutdown hooks, and lifecycle orders those hooks and decides
 restart policy. Reusable persistence implementations belong in `app/db/adapters/`,
 not startup. Lower-level runtime modules must not import startup.
+`startup/composition/configuration.py` owns configuration snapshot loading, typed
+runtime/settings construction and publication. `startup/composition/database.py`
+owns the process database worker, compatibility transaction runner, query services,
+plugin persistence and legacy API data-port wiring. Initializers call these owners in
+startup order and must not recreate their concrete construction.
 Startup publishes its frozen, slotted `HostRuntime` through FastAPI `app.state`.
 API dependencies must narrow that object to a domain runtime (for example,
 `AgentChatRuntime`) instead of adding a string key to a global service map.

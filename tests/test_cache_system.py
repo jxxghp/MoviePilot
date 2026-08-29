@@ -171,7 +171,7 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
         try:
             await modules_initializer.init_modules()
         finally:
-            await modules_initializer.stop_database_worker()
+            await modules_initializer.stop_database_runtime()
 
     asyncio.run(initialize_modules())
 
