@@ -45,6 +45,7 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "init_workflow",
     ):
         monkeypatch.setattr(lifecycle, name, MagicMock())
+    monkeypatch.setattr(lifecycle, "configure_plugin_runtime_services", MagicMock())
     monkeypatch.setattr(lifecycle, "configure_plugin_services", MagicMock())
     plugin_recovery = MagicMock()
     plugin_recovery.replay = AsyncMock()
@@ -547,12 +548,13 @@ def test_lifespan_waits_for_uncancellable_plugin_settlement_before_shutdown(
     assert order[:2] == ["settled", "backup"]
 
 
-def test_lifespan_configures_plugin_services_before_modules_and_restore(monkeypatch):
-    """插件 Runtime 必须先于模块 Chain 上下文和恢复阶段完成装配。"""
+def test_lifespan_configures_plugin_runtime_and_services_in_dependency_order(monkeypatch):
+    """插件 Runtime、模块持久化和应用服务必须按依赖顺序装配。"""
     shutdown_steps = _patch_lifespan(monkeypatch)
     order = []
-    lifecycle.configure_plugin_services.side_effect = lambda: order.append("configure")
+    lifecycle.configure_plugin_runtime_services.side_effect = lambda: order.append("runtime")
     lifecycle.init_modules.side_effect = lambda: order.append("modules")
+    lifecycle.configure_plugin_services.side_effect = lambda: order.append("services")
     lifecycle.get_plugin_installation_recovery.return_value.replay.side_effect = (
         lambda: order.append("replay")
     )
@@ -566,7 +568,7 @@ def test_lifespan_configures_plugin_services_before_modules_and_restore(monkeypa
 
     asyncio.run(run_lifespan())
 
-    assert order == ["configure", "modules", "replay", "restore"]
+    assert order == ["runtime", "modules", "services", "replay", "restore"]
     _assert_completed_once(shutdown_steps["close_http"])
 
 
@@ -671,8 +673,9 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "数据库引擎预热",
         "数据库连接预算",
         "路由",
-        "插件服务装配",
+        "插件运行时装配",
         "模块服务",
+        "插件服务装配",
         "消息队列",
         "插件备份恢复",
         "插件",
@@ -719,8 +722,9 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "数据库引擎预热",
         "数据库连接预算",
         "路由",
-        "插件服务装配",
+        "插件运行时装配",
         "模块服务",
+        "插件服务装配",
         "消息队列",
         "AI智能体会话",
         "整理后台服务",

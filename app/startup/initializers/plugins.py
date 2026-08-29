@@ -3,7 +3,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from app.adapters.external.market import (
     LOCAL_REPO_PREFIX,
@@ -66,6 +66,9 @@ from app.application.plugin.release import (
     reset_plugin_release_service,
 )
 from app.application.plugin.routes import register_plugin_api
+from app.application.plugin.runtime import (
+    PluginRuntime as PluginRuntimePort,
+)
 from app.application.plugin.runtime import (
     configure_plugin_runtime,
     get_plugin_manager,
@@ -168,17 +171,21 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
     )
 
 
+def configure_plugin_runtime_services() -> None:
+    """在模块对象图构造前发布插件 Runtime 工厂和应用层提供器。"""
+    configure_plugin_catalog_factory(_build_plugin_catalog)
+    configure_plugin_runtime_factory(build_plugin_runtime_graph)
+    configure_plugin_runtime(lambda: cast(PluginRuntimePort, PluginManager()))
+
+
 def configure_plugin_services() -> None:
-    """把兼容诊断、远程上报和站点认证等级装配到插件管理器。"""
+    """在模块持久化端口就绪后装配完整插件应用服务。"""
     market_transport = PluginMarketTransport()
     market_client = PluginMarketClient(market_transport)
     package_manager = PluginPackageManager(
         source=PluginPackageSourceClient(market_transport),
         plugin_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
     )
-    configure_plugin_catalog_factory(_build_plugin_catalog)
-    configure_plugin_runtime_factory(build_plugin_runtime_graph)
-    configure_plugin_runtime(lambda: PluginManager())
     plugin_manager = get_plugin_manager()
     inventory_reader = PluginCandidateInventoryReader(
         market_loader=market_client.get_plugin_index_result,
@@ -519,7 +526,6 @@ async def sync_plugins(
     plugin_manager = None
     try:
         loop = main_loop_registry.require()
-        configure_plugin_services()
         plugin_manager = PluginManager()
         with plugin_manager.mutation("启动后同步插件"):
             await get_plugin_identity_migration().migrate()
@@ -714,7 +720,6 @@ def init_plugins():
     """
     初始化插件
     """
-    configure_plugin_services()
     plugin_manager = PluginManager()
     if not plugin_manager.reopen_plugins():
         raise RuntimeError("上一应用生命周期的插件后台服务仍未收敛")

@@ -89,11 +89,6 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
     manager.start_monitor.side_effect = lambda **_kwargs: order.append("monitor")
     manager.get_local_repo_plugins.return_value = []
     manager.get_plugin_source_id.side_effect = lambda plugin_id: plugin_id
-    monkeypatch.setattr(
-        plugins_initializer,
-        "configure_plugin_services",
-        lambda: order.append("services"),
-    )
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(
         plugins_initializer,
@@ -104,7 +99,6 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
     plugins_initializer.init_plugins()
 
     assert order == [
-        "services",
         "reopen",
         "plugin:ReadyPlugin",
         "routes",

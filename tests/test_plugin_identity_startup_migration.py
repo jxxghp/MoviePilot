@@ -505,11 +505,6 @@ async def test_sync_runs_identity_migration_before_automatic_install(
         "require",
         lambda: asyncio.get_running_loop(),
     )
-    monkeypatch.setattr(
-        plugins_initializer,
-        "configure_plugin_services",
-        lambda: order.append("configure"),
-    )
     monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
     monkeypatch.setattr(
         plugins_initializer,
@@ -529,7 +524,7 @@ async def test_sync_runs_identity_migration_before_automatic_install(
     monkeypatch.setattr(plugins_initializer, "execute_task", execute)
 
     assert await plugins_initializer.sync_plugins() is False
-    assert order == ["configure", "migrate", "identity", "sync"]
+    assert order == ["migrate", "identity", "sync"]
 
 
 @pytest.mark.asyncio

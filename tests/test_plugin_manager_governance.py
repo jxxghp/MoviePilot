@@ -2,9 +2,6 @@
 
 import ast
 from pathlib import Path
-from unittest.mock import Mock
-
-import pytest
 
 from app.startup.initializers import plugins as plugins_initializer
 
@@ -99,9 +96,9 @@ def test_startup_injects_runtime_factory_before_manager_materialization() -> Non
         for node in _parse(startup_path).body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    service_calls = sorted(
+    runtime_calls = sorted(
         (node.lineno, ast.unparse(node.func))
-        for node in ast.walk(functions["configure_plugin_services"])
+        for node in ast.walk(functions["configure_plugin_runtime_services"])
         if isinstance(node, ast.Call)
     )
     sync_calls = sorted(
@@ -110,36 +107,22 @@ def test_startup_injects_runtime_factory_before_manager_materialization() -> Non
         if isinstance(node, ast.Call)
     )
 
-    assert service_calls.index(
-        next(item for item in service_calls if item[1] == "configure_plugin_runtime_factory")
-    ) < service_calls.index(
-        next(item for item in service_calls if item[1] == "configure_plugin_runtime")
-    ) < service_calls.index(
-        next(item for item in service_calls if item[1] == "get_plugin_manager")
+    assert runtime_calls.index(
+        next(item for item in runtime_calls if item[1] == "configure_plugin_runtime_factory")
+    ) < runtime_calls.index(
+        next(item for item in runtime_calls if item[1] == "configure_plugin_runtime")
     )
-    assert sync_calls.index(
-        next(item for item in sync_calls if item[1] == "configure_plugin_services")
-    ) < sync_calls.index(
-        next(item for item in sync_calls if item[1] == "PluginManager")
-    )
+    assert not any(item[1] == "configure_plugin_services" for item in sync_calls)
 
 
-def test_plugin_services_publish_application_runtime_before_lookup(monkeypatch) -> None:
-    """插件服务装配必须先发布 Application provider，再读取 Manager。"""
+def test_plugin_runtime_services_publish_application_runtime(monkeypatch) -> None:
+    """模块对象图构造前必须先发布 Runtime 工厂和 Application provider。"""
     order: list[str] = []
-
-    class _LookupReached(RuntimeError):
-        """表示测试已执行到首次插件 Manager 读取。"""
-
-    def factory(*_args, **_kwargs):
-        """返回不触发真实构造逻辑的测试替身。"""
-        return Mock()
-
-    monkeypatch.setattr(plugins_initializer, "PluginMarketTransport", factory)
-    monkeypatch.setattr(plugins_initializer, "PluginMarketClient", factory)
-    monkeypatch.setattr(plugins_initializer, "PluginPackageSourceClient", factory)
-    monkeypatch.setattr(plugins_initializer, "PluginPackageManager", factory)
-    monkeypatch.setattr(plugins_initializer, "configure_plugin_catalog_factory", Mock())
+    monkeypatch.setattr(
+        plugins_initializer,
+        "configure_plugin_catalog_factory",
+        lambda _factory: order.append("catalog"),
+    )
     monkeypatch.setattr(
         plugins_initializer,
         "configure_plugin_runtime_factory",
@@ -151,17 +134,9 @@ def test_plugin_services_publish_application_runtime_before_lookup(monkeypatch) 
         lambda _provider: order.append("provider"),
     )
 
-    def lookup_manager():
-        """记录首次读取并终止无关的后续服务图构造。"""
-        order.append("lookup")
-        raise _LookupReached
+    plugins_initializer.configure_plugin_runtime_services()
 
-    monkeypatch.setattr(plugins_initializer, "get_plugin_manager", lookup_manager)
-
-    with pytest.raises(_LookupReached):
-        plugins_initializer.configure_plugin_services()
-
-    assert order == ["factory", "provider", "lookup"]
+    assert order == ["catalog", "factory", "provider"]
 
 
 def test_plugin_manager_does_not_reach_raw_system_adapters() -> None:

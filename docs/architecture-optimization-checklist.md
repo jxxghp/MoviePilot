@@ -78,7 +78,7 @@ MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 约 298,700 行 | 60 个文件超过 1,000 行，10 个超过 2,000 行 |
 | 长方法 | 299 个超过 80 行 | 70 个超过 150 行，23 个超过 250 行；大量是私有方法 |
-| 全量 mypy 历史债务 | 10,415 / 593 文件 | strict frontier 当前覆盖 41 个文件，Plugin、LLM Provider 与 Agent Manager owner 拆分及受益调用方低水位已固化 |
+| 全量 mypy 历史债务 | 10,413 / 593 文件 | strict frontier 当前覆盖 41 个文件，Plugin、LLM Provider 与 Agent Manager owner 拆分及受益调用方低水位已固化 |
 | Ruff 历史诊断 | 651 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 80.92%，Domain 79.89% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 

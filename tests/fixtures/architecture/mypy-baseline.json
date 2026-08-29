@@ -3285,14 +3285,14 @@
     "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
-    "arg-type": 7,
+    "arg-type": 6,
     "assignment": 1,
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
     "no-untyped-call": 28,
     "no-untyped-def": 6,
-    "return-value": 3
+    "return-value": 2
   },
   "app/startup/initializers/plugins.py": {
     "arg-type": 5,

@@ -63,6 +63,7 @@ from app.startup.initializers.network import (  # noqa: E402
     reset_chain_network_ports,
 )
 from app.startup.initializers.plugins import (
+    configure_plugin_runtime_services,
     configure_plugin_services,
     execute_task,
     finalize_plugins,
@@ -469,9 +470,9 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             start_timeout_seconds=30,
         ),
         LifecycleComponent(
-            name="插件服务装配",
+            name="插件运行时装配",
             dependencies=("路由",),
-            start=configure_plugin_services,
+            start=configure_plugin_runtime_services,
             start_order=65,
             start_timeout_seconds=30,
         ),
@@ -479,7 +480,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="模块服务",
             dependencies=(
                 "路由",
-                "插件服务装配",
+                "插件运行时装配",
                 "站点访问端口",
                 "Chain 外部端口",
                 "Chain 网络端口",
@@ -492,8 +493,15 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             stop_timeout_seconds=300,
         ),
         LifecycleComponent(
+            name="插件服务装配",
+            dependencies=("模块服务",),
+            start=configure_plugin_services,
+            start_order=72,
+            start_timeout_seconds=30,
+        ),
+        LifecycleComponent(
             name="插件备份恢复",
-            dependencies=("模块服务", "消息队列"),
+            dependencies=("插件服务装配", "消息队列"),
             mode=LifecycleMode.NORMAL_ONLY,
             start=prepare_plugin_restore,
             start_order=80,
