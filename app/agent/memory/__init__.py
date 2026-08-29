@@ -8,6 +8,7 @@ from langchain_core.messages import BaseMessage, messages_from_dict, messages_to
 
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
+    AgentChatRecord,
     AgentChatService,
     get_configured_agent_chat_persistence,
     get_configured_agent_chat_service,
@@ -96,6 +97,40 @@ class MemoryManager:
         cache_key = self._get_memory_key(session_id, user_id)
         return self.memory_cache.get(cache_key)
 
+    @staticmethod
+    def _chat_lookup_params(
+        session_id: str,
+        user_id: str,
+    ) -> tuple[dict[str, str], ...]:
+        """返回用户专属会话优先、旧无用户会话兜底的查询顺序。"""
+        return (
+            {"session_id": session_id, "user_id": user_id},
+            {"session_id": session_id},
+        )
+
+    def _restore_agent_messages(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        chat: Optional[AgentChatRecord],
+    ) -> List[BaseMessage]:
+        """统一校验持久化快照、反序列化消息并回填内存缓存。"""
+        if not chat or not chat.agent_messages:
+            return []
+        try:
+            messages = messages_from_dict(chat.agent_messages)
+        except Exception as e:
+            logger.debug(f"恢复持久化Agent消息失败: {e}")
+            return []
+        memory = ConversationMemory(
+            session_id=session_id,
+            user_id=user_id,
+            messages=messages,
+        )
+        self.save_memory(memory)
+        return memory.messages
+
     def get_agent_messages(
             self, session_id: str, user_id: str
     ) -> List[BaseMessage]:
@@ -109,31 +144,20 @@ class MemoryManager:
             return memory.messages
 
         try:
-            chat = self._chat_service().get_sync(
-                session_id=session_id,
-                user_id=user_id,
-            )
-            if not chat:
-                chat = self._chat_service().get_sync(session_id=session_id)
+            service = self._chat_service()
+            chat = None
+            for lookup_params in self._chat_lookup_params(session_id, user_id):
+                chat = service.get_sync(**lookup_params)
+                if chat:
+                    break
         except Exception as e:
             logger.debug(f"读取持久化Agent会话失败: {e}")
             return []
-        if not chat or not chat.agent_messages:
-            return []
-
-        try:
-            messages = messages_from_dict(chat.agent_messages)
-        except Exception as e:
-            logger.debug(f"恢复持久化Agent消息失败: {e}")
-            return []
-
-        memory = ConversationMemory(
+        return self._restore_agent_messages(
             session_id=session_id,
             user_id=user_id,
-            messages=messages,
+            chat=chat,
         )
-        self.save_memory(memory)
-        return memory.messages
 
     async def async_get_agent_messages(
         self, session_id: str, user_id: str
@@ -145,31 +169,34 @@ class MemoryManager:
 
         try:
             service = self._chat_service()
-            chat = await service.get(
-                session_id=session_id,
-                user_id=user_id,
-            )
-            if not chat:
-                chat = await service.get(session_id=session_id)
+            chat = None
+            for lookup_params in self._chat_lookup_params(session_id, user_id):
+                chat = await service.get(**lookup_params)
+                if chat:
+                    break
         except Exception as e:
             logger.debug(f"读取持久化Agent会话失败: {e}")
             return []
-        if not chat or not chat.agent_messages:
-            return []
-
-        try:
-            messages = messages_from_dict(chat.agent_messages)
-        except Exception as e:
-            logger.debug(f"恢复持久化Agent消息失败: {e}")
-            return []
-
-        memory = ConversationMemory(
+        return self._restore_agent_messages(
             session_id=session_id,
             user_id=user_id,
-            messages=messages,
+            chat=chat,
         )
+
+    def _update_agent_messages(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        messages: List[BaseMessage],
+    ) -> None:
+        """统一更新同步和异步写路径共享的内存消息状态。"""
+        memory = self.get_memory(session_id, user_id)
+        if not memory:
+            memory = ConversationMemory(session_id=session_id, user_id=user_id)
+        memory.messages = messages
+        memory.updated_at = datetime.now()
         self.save_memory(memory)
-        return memory.messages
 
     def save_agent_messages(
             self, session_id: str, user_id: str, messages: List[BaseMessage]
@@ -177,15 +204,11 @@ class MemoryManager:
         """
         保存Agent消息到内存缓存与持久化会话表。
         """
-        memory = self.get_memory(session_id, user_id)
-        if not memory:
-            memory = ConversationMemory(session_id=session_id, user_id=user_id)
-
-        memory.messages = messages
-        memory.updated_at = datetime.now()
-
-        # 更新内存缓存
-        self.save_memory(memory)
+        self._update_agent_messages(
+            session_id=session_id,
+            user_id=user_id,
+            messages=messages,
+        )
         try:
             self._chat_service().save_agent_messages(
                 session_id=session_id,
@@ -199,13 +222,11 @@ class MemoryManager:
         self, session_id: str, user_id: str, messages: List[BaseMessage]
     ) -> None:
         """异步保存 Agent 消息，持久化写入经有界数据库 worker 承接。"""
-        memory = self.get_memory(session_id, user_id)
-        if not memory:
-            memory = ConversationMemory(session_id=session_id, user_id=user_id)
-
-        memory.messages = messages
-        memory.updated_at = datetime.now()
-        self.save_memory(memory)
+        self._update_agent_messages(
+            session_id=session_id,
+            user_id=user_id,
+            messages=messages,
+        )
         try:
             persistence = self._chat_persistence()
             await persistence.async_save_agent_messages(

@@ -1,7 +1,18 @@
 """标题搜索入口与标题候选过滤 owner。"""
 
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, cast
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 from app.application.configuration import (
     get_configured_system_config,
@@ -66,6 +77,79 @@ class _TitleSearchResult:
     warning: Optional[str] = None
 
 
+@dataclass(frozen=True, slots=True)
+class _TitleSearchCacheRequest:
+    """请求保存标题搜索参数并清理旧的 AI 推荐状态。"""
+
+    params: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _TitleSearchProviderRequest:
+    """请求执行标题搜索 provider I/O。"""
+
+    params: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _TitleSearchResolveRequest:
+    """请求过滤并投影标题搜索候选。"""
+
+    title: str
+    torrents: List[TorrentInfo]
+    rule_groups: Optional[List[str]]
+    mtype: Optional[MediaType]
+
+
+@dataclass(frozen=True, slots=True)
+class _TitleSearchSaveRequest:
+    """请求持久化成功的标题搜索结果。"""
+
+    contexts: List[Context]
+
+
+_TitleSearchRequest = Union[
+    _TitleSearchCacheRequest,
+    _TitleSearchProviderRequest,
+    _TitleSearchResolveRequest,
+    _TitleSearchSaveRequest,
+]
+_TitleSearchResolution = Generator[
+    _TitleSearchRequest, object, _TitleSearchResult
+]
+
+
+def _title_search_resolution(
+    title: str,
+    search_params: Dict[str, Any],
+    cache_params: Dict[str, Any],
+    cache_local: bool,
+    mtype: Optional[MediaType],
+    rule_groups: Optional[List[str]],
+) -> _TitleSearchResolution:
+    """统一标题搜索的缓存、provider、过滤、短路与结果保存顺序。"""
+    if cache_local:
+        yield _TitleSearchCacheRequest(params=cache_params)
+    torrents = cast(
+        List[TorrentInfo],
+        (yield _TitleSearchProviderRequest(params=search_params)),
+    )
+    result = cast(
+        _TitleSearchResult,
+        (yield _TitleSearchResolveRequest(
+            title=title,
+            torrents=torrents,
+            rule_groups=rule_groups,
+            mtype=mtype,
+        )),
+    )
+    if result.warning:
+        return result
+    if cache_local:
+        yield _TitleSearchSaveRequest(contexts=result.contexts)
+    return result
+
+
 def _resolve_title_search_result(
     title: str,
     torrents: List[TorrentInfo],
@@ -101,6 +185,77 @@ def _resolve_title_search_result(
 class SearchTitleOwner(_SearchOwnerBase):
     """标题搜索入口与标题候选过滤 owner。"""
 
+    def _resolve_title_request(
+        self, request: _TitleSearchResolveRequest
+    ) -> _TitleSearchResult:
+        """通过可替换过滤与元数据投影点解析标题候选。"""
+        return _resolve_title_search_result(
+            title=request.title,
+            torrents=request.torrents,
+            rule_groups=request.rule_groups,
+            mtype=request.mtype,
+            filter_torrents=self._filter_title_search_torrents,
+            build_meta=self._build_title_search_meta,
+        )
+
+    def _run_title_search_sync(
+        self, resolution: _TitleSearchResolution
+    ) -> _TitleSearchResult:
+        """用同步 I/O 与过滤外壳驱动共享标题搜索状态机。"""
+        response: object = None
+        while True:
+            try:
+                request = resolution.send(response)
+            except StopIteration as completed:
+                return cast(_TitleSearchResult, completed.value)
+            if isinstance(request, _TitleSearchCacheRequest):
+                self.cancel_ai_recommend()
+                self.save_last_search_params(**request.params)
+                response = None
+            elif isinstance(request, _TitleSearchProviderRequest):
+                response = (
+                    self._SearchChain__search_all_sites(**request.params) or []
+                )
+            elif isinstance(request, _TitleSearchResolveRequest):
+                response = SearchTitleOwner._resolve_title_request(self, request)
+            else:
+                self._save_results(request.contexts)
+                response = None
+
+    async def _run_title_search_async(
+        self, resolution: _TitleSearchResolution
+    ) -> _TitleSearchResult:
+        """用异步 I/O 与线程池过滤外壳驱动共享标题搜索状态机。"""
+        response: object = None
+        while True:
+            try:
+                request = resolution.send(response)
+            except StopIteration as completed:
+                return cast(_TitleSearchResult, completed.value)
+            if isinstance(request, _TitleSearchCacheRequest):
+                self.cancel_ai_recommend()
+                await self.async_save_last_search_params(**request.params)
+                response = None
+            elif isinstance(request, _TitleSearchProviderRequest):
+                response = (
+                    await self._SearchChain__async_search_all_sites(
+                        **request.params
+                    )
+                    or []
+                )
+            elif isinstance(request, _TitleSearchResolveRequest):
+                if request.torrents:
+                    response = await run_in_threadpool(
+                        SearchTitleOwner._resolve_title_request, self, request
+                    )
+                else:
+                    response = SearchTitleOwner._resolve_title_request(
+                        self, request
+                    )
+            else:
+                await self._async_save_results(request.contexts)
+                response = None
+
     def search_by_title(
         self,
         title: str,
@@ -125,28 +280,23 @@ class SearchTitleOwner(_SearchOwnerBase):
             sites=sites,
             mtype=mtype,
         )
-        if cache_local:
-            self.cancel_ai_recommend()
-            self.save_last_search_params(**cache_params)
         if title:
             logger.info(f"开始搜索资源，关键词：{title} ...")
         else:
             logger.info(f"开始浏览资源，站点：{sites} ...")
-        # 搜索
-        result = _resolve_title_search_result(
-            title=title,
-            torrents=self._SearchChain__search_all_sites(**search_params) or [],
-            rule_groups=rule_groups,
-            mtype=mtype,
-            filter_torrents=self._filter_title_search_torrents,
-            build_meta=self._build_title_search_meta,
+        result = SearchTitleOwner._run_title_search_sync(
+            self,
+            _title_search_resolution(
+                title=title,
+                search_params=search_params,
+                cache_params=cache_params,
+                cache_local=bool(cache_local),
+                mtype=mtype,
+                rule_groups=rule_groups,
+            )
         )
         if result.warning:
             logger.warning(result.warning)
-            return []
-        # 保存到本地文件
-        if cache_local:
-            self._save_results(result.contexts)
         return result.contexts
 
     async def async_search_by_title(
@@ -173,45 +323,23 @@ class SearchTitleOwner(_SearchOwnerBase):
             sites=sites,
             mtype=mtype,
         )
-        if cache_local:
-            self.cancel_ai_recommend()
-            await self.async_save_last_search_params(**cache_params)
         if title:
             logger.info(f"开始搜索资源，关键词：{title} ...")
         else:
             logger.info(f"开始浏览资源，站点：{sites} ...")
-        # 搜索
-        torrents = (
-            await self._SearchChain__async_search_all_sites(**search_params) or []
-        )
-        if not torrents:
-            result = _resolve_title_search_result(
+        result = await SearchTitleOwner._run_title_search_async(
+            self,
+            _title_search_resolution(
                 title=title,
-                torrents=torrents,
-                rule_groups=rule_groups,
+                search_params=search_params,
+                cache_params=cache_params,
+                cache_local=bool(cache_local),
                 mtype=mtype,
-                filter_torrents=self._filter_title_search_torrents,
-                build_meta=self._build_title_search_meta,
+                rule_groups=rule_groups,
             )
-        else:
-            result = cast(
-                _TitleSearchResult,
-                await run_in_threadpool(
-                    _resolve_title_search_result,
-                    title=title,
-                    torrents=torrents,
-                    rule_groups=rule_groups,
-                    mtype=mtype,
-                    filter_torrents=self._filter_title_search_torrents,
-                    build_meta=self._build_title_search_meta,
-                ),
-            )
+        )
         if result.warning:
             logger.warning(result.warning)
-            return []
-        # 保存到本地文件
-        if cache_local:
-            await self._async_save_results(result.contexts)
         return result.contexts
 
     async def async_search_by_title_stream(

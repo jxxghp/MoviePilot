@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 
@@ -121,3 +121,56 @@ def test_plugin_report_sanitizes_explicit_sources_before_transport():
         "plugin_id": "Demo",
         "repo_url": "local://Demo",
     }])
+
+
+@pytest.mark.asyncio
+async def test_plugin_report_entries_share_payload_and_response_decisions(monkeypatch):
+    """插件同步、异步入口只替换发送端口，准入和结果判定必须同源。"""
+    sync_sender = Mock(return_value=SimpleNamespace(status_code=200))
+    async_sender = AsyncMock(return_value=SimpleNamespace(status_code=200))
+    service = _service(
+        plugin_report_sender=sync_sender,
+        async_plugin_report_sender=async_sender,
+    )
+    prepare = Mock(wraps=service._prepare_plugin_report)
+    succeeded = Mock(wraps=service._report_succeeded)
+    monkeypatch.setattr(service, "_prepare_plugin_report", prepare)
+    monkeypatch.setattr(service, "_report_succeeded", succeeded)
+    items = [("Demo", "https://repo.example/Demo")]
+
+    assert service.report_plugins(enabled=True, items=items) is True
+    assert await service.async_report_plugins(enabled=True, items=items) is True
+
+    assert prepare.call_args_list == [
+        call(enabled=True, items=items),
+        call(enabled=True, items=items),
+    ]
+    assert sync_sender.call_args == async_sender.await_args
+    assert succeeded.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_subscribe_report_entries_share_payload_projection(monkeypatch):
+    """订阅读取后的过滤与终态决策必须由同步、异步入口共享。"""
+    subscribe = SimpleNamespace(to_dict=lambda: {
+        "name": "Demo",
+        "media_source": "themoviedb",
+        "media_id": "123",
+    })
+    service = _service(
+        subscribes_provider=Mock(return_value=[subscribe]),
+        async_subscribes_provider=AsyncMock(return_value=[subscribe]),
+        async_subscribe_report_sender=AsyncMock(
+            return_value=SimpleNamespace(status_code=200)
+        ),
+    )
+    prepare = Mock(wraps=service._prepare_subscribe_report)
+    monkeypatch.setattr(service, "_prepare_subscribe_report", prepare)
+
+    assert service.report_subscribes(enabled=True) is True
+    assert await service.async_report_subscribes(enabled=True) is True
+
+    assert prepare.call_args_list == [(([subscribe],), {}), (([subscribe],), {})]
+    assert service._subscribe_report_sender.call_args == (
+        service._async_subscribe_report_sender.await_args
+    )

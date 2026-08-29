@@ -14,6 +14,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
     cast,
 )
 
@@ -69,6 +70,88 @@ def _build_missing_media_map(
             season: NotExistMediaInfo(episodes=[])
         }
     }
+
+
+@dataclass(frozen=True, slots=True)
+class _IdSearchCacheRequest:
+    """请求保存 ID 搜索参数并清理旧的 AI 推荐状态。"""
+
+    params: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _IdSearchRecognizeRequest:
+    """请求通过媒体链识别一个来源原生 ID。"""
+
+    params: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _IdSearchProcessRequest:
+    """请求执行已识别媒体的精确资源搜索。"""
+
+    params: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _IdSearchSaveRequest:
+    """请求持久化成功的 ID 搜索结果。"""
+
+    contexts: List[Context]
+
+
+@dataclass(frozen=True, slots=True)
+class _IdSearchResult:
+    """冻结 ID 搜索状态机结果与识别失败提示。"""
+
+    contexts: List[Context]
+    warning: Optional[str] = None
+
+
+_IdSearchRequest = Union[
+    _IdSearchCacheRequest,
+    _IdSearchRecognizeRequest,
+    _IdSearchProcessRequest,
+    _IdSearchSaveRequest,
+]
+_IdSearchResolution = Generator[_IdSearchRequest, object, _IdSearchResult]
+
+
+def _id_search_resolution(
+    recognition_params: Dict[str, Any],
+    cache_params: Dict[str, Any],
+    season: Optional[int],
+    sites: Optional[List[int]],
+    area: Optional[str],
+    cache_local: bool,
+    failure_keyword: str,
+) -> _IdSearchResolution:
+    """统一 ID 搜索的缓存、识别、处理、失败短路与结果保存顺序。"""
+    if cache_local:
+        yield _IdSearchCacheRequest(params=cache_params)
+    mediainfo = cast(
+        Optional[MediaInfo],
+        (yield _IdSearchRecognizeRequest(params=recognition_params)),
+    )
+    if not mediainfo:
+        return _IdSearchResult(
+            contexts=[],
+            warning=f"{failure_keyword} 媒体信息识别失败！",
+        )
+    contexts = cast(
+        List[Context],
+        (yield _IdSearchProcessRequest(
+            params={
+                "mediainfo": mediainfo,
+                "sites": sites,
+                "area": area,
+                "no_exists": _build_missing_media_map(mediainfo, season),
+            }
+        )),
+    )
+    if cache_local:
+        yield _IdSearchSaveRequest(contexts=contexts)
+    return _IdSearchResult(contexts=contexts)
 
 
 def _normalize_media_search_input(mediainfo: MediaInfo) -> MediaInfo:
@@ -159,6 +242,168 @@ async def _run_keyword_search_async(
             return cast(_KeywordSearchResult, outcome.value)
 
 
+@dataclass(frozen=True, slots=True)
+class _MediaProcessPlan:
+    """冻结媒体资源处理入口的业务输入。"""
+
+    mediainfo: MediaInfo
+    keyword: Optional[str]
+    no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]]
+    sites: Optional[List[int]]
+    rule_groups: Optional[List[str]]
+    area: Optional[str]
+    custom_words: Optional[List[str]]
+    filter_params: Optional[Dict[str, str]]
+
+
+@dataclass(frozen=True, slots=True)
+class _MediaMusicProcessRequest:
+    """请求执行音乐资源搜索外壳。"""
+
+    params: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _MediaRecognizeRequest:
+    """请求补齐缺失名称的媒体信息。"""
+
+    params: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _MediaSupplementRequest:
+    """请求聚合已启用媒体来源的附加信息。"""
+
+    mediainfo: MediaInfo
+
+
+@dataclass(frozen=True, slots=True)
+class _MediaKeywordProcessRequest:
+    """请求按共享关键字计划执行 provider I/O。"""
+
+    mediainfo: MediaInfo
+    keywords: List[str]
+    sites: Optional[List[int]]
+    area: Optional[str]
+    search_multiple_name: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _MediaParseRequest:
+    """请求在同步或线程池 CPU 外壳中解析搜索结果。"""
+
+    params: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _MediaLogRequest:
+    """请求记录共享状态机决定的运行日志。"""
+
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class _MediaProcessResult:
+    """冻结媒体处理结果与识别失败状态。"""
+
+    contexts: List[Context]
+    recognition_failed: bool = False
+
+
+_MediaProcessRequest = Union[
+    _MediaMusicProcessRequest,
+    _MediaRecognizeRequest,
+    _MediaSupplementRequest,
+    _MediaKeywordProcessRequest,
+    _MediaParseRequest,
+    _MediaLogRequest,
+]
+_MediaProcessResolution = Generator[
+    _MediaProcessRequest, object, _MediaProcessResult
+]
+
+
+def _media_process_resolution(
+    plan: _MediaProcessPlan,
+    search_multiple_name: Callable[[], bool],
+    copy_media: Callable[[MediaInfo], MediaInfo],
+    recognize_kwargs: Callable[[MediaInfo], Dict[str, Any]],
+    prepare_params: Callable[..., Tuple[Optional[Dict[int, List[int]]], List[str]]],
+) -> _MediaProcessResolution:
+    """统一媒体处理的类型路由、识别、补充、搜索和解析状态。"""
+    if plan.mediainfo.type == MediaType.MUSIC:
+        contexts = cast(
+            List[Context],
+            (yield _MediaMusicProcessRequest(
+                params={
+                    "mediainfo": cast(MusicInfo, plan.mediainfo),
+                    "keyword": plan.keyword,
+                    "sites": plan.sites,
+                    "rule_groups": plan.rule_groups,
+                    "filter_params": plan.filter_params,
+                }
+            )),
+        )
+        return _MediaProcessResult(contexts=contexts)
+
+    mediainfo = _normalize_media_search_input(copy_media(plan.mediainfo))
+    yield _MediaLogRequest(
+        message=f"开始搜索资源，关键词：{plan.keyword or mediainfo.title} ..."
+    )
+    if not mediainfo.names:
+        recognized_media = cast(
+            Optional[MediaInfo],
+            (yield _MediaRecognizeRequest(
+                params={
+                    "mtype": mediainfo.type,
+                    **recognize_kwargs(mediainfo),
+                }
+            )),
+        )
+        if not recognized_media:
+            return _MediaProcessResult(contexts=[], recognition_failed=True)
+        mediainfo = recognized_media
+
+    mediainfo = cast(
+        Optional[MediaInfo],
+        (yield _MediaSupplementRequest(mediainfo=mediainfo)),
+    ) or mediainfo
+    season_episodes, keywords = prepare_params(
+        mediainfo=mediainfo,
+        keyword=plan.keyword,
+        no_exists=plan.no_exists,
+    )
+    outcome = cast(
+        _KeywordSearchResult,
+        (yield _MediaKeywordProcessRequest(
+            mediainfo=mediainfo,
+            keywords=keywords,
+            sites=plan.sites,
+            area=plan.area,
+            search_multiple_name=search_multiple_name(),
+        )),
+    )
+    if outcome.stopped_early:
+        yield _MediaLogRequest(
+            message=f"共搜索到 {len(outcome.torrents)} 个资源，停止搜索"
+        )
+    contexts = cast(
+        List[Context],
+        (yield _MediaParseRequest(
+            params=_build_result_params(
+                torrents=outcome.torrents,
+                mediainfo=mediainfo,
+                keyword=plan.keyword,
+                rule_groups=plan.rule_groups,
+                season_episodes=season_episodes,
+                custom_words=plan.custom_words,
+                filter_params=plan.filter_params,
+            )
+        )),
+    )
+    return _MediaProcessResult(contexts=contexts)
+
+
 def _build_result_params(
     torrents: List[TorrentInfo],
     mediainfo: MediaInfo,
@@ -200,6 +445,50 @@ def _build_candidate_contexts(
 class SearchMediaOwner(_SearchOwnerBase):
     """精确媒体搜索与同步异步编排 owner。"""
 
+    def _run_id_search_sync(
+        self, resolution: _IdSearchResolution
+    ) -> _IdSearchResult:
+        """用同步 I/O 外壳驱动共享 ID 搜索状态机。"""
+        response: object = None
+        while True:
+            try:
+                request = resolution.send(response)
+            except StopIteration as completed:
+                return cast(_IdSearchResult, completed.value)
+            if isinstance(request, _IdSearchCacheRequest):
+                self.cancel_ai_recommend()
+                self.save_last_search_params(**request.params)
+                response = None
+            elif isinstance(request, _IdSearchRecognizeRequest):
+                response = MediaChain().recognize_media(**request.params)
+            elif isinstance(request, _IdSearchProcessRequest):
+                response = self.process(**request.params)
+            else:
+                self._save_results(request.contexts)
+                response = None
+
+    async def _run_id_search_async(
+        self, resolution: _IdSearchResolution
+    ) -> _IdSearchResult:
+        """用异步 I/O 外壳驱动共享 ID 搜索状态机。"""
+        response: object = None
+        while True:
+            try:
+                request = resolution.send(response)
+            except StopIteration as completed:
+                return cast(_IdSearchResult, completed.value)
+            if isinstance(request, _IdSearchCacheRequest):
+                self.cancel_ai_recommend()
+                await self.async_save_last_search_params(**request.params)
+                response = None
+            elif isinstance(request, _IdSearchRecognizeRequest):
+                response = await MediaChain().async_recognize_media(**request.params)
+            elif isinstance(request, _IdSearchProcessRequest):
+                response = await self.async_process(**request.params)
+            else:
+                await self._async_save_results(request.contexts)
+                response = None
+
     def search_by_id(
         self,
         media_source: MediaSource,
@@ -231,20 +520,23 @@ class SearchMediaOwner(_SearchOwnerBase):
             sites=sites,
             music_type=music_type,
         )
-        if cache_local:
-            self.cancel_ai_recommend()
-            self.save_last_search_params(**cache_params)
-        # 音乐统一在 MediaChain.recognize_media 内按固定来源路由
-        mediainfo = MediaChain().recognize_media(**recognition_params)
-        if not mediainfo:
-            logger.error(f"{self._build_search_keyword(media_source, media_id)} 媒体信息识别失败！")
-            return []
-        no_exists = _build_missing_media_map(mediainfo, season)
-        results = self.process(mediainfo=mediainfo, sites=sites, area=area, no_exists=no_exists)
-        # 保存到本地文件
-        if cache_local:
-            self._save_results(results)
-        return results
+        result = SearchMediaOwner._run_id_search_sync(
+            self,
+            _id_search_resolution(
+                recognition_params=recognition_params,
+                cache_params=cache_params,
+                season=season,
+                sites=sites,
+                area=area,
+                cache_local=cache_local,
+                failure_keyword=self._build_search_keyword(
+                    media_source, media_id
+                ),
+            )
+        )
+        if result.warning:
+            logger.error(result.warning)
+        return result.contexts
 
     async def async_search_by_id(
         self,
@@ -277,20 +569,23 @@ class SearchMediaOwner(_SearchOwnerBase):
             sites=sites,
             music_type=music_type,
         )
-        if cache_local:
-            self.cancel_ai_recommend()
-            await self.async_save_last_search_params(**cache_params)
-        # 音乐统一在 MediaChain.async_recognize_media 内按固定来源路由
-        mediainfo = await MediaChain().async_recognize_media(**recognition_params)
-        if not mediainfo:
-            logger.error(f"{self._build_search_keyword(media_source, media_id)} 媒体信息识别失败！")
-            return []
-        no_exists = _build_missing_media_map(mediainfo, season)
-        results = await self.async_process(mediainfo=mediainfo, sites=sites, area=area, no_exists=no_exists)
-        # 保存到本地文件
-        if cache_local:
-            await self._async_save_results(results)
-        return results
+        result = await SearchMediaOwner._run_id_search_async(
+            self,
+            _id_search_resolution(
+                recognition_params=recognition_params,
+                cache_params=cache_params,
+                season=season,
+                sites=sites,
+                area=area,
+                cache_local=cache_local,
+                failure_keyword=self._build_search_keyword(
+                    media_source, media_id
+                ),
+            )
+        )
+        if result.warning:
+            logger.error(result.warning)
+        return result.contexts
 
     async def async_search_by_id_stream(
         self,
@@ -337,6 +632,112 @@ class SearchMediaOwner(_SearchOwnerBase):
         if cache_local:
             await self._async_save_results(contexts)
 
+    def _run_media_process_sync(
+        self, resolution: _MediaProcessResolution
+    ) -> _MediaProcessResult:
+        """用同步 provider 与 CPU 外壳驱动共享媒体处理状态机。"""
+        response: object = None
+        while True:
+            try:
+                request = resolution.send(response)
+            except StopIteration as completed:
+                return cast(_MediaProcessResult, completed.value)
+            if isinstance(request, _MediaMusicProcessRequest):
+                response = self._process_music(**request.params)
+            elif isinstance(request, _MediaRecognizeRequest):
+                response = MediaChain().recognize_media(**request.params)
+            elif isinstance(request, _MediaSupplementRequest):
+                response = MediaChain().supplement_media_info(request.mediainfo)
+            elif isinstance(request, _MediaKeywordProcessRequest):
+
+                def execute_search(
+                    keyword_request: _KeywordSearchRequest,
+                ) -> List[TorrentInfo]:
+                    """执行共享关键字请求的同步站点 I/O。"""
+                    if keyword_request.search_count > 0:
+                        logger.info(
+                            f"已搜索 {keyword_request.search_count} 次，"
+                            "强制休眠 1-10 秒 ..."
+                        )
+                        time.sleep(random.randint(1, 10))
+                    return (
+                        self._SearchChain__search_all_sites(
+                            mediainfo=request.mediainfo,
+                            keyword=keyword_request.keyword,
+                            sites=request.sites,
+                            area=request.area,
+                        )
+                        or []
+                    )
+
+                response = _run_keyword_search_sync(
+                    _keyword_search_resolution(
+                        request.keywords, request.search_multiple_name
+                    ),
+                    execute_search,
+                )
+            elif isinstance(request, _MediaParseRequest):
+                response = self._parse_result(**request.params)
+            else:
+                logger.info(request.message)
+                response = None
+
+    async def _run_media_process_async(
+        self, resolution: _MediaProcessResolution
+    ) -> _MediaProcessResult:
+        """用异步 provider 与线程池 CPU 外壳驱动共享媒体处理状态机。"""
+        response: object = None
+        while True:
+            try:
+                request = resolution.send(response)
+            except StopIteration as completed:
+                return cast(_MediaProcessResult, completed.value)
+            if isinstance(request, _MediaMusicProcessRequest):
+                response = await self._async_process_music(**request.params)
+            elif isinstance(request, _MediaRecognizeRequest):
+                response = await MediaChain().async_recognize_media(
+                    **request.params
+                )
+            elif isinstance(request, _MediaSupplementRequest):
+                response = await MediaChain().async_supplement_media_info(
+                    request.mediainfo
+                )
+            elif isinstance(request, _MediaKeywordProcessRequest):
+
+                async def execute_search(
+                    keyword_request: _KeywordSearchRequest,
+                ) -> List[TorrentInfo]:
+                    """执行共享关键字请求的异步站点 I/O。"""
+                    if keyword_request.search_count > 0:
+                        logger.info(
+                            f"已搜索 {keyword_request.search_count} 次，"
+                            "强制休眠 1-10 秒 ..."
+                        )
+                        await asyncio.sleep(random.randint(1, 10))
+                    return (
+                        await self._SearchChain__async_search_all_sites(
+                            mediainfo=request.mediainfo,
+                            keyword=keyword_request.keyword,
+                            sites=request.sites,
+                            area=request.area,
+                        )
+                        or []
+                    )
+
+                response = await _run_keyword_search_async(
+                    _keyword_search_resolution(
+                        request.keywords, request.search_multiple_name
+                    ),
+                    execute_search,
+                )
+            elif isinstance(request, _MediaParseRequest):
+                response = await run_in_threadpool(
+                    self._parse_result, **request.params
+                )
+            else:
+                logger.info(request.message)
+                response = None
+
     def process(
         self,
         mediainfo: MediaInfo,
@@ -359,83 +760,30 @@ class SearchMediaOwner(_SearchOwnerBase):
         :param custom_words: 自定义识别词列表
         :param filter_params: 过滤参数
         """
-
-        if mediainfo.type == MediaType.MUSIC:
-            return cast(
-                List[Context],
-                self._process_music(
-                    mediainfo=cast(MusicInfo, mediainfo),
+        result = SearchMediaOwner._run_media_process_sync(
+            self,
+            _media_process_resolution(
+                plan=_MediaProcessPlan(
+                    mediainfo=mediainfo,
                     keyword=keyword,
+                    no_exists=no_exists,
                     sites=sites,
                     rule_groups=rule_groups,
-                    filter_params=filter_params,
-                ),
-            )
-
-        mediainfo = _normalize_media_search_input(self._copy_media_input(mediainfo))
-        logger.info(f"开始搜索资源，关键词：{keyword or mediainfo.title} ...")
-
-        # 补充媒体信息
-        if not mediainfo.names:
-            recognized_media = MediaChain().recognize_media(
-                mtype=mediainfo.type,
-                **self._media_recognize_kwargs(mediainfo),
-            )
-            if not recognized_media:
-                logger.error("媒体信息识别失败！")
-                return []
-            mediainfo = recognized_media
-
-        # 搜索前按用户启用的数据源聚合别名；分类、风格与外部 ID 仅由 TMDB 补充。
-        mediainfo = cast(
-            MediaInfo,
-            MediaChain().supplement_media_info(mediainfo) or mediainfo,
-        )
-
-        # 准备搜索参数
-        season_episodes, keywords = self._prepare_params(mediainfo=mediainfo, keyword=keyword, no_exists=no_exists)
-
-        def execute_search(request: _KeywordSearchRequest) -> List[TorrentInfo]:
-            """执行共享状态机请求的同步站点搜索。"""
-            if request.search_count > 0:
-                logger.info(
-                    f"已搜索 {request.search_count} 次，强制休眠 1-10 秒 ..."
-                )
-                time.sleep(random.randint(1, 10))
-            return (
-                self._SearchChain__search_all_sites(
-                    mediainfo=mediainfo,
-                    keyword=request.keyword,
-                    sites=sites,
                     area=area,
-                )
-                or []
-            )
-
-        outcome = _run_keyword_search_sync(
-            _keyword_search_resolution(
-                keywords, self.runtime_config.search_multiple_name
-            ),
-            execute_search,
-        )
-        if outcome.stopped_early:
-            logger.info(f"共搜索到 {len(outcome.torrents)} 个资源，停止搜索")
-
-        # 处理结果
-        return cast(
-            List[Context],
-            self._parse_result(
-                **_build_result_params(
-                    torrents=outcome.torrents,
-                    mediainfo=mediainfo,
-                    keyword=keyword,
-                    rule_groups=rule_groups,
-                    season_episodes=season_episodes,
                     custom_words=custom_words,
                     filter_params=filter_params,
-                )
-            ),
+                ),
+                search_multiple_name=(
+                    lambda: self.runtime_config.search_multiple_name
+                ),
+                copy_media=self._copy_media_input,
+                recognize_kwargs=self._media_recognize_kwargs,
+                prepare_params=self._prepare_params,
+            )
         )
+        if result.recognition_failed:
+            logger.error("媒体信息识别失败！")
+        return result.contexts
 
     async def async_process(
         self,
@@ -459,86 +807,30 @@ class SearchMediaOwner(_SearchOwnerBase):
         :param custom_words: 自定义识别词列表
         :param filter_params: 过滤参数
         """
-
-        if mediainfo.type == MediaType.MUSIC:
-            return cast(
-                List[Context],
-                await self._async_process_music(
-                    mediainfo=cast(MusicInfo, mediainfo),
+        result = await SearchMediaOwner._run_media_process_async(
+            self,
+            _media_process_resolution(
+                plan=_MediaProcessPlan(
+                    mediainfo=mediainfo,
                     keyword=keyword,
+                    no_exists=no_exists,
                     sites=sites,
                     rule_groups=rule_groups,
-                    filter_params=filter_params,
-                ),
-            )
-
-        mediainfo = _normalize_media_search_input(self._copy_media_input(mediainfo))
-        logger.info(f"开始搜索资源，关键词：{keyword or mediainfo.title} ...")
-
-        # 补充媒体信息
-        if not mediainfo.names:
-            recognized_media = await MediaChain().async_recognize_media(
-                mtype=mediainfo.type,
-                **self._media_recognize_kwargs(mediainfo),
-            )
-            if not recognized_media:
-                logger.error("媒体信息识别失败！")
-                return []
-            mediainfo = recognized_media
-
-        # 异步搜索与同步入口共享同一份多来源附加信息语义。
-        mediainfo = cast(
-            MediaInfo,
-            await MediaChain().async_supplement_media_info(mediainfo) or mediainfo,
-        )
-
-        # 准备搜索参数
-        season_episodes, keywords = self._prepare_params(mediainfo=mediainfo, keyword=keyword, no_exists=no_exists)
-
-        async def execute_search(
-            request: _KeywordSearchRequest,
-        ) -> List[TorrentInfo]:
-            """执行共享状态机请求的异步站点搜索。"""
-            if request.search_count > 0:
-                logger.info(
-                    f"已搜索 {request.search_count} 次，强制休眠 1-10 秒 ..."
-                )
-                await asyncio.sleep(random.randint(1, 10))
-            return (
-                await self._SearchChain__async_search_all_sites(
-                    mediainfo=mediainfo,
-                    keyword=request.keyword,
-                    sites=sites,
                     area=area,
-                )
-                or []
-            )
-
-        outcome = await _run_keyword_search_async(
-            _keyword_search_resolution(
-                keywords, self.runtime_config.search_multiple_name
-            ),
-            execute_search,
-        )
-        if outcome.stopped_early:
-            logger.info(f"共搜索到 {len(outcome.torrents)} 个资源，停止搜索")
-
-        # 处理结果
-        return cast(
-            List[Context],
-            await run_in_threadpool(
-                self._parse_result,
-                **_build_result_params(
-                    torrents=outcome.torrents,
-                    mediainfo=mediainfo,
-                    keyword=keyword,
-                    rule_groups=rule_groups,
-                    season_episodes=season_episodes,
                     custom_words=custom_words,
                     filter_params=filter_params,
                 ),
-            ),
+                search_multiple_name=(
+                    lambda: self.runtime_config.search_multiple_name
+                ),
+                copy_media=self._copy_media_input,
+                recognize_kwargs=self._media_recognize_kwargs,
+                prepare_params=self._prepare_params,
+            )
         )
+        if result.recognition_failed:
+            logger.error("媒体信息识别失败！")
+        return result.contexts
 
     async def async_process_stream(
         self,

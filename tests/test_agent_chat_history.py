@@ -1,7 +1,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -326,4 +326,83 @@ def test_async_memory_manager_restores_through_native_async_service(monkeypatch)
     service.get.assert_awaited_once_with(
         session_id=session_id,
         user_id=user_id,
+    )
+
+
+def test_memory_restore_entries_share_lookup_and_projection(monkeypatch):
+    """记忆同步、异步恢复只保留查询 I/O 差异并共享回退与投影决策。"""
+    snapshot = SimpleNamespace(agent_messages=[
+        {
+            "type": "human",
+            "data": {
+                "content": "共享恢复",
+                "additional_kwargs": {},
+                "response_metadata": {},
+                "type": "human",
+                "name": None,
+                "id": None,
+                "example": False,
+            },
+        }
+    ])
+    chat = MagicMock()
+    chat.get_sync.side_effect = [None, snapshot]
+    chat.get = AsyncMock(side_effect=[None, snapshot])
+    manager = MemoryManager(chat=chat, persistence=MagicMock())
+    lookup = MagicMock(wraps=manager._chat_lookup_params)
+    restore = MagicMock(wraps=manager._restore_agent_messages)
+    monkeypatch.setattr(manager, "_chat_lookup_params", lookup)
+    monkeypatch.setattr(manager, "_restore_agent_messages", restore)
+
+    sync_messages = manager.get_agent_messages("session-parity", "user-parity")
+    manager.clear_memory("session-parity", "user-parity")
+    async_messages = asyncio.run(
+        manager.async_get_agent_messages("session-parity", "user-parity")
+    )
+
+    assert [message.content for message in sync_messages] == ["共享恢复"]
+    assert [message.content for message in async_messages] == ["共享恢复"]
+    assert lookup.call_args_list == [
+        call("session-parity", "user-parity"),
+        call("session-parity", "user-parity"),
+    ]
+    assert restore.call_count == 2
+    expected_calls = [
+        call(session_id="session-parity", user_id="user-parity", chat=snapshot),
+        call(session_id="session-parity", user_id="user-parity", chat=snapshot),
+    ]
+    assert restore.call_args_list == expected_calls
+    assert chat.get_sync.call_args_list == [
+        call(session_id="session-parity", user_id="user-parity"),
+        call(session_id="session-parity"),
+    ]
+    assert chat.get.await_args_list == [
+        call(session_id="session-parity", user_id="user-parity"),
+        call(session_id="session-parity"),
+    ]
+
+
+def test_memory_save_entries_share_cache_state_projection(monkeypatch):
+    """记忆同步、异步保存必须共享内存状态更新和消息序列化结果。"""
+    chat = MagicMock()
+    persistence = MagicMock()
+    persistence.async_save_agent_messages = AsyncMock()
+    manager = MemoryManager(chat=chat, persistence=persistence)
+    update = MagicMock(wraps=manager._update_agent_messages)
+    monkeypatch.setattr(manager, "_update_agent_messages", update)
+    messages = [HumanMessage(content="共享保存")]
+
+    manager.save_agent_messages("session-save", "user-save", messages)
+    asyncio.run(
+        manager.async_save_agent_messages("session-save", "user-save", messages)
+    )
+
+    expected = {
+        "session_id": "session-save",
+        "user_id": "user-save",
+        "messages": messages,
+    }
+    assert update.call_args_list == [call(**expected), call(**expected)]
+    assert chat.save_agent_messages.call_args.kwargs == (
+        persistence.async_save_agent_messages.await_args.kwargs
     )

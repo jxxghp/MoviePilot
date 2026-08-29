@@ -1,13 +1,12 @@
 import base64
 import json
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.log import logger
-from app.schemas.types import MediaType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.foundation import temporal as time_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 class YemaSpider:
@@ -81,7 +80,7 @@ class YemaSpider:
         keyword: Optional[str],
         page: Optional[int],
         category_id: Optional[int] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         构造公开种子列表查询参数
 
@@ -90,7 +89,7 @@ class YemaSpider:
         :param category_id: 可选的站点分类 ID
         :return: YemaPT 开放 API 请求体
         """
-        params = {
+        params: dict[str, Any] = {
             "pageParam": {
                 "current": int(page or 0) + 1,
                 "pageSize": self._size,
@@ -159,6 +158,8 @@ class YemaSpider:
                 if label_id in self._labels
             ]
             torrent_id = result.get("id")
+            if not isinstance(torrent_id, int):
+                continue
             torrents.append({
                 "title": result.get("showName"),
                 "description": result.get("shortDesc"),
@@ -168,8 +169,12 @@ class YemaSpider:
                 "seeders": result.get("seedNum"),
                 "peers": result.get("leechNum"),
                 "grabs": result.get("completedNum"),
-                "downloadvolumefactor": self._download_factor(result.get("downloadPromotion")),
-                "uploadvolumefactor": self._upload_factor(result.get("uploadPromotion")),
+                "downloadvolumefactor": self._download_factor(
+                    str(result.get("downloadPromotion") or "")
+                ),
+                "uploadvolumefactor": self._upload_factor(
+                    str(result.get("uploadPromotion") or "")
+                ),
                 "freedate": time_tools.normalize_datetime(result.get("downloadPromotionEndTime")),
                 "page_url": f"{self._site_url}/#/torrent/detail/{torrent_id}/",
                 "labels": labels,
@@ -208,6 +213,36 @@ class YemaSpider:
             return True, []
         return False, self._parse_result(results)
 
+    def _prepare_search_requests(
+        self,
+        *,
+        keyword: Optional[str],
+        mtype: Optional[MediaType],
+        page: Optional[int],
+    ) -> Optional[List[dict[str, Any]]]:
+        """统一执行认证准入并生成各分类的搜索请求体。"""
+        if not self._api_key:
+            logger.warning(f"{self._name} 未配置 API AuthKey")
+            return None
+        return [
+            self._build_params(keyword, page, category_id)
+            for category_id in self._search_category_ids(mtype)
+        ]
+
+    def _finalize_search_responses(
+        self,
+        responses: List[Any],
+    ) -> Tuple[bool, List[dict[str, Any]]]:
+        """统一投影各分类响应并合并去重后的搜索结果。"""
+        result_groups = []
+        errors = []
+        for response in responses:
+            error, results = self._process_search_response(response)
+            errors.append(error)
+            if not error:
+                result_groups.append(results)
+        return all(errors), self._merge_search_results(result_groups)
+
     def search(
         self,
         keyword: Optional[str],
@@ -222,26 +257,26 @@ class YemaSpider:
         :param page: MoviePilot 从 0 开始的页码
         :return: 是否失败及标准种子列表
         """
-        if not self._api_key:
-            logger.warning(f"{self._name} 未配置 API AuthKey")
+        payloads = self._prepare_search_requests(
+            keyword=keyword,
+            mtype=mtype,
+            page=page,
+        )
+        if payloads is None:
             return True, []
         request = RequestUtils(
             headers=self._request_headers(),
             proxies=self._proxy,
             timeout=self._timeout,
         )
-        result_groups = []
-        errors = []
-        for category_id in self._search_category_ids(mtype):
-            response = request.post_res(
+        responses = [
+            request.post_res(
                 url=self._search_url,
-                json=self._build_params(keyword, page, category_id),
+                json=payload,
             )
-            error, results = self._process_search_response(response)
-            errors.append(error)
-            if not error:
-                result_groups.append(results)
-        return all(errors), self._merge_search_results(result_groups)
+            for payload in payloads
+        ]
+        return self._finalize_search_responses(responses)
 
     async def async_search(
         self,
@@ -257,26 +292,25 @@ class YemaSpider:
         :param page: MoviePilot 从 0 开始的页码
         :return: 是否失败及标准种子列表
         """
-        if not self._api_key:
-            logger.warning(f"{self._name} 未配置 API AuthKey")
+        payloads = self._prepare_search_requests(
+            keyword=keyword,
+            mtype=mtype,
+            page=page,
+        )
+        if payloads is None:
             return True, []
         request = AsyncRequestUtils(
             headers=self._request_headers(),
             proxies=self._proxy,
             timeout=self._timeout,
         )
-        result_groups = []
-        errors = []
-        for category_id in self._search_category_ids(mtype):
-            response = await request.post_res(
+        responses = []
+        for payload in payloads:
+            responses.append(await request.post_res(
                 url=self._search_url,
-                json=self._build_params(keyword, page, category_id),
-            )
-            error, results = self._process_search_response(response)
-            errors.append(error)
-            if not error:
-                result_groups.append(results)
-        return all(errors), self._merge_search_results(result_groups)
+                json=payload,
+            ))
+        return self._finalize_search_responses(responses)
 
     @staticmethod
     def _download_factor(promotion: str) -> float:

@@ -5,6 +5,8 @@ from copy import deepcopy
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.chain.search import media as media_module
 from app.chain.search import title as title_module
 from app.chain.search.facade import SearchChain
@@ -561,3 +563,95 @@ def test_title_stream_preserves_provider_and_result_order():
         item["torrent_info"]["title"] for item in events[-1]["items"]
     ] == [first.title, second.title]
     assert events[-1]["candidate_items"] == 2
+
+
+def test_id_search_resolution_freezes_success_and_failure_effect_order():
+    """ID 搜索状态机应唯一决定成功保存顺序与识别失败短路。"""
+    recognition_params = {"media_source": MediaSource.TMDB, "media_id": "100"}
+    cache_params = {**recognition_params, "sites": [1]}
+    contexts = [SimpleNamespace(name="context")]
+
+    success = media_module._id_search_resolution(
+        recognition_params=recognition_params,
+        cache_params=cache_params,
+        season=2,
+        sites=[1],
+        area="title",
+        cache_local=True,
+        failure_keyword="tmdb:100",
+    )
+    assert isinstance(next(success), media_module._IdSearchCacheRequest)
+    assert isinstance(success.send(None), media_module._IdSearchRecognizeRequest)
+    process_request = success.send(_media())
+    assert isinstance(process_request, media_module._IdSearchProcessRequest)
+    assert list(process_request.params["no_exists"]["tmdb:100"]) == [2]
+    save_request = success.send(contexts)
+    assert isinstance(save_request, media_module._IdSearchSaveRequest)
+    assert save_request.contexts is contexts
+    with pytest.raises(StopIteration) as success_completed:
+        success.send(None)
+    assert success_completed.value.value.contexts is contexts
+
+    failure = media_module._id_search_resolution(
+        recognition_params=recognition_params,
+        cache_params=cache_params,
+        season=None,
+        sites=None,
+        area="title",
+        cache_local=False,
+        failure_keyword="tmdb:100",
+    )
+    assert isinstance(next(failure), media_module._IdSearchRecognizeRequest)
+    with pytest.raises(StopIteration) as failure_completed:
+        failure.send(None)
+    assert failure_completed.value.value.contexts == []
+    assert failure_completed.value.value.warning == "tmdb:100 媒体信息识别失败！"
+
+
+def test_title_search_resolution_owns_filter_short_circuit_and_save_order():
+    """标题状态机应在过滤失败时短路，并仅保存成功投影。"""
+    search_params = {"keyword": "Movie", "sites": [1], "page": 0}
+    cache_params = {"keyword": "Movie", "area": "title"}
+    torrent = _torrent("Movie 2026")
+    contexts = [SimpleNamespace(name="context")]
+
+    success = title_module._title_search_resolution(
+        title="Movie",
+        search_params=search_params,
+        cache_params=cache_params,
+        cache_local=True,
+        mtype=MediaType.MOVIE,
+        rule_groups=["quality"],
+    )
+    assert isinstance(next(success), title_module._TitleSearchCacheRequest)
+    assert isinstance(success.send(None), title_module._TitleSearchProviderRequest)
+    resolve_request = success.send([torrent])
+    assert isinstance(resolve_request, title_module._TitleSearchResolveRequest)
+    save_request = success.send(
+        title_module._TitleSearchResult(contexts=contexts)
+    )
+    assert isinstance(save_request, title_module._TitleSearchSaveRequest)
+    assert save_request.contexts is contexts
+    with pytest.raises(StopIteration) as success_completed:
+        success.send(None)
+    assert success_completed.value.value.contexts is contexts
+
+    failure = title_module._title_search_resolution(
+        title="Movie",
+        search_params=search_params,
+        cache_params=cache_params,
+        cache_local=True,
+        mtype=MediaType.MOVIE,
+        rule_groups=["quality"],
+    )
+    next(failure)
+    failure.send(None)
+    failure.send([torrent])
+    with pytest.raises(StopIteration) as completed:
+        failure.send(
+            title_module._TitleSearchResult(
+                contexts=[],
+                warning="Movie 没有符合过滤规则的资源",
+            )
+        )
+    assert completed.value.value.contexts == []

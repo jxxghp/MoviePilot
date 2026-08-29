@@ -86,7 +86,7 @@ def test_domain_mixins_keep_concrete_imports_explicit_until_next_migration() -> 
     assert set(violations) <= {
         "app/chain/_music.py:app.chain.download",
         "app/chain/_music.py:app.chain.media",
-        "app/chain/_music.py:app.chain.search",
+        "app/chain/_music.py:app.chain.search.facade",
         "app/chain/transfer/filter.py:app.chain.media",
         "app/chain/transfer/filter.py:app.chain.storage",
         "app/chain/transfer/format.py:app.chain.storage",

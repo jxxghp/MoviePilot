@@ -141,6 +141,8 @@ def _load_transmission_module():
     cache_module = types.ModuleType("app.runtime.cache")
     runtime_settings_module = types.ModuleType("app.runtime.settings")
     base_module = types.ModuleType("app.modules._base")
+    base_module.__path__ = []
+    base_downloader_module = types.ModuleType("app.modules._base.downloader")
     modules_module = types.ModuleType("app.modules")
     modules_module.__path__ = []
     transmission_package_module = types.ModuleType("app.modules.transmission")
@@ -295,7 +297,8 @@ def _load_transmission_module():
     modules_module._ModuleBase = _ModuleBase
     modules_module._DownloaderBase = _DownloaderBase
     modules_module._base = base_module
-    base_module._DownloaderModuleBase = _DownloaderModuleBase
+    base_module.downloader = base_downloader_module
+    base_downloader_module._DownloaderModuleBase = _DownloaderModuleBase
     torrent_rules_module.is_magnet_link = _is_magnet_link
     size_tools_module.format_compact_size = _format_size
     temporal_tools_module.format_duration = _format_duration
@@ -343,6 +346,7 @@ def _load_transmission_module():
         "app.runtime.settings": runtime_settings_module,
         "app.modules": modules_module,
         "app.modules._base": base_module,
+        "app.modules._base.downloader": base_downloader_module,
         "app.modules.transmission": transmission_package_module,
         "app.modules.transmission.transmission": transmission_client_module,
         "app.schemas": schemas_module,

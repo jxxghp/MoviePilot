@@ -312,6 +312,52 @@ def test_missing_credentials_reject_sync_and_async_search_without_network(
     assert asyncio.run(spider.async_search(**search_kwargs)) == (True, [])
 
 
+def test_yema_sync_async_entries_share_request_plan_and_result_finalizer(
+    monkeypatch,
+):
+    """Yema 分类搜索的两种入口仅替换 HTTP，规划和归并决策必须同源。"""
+    spider = _build_api_spider("yema", monkeypatch)
+    prepare = []
+    finalized = []
+    original_prepare = spider._prepare_search_requests
+
+    def prepare_search_requests(**kwargs):
+        """记录两种入口交给共享请求规划器的参数。"""
+        prepare.append(kwargs)
+        return original_prepare(**kwargs)
+
+    def finalize_search_responses(responses):
+        """记录两种入口交给共享结果归并器的响应序列。"""
+        finalized.append(responses)
+        return False, [{"title": "projected"}]
+
+    def sync_request(*_args, **kwargs):
+        """返回可按分类请求体识别的同步响应。"""
+        return ("sync", kwargs["json"]["categoryId"])
+
+    async def async_request(*_args, **kwargs):
+        """返回可按分类请求体识别的异步响应。"""
+        return ("async", kwargs["json"]["categoryId"])
+
+    monkeypatch.setattr(spider, "_prepare_search_requests", prepare_search_requests)
+    monkeypatch.setattr(spider, "_finalize_search_responses", finalize_search_responses)
+    monkeypatch.setattr(RequestUtils, "post_res", sync_request)
+    monkeypatch.setattr(AsyncRequestUtils, "post_res", async_request)
+
+    sync_result = spider.search(keyword="Movie", mtype=MediaType.MUSIC, page=2)
+    async_result = asyncio.run(
+        spider.async_search(keyword="Movie", mtype=MediaType.MUSIC, page=2)
+    )
+
+    expected_plan = {"keyword": "Movie", "mtype": MediaType.MUSIC, "page": 2}
+    assert sync_result == async_result == (False, [{"title": "projected"}])
+    assert prepare == [expected_plan, expected_plan]
+    assert finalized == [
+        [("sync", 8), ("sync", 16)],
+        [("async", 8), ("async", 16)],
+    ]
+
+
 def test_tnode_and_torrentleech_preflight_failures_skip_network(monkeypatch):
     """令牌缺失和不支持中文的入口都应在同步、异步 HTTP 前终止。"""
     tnode = _build_api_spider("tnode", monkeypatch)

@@ -1,11 +1,19 @@
+from dataclasses import dataclass
 from datetime import date
-from typing import Optional
+from typing import Any, Optional, cast
 
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.cache import cached
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
-from app.runtime.log import logger
-from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+
+@dataclass(frozen=True, slots=True)
+class _AniListRequestPlan:
+    """冻结 GraphQL 查询与变量，供同步和异步传输外壳共用。"""
+
+    query: str
+    variables: dict[str, Any]
 
 
 class AniListApi:
@@ -98,6 +106,55 @@ class AniListApi:
           }}
         }}
     """
+    _search_query = f"""
+        query ($search: String!, $count: Int!) {{
+          Page(page: 1, perPage: $count) {{
+            media(search: $search, type: ANIME, sort: SEARCH_MATCH) {{ {_media_fields} }}
+          }}
+        }}
+    """
+    _credits_query = """
+        query ($id: Int!, $page: Int!, $count: Int!) {
+          Media(id: $id, type: ANIME) {
+            characters(page: $page, perPage: $count, sort: [ROLE, RELEVANCE]) {
+              edges {
+                role
+                node { id name { full native } }
+                voiceActors(language: JAPANESE, sort: [RELEVANCE]) {
+                  id name { full native alternative } image { large medium } siteUrl
+                }
+              }
+            }
+          }
+        }
+    """
+    _recommendations_query = """
+        query ($id: Int!, $page: Int!, $count: Int!) {
+          Media(id: $id, type: ANIME) {
+            recommendations(page: $page, perPage: $count, sort: [RATING_DESC, ID]) {
+              nodes { mediaRecommendation { id } }
+            }
+          }
+        }
+    """
+    _person_detail_query = """
+        query ($id: Int!) {
+          Staff(id: $id) {
+            id name { full native alternative } image { large medium }
+            description(asHtml: false) dateOfBirth { year month day }
+            dateOfDeath { year month day } gender homeTown primaryOccupations siteUrl
+          }
+        }
+    """
+    _person_credits_query = """
+        query ($id: Int!, $page: Int!, $count: Int!) {
+          Staff(id: $id) {
+            characterMedia(page: $page, perPage: $count, sort: [POPULARITY_DESC]) {
+              nodes { id }
+            }
+          }
+        }
+    """
 
     def __init__(self) -> None:
         """初始化同步与异步请求客户端"""
@@ -137,6 +194,22 @@ class AniListApi:
             return None
         return result.get("data")
 
+    @staticmethod
+    def _request_plan(
+            query: str, variables: dict[str, Any]
+    ) -> _AniListRequestPlan:
+        """构造同步与异步 GraphQL 传输共同使用的请求计划。"""
+        return _AniListRequestPlan(query=query, variables=dict(variables))
+
+    @classmethod
+    def _project_translated(
+            cls,
+            result: Optional[dict[str, Any]],
+            translations: dict[int, dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
+        """把成功响应与中文数据集按同一规则合并。"""
+        return cls._inject_chinese(result, translations) if result else result
+
     def _invoke(self, query: str, variables: dict) -> Optional[dict]:
         """
         执行同步 GraphQL 请求。
@@ -145,16 +218,17 @@ class AniListApi:
         :param variables: 查询变量
         :return: GraphQL data 字段
         """
-        payload = {"query": query, "variables": variables}
+        plan = self._request_plan(query, variables)
+        payload = {"query": plan.query, "variables": plan.variables}
         if self._proxy_available:
             response = self._request.post_res(self._base_url, json=payload)
             result = self._extract_response(response)
             if result is not None:
-                return self._inject_chinese(result, self._translation_map())
+                return self._project_translated(result, self._translation_map())
             self._disable_proxy(response)
         response = self._request.post_res(self._official_url, json=payload)
         result = self._extract_response(response)
-        return self._inject_chinese(result, self._translation_map()) if result else result
+        return self._project_translated(result, self._translation_map())
 
     async def _async_invoke(self, query: str, variables: dict) -> Optional[dict]:
         """
@@ -164,20 +238,21 @@ class AniListApi:
         :param variables: 查询变量
         :return: GraphQL data 字段
         """
-        payload = {"query": query, "variables": variables}
+        plan = self._request_plan(query, variables)
+        payload = {"query": plan.query, "variables": plan.variables}
         if self._proxy_available:
             response = await self._async_request.post_res(self._base_url, json=payload)
             result = self._extract_response(response)
             if result is not None:
                 translations = await self._async_translation_map()
-                return self._inject_chinese(result, translations)
+                return self._project_translated(result, translations)
             self._disable_proxy(response)
         response = await self._async_request.post_res(self._official_url, json=payload)
         result = self._extract_response(response)
         if not result:
             return result
         translations = await self._async_translation_map()
-        return self._inject_chinese(result, translations)
+        return self._project_translated(result, translations)
 
     def _disable_proxy(self, response) -> None:
         """
@@ -317,6 +392,80 @@ class AniListApi:
         media_map = {media.get("id"): media for media in medias if media.get("id")}
         return [media_map[media_id] for media_id in media_ids if media_id in media_map]
 
+    @staticmethod
+    def _media_id_plan(
+            media_ids: list[int]
+    ) -> tuple[list[int], dict[str, Any]]:
+        """去重批量媒体 ID，并构造根级 Page 查询变量。"""
+        unique_ids = list(dict.fromkeys(media_id for media_id in media_ids if media_id))
+        return unique_ids, {"ids": unique_ids, "count": len(unique_ids)}
+
+    @staticmethod
+    def _field(
+            result: Optional[dict[str, Any]], name: str
+    ) -> Optional[dict[str, Any]]:
+        """从 GraphQL data 中提取一个根字段。"""
+        return result.get(name) if result else None
+
+    @staticmethod
+    def _credits_edges(
+            result: Optional[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """从动画人物响应中提取配音关系边。"""
+        if not result:
+            return []
+        return result.get("Media", {}).get("characters", {}).get("edges") or []
+
+    @staticmethod
+    def _recommendation_ids(
+            result: Optional[dict[str, Any]]
+    ) -> list[int]:
+        """按推荐关系顺序提取有效 AniList 媒体 ID。"""
+        if not result:
+            return []
+        nodes = result.get("Media", {}).get("recommendations", {}).get("nodes") or []
+        return [
+            media_id
+            for node in nodes
+            if isinstance(node, dict)
+            if isinstance(
+                (media_id := (node.get("mediaRecommendation") or {}).get("id")),
+                int,
+            )
+        ]
+
+    @staticmethod
+    def _person_media_ids(
+            result: Optional[dict[str, Any]]
+    ) -> list[int]:
+        """按人物作品关系顺序提取有效 AniList 媒体 ID。"""
+        if not result:
+            return []
+        nodes = result.get("Staff", {}).get("characterMedia", {}).get("nodes") or []
+        return [
+            media_id
+            for node in nodes
+            if isinstance(node, dict)
+            if isinstance((media_id := node.get("id")), int)
+        ]
+
+    @staticmethod
+    def _trend_filters(page: int, count: int) -> dict[str, Any]:
+        """构造当前趋势榜共同使用的探索参数。"""
+        return {"page": page, "count": count, "sort": "TRENDING_DESC"}
+
+    @classmethod
+    def _season_filters(cls, page: int, count: int) -> dict[str, Any]:
+        """构造当前季度热门榜共同使用的探索参数。"""
+        season, season_year = cls._current_season()
+        return {
+            "page": page,
+            "count": count,
+            "season": season,
+            "season_year": season_year,
+            "sort": "POPULARITY_DESC",
+        }
+
     def _medias_by_ids(self, media_ids: list[int]) -> list[dict]:
         """
         通过根级 Page.media 批量查询媒体，使中文代理能够注入标题。
@@ -324,12 +473,12 @@ class AniListApi:
         :param media_ids: AniList 媒体 ID 列表
         :return: 按输入顺序排列的媒体列表
         """
-        unique_ids = list(dict.fromkeys(media_id for media_id in media_ids if media_id))
+        unique_ids, variables = self._media_id_plan(media_ids)
         if not unique_ids:
             return []
         result = self._invoke(
             self._media_by_ids_query,
-            {"ids": unique_ids, "count": len(unique_ids)},
+            variables,
         )
         return self._ordered_medias(media_ids, self._page_medias(result))
 
@@ -340,12 +489,12 @@ class AniListApi:
         :param media_ids: AniList 媒体 ID 列表
         :return: 按输入顺序排列的媒体列表
         """
-        unique_ids = list(dict.fromkeys(media_id for media_id in media_ids if media_id))
+        unique_ids, variables = self._media_id_plan(media_ids)
         if not unique_ids:
             return []
         result = await self._async_invoke(
             self._media_by_ids_query,
-            {"ids": unique_ids, "count": len(unique_ids)},
+            variables,
         )
         return self._ordered_medias(media_ids, self._page_medias(result))
 
@@ -375,8 +524,7 @@ class AniListApi:
         :return: AniList 媒体详情
         """
         query = f"query ($id: Int!) {{ Media(id: $id, type: ANIME) {{ {self._media_fields} }} }}"
-        result = self._invoke(query, {"id": anilist_id})
-        return result.get("Media") if result else None
+        return self._field(self._invoke(query, {"id": anilist_id}), "Media")
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -393,7 +541,7 @@ class AniListApi:
         """
         query = f"query ($id: Int!) {{ Media(id: $id, type: ANIME) {{ {self._media_fields} }} }}"
         result = await self._async_invoke(query, {"id": anilist_id})
-        return result.get("Media") if result else None
+        return self._field(result, "Media")
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -409,14 +557,9 @@ class AniListApi:
         :param count: 返回条数
         :return: AniList 媒体列表
         """
-        query = f"""
-            query ($search: String!, $count: Int!) {{
-              Page(page: 1, perPage: $count) {{
-                media(search: $search, type: ANIME, sort: SEARCH_MATCH) {{ {self._media_fields} }}
-              }}
-            }}
-        """
-        result = self._invoke(query, {"search": name, "count": count})
+        result = self._invoke(
+            self._search_query, {"search": name, "count": count}
+        )
         return self._page_medias(result)
 
     @cached(
@@ -433,14 +576,9 @@ class AniListApi:
         :param count: 返回条数
         :return: AniList 媒体列表
         """
-        query = f"""
-            query ($search: String!, $count: Int!) {{
-              Page(page: 1, perPage: $count) {{
-                media(search: $search, type: ANIME, sort: SEARCH_MATCH) {{ {self._media_fields} }}
-              }}
-            }}
-        """
-        result = await self._async_invoke(query, {"search": name, "count": count})
+        result = await self._async_invoke(
+            self._search_query, {"search": name, "count": count}
+        )
         return self._page_medias(result)
 
     @cached(
@@ -528,7 +666,10 @@ class AniListApi:
         :param count: 每页条数
         :return: AniList 媒体列表
         """
-        return self.discover(page=page, count=count, sort="TRENDING_DESC")
+        return cast(
+            list[dict[str, Any]],
+            self.discover(**self._trend_filters(page, count)),
+        )
 
     async def async_trending(self, page: int = 1, count: int = 20) -> list[dict]:
         """
@@ -538,7 +679,10 @@ class AniListApi:
         :param count: 每页条数
         :return: AniList 媒体列表
         """
-        return await self.async_discover(page=page, count=count, sort="TRENDING_DESC")
+        return cast(
+            list[dict[str, Any]],
+            await self.async_discover(**self._trend_filters(page, count)),
+        )
 
     def popular_this_season(self, page: int = 1, count: int = 20) -> list[dict]:
         """
@@ -548,13 +692,9 @@ class AniListApi:
         :param count: 每页条数
         :return: AniList 媒体列表
         """
-        season, season_year = self._current_season()
-        return self.discover(
-            page=page,
-            count=count,
-            season=season,
-            season_year=season_year,
-            sort="POPULARITY_DESC",
+        return cast(
+            list[dict[str, Any]],
+            self.discover(**self._season_filters(page, count)),
         )
 
     async def async_popular_this_season(self, page: int = 1, count: int = 20) -> list[dict]:
@@ -565,13 +705,9 @@ class AniListApi:
         :param count: 每页条数
         :return: AniList 媒体列表
         """
-        season, season_year = self._current_season()
-        return await self.async_discover(
-            page=page,
-            count=count,
-            season=season,
-            season_year=season_year,
-            sort="POPULARITY_DESC",
+        return cast(
+            list[dict[str, Any]],
+            await self.async_discover(**self._season_filters(page, count)),
         )
 
     @cached(
@@ -586,23 +722,11 @@ class AniListApi:
 
         :return: AniList 人物边列表
         """
-        query = """
-            query ($id: Int!, $page: Int!, $count: Int!) {
-              Media(id: $id, type: ANIME) {
-                characters(page: $page, perPage: $count, sort: [ROLE, RELEVANCE]) {
-                  edges {
-                    role
-                    node { id name { full native } }
-                    voiceActors(language: JAPANESE, sort: [RELEVANCE]) {
-                      id name { full native alternative } image { large medium } siteUrl
-                    }
-                  }
-                }
-              }
-            }
-        """
-        result = self._invoke(query, {"id": anilist_id, "page": page, "count": count})
-        return result.get("Media", {}).get("characters", {}).get("edges") or [] if result else []
+        result = self._invoke(
+            self._credits_query,
+            {"id": anilist_id, "page": page, "count": count},
+        )
+        return self._credits_edges(result)
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -616,23 +740,11 @@ class AniListApi:
 
         :return: AniList 人物边列表
         """
-        query = """
-            query ($id: Int!, $page: Int!, $count: Int!) {
-              Media(id: $id, type: ANIME) {
-                characters(page: $page, perPage: $count, sort: [ROLE, RELEVANCE]) {
-                  edges {
-                    role
-                    node { id name { full native } }
-                    voiceActors(language: JAPANESE, sort: [RELEVANCE]) {
-                      id name { full native alternative } image { large medium } siteUrl
-                    }
-                  }
-                }
-              }
-            }
-        """
-        result = await self._async_invoke(query, {"id": anilist_id, "page": page, "count": count})
-        return result.get("Media", {}).get("characters", {}).get("edges") or [] if result else []
+        result = await self._async_invoke(
+            self._credits_query,
+            {"id": anilist_id, "page": page, "count": count},
+        )
+        return self._credits_edges(result)
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -646,19 +758,11 @@ class AniListApi:
 
         :return: AniList 媒体列表
         """
-        query = """
-            query ($id: Int!, $page: Int!, $count: Int!) {
-              Media(id: $id, type: ANIME) {
-                recommendations(page: $page, perPage: $count, sort: [RATING_DESC, ID]) {
-                  nodes { mediaRecommendation { id } }
-                }
-              }
-            }
-        """
-        result = self._invoke(query, {"id": anilist_id, "page": page, "count": count})
-        nodes = result.get("Media", {}).get("recommendations", {}).get("nodes") or [] if result else []
-        media_ids = [node.get("mediaRecommendation", {}).get("id") for node in nodes]
-        return self._medias_by_ids(media_ids)
+        result = self._invoke(
+            self._recommendations_query,
+            {"id": anilist_id, "page": page, "count": count},
+        )
+        return self._medias_by_ids(self._recommendation_ids(result))
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -672,19 +776,11 @@ class AniListApi:
 
         :return: AniList 媒体列表
         """
-        query = """
-            query ($id: Int!, $page: Int!, $count: Int!) {
-              Media(id: $id, type: ANIME) {
-                recommendations(page: $page, perPage: $count, sort: [RATING_DESC, ID]) {
-                  nodes { mediaRecommendation { id } }
-                }
-              }
-            }
-        """
-        result = await self._async_invoke(query, {"id": anilist_id, "page": page, "count": count})
-        nodes = result.get("Media", {}).get("recommendations", {}).get("nodes") or [] if result else []
-        media_ids = [node.get("mediaRecommendation", {}).get("id") for node in nodes]
-        return await self._async_medias_by_ids(media_ids)
+        result = await self._async_invoke(
+            self._recommendations_query,
+            {"id": anilist_id, "page": page, "count": count},
+        )
+        return await self._async_medias_by_ids(self._recommendation_ids(result))
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -699,17 +795,10 @@ class AniListApi:
         :param person_id: AniList 人物 ID
         :return: AniList 人物详情
         """
-        query = """
-            query ($id: Int!) {
-              Staff(id: $id) {
-                id name { full native alternative } image { large medium }
-                description(asHtml: false) dateOfBirth { year month day }
-                dateOfDeath { year month day } gender homeTown primaryOccupations siteUrl
-              }
-            }
-        """
-        result = self._invoke(query, {"id": person_id})
-        return result.get("Staff") if result else None
+        return self._field(
+            self._invoke(self._person_detail_query, {"id": person_id}),
+            "Staff",
+        )
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -724,17 +813,10 @@ class AniListApi:
         :param person_id: AniList 人物 ID
         :return: AniList 人物详情
         """
-        query = """
-            query ($id: Int!) {
-              Staff(id: $id) {
-                id name { full native alternative } image { large medium }
-                description(asHtml: false) dateOfBirth { year month day }
-                dateOfDeath { year month day } gender homeTown primaryOccupations siteUrl
-              }
-            }
-        """
-        result = await self._async_invoke(query, {"id": person_id})
-        return result.get("Staff") if result else None
+        result = await self._async_invoke(
+            self._person_detail_query, {"id": person_id}
+        )
+        return self._field(result, "Staff")
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -748,18 +830,11 @@ class AniListApi:
 
         :return: AniList 媒体列表
         """
-        query = """
-            query ($id: Int!, $page: Int!, $count: Int!) {
-              Staff(id: $id) {
-                characterMedia(page: $page, perPage: $count, sort: [POPULARITY_DESC]) {
-                  nodes { id }
-                }
-              }
-            }
-        """
-        result = self._invoke(query, {"id": person_id, "page": page, "count": count})
-        nodes = result.get("Staff", {}).get("characterMedia", {}).get("nodes") or [] if result else []
-        return self._medias_by_ids([node.get("id") for node in nodes])
+        result = self._invoke(
+            self._person_credits_query,
+            {"id": person_id, "page": page, "count": count},
+        )
+        return self._medias_by_ids(self._person_media_ids(result))
 
     @cached(
         maxsize=get_runtime_setting('CONF').anilist,
@@ -773,18 +848,11 @@ class AniListApi:
 
         :return: AniList 媒体列表
         """
-        query = """
-            query ($id: Int!, $page: Int!, $count: Int!) {
-              Staff(id: $id) {
-                characterMedia(page: $page, perPage: $count, sort: [POPULARITY_DESC]) {
-                  nodes { id }
-                }
-              }
-            }
-        """
-        result = await self._async_invoke(query, {"id": person_id, "page": page, "count": count})
-        nodes = result.get("Staff", {}).get("characterMedia", {}).get("nodes") or [] if result else []
-        return await self._async_medias_by_ids([node.get("id") for node in nodes])
+        result = await self._async_invoke(
+            self._person_credits_query,
+            {"id": person_id, "page": page, "count": count},
+        )
+        return await self._async_medias_by_ids(self._person_media_ids(result))
 
     def clear_cache(self) -> None:
         """清理 AniList 接口缓存"""

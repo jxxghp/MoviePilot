@@ -1,17 +1,24 @@
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional, cast
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.cache import cached
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 
-class BangumiApi(object):
-    """
-    Bangumi API客户端。
+@dataclass(frozen=True, slots=True)
+class _BangumiRequestPlan:
+    """冻结 Bangumi 请求地址、参数和结果字段，供同步与异步传输共用。"""
 
-    接口文档：https://bangumi.github.io/api/
-    """
+    url: str
+    params: dict[str, Any]
+    key: Optional[str] = None
+
+
+class BangumiApi:
+    """Bangumi API 客户端，统一同步与异步请求决策和结果投影。"""
 
     _urls = {
         "discover": "v0/subjects",
@@ -26,7 +33,8 @@ class BangumiApi(object):
     }
     _base_url = "https://api.bgm.tv/"
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化同步与异步 Bangumi 请求客户端。"""
         self._req = RequestUtils(
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
@@ -37,283 +45,236 @@ class BangumiApi(object):
             proxies=get_runtime_setting('PROXY'),
         )
 
-    @cached(maxsize=get_runtime_setting('CONF').bangumi, ttl=get_runtime_setting('CONF').meta, shared_key="get")
-    def __invoke(self, url, key: Optional[str] = None, **kwargs):
-        req_url = self._base_url + url
-        params = {}
-        if kwargs:
-            params.update(kwargs)
-        resp = self._req.get_res(url=req_url, params=params)
-        try:
-            if resp is None or resp.status_code != 200:
-                return None
-            result = resp.json()
-            return result.get(key) if key else result
-        except Exception as e:
-            print(e)
+    @classmethod
+    def _request_plan(
+            cls,
+            path: str,
+            key: Optional[str] = None,
+            **params: Any,
+    ) -> _BangumiRequestPlan:
+        """构造同步与异步请求共同使用的不可变调用计划。"""
+        return _BangumiRequestPlan(
+            url=f"{cls._base_url}{path}",
+            params=dict(params),
+            key=key,
+        )
+
+    @staticmethod
+    def _project_response(
+            status_code: Optional[int],
+            payload: Any,
+            key: Optional[str],
+    ) -> Any:
+        """按统一状态码与字段规则投影 Bangumi 响应。"""
+        if status_code != 200:
             return None
+        if key:
+            return payload.get(key) if isinstance(payload, dict) else None
+        return payload
 
-    @cached(maxsize=get_runtime_setting('CONF').bangumi, ttl=get_runtime_setting('CONF').meta, shared_key="get")
-    async def __async_invoke(self, url, key: Optional[str] = None, **kwargs):
-        req_url = self._base_url + url
-        params = {}
-        if kwargs:
-            params.update(kwargs)
-        resp = await self._async_req.get_res(url=req_url, params=params)
-        try:
-            if resp is None or resp.status_code != 200:
-                return None
-            result = resp.json()
-            return result.get(key) if key else result
-        except Exception as e:
-            print(e)
+    @classmethod
+    def _decode_response(cls, response: Any, key: Optional[str]) -> Any:
+        """解析 HTTP 响应，并把格式错误统一映射为空结果。"""
+        if response is None:
             return None
+        try:
+            payload = response.json() if response.status_code == 200 else None
+        except (TypeError, ValueError) as err:
+            logger.warning(f"Bangumi 响应解析失败：{str(err)}")
+            return None
+        return cls._project_response(response.status_code, payload, key)
 
-    def search(self, name):
-        """
-        搜索媒体信息
-        """
-        result = self.__invoke("search/subject/%s" % name)
-        if result:
-            return result.get("list")
-        return []
+    @cached(
+        maxsize=get_runtime_setting('CONF').bangumi,
+        ttl=get_runtime_setting('CONF').meta,
+        shared_key="get",
+    )
+    def __invoke(self, url, key=None, **kwargs):
+        """执行同步 HTTP 请求，业务计划与响应规则由共享 helper 决定。"""
+        plan = self._request_plan(url, key=key, **kwargs)
+        response = self._req.get_res(url=plan.url, params=plan.params)
+        return self._decode_response(response, plan.key)
 
-    async def async_search(self, name):
-        """
-        搜索媒体信息（异步版本）
-        """
-        result = await self.__async_invoke("search/subject/%s" % name)
-        if result:
-            return result.get("list")
-        return []
+    @cached(
+        maxsize=get_runtime_setting('CONF').bangumi,
+        ttl=get_runtime_setting('CONF').meta,
+        shared_key="get",
+    )
+    async def __async_invoke(self, url, key=None, **kwargs):
+        """执行异步 HTTP 请求，业务计划与响应规则由共享 helper 决定。"""
+        plan = self._request_plan(url, key=key, **kwargs)
+        response = await self._async_req.get_res(url=plan.url, params=plan.params)
+        return self._decode_response(response, plan.key)
 
-    def calendar(self):
-        """
-        获取每日放送，返回items
-        """
-        """
-        [
-          {
-            "weekday": {
-              "en": "Mon",
-              "cn": "星期一",
-              "ja": "月耀日",
-              "id": 1
-            },
-            "items": [
-              {
-                "id": 350235,
-                "url": "http://bgm.tv/subject/350235",
-                "type": 2,
-                "name": "月が導く異世界道中 第二幕",
-                "name_cn": "月光下的异世界之旅 第二幕",
-                "summary": "",
-                "air_date": "2024-01-08",
-                "air_weekday": 1,
-                "rating": {
-                  "total": 257,
-                  "count": {
-                    "1": 1,
-                    "2": 1,
-                    "3": 4,
-                    "4": 15,
-                    "5": 51,
-                    "6": 111,
-                    "7": 49,
-                    "8": 13,
-                    "9": 5,
-                    "10": 7
-                  },
-                  "score": 6.1
-                },
-                "rank": 6125,
-                "images": {
-                  "large": "http://lain.bgm.tv/pic/cover/l/3c/a5/350235_A0USf.jpg",
-                  "common": "http://lain.bgm.tv/pic/cover/c/3c/a5/350235_A0USf.jpg",
-                  "medium": "http://lain.bgm.tv/pic/cover/m/3c/a5/350235_A0USf.jpg",
-                  "small": "http://lain.bgm.tv/pic/cover/s/3c/a5/350235_A0USf.jpg",
-                  "grid": "http://lain.bgm.tv/pic/cover/g/3c/a5/350235_A0USf.jpg"
-                },
-                "collection": {
-                  "doing": 920
-                }
-              },
-              {
-                "id": 358561,
-                "url": "http://bgm.tv/subject/358561",
-                "type": 2,
-                "name": "大宇宙时代",
-                "name_cn": "大宇宙时代",
-                "summary": "",
-                "air_date": "2024-01-22",
-                "air_weekday": 1,
-                "rating": {
-                  "total": 2,
-                  "count": {
-                    "1": 0,
-                    "2": 0,
-                    "3": 0,
-                    "4": 0,
-                    "5": 1,
-                    "6": 1,
-                    "7": 0,
-                    "8": 0,
-                    "9": 0,
-                    "10": 0
-                  },
-                  "score": 5.5
-                },
-                "images": {
-                  "large": "http://lain.bgm.tv/pic/cover/l/71/66/358561_UzsLu.jpg",
-                  "common": "http://lain.bgm.tv/pic/cover/c/71/66/358561_UzsLu.jpg",
-                  "medium": "http://lain.bgm.tv/pic/cover/m/71/66/358561_UzsLu.jpg",
-                  "small": "http://lain.bgm.tv/pic/cover/s/71/66/358561_UzsLu.jpg",
-                  "grid": "http://lain.bgm.tv/pic/cover/g/71/66/358561_UzsLu.jpg"
-                },
-                "collection": {
-                  "doing": 9
-                }
-              }
-            ]
-          }
+    @staticmethod
+    def _dated_params(**params: Any) -> dict[str, Any]:
+        """为缓存键稳定附加当天日期，并保留调用方筛选参数。"""
+        return {
+            "_ts": datetime.strftime(datetime.now(), '%Y%m%d'),
+            **params,
+        }
+
+    @staticmethod
+    def _search_results(result: Any) -> list[dict[str, Any]]:
+        """从旧版搜索响应中提取条目列表。"""
+        return result.get("list") or [] if isinstance(result, dict) else []
+
+    @staticmethod
+    def _calendar_items(result: Any) -> list[dict[str, Any]]:
+        """按星期顺序展开每日放送条目。"""
+        return [
+            item
+            for weekday in result or []
+            if isinstance(weekday, dict)
+            for item in weekday.get("items") or []
         ]
-        """
-        ret_list = []
-        result = self.__invoke(self._urls["calendar"], _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
-        if result:
-            for item in result:
-                ret_list.extend(item.get("items") or [])
-        return ret_list
 
-    async def async_calendar(self):
-        """
-        获取每日放送，返回items（异步版本）
-        """
-        ret_list = []
-        result = await self.__async_invoke(self._urls["calendar"], _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
-        if result:
-            for item in result:
-                ret_list.extend(item.get("items") or [])
-        return ret_list
+    @staticmethod
+    def _credit_people(result: Any) -> list[dict[str, Any]]:
+        """把角色配音关系投影为带角色职业信息的人物列表。"""
+        people: list[dict[str, Any]] = []
+        for item in result or []:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            actors = item.get("actors") or []
+            if not actors or not isinstance(actors[0], dict):
+                continue
+            actor = actors[0]
+            actor.update({"career": [item.get("name")]})
+            people.append(actor)
+        return people
 
-    def detail(self, bid: int):
-        """
-        获取番剧详情
-        """
-        return self.__invoke(self._urls["detail"] % bid, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+    @staticmethod
+    def _list_result(result: Any) -> list[dict[str, Any]]:
+        """把列表响应统一投影为空安全列表。"""
+        return list(result) if isinstance(result, list) else []
 
-    async def async_detail(self, bid: int):
-        """
-        获取番剧详情（异步版本）
-        """
-        return await self.__async_invoke(self._urls["detail"] % bid, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+    def search(self, name: str) -> list[dict[str, Any]]:
+        """搜索媒体信息。"""
+        return self._search_results(self.__invoke(f"search/subject/{name}"))
 
-    def credits(self, bid: int):
-        """
-        获取番剧人物
-        """
-        ret_list = []
-        result = self.__invoke(self._urls["characters"] % bid, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
-        if result:
-            for item in result:
-                character_id = item.get("id")
-                actors = item.get("actors")
-                if character_id and actors and actors[0]:
-                    actor_info = actors[0]
-                    actor_info.update({'career': [item.get('name')]})
-                    ret_list.append(actor_info)
-        return ret_list
+    async def async_search(self, name: str) -> list[dict[str, Any]]:
+        """异步搜索媒体信息。"""
+        return self._search_results(await self.__async_invoke(f"search/subject/{name}"))
 
-    async def async_credits(self, bid: int):
-        """
-        获取番剧人物（异步版本）
-        """
-        ret_list = []
-        result = await self.__async_invoke(self._urls["characters"] % bid,
-                                           _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
-        if result:
-            for item in result:
-                character_id = item.get("id")
-                actors = item.get("actors")
-                if character_id and actors and actors[0]:
-                    actor_info = actors[0]
-                    actor_info.update({'career': [item.get('name')]})
-                    ret_list.append(actor_info)
-        return ret_list
+    def calendar(self) -> list[dict[str, Any]]:
+        """获取每日放送条目。"""
+        result = self.__invoke(self._urls["calendar"], **self._dated_params())
+        return self._calendar_items(result)
 
-    def subjects(self, bid: int):
-        """
-        获取关联条目信息
-        """
-        return self.__invoke(self._urls["subjects"] % bid, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+    async def async_calendar(self) -> list[dict[str, Any]]:
+        """异步获取每日放送条目。"""
+        result = await self.__async_invoke(
+            self._urls["calendar"], **self._dated_params()
+        )
+        return self._calendar_items(result)
 
-    async def async_subjects(self, bid: int):
-        """
-        获取关联条目信息（异步版本）
-        """
-        return await self.__async_invoke(self._urls["subjects"] % bid, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+    def detail(self, bid: int) -> Optional[dict[str, Any]]:
+        """获取番剧详情。"""
+        return cast(
+            Optional[dict[str, Any]],
+            self.__invoke(self._urls["detail"] % bid, **self._dated_params()),
+        )
 
-    def person_detail(self, person_id: int):
-        """
-        获取人物详细信息
-        """
-        return self.__invoke(self._urls["person_detail"] % person_id, _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+    async def async_detail(self, bid: int) -> Optional[dict[str, Any]]:
+        """异步获取番剧详情。"""
+        return cast(
+            Optional[dict[str, Any]],
+            await self.__async_invoke(
+                self._urls["detail"] % bid, **self._dated_params()
+            ),
+        )
 
-    async def async_person_detail(self, person_id: int):
-        """
-        获取人物详细信息（异步版本）
-        """
-        return await self.__async_invoke(self._urls["person_detail"] % person_id,
-                                         _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+    def credits(self, bid: int) -> list[dict[str, Any]]:
+        """获取番剧配音人物。"""
+        result = self.__invoke(self._urls["characters"] % bid, **self._dated_params())
+        return self._credit_people(result)
 
-    def person_credits(self, person_id: int):
-        """
-        获取人物参演作品
-        """
-        ret_list = []
-        result = self.__invoke(self._urls["person_credits"] % person_id,
-                               _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
-        if result:
-            for item in result:
-                ret_list.append(item)
-        return ret_list
+    async def async_credits(self, bid: int) -> list[dict[str, Any]]:
+        """异步获取番剧配音人物。"""
+        result = await self.__async_invoke(
+            self._urls["characters"] % bid, **self._dated_params()
+        )
+        return self._credit_people(result)
 
-    async def async_person_credits(self, person_id: int):
-        """
-        获取人物参演作品（异步版本）
-        """
-        ret_list = []
-        result = await self.__async_invoke(self._urls["person_credits"] % person_id,
-                                           _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
-        if result:
-            for item in result:
-                ret_list.append(item)
-        return ret_list
+    def subjects(self, bid: int) -> Optional[list[dict[str, Any]]]:
+        """获取关联条目信息。"""
+        return cast(
+            Optional[list[dict[str, Any]]],
+            self.__invoke(self._urls["subjects"] % bid, **self._dated_params()),
+        )
 
-    def discover(self, **kwargs):
-        """
-        发现
-        """
-        return self.__invoke(self._urls["discover"],
-                             key="data",
-                             _ts=datetime.strftime(datetime.now(), '%Y%m%d'), **kwargs)
+    async def async_subjects(self, bid: int) -> Optional[list[dict[str, Any]]]:
+        """异步获取关联条目信息。"""
+        return cast(
+            Optional[list[dict[str, Any]]],
+            await self.__async_invoke(
+                self._urls["subjects"] % bid, **self._dated_params()
+            ),
+        )
 
-    async def async_discover(self, **kwargs):
-        """
-        发现（异步版本）
-        """
-        return await self.__async_invoke(self._urls["discover"],
-                                         key="data",
-                                         _ts=datetime.strftime(datetime.now(), '%Y%m%d'), **kwargs)
+    def person_detail(self, person_id: int) -> Optional[dict[str, Any]]:
+        """获取人物详细信息。"""
+        return cast(
+            Optional[dict[str, Any]],
+            self.__invoke(
+                self._urls["person_detail"] % person_id, **self._dated_params()
+            ),
+        )
 
-    def clear_cache(self):
-        """
-        清除缓存
-        """
+    async def async_person_detail(
+            self, person_id: int
+    ) -> Optional[dict[str, Any]]:
+        """异步获取人物详细信息。"""
+        return cast(
+            Optional[dict[str, Any]],
+            await self.__async_invoke(
+                self._urls["person_detail"] % person_id, **self._dated_params()
+            ),
+        )
+
+    def person_credits(self, person_id: int) -> list[dict[str, Any]]:
+        """获取人物参演作品。"""
+        result = self.__invoke(
+            self._urls["person_credits"] % person_id, **self._dated_params()
+        )
+        return self._list_result(result)
+
+    async def async_person_credits(self, person_id: int) -> list[dict[str, Any]]:
+        """异步获取人物参演作品。"""
+        result = await self.__async_invoke(
+            self._urls["person_credits"] % person_id, **self._dated_params()
+        )
+        return self._list_result(result)
+
+    def discover(self, **kwargs: Any) -> Optional[list[dict[str, Any]]]:
+        """按筛选条件发现番剧。"""
+        return cast(
+            Optional[list[dict[str, Any]]],
+            self.__invoke(
+                self._urls["discover"],
+                key="data",
+                **self._dated_params(**kwargs),
+            ),
+        )
+
+    async def async_discover(
+            self, **kwargs: Any
+    ) -> Optional[list[dict[str, Any]]]:
+        """异步按筛选条件发现番剧。"""
+        return cast(
+            Optional[list[dict[str, Any]]],
+            await self.__async_invoke(
+                self._urls["discover"],
+                key="data",
+                **self._dated_params(**kwargs),
+            ),
+        )
+
+    def clear_cache(self) -> None:
+        """清除 Bangumi 请求缓存。"""
         self.__invoke.cache_clear()
 
     def close(self) -> None:
-        """
-        关闭Bangumi会话
-        """
+        """关闭 Bangumi 同步会话。"""
         self._req.close()

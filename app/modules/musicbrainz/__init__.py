@@ -65,6 +65,30 @@ class _MusicBrainzRecognitionPlan:
             raise RuntimeError("MusicBrainz 详情识别计划缺少原生 ID")
         return self.media_id
 
+    def detail_kwargs(self) -> dict[str, str]:
+        """生成详情入口兼容旧签名所需的可选实体参数。"""
+        return (
+            {"music_type": self.music_type}
+            if self.music_type is not None
+            else {}
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _MusicBrainzResponseDecision:
+    """描述一次 MusicBrainz 响应的投影结果与退避决策。"""
+
+    payload: Optional[dict[str, Any]] = None
+    retry_delay: Optional[float] = None
+
+
+@dataclass(frozen=True, slots=True)
+class _MusicBrainzRequestPlan:
+    """冻结 MusicBrainz 请求路径与参数，供同步异步 I/O 外壳共用。"""
+
+    path: str
+    params: dict[str, Any]
+
 
 class MusicBrainzModule(_ModuleBase):
     """通过 MusicBrainz 提供音乐元数据搜索和详情识别。"""
@@ -497,14 +521,9 @@ class MusicBrainzModule(_ModuleBase):
         if not tracks:
             return None
         details: list[dict[str, Any]] = []
-        for release in self._search_release_candidates(meta, tracks, limit=limit):
-            release_id = release.get("id")
-            if not release_id:
-                continue
-            detail = self._request_json(
-                f"/release/{release_id}",
-                params={"inc": "recordings+media+artist-credits", "fmt": "json"},
-            )
+        releases = self._search_release_candidates(meta, tracks, limit=limit)
+        for request in self._release_detail_requests(releases):
+            detail = self._request_json(request.path, params=request.params)
             if not detail:
                 continue
             details.append(detail)
@@ -525,13 +544,9 @@ class MusicBrainzModule(_ModuleBase):
             tracks,
             limit=limit,
         )
-        for release in releases:
-            release_id = release.get("id")
-            if not release_id:
-                continue
+        for request in self._release_detail_requests(releases):
             detail = await self._async_request_json(
-                f"/release/{release_id}",
-                params={"inc": "recordings+media+artist-credits", "fmt": "json"},
+                request.path, params=request.params
             )
             if not detail:
                 continue
@@ -568,10 +583,9 @@ class MusicBrainzModule(_ModuleBase):
         """按专辑名和曲名线索搜索候选发行版本，多个查询按命中顺序去重。"""
         releases: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for query in self._release_queries(meta, tracks):
+        for request in self._release_search_requests(meta, tracks, limit):
             payload = self._request_json(
-                "/release",
-                params={"query": query, "limit": max(1, min(limit, 25)), "fmt": "json"},
+                request.path, params=request.params
             )
             self._merge_release_candidates(releases, seen, payload)
             if len(releases) >= limit:
@@ -587,14 +601,9 @@ class MusicBrainzModule(_ModuleBase):
         """异步按专辑名和曲名线索搜索并去重候选发行版本。"""
         releases: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for query in self._release_queries(meta, tracks):
+        for request in self._release_search_requests(meta, tracks, limit):
             payload = await self._async_request_json(
-                "/release",
-                params={
-                    "query": query,
-                    "limit": max(1, min(limit, 25)),
-                    "fmt": "json",
-                },
+                request.path, params=request.params
             )
             self._merge_release_candidates(releases, seen, payload)
             if len(releases) >= limit:
@@ -613,6 +622,44 @@ class MusicBrainzModule(_ModuleBase):
             if release_id and release_id not in seen:
                 seen.add(release_id)
                 releases.append(item)
+
+    @classmethod
+    def _release_search_requests(
+            cls,
+            meta: MetaMusic,
+            tracks: list[MetaMusic],
+            limit: int,
+    ) -> list[_MusicBrainzRequestPlan]:
+        """构造发行候选查询计划，统一同步与异步的限额和参数。"""
+        normalized_limit = max(1, min(limit, 25))
+        return [
+            _MusicBrainzRequestPlan(
+                path="/release",
+                params={
+                    "query": query,
+                    "limit": normalized_limit,
+                    "fmt": "json",
+                },
+            )
+            for query in cls._release_queries(meta, tracks)
+        ]
+
+    @staticmethod
+    def _release_detail_requests(
+            releases: Iterable[dict[str, Any]],
+    ) -> list[_MusicBrainzRequestPlan]:
+        """按候选顺序构造发行详情请求计划并跳过无 ID 条目。"""
+        return [
+            _MusicBrainzRequestPlan(
+                path=f"/release/{release_id}",
+                params={
+                    "inc": "recordings+media+artist-credits",
+                    "fmt": "json",
+                },
+            )
+            for release in releases
+            if (release_id := release.get("id"))
+        ]
 
     @classmethod
     def _release_queries(cls, meta: MetaMusic, tracks: list[MetaMusic]) -> list[str]:
@@ -828,19 +875,12 @@ class MusicBrainzModule(_ModuleBase):
         if not plan:
             return None
         if plan.media_id:
-            detail_kwargs = (
-                {"music_type": plan.music_type}
-                if plan.music_type is not None
-                else {}
-            )
             info = self.recognize_music(
                 plan.media_source,
                 plan.require_media_id(),
-                **detail_kwargs,
+                **plan.detail_kwargs(),
             )
-            if info and plan.meta:
-                self._update_recognize_cache(plan.meta, info)
-            return info
+            return self._finalize_detail_recognition(plan, info)
         return self._recognize_from_candidates_sync(plan)
 
     def _update_recognize_cache(self, meta: MetaMusic, info: Optional[MusicInfo]) -> None:
@@ -891,19 +931,12 @@ class MusicBrainzModule(_ModuleBase):
         if not plan:
             return None
         if plan.media_id:
-            detail_kwargs = (
-                {"music_type": plan.music_type}
-                if plan.music_type is not None
-                else {}
-            )
             info = await self.async_recognize_music(
                 plan.media_source,
                 plan.require_media_id(),
-                **detail_kwargs,
+                **plan.detail_kwargs(),
             )
-            if info and plan.meta:
-                self._update_recognize_cache(plan.meta, info)
-            return info
+            return self._finalize_detail_recognition(plan, info)
         return await self._recognize_from_candidates_async(plan)
 
     @classmethod
@@ -962,6 +995,16 @@ class MusicBrainzModule(_ModuleBase):
         cached_info.recognize_cache_hit = True
         return cached_info
 
+    def _finalize_detail_recognition(
+            self,
+            plan: _MusicBrainzRecognitionPlan,
+            info: Optional[MusicInfo],
+    ) -> Optional[MusicInfo]:
+        """统一完成显式详情识别后的缓存回填。"""
+        if info and plan.meta:
+            self._update_recognize_cache(plan.meta, info)
+        return info
+
     @classmethod
     def _select_recognition_candidate(
             cls,
@@ -979,6 +1022,26 @@ class MusicBrainzModule(_ModuleBase):
         if matched or not plan.search_album or not meta.artists:
             return matched
         return cls._select_album_candidate(meta, albums)
+
+    @staticmethod
+    def _should_search_albums(
+            plan: _MusicBrainzRecognitionPlan,
+            preliminary: Optional[MusicInfo],
+    ) -> bool:
+        """统一决定候选识别是否需要继续查询专辑。"""
+        meta = plan.require_meta()
+        return bool(
+            plan.music_type == MUSIC_ENTITY_ALBUM
+            or (not preliminary and plan.search_album and meta.artists)
+        )
+
+    @staticmethod
+    def _should_probe_album(
+            plan: _MusicBrainzRecognitionPlan,
+            recording: Optional[MusicInfo],
+    ) -> bool:
+        """统一决定 Recording 详情未命中后是否继续探测专辑。"""
+        return bool(not recording and plan.search_album)
 
     def _finalize_recognition(
             self,
@@ -1007,10 +1070,7 @@ class MusicBrainzModule(_ModuleBase):
         preliminary = self._select_recognition_candidate(plan, recordings)
         albums = (
             self._search_albums(meta, limit=10)
-            if (
-                plan.music_type == MUSIC_ENTITY_ALBUM
-                or (not preliminary and plan.search_album and meta.artists)
-            )
+            if self._should_search_albums(plan, preliminary)
             else []
         )
         matched = self._select_recognition_candidate(plan, recordings, albums)
@@ -1034,10 +1094,7 @@ class MusicBrainzModule(_ModuleBase):
         preliminary = self._select_recognition_candidate(plan, recordings)
         albums = (
             await self._async_search_albums(meta, limit=10)
-            if (
-                plan.music_type == MUSIC_ENTITY_ALBUM
-                or (not preliminary and plan.search_album and meta.artists)
-            )
+            if self._should_search_albums(plan, preliminary)
             else []
         )
         matched = self._select_recognition_candidate(plan, recordings, albums)
@@ -1301,6 +1358,7 @@ class MusicBrainzModule(_ModuleBase):
         plan = self._detail_plan(media_source, media_id, music_type)
         if not plan:
             return None
+        result: Optional[MusicInfo] = None
         if plan.search_recording:
             payload = self._request_json(
                 f"/recording/{plan.require_media_id()}",
@@ -1312,8 +1370,8 @@ class MusicBrainzModule(_ModuleBase):
             result = self._project_recording_detail(payload)
             if result:
                 return result
-            if not plan.search_album:
-                return None
+        if not self._should_probe_album(plan, result):
+            return None
         # MusicBrainz 各实体共用 UUID 形式，统一详情入口在 Recording 未命中后继续探测专辑。
         album = self.music_album(self._source, plan.require_media_id())
         return self._project_album_result(album)
@@ -1328,6 +1386,7 @@ class MusicBrainzModule(_ModuleBase):
         plan = self._detail_plan(media_source, media_id, music_type)
         if not plan:
             return None
+        result: Optional[MusicInfo] = None
         if plan.search_recording:
             payload = await self._async_request_json(
                 f"/recording/{plan.require_media_id()}",
@@ -1339,8 +1398,8 @@ class MusicBrainzModule(_ModuleBase):
             result = self._project_recording_detail(payload)
             if result:
                 return result
-            if not plan.search_album:
-                return None
+        if not self._should_probe_album(plan, result):
+            return None
         album = await self._async_music_album(
             self._source, plan.require_media_id()
         )
@@ -1977,6 +2036,42 @@ class MusicBrainzModule(_ModuleBase):
             await asyncio.sleep(delay)
 
     @classmethod
+    def _response_decision(
+            cls,
+            response: Any,
+            path: str,
+            attempt: int,
+            attempts: int,
+    ) -> _MusicBrainzResponseDecision:
+        """统一分类响应、解析 JSON，并决定是否执行下一次退避重试。"""
+        status_code = response.status_code
+        if status_code == 404:
+            logger.debug(f"MusicBrainz 资源不存在：{path}")
+            return _MusicBrainzResponseDecision(payload={})
+        if status_code == 429 or status_code >= 500:
+            logger.warning(
+                f"MusicBrainz 服务繁忙：{status_code} {response.text[:200]}"
+            )
+            if attempt < attempts - 1:
+                return _MusicBrainzResponseDecision(
+                    retry_delay=cls._busy_backoff * (2 ** attempt)
+                )
+            return _MusicBrainzResponseDecision()
+        if status_code != 200:
+            logger.warning(
+                f"MusicBrainz 请求失败：{status_code} {response.text[:200]}"
+            )
+            return _MusicBrainzResponseDecision()
+        try:
+            payload = response.json()
+        except (TypeError, ValueError) as err:
+            logger.warning(f"MusicBrainz 响应解析失败：{err}")
+            return _MusicBrainzResponseDecision()
+        return _MusicBrainzResponseDecision(
+            payload=payload if isinstance(payload, dict) else None
+        )
+
+    @classmethod
     @cached(maxsize=get_runtime_setting('CONF').musicbrainz, ttl=get_runtime_setting('CONF').meta, skip_none=True)
     def _request_json(
             cls,
@@ -1996,32 +2091,16 @@ class MusicBrainzModule(_ModuleBase):
             )
             if response is None:
                 return None
-            status_code = response.status_code
             try:
-                if status_code == 404:
-                    # 单曲与专辑共用同一套 ID 入口，404 属于正常的探测结果
-                    logger.debug(f"MusicBrainz 资源不存在：{path}")
-                    # 使用空对象区分稳定的不存在与瞬时请求失败，使有界缓存能够复用探测结果。
-                    return {}
-                if status_code == 429 or status_code >= 500:
-                    logger.warning(
-                        f"MusicBrainz 服务繁忙：{status_code} {response.text[:200]}"
-                    )
-                    if attempt < attempts - 1:
-                        time.sleep(cls._busy_backoff * (2 ** attempt))
-                        continue
-                    return None
-                if status_code != 200:
-                    logger.warning(
-                        f"MusicBrainz 请求失败：{status_code} {response.text[:200]}"
-                    )
-                    return None
-                return response.json()
-            except (TypeError, ValueError) as err:
-                logger.warning(f"MusicBrainz 响应解析失败：{err}")
-                return None
+                decision = cls._response_decision(
+                    response, path, attempt, attempts
+                )
             finally:
                 response.close()
+            if decision.retry_delay is not None:
+                time.sleep(decision.retry_delay)
+                continue
+            return decision.payload
         return None
 
     @classmethod
@@ -2050,29 +2129,14 @@ class MusicBrainzModule(_ModuleBase):
             ).get_res(f"{cls._base_url}{path}", params=params)
             if response is None:
                 return None
-            status_code = response.status_code
             try:
-                if status_code == 404:
-                    logger.debug(f"MusicBrainz 资源不存在：{path}")
-                    return {}
-                if status_code == 429 or status_code >= 500:
-                    logger.warning(
-                        f"MusicBrainz 服务繁忙：{status_code} {response.text[:200]}"
-                    )
-                    if attempt < attempts - 1:
-                        await asyncio.sleep(cls._busy_backoff * (2 ** attempt))
-                        continue
-                    return None
-                if status_code != 200:
-                    logger.warning(
-                        f"MusicBrainz 请求失败：{status_code} {response.text[:200]}"
-                    )
-                    return None
-                payload = response.json()
-                return payload if isinstance(payload, dict) else None
-            except (TypeError, ValueError) as err:
-                logger.warning(f"MusicBrainz 响应解析失败：{err}")
-                return None
+                decision = cls._response_decision(
+                    response, path, attempt, attempts
+                )
             finally:
                 await response.aclose()
+            if decision.retry_delay is not None:
+                await asyncio.sleep(decision.retry_delay)
+                continue
+            return decision.payload
         return None

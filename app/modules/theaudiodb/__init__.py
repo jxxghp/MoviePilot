@@ -56,6 +56,14 @@ class _TheAudioDbRecognitionPlan:
         return self.media_id
 
 
+@dataclass(frozen=True, slots=True)
+class _TheAudioDbRequestPlan:
+    """冻结 TheAudioDB 请求地址和参数，供同步异步传输共用。"""
+
+    url: str
+    params: dict[str, Any]
+
+
 class TheAudioDbModule(_ModuleBase):
     """通过 TheAudioDB V1 API 提供音乐搜索、详情和手动识别能力。"""
 
@@ -146,12 +154,13 @@ class TheAudioDbModule(_ModuleBase):
                 self._source, plan.require_media_id(), music_type=plan.music_type
             )
         plan_meta = plan.require_meta()
+        matched: Optional[MusicInfo] = None
         if plan.search_recording:
             matched = self._select_track(plan_meta, self._search_tracks(plan_meta))
             if matched:
                 return matched
-            if not plan.search_album:
-                return None
+        if not self._should_search_album(plan, matched):
+            return None
         album = self._select_album(plan_meta, self._search_albums(plan_meta))
         return self._project_album_result(album)
 
@@ -180,6 +189,7 @@ class TheAudioDbModule(_ModuleBase):
                 music_type=plan.music_type,
             )
         plan_meta = plan.require_meta()
+        matched: Optional[MusicInfo] = None
         if plan.search_recording:
             matched = self._select_track(
                 plan_meta,
@@ -187,8 +197,8 @@ class TheAudioDbModule(_ModuleBase):
             )
             if matched:
                 return matched
-            if not plan.search_album:
-                return None
+        if not self._should_search_album(plan, matched):
+            return None
         album = self._select_album(
             plan_meta,
             await self._async_search_albums(plan_meta),
@@ -219,6 +229,14 @@ class TheAudioDbModule(_ModuleBase):
             music_type=music_type,
         )
 
+    @staticmethod
+    def _should_search_album(
+            plan: _TheAudioDbRecognitionPlan,
+            matched: Optional[MusicInfo],
+    ) -> bool:
+        """统一决定单曲未命中后是否继续查询专辑。"""
+        return bool(not matched and plan.search_album)
+
     def recognize_music(
             self,
             media_source: MediaSource,
@@ -229,6 +247,7 @@ class TheAudioDbModule(_ModuleBase):
         plan = self._detail_plan(media_source, media_id, music_type)
         if not plan:
             return None
+        result: Optional[MusicInfo] = None
         if plan.search_recording:
             payload = self._request_json(
                 "track.php", {"h": plan.require_media_id()}
@@ -236,8 +255,8 @@ class TheAudioDbModule(_ModuleBase):
             result = self._project_track_detail(payload)
             if result:
                 return result
-            if not plan.search_album:
-                return None
+        if not self._should_search_album(plan, result):
+            return None
         album = self.music_album(self._source, plan.require_media_id())
         return self._project_album_result(album)
 
@@ -251,6 +270,7 @@ class TheAudioDbModule(_ModuleBase):
         plan = self._detail_plan(media_source, media_id, music_type)
         if not plan:
             return None
+        result: Optional[MusicInfo] = None
         if plan.search_recording:
             payload = await self._async_request_json(
                 "track.php", {"h": plan.require_media_id()}
@@ -258,8 +278,8 @@ class TheAudioDbModule(_ModuleBase):
             result = self._project_track_detail(payload)
             if result:
                 return result
-            if not plan.search_album:
-                return None
+        if not self._should_search_album(plan, result):
+            return None
         album = await self._async_music_album(
             self._source, plan.require_media_id()
         )
@@ -666,6 +686,42 @@ class TheAudioDbModule(_ModuleBase):
         return results
 
     @classmethod
+    def _response_payload(
+            cls, response: Any, endpoint: str
+    ) -> Optional[dict[str, Any]]:
+        """统一校验并解析 TheAudioDB 响应，避免同步异步错误语义漂移。"""
+        if response.status_code != 200:
+            return None
+        diagnostic = cls._response_diagnostic(response, endpoint)
+        if getattr(response, "content", None) in (b"", ""):
+            logger.warning(f"TheAudioDB 返回空响应：{diagnostic}")
+            return None
+        try:
+            payload = response.json()
+        except (TypeError, ValueError) as err:
+            logger.warning(
+                f"TheAudioDB 响应解析失败：{diagnostic}，错误：{str(err)}"
+            )
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    @classmethod
+    def _request_plan(
+            cls,
+            api_key: str,
+            endpoint: str,
+            params: Optional[dict[str, Any]],
+    ) -> Optional[_TheAudioDbRequestPlan]:
+        """校验 API Key 并构造同步异步共用的请求计划。"""
+        normalized_key = str(api_key or "").strip()
+        if not normalized_key:
+            return None
+        return _TheAudioDbRequestPlan(
+            url=f"{cls._base_url}/{normalized_key}/{endpoint}",
+            params=dict(params or {}),
+        )
+
+    @classmethod
     @cached(maxsize=get_runtime_setting('CONF').theaudiodb, ttl=get_runtime_setting('CONF').meta, skip_none=True)
     def _request_json(
             cls,
@@ -673,8 +729,10 @@ class TheAudioDbModule(_ModuleBase):
             params: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
         """请求 TheAudioDB V1 JSON 接口并统一处理错误响应。"""
-        api_key = str(get_runtime_setting('THEAUDIODB_API_KEY') or "").strip()
-        if not api_key:
+        plan = cls._request_plan(
+            get_runtime_setting('THEAUDIODB_API_KEY'), endpoint, params
+        )
+        if not plan:
             logger.warning("TheAudioDB API Key 未配置，跳过请求")
             return None
         response = RequestUtils(
@@ -682,26 +740,13 @@ class TheAudioDbModule(_ModuleBase):
             proxies=get_runtime_setting('PROXY'),
             timeout=30,
         ).get_res(
-            url=f"{cls._base_url}/{api_key}/{endpoint}",
-            params=params or {},
+            url=plan.url,
+            params=plan.params,
         )
         if response is None:
             return None
         try:
-            if response.status_code != 200:
-                return None
-            diagnostic = cls._response_diagnostic(response, endpoint)
-            if getattr(response, "content", None) in (b"", ""):
-                logger.warning(f"TheAudioDB 返回空响应：{diagnostic}")
-                return None
-            try:
-                payload = response.json()
-            except (TypeError, ValueError) as err:
-                logger.warning(
-                    f"TheAudioDB 响应解析失败：{diagnostic}，错误：{str(err)}"
-                )
-                return None
-            return payload if isinstance(payload, dict) else None
+            return cls._response_payload(response, endpoint)
         finally:
             response.close()
 
@@ -718,8 +763,10 @@ class TheAudioDbModule(_ModuleBase):
             params: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
         """异步请求 TheAudioDB V1 JSON 接口并统一处理错误响应。"""
-        api_key = str(get_runtime_setting('THEAUDIODB_API_KEY') or "").strip()
-        if not api_key:
+        plan = cls._request_plan(
+            get_runtime_setting('THEAUDIODB_API_KEY'), endpoint, params
+        )
+        if not plan:
             logger.warning("TheAudioDB API Key 未配置，跳过请求")
             return None
         response = await AsyncRequestUtils(
@@ -727,26 +774,13 @@ class TheAudioDbModule(_ModuleBase):
             proxies=get_runtime_setting('PROXY'),
             timeout=30,
         ).get_res(
-            url=f"{cls._base_url}/{api_key}/{endpoint}",
-            params=params or {},
+            url=plan.url,
+            params=plan.params,
         )
         if response is None:
             return None
         try:
-            if response.status_code != 200:
-                return None
-            diagnostic = cls._response_diagnostic(response, endpoint)
-            if getattr(response, "content", None) in (b"", ""):
-                logger.warning(f"TheAudioDB 返回空响应：{diagnostic}")
-                return None
-            try:
-                payload = response.json()
-            except (TypeError, ValueError) as err:
-                logger.warning(
-                    f"TheAudioDB 响应解析失败：{diagnostic}，错误：{str(err)}"
-                )
-                return None
-            return payload if isinstance(payload, dict) else None
+            return cls._response_payload(response, endpoint)
         finally:
             await response.aclose()
 

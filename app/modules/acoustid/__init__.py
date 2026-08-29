@@ -5,17 +5,25 @@ import subprocess
 import threading
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 from uuid import UUID
 
-from app.runtime.execution import run_in_threadpool
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.log import logger
-from app.modules import _ModuleBase
-from app.schemas.types import ModuleType, OtherModulesType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.modules import _ModuleBase
+from app.runtime.execution import run_in_threadpool
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import ModuleType, OtherModulesType
+
+
+@dataclass(frozen=True, slots=True)
+class _AcoustIdLookupPlan:
+    """冻结 AcoustID 请求载荷，避免同步与异步入口产生参数漂移。"""
+
+    url: str
+    data: dict[str, Union[str, int]]
 
 
 class AcoustIdModule(_ModuleBase):
@@ -291,14 +299,51 @@ class AcoustIdModule(_ModuleBase):
         if delay := cls._reserve_request_delay():
             await asyncio.sleep(delay)
 
+    @classmethod
+    def _lookup_plan(
+            cls,
+            api_key: str,
+            duration: int,
+            fingerprint: str,
+    ) -> Optional[_AcoustIdLookupPlan]:
+        """校验 API Key 并构造同步与异步共用的指纹查询计划。"""
+        normalized_key = str(api_key or "").strip()
+        if not normalized_key:
+            return None
+        return _AcoustIdLookupPlan(
+            url=cls._base_url,
+            data={
+                "client": normalized_key,
+                "duration": duration,
+                "fingerprint": fingerprint,
+                "meta": "recordingids",
+                "format": "json",
+            },
+        )
+
+    @classmethod
+    def _project_lookup_response(
+            cls,
+            status_code: Optional[int],
+            payload: Any,
+    ) -> Optional[str]:
+        """按统一 HTTP 状态和 AcoustID 规则投影 Recording ID。"""
+        if status_code != 200:
+            return None
+        return cls._select_recording_id(payload)
+
     def _lookup_recording_id(
             self,
             duration: int,
             fingerprint: str,
     ) -> Optional[str]:
         """查询 AcoustID 指纹库并提取 MusicBrainz Recording ID。"""
-        api_key = str(get_runtime_setting('ACOUSTID_API_KEY') or "").strip()
-        if not api_key:
+        plan = self._lookup_plan(
+            get_runtime_setting('ACOUSTID_API_KEY'),
+            duration,
+            fingerprint,
+        )
+        if not plan:
             return None
         self._wait_for_rate_limit()
         response = RequestUtils(
@@ -306,14 +351,8 @@ class AcoustIdModule(_ModuleBase):
             proxies=get_runtime_setting('PROXY'),
             timeout=30,
         ).post_res(
-            url=self._base_url,
-            data={
-                "client": api_key,
-                "duration": duration,
-                "fingerprint": fingerprint,
-                "meta": "recordingids",
-                "format": "json",
-            },
+            url=plan.url,
+            data=plan.data,
         )
         if response is None:
             logger.warning("AcoustID 指纹查询失败：无响应")
@@ -322,8 +361,9 @@ class AcoustIdModule(_ModuleBase):
             if response.status_code != 200:
                 logger.warning(f"AcoustID 指纹查询失败：HTTP {response.status_code}")
                 return None
-            payload = response.json()
-            return self._select_recording_id(payload)
+            return self._project_lookup_response(
+                response.status_code, response.json()
+            )
         except (TypeError, ValueError) as err:
             logger.warning(f"AcoustID 响应解析失败：{err}")
             return None
@@ -336,8 +376,12 @@ class AcoustIdModule(_ModuleBase):
             fingerprint: str,
     ) -> Optional[str]:
         """异步查询 AcoustID 指纹库并提取 MusicBrainz Recording ID。"""
-        api_key = str(get_runtime_setting('ACOUSTID_API_KEY') or "").strip()
-        if not api_key:
+        plan = self._lookup_plan(
+            get_runtime_setting('ACOUSTID_API_KEY'),
+            duration,
+            fingerprint,
+        )
+        if not plan:
             return None
         await self._async_wait_for_rate_limit()
         response = await AsyncRequestUtils(
@@ -345,14 +389,8 @@ class AcoustIdModule(_ModuleBase):
             proxies=get_runtime_setting('PROXY'),
             timeout=30,
         ).post_res(
-            url=self._base_url,
-            data={
-                "client": api_key,
-                "duration": duration,
-                "fingerprint": fingerprint,
-                "meta": "recordingids",
-                "format": "json",
-            },
+            url=plan.url,
+            data=plan.data,
         )
         if response is None:
             logger.warning("AcoustID 指纹查询失败：无响应")
@@ -361,7 +399,9 @@ class AcoustIdModule(_ModuleBase):
             if response.status_code != 200:
                 logger.warning(f"AcoustID 指纹查询失败：HTTP {response.status_code}")
                 return None
-            return self._select_recording_id(response.json())
+            return self._project_lookup_response(
+                response.status_code, response.json()
+            )
         except (TypeError, ValueError) as err:
             logger.warning(f"AcoustID 响应解析失败：{err}")
             return None

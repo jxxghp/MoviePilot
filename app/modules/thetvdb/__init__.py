@@ -1,15 +1,15 @@
+from dataclasses import dataclass
 from threading import Lock
-from typing import Optional, Tuple, Union, cast
+from typing import Optional, Tuple, Union
 
 from app.domain.context import MediaInfo
 from app.domain.media import is_media_source_enabled
 from app.domain.meta.metabase import MetaBase
-from app.runtime.execution import run_in_threadpool
-from app.runtime.settings import get_runtime_setting
-
 from app.modules import _ModuleBase
 from app.modules.thetvdb import client
+from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import (
     MediaRecognizeType,
     MediaSource,
@@ -17,6 +17,14 @@ from app.schemas.types import (
     MediaType,
     ModuleType,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _TvdbAuxiliaryLookup:
+    """描述附加信息查询需要执行的单次 TVDB I/O。"""
+
+    method_name: str
+    argument: Union[int, str]
 
 
 class TheTvDbModule(_ModuleBase):
@@ -230,21 +238,68 @@ class TheTvDbModule(_ModuleBase):
             metainfo: Optional[MetaBase] = None,
     ) -> list[MediaInfo]:
         """从 TVDB 补充电视剧别名，不向主媒体写入 TVDB 专用字段。"""
+        lookup = self._build_auxiliary_lookup(
+            mediainfo=mediainfo,
+            media_source=media_source,
+            metainfo=metainfo,
+        )
+        if not lookup:
+            return []
+        candidates = self._load_auxiliary_candidates(lookup)
+        return self._resolve_auxiliary_candidates(mediainfo, candidates)
+
+    @staticmethod
+    def _build_auxiliary_lookup(
+            mediainfo: MediaInfo,
+            media_source: Optional[MediaSourceSelection],
+            metainfo: Optional[MetaBase],
+    ) -> Optional[_TvdbAuxiliaryLookup]:
+        """校验 TVDB 附加信息请求并选择原生 ID 或标题查询。"""
         if (
                 not mediainfo
                 or mediainfo.type != MediaType.TV
                 or not is_media_source_enabled(media_source, MediaSource.TVDB)
         ):
-            return []
+            return None
         del metainfo
         if (
                 mediainfo.media_source == MediaSource.TVDB
                 and str(mediainfo.media_id or "").isdigit()
         ):
-            info = self.tvdb_info(int(mediainfo.media_id))
-            candidates = [info] if info else []
-        else:
-            candidates = self.search_tvdb(mediainfo.title)
+            return _TvdbAuxiliaryLookup(
+                method_name="tvdb_info",
+                argument=int(mediainfo.media_id),
+            )
+        return _TvdbAuxiliaryLookup(
+            method_name="search_tvdb",
+            argument=mediainfo.title,
+        )
+
+    def _load_auxiliary_candidates(
+            self, lookup: _TvdbAuxiliaryLookup
+    ) -> list[dict[str, object]]:
+        """通过同步 TVDB I/O 获取候选详情。"""
+        result = getattr(self, lookup.method_name)(lookup.argument)
+        if lookup.method_name == "tvdb_info":
+            return [result] if result else []
+        return result or []
+
+    async def _async_load_auxiliary_candidates(
+            self, lookup: _TvdbAuxiliaryLookup
+    ) -> list[dict[str, object]]:
+        """仅在线程池中执行 TVDB 客户端的阻塞网络调用。"""
+        result = await run_in_threadpool(
+            getattr(self, lookup.method_name),
+            lookup.argument,
+        )
+        if lookup.method_name == "tvdb_info":
+            return [result] if result else []
+        return result or []
+
+    def _resolve_auxiliary_candidates(
+            self, mediainfo: MediaInfo, candidates: list[dict[str, object]]
+    ) -> list[MediaInfo]:
+        """按年份、名称和来源 ID 统一解析 TVDB 候选。"""
         target_names = {
             " ".join(str(name).casefold().split())
             for name in [mediainfo.title, *(mediainfo.names or [])]
@@ -282,16 +337,16 @@ class TheTvDbModule(_ModuleBase):
             media_source: Optional[MediaSourceSelection] = None,
             metainfo: Optional[MetaBase] = None,
     ) -> list[MediaInfo]:
-        """在线程池中执行 TVDB 同步附加信息查询。"""
-        return cast(
-            list[MediaInfo],
-            await run_in_threadpool(
-                self.get_media_auxiliary_info,
-                mediainfo=mediainfo,
-                media_source=media_source,
-                metainfo=metainfo,
-            ),
+        """异步获取 TVDB 候选，并复用同步入口的纯解析决策。"""
+        lookup = self._build_auxiliary_lookup(
+            mediainfo=mediainfo,
+            media_source=media_source,
+            metainfo=metainfo,
         )
+        if not lookup:
+            return []
+        candidates = await self._async_load_auxiliary_candidates(lookup)
+        return self._resolve_auxiliary_candidates(mediainfo, candidates)
 
     def clear_cache(self):
         """
