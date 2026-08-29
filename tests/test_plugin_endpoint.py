@@ -286,6 +286,41 @@ def test_plugin_history_merges_remote_metadata():
     )
 
 
+def test_plugin_history_falls_back_to_backward_compatible_package():
+    """已绑定来源的插件在当前索引缺失时仍读取向后兼容代际的历史。"""
+    installed_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_name="Demo Plugin",
+        plugin_version="1.0.0",
+        installed=True,
+        history={},
+    )
+    market_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        repo_url=SOURCE_URL,
+        history={"v2.0.0": "兼容代际更新说明"},
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = [installed_plugin]
+    plugin_manager.get_local_repo_plugins.return_value = []
+    plugin_manager.async_get_plugins_from_market = AsyncMock(
+        side_effect=[[], [market_plugin]]
+    )
+    persistence = _persistence(_plugin_identity())
+
+    with (
+        patch("app.api.endpoints.plugin.get_plugin_manager", return_value=plugin_manager),
+        patch("app.api.endpoints.plugin.get_plugin_persistence", return_value=persistence),
+    ):
+        result = asyncio.run(plugin_history("DemoPlugin", None, True))
+
+    assert result.history == {"v2.0.0": "兼容代际更新说明"}
+    assert plugin_manager.async_get_plugins_from_market.await_args_list == [
+        ((SOURCE_URL, settings.VERSION_FLAG, True), {}),
+        ((SOURCE_URL, "v2", True), {}),
+    ]
+
+
 def test_runtime_status_reports_pending_and_terminal_counts():
     """插件页摘要区分后台收敛、准备态和终态失败。"""
     plugin_manager = MagicMock()
@@ -506,7 +541,7 @@ def test_plugin_releases_does_not_mutate_cached_release_items(monkeypatch):
 
 def test_plugin_releases_falls_back_to_compatible_base_package(monkeypatch):
     """
-    当前版本 package 未包含插件时，再读取基础 package 兼容项，不扫描其他市场。
+    当前版本和向后兼容 package 未包含插件时，再读取基础 package 兼容项。
     """
     market_plugin = schemas.Plugin(
         id="DemoPlugin",
@@ -516,7 +551,7 @@ def test_plugin_releases_falls_back_to_compatible_base_package(monkeypatch):
     )
     plugin_manager = MagicMock()
     plugin_manager.async_get_plugins_from_market = AsyncMock(
-        side_effect=[[], [market_plugin]]
+        side_effect=[[], [], [market_plugin]]
     )
     plugin_manager.get_local_plugin_version.return_value = None
     plugin_helper = MagicMock()
@@ -534,6 +569,7 @@ def test_plugin_releases_falls_back_to_compatible_base_package(monkeypatch):
     assert result["latest_version"] == "1.2.3"
     assert plugin_manager.async_get_plugins_from_market.await_args_list == [
         (("https://github.com/demo/plugins", settings.VERSION_FLAG, False), {}),
+        (("https://github.com/demo/plugins", "v2", False), {}),
         (("https://github.com/demo/plugins", None, False), {}),
     ]
 

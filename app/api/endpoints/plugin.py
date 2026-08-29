@@ -9,7 +9,7 @@ from fastapi import Depends, Header, HTTPException, Security
 from starlette import status
 from starlette.responses import StreamingResponse
 
-from app.adapters.external.market import PluginHelper
+from app.adapters.external.market import VERSION_BACKWARD_COMPATIBLE_FLAGS, PluginHelper
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.web.security.access import (
     resource_token_cookie,
@@ -101,33 +101,32 @@ async def _get_market_plugin_from_repo(
     force: bool,
 ) -> Optional[_SchemaPlugin]:
     """
-    只读取指定插件仓库的市场元数据，避免单插件详情触发全部市场刷新。
-    """
-    market_plugins = await plugin_manager.async_get_plugins_from_market(
-        repo_url, get_api_runtime_config_snapshot().version_flag, force
-    )
-    market_plugin = next(
-        (
-            plugin
-            for plugin in market_plugins or []
-            if plugin.id == plugin_id
-        ),
-        None,
-    )
-    if market_plugin or not get_api_runtime_config_snapshot().version_flag:
-        return market_plugin
+    按当前代际、向后兼容代际和基础索引顺序读取指定仓库的市场元数据。
 
-    compatible_plugins = await plugin_manager.async_get_plugins_from_market(
-        repo_url, None, force
-    )
-    return next(
-        (
-            plugin
-            for plugin in compatible_plugins or []
-            if plugin.id == plugin_id
-        ),
-        None,
-    )
+    单插件详情只访问可信绑定仓库，避免触发全部市场刷新；代际顺序必须与
+    全量插件目录保持一致，否则仅存在于 package.v2.json 的插件会丢失历史说明。
+    """
+    version_flag = get_api_runtime_config_snapshot().version_flag
+    package_versions = [version_flag] if version_flag else []
+    package_versions.extend(VERSION_BACKWARD_COMPATIBLE_FLAGS.get(version_flag, []))
+    package_versions.append(None)
+
+    for package_version in dict.fromkeys(package_versions):
+        market_plugins = await plugin_manager.async_get_plugins_from_market(
+            repo_url, package_version, force
+        )
+        market_plugin = next(
+            (
+                plugin
+                for plugin in market_plugins or []
+                if plugin.id == plugin_id
+            ),
+            None,
+        )
+        if market_plugin:
+            return market_plugin
+
+    return None
 
 
 async def _refresh_plugin_release_versions(plugin_id: str, repo_url: str) -> None:
