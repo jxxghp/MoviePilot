@@ -1,19 +1,25 @@
 """认证、用户与 PassKey 服务的启动组合。"""
 
-from app.adapters.web.security.access import set_superuser_token_payload_provider
+from app.adapters.web.security.access import (
+    reset_superuser_token_payload_provider,
+    set_superuser_token_payload_provider,
+)
 from app.application.configuration import get_configured_system_config
 from app.application.security.auth import (
     AuthService,
     build_superuser_token_payload,
     configure_auth_service,
+    reset_auth_service,
 )
 from app.application.security.passkey import (
     PASSKEY_CHALLENGE_TTL_SECONDS,
     PasskeyService,
     configure_passkey_challenge_cache,
     configure_passkey_service,
+    reset_passkey_challenge_cache,
+    reset_passkey_service,
 )
-from app.application.security.user import configure_user_lookups
+from app.application.security.user import configure_user_lookups, reset_user_lookups
 from app.db.adapters.user import SqlAlchemyUserRepository
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -57,3 +63,16 @@ def configure_security_services() -> AuthenticationRuntime:
 def configure_security_access() -> None:
     """登记 Web 认证边界所需的超级用户令牌载荷提供器。"""
     set_superuser_token_payload_provider(build_superuser_token_payload)
+
+
+def reset_security_services() -> None:
+    """按发布逆序撤销认证、用户查询和 PassKey 服务。"""
+    reset_passkey_service()
+    reset_passkey_challenge_cache()
+    reset_auth_service()
+    reset_user_lookups()
+
+
+def reset_security_access() -> None:
+    """撤销 Web 认证边界的超级用户令牌载荷提供器及其缓存。"""
+    reset_superuser_token_payload_provider()

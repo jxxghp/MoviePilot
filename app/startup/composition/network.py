@@ -11,16 +11,19 @@ from app.application.image import (
     ImageTransport,
     InternalAddressPort,
     configure_image_ports,
+    reset_image_ports,
 )
 from app.application.messaging.ingress import (
     MessageIngressPort,
     configure_message_ingress_port,
+    reset_message_ingress_port,
 )
 from app.application.network import (
     NetworkTestResponse,
     NetworkTestService,
     NetworkTestTransport,
     configure_network_test_service,
+    reset_network_test_service,
 )
 from app.runtime.log import logger
 
@@ -155,3 +158,10 @@ def configure_application_network_ports() -> None:
         internal_address=internal_address,
     )
     configure_message_ingress_port(message_ingress)
+
+
+def reset_application_network_ports() -> None:
+    """按发布逆序撤销消息回环、图片与网络探测应用端口。"""
+    reset_message_ingress_port()
+    reset_image_ports()
+    reset_network_test_service()

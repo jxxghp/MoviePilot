@@ -3,6 +3,7 @@
 from app.adapters.external.server import (
     MoviePilotServerHelper,
     configure_server_application_services,
+    reset_server_application_services,
 )
 from app.application.configuration import get_configured_system_config
 from app.application.server.report import ServerReportService
@@ -48,3 +49,8 @@ def configure_server_services(
             workflow_cache_clearer=MoviePilotServerHelper._clear_workflow_share_cache,
         ),
     )
+
+
+def reset_server_services() -> None:
+    """撤销当前 lifespan 发布的中心服务上报与分享用例。"""
+    reset_server_application_services()

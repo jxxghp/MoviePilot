@@ -11,6 +11,7 @@ from app.application.agent import AgentDataContext
 from app.application.agenttask import (
     AgentTaskExecutionService,
     configure_agent_task_execution,
+    reset_agent_task_execution,
 )
 from app.application.history import DownloadHistoryRepository, TransferHistoryRepository
 from app.application.messaging.chat import (
@@ -18,6 +19,8 @@ from app.application.messaging.chat import (
     AgentChatService,
     configure_agent_chat_persistence,
     configure_agent_chat_service,
+    reset_agent_chat_persistence,
+    reset_agent_chat_service,
 )
 from app.application.site.contract import SiteRepository
 from app.application.subscription.contract import (
@@ -49,6 +52,7 @@ from app.startup.composition.subscription import (
 )
 
 AgentDataContextRegistrar = Callable[[AgentDataContext], None]
+AgentDataContextResetter = Callable[[], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,3 +132,14 @@ def publish_agent_services(
     configure_agent_chat_persistence(composition.data.chat_persistence)
     configure_agent_task_execution(composition.execution)
     data_context_registrar(composition.data)
+
+
+def reset_agent_services(
+    *,
+    data_context_resetter: AgentDataContextResetter,
+) -> None:
+    """按发布逆序撤销当前 lifespan 的 Agent 数据、任务与会话服务。"""
+    data_context_resetter()
+    reset_agent_task_execution()
+    reset_agent_chat_persistence()
+    reset_agent_chat_service()

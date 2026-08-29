@@ -11,6 +11,7 @@ from app.application.outbox import (
     ClaimedOutboxMessage,
     OutboxDispatcher,
     durable_event_topic,
+    reset_outbox_dispatcher,
     validate_durable_event_handlers,
 )
 from app.command import CommandChain
@@ -154,3 +155,8 @@ def build_outbox_dispatcher() -> OutboxDispatcher:
             owner="outbox",
         ),
     )
+
+
+def reset_outbox_services() -> None:
+    """撤销当前 lifespan 发布的 Outbox dispatcher 工厂。"""
+    reset_outbox_dispatcher()

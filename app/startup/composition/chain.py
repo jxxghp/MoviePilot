@@ -8,7 +8,10 @@ from app.application.chain.context import (
     configure_chain_runtime_context_provider,
 )
 from app.application.configuration import ChainRuntimeConfig
-from app.application.image import configure_wallpaper_providers
+from app.application.image import (
+    configure_wallpaper_providers,
+    reset_wallpaper_providers,
+)
 from app.application.messaging.message import MessageHelper, MessageQueueManager
 from app.application.transfer.execution import TransferExecutionRepository
 from app.chain.mediaserver import MediaServerChain
@@ -139,3 +142,9 @@ def configure_chain_runtime_context(
             configuration=configuration,
         )
     )
+
+
+def reset_chain_services() -> None:
+    """按发布逆序撤销 Chain 无参上下文和壁纸来源。"""
+    configure_chain_runtime_context_provider(None)
+    reset_wallpaper_providers()
