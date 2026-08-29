@@ -669,14 +669,15 @@ class PluginMarketTransport:
         plugin_info: object,
     ) -> tuple[Optional[PluginPayload], Optional[str], list[str]]:
         """校验影响安装决策的字段，并宽容丢弃异常展示字段。"""
-        if not is_physical_plugin_id(plugin_id):
+        if not isinstance(plugin_id, str) or not is_physical_plugin_id(plugin_id):
             return None, "插件 ID 非法", []
         if not isinstance(plugin_info, dict):
             return None, "条目不是对象", []
 
         declared_id = plugin_info.get("id")
         if "id" in plugin_info and (
-            not is_physical_plugin_id(declared_id)
+            not isinstance(declared_id, str)
+            or not is_physical_plugin_id(declared_id)
             or declared_id.lower() != plugin_id.lower()
         ):
             return None, "id 与索引键不一致", []
