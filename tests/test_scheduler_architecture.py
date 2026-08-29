@@ -63,6 +63,7 @@ def test_scheduler_facade_remains_thin_and_composes_named_owners() -> None:
         "configure_services",
         "get_reload_name",
         "on_plugin_reload",
+        "reset_runtime_bindings",
     }
 
 
