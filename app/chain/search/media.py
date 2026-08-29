@@ -3,7 +3,19 @@
 import asyncio
 import random
 import time
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, cast
+from dataclasses import dataclass
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    cast,
+)
 
 from app.chain.media import MediaChain
 from app.chain.search.contract import _SearchOwnerBase as _SearchOwnerBase
@@ -74,6 +86,98 @@ def _should_stop_keyword_search(
 ) -> bool:
     """统一判断首个有效关键字结果是否终止后续搜索。"""
     return not search_multiple_name and bool(torrents)
+
+
+@dataclass(frozen=True, slots=True)
+class _KeywordSearchRequest:
+    """描述共享关键字状态机交给真实 I/O 边界的一次请求。"""
+
+    keyword: str
+    search_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _KeywordSearchResult:
+    """冻结关键字状态机聚合结果及其提前停止决策。"""
+
+    torrents: List[TorrentInfo]
+    stopped_early: bool
+
+
+_KeywordSearchResolution = Generator[
+    _KeywordSearchRequest, List[TorrentInfo], _KeywordSearchResult
+]
+
+
+def _keyword_search_resolution(
+    keywords: List[str],
+    search_multiple_name: bool,
+) -> _KeywordSearchResolution:
+    """统一推进关键字顺序、结果聚合和首个有效结果短路。"""
+    torrents: List[TorrentInfo] = []
+    for search_count, keyword in enumerate(keywords):
+        torrents.extend(
+            (yield _KeywordSearchRequest(
+                keyword=keyword,
+                search_count=search_count,
+            ))
+        )
+        if _should_stop_keyword_search(search_multiple_name, torrents):
+            return _KeywordSearchResult(torrents=torrents, stopped_early=True)
+    return _KeywordSearchResult(torrents=torrents, stopped_early=False)
+
+
+def _run_keyword_search_sync(
+    resolution: _KeywordSearchResolution,
+    execute: Callable[[_KeywordSearchRequest], List[TorrentInfo]],
+) -> _KeywordSearchResult:
+    """通过同步 provider 驱动共享关键字状态机。"""
+    try:
+        request = next(resolution)
+    except StopIteration as outcome:
+        return cast(_KeywordSearchResult, outcome.value)
+    while True:
+        try:
+            request = resolution.send(execute(request))
+        except StopIteration as outcome:
+            return cast(_KeywordSearchResult, outcome.value)
+
+
+async def _run_keyword_search_async(
+    resolution: _KeywordSearchResolution,
+    execute: Callable[[_KeywordSearchRequest], Awaitable[List[TorrentInfo]]],
+) -> _KeywordSearchResult:
+    """通过异步 provider 驱动共享关键字状态机。"""
+    try:
+        request = next(resolution)
+    except StopIteration as outcome:
+        return cast(_KeywordSearchResult, outcome.value)
+    while True:
+        try:
+            request = resolution.send(await execute(request))
+        except StopIteration as outcome:
+            return cast(_KeywordSearchResult, outcome.value)
+
+
+def _build_result_params(
+    torrents: List[TorrentInfo],
+    mediainfo: MediaInfo,
+    keyword: Optional[str],
+    rule_groups: Optional[List[str]],
+    season_episodes: Optional[Dict[int, List[int]]],
+    custom_words: Optional[List[str]],
+    filter_params: Optional[Dict[str, str]],
+) -> Dict[str, Any]:
+    """构造同步、异步和流式结果解析共享的参数快照。"""
+    return {
+        "torrents": torrents,
+        "mediainfo": mediainfo,
+        "keyword": keyword,
+        "rule_groups": rule_groups,
+        "season_episodes": season_episodes,
+        "custom_words": custom_words,
+        "filter_params": filter_params,
+    }
 
 
 def _build_candidate_contexts(
@@ -291,46 +395,45 @@ class SearchMediaOwner(_SearchOwnerBase):
         # 准备搜索参数
         season_episodes, keywords = self._prepare_params(mediainfo=mediainfo, keyword=keyword, no_exists=no_exists)
 
-        # 站点搜索结果
-        torrents: List[TorrentInfo] = []
-        # 站点搜索次数
-        search_count = 0
-
-        # 多关键字执行搜索
-        for search_word in keywords:
-            # 强制休眠 1-10 秒
-            if search_count > 0:
-                logger.info(f"已搜索 {search_count} 次，强制休眠 1-10 秒 ...")
+        def execute_search(request: _KeywordSearchRequest) -> List[TorrentInfo]:
+            """执行共享状态机请求的同步站点搜索。"""
+            if request.search_count > 0:
+                logger.info(
+                    f"已搜索 {request.search_count} 次，强制休眠 1-10 秒 ..."
+                )
                 time.sleep(random.randint(1, 10))
-
-            # 搜索站点
-            results = (
-                self._SearchChain__search_all_sites(mediainfo=mediainfo, keyword=search_word, sites=sites, area=area)
+            return (
+                self._SearchChain__search_all_sites(
+                    mediainfo=mediainfo,
+                    keyword=request.keyword,
+                    sites=sites,
+                    area=area,
+                )
                 or []
             )
-            # 合并结果
 
-            search_count += 1
-            torrents.extend(results)
-
-            # 有结果则停止
-            if _should_stop_keyword_search(
-                self.runtime_config.search_multiple_name, torrents
-            ):
-                logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
-                break
+        outcome = _run_keyword_search_sync(
+            _keyword_search_resolution(
+                keywords, self.runtime_config.search_multiple_name
+            ),
+            execute_search,
+        )
+        if outcome.stopped_early:
+            logger.info(f"共搜索到 {len(outcome.torrents)} 个资源，停止搜索")
 
         # 处理结果
         return cast(
             List[Context],
             self._parse_result(
-                torrents=torrents,
-                mediainfo=mediainfo,
-                keyword=keyword,
-                rule_groups=rule_groups,
-                season_episodes=season_episodes,
-                custom_words=custom_words,
-                filter_params=filter_params,
+                **_build_result_params(
+                    torrents=outcome.torrents,
+                    mediainfo=mediainfo,
+                    keyword=keyword,
+                    rule_groups=rule_groups,
+                    season_episodes=season_episodes,
+                    custom_words=custom_words,
+                    filter_params=filter_params,
+                )
             ),
         )
 
@@ -392,44 +495,48 @@ class SearchMediaOwner(_SearchOwnerBase):
         # 准备搜索参数
         season_episodes, keywords = self._prepare_params(mediainfo=mediainfo, keyword=keyword, no_exists=no_exists)
 
-        # 站点搜索结果
-        torrents: List[TorrentInfo] = []
-        # 站点搜索次数
-        search_count = 0
-
-        # 多关键字执行搜索
-        for search_word in keywords:
-            # 强制休眠 1-10 秒
-            if search_count > 0:
-                logger.info(f"已搜索 {search_count} 次，强制休眠 1-10 秒 ...")
+        async def execute_search(
+            request: _KeywordSearchRequest,
+        ) -> List[TorrentInfo]:
+            """执行共享状态机请求的异步站点搜索。"""
+            if request.search_count > 0:
+                logger.info(
+                    f"已搜索 {request.search_count} 次，强制休眠 1-10 秒 ..."
+                )
                 await asyncio.sleep(random.randint(1, 10))
-            # 搜索站点
-            torrents.extend(
+            return (
                 await self._SearchChain__async_search_all_sites(
-                    mediainfo=mediainfo, keyword=search_word, sites=sites, area=area
+                    mediainfo=mediainfo,
+                    keyword=request.keyword,
+                    sites=sites,
+                    area=area,
                 )
                 or []
             )
-            search_count += 1
-            # 未开启多名称搜索时，有结果则停止
-            if _should_stop_keyword_search(
-                self.runtime_config.search_multiple_name, torrents
-            ):
-                logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
-                break
+
+        outcome = await _run_keyword_search_async(
+            _keyword_search_resolution(
+                keywords, self.runtime_config.search_multiple_name
+            ),
+            execute_search,
+        )
+        if outcome.stopped_early:
+            logger.info(f"共搜索到 {len(outcome.torrents)} 个资源，停止搜索")
 
         # 处理结果
         return cast(
             List[Context],
             await run_in_threadpool(
                 self._parse_result,
-                torrents=torrents,
-                mediainfo=mediainfo,
-                keyword=keyword,
-                rule_groups=rule_groups,
-                season_episodes=season_episodes,
-                custom_words=custom_words,
-                filter_params=filter_params,
+                **_build_result_params(
+                    torrents=outcome.torrents,
+                    mediainfo=mediainfo,
+                    keyword=keyword,
+                    rule_groups=rule_groups,
+                    season_episodes=season_episodes,
+                    custom_words=custom_words,
+                    filter_params=filter_params,
+                ),
             ),
         )
 
@@ -482,53 +589,69 @@ class SearchMediaOwner(_SearchOwnerBase):
         # 准备搜索参数
         season_episodes, keywords = self._prepare_params(mediainfo=mediainfo, keyword=keyword, no_exists=no_exists)
 
-        torrents: List[TorrentInfo] = []
         candidate_contexts: List[Context] = []
-        search_count = 0
-
-        for search_word in keywords:
-            if search_count > 0:
-                logger.info(f"已搜索 {search_count} 次，强制休眠 1-10 秒 ...")
-                await asyncio.sleep(random.randint(1, 10))
-
-            async for event in self._SearchChain__async_search_all_sites_stream(
-                mediainfo=mediainfo, keyword=search_word, sites=sites, area=area
-            ):
-                result = event.pop("items", []) or []
-                torrents.extend(result)
-                batch_contexts = _build_candidate_contexts(mediainfo, result)
-                candidate_contexts.extend(batch_contexts)
-                yield {
-                    **event,
-                    "type": "append",
-                    "stage": "searching",
-                    "items": [cast(Any, context).to_dict() for context in batch_contexts],
-                    "total_items": len(candidate_contexts),
-                }
-
-            search_count += 1
-            if _should_stop_keyword_search(
-                self.runtime_config.search_multiple_name, torrents
-            ):
-                logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
-                break
+        resolution = _keyword_search_resolution(
+            keywords, self.runtime_config.search_multiple_name
+        )
+        outcome = _KeywordSearchResult(torrents=[], stopped_early=False)
+        try:
+            request = next(resolution)
+        except StopIteration as completed:
+            outcome = cast(_KeywordSearchResult, completed.value)
+        else:
+            while True:
+                if request.search_count > 0:
+                    logger.info(
+                        f"已搜索 {request.search_count} 次，强制休眠 1-10 秒 ..."
+                    )
+                    await asyncio.sleep(random.randint(1, 10))
+                search_results: List[TorrentInfo] = []
+                async for event in self._SearchChain__async_search_all_sites_stream(
+                    mediainfo=mediainfo,
+                    keyword=request.keyword,
+                    sites=sites,
+                    area=area,
+                ):
+                    result = event.pop("items", []) or []
+                    search_results.extend(result)
+                    batch_contexts = _build_candidate_contexts(mediainfo, result)
+                    candidate_contexts.extend(batch_contexts)
+                    yield {
+                        **event,
+                        "type": "append",
+                        "stage": "searching",
+                        "items": [
+                            cast(Any, context).to_dict()
+                            for context in batch_contexts
+                        ],
+                        "total_items": len(candidate_contexts),
+                    }
+                try:
+                    request = resolution.send(search_results)
+                except StopIteration as completed:
+                    outcome = cast(_KeywordSearchResult, completed.value)
+                    break
+        if outcome.stopped_early:
+            logger.info(f"共搜索到 {len(outcome.torrents)} 个资源，停止搜索")
 
         yield {
             "type": "progress",
             "stage": "filtering",
             "value": 98,
-            "text": f"正在过滤匹配 {len(torrents)} 个候选资源 ...",
+            "text": f"正在过滤匹配 {len(outcome.torrents)} 个候选资源 ...",
         }
 
         contexts = await run_in_threadpool(
             self._parse_result,
-            torrents=torrents,
-            mediainfo=mediainfo,
-            keyword=keyword,
-            rule_groups=rule_groups,
-            season_episodes=season_episodes,
-            custom_words=custom_words,
-            filter_params=filter_params,
+            **_build_result_params(
+                torrents=outcome.torrents,
+                mediainfo=mediainfo,
+                keyword=keyword,
+                rule_groups=rule_groups,
+                season_episodes=season_episodes,
+                custom_words=custom_words,
+                filter_params=filter_params,
+            ),
         )
         final_items = [context.to_dict() for context in contexts]
         yield {

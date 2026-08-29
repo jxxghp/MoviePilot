@@ -1,5 +1,6 @@
 """标题搜索入口与标题候选过滤 owner。"""
 
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, cast
 
 from app.application.configuration import (
@@ -57,6 +58,46 @@ def _build_title_contexts(
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class _TitleSearchResult:
+    """封装标题搜索候选解析结果及需要记录的失败原因。"""
+
+    contexts: List[Context]
+    warning: Optional[str] = None
+
+
+def _resolve_title_search_result(
+    title: str,
+    torrents: List[TorrentInfo],
+    rule_groups: Optional[List[str]],
+    mtype: Optional[MediaType],
+    filter_torrents: Callable[..., List[TorrentInfo]],
+    build_meta: Callable[[TorrentInfo, Optional[MediaType]], Any],
+) -> _TitleSearchResult:
+    """统一标题候选为空、过滤和上下文投影的结果决策。"""
+    if not torrents:
+        return _TitleSearchResult(
+            contexts=[],
+            warning=f"{title} 未搜索到资源",
+        )
+    filtered_torrents = filter_torrents(
+        torrents=torrents,
+        rule_groups=rule_groups,
+    )
+    if not filtered_torrents:
+        return _TitleSearchResult(
+            contexts=[],
+            warning=f"{title} 没有符合过滤规则的资源",
+        )
+    return _TitleSearchResult(
+        contexts=_build_title_contexts(
+            filtered_torrents,
+            mtype,
+            build_meta,
+        )
+    )
+
+
 class SearchTitleOwner(_SearchOwnerBase):
     """标题搜索入口与标题候选过滤 owner。"""
 
@@ -92,25 +133,21 @@ class SearchTitleOwner(_SearchOwnerBase):
         else:
             logger.info(f"开始浏览资源，站点：{sites} ...")
         # 搜索
-        torrents = self._SearchChain__search_all_sites(**search_params) or []
-        if not torrents:
-            logger.warning(f"{title} 未搜索到资源")
-            return []
-        torrents = self._filter_title_search_torrents(
-            torrents=torrents,
+        result = _resolve_title_search_result(
+            title=title,
+            torrents=self._SearchChain__search_all_sites(**search_params) or [],
             rule_groups=rule_groups,
+            mtype=mtype,
+            filter_torrents=self._filter_title_search_torrents,
+            build_meta=self._build_title_search_meta,
         )
-        if not torrents:
-            logger.warning(f"{title} 没有符合过滤规则的资源")
+        if result.warning:
+            logger.warning(result.warning)
             return []
-        # 组装上下文
-        contexts = _build_title_contexts(
-            torrents, mtype, self._build_title_search_meta
-        )
         # 保存到本地文件
         if cache_local:
-            self._save_results(contexts)
-        return contexts
+            self._save_results(result.contexts)
+        return result.contexts
 
     async def async_search_by_title(
         self,
@@ -144,26 +181,38 @@ class SearchTitleOwner(_SearchOwnerBase):
         else:
             logger.info(f"开始浏览资源，站点：{sites} ...")
         # 搜索
-        torrents = await self._SearchChain__async_search_all_sites(**search_params) or []
-        if not torrents:
-            logger.warning(f"{title} 未搜索到资源")
-            return []
-        torrents = await run_in_threadpool(
-            self._filter_title_search_torrents,
-            torrents=torrents,
-            rule_groups=rule_groups,
+        torrents = (
+            await self._SearchChain__async_search_all_sites(**search_params) or []
         )
         if not torrents:
-            logger.warning(f"{title} 没有符合过滤规则的资源")
+            result = _resolve_title_search_result(
+                title=title,
+                torrents=torrents,
+                rule_groups=rule_groups,
+                mtype=mtype,
+                filter_torrents=self._filter_title_search_torrents,
+                build_meta=self._build_title_search_meta,
+            )
+        else:
+            result = cast(
+                _TitleSearchResult,
+                await run_in_threadpool(
+                    _resolve_title_search_result,
+                    title=title,
+                    torrents=torrents,
+                    rule_groups=rule_groups,
+                    mtype=mtype,
+                    filter_torrents=self._filter_title_search_torrents,
+                    build_meta=self._build_title_search_meta,
+                ),
+            )
+        if result.warning:
+            logger.warning(result.warning)
             return []
-        # 组装上下文
-        contexts = _build_title_contexts(
-            torrents, mtype, self._build_title_search_meta
-        )
         # 保存到本地文件
         if cache_local:
-            await self._async_save_results(contexts)
-        return contexts
+            await self._async_save_results(result.contexts)
+        return result.contexts
 
     async def async_search_by_title_stream(
         self,

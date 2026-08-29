@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from app.chain.search import media as media_module
+from app.chain.search import title as title_module
 from app.chain.search.facade import SearchChain
 from app.domain.context import MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
@@ -177,6 +178,177 @@ def test_media_process_sync_async_share_keyword_stop_decision(monkeypatch):
     assert sync_result == async_result == [found]
 
 
+def test_keyword_resolution_searches_all_names_when_enabled():
+    """开启多名称搜索时共享状态机应完整执行并稳定聚合各关键字结果。"""
+    first = _torrent("First Result")
+    third = _torrent("Third Result")
+    expected = {
+        "first": [first],
+        "second": [],
+        "third": [third],
+    }
+    sync_keywords: list[str] = []
+    async_keywords: list[str] = []
+
+    def execute_sync(request):
+        """记录同步驱动顺序并返回关键字结果。"""
+        sync_keywords.append(request.keyword)
+        return expected[request.keyword]
+
+    async def execute_async(request):
+        """记录异步驱动顺序并返回关键字结果。"""
+        async_keywords.append(request.keyword)
+        return expected[request.keyword]
+
+    keywords = ["first", "second", "third"]
+    sync_result = media_module._run_keyword_search_sync(
+        media_module._keyword_search_resolution(keywords, search_multiple_name=True),
+        execute_sync,
+    )
+    async_result = asyncio.run(
+        media_module._run_keyword_search_async(
+            media_module._keyword_search_resolution(
+                keywords, search_multiple_name=True
+            ),
+            execute_async,
+        )
+    )
+
+    assert sync_keywords == async_keywords == keywords
+    assert sync_result == async_result
+    assert sync_result.torrents == [first, third]
+    assert sync_result.stopped_early is False
+
+
+def test_media_process_stream_shares_keyword_order_and_stop_decision(monkeypatch):
+    """流入口应复用双入口的关键字顺序、退避次数和首结果短路决策。"""
+    chain = _chain()
+    target = _media()
+    found = _torrent("测试电影 2026 1080p")
+    stream_keywords: list[str] = []
+    sleeps: list[int] = []
+    parsed: list[list[TorrentInfo]] = []
+
+    class FakeMediaChain:
+        """为流处理提供无需外部服务的附加信息结果。"""
+
+        async def async_supplement_media_info(self, mediainfo):
+            """返回异步附加信息。"""
+            return mediainfo
+
+    async def search_stream(**kwargs):
+        """第二个关键字输出资源，供共享状态机执行短路。"""
+        keyword = kwargs["keyword"]
+        stream_keywords.append(keyword)
+        yield {
+            "site_id": len(stream_keywords),
+            "items": [found] if keyword == "second" else [],
+        }
+
+    async def fake_async_sleep(delay):
+        """记录流关键字退避但不实际等待。"""
+        sleeps.append(delay)
+
+    def parse_result(**kwargs):
+        """记录流最终过滤前的资源顺序并返回空上下文。"""
+        parsed.append(list(kwargs["torrents"]))
+        return []
+
+    async def collect_events():
+        """完整消费媒体搜索流。"""
+        return [
+            event
+            async for event in chain.async_process_stream(mediainfo=target)
+        ]
+
+    monkeypatch.setattr(media_module, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(media_module.random, "randint", lambda _start, _end: 1)
+    monkeypatch.setattr(media_module.asyncio, "sleep", fake_async_sleep)
+    chain.runtime_config = SimpleNamespace(search_multiple_name=False)
+    chain._copy_media_input = deepcopy
+    chain._prepare_params = lambda **_kwargs: (None, ["first", "second", "third"])
+    chain._SearchChain__async_search_all_sites_stream = search_stream
+    chain._parse_result = parse_result
+
+    events = asyncio.run(collect_events())
+
+    assert stream_keywords == ["first", "second"]
+    assert sleeps == [1]
+    assert parsed == [[found]]
+    assert [event["type"] for event in events] == [
+        "append",
+        "append",
+        "progress",
+        "replace",
+        "done",
+    ]
+    assert events[-1]["candidate_items"] == 1
+
+
+def test_media_process_empty_keyword_plan_skips_all_provider_io(monkeypatch):
+    """空关键字计划应由共享状态机直接完成，且三入口均不触发 provider。"""
+    chain = _chain()
+    target = _media()
+    parsed: list[list[TorrentInfo]] = []
+
+    class FakeMediaChain:
+        """为三入口提供稳定的媒体附加信息。"""
+
+        def supplement_media_info(self, mediainfo):
+            """返回同步附加信息。"""
+            return mediainfo
+
+        async def async_supplement_media_info(self, mediainfo):
+            """返回异步附加信息。"""
+            return mediainfo
+
+    def unexpected_provider(**_kwargs):
+        """标记空计划错误触发了同步 provider。"""
+        raise AssertionError("空关键字计划不应触发同步 provider")
+
+    async def unexpected_async_provider(**_kwargs):
+        """标记空计划错误触发了异步 provider。"""
+        raise AssertionError("空关键字计划不应触发异步 provider")
+
+    async def unexpected_stream_provider(**_kwargs):
+        """标记空计划错误触发了流式 provider。"""
+        yield {"items": []}
+        raise AssertionError("空关键字计划不应触发流式 provider")
+
+    def parse_result(**kwargs):
+        """记录三入口交付给结果解析边界的空资源。"""
+        parsed.append(list(kwargs["torrents"]))
+        return []
+
+    async def collect_events():
+        """完整消费空关键字媒体搜索流。"""
+        return [
+            event
+            async for event in chain.async_process_stream(mediainfo=target)
+        ]
+
+    monkeypatch.setattr(media_module, "MediaChain", FakeMediaChain)
+    chain.runtime_config = SimpleNamespace(search_multiple_name=False)
+    chain._copy_media_input = deepcopy
+    chain._prepare_params = lambda **_kwargs: (None, [])
+    chain._SearchChain__search_all_sites = unexpected_provider
+    chain._SearchChain__async_search_all_sites = unexpected_async_provider
+    chain._SearchChain__async_search_all_sites_stream = unexpected_stream_provider
+    chain._parse_result = parse_result
+
+    assert chain.process(target) == []
+    assert asyncio.run(chain.async_process(target)) == []
+    events = asyncio.run(collect_events())
+
+    assert parsed == [[], [], []]
+    assert [event["type"] for event in events] == [
+        "progress",
+        "replace",
+        "done",
+    ]
+    assert events[-1]["candidate_items"] == 0
+
+
 def test_id_search_stream_failure_preserves_order_and_skips_result_cache(
     monkeypatch,
 ):
@@ -281,6 +453,73 @@ def test_title_search_sync_async_share_plan_filter_and_projection():
     assert [context.meta_info.title for context in sync_result] == [
         context.meta_info.title for context in async_result
     ] == [f"mapped:{keep.title}"]
+
+
+def test_title_search_sync_async_share_empty_result_decisions(monkeypatch):
+    """标题双入口应共享无候选与过滤为空的警告，并跳过结果缓存。"""
+    chain = _chain()
+    candidate = _torrent("Movie 2026 1080p")
+    provider_result: list[TorrentInfo] = []
+    warnings: list[str] = []
+    filter_calls: list[list[TorrentInfo]] = []
+    saved_results: list[list[Any]] = []
+
+    def search_all_sites(**_kwargs):
+        """返回当前场景的同步候选快照。"""
+        return list(provider_result)
+
+    async def async_search_all_sites(**_kwargs):
+        """返回当前场景的异步候选快照。"""
+        return list(provider_result)
+
+    def filter_torrents(torrents, rule_groups=None):
+        """记录过滤输入并模拟候选全部被规则排除。"""
+        assert rule_groups == ["quality"]
+        filter_calls.append(list(torrents))
+        return []
+
+    async def save_params(**_kwargs):
+        """模拟异步请求参数缓存。"""
+
+    async def save_results(contexts):
+        """记录不应发生的异步结果缓存。"""
+        saved_results.append(list(contexts))
+
+    monkeypatch.setattr(title_module.logger, "warning", warnings.append)
+    chain._SearchChain__search_all_sites = search_all_sites
+    chain._SearchChain__async_search_all_sites = async_search_all_sites
+    chain._filter_title_search_torrents = filter_torrents
+    chain._build_title_search_meta = lambda torrent, _mtype: MetaInfo(
+        title=torrent.title
+    )
+    chain.cancel_ai_recommend = lambda: None
+    chain.save_last_search_params = lambda **_kwargs: None
+    chain.async_save_last_search_params = save_params
+    chain._save_results = lambda contexts: saved_results.append(list(contexts))
+    chain._async_save_results = save_results
+
+    for torrents, warning in (
+        ([], "Movie 未搜索到资源"),
+        ([candidate], "Movie 没有符合过滤规则的资源"),
+    ):
+        provider_result[:] = torrents
+        warning_count = len(warnings)
+        assert chain.search_by_title(
+            title="Movie",
+            cache_local=True,
+            rule_groups=["quality"],
+        ) == []
+        assert asyncio.run(
+            chain.async_search_by_title(
+                title="Movie",
+                cache_local=True,
+                rule_groups=["quality"],
+            )
+        ) == []
+        assert warnings[warning_count:] == [warning, warning]
+
+    assert filter_calls == [[candidate], [candidate]]
+    assert saved_results == []
 
 
 def test_title_stream_preserves_provider_and_result_order():
