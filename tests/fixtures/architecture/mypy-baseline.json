@@ -2120,7 +2120,7 @@
     "type-arg": 18
   },
   "app/modules/indexer/__init__.py": {
-    "arg-type": 34,
+    "arg-type": 22,
     "assignment": 8,
     "attr-defined": 1,
     "empty-body": 1,

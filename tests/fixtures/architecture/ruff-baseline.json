@@ -412,9 +412,6 @@
   "app/modules/filter/__init__.py": {
     "I001": 1
   },
-  "app/modules/indexer/__init__.py": {
-    "I001": 1
-  },
   "app/modules/indexer/parser/bitpt.py": {
     "I001": 1
   },
