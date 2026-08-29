@@ -1,6 +1,6 @@
 """标题搜索入口与标题候选过滤 owner。"""
 
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, cast
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, cast
 
 from app.application.configuration import (
     get_configured_system_config,
@@ -15,6 +15,46 @@ from app.schemas.types import (
     MediaType,
     SystemConfigKey,
 )
+
+
+def _build_title_search_params(
+    title: str,
+    page: Optional[int],
+    sites: Optional[List[int]],
+    mtype: Optional[MediaType],
+    include_empty_type: bool = False,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """构造标题搜索共享的 provider 与缓存参数。"""
+    provider_params: Dict[str, Any] = {
+        "keyword": title,
+        "sites": sites,
+        "page": page,
+    }
+    if mtype is not None or include_empty_type:
+        provider_params["mtype"] = mtype
+    cache_params = {
+        "keyword": title,
+        "mtype": mtype,
+        "area": "title",
+        "sites": sites,
+    }
+    return provider_params, cache_params
+
+
+def _build_title_contexts(
+    torrents: List[TorrentInfo],
+    mtype: Optional[MediaType],
+    build_meta: Callable[[TorrentInfo, Optional[MediaType]], Any],
+) -> List[Context]:
+    """将过滤后的标题候选统一投影为搜索上下文。"""
+    return [
+        Context(
+            meta_info=build_meta(torrent, mtype),
+            torrent_info=torrent,
+            resource_source="search",
+        )
+        for torrent in torrents
+    ]
 
 
 class SearchTitleOwner(_SearchOwnerBase):
@@ -38,27 +78,21 @@ class SearchTitleOwner(_SearchOwnerBase):
         :param mtype: 限定站点资源分类
         :param rule_groups: 指定过滤规则组，为空时使用默认搜索过滤规则
         """
+        search_params, cache_params = _build_title_search_params(
+            title=title,
+            page=page,
+            sites=sites,
+            mtype=mtype,
+        )
         if cache_local:
             self.cancel_ai_recommend()
-            self.save_last_search_params(
-                keyword=title,
-                mtype=mtype,
-                area="title",
-                sites=sites,
-            )
+            self.save_last_search_params(**cache_params)
         if title:
             logger.info(f"开始搜索资源，关键词：{title} ...")
         else:
             logger.info(f"开始浏览资源，站点：{sites} ...")
         # 搜索
-        search_kwargs: Dict[str, Any] = {
-            "keyword": title,
-            "sites": sites,
-            "page": page,
-        }
-        if mtype is not None:
-            search_kwargs["mtype"] = mtype
-        torrents = self._SearchChain__search_all_sites(**search_kwargs) or []
+        torrents = self._SearchChain__search_all_sites(**search_params) or []
         if not torrents:
             logger.warning(f"{title} 未搜索到资源")
             return []
@@ -70,14 +104,9 @@ class SearchTitleOwner(_SearchOwnerBase):
             logger.warning(f"{title} 没有符合过滤规则的资源")
             return []
         # 组装上下文
-        contexts = [
-            Context(
-                meta_info=self._build_title_search_meta(torrent, mtype),
-                torrent_info=torrent,
-                resource_source="search",
-            )
-            for torrent in torrents
-        ]
+        contexts = _build_title_contexts(
+            torrents, mtype, self._build_title_search_meta
+        )
         # 保存到本地文件
         if cache_local:
             self._save_results(contexts)
@@ -101,27 +130,21 @@ class SearchTitleOwner(_SearchOwnerBase):
         :param mtype: 限定站点资源分类
         :param rule_groups: 指定过滤规则组，为空时使用默认搜索过滤规则
         """
+        search_params, cache_params = _build_title_search_params(
+            title=title,
+            page=page,
+            sites=sites,
+            mtype=mtype,
+        )
         if cache_local:
             self.cancel_ai_recommend()
-            await self.async_save_last_search_params(
-                keyword=title,
-                mtype=mtype,
-                area="title",
-                sites=sites,
-            )
+            await self.async_save_last_search_params(**cache_params)
         if title:
             logger.info(f"开始搜索资源，关键词：{title} ...")
         else:
             logger.info(f"开始浏览资源，站点：{sites} ...")
         # 搜索
-        search_kwargs: Dict[str, Any] = {
-            "keyword": title,
-            "sites": sites,
-            "page": page,
-        }
-        if mtype is not None:
-            search_kwargs["mtype"] = mtype
-        torrents = await self._SearchChain__async_search_all_sites(**search_kwargs) or []
+        torrents = await self._SearchChain__async_search_all_sites(**search_params) or []
         if not torrents:
             logger.warning(f"{title} 未搜索到资源")
             return []
@@ -134,14 +157,9 @@ class SearchTitleOwner(_SearchOwnerBase):
             logger.warning(f"{title} 没有符合过滤规则的资源")
             return []
         # 组装上下文
-        contexts = [
-            Context(
-                meta_info=self._build_title_search_meta(torrent, mtype),
-                torrent_info=torrent,
-                resource_source="search",
-            )
-            for torrent in torrents
-        ]
+        contexts = _build_title_contexts(
+            torrents, mtype, self._build_title_search_meta
+        )
         # 保存到本地文件
         if cache_local:
             await self._async_save_results(contexts)
@@ -159,14 +177,16 @@ class SearchTitleOwner(_SearchOwnerBase):
         """
         根据标题渐进式搜索资源，不识别媒体信息，按默认搜索过滤规则返回结果
         """
+        search_params, cache_params = _build_title_search_params(
+            title=title,
+            page=page,
+            sites=sites,
+            mtype=mtype,
+            include_empty_type=True,
+        )
         if cache_local:
             self.cancel_ai_recommend()
-            await self.async_save_last_search_params(
-                keyword=title,
-                mtype=mtype,
-                area="title",
-                sites=sites,
-            )
+            await self.async_save_last_search_params(**cache_params)
         if title:
             logger.info(f"开始渐进式搜索资源，关键词：{title} ...")
         else:
@@ -178,7 +198,7 @@ class SearchTitleOwner(_SearchOwnerBase):
         if rule_groups is None:
             rule_groups = get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or []
         async for event in self._SearchChain__async_search_all_sites_stream(
-            keyword=title, sites=sites, page=page, mtype=mtype
+            **search_params
         ):
             result = event.pop("items", []) or []
             candidate_count += len(result)
@@ -187,14 +207,9 @@ class SearchTitleOwner(_SearchOwnerBase):
                 torrents=result,
                 rule_groups=rule_groups,
             )
-            batch_contexts = [
-                Context(
-                    meta_info=self._build_title_search_meta(torrent, mtype),
-                    torrent_info=torrent,
-                    resource_source="search",
-                )
-                for torrent in result
-            ]
+            batch_contexts = _build_title_contexts(
+                result, mtype, self._build_title_search_meta
+            )
             if batch_contexts:
                 contexts.extend(batch_contexts)
             yield {

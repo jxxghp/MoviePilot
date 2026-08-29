@@ -3,7 +3,7 @@
 import asyncio
 import random
 import time
-from typing import Any, AsyncIterator, Dict, List, Optional, cast
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, cast
 
 from app.chain.media import MediaChain
 from app.chain.search.contract import _SearchOwnerBase as _SearchOwnerBase
@@ -17,6 +17,80 @@ from app.schemas.types import (
     MediaSource,
     MediaType,
 )
+
+
+def _build_id_search_params(
+    media_source: MediaSource,
+    media_id: str,
+    mtype: Optional[MediaType],
+    area: Optional[str],
+    season: Optional[int],
+    sites: Optional[List[int]],
+    music_type: Optional[str],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """构造同步、异步和流式 ID 搜索共享的识别与缓存参数。"""
+    recognition_params = {
+        "media_source": media_source,
+        "media_id": media_id,
+        "mtype": mtype,
+        "music_type": music_type,
+    }
+    cache_params = {
+        **recognition_params,
+        "area": area,
+        "season": season,
+        "sites": sites,
+    }
+    return recognition_params, cache_params
+
+
+def _build_missing_media_map(
+    mediainfo: MediaInfo,
+    season: Optional[int],
+) -> Optional[Dict[str, Dict[int, NotExistMediaInfo]]]:
+    """将指定季转换为统一的缺集搜索映射。"""
+    if season is None:
+        return None
+    resolved_source, resolved_id = resolve_media_identity(media=mediainfo)
+    return {
+        build_media_key(resolved_source, resolved_id): {
+            season: NotExistMediaInfo(episodes=[])
+        }
+    }
+
+
+def _normalize_media_search_input(mediainfo: MediaInfo) -> MediaInfo:
+    """归一化非 TMDB 输入标题，并保留调用方对象由外层复制的所有权约束。"""
+    if not mediainfo.tmdb_id:
+        meta = MetaInfo(title=mediainfo.title)
+        mediainfo.title = meta.name
+        mediainfo.season = cast(int, meta.begin_season)
+    return mediainfo
+
+
+def _should_stop_keyword_search(
+    search_multiple_name: bool,
+    torrents: List[TorrentInfo],
+) -> bool:
+    """统一判断首个有效关键字结果是否终止后续搜索。"""
+    return not search_multiple_name and bool(torrents)
+
+
+def _build_candidate_contexts(
+    mediainfo: MediaInfo,
+    torrents: List[TorrentInfo],
+) -> List[Context]:
+    """将流式站点候选映射为尚未精确过滤的搜索上下文。"""
+    return [
+        Context(
+            meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
+            media_info=mediainfo,
+            torrent_info=torrent,
+            resource_source="search",
+            media_info_is_target=True,
+        )
+        for torrent in torrents
+    ]
 
 
 class SearchMediaOwner(_SearchOwnerBase):
@@ -44,31 +118,24 @@ class SearchMediaOwner(_SearchOwnerBase):
         :param sites: 站点ID列表
         :param cache_local: 是否缓存到本地
         """
-        if cache_local:
-            self.cancel_ai_recommend()
-            self.save_last_search_params(
-                media_source=media_source,
-                media_id=media_id,
-                mtype=mtype,
-                area=area,
-                season=season,
-                sites=sites,
-                music_type=music_type,
-            )
-        # 音乐统一在 MediaChain.recognize_media 内按固定来源路由
-        mediainfo = MediaChain().recognize_media(
+        recognition_params, cache_params = _build_id_search_params(
             media_source=media_source,
             media_id=media_id,
             mtype=mtype,
+            area=area,
+            season=season,
+            sites=sites,
             music_type=music_type,
         )
+        if cache_local:
+            self.cancel_ai_recommend()
+            self.save_last_search_params(**cache_params)
+        # 音乐统一在 MediaChain.recognize_media 内按固定来源路由
+        mediainfo = MediaChain().recognize_media(**recognition_params)
         if not mediainfo:
             logger.error(f"{self._build_search_keyword(media_source, media_id)} 媒体信息识别失败！")
             return []
-        no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None
-        if season is not None:
-            resolved_source, resolved_id = resolve_media_identity(media=mediainfo)
-            no_exists = {build_media_key(resolved_source, resolved_id): {season: NotExistMediaInfo(episodes=[])}}
+        no_exists = _build_missing_media_map(mediainfo, season)
         results = self.process(mediainfo=mediainfo, sites=sites, area=area, no_exists=no_exists)
         # 保存到本地文件
         if cache_local:
@@ -97,31 +164,24 @@ class SearchMediaOwner(_SearchOwnerBase):
         :param sites: 站点ID列表
         :param cache_local: 是否缓存到本地
         """
-        if cache_local:
-            self.cancel_ai_recommend()
-            await self.async_save_last_search_params(
-                media_source=media_source,
-                media_id=media_id,
-                mtype=mtype,
-                area=area,
-                season=season,
-                sites=sites,
-                music_type=music_type,
-            )
-        # 音乐统一在 MediaChain.async_recognize_media 内按固定来源路由
-        mediainfo = await MediaChain().async_recognize_media(
+        recognition_params, cache_params = _build_id_search_params(
             media_source=media_source,
             media_id=media_id,
             mtype=mtype,
+            area=area,
+            season=season,
+            sites=sites,
             music_type=music_type,
         )
+        if cache_local:
+            self.cancel_ai_recommend()
+            await self.async_save_last_search_params(**cache_params)
+        # 音乐统一在 MediaChain.async_recognize_media 内按固定来源路由
+        mediainfo = await MediaChain().async_recognize_media(**recognition_params)
         if not mediainfo:
             logger.error(f"{self._build_search_keyword(media_source, media_id)} 媒体信息识别失败！")
             return []
-        no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None
-        if season is not None:
-            resolved_source, resolved_id = resolve_media_identity(media=mediainfo)
-            no_exists = {build_media_key(resolved_source, resolved_id): {season: NotExistMediaInfo(episodes=[])}}
+        no_exists = _build_missing_media_map(mediainfo, season)
         results = await self.async_process(mediainfo=mediainfo, sites=sites, area=area, no_exists=no_exists)
         # 保存到本地文件
         if cache_local:
@@ -142,33 +202,26 @@ class SearchMediaOwner(_SearchOwnerBase):
         """
         根据数据源媒体 ID 渐进式搜索资源，先返回站点原始候选，再返回过滤匹配后的最终结果
         """
-        if cache_local:
-            self.cancel_ai_recommend()
-            await self.async_save_last_search_params(
-                media_source=media_source,
-                media_id=media_id,
-                mtype=mtype,
-                area=area,
-                season=season,
-                sites=sites,
-                music_type=music_type,
-            )
-        # 音乐统一在 MediaChain.async_recognize_media 内按固定来源路由
-        mediainfo = await MediaChain().async_recognize_media(
+        recognition_params, cache_params = _build_id_search_params(
             media_source=media_source,
             media_id=media_id,
             mtype=mtype,
+            area=area,
+            season=season,
+            sites=sites,
             music_type=music_type,
         )
+        if cache_local:
+            self.cancel_ai_recommend()
+            await self.async_save_last_search_params(**cache_params)
+        # 音乐统一在 MediaChain.async_recognize_media 内按固定来源路由
+        mediainfo = await MediaChain().async_recognize_media(**recognition_params)
         if not mediainfo:
             logger.error(f"{self._build_search_keyword(media_source, media_id)} 媒体信息识别失败！")
             yield {"type": "error", "success": False, "message": "媒体信息识别失败"}
             return
 
-        no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None
-        if season is not None:
-            resolved_source, resolved_id = resolve_media_identity(media=mediainfo)
-            no_exists = {build_media_key(resolved_source, resolved_id): {season: NotExistMediaInfo(episodes=[])}}
+        no_exists = _build_missing_media_map(mediainfo, season)
 
         contexts: List[Context] = []
         async for event in self.async_process_stream(mediainfo=mediainfo, sites=sites, area=area, no_exists=no_exists):
@@ -215,12 +268,7 @@ class SearchMediaOwner(_SearchOwnerBase):
                 ),
             )
 
-        mediainfo = self._copy_media_input(mediainfo)
-        # 豆瓣标题处理
-        if not mediainfo.tmdb_id:
-            meta = MetaInfo(title=mediainfo.title)
-            mediainfo.title = meta.name
-            mediainfo.season = cast(int, meta.begin_season)
+        mediainfo = _normalize_media_search_input(self._copy_media_input(mediainfo))
         logger.info(f"开始搜索资源，关键词：{keyword or mediainfo.title} ...")
 
         # 补充媒体信息
@@ -266,7 +314,9 @@ class SearchMediaOwner(_SearchOwnerBase):
             torrents.extend(results)
 
             # 有结果则停止
-            if not self.runtime_config.search_multiple_name and torrents:
+            if _should_stop_keyword_search(
+                self.runtime_config.search_multiple_name, torrents
+            ):
                 logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
                 break
 
@@ -319,12 +369,7 @@ class SearchMediaOwner(_SearchOwnerBase):
                 ),
             )
 
-        mediainfo = self._copy_media_input(mediainfo)
-        # 豆瓣标题处理
-        if not mediainfo.tmdb_id:
-            meta = MetaInfo(title=mediainfo.title)
-            mediainfo.title = meta.name
-            mediainfo.season = cast(int, meta.begin_season)
+        mediainfo = _normalize_media_search_input(self._copy_media_input(mediainfo))
         logger.info(f"开始搜索资源，关键词：{keyword or mediainfo.title} ...")
 
         # 补充媒体信息
@@ -367,7 +412,9 @@ class SearchMediaOwner(_SearchOwnerBase):
             )
             search_count += 1
             # 未开启多名称搜索时，有结果则停止
-            if not self.runtime_config.search_multiple_name and torrents:
+            if _should_stop_keyword_search(
+                self.runtime_config.search_multiple_name, torrents
+            ):
                 logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
                 break
 
@@ -412,12 +459,7 @@ class SearchMediaOwner(_SearchOwnerBase):
                 yield event
             return
 
-        mediainfo = self._copy_media_input(mediainfo)
-        # 豆瓣标题处理
-        if not mediainfo.tmdb_id:
-            meta = MetaInfo(title=mediainfo.title)
-            mediainfo.title = meta.name
-            mediainfo.season = cast(int, meta.begin_season)
+        mediainfo = _normalize_media_search_input(self._copy_media_input(mediainfo))
         logger.info(f"开始渐进式搜索资源，关键词：{keyword or mediainfo.title} ...")
 
         # 补充媒体信息
@@ -454,16 +496,7 @@ class SearchMediaOwner(_SearchOwnerBase):
             ):
                 result = event.pop("items", []) or []
                 torrents.extend(result)
-                batch_contexts = [
-                    Context(
-                        meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description),
-                        media_info=mediainfo,
-                        torrent_info=torrent,
-                        resource_source="search",
-                        media_info_is_target=True,
-                    )
-                    for torrent in result
-                ]
+                batch_contexts = _build_candidate_contexts(mediainfo, result)
                 candidate_contexts.extend(batch_contexts)
                 yield {
                     **event,
@@ -474,7 +507,9 @@ class SearchMediaOwner(_SearchOwnerBase):
                 }
 
             search_count += 1
-            if not self.runtime_config.search_multiple_name and torrents:
+            if _should_stop_keyword_search(
+                self.runtime_config.search_multiple_name, torrents
+            ):
                 logger.info(f"共搜索到 {len(torrents)} 个资源，停止搜索")
                 break
 
