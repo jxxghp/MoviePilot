@@ -3221,7 +3221,7 @@
       ]
     },
     "app.log.logger.error": {
-      "call_count": 611,
+      "call_count": 612,
       "file_count": 111,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
@@ -3338,8 +3338,8 @@
       ]
     },
     "app.log.logger.info": {
-      "call_count": 851,
-      "file_count": 112,
+      "call_count": 853,
+      "file_count": 113,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -3392,6 +3392,7 @@
         "plugins.v2/hrblocker/__init__.py",
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/invitessignin/__init__.py",
+        "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/iyuuautoseed/__init__.py",
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/lexiannot/pipeline.py",
@@ -3512,7 +3513,7 @@
       ]
     },
     "app.log.logger.warning": {
-      "call_count": 226,
+      "call_count": 230,
       "file_count": 50,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
@@ -9334,9 +9335,9 @@
     }
   },
   "provenance": {
-    "head": "d5a786882cd83060f8acc6b42f710f00e48a99d4",
+    "head": "2d6946eb1f64f16b21634f9207f056779a859faa",
     "python_file_count": 285,
-    "source_sha256": "3a47cb221cbcc48c92aaa05838a98d23a13b66d9c3742cac73b1233d88d23fde"
+    "source_sha256": "bdc95d80ed83dd58ecc28e44a2e2d2229ebfed1a0c48c7ffc4b655524518dd07"
   },
   "schema_version": 4,
   "scope": {
