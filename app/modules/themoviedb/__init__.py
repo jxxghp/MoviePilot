@@ -869,7 +869,8 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             elif step.action == _RecognizeAction.BUILD_RESULT:
                 result = self._build_media_info_result(**step.kwargs)
             else:
-                result = self._run_common_recognize_step(step)
+                self._run_common_recognize_step(step)
+                result = None
 
     async def _async_run_recognize_steps(
         self, plan: _RecognizePlan
@@ -903,7 +904,8 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             elif step.action == _RecognizeAction.BUILD_RESULT:
                 result = await self._async_build_media_info_result(**step.kwargs)
             else:
-                result = self._run_common_recognize_step(step)
+                self._run_common_recognize_step(step)
+                result = None
 
     def _run_common_recognize_step(self, step: _RecognizeStep) -> None:
         """执行不依赖 TMDB 客户端 ABI 的缓存和结果日志动作。"""

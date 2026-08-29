@@ -1225,6 +1225,9 @@
   "app/application/subscription/write.py": {
     "arg-type": 2
   },
+  "app/application/torrent/cache.py": {
+    "type-arg": 1
+  },
   "app/application/torrent/download.py": {
     "arg-type": 2,
     "assignment": 3,
@@ -1236,9 +1239,6 @@
     "type-arg": 4,
     "union-attr": 4,
     "var-annotated": 1
-  },
-  "app/application/torrent/cache.py": {
-    "type-arg": 1
   },
   "app/chain/_interaction.py": {
     "assignment": 3,
@@ -2569,7 +2569,7 @@
     "override": 1
   },
   "app/modules/themoviedb/__init__.py": {
-    "arg-type": 9,
+    "arg-type": 5,
     "assignment": 12,
     "empty-body": 1,
     "index": 2,
