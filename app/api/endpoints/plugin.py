@@ -1,7 +1,7 @@
 import asyncio
 import mimetypes
 import shutil
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional, cast
 
 import aiofiles
 from anyio import Path as AsyncPath
@@ -107,13 +107,16 @@ async def _get_market_plugin_from_repo(
     全量插件目录保持一致，否则仅存在于 package.v2.json 的插件会丢失历史说明。
     """
     version_flag = get_api_runtime_config_snapshot().version_flag
-    package_versions = [version_flag] if version_flag else []
+    package_versions: list[Optional[str]] = [version_flag] if version_flag else []
     package_versions.extend(VERSION_BACKWARD_COMPATIBLE_FLAGS.get(version_flag, []))
     package_versions.append(None)
 
     for package_version in dict.fromkeys(package_versions):
-        market_plugins = await plugin_manager.async_get_plugins_from_market(
-            repo_url, package_version, force
+        market_plugins = cast(
+            Optional[List[_SchemaPlugin]],
+            await plugin_manager.async_get_plugins_from_market(
+                repo_url, package_version, force
+            ),
         )
         market_plugin = next(
             (
