@@ -9,6 +9,8 @@ from app.adapters.external.market import (
     LOCAL_REPO_PREFIX,
     configure_installed_plugins_provider,
     configure_plugin_install_gateway,
+    configure_plugin_runtime_owners,
+    reset_plugin_runtime_owners,
 )
 from app.adapters.external.plugin.client import (
     VERSION_BACKWARD_COMPATIBLE_FLAGS,
@@ -190,6 +192,10 @@ def configure_plugin_services() -> None:
     market_transport = market_composition.transport
     market_client = market_composition.client
     package_manager = market_composition.package
+    configure_plugin_runtime_owners(
+        health=market_composition.health,
+        dependency=market_composition.dependency,
+    )
     plugin_manager = get_plugin_manager()
     inventory_reader = PluginCandidateInventoryReader(
         market_loader=market_client.get_plugin_index_result,
@@ -775,4 +781,5 @@ def stop_plugins() -> bool:
         reset_plugin_catalog_query()
         reset_plugin_release_service()
         reset_plugin_rating_service()
+        reset_plugin_runtime_owners()
         reset_plugin_market_composition()

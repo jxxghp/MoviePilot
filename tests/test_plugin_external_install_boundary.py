@@ -712,36 +712,25 @@ async def test_agent_install_uses_application_gateway(
 def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> None:
     """启动组合根必须装配独立 owner，并向公开 Helper 发布同一 Gateway。"""
     transport = Mock()
-    source = Mock()
+    market_client = Mock()
     package_manager = Mock()
+    health = Mock()
+    dependency = Mock()
     gateway_calls = []
     application_calls = []
-    transport_consumers = []
     gateway = Mock()
     sync_runner = Mock(return_value=(True, "installed"))
     async_runner = AsyncMock(return_value=(True, "installed"))
 
     monkeypatch.setattr(
         plugins_initializer,
-        "PluginMarketTransport",
-        lambda: transport,
-    )
-    monkeypatch.setattr(
-        plugins_initializer,
-        "PluginMarketClient",
-        lambda injected: transport_consumers.append(("market", injected)) or Mock(),
-    )
-    monkeypatch.setattr(
-        plugins_initializer,
-        "PluginPackageSourceClient",
-        lambda injected: transport_consumers.append(("package", injected)) or source,
-    )
-    monkeypatch.setattr(
-        plugins_initializer,
-        "PluginPackageManager",
-        lambda **kwargs: (
-            transport_consumers.append(("package-owner", kwargs["source"]))
-            or package_manager
+        "compose_plugin_market",
+        lambda **_kwargs: SimpleNamespace(
+            transport=transport,
+            client=market_client,
+            package=package_manager,
+            health=health,
+            dependency=dependency,
         ),
     )
     monkeypatch.setattr(
@@ -796,11 +785,6 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
         "_run_plugin_install_async",
         async_runner,
     )
-    monkeypatch.setattr(
-        plugins_initializer,
-        "PluginDependencyInstaller",
-        lambda *_args, **_kwargs: Mock(),
-    )
     for name in (
         "configure_plugin_legacy_import_services",
         "configure_plugin_resource_import_preparer",
@@ -809,6 +793,7 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
         "configure_plugin_catalog_factory",
         "configure_plugin_runtime_factory",
         "configure_plugin_route_refresher",
+        "configure_plugin_runtime_owners",
         "configure_plugin_system",
         "configure_plugin_storage",
     ):
@@ -827,11 +812,6 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
 
     plugins_initializer.configure_plugin_services()
 
-    assert transport_consumers == [
-        ("market", transport),
-        ("package", transport),
-        ("package-owner", source),
-    ]
     assert application_calls == [gateway]
     assert len(gateway_calls) == 1
     assert callable(gateway_calls[0]["install"])

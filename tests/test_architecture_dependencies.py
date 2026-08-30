@@ -2392,6 +2392,7 @@ def test_plugin_market_construction_is_owned_by_startup_composition():
         "PluginMarketTransport",
         "PluginPackageSourceClient",
         "PluginPackageManager",
+        "PluginRuntimeHealth",
         "PluginDependencyInstaller",
     }
     assert forbidden_names.isdisjoint(initializer_imports)
@@ -2417,6 +2418,7 @@ def test_plugin_market_construction_is_owned_by_startup_composition():
     assert composition_calls.count("PluginMarketTransport") == 1
     assert composition_calls.count("PluginPackageSourceClient") == 1
     assert composition_calls.count("PluginPackageManager") == 1
+    assert composition_calls.count("PluginRuntimeHealth") == 1
     assert composition_calls.count("PluginDependencyInstaller") == 1
 
 
@@ -2426,6 +2428,28 @@ def test_plugin_market_transport_is_process_shared_across_compat_and_composition
     from app.adapters.external.plugin.client import PluginMarketTransport
 
     assert PluginMarketTransport.get_existing_instance() is _plugin_market_transport
+
+
+def test_plugin_runtime_owners_are_shared_with_compat_facade():
+    """兼容门面必须消费组合根发布的健康检查与依赖安装 owner。"""
+    from app.adapters.external.market import (
+        _plugin_dependency_owner,
+        _plugin_runtime_health_owner,
+        configure_plugin_runtime_owners,
+        reset_plugin_runtime_owners,
+    )
+
+    health = object()
+    dependency = object()
+    configure_plugin_runtime_owners(
+        health=health,  # type: ignore[arg-type]
+        dependency=dependency,  # type: ignore[arg-type]
+    )
+    try:
+        assert _plugin_runtime_health_owner() is health
+        assert _plugin_dependency_owner() is dependency
+    finally:
+        reset_plugin_runtime_owners()
 
 
 def test_domain_initializer_delegates_construction_to_composition():

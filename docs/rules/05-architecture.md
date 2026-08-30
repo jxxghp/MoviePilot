@@ -227,13 +227,17 @@ re-exported from the package root, SDK or Compat.
 
 Complexity and concurrency governance covers the complete canonical execution
 surface rather than only public methods. `scripts/architecture/complexity.py --v2`
-ratchets private and nested methods, class/file hotspots, and the
-`app/scheduler/` package; its generated baseline is an evidence ledger, not a
-permission to add another oversized owner. `scripts/architecture/concurrency.py`
-enumerates native Thread, Timer, thread/process executors, Process,
-asyncio task/thread helpers, and executor hand-off calls across host roots. Each
-fact must have a stable lexical owner and remain in the baseline with no new
-call site or owner drift. `app/plugins/**`, `app/sdk/**`, and
+uses complete AST child traversal to ratchet private/dunder/nested methods,
+class/file hotspots, and the `app/scheduler/` package, including owners nested
+under `Match`, `TryStar`, and other control-flow nodes. Its generated baseline
+is an evidence ledger, not permission to add another oversized owner.
+`scripts/architecture/concurrency.py` resolves canonical imports and aliases for
+native Thread, Timer, thread/process executors, Process, TaskGroup, event-loop
+task submission, asyncio task/thread helpers, and executor hand-off calls. It
+scans the complete `app/**` host tree and aggregates each canonical target by
+stable lexical owner and call count, so physical line movement is not semantic
+drift and multiple same-line calls cannot collapse. New owners/count growth and
+stale baselines after count reduction all block CI. `app/plugins/**`, `app/sdk/**`, and
 `app/runtime/compat/**` are excluded because their compatibility/runtime
 contracts are governed by their own exact manifests.
 
@@ -1030,6 +1034,7 @@ driven workflow registration.
 | `app/adapters/system/plugin/package.py` | `PluginPackageManager`, the unique install, checkpoint, backup, restore and physical-delete owner |
 | `app/adapters/system/plugin/dependency.py` | `PluginDependencyInstaller`, the dependency manifest, missing-package inspection and installation owner |
 | `app/adapters/system/plugin/health.py` | `PluginRuntimeHealth`, the runtime-environment guard, pre/post-install check and recovery owner |
+| `app/startup/composition/plugin.py` | Constructs one market transport/client, package manager, runtime-health owner and dependency installer per lifespan; `PluginHelper` compatibility calls consume those same published owners |
 | `app/runtime/extensions/resource.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
 | `app/runtime/resources.py` | Lightweight acquisition, state observation and shutdown facade |
 | `app/foundation/reflection.py` | Generic reflection and Python module discovery |

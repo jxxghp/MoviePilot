@@ -24,6 +24,7 @@ class PluginMarketComposition:
     transport: PluginMarketTransport
     client: PluginMarketClient
     package: PluginPackageManager
+    health: PluginRuntimeHealth
     dependency: PluginDependencyInstaller
 
 
@@ -40,6 +41,7 @@ def compose_plugin_market(
     plugin_root = root_path / "app" / "plugins"
     transport = PluginMarketTransport.get_existing_instance() or PluginMarketTransport()
     client = PluginMarketClient(transport)
+    health = PluginRuntimeHealth()
     composition = PluginMarketComposition(
         transport=transport,
         client=client,
@@ -48,10 +50,11 @@ def compose_plugin_market(
             plugin_root=plugin_root,
         ),
         dependency=PluginDependencyInstaller(
-            PluginRuntimeHealth(),
+            health,
             installed_plugins_provider=installed_plugins_provider,
             plugin_dir=plugin_root,
         ),
+        health=health,
     )
     _market_client = client
     return composition

@@ -47,7 +47,46 @@ _installed_plugins_provider: InstalledPluginsProvider = _empty_installed_plugins
 _plugin_install_gateway: PluginInstallGateway = _unconfigured_plugin_install_gateway
 _async_plugin_install_gateway: AsyncPluginInstallGateway = _unconfigured_async_plugin_install_gateway
 _plugin_market_transport = PluginMarketTransport()
-_plugin_runtime_health = PluginRuntimeHealth()
+_plugin_runtime_health: Optional[PluginRuntimeHealth] = None
+_plugin_dependency_installer: Optional[PluginDependencyInstaller] = None
+
+
+def configure_plugin_runtime_owners(
+    *,
+    health: PluginRuntimeHealth,
+    dependency: PluginDependencyInstaller,
+) -> None:
+    """发布组合根构造的插件运行健康与依赖安装唯一 owner。"""
+    global _plugin_runtime_health, _plugin_dependency_installer
+    _plugin_runtime_health = health
+    _plugin_dependency_installer = dependency
+
+
+def reset_plugin_runtime_owners() -> None:
+    """撤销当前 lifespan 发布的插件运行健康与依赖安装 owner。"""
+    global _plugin_runtime_health, _plugin_dependency_installer
+    _plugin_runtime_health = None
+    _plugin_dependency_installer = None
+
+
+def _plugin_runtime_health_owner() -> PluginRuntimeHealth:
+    """返回已发布 owner；旧入口提前调用时惰性保留兼容行为。"""
+    global _plugin_runtime_health
+    if _plugin_runtime_health is None:
+        _plugin_runtime_health = PluginRuntimeHealth()
+    return _plugin_runtime_health
+
+
+def _plugin_dependency_owner() -> PluginDependencyInstaller:
+    """返回已发布 owner；旧入口提前调用时只构造一份惰性实例。"""
+    global _plugin_dependency_installer
+    if _plugin_dependency_installer is None:
+        _plugin_dependency_installer = PluginDependencyInstaller(
+            _plugin_runtime_health_owner(),
+            installed_plugins_provider=lambda: _installed_plugins_provider(),
+            plugin_dir=PLUGIN_DIR,
+        )
+    return _plugin_dependency_installer
 
 
 def configure_installed_plugins_provider(provider: InstalledPluginsProvider) -> None:
@@ -144,23 +183,17 @@ class PluginHelper(metaclass=WeakSingleton):
         find_links_dirs: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
         """把兼容入口委托给系统运行环境 owner。"""
-        return _plugin_runtime_health.install_packages_with_fallback(
+        return _plugin_runtime_health_owner().install_packages_with_fallback(
             dependency_files, find_links_dirs
         )
 
     def find_missing_dependencies(self) -> List[str]:
         """把兼容入口委托给依赖聚合 owner。"""
-        return PluginDependencyInstaller(
-            _plugin_runtime_health, installed_plugins_provider=_installed_plugins_provider,
-            plugin_dir=PLUGIN_DIR,
-        ).find_missing()
+        return _plugin_dependency_owner().find_missing()
 
     def install_dependencies(self, dependencies: List[str]) -> Tuple[bool, str]:
         """把兼容入口委托给依赖聚合 owner。"""
-        return PluginDependencyInstaller(
-            _plugin_runtime_health, installed_plugins_provider=_installed_plugins_provider,
-            plugin_dir=PLUGIN_DIR,
-        ).install(dependencies)
+        return _plugin_dependency_owner().install(dependencies)
 
     @classmethod
     async def async_install_packages_with_fallback(
@@ -168,7 +201,7 @@ class PluginHelper(metaclass=WeakSingleton):
         find_links_dirs: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
         """把异步兼容入口委托给系统运行环境 owner。"""
-        return await _plugin_runtime_health.async_install_packages_with_fallback(
+        return await _plugin_runtime_health_owner().async_install_packages_with_fallback(
             dependency_files, find_links_dirs
         )
 
@@ -176,17 +209,11 @@ class PluginHelper(metaclass=WeakSingleton):
         self, dependencies: List[str],
     ) -> Tuple[bool, str]:
         """把异步兼容入口委托给依赖聚合 owner。"""
-        return await PluginDependencyInstaller(
-            _plugin_runtime_health, installed_plugins_provider=_installed_plugins_provider,
-            plugin_dir=PLUGIN_DIR,
-        ).async_install(dependencies)
+        return await _plugin_dependency_owner().async_install(dependencies)
 
     async def async_find_missing_dependencies(self) -> List[str]:
         """把异步兼容入口委托给依赖聚合 owner。"""
-        return await PluginDependencyInstaller(
-            _plugin_runtime_health, installed_plugins_provider=_installed_plugins_provider,
-            plugin_dir=PLUGIN_DIR,
-        ).async_find_missing()
+        return await _plugin_dependency_owner().async_find_missing()
 
     async def async_install(
         self, pid: str, repo_url: str, package_version: Optional[str] = None,
