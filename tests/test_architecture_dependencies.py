@@ -2649,6 +2649,31 @@ def test_resource_initializer_delegates_construction_to_composition():
         "reset_managed_resource_composition",
     }
 
+
+def test_modules_initializer_consumes_doh_and_workflow_composition():
+    """模块 initializer 不得直接构造 DoH 或事务型工作流执行 Adapter。"""
+    initializer_path = APP_ROOT / "startup" / "initializers" / "modules.py"
+    initializer_tree = ast.parse(
+        initializer_path.read_text(encoding="utf-8-sig"),
+        filename=str(initializer_path),
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "app.adapters.network.doh" not in imported_modules
+    assert "app.db.adapters.workflow" not in imported_modules
+    calls = {
+        ast.unparse(node.func)
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.Call)
+    }
+    assert "DohHelper" not in calls
+    assert "TransactionalWorkflowExecutionService" not in calls
+    assert "configure_doh_composition" in calls
+    assert "configure_workflow_execution_composition" in calls
+
 def test_system_api_business_orchestration_is_owned_by_application_service():
     """System API 只保留传输映射，不得重新拥有日志、设置或更新实现。"""
     endpoint_path = APP_ROOT / "api" / "endpoints" / "system.py"

@@ -621,6 +621,14 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/startup/composition/system.py:asyncio.to_thread": {
+    "owners": {
+      "_FileLogAdapter._follow_path": 3,
+      "_FileLogAdapter._resolve_logfile": 1,
+      "_FileLogAdapter.collect": 1
+    },
+    "target": "asyncio.to_thread"
+  },
   "app/startup/initializers/modules.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
       "stop_modules.run_step": 1

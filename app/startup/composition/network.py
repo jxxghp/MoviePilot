@@ -6,6 +6,7 @@ from typing import Any, Callable, Optional, Union, cast
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.adapters.network.ip import IpUtils
+from app.adapters.network.doh import DohHelper
 from app.adapters.system.host import SystemUtils
 from app.application.configuration import get_runtime_settings
 from app.application.image import (
@@ -369,3 +370,16 @@ def reset_chain_network_composition() -> None:
     reset_scraping_http_port()
     reset_message_http_port()
     reset_download_ports()
+
+
+def configure_doh_composition() -> None:
+    """由组合根物化进程唯一的 DoH 技术 Adapter。"""
+    DohHelper()
+
+
+def stop_doh_composition() -> bool:
+    """关闭已存在的 DoH Adapter，停机阶段不得反向物化实例。"""
+    helper = DohHelper.get_existing_instance()
+    if helper is None:
+        return True
+    return helper.shutdown() is not False

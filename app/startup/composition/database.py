@@ -32,7 +32,9 @@ from app.application.query import (
 )
 from app.application.workflow import (
     WorkflowQueryService,
+    configure_workflow_execution,
     configure_workflow_query,
+    reset_workflow_execution,
     reset_workflow_query,
 )
 from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
@@ -40,7 +42,10 @@ from app.db.adapters.plugininstallation import TransactionalPluginInstallationSt
 from app.db.adapters.query import SqlAlchemyDataQueryAdapter
 from app.db.adapters.transaction import TransactionalWriteRunner
 from app.db.adapters.user import TransactionalUserRepository
-from app.db.adapters.workflow import TransactionalWorkflowQueryRepository
+from app.db.adapters.workflow import (
+    TransactionalWorkflowExecutionService,
+    TransactionalWorkflowQueryRepository,
+)
 from app.db.engine import get_engine
 from app.db.health import probe_database
 from app.db.maintenance import DatabaseCleanupRepository
@@ -162,6 +167,16 @@ def publish_database_services(composition: DatabaseComposition) -> None:
     configure_data_query_service(composition.data_query)
     configure_plugin_persistence(composition.plugin_persistence)
     configure_workflow_query(composition.workflow_query)
+
+
+def configure_workflow_execution_composition() -> None:
+    """构造并发布使用短事务会话的工作流执行服务。"""
+    configure_workflow_execution(TransactionalWorkflowExecutionService(SessionFactory))
+
+
+def reset_workflow_execution_composition() -> None:
+    """撤销当前 lifespan 发布的工作流执行服务。"""
+    reset_workflow_execution()
 
 
 def reset_database_services() -> None:

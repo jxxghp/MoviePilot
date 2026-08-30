@@ -54,12 +54,16 @@ def _isolate_startup_failure_cleanup(monkeypatch) -> None:
     for name in (
         "ModuleManager",
         "EventManager",
-        "DohHelper",
         "ThreadHelper",
         "RedisHelper",
         "AsyncRedisHelper",
     ):
         monkeypatch.setattr(modules_initializer, name, absent_owner)
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_doh_composition",
+        MagicMock(return_value=True),
+    )
     monkeypatch.setattr(
         modules_initializer,
         "close_image_proxy_block_log_coalescer",

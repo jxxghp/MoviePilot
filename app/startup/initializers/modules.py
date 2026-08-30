@@ -15,7 +15,6 @@ except ImportError as e:
     sys.exit(1)
 
 from app.adapters.external.server import MoviePilotServerHelper
-from app.adapters.network.doh import DohHelper
 from app.adapters.system.host import SystemUtils
 from app.application.configuration import (
     TransferRetryConfig,
@@ -39,13 +38,8 @@ from app.application.module import configure_module_runtime, reset_module_runtim
 from app.application.outbox import configure_outbox_dispatcher
 from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.service import configure_service_directory, reset_service_directory
-from app.application.workflow import configure_workflow_execution, reset_workflow_execution
 from app.command import CommandChain
-from app.db.adapters.workflow import (
-    TransactionalWorkflowExecutionService,
-)
 from app.db.session import (
-    SessionFactory,
     close_database,
 )
 from app.runtime.config import settings as legacy_settings
@@ -88,12 +82,16 @@ from app.startup.composition.database import (
     database_runtime_active,
     publish_database_services,
     reset_database_services,
+    configure_workflow_execution_composition,
+    reset_workflow_execution_composition,
     start_database_runtime,
     stop_database_runtime,
 )
 from app.startup.composition.network import (
     configure_application_network_ports,
+    configure_doh_composition,
     reset_application_network_ports,
+    stop_doh_composition,
 )
 from app.startup.composition.outbox import build_outbox_dispatcher, reset_outbox_services
 from app.startup.composition.runtime import (
@@ -185,7 +183,7 @@ def _module_provider_reset_steps() -> tuple[tuple[str, Callable[[], object]], ..
         ),
         ("传输重试配置", reset_transfer_retry_config),
         ("Outbox 服务", reset_outbox_services),
-        ("工作流执行服务", reset_workflow_execution),
+        ("工作流执行服务", reset_workflow_execution_composition),
         ("中心服务", reset_server_services),
         ("运行时数据 Provider", reset_runtime_data_providers),
         ("HostRuntime 投影", reset_runtime),
@@ -458,7 +456,7 @@ async def stop_modules() -> bool:
     await run_step("托管资源", stop_managed_resources)
     await run_step(
         "DoH服务",
-        lambda: _call_existing_singleton(DohHelper, "shutdown"),
+        stop_doh_composition,
         offload=True,
     )
     await run_step(
@@ -567,8 +565,7 @@ async def _initialize_modules() -> HostRuntime:
     publish_runtime(runtime_composition)
     configure_runtime_data_providers()
     configure_server_services(workflow_query, runtime_dependencies.subscription)
-    workflow_execution = TransactionalWorkflowExecutionService(SessionFactory)
-    configure_workflow_execution(workflow_execution)
+    configure_workflow_execution_composition()
     configure_outbox_dispatcher(build_outbox_dispatcher)
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
@@ -597,7 +594,7 @@ async def _initialize_modules() -> HostRuntime:
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     configure_security_access()
     # DoH
-    DohHelper()
+    configure_doh_composition()
     # 站点管理
     SitesHelper()
     # 资源适配器只负责下载安装，是否重启由启动组合层决定。

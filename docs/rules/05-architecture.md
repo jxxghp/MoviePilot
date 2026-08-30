@@ -158,9 +158,9 @@ in startup order and must not recreate those dependencies.
 access provider assembly; it returns the persistence factories needed by the runtime
 owner, which alone constructs `AuthenticationRuntime`.
 `startup/composition/network.py` owns concrete network-test, image, internal-address,
-message-ingress and Chain synchronous network/system Adapter wiring while retaining
-lazy RuntimeSettings reads. Initializers call these owners in startup order and must
-not recreate their concrete construction.
+message-ingress, DoH and Chain synchronous network/system Adapter wiring while
+retaining lazy RuntimeSettings reads. Initializers call these owners in startup order
+and must not recreate their concrete construction.
 `startup/composition/domain.py` owns DNS/System/Rust Adapter assembly together
 with the single `RecognitionRuleService` used to publish media-recognition rule
 providers. `initializers/domain.py` is only the lifecycle hook and must not
@@ -173,6 +173,8 @@ hook and must not import or construct those concrete adapters.
 `startup/composition/resource.py` owns managed-resource Adapter construction and site
 resource installation. `initializers/resources.py` only exposes lifecycle hooks; the
 modules initializer retains only the decision to restart after an actual installation.
+`startup/composition/database.py` also owns the concrete transactional Workflow
+execution service; the modules initializer only invokes its configure/reset lifecycle.
 `startup/composition/outbox.py`
 owns durable handler validation, lazy event/notification replay binding and the
 short-transaction dispatcher factory. Initializers call this owner in

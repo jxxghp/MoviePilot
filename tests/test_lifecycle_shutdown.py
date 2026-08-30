@@ -1538,7 +1538,6 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     for name, method_name in (
         ("ModuleManager", "shutdown"),
         ("EventManager", "stop_async"),
-        ("DohHelper", "shutdown"),
         ("ThreadHelper", "shutdown"),
         ("RedisHelper", "close"),
     ):
@@ -1549,6 +1548,14 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
         monkeypatch.setattr(modules_initializer, name, instance_type)
         key = name.removesuffix("Helper").removesuffix("Manager").lower()
         dependencies[key] = getattr(instance, method_name)
+
+    stop_doh_composition = MagicMock()
+    monkeypatch.setattr(
+        modules_initializer,
+        "stop_doh_composition",
+        stop_doh_composition,
+    )
+    dependencies["doh"] = stop_doh_composition
 
     for name in (
         "close_browser_sessions",
