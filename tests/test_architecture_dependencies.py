@@ -2539,6 +2539,44 @@ def test_site_initializer_delegates_construction_to_composition():
     assert "app.application.rss" in composition_imports
 
 
+def test_chain_initializer_delegates_construction_to_composition():
+    """Chain initializer 只保留生命周期入口，不得重新拥有外部技术适配器。"""
+    initializer_path = APP_ROOT / "startup" / "initializers" / "chain.py"
+    initializer_tree = ast.parse(
+        initializer_path.read_text(encoding="utf-8-sig"),
+        filename=str(initializer_path),
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert imported_modules == {"app.startup.composition.chain"}
+    calls = {
+        ast.unparse(node.func)
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.Call)
+    }
+    assert calls == {
+        "configure_chain_port_composition",
+        "reset_chain_port_composition",
+    }
+
+    composition_path = APP_ROOT / "startup" / "composition" / "chain.py"
+    composition_tree = ast.parse(
+        composition_path.read_text(encoding="utf-8-sig"),
+        filename=str(composition_path),
+    )
+    composition_imports = {
+        node.module
+        for node in ast.walk(composition_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "app.adapters.external.server" in composition_imports
+    assert "app.adapters.system.host" in composition_imports
+    assert "app.chain._recognition" in composition_imports
+
+
 PROCESS_LEVEL_ROOTS = (
     "app.api",
     "app.chain",

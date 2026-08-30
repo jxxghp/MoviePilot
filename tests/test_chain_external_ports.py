@@ -8,6 +8,7 @@ import pytest
 from app.chain import _recognition as recognition
 from app.chain.subscribe import notify as subscription
 from app.chain.transfer import filter as transfer
+from app.startup.composition import chain as chain_composition
 from app.startup.initializers import chain as chain_initializer
 
 
@@ -63,7 +64,7 @@ async def test_chain_adapters_preserve_sync_and_async_behavior(monkeypatch) -> N
     list_shares = Mock(return_value=[{"share_uid": "u1"}])
     report_completed = Mock(return_value=True)
     filesystem = Mock(return_value=True)
-    helper = chain_initializer.MoviePilotServerHelper
+    helper = chain_composition.MoviePilotServerHelper
     monkeypatch.setattr(helper, "report_recognize_share", report_recognition)
     monkeypatch.setattr(helper, "async_report_recognize_share", async_report_recognition)
     monkeypatch.setattr(helper, "query_recognize_share", query_recognition)
@@ -74,7 +75,7 @@ async def test_chain_adapters_preserve_sync_and_async_behavior(monkeypatch) -> N
     monkeypatch.setattr(helper, "get_subscribe_shares", list_shares)
     monkeypatch.setattr(helper, "sub_done_durable", report_completed)
     monkeypatch.setattr(
-        chain_initializer.SystemUtils,
+        chain_composition.SystemUtils,
         "is_network_filesystem",
         filesystem,
     )
@@ -104,7 +105,7 @@ def test_chain_port_initializer_rolls_back_partial_failure(monkeypatch) -> None:
     """任一端口装配失败时应清理已装配实例并保留原异常。"""
     failure = RuntimeError("subscription adapter failed")
     monkeypatch.setattr(
-        chain_initializer,
+        chain_composition,
         "configure_subscription_share_port",
         Mock(side_effect=failure),
     )

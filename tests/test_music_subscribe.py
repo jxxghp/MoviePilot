@@ -756,7 +756,7 @@ def test_subscribe_add_music_uses_explicit_entity_recognize():
 
     with patch("app.chain.subscribe.create.MediaChain", return_value=media_chain), \
             patch("app.chain.subscribe.create.add_subscribe", add_subscribe), \
-            patch("app.startup.initializers.chain.MoviePilotServerHelper"), \
+            patch("app.startup.composition.chain.MoviePilotServerHelper"), \
             patch.object(SubscribeChain, "_SubscribeChain__post_subscribe_added"):
         sid, err_msg = SubscribeChain().add(
             title="周杰伦 - 晴天",
@@ -806,7 +806,7 @@ def test_subscribe_add_music_routes_new_album_sources(
 
     with patch("app.chain.subscribe.create.MediaChain", return_value=media_chain), \
             patch("app.chain.subscribe.create.add_subscribe", add_subscribe), \
-            patch("app.startup.initializers.chain.MoviePilotServerHelper"), \
+            patch("app.startup.composition.chain.MoviePilotServerHelper"), \
             patch.object(SubscribeChain, "_SubscribeChain__post_subscribe_added"):
         sid, err_msg = SubscribeChain().add(
             title=title,
@@ -897,7 +897,7 @@ def test_follow_preserves_album_entity_and_track_count():
     chain.subscription_repository = subscribe_oper
     with patch("app.chain.subscribe.query.get_configured_system_config", return_value=system_config), \
             patch(
-                "app.startup.initializers.chain.MoviePilotServerHelper.get_subscribe_shares",
+                "app.startup.composition.chain.MoviePilotServerHelper.get_subscribe_shares",
                 return_value=[share],
             ), \
             patch("app.chain.subscribe.query.MetaInfo") as video_meta, \

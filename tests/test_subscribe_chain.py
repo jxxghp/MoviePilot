@@ -490,7 +490,7 @@ def _load_subscribe_chain_class():
     import app.chain.subscribe.query as query_owner
     import app.chain.subscribe.refresh as refresh_owner
     import app.chain.subscribe.search as search_owner
-    import app.startup.initializers.chain as chain_initializer
+    import app.startup.composition.chain as chain_composition
     from app.application.messaging.subscribe import SubscribeInteractionHandler
     from app.application.subscription.contract import SubscriptionSnapshot, build_subscribe_meta
     from app.chain.subscribe.context import _SubscribeCreateContext
@@ -563,7 +563,7 @@ def _load_subscribe_chain_class():
                         query_owner,
                         search_owner,
                     ),
-                    "MoviePilotServerHelper": (chain_initializer,),
+                    "MoviePilotServerHelper": (chain_composition,),
                     "MetaInfo": (create_owner, match_owner, query_owner),
                     "logger": (
                         completion_owner,

@@ -150,8 +150,10 @@ only when composition functions run, and FastAPI `app.state` publication remains
 the lifecycle layer.
 `startup/composition/chain.py` owns the no-argument Chain compatibility context,
 typed persistence/dispatch object graph, lazy legacy Transfer command binding and
-wallpaper-provider publication. `initializers/modules.py` passes the already constructed
-`RuntimeDependencies` in startup order and must not recreate those dependencies.
+wallpaper-provider publication. It also owns MoviePilot Server share and filesystem
+Adapter wiring required by Chain ports. `initializers/chain.py` is only the lifecycle
+hook; `initializers/modules.py` passes the already constructed `RuntimeDependencies`
+in startup order and must not recreate those dependencies.
 `startup/composition/security.py` owns authentication, user lookup, PassKey and Web
 access provider assembly; it returns the persistence factories needed by the runtime
 owner, which alone constructs `AuthenticationRuntime`.

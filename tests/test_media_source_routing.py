@@ -71,7 +71,7 @@ def test_explicit_source_recognition_reaches_modules_with_unified_identity() -> 
     chain.run_module = Mock(return_value=media)
 
     with patch(
-        "app.startup.initializers.chain.MoviePilotServerHelper.report_recognize_share",
+        "app.startup.composition.chain.MoviePilotServerHelper.report_recognize_share",
         return_value=False,
     ):
         result = chain.recognize_media(
@@ -105,7 +105,7 @@ def test_default_recognition_passes_empty_generic_identity() -> None:
     meta.type = MediaType.MOVIE
 
     with patch(
-        "app.startup.initializers.chain.MoviePilotServerHelper.report_recognize_share",
+        "app.startup.composition.chain.MoviePilotServerHelper.report_recognize_share",
         return_value=False,
     ):
         result = chain.recognize_media(meta=meta)
