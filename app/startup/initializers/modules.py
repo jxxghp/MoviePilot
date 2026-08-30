@@ -17,11 +17,6 @@ except ImportError as e:
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.network.doh import DohHelper
 from app.adapters.system.host import SystemUtils
-from app.adapters.system.resource import (
-    ResourceHelper,
-    configure_resource_version_provider,
-    reset_resource_version_provider,
-)
 from app.application.configuration import (
     TransferRetryConfig,
     configure_transfer_retry_config,
@@ -108,6 +103,10 @@ from app.startup.composition.runtime import (
     publish_runtime,
     reset_runtime,
 )
+from app.startup.composition.resource import (
+    install_site_resources,
+    reset_site_resource_composition,
+)
 from app.startup.composition.security import (
     configure_security_access,
     configure_security_services,
@@ -172,7 +171,7 @@ def _module_provider_reset_steps() -> tuple[tuple[str, Callable[[], object]], ..
     """返回当前模块 lifespan 的完整 Provider 逆序撤销清单。"""
     return (
         ("事件服务", reset_event_services),
-        ("资源版本 Provider", reset_resource_version_provider),
+        ("资源版本 Provider", reset_site_resource_composition),
         ("认证访问服务", reset_security_access),
         ("Chain 服务", reset_chain_services),
         ("托管资源引用", reset_managed_resources),
@@ -378,8 +377,9 @@ def check_auth():
 def update_resources() -> None:
     """安装可用资源更新，并由组合根统一决定是否重启进程。"""
     sites_helper = SitesHelper()
-    configure_resource_version_provider(lambda: (sites_helper.auth_version, sites_helper.indexer_version))
-    if ResourceHelper().check() is not True:
+    if not install_site_resources(
+        lambda: (sites_helper.auth_version, sites_helper.indexer_version)
+    ):
         return
     restarted, message = SystemHelper.restart()
     if not restarted:

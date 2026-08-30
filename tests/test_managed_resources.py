@@ -418,15 +418,16 @@ assert "pyvirtualdisplay" not in sys.modules
 def test_startup_shutdown_without_init_does_not_build_registry(monkeypatch) -> None:
     """未执行启动装配时，关闭入口不得通过发现声明反向初始化 Runtime。"""
     from app.startup.initializers import resources as managed_resources_initializer
+    from app.startup.composition import resource as resource_composition
 
     build_registry = MagicMock(side_effect=AssertionError("must not discover"))
     monkeypatch.setattr(
-        managed_resources_initializer,
+        resource_composition,
         "_managed_resource_runtime",
         None,
     )
     monkeypatch.setattr(
-        managed_resources_initializer,
+        resource_composition,
         "build_managed_resource_registry",
         build_registry,
     )

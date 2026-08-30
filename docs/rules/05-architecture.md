@@ -170,6 +170,9 @@ network/browser/OCR Adapter assembly. `initializers/site.py` is only the lifecyc
 hook and must not import or construct those concrete adapters.
 `startup/composition/cache.py` owns concrete platform cache registration.
 `initializers/cache.py` is only the startup hook and must not import cache adapters.
+`startup/composition/resource.py` owns managed-resource Adapter construction and site
+resource installation. `initializers/resources.py` only exposes lifecycle hooks; the
+modules initializer retains only the decision to restart after an actual installation.
 `startup/composition/outbox.py`
 owns durable handler validation, lazy event/notification replay binding and the
 short-transaction dispatcher factory. Initializers call this owner in

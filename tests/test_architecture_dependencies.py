@@ -2621,6 +2621,34 @@ def test_cache_initializer_delegates_construction_to_composition():
     ]
     assert calls == ["configure_cache_composition"]
 
+
+def test_resource_initializer_delegates_construction_to_composition():
+    """资源 initializer 只保留生命周期入口，不得构造托管资源 Adapter。"""
+    initializer_path = APP_ROOT / "startup" / "initializers" / "resources.py"
+    initializer_tree = ast.parse(
+        initializer_path.read_text(encoding="utf-8-sig"),
+        filename=str(initializer_path),
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert imported_modules == {
+        "app.runtime.capabilities.runtime",
+        "app.startup.composition.resource",
+    }
+    constructors = {
+        ast.unparse(node.func)
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.Call)
+    }
+    assert constructors == {
+        "configure_managed_resource_composition",
+        "stop_managed_resource_composition",
+        "reset_managed_resource_composition",
+    }
+
 def test_system_api_business_orchestration_is_owned_by_application_service():
     """System API 只保留传输映射，不得重新拥有日志、设置或更新实现。"""
     endpoint_path = APP_ROOT / "api" / "endpoints" / "system.py"
