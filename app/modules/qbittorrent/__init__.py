@@ -105,6 +105,8 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         :param label:  标签
         :param downloader:  下载器
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
+
+        添加流程结束时统一清理随机临时标签，覆盖添加失败、任务查询失败和后续处理异常等路径。
         """
         if not content:
             return None, None, None, "下载内容为空"
@@ -133,98 +135,106 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
             tags = [tag]
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
-        # 添加任务
-        state, added_torrent_ids = server.add_torrent(
-            content=content,
-            download_dir=self.normalize_path(download_dir, downloader),
-            is_paused=is_paused,
-            tag=tags,
-            cookie=cookie,
-            category=category,
-            ignore_category_check=False
-        )
+        torrent_hash = None
+        temporary_tag_cleaned = False
+        try:
+            # 添加任务
+            state, added_torrent_ids = server.add_torrent(
+                content=content,
+                download_dir=self.normalize_path(download_dir, downloader),
+                is_paused=is_paused,
+                tag=tags,
+                cookie=cookie,
+                category=category,
+                ignore_category_check=False
+            )
 
-        if not state:
-            # 查询所有下载器的种子
-            torrents, error = server.get_torrents()
-            if error:
-                return None, None, None, "无法连接qbittorrent下载器"
-            if torrents:
-                try:
-                    for torrent in torrents:
-                        # 名称与大小相等则认为是同一个种子
-                        if torrent.get("name") == getattr(torrent_from_file, 'name', '') \
-                                and torrent.get("total_size") == getattr(torrent_from_file, 'total_size', 0):
-                            torrent_hash = torrent.get("hash")
-                            server.delete_torrents_tag(torrent_hash, tag)
-                            torrent_tags = [str(tag).strip() for tag in (torrent.get("tags") or "").split(',')]
-                            logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.get('name')}")
-                            # 给种子打上标签
-                            if "已整理" in torrent_tags:
-                                server.remove_torrents_tag(ids=torrent_hash, tag=['已整理'])
-                            if get_runtime_setting('TORRENT_TAG') and get_runtime_setting('TORRENT_TAG') not in torrent_tags:
-                                logger.info(f"给种子 {torrent_hash} 打上标签：{get_runtime_setting('TORRENT_TAG')}")
-                                server.set_torrents_tag(ids=torrent_hash, tags=[get_runtime_setting('TORRENT_TAG')])
-                            # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
-                            torrent_layout = server.get_content_layout()
-                            return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
-                finally:
-                    torrents.clear()
-                    del torrents
-            return None, None, None, f"添加种子任务失败：{content}"
-        else:
-            # 获取种子Hash
-            torrent_hash = next(iter(added_torrent_ids), None)
-            if torrent_hash:
-                server.delete_torrents_tag(torrent_hash, tag)
-            else:
-                torrent_hash = server.get_torrent_id_by_tag(tags=tag)
-            if not torrent_hash:
-                return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
-            else:
-                # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
-                torrent_layout = server.get_content_layout()
-                if is_paused:
-                    # 种子文件
-                    torrent_files = server.get_files(
-                        torrent_hash,
-                        retry=_TORRENT_FILES_RETRY_TIMES,
-                        interval=_TORRENT_FILES_RETRY_INTERVAL,
-                    )
-                    if not torrent_files:
-                        return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "获取种子文件失败，下载任务可能在暂停状态"
-
-                    # 不需要的文件ID
-                    file_ids = []
-                    # 需要的集清单
-                    sucess_epidised = []
+            if not state:
+                # 查询所有下载器的种子
+                torrents, error = server.get_torrents()
+                if error:
+                    return None, None, None, "无法连接qbittorrent下载器"
+                if torrents:
                     try:
-                        for torrent_file in torrent_files:
-                            file_id = torrent_file.get("id")
-                            file_name = torrent_file.get("name")
-                            meta_info = MetaInfo(file_name)
-                            if not meta_info.episode_list \
-                                    or not set(meta_info.episode_list).issubset(episodes):
-                                file_ids.append(file_id)
-                            else:
-                                sucess_epidised = list(set(sucess_epidised).union(set(meta_info.episode_list)))
+                        for torrent in torrents:
+                            # 名称与大小相等则认为是同一个种子
+                            if torrent.get("name") == getattr(torrent_from_file, 'name', '') \
+                                    and torrent.get("total_size") == getattr(torrent_from_file, 'total_size', 0):
+                                torrent_hash = torrent.get("hash")
+                                temporary_tag_cleaned = server.delete_torrents_tag(torrent_hash, tag)
+                                torrent_tags = [str(tag).strip() for tag in (torrent.get("tags") or "").split(',')]
+                                logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.get('name')}")
+                                # 给种子打上标签
+                                if "已整理" in torrent_tags:
+                                    server.remove_torrents_tag(ids=torrent_hash, tag=['已整理'])
+                                if get_runtime_setting('TORRENT_TAG') and get_runtime_setting('TORRENT_TAG') not in torrent_tags:
+                                    logger.info(f"给种子 {torrent_hash} 打上标签：{get_runtime_setting('TORRENT_TAG')}")
+                                    server.set_torrents_tag(ids=torrent_hash, tags=[get_runtime_setting('TORRENT_TAG')])
+                                # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
+                                torrent_layout = server.get_content_layout()
+                                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
                     finally:
-                        torrent_files.clear()
-                        del torrent_files
-                    if sucess_epidised and file_ids:
-                        # 选择文件
-                        server.set_files(torrent_hash=torrent_hash, file_ids=file_ids, priority=0)
-                    # 开始任务
-                    if server.is_force_resume():
-                        # 强制继续
-                        server.torrents_set_force_start(torrent_hash)
-                    else:
-                        server.start_torrents(torrent_hash)
-                    return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"添加下载成功，已选择集数：{sucess_epidised}"
+                        torrents.clear()
+                        del torrents
+                return None, None, None, f"添加种子任务失败：{content}"
+            else:
+                # 获取种子Hash
+                torrent_hash = next(iter(added_torrent_ids), None)
+                if not torrent_hash:
+                    torrent_hash = server.get_torrent_id_by_tag(tags=tag)
+                if torrent_hash:
+                    temporary_tag_cleaned = server.delete_torrents_tag(torrent_hash, tag)
+                if not torrent_hash:
+                    return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
                 else:
-                    if server.is_force_resume():
-                        server.torrents_set_force_start(torrent_hash)
-                    return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载成功"
+                    # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
+                    torrent_layout = server.get_content_layout()
+                    if is_paused:
+                        # 种子文件
+                        torrent_files = server.get_files(
+                            torrent_hash,
+                            retry=_TORRENT_FILES_RETRY_TIMES,
+                            interval=_TORRENT_FILES_RETRY_INTERVAL,
+                        )
+                        if not torrent_files:
+                            return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "获取种子文件失败，下载任务可能在暂停状态"
+
+                        # 不需要的文件ID
+                        file_ids = []
+                        # 需要的集清单
+                        sucess_epidised = []
+                        try:
+                            for torrent_file in torrent_files:
+                                file_id = torrent_file.get("id")
+                                file_name = torrent_file.get("name")
+                                meta_info = MetaInfo(file_name)
+                                if not meta_info.episode_list \
+                                        or not set(meta_info.episode_list).issubset(episodes):
+                                    file_ids.append(file_id)
+                                else:
+                                    sucess_epidised = list(set(sucess_epidised).union(set(meta_info.episode_list)))
+                        finally:
+                            torrent_files.clear()
+                            del torrent_files
+                        if sucess_epidised and file_ids:
+                            # 选择文件
+                            server.set_files(torrent_hash=torrent_hash, file_ids=file_ids, priority=0)
+                        # 开始任务
+                        if server.is_force_resume():
+                            # 强制继续
+                            server.torrents_set_force_start(torrent_hash)
+                        else:
+                            server.start_torrents(torrent_hash)
+                        return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"添加下载成功，已选择集数：{sucess_epidised}"
+                    else:
+                        if server.is_force_resume():
+                            server.torrents_set_force_start(torrent_hash)
+                        return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载成功"
+
+        finally:
+            # qBittorrent 可能在添加或查询链路中途失败，仍需清理已注册的临时标签。
+            if not temporary_tag_cleaned:
+                server.delete_torrents_tag(torrent_hash, tag)
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,

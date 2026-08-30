@@ -681,8 +681,26 @@ def test_download_falls_back_to_tag_lookup_when_added_ids_missing():
     )
 
     assert result == ("qb", "def456", "Original", "添加下载成功")
-    fake_server.delete_torrents_tag.assert_not_called()
+    fake_server.delete_torrents_tag.assert_called_once_with("def456", "tmp-tag-01")
     fake_server.get_torrent_id_by_tag.assert_called_once_with(tags="tmp-tag-01")
+
+
+def test_download_cleans_temporary_tag_when_addition_lookup_fails():
+    """添加失败且无法查询下载器时仍应清理临时标签。"""
+    fake_server = MagicMock()
+    fake_server.add_torrent.return_value = (False, [])
+    fake_server.get_torrents.return_value = ([], True)
+
+    module = _build_module(fake_server)
+    result = module.download(
+        content="magnet:?xt=urn:btih:789",
+        download_dir=Path("/downloads"),
+        cookie="",
+        downloader="qb",
+    )
+
+    assert result == (None, None, None, "无法连接qbittorrent下载器")
+    fake_server.delete_torrents_tag.assert_called_once_with(None, "tmp-tag-01")
 
 
 def test_download_removes_temporary_tag_from_existing_torrent():
