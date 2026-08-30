@@ -9,6 +9,7 @@ import app.chain.download.ports as download_ports
 from app.chain import message as message_module
 from app.chain import scraping as scraping_module
 from app.chain import system as system_module
+from app.startup.composition import network as network_composition
 from app.startup.initializers import network as network_initializer
 
 
@@ -105,7 +106,7 @@ def test_initializer_supports_repeated_init_and_reset() -> None:
 def test_initializer_rolls_back_partial_configuration(monkeypatch) -> None:
     """任一端口装配异常后不得留下可用的半套运行时。"""
     monkeypatch.setattr(
-        network_initializer,
+        network_composition,
         "configure_scraping_http_port",
         Mock(side_effect=RuntimeError("boom")),
     )

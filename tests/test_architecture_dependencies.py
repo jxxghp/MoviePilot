@@ -2463,6 +2463,44 @@ def test_domain_initializer_delegates_construction_to_composition():
     assert "app.application.recognition" in composition_imports
 
 
+def test_network_initializer_delegates_construction_to_composition():
+    """网络 initializer 只保留生命周期入口，不得重新拥有具体技术适配器。"""
+    initializer_path = APP_ROOT / "startup" / "initializers" / "network.py"
+    initializer_tree = ast.parse(
+        initializer_path.read_text(encoding="utf-8-sig"),
+        filename=str(initializer_path),
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert imported_modules == {"app.startup.composition.network"}
+    calls = {
+        ast.unparse(node.func)
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.Call)
+    }
+    assert calls == {
+        "configure_chain_network_composition",
+        "reset_chain_network_composition",
+    }
+
+    composition_path = APP_ROOT / "startup" / "composition" / "network.py"
+    composition_tree = ast.parse(
+        composition_path.read_text(encoding="utf-8-sig"),
+        filename=str(composition_path),
+    )
+    composition_imports = {
+        node.module
+        for node in ast.walk(composition_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "app.adapters.network.http" in composition_imports
+    assert "app.adapters.system.host" in composition_imports
+    assert "app.chain.download.ports" in composition_imports
+
+
 PROCESS_LEVEL_ROOTS = (
     "app.api",
     "app.chain",

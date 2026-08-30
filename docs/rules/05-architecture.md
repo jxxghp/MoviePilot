@@ -155,10 +155,10 @@ wallpaper-provider publication. `initializers/modules.py` passes the already con
 `startup/composition/security.py` owns authentication, user lookup, PassKey and Web
 access provider assembly; it returns the persistence factories needed by the runtime
 owner, which alone constructs `AuthenticationRuntime`.
-`startup/composition/network.py` owns concrete network-test, image, internal-address
-and message-ingress Adapter wiring
- while retaining lazy RuntimeSettings reads. Initializers call these owners in
- startup order and must not recreate their concrete construction.
+`startup/composition/network.py` owns concrete network-test, image, internal-address,
+message-ingress and Chain synchronous network/system Adapter wiring while retaining
+lazy RuntimeSettings reads. Initializers call these owners in startup order and must
+not recreate their concrete construction.
 `startup/composition/domain.py` owns DNS/System/Rust Adapter assembly together
 with the single `RecognitionRuleService` used to publish media-recognition rule
 providers. `initializers/domain.py` is only the lifecycle hook and must not
