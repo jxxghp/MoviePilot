@@ -20,6 +20,7 @@ from app.application.configuration import (
     get_transfer_retry_config,
 )
 from app.application.security.userconfig import UserConfigurationService
+from app.schemas.types import SystemConfigKey
 
 
 class _InlineDatabaseExecutor:
@@ -106,6 +107,18 @@ def test_system_config_service_supports_separate_reader_and_writer() -> None:
         (("key",), {}),
         (("key",), {}),
     ]
+
+
+def test_system_config_service_forwards_atomic_increment() -> None:
+    """共享识别命中计数应通过应用服务转发到持久化原子递增端口。"""
+    reader = MagicMock()
+    writer = MagicMock()
+    writer.increment.return_value = 3
+    service = SystemConfigService(reader=reader, writer=writer)
+
+    assert service.increment(SystemConfigKey.MediaRecognizeShareCount) == 3
+
+    writer.increment.assert_called_once_with(SystemConfigKey.MediaRecognizeShareCount, 1)
 
 
 def test_user_configuration_service_supports_sync_and_async_writes() -> None:

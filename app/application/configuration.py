@@ -29,6 +29,9 @@ class SystemConfigWriter(Protocol):
     def delete(self, key: Any) -> Any:
         """删除配置。"""
 
+    def increment(self, key: SystemConfigKey, step: int = 1) -> int:
+        """原子递增整数配置并返回递增后的值。"""
+
 
 class ConfigurationRepository(SystemConfigReader, SystemConfigWriter, Protocol):
     """兼容同时提供读写能力的旧配置仓储。"""
@@ -333,6 +336,10 @@ class SystemConfigService:
     def set(self, key: Any, value: Any) -> bool | None:
         """写入配置。"""
         return self._writer.set(key, value)
+
+    def increment(self, key: SystemConfigKey, step: int = 1) -> int:
+        """原子递增整数系统配置，保持计数更新由持久化端口负责。"""
+        return self._writer.increment(key, step)
 
     async def async_set(self, key: Any, value: Any) -> bool | None:
         """异步写入配置，并等待数据库提交或回滚完成。"""
