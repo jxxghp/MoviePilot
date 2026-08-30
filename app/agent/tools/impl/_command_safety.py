@@ -7,6 +7,9 @@ import re
 import shlex
 
 
+_SHELL_PUNCTUATION = ";&|<>"
+
+
 COMMAND_FORBIDDEN_KEYWORDS = (
     ":(){ :|:& };:",
     "dd if=/dev/zero",
@@ -27,33 +30,53 @@ COMMAND_DANGEROUS_PATTERNS = (
 def _command_tokens(command: str) -> list[str]:
     """尽力解析 shell 命令 token，解析失败时退回空白分割。"""
     try:
-        return shlex.split(command, posix=True)
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=_SHELL_PUNCTUATION)
+        lexer.whitespace_split = True
+        return list(lexer)
     except ValueError:
         return re.split(r"\s+", command.strip())
 
 
+def _command_segments(command: str) -> list[list[str]]:
+    """按 shell 控制运算符拆分命令，避免跨命令误关联参数。"""
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for token in _command_tokens(command):
+        if token and all(char in _SHELL_PUNCTUATION for char in token):
+            if current:
+                segments.append(current)
+                current = []
+            continue
+        current.append(token)
+    if current:
+        segments.append(current)
+    return segments
+
+
 def _contains_recursive_root_delete(command: str) -> bool:
     """识别递归删除根目录或一级目录的 rm 命令。"""
-    tokens = _command_tokens(command)
-    if not any(token == "rm" or token.endswith("/rm") for token in tokens):
-        return False
-    has_recursive = any(
-        token.startswith("-") and ("r" in token or "R" in token)
-        for token in tokens
-    )
-    if not has_recursive:
-        return False
+    for tokens in _command_segments(command):
+        rm_indexes = [
+            index
+            for index, token in enumerate(tokens)
+            if token == "rm" or token.endswith("/rm")
+        ]
+        for rm_index in rm_indexes:
+            rm_arguments = tokens[rm_index + 1 :]
+            has_recursive = any(
+                token.startswith("-") and ("r" in token or "R" in token)
+                for token in rm_arguments
+            )
+            if not has_recursive:
+                continue
 
-    for token in tokens:
-        clean_token = re.match(r"^([^;|&><]+)", token)
-        if not clean_token:
-            continue
-        path_value = clean_token.group(1).strip("\"'")
-        if not path_value.startswith("/"):
-            continue
-        norm_path = os.path.normpath(path_value)
-        if norm_path == "/" or re.match(r"^/[^/]+$", norm_path):
-            return True
+            for token in rm_arguments:
+                path_value = token.strip("\"'")
+                if not path_value.startswith("/"):
+                    continue
+                norm_path = os.path.normpath(path_value)
+                if norm_path == "/" or re.match(r"^/[^/]+$", norm_path):
+                    return True
     return False
 
 
