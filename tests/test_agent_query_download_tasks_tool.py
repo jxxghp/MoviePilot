@@ -4,7 +4,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.agent.tools.impl.query_download_tasks import QueryDownloadTasksTool
-from app.schemas.transfer import DownloaderTorrent
+from app.schemas.transfer import DownloadTaskMedia, DownloaderTorrent
+from app.schemas.types import MediaSource
 
 
 def _tool() -> QueryDownloadTasksTool:
@@ -107,6 +108,52 @@ def test_run_completed_status_formats_completed_download_tasks():
     assert payload[0]["ratio_limit"] == 2.0
     assert payload[0]["seeding_time_limit"] == 1440
     assert payload[0]["trackers"] == ["https://tracker.example/announce"]
+
+
+def test_run_formats_pydantic_download_task_media():
+    """下载任务媒体为 Pydantic 模型时应正常转换为 Agent 输出字段。"""
+    torrent = DownloaderTorrent(
+        downloader="qb",
+        hash="hash-with-media",
+        title="Movie With Media",
+        size=1024,
+        progress=100,
+        state="completed",
+        tags="moviepilot",
+        media=DownloadTaskMedia(
+            type="电影",
+            title="补全标题",
+            season=1,
+            episode=[2, 3],
+            media_source=MediaSource.TMDB,
+            media_id="123",
+        ),
+    )
+
+    with patch.object(
+        QueryDownloadTasksTool,
+        "_query_downloads_sync",
+        return_value={"downloads": [torrent]},
+    ):
+        result = asyncio.run(
+            QueryDownloadTasksTool(session_id="session-1", user_id="10001").run()
+        )
+
+    payload = json.loads(result)
+    assert payload[0]["media"] == {
+        "type": "movie",
+        "title": "补全标题",
+        "season": 1,
+        "episode": [2, 3],
+        "media_source": MediaSource.TMDB,
+        "media_id": "123",
+        "music_type": None,
+        "artists": [],
+        "album": None,
+        "album_id": None,
+        "total_tracks": None,
+        "track_number": None,
+    }
 
 
 def test_hash_query_loads_trackers_for_matching_task():

@@ -379,19 +379,22 @@ class QueryDownloadTasksTool(MoviePilotTool):
                     # 精简 media 字段
                     media = getattr(d, "media", None)
                     if media:
+                        media_data = (
+                            media.model_dump() if isinstance(media, BaseModel) else media
+                        )
                         simplified["media"] = {
-                            "type": media_type_to_agent(media.get("type")),
-                            "title": media.get("title"),
-                            "season": media.get("season"),
-                            "episode": media.get("episode"),
-                            "media_source": media.get("media_source"),
-                            "media_id": media.get("media_id"),
-                            "music_type": media.get("music_type"),
-                            "artists": media.get("artists"),
-                            "album": media.get("album"),
-                            "album_id": media.get("album_id"),
-                            "total_tracks": media.get("total_tracks"),
-                            "track_number": media.get("track_number"),
+                            "type": media_type_to_agent(media_data.get("type")),
+                            "title": media_data.get("title"),
+                            "season": media_data.get("season"),
+                            "episode": media_data.get("episode"),
+                            "media_source": media_data.get("media_source"),
+                            "media_id": media_data.get("media_id"),
+                            "music_type": media_data.get("music_type"),
+                            "artists": media_data.get("artists"),
+                            "album": media_data.get("album"),
+                            "album_id": media_data.get("album_id"),
+                            "total_tracks": media_data.get("total_tracks"),
+                            "track_number": media_data.get("track_number"),
                         }
                     simplified_downloads.append(simplified)
                 result_json = json.dumps(simplified_downloads, ensure_ascii=False, indent=2)
