@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8422,
-  "edge_sha256": "3971beb13490710d6054b8cedbc66da9c0920bb30107332440f8c788d27feebd",
+  "edge_count": 8426,
+  "edge_sha256": "b100c70544e268aba59153e0725133903487e4dcd2c6b28ca9130ea8ef6a982c",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3796,6 +3796,7 @@
     "app.application.formatting -> app.schemas.workflow",
     "app.application.history -> app.application",
     "app.application.history -> app.application.configuration",
+    "app.application.history -> app.application.historymutation",
     "app.application.history -> app.domain",
     "app.application.history -> app.domain.context",
     "app.application.history -> app.domain.meta",
@@ -3813,6 +3814,9 @@
     "app.application.history -> app.schemas.media",
     "app.application.history -> app.schemas.transfer",
     "app.application.history -> app.schemas.types",
+    "app.application.historymutation -> app.schemas",
+    "app.application.historymutation -> app.schemas.common",
+    "app.application.historymutation -> app.schemas.history",
     "app.application.image -> app.application",
     "app.application.image -> app.application.configuration",
     "app.application.image -> app.application.security",
@@ -9515,7 +9519,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 981,
+  "module_count": 982,
   "modules": [
     "app",
     "app.adapters",
@@ -9794,6 +9798,7 @@
     "app.application.downloader",
     "app.application.formatting",
     "app.application.history",
+    "app.application.historymutation",
     "app.application.image",
     "app.application.maintenance",
     "app.application.mediaserver",

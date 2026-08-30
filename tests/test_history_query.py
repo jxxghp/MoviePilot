@@ -1,7 +1,7 @@
 """历史查询应用服务的分页、筛选和 DTO 边界测试。"""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -42,24 +42,26 @@ async def test_list_download_returns_schema_dtos() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_transfer_maps_failed_alias_to_status_filter() -> None:
-    """“失败”快捷条件应继续映射为无标题的失败状态查询。"""
+async def test_list_transfer_uses_explicit_status_without_reinterpreting_title() -> None:
+    """状态筛选必须使用显式参数，中文标题仍保持标题查询语义。"""
     service, _, transfer_repository = _make_service()
-    transfer_repository.async_list_by_page.return_value = [
+    transfer_repository.async_list_by_title.return_value = [
         SimpleNamespace(id=3, status=False)
     ]
-    transfer_repository.async_count.return_value = 1
+    transfer_repository.async_count_by_title.return_value = 1
 
-    page = await service.list_transfer(title="失败", page=3, count=5)
+    page = await service.list_transfer(title="失败", page=3, count=5, status=False)
 
     assert page.list == [TransferHistory(id=3, status=False)]
     assert page.total == 1
-    transfer_repository.async_list_by_page.assert_awaited_once_with(
+    transfer_repository.async_count_by_title.assert_awaited_once()
+    transfer_repository.async_list_by_title.assert_awaited_once_with(
+        ANY,
         page=3,
         count=5,
         status=False,
+        wildcard=False,
     )
-    transfer_repository.async_count.assert_awaited_once_with(status=False)
 
 
 @pytest.mark.asyncio

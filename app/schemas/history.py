@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -144,3 +144,32 @@ class TransferHistoryPage(BaseModel):
 
     list: List[TransferHistory] = Field(default_factory=list, description="整理历史列表")
     total: int = Field(default=0, description="记录总数")
+
+
+class TransferHistoryDeleteStep(BaseModel):  # type: ignore[misc]
+    """整理历史删除流程中单个文件目标的执行结果。"""
+
+    # not_requested 未请求；deleted 已删除；already_missing 原目标已不存在；failed 删除或校验失败
+    status: Literal["not_requested", "deleted", "already_missing", "failed"]
+    # 仅用于无法继续处理时给出可读原因，正常状态为空
+    message: str = ""
+
+
+class TransferHistoryDeleteResult(BaseModel):  # type: ignore[misc]
+    """整理历史删除及源/目标文件清理的分项结果。"""
+
+    # 源文件步骤
+    source: TransferHistoryDeleteStep
+    # 目标文件步骤
+    destination: TransferHistoryDeleteStep
+    # 历史记录步骤：deleted 已删除、retained 保留待重试、not_found 不存在
+    history: Literal["deleted", "retained", "not_found"]
+    # 面向请求方的概要消息；详细状态由三个步骤字段表达
+    message: str = ""
+
+    @property
+    def success(self) -> bool:
+        """兼容应用层命令调用方，以历史记录是否删除作为整体成功条件。"""
+        return self.history == "deleted"
+
+    model_config = ConfigDict(from_attributes=True)

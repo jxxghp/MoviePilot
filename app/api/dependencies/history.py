@@ -93,6 +93,7 @@ def get_transfer_history_mutation_command(
         download_repository=runtime.history.download_repository(db),
         unit_of_work=runtime.persistence.sync_transaction(db),
         file_item_factory=lambda payload: _SchemaFileItem(**payload),
+        file_exists=storage_chain.exists,
         delete_media_file=storage_chain.delete_media_file,
         publish_download_file_deleted=lambda payload: eventmanager.send_event(
             EventType.DownloadFileDeleted,

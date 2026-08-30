@@ -1,10 +1,30 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Any, Callable, Dict, NoReturn, Optional, Protocol, Union
 
 from app.application.configuration import TransferRetryConfig, get_transfer_retry_config
+from app.application.historymutation import (
+    DownloadFileMutationRepository as DownloadFileMutationRepository,
+)
+from app.application.historymutation import (
+    DownloadHistoryMutationCommand as DownloadHistoryMutationCommand,
+)
+from app.application.historymutation import (
+    DownloadHistoryMutationRepository as DownloadHistoryMutationRepository,
+)
+from app.application.historymutation import (
+    HistoryMutationResult as HistoryMutationResult,
+)
+from app.application.historymutation import (
+    HistoryUnitOfWork as HistoryUnitOfWork,
+)
+from app.application.historymutation import (
+    TransferHistoryMutationCommand as TransferHistoryMutationCommand,
+)
+from app.application.historymutation import (
+    TransferHistoryMutationRepository as TransferHistoryMutationRepository,
+)
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -33,14 +53,6 @@ MAX_FAILED_RETRIES = 10
 # 因此同一路径的新版本天然获得独立预算；内存缓存会随进程重启清空，Redis 后端则保留到 TTL 到期。
 FAILED_RETRY_TTL = 24 * 3600
 _failed_retry_counts = TTLCache(region="transfer_failed_retry", maxsize=5000, ttl=FAILED_RETRY_TTL)
-
-
-@dataclass(frozen=True, slots=True)
-class HistoryMutationResult:
-    """描述历史记录维护操作是否成功及兼容提示。"""
-
-    success: bool
-    message: str = ""
 
 
 class _FrozenJsonDict(dict[str, JsonData]):
@@ -697,13 +709,6 @@ class HistoryQueryService:
         status: Optional[bool] = None,
     ) -> TransferHistoryPage:
         """应用历史筛选规则并返回整理历史分页 DTO。"""
-        if title == "失败":
-            title = None
-            status = False
-        elif title == "成功":
-            title = None
-            status = True
-
         if title:
             wildcard = "*" in title or "?" in title
             if wildcard:
@@ -762,168 +767,6 @@ class HistoryQueryService:
         """将 glob 通配符转换为使用反斜杠转义的 SQL LIKE 模式。"""
         result = pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         return result.replace("*", "%").replace("?", "_")
-
-
-class DownloadHistoryMutationRepository(Protocol):
-    """下载历史删除用例需要的最小持久化端口。"""
-
-    def stage_delete_history(self, history_id: int) -> None:
-        """暂存下载历史删除。"""
-        ...
-
-
-class TransferHistoryMutationRepository(Protocol):
-    """整理历史删除与清理用例需要的最小持久化端口。"""
-
-    def get(self, history_id: int) -> Optional[TransferHistorySnapshot]:
-        """读取整理历史。"""
-        ...
-
-    def stage_delete(self, history_id: int) -> None:
-        """暂存整理历史删除。"""
-        ...
-
-    def stage_truncate(self) -> None:
-        """暂存全部整理历史删除。"""
-        ...
-
-
-class DownloadFileMutationRepository(Protocol):
-    """整理历史删除时关联下载文件状态更新端口。"""
-
-    def stage_delete_file_by_fullpath(self, fullpath: str) -> None:
-        """暂存下载文件删除状态。"""
-        ...
-
-
-class HistoryUnitOfWork(Protocol):
-    """同步历史维护用例使用的事务端口。"""
-
-    def commit(self) -> None:
-        """提交当前事务。"""
-        ...
-
-    def rollback(self) -> None:
-        """回滚当前事务。"""
-        ...
-
-
-class DownloadHistoryMutationCommand:
-    """统一提交下载历史删除，避免 API 直接持有数据库事务。"""
-
-    def __init__(
-        self,
-        *,
-        repository: DownloadHistoryMutationRepository,
-        unit_of_work: HistoryUnitOfWork,
-    ) -> None:
-        """保存下载历史持久化和事务端口。"""
-        self._repository = repository
-        self._unit_of_work = unit_of_work
-
-    def delete(self, history_id: int) -> HistoryMutationResult:
-        """暂存并提交单条下载历史删除。"""
-        self._repository.stage_delete_history(history_id)
-        self._commit()
-        return HistoryMutationResult(True)
-
-    def _commit(self) -> None:
-        """提交事务，失败时回滚。"""
-        try:
-            self._unit_of_work.commit()
-        except Exception:
-            self._unit_of_work.rollback()
-            raise
-
-
-class TransferHistoryMutationCommand:
-    """协调整理历史、关联文件状态和外部存储删除。"""
-
-    def __init__(
-        self,
-        *,
-        repository: TransferHistoryMutationRepository,
-        download_repository: DownloadFileMutationRepository,
-        unit_of_work: HistoryUnitOfWork,
-        file_item_factory: Callable[[dict[str, JsonData]], Any],
-        delete_media_file: Callable[[Any], bool],
-        publish_download_file_deleted: Callable[[dict[str, Any]], None],
-        clear_failures: Callable[[Optional[str], Optional[str]], None],
-    ) -> None:
-        """保存历史事务、存储删除、事件和失败状态清理端口。"""
-        self._repository = repository
-        self._download_repository = download_repository
-        self._unit_of_work = unit_of_work
-        self._file_item_factory = file_item_factory
-        self._delete_media_file = delete_media_file
-        self._publish_download_file_deleted = publish_download_file_deleted
-        self._clear_failures = clear_failures
-
-    def delete(
-        self,
-        history_id: int,
-        *,
-        delete_source: bool = False,
-        delete_destination: bool = False,
-    ) -> HistoryMutationResult:
-        """删除整理记录，并保持源文件失败时不提交数据库变更。"""
-        history = self._repository.get(history_id)
-        if not history:
-            return HistoryMutationResult(False, "记录不存在")
-        if getattr(history, "transfer_task_id", None):
-            return HistoryMutationResult(
-                False,
-                "持久整理失败记录不可删除，请使用重试或人工复核入口",
-            )
-
-        if delete_destination and history.dest_fileitem:
-            destination_payload = self._file_item_payload(history.dest_fileitem)
-            if destination_payload is None:
-                return HistoryMutationResult(False, "目标文件历史数据无效")
-            destination = self._file_item_factory(destination_payload)
-            self._delete_media_file(destination)
-
-        source_deleted = False
-        if delete_source and history.src_fileitem:
-            source_payload = self._file_item_payload(history.src_fileitem)
-            if source_payload is None:
-                return HistoryMutationResult(False, "源文件历史数据无效")
-            source = self._file_item_factory(source_payload)
-            if not self._delete_media_file(source):
-                return HistoryMutationResult(False, f"{source.path} 删除失败")
-            self._download_repository.stage_delete_file_by_fullpath(
-                Path(source.path).as_posix()
-            )
-            source_deleted = True
-
-        self._repository.stage_delete(history_id)
-        self._commit()
-        if source_deleted:
-            self._publish_download_file_deleted({
-                "src": history.src,
-                "hash": history.download_hash,
-            })
-        self._clear_failures(history.src, history.src_storage)
-        return HistoryMutationResult(True)
-
-    @staticmethod
-    def _file_item_payload(value: JsonData) -> Optional[dict[str, JsonData]]:
-        """仅接受可安全构造文件项的历史 JSON 对象。"""
-        return value if isinstance(value, dict) else None
-
-    def truncate(self) -> HistoryMutationResult:
-        """在单一事务中清空旧历史，并保留当前失败任务记录。"""
-        self._repository.stage_truncate()
-        self._commit()
-        return HistoryMutationResult(True, "已清空旧整理记录，失败任务记录已保留")
-
-    def _commit(self) -> None:
-        """提交历史事务，失败时回滚且不发布事件或清缓存。"""
-        try:
-            self._unit_of_work.commit()
-        except Exception:
-            self._unit_of_work.rollback()
-            raise
 
 
 class HistoryGateAction:

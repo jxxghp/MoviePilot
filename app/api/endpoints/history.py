@@ -49,6 +49,7 @@ from app.schemas.common import ProgressKeyData as _SchemaProgressKeyData
 from app.schemas.history import BatchTransferHistoryRedoRequest as _SchemaBatchTransferHistoryRedoRequest
 from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
 from app.schemas.history import TransferHistory as _SchemaTransferHistory
+from app.schemas.history import TransferHistoryDeleteResult as _SchemaTransferHistoryDeleteResult
 from app.schemas.history import TransferHistoryPage as _SchemaTransferHistoryPage
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -399,7 +400,11 @@ async def transfer_history(
     return _SchemaResponse(success=True, data=result)
 
 
-@router.delete("/transfer", summary="删除整理记录", response_model=_SchemaResponse[None])
+@router.delete(
+    "/transfer",
+    summary="删除整理记录",
+    response_model=_SchemaResponse[_SchemaTransferHistoryDeleteResult],
+)
 def delete_transfer_history(
     history_in: _SchemaTransferHistory,
     deletesrc: Optional[bool] = False,
@@ -417,7 +422,11 @@ def delete_transfer_history(
         delete_source=bool(deletesrc),
         delete_destination=bool(deletedest),
     )
-    return _SchemaResponse(success=result.success, message=result.message)
+    return _SchemaResponse(
+        success=result.success,
+        message=result.message,
+        data=result,
+    )
 
 
 @router.post(

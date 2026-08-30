@@ -105,10 +105,11 @@ def test_delete_transfer_history_endpoint_clears_retry_count(monkeypatch):
         id=101,
         src=src_path,
         src_storage=storage,
-        dest_fileitem=None,
-        src_fileitem=None,
-        download_hash=None,
-    )
+            dest_fileitem=None,
+            src_fileitem=None,
+            download_hash=None,
+            transfer_task_id=None,
+        )
     repository = Mock()
     repository.get.return_value = history
     command = TransferHistoryMutationCommand(
@@ -136,6 +137,10 @@ def test_delete_transfer_history_endpoint_clears_retry_count(monkeypatch):
         )
 
         assert response.success is True
+        assert response.data is not None
+        assert response.data.history == "deleted"
+        assert response.data.source.status == "not_requested"
+        assert response.data.destination.status == "not_requested"
         assert failed_retry_count(src_path, storage) == 0
     finally:
         _reset_failed_retries(src_path, storage)
