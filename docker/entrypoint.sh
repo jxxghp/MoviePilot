@@ -595,6 +595,15 @@ usermod -o -u "${PUID}" moviepilot
 # 启动前优先确认主运行环境仍然健康，避免插件依赖污染导致服务直接起不来。
 ensure_backend_runtime_dependencies
 
+# 依赖阶段恢复会保留当前程序，待自愈成功后再清理旧代际备份和事务标记。
+if [ "${UPDATE_RECOVERY_BLOCKED:-false}" = "true" ]; then
+    if finalize_update_transaction; then
+        INFO "→ 当前程序依赖已恢复，已清理保留当前程序的更新事务"
+    else
+        WARN "→ 当前程序依赖已恢复，但旧代际备份清理失败，将保留事务标记重试"
+    fi
+fi
+
 # 缓存路径解析必须晚于依赖自愈，确保有效性探针使用当前运行版本。
 if ! resolve_browser_cache_dir; then
     exit 1

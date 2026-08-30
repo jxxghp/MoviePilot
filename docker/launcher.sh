@@ -107,7 +107,7 @@ function pending_recovery_control_dir() {
 
     state="$(pending_update_state 2>/dev/null || true)"
     case "${state}" in
-    prepared|dependencies)
+    prepared)
         [ -e "${UPDATE_PREVIOUS_APP}" ] || return 1
         if source_bundle_is_trusted "${previous_control_dir}"; then
             printf '%s\n' "${previous_control_dir}"
@@ -117,6 +117,11 @@ function pending_recovery_control_dir() {
             printf '%s\n' "${IMAGE_CONTROL_DIR}"
         fi
         return 0
+        ;;
+    dependencies|blocked)
+        # 依赖阶段可能已切换到包含新迁移的当前 /app；必须使用当前或镜像控制脚本，
+        # 让 update.sh 保留新代际，而不是先执行旧代控制脚本触发数据库不兼容回退。
+        return 1
         ;;
     esac
     return 1

@@ -1237,7 +1237,7 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
     (previous_public / "index.html").write_text("old-front", encoding="utf-8")
     config_dir = tmp_path / "config"
     (config_dir / "temp").mkdir(parents=True)
-    (config_dir / "temp" / "__update_pending__").write_text("dependencies\n", encoding="utf-8")
+    (config_dir / "temp" / "__update_pending__").write_text("prepared\n", encoding="utf-8")
     uv_bin = tmp_path / "uv"
     uv_log = tmp_path / "uv.log"
     uv_bin.write_text(
@@ -1288,9 +1288,114 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
     )
 
     assert result.stdout == "old|old-front|cleared|true\n"
-    assert uv_log.read_text(encoding="utf-8").startswith(
-        f"sync --project {live_app} --locked --inexact --no-dev"
+    assert not uv_log.exists()
+
+
+def test_pending_dependency_update_keeps_current_payload_for_database_safety(
+    tmp_path: Path,
+) -> None:
+    """依赖阶段中断时保留当前载荷，避免新数据库回退到旧迁移链。"""
+    live_app = tmp_path / "app"
+    live_public = tmp_path / "public"
+    previous_app = tmp_path / "previous-app"
+    previous_public = tmp_path / "previous-public"
+    (live_app / "app").mkdir(parents=True)
+    live_public.mkdir()
+    (previous_app / "app").mkdir(parents=True)
+    previous_public.mkdir()
+    (live_app / "app" / "new.py").write_text("new", encoding="utf-8")
+    (live_public / "index.html").write_text("new-front", encoding="utf-8")
+    (previous_app / "app" / "old.py").write_text("old", encoding="utf-8")
+    (previous_public / "index.html").write_text("old-front", encoding="utf-8")
+    config_dir = tmp_path / "config"
+    pending_file = config_dir / "temp" / "__update_pending__"
+    pending_file.parent.mkdir(parents=True)
+    pending_file.write_text("dependencies\n", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        source {UPDATER!s}
+        APP_DIR="$2"
+        PUBLIC_DIR="$3"
+        UPDATE_PREVIOUS_APP="$4"
+        UPDATE_PREVIOUS_PUBLIC="$5"
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        recover_pending_update
+        printf '%s|%s|%s|%s|%s|%s\n' \
+            "$([[ -f "${{APP_DIR}}/app/new.py" ]] && printf new || printf missing)" \
+            "$([[ -f "${{PUBLIC_DIR}}/index.html" ]] && head -n1 "${{PUBLIC_DIR}}/index.html" || printf missing)" \
+            "$(tr -d '\r\n' < "${{UPDATE_PENDING_FILE}}")" \
+            "${{UPDATE_RECOVERY_COMPLETED}}" \
+            "${{UPDATE_RECOVERY_BLOCKED}}" \
+            "$([[ -f "${{UPDATE_PREVIOUS_APP}}/app/old.py" ]] && printf retained || printf absent)"
+        """
     )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "pending-dependency-recovery-test",
+            str(config_dir),
+            str(live_app),
+            str(live_public),
+            str(previous_app),
+            str(previous_public),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "new|new-front|blocked|true|true|retained\n"
+
+
+def test_launcher_uses_current_control_for_dependency_recovery(
+    tmp_path: Path,
+) -> None:
+    """依赖阶段 pending 不得先选旧代控制脚本触发回退。"""
+    source = tmp_path / "source"
+    image = tmp_path / "image"
+    previous = tmp_path / "previous-app"
+    config = tmp_path / "config"
+    _write_bundle(source, "new")
+    _write_bundle(image, "image")
+    _write_bundle(previous / "docker", "old")
+    pending_file = config / "temp" / "__update_pending__"
+    pending_file.parent.mkdir(parents=True)
+    pending_file.write_text("dependencies\n", encoding="utf-8")
+    script = textwrap.dedent(
+        f"""\
+        source {LAUNCHER!s}
+        SOURCE_CONTROL_DIR="$1"
+        IMAGE_CONTROL_DIR="$2"
+        RUNTIME_ROOT="$3"
+        UPDATE_PENDING_FILE="$4"
+        UPDATE_PREVIOUS_APP="$5"
+        source_bundle_is_trusted() {{ control_bundle_generation "$1" > /dev/null; }}
+        launcher_main
+        """
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "dependency-launcher-test",
+            str(source),
+            str(image),
+            str(tmp_path / "run"),
+            str(pending_file),
+            str(previous),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "new\n"
 
 
 def test_update_transaction_keeps_marker_when_backup_cleanup_fails(tmp_path: Path) -> None:

@@ -66,6 +66,7 @@ UV_OPTIONS=()
 MOVIEPILOT_UPDATE_RESULT="noop"
 UPDATE_RECOVERY_REQUIRED="false"
 UPDATE_RECOVERY_COMPLETED="false"
+UPDATE_RECOVERY_BLOCKED="false"
 DEPENDENCY_SYNC_ATTEMPTED="false"
 PACKAGE_ROUTE_READY="false"
 
@@ -268,10 +269,30 @@ function recover_pending_update() {
         return 0
     fi
 
-    WARN "→ 检测到未完成的容器更新事务，正在恢复旧版本"
-    if [ "${state}" = "dependencies" ]; then
-        DEPENDENCY_SYNC_ATTEMPTED="true"
+    if [ "${state}" = "dependencies" ] || [ "${state}" = "blocked" ]; then
+        if [ ! -e "${APP_DIR}" ] || [ ! -e "${PUBLIC_DIR}" ]; then
+            # 目录切换中断可能留下不完整的当前载荷；这种情况仍需恢复完整旧代际。
+            if [ ! -e "${UPDATE_PREVIOUS_APP}" ] || [ ! -e "${UPDATE_PREVIOUS_PUBLIC}" ]; then
+                ERROR "→ 当前与更新前载荷均不完整，无法安全恢复"
+                UPDATE_RECOVERY_REQUIRED="true"
+                return 1
+            fi
+            WARN "→ 当前更新载荷不完整，恢复更新前版本"
+        else
+            # 依赖阶段可能已经切换到包含新迁移的 /app；此时不能恢复旧代际，
+            # 否则数据库已经前进时会把旧程序交给未知的 Alembic revision。
+            WARN "→ 更新事务停留在依赖阶段，保留当前程序并等待启动前依赖自愈，不回退旧版本"
+            if [ "${state}" = "dependencies" ] && ! set_update_pending blocked; then
+                ERROR "→ 无法记录保留当前程序的更新恢复状态"
+                return 1
+            fi
+            UPDATE_RECOVERY_BLOCKED="true"
+            UPDATE_RECOVERY_COMPLETED="true"
+            return 0
+        fi
     fi
+
+    WARN "→ 检测到未完成的容器更新事务，正在恢复旧版本"
     rollback_update_transaction || return 1
     UPDATE_RECOVERY_COMPLETED="true"
     INFO "→ 未完成的容器更新事务已恢复"
