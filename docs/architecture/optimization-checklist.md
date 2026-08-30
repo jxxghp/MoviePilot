@@ -7,6 +7,20 @@
 >
 > 文档性质：原始差距、治理结果和剩余交付边界的持续校准账本
 
+## 0.1 当前残余收口目标（G-ARCH-RESIDUAL）
+
+2026-08-30 已针对本账本识别的残余问题建立独立追踪目标。历史 S4 仍为
+`CANCELLED`，本目标不将全量 mypy、Ruff、覆盖率或并发质量债务重新扩大为本轮完成依赖；
+只处理下表所列、已由审计确认且会影响真实运行语义或治理可信度的缺口。
+
+| ID | 状态 | 问题 | 收口要求 |
+|---|---|---|---|
+| RES-001 | `ACTIVE`（R0） | System API 仍混有日志、Wiki、配置、事件和更新编排 | Application service/Port 拥有业务与 I/O 决策，endpoint 只做传输适配；canonical 旧实现删除 |
+| RES-002 | `PLANNED`（R2） | 复杂度门禁漏扫私有方法、类/文件和 Scheduler；原生并发清单不完整 | 事实扫描覆盖全部宿主调用点（排除 `app/plugins/**`），每项有 owner/精确豁免且零增长 |
+| RES-003 | `PLANNED`（R3） | Outbox after_commit 失败只有内存 pending 标记，重启不可恢复 | 持久 intent、唯一 handler、claim/fencing、重启回放、幂等和失败观测完整闭环 |
+| RES-004 | `PLANNED`（R4） | Startup initializer 与插件市场存在多套 Transport/Adapter/Manager 构造 | 所有构造回收到 composition root，插件兼容只经 SDK/Compat，canonical 不保留重复正式入口 |
+| RES-005 | `PLANNED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 文档与事实源一致；专项、锁定全量、Pylint、架构/兼容门禁和 GitHub CI 闭环，远端 `0/0` |
+
 ## 1. 结论摘要
 
 MoviePilot V3 已经形成较清晰的模块化单体：`foundation`、`domain`、`runtime`、

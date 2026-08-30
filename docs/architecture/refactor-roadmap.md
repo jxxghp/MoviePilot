@@ -9,6 +9,24 @@
 >
 > 兼容原则：新插件只使用 `app.sdk`；旧插件导入、符号和行为只由统一 Compat/Legacy 层承接。
 
+## 0.1 当前追踪目标：G-ARCH-RESIDUAL（ACTIVE）
+
+原 G-ARCH 的 S0-S3、S5 交付记录和 S4 `CANCELLED` 决定保持不变。基于 2026-08-30
+对 exact-head 的复核，另行建立本次追踪目标 `G-ARCH-RESIDUAL`，只收口审计已经明确的残余
+语义和治理缺口，不把 S4 的全量质量债务重新作为隐性依赖。
+
+| Leaf | 状态 | 依赖 | 退出条件 |
+|---|---|---|---|
+| R0 事实基线刷新 | `ACTIVE` | 无 | exact-head、远端、工作树、CI 和五类残余问题证据冻结；不修改 `app/plugins/**` |
+| R1 System API 边界收口 | `PLANNED` | R0 | `system.py` 仅保留 HTTP/SSE/ZIP/响应映射；日志、Wiki、配置、事件、更新编排由 Application service/Port 拥有并由 startup 注入；旧 canonical 实现和重复导出删除 |
+| R2 复杂度与原生并发门禁 | `PLANNED` | R0 | 扫描私有方法、类/文件热点及 `app/scheduler`；枚举全部 Thread/Timer/Executor/asyncio 原语；每条事实有 owner 或精确豁免，门禁不可绕过且本范围新增债务为零 |
+| R3 Outbox after_commit 恢复语义 | `PLANNED` | R0 | after_commit 失败写入持久 intent；有唯一恢复 handler、claim/fencing、重启回放、幂等和失败可观测性；不得以内存 `pending_effects` 代替恢复 |
+| R4 Startup/插件市场单一装配 | `PLANNED` | R0 | Transport、Adapter、Package、Dependency、Domain service 由 composition root 单一构造；initializer 和 market facade 不得隐式 new 第二套实例；SDK/Compat ABI 保持不变 |
+| R5 验收与交付收口 | `PLANNED` | R1,R2,R3,R4 | 路线图、优化清单、规则和机器门禁一致；专项与锁定全量测试、Pylint、架构/兼容门禁、GitHub CI 通过；`HEAD == origin/v3` 且 ahead/behind 为 `0/0` |
+
+执行合同：任一时刻只允许一个 `ACTIVE` 叶子；每个叶子必须独立验证、显式提交和推送，
+并在交付前复核插件 ABI、canonical 旧实现/重复导出和 `app/plugins/**` 排除边界。
+
 ## 1. 治理合同
 
 ### 1.1 Goal 层级
