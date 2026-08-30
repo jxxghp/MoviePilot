@@ -26,7 +26,7 @@ from app.application.security import auth as auth_service_module
 from app.application.security.auth import AuthService
 from app.application.security.token import create_access_token, decode_access_token
 from app.runtime.config import settings
-from app.schemas.token import Token
+from app.schemas.token import Token, TokenPayload
 from app.schemas.user import CurrentUserUpdate
 
 
@@ -473,6 +473,30 @@ def test_superuser_payload_provider_rejects_inactive_user(monkeypatch):
 
     with pytest.raises(PermissionError):
         service.build_superuser_token_payload()
+
+
+def test_auth_service_reads_user_by_id_and_accepts_current_token_identity():
+    """认证服务按稳定用户 ID 查询，并接受与当前账号一致的令牌声明。"""
+    user = _user()
+    users = SimpleNamespace(get_by_id=Mock(return_value=user))
+    service = AuthService(
+        users=users,
+        config=SimpleNamespace(),
+        passkeys=SimpleNamespace(),
+    )
+
+    assert service.get_user_by_id(user.id) is user
+    service.validate_token_identity(
+        TokenPayload(
+            sub=user.id,
+            username=user.name,
+            super_user=user.is_superuser,
+            level=1,
+            purpose="authentication",
+        )
+    )
+
+    assert users.get_by_id.call_count == 2
 
 
 def test_superuser_payload_provider_follows_stable_id_after_admin_rename(monkeypatch):
