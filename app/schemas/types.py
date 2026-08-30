@@ -515,6 +515,8 @@ class NotificationAction(str, Enum):
     TEST_CONNECTION = "test_connection"
     # 迁移渠道名变更前的登录缓存
     MIGRATE_CACHE = "migrate_cache"
+    # 同步通知配置变更产生的缓存迁移和清理
+    RECONCILE_CONFIG = "reconcile_config"
 
 
 class StorageAction(str, Enum):

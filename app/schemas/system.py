@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime as _DateTime
 from typing import Optional, Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -89,6 +90,8 @@ class NotificationConf(BaseModel):
     通知配置
     """
 
+    # 稳定渠道身份；名称变化时保持不变，用于运行态凭据和跨页面引用。
+    id: str = Field(default_factory=lambda: str(uuid4()))
     # 名称
     name: Optional[str] = None
     # 类型 telegram/wechat/feishu/vocechat/synologychat/slack/webpush/qqbot
