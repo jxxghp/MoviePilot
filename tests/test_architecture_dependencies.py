@@ -2374,6 +2374,60 @@ def test_system_nettest_is_owned_by_application_service():
     assert concrete_adapter_imports == set()
 
 
+def test_plugin_market_construction_is_owned_by_startup_composition():
+    """插件 initializer 只能消费组合根创建的市场依赖，禁止隐式构造第二套 owner。"""
+    initializer_path = APP_ROOT / "startup" / "initializers" / "plugins.py"
+    initializer_tree = ast.parse(
+        initializer_path.read_text(encoding="utf-8-sig"),
+        filename=str(initializer_path),
+    )
+    initializer_imports = {
+        alias.name
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    assert "compose_plugin_market" in initializer_imports
+    forbidden_names = {
+        "PluginMarketTransport",
+        "PluginPackageSourceClient",
+        "PluginPackageManager",
+        "PluginDependencyInstaller",
+    }
+    assert forbidden_names.isdisjoint(initializer_imports)
+    assert not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in forbidden_names
+        for node in ast.walk(initializer_tree)
+    )
+
+    composition_path = APP_ROOT / "startup" / "composition" / "plugin.py"
+    composition_tree = ast.parse(
+        composition_path.read_text(encoding="utf-8-sig"),
+        filename=str(composition_path),
+    )
+    composition_calls = [
+        node.func.id
+        for node in ast.walk(composition_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in forbidden_names
+    ]
+    assert composition_calls.count("PluginMarketTransport") == 1
+    assert composition_calls.count("PluginPackageSourceClient") == 1
+    assert composition_calls.count("PluginPackageManager") == 1
+    assert composition_calls.count("PluginDependencyInstaller") == 1
+
+
+def test_plugin_market_transport_is_process_shared_across_compat_and_composition():
+    """兼容门面和组合根不得物化两套插件市场传输 owner。"""
+    from app.adapters.external.market import _plugin_market_transport
+    from app.adapters.external.plugin.client import PluginMarketTransport
+
+    assert PluginMarketTransport.get_existing_instance() is _plugin_market_transport
+
+
 PROCESS_LEVEL_ROOTS = (
     "app.api",
     "app.chain",

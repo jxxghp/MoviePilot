@@ -13,15 +13,11 @@ from app.adapters.external.market import (
 from app.adapters.external.plugin.client import (
     VERSION_BACKWARD_COMPATIBLE_FLAGS,
     PluginMarketClient,
-    PluginMarketTransport,
-    PluginPackageSourceClient,
     split_plugin_market_repo_urls,
 )
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.system.host import SystemUtils
-from app.adapters.system.plugin.dependency import PluginDependencyInstaller
 from app.adapters.system.plugin.manifest import dependency_manifest_status
-from app.adapters.system.plugin.package import PluginPackageManager
 from app.application.commands import init_commands
 from app.application.configuration import (
     get_api_runtime_config_snapshot,
@@ -123,6 +119,11 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
+from app.startup.composition.plugin import (
+    compose_plugin_market,
+    get_composed_plugin_market_client,
+    reset_plugin_market_composition,
+)
 
 
 async def _async_write_plugin_config(key, value):
@@ -180,12 +181,15 @@ def configure_plugin_runtime_services() -> None:
 
 def configure_plugin_services() -> None:
     """在模块持久化端口就绪后装配完整插件应用服务。"""
-    market_transport = PluginMarketTransport()
-    market_client = PluginMarketClient(market_transport)
-    package_manager = PluginPackageManager(
-        source=PluginPackageSourceClient(market_transport),
-        plugin_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
+    market_composition = compose_plugin_market(
+        installed_plugins_provider=lambda: get_configured_system_config().get(
+            SystemConfigKey.UserInstalledPlugins
+        )
+        or []
     )
+    market_transport = market_composition.transport
+    market_client = market_composition.client
+    package_manager = market_composition.package
     plugin_manager = get_plugin_manager()
     inventory_reader = PluginCandidateInventoryReader(
         market_loader=market_client.get_plugin_index_result,
@@ -371,12 +375,7 @@ def configure_plugin_services() -> None:
     configure_plugin_system(PluginSystemServices(
         market=market_client,
         package=package_manager,
-        dependency=PluginDependencyInstaller(
-            installed_plugins_provider=lambda: get_configured_system_config().get(
-                SystemConfigKey.UserInstalledPlugins
-            ) or [],
-            plugin_dir=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
-        ),
+        dependency=market_composition.dependency,
         dependency_manifest_status=dependency_manifest_status,
         compatible_flags=lambda flag: (
             [flag] + VERSION_BACKWARD_COMPATIBLE_FLAGS.get(flag, [])
@@ -502,7 +501,7 @@ def _run_plugin_install_sync(
 
 def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogService:
     """在组合根连接目录用例、市场客户端、持久化读取和插件 DTO 映射。"""
-    client = PluginMarketClient()
+    client = get_composed_plugin_market_client()
     return PluginCatalogService(
         market_loader=client.get_plugins,
         async_market_loader=client.async_get_plugins,
@@ -776,3 +775,4 @@ def stop_plugins() -> bool:
         reset_plugin_catalog_query()
         reset_plugin_release_service()
         reset_plugin_rating_service()
+        reset_plugin_market_composition()

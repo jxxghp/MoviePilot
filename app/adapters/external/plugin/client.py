@@ -30,6 +30,7 @@ from app.domain.plugin import (
     parse_local_plugin_reference,
 )
 from app.foundation.environment import is_free_threaded_runtime
+from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
 from app.foundation.version import compare_version
 from app.runtime.cache import async_fresh, cached, fresh, is_fresh
@@ -208,7 +209,7 @@ def merge_plugin_market_repos(
         seen_repos.add(normalized_repo.lower())
     return merged_repos
 
-class PluginMarketTransport:
+class PluginMarketTransport(metaclass=WeakSingleton):
     """负责插件市场、本地仓库和 GitHub 元数据读取。"""
 
     _base_url = "https://raw.githubusercontent.com/{user}/{repo}/main/"
