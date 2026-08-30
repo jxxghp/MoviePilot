@@ -2428,6 +2428,41 @@ def test_plugin_market_transport_is_process_shared_across_compat_and_composition
     assert PluginMarketTransport.get_existing_instance() is _plugin_market_transport
 
 
+def test_domain_initializer_delegates_construction_to_composition():
+    """领域 initializer 只负责生命周期调用，不得直接构造 Adapter 或领域服务。"""
+    initializer_path = APP_ROOT / "startup" / "initializers" / "domain.py"
+    initializer_tree = ast.parse(
+        initializer_path.read_text(encoding="utf-8-sig"),
+        filename=str(initializer_path),
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert imported_modules == {"app.startup.composition.domain"}
+    calls = [
+        ast.unparse(node.func)
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.Call)
+    ]
+    assert calls == ["compose_domain_dependencies"]
+
+    composition_path = APP_ROOT / "startup" / "composition" / "domain.py"
+    composition_tree = ast.parse(
+        composition_path.read_text(encoding="utf-8-sig"),
+        filename=str(composition_path),
+    )
+    composition_imports = {
+        node.module
+        for node in ast.walk(composition_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "app.adapters.network.resolver" in composition_imports
+    assert "app.adapters.system.host" in composition_imports
+    assert "app.application.recognition" in composition_imports
+
+
 PROCESS_LEVEL_ROOTS = (
     "app.api",
     "app.chain",

@@ -157,8 +157,12 @@ access provider assembly; it returns the persistence factories needed by the run
 owner, which alone constructs `AuthenticationRuntime`.
 `startup/composition/network.py` owns concrete network-test, image, internal-address
 and message-ingress Adapter wiring
-while retaining lazy RuntimeSettings reads. Initializers call these owners in
-startup order and must not recreate their concrete construction.
+ while retaining lazy RuntimeSettings reads. Initializers call these owners in
+ startup order and must not recreate their concrete construction.
+`startup/composition/domain.py` owns DNS/System/Rust Adapter assembly together
+with the single `RecognitionRuleService` used to publish media-recognition rule
+providers. `initializers/domain.py` is only the lifecycle hook and must not
+construct a parallel rule service or import concrete adapters.
 `startup/composition/outbox.py`
 owns durable handler validation, lazy event/notification replay binding and the
 short-transaction dispatcher factory. Initializers call this owner in
