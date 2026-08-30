@@ -2,6 +2,7 @@
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Barrier
 from unittest.mock import Mock
 from uuid import UUID
@@ -14,9 +15,12 @@ from sqlalchemy.orm import sessionmaker
 from app.application.chain.events import (
     TransferResultSettlement,
     download_added_event_key,
+    download_effect_event_key,
     restore_download_added,
+    restore_download_processing,
     restore_transfer_result,
     snapshot_download_added,
+    snapshot_download_processing,
     snapshot_transfer_result,
     transfer_result_event_key,
 )
@@ -25,6 +29,12 @@ from app.application.history import (
     DownloadHistoryWrite,
     TransferHistoryMutationCommand,
     TransferHistoryWrite,
+)
+from app.application.outbox import (
+    DOWNLOAD_ADDED_TOPIC,
+    DOWNLOAD_MODULE_TOPIC,
+    DOWNLOAD_NOTIFICATION_TOPIC,
+    DOWNLOAD_SUBTITLE_TOPIC,
 )
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -238,9 +248,18 @@ def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
     json.dumps(transfer_snapshot)
 
     restored_download = restore_download_added(download_snapshot)
+    processing_snapshot = snapshot_download_processing(
+        context=context,
+        download_dir=Path("/downloads"),
+        torrent_content=b"torrent-bytes",
+    )
+    restored_processing = restore_download_processing(processing_snapshot)
     restored_transfer = restore_transfer_result(transfer_snapshot)
     assert isinstance(restored_download["context"], Context)
     assert isinstance(restored_download["context"].media_info, MediaInfo)
+    assert isinstance(restored_processing.context, Context)
+    assert restored_processing.download_dir == Path("/downloads")
+    assert restored_processing.torrent_content == b"torrent-bytes"
     assert isinstance(restored_transfer["fileitem"], FileItem)
     assert type(restored_transfer["meta"]) is type(meta)
     assert isinstance(restored_transfer["mediainfo"], MediaInfo)
@@ -248,7 +267,7 @@ def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
 
 
 def test_download_history_and_event_intent_share_one_transaction():
-    """下载历史、文件清单和 intent 提交后才执行通知与即时事件。"""
+    """下载历史、文件和四项具名 intent 在同一事务内提交。"""
     factory = _session_factory()
     writer = TransactionalChainDurableEventWriter(factory)
     _, _, context, _, _ = _objects()
@@ -279,22 +298,37 @@ def test_download_history_and_event_intent_share_one_transaction():
             "episodes": [],
             "source": "manual",
         },
-        after_commit=lambda: calls.append("after_commit"),
+        notification_payload={"message": {"title": "下载完成"}},
+        processing_payload=snapshot_download_processing(
+            context=context,
+            download_dir=Path("/downloads"),
+            torrent_content=b"torrent",
+        ),
         publish=lambda payload: calls.append(("event", payload)),
     )
 
     with factory() as session:
         history = session.execute(select(DownloadHistory)).scalar_one()
         download_file = session.execute(select(DownloadFiles)).scalar_one()
-        outbox = session.execute(select(OutboxMessage)).scalar_one()
+        outboxes = session.execute(
+            select(OutboxMessage).order_by(OutboxMessage.id)
+        ).scalars().all()
     assert history.download_hash == "hash-2"
     assert download_file.fullpath == "/downloads/Demo.mkv"
-    assert outbox.status == "completed"
-    _assert_event_key(outbox.event_key, "download.added", history.id)
-    assert [call if isinstance(call, str) else call[0] for call in calls] == [
-        "after_commit",
-        "event",
+    assert [message.topic for message in outboxes] == [
+        DOWNLOAD_ADDED_TOPIC,
+        DOWNLOAD_NOTIFICATION_TOPIC,
+        DOWNLOAD_MODULE_TOPIC,
+        DOWNLOAD_SUBTITLE_TOPIC,
     ]
+    assert [message.status for message in outboxes] == [
+        "completed", "pending", "pending", "pending"
+    ]
+    for message in outboxes:
+        _assert_event_key(message.event_key, message.topic, history.id)
+    occurrence = outboxes[0].event_key.removeprefix(f"{DOWNLOAD_ADDED_TOPIC}:")
+    assert all(message.event_key.endswith(occurrence) for message in outboxes)
+    assert [call[0] for call in calls] == ["event"]
 
     writer.download_added(
         history=DownloadHistoryWrite(
@@ -310,7 +344,12 @@ def test_download_history_and_event_intent_share_one_transaction():
             "downloader": "qb",
             "episodes": [],
         },
-        after_commit=lambda: None,
+        notification_payload={"message": {"title": "下载完成"}},
+        processing_payload=snapshot_download_processing(
+            context=context,
+            download_dir=Path("/downloads"),
+            torrent_content="magnet:?xt=demo",
+        ),
         publish=lambda _payload: None,
     )
     with factory() as session:
@@ -321,11 +360,12 @@ def test_download_history_and_event_intent_share_one_transaction():
             select(OutboxMessage).order_by(OutboxMessage.id)
         ).scalars().all()
     assert len(histories) == 2
-    assert len(outboxes) == 2
-    assert all(message.status == "completed" for message in outboxes)
-    for history, message in zip(histories, outboxes, strict=True):
-        _assert_event_key(message.event_key, "download.added", history.id)
-    assert outboxes[0].event_key != outboxes[1].event_key
+    assert len(outboxes) == 8
+    for history, offset in zip(histories, (0, 4), strict=True):
+        group = outboxes[offset:offset + 4]
+        for message in group:
+            _assert_event_key(message.event_key, message.topic, history.id)
+    assert outboxes[0].event_key != outboxes[4].event_key
 
 
 def test_download_post_commit_effects_do_not_run_when_commit_fails(monkeypatch):
@@ -355,7 +395,12 @@ def test_download_post_commit_effects_do_not_run_when_commit_fails(monkeypatch):
                 "context": context,
                 "episodes": [],
             },
-            after_commit=lambda: calls.append("after_commit"),
+            notification_payload={"message": {"title": "失败"}},
+            processing_payload=snapshot_download_processing(
+                context=context,
+                download_dir=Path("/downloads"),
+                torrent_content=b"torrent",
+            ),
             publish=lambda _payload: calls.append("event"),
         )
 
@@ -378,6 +423,10 @@ def test_event_keys_distinguish_reused_history_ids():
         _assert_event_key(event_key, "download.added", 7)
     for event_key in transfer_keys:
         _assert_event_key(event_key, "transfer.completed", 7)
+    base_key = next(iter(download_keys))
+    assert download_effect_event_key(
+        base_key, DOWNLOAD_MODULE_TOPIC
+    ).endswith(base_key.removeprefix(f"{DOWNLOAD_ADDED_TOPIC}:"))
 
 
 def test_task_settlement_event_key_is_deterministic_and_revision_scoped():

@@ -4,6 +4,10 @@ import time
 from pathlib import Path
 from typing import Any, Optional, Set, Union, cast
 
+from app.application.chain.events import (
+    snapshot_download_notification,
+    snapshot_download_processing,
+)
 from app.application.history import DownloadFileWrite, DownloadHistoryWrite
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
@@ -125,25 +129,40 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             "hash": download_hash, "context": context, "username": username,
             "downloader": downloader, "episodes": episodes or meta.episode_list, "source": source,
         }
-
-        def after_commit() -> None:
-            """在历史与 intent 提交后保持原有通知和任务编排。"""
-            self._after_download_history_commit(
-                context=context, media=media, meta=meta, torrent=torrent,
-                channel=channel, source=source, userid=userid, username=username,
-                download_episodes=download_episodes, download_dir=download_dir,
-                torrent_content=torrent_content,
-            )
+        notification = self._build_download_notification(
+            media=media,
+            meta=meta,
+            torrent=torrent,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            download_episodes=download_episodes,
+        )
+        notification_payload = snapshot_download_notification(notification)
+        processing_payload = snapshot_download_processing(
+            context=context,
+            download_dir=download_dir,
+            torrent_content=torrent_content,
+        )
 
         durable_event_writer = getattr(self, "durable_event_writer", None)
         if durable_event_writer:
             durable_event_writer.download_added(
                 history=history,
                 files=frozen_files,
-                event_payload=event_payload, after_commit=after_commit,
+                event_payload=event_payload,
+                notification_payload=notification_payload,
+                processing_payload=processing_payload,
                 publish=lambda payload: self.eventmanager.send_event(EventType.DownloadAdded, payload),
             )
             return
         self.download_history_repository.add(history, frozen_files)
-        after_commit()
+        if notification is not None:
+            self.post_message(notification)
+        self._submit_download_added_task(
+            context=context,
+            download_dir=download_dir,
+            torrent_content=torrent_content,
+        )
         self.eventmanager.send_event(EventType.DownloadAdded, event_payload)

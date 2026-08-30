@@ -6,6 +6,7 @@ import pytest
 
 from app.application.outbox import (
     DURABLE_EVENT_TOPICS,
+    REQUIRED_OUTBOX_TOPICS,
     validate_durable_event_handlers,
 )
 from app.domain.context import Context, MediaInfo
@@ -97,11 +98,11 @@ def test_durable_event_dispatcher_requires_every_recovery_handler() -> None:
     """恢复 dispatcher 缺少任一登记 topic 时必须在构造边界失败。"""
     handlers = {
         topic: lambda _message: None
-        for topic in DURABLE_EVENT_TOPICS.values()
+        for topic in REQUIRED_OUTBOX_TOPICS
     }
     validate_durable_event_handlers(handlers)
 
-    handlers.pop(next(iter(DURABLE_EVENT_TOPICS.values())))
+    handlers.pop(next(iter(REQUIRED_OUTBOX_TOPICS)))
     with pytest.raises(RuntimeError, match="缺少 durable 事件 handler"):
         validate_durable_event_handlers(handlers)
 

@@ -9,8 +9,8 @@ if TYPE_CHECKING:
         """向类型检查器声明同一 Facade 上的跨 owner 方法。"""
 
         _active_download_failure_fingerprints: Callable[..., Any]
-        _after_download_history_commit: Callable[..., None]
         _append_no_exists: Callable[..., None]
+        _build_download_notification: Callable[..., Any]
         _build_download_failure_fingerprint: Callable[..., Any]
         _build_download_note: Callable[..., dict[str, Any]]
         _download_failure_ttl: Callable[..., int]

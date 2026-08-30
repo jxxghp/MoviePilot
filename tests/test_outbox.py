@@ -11,7 +11,11 @@ from sqlalchemy.orm import sessionmaker
 
 from app.application.maintenance import CleanupPolicy, DataCleanupService
 from app.application.outbox import (
+    DOWNLOAD_MODULE_TOPIC,
+    DOWNLOAD_NOTIFICATION_TOPIC,
+    DOWNLOAD_SUBTITLE_TOPIC,
     ClaimedOutboxMessage,
+    DurableEventCommand,
     OutboxDispatcher,
     OutboxIntent,
     OutboxLeaseLostError,
@@ -326,13 +330,17 @@ def test_handler_replays_with_stable_key_after_success_before_complete_crash() -
     assert persisted.attempt == 2
 
 
-@pytest.mark.parametrize("handler_kind", ["event", "notification"])
+@pytest.mark.parametrize(
+    "handler_kind",
+    ["event", "notification", "download_notification", "module", "subtitle"],
+)
 def test_startup_handler_replays_strict_boundary_with_stable_key(
     handler_kind,
     monkeypatch,
 ) -> None:
     """真实 startup handler 等待执行边界，并以同一键诚实重放。"""
     from app.command import CommandChain
+    from app.runtime.correlation import get_correlation_id
     from app.runtime.events import EventManager
     from app.startup.composition.outbox import build_outbox_handlers
 
@@ -345,14 +353,35 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
             "send_event_strict",
             lambda _self, _etype, data: calls.append(data["idempotency_key"]),
         )
-    else:
-        topic = "subscribe.complete.notification"
+    elif handler_kind in {"notification", "download_notification"}:
+        topic = (
+            "subscribe.complete.notification"
+            if handler_kind == "notification"
+            else DOWNLOAD_NOTIFICATION_TOPIC
+        )
         payload = {"message": {"title": "完成", "text": "Test"}}
         monkeypatch.setattr(
             CommandChain,
             "post_message_strict",
             lambda _self, _message, *, event_key: calls.append(event_key),
         )
+    else:
+        import app.chain.download as download_package
+
+        topic = (DOWNLOAD_MODULE_TOPIC if handler_kind == "module" else DOWNLOAD_SUBTITLE_TOPIC)
+        payload = {
+            "context": {},
+            "download_dir": "/downloads",
+            "torrent_content": {"kind": "bytes", "value": "dG9ycmVudA=="},
+        }
+        chain = MagicMock()
+        method = (
+            chain.download_added
+            if handler_kind == "module"
+            else chain.download_site_subtitles
+        )
+        method.side_effect = lambda **_kwargs: calls.append(get_correlation_id())
+        monkeypatch.setattr(download_package, "DownloadChain", lambda: chain)
     handlers = build_outbox_handlers()
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -377,6 +406,20 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
     )
     assert dispatcher.dispatch_one() is True
     assert calls == [event_key, event_key]
+
+
+def test_download_writer_contract_has_no_anonymous_after_commit_path() -> None:
+    """下载 durable 写端口只接受可持久化具名效果，不再接受匿名回调。"""
+    import inspect
+
+    from app.application.chain.events import ChainDurableEventWriter
+
+    assert "after_commit" not in inspect.signature(
+        ChainDurableEventWriter.download_added
+    ).parameters
+    assert "after_commit" not in inspect.signature(
+        DurableEventCommand.execute
+    ).parameters
 
 
 def test_outbox_handler_builder_keeps_runtime_owners_lazy(monkeypatch) -> None:

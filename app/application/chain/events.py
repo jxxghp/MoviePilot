@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Callable
 from dataclasses import dataclass, fields
 from datetime import date, datetime
@@ -22,6 +23,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.schemas.file import FileItem
+from app.schemas.message import Message
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaType
 
@@ -35,10 +37,11 @@ class ChainDurableEventWriter(Protocol):
         history: DownloadHistoryWrite,
         files: tuple[DownloadFileWrite, ...],
         event_payload: dict[str, Any],
-        after_commit: Callable[[], None],
+        notification_payload: dict[str, Any] | None,
+        processing_payload: dict[str, Any],
         publish: Callable[[dict[str, Any]], None],
     ) -> None:
-        """提交下载历史与 DownloadAdded intent，再执行原有提交后编排。"""
+        """原子提交下载历史及事件、通知和后处理 intent。"""
 
     def transfer_result(
         self,
@@ -78,6 +81,83 @@ class TransferResultSettlement:
 def download_added_event_key(history_id: int) -> str:
     """由下载历史 ID 与本次事实标识构造 DownloadAdded 幂等键。"""
     return f"download.added:{history_id}:{uuid4().hex}:v1"
+
+
+def download_effect_event_key(event_key: str, topic: str) -> str:
+    """由同一次下载事实键派生具名效果键，保持跨 topic 关联稳定。"""
+    prefix = "download.added:"
+    if not event_key.startswith(prefix):
+        raise ValueError("下载效果键必须由 DownloadAdded 事实键派生")
+    return f"{topic}:{event_key.removeprefix(prefix)}"
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadProcessingSnapshot:
+    """从持久快照恢复的单次下载后处理输入。"""
+
+    context: Context
+    download_dir: Path
+    torrent_content: str | bytes
+
+
+def snapshot_download_notification(message: Message | None) -> dict[str, Any] | None:
+    """冻结已渲染下载通知，使恢复过程不依赖易变模板和领域对象。"""
+    if message is None:
+        return None
+    return {"message": message.model_dump(mode="json")}
+
+
+def snapshot_download_processing(
+    *,
+    context: Context,
+    download_dir: Path,
+    torrent_content: str | bytes,
+) -> dict[str, Any]:
+    """冻结下载模块与字幕处理需要的 JSON 输入，并无损编码种子字节。"""
+    if isinstance(torrent_content, bytes):
+        content = {
+            "kind": "bytes",
+            "value": base64.b64encode(torrent_content).decode("ascii"),
+        }
+    else:
+        content = {"kind": "text", "value": torrent_content}
+    return cast(dict[str, Any], _json_snapshot({
+        "context": context.to_dict(),
+        "download_dir": download_dir.as_posix(),
+        "torrent_content": content,
+    }))
+
+
+def restore_download_processing(payload: dict[str, Any]) -> DownloadProcessingSnapshot:
+    """恢复下载后处理输入，并拒绝无法安全重放的持久快照。"""
+    context = payload.get("context")
+    content = payload.get("torrent_content")
+    download_dir = payload.get("download_dir")
+    if not isinstance(context, dict) or not isinstance(content, dict):
+        raise ValueError("下载后处理快照缺少 context 或 torrent_content")
+    if not isinstance(download_dir, str) or not download_dir:
+        raise ValueError("下载后处理快照缺少 download_dir")
+    kind = content.get("kind")
+    value = content.get("value")
+    if not isinstance(value, str):
+        raise ValueError("下载后处理快照的 torrent_content 无效")
+    if kind == "bytes":
+        try:
+            restored_content: str | bytes = base64.b64decode(
+                value.encode("ascii"),
+                validate=True,
+            )
+        except (ValueError, UnicodeEncodeError) as error:
+            raise ValueError("下载后处理快照的种子字节无效") from error
+    elif kind == "text":
+        restored_content = value
+    else:
+        raise ValueError("下载后处理快照的 torrent_content 类型无效")
+    return DownloadProcessingSnapshot(
+        context=_restore_context(context),
+        download_dir=Path(download_dir),
+        torrent_content=restored_content,
+    )
 
 
 def transfer_result_event_key(

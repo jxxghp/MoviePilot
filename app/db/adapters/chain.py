@@ -14,6 +14,7 @@ from app.application.chain.events import (
     ChainDurableEventWriter,
     TransferResultSettlement,
     download_added_event_key,
+    download_effect_event_key,
     snapshot_download_added,
     snapshot_transfer_result,
     transfer_result_event_key,
@@ -27,7 +28,11 @@ from app.application.history import (
 )
 from app.application.outbox import (
     DOWNLOAD_ADDED_TOPIC,
+    DOWNLOAD_MODULE_TOPIC,
+    DOWNLOAD_NOTIFICATION_TOPIC,
+    DOWNLOAD_SUBTITLE_TOPIC,
     DurableEventCommand,
+    DurableOutboxEffect,
     OutboxIntent,
 )
 from app.application.transfer.execution import (
@@ -136,10 +141,11 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
         history: DownloadHistoryWrite,
         files: tuple[DownloadFileWrite, ...],
         event_payload: dict[str, Any],
-        after_commit: Callable[[], None],
+        notification_payload: dict[str, Any] | None,
+        processing_payload: dict[str, Any],
         publish: Callable[[dict[str, Any]], None],
     ) -> None:
-        """原子写下载历史、文件清单和 DownloadAdded intent。"""
+        """原子写历史、文件及可恢复的下载事件和具名后处理 intent。"""
         session = self._session_factory()
         try:
             repository = DownloadHistoryOper(session)
@@ -158,21 +164,53 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                     ])
                 return int(record.id)
 
-            def build_intent(history_id: int) -> OutboxIntent:
-                """历史 ID 确定后构造本次下载事实的稳定事件键。"""
+            def build_effects(history_id: int) -> tuple[DurableOutboxEffect, ...]:
+                """按同一 occurrence 构造事件、通知、模块和字幕效果。"""
                 event_key = download_added_event_key(history_id)
                 event_payload["idempotency_key"] = event_key
-                return OutboxIntent(
-                    event_key=event_key,
-                    topic=DOWNLOAD_ADDED_TOPIC,
-                    payload=snapshot_download_added(event_payload),
-                )
+                effects = [
+                    DurableOutboxEffect(
+                        intent=OutboxIntent(
+                            event_key=event_key,
+                            topic=DOWNLOAD_ADDED_TOPIC,
+                            payload=snapshot_download_added(event_payload),
+                        ),
+                        deliver=lambda: publish(event_payload),
+                    ),
+                    DurableOutboxEffect(
+                        intent=OutboxIntent(
+                            event_key=download_effect_event_key(
+                                event_key, DOWNLOAD_MODULE_TOPIC
+                            ),
+                            topic=DOWNLOAD_MODULE_TOPIC,
+                            payload=processing_payload,
+                        )
+                    ),
+                    DurableOutboxEffect(
+                        intent=OutboxIntent(
+                            event_key=download_effect_event_key(
+                                event_key, DOWNLOAD_SUBTITLE_TOPIC
+                            ),
+                            topic=DOWNLOAD_SUBTITLE_TOPIC,
+                            payload=processing_payload,
+                        )
+                    ),
+                ]
+                if notification_payload is not None:
+                    effects.insert(1, DurableOutboxEffect(
+                        intent=OutboxIntent(
+                            event_key=download_effect_event_key(
+                                event_key, DOWNLOAD_NOTIFICATION_TOPIC
+                            ),
+                            topic=DOWNLOAD_NOTIFICATION_TOPIC,
+                            payload=notification_payload,
+                        )
+                    ))
+                return tuple(effects)
 
             command.execute(
-                intent=build_intent,
+                effects=build_effects,
                 stage_business=stage_business,
-                after_commit=after_commit,
-                publish=lambda: publish(event_payload),
             )
         finally:
             session.close()
@@ -267,10 +305,12 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                     ),
                 )
 
-            def build_intent(
+            def build_effects(
                 result: _StagedTransferResult,
-            ) -> OutboxIntent:
-                """历史 ID 确定后构造事件键与可恢复快照。"""
+            ) -> tuple[DurableOutboxEffect, ...]:
+                """历史 ID 确定后构造可选事件效果与可恢复快照。"""
+                if topic is None:
+                    return ()
                 assert topic is not None
                 event_key = transfer_result_event_key(
                     topic,
@@ -284,25 +324,23 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                 )
                 event_payload["transfer_history_id"] = result.history.id
                 event_payload["idempotency_key"] = event_key
-                return OutboxIntent(
-                    event_key=event_key,
-                    topic=topic,
-                    payload=snapshot_transfer_result(event_payload),
-                )
+                return (DurableOutboxEffect(
+                    intent=OutboxIntent(
+                        event_key=event_key,
+                        topic=topic,
+                        payload=snapshot_transfer_result(event_payload),
+                    ),
+                    deliver=(
+                        (lambda: publish(event_payload))
+                        if settlement is None and publish is not None
+                        else None
+                    ),
+                ),)
 
             try:
                 execution = command.execute(
-                    intent=build_intent if topic is not None else None,
+                    effects=build_effects,
                     stage_business=stage_business,
-                    publish=(
-                        (lambda: publish(event_payload))
-                        if (
-                            settlement is None
-                            and topic is not None
-                            and publish is not None
-                        )
-                        else None
-                    ),
                 )
             except (
                     IntegrityError,

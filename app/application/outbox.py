@@ -18,6 +18,9 @@ SUBSCRIBE_MODIFIED_TOPIC = "subscribe.modified"
 SUBSCRIBE_DELETED_TOPIC = "subscribe.deleted"
 SUBSCRIBE_COMPLETED_TOPIC = "subscribe.complete"
 DOWNLOAD_ADDED_TOPIC = "download.added"
+DOWNLOAD_NOTIFICATION_TOPIC = "download.added.notification"
+DOWNLOAD_MODULE_TOPIC = "download.added.module"
+DOWNLOAD_SUBTITLE_TOPIC = "download.added.subtitle"
 TRANSFER_COMPLETED_TOPIC = "transfer.completed"
 TRANSFER_FAILED_TOPIC = "transfer.failed"
 SUBTITLE_TRANSFER_COMPLETED_TOPIC = "transfer.subtitle.completed"
@@ -39,6 +42,11 @@ DURABLE_EVENT_TOPICS: Mapping[EventType, str] = MappingProxyType({
     EventType.AudioTransferComplete: AUDIO_TRANSFER_COMPLETED_TOPIC,
     EventType.AudioTransferFailed: AUDIO_TRANSFER_FAILED_TOPIC,
 })
+REQUIRED_OUTBOX_TOPICS = frozenset(DURABLE_EVENT_TOPICS.values()) | {
+    DOWNLOAD_NOTIFICATION_TOPIC,
+    DOWNLOAD_MODULE_TOPIC,
+    DOWNLOAD_SUBTITLE_TOPIC,
+}
 
 
 def durable_event_topic(event_type: EventType) -> str:
@@ -60,6 +68,14 @@ class OutboxIntent:
 
 
 @dataclass(frozen=True, slots=True)
+class DurableOutboxEffect:
+    """绑定持久 intent 与提交后可选的即时 I/O 外壳。"""
+
+    intent: OutboxIntent
+    deliver: Optional[Callable[[], object]] = None
+
+
+@dataclass(frozen=True, slots=True)
 class ClaimedOutboxMessage:
     """dispatcher 已获得 lease 的稳定消息投影。"""
 
@@ -78,8 +94,8 @@ class OutboxLeaseLostError(RuntimeError):
 def validate_durable_event_handlers(
     handlers: Mapping[str, Callable[[ClaimedOutboxMessage], None]],
 ) -> None:
-    """拒绝缺少任一 durable-required 事件恢复 handler 的 dispatcher。"""
-    missing = set(DURABLE_EVENT_TOPICS.values()) - set(handlers)
+    """拒绝缺少 durable 事件或正式具名效果 handler 的 dispatcher。"""
+    missing = REQUIRED_OUTBOX_TOPICS - set(handlers)
     if missing:
         raise RuntimeError(
             "Outbox dispatcher 缺少 durable 事件 handler: "
@@ -127,11 +143,13 @@ class OutboxDispatchStore(Protocol):
     ) -> bool:
         """仅由当前 attempt 的 owner 记录退避或 dead-letter。"""
 
+
 class AsyncOutboxStager(Protocol):
     """只在异步业务事务中暂存 durable intent 的最小端口。"""
 
     async def stage(self, intent: OutboxIntent, now: datetime) -> None:
         """把 intent 加入调用方当前事务，但不自行提交。"""
+
 
 class AsyncOutboxDispatchStore(Protocol):
     """使用独立异步短事务认领和结算 intent 的最小端口。"""
@@ -293,65 +311,45 @@ class DurableEventCommand:
     def execute(
         self,
         *,
-        intent: Optional[Union[OutboxIntent, Callable[[T], OutboxIntent]]],
+        effects: Union[
+            tuple[DurableOutboxEffect, ...],
+            Callable[[T], tuple[DurableOutboxEffect, ...]],
+        ],
         stage_business: Callable[[], T],
-        publish: Optional[Callable[[], None]],
-        after_commit: Optional[Callable[[], None]] = None,
     ) -> PostCommitResult[T]:
-        """原子提交业务与 intent，再逐项记录提交后效果完成语义。"""
-        resolved_intent: Optional[OutboxIntent] = None
+        """原子提交业务与多个命名 intent，再认领可即时执行的效果。"""
+        resolved_effects: tuple[DurableOutboxEffect, ...] = ()
         try:
             result = stage_business()
-            if intent is not None:
-                resolved_intent = intent(result) if callable(intent) else intent
-                self._stager.stage(resolved_intent, datetime.now(timezone.utc))
+            resolved_effects = effects(result) if callable(effects) else effects
+            event_keys = [effect.intent.event_key for effect in resolved_effects]
+            if len(event_keys) != len(set(event_keys)):
+                raise ValueError("同一事务不能暂存重复的 outbox event key")
+            now = datetime.now(timezone.utc)
+            for effect in resolved_effects:
+                self._stager.stage(effect.intent, now)
             self._unit_of_work.commit()
         except Exception:
             self._unit_of_work.rollback()
             raise
 
         completed: list[str] = []
-        pending: list[str] = []
+        pending = [effect.intent.event_key for effect in resolved_effects]
         errors: list[Exception] = []
-        if after_commit:
+        for effect in resolved_effects:
+            if effect.deliver is None:
+                continue
             try:
-                after_commit()
-                completed.append("after_commit")
+                delivered = deliver_outbox_effect(
+                    self._store,
+                    effect.intent.event_key,
+                    effect.deliver,
+                )
+                if delivered:
+                    pending.remove(effect.intent.event_key)
+                    completed.append(effect.intent.event_key)
             except Exception as error:
-                pending.append("after_commit")
                 errors.append(error)
-        if resolved_intent is not None:
-            pending.append(resolved_intent.event_key)
-        if resolved_intent is not None and publish is not None:
-            now = datetime.now(timezone.utc)
-            claimed = self._store.claim_by_event_key(
-                resolved_intent.event_key,
-                now,
-                now + timedelta(seconds=OUTBOX_LEASE_SECONDS),
-            )
-            if claimed is not None:
-                try:
-                    publish()
-                    settled = self._store.complete(
-                        claimed.message_id,
-                        claimed.attempt,
-                        datetime.now(timezone.utc),
-                    )
-                    if not settled:
-                        raise OutboxLeaseLostError("Outbox 完成凭证已失效")
-                    pending.remove(resolved_intent.event_key)
-                    completed.append(resolved_intent.event_key)
-                except OutboxLeaseLostError as error:
-                    errors.append(error)
-                except Exception as error:
-                    self._store.retry(
-                        claimed.message_id,
-                        claimed.attempt,
-                        next_retry_at=datetime.now(timezone.utc),
-                        last_error=str(error)[:4000],
-                        dead=False,
-                    )
-                    errors.append(error)
         execution = PostCommitResult(
             value=result,
             business_committed=True,

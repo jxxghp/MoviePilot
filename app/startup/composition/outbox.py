@@ -5,9 +5,13 @@ from collections.abc import Callable
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.chain.events import (
     restore_download_added,
+    restore_download_processing,
     restore_transfer_result,
 )
 from app.application.outbox import (
+    DOWNLOAD_MODULE_TOPIC,
+    DOWNLOAD_NOTIFICATION_TOPIC,
+    DOWNLOAD_SUBTITLE_TOPIC,
     ClaimedOutboxMessage,
     OutboxDispatcher,
     durable_event_topic,
@@ -17,6 +21,7 @@ from app.application.outbox import (
 from app.command import CommandChain
 from app.db.adapters.outbox import SqlAlchemyOutboxDispatchStore
 from app.db.session import SessionFactory
+from app.runtime.correlation import correlation_scope
 from app.runtime.events import EventManager
 from app.runtime.observability import record_metric
 from app.schemas.message import Message
@@ -68,6 +73,40 @@ def build_outbox_handlers() -> dict[
             event_key=message.event_key,
         )
 
+    def dispatch_download_notification(message: ClaimedOutboxMessage) -> None:
+        """按稳定事件键同步恢复已渲染的下载通知。"""
+        snapshot = message.payload.get("message") or {}
+        if not isinstance(snapshot, dict):
+            raise RuntimeError("下载通知快照格式无效")
+        CommandChain().post_message_strict(
+            Message.model_validate(snapshot),
+            event_key=message.event_key,
+        )
+
+    def dispatch_download_module(message: ClaimedOutboxMessage) -> None:
+        """恢复模块下载后处理，并向模块边界传播稳定幂等键。"""
+        from app.chain.download import DownloadChain
+
+        snapshot = restore_download_processing(message.payload)
+        with correlation_scope(message.event_key):
+            DownloadChain().download_added(
+                context=snapshot.context,
+                download_dir=snapshot.download_dir,
+                torrent_content=snapshot.torrent_content,
+            )
+
+    def dispatch_download_subtitle(message: ClaimedOutboxMessage) -> None:
+        """恢复站点字幕处理，避免模块成功后因字幕失败重复执行模块。"""
+        from app.chain.download import DownloadChain
+
+        snapshot = restore_download_processing(message.payload)
+        with correlation_scope(message.event_key):
+            DownloadChain().download_site_subtitles(
+                context=snapshot.context,
+                download_dir=snapshot.download_dir,
+                torrent_content=snapshot.torrent_content,
+            )
+
     handlers: dict[str, Callable[[ClaimedOutboxMessage], None]] = {
         durable_event_topic(EventType.SubscribeAdded): lambda message: discard_event_receipt(
             event_manager_factory().send_event_strict(
@@ -104,6 +143,9 @@ def build_outbox_handlers() -> dict[
                 restore_download_added(message.payload),
             )
         ),
+        DOWNLOAD_NOTIFICATION_TOPIC: dispatch_download_notification,
+        DOWNLOAD_MODULE_TOPIC: dispatch_download_module,
+        DOWNLOAD_SUBTITLE_TOPIC: dispatch_download_subtitle,
         durable_event_topic(EventType.TransferComplete): lambda message: discard_event_receipt(
             event_manager_factory().send_event_strict(
                 EventType.TransferComplete,

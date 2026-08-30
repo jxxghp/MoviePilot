@@ -1,8 +1,10 @@
 """历史提交后的通知与附加处理 owner。"""
 
+from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
+from app.application.messaging.message import MessageTemplateHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
     Context,
@@ -24,25 +26,21 @@ from app.schemas.types import (
 class DownloadProcessingOwner(_DownloadOwnerBase):
     """历史提交后的通知与附加处理 owner。"""
 
-
-    def _after_download_history_commit(
+    def _build_download_notification(
         self,
         *,
-        context: Context,
         media: MediaInfo | MusicInfo,
         meta: MetaBase,
         torrent: TorrentInfo,
         channel: NotificationChannel | None,
         source: str | None,
-        userid: str | None,
+        userid: str | int | None,
         username: str | None,
-        download_episodes: list[int] | None,
-        download_dir: Path,
-        torrent_content: bytes,
-    ) -> None:
-        """保持下载历史提交后的通知和后处理顺序。"""
-        self.post_message(
-            Message(
+        download_episodes: str | None,
+    ) -> Optional[Message]:
+        """提交前冻结下载通知，供即时路径与 durable 恢复共用。"""
+        return MessageTemplateHelper.render(
+            message=Message(
                 channel=channel,
                 source=source if channel else None,
                 mtype=MessageType.Download,
@@ -57,11 +55,7 @@ class DownloadProcessingOwner(_DownloadOwnerBase):
             torrentinfo=torrent,
             download_episodes=download_episodes,
             username=username,
-        )
-        self._submit_download_added_task(
-            context=context,
-            download_dir=download_dir,
-            torrent_content=torrent_content,
+            current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
     def _submit_download_added_task(
