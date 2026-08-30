@@ -183,6 +183,25 @@ G-ARCH 只有在 S3、S5 及以下条件全部满足后才可完成；S4 不属�
 | S4-L5 Ruff 治理债务清零 | `CANCELLED` | — | 原计划取消 |
 | S4-L6 Coverage/并发/质量证据 | `CANCELLED` | — | 原计划取消 |
 
+#### S4 Lite：后续增量治理边界（非阶段）
+
+S4 Lite 不是新的 Stage、Leaf 或 Goal，不设置状态、进度或统一完成日期，也不改变 S4
+`CANCELLED` 的事实。它只约束后续实际触及相关 owner 时的增量治理，避免取消全量清零后失去
+防回退边界：
+
+- Module/Event 合同继续以插件兼容为硬边界。第三方插件的合同校验保持 diagnostic；只有宿主
+  内置的高风险能力或 durable internal event，才可在独立变更中引入 strict contract
+  enforcement，并补齐对应行为、生命周期和失败恢复证据。这里的 strict 仅指合同校验策略；
+  现有 `run_module_strict` / `send_event_strict` 是调用方选择的异常传播接口，仍可触达插件
+  provider，不属于本条收窄范围。
+- 宿主升级不得要求已可用插件先行适配。`run_module` / `async_run_module` 的字符串方法 ABI、
+  参数兼容、聚合与原始返回形状，以及现有 SDK/Compat/Legacy 行为保持稳定；若增量 strict
+  治理导致既有插件失效，首先按宿主兼容回归处理，而不是把迁移责任转给插件。
+- complexity v2、原生并发、mypy、Ruff 和 coverage 保留现有 zero-growth/低水位 ratchet；
+  新增或实质修改高风险 owner 时补对应专项证据，但不恢复全宿主历史债务清零目标。
+- 每项治理必须在独立变更中说明 owner、风险、兼容影响和退出条件，并通过受影响宿主路径与插件
+  兼容验证；不得以刷新 baseline、增加文档或只通过静态快照宣称语义完成。
+
 ### S5：Plugin、Agent、Domain、Startup 与最终收口
 
 退出条件：剩余 Facade/Manager/Domain/Startup 重复职责清零；官方插件兼容、全量测试和远端交付完成。
