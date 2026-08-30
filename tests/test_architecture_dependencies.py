@@ -2601,6 +2601,27 @@ def test_chain_initializer_delegates_construction_to_composition():
     assert "app.chain._recognition" in composition_imports
 
 
+def test_cache_initializer_delegates_construction_to_composition():
+    """缓存 initializer 只保留启动入口，不得直接登记具体缓存 Adapter。"""
+    initializer_path = APP_ROOT / "startup" / "initializers" / "cache.py"
+    initializer_tree = ast.parse(
+        initializer_path.read_text(encoding="utf-8-sig"),
+        filename=str(initializer_path),
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert imported_modules == {"app.startup.composition.cache"}
+    calls = [
+        ast.unparse(node.func)
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.Call)
+    ]
+    assert calls == ["configure_cache_composition"]
+
+
 PROCESS_LEVEL_ROOTS = (
     "app.api",
     "app.chain",
