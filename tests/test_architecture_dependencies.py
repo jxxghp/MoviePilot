@@ -2621,7 +2621,65 @@ def test_cache_initializer_delegates_construction_to_composition():
     ]
     assert calls == ["configure_cache_composition"]
 
+def test_system_api_business_orchestration_is_owned_by_application_service():
+    """System API 只保留传输映射，不得重新拥有日志、设置或更新实现。"""
+    endpoint_path = APP_ROOT / "api" / "endpoints" / "system.py"
+    endpoint_tree = ast.parse(
+        endpoint_path.read_text(encoding="utf-8-sig"),
+        filename=str(endpoint_path),
+    )
+    imported = {
+        node.module
+        for node in ast.walk(endpoint_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    direct_adapters = {
+        module
+        for module in imported
+        if module.startswith("app.adapters")
+        and module != "app.adapters.web.security.access"
+    }
+    endpoint_functions = {
+        node.name
+        for node in endpoint_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    retired_helpers = {
+        "_collect_named_log_files",
+        "_validate_database_backup_config",
+        "_validate_llm_server_tool_config",
+        "_is_allowed_plugin_market_wiki_url",
+    }
 
+    assert not direct_adapters
+    assert endpoint_functions.isdisjoint(retired_helpers)
+    assert not imported.intersection(
+        {
+            "app.application.plugin.runtime",
+            "app.runtime.events",
+            "app.runtime.state",
+        }
+    )
+
+    application_path = APP_ROOT / "application" / "system.py"
+    application_tree = ast.parse(
+        application_path.read_text(encoding="utf-8-sig"),
+        filename=str(application_path),
+    )
+    assert not any(
+        isinstance(node, ast.ImportFrom)
+        and node.module
+        and node.module.startswith("app.adapters")
+        for node in ast.walk(application_tree)
+    )
+
+    composition_source = (
+        APP_ROOT / "startup" / "composition" / "system.py"
+    ).read_text(encoding="utf-8-sig")
+    assert "def compose_system_service(" in composition_source
+    assert "system=compose_system_service(" in (
+        APP_ROOT / "startup" / "composition" / "runtime.py"
+    ).read_text(encoding="utf-8-sig")
 PROCESS_LEVEL_ROOTS = (
     "app.api",
     "app.chain",

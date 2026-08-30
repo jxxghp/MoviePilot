@@ -46,7 +46,7 @@ _STUB_MODULES = dict([
     _stub("app.application.site.sites", SitesHelper=_Dummy),
     _stub("app.chain.media", MediaChain=_Dummy),
     _stub("app.chain.mediaserver", MediaServerChain=_Dummy),
-    _stub("app.chain.search", SearchChain=_Dummy),
+    _stub("app.chain.search.facade", SearchChain=_Dummy),
     _stub("app.chain.system", SystemChain=_Dummy),
     _stub("app.runtime.events", eventmanager=_Dummy(), Event=_Dummy, EventManager=_Dummy),
     _stub("app.domain.metainfo", MetaInfo=_Dummy),
@@ -116,16 +116,24 @@ class TestNettestSecurity:
         """
         系统配置接口应分别返回 Rust 扩展可用性和当前实际启用状态。
         """
-        with patch.object(system_endpoint.rust_accel, "is_available", return_value=True), patch.object(
-            system_endpoint.rust_accel, "is_enabled", return_value=False
-        ), patch.object(
-            system_endpoint.rust_accel, "is_required", return_value=True
-        ), patch.object(
+        runtime = SimpleNamespace(
+            system=SimpleNamespace(
+                runtime_features=lambda: {
+                    "RUST_ACCEL": True,
+                    "RUST_ACCEL_AVAILABLE": True,
+                    "RUST_ACCEL_ENABLED": False,
+                    "RUST_ACCEL_REQUIRED": True,
+                }
+            )
+        )
+        with patch.object(
             system_endpoint, "is_free_threaded_runtime", return_value=True
         ), patch.object(
             system_endpoint, "is_gil_enabled", return_value=False
         ):
-            resp = asyncio.run(system_endpoint.get_env_setting(_="token"))
+            resp = asyncio.run(
+                system_endpoint.get_env_setting(_="token", runtime=runtime)
+            )
 
         assert resp.success
         assert resp.data["RUST_ACCEL_AVAILABLE"]
@@ -140,24 +148,29 @@ class TestNettestSecurity:
             snapshot=Mock(return_value={}),
             get=Mock(return_value=False),
         )
+        runtime = SimpleNamespace(
+            system=SimpleNamespace(
+                user_global=AsyncMock(
+                    return_value={
+                        "USER_UNIQUE_ID": "user-id",
+                        "SUBSCRIBE_SHARE_MANAGE": False,
+                        "WORKFLOW_SHARE_MANAGE": False,
+                    }
+                )
+            )
+        )
         with patch.object(
             system_endpoint, "get_runtime_settings", return_value=runtime_config
-        ), patch.object(
-            system_endpoint.MoviePilotServerHelper,
-            "async_is_admin_user",
-            new=AsyncMock(return_value=False),
-            create=True,
-        ), patch.object(
-            system_endpoint.MoviePilotServerHelper,
-            "get_user_uuid",
-            return_value="user-id",
-            create=True,
         ), patch.object(
             system_endpoint, "is_free_threaded_runtime", return_value=True
         ), patch.object(
             system_endpoint, "is_gil_enabled", return_value=False
         ):
-            resp = asyncio.run(system_endpoint.get_user_global_setting(_="token"))
+            resp = asyncio.run(
+                system_endpoint.get_user_global_setting(
+                    _="token", runtime=runtime
+                )
+            )
 
         assert resp.success
         assert resp.data["PYTHON_FREE_THREADED"]
@@ -176,8 +189,6 @@ class TestNettestSecurity:
 
         with patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch.object(
             system_endpoint.HashUtils, "md5", return_value="etag", create=True
-        ), patch.object(
-            system_endpoint.RequestUtils, "generate_cache_headers", return_value={}, create=True
         ):
             resp = asyncio.run(
                 system_endpoint.fetch_image(
@@ -512,8 +523,6 @@ class TestNettestSecurity:
 
         with patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch.object(
             system_endpoint.HashUtils, "md5", return_value="etag", create=True
-        ), patch.object(
-            system_endpoint.RequestUtils, "generate_cache_headers", return_value={}, create=True
         ), patch.object(
             # is_safe_image_url_async 经 evaluate_url_safety_async 走异步解析
             # _hostname_addresses_async（loop.getaddrinfo）；必须 mock 异步版本，

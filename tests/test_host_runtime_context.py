@@ -204,6 +204,7 @@ def _runtime() -> HostRuntime:
             repository=_Repository,
             system_config=lambda: _Repository(object()),
         ),
+        system=SimpleNamespace(),
         configuration=RuntimeConfiguration(
             api=lambda: ApiRuntimeConfig(60, False, True),
             scheduler=lambda: SchedulerRuntimeConfig(

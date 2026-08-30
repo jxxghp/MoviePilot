@@ -1,12 +1,36 @@
 """系统数据库备份策略配置测试。"""
 
 import asyncio
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from app.api.endpoints import system as system_endpoint
+from app.application.configuration import (
+    get_configured_system_config,
+    get_runtime_settings,
+)
 from app.runtime.config import settings
+from app.startup.composition.system import compose_system_service
+
+
+def _runtime():
+    """构造使用真实配置校验逻辑的最小系统运行时。"""
+
+    @asynccontextmanager
+    async def rule_group_mutation():
+        """提供本组测试不会进入的规则组事务替身。"""
+        yield SimpleNamespace()
+
+    return SimpleNamespace(
+        system=compose_system_service(
+            settings=get_runtime_settings(),
+            system_config=get_configured_system_config(),
+            rule_group_mutation=rule_group_mutation,
+        )
+    )
 
 
 @pytest.mark.parametrize(
@@ -26,7 +50,7 @@ def test_database_backup_policy_rejects_invalid_values(
 ) -> None:
     """无效策略必须在批量配置写入前被拒绝。"""
     env["DB_BACKUP_ENABLE"] = True
-    assert message in str(system_endpoint._validate_database_backup_config(env))
+    assert message in str(_runtime().system._validate_database_backup_config(env))
 
 
 @pytest.mark.parametrize(
@@ -46,13 +70,13 @@ def test_database_backup_policy_rejects_invalid_values(
 def test_database_backup_policy_accepts_supported_boundaries(env: dict) -> None:
     """空目录使用默认路径，两个保留值的零均表示不限制。"""
     env["DB_BACKUP_ENABLE"] = True
-    assert system_endpoint._validate_database_backup_config(env) is None
+    assert _runtime().system._validate_database_backup_config(env) is None
 
 
 @pytest.mark.parametrize("disabled", [False, "false", "0", "off"])
 def test_database_backup_policy_rejects_invalid_hidden_values_when_disabled(disabled) -> None:
     """关闭总开关只暂停调度，不能把无效策略写入持久配置。"""
-    error = system_endpoint._validate_database_backup_config({
+    error = _runtime().system._validate_database_backup_config({
         "DB_BACKUP_ENABLE": disabled,
         "DB_BACKUP_CRON": "invalid",
         "DB_BACKUP_PATH": 123,
@@ -72,12 +96,10 @@ def test_set_env_rejects_invalid_database_backup_policy_without_partial_write() 
         "DB_BACKUP_MAX_COUNT": 30,
     }
 
-    with patch.object(
-        system_endpoint,
-        "_validate_llm_server_tool_config",
-        return_value=None,
-    ), patch.object(type(settings), "update_settings") as update_settings:
-        response = asyncio.run(system_endpoint.set_env_setting(env=env, _=object()))
+    with patch.object(type(settings), "update_settings") as update_settings:
+        response = asyncio.run(
+            system_endpoint.set_env_setting(env=env, _=object(), runtime=_runtime())
+        )
 
     assert response.success is False
     assert "数据库备份周期格式不正确" in response.message

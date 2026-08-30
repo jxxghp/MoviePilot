@@ -160,6 +160,7 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
         rule_group_mutation_scope,
         site_reference_mutation_scope,
     )
+    from app.startup.composition.system import compose_system_service
 
     dependencies = inputs.dependencies
     configuration = inputs.configuration
@@ -169,6 +170,10 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
         standalone_user=inputs.authentication.standalone_user,
         system_config=inputs.authentication.system_config,
         passkey=inputs.authentication.passkey,
+    )
+    async_rule_scope = partial(
+        async_rule_group_mutation_scope,
+        configuration.system_config.publish_many,
     )
     host_runtime = HostRuntime(
         agent_chat=AgentChatRuntime(
@@ -213,10 +218,7 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
                 rule_group_mutation_scope,
                 configuration.system_config.publish_many,
             ),
-            async_rule_group_mutation_scope=partial(
-                async_rule_group_mutation_scope,
-                configuration.system_config.publish_many,
-            ),
+            async_rule_group_mutation_scope=async_rule_scope,
             site_reference_mutation_scope=partial(
                 site_reference_mutation_scope,
                 configuration.system_config.publish_many,
@@ -226,6 +228,11 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             query=inputs.database.workflow_query,
             repository=cast(RepositoryFactory, WorkflowOper),
             system_config=lambda: configuration.system_service,
+        ),
+        system=compose_system_service(
+            settings=configuration.settings,
+            system_config=configuration.system_service,
+            rule_group_mutation=async_rule_scope,
         ),
         configuration=configuration.runtime,
         settings=configuration.settings,

@@ -33,6 +33,7 @@ from app.application.subscription.write import (
 from app.application.subscription.write import (
     AsyncUnitOfWork as SubscriptionAsyncUnitOfWork,
 )
+from app.application.system import SystemService
 from app.application.transfer.execution import TransferExecutionRepository
 from app.application.workflow import WorkflowCachePort, WorkflowQueryService
 from app.runtime.tasks import TaskRegistry
@@ -244,6 +245,7 @@ class HostRuntime:
     site: SiteRuntime
     subscription: SubscriptionRuntime
     workflow: WorkflowRuntime
+    system: SystemService
     configuration: RuntimeConfiguration
     settings: RuntimeSettingsService
     tasks: TaskRegistry

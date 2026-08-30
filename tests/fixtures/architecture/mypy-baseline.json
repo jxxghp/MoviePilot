@@ -963,16 +963,12 @@
     "type-arg": 2
   },
   "app/api/endpoints/system.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "attr-defined": 4,
-    "import-untyped": 1,
     "misc": 34,
     "no-untyped-call": 7,
     "no-untyped-def": 27,
-    "operator": 1,
-    "type-arg": 11,
-    "type-var": 2,
-    "var-annotated": 1
+    "type-arg": 9
   },
   "app/api/endpoints/tmdb.py": {
     "attr-defined": 1,

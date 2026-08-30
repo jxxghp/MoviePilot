@@ -1,6 +1,7 @@
 import asyncio
-from contextlib import nullcontext
+from contextlib import asynccontextmanager, nullcontext
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -834,15 +835,32 @@ def test_sync_plugin_market_from_wiki_merges_and_deduplicates_repos():
     runtime_settings = MagicMock()
     runtime_settings.get.return_value = "https://github.com/local/existing"
     runtime_settings.update.return_value = (True, "")
+
+    @asynccontextmanager
+    async def rule_group_mutation():
+        """提供本用例不会进入的规则组事务替身。"""
+        yield SimpleNamespace()
+
+    from app.startup.composition.system import compose_system_service
+
+    runtime = SimpleNamespace(
+        system=compose_system_service(
+            settings=runtime_settings,
+            system_config=MagicMock(),
+            rule_group_mutation=rule_group_mutation,
+        )
+    )
     with (
-        patch("app.api.endpoints.system.AsyncRequestUtils", return_value=request_utils),
         patch(
-            "app.api.endpoints.system.get_runtime_settings",
-            return_value=runtime_settings,
+            "app.startup.composition.system.AsyncRequestUtils",
+            return_value=request_utils,
         ),
-        patch("app.api.endpoints.system.eventmanager.async_send_event", new=AsyncMock()) as send_event,
+        patch(
+            "app.startup.composition.system.eventmanager.async_send_event",
+            new=AsyncMock(),
+        ) as send_event,
     ):
-        result = asyncio.run(sync_plugin_market_from_wiki(None, None))
+        result = asyncio.run(sync_plugin_market_from_wiki(None, None, runtime))
 
     assert result.success
     assert result.data["repos"] == [

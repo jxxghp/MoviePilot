@@ -833,6 +833,14 @@ expired claimed task remains exclusively owned by fenced recovery APIs.
   only authenticates, maps request fields and projects the standard response;
   startup injects the concrete HTTP transport with certificate verification and
   automatic redirects disabled.
+- System management use cases live in `app/application/system.py`: log discovery,
+  reading and polling, Wiki market synchronization and merge, runtime/system
+  setting mutation, configuration events, release queries, and update/restart
+  orchestration all depend on explicit Ports. `app/startup/composition/system.py`
+  injects the concrete HTTP, filesystem, MoviePilot Server, Rust and process-update
+  adapters into `HostRuntime.system`. The System endpoint retains authentication,
+  HTTP error/DTO projection, SSE framing and ZIP framing only; it must not import
+  those concrete adapters or the event bus directly.
 - `app/runtime/compat` stores string mappings and resolves aliases lazily. It may
   not eagerly import canonical MoviePilot modules.
 - 已删除的 `app.db.<entity>_oper` 路径继续由精确模块映射提供给旧插件；其中订阅写入、

@@ -1,15 +1,22 @@
 import asyncio
 import signal
 import threading
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
 
 from app.adapters.network import http as http_utils
+from app.application.configuration import (
+    get_configured_system_config,
+    get_runtime_settings,
+)
 from app.runtime.config import settings as runtime_settings
 from app.runtime.tasks import configure_task_registry, get_task_registry
 from app.startup import lifecycle
+from app.startup.composition.system import compose_system_service
 from app.startup.initializers import modules as modules_initializer
 
 
@@ -26,6 +33,23 @@ def _assert_completed_once(mock: MagicMock) -> None:
         mock.assert_awaited_once()
     else:
         mock.assert_called_once()
+
+
+def _system_runtime():
+    """构造使用真实系统控制适配器的最小运行时。"""
+
+    @asynccontextmanager
+    async def rule_group_mutation():
+        """提供本组测试不会进入的规则组事务替身。"""
+        yield SimpleNamespace()
+
+    return SimpleNamespace(
+        system=compose_system_service(
+            settings=get_runtime_settings(),
+            system_config=get_configured_system_config(),
+            rule_group_mutation=rule_group_mutation,
+        )
+    )
 
 
 def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
@@ -1093,20 +1117,29 @@ def test_restart_endpoint_failure_preserves_stop_state(
     if initially_stopped:
         stop_event.set()
     monkeypatch.setattr(system.runtime_stop_state, "_system_event", stop_event)
-    monkeypatch.setattr(system.SystemHelper, "can_restart", MagicMock(return_value=True))
-    monkeypatch.setattr(system.SystemHelper, "restart", MagicMock(return_value=(False, "restart failed")))
     monkeypatch.setattr(
-        system.system_update_manager,
-        "request_install",
+        "app.startup.composition.system.SystemHelper.can_restart",
+        MagicMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "app.startup.composition.system.SystemHelper.restart",
+        MagicMock(return_value=(False, "restart failed")),
+    )
+    monkeypatch.setattr(
+        "app.startup.composition.system.system_update_manager.request_install",
         MagicMock(return_value=(True, "prepared")),
     )
     cancel_install = MagicMock()
-    monkeypatch.setattr(system.system_update_manager, "cancel_install", cancel_install)
+    monkeypatch.setattr(
+        "app.startup.composition.system.system_update_manager.cancel_install",
+        cancel_install,
+    )
+    runtime = _system_runtime()
 
     if endpoint_name == "restart_system":
-        response = system.restart_system(None)
+        response = system.restart_system(None, runtime)
     else:
-        response = system.install_system_update(None)
+        response = system.install_system_update(None, runtime)
 
     assert not response.success
     assert stop_event.is_set() is initially_stopped
@@ -1120,13 +1153,19 @@ def test_upgrade_endpoint_retains_dev_mode_only(monkeypatch):
     """旧升级入口只保留 Dev，Release 必须迁移到后台下载流程。"""
     from app.api.endpoints import system
 
-    monkeypatch.setattr(system.SystemHelper, "can_restart", MagicMock(return_value=True))
+    monkeypatch.setattr(
+        "app.startup.composition.system.SystemHelper.can_restart",
+        MagicMock(return_value=True),
+    )
     upgrade_dev = MagicMock(return_value=(True, "dev queued"))
-    monkeypatch.setattr(system.SystemHelper, "upgrade_dev", upgrade_dev)
+    monkeypatch.setattr(
+        "app.startup.composition.system.SystemHelper.upgrade_dev", upgrade_dev
+    )
+    runtime = _system_runtime()
 
-    dev_response = system.upgrade_system("dev", None)
-    release_response = system.upgrade_system("release", None)
-    legacy_default_response = system.upgrade_system(None, None)
+    dev_response = system.upgrade_system("dev", None, runtime)
+    release_response = system.upgrade_system("release", None, runtime)
+    legacy_default_response = system.upgrade_system(None, None, runtime)
 
     assert dev_response.success
     assert not release_response.success
