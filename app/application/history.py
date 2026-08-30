@@ -16,6 +16,8 @@ from app.schemas.file import FileItem
 from app.schemas.history import (
     DownloadHistory,
     TransferHistory,
+    TransferHistoryDeleteResult,
+    TransferHistoryDeleteStep,
     TransferHistoryPage,
 )
 from app.schemas.media import resolve_media_identity
@@ -697,13 +699,6 @@ class HistoryQueryService:
         status: Optional[bool] = None,
     ) -> TransferHistoryPage:
         """应用历史筛选规则并返回整理历史分页 DTO。"""
-        if title == "失败":
-            title = None
-            status = False
-        elif title == "成功":
-            title = None
-            status = True
-
         if title:
             wildcard = "*" in title or "?" in title
             if wildcard:
@@ -849,12 +844,14 @@ class TransferHistoryMutationCommand:
         delete_media_file: Callable[[Any], bool],
         publish_download_file_deleted: Callable[[dict[str, Any]], None],
         clear_failures: Callable[[Optional[str], Optional[str]], None],
+        file_exists: Optional[Callable[[Any], Optional[bool]]] = None,
     ) -> None:
         """保存历史事务、存储删除、事件和失败状态清理端口。"""
         self._repository = repository
         self._download_repository = download_repository
         self._unit_of_work = unit_of_work
         self._file_item_factory = file_item_factory
+        self._file_exists = file_exists or (lambda _fileitem: True)
         self._delete_media_file = delete_media_file
         self._publish_download_file_deleted = publish_download_file_deleted
         self._clear_failures = clear_failures
@@ -865,46 +862,104 @@ class TransferHistoryMutationCommand:
         *,
         delete_source: bool = False,
         delete_destination: bool = False,
-    ) -> HistoryMutationResult:
-        """删除整理记录，并保持源文件失败时不提交数据库变更。"""
+    ) -> TransferHistoryDeleteResult:
+        """删除整理记录并返回源、目标文件及历史记录的分项结果。"""
         history = self._repository.get(history_id)
         if not history:
-            return HistoryMutationResult(False, "记录不存在")
-        if getattr(history, "transfer_task_id", None):
-            return HistoryMutationResult(
-                False,
-                "持久整理失败记录不可删除，请使用重试或人工复核入口",
+            return TransferHistoryDeleteResult(
+                source=TransferHistoryDeleteStep(status="not_requested"),
+                destination=TransferHistoryDeleteStep(status="not_requested"),
+                history="not_found",
+                message="记录不存在",
+            )
+        if history.transfer_task_id:
+            return TransferHistoryDeleteResult(
+                source=TransferHistoryDeleteStep(status="not_requested"),
+                destination=TransferHistoryDeleteStep(status="not_requested"),
+                history="retained",
+                message="持久整理失败记录不可删除，请使用重试或人工复核入口",
             )
 
-        if delete_destination and history.dest_fileitem:
-            destination_payload = self._file_item_payload(history.dest_fileitem)
-            if destination_payload is None:
-                return HistoryMutationResult(False, "目标文件历史数据无效")
-            destination = self._file_item_factory(destination_payload)
-            self._delete_media_file(destination)
+        destination_result = self._delete_file(
+            history.dest_fileitem if delete_destination else None,
+            requested=delete_destination,
+            label="目标文件",
+        )
+        source_result = self._delete_file(
+            history.src_fileitem if delete_source else None,
+            requested=delete_source,
+            label="源文件",
+        )
+        source_completed = source_result.status in {"deleted", "already_missing"}
+        all_requested_completed = all(
+            step.status in {"not_requested", "deleted", "already_missing"}
+            for step in (source_result, destination_result)
+        )
 
-        source_deleted = False
-        if delete_source and history.src_fileitem:
+        if source_completed:
             source_payload = self._file_item_payload(history.src_fileitem)
-            if source_payload is None:
-                return HistoryMutationResult(False, "源文件历史数据无效")
-            source = self._file_item_factory(source_payload)
-            if not self._delete_media_file(source):
-                return HistoryMutationResult(False, f"{source.path} 删除失败")
-            self._download_repository.stage_delete_file_by_fullpath(
-                Path(source.path).as_posix()
-            )
-            source_deleted = True
+            if source_payload is not None:
+                source = self._file_item_factory(source_payload)
+                self._download_repository.stage_delete_file_by_fullpath(
+                    Path(source.path).as_posix()
+                )
 
-        self._repository.stage_delete(history_id)
-        self._commit()
-        if source_deleted:
+        if all_requested_completed:
+            self._repository.stage_delete(history_id)
+
+        if source_completed or all_requested_completed:
+            self._commit()
+        if source_completed:
             self._publish_download_file_deleted({
                 "src": history.src,
                 "hash": history.download_hash,
             })
-        self._clear_failures(history.src, history.src_storage)
-        return HistoryMutationResult(True)
+        if all_requested_completed:
+            self._clear_failures(history.src, history.src_storage)
+
+        return TransferHistoryDeleteResult(
+            source=source_result,
+            destination=destination_result,
+            history="deleted" if all_requested_completed else "retained",
+            message=(
+                "已删除整理记录"
+                if all_requested_completed
+                else next(
+                    (
+                        step.message
+                        for step in (source_result, destination_result)
+                        if step.status == "failed" and step.message
+                    ),
+                    "整理记录已保留，部分文件处理失败",
+                )
+            ),
+        )
+
+    def _delete_file(
+        self,
+        value: Optional[JsonData],
+        *,
+        requested: bool,
+        label: str,
+    ) -> TransferHistoryDeleteStep:
+        """删除一个文件目标；原目标已不存在时按完成处理，失败不抛出以便继续汇总其他步骤。"""
+        if not requested:
+            return TransferHistoryDeleteStep(status="not_requested")
+        payload = self._file_item_payload(value)
+        if payload is None:
+            return TransferHistoryDeleteStep(status="failed", message=f"{label}历史数据无效")
+        try:
+            fileitem = self._file_item_factory(payload)
+            if self._file_exists(fileitem) is False:
+                return TransferHistoryDeleteStep(status="already_missing")
+            if not self._delete_media_file(fileitem):
+                return TransferHistoryDeleteStep(
+                    status="failed",
+                    message=f"{fileitem.path} 删除失败",
+                )
+        except Exception:
+            return TransferHistoryDeleteStep(status="failed", message=f"{label}删除失败")
+        return TransferHistoryDeleteStep(status="deleted")
 
     @staticmethod
     def _file_item_payload(value: JsonData) -> Optional[dict[str, JsonData]]:

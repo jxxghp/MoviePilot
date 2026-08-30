@@ -69,6 +69,8 @@ def test_transfer_source_delete_failure_keeps_database_unchanged():
 
     assert result.success is False
     assert result.message == "/downloads/demo.mkv 删除失败"
+    assert result.source.status == "failed"
+    assert result.destination.status == "not_requested"
     dependencies["repository"].stage_delete.assert_not_called()
     dependencies["download_repository"].stage_delete_file_by_fullpath.assert_not_called()
     dependencies["unit_of_work"].commit.assert_not_called()
@@ -91,6 +93,8 @@ def test_transfer_delete_commits_before_event_and_retry_cleanup():
     )
 
     assert result.success is True
+    assert result.source.status == "deleted"
+    assert result.destination.status == "deleted"
     dependencies["download_repository"].stage_delete_file_by_fullpath.assert_called_once_with(
         "/downloads/demo.mkv"
     )
@@ -135,6 +139,79 @@ def test_transfer_delete_rejects_durable_receipt_before_file_side_effects():
 
     assert result.success is False
     assert result.message == "持久整理失败记录不可删除，请使用重试或人工复核入口"
+    assert result.history == "retained"
     dependencies["delete_media_file"].assert_not_called()
     dependencies["repository"].stage_delete.assert_not_called()
     dependencies["unit_of_work"].commit.assert_not_called()
+
+
+def test_transfer_destination_delete_failure_keeps_history_and_reports_step():
+    """目标文件删除失败时必须保留历史，并向调用方报告失败步骤。"""
+    command, dependencies = _transfer_command(
+        history=_history(),
+        delete_result=False,
+    )
+
+    result = command.delete(7, delete_destination=True)
+
+    assert result.success is False
+    assert result.destination.status == "failed"
+    assert result.history == "retained"
+    assert result.source.status == "not_requested"
+    dependencies["repository"].stage_delete.assert_not_called()
+    dependencies["unit_of_work"].commit.assert_not_called()
+
+
+def test_transfer_delete_commits_completed_source_when_destination_fails():
+    """一项文件已完成而另一项失败时，已完成源文件状态仍应提交并保留历史。"""
+    repository = Mock()
+    repository.get.return_value = _history()
+    dependencies = {
+        "repository": repository,
+        "download_repository": Mock(),
+        "unit_of_work": Mock(),
+        "file_item_factory": lambda payload: SimpleNamespace(**payload),
+        "file_exists": Mock(return_value=True),
+        "delete_media_file": Mock(side_effect=[False, True]),
+        "publish_download_file_deleted": Mock(),
+        "clear_failures": Mock(),
+    }
+    command = TransferHistoryMutationCommand(**dependencies)
+
+    result = command.delete(7, delete_source=True, delete_destination=True)
+
+    assert result.success is False
+    assert result.destination.status == "failed"
+    assert result.source.status == "deleted"
+    assert result.history == "retained"
+    repository.stage_delete.assert_not_called()
+    dependencies["download_repository"].stage_delete_file_by_fullpath.assert_called_once_with(
+        "/downloads/demo.mkv"
+    )
+    dependencies["unit_of_work"].commit.assert_called_once_with()
+    dependencies["publish_download_file_deleted"].assert_called_once()
+    dependencies["clear_failures"].assert_not_called()
+
+
+def test_transfer_delete_treats_missing_requested_file_as_completed():
+    """重试时已被前一次尝试删除的文件应跳过外部删除并允许清理历史。"""
+    command, dependencies = _transfer_command(history=_history())
+    dependencies["delete_media_file"].reset_mock()
+    dependencies["file_exists"] = Mock(return_value=False)
+    command = TransferHistoryMutationCommand(
+        repository=dependencies["repository"],
+        download_repository=dependencies["download_repository"],
+        unit_of_work=dependencies["unit_of_work"],
+        file_item_factory=dependencies["file_item_factory"],
+        file_exists=dependencies["file_exists"],
+        delete_media_file=dependencies["delete_media_file"],
+        publish_download_file_deleted=dependencies["publish_download_file_deleted"],
+        clear_failures=dependencies["clear_failures"],
+    )
+
+    result = command.delete(7, delete_source=True, delete_destination=True)
+
+    assert result.success is True
+    assert result.source.status == "already_missing"
+    assert result.destination.status == "already_missing"
+    dependencies["delete_media_file"].assert_not_called()
