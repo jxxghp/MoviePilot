@@ -160,6 +160,13 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 | ARCH-203 | P2 | 已交付 | 拆分 Domain 投影与 Startup 高扇出目录 | Domain 四来源投影与 Startup 单词型 composition owner 均已完成；最终精确 head CI 已闭环 |
 | ARCH-204 | P2 | 已交付 | 合并重复 sync/async 核心逻辑并转换存量测试风格 | 双 ABI 只保留 I/O 外壳，共享解析、校验、映射和状态决策；最终精确 head CI 已闭环 |
 
+S4/ARCH-110/111 的取消不撤销现有防回退门禁。后续按路线图的 **S4 Lite** 边界做增量治理：
+第三方插件 Module/Event 合同校验继续 diagnostic，宿主 strict contract enforcement 只覆盖
+独立评审的内置高风险能力和 durable internal event；这不改变现有 strict 异常传播接口仍可触达
+插件 provider 的事实。现有插件 ABI、SDK/Compat/Legacy 行为及原始返回形状不得因宿主升级改变。
+复杂度、并发、mypy、Ruff 和 coverage 继续使用当前 zero-growth/低水位 ratchet，但不再追求
+一次性清空全宿主历史债务。
+
 ## 5. P0：先恢复主线
 
 ### ARCH-001 恢复 mypy ratchet
