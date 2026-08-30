@@ -20,6 +20,10 @@
 | RES-003 | `PLANNED`（R3） | Outbox after_commit 失败只有内存 pending 标记，重启不可恢复 | 持久 intent、唯一 handler、claim/fencing、重启回放、幂等和失败观测完整闭环 |
 | RES-004 | `PLANNED`（R4） | Startup initializer 与插件市场存在多套 Transport/Adapter/Manager 构造 | 所有构造回收到 composition root，插件兼容只经 SDK/Compat，canonical 不保留重复正式入口 |
 | RES-005 | `PLANNED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 文档与事实源一致；专项、锁定全量、Pylint、架构/兼容门禁和 GitHub CI 闭环，远端 `0/0` |
+R2 已落地门禁基础：`complexity.py --v2` 覆盖私有/嵌套方法、类、文件和
+`app/scheduler/`；`concurrency.py` 覆盖宿主原生并发原语并冻结调用点与词法 owner。
+当前基线只允许删除或收缩，新增调用点和 owner 漂移均阻断 CI；现有历史热点仍须在后续
+叶子中按真实所有权逐项收口，不得以生成基线伪装为债务清零。
 
 ## 1. 结论摘要
 

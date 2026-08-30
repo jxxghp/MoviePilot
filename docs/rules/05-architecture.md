@@ -216,6 +216,18 @@ only the historical `Scheduler` and `SchedulerChain` identities. New plugins use
 the narrow `app.sdk.scheduler` facade; internal Scheduler owners must not be
 re-exported from the package root, SDK or Compat.
 
+Complexity and concurrency governance covers the complete canonical execution
+surface rather than only public methods. `scripts/architecture/complexity.py --v2`
+ratchets private and nested methods, class/file hotspots, and the
+`app/scheduler/` package; its generated baseline is an evidence ledger, not a
+permission to add another oversized owner. `scripts/architecture/concurrency.py`
+enumerates native Thread, Timer, thread/process executors, Process,
+asyncio task/thread helpers, and executor hand-off calls across host roots. Each
+fact must have a stable lexical owner and remain in the baseline with no new
+call site or owner drift. `app/plugins/**`, `app/sdk/**`, and
+`app/runtime/compat/**` are excluded because their compatibility/runtime
+contracts are governed by their own exact manifests.
+
 `app.schemas` and the `app.db` package root are compatibility facades, not
 implementation dependency hubs. Host code imports concrete schema submodules; the schema root
 resolves its generated export manifest lazily for plugins and legacy callers.

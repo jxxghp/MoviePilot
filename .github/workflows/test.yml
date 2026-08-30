@@ -63,7 +63,12 @@ jobs:
         run: uv run --locked --no-sync mypy --config-file mypy.ini
 
       - name: Check complexity ratchet
-        run: uv run --locked --no-sync python scripts/architecture/complexity.py
+        run: |
+          uv run --locked --no-sync python scripts/architecture/complexity.py
+          uv run --locked --no-sync python scripts/architecture/complexity.py --v2
+
+      - name: Check native concurrency ownership
+        run: uv run --locked --no-sync python scripts/architecture/concurrency.py
 
       - name: Check async blocking ratchet
         run: uv run --locked --no-sync python scripts/architecture/async_blocking.py

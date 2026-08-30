@@ -1,6 +1,6 @@
 """复杂度只降不增 ratchet 测试。"""
 
-from scripts.architecture.complexity import compare_complexity
+from scripts.architecture.complexity import compare_complexity, compare_complexity_v2
 
 
 def test_complexity_ratchet_allows_removal_and_reduction() -> None:
@@ -39,3 +39,18 @@ def test_complexity_ratchet_rejects_growth_and_new_oversize() -> None:
 
     assert any("既有超限增长" in problem for problem in problems)
     assert any("新增超限" in problem for problem in problems)
+
+
+def test_complexity_v2_ratchet_checks_categories_outside_public_rules() -> None:
+    """v2 基线必须实际比较私有方法、类和文件类别。"""
+    baseline = {"method": {"app/scheduler/a.py:Runner.run": 160}, "class": {}, "file": {}}
+    current = {
+        "method": {"app/scheduler/a.py:Runner.run": 161},
+        "class": {"app/scheduler/a.py:Runner": 600},
+        "file": {"app/scheduler/a.py": 1200},
+    }
+
+    problems = compare_complexity_v2(baseline, current)
+    assert any("method: 既有超限增长" in problem for problem in problems)
+    assert any("class: 新增超限" in problem for problem in problems)
+    assert any("file: 新增超限" in problem for problem in problems)
