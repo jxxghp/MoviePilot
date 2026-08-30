@@ -205,7 +205,7 @@ def _runtime() -> HostRuntime:
             system_config=lambda: _Repository(object()),
         ),
         configuration=RuntimeConfiguration(
-            api=lambda: ApiRuntimeConfig(False, 60, False, True),
+            api=lambda: ApiRuntimeConfig(60, False, True),
             scheduler=lambda: SchedulerRuntimeConfig(
                 False,
                 "Asia/Shanghai",

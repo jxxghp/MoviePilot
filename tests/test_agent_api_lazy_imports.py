@@ -139,7 +139,7 @@ from app.application.configuration import ApiRuntimeConfig
 from app.runtime.config import settings
 
 runtime_config = ApiRuntimeConfig(
-    False, 60, False, settings.AI_AGENT_ENABLE,
+    60, False, settings.AI_AGENT_ENABLE,
     api_token=settings.API_TOKEN,
 )
 anthropic.get_api_runtime_config_snapshot = lambda: runtime_config
@@ -382,7 +382,7 @@ from app.runtime.config import settings
 
 settings.AI_AGENT_ENABLE = True
 runtime_config = ApiRuntimeConfig(
-    False, 60, False, True,
+    60, False, True,
     api_token=settings.API_TOKEN,
 )
 anthropic.get_api_runtime_config_snapshot = lambda: runtime_config

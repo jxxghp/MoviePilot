@@ -2573,7 +2573,6 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         except Exception as exc:
             print_step(f"已保存站点认证配置，当前未完成校验：{exc}")
 
-    system_config.set(SystemConfigKey.SetupWizardState, True)
     print_step("已写入本地系统配置")
 
 

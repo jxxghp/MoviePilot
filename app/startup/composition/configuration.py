@@ -112,7 +112,6 @@ def normalize_subscribe_rss_interval(value: object) -> int:
 def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
     """从可热更新的部署设置构建一次 API 请求配置快照。"""
     return ApiRuntimeConfig(
-        advanced_mode=settings.ADVANCED_MODE,
         access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
         btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
         ai_agent_enable=settings.AI_AGENT_ENABLE,

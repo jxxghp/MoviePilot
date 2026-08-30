@@ -106,9 +106,6 @@ class ConfigModel(BaseModel):
     DEBUG: bool = False
     # 是否开发模式
     DEV: bool = False
-    # 高级设置模式
-    ADVANCED_MODE: bool = True
-
     # ==================== 安全认证配置 ====================
     # 密钥
     SECRET_KEY: str = secrets.token_urlsafe(32)
@@ -120,10 +117,10 @@ class ConfigModel(BaseModel):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     # RESOURCE_TOKEN过期时间
     RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS: int = 60 * 30
-    # 超级管理员初始用户名
-    SUPERUSER: str = "admin"
-    # 超级管理员初始密码
-    SUPERUSER_PASSWORD: Optional[str] = None
+    # 超级管理员用户名；V3 首次启动时为空，由初始化页面设置
+    SUPERUSER: str = ""
+    # 超级管理员密码不再通过部署配置初始化，始终由数据库存储哈希
+    SUPERUSER_PASSWORD: str = ""
     # 辅助认证，允许通过外部服务进行认证、单点登录以及自动创建用户
     AUXILIARY_AUTH_ENABLE: bool = False
     # API密钥，需要更换
@@ -800,16 +797,13 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         if isinstance(value, (list, dict, set)):
             value = copy.deepcopy(value)
         value = value.strip() if isinstance(value, str) else None
-        if not value or len(value) < 16:
+        if not value:
+            return None, str(original_value) not in {"", "None"}
+        if len(value) < 16:
             new_token = secrets.token_urlsafe(16)
-            if not value:
-                logger.info(
-                    f"'API_TOKEN' 未设置，已随机生成新的【API_TOKEN】{new_token}"
-                )
-            else:
-                logger.warning(
-                    f"'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已随机生成新的【API_TOKEN】{new_token}"
-                )
+            logger.warning(
+                f"'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已随机生成新的【API_TOKEN】{new_token}"
+            )
             return new_token, True
         return value, str(value) != str(original_value)
 
@@ -1339,7 +1333,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     def VAPID(self):
         """返回 Web Push 使用的 VAPID 配置。"""
         return {
-            "subject": f"mailto:{self.SUPERUSER}@movie-pilot.org",
+            "subject": f"mailto:{self.SUPERUSER or 'moviepilot'}@movie-pilot.org",
             "publicKey": "BH3w49sZA6jXUnE-yt4jO6VKh73lsdsvwoJ6Hx7fmPIDKoqGiUl2GEoZzy-iJfn4SfQQcx7yQdHf9RknwrL_lSM",
             "privateKey": "JTixnYY0vEw97t9uukfO3UWKfHKJdT5kCQDiv3gu894",
         }

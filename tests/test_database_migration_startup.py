@@ -563,10 +563,8 @@ def test_migration_config_write_rolls_back_with_alembic_transaction(
         assert stored_templates == original_templates
 
 
-def test_initial_migration_rolls_back_user_and_storages_together(
-        monkeypatch,
-) -> None:
-    """2.0.0 管理员与存储初始化必须共享 Alembic 事务。"""
+def test_initial_migration_does_not_seed_user_and_initializes_storages(monkeypatch) -> None:
+    """2.0.0 初始化只准备存储，管理员由首次访问页面创建。"""
     migration = importlib.import_module(
         "database.versions.294b007932ef_2_0_0"
     )
@@ -597,50 +595,18 @@ def test_initial_migration_rolls_back_user_and_storages_together(
     )
     metadata.create_all(engine)
 
-    monkeypatch.setattr(migration.settings, "SUPERUSER", "migration-admin")
-    monkeypatch.setattr(
-        migration.settings,
-        "SUPERUSER_PASSWORD",
-        "migration-password",
-    )
-    monkeypatch.setattr(
-        migration,
-        "get_password_hash",
-        lambda password: f"hashed:{password}",
-    )
-
     with engine.connect() as connection:
-        transaction = connection.begin()
         monkeypatch.setattr(
             migration,
             "op",
             Operations(MigrationContext.configure(connection)),
         )
-
-        def fail_storages_write(
-                _connection,
-                _cursor,
-                statement,
-                _parameters,
-                _context,
-                _executemany,
-        ) -> None:
-            if statement.lstrip().upper().startswith("INSERT INTO SYSTEMCONFIG"):
-                raise RuntimeError("injected storages failure")
-
-        event.listen(engine, "after_cursor_execute", fail_storages_write)
-        try:
-            with pytest.raises(RuntimeError, match="injected storages failure"):
-                migration.upgrade()
-        finally:
-            event.remove(engine, "after_cursor_execute", fail_storages_write)
-            transaction.rollback()
+        migration.upgrade()
+        connection.commit()
 
     with engine.connect() as connection:
         assert connection.execute(text("SELECT COUNT(*) FROM user")).scalar_one() == 0
-        assert connection.execute(
-            text("SELECT COUNT(*) FROM systemconfig")
-        ).scalar_one() == 0
+        assert connection.execute(text("SELECT value FROM systemconfig WHERE key = 'Storages'")).scalar_one()
 
 
 def test_userconfig_cleanup_migration_uses_alembic_transaction(

@@ -13,7 +13,6 @@ from app.application.site.sites import SitesHelper  # pylint: disable=import-err
 from app.foundation.singleton import Singleton
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.types import SystemConfigKey
 from app.schemas.user import UserPermissions
 
 
@@ -209,10 +208,6 @@ class AuthService:
         """使用统一逻辑构造登录 Token 响应。"""
         level = SitesHelper().auth_level
         config = get_api_runtime_config_snapshot()
-        show_wizard = (
-            not self._config.get(SystemConfigKey.SetupWizardState)
-            and not config.advanced_mode
-        )
         return _SchemaToken(
             access_token=create_access_token(
                 userid=user.id,
@@ -228,7 +223,6 @@ class AuthService:
             avatar=user.avatar,
             level=level,
             permissions=cast(UserPermissions, dict(user.permissions)),
-            wizard=show_wizard,
         )
 
 

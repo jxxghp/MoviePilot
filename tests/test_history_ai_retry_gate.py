@@ -61,7 +61,6 @@ async def _record_async(target: list[dict], payload: dict) -> None:
 def _runtime(*, ai_enabled: bool = True) -> ApiRuntimeConfig:
     """构造历史端点需要的最小稳定配置快照。"""
     return ApiRuntimeConfig(
-        advanced_mode=False,
         access_token_expire_minutes=30,
         btrfs_fsid_dedup=False,
         ai_agent_enable=ai_enabled,

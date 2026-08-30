@@ -176,6 +176,9 @@ class ChainUserRepository(Protocol):
 class UserRepository(Protocol):
     """用户用例所需的最小异步数据端口。"""
 
+    async def async_has_users(self) -> bool:
+        """判断数据库中是否已经存在任意用户。"""
+
     async def async_list(self) -> list[UserSnapshot]:
         """返回全部用户。"""
 
@@ -250,6 +253,10 @@ class UserService:
     async def list(self) -> list[UserSnapshot]:
         """返回用户列表。"""
         return await self._repository.async_list()
+
+    async def is_initialized(self) -> bool:
+        """判断系统是否已经完成首次用户初始化。"""
+        return await self._repository.async_has_users()
 
     async def get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """按用户名查询用户。"""

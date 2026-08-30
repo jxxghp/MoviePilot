@@ -187,24 +187,11 @@ def test_login_sets_resource_token_cookie(monkeypatch):
                 permissions={"discovery": True, "features": {}},
             )
 
-    class FakeSystemConfigOper:
-        """返回已完成向导状态的系统配置桩。"""
-
-        def get(self, key):
-            """返回测试配置值。"""
-            return "1"
-
     form_data = SimpleNamespace(username="user", password="password")
     request = _build_request()
     response = Response()
 
     monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
-    monkeypatch.setattr(
-        login_endpoint,
-        "get_configured_system_config",
-        lambda: FakeSystemConfigOper(),
-    )
-
     token = login_endpoint.login_access_token(
         request=request,
         response=response,

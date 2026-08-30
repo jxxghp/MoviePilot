@@ -146,7 +146,6 @@ def test_api_runtime_provider_returns_frozen_snapshot_per_request() -> None:
     configure_runtime_configuration(
         RuntimeConfiguration(
             api=lambda: ApiRuntimeConfig(
-                advanced_mode=False,
                 access_token_expire_minutes=60,
                 btrfs_fsid_dedup=False,
                 ai_agent_enable=state["enabled"],

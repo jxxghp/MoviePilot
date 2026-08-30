@@ -478,7 +478,6 @@ def get_global_setting(token: str):
         include={
             "TMDB_IMAGE_DOMAIN",
             "GLOBAL_IMAGE_CACHE",
-            "ADVANCED_MODE",
         }
     )
     # 追加版本信息（用于版本检查）

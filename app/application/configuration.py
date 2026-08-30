@@ -99,7 +99,6 @@ class TokenRuntimeConfig:
 class ApiRuntimeConfig:
     """单次 API 请求使用的宿主配置快照。"""
 
-    advanced_mode: bool
     access_token_expire_minutes: int
     btrfs_fsid_dedup: bool
     ai_agent_enable: bool
@@ -172,7 +171,7 @@ class ChainRuntimeConfig:
     root_path: Path = Path(".")
     config_path: Path = Path(".")
     frontend_path: Path = Path(".")
-    superuser: str = "admin"
+    superuser: str = ""
     media_recognize_share: bool = False
     auxiliary_auth_enable: bool = False
     global_image_cache: bool = False

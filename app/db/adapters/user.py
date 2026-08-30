@@ -69,6 +69,12 @@ class SqlAlchemyUserRepository(UserRepository):
         model = self._oper.get_by_id(user_id)
         return _to_snapshot(model) if model else None
 
+    async def async_has_users(self) -> bool:
+        """使用最小列查询判断数据库中是否已有用户。"""
+        session = self._require_async_session()
+        result = await session.execute(select(User.id).limit(1))
+        return result.scalar_one_or_none() is not None
+
     async def async_list(self) -> list[UserSnapshot]:
         """在异步请求会话中读取全部冻结用户快照。"""
         return [_to_snapshot(model) for model in await self._oper.async_list()]

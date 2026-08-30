@@ -31,10 +31,6 @@ class Token(BaseModel):
     level: int = 1
     # 详细权限
     permissions: Optional[UserPermissions] = Field(default_factory=dict)
-    # 是否显示配置向导
-    wizard: Optional[bool] = None
-
-
 class TokenPayload(BaseModel):
     """访问令牌中携带的用户身份与授权信息。"""
 
