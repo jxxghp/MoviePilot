@@ -16,23 +16,23 @@ from app.application.image import (
     configure_wallpaper_providers,
     reset_wallpaper_providers,
 )
-from app.chain.mediaserver import MediaServerChain
 from app.chain._recognition import (
     RecognitionSharePort,
     configure_recognition_share_port,
     reset_recognition_share_port,
 )
+from app.chain.mediaserver import MediaServerChain
 from app.chain.subscribe.notify import (
     SubscriptionSharePort,
     configure_subscription_share_port,
     reset_subscription_share_port,
 )
+from app.chain.tmdb import TmdbChain
 from app.chain.transfer.filter import (
     NetworkFilesystemPort,
     configure_network_filesystem_port,
     reset_network_filesystem_port,
 )
-from app.chain.tmdb import TmdbChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.mediaserver import TransactionalMediaServerRepository

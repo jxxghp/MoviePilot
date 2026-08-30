@@ -1146,9 +1146,6 @@
   "tests/test_resource_token_cookie_secure_flag.py": {
     "I001": 1
   },
-  "tests/test_resource_v3.py": {
-    "I001": 1
-  },
   "tests/test_rust_accel_toggle.py": {
     "I001": 1
   },

@@ -4,9 +4,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, cast
 
+from app.adapters.network.doh import DohHelper
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.adapters.network.ip import IpUtils
-from app.adapters.network.doh import DohHelper
 from app.adapters.system.host import SystemUtils
 from app.application.configuration import get_runtime_settings
 from app.application.image import (

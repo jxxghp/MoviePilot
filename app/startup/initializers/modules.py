@@ -79,10 +79,10 @@ from app.startup.composition.context import HostRuntime
 from app.startup.composition.database import (
     compose_database_services,
     configure_database,
+    configure_workflow_execution_composition,
     database_runtime_active,
     publish_database_services,
     reset_database_services,
-    configure_workflow_execution_composition,
     reset_workflow_execution_composition,
     start_database_runtime,
     stop_database_runtime,
@@ -94,16 +94,16 @@ from app.startup.composition.network import (
     stop_doh_composition,
 )
 from app.startup.composition.outbox import build_outbox_dispatcher, reset_outbox_services
+from app.startup.composition.resource import (
+    install_site_resources,
+    reset_site_resource_composition,
+)
 from app.startup.composition.runtime import (
     RuntimeInputs,
     compose_runtime,
     compose_runtime_dependencies,
     publish_runtime,
     reset_runtime,
-)
-from app.startup.composition.resource import (
-    install_site_resources,
-    reset_site_resource_composition,
 )
 from app.startup.composition.security import (
     configure_security_access,
