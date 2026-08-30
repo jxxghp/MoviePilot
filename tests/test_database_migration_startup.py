@@ -101,13 +101,38 @@ def test_prepare_database_creates_backup_before_schema_changes(monkeypatch) -> N
 
     assert calls == [
         "backup",
+        "alembic",
         "create_all",
         "before_alembic",
-        "alembic",
     ]
     assert logged_messages == [
         "数据库需要从版本 old 升级到 head，正在创建迁移前备份"
     ]
+
+
+def test_prepare_database_keeps_create_all_first_for_unversioned_database(
+        monkeypatch,
+) -> None:
+    """未标记旧库仍需先补齐基础表，再从 Alembic base 执行数据迁移。"""
+    calls: list[str] = []
+    monkeypatch.setattr(db_init, "get_engine", lambda: object())
+    monkeypatch.setattr(db_init, "_build_alembic_config", lambda _engine: object())
+    monkeypatch.setattr(
+        db_init,
+        "_migration_state",
+        lambda *_: (True, (), ("head",)),
+    )
+    monkeypatch.setattr(db_init.settings, "DB_BACKUP_ENABLE", False)
+    monkeypatch.setattr(db_init, "init_db", lambda: calls.append("create_all"))
+    monkeypatch.setattr(
+        db_init,
+        "update_db",
+        lambda _config: calls.append("alembic"),
+    )
+
+    db_init.prepare_database(before_alembic=lambda: calls.append("before_alembic"))
+
+    assert calls == ["create_all", "before_alembic", "alembic"]
 
 
 @pytest.mark.parametrize(

@@ -90,7 +90,7 @@ def _validate_migration_lineage(
 
 
 def prepare_database(*, before_alembic: Callable[[], None] | None = None) -> None:
-    """在建表或迁移前完成版本校验及可选备份。"""
+    """在建表或迁移前完成版本校验、可选备份与安全的结构升级。"""
     engine = get_engine()
     alembic_cfg = _build_alembic_config(engine)
     has_existing_database, current_heads, target_heads = _migration_state(
@@ -101,6 +101,7 @@ def prepare_database(*, before_alembic: Callable[[], None] | None = None) -> Non
         has_existing_database
         and set(current_heads) != set(target_heads)
     )
+    migrate_before_create = requires_migration and bool(current_heads)
     if (
         requires_migration
         and get_runtime_setting('DB_BACKUP_ENABLE')
@@ -114,11 +115,17 @@ def prepare_database(*, before_alembic: Callable[[], None] | None = None) -> Non
         )
         build_database_governance().create_backup()
 
+    if migrate_before_create:
+        # 已标记的旧结构必须先沿 Alembic 链升级；当前元数据可能包含依赖新列的外键，
+        # 提前 create_all 会在 PostgreSQL 上因父表仍是旧结构而失败。
+        update_db(alembic_cfg)
+
     init_db()
     if before_alembic:
         # 首次初始化需要先建立用户表，再把管理员密码交给 Alembic 基础迁移消费。
         before_alembic()
-    update_db(alembic_cfg)
+    if not migrate_before_create:
+        update_db(alembic_cfg)
 
 
 def verify_database_revision() -> None:
