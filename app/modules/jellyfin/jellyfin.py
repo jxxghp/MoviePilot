@@ -252,9 +252,10 @@ class Jellyfin:
                     for user in users:
                         if user.get("Name") == user_name:
                             return user.get("Id")
-                if user_name == get_runtime_setting('SUPERUSER'):
+                if user_name:
                     logger.warning(
-                        "MoviePilot 当前配置的超级管理员用户名为 {}，请确保Jellyfin中存在同名管理员账号，否则可能无法正常使用部分功能！".format(get_runtime_setting('SUPERUSER'))
+                        f"未找到指定的 Jellyfin 用户账号 {user_name}，"
+                        "将回退选择可用的超级管理员账号！"
                     )
                 # 查询管理员，优先选择同时具备全库访问能力的账号，再回退到普通管理员。
                 # 获取总媒体库数量
@@ -280,7 +281,9 @@ class Jellyfin:
                     logger.warning("未找到可用的管理员账号，无法获取管理员用户，请检查Jellyfin用户及权限配置！")
                     return None
                 logger.warning(
-                    f"未找到具备全库访问权限的管理员账号，回退使用仅可访问{best_admin_library_count}/{total_library_count}个媒体库的管理员账号{best_admin_name}！"
+                    "未找到具备全库访问权限的管理员账号，"
+                    f"回退使用显式访问范围为 {best_admin_library_count}/{total_library_count} "
+                    f"个媒体库的管理员账号 {best_admin_name}！"
                 )
                 return best_admin_id
             else:
