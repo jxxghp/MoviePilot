@@ -110,7 +110,9 @@ async def update_user(
     return _SchemaResponse(success=True)
 
 
-@router.put("/current", summary="更新当前用户资料", response_model=_SchemaUser)
+@router.put(  # type: ignore[misc]
+    "/current", summary="更新当前用户资料", response_model=_SchemaUser
+)
 async def update_current_user(
     *,
     service: UserService = Depends(get_user_service),

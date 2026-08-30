@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import TypedDict
 
 from app.schemas.common import JsonData
@@ -64,7 +64,7 @@ class UserUpdate(UserBase):
     permissions: Optional[UserPermissions] = Field(default_factory=dict)
 
 
-class CurrentUserUpdate(BaseModel):
+class CurrentUserUpdate(BaseModel):  # type: ignore[misc]
     """当前用户可自助更新的资料与通知身份设置。"""
 
     # 邮箱
