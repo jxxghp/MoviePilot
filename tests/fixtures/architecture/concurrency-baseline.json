@@ -187,6 +187,12 @@
     },
     "target": "asyncio.create_task"
   },
+  "app/api/endpoints/anthropic.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "_check_auth": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
   "app/api/endpoints/dashboard.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
       "schedule": 1,
@@ -201,11 +207,23 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/api/endpoints/openai.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "_check_auth": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
   "app/api/endpoints/search.py:asyncio.create_task": {
     "owners": {
       "_iter_batched_search_events": 1
     },
     "target": "asyncio.create_task"
+  },
+  "app/api/endpoints/subscribe.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "seerr_subscribe": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
   },
   "app/api/endpoints/system.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
