@@ -6,7 +6,6 @@ from app.api.dependencies.auth import get_current_active_superuser
 from app.api.response import ResponseAPIRouter
 from app.application.configuration import get_configured_system_config
 from app.chain.notification import NotificationChain
-from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.system import NotificationConf
@@ -58,19 +57,18 @@ async def save_config(
         saved = await get_configured_system_config().async_set(SystemConfigKey.Notifications, current)
         if saved is False:
             return _SchemaResponse(success=False, message="通知配置保存失败")
-        try:
-            # 配置写入成功后再同步 ClawBot 缓存，避免持久化失败留下半完成的登录状态。
-            result = WechatClawBot.reconcile_cached_states(previous_data, current)
-        except Exception as error:
+        # 配置写入成功后再同步 ClawBot 缓存，避免持久化失败留下半完成的登录状态。
+        result = NotificationChain().manage_channel(
+            channel="WechatClawBot",
+            action="reconcile_config",
+            previous=previous_data,
+            current=current,
+        )
+        # ClawBot 模块未加载时无需阻断其它通知渠道的配置保存；模块加载后由链路完成缓存同步。
+        if result and not result.get("success") and result.get("message") != "该通知渠道未启用或不支持此管理动作":
             return _SchemaResponse(
                 success=False,
-                message=f"通知配置已保存，但缓存同步失败，请重试：{error}",
-                data={"value": current},
-            )
-        if not result.get("success"):
-            return _SchemaResponse(
-                success=False,
-                message=f"通知配置已保存，但缓存同步失败，请重试：{result.get('message')}",
+                message="通知配置已保存，但缓存同步失败，请重试",
                 data={"value": current},
             )
         return _SchemaResponse(success=True, message="通知配置保存成功", data={"value": current})
