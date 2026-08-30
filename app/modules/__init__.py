@@ -1,6 +1,6 @@
 import threading
 from abc import abstractmethod, ABCMeta
-from typing import Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
+from typing import Any, Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
 from pathlib import Path
 
 from app.runtime.extensions.service import ServiceConfigHelper
@@ -148,10 +148,16 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
             # 通过服务类型或工厂函数来创建实例
             if isinstance(service_type, type):
                 # 如果传入的是类类型，调用构造函数实例化
-                self._instances[conf.name] = service_type(name=conf.name, **conf.config)
+                self._instances[conf.name] = service_type(
+                    **self._service_kwargs(conf)
+                )
             else:
                 # 如果传入的是工厂函数，直接调用工厂函数
                 self._instances[conf.name] = service_type(conf)
+
+    def _service_kwargs(self, conf: TConf) -> Dict[str, Any]:
+        """构建类服务实例参数，允许具体模块传递稳定配置身份。"""
+        return {"name": conf.name, **conf.config}
 
     def get_instances(self) -> Dict[str, TService]:
         """
