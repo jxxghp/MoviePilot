@@ -27,7 +27,7 @@ router = ResponseAPIRouter()
 _INITIALIZATION_LOCK = asyncio.Lock()
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/initialization",
     summary="查询首次初始化状态",
     response_model=_SchemaResponse[_SchemaInitializationStatus],
@@ -42,7 +42,7 @@ async def get_initialization_status(
     )
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/initialization",
     summary="完成首次初始化",
     response_model=_SchemaResponse[None],
