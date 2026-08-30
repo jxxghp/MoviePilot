@@ -52,8 +52,8 @@ from app.application.subscription.search import (
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.runtime.tasks import TaskRegistry
 from app.runtime.execution import run_in_threadpool
+from app.runtime.tasks import TaskRegistry
 from app.schemas.common import IdData as _SchemaIdData
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse

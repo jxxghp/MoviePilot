@@ -15,8 +15,8 @@ from starlette.responses import Response
 
 from app.adapters.web.security import access
 from app.api.dependencies import auth as auth_dependencies
-from app.api.endpoints import auth as auth_endpoint
 from app.api.endpoints import anthropic as anthropic_endpoint
+from app.api.endpoints import auth as auth_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import mfa as mfa_endpoint
 from app.api.endpoints import openai as openai_endpoint
@@ -599,7 +599,7 @@ def test_auth_exchange_sets_resource_cookie():
     assert result is token
     cookies = SimpleCookie(response.headers["set-cookie"])
     resource_cookie = cookies[settings.PROJECT_NAME]
-    assert resource_cookie["httponly"] == True
+    assert resource_cookie["httponly"]
     assert resource_cookie["samesite"].lower() == "lax"
     payload = decode_access_token(resource_cookie.value, "resource")
     assert payload.model_dump() == {

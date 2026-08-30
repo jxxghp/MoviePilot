@@ -27,8 +27,8 @@ from app.api.protocol import (
 )
 from app.application.agent import get_running_agent_manager
 from app.application.configuration import get_api_runtime_config_snapshot
-from app.runtime.tasks import TaskRegistry
 from app.runtime.execution import run_in_threadpool
+from app.runtime.tasks import TaskRegistry
 from app.schemas.openai import AnthropicErrorDetail as _SchemaAnthropicErrorDetail
 from app.schemas.openai import AnthropicErrorResponse as _SchemaAnthropicErrorResponse
 from app.schemas.openai import AnthropicMessagesRequest as _SchemaAnthropicMessagesRequest
