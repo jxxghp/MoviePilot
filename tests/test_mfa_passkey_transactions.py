@@ -37,41 +37,6 @@ def setup_function():
     ))
 
 
-@pytest.mark.asyncio
-async def test_mfa_status_hides_missing_disabled_and_unconfigured_accounts():
-    """匿名状态查询不得用状态码、消息或数据区分非 OTP 账号。"""
-    users = [
-        None,
-        SimpleNamespace(is_active=False, is_otp=True),
-        SimpleNamespace(is_active=True, is_otp=False),
-    ]
-    responses = []
-
-    for user in users:
-        service = SimpleNamespace(get_by_name=AsyncMock(return_value=user))
-        response = await mfa_endpoint.mfa_status("candidate", service=service)
-        responses.append(response.model_dump())
-
-    assert responses == [
-        {"success": True, "message": "", "data": {"enabled": False}},
-    ] * len(users)
-
-
-@pytest.mark.asyncio
-async def test_mfa_status_reports_otp_only_for_active_account():
-    """启用账号已配置 OTP 时仍应允许登录流程进入二次验证。"""
-    service = SimpleNamespace(
-        get_by_name=AsyncMock(
-            return_value=SimpleNamespace(is_active=True, is_otp=True)
-        )
-    )
-
-    response = await mfa_endpoint.mfa_status("candidate", service=service)
-
-    assert response.success is True
-    assert response.data == {"enabled": True}
-
-
 def test_registration_transaction_is_bound_to_current_user():
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",

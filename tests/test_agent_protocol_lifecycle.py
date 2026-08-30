@@ -86,6 +86,12 @@ def test_streaming_protocols_reject_config_disable_before_manager_lookup() -> No
         return_value=runtime_config,
     ), patch.object(
         openai,
+        "validate_api_credential_identity",
+    ), patch.object(
+        anthropic,
+        "validate_api_credential_identity",
+    ), patch.object(
+        openai,
         "get_running_agent_manager",
     ) as openai_manager, patch.object(
         anthropic,
@@ -127,6 +133,9 @@ def test_openai_stream_rejects_shutdown_race_and_cleans_request_session() -> Non
         ),
     ), patch.object(
         openai,
+        "validate_api_credential_identity",
+    ), patch.object(
+        openai,
         "get_running_agent_manager",
         return_value=manager,
     ):
@@ -162,6 +171,9 @@ def test_anthropic_stream_rejects_shutdown_race_and_cleans_request_session() -> 
             ai_agent_enable=True,
             api_token=_API_TOKEN,
         ),
+    ), patch.object(
+        anthropic,
+        "validate_api_credential_identity",
     ), patch.object(
         anthropic,
         "get_running_agent_manager",

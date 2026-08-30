@@ -329,8 +329,8 @@ def test_passkey_provider_reset_contract() -> None:
             configure_passkey_challenge_cache(previous_cache)
 
 
-def test_security_access_reset_clears_cached_identity() -> None:
-    """超级用户载荷 reset 同时清缓存，不能返回上一代身份。"""
+def test_security_access_reset_replaces_identity_provider() -> None:
+    """超级用户载荷 provider reset 后不能继续使用上一代身份。"""
     previous = access_module._superuser_token_payload_provider
     first = object()
     second = object()

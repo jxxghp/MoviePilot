@@ -182,6 +182,7 @@ def test_seerr_subscribe_uses_task_registry(monkeypatch) -> None:
         "get_api_runtime_config_snapshot",
         lambda: SimpleNamespace(api_token="token"),
     )
+    monkeypatch.setattr(subscribe, "validate_api_credential_identity", lambda: None)
 
     response = asyncio.run(
         subscribe.seerr_subscribe(_SeerrRequest(), registry, "token")

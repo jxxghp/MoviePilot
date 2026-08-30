@@ -77,7 +77,7 @@ def test_security_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
     monkeypatch.setattr(passkey_provider.PasskeyChallengeStore, "_cache", None)
     monkeypatch.setattr(passkey_provider, "_configured_passkey_service", None)
     monkeypatch.setattr(access_provider, "_superuser_token_payload_provider", None)
-    access_provider._create_superuser_token_payload.cache_clear()
+    monkeypatch.setattr(access_provider, "_token_identity_validator", None)
 
     user_provider.configure_user_lookups(
         by_id=lambda _user_id: object(),
@@ -88,6 +88,7 @@ def test_security_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
     passkey_provider.configure_passkey_challenge_cache(object())  # type: ignore[arg-type]
     passkey_provider.configure_passkey_service(object())  # type: ignore[arg-type]
     access_provider.set_superuser_token_payload_provider(lambda: object())
+    access_provider.set_token_identity_validator(lambda _payload: None)
 
     security_composition.reset_security_access()
     security_composition.reset_security_access()
@@ -107,6 +108,7 @@ def test_security_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
     with pytest.raises(HTTPException) as error:
         access_provider._create_superuser_token_payload()
     assert error.value.status_code == 503
+    assert access_provider._token_identity_validator is None
 
 
 def test_network_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:

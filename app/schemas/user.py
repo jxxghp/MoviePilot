@@ -64,6 +64,21 @@ class UserUpdate(UserBase):
     permissions: Optional[UserPermissions] = Field(default_factory=dict)
 
 
+class CurrentUserUpdate(BaseModel):
+    """当前用户可自助更新的资料与通知身份设置。"""
+
+    # 邮箱
+    email: Optional[str] = None
+    # 头像
+    avatar: Optional[str] = None
+    # 个性化设置及通知身份绑定
+    settings: Optional[dict[str, JsonData]] = None
+    # 新密码，为空时保持当前密码
+    password: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class UserInDBBase(UserBase):
     """包含数据库主键的用户公共记录。"""
 

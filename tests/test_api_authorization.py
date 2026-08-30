@@ -17,7 +17,7 @@ from app.api.endpoints import storage as storage_endpoint
 from app.api.endpoints import system as system_endpoint
 from app.api.endpoints import transfer as transfer_endpoint
 from app.api.endpoints import user as user_endpoint
-from app.adapters.web.security.access import verify_resource_token
+from app.application.security.token import decode_access_token
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -203,7 +203,7 @@ def test_login_sets_resource_token_cookie(monkeypatch):
     assert "set-cookie" in response.headers
 
     resource_cookie = response.headers["set-cookie"].split("=", 1)[1].split(";", 1)[0]
-    payload = verify_resource_token(resource_cookie)
+    payload = decode_access_token(resource_cookie, "resource")
     assert payload.sub == 1
     assert payload.username == "user"
     assert payload.purpose == "resource"
@@ -284,7 +284,7 @@ def test_upload_avatar_rejects_other_user_for_non_superuser():
             )
         )
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "用户权限不足"
 
 

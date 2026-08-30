@@ -182,6 +182,8 @@ class AuthService:
         self._users = users
         self._config = config
         self._passkeys = passkeys
+        self._superuser_binding_name: str | None = None
+        self._superuser_binding_id: int | None = None
 
     def get_user_by_id(self, user_id: int) -> Optional[AuthUser]:
         """按 ID 查询本地用户。"""
@@ -193,8 +195,19 @@ class AuthService:
 
     def build_superuser_token_payload(self) -> _SchemaTokenPayload:
         """从持久化用户和站点认证状态构造超级用户令牌载荷。"""
-        user = self._users.get_by_name(get_chain_runtime_config_snapshot().superuser)
-        if not user or not user.is_superuser:
+        configured_name = get_chain_runtime_config_snapshot().superuser
+        if (
+            self._superuser_binding_id is not None
+            and configured_name == self._superuser_binding_name
+        ):
+            # 配置保存用户名；持久化 ID 保证管理员改名不会让管理员级集成失效。
+            user = self._users.get_by_id(self._superuser_binding_id)
+        else:
+            user = self._users.get_by_name(configured_name)
+            if user:
+                self._superuser_binding_name = configured_name
+                self._superuser_binding_id = user.id
+        if not user or not user.is_active or not user.is_superuser:
             raise PermissionError("用户权限不足")
         return _SchemaTokenPayload(
             sub=user.id,
@@ -203,6 +216,16 @@ class AuthService:
             level=SitesHelper().auth_level,
             purpose="authentication",
         )
+
+    def validate_token_identity(self, payload: _SchemaTokenPayload) -> None:
+        """按当前持久化用户状态校验令牌身份与权限声明。"""
+        if payload.sub is None:
+            raise PermissionError("用户不存在或已禁用")
+        user = self._users.get_by_id(payload.sub)
+        if not user or not user.is_active:
+            raise PermissionError("用户不存在或已禁用")
+        if payload.username != user.name or payload.super_user != user.is_superuser:
+            raise PermissionError("令牌身份或权限上下文不匹配")
 
     def build_token_response(self, user: AuthUser) -> _SchemaToken:
         """使用统一逻辑构造登录 Token 响应。"""
@@ -256,6 +279,11 @@ def get_configured_auth_service() -> AuthService:
 def build_superuser_token_payload() -> _SchemaTokenPayload:
     """使用启动组合根注入的认证服务构造超级用户令牌载荷。"""
     return _get_auth_service().build_superuser_token_payload()
+
+
+def validate_token_identity(payload: _SchemaTokenPayload) -> None:
+    """使用启动组合根注入的认证服务校验当前令牌身份。"""
+    _get_auth_service().validate_token_identity(payload)
 
 
 def build_token_response(user: AuthUser) -> _SchemaToken:

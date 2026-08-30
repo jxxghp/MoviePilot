@@ -56,12 +56,12 @@ def test_workflow_manage_dependency_rejects_regular_user(permissions):
 
     with pytest.raises(HTTPException) as sync_exc_info:
         get_current_active_manage_user(current_user=user)
-    assert sync_exc_info.value.status_code == 400
+    assert sync_exc_info.value.status_code == 403
     assert sync_exc_info.value.detail == "用户权限不足"
 
     with pytest.raises(HTTPException) as async_exc_info:
         asyncio.run(get_current_active_manage_user_async(current_user=user))
-    assert async_exc_info.value.status_code == 400
+    assert async_exc_info.value.status_code == 403
     assert async_exc_info.value.detail == "用户权限不足"
 
 

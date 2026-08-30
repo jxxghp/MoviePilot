@@ -14,15 +14,16 @@ from fastapi.security import (
     OAuth2PasswordBearer,
 )
 
-from app.runtime.cache import cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.token import TokenPayload
 
 SuperuserTokenPayloadProvider = Callable[[], TokenPayload]
+TokenIdentityValidator = Callable[[TokenPayload], None]
 TokenEncoder = Callable[..., str]
 TokenDecoder = Callable[[str | None, str], TokenPayload]
 _superuser_token_payload_provider: Optional[SuperuserTokenPayloadProvider] = None
+_token_identity_validator: Optional[TokenIdentityValidator] = None
 _token_encoder: Optional[TokenEncoder] = None
 _token_decoder: Optional[TokenDecoder] = None
 JWT_ALGORITHM = "HS256"
@@ -66,14 +67,24 @@ def set_superuser_token_payload_provider(
     """由启动组合根注入 API 密钥认证使用的超级用户载荷来源。"""
     global _superuser_token_payload_provider
     _superuser_token_payload_provider = provider
-    _create_superuser_token_payload.cache_clear()
 
 
 def reset_superuser_token_payload_provider() -> None:
-    """清除当前 lifespan 的超级用户载荷来源及其身份缓存。"""
+    """清除当前 lifespan 的超级用户载荷来源。"""
     global _superuser_token_payload_provider
     _superuser_token_payload_provider = None
-    _create_superuser_token_payload.cache_clear()
+
+
+def set_token_identity_validator(validator: TokenIdentityValidator) -> None:
+    """由启动组合根注入当前令牌身份校验端口。"""
+    global _token_identity_validator
+    _token_identity_validator = validator
+
+
+def reset_token_identity_validator() -> None:
+    """清除当前 lifespan 的令牌身份校验端口。"""
+    global _token_identity_validator
+    _token_identity_validator = None
 
 
 def configure_token_codec(
@@ -115,9 +126,8 @@ def _get_api_key(
     return key_header or key_query
 
 
-@cached(maxsize=1, ttl=600)
 def _create_superuser_token_payload() -> TokenPayload:
-    """使用组合根提供器创建 API 密钥调用的超级用户载荷。"""
+    """使用组合根提供器创建 API 密钥调用的当前超级用户载荷。"""
     if not _superuser_token_payload_provider:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -129,7 +139,37 @@ def _create_superuser_token_payload() -> TokenPayload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(error) or "用户权限不足",
+            headers={"WWW-Authenticate": "Bearer"},
         ) from error
+
+
+def _validate_token_identity(payload: TokenPayload) -> TokenPayload:
+    """校验令牌声明对应的当前账号，并转换应用层失权为 HTTP 401。"""
+    if _token_identity_validator is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="认证服务尚未初始化",
+        )
+    try:
+        _token_identity_validator(payload)
+    except PermissionError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(error) or "用户不存在或已禁用",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
+    return payload
+
+
+def _validated_superuser_payload() -> TokenPayload:
+    """返回经过当前账号和超级管理员权限校验的 API 凭据身份。"""
+    # 载荷提供器直接从当前用户记录读取 active/superuser，避免同一请求重复查库。
+    return _create_superuser_token_payload()
+
+
+def validate_api_credential_identity() -> TokenPayload:
+    """校验管理员级兼容 API 凭据当前绑定的超级用户身份。"""
+    return _validated_superuser_payload()
 
 
 def set_or_refresh_resource_token_cookie(
@@ -210,13 +250,14 @@ def _decode_or_http_error(
     token: str | None,
     purpose: str,
 ) -> TokenPayload:
-    """把应用层令牌校验错误转换为 HTTP 403。"""
+    """把应用层令牌校验错误转换为带 Bearer 挑战的 HTTP 401。"""
     try:
         return _decode_token(token, purpose)
     except ValueError as error:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(error),
+            headers={"WWW-Authenticate": "Bearer"},
         ) from error
 
 
@@ -233,14 +274,15 @@ def verify_token(
     """验证 JWT、API Key 或 API Token，并维护资源 Cookie。"""
     if jwt_token:
         payload = _decode_or_http_error(jwt_token, "authentication")
+        _validate_token_identity(payload)
         set_or_refresh_resource_token_cookie(request, response, payload)
         return payload
     if api_key:
-        verify_apikey(api_key)
-        return _create_superuser_token_payload()
+        _verify_key(api_key, get_runtime_setting("API_TOKEN"), "apikey")
+        return validate_api_credential_identity()
     if api_token:
-        verify_apitoken(api_token)
-        return _create_superuser_token_payload()
+        _verify_key(api_token, get_runtime_setting("API_TOKEN"), "token")
+        return validate_api_credential_identity()
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
@@ -255,7 +297,7 @@ def verify_resource_token(
     ],
 ) -> TokenPayload:
     """验证 Cookie 中携带的资源访问令牌。"""
-    return _decode_or_http_error(resource_token, "resource")
+    return _validate_token_identity(_decode_or_http_error(resource_token, "resource"))
 
 
 def _verify_key(key: str | None, expected_key: str, key_type: str) -> str:
@@ -264,6 +306,7 @@ def _verify_key(key: str | None, expected_key: str, key_type: str) -> str:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"{key_type} 校验不通过",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return key
 
@@ -272,11 +315,15 @@ def verify_apitoken(
     token: Annotated[str | None, Security(_get_api_token)],
 ) -> str:
     """校验 URL 查询参数中的兼容 API Token。"""
-    return _verify_key(token, get_runtime_setting('API_TOKEN'), "token")
+    value = _verify_key(token, get_runtime_setting("API_TOKEN"), "token")
+    validate_api_credential_identity()
+    return value
 
 
 def verify_apikey(
     apikey: Annotated[str | None, Security(_get_api_key)],
 ) -> str:
     """校验请求头或查询参数中的兼容 API Key。"""
-    return _verify_key(apikey, get_runtime_setting('API_TOKEN'), "apikey")
+    value = _verify_key(apikey, get_runtime_setting("API_TOKEN"), "apikey")
+    validate_api_credential_identity()
+    return value
