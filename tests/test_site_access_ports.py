@@ -15,6 +15,7 @@ from app.application.torrent.download import (
     configure_torrent_port,
 )
 from app.chain import site as site_module
+from app.startup.composition import site as site_composition
 from app.startup.initializers import site as site_initializer
 
 
@@ -189,7 +190,7 @@ def test_initializer_rolls_back_partial_ports_on_failure(monkeypatch) -> None:
         raise RuntimeError("injected failure")
 
     monkeypatch.setattr(
-        site_initializer, "configure_cookie_ports", fail_cookie_configuration
+        site_composition, "configure_cookie_ports", fail_cookie_configuration
     )
 
     with pytest.raises(RuntimeError, match="injected failure"):

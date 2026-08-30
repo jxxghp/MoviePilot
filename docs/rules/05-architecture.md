@@ -163,6 +163,9 @@ not recreate their concrete construction.
 with the single `RecognitionRuleService` used to publish media-recognition rule
 providers. `initializers/domain.py` is only the lifecycle hook and must not
 construct a parallel rule service or import concrete adapters.
+`startup/composition/site.py` owns RSS, site login, captcha, torrent and SiteChain
+network/browser/OCR Adapter assembly. `initializers/site.py` is only the lifecycle
+hook and must not import or construct those concrete adapters.
 `startup/composition/outbox.py`
 owns durable handler validation, lazy event/notification replay binding and the
 short-transaction dispatcher factory. Initializers call this owner in

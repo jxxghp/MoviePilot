@@ -2501,6 +2501,44 @@ def test_network_initializer_delegates_construction_to_composition():
     assert "app.chain.download.ports" in composition_imports
 
 
+def test_site_initializer_delegates_construction_to_composition():
+    """站点 initializer 只保留生命周期入口，不得重新拥有具体技术适配器。"""
+    initializer_path = APP_ROOT / "startup" / "initializers" / "site.py"
+    initializer_tree = ast.parse(
+        initializer_path.read_text(encoding="utf-8-sig"),
+        filename=str(initializer_path),
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert imported_modules == {"app.startup.composition.site"}
+    calls = {
+        ast.unparse(node.func)
+        for node in ast.walk(initializer_tree)
+        if isinstance(node, ast.Call)
+    }
+    assert calls == {
+        "configure_site_access_composition",
+        "reset_site_access_composition",
+    }
+
+    composition_path = APP_ROOT / "startup" / "composition" / "site.py"
+    composition_tree = ast.parse(
+        composition_path.read_text(encoding="utf-8-sig"),
+        filename=str(composition_path),
+    )
+    composition_imports = {
+        node.module
+        for node in ast.walk(composition_tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "app.adapters.external.cookiecloud" in composition_imports
+    assert "app.adapters.network.browser" in composition_imports
+    assert "app.application.rss" in composition_imports
+
+
 PROCESS_LEVEL_ROOTS = (
     "app.api",
     "app.chain",

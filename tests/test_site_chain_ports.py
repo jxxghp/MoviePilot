@@ -16,6 +16,7 @@ from app.application.security import cookie as cookie_module
 from app.application.site.contract import SiteSnapshot
 from app.chain import site as site_module
 from app.chain.site import SiteChain, configure_site_ports, reset_site_ports
+from app.startup.composition import site as site_composition
 from app.startup.initializers import site as site_initializer
 
 
@@ -248,7 +249,7 @@ def test_initializer_rolls_back_all_ports_when_site_chain_publish_fails(
         raise RuntimeError("site publish failed")
 
     monkeypatch.setattr(
-        site_initializer, "configure_site_ports", fail_site_configuration
+        site_composition, "configure_site_ports", fail_site_configuration
     )
 
     with pytest.raises(RuntimeError, match="site publish failed"):
@@ -283,8 +284,8 @@ def test_real_initializer_http_adapter_closes_response(monkeypatch) -> None:
             finally:
                 state["closed"] = True
 
-    monkeypatch.setattr(site_initializer, "RequestUtils", FakeRequest)
-    adapter = site_initializer._SiteHttpAdapter()
+    monkeypatch.setattr(site_composition, "RequestUtils", FakeRequest)
+    adapter = site_composition._SiteHttpAdapter()
 
     with adapter.open(method="GET", url="https://close.test/") as opened:
         assert opened is response
