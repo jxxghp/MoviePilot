@@ -1,622 +1,658 @@
 {
-  "app/adapters/external/plugin/client.py:1372:to_thread": {
-    "owner": "PluginMarketTransport.async_get_plugin_system_version_check_message",
-    "target": "to_thread"
-  },
-  "app/adapters/external/server.py:1005:to_thread": {
-    "owner": "MoviePilotServerHelper.sub_reg_async",
-    "target": "to_thread"
-  },
-  "app/adapters/external/server.py:1019:to_thread": {
-    "owner": "MoviePilotServerHelper.sub_done_async",
-    "target": "to_thread"
-  },
-  "app/adapters/network/browser.py:461:ThreadPoolExecutor": {
-    "owner": "BrowserSessionHelper._get_session_executor",
-    "target": "ThreadPoolExecutor"
-  },
-  "app/adapters/network/http.py:224:create_task": {
-    "owner": "_get_shared_async_transport",
-    "target": "create_task"
-  },
-  "app/adapters/system/fsproxy.py:399:Thread": {
-    "owner": "FileSystemProxy._read_line_windows",
-    "target": "Thread"
-  },
-  "app/adapters/system/host.py:1012:Process": {
-    "owner": "SystemUtils.memory_usage",
-    "target": "Process"
-  },
-  "app/adapters/system/host.py:255:Process": {
-    "owner": "SystemUtils._process_tree",
-    "target": "Process"
-  },
-  "app/adapters/system/host.py:329:create_task": {
-    "owner": "SystemUtils.execute_with_subprocess_async",
-    "target": "create_task"
-  },
-  "app/adapters/system/host.py:950:Process": {
-    "owner": "SystemUtils.dashboard_system_info",
-    "target": "Process"
-  },
-  "app/adapters/system/plugin/dependency.py:414:to_thread": {
-    "owner": "PluginDependencyInstaller.async_find_missing",
-    "target": "to_thread"
-  },
-  "app/adapters/system/plugin/health.py:403:create_task": {
-    "owner": "PluginRuntimeHealth.__async_create_runtime_constraints_file",
-    "target": "create_task"
-  },
-  "app/adapters/system/plugin/health.py:404:to_thread": {
-    "owner": "PluginRuntimeHealth.__async_create_runtime_constraints_file",
-    "target": "to_thread"
-  },
-  "app/adapters/system/plugin/health.py:417:to_thread": {
-    "owner": "PluginRuntimeHealth.__async_create_runtime_constraints_file.cleanup_created_file",
-    "target": "to_thread"
-  },
-  "app/adapters/system/plugin/health.py:419:create_task": {
-    "owner": "PluginRuntimeHealth.__async_create_runtime_constraints_file",
-    "target": "create_task"
-  },
-  "app/adapters/system/plugin/package.py:2130:to_thread": {
-    "owner": "PluginPackageManager.__async_install_from_release",
-    "target": "to_thread"
-  },
-  "app/agent/callback/__init__.py:239:create_task": {
-    "owner": "StreamingHandler._start_streaming",
-    "target": "create_task"
-  },
-  "app/agent/callback/__init__.py:271:run_in_threadpool": {
-    "owner": "StreamingHandler._stop_streaming",
-    "target": "run_in_threadpool"
-  },
-  "app/agent/callback/__init__.py:606:run_in_threadpool": {
-    "owner": "StreamingHandler._flush",
-    "target": "run_in_threadpool"
-  },
-  "app/agent/callback/__init__.py:653:run_in_threadpool": {
-    "owner": "StreamingHandler._flush",
-    "target": "run_in_threadpool"
-  },
-  "app/agent/callback/__init__.py:691:run_in_threadpool": {
-    "owner": "StreamingHandler._flush",
-    "target": "run_in_threadpool"
-  },
-  "app/agent/capabilities/adapter.py:117:to_thread": {
-    "owner": "AgentServiceAdapter.materialize",
-    "target": "to_thread"
-  },
-  "app/agent/lifecycle.py:104:create_task": {
-    "owner": "AgentLifecycleOwner.close",
-    "target": "create_task"
-  },
-  "app/agent/lifecycle.py:33:create_task": {
-    "owner": "AgentLifecycleOwner.initialize",
-    "target": "create_task"
-  },
-  "app/agent/llm/discovery.py:195:to_thread": {
-    "owner": "_ProviderDiscovery._load_models_dev_from_disk",
-    "target": "to_thread"
-  },
-  "app/agent/llm/discovery.py:223:to_thread": {
-    "owner": "_ProviderDiscovery._write_models_dev_to_disk",
-    "target": "to_thread"
-  },
-  "app/agent/llm/discovery.py:684:to_thread": {
-    "owner": "_ProviderDiscovery._list_models_from_bedrock",
-    "target": "to_thread"
-  },
-  "app/agent/llm/discovery.py:691:to_thread": {
-    "owner": "_ProviderDiscovery._list_models_from_bedrock",
-    "target": "to_thread"
-  },
-  "app/agent/mcp.py:215:create_task": {
-    "owner": "_StdioMcpSession.__aenter__",
-    "target": "create_task"
-  },
-  "app/agent/memory/__init__.py:64:create_task": {
-    "owner": "MemoryManager.initialize",
-    "target": "create_task"
-  },
-  "app/agent/middleware/subagents.py:1091:create_task": {
-    "owner": "SubAgentTaskControlMiddleware._run_pipeline",
-    "target": "create_task"
-  },
-  "app/agent/middleware/subagents.py:841:create_task": {
-    "owner": "SubAgentTaskControlMiddleware._start_tasks",
-    "target": "create_task"
-  },
-  "app/agent/orchestrator.py:1050:run_in_threadpool": {
-    "owner": "MoviePilotAgent._deliver_private_channel_message",
-    "target": "run_in_threadpool"
-  },
-  "app/agent/session.py:374:create_task": {
-    "owner": "AgentSessionOwner.process_message",
-    "target": "create_task"
-  },
-  "app/agent/session.py:655:create_task": {
-    "owner": "AgentSessionOwner._stop_current_task_locked",
-    "target": "create_task"
-  },
-  "app/agent/session.py:71:run_in_threadpool": {
-    "owner": "_async_start_processing_status",
-    "target": "run_in_threadpool"
-  },
-  "app/agent/session.py:755:create_task": {
-    "owner": "AgentSessionOwner._schedule_deferred_session_cleanup",
-    "target": "create_task"
-  },
-  "app/agent/session.py:83:run_in_threadpool": {
-    "owner": "_async_finish_processing_status",
-    "target": "run_in_threadpool"
-  },
-  "app/agent/tools/base.py:199:ThreadPoolExecutor": {
-    "owner": "_submit_blocking_call",
-    "target": "ThreadPoolExecutor"
-  },
-  "app/agent/tools/impl/_terminal_session.py:257:create_task": {
-    "owner": "_TerminalSessionManager.start",
-    "target": "create_task"
-  },
-  "app/agent/tools/impl/_terminal_session.py:302:create_task": {
-    "owner": "_TerminalSessionManager._start_pty_session",
-    "target": "create_task"
-  },
-  "app/agent/tools/impl/_terminal_session.py:303:create_task": {
-    "owner": "_TerminalSessionManager._start_pty_session",
-    "target": "create_task"
-  },
-  "app/agent/tools/impl/_terminal_session.py:326:create_task": {
-    "owner": "_TerminalSessionManager._start_pipe_session",
-    "target": "create_task"
-  },
-  "app/agent/tools/impl/_terminal_session.py:330:create_task": {
-    "owner": "_TerminalSessionManager._start_pipe_session",
-    "target": "create_task"
-  },
-  "app/agent/tools/impl/_terminal_session.py:332:create_task": {
-    "owner": "_TerminalSessionManager._start_pipe_session",
-    "target": "create_task"
-  },
-  "app/agent/tools/impl/_terminal_session.py:372:to_thread": {
-    "owner": "_TerminalSessionManager._wait_pty_process",
-    "target": "to_thread"
-  },
-  "app/agent/tools/impl/_terminal_session.py:477:to_thread": {
-    "owner": "_TerminalSessionManager.write",
-    "target": "to_thread"
-  },
-  "app/agent/tools/impl/execute_command.py:475:create_task": {
-    "owner": "ExecuteCommandTool._run_once",
-    "target": "create_task"
-  },
-  "app/agent/tools/impl/execute_command.py:477:create_task": {
-    "owner": "ExecuteCommandTool._run_once",
-    "target": "create_task"
-  },
-  "app/agent/tools/impl/execute_command.py:478:create_task": {
-    "owner": "ExecuteCommandTool._run_once",
-    "target": "create_task"
-  },
-  "app/api/endpoints/dashboard.py:183:run_in_threadpool": {
-    "owner": "schedule",
-    "target": "run_in_threadpool"
-  },
-  "app/api/endpoints/dashboard.py:214:run_in_threadpool": {
-    "owner": "schedule2",
-    "target": "run_in_threadpool"
-  },
-  "app/api/endpoints/history.py:111:to_thread": {
-    "owner": "_request_batch_durable_retries",
-    "target": "to_thread"
-  },
-  "app/api/endpoints/history.py:447:to_thread": {
-    "owner": "ai_redo_transfer_history",
-    "target": "to_thread"
-  },
-  "app/api/endpoints/search.py:218:create_task": {
-    "owner": "_iter_batched_search_events",
-    "target": "create_task"
-  },
-  "app/application/agenttask.py:286:create_task": {
-    "owner": "AgentTaskExecutionService.claim",
-    "target": "create_task"
-  },
-  "app/application/agenttask.py:293:create_task": {
-    "owner": "AgentTaskExecutionService.claim",
-    "target": "create_task"
-  },
-  "app/application/agenttask.py:359:create_task": {
-    "owner": "AgentTaskExecutionService._finalize",
-    "target": "create_task"
-  },
-  "app/application/messaging/agent.py:1023:run_in_threadpool": {
-    "owner": "get_web_agent_upload_dir",
-    "target": "run_in_threadpool"
-  },
-  "app/application/messaging/agent.py:1047:run_in_threadpool": {
-    "owner": "save_web_agent_upload",
-    "target": "run_in_threadpool"
-  },
-  "app/application/messaging/agent.py:1263:run_in_threadpool": {
-    "owner": "prepare_web_agent_audio_attachment_path_async",
-    "target": "run_in_threadpool"
-  },
-  "app/application/messaging/agent.py:1271:run_in_threadpool": {
-    "owner": "prepare_web_agent_audio_attachment_path_async",
-    "target": "run_in_threadpool"
-  },
-  "app/application/messaging/agent.py:1278:run_in_threadpool": {
-    "owner": "prepare_web_agent_audio_attachment_path_async",
-    "target": "run_in_threadpool"
-  },
-  "app/application/messaging/agent.py:1289:run_in_threadpool": {
-    "owner": "prepare_web_agent_audio_attachment_path_async.cleanup_conversion_output",
-    "target": "run_in_threadpool"
-  },
-  "app/application/messaging/agent.py:1311:run_in_threadpool": {
-    "owner": "prepare_web_agent_audio_attachment_path_async",
-    "target": "run_in_threadpool"
-  },
-  "app/application/messaging/agent.py:1417:to_thread": {
-    "owner": "transcribe_web_agent_audio_input",
-    "target": "to_thread"
-  },
-  "app/application/messaging/agent.py:1772:run_in_threadpool": {
-    "owner": "collect_web_agent_traditional_events",
-    "target": "run_in_threadpool"
-  },
-  "app/application/messaging/agent.py:1802:to_thread": {
-    "owner": "collect_web_agent_traditional_events",
-    "target": "to_thread"
-  },
-  "app/application/messaging/agent.py:1875:create_task": {
-    "owner": "_build_traditional_web_agent_stream.event_generator",
-    "target": "create_task"
-  },
-  "app/application/messaging/agent.py:715:create_task": {
-    "owner": "WebAgentEventPublisher.__init__",
-    "target": "create_task"
-  },
-  "app/application/messaging/message.py:892:Thread": {
-    "owner": "MessageQueueManager.start",
-    "target": "Thread"
-  },
-  "app/application/plugin/catalog.py:195:ThreadPoolExecutor": {
-    "owner": "PluginCatalogService.collect",
-    "target": "ThreadPoolExecutor"
-  },
-  "app/application/plugin/catalog.py:255:create_task": {
-    "owner": "PluginCatalogService.async_collect",
-    "target": "create_task"
-  },
-  "app/application/plugin/catalog.py:260:create_task": {
-    "owner": "PluginCatalogService.async_collect",
-    "target": "create_task"
-  },
-  "app/application/plugin/install.py:661:create_task": {
-    "owner": "PluginInstallCommand.__resolve_journal_created",
-    "target": "create_task"
-  },
-  "app/application/plugin/install.py:696:create_task": {
-    "owner": "PluginInstallCommand.__resolve_commit_outcome",
-    "target": "create_task"
-  },
-  "app/application/plugin/install.py:851:create_task": {
-    "owner": "PluginInstallCommand.__rollback_cancelled",
-    "target": "create_task"
-  },
-  "app/application/plugin/install.py:871:ensure_future": {
-    "owner": "PluginInstallCommand.__await_side_effect",
-    "target": "ensure_future"
-  },
-  "app/application/plugin/inventory.py:116:create_task": {
-    "owner": "PluginCandidateInventoryReader.async_load",
-    "target": "create_task"
-  },
-  "app/application/plugin/inventory.py:131:to_thread": {
-    "owner": "PluginCandidateInventoryReader.async_load",
-    "target": "to_thread"
-  },
-  "app/application/plugin/inventory.py:181:to_thread": {
-    "owner": "PluginCandidateInventoryReader._async_read_market_generation",
-    "target": "to_thread"
-  },
-  "app/chain/_recognition.py:527:run_in_threadpool": {
-    "owner": "RecognitionMixin._async_run_recognition_steps",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/media/album.py:180:run_in_threadpool": {
-    "owner": "MediaAlbumOwner._async_match_music_album_directory",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/media/album.py:216:run_in_threadpool": {
-    "owner": "MediaAlbumOwner.async_recognize_music_album_directory",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/media/album.py:218:run_in_threadpool": {
-    "owner": "MediaAlbumOwner.async_recognize_music_album_directory",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/media/path.py:381:run_in_threadpool": {
-    "owner": "MediaPathOwner._async_music_album_dir_fallback",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/media/path.py:427:run_in_threadpool": {
-    "owner": "MediaPathOwner.async_recognize_music_by_path",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/search/media.py:734:run_in_threadpool": {
-    "owner": "SearchMediaOwner._run_media_process_async",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/search/media.py:936:run_in_threadpool": {
-    "owner": "SearchMediaOwner.async_process_stream",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/search/music.py:236:run_in_threadpool": {
-    "owner": "SearchMusicOwner._async_process_music",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/search/music.py:282:run_in_threadpool": {
-    "owner": "SearchMusicOwner._async_process_music_stream",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/search/subtitle.py:429:run_in_threadpool": {
-    "owner": "SearchSubtitleOwner._async_search_subtitles_for_media",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/search/subtitle.py:526:run_in_threadpool": {
-    "owner": "SearchSubtitleOwner._async_search_subtitles_for_media_stream",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/search/title.py:248:run_in_threadpool": {
-    "owner": "SearchTitleOwner._run_title_search_async",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/search/title.py:382:run_in_threadpool": {
-    "owner": "SearchTitleOwner.async_search_by_title_stream",
-    "target": "run_in_threadpool"
-  },
-  "app/chain/transfer/queue.py:149:Thread": {
-    "owner": "TransferQueueOwner._TransferChain__init",
-    "target": "Thread"
-  },
-  "app/chain/transfer/queue.py:317:to_thread": {
-    "owner": "TransferQueueOwner.close",
-    "target": "to_thread"
-  },
-  "app/chain/transfer/queue.py:405:Thread": {
-    "owner": "TransferQueueOwner._TransferChain__ensure_recovery_scheduler",
-    "target": "Thread"
-  },
-  "app/chain/transfer/queue.py:469:Thread": {
-    "owner": "TransferQueueOwner._TransferChain__start_lease_heartbeat_owner_locked",
-    "target": "Thread"
-  },
-  "app/chain/transfer/queue.py:717:Thread": {
-    "owner": "TransferQueueOwner._TransferChain__start_lease_release_owner_locked",
-    "target": "Thread"
-  },
-  "app/db/worker.py:82:ThreadPoolExecutor": {
-    "owner": "DatabaseWorker.start",
-    "target": "ThreadPoolExecutor"
-  },
-  "app/main.py:179:Thread": {
-    "owner": "start_tray",
-    "target": "Thread"
-  },
-  "app/modules/acoustid/__init__.py:148:run_in_threadpool": {
-    "owner": "AcoustIdModule.async_identify_music_by_fingerprint",
-    "target": "run_in_threadpool"
-  },
-  "app/modules/discord/discord.py:220:create_task": {
-    "owner": "Discord._start.runner",
-    "target": "create_task"
-  },
-  "app/modules/discord/discord.py:248:Thread": {
-    "owner": "Discord._start",
-    "target": "Thread"
-  },
-  "app/modules/discord/discord.py:731:create_task": {
-    "owner": "Discord._start_typing_task",
-    "target": "create_task"
-  },
-  "app/modules/discord/discord.py:924:run_in_threadpool": {
-    "owner": "Discord._send_file",
-    "target": "run_in_threadpool"
-  },
-  "app/modules/feishu/feishu.py:215:Thread": {
-    "owner": "Feishu._start_ws_client",
-    "target": "Thread"
-  },
-  "app/modules/indexer/spider/__init__.py:400:run_in_threadpool": {
-    "owner": "SiteSpider.async_get_torrents",
-    "target": "run_in_threadpool"
-  },
-  "app/modules/qqbot/gateway.py:134:Thread": {
-    "owner": "run_gateway.start_heartbeat",
-    "target": "Thread"
-  },
-  "app/modules/qqbot/qqbot.py:144:Thread": {
-    "owner": "QQBot._start_gateway",
-    "target": "Thread"
-  },
-  "app/modules/telegram/telegram.py:221:Thread": {
-    "owner": "Telegram.__init__",
-    "target": "Thread"
-  },
-  "app/modules/telegram/telegram.py:544:Thread": {
-    "owner": "Telegram._start_typing_task",
-    "target": "Thread"
-  },
-  "app/modules/thetvdb/__init__.py:291:run_in_threadpool": {
-    "owner": "TheTvDbModule._async_load_auxiliary_candidates",
-    "target": "run_in_threadpool"
-  },
-  "app/modules/wechat/wechatbot.py:122:Thread": {
-    "owner": "WeChatBot._start_gateway",
-    "target": "Thread"
-  },
-  "app/modules/wechat/wechatbot.py:124:Thread": {
-    "owner": "WeChatBot._start_gateway",
-    "target": "Thread"
-  },
-  "app/modules/wechatclawbot/wechatclawbot.py:1732:Thread": {
-    "owner": "WechatClawBot._start_polling",
-    "target": "Thread"
-  },
-  "app/monitor/monitor.py:1111:Thread": {
-    "owner": "Monitor.__request_scheduler_stop",
-    "target": "Thread"
-  },
-  "app/monitor/monitor.py:735:Thread": {
-    "owner": "Monitor.__start_compensation",
-    "target": "Thread"
-  },
-  "app/monitor/recovery.py:168:Thread": {
-    "owner": "RecoveryExecutor._start",
-    "target": "Thread"
-  },
-  "app/monitor/watcher.py:126:Thread": {
-    "owner": "LocalDirectoryWatcher.start",
-    "target": "Thread"
-  },
-  "app/runtime/capabilities/runtime.py:1514:to_thread": {
-    "owner": "CapabilityRuntime.shutdown_async",
-    "target": "to_thread"
-  },
-  "app/runtime/coalesce.py:171:create_task": {
-    "owner": "EventCoalescer._on_flush_timer",
-    "target": "create_task"
-  },
-  "app/runtime/debounce.py:136:Timer": {
-    "owner": "Debouncer._call_leading",
-    "target": "Timer"
-  },
-  "app/runtime/debounce.py:161:Timer": {
-    "owner": "Debouncer._call_trailing",
-    "target": "Timer"
-  },
-  "app/runtime/debounce.py:221:create_task": {
-    "owner": "AsyncDebouncer._call_leading",
-    "target": "create_task"
-  },
-  "app/runtime/debounce.py:241:create_task": {
-    "owner": "AsyncDebouncer._call_trailing",
-    "target": "create_task"
-  },
-  "app/runtime/event/dispatch.py:260:run_in_threadpool": {
-    "owner": "EventDispatcher.invoke_async",
-    "target": "run_in_threadpool"
-  },
-  "app/runtime/event/dispatch.py:292:run_in_threadpool": {
-    "owner": "EventDispatcher.invoke_async_strict",
-    "target": "run_in_threadpool"
-  },
-  "app/runtime/events.py:229:Thread": {
-    "owner": "EventManager.start",
-    "target": "Thread"
-  },
-  "app/runtime/events.py:262:to_thread": {
-    "owner": "EventManager.stop_async",
-    "target": "to_thread"
-  },
-  "app/runtime/execution.py:153:create_task": {
-    "owner": "run_in_threadpool_to_completion",
-    "target": "create_task"
-  },
-  "app/runtime/execution.py:153:run_in_threadpool": {
-    "owner": "run_in_threadpool_to_completion",
-    "target": "run_in_threadpool"
-  },
-  "app/runtime/extensions/plugin/monitor.py:55:Thread": {
-    "owner": "PluginMonitorController.start",
-    "target": "Thread"
-  },
-  "app/runtime/extensions/plugin/sync.py:108:ThreadPoolExecutor": {
-    "owner": "PluginSyncService.sync",
-    "target": "ThreadPoolExecutor"
-  },
-  "app/runtime/extensions/resource.py:129:to_thread": {
-    "owner": "AsyncManagedResourceAdapter.materialize",
-    "target": "to_thread"
-  },
-  "app/runtime/gc.py:78:Process": {
-    "owner": "get_memory_usage",
-    "target": "Process"
-  },
-  "app/runtime/log.py:143:Thread": {
-    "owner": "NonBlockingFileHandler.__init__",
-    "target": "Thread"
-  },
-  "app/runtime/log.py:303:Thread": {
-    "owner": "NonBlockingFileHandler._close_handlers_bounded",
-    "target": "Thread"
-  },
-  "app/runtime/resources.py:133:to_thread": {
-    "owner": "acquire_managed_resource_async",
-    "target": "to_thread"
-  },
-  "app/runtime/resources.py:189:to_thread": {
-    "owner": "stop_managed_resource_async",
-    "target": "to_thread"
-  },
-  "app/runtime/state.py:335:Thread": {
-    "owner": "SystemHelper._start_graceful_shutdown_monitor",
-    "target": "Thread"
-  },
-  "app/runtime/state.py:99:Process": {
-    "owner": "SystemHelper._is_local_cli_managed",
-    "target": "Process"
-  },
-  "app/runtime/tasks.py:63:create_task": {
-    "owner": "TaskRegistry.create",
-    "target": "create_task"
-  },
-  "app/runtime/tasks.py:80:to_thread": {
-    "owner": "TaskRegistry.create_sync",
-    "target": "to_thread"
-  },
-  "app/scheduler/bridge.py:186:create_task": {
-    "owner": "SchedulerBridgeOwner._submit_cross_thread.start_on_target_loop",
-    "target": "create_task"
-  },
-  "app/scheduler/bridge.py:248:create_task": {
-    "owner": "SchedulerBridgeOwner._submit_to_loop",
-    "target": "create_task"
-  },
-  "app/scheduler/catalog.py:187:ThreadPoolExecutor": {
-    "owner": "SchedulerCatalogOwner._initialize_catalog",
-    "target": "ThreadPoolExecutor"
-  },
-  "app/scheduler/execution.py:224:create_task": {
-    "owner": "SchedulerExecutionOwner.start.__start_coro",
-    "target": "create_task"
-  },
-  "app/scheduler/execution.py:301:Process": {
-    "owner": "SchedulerExecutionOwner.start",
-    "target": "Process"
-  },
-  "app/scheduler/lifecycle.py:126:to_thread": {
-    "owner": "SchedulerLifecycleOwner.stop_async",
-    "target": "to_thread"
-  },
-  "app/scheduler/lifecycle.py:29:to_thread": {
-    "owner": "SchedulerLifecycleOwner.on_config_changed",
-    "target": "to_thread"
-  },
-  "app/startup/composition/subscription.py:93:to_thread": {
-    "owner": "async_rule_group_mutation_scope",
-    "target": "to_thread"
-  },
-  "app/startup/lifecycle/__init__.py:161:create_task": {
-    "owner": "run_shutdown_step",
-    "target": "create_task"
-  },
-  "app/startup/lifecycle/__init__.py:365:create_task": {
-    "owner": "schedule_plugin_settlement",
-    "target": "create_task"
+  "app/adapters/external/plugin/client.py:asyncio.to_thread": {
+    "owners": {
+      "PluginMarketTransport.async_get_plugin_system_version_check_message": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/adapters/external/server.py:asyncio.to_thread": {
+    "owners": {
+      "MoviePilotServerHelper.sub_done_async": 1,
+      "MoviePilotServerHelper.sub_reg_async": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/adapters/network/browser.py:concurrent.futures.ThreadPoolExecutor": {
+    "owners": {
+      "BrowserSessionHelper._get_session_executor": 1
+    },
+    "target": "concurrent.futures.ThreadPoolExecutor"
+  },
+  "app/adapters/network/http.py:asyncio.AbstractEventLoop.create_task": {
+    "owners": {
+      "_get_shared_async_transport": 1
+    },
+    "target": "asyncio.AbstractEventLoop.create_task"
+  },
+  "app/adapters/system/fsproxy.py:threading.Thread": {
+    "owners": {
+      "FileSystemProxy._read_line_windows": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/adapters/system/host.py:asyncio.create_task": {
+    "owners": {
+      "SystemUtils.execute_with_subprocess_async": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/adapters/system/plugin/dependency.py:asyncio.to_thread": {
+    "owners": {
+      "PluginDependencyInstaller.async_find_missing": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/adapters/system/plugin/health.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "PluginRuntimeHealth.__async_install_packages_with_fallback": 7,
+      "PluginRuntimeHealth.__async_repair_main_runtime_dependencies": 3
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/adapters/system/plugin/health.py:asyncio.create_task": {
+    "owners": {
+      "PluginRuntimeHealth.__async_create_runtime_constraints_file": 2
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/adapters/system/plugin/health.py:asyncio.to_thread": {
+    "owners": {
+      "PluginRuntimeHealth.__async_create_runtime_constraints_file": 1,
+      "PluginRuntimeHealth.__async_create_runtime_constraints_file.cleanup_created_file": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/adapters/system/plugin/package.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "PluginPackageManager.__async_install_dependencies_if_required": 1,
+      "PluginPackageManager.async_activate_persistent_backup": 1,
+      "PluginPackageManager.async_checkpoint": 1,
+      "PluginPackageManager.async_cleanup": 1,
+      "PluginPackageManager.async_commit": 1,
+      "PluginPackageManager.async_committed_payload_receipt": 1,
+      "PluginPackageManager.async_finalize_persistent_backup": 1,
+      "PluginPackageManager.async_install_raw": 1,
+      "PluginPackageManager.async_native_dependency_changes": 1,
+      "PluginPackageManager.async_payload_receipt": 1,
+      "PluginPackageManager.async_restore": 1,
+      "PluginPackageManager.async_rollback": 1,
+      "PluginPackageManager.async_stage_persistent_backup": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/adapters/system/plugin/package.py:asyncio.to_thread": {
+    "owners": {
+      "PluginPackageManager.__async_install_from_release": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/agent/callback/__init__.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "StreamingHandler._flush": 3,
+      "StreamingHandler._stop_streaming": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/agent/callback/__init__.py:asyncio.create_task": {
+    "owners": {
+      "StreamingHandler._start_streaming": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/agent/capabilities/adapter.py:asyncio.to_thread": {
+    "owners": {
+      "AgentServiceAdapter.materialize": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/agent/lifecycle.py:asyncio.create_task": {
+    "owners": {
+      "AgentLifecycleOwner.close": 1,
+      "AgentLifecycleOwner.initialize": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/agent/llm/discovery.py:asyncio.to_thread": {
+    "owners": {
+      "_ProviderDiscovery._list_models_from_bedrock": 2,
+      "_ProviderDiscovery._load_models_dev_from_disk": 1,
+      "_ProviderDiscovery._write_models_dev_to_disk": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/agent/mcp.py:asyncio.create_task": {
+    "owners": {
+      "_StdioMcpSession.__aenter__": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/agent/memory/__init__.py:asyncio.create_task": {
+    "owners": {
+      "MemoryManager.initialize": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/agent/middleware/subagents.py:asyncio.create_task": {
+    "owners": {
+      "SubAgentTaskControlMiddleware._run_pipeline": 1,
+      "SubAgentTaskControlMiddleware._start_tasks": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/agent/orchestrator.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "MoviePilotAgent._deliver_private_channel_message": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/agent/session.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "_async_finish_processing_status": 1,
+      "_async_start_processing_status": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/agent/session.py:asyncio.create_task": {
+    "owners": {
+      "AgentSessionOwner._schedule_deferred_session_cleanup": 1,
+      "AgentSessionOwner._stop_current_task_locked": 1,
+      "AgentSessionOwner.process_message": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/agent/tools/base.py:concurrent.futures.ThreadPoolExecutor": {
+    "owners": {
+      "_submit_blocking_call": 1
+    },
+    "target": "concurrent.futures.ThreadPoolExecutor"
+  },
+  "app/agent/tools/impl/_terminal_session.py:asyncio.create_task": {
+    "owners": {
+      "_TerminalSessionManager._start_pipe_session": 3,
+      "_TerminalSessionManager._start_pty_session": 2,
+      "_TerminalSessionManager.start": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/agent/tools/impl/_terminal_session.py:asyncio.to_thread": {
+    "owners": {
+      "_TerminalSessionManager._wait_pty_process": 1,
+      "_TerminalSessionManager.write": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/agent/tools/impl/execute_command.py:asyncio.create_task": {
+    "owners": {
+      "ExecuteCommandTool._run_once": 3
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/api/endpoints/dashboard.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "schedule": 1,
+      "schedule2": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/api/endpoints/history.py:asyncio.to_thread": {
+    "owners": {
+      "_request_batch_durable_retries": 1,
+      "ai_redo_transfer_history": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/api/endpoints/search.py:asyncio.create_task": {
+    "owners": {
+      "_iter_batched_search_events": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/api/endpoints/system.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "create_database_backup": 1,
+      "delete_database_backup": 1,
+      "list_database_backups": 1,
+      "verify_database_backup": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/application/agenttask.py:asyncio.create_task": {
+    "owners": {
+      "AgentTaskExecutionService._finalize": 1,
+      "AgentTaskExecutionService.claim": 2
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/application/messaging/agent.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "collect_web_agent_traditional_events": 1,
+      "get_web_agent_upload_dir": 1,
+      "prepare_web_agent_audio_attachment_path_async": 4,
+      "prepare_web_agent_audio_attachment_path_async.cleanup_conversion_output": 1,
+      "save_web_agent_upload": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/application/messaging/agent.py:asyncio.create_task": {
+    "owners": {
+      "WebAgentEventPublisher.__init__": 1,
+      "_build_traditional_web_agent_stream.event_generator": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/application/messaging/agent.py:asyncio.to_thread": {
+    "owners": {
+      "collect_web_agent_traditional_events": 1,
+      "transcribe_web_agent_audio_input": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/application/messaging/message.py:threading.Thread": {
+    "owners": {
+      "MessageQueueManager.start": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/application/plugin/catalog.py:asyncio.create_task": {
+    "owners": {
+      "PluginCatalogService.async_collect": 2
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/application/plugin/catalog.py:concurrent.futures.Executor.submit": {
+    "owners": {
+      "PluginCatalogService.collect": 2
+    },
+    "target": "concurrent.futures.Executor.submit"
+  },
+  "app/application/plugin/catalog.py:concurrent.futures.ThreadPoolExecutor": {
+    "owners": {
+      "PluginCatalogService.collect": 1
+    },
+    "target": "concurrent.futures.ThreadPoolExecutor"
+  },
+  "app/application/plugin/install.py:asyncio.create_task": {
+    "owners": {
+      "PluginInstallCommand.__resolve_commit_outcome": 1,
+      "PluginInstallCommand.__resolve_journal_created": 1,
+      "PluginInstallCommand.__rollback_cancelled": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/application/plugin/install.py:asyncio.ensure_future": {
+    "owners": {
+      "PluginInstallCommand.__await_side_effect": 1
+    },
+    "target": "asyncio.ensure_future"
+  },
+  "app/application/plugin/inventory.py:asyncio.create_task": {
+    "owners": {
+      "PluginCandidateInventoryReader.async_load": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/application/plugin/inventory.py:asyncio.to_thread": {
+    "owners": {
+      "PluginCandidateInventoryReader._async_read_market_generation": 1,
+      "PluginCandidateInventoryReader.async_load": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/chain/_recognition.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "RecognitionMixin._async_run_recognition_steps": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/chain/media/album.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "MediaAlbumOwner._async_match_music_album_directory": 1,
+      "MediaAlbumOwner.async_recognize_music_album_directory": 2
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/chain/media/path.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "MediaPathOwner._async_music_album_dir_fallback": 1,
+      "MediaPathOwner.async_recognize_music_by_path": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/chain/search/media.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "SearchMediaOwner._run_media_process_async": 1,
+      "SearchMediaOwner.async_process_stream": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/chain/search/music.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "SearchMusicOwner._async_process_music": 1,
+      "SearchMusicOwner._async_process_music_stream": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/chain/search/subtitle.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "SearchSubtitleOwner._async_search_subtitles_for_media": 1,
+      "SearchSubtitleOwner._async_search_subtitles_for_media_stream": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/chain/search/title.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "SearchTitleOwner._run_title_search_async": 1,
+      "SearchTitleOwner.async_search_by_title_stream": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/chain/transfer/queue.py:asyncio.to_thread": {
+    "owners": {
+      "TransferQueueOwner.close": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/chain/transfer/queue.py:threading.Thread": {
+    "owners": {
+      "TransferQueueOwner._TransferChain__ensure_recovery_scheduler": 1,
+      "TransferQueueOwner._TransferChain__init": 1,
+      "TransferQueueOwner._TransferChain__start_lease_heartbeat_owner_locked": 1,
+      "TransferQueueOwner._TransferChain__start_lease_release_owner_locked": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/db/worker.py:concurrent.futures.Executor.submit": {
+    "owners": {
+      "DatabaseWorker.run": 1
+    },
+    "target": "concurrent.futures.Executor.submit"
+  },
+  "app/db/worker.py:concurrent.futures.ThreadPoolExecutor": {
+    "owners": {
+      "DatabaseWorker.start": 1
+    },
+    "target": "concurrent.futures.ThreadPoolExecutor"
+  },
+  "app/main.py:threading.Thread": {
+    "owners": {
+      "start_tray": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/modules/acoustid/__init__.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "AcoustIdModule.async_identify_music_by_fingerprint": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/modules/discord/discord.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "Discord._send_file": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/modules/discord/discord.py:asyncio.AbstractEventLoop.create_task": {
+    "owners": {
+      "Discord._start.runner": 1
+    },
+    "target": "asyncio.AbstractEventLoop.create_task"
+  },
+  "app/modules/discord/discord.py:asyncio.create_task": {
+    "owners": {
+      "Discord._start_typing_task": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/modules/discord/discord.py:threading.Thread": {
+    "owners": {
+      "Discord._start": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/modules/feishu/feishu.py:threading.Thread": {
+    "owners": {
+      "Feishu._start_ws_client": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/modules/indexer/spider/__init__.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "SiteSpider.async_get_torrents": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/modules/qqbot/gateway.py:threading.Thread": {
+    "owners": {
+      "run_gateway.start_heartbeat": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/modules/qqbot/qqbot.py:threading.Thread": {
+    "owners": {
+      "QQBot._start_gateway": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/modules/telegram/telegram.py:threading.Thread": {
+    "owners": {
+      "Telegram.__init__": 1,
+      "Telegram._start_typing_task": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/modules/thetvdb/__init__.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "TheTvDbModule._async_load_auxiliary_candidates": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/modules/wechat/wechatbot.py:threading.Thread": {
+    "owners": {
+      "WeChatBot._start_gateway": 2
+    },
+    "target": "threading.Thread"
+  },
+  "app/modules/wechatclawbot/wechatclawbot.py:threading.Thread": {
+    "owners": {
+      "WechatClawBot._start_polling": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/monitor/monitor.py:threading.Thread": {
+    "owners": {
+      "Monitor.__request_scheduler_stop": 1,
+      "Monitor.__start_compensation": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/monitor/recovery.py:threading.Thread": {
+    "owners": {
+      "RecoveryExecutor._start": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/monitor/watcher.py:threading.Thread": {
+    "owners": {
+      "LocalDirectoryWatcher.start": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/runtime/capabilities/runtime.py:asyncio.to_thread": {
+    "owners": {
+      "CapabilityRuntime.shutdown_async": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/runtime/coalesce.py:asyncio.AbstractEventLoop.create_task": {
+    "owners": {
+      "EventCoalescer._on_flush_timer": 1
+    },
+    "target": "asyncio.AbstractEventLoop.create_task"
+  },
+  "app/runtime/debounce.py:asyncio.create_task": {
+    "owners": {
+      "AsyncDebouncer._call_leading": 1,
+      "AsyncDebouncer._call_trailing": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/runtime/debounce.py:threading.Timer": {
+    "owners": {
+      "Debouncer._call_leading": 1,
+      "Debouncer._call_trailing": 1
+    },
+    "target": "threading.Timer"
+  },
+  "app/runtime/event/dispatch.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "EventDispatcher.invoke_async": 1,
+      "EventDispatcher.invoke_async_strict": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
+  "app/runtime/events.py:asyncio.to_thread": {
+    "owners": {
+      "EventManager.stop_async": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/runtime/events.py:threading.Thread": {
+    "owners": {
+      "EventManager.start": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/runtime/execution.py:asyncio.create_task": {
+    "owners": {
+      "run_in_threadpool_to_completion": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/runtime/execution.py:concurrent.futures.Executor.submit": {
+    "owners": {
+      "submit_with_context.submit": 1
+    },
+    "target": "concurrent.futures.Executor.submit"
+  },
+  "app/runtime/extensions/plugin/manager.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "PluginManager.async_run_plugin_method": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/runtime/extensions/plugin/monitor.py:threading.Thread": {
+    "owners": {
+      "PluginMonitorController.start": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/runtime/extensions/plugin/sync.py:concurrent.futures.Executor.submit": {
+    "owners": {
+      "PluginSyncService.sync": 1
+    },
+    "target": "concurrent.futures.Executor.submit"
+  },
+  "app/runtime/extensions/plugin/sync.py:concurrent.futures.ThreadPoolExecutor": {
+    "owners": {
+      "PluginSyncService.sync": 1
+    },
+    "target": "concurrent.futures.ThreadPoolExecutor"
+  },
+  "app/runtime/extensions/resource.py:asyncio.to_thread": {
+    "owners": {
+      "AsyncManagedResourceAdapter.materialize": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/runtime/log.py:threading.Thread": {
+    "owners": {
+      "NonBlockingFileHandler.__init__": 1,
+      "NonBlockingFileHandler._close_handlers_bounded": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/runtime/resources.py:asyncio.to_thread": {
+    "owners": {
+      "acquire_managed_resource_async": 1,
+      "stop_managed_resource_async": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/runtime/state.py:threading.Thread": {
+    "owners": {
+      "SystemHelper._start_graceful_shutdown_monitor": 1
+    },
+    "target": "threading.Thread"
+  },
+  "app/runtime/tasks.py:asyncio.create_task": {
+    "owners": {
+      "TaskRegistry.create": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/runtime/tasks.py:asyncio.to_thread": {
+    "owners": {
+      "TaskRegistry.create_sync": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/scheduler/bridge.py:asyncio.AbstractEventLoop.create_task": {
+    "owners": {
+      "SchedulerBridgeOwner._submit_cross_thread.start_on_target_loop": 1
+    },
+    "target": "asyncio.AbstractEventLoop.create_task"
+  },
+  "app/scheduler/execution.py:multiprocessing.Process": {
+    "owners": {
+      "SchedulerExecutionOwner.start": 1
+    },
+    "target": "multiprocessing.Process"
+  },
+  "app/scheduler/lifecycle.py:asyncio.to_thread": {
+    "owners": {
+      "SchedulerLifecycleOwner.on_config_changed": 1,
+      "SchedulerLifecycleOwner.stop_async": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/startup/composition/subscription.py:asyncio.to_thread": {
+    "owners": {
+      "async_rule_group_mutation_scope": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/startup/initializers/modules.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "stop_modules.run_step": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/startup/initializers/monitor.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "stop_monitor": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/startup/initializers/plugins.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "configure_plugin_services.refresh_plugin_registrations": 1,
+      "configure_plugin_services.reload_plugin_tree": 1,
+      "execute_task": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/startup/lifecycle/__init__.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "offload_shutdown_callback.invoke": 1,
+      "prepare_plugin_restore": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/startup/lifecycle/__init__.py:asyncio.create_task": {
+    "owners": {
+      "run_shutdown_step": 1,
+      "schedule_plugin_settlement": 1
+    },
+    "target": "asyncio.create_task"
   }
 }

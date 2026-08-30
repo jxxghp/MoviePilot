@@ -47,46 +47,36 @@ def _iter_python_files(root: Path, roots: tuple[str, ...]) -> Iterable[Path]:
             yield candidate
 
 
-def _walk_functions(
+def _walk_owned_nodes(
     nodes: Iterable[ast.AST],
     prefix: str = "",
-) -> Iterable[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
-    """递归收集函数、方法和嵌套编排器，避免只检查公开入口。"""
+) -> Iterable[tuple[str, ast.AST]]:
+    """通过完整 AST 子节点遍历收集类、方法和任意控制流中的嵌套 owner。"""
     for node in nodes:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            qualname = f"{prefix}.{node.name}" if prefix else node.name
+            yield qualname, node
+            yield from _walk_owned_nodes(ast.iter_child_nodes(node), qualname)
+        else:
+            yield from _walk_owned_nodes(ast.iter_child_nodes(node), prefix)
+
+
+def _walk_functions(
+    nodes: Iterable[ast.AST],
+) -> Iterable[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
+    """收集含 dunder、Match、TryStar 在内的全部函数与方法 owner。"""
+    for qualname, node in _walk_owned_nodes(nodes):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            qualname = f"{prefix}.{node.name}" if prefix else node.name
-            if not node.name.startswith("__"):
-                yield qualname, node
-            yield from _walk_functions(node.body, qualname)
-        elif isinstance(node, ast.ClassDef):
-            qualname = f"{prefix}.{node.name}" if prefix else node.name
-            yield from _walk_functions(node.body, qualname)
-        elif isinstance(node, ast.If):
-            yield from _walk_functions(node.body, prefix)
-            yield from _walk_functions(node.orelse, prefix)
-        elif isinstance(node, (ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith)):
-            yield from _walk_functions(node.body, prefix)
-            yield from _walk_functions(node.orelse, prefix) if isinstance(node, (ast.For, ast.AsyncFor)) else ()
-        elif isinstance(node, ast.Try):
-            yield from _walk_functions(node.body, prefix)
-            yield from _walk_functions(node.orelse, prefix)
-            yield from _walk_functions(node.finalbody, prefix)
-            for handler in node.handlers:
-                yield from _walk_functions(handler.body, prefix)
+            yield qualname, node
 
 
 def _walk_classes(
     nodes: Iterable[ast.AST],
-    prefix: str = "",
 ) -> Iterable[tuple[str, ast.ClassDef]]:
-    """递归收集类体长度，覆盖 Scheduler 和私有 owner。"""
-    for node in nodes:
+    """收集任意控制流和函数内部的类，并保留完整嵌套 owner。"""
+    for qualname, node in _walk_owned_nodes(nodes):
         if isinstance(node, ast.ClassDef):
-            qualname = f"{prefix}.{node.name}" if prefix else node.name
             yield qualname, node
-            yield from _walk_classes(node.body, qualname)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            yield from _walk_classes(node.body, prefix)
 
 
 def collect_complexity_v2(root: Path = PROJECT_ROOT) -> dict[str, dict[str, int]]:
@@ -99,12 +89,12 @@ def collect_complexity_v2(root: Path = PROJECT_ROOT) -> dict[str, dict[str, int]
         if len(source_lines) > 1000:
             report["file"][relative] = len(source_lines)
         tree = ast.parse("\n".join(source_lines), filename=str(path))
-        for qualname, node in _walk_functions(tree.body):
-            line_count = (node.end_lineno or node.lineno) - node.lineno + 1
+        for qualname, method_node in _walk_functions(tree.body):
+            line_count = (method_node.end_lineno or method_node.lineno) - method_node.lineno + 1
             if line_count > 150:
                 report["method"][f"{relative}:{qualname}"] = line_count
-        for qualname, node in _walk_classes(tree.body):
-            line_count = (node.end_lineno or node.lineno) - node.lineno + 1
+        for qualname, class_node in _walk_classes(tree.body):
+            line_count = (class_node.end_lineno or class_node.lineno) - class_node.lineno + 1
             if line_count > 500:
                 report["class"][f"{relative}:{qualname}"] = line_count
     return report
