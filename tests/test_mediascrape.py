@@ -417,7 +417,7 @@ class TestMediaScrapingImages(unittest.TestCase):
         self.assertEqual(target_item, fileitem)
         self.assertEqual(target_path, Path("/tv/Show/Season 1/backdrop.jpg"))
 
-    @patch("app.startup.initializers.network.RequestUtils")
+    @patch("app.chain.scraping._scraping_http_snapshot")
     @patch("app.chain.scraping.NamedTemporaryFile")
     @patch("app.chain.scraping.Path.chmod")
     def test_download_and_save_image(self, mock_chmod, mock_temp_file, mock_request_utils):
@@ -442,16 +442,17 @@ class TestMediaScrapingImages(unittest.TestCase):
 
         mock_instance = mock_request_utils.return_value
         mock_instance.get_stream.return_value.__enter__.return_value = mock_stream
+        mock_instance.stream.return_value.__enter__.return_value = mock_stream
 
         self.media_chain.storagechain.upload_file.return_value = fileitem
 
         self.media_chain._download_and_save_image(fileitem, target_path, url)
 
-        mock_request_utils.assert_called_with(
+        mock_instance.stream.assert_called_with(
+            url,
             proxies=self.media_chain.runtime_config.proxy,
             ua=self.media_chain.runtime_config.normal_user_agent,
         )
-        mock_instance.get_stream.assert_called_with(url=url)
         mock_temp_file.assert_called_once_with(delete=False, suffix=".jpg")
         tmp_mock.write.assert_any_call(b"data1")
         tmp_mock.write.assert_any_call(b"data2")

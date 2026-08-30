@@ -1764,11 +1764,8 @@
           "c53927bd5752ec004ac403f6dc07fca7b253f0db152fc773643972d7c3bf5d34"
         ],
         "producer_fingerprints": [
-          "14564c7ef4f2057a2a03bd0070cafe7c5421184ae7b2c28d5f9735722691337c",
+          "36d3234c5f3cd7317c34d6ee71bc065946ea0e981dd2377589f73e54ebaf8703",
           "5fe23577466054d66cb12b34d4df8834f8933596be0cbc84e4cbfc22694b3c03",
-          "6c5b8155f0e6ff9ed879b8ea43904ea05c74f81762d6ae87c71de40673a5629b",
-          "91ec6e0454403b22f1ddc7cb6e4fc9414df8a00892e615131e41ff0599618dce",
-          "91ec6e0454403b22f1ddc7cb6e4fc9414df8a00892e615131e41ff0599618dce",
           "cdf41d4446e65b14d457621594f04b3e6bfce252e7701cb4be862b2259e97700"
         ]
       },
@@ -1966,11 +1963,11 @@
         ]
       }
     },
-    "fact_count": 110,
+    "fact_count": 107,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
-    "producer_call_count": 93,
-    "producer_event_reference_count": 94,
+    "producer_call_count": 90,
+    "producer_event_reference_count": 91,
     "producers": [
       {
         "caller": "app.agent.orchestrator",
@@ -2138,54 +2135,6 @@
         "invalid": false,
         "method": "send_event",
         "qualname": "source",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "dynamic": false,
-        "events": [
-          "EventType.ConfigChanged"
-        ],
-        "fingerprint": "6c5b8155f0e6ff9ed879b8ea43904ea05c74f81762d6ae87c71de40673a5629b",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "set_env_setting",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "dynamic": false,
-        "events": [
-          "EventType.ConfigChanged"
-        ],
-        "fingerprint": "91ec6e0454403b22f1ddc7cb6e4fc9414df8a00892e615131e41ff0599618dce",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "set_setting",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "dynamic": false,
-        "events": [
-          "EventType.ConfigChanged"
-        ],
-        "fingerprint": "91ec6e0454403b22f1ddc7cb6e4fc9414df8a00892e615131e41ff0599618dce",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "set_setting",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.api.endpoints.system",
-        "dynamic": false,
-        "events": [
-          "EventType.ConfigChanged"
-        ],
-        "fingerprint": "14564c7ef4f2057a2a03bd0070cafe7c5421184ae7b2c28d5f9735722691337c",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "sync_plugin_market_from_wiki",
         "receiver_kind": "canonical_singleton"
       },
       {
@@ -3053,6 +3002,18 @@
         "receiver_kind": "canonical_singleton"
       },
       {
+        "caller": "app.startup.composition.system",
+        "dynamic": false,
+        "events": [
+          "EventType.ConfigChanged"
+        ],
+        "fingerprint": "36d3234c5f3cd7317c34d6ee71bc065946ea0e981dd2377589f73e54ebaf8703",
+        "invalid": false,
+        "method": "async_send_event",
+        "qualname": "_ConfigurationEventAdapter.publish",
+        "receiver_kind": "canonical_singleton"
+      },
+      {
         "caller": "app.workflow",
         "dynamic": false,
         "events": [
@@ -3090,7 +3051,7 @@
       }
     ],
     "static_consumer_count": 16,
-    "static_producer_call_count": 92
+    "static_producer_call_count": 89
   },
   "event_specs": {
     "ChainEventType.AgentLLMProvider": {

@@ -27,6 +27,7 @@ def _inputs() -> runtime_composition.RuntimeInputs:
     system_config = Mock(name="system_config")
     configuration = SimpleNamespace(
         system_config=system_config,
+        system_service=Mock(name="system_service"),
         runtime=Mock(name="runtime_configuration"),
         settings=Mock(name="runtime_settings"),
     )
@@ -77,6 +78,7 @@ def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> 
     assert runtime.authentication.passkey_repository is inputs.authentication.passkey_repository
     assert runtime.configuration is inputs.configuration.runtime
     assert runtime.settings is inputs.configuration.settings
+    assert runtime.system._system_config is inputs.configuration.system_service
     assert runtime.tasks is inputs.tasks
     assert runtime.messaging.helper is inputs.dependencies.message_helper
     assert runtime.messaging.queue is inputs.dependencies.message_queue

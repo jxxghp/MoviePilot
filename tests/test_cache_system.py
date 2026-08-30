@@ -3,7 +3,6 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -148,13 +147,9 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
 
     monkeypatch.setattr(modules_initializer, "clear_package_tool_cache", fail_if_called)
     monkeypatch.setattr(modules_initializer, "init_managed_resources", lambda: None)
-    monkeypatch.setattr(modules_initializer, "DohHelper", lambda: None)
+    monkeypatch.setattr(modules_initializer, "configure_doh_composition", lambda: None)
     monkeypatch.setattr(modules_initializer, "SitesHelper", lambda: None)
-    monkeypatch.setattr(
-        modules_initializer,
-        "ResourceHelper",
-        lambda: SimpleNamespace(check=lambda: False),
-    )
+    monkeypatch.setattr(modules_initializer, "update_resources", lambda: None)
     monkeypatch.setattr(modules_initializer, "user_auth", lambda: None)
     monkeypatch.setattr(modules_initializer, "ModuleManager", lambda: None)
     monkeypatch.setattr(modules_initializer.EventManager, "start", lambda self: None)

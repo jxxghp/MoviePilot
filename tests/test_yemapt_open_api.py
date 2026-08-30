@@ -332,7 +332,7 @@ def test_yemapt_download_generates_and_urlencodes_temporary_key(monkeypatch):
         return None, b"torrent-content", "Movie", ["Movie.mkv"], ""
 
     monkeypatch.setattr(
-        "app.startup.initializers.network.RequestUtils.post_res",
+        "app.adapters.network.http.RequestUtils.post_res",
         fake_post_res,
     )
     monkeypatch.setattr(

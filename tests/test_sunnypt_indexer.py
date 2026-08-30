@@ -470,7 +470,7 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
         log_messages.append(message)
 
     monkeypatch.setattr(
-        "app.startup.initializers.network.RequestUtils.post_res",
+        "app.adapters.network.http.RequestUtils.post_res",
         fake_post_res,
     )
     monkeypatch.setattr(

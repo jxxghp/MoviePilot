@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from app.runtime.config import settings
 from app.adapters.system.resource import (
     ResourceHelper,
     configure_resource_version_provider,
 )
+from app.runtime.config import settings
+from app.startup.composition import resource as resource_composition
 from app.startup.initializers import modules as modules_initializer
-
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
@@ -75,7 +75,7 @@ def test_startup_owns_restart_after_resource_update(monkeypatch):
     """资源适配器只返回更新结果，进程重启必须由启动组合层触发。"""
     restart_calls = []
     monkeypatch.setattr(
-        modules_initializer,
+        resource_composition,
         "ResourceHelper",
         lambda: type(
             "ResourceStub",
@@ -97,7 +97,7 @@ def test_startup_owns_restart_after_resource_update(monkeypatch):
 def test_startup_does_not_restart_without_resource_update(monkeypatch):
     """没有成功安装新资源时启动层不得请求重启。"""
     monkeypatch.setattr(
-        modules_initializer,
+        resource_composition,
         "ResourceHelper",
         lambda: type(
             "ResourceStub",

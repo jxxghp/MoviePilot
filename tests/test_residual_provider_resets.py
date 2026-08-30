@@ -27,7 +27,7 @@ from app.runtime.resources import (
 )
 from app.scheduler.facade import Scheduler
 from app.schemas.types import EventType
-from app.startup.initializers import resources as managed_resource_initializer
+from app.startup.composition import resource as managed_resource_composition
 
 _MISSING = object()
 
@@ -186,12 +186,12 @@ def test_managed_resource_owner_reset_releases_only_closed_runtime(
     """托管资源 reset 只释放已关闭引用，不把释放动作伪装为完整重启。"""
     first = SimpleNamespace(is_shutdown=True)
     second = SimpleNamespace(is_shutdown=True)
-    monkeypatch.setattr(managed_resource_initializer, "_managed_resource_runtime", first)
+    monkeypatch.setattr(managed_resource_composition, "_managed_resource_runtime", first)
     monkeypatch.setattr(managed_resource_facade, "_managed_resource_runtime", first)
 
-    managed_resource_initializer.reset_managed_resources()
-    managed_resource_initializer.reset_managed_resources()
-    assert managed_resource_initializer._managed_resource_runtime is None
+    managed_resource_composition.reset_managed_resource_composition()
+    managed_resource_composition.reset_managed_resource_composition()
+    assert managed_resource_composition._managed_resource_runtime is None
     assert managed_resource_facade._managed_resource_runtime is None
 
     configure_managed_resource_runtime(second)  # type: ignore[arg-type]
@@ -205,11 +205,11 @@ def test_managed_resource_owner_refuses_to_release_live_runtime(
 ) -> None:
     """托管资源仍活动时 reset 必须保留 owner，避免隐藏未收口资源。"""
     runtime = SimpleNamespace(is_shutdown=False)
-    monkeypatch.setattr(managed_resource_initializer, "_managed_resource_runtime", runtime)
+    monkeypatch.setattr(managed_resource_composition, "_managed_resource_runtime", runtime)
     monkeypatch.setattr(managed_resource_facade, "_managed_resource_runtime", runtime)
 
     with pytest.raises(RuntimeError, match="尚未关闭"):
-        managed_resource_initializer.reset_managed_resources()
+        managed_resource_composition.reset_managed_resource_composition()
 
-    assert managed_resource_initializer._managed_resource_runtime is runtime
+    assert managed_resource_composition._managed_resource_runtime is runtime
     assert managed_resource_facade._managed_resource_runtime is runtime

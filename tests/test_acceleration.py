@@ -9,7 +9,7 @@ import pytest
 from app.application import directory as directory_module
 from app.application import rules as rules_module
 from app.application.transfer import workflow as workflow_module
-from app.startup.initializers import domain as domain_initializer
+from app.startup.composition import domain as domain_composition
 
 
 def test_directory_helper_requires_configured_topology_for_local_paths(
@@ -109,14 +109,14 @@ def test_job_task_size_requires_reader_for_missing_local_size(monkeypatch) -> No
         workflow_module._job_task_size(local)
 
 
-def test_domain_initializer_injects_all_system_acceleration_ports(monkeypatch) -> None:
+def test_domain_composition_injects_all_system_acceleration_ports(monkeypatch) -> None:
     """领域组合根必须显式注入拓扑、规则解析和目录大小三个端口。"""
     disk = MagicMock()
     parser = MagicMock()
     size = MagicMock()
-    monkeypatch.setattr(domain_initializer, "configure_disk_topology", disk)
-    monkeypatch.setattr(domain_initializer, "configure_filter_rule_parser", parser)
-    monkeypatch.setattr(domain_initializer, "configure_directory_size", size)
+    monkeypatch.setattr(domain_composition, "configure_disk_topology", disk)
+    monkeypatch.setattr(domain_composition, "configure_filter_rule_parser", parser)
+    monkeypatch.setattr(domain_composition, "configure_directory_size", size)
     for name in (
         "configure_dns_resolver",
         "configure_customization_provider",
@@ -126,20 +126,20 @@ def test_domain_initializer_injects_all_system_acceleration_ports(monkeypatch) -
         "configure_recognition_runtime",
         "clear_rust_parse_options_cache",
     ):
-        monkeypatch.setattr(domain_initializer, name, MagicMock())
+        monkeypatch.setattr(domain_composition, name, MagicMock())
     monkeypatch.setattr(
         "app.domain.projection.tmdb.configure_image_url_builder",
         MagicMock(),
     )
-    monkeypatch.setattr(domain_initializer, "RecognitionRuleService", MagicMock())
+    monkeypatch.setattr(domain_composition, "RecognitionRuleService", MagicMock())
     monkeypatch.setattr(
-        domain_initializer,
+        domain_composition,
         "get_runtime_setting",
         MagicMock(return_value=()),
     )
 
-    domain_initializer.configure_domain_dependencies()
+    domain_composition.compose_domain_dependencies()
 
-    disk.assert_called_once_with(domain_initializer.SystemUtils)
-    parser.assert_called_once_with(domain_initializer.rust_accelerator)
-    size.assert_called_once_with(domain_initializer.SystemUtils)
+    disk.assert_called_once_with(domain_composition.SystemUtils)
+    parser.assert_called_once_with(domain_composition.rust_accelerator)
+    size.assert_called_once_with(domain_composition.SystemUtils)

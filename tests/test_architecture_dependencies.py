@@ -612,9 +612,11 @@ def test_workflow_execution_chain_uses_single_application_owned_port():
 
     chain_source = (APP_ROOT / "chain" / "workflow.py").read_text(encoding="utf-8")
     startup_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
+    composition_source = (APP_ROOT / "startup" / "composition" / "database.py").read_text(encoding="utf-8")
     assert chain_source.count("get_configured_workflow_execution()") == 1
     assert "get_chain_workflow_port" not in chain_source
-    assert "configure_workflow_execution(workflow_execution)" in startup_source
+    assert "configure_workflow_execution(TransactionalWorkflowExecutionService(SessionFactory))" in composition_source
+    assert "configure_workflow_execution_composition()" in startup_source
     assert "workflow=lambda:" not in startup_source
 
 

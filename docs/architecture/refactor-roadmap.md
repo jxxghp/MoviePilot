@@ -17,12 +17,12 @@
 
 | Leaf | 状态 | 依赖 | 退出条件 |
 |---|---|---|---|
-| R0 事实基线刷新 | `ACTIVE` | 无 | exact-head、远端、工作树、CI 和五类残余问题证据冻结；不修改 `app/plugins/**` |
-| R1 System API 边界收口 | `PLANNED` | R0 | `system.py` 仅保留 HTTP/SSE/ZIP/响应映射；日志、Wiki、配置、事件、更新编排由 Application service/Port 拥有并由 startup 注入；旧 canonical 实现和重复导出删除 |
-| R2 复杂度与原生并发门禁 | `PLANNED` | R0 | 扫描私有方法、类/文件热点及 `app/scheduler`；枚举全部 Thread/Timer/Executor/asyncio 原语；每条事实有 owner 或精确豁免，门禁不可绕过且本范围新增债务为零 |
-| R3 Outbox after_commit 恢复语义 | `PLANNED` | R0 | after_commit 失败写入持久 intent；有唯一恢复 handler、claim/fencing、重启回放、幂等和失败可观测性；不得以内存 `pending_effects` 代替恢复 |
-| R4 Startup/插件市场单一装配 | `PLANNED` | R0 | Transport、Adapter、Package、Dependency、Domain service 由 composition root 单一构造；initializer 和 market facade 不得隐式 new 第二套实例；SDK/Compat ABI 保持不变 |
-| R5 验收与交付收口 | `PLANNED` | R1,R2,R3,R4 | 路线图、优化清单、规则和机器门禁一致；专项与锁定全量测试、Pylint、架构/兼容门禁、GitHub CI 通过；`HEAD == origin/v3` 且 ahead/behind 为 `0/0` |
+| R0 事实基线刷新 | `DELIVERED` | 无 | `87269610e`：exact-head、远端、工作树、CI 和五类残余问题证据冻结；未修改 `app/plugins/**` |
+| R1 System API 边界收口 | `DELIVERED` | R0 | `d50177f45`：日志、Wiki、配置、事件、更新与重启进入 `application/system.py` 和 `composition/system.py`；endpoint 只保留 HTTP/SSE/ZIP/响应映射 |
+| R2 复杂度与原生并发门禁 | `DELIVERED` | R0 | `f7ca7e517`、`5cd5780d3`：完整 AST、Scheduler、canonical alias、TaskGroup、稳定 owner/count 与低水位门禁落地；本范围新增债务为零 |
+| R3 Outbox after_commit 恢复语义 | `DELIVERED` | R0 | `9d06f91bb`：下载提交后通知、模块和字幕副作用改为同事务持久 intent，具备 handler、claim/fencing、重启回放、幂等与失败观测 |
+| R4 Startup/插件市场单一装配 | `DELIVERED` | R0 | `7f5b8b469` 至 `046b0b305`：市场 Transport/Package/Dependency/Health、Domain、网络、站点、Chain、缓存、资源、DoH 和 Workflow 构造归入 composition；Compat 复用同一 owner |
+| R5 验收与交付收口 | `ACTIVE` | R1,R2,R3,R4 | 路线图、优化清单、规则和机器门禁一致；专项与锁定全量测试、Pylint、架构/兼容门禁、GitHub CI 通过；`HEAD == origin/v3` 且 ahead/behind 为 `0/0` |
 
 执行合同：任一时刻只允许一个 `ACTIVE` 叶子；每个叶子必须独立验证、显式提交和推送，
 并在交付前复核插件 ABI、canonical 旧实现/重复导出和 `app/plugins/**` 排除边界。
@@ -391,7 +391,7 @@ TMDB、豆瓣、Bangumi、AniList 详情到统一字段的规则一次迁入 `ap
   service locator、mypy/Ruff ratchet、启动性能、Pylint `10.00/10` 与依赖一致性均通过。
 - exact-head 失败后已将 canonical `SearchChain` Facade 改为显式类型转发，并修正 API/Workflow 的
   Optional、Domain/Schema DTO 边界；2026-08-30 最终本地锁定全量 `7659 passed, 9 skipped`，
-  CI 同构架构测试 `197 passed`，mypy 低水位降至 `9,995`，Ruff、Pylint `10.00/10`、复杂度、
+  CI 同构架构测试 `197 passed`，mypy 低水位降至 `9,987`，Ruff、Pylint `10.00/10`、复杂度、
   async、TaskRegistry、service locator、启动性能与依赖快照门禁均通过。
 - `4575b11d8` 修复 canonical `SearchChain` 类型转发并更新真实低水位，`c204e2e97` 修正架构测试对
   Chain owner 的直接导入；两者均已推送并进入 `origin/v3` 祖先链。精确 head `c204e2e97` 的

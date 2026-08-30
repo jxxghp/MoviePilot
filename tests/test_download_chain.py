@@ -390,7 +390,7 @@ def test_save_subtitle_response_accepts_rar_filename_from_header(monkeypatch, tm
 
     monkeypatch.setattr(download_subtitle, "StorageChain", lambda: storage_chain)
     monkeypatch.setattr(
-        "app.startup.initializers.network.SystemUtils.unpack_archive",
+        "app.adapters.system.host.SystemUtils.unpack_archive",
         fake_unpack_archive,
     )
 

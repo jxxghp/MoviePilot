@@ -15,15 +15,15 @@
 
 | ID | 状态 | 问题 | 收口要求 |
 |---|---|---|---|
-| RES-001 | `ACTIVE`（R0） | System API 仍混有日志、Wiki、配置、事件和更新编排 | Application service/Port 拥有业务与 I/O 决策，endpoint 只做传输适配；canonical 旧实现删除 |
-| RES-002 | `PLANNED`（R2） | 复杂度门禁漏扫私有方法、类/文件和 Scheduler；原生并发清单不完整 | 事实扫描覆盖全部宿主调用点（排除 `app/plugins/**`），每项有 owner/精确豁免且零增长 |
-| RES-003 | `PLANNED`（R3） | Outbox after_commit 失败只有内存 pending 标记，重启不可恢复 | 持久 intent、唯一 handler、claim/fencing、重启回放、幂等和失败观测完整闭环 |
-| RES-004 | `PLANNED`（R4） | Startup initializer 与插件市场存在多套 Transport/Adapter/Manager 构造 | 所有构造回收到 composition root，插件兼容只经 SDK/Compat，canonical 不保留重复正式入口 |
-| RES-005 | `PLANNED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 文档与事实源一致；专项、锁定全量、Pylint、架构/兼容门禁和 GitHub CI 闭环，远端 `0/0` |
-R2 已落地门禁基础：`complexity.py --v2` 覆盖私有/嵌套方法、类、文件和
-`app/scheduler/`；`concurrency.py` 覆盖宿主原生并发原语并冻结调用点与词法 owner。
-当前基线只允许删除或收缩，新增调用点和 owner 漂移均阻断 CI；现有历史热点仍须在后续
-叶子中按真实所有权逐项收口，不得以生成基线伪装为债务清零。
+| RES-001 | `DELIVERED`（R1） | System API 仍混有日志、Wiki、配置、事件和更新编排 | `d50177f45`：Application service/Port 拥有业务与 I/O 决策，endpoint 只做传输适配；旧 helper 已删除 |
+| RES-002 | `DELIVERED`（R2） | 复杂度门禁漏扫私有方法、类/文件和 Scheduler；原生并发清单不完整 | `f7ca7e517`、`5cd5780d3`：完整宿主 AST、canonical owner/count、低水位与零增长门禁已落地 |
+| RES-003 | `DELIVERED`（R3） | Outbox after_commit 失败只有内存 pending 标记，重启不可恢复 | `9d06f91bb`：持久 intent、唯一 handler、claim/fencing、重启回放、幂等和失败观测完整闭环 |
+| RES-004 | `DELIVERED`（R4） | Startup initializer 与插件市场存在多套 Transport/Adapter/Manager 构造 | `7f5b8b469` 至 `046b0b305`：构造回收到 composition，兼容门面消费同一 owner，canonical 无重复正式实现 |
+| RES-005 | `ACTIVE`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 文档与事实源一致；专项、锁定全量、Pylint、架构/兼容门禁和 GitHub CI 闭环，远端 `0/0` |
+R2 门禁现已完整覆盖私有、dunder、任意控制流嵌套方法、类、文件与
+`app/scheduler/`；`concurrency.py` 扫描完整宿主源码，按 canonical import/alias、
+TaskGroup、可证明的 loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及
+事实下降后未刷新低水位都会阻断 CI；行号移动和普通同名方法不会制造噪音。
 
 ## 1. 结论摘要
 
@@ -90,7 +90,7 @@ ARCH-204 均达到实现、验证、提交、推送和远端门禁闭环；S4/AR
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 974 / 8,357 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 981 / 8,416 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -98,7 +98,7 @@ ARCH-204 均达到实现、验证、提交、推送和远端门禁闭环；S4/AR
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 305,884 行 | 排除 `app/plugins/**`；61 个文件超过 1,000 行，11 个超过 2,000 行 |
 | 长方法 | 290 个超过 80 行 | AST 统计排除 `app/plugins/**`；65 个超过 150 行，21 个超过 250 行 |
-| 全量 mypy 历史债务 | 9,995 / 592 文件 | canonical `SearchChain` Facade 已补齐显式类型转发；strict frontier 当前覆盖 41 个文件，低水位只允许继续下降 |
+| 全量 mypy 历史债务 | 9,987 / 592 文件 | canonical `SearchChain` Facade 已补齐显式类型转发；strict frontier 当前覆盖 41 个文件，低水位只允许继续下降 |
 | Ruff 历史诊断 | 633 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率低水位 | Application 81.61%，Domain 81.03% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
@@ -195,7 +195,7 @@ ARCH-204 均达到实现、验证、提交、推送和远端门禁闭环；S4/AR
 - Event consumer 扫描曾把任意同名 `.register()` 调用当成事件注册；S0-L2.5 已改为证明
   canonical EventManager receiver，10 个动态误报归零并保留唯一 workflow 动态注册。
 - S0-L2.6 已将 producer/consumer 合并为逐调用事实源；本轮统一 Transfer 事件发送点后为
-  93 个 producer（92 静态、1 动态）与
+  90 个 producer（89 静态、1 动态）与
   17 个 consumer（16 静态、1 动态）；consumer 由不可自动写入的精确人工 policy 管理。
 
 **目标与步骤**

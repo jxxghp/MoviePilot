@@ -8,7 +8,7 @@ from app.adapters.system.plugin import package as package_module
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.chain import system as system_module
 from app.chain.system import SystemChain
-from app.startup.initializers import network as network_initializer
+from app.adapters.system.host import SystemUtils
 
 
 def _patch_docker_paths(monkeypatch, tmp_path: Path, *, reset: bool) -> Path:
@@ -28,7 +28,7 @@ def _patch_docker_paths(monkeypatch, tmp_path: Path, *, reset: bool) -> Path:
         lambda: runtime_config,
     )
     monkeypatch.setattr(
-        network_initializer.SystemUtils,
+        SystemUtils,
         "is_docker",
         staticmethod(lambda: True),
     )

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from app.application.configuration import get_chain_runtime_config_snapshot
 from app.chain.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo, MusicLyrics
 from app.runtime.events import Event
@@ -120,12 +121,18 @@ def test_music_cover_download_uses_bounded_external_response_cache() -> None:
     request.get_res.return_value = response
     ScrapingChain._request_music_cover.cache_clear()
 
-    with patch("app.startup.initializers.network.RequestUtils", return_value=request):
+    with patch("app.chain.scraping._scraping_http_snapshot") as snapshot:
+        snapshot.return_value.get.return_value = response
         first = ScrapingChain._download_music_cover("https://example.com/album.webp")
         second = ScrapingChain._download_music_cover("https://example.com/album.webp")
 
     assert first == second == (b"cover", "image/webp")
-    request.get_res.assert_called_once_with("https://example.com/album.webp")
+    snapshot.return_value.get.assert_called_once_with(
+        "https://example.com/album.webp",
+        proxies=None,
+        ua=get_chain_runtime_config_snapshot().normal_user_agent,
+        timeout=20,
+    )
     response.close.assert_called_once()
     ScrapingChain._request_music_cover.cache_clear()
 
