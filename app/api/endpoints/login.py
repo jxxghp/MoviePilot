@@ -16,9 +16,9 @@ from app.application.security.token import PasswordTooLongError, create_access_t
 from app.application.security.user import UserNameConflictError, UserService
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain.user import MfaRequired, UserChain
-from app.schemas.response import Response as _SchemaResponse
 from app.schemas.initialization import InitializationRequest as _SchemaInitializationRequest
 from app.schemas.initialization import InitializationStatus as _SchemaInitializationStatus
+from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import MfaChallenge as _SchemaMfaChallenge
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
