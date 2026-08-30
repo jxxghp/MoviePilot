@@ -122,10 +122,6 @@
   "app/adapters/web/plugin/routes.py": {
     "type-arg": 2
   },
-  "app/adapters/web/security/access.py": {
-    "misc": 1,
-    "no-any-return": 2
-  },
   "app/agent/callback/__init__.py": {
     "no-untyped-call": 5,
     "no-untyped-def": 9,
@@ -890,7 +886,7 @@
     "attr-defined": 6,
     "call-overload": 1,
     "index": 2,
-    "misc": 17,
+    "misc": 16,
     "operator": 1,
     "type-arg": 2
   },
@@ -3155,7 +3151,7 @@
     "type-arg": 3
   },
   "app/schemas/mfa.py": {
-    "misc": 5
+    "misc": 4
   },
   "app/schemas/monitoring.py": {
     "misc": 6

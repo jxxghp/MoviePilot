@@ -35,7 +35,6 @@ from app.application.security.user import (
 from app.runtime.log import logger
 from app.schemas.mcp import BaseModel as _SchemaBaseModel
 from app.schemas.mcp import JsonData as _SchemaJsonData
-from app.schemas.mfa import MfaStatusData as _SchemaMfaStatusData
 from app.schemas.mfa import OtpGenerateData as _SchemaOtpGenerateData
 from app.schemas.mfa import PasskeyInfo as _SchemaPasskeyInfo
 from app.schemas.mfa import PasskeyStartData as _SchemaPasskeyStartData
@@ -131,26 +130,6 @@ class PassKeyDeleteRequest(_SchemaBaseModel):
 
     passkey_id: int
     password: str
-
-
-# ==================== 通用 MFA 接口 ====================
-
-
-@router.get(
-    "/status/{username}",
-    summary="判断用户是否开启二次验证",
-    response_model=_SchemaResponse[_SchemaMfaStatusData],
-)
-async def mfa_status(
-    username: str,
-    service: UserService = Depends(get_user_service),
-) -> Any:
-    """
-    检查指定启用用户是否开启 OTP，并隐藏账号不存在或禁用状态。
-    """
-    user = await service.get_by_name(username)
-    has_otp = bool(user and user.is_active and user.is_otp)
-    return _SchemaResponse(success=True, data={"enabled": has_otp})
 
 
 # ==================== OTP 相关接口 ====================

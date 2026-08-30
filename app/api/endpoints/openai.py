@@ -4,11 +4,14 @@ import uuid
 from threading import Lock
 from typing import AsyncIterator, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, Request, Security
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.adapters.web.security.access import openai_bearer_scheme
+from app.adapters.web.security.access import (
+    openai_bearer_scheme,
+    validate_api_credential_identity,
+)
 from app.agent.contracts import ReplyMode
 from app.agent.loader import get_moviepilot_agent_type
 from app.api.context import (
@@ -24,6 +27,7 @@ from app.api.protocol import (
 )
 from app.application.agent import get_running_agent_manager
 from app.application.configuration import get_api_runtime_config_snapshot
+from app.runtime.execution import run_in_threadpool
 from app.runtime.tasks import TaskRegistry
 from app.schemas.openai import OpenAIChatCompletionResponse as _SchemaOpenAIChatCompletionResponse
 from app.schemas.openai import OpenAIChatCompletionsRequest as _SchemaOpenAIChatCompletionsRequest
@@ -447,7 +451,7 @@ def _error_response(
     )
 
 
-def _check_auth(
+async def _check_auth(
     credentials: Optional[HTTPAuthorizationCredentials],
 ) -> Optional[JSONResponse]:
     """
@@ -467,6 +471,20 @@ def _check_auth(
             error_type="authentication_error",
             code="invalid_api_key",
         )
+    try:
+        await run_in_threadpool(validate_api_credential_identity)
+    except HTTPException as error:
+        authentication_error = error.status_code == 401
+        return _error_response(
+            (
+                "Invalid bearer token."
+                if authentication_error
+                else "Authentication service unavailable."
+            ),
+            error.status_code,
+            error_type="authentication_error" if authentication_error else "api_error",
+            code="invalid_api_key" if authentication_error else None,
+        )
     return None
 
 
@@ -480,7 +498,7 @@ async def list_models(
         openai_bearer_scheme
     ),
 ):
-    auth_error = _check_auth(credentials)
+    auth_error = await _check_auth(credentials)
     if auth_error:
         return auth_error
     now = int(time.time())
@@ -497,7 +515,7 @@ async def _chat_completions_impl(
     ),
     task_registry: TaskRegistry | None = None,
 ):
-    auth_error = _check_auth(credentials)
+    auth_error = await _check_auth(credentials)
     if auth_error:
         return auth_error
 
@@ -594,7 +612,7 @@ async def _responses_impl(
         openai_bearer_scheme
     ),
 ):
-    auth_error = _check_auth(credentials)
+    auth_error = await _check_auth(credentials)
     if auth_error:
         return auth_error
 

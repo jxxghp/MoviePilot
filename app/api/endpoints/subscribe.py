@@ -4,7 +4,11 @@ import cn2an
 from fastapi import Depends, Header, HTTPException, Request
 
 from app.adapters.external.server import MoviePilotServerHelper
-from app.adapters.web.security.access import verify_apitoken, verify_token
+from app.adapters.web.security.access import (
+    validate_api_credential_identity,
+    verify_apitoken,
+    verify_token,
+)
 from app.api.context import (
     get_background_task_registry,
     get_subscription_repository,
@@ -48,6 +52,7 @@ from app.application.subscription.search import (
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
+from app.runtime.execution import run_in_threadpool
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import IdData as _SchemaIdData
 from app.schemas.media import normalize_media_source, resolve_media_identity
@@ -466,9 +471,11 @@ async def seerr_subscribe(
     """
     if not authorization or authorization != get_api_runtime_config_snapshot().api_token:
         raise HTTPException(
-            status_code=400,
+            status_code=401,
             detail="授权失败",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+    await run_in_threadpool(validate_api_credential_identity)
     req_json = await request.json()
     if not req_json:
         raise HTTPException(

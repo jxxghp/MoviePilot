@@ -22,7 +22,7 @@
 | R2 复杂度与原生并发门禁 | `DELIVERED` | R0 | `f7ca7e517`、`5cd5780d3`：完整 AST、Scheduler、canonical alias、TaskGroup、稳定 owner/count 与低水位门禁落地；本范围新增债务为零 |
 | R3 Outbox after_commit 恢复语义 | `DELIVERED` | R0 | `9d06f91bb`：下载提交后通知、模块和字幕副作用改为同事务持久 intent，具备 handler、claim/fencing、重启回放、幂等与失败观测 |
 | R4 Startup/插件市场单一装配 | `DELIVERED` | R0 | `7f5b8b469` 至 `046b0b305`：市场 Transport/Package/Dependency/Health、Domain、网络、站点、Chain、缓存、资源、DoH 和 Workflow 构造归入 composition；Compat 复用同一 owner |
-| R5 验收与交付收口 | `DELIVERED` | R1,R2,R3,R4 | 路线图、优化清单、规则和机器门禁一致；锁定全量 `7684 passed, 9 skipped`，Application/Domain 覆盖率低水位为 `81.77%` / `81.03%`，Pylint `10.00/10`、架构/兼容门禁、真实启动和最终 exact-head GitHub CI 通过；`HEAD == origin/v3` 且 ahead/behind 为 `0/0` |
+| R5 验收与交付收口 | `DELIVERED` | R1,R2,R3,R4 | 路线图、优化清单、规则和机器门禁一致；锁定全量 `7684 passed, 9 skipped`，Application/Domain 覆盖率低水位为 `81.79%` / `81.03%`，Pylint `10.00/10`、架构/兼容门禁、真实启动和最终 exact-head GitHub CI 通过；`HEAD == origin/v3` 且 ahead/behind 为 `0/0` |
 
 执行合同：任一时刻只允许一个 `ACTIVE` 叶子；每个叶子必须独立验证、显式提交和推送，
 并在交付前复核插件 ABI、canonical 旧实现/重复导出和 `app/plugins/**` 排除边界。

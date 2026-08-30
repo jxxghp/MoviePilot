@@ -18,12 +18,6 @@ class OtpGenerateData(BaseModel):
     uri: str = Field(description="OTP 验证 URI")
 
 
-class MfaStatusData(BaseModel):
-    """用户是否启用多因素认证。"""
-
-    enabled: bool = Field(description="是否启用多因素认证")
-
-
 class PasskeyStartData(BaseModel):
     """PassKey 注册或认证的启动数据。"""
 

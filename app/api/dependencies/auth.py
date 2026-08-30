@@ -66,13 +66,17 @@ def get_current_user(
     token_data: _SchemaTokenPayload = Depends(verify_token),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Any:
-    """读取令牌对应用户，不存在时返回 403。"""
+    """读取令牌对应用户；令牌对应账号不存在时按认证失败处理。"""
     user_repository = cast(
         AuthUserRepository, runtime.authentication.user_repository(db)
     )
     user = user_repository.get_by_id(token_data.sub)
     if not user:
-        raise HTTPException(status_code=403, detail="用户不存在")
+        raise HTTPException(
+            status_code=401,
+            detail="用户不存在",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
@@ -81,13 +85,17 @@ async def get_current_user_async(
     token_data: _SchemaTokenPayload = Depends(verify_token),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Any:
-    """异步读取令牌对应用户，不存在时返回 403。"""
+    """异步读取令牌对应用户；令牌对应账号不存在时按认证失败处理。"""
     user_repository = cast(
         UserRepository, runtime.authentication.user_repository(db)
     )
     user = await user_repository.async_get_by_id(token_data.sub)
     if not user:
-        raise HTTPException(status_code=403, detail="用户不存在")
+        raise HTTPException(
+            status_code=401,
+            detail="用户不存在",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
@@ -96,7 +104,11 @@ def get_current_active_user(
 ) -> Any:
     """校验并返回当前激活用户。"""
     if not current_user.is_active:
-        raise HTTPException(status_code=403, detail="用户未激活")
+        raise HTTPException(
+            status_code=401,
+            detail="用户未激活",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return current_user
 
 
@@ -105,7 +117,11 @@ async def get_current_active_user_async(
 ) -> Any:
     """异步校验并返回当前激活用户。"""
     if not current_user.is_active:
-        raise HTTPException(status_code=403, detail="用户未激活")
+        raise HTTPException(
+            status_code=401,
+            detail="用户未激活",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return current_user
 
 
@@ -113,7 +129,7 @@ def _ensure_manage_user(current_user: Any) -> Any:
     """校验用户具备全局管理权限。"""
     permissions = current_user.permissions or {}
     if not current_user.is_superuser and not bool(permissions.get("manage")):
-        raise HTTPException(status_code=400, detail="用户权限不足")
+        raise HTTPException(status_code=403, detail="用户权限不足")
     return current_user
 
 
@@ -132,18 +148,18 @@ async def get_current_active_manage_user_async(
 
 
 def get_current_active_superuser(
-    current_user: Any = Depends(get_current_user),
+    current_user: Any = Depends(get_current_active_user),
 ) -> Any:
     """校验并返回当前激活超级管理员。"""
     if not current_user.is_superuser:
-        raise HTTPException(status_code=400, detail="用户权限不足")
+        raise HTTPException(status_code=403, detail="用户权限不足")
     return current_user
 
 
 async def get_current_active_superuser_async(
-    current_user: Any = Depends(get_current_user_async),
+    current_user: Any = Depends(get_current_active_user_async),
 ) -> Any:
     """异步校验并返回当前激活超级管理员。"""
     if not current_user.is_superuser:
-        raise HTTPException(status_code=400, detail="用户权限不足")
+        raise HTTPException(status_code=403, detail="用户权限不足")
     return current_user

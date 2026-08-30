@@ -144,6 +144,8 @@ runtime_config = ApiRuntimeConfig(
 )
 anthropic.get_api_runtime_config_snapshot = lambda: runtime_config
 openai.get_api_runtime_config_snapshot = lambda: runtime_config
+anthropic.validate_api_credential_identity = lambda: None
+openai.validate_api_credential_identity = lambda: None
 
 credentials = HTTPAuthorizationCredentials(
     scheme="Bearer",
@@ -387,6 +389,8 @@ runtime_config = ApiRuntimeConfig(
 )
 anthropic.get_api_runtime_config_snapshot = lambda: runtime_config
 openai.get_api_runtime_config_snapshot = lambda: runtime_config
+anthropic.validate_api_credential_identity = lambda: None
+openai.validate_api_credential_identity = lambda: None
 credentials = HTTPAuthorizationCredentials(
     scheme="Bearer",
     credentials=settings.API_TOKEN,

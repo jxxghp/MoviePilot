@@ -2,10 +2,13 @@ import asyncio
 import uuid
 from typing import AsyncIterator, List, Optional
 
-from fastapi import APIRouter, Depends, Header, Security
+from fastapi import APIRouter, Depends, Header, HTTPException, Security
 from fastapi.responses import JSONResponse
 
-from app.adapters.web.security.access import anthropic_api_key_header
+from app.adapters.web.security.access import (
+    anthropic_api_key_header,
+    validate_api_credential_identity,
+)
 from app.api.context import (
     get_background_task_registry_compat,
     resolve_background_task_registry,
@@ -24,6 +27,7 @@ from app.api.protocol import (
 )
 from app.application.agent import get_running_agent_manager
 from app.application.configuration import get_api_runtime_config_snapshot
+from app.runtime.execution import run_in_threadpool
 from app.runtime.tasks import TaskRegistry
 from app.schemas.openai import AnthropicErrorDetail as _SchemaAnthropicErrorDetail
 from app.schemas.openai import AnthropicErrorResponse as _SchemaAnthropicErrorResponse
@@ -57,7 +61,7 @@ def _anthropic_error_response(
     )
 
 
-def _check_auth(api_key: Optional[str]) -> Optional[JSONResponse]:
+async def _check_auth(api_key: Optional[str]) -> Optional[JSONResponse]:
     """
     Anthropic 兼容接口以 API_TOKEN 认证受信客户端，认证通过即按管理员级 Agent 集成处理。
     """
@@ -66,6 +70,19 @@ def _check_auth(api_key: Optional[str]) -> Optional[JSONResponse]:
             "invalid x-api-key",
             401,
             error_type="authentication_error",
+        )
+    try:
+        await run_in_threadpool(validate_api_credential_identity)
+    except HTTPException as error:
+        authentication_error = error.status_code == 401
+        return _anthropic_error_response(
+            (
+                "invalid x-api-key"
+                if authentication_error
+                else "authentication service unavailable"
+            ),
+            error.status_code,
+            error_type="authentication_error" if authentication_error else "api_error",
         )
     return None
 
@@ -218,7 +235,7 @@ async def messages(
     anthropic_version: Optional[str] = Header(default=None, alias="anthropic-version"),
     task_registry: TaskRegistry = Depends(get_background_task_registry_compat),
 ):
-    auth_error = _check_auth(x_api_key)
+    auth_error = await _check_auth(x_api_key)
     if auth_error:
         return auth_error
 

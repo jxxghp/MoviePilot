@@ -723,9 +723,6 @@
   "app/schemas/types.py": {
     "I001": 1
   },
-  "app/schemas/user.py": {
-    "I001": 1
-  },
   "app/sdk/_legacy/user.py": {
     "I001": 1
   },

@@ -5,7 +5,9 @@ from typing import cast
 
 from app.adapters.web.security.access import (
     reset_superuser_token_payload_provider,
+    reset_token_identity_validator,
     set_superuser_token_payload_provider,
+    set_token_identity_validator,
 )
 from app.application.configuration import get_configured_system_config
 from app.application.security.auth import (
@@ -13,6 +15,7 @@ from app.application.security.auth import (
     build_superuser_token_payload,
     configure_auth_service,
     reset_auth_service,
+    validate_token_identity,
 )
 from app.application.security.passkey import (
     PASSKEY_CHALLENGE_TTL_SECONDS,
@@ -77,8 +80,9 @@ def configure_security_services() -> SecurityComposition:
 
 
 def configure_security_access() -> None:
-    """登记 Web 认证边界所需的超级用户令牌载荷提供器。"""
+    """登记 Web 认证边界所需的令牌载荷和当前身份校验端口。"""
     set_superuser_token_payload_provider(build_superuser_token_payload)
+    set_token_identity_validator(validate_token_identity)
 
 
 def reset_security_services() -> None:
@@ -90,5 +94,6 @@ def reset_security_services() -> None:
 
 
 def reset_security_access() -> None:
-    """撤销 Web 认证边界的超级用户令牌载荷提供器及其缓存。"""
+    """撤销 Web 认证边界的令牌载荷和当前身份校验端口。"""
     reset_superuser_token_payload_provider()
+    reset_token_identity_validator()
