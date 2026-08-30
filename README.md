@@ -30,6 +30,7 @@
 推荐优先使用 Docker 部署。V3 使用独立镜像 `jxxghp/moviepilot-v3`，V2 和旧版镜像保持原命名。Compose 示例、环境变量、目录映射和升级方式以官方 Wiki 为准：
 
 - 官方 Wiki：https://wiki.movie-pilot.org
+- V2 到 V3 版本变化总览：[docs/v2-to-v3-overview.md](docs/v2-to-v3-overview.md)
 - PostgreSQL 部署说明：[docs/postgresql-setup.md](docs/postgresql-setup.md)
 
 也可以使用本地 CLI 以源码模式安装和管理 MoviePilot：
