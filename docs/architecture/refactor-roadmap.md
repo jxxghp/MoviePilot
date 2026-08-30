@@ -9,7 +9,7 @@
 >
 > 兼容原则：新插件只使用 `app.sdk`；旧插件导入、符号和行为只由统一 Compat/Legacy 层承接。
 
-## 0.1 当前追踪目标：G-ARCH-RESIDUAL（ACTIVE）
+## 0.1 当前追踪目标：G-ARCH-RESIDUAL（COMPLETE）
 
 原 G-ARCH 的 S0-S3、S5 交付记录和 S4 `CANCELLED` 决定保持不变。基于 2026-08-30
 对 exact-head 的复核，另行建立本次追踪目标 `G-ARCH-RESIDUAL`，只收口审计已经明确的残余
@@ -22,10 +22,16 @@
 | R2 复杂度与原生并发门禁 | `DELIVERED` | R0 | `f7ca7e517`、`5cd5780d3`：完整 AST、Scheduler、canonical alias、TaskGroup、稳定 owner/count 与低水位门禁落地；本范围新增债务为零 |
 | R3 Outbox after_commit 恢复语义 | `DELIVERED` | R0 | `9d06f91bb`：下载提交后通知、模块和字幕副作用改为同事务持久 intent，具备 handler、claim/fencing、重启回放、幂等与失败观测 |
 | R4 Startup/插件市场单一装配 | `DELIVERED` | R0 | `7f5b8b469` 至 `046b0b305`：市场 Transport/Package/Dependency/Health、Domain、网络、站点、Chain、缓存、资源、DoH 和 Workflow 构造归入 composition；Compat 复用同一 owner |
-| R5 验收与交付收口 | `ACTIVE` | R1,R2,R3,R4 | 路线图、优化清单、规则和机器门禁一致；专项与锁定全量测试、Pylint、架构/兼容门禁、GitHub CI 通过；`HEAD == origin/v3` 且 ahead/behind 为 `0/0` |
+| R5 验收与交付收口 | `DELIVERED` | R1,R2,R3,R4 | 路线图、优化清单、规则和机器门禁一致；锁定全量 `7684 passed, 9 skipped`，Application/Domain 覆盖率低水位为 `81.77%` / `81.03%`，Pylint `10.00/10`、架构/兼容门禁、真实启动和最终 exact-head GitHub CI 通过；`HEAD == origin/v3` 且 ahead/behind 为 `0/0` |
 
 执行合同：任一时刻只允许一个 `ACTIVE` 叶子；每个叶子必须独立验证、显式提交和推送，
 并在交付前复核插件 ABI、canonical 旧实现/重复导出和 `app/plugins/**` 排除边界。
+
+R5 以 2026-08-30 的精确代码头完成验收：四个 GitHub Unit Tests 分片和 Architecture Contract
+Gate 在运行 `33293899659` 中通过，Coverage Report 生成并上传同一份 `coverage.json`；该运行只因
+Application 低水位从 `81.61%` 提升到 `81.77%` 后尚未固化而失败。R5 使用相同 locked 命令在
+本地重新生成报告并写入整数计数，随后由最终文档/基线提交对应的 exact-head CI 复核。真实进程使用
+临时配置目录完成启动，`/health/live` 与 `/health/ready` 均返回 HTTP 200，并完成有序关闭。
 
 ## 1. 治理合同
 
