@@ -753,7 +753,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if plan.episode_group:
             group_seasons = yield _RecognizeStep(
                 action=_RecognizeAction.LOAD_GROUP,
-                kwargs={"episode_group": plan.episode_group},
+                kwargs={"group_id": plan.episode_group},
             )
 
         cache_hit = bool(cache_info and plan.use_cache)
